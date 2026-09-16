@@ -1,17 +1,18 @@
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { styles } from '../../features/screen-styles/app/driver/detail/index';
+import { Colors } from '@/constants/styles';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
-import { useGetTripsQuery } from '@/store/api/tripApi';
+import { useGetAllTripsQuery } from '@/store/api/tripApi';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -22,27 +23,45 @@ export default function DriverDetailsScreen() {
   const params = useLocalSearchParams();
   const driverId = typeof params.id === 'string' ? params.id : '';
 
-  const { data: driver, isLoading: driverLoading } = useGetPublicUserInfoQuery(driverId, {
+  const { data: driver, isLoading: driverLoading, refetch: refetchDriver } = useGetPublicUserInfoQuery(driverId, {
     skip: !driverId,
   });
 
-  const { data: reviews } = useGetReviewsQuery(driverId, {
+  const { data: reviews, refetch: refetchReviews } = useGetReviewsQuery(driverId, {
     skip: !driverId,
   });
 
-  const { data: avgRatingData } = useGetAverageRatingQuery(driverId, {
+  const { data: avgRatingData, refetch: refetchAvgRating } = useGetAverageRatingQuery(driverId, {
     skip: !driverId,
   });
 
   // Récupérer les trajets du driver pour calculer les statistiques
   // Note: L'API peut ne pas supporter le filtre driverId, donc on récupère tous les trajets et on filtre côté client
   // Pour une meilleure performance, on pourrait créer une API dédiée
-  const { data: allTrips } = useGetTripsQuery(
-    {},
+  const { data: allTrips, refetch: refetchTrips } = useGetAllTripsQuery(
     {
-      skip: !driverId,
+      skip: !driver?.id,
     }
   );
+
+  const [refreshing, setRefreshing] = useState(false);
+  console.log("driver's trips:", allTrips?.length)
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchDriver(),
+        refetchReviews(),
+        refetchAvgRating(),
+        refetchTrips(),
+      ]);
+    } catch (error) {
+      console.warn('Error refreshing driver data:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchDriver, refetchReviews, refetchAvgRating, refetchTrips]);
 
   const driverTrips = useMemo(() => {
     if (!allTrips) return [];
@@ -50,8 +69,8 @@ export default function DriverDetailsScreen() {
   }, [allTrips, driverId]);
 
   const stats = useMemo(() => {
-    const totalTrips = driver?.totalTrips ?? driverTrips.length;
-    const completedTrips = driverTrips.filter((trip) => trip.status === 'completed').length;
+    const totalTrips = driverTrips?.length;
+    const completedTrips = driverTrips?.filter((trip) => trip.status === 'completed').length;
     return {
       totalTrips,
       completedTrips,
@@ -119,7 +138,13 @@ export default function DriverDetailsScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+        }
+      >
         {/* Informations principales */}
         <View style={styles.section}>
           <View style={styles.profileCard}>
@@ -211,7 +236,7 @@ export default function DriverDetailsScreen() {
                 {Array.from(
                   new Map(
                     driverTrips
-                      .filter((trip) => trip.vehicle)
+                      .filter((trip) => trip?.vehicle?.isActive)
                       .map((trip) => [trip.vehicle!.id, trip.vehicle!])
                   ).values()
                 ).map((vehicle) => (
@@ -255,7 +280,7 @@ export default function DriverDetailsScreen() {
             <Text style={styles.sectionTitle}>AVIS ({reviewCount})</Text>
             {reviewCount === 0 ? (
               <Text style={styles.emptyReviewsText}>
-                Pas encore d'avis pour ce conducteur
+                Pas encore d’avis pour ce conducteur
               </Text>
             ) : (
               <View style={styles.reviewsList}>
@@ -293,298 +318,5 @@ export default function DriverDetailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-    paddingTop: 50,
-  },
-  backButton: {
-    padding: Spacing.xs,
-  },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    paddingBottom: Spacing.xxl,
-  },
-  loaderContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  loaderText: {
-    marginTop: Spacing.md,
-    color: Colors.gray[600],
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xl,
-  },
-  emptyText: {
-    marginTop: Spacing.md,
-    color: Colors.gray[600],
-    fontSize: FontSizes.base,
-  },
-  section: {
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-  },
-  profileCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  profileHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  profileAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[300],
-    marginRight: Spacing.lg,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileInfo: {
-    flex: 1,
-  },
-  profileName: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.xs,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  ratingText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[800],
-  },
-  ratingSeparator: {
-    color: Colors.gray[400],
-    marginHorizontal: Spacing.xs,
-  },
-  reviewCount: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  phoneSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-  },
-  phoneInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: Spacing.md,
-  },
-  phoneText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-    marginLeft: Spacing.sm,
-    fontWeight: FontWeights.medium,
-  },
-  phoneActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  phoneButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  phoneButtonCall: {
-    borderColor: Colors.success,
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-  },
-  phoneButtonWhatsApp: {
-    borderColor: '#25D366',
-    backgroundColor: 'rgba(37, 211, 102, 0.1)',
-  },
-  statsCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[500],
-    marginBottom: Spacing.md,
-    textTransform: 'uppercase',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-    padding: Spacing.md,
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-  },
-  statValue: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.primary,
-    marginBottom: Spacing.xs,
-  },
-  statLabel: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    textAlign: 'center',
-  },
-  vehiclesCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  vehiclesList: {
-    marginTop: Spacing.md,
-  },
-  vehicleItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.md,
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing.md,
-  },
-  vehicleIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  vehicleInfo: {
-    flex: 1,
-  },
-  vehicleName: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginBottom: Spacing.xs,
-  },
-  vehicleDetails: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  vehiclePhoto: {
-    width: 60,
-    height: 60,
-    borderRadius: BorderRadius.md,
-    marginLeft: Spacing.md,
-  },
-  emptyVehiclesText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-  },
-  reviewsCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-  },
-  reviewsList: {
-    marginTop: Spacing.md,
-  },
-  reviewItem: {
-    padding: Spacing.md,
-    backgroundColor: Colors.gray[50],
-    borderRadius: BorderRadius.lg,
-    marginBottom: Spacing.md,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  reviewAuthor: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  reviewRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  reviewRatingText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  reviewDate: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-    marginBottom: Spacing.xs,
-  },
-  reviewComment: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-    lineHeight: 20,
-  },
-  emptyReviewsText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: Spacing.md,
-  },
-  backButtonText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
-    marginTop: Spacing.md,
-  },
-});
+
 

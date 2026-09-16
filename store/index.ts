@@ -1,25 +1,97 @@
-import { configureStore } from '@reduxjs/toolkit';
+import { configureStore, type Middleware } from '@reduxjs/toolkit';
 import { setupListeners } from '@reduxjs/toolkit/query';
+import { Platform } from 'react-native';
+import { nativeQueryListeners } from '../services/nativeQueryListeners';
+import { chatSocket } from '../services/chatSocket';
+import { trackingSocket } from '../services/trackingSocket';
+import { clearLocationDeliveries } from '../services/locationDelivery';
+import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
+import { mapboxApi } from './api/mapboxApi';
 import authReducer from './slices/authSlice';
+import rideRecoveryReducer, { resetRideRecovery } from './slices/rideRecoverySlice';
 import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
-import tripsReducer from './slices/tripsSlice';
+import tripsReducer, { openInterruptionChoice } from './slices/tripsSlice';
+import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
+import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
 import { setStoreAccessor } from './storeAccessor';
+import { createTripRequestExpirationMiddleware } from './middleware/tripRequestExpiration';
+
+const apiQueryActionTypes = [
+  `${zwangaApi.reducerPath}/executeQuery/fulfilled`,
+  `${zwangaApi.reducerPath}/executeMutation/fulfilled`,
+];
+
+const largeStatePaths = [
+  'trips.items',
+  'messages.conversations',
+  zwangaApi.reducerPath,
+  authRefreshApi.reducerPath,
+  mapboxApi.reducerPath,
+];
+
+/**
+ * Authenticated RTK Query endpoints use `void` as their cache key. Purge that
+ * cache at logout and when the account identity changes so referral, wallet or
+ * KYC data can never leak from the previous session on a shared device.
+ */
+const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action) => {
+  const typedAction = action as { type?: string };
+  const previousUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
+    .auth?.user?.id;
+  const result = next(action);
+  const currentUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
+    .auth?.user?.id;
+  const logoutAction =
+    typedAction.type === 'auth/logout' ||
+    typedAction.type === 'auth/performLogout/fulfilled' ||
+    typedAction.type === 'auth/performLogout/rejected';
+  const accountChanged =
+    typedAction.type === 'auth/setTokens' &&
+    Boolean(previousUserId && currentUserId && previousUserId !== currentUserId);
+
+  if (logoutAction || accountChanged) {
+    chatSocket.disconnect();
+    trackingSocket.disconnect();
+    clearLocationDeliveries();
+    storeApi.dispatch(resetRideRecovery());
+    storeApi.dispatch({ type: 'messages/resetMessages' });
+    storeApi.dispatch(resetRequestDrafts());
+    storeApi.dispatch(resetHomeRequestHighlights());
+    storeApi.dispatch(openInterruptionChoice(null));
+    storeApi.dispatch(zwangaApi.util.resetApiState());
+    storeApi.dispatch(authRefreshApi.util.resetApiState());
+  } else if (typedAction.type === 'auth/setTokens') {
+    chatSocket.refreshAuthentication();
+    trackingSocket.refreshAuthentication();
+  }
+  return result;
+};
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
+    rideRecovery: rideRecoveryReducer,
     trips: tripsReducer,
+    requestDrafts: requestDraftsReducer,
+    homeRequestHighlights: homeRequestHighlightsReducer,
     messages: messagesReducer,
     location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,
+    [authRefreshApi.reducerPath]: authRefreshApi.reducer,
+    [mapboxApi.reducerPath]: mapboxApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
+      immutableCheck: {
+        warnAfter: 128,
+        ignoredPaths: largeStatePaths,
+      },
       serializableCheck: {
+        warnAfter: 128,
         // Ignore these action types
-        ignoredActions: ['trips/addTrip', 'trips/updateTrip'],
+        ignoredActions: ['trips/addTrip', 'trips/updateTrip', ...apiQueryActionTypes],
         // Ignore these field paths in all actions
         ignoredActionPaths: [
           'payload.departureTime', 
@@ -31,16 +103,18 @@ export const store = configureStore({
           'meta.arg.originalArgs',
         ],
         // Ignore these paths in the state
-        ignoredPaths: ['trips.items', 'messages.conversations'],
+        ignoredPaths: largeStatePaths,
       },
-    }).concat(zwangaApi.middleware),
+    })
+      .prepend(apiCacheIsolationMiddleware)
+      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware, createTripRequestExpirationMiddleware()),
 });
 
 // Initialize store accessor to avoid circular dependencies
 setStoreAccessor(store.dispatch, store.getState);
 
 // Enable refetchOnFocus/refetchOnReconnect behaviors
-setupListeners(store.dispatch);
+setupListeners(store.dispatch, Platform.OS === 'web' ? undefined : nativeQueryListeners);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

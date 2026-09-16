@@ -1,4 +1,8 @@
 import { DialogProvider } from '@/components/ui/DialogProvider';
+import { RideOutboxCoordinator } from '@/components/RideOutboxCoordinator';
+import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
+import { DriverPaymentNoticeCoordinator } from '@/components/DriverPaymentNoticeCoordinator';
+import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
@@ -9,7 +13,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
-import { OngoingTripBanner } from './OngoingTripBanner';
+import { ReferralAttributionHandler } from './ReferralAttributionHandler';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -19,13 +23,13 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialiser l'authentification depuis SecureStore au démarrage
+    // Initialiser l'authentification depuis SecureStore au demarrage
     const initializeStore = async () => {
       try {
         // Initialiser l'auth (charge les tokens depuis SecureStore)
         await store.dispatch(initializeAuth());
       } catch (error) {
-        console.error('Erreur lors de l\'initialisation du store:', error);
+        console.error("Erreur lors de l'initialisation du store:", error);
       } finally {
         setIsLoading(false);
       }
@@ -34,38 +38,47 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
     initializeStore();
   }, []);
 
-  if (isLoading) {
-    // Écran de chargement pendant la restauration du state
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.white} />
-      </View>
-    );
-  }
-
   return (
     <Provider store={store}>
-      <NotificationHandler />
-      <AuthGuard>
-        <DialogProvider>
-          <TutorialProvider>
-            <IdentityProvider>
-              <OngoingTripBanner />
-              {children}
-            </IdentityProvider>
-          </TutorialProvider>
-        </DialogProvider>
-      </AuthGuard>
+      <View style={styles.appContainer}>
+        {isLoading ? (
+          // Ecran de chargement pendant la restauration du state
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.white} />
+          </View>
+        ) : (
+          <View style={styles.appContent}>
+            <DialogProvider>
+              <ReferralAttributionHandler />
+              <ActiveRideLocationCoordinator />
+              <RideOutboxCoordinator />
+              <NotificationHandler />
+              <AuthGuard>
+                <PassengerArrivalPaymentCoordinator />
+                <DriverPaymentNoticeCoordinator />
+                <TutorialProvider>
+                  <IdentityProvider>{children}</IdentityProvider>
+                </TutorialProvider>
+              </AuthGuard>
+            </DialogProvider>
+          </View>
+        )}
+      </View>
     </Provider>
   );
 }
 
 const styles = StyleSheet.create({
+  appContainer: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
   },
+  appContent: {
+    flex: 1,
+  },
 });
-

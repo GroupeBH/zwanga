@@ -1,36 +1,47 @@
-import { Linking, Platform, Share } from 'react-native';
-import Constants from 'expo-constants';
+import { Platform, Share } from 'react-native';
+import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
+
+const PUBLIC_TRACKING_URL_PATTERN = /^https?:\/\/[^\s]+$/i;
+
+function appendPublicUrlOnce(message: string, publicUrl?: string): string {
+  if (!publicUrl) {
+    return message;
+  }
+
+  const normalizedUrl = normalizePublicTrackingUrl(publicUrl);
+  if (message.includes(normalizedUrl)) {
+    return message;
+  }
+
+  return `${message.trimEnd()}\n\n${normalizedUrl}`;
+}
 
 /**
- * Génère un lien de partage pour un trajet
- * @param tripId ID du trajet
- * @returns URL de partage (deep link ou URL web)
+ * Refuse les deep links mobiles et les chemins relatifs : le suivi partagé doit
+ * toujours pouvoir s'ouvrir dans un navigateur sans installer l'application.
  */
-export function generateTripShareLink(tripId: string): string {
-  // Deep link pour l'app mobile
-  const deepLink = `zwanga://trip/${tripId}?track=true`;
-  
-  // URL web de fallback (si vous avez une page web pour le suivi)
-  const webUrl = `https://zwanga.cd/trip/${tripId}?track=true`;
-  
-  // Pour l'instant, on utilise le deep link
-  // Si l'app n'est pas installée, le système proposera d'ouvrir dans le navigateur
-  return deepLink;
+export function normalizePublicTrackingUrl(publicUrl: string): string {
+  const normalizedUrl = publicUrl.trim();
+  if (!PUBLIC_TRACKING_URL_PATTERN.test(normalizedUrl)) {
+    throw new Error('Le serveur n\'a pas fourni de lien web de suivi valide.');
+  }
+
+  return normalizedUrl;
 }
 
 /**
  * Génère un message de partage pour un trajet
- * @param tripId ID du trajet
+ * @param publicUrl Lien web public de suivi
  * @param departureName Nom du lieu de départ
  * @param arrivalName Nom du lieu d'arrivée
  * @returns Message de partage formaté
  */
 export function generateTripShareMessage(
-  tripId: string,
+  publicUrl: string,
   departureName?: string,
   arrivalName?: string,
 ): string {
-  const link = generateTripShareLink(tripId);
+  const link = normalizePublicTrackingUrl(publicUrl);
   const route = departureName && arrivalName 
     ? `${departureName} → ${arrivalName}`
     : 'mon trajet';
@@ -40,22 +51,23 @@ export function generateTripShareMessage(
 
 /**
  * Partage un trajet via l'API native de partage
- * @param tripId ID du trajet
+ * @param publicUrl Lien web public de suivi
  * @param departureName Nom du lieu de départ
  * @param arrivalName Nom du lieu d'arrivée
  */
 export async function shareTrip(
-  tripId: string,
+  publicUrl: string,
   departureName?: string,
   arrivalName?: string,
 ): Promise<void> {
   try {
-    const message = generateTripShareMessage(tripId, departureName, arrivalName);
-    const url = generateTripShareLink(tripId);
+    const url = normalizePublicTrackingUrl(publicUrl);
+    const message = generateTripShareMessage(url, departureName, arrivalName);
     
     const result = await Share.share({
-      message: message,
-      url: Platform.OS === 'ios' ? url : undefined, // iOS utilise url, Android utilise message
+      // Le lien est déjà inclus dans le message. Ajouter aussi la propriété
+      // `url` sur iOS le duplique dans certaines applications, dont WhatsApp.
+      message,
       title: 'Partager le trajet',
     });
 
@@ -79,21 +91,19 @@ export async function shareTrip(
 
 /**
  * Partage un trajet via WhatsApp spécifiquement
- * @param tripId ID du trajet
+ * @param publicUrl Lien web public de suivi
  * @param phoneNumber Numéro de téléphone (optionnel)
  * @param departureName Nom du lieu de départ
  * @param arrivalName Nom du lieu d'arrivée
  */
 export async function shareTripViaWhatsApp(
-  tripId: string,
+  publicUrl: string,
   phoneNumber?: string,
   departureName?: string,
   arrivalName?: string,
 ): Promise<void> {
   try {
-    const message = generateTripShareMessage(tripId, departureName, arrivalName);
-    const link = generateTripShareLink(tripId);
-    
+    const message = generateTripShareMessage(publicUrl, departureName, arrivalName);
     let url: string;
     if (phoneNumber) {
       // Format WhatsApp avec numéro de téléphone
@@ -104,48 +114,92 @@ export async function shareTripViaWhatsApp(
       url = `whatsapp://send?text=${encodeURIComponent(message)}`;
     }
 
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
+    if (await openExternalUrlSafely(url, { logLabel: 'ShareWhatsApp' })) {
+      return;
     } else {
       // Fallback vers le partage standard si WhatsApp n'est pas installé
-      await shareTrip(tripId, departureName, arrivalName);
+      await shareTrip(publicUrl, departureName, arrivalName);
     }
   } catch (error: any) {
     console.error('Erreur lors du partage via WhatsApp:', error.message);
     // Fallback vers le partage standard
-    await shareTrip(tripId, departureName, arrivalName);
+    await shareTrip(publicUrl, departureName, arrivalName);
   }
 }
 
 /**
+ * Partage un lien public de suivi via WhatsApp.
+ */
+export async function shareTrackingLinkViaWhatsApp(input: {
+  message: string;
+  fallbackTitle?: string;
+}): Promise<void> {
+  const url = `whatsapp://send?text=${encodeURIComponent(input.message)}`;
+
+  try {
+    if (await openExternalUrlSafely(url, { logLabel: 'TrackingWhatsApp' })) {
+      return;
+    }
+  } catch (error: any) {
+    console.warn('WhatsApp indisponible:', error?.message ?? error);
+  }
+
+  await Share.share({
+    title: input.fallbackTitle ?? 'Partager le suivi',
+    message: input.message,
+  });
+}
+
+/**
  * Partage un trajet via SMS
- * @param tripId ID du trajet
+ * @param publicUrl Lien web public de suivi
  * @param phoneNumber Numéro de téléphone
  * @param departureName Nom du lieu de départ
  * @param arrivalName Nom du lieu d'arrivée
  */
 export async function shareTripViaSMS(
-  tripId: string,
+  publicUrl: string,
   phoneNumber: string,
   departureName?: string,
   arrivalName?: string,
 ): Promise<void> {
   try {
-    const message = generateTripShareMessage(tripId, departureName, arrivalName);
+    const message = generateTripShareMessage(publicUrl, departureName, arrivalName);
     const smsUrl = `sms:${phoneNumber}${Platform.OS === 'ios' ? '&' : '?'}body=${encodeURIComponent(message)}`;
     
-    const canOpen = await Linking.canOpenURL(smsUrl);
-    if (canOpen) {
-      await Linking.openURL(smsUrl);
+    if (await openExternalUrlSafely(smsUrl, { logLabel: 'ShareSms' })) {
+      return;
     } else {
       // Fallback vers le partage standard
-      await shareTrip(tripId, departureName, arrivalName);
+      await shareTrip(publicUrl, departureName, arrivalName);
     }
   } catch (error: any) {
     console.error('Erreur lors du partage via SMS:', error.message);
     // Fallback vers le partage standard
-    await shareTrip(tripId, departureName, arrivalName);
+    await shareTrip(publicUrl, departureName, arrivalName);
   }
 }
+/**
+ * Ouvre le client email avec un lien public de suivi de trajet.
+ */
+export async function shareTripViaEmail(input: {
+  mailtoUrl?: string;
+  subject: string;
+  body: string;
+  fallbackUrl?: string;
+}): Promise<void> {
+  const mailtoUrl = input.mailtoUrl || `mailto:?subject=${encodeURIComponent(input.subject)}&body=${encodeURIComponent(input.body)}`;
 
+  try {
+    if (await openExternalUrlSafely(mailtoUrl, { logLabel: 'ShareEmail' })) {
+      return;
+    }
+  } catch (error: any) {
+    console.warn('Client email indisponible:', error?.message ?? error);
+  }
+
+  await Share.share({
+    title: input.subject,
+    message: appendPublicUrlOnce(input.body, input.fallbackUrl),
+  });
+}

@@ -1,52 +1,106 @@
-import { useDialog } from '@/components/ui/DialogProvider';
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { styles } from '../features/screen-styles/app/my-requests/index';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { Colors } from '@/constants/styles';
 import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import type { TripRequest } from '@/types';
+import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import React, { useMemo } from 'react';
+import { ActivityIndicator, FlatList, Image, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
-import type { TripRequest } from '@/types';
 
 export default function MyTripRequestsScreen() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
-  const { showDialog } = useDialog();
   const {
     data: tripRequests = [],
     isLoading,
     isFetching,
     refetch,
-  } = useGetMyTripRequestsQuery();
+  } = useGetMyTripRequestsQuery(undefined, {
+    // Polling léger pour mes demandes de trajet
+    pollingInterval: isScreenActive ? (60_000) : 0,
+    skipPollingIfUnfocused: true,
+    refetchOnFocus: true,
+    refetchOnReconnect: false,
+  });
+
+  console.log('[MyTripRequests] tripRequests:', tripRequests);
 
   const handleRequestPress = (requestId: string) => {
-    router.push(`/request/${requestId}`);
+    router.push(getTripRequestDetailHref(requestId));
   };
 
-  const renderTripRequestCard = ({ item, index }: { item: TripRequest; index: number }) => {
-    const statusConfig = {
-      pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
-      offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
-      driver_selected: { label: 'Driver sélectionné', color: Colors.success, bg: Colors.success + '15' },
-      cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
-      expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
-    }[item.status] || statusConfig.pending;
+  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+    pending: { label: 'En attente', color: Colors.warning, bg: Colors.warning + '15' },
+    offers_received: { label: 'Offres reçues', color: Colors.info, bg: Colors.info + '15' },
+    driver_selected: { label: 'Conducteur sélectionné', color: Colors.success, bg: Colors.success + '15' },
+    cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '15' },
+  };
 
-    const offersCount = item.offers?.length || 0;
-    const pendingOffersCount = item.offers?.filter((o) => o.status === 'pending').length || 0;
+  const getRequestPriority = (request: TripRequest) => {
+    if (request.status === 'driver_selected' && !request.tripId) return 0;
+    if (request.status === 'offers_received') return 1;
+    if (request.status === 'pending') return 2;
+    if (request.status === 'cancelled') return 4;
+    if (request.status === 'expired') return 5;
+    return 3;
+  };
+
+  const sortedTripRequests = useMemo(() => {
+    return [...tripRequests].sort((a, b) => {
+      const priorityA = getRequestPriority(a);
+      const priorityB = getRequestPriority(b);
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      const updatedA = new Date(a.updatedAt || a.createdAt).getTime();
+      const updatedB = new Date(b.updatedAt || b.createdAt).getTime();
+      return updatedB - updatedA;
+    });
+  }, [tripRequests]);
+
+  const featuredRequestId = useMemo(() => {
+    return (
+      sortedTripRequests.find(
+        (request) =>
+          (request.status === 'pending' ||
+            request.status === 'offers_received' ||
+            request.status === 'driver_selected') &&
+          !request.tripId,
+      )?.id ?? null
+    );
+  }, [sortedTripRequests]);
+
+  const renderTripRequestCard = ({ item, index }: { item: TripRequest; index: number }) => {
+    // Merge 'expired' into the local status config
+    const localStatusConfig = {
+      ...statusConfig,
+      expired: { label: 'Expirée', color: Colors.gray[500], bg: Colors.gray[200] },
+      // End of casting hell: make sure item.status is a keyof localStatusConfig
+    } as Record<keyof typeof statusConfig | 'expired', { label: string; color: string; bg: string }>;
+    const currentStatus = (localStatusConfig as any)[item.status] || statusConfig.pending;
+
+    const offersCount = item.offers?.length ?? 0;
+    const pendingOffersCount = item.offers?.filter((o: { status: string }) => o.status === 'pending').length ?? 0;
 
     const hasOffers = offersCount > 0;
     const hasPendingOffers = pendingOffersCount > 0;
+    const isActiveRequest =
+      (item.status === 'pending' || item.status === 'offers_received' || item.status === 'driver_selected') &&
+      !item.tripId;
+    const isFeatured = isActiveRequest && item.id === featuredRequestId;
+    const trackingConfig =
+      item.status === 'driver_selected'
+        ? { icon: 'car-outline' as const, label: 'Prise en charge prête', color: Colors.success, bg: Colors.success + '15' }
+        : item.status === 'offers_received' || hasPendingOffers
+          ? { icon: 'sparkles-outline' as const, label: 'À comparer', color: Colors.info, bg: Colors.info + '15' }
+          : { icon: 'radio-outline' as const, label: 'En suivi', color: Colors.primary, bg: Colors.primary + '15' };
 
     return (
       <Animated.View entering={FadeInDown.delay(index * 100)}>
@@ -55,14 +109,24 @@ export default function MyTripRequestsScreen() {
             styles.requestCard,
             hasOffers && styles.requestCardWithOffers,
             hasPendingOffers && styles.requestCardWithPendingOffers,
+            isFeatured && styles.requestCardFeatured,
+            isFeatured && item.status === 'driver_selected' && styles.requestCardFeaturedConfirmed,
           ]}
           onPress={() => handleRequestPress(item.id)}
         >
           <View style={styles.requestHeader}>
             <View style={styles.statusBadgeContainer}>
-              <View style={[styles.statusBadge, { backgroundColor: statusConfig.bg }]}>
-                <Text style={[styles.statusText, { color: statusConfig.color }]}>
-                  {statusConfig.label}
+              {isFeatured && (
+                <View style={[styles.requestTrackingBadge, { backgroundColor: trackingConfig.bg }]}>
+                  <Ionicons name={trackingConfig.icon} size={13} color={trackingConfig.color} />
+                  <Text style={[styles.requestTrackingBadgeText, { color: trackingConfig.color }]}>
+                    {trackingConfig.label}
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.statusBadge, { backgroundColor: currentStatus.bg }]}>
+                <Text style={[styles.statusText, { color: currentStatus.color }]}>
+                  {currentStatus.label}
                 </Text>
               </View>
               {offersCount > 0 && (
@@ -113,12 +177,12 @@ export default function MyTripRequestsScreen() {
             )}
           </View>
 
-          {item.selectedDriver && (
+          {item.selectedDriverId && (
             <View style={styles.selectedDriverContainer}>
               <View style={styles.selectedDriverInfo}>
-                {item.selectedDriver.avatar ? (
+                {item.selectedDriverAvatar ? (
                   <Image
-                    source={{ uri: item.selectedDriver.avatar }}
+                    source={{ uri: item.selectedDriverAvatar }}
                     style={styles.selectedDriverAvatar}
                   />
                 ) : (
@@ -127,8 +191,8 @@ export default function MyTripRequestsScreen() {
                   </View>
                 )}
                 <View>
-                  <Text style={styles.selectedDriverLabel}>Driver sélectionné</Text>
-                  <Text style={styles.selectedDriverName}>{item.selectedDriver.name}</Text>
+                  <Text style={styles.selectedDriverLabel}>Conducteur sélectionné</Text>
+                  <Text style={styles.selectedDriverName}>{item.selectedDriverName}</Text>
                 </View>
               </View>
             </View>
@@ -175,22 +239,22 @@ export default function MyTripRequestsScreen() {
         <Text style={styles.headerTitle}>Mes demandes</Text>
         <TouchableOpacity
           style={styles.createButton}
-          onPress={() => router.push('/request')}
+              onPress={() => router.push(getTripRequestCreateHref())}
         >
           <Ionicons name="add-circle" size={24} color={Colors.primary} />
         </TouchableOpacity>
       </View>
 
-      {tripRequests.length === 0 ? (
+      {sortedTripRequests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
           <Text style={styles.emptyTitle}>Aucune demande</Text>
           <Text style={styles.emptyText}>
-            Vous n'avez pas encore créé de demande de trajet. Créez-en une pour que les drivers vous proposent leurs services.
+            Vous n&apos;avez pas encore créé de demande de trajet. Créez-en une pour que les conducteurs vous proposent leurs services.
           </Text>
           <TouchableOpacity
             style={styles.createRequestButton}
-            onPress={() => router.push('/request')}
+              onPress={() => router.push(getTripRequestCreateHref())}
           >
             <Ionicons name="add-circle" size={20} color={Colors.white} />
             <Text style={styles.createRequestButtonText}>Créer une demande</Text>
@@ -198,7 +262,7 @@ export default function MyTripRequestsScreen() {
         </View>
       ) : (
         <FlatList
-          data={tripRequests}
+          data={sortedTripRequests}
           keyExtractor={(item) => item.id}
           renderItem={renderTripRequestCard}
           contentContainerStyle={styles.listContent}
@@ -216,221 +280,4 @@ export default function MyTripRequestsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  backButton: {
-    padding: Spacing.xs,
-  },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    flex: 1,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 32,
-  },
-  createButton: {
-    padding: Spacing.xs,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.md,
-  },
-  loadingText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-  },
-  listContent: {
-    padding: Spacing.lg,
-  },
-  requestCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    marginBottom: Spacing.md,
-    shadowColor: Colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  requestCardWithOffers: {
-    borderWidth: 2,
-    borderColor: Colors.info,
-    backgroundColor: Colors.info + '08',
-    shadowColor: Colors.info,
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  requestCardWithPendingOffers: {
-    borderColor: Colors.warning,
-    backgroundColor: Colors.warning + '08',
-    shadowColor: Colors.warning,
-  },
-  requestHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.md,
-  },
-  statusBadgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.md,
-  },
-  statusText: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-  },
-  offersBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    backgroundColor: Colors.info + '15',
-    borderRadius: BorderRadius.sm,
-  },
-  offersBadgeText: {
-    fontSize: FontSizes.xs,
-    color: Colors.info,
-    fontWeight: FontWeights.medium,
-  },
-  requestDate: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-  },
-  routeContainer: {
-    marginBottom: Spacing.md,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-  },
-  routeText: {
-    flex: 1,
-    marginLeft: Spacing.sm,
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-  },
-  requestDetails: {
-    marginBottom: Spacing.md,
-    gap: Spacing.xs,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  detailText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-  },
-  selectedDriverContainer: {
-    marginTop: Spacing.sm,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-  },
-  selectedDriverInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  selectedDriverAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[200],
-    marginRight: Spacing.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  selectedDriverLabel: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[600],
-    marginBottom: 2,
-  },
-  selectedDriverName: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  cardFooter: {
-    marginTop: Spacing.md,
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-  },
-  viewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-  },
-  viewButtonText: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.primary,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.sm,
-  },
-  emptyText: {
-    fontSize: FontSizes.base,
-    color: Colors.gray[600],
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: Spacing.lg,
-  },
-  createRequestButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.md,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  createRequestButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-});
 

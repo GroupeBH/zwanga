@@ -12,7 +12,6 @@ export const saveState = async (state: RootState) => {
     const stateToPersist = {
       auth: {
         user: state.auth.user,
-        token: state.auth.token,
         isAuthenticated: state.auth.isAuthenticated,
       },
       // Optionnel: persister quelques trajets favoris ou récents

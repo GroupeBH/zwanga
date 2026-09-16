@@ -4,23 +4,77 @@
  * Ce fichier remplace app.json et permet de charger les variables depuis .env
  */
 
-require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const dotenv = require('dotenv');
+
+['.env.local', 'env.local', '.env'].forEach((envFile) => {
+  dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+});
+
+// Public OAuth client IDs (safe to ship in the app).
+// Keep fallbacks so cloud builds still work even when .env is not uploaded.
+const GOOGLE_WEB_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  '754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com';
+const GOOGLE_IOS_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+  '754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com';
+const GOOGLE_IOS_URL_SCHEME =
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ||
+  'com.googleusercontent.apps.754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp';
+const GOOGLE_IOS_SERVICES_FILE = './GoogleService-Info.plist';
+const HAS_IOS_GOOGLE_SERVICES_FILE = fs.existsSync(
+  path.resolve(process.cwd(), GOOGLE_IOS_SERVICES_FILE),
+);
+const META_APP_ID = process.env.EXPO_PUBLIC_META_APP_ID || process.env.META_APP_ID || '';
+const META_CLIENT_TOKEN =
+  process.env.EXPO_PUBLIC_META_CLIENT_TOKEN || process.env.META_CLIENT_TOKEN || '';
+const META_DISPLAY_NAME =
+  process.env.EXPO_PUBLIC_META_DISPLAY_NAME || process.env.META_DISPLAY_NAME || 'Zwanga';
+const HAS_META_APP_EVENTS = Boolean(META_APP_ID && META_CLIENT_TOKEN);
+const CHOTTULINK_MOBILE_API_KEY =
+  process.env.CHOTTULINK_MOBILE_API_KEY || '';
+const CHOTTULINK_DOMAIN = process.env.CHOTTULINK_DOMAIN || '';
+const HAS_CHOTTULINK = Boolean(
+  CHOTTULINK_MOBILE_API_KEY && CHOTTULINK_DOMAIN,
+);
+const IS_EAS_PRODUCTION_BUILD = process.env.EAS_BUILD_PROFILE === 'production';
+
+if (CHOTTULINK_DOMAIN && !/^[a-z0-9.-]+$/i.test(CHOTTULINK_DOMAIN)) {
+  throw new Error('CHOTTULINK_DOMAIN doit contenir uniquement un nom de domaine.');
+}
+if (IS_EAS_PRODUCTION_BUILD && !HAS_CHOTTULINK) {
+  throw new Error(
+    'Build production refuse: CHOTTULINK_MOBILE_API_KEY et CHOTTULINK_DOMAIN doivent etre definis dans EAS Environment Variables.',
+  );
+}
 
 module.exports = {
   expo: {
     name: 'zwanga',
     slug: 'zwanga-app',
-    version: '1.0.1',
-    orientation: 'portrait',
+    version: '1.0.14',
+    // Do not lock orientation. Google Play flags portrait-only apps as less
+    // compatible with tablets, foldables, Chromebooks, and large screens.
+    orientation: 'default',
     icon: './assets/images/zwanga.png',
     scheme: 'zwanga',
     userInterfaceStyle: 'automatic',
+    // Required by react-native-reanimated v4 on Expo SDK 54 / RN 0.81
     newArchEnabled: true,
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
-      buildNumber: "3",
+      buildNumber: "104",
       supportsTablet: true,
+      usesAppleSignIn: true,
+      ...(HAS_CHOTTULINK
+        ? {
+            associatedDomains: [`applinks:${CHOTTULINK_DOMAIN}`],
+          }
+        : {}),
+      googleServicesFile: './GoogleService-Info.plist',
       config: {
         googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
       },
@@ -29,18 +83,20 @@ module.exports = {
         NSLocationAlwaysAndWhenInUseUsageDescription: "Zwanga utilise votre position pour détecter votre emplacement même lorsque l'application est en arrière-plan.",
         NSLocationAlwaysUsageDescription: "Zwanga nécessite un accès constant à votre position pour fournir des trajets précis.",
         NSCameraUsageDescription: "L'appareil photo est utilisé pour prendre des photos de profil ou des documents.",
+        NSMicrophoneUsageDescription: "Le microphone peut être utilisé pendant la vérification vidéo de présence.",
         NSPhotoLibraryUsageDescription: "Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.",
         NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
         // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
         ITSAppUsesNonExemptEncryption: false,
-        UIBackgroundModes: ['remote-notification', 'fetch'],
+        LSApplicationQueriesSchemes: ['whatsapp'],
+        UIBackgroundModes: ['remote-notification', 'fetch', 'location'],
       },
     },
 
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
-      versionCode: 3,
+      versionCode: 121,
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
@@ -54,16 +110,49 @@ module.exports = {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      ...(HAS_CHOTTULINK
+        ? {
+            intentFilters: [
+              {
+                action: 'VIEW',
+                autoVerify: true,
+                category: ['BROWSABLE', 'DEFAULT'],
+                data: [{ scheme: 'https', host: CHOTTULINK_DOMAIN }],
+              },
+            ],
+          }
+        : {}),
       // Explicitly block ACTIVITY_RECOGNITION permission
       // We only use Accelerometer for device stability detection, not activity recognition
+      // Block FOREGROUND_SERVICE_MEDIA_PLAYBACK as we don't use audio playback in foreground
       blockedPermissions: [
         'android.permission.ACTIVITY_RECOGNITION',
+        'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+      ],
+      // Permissions pour la localisation (incluant arrière-plan pour la navigation)
+      permissions: [
+        'ACCESS_COARSE_LOCATION',
+        'ACCESS_FINE_LOCATION',
+        'ACCESS_BACKGROUND_LOCATION',
+        'FOREGROUND_SERVICE',
+        'FOREGROUND_SERVICE_LOCATION',
+        'com.google.android.gms.permission.AD_ID',
+        'com.android.vending.INSTALL_REFERRER',
       ],
     },
 
     web: {
       output: 'static',
       favicon: './assets/images/zwanga.png',
+    },
+
+    autolinking: {
+      android: {
+        exclude: HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'],
+      },
+      ios: {
+        exclude: HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'],
+      },
     },
 
     // ✅ EXTRA — version fusionnée et corrigée
@@ -76,14 +165,26 @@ module.exports = {
       // variables publiques
       EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
       // En production (build EAS), forcer 'production' si NODE_ENV n'est pas défini
-      // Cela garantit que l'OTP sera toujours requis en production
+      // Cela force un mode env coherent pour les builds release
       EXPO_PUBLIC_ENV:
         process.env.EXPO_PUBLIC_ENV ||
         (process.env.NODE_ENV === 'production' ? 'production' : 
          process.env.NODE_ENV === 'development' ? 'development' : 
          'production'), // Par défaut, considérer comme production pour les builds
+      // Feature flag OTP inscription (desactive par defaut pour bypass temporaire)
+      EXPO_PUBLIC_ENABLE_SIGNUP_OTP:
+        process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP || 'false',
       // Google Maps API key
       EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      // Google Sign-In OAuth IDs
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: GOOGLE_WEB_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: GOOGLE_IOS_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME: GOOGLE_IOS_URL_SCHEME,
+      EXPO_PUBLIC_META_APP_ID: META_APP_ID,
+      EXPO_PUBLIC_META_ENABLED: HAS_META_APP_EVENTS,
+      EXPO_PUBLIC_CHOTTULINK_ENABLED: HAS_CHOTTULINK,
+      EXPO_PUBLIC_CHOTTULINK_MOBILE_API_KEY: CHOTTULINK_MOBILE_API_KEY,
+      EXPO_PUBLIC_CHOTTULINK_DOMAIN: CHOTTULINK_DOMAIN,
 
       secureStoreKeys: {
         access: process.env.EXPO_PUBLIC_SECURESTORE_ACCESS_KEY,
@@ -93,7 +194,28 @@ module.exports = {
 
     plugins: [
       'expo-router',
+      'expo-dev-client',
+      'expo-apple-authentication',
+      '@react-native-firebase/app',
+      '@react-native-firebase/crashlytics',
       'expo-maps',
+      [
+        'expo-location',
+        {
+          locationAlwaysAndWhenInUsePermission: 'Zwanga utilise votre position pour la navigation GPS même en arrière-plan.',
+          locationAlwaysPermission: 'Zwanga a besoin de votre position en arrière-plan pour continuer la navigation.',
+          locationWhenInUsePermission: 'Zwanga utilise votre position pour afficher les trajets à proximité et la navigation.',
+          isIosBackgroundLocationEnabled: true,
+          isAndroidBackgroundLocationEnabled: true,
+          isAndroidForegroundServiceEnabled: true,
+        },
+      ],
+      [
+        '@react-native-google-signin/google-signin',
+        {
+          iosUrlScheme: GOOGLE_IOS_URL_SCHEME,
+        },
+      ],
       [
         "expo-notifications",
         {
@@ -127,6 +249,38 @@ module.exports = {
           },
         },
       ],
+      [
+        '@didit-protocol/sdk-react-native',
+        {
+          iosVariant: 'autodetection',
+          androidVariant: 'autodetection',
+        },
+      ],
+      [
+        'expo-build-properties',
+        {
+          ios:{
+            useFrameworks: 'static',
+          }
+        }
+      ],
+      './app.plugin.js',
+      ...(HAS_META_APP_EVENTS
+        ? [
+            [
+              'react-native-fbsdk-next',
+              {
+                appID: META_APP_ID,
+                clientToken: META_CLIENT_TOKEN,
+                displayName: META_DISPLAY_NAME,
+                scheme: `fb${META_APP_ID}`,
+                advertiserIDCollectionEnabled: false,
+                iosUserTrackingPermission:
+                  'Autorisez Zwanga a mesurer certaines actions pour ameliorer l application.',
+              },
+            ],
+          ]
+        : []),
       'expo-secure-store',
     ],
 

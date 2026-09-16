@@ -13,11 +13,7 @@
  * - reviewApi.ts : Avis et signalements (createReview, reportUser, getReviews)
  * - notificationApi.ts : Notifications (getNotifications, markAsRead)
  */
-
-// Import de la base API
-export { baseApi as zwangaApi } from './baseApi';
-
-// Injection de tous les modules API
+import { baseApi } from './baseApi';
 import './authApi';
 import './messageApi';
 import './notificationApi';
@@ -25,16 +21,31 @@ import './reviewApi';
 import './tripApi';
 import './userApi';
 import './bookingApi';
+import './rideRecoveryApi';
 import './vehicleApi';
 import './tripRequestApi';
 import './safetyApi';
 import './googleMapsApi';
+import './supportApi';
+import './subscriptionApi';
+import './walletApi';
+import './driverSettlementsApi';
+import './trackingApi';
+import './paymentApi';
+import './referralApi';
+
+// Import de la base API
+export { baseApi as zwangaApi };
 
 // Ré-exporter tous les hooks pour faciliter l'utilisation
 export {
   // Auth
   useLoginMutation,
-  useRegisterMutation, useVerifyKYCMutation, useVerifyPhoneMutation
+  useRegisterMutation,
+  useVerifyKYCMutation,
+  useVerifyPhoneMutation,
+  useGoogleMobileMutation,
+  useAppleMobileMutation,
 } from './authApi';
 
 export {
@@ -43,7 +54,10 @@ export {
   useGetCurrentUserQuery,
   useGetUserByIdQuery,
   useUpdateUserMutation,
+  useDeleteAccountMutation,
   useUploadKycMutation,
+  useCreateDiditKycSessionMutation,
+  useSyncDiditKycSessionMutation,
   useGetKycStatusQuery
 } from './userApi';
 
@@ -103,7 +117,7 @@ export {
 export {
   // Notifications
   useGetNotificationsQuery,
-  useMarkNotificationAsReadMutation
+  useMarkNotificationsAsReadMutation,
 } from './notificationApi';
 
 export {
@@ -114,11 +128,9 @@ export {
   useGetTripRequestByIdQuery,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,
-  useGetTripRequestOffersQuery,
   useGetMyDriverOffersQuery,
   useAcceptDriverOfferMutation,
   useRejectDriverOfferMutation,
-  useCancelDriverOfferMutation,
 } from './tripRequestApi';
 
 export {
@@ -127,6 +139,16 @@ export {
   useGetEmergencyContactsQuery,
   useUpdateEmergencyContactMutation,
   useDeleteEmergencyContactMutation,
+  useStartTripSecurityTrackingMutation,
+  useNotifyTripSecurityTrustedContactsMutation,
+  useConfirmTripSecurityParticipantMutation,
+  useUpdateTripSecurityConfigurationMutation,
+  useEscalateTripSecurityParticipantMutation,
+  useCancelTripSecurityTrackingMutation,
+  useGetTripSecurityParticipantQuery,
+  useGetTripSecurityParticipantHistoryQuery,
+  useGetTripSecurityTripParticipantsQuery,
+  useGetTripSecurityTripHistoryQuery,
   useCreateSafetyAlertMutation,
   useUpdateLocationMutation,
   useGetSafetyAlertsQuery,
@@ -153,6 +175,67 @@ export {
   useLazyGetPlaceDetailsQuery,
   usePlacesSearchQuery,
   useLazyPlacesSearchQuery,
+  useGetLandmarksQuery,
+  useLazyGetLandmarksQuery,
   useGetDirectionsMutation,
 } from './googleMapsApi';
 
+export {
+  // Support
+  useGetSupportConfigQuery,
+  useGetSupportFaqQuery,
+  useGetSupportFaqEntryQuery,
+  useGetMySupportTicketsQuery,
+  useGetSupportTicketByIdQuery,
+  useCreateSupportTicketMutation,
+  useAddSupportTicketMessageMutation,
+  useCloseSupportTicketMutation,
+  useReopenSupportTicketMutation,
+} from './supportApi';
+
+export {
+  useCheckSubscriptionPaymentStatusQuery,
+  useGetPremiumOverviewQuery,
+  useGetSubscriptionPlansQuery,
+  useLazyCheckSubscriptionPaymentStatusQuery,
+  useStartPremiumTrialMutation,
+  useSubscribeToProMutation,
+  useSubscribeToProWithPointsMutation,
+} from './subscriptionApi';
+
+export {
+  useGetMyWalletQuery,
+  useGetWalletLedgerQuery,
+  useInitiateWalletTopUpMutation,
+  useLazyCheckWalletTopUpStatusQuery,
+  useTransferWalletPointsMutation,
+} from './walletApi';
+
+export {
+  useGetMyDriverSettlementQuery,
+  useGetMyDriverEarningsQuery,
+  useGetMyDriverPayoutsQuery,
+  useRequestDriverPayoutMutation,
+  useLazyCheckDriverPayoutStatusQuery,
+} from './driverSettlementsApi';
+export {
+  useCreateTripShareLinkMutation,
+} from './trackingApi';
+
+export {
+  useGetPaymentHistoryQuery,
+  useLazyGetPaymentDetailsQuery,
+} from './paymentApi';
+
+export {
+  useValidateReferralCodeMutation,
+  useResolveReferralAttributionMutation,
+  useAttachMyReferralAttributionMutation,
+  useGetMyReferralSummaryQuery,
+  useGetMyReferralsQuery,
+  useGetMyReferralRewardsQuery,
+  useGetMyReferralLedgerQuery,
+  useGetMyReferralWithdrawalsQuery,
+  useRequestReferralWithdrawalMutation,
+  useLazyCheckReferralWithdrawalStatusQuery,
+} from './referralApi';

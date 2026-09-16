@@ -1,42 +1,16 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
+import {
+  DialogVariant,
+  DialogAction,
+  DialogOptions,
+  DialogState,
+  PendingDialogAction,
+  DialogContextValue,
+} from '../../features/dialogs/dialogTypes';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Image, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-
-type DialogVariant = 'info' | 'success' | 'warning' | 'danger';
-
-interface DialogAction {
-  label: string;
-  onPress?: () => void;
-  variant?: 'primary' | 'secondary' | 'ghost';
-  autoClose?: boolean;
-}
-
-interface DialogOptions {
-  title: string;
-  message?: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  variant?: DialogVariant;
-  actions?: DialogAction[];
-  dismissible?: boolean;
-}
-
-interface DialogState extends DialogOptions {
-  visible: boolean;
-}
-
-interface DialogContextValue {
-  showDialog: (options: DialogOptions) => void;
-  hideDialog: () => void;
-}
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 
 const DialogContext = createContext<DialogContextValue | undefined>(undefined);
 
@@ -68,19 +42,36 @@ const VARIANT_CONFIG: Record<
 
 export function DialogProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [runningActionLabel, setRunningActionLabel] = useState<string | null>(null);
+  const pendingDismissActionRef = useRef<PendingDialogAction | null>(null);
 
-  const hideDialog = useCallback(() => setDialog(null), []);
+  const hideDialog = useCallback(() => {
+    setDialog(null);
+    setRunningActionLabel(null);
+  }, []);
 
   const showDialog = useCallback(
     (options: DialogOptions) => {
       const variant = options.variant ?? 'info';
+      const message =
+        (variant === 'danger' || variant === 'warning') && options.message
+          ? getApiErrorMessage(
+              { message: options.message },
+              variant === 'warning'
+                ? "Cette action n'a pas pu \u00eatre termin\u00e9e. V\u00e9rifiez les informations puis r\u00e9essayez."
+                : 'Une erreur est survenue. Veuillez r\u00e9essayer.',
+            )
+          : options.message;
+      setRunningActionLabel(null);
       setDialog({
         visible: true,
         variant,
         icon: options.icon ?? VARIANT_CONFIG[variant].icon,
+        previewImageUri: options.previewImageUri,
+        content: options.content,
         dismissible: options.dismissible ?? true,
         title: options.title,
-        message: options.message,
+        message,
         actions:
           options.actions && options.actions.length > 0
             ? options.actions
@@ -95,51 +86,156 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const currentVariant = dialog?.variant ?? 'info';
   const variantStyle = VARIANT_CONFIG[currentVariant];
 
+  const runDialogAction = useCallback(async ({ action, dialog: sourceDialog }: PendingDialogAction) => {
+    setRunningActionLabel(action.label);
+
+    try {
+      await action.onPress?.();
+    } catch (error) {
+      console.error(`[DialogProvider] Action failed: ${action.label}`, error);
+      setDialog((currentDialog) =>
+        !currentDialog || currentDialog === sourceDialog
+          ? {
+              visible: true,
+              variant: 'danger',
+              icon: VARIANT_CONFIG.danger.icon,
+              dismissible: true,
+              title: 'Action impossible',
+              message: 'Une erreur inattendue est survenue. Veuillez réessayer.',
+              actions: [{ label: 'Fermer', variant: 'primary' }],
+            }
+          : currentDialog,
+      );
+    } finally {
+      setRunningActionLabel(null);
+    }
+  }, []);
+
+  const handleModalDismiss = useCallback(() => {
+    const pendingAction = pendingDismissActionRef.current;
+    if (!pendingAction) return;
+
+    pendingDismissActionRef.current = null;
+    void runDialogAction(pendingAction);
+  }, [runDialogAction]);
+
   const handleActionPress = (action: DialogAction) => {
-    if (action.autoClose !== false) {
+    if (runningActionLabel) return;
+
+    if (!action.onPress) {
+      hideDialog();
+      return;
+    }
+
+    const pendingAction = { action, dialog };
+
+    if (action.autoClose === false) {
+      void runDialogAction(pendingAction);
+      return;
+    }
+
+    setRunningActionLabel(action.label);
+
+    if (Platform.OS === 'ios') {
+      // iOS must finish dismissing the current native modal before another
+      // modal or screen is presented. Otherwise, an invisible modal layer can
+      // remain above the app and block every touch on the underlying screen.
+      pendingDismissActionRef.current = pendingAction;
+      setDialog(null);
+      return;
+    }
+
+    setDialog(null);
+    void runDialogAction(pendingAction);
+  };
+
+  const handleRequestClose = useCallback(() => {
+    if (dialog?.dismissible !== false) {
       hideDialog();
     }
-    action.onPress?.();
+  }, [dialog?.dismissible, hideDialog]);
+
+  const getActionLoaderColor = (action: DialogAction) => {
+    if (action.variant === 'primary') {
+      return Colors.white;
+    }
+
+    if (action.variant === 'danger' || action.variant === 'destructive') {
+      return Colors.danger;
+    }
+
+    return Colors.primary;
   };
 
   return (
     <DialogContext.Provider value={value}>
       {children}
-      <Modal visible={dialog?.visible ?? false} transparent animationType="fade" onRequestClose={hideDialog}>
+      <Modal
+        visible={dialog?.visible ?? false}
+        transparent
+        animationType="fade"
+        onDismiss={handleModalDismiss}
+        onRequestClose={handleRequestClose}
+      >
         <View style={styles.overlay}>
-          <Animated.View entering={FadeInDown} exiting={FadeInUp} style={styles.card}>
-            <View style={[styles.iconWrapper, { backgroundColor: variantStyle.background }]}>
-              <View style={[styles.iconBadge, { backgroundColor: variantStyle.accent }]}>
-                <Ionicons name={dialog?.icon ?? variantStyle.icon} size={28} color={Colors.white} />
+          <View style={styles.card}>
+            {dialog?.previewImageUri ? (
+              <Image
+                key={dialog.previewImageUri}
+                source={{ uri: dialog.previewImageUri }}
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+            ) : dialog?.content ? null : (
+              <View style={[styles.iconWrapper, { backgroundColor: variantStyle.background }]}>
+                <View style={[styles.iconBadge, { backgroundColor: variantStyle.accent }]}>
+                  <Ionicons name={dialog?.icon ?? variantStyle.icon} size={28} color={Colors.white} />
+                </View>
               </View>
-            </View>
+            )}
             <Text style={styles.title}>{dialog?.title}</Text>
             {dialog?.message ? <Text style={styles.message}>{dialog.message}</Text> : null}
+            {dialog?.content ? <View style={styles.content}>{dialog.content}</View> : null}
             <View style={styles.actions}>
-              {dialog?.actions?.map((action) => (
-                <TouchableOpacity
-                  key={action.label}
-                  onPress={() => handleActionPress(action)}
-                  style={[
-                    styles.actionButton,
-                    action.variant === 'primary' && styles.actionPrimary,
-                    action.variant === 'secondary' && styles.actionSecondary,
-                    action.variant === 'ghost' && styles.actionGhost,
-                  ]}
-                >
-                  <Text
+              {dialog?.actions?.map((action) => {
+                const isRunningAction = runningActionLabel === action.label;
+
+                return (
+                  <TouchableOpacity
+                    key={action.label}
+                    onPress={() => handleActionPress(action)}
+                    disabled={Boolean(runningActionLabel)}
                     style={[
-                      styles.actionText,
-                      action.variant === 'primary' && styles.actionTextPrimary,
-                      action.variant === 'ghost' && styles.actionTextGhost,
+                      styles.actionButton,
+                      action.variant === 'primary' && styles.actionPrimary,
+                      action.variant === 'secondary' && styles.actionSecondary,
+                      action.variant === 'ghost' && styles.actionGhost,
+                      (action.variant === 'danger' || action.variant === 'destructive') &&
+                        styles.actionDanger,
+                      runningActionLabel && action.label !== runningActionLabel && styles.actionDisabled,
                     ]}
                   >
-                    {action.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <View style={styles.actionContent}>
+                      {isRunningAction && (
+                        <ActivityIndicator size="small" color={getActionLoaderColor(action)} />
+                      )}
+                      <Text
+                        style={[
+                          styles.actionText,
+                          action.variant === 'primary' && styles.actionTextPrimary,
+                          action.variant === 'ghost' && styles.actionTextGhost,
+                          (action.variant === 'danger' || action.variant === 'destructive') &&
+                            styles.actionTextDanger,
+                        ]}
+                      >
+                        {action.label}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </Animated.View>
+          </View>
         </View>
       </Modal>
     </DialogContext.Provider>
@@ -194,6 +290,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
+  previewImage: {
+    width: 184,
+    height: 184,
+    borderRadius: 92,
+    backgroundColor: Colors.gray[100],
+    borderWidth: 4,
+    borderColor: Colors.white,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  content: {
+    width: '100%',
+  },
   actions: {
     width: '100%',
     gap: Spacing.sm,
@@ -206,6 +318,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.gray[200],
   },
+  actionContent: {
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
   actionPrimary: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
@@ -217,6 +336,13 @@ const styles = StyleSheet.create({
   actionGhost: {
     borderColor: 'transparent',
   },
+  actionDanger: {
+    borderColor: Colors.danger + '30',
+    backgroundColor: Colors.danger + '08',
+  },
+  actionDisabled: {
+    opacity: 0.5,
+  },
   actionText: {
     fontWeight: FontWeights.semibold,
     color: Colors.gray[800],
@@ -227,5 +353,7 @@ const styles = StyleSheet.create({
   actionTextGhost: {
     color: Colors.gray[600],
   },
+  actionTextDanger: {
+    color: Colors.danger,
+  },
 });
-

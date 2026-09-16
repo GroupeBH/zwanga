@@ -2,14 +2,16 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useAppSelector } from '@/store/hooks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
   withTiming,
-} from 'react-native-reanimated';
+} from '@/utils/reanimated';
+
+const BACKGROUND_DISCLOSURE_KEY = 'hasSeenBackgroundLocationDisclosure';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -18,34 +20,59 @@ export default function SplashScreen() {
   const logoScale = useSharedValue(0.9);
   const logoOpacity = useSharedValue(0);
   const titleOpacity = useSharedValue(0);
+  const titleTranslateY = useSharedValue(12);
   const progress = useSharedValue(0);
+  const redirectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     logoScale.value = withTiming(1, { duration: 600 });
     logoOpacity.value = withTiming(1, { duration: 600 });
     titleOpacity.value = withDelay(150, withTiming(1, { duration: 700 }));
+    titleTranslateY.value = withDelay(150, withTiming(0, { duration: 700 }));
     progress.value = withTiming(1, { duration: 1800 });
+  }, [logoOpacity, logoScale, progress, titleOpacity, titleTranslateY]);
+
+  useEffect(() => {
+    let cancelled = false;
 
     const checkFirstLaunch = async () => {
       try {
         const hasSeenOnboarding = await AsyncStorage.getItem('hasSeenOnboarding');
-        setTimeout(async () => {
+        const hasSeenBackgroundDisclosure = await AsyncStorage.getItem(BACKGROUND_DISCLOSURE_KEY);
+        redirectTimeoutRef.current = setTimeout(() => {
+          if (cancelled) {
+            return;
+          }
           if (!hasSeenOnboarding) {
             router.replace('/onboarding');
+          } else if (!hasSeenBackgroundDisclosure) {
+            router.replace('/background-location-disclosure');
           } else if (isAuthenticated) {
             router.replace('/(tabs)');
           } else {
-            router.replace('/auth');
+            router.replace('/auth-entry');
           }
-        }, 1800);
+        }, 0);
       } catch (error) {
         console.error('Error checking first launch:', error);
-        setTimeout(() => router.replace('/auth'), 1800);
+        redirectTimeoutRef.current = setTimeout(() => {
+          if (!cancelled) {
+            router.replace('/auth-entry');
+          }
+        }, 0);
       }
     };
 
     checkFirstLaunch();
-  }, [isAuthenticated, logoOpacity, logoScale, progress, router, titleOpacity]);
+
+    return () => {
+      cancelled = true;
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current);
+        redirectTimeoutRef.current = null;
+      }
+    };
+  }, [isAuthenticated, router]);
 
   const logoStyle = useAnimatedStyle(() => ({
     transform: [{ scale: logoScale.value }],
@@ -54,11 +81,7 @@ export default function SplashScreen() {
 
   const titleStyle = useAnimatedStyle(() => ({
     opacity: titleOpacity.value,
-    transform: [
-      {
-        translateY: withTiming(titleOpacity.value ? 0 : 12, { duration: 700 }),
-      },
-    ],
+    transform: [{ translateY: titleTranslateY.value }],
   }));
 
   const progressStyle = useAnimatedStyle(() => ({

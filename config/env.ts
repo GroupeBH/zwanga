@@ -10,7 +10,13 @@ import Constants from 'expo-constants';
 interface EnvConfig {
   apiUrl: string;
   env: 'development' | 'staging' | 'production';
+  enableSignupOtp: boolean;
+  chottuLinkEnabled: boolean;
+  chottuLinkMobileApiKey: string;
+  chottuLinkDomain: string;
 }
+
+const DEFAULT_API_URL = 'https://zwanga-api.onrender.com/api/v1';
 
 /**
  * Récupère la configuration depuis les variables d'environnement
@@ -23,7 +29,13 @@ function getEnvConfig(): EnvConfig {
   const apiUrl = 
     extra.EXPO_PUBLIC_API_URL || 
     process.env.EXPO_PUBLIC_API_URL || 
-    (__DEV__ ? 'http://192.168.226.134:5000/api/v1' : 'https://api.zwanga.cd/v1');
+    DEFAULT_API_URL;
+
+  if (__DEV__ && !extra.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_URL) {
+    console.warn(
+      `[env.ts] EXPO_PUBLIC_API_URL absent. Utilisation du fallback: ${DEFAULT_API_URL}`,
+    );
+  }
   
   // Détection robuste de l'environnement
   // Priorité : extra.EXPO_PUBLIC_ENV > process.env.EXPO_PUBLIC_ENV > __DEV__
@@ -37,7 +49,7 @@ function getEnvConfig(): EnvConfig {
   // Si __DEV__ est false et que l'env détecté est 'development', c'est une erreur de configuration
   // On force donc 'production' pour garantir que l'OTP sera toujours requis
   if (!__DEV__ && env === 'development') {
-    console.warn('[env.ts] Warning: __DEV__ is false but env is "development". Forcing to "production" to ensure OTP is required.');
+    console.warn('[env.ts] Warning: __DEV__ is false but env is "development". Forcing to "production".');
     env = 'production';
   }
   
@@ -52,10 +64,29 @@ function getEnvConfig(): EnvConfig {
       isProduction: env === 'production',
     });
   }
+
+  const rawEnableSignupOtp =
+    extra.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
+    process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
+    'false';
+  const enableSignupOtp = String(rawEnableSignupOtp).toLowerCase() === 'true';
+  const chottuLinkEnabled =
+    String(extra.EXPO_PUBLIC_CHOTTULINK_ENABLED ?? 'false').toLowerCase() ===
+    'true';
+  const chottuLinkMobileApiKey = String(
+    extra.EXPO_PUBLIC_CHOTTULINK_MOBILE_API_KEY ?? '',
+  ).trim();
+  const chottuLinkDomain = String(
+    extra.EXPO_PUBLIC_CHOTTULINK_DOMAIN ?? '',
+  ).trim();
   
   return {
     apiUrl,
     env,
+    enableSignupOtp,
+    chottuLinkEnabled,
+    chottuLinkMobileApiKey,
+    chottuLinkDomain,
   };
 }
 
@@ -72,7 +103,17 @@ export const isDevelopment = envConfig.env === 'development';
 export const isProduction = envConfig.env === 'production';
 
 /**
+ * Active/desactive la verification OTP pendant l'inscription.
+ * false => bypass OTP pour l'inscription classique et Google.
+ */
+export const isSignupOtpVerificationEnabled = envConfig.enableSignupOtp;
+export const chottuLinkReferralConfig = {
+  enabled: envConfig.chottuLinkEnabled,
+  mobileApiKey: envConfig.chottuLinkMobileApiKey,
+  domain: envConfig.chottuLinkDomain,
+};
+
+/**
  * URL de base de l'API
  */
 export const API_BASE_URL = envConfig.apiUrl;
-

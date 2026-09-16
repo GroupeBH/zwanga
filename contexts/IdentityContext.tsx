@@ -3,6 +3,7 @@ import { useGetKycStatusQuery } from '@/store/api/userApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { KycDocument } from '@/types';
+import { EXTRA_SEATS_IDENTITY_MESSAGE } from '@/utils/passengerSeats';
 import { useRouter } from 'expo-router';
 import React, {
   createContext,
@@ -12,7 +13,39 @@ import React, {
   type ReactNode,
 } from 'react';
 
-type IdentityAction = 'publish' | 'book' | 'manage';
+type IdentityAction = 'publish' | 'book' | 'manage' | 'request' | 'extra_seats';
+
+const getIdentityRequirementCopy = (action: IdentityAction) => {
+  switch (action) {
+    case 'extra_seats':
+      return { actionText: 'réserver 3 places ou plus', message: EXTRA_SEATS_IDENTITY_MESSAGE };
+    case 'publish':
+      return {
+        actionText: 'publier ou gérer vos trajets',
+        message:
+          "Pour publier ou gérer vos trajets, vous devez d'abord vérifier votre identité avec une pièce officielle et un selfie.",
+      };
+    case 'request':
+      return {
+        actionText: 'demander un trajet',
+        message:
+          "Pour demander ce trajet, vous devez vérifier votre identité. Cette vérification concerne votre profil passager : aucun véhicule n'est demandé.",
+      };
+    case 'manage':
+      return {
+        actionText: 'gérer vos trajets',
+        message:
+          "Pour gérer vos trajets, vous devez d'abord vérifier votre identité avec une pièce officielle et un selfie.",
+      };
+    case 'book':
+    default:
+      return {
+        actionText: 'réserver ce trajet ou contacter le conducteur',
+        message:
+          "Ce trajet accepte uniquement les passagers dont l'identité est vérifiée. Vous pouvez vérifier votre identité comme passager, sans ajouter de véhicule.",
+      };
+  }
+};
 
 interface IdentityContextValue {
   isIdentityVerified: boolean;
@@ -20,7 +53,7 @@ interface IdentityContextValue {
   kycDocument: KycDocument | null | undefined;
   isChecking: boolean;
   refreshKycStatus: () => void;
-  checkIdentity: (action?: IdentityAction) => boolean;
+  checkIdentity: (action?: IdentityAction, options?: { force?: boolean }) => boolean;
 }
 
 const IdentityContext = createContext<IdentityContextValue | undefined>(undefined);
@@ -35,7 +68,9 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     refetch,
   } = useGetKycStatusQuery(undefined, {
     skip: !user,
-    pollingInterval: 10_000, // Réduit à 10 secondes pour une mise à jour plus rapide
+    // Pas de polling : le statut KYC change rarement (seulement après upload/validation)
+    // RTK Query invalide automatiquement le cache via les tags après les mutations KYC
+    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Utiliser uniquement le statut KYC de l'API comme source de vérité
@@ -44,25 +79,28 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   const isIdentityVerified = Boolean(isKycApproved);
 
   const checkIdentity = useCallback(
-    (action: IdentityAction = 'book') => {
-      if (isIdentityVerified) {
+    (action: IdentityAction = 'book', options?: { force?: boolean }) => {
+      if (isIdentityVerified && !options?.force) {
         return true;
       }
 
-      const actionText =
-        action === 'publish'
-          ? 'publier ou gérer vos trajets'
-          : action === 'manage'
-            ? 'gérer vos trajets'
-            : 'réserver un trajet ou contacter un conducteur';
+      const { actionText, message } = getIdentityRequirementCopy(action);
 
       showDialog({
         variant: 'warning',
-        title: 'KYC requis',
-        message: `Pour ${actionText}, vous devez finaliser la vérification de votre identité (CNI + selfie).`,
+        title: 'Identité vérifiée requise',
+        message,
         actions: [
           { label: 'Plus tard', variant: 'ghost' },
-          { label: 'Compléter maintenant', variant: 'primary', onPress: () => router.push('/profile') },
+          {
+            label: 'Vérifier mon identité',
+            variant: 'primary',
+            onPress: () =>
+              router.push({
+                pathname: '/verification',
+                params: { source: action, reason: actionText },
+              } as any),
+          },
         ],
       });
 

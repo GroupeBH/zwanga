@@ -1,3 +1,12 @@
+import { calculateDistance } from './routes/routeGeometry';
+export { calculateDistance } from './routes/routeGeometry';
+export { isPointOnRoute } from './routes/routeGeometry';
+export { findClosestPointOnRoute } from './routes/routeGeometry';
+export { getRouteAlignedPosition } from './routes/routeGeometry';
+export { splitRouteByProgress } from './routes/routeGeometry';
+import { LatLng, RouteInfo } from './routes/routeTypes';
+export type { LatLng } from './routes/routeTypes';
+export type { RouteInfo } from './routes/routeTypes';
 /**
  * Utility functions for route calculation and display
  */
@@ -5,13 +14,14 @@
 import { store } from '@/store';
 import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 
-type LatLng = { latitude: number; longitude: number };
+const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const FALLBACK_CACHE_TTL_MS = 60 * 1000;
+const THROTTLE_COOLDOWN_MS = 90 * 1000;
 
-export interface RouteInfo {
-  coordinates: LatLng[];
-  duration: number; // Duration in seconds
-  distance: number; // Distance in meters
-}
+const routeInfoCache = new Map<string, { expiresAt: number; value: RouteInfo }>();
+const inFlightRouteRequests = new Map<string, Promise<RouteInfo>>();
+let routeApiCooldownUntil = 0;
+let lastThrottleWarningAt = 0;
 
 /**
  * Décode une polyline encodée de Google Maps
@@ -49,6 +59,79 @@ function decodePolyline(encoded: string): [number, number][] {
   }
 
   return poly;
+}
+
+function normalizeCoordinate(value: number) {
+  return Number.isFinite(value) ? value.toFixed(5) : '0.00000';
+}
+
+function buildRouteCacheKey(origin: LatLng, destination: LatLng) {
+  return [
+    normalizeCoordinate(origin.latitude),
+    normalizeCoordinate(origin.longitude),
+    normalizeCoordinate(destination.latitude),
+    normalizeCoordinate(destination.longitude),
+  ].join(':');
+}
+
+function buildFallbackRouteInfo(origin: LatLng, destination: LatLng): RouteInfo {
+  const distance = calculateDistance(origin, destination) * 1000;
+  const estimatedDuration = (distance / 1000) * 60;
+
+  return {
+    coordinates: [origin, destination],
+    duration: estimatedDuration,
+    distance,
+  };
+}
+
+function getCachedRouteInfo(cacheKey: string) {
+  const cached = routeInfoCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    routeInfoCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.value;
+}
+
+function setCachedRouteInfo(cacheKey: string, value: RouteInfo, ttlMs: number) {
+  routeInfoCache.set(cacheKey, {
+    expiresAt: Date.now() + ttlMs,
+    value,
+  });
+}
+
+function isThrottleError(errorLike: unknown) {
+  if (!errorLike || typeof errorLike !== 'object') {
+    return false;
+  }
+
+  const candidate = errorLike as {
+    status?: number | string;
+    data?: { statusCode?: number; message?: string };
+    error?: string;
+  };
+
+  if (candidate.status === 429 || candidate.data?.statusCode === 429) {
+    return true;
+  }
+
+  const message = `${candidate.data?.message ?? ''} ${candidate.error ?? ''}`.toLowerCase();
+  return message.includes('too many requests') || message.includes('throttlerexception');
+}
+
+function enterRouteApiCooldown() {
+  routeApiCooldownUntil = Date.now() + THROTTLE_COOLDOWN_MS;
+
+  if (Date.now() - lastThrottleWarningAt > THROTTLE_COOLDOWN_MS / 2) {
+    lastThrottleWarningAt = Date.now();
+    console.warn('[routeHelpers] Backend directions throttled. Using cached or straight-line fallback temporarily.');
+  }
 }
 
 /**
@@ -196,216 +279,5 @@ export async function getRouteInfo(
       distance: distance,
     };
   }
-}
-
-/**
- * Calculate distance between two points in kilometers (Haversine formula)
- */
-export function calculateDistance(point1: LatLng, point2: LatLng): number {
-  const R = 6371; // Earth's radius in kilometers
-  const dLat = ((point2.latitude - point1.latitude) * Math.PI) / 180;
-  const dLon = ((point2.longitude - point1.longitude) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((point1.latitude * Math.PI) / 180) *
-      Math.cos((point2.latitude * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-/**
- * Calculate distance between a point and a line segment in kilometers
- * Uses the perpendicular distance formula
- */
-function pointToLineDistance(point: LatLng, lineStart: LatLng, lineEnd: LatLng): number {
-  const A = point.latitude - lineStart.latitude;
-  const B = point.longitude - lineStart.longitude;
-  const C = lineEnd.latitude - lineStart.latitude;
-  const D = lineEnd.longitude - lineStart.longitude;
-
-  const dot = A * C + B * D;
-  const lenSq = C * C + D * D;
-  let param = -1;
-
-  if (lenSq !== 0) {
-    param = dot / lenSq;
-  }
-
-  let xx: number;
-  let yy: number;
-
-  if (param < 0) {
-    xx = lineStart.latitude;
-    yy = lineStart.longitude;
-  } else if (param > 1) {
-    xx = lineEnd.latitude;
-    yy = lineEnd.longitude;
-  } else {
-    xx = lineStart.latitude + param * C;
-    yy = lineStart.longitude + param * D;
-  }
-
-  const dx = point.latitude - xx;
-  const dy = point.longitude - yy;
-  return calculateDistance(point, { latitude: xx, longitude: yy });
-}
-
-/**
- * Check if a point is on a route (within a certain distance threshold)
- * @param point The point to check
- * @param routeCoordinates Array of coordinates representing the route
- * @param maxDistanceKm Maximum distance in kilometers from the route (default: 5km)
- * @returns true if the point is on the route, false otherwise
- */
-export function isPointOnRoute(
-  point: LatLng,
-  routeCoordinates: LatLng[],
-  maxDistanceKm: number = 5
-): boolean {
-  if (!routeCoordinates || routeCoordinates.length < 2) {
-    return false;
-  }
-
-  // Check distance to each segment of the route
-  for (let i = 0; i < routeCoordinates.length - 1; i++) {
-    const segmentStart = routeCoordinates[i];
-    const segmentEnd = routeCoordinates[i + 1];
-    
-    const distance = pointToLineDistance(point, segmentStart, segmentEnd);
-    
-    if (distance <= maxDistanceKm) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Find the closest point on a route to a given point
- * @param point The point to find the closest route point for
- * @param routeCoordinates Array of coordinates representing the route
- * @returns The index of the closest segment and the closest point on that segment, or null if route is invalid
- */
-export function findClosestPointOnRoute(
-  point: LatLng,
-  routeCoordinates: LatLng[]
-): { segmentIndex: number; closestPoint: LatLng; distance: number } | null {
-  if (!routeCoordinates || routeCoordinates.length < 2) {
-    return null;
-  }
-
-  let minDistance = Infinity;
-  let closestSegmentIndex = 0;
-  let closestPoint: LatLng = routeCoordinates[0];
-
-  for (let i = 0; i < routeCoordinates.length - 1; i++) {
-    const segmentStart = routeCoordinates[i];
-    const segmentEnd = routeCoordinates[i + 1];
-    
-    const distance = pointToLineDistance(point, segmentStart, segmentEnd);
-    
-    if (distance < minDistance) {
-      minDistance = distance;
-      closestSegmentIndex = i;
-      
-      // Calculate the closest point on the segment
-      const A = point.latitude - segmentStart.latitude;
-      const B = point.longitude - segmentStart.longitude;
-      const C = segmentEnd.latitude - segmentStart.latitude;
-      const D = segmentEnd.longitude - segmentStart.longitude;
-      
-      const dot = A * C + B * D;
-      const lenSq = C * C + D * D;
-      let param = lenSq !== 0 ? dot / lenSq : 0;
-      
-      // Clamp param to [0, 1]
-      param = Math.max(0, Math.min(1, param));
-      
-      closestPoint = {
-        latitude: segmentStart.latitude + param * C,
-        longitude: segmentStart.longitude + param * D,
-      };
-    }
-  }
-
-  return {
-    segmentIndex: closestSegmentIndex,
-    closestPoint,
-    distance: minDistance,
-  };
-}
-
-/**
- * Split route coordinates into traveled and remaining portions based on current position
- * @param currentPosition Current position of the driver
- * @param routeCoordinates Full route coordinates
- * @returns Object with traveledCoordinates and remainingCoordinates arrays
- */
-export function splitRouteByProgress(
-  currentPosition: LatLng | null,
-  routeCoordinates: LatLng[]
-): { traveledCoordinates: LatLng[]; remainingCoordinates: LatLng[] } {
-  if (!routeCoordinates || routeCoordinates.length < 2) {
-    return {
-      traveledCoordinates: [],
-      remainingCoordinates: routeCoordinates || [],
-    };
-  }
-
-  // If no current position, return empty traveled and full remaining
-  if (!currentPosition) {
-    return {
-      traveledCoordinates: [],
-      remainingCoordinates: routeCoordinates,
-    };
-  }
-
-  const closest = findClosestPointOnRoute(currentPosition, routeCoordinates);
-  
-  if (!closest) {
-    return {
-      traveledCoordinates: [],
-      remainingCoordinates: routeCoordinates,
-    };
-  }
-
-  // If the closest point is at the start, return empty traveled
-  if (closest.segmentIndex === 0 && closest.distance > 0.1) {
-    // Check if we're actually before the start
-    const startDistance = calculateDistance(currentPosition, routeCoordinates[0]);
-    if (startDistance > 0.1) {
-      return {
-        traveledCoordinates: [],
-        remainingCoordinates: routeCoordinates,
-      };
-    }
-  }
-
-  // Build traveled coordinates: from start to closest point
-  const traveledCoordinates: LatLng[] = [];
-  
-  // Add all coordinates up to the segment
-  for (let i = 0; i <= closest.segmentIndex; i++) {
-    traveledCoordinates.push(routeCoordinates[i]);
-  }
-  
-  // Add the closest point on the current segment
-  traveledCoordinates.push(closest.closestPoint);
-
-  // Build remaining coordinates: from closest point to end
-  const remainingCoordinates: LatLng[] = [closest.closestPoint];
-  
-  // Add all coordinates after the segment
-  for (let i = closest.segmentIndex + 1; i < routeCoordinates.length; i++) {
-    remainingCoordinates.push(routeCoordinates[i]);
-  }
-
-  return {
-    traveledCoordinates,
-    remainingCoordinates,
-  };
 }
 

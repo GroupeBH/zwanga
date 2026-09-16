@@ -2,6 +2,7 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { Mutex } from 'async-mutex';
 import { API_BASE_URL } from '../../config/env';
+import { DEFAULT_API_TIMEOUT_MS } from '../../constants/network';
 import { getValidAccessToken, refreshAccessToken } from '../../services/tokenRefresh';
 import type { RootState } from '../index';
 
@@ -10,6 +11,8 @@ import type { RootState } from '../index';
  */
 const baseQueryWithAuth = fetchBaseQuery({
   baseUrl: API_BASE_URL,
+  // Never leave the whole UI waiting forever when the mobile connection stalls.
+  timeout: DEFAULT_API_TIMEOUT_MS,
   prepareHeaders: async (headers, { getState }) => {
     // Récupérer un access token valide (rafraîchi automatiquement si nécessaire)
     const accessToken = await getValidAccessToken();
@@ -93,10 +96,12 @@ const baseQueryWithReauth: BaseQueryFn<
 export const baseApi = createApi({
   reducerPath: 'zwangaApi',
   baseQuery: baseQueryWithReauth,
+  keepUnusedDataFor: 180,
   tagTypes: [
     'User',
     'Trip',
     'MyTrips',
+    'RecurringTrip',
     'Booking',
     'Message',
     'Conversation',
@@ -104,6 +109,7 @@ export const baseApi = createApi({
     'Notification',
     'Vehicle',
     'TripRequest',
+    'MyTripRequests',
     'DriverOffer',
     'MyDriverOffers',
     'EmergencyContact',
@@ -111,6 +117,19 @@ export const baseApi = createApi({
     'UserReport',
     'KycStatus',
     'FavoriteLocations',
+    'TripSafetyParticipant',
+    'TripSafetyHistory',
+    'TripSafetyTrip',
+    'SupportFaq',
+    'SupportTicket',
+    'Subscription',
+    'SubscriptionPlans',
+    'DocumentFundingRequest',
+    'Wallet',
+    'DriverSettlement',
+    'TripShareLink',
+    'PaymentHistory',
+    'Referral',
   ],
   endpoints: () => ({}),
 });

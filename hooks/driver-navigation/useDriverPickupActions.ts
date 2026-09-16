@@ -1,0 +1,248 @@
+import {
+  Waypoint,
+  PickupNotice,
+  PickupBypassConfirmation,
+  TripEndNotice,
+} from '../../features/driver-navigation/navigationModel';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { rideOutbox } from '@/services/rideOutbox';
+import { useCancelBookingMutation, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import type { Booking } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
+import React, { useCallback } from 'react';
+import type { Router } from 'expo-router';
+
+interface Params {
+  waypointModalVisibleRef: React.RefObject<boolean>;
+  setWaypointModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  setActiveWaypoint: React.Dispatch<React.SetStateAction<Waypoint | null>>;
+  tripId: string;
+  router: Router;
+  activeWaypoint: Waypoint | null;
+  pickupNoticeRef: React.RefObject<PickupNotice | null>;
+  setPickupNotice: React.Dispatch<React.SetStateAction<PickupNotice | null>>;
+  setPickupNoticeCountdown: React.Dispatch<React.SetStateAction<number | null>>;
+  tripEndNoticeRef: React.RefObject<TripEndNotice | null>;
+  setTripEndNotice: React.Dispatch<React.SetStateAction<TripEndNotice | null>>;
+  pickupBypassConfirmationRef: React.RefObject<PickupBypassConfirmation | null>;
+  setPickupBypassConfirmation: React.Dispatch<React.SetStateAction<PickupBypassConfirmation | null>>;
+  setPickupBypassAction: React.Dispatch<React.SetStateAction<"confirm" | "cancel" | null>>;
+  lastRouteFetchTimeRef: React.RefObject<number>;
+  routeFetchedRef: React.RefObject<boolean>;
+  routeSignatureRef: React.RefObject<string>;
+  offRouteSampleCountRef: React.RefObject<number>;
+  lastOffRouteRerouteAtRef: React.RefObject<number>;
+  pickupBypassAction: "confirm" | "cancel" | null;
+  setProcessingBookingId: React.Dispatch<React.SetStateAction<string | null>>;
+  speakNavigationMessage: (message: string, options?: { force?: boolean; }) => Promise<void>;
+  showDialog: ReturnType<typeof useDialog>['showDialog'];
+  cancelBooking: ReturnType<typeof useCancelBookingMutation>[0];
+  rememberCancelledBooking: (bookingId: string) => void;
+  setPickupSkipped: (bookingId: string, shouldSkip: boolean) => void;
+  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
+  reconcileBookingStatus: (error: unknown, bookingId: string, expectedStatuses: readonly string[]) => Promise<Booking | null>;
+}
+
+export function useDriverPickupActions({
+  waypointModalVisibleRef,
+  setWaypointModalVisible,
+  setActiveWaypoint,
+  tripId,
+  router,
+  activeWaypoint,
+  pickupNoticeRef,
+  setPickupNotice,
+  setPickupNoticeCountdown,
+  tripEndNoticeRef,
+  setTripEndNotice,
+  pickupBypassConfirmationRef,
+  setPickupBypassConfirmation,
+  setPickupBypassAction,
+  lastRouteFetchTimeRef,
+  routeFetchedRef,
+  routeSignatureRef,
+  offRouteSampleCountRef,
+  lastOffRouteRerouteAtRef,
+  pickupBypassAction,
+  setProcessingBookingId,
+  speakNavigationMessage,
+  showDialog,
+  cancelBooking,
+  rememberCancelledBooking,
+  setPickupSkipped,
+  refetchBookings,
+  refetchTrip,
+  reconcileBookingStatus,
+}: Params) {
+  const handleDismissWaypointModal = () => {
+    waypointModalVisibleRef.current = false;
+    setWaypointModalVisible(false);
+    setActiveWaypoint(null);
+  };
+
+
+  const openReportForWaypoint = (waypoint: Waypoint) => {
+    if (!tripId) return;
+
+    router.push({
+      pathname: '/report',
+      params: {
+        tripId,
+        bookingId: waypoint.booking.id,
+        reportedUserId: waypoint.passenger.id,
+        reportedUserName: waypoint.passenger.name || 'Passager',
+      },
+    });
+  };
+
+  const handleReportPassenger = () => {
+    if (!activeWaypoint) return;
+    openReportForWaypoint(activeWaypoint);
+  };
+
+  const dismissPickupNotice = useCallback(() => {
+    pickupNoticeRef.current = null;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+  }, []);
+
+  const dismissTripEndNotice = useCallback(() => {
+    tripEndNoticeRef.current = null;
+    setTripEndNotice(null);
+  }, []);
+
+  const dismissPickupBypassConfirmation = useCallback(() => {
+    pickupBypassConfirmationRef.current = null;
+    setPickupBypassConfirmation(null);
+    setPickupBypassAction(null);
+  }, []);
+
+  const dismissPickupNoticeForBooking = useCallback((bookingId: string) => {
+    const currentNotice = pickupNoticeRef.current;
+    if (currentNotice?.waypoint.booking.id !== bookingId) {
+      return;
+    }
+
+    pickupNoticeRef.current = null;
+    setPickupNotice(null);
+    setPickupNoticeCountdown(null);
+  }, []);
+
+  const markNavigationRouteDirty = useCallback(() => {
+    lastRouteFetchTimeRef.current = 0;
+    routeFetchedRef.current = false;
+    routeSignatureRef.current = '';
+    offRouteSampleCountRef.current = 0;
+    lastOffRouteRerouteAtRef.current = 0;
+  }, []);
+
+  const handleConfirmBypassedPickup = useCallback(async () => {
+    const confirmation = pickupBypassConfirmationRef.current;
+    if (!confirmation || pickupBypassAction) {
+      return;
+    }
+
+    const bookingId = confirmation.waypoint.booking.id;
+    const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
+    setPickupBypassAction('confirm');
+    setProcessingBookingId(bookingId);
+
+    try {
+      await rideOutbox.enqueue({ bookingId, tripId, stage: 'pickup', decision: 'confirm' });
+      dismissPickupNoticeForBooking(bookingId);
+      dismissPickupBypassConfirmation();
+      void speakNavigationMessage(
+        `Votre confirmation pour ${passengerName} est enregistrée. En attente de validation.`,
+        { force: true },
+      );
+    } catch (error: any) {
+      showDialog({
+        variant: 'danger',
+        icon: 'alert-circle',
+        title: 'Confirmation impossible',
+        message: getApiErrorMessage(error, "Impossible de confirmer la prise en charge pour le moment."),
+      });
+    } finally {
+      setProcessingBookingId(null);
+      setPickupBypassAction(null);
+    }
+  }, [
+    tripId,
+    dismissPickupBypassConfirmation,
+    dismissPickupNoticeForBooking,
+    pickupBypassAction,
+    showDialog,
+    speakNavigationMessage,
+  ]);
+
+  const handleCancelBypassedPickup = useCallback(async () => {
+    const confirmation = pickupBypassConfirmationRef.current;
+    if (!confirmation || pickupBypassAction) {
+      return;
+    }
+
+    const bookingId = confirmation.waypoint.booking.id;
+    const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
+    setPickupBypassAction('cancel');
+    setProcessingBookingId(bookingId);
+
+    try {
+      await cancelBooking(bookingId).unwrap();
+      rememberCancelledBooking(bookingId);
+      setPickupSkipped(bookingId, true);
+      dismissPickupNoticeForBooking(bookingId);
+      dismissPickupBypassConfirmation();
+      markNavigationRouteDirty();
+      await Promise.all([refetchBookings(), refetchTrip()]);
+      void speakNavigationMessage(
+        `La réservation de ${passengerName} est annulee. L'itineraire continue.`,
+        { force: true },
+      );
+    } catch (error: any) {
+      const cancelledBooking = await reconcileBookingStatus(error, bookingId, ['cancelled']);
+      if (cancelledBooking) {
+        rememberCancelledBooking(bookingId);
+        setPickupSkipped(bookingId, true);
+        dismissPickupNoticeForBooking(bookingId);
+        dismissPickupBypassConfirmation();
+        markNavigationRouteDirty();
+        await Promise.all([refetchBookings(), refetchTrip()]);
+        return;
+      }
+      showDialog({
+        variant: 'danger',
+        icon: 'alert-circle',
+        title: 'Annulation impossible',
+        message: getApiErrorMessage(error, "Impossible d'annuler cette réservation pour le moment."),
+      });
+    } finally {
+      setProcessingBookingId(null);
+      setPickupBypassAction(null);
+    }
+  }, [
+    cancelBooking,
+    dismissPickupBypassConfirmation,
+    dismissPickupNoticeForBooking,
+    markNavigationRouteDirty,
+    pickupBypassAction,
+    reconcileBookingStatus,
+    refetchBookings,
+    refetchTrip,
+    rememberCancelledBooking,
+    setPickupSkipped,
+    showDialog,
+    speakNavigationMessage,
+  ]);
+
+  return {
+    dismissTripEndNotice,
+    handleCancelBypassedPickup,
+    handleConfirmBypassedPickup,
+    dismissPickupNotice,
+    handleDismissWaypointModal,
+    handleReportPassenger,
+    openReportForWaypoint,
+  };
+}

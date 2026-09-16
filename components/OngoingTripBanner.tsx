@@ -1,23 +1,22 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { styles } from '../features/screen-styles/components/OngoingTripBanner/index';
+import { getFloatingBannerBottomOffset } from '@/constants/navigation';
+import { Colors } from '@/constants/styles';
+import {
+  getCurrentTripInfo,
+  startOngoingTripTracking,
+  stopOngoingTripTracking,
+} from '@/services/ongoingTripNotification';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import { formatTime } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePathname, useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withSpring,
-  withTiming
-} from 'react-native-reanimated';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTiming } from '@/utils/reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type OngoingTripBannerPosition = 'top' | 'bottom';
@@ -34,18 +33,21 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Animation values
   const translateY = useSharedValue(100);
-  const scale = useSharedValue(1);
 
   // Récupérer les trajets de l'utilisateur (comme conducteur)
-  const { data: myTrips } = useGetMyTripsQuery(undefined, {
+  const { data: myTrips, isLoading: myTripsLoading } = useGetMyTripsQuery(undefined, {
     skip: !user,
-    pollingInterval: 10000,
+    // Pas de polling : les trajets en cours changent rarement de statut
+    // RTK Query invalide automatiquement le cache via les tags après startTrip, updateTrip, etc.
+    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Récupérer les réservations de l'utilisateur (comme passager)
-  const { data: myBookings } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, isLoading: myBookingsLoading } = useGetMyBookingsQuery(undefined, {
     skip: !user,
-    pollingInterval: 10000,
+    // Pas de polling : les réservations changent rarement de statut
+    // RTK Query invalide automatiquement le cache via les tags après acceptBooking, updateBookingStatus, etc.
+    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Trouver un trajet en cours
@@ -53,17 +55,21 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     if (!user) return null;
 
     // Chercher un trajet en cours comme conducteur
-    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing');
+    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing' && trip.driverId === user.id);
     if (driverOngoingTrip) {
       return {
         trip: driverOngoingTrip,
         role: 'driver' as const,
+        bookingId: null,
       };
     }
 
     // Chercher un trajet en cours comme passager
     const passengerOngoingBooking = myBookings?.find(
       (booking) => {
+        if (booking.passengerId !== user.id) {
+          return false;
+        }
         if (booking.status === 'completed') {
           return false;
         }
@@ -73,7 +79,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         if (booking.trip?.status !== 'ongoing') {
           return false;
         }
-        if (booking.droppedOffConfirmedByPassenger === true) {
+        if (booking.droppedOff === true || booking.droppedOffConfirmedByPassenger === true) {
           return false;
         }
         return true;
@@ -83,25 +89,71 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
       return {
         trip: passengerOngoingBooking.trip,
         role: 'passenger' as const,
+        bookingId: passengerOngoingBooking.id,
       };
     }
 
     return null;
   }, [myTrips, myBookings, user]);
 
+  // Ref pour suivre le trajet précédent
+  const previousTripRef = useRef(getCurrentTripInfo());
+
+  // Démarrer/arrêter le suivi de notification permanente
+  useEffect(() => {
+    const currentTripId = ongoingTrip?.trip?.id ?? null;
+
+    if (!ongoingTrip && (myTripsLoading || myBookingsLoading)) {
+      return;
+    }
+    
+    // Si le trajet a changé
+    if (currentTripId !== (previousTripRef.current?.tripId ?? null) ||
+        ongoingTrip?.role !== previousTripRef.current?.role ||
+        (ongoingTrip?.bookingId ?? null) !== (previousTripRef.current?.bookingId ?? null)) {
+      // Arrêter le suivi précédent si nécessaire
+      if (previousTripRef.current) {
+        stopOngoingTripTracking();
+      }
+      
+      // Démarrer le nouveau suivi si un trajet est en cours
+      const nextTripInfo = ongoingTrip?.trip ? {
+        tripId: ongoingTrip.trip.id,
+        departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Départ',
+        arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivée',
+        role: ongoingTrip.role,
+        ...(ongoingTrip.bookingId ? { bookingId: ongoingTrip.bookingId } : {}),
+        departureTime: ongoingTrip.trip.departureTime,
+      } : null;
+      if (nextTripInfo) startOngoingTripTracking(nextTripInfo);
+      
+      previousTripRef.current = nextTripInfo;
+    }
+  }, [myBookingsLoading, myTripsLoading, ongoingTrip]);
+
   // Ne pas afficher sur certaines pages
   const shouldHide = useMemo(() => {
-    if (!ongoingTrip) return true;
+    const ongoingTripId = ongoingTrip?.trip?.id;
+    if (!ongoingTripId) return true;
 
     if (pathname?.startsWith('/auth') || pathname?.startsWith('/splash') || pathname?.startsWith('/onboarding')) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/${ongoingTripId}`)) {
       return true;
     }
 
-    if (pathname?.includes(`/trip/manage/${ongoingTrip.trip.id}`)) {
+    if (pathname?.includes(`/trip/manage/${ongoingTripId}`)) {
+      return true;
+    }
+
+    if (pathname?.includes(`/trip/navigate/${ongoingTripId}`)) {
+      return true;
+    }
+
+    // Masquer sur la navigation passager
+    if (pathname?.startsWith('/booking/navigate/')) {
       return true;
     }
 
@@ -115,68 +167,55 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         damping: 15,
         stiffness: 100,
       });
-
-      // Subtle pulse animation
-      scale.value = withRepeat(
-        withSequence(
-          withTiming(1.02, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
-          withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
-        ),
-        -1,
-        false
-      );
     } else {
       translateY.value = withTiming(100, {
         duration: 300,
         easing: Easing.inOut(Easing.ease),
       });
     }
-  }, [shouldHide, ongoingTrip]);
+  }, [shouldHide, ongoingTrip, translateY]);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { scale: scale.value }
-    ],
+    transform: [{ translateY: translateY.value }],
   }));
 
   if (!ongoingTrip || shouldHide) {
     return null;
   }
 
-  const { trip, role } = ongoingTrip;
+  const { trip, role, bookingId } = ongoingTrip;
   const isDriver = role === 'driver';
 
   const handlePress = () => {
     if (isDriver) {
-      router.push(`/trip/manage/${trip.id}`);
-    } else {
-      router.push(`/trip/${trip.id}`);
+      router.push(`/trip/navigate/${trip.id}`);
+      return;
+    }
+
+    if (bookingId) {
+      router.push(`/booking/navigate/${bookingId}`);
     }
   };
 
-  // Gradient colors based on role
-  const gradientColors = isDriver
-    ? ['#6366F1', '#8B5CF6', '#A855F7'] as const // Purple gradient for driver
-    : ['#0EA5E9', '#06B6D4', '#14B8A6'] as const; // Cyan/Teal gradient for passenger
-
+  const gradientColors = ['#FFFFFF', '#FFF7F2', '#FFF1E8'] as const;
   const iconName = isDriver ? 'car-sport' : 'navigate-circle';
-  const statusBadgeColor = isDriver ? '#A855F7' : '#14B8A6';
+  const roleLabel = isDriver ? 'Conducteur' : 'Passager';
+  const roleAccent = isDriver ? Colors.primary : Colors.infoDark;
 
-  // Calculate bottom padding for tab bar
-  const tabBarHeight = Platform.OS === 'ios' ? 88 : 125;
-  const bottomPadding = tabBarHeight + Spacing.sm;
+  const bottomPadding = getFloatingBannerBottomOffset(insets.bottom);
 
   return (
     <Animated.View
       style={[
         styles.container,
-        { bottom: bottomPadding + insets.bottom },
+        { bottom: bottomPadding },
         animatedStyle
       ]}
     >
       <TouchableOpacity
         onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={isDriver ? 'Reprendre la navigation conducteur' : 'Reprendre ma navigation passager'}
         activeOpacity={0.9}
         style={styles.touchable}
       >
@@ -186,40 +225,44 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
           end={{ x: 1, y: 1 }}
           style={styles.gradient}
         >
-          {/* Glassmorphism overlay */}
-          <View style={styles.glassOverlay} />
+          <View style={styles.accentRail} />
 
           <View style={styles.content}>
-            {/* Icon with glow effect */}
             <View style={styles.iconWrapper}>
-              <View style={[styles.iconGlow, { backgroundColor: statusBadgeColor }]} />
-              <View style={styles.iconContainer}>
-                <Ionicons name={iconName} size={24} color={Colors.white} />
+              <View
+                style={[
+                  styles.iconContainer,
+                  {
+                    backgroundColor: roleAccent + '14',
+                    borderColor: roleAccent + '25',
+                  },
+                ]}
+              >
+                <Ionicons name={iconName} size={22} color={roleAccent} />
               </View>
             </View>
 
-            {/* Text content */}
             <View style={styles.textContainer}>
               <View style={styles.titleRow}>
-                <Text style={styles.title}>
+                <Text style={styles.title} numberOfLines={1}>
                   {isDriver ? 'Trajet en cours' : 'Vous êtes en route'}
                 </Text>
-                <View style={[styles.statusBadge, { backgroundColor: statusBadgeColor }]}>
-                  <Text style={styles.statusBadgeText}>
-                    {isDriver ? 'Conducteur' : 'Passager'}
+                <View style={[styles.statusBadge, { backgroundColor: roleAccent + '14' }]}>
+                  <Text style={[styles.statusBadgeText, { color: roleAccent }]}>
+                    {roleLabel}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.routeRow}>
-                <Ionicons name="location" size={14} color={Colors.white} style={styles.routeIcon} />
+                <View style={styles.routeDot} />
                 <Text style={styles.routeText} numberOfLines={1}>
                   {trip.departure.name}
                 </Text>
               </View>
 
               <View style={styles.routeRow}>
-                <Ionicons name="navigate" size={14} color={Colors.white} style={styles.routeIcon} />
+                <Ionicons name="navigate" size={14} color={Colors.primary} style={styles.routeIcon} />
                 <Text style={styles.routeText} numberOfLines={1}>
                   {trip.arrival.name}
                 </Text>
@@ -227,17 +270,16 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
               {trip.departureTime && (
                 <View style={styles.timeRow}>
-                  <Ionicons name="time-outline" size={14} color={Colors.white} style={styles.routeIcon} />
+                  <Ionicons name="time-outline" size={14} color={Colors.gray[500]} style={styles.routeIcon} />
                   <Text style={styles.timeText}>
-                    Départ à {formatTime(trip.departureTime)}
+                    Départ {formatDateTime(trip.departureTime)}
                   </Text>
                 </View>
               )}
             </View>
 
-            {/* Chevron */}
             <View style={styles.chevronContainer}>
-              <Ionicons name="chevron-forward" size={24} color={Colors.white} />
+              <Ionicons name="chevron-forward" size={22} color={Colors.primary} />
             </View>
           </View>
         </LinearGradient>
@@ -245,129 +287,3 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    left: Spacing.md,
-    right: Spacing.md,
-    zIndex: 1000,
-  },
-  touchable: {
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
-  },
-  gradient: {
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-  },
-  glassOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
-  },
-  content: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  iconWrapper: {
-    position: 'relative',
-    marginRight: Spacing.md,
-  },
-  iconGlow: {
-    position: 'absolute',
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    opacity: 0.3,
-    top: -4,
-    left: -4,
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-  },
-  textContainer: {
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
-    gap: Spacing.sm,
-  },
-  title: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.bold,
-    color: Colors.white,
-    letterSpacing: 0.3,
-  },
-  statusBadge: {
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  statusBadgeText: {
-    fontSize: FontSizes.xs - 1,
-    fontWeight: FontWeights.semibold,
-    color: Colors.white,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  routeIcon: {
-    marginRight: Spacing.xs,
-    opacity: 0.9,
-  },
-  routeText: {
-    fontSize: FontSizes.sm,
-    color: Colors.white,
-    opacity: 0.95,
-    flex: 1,
-  },
-  timeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: Spacing.xs,
-  },
-  timeText: {
-    fontSize: FontSizes.xs,
-    color: Colors.white,
-    opacity: 0.85,
-    fontWeight: FontWeights.medium,
-  },
-  chevronContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
-

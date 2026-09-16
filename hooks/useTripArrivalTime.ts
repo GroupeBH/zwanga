@@ -1,65 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { InteractionManager } from 'react-native';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import type { Trip } from '@/types';
-import { getRouteInfo } from '@/utils/routeHelpers';
+import { getLocalRouteInfo, getRouteInfo } from '@/utils/routeApi';
+import { TaskQueue } from '@/utils/taskQueue';
+import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 
-/**
- * Hook pour calculer l'heure d'arrivée d'un trajet basée sur l'heure de départ + durée du trajet
- * obtenue via Mapbox Directions API
- */
+const previewQueue = new TaskQueue(2);
+
+/** Cache-first previews; precise ETA is retained without a burst of per-card requests. */
 export function useTripArrivalTime(trip: Trip | null | undefined): Date | null {
-  const [calculatedArrivalTime, setCalculatedArrivalTime] = useState<Date | null>(null);
-
+  const active = useScreenIsActive();
+  const [resolved, setResolved] = useState<{ key: string; date: Date } | null>(null);
+  const departureTime = trip?.departureTime;
+  const arrivalTime = trip?.arrivalTime;
+  const departure = trip?.departure;
+  const arrival = trip?.arrival;
+  const origin = getTripLocationCoordinate(departure);
+  const destination = getTripLocationCoordinate(arrival);
+  const key = `${departureTime}:${origin?.latitude}:${origin?.longitude}:${destination?.latitude}:${destination?.longitude}`;
   useEffect(() => {
-    if (!trip || !trip.departureTime) {
-      setCalculatedArrivalTime(null);
-      return;
-    }
-
-    // Vérifier si les coordonnées sont valides
-    if (
-      !trip.departure?.lat ||
-      !trip.departure?.lng ||
-      !trip.arrival?.lat ||
-      !trip.arrival?.lng
-    ) {
-      setCalculatedArrivalTime(null);
-      return;
-    }
-
-    const departureCoordinate = {
-      latitude: trip.departure.lat,
-      longitude: trip.departure.lng,
-    };
-
-    const arrivalCoordinate = {
-      latitude: trip.arrival.lat,
-      longitude: trip.arrival.lng,
-    };
-
-    let isMounted = true;
-
-    getRouteInfo(departureCoordinate, arrivalCoordinate)
-      .then((info) => {
-        if (!isMounted) return;
-        
-        if (info.duration > 0 && trip.departureTime) {
-          const departureDate = new Date(trip.departureTime);
-          const arrivalDate = new Date(departureDate.getTime() + info.duration * 1000);
-          setCalculatedArrivalTime(arrivalDate);
-        } else {
-          setCalculatedArrivalTime(null);
+    const departureMs = Date.parse(departureTime ?? '');
+    const arrivalMs = Date.parse(arrivalTime ?? '');
+    if (!active || !origin || !destination || !Number.isFinite(departureMs) || arrivalMs > departureMs) return;
+    const controller = new AbortController();
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      void previewQueue.run(() => getRouteInfo(origin, destination), controller.signal).then(({ duration }) => {
+        if (!controller.signal.aborted && duration > 0) {
+          setResolved({ key, date: new Date(departureMs + duration * 1000) });
         }
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        setCalculatedArrivalTime(null);
-      });
+      }).catch(() => undefined);
+    });
+    return () => { controller.abort(); interaction.cancel(); };
+    // Coordinate values form the key; address object identity must not restart reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, key, departureTime, arrivalTime]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [trip?.id, trip?.departureTime, trip?.departure?.lat, trip?.departure?.lng, trip?.arrival?.lat, trip?.arrival?.lng]);
-
-  return calculatedArrivalTime;
+  return useMemo(() => {
+    const departureMs = Date.parse(departureTime ?? '');
+    if (!Number.isFinite(departureMs)) return null;
+    const arrivalMs = Date.parse(arrivalTime ?? '');
+    // The legacy mapper uses departureTime as a placeholder arrivalTime.
+    if (Number.isFinite(arrivalMs) && arrivalMs > departureMs) return new Date(arrivalMs);
+    if (resolved?.key === key) return resolved.date;
+    const origin = getTripLocationCoordinate(departure);
+    const destination = getTripLocationCoordinate(arrival);
+    if (!origin || !destination) return null;
+    const { duration } = getLocalRouteInfo(origin, destination);
+    return duration > 0 ? new Date(departureMs + duration * 1000) : null;
+  }, [departureTime, arrivalTime, departure, arrival, resolved, key]);
 }
 

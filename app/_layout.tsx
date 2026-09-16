@@ -1,12 +1,26 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { LayoutAnimationConfig } from '@/utils/reanimated';
+import { Platform, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { configureFontScaling } from '@/utils/configureFontScaling';
+import { initializeDiagnostics } from '@/services/diagnostics';
 
+import { AnalyticsTracker } from '@/components/AnalyticsTracker';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-// Importer la tâche de fond pour qu'elle soit enregistrée au démarrage
+// Importer les handlers de fond pour qu'ils soient enregistres au demarrage
 import '@/services/backgroundNotificationTask';
+import '@/services/driverBackgroundLocationTask';
+import '@/services/passengerBackgroundLocationTask';
+import '@/services/notifeeBackgroundHandler';
+import '@/services/notifeeForegroundService';
+
+configureFontScaling();
+initializeDiagnostics();
 
 export const unstable_settings = {
   initialRouteName: 'splash',
@@ -14,27 +28,74 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const isAndroid = Platform.OS === 'android';
+  const modalPresentation = isAndroid ? 'card' : 'modal';
 
-  return (
+  const appTree = (
     <ReduxProvider>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="splash" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          <Stack.Screen name="auth" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'modal' }} />
-          <Stack.Screen name="search" options={{ headerShown: false, presentation: 'modal' }} />
-          <Stack.Screen name="settings" options={{ headerShown: false }} />
-          <Stack.Screen name="support" options={{ headerShown: false }} />
-          <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
-          <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
-          <Stack.Screen name="verification" options={{ headerShown: false }} />
-          <Stack.Screen name="rate/[id]" options={{ headerShown: false, presentation: 'modal' }} />
-          <Stack.Screen name="invite" options={{ headerShown: false, presentation: 'modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
+        <View style={styles.appRoot}>
+          <AnalyticsTracker />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              freezeOnBlur: false,
+              ...(isAndroid ? ({ animation: 'none' } as const) : {}),
+            }}
+          >
+            <Stack.Screen name="splash" options={{ headerShown: false }} />
+            <Stack.Screen name="auth-entry" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="background-location-disclosure" options={{ headerShown: false }} />
+            <Stack.Screen name="auth" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="publish" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="recurring-trips" options={{ headerShown: false }} />
+            <Stack.Screen name="request-create" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="request/index" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="request/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="request-details/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="search" options={{ headerShown: false, presentation: 'card' }} />
+            <Stack.Screen name="wallet" options={{ headerShown: false }} />
+            <Stack.Screen name="driver-earnings" options={{ headerShown: false }} />
+            <Stack.Screen name="referrals" options={{ headerShown: false }} />
+            <Stack.Screen name="payment-history" options={{ headerShown: false }} />
+            <Stack.Screen name="subscriptions/payment" options={{ headerShown: false }} />
+            <Stack.Screen name="notifications" options={{ headerShown: false }} />
+            <Stack.Screen name="settings" options={{ headerShown: false }} />
+            <Stack.Screen name="support" options={{ headerShown: false }} />
+            <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="booking/payment" options={{ headerShown: false }} />
+            <Stack.Screen name="verification" options={{ headerShown: false }} />
+            <Stack.Screen name="rate/[id]" options={{ headerShown: false, presentation: modalPresentation }} />
+            <Stack.Screen name="invite" options={{ headerShown: false, presentation: modalPresentation }} />
+          </Stack>
+          <StatusBar style="auto" />
+        </View>
       </ThemeProvider>
     </ReduxProvider>
   );
+
+  return (
+    <GestureHandlerRootView style={styles.appRoot}>
+      <AppErrorBoundary>
+        <SafeAreaProvider>
+          {isAndroid ? (
+            <LayoutAnimationConfig skipEntering skipExiting>
+              {appTree}
+            </LayoutAnimationConfig>
+          ) : (
+            appTree
+          )}
+        </SafeAreaProvider>
+      </AppErrorBoundary>
+    </GestureHandlerRootView>
+  );
 }
+
+const styles = StyleSheet.create({
+  appRoot: {
+    flex: 1,
+  },
+});

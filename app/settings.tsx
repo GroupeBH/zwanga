@@ -1,22 +1,28 @@
+import { useSettingsAccountActions } from '../hooks/settings/useSettingsAccountActions';
+import { styles } from '../features/screen-styles/app/settings/index';
 import { IdentityVerification } from '@/components/IdentityVerification';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { Colors, Spacing } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
+import { useDeleteAccountMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { updateUser } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { ActivityIndicator, Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const user = useAppSelector(selectUser);
   const dispatch = useAppDispatch();
+  const { showDialog, hideDialog } = useDialog();
+  const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation();
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const { changeProfilePhoto } = useProfilePhoto();
   const { shouldShow: shouldShowSettingsGuide, complete: completeSettingsGuide } =
@@ -59,20 +65,14 @@ export default function SettingsScreen() {
     setShowIdentityModal(false);
   };
 
-  const accountItems = [
-    { 
-      icon: 'person-outline', 
-      label: 'Modifier le profil', 
-      route: '/edit-profile',
-    },
-    { 
-      icon: 'image-outline', 
-      label: 'Changer la photo de profil', 
-      route: null,
-      onPress: changeProfilePhoto,
-    },
-    { icon: 'lock-closed-outline', label: 'Sécurité', route: '/security' },
-  ];
+  const { accountItems, handleDeleteAccount } = useSettingsAccountActions({
+    showDialog,
+    deleteAccount,
+    hideDialog,
+    dispatch,
+    router,
+    changeProfilePhoto,
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -297,7 +297,7 @@ export default function SettingsScreen() {
         </Animated.View>
 
         {/* Aide & Support */}
-        <Animated.View entering={FadeInDown.delay(400)} style={[styles.section, { marginBottom: Spacing.xxl }]}>
+        <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
           <Text style={styles.sectionLabel}>AIDE & SUPPORT</Text>
           <TouchableOpacity
             style={styles.supportCard}
@@ -306,8 +306,27 @@ export default function SettingsScreen() {
             <View style={styles.supportIcon}>
               <Ionicons name="help-circle" size={20} color={Colors.primary} />
             </View>
-            <Text style={styles.menuText}>Centre d'aide</Text>
+            <Text style={styles.menuText}>Centre d&apos;aide</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(500)} style={[styles.section, { marginBottom: Spacing.xxl }]}>
+          <Text style={styles.sectionLabel}>ZONE DANGEREUSE</Text>
+          <TouchableOpacity
+            style={[styles.supportCard, isDeletingAccount && styles.disabledMenuItem]}
+            onPress={handleDeleteAccount}
+            disabled={isDeletingAccount}
+          >
+            <View style={[styles.supportIcon, styles.menuIconDanger]}>
+              <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+            </View>
+            <Text style={[styles.menuText, styles.dangerText]}>Supprimer mon compte</Text>
+            {isDeletingAccount ? (
+              <ActivityIndicator size="small" color={Colors.danger} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+            )}
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
@@ -324,7 +343,7 @@ export default function SettingsScreen() {
             <TouchableOpacity onPress={() => setShowIdentityModal(false)}>
               <Ionicons name="close" size={24} color={Colors.gray[800]} />
             </TouchableOpacity>
-            <Text style={styles.modalTitle}>Vérification d'identité</Text>
+            <Text style={styles.modalTitle}>Vérification d&apos;identité</Text>
             <View style={{ width: 24 }} />
           </View>
           <IdentityVerification
@@ -345,144 +364,4 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    marginRight: Spacing.lg,
-  },
-  headerTitle: {
-    fontSize: FontSizes.xl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: Spacing.xxl,
-  },
-  section: {
-    marginTop: Spacing.xl,
-    paddingHorizontal: Spacing.xl,
-  },
-  sectionLabel: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[500],
-    marginBottom: Spacing.md,
-  },
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    overflow: 'hidden',
-    ...CommonStyles.shadowSm,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.lg,
-  },
-  menuItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-  menuIconBlue: {
-    backgroundColor: 'rgba(52, 152, 219, 0.1)',
-  },
-  menuIconGreen: {
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-  },
-  menuIconYellow: {
-    backgroundColor: 'rgba(247, 184, 1, 0.1)',
-  },
-  menuIconSuccess: {
-    backgroundColor: 'rgba(46, 204, 113, 0.1)',
-  },
-  menuIconWarning: {
-    backgroundColor: 'rgba(247, 184, 1, 0.1)',
-  },
-  menuTextContainer: {
-    flex: 1,
-  },
-  menuSubtext: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[600],
-    marginTop: Spacing.xs,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: Colors.white,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  modalTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  menuIconOrange: {
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-  },
-  menuText: {
-    flex: 1,
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-    fontSize: FontSizes.base,
-  },
-  menuValue: {
-    color: Colors.gray[600],
-    marginRight: Spacing.sm,
-    fontSize: FontSizes.base,
-  },
-  supportCard: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  supportIcon: {
-    width: 40,
-    height: 40,
-    backgroundColor: 'rgba(255, 107, 53, 0.1)',
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: Spacing.md,
-  },
-});
+

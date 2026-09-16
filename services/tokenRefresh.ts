@@ -1,213 +1,157 @@
-import { fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { API_BASE_URL } from '../config/env';
-import { logout, setTokens } from '../store/slices/authSlice';
+import { authRefreshApi } from '../store/api/authRefreshApi';
 import { getStoreDispatch } from '../store/storeAccessor';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
 import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 
 /**
- * Service de rafraîchissement automatique des tokens JWT
- * Gère la vérification et le renouvellement des access tokens
+ * Token refresh service.
+ *
+ * Rules:
+ * - network errors do not force logout;
+ * - auth errors on refresh (400/401/403) force a local logout;
+ * - startup restores a valid local access token without waiting for the network.
  */
 
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
+let isForceLoggingOut = false;
+let lastProactiveRefreshAttemptAt = 0;
+let lastProactiveRefreshAttemptToken: string | null = null;
 
-// Normaliser l'URL de base pour éviter les doubles slashes
-const getNormalizedBaseUrl = () => {
-  if (!API_BASE_URL) return '';
-  return API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
-};
+const AUTH_REFRESH_ERROR_STATUSES = new Set([400, 401, 403]);
+const ACCESS_TOKEN_REFRESH_WINDOW_MINUTES = 2;
+const PROACTIVE_REFRESH_COOLDOWN_MS = 60_000;
 
-// Créer un baseQuery sans authentification pour le refresh token
-// Cela garantit la même configuration que Redux Query mais sans header Authorization
-const refreshBaseQuery = fetchBaseQuery({
-  baseUrl: getNormalizedBaseUrl(),
-  // Pas de prepareHeaders - on ne veut pas de header Authorization pour le refresh
-});
+async function forceLocalLogout(reason: string): Promise<void> {
+  if (isForceLoggingOut) {
+    return;
+  }
+
+  isForceLoggingOut = true;
+  try {
+    console.warn(`[tokenRefresh] Local logout forced: ${reason}`);
+    await clearTokens();
+    try {
+      getStoreDispatch()({ type: 'auth/logout' });
+    } catch (dispatchError) {
+      console.warn('[tokenRefresh] Store dispatch unavailable during local logout', dispatchError);
+    }
+  } catch (error) {
+    console.error('[tokenRefresh] Failed to force local logout:', error);
+  } finally {
+    isForceLoggingOut = false;
+  }
+}
 
 /**
- * Vérifie si les tokens sont valides et rafraîchit si nécessaire
- * @returns true si l'utilisateur est authentifié, false sinon
+ * Startup auth validation.
+ *
+ * Behavior:
+ * - requires access+refresh tokens;
+ * - requires non-expired refresh token;
+ * - refreshes at startup only when the local access token has expired;
+ * - if refresh fails, keeps session only when local access token is still valid.
  */
 export async function validateAndRefreshTokens(): Promise<boolean> {
-
   try {
     const { accessToken, refreshToken } = await getTokens();
 
-    // Pas de tokens = utilisateur non connecté
     if (!accessToken || !refreshToken) {
-      console.log('Aucun token trouvé - utilisateur non connecté');
+      console.log('[validateAndRefreshTokens] No tokens found');
       return false;
     }
 
-    // Vérifier l'access token
-    const accessTokenExpired = isTokenExpired(accessToken);
-    const accessTokenExpiringSoon = isTokenExpiringSoon(accessToken, 5);
-
-    // Si l'access token est valide et n'expire pas bientôt, tout est OK
-    if (!accessTokenExpired && !accessTokenExpiringSoon) {
-      console.log('Access token valide');
-      return true;
-    }
-
-    // L'access token est expiré ou expire bientôt, vérifier le refresh token
-    const refreshTokenExpired = isTokenExpired(refreshToken);
-
-    if (refreshTokenExpired) {
-      console.log('Refresh token expiré - déconnexion nécessaire');
-      // Nettoyer les tokens et déconnecter
-      await clearTokens();
-      getStoreDispatch()(logout());
+    if (isTokenExpired(refreshToken)) {
+      console.log('[validateAndRefreshTokens] Refresh token expired');
+      await forceLocalLogout('refresh token expired at startup');
       return false;
     }
 
-    // Le refresh token est valide, rafraîchir l'access token
-    console.log('Rafraîchissement de l\'access token...');
-    const newAccessToken = await refreshAccessToken(refreshToken);
-
-    if (newAccessToken) {
-      console.log('Access token rafraîchi avec succès');
+    if (!isTokenExpired(accessToken)) {
       return true;
-    } else {
-      // Si refreshAccessToken retourne null, cela peut être dû à une erreur réseau
-      // Dans ce cas, on ne déconnecte pas l'utilisateur - il peut utiliser l'app en mode offline
-      // On retourne true pour indiquer que l'utilisateur reste authentifié avec ses tokens existants
-      console.log('Échec du rafraîchissement - peut-être offline, utilisateur reste connecté');
-      // Ne pas déconnecter - l'utilisateur peut continuer avec son access token actuel (même s'il est expiré)
-      // Les requêtes échoueront mais l'utilisateur ne sera pas déconnecté
-      return true; // Retourner true pour indiquer que l'utilisateur reste authentifié
     }
-  } catch (error: any) {
-    console.error('Erreur lors de la validation des tokens:', error);
-    
-    // Vérifier si c'est une erreur réseau
-    const isNetworkError = 
-      error?.name === 'TypeError' ||
-      error?.message?.toLowerCase().includes('network') ||
-      error?.message?.toLowerCase().includes('fetch');
-    
-    if (isNetworkError) {
-      console.warn('Erreur réseau détectée - utilisateur reste connecté en mode offline');
-      return true; // L'utilisateur reste authentifié
+
+    console.log('[validateAndRefreshTokens] Startup refresh attempt...');
+    const refreshedAccessToken = await refreshAccessToken(refreshToken);
+    if (refreshedAccessToken) {
+      console.log('[validateAndRefreshTokens] Startup refresh succeeded');
+      return true;
     }
-    
-    // Pour les autres erreurs, déconnecter par sécurité
-    await clearTokens();
-    getStoreDispatch()(logout());
+
+    const latestTokens = await getTokens();
+    if (!latestTokens.accessToken && !latestTokens.refreshToken) {
+      return false;
+    }
+
+    if (
+      latestTokens.accessToken &&
+      latestTokens.refreshToken &&
+      !isTokenExpired(latestTokens.accessToken)
+    ) {
+      console.warn(
+        '[validateAndRefreshTokens] Refresh unavailable, local access token still valid'
+      );
+      return true;
+    }
+
+    await forceLocalLogout('no valid tokens after startup refresh failure');
+    return false;
+  } catch (error) {
+    console.error('[validateAndRefreshTokens] Error:', error);
     return false;
   }
 }
 
 /**
- * Rafraîchit l'access token avec le refresh token
- * @param refreshToken Le refresh token valide
- * @returns Le nouveau access token ou null en cas d'échec
+ * Refreshes access token with refresh token.
  */
-export async function refreshAccessToken(refreshToken: string): Promise<string | null> {
-  // Si un rafraîchissement est déjà en cours, attendre qu'il se termine
+export async function refreshAccessToken(
+  refreshToken: string
+): Promise<string | null> {
   if (isRefreshing && refreshPromise) {
-    console.log('Rafraîchissement déjà en cours, attente...');
+    console.log('[refreshAccessToken] Refresh already in progress, waiting...');
     return refreshPromise;
   }
 
   isRefreshing = true;
 
-  // Vérifier que API_BASE_URL est défini
-  if (!API_BASE_URL) {
-    console.error('API_BASE_URL est undefined!');
-    isRefreshing = false;
-    return Promise.resolve(null);
-  }
-
-  const normalizedBaseUrl = getNormalizedBaseUrl();
-  const refreshUrl = `${normalizedBaseUrl}/auth/refresh`;
-  console.log('Rafraîchissement de l\'access token');
-  console.log('  - API_BASE_URL:', API_BASE_URL);
-  console.log('  - Normalized base URL:', normalizedBaseUrl);
-  console.log('  - URL complète:', refreshUrl);
-  console.log('  - Refresh token length:', refreshToken?.length || 0);
-  
-  // Vérifier que fetch est disponible
-  if (typeof fetch === 'undefined') {
-    console.error('fetch n\'est pas disponible dans cet environnement!');
-    isRefreshing = false;
-    return Promise.resolve(null);
-  }
-
   refreshPromise = (async () => {
-    let result: any = null;
     try {
-      console.log('  - Début de la requête refresh');
-      console.log('  - Body:', JSON.stringify({ refreshToken: refreshToken.substring(0, 20) + '...' }));
-      
-      // Utiliser refreshBaseQuery qui utilise déjà l'URL normalisée
-      result = await refreshBaseQuery(
-        {
-          url: '/auth/refresh',
-          method: 'POST',
-          body: { refreshToken },
-        },
-        // @ts-ignore - on n'a pas besoin de l'API pour cette requête isolée
-        { signal: new AbortController().signal },
-        {}
+      const refreshRequest = getStoreDispatch()(
+        authRefreshApi.endpoints.refreshSession.initiate({ refreshToken }),
       );
-
-      console.log('  - Requête envoyée avec succès');
-      console.log('  - Result:', result);
-
-      if (result.error) {
-        console.error('  - Error:', result.error);
-        console.error('  - Error status:', result.error.status);
-        console.error('  - Error data:', result.error.data);
-        
-        // Conserver l'erreur pour la détection réseau plus tard
-        const errorStatus = result.error.status;
-        const errorData = result.error.data;
-        
-        // Si c'est une erreur FETCH_ERROR, c'est une erreur réseau
-        if (errorStatus === 'FETCH_ERROR') {
-          throw { name: 'TypeError', message: 'Network request failed', isNetworkError: true, originalError: result.error };
-        }
-        
-        throw { 
-          name: 'HTTPError', 
-          message: `HTTP ${errorStatus}: ${JSON.stringify(errorData)}`,
-          status: errorStatus,
-          data: errorData,
-          isNetworkError: false
-        };
+      let data: { accessToken: string; refreshToken: string };
+      try {
+        data = await refreshRequest.unwrap();
+      } finally {
+        refreshRequest.reset();
       }
-
-      const data = result.data as { accessToken: string; refreshToken: string };
-      console.log('  - Response data reçu:', { 
-        hasAccessToken: !!data?.accessToken, 
-        hasRefreshToken: !!data?.refreshToken 
-      });
 
       if (!data?.accessToken || !data?.refreshToken) {
-        throw new Error('Tokens manquants dans la réponse');
+        throw new Error('Missing tokens in refresh response');
       }
 
-      // Stocker les nouveaux tokens
       await storeTokens(data.accessToken, data.refreshToken);
+      try {
+        getStoreDispatch()({
+          type: 'auth/setTokens',
+          payload: {
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+          },
+        });
+      } catch (dispatchError) {
+        console.warn(
+          '[refreshAccessToken] Store not initialized, tokens saved in SecureStore only',
+          dispatchError
+        );
+      }
 
-      // Mettre à jour Redux
-      getStoreDispatch()(setTokens({
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-      }));
-
-      console.log('Tokens rafraîchis et stockés');
+      console.log('[refreshAccessToken] Tokens refreshed and stored');
       return data.accessToken;
     } catch (error: any) {
-      console.error('Erreur lors du rafraîchissement du token:');
-      console.error('  - Type:', error?.name || typeof error);
-      console.error('  - Message:', error?.message);
-      console.error('  - Stack:', error?.stack);
-      
-      // Vérifier si c'est une erreur réseau (offline, pas de connexion, etc.)
-      const isNetworkError = 
+      const status = error?.status;
+      const isNetworkError =
         error?.isNetworkError === true ||
         error?.name === 'TypeError' ||
         error?.name === 'AbortError' ||
@@ -215,21 +159,29 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
         error?.message?.toLowerCase().includes('fetch') ||
         error?.message?.toLowerCase().includes('failed to fetch') ||
         error?.message?.toLowerCase().includes('network request failed') ||
-        (result?.error && 'status' in result.error && result.error.status === 'FETCH_ERROR');
-      
+        status === 'FETCH_ERROR' ||
+        status === 'TIMEOUT_ERROR';
+
       if (isNetworkError) {
-        console.warn('  - Erreur réseau détectée - pas de déconnexion en mode offline');
-        // Ne pas déconnecter l'utilisateur en cas d'erreur réseau
-        // L'utilisateur reste connecté et peut continuer à utiliser l'app en mode offline
-        isRefreshing = false;
-        refreshPromise = null;
-        return null; // Retourner null mais sans déconnecter
+        console.warn('[refreshAccessToken] Network error, keep session');
+        return null;
       }
-      
-      // Pour les autres erreurs (401, 403, etc.), c'est une vraie erreur d'authentification
-      console.error('  - Erreur d\'authentification détectée - déconnexion');
-      await clearTokens();
-      getStoreDispatch()(logout());
+
+      const isAuthRefreshError =
+        typeof status === 'number' && AUTH_REFRESH_ERROR_STATUSES.has(status);
+
+      if (isAuthRefreshError) {
+        await forceLocalLogout(
+          `refresh token rejected by backend (HTTP ${status})`
+        );
+        return null;
+      }
+
+      console.warn(
+        `[refreshAccessToken] Non-auth backend error (status=${String(
+          status
+        )}), keep session`
+      );
       return null;
     } finally {
       isRefreshing = false;
@@ -241,68 +193,139 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
 }
 
 /**
- * Intercepteur pour rafraîchir automatiquement le token avant chaque requête
- * Retourne l'access token valide ou null
+ * Returns current access token.
+ * Does not refresh automatically.
  */
 export async function getValidAccessToken(): Promise<string | null> {
   try {
-    const { accessToken, refreshToken } = await getTokens();
-
-    if (!accessToken || !refreshToken) {
-      await clearTokens();
-      getStoreDispatch()(logout());
-      return null;
-    }
-
-    // Si le token expire bientôt, le rafraîchir
-    if (isTokenExpiringSoon(accessToken, 5) || isTokenExpired(accessToken)) {
-      console.log('Access token expiré/expirant, rafraîchissement...');
-      const newAccessToken = await refreshAccessToken(refreshToken);
-      return newAccessToken;
-    }
-
-    return accessToken;
+    const { accessToken } = await getTokens();
+    return accessToken || null;
   } catch (error) {
-    console.error('Erreur lors de la récupération du token valide:', error);
+    console.error('[getValidAccessToken] Error:', error);
     return null;
   }
 }
 
 /**
- * Gère une erreur 401 (Unauthorized) en tentant de rafraîchir le token
- * @returns true si le token a été rafraîchi, false sinon
+ * Proactive refresh on foreground/manual checks.
+ */
+export async function proactiveTokenRefresh(): Promise<boolean> {
+  try {
+    const { accessToken, refreshToken } = await getTokens();
+
+    if (!accessToken || !refreshToken) {
+      console.log('[proactiveTokenRefresh] No tokens');
+      return false;
+    }
+
+    if (isTokenExpired(refreshToken)) {
+      console.log('[proactiveTokenRefresh] Refresh token expired');
+      await forceLocalLogout('refresh token expired');
+      return false;
+    }
+
+    if (
+      isTokenExpired(accessToken) ||
+      isTokenExpiringSoon(accessToken, ACCESS_TOKEN_REFRESH_WINDOW_MINUTES)
+    ) {
+      const now = Date.now();
+      const isSameTokenRetry = lastProactiveRefreshAttemptToken === accessToken;
+      const isInCooldown =
+        now - lastProactiveRefreshAttemptAt < PROACTIVE_REFRESH_COOLDOWN_MS;
+
+      if (isSameTokenRetry && isInCooldown && !isTokenExpired(accessToken)) {
+        console.log(
+          '[proactiveTokenRefresh] Refresh already attempted recently, keep current session'
+        );
+        return true;
+      }
+
+      lastProactiveRefreshAttemptAt = now;
+      lastProactiveRefreshAttemptToken = accessToken;
+
+      console.log(
+        '[proactiveTokenRefresh] Access token expired/expiring soon, refreshing...'
+      );
+      const newAccessToken = await refreshAccessToken(refreshToken);
+      if (newAccessToken) {
+        lastProactiveRefreshAttemptAt = 0;
+        lastProactiveRefreshAttemptToken = null;
+        return true;
+      }
+
+      const latestTokens = await getTokens();
+      if (!latestTokens.accessToken && !latestTokens.refreshToken) {
+        return false;
+      }
+
+      const hasValidLocalSession =
+        !!latestTokens.accessToken &&
+        !!latestTokens.refreshToken &&
+        !isTokenExpired(latestTokens.accessToken) &&
+        !isTokenExpired(latestTokens.refreshToken);
+
+      if (!hasValidLocalSession) {
+        await forceLocalLogout('session invalid after proactive refresh failure');
+        return false;
+      }
+
+      console.warn(
+        '[proactiveTokenRefresh] Refresh unavailable, local session still valid'
+      );
+      return true;
+    }
+
+    console.log('[proactiveTokenRefresh] Access token valid, no refresh needed');
+    return true;
+  } catch (error) {
+    console.error('[proactiveTokenRefresh] Error:', error);
+    return false;
+  }
+}
+
+/**
+ * Handles 401 by attempting a refresh.
  */
 export async function handle401Error(): Promise<boolean> {
-  console.log('Erreur 401 détectée, tentative de rafraîchissement...');
+  console.log('[handle401Error] 401 detected');
   const { accessToken, refreshToken } = await getTokens();
 
   if (!accessToken && !refreshToken) {
-    console.log('Tokens manquants, déconnexion requise');
-    await clearTokens();
-    getStoreDispatch()(logout());
+    console.log('[handle401Error] Missing tokens');
     return false;
   }
 
   if (!accessToken || !isTokenExpired(accessToken)) {
-    console.log('Access token encore valide, pas de refresh');
+    console.log('[handle401Error] Access token not expired, skip refresh');
     return false;
   }
 
   if (!refreshToken || isTokenExpired(refreshToken)) {
-    console.log('Refresh token expiré');
-    await clearTokens();
-    getStoreDispatch()(logout());
+    console.log('[handle401Error] Refresh token missing/expired');
+    await forceLocalLogout('refresh token missing or expired during 401 handling');
     return false;
   }
 
   const newAccessToken = await refreshAccessToken(refreshToken);
-
   if (newAccessToken) {
-    console.log('Token rafraîchi après 401');
+    console.log('[handle401Error] Refresh succeeded after 401');
     return true;
   }
 
-  console.log('Échec du rafraîchissement après 401');
+  const latestTokens = await getTokens();
+  if (!latestTokens.accessToken && !latestTokens.refreshToken) {
+    console.log('[handle401Error] Session already cleared after refresh failure');
+    return false;
+  }
+
+  if (
+    !latestTokens.accessToken ||
+    !latestTokens.refreshToken ||
+    isTokenExpired(latestTokens.accessToken)
+  ) {
+    await forceLocalLogout('no valid tokens after 401 and refresh failure');
+  }
+
+  console.log('[handle401Error] Refresh failed after 401');
   return false;
 }
-

@@ -1,37 +1,35 @@
-import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { styles } from '../features/screen-styles/app/edit-profile/index';
+import { Colors } from '@/constants/styles';
+import { GenderSelector } from '@/components/GenderSelector';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useGetProfileSummaryQuery, useUpdateUserMutation } from '@/store/api/userApi';
+import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUpdateUserMutation } from '@/store/api/userApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser as updateUserAction } from '@/store/slices/authSlice';
+import type { UserGender } from '@/types';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { ActivityIndicator, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function EditProfileScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { data: profileSummary, isLoading: summaryLoading, refetch } = useGetProfileSummaryQuery();
+  const { data: kycStatus } = useGetKycStatusQuery();
   const [updateUserMutation, { isLoading: isSaving }] = useUpdateUserMutation();
   const { changeProfilePhoto, isUploading } = useProfilePhoto();
 
   const user = profileSummary?.user;
+  const isLegalIdentityLocked = kycStatus?.status === 'approved';
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState<UserGender | null>(null);
   const [wantsToBeDriver, setWantsToBeDriver] = useState(false);
   const [feedback, setFeedback] = useState<{ visible: boolean; success: boolean; message: string }>({
     visible: false,
@@ -44,6 +42,7 @@ export default function EditProfileScreen() {
       setFirstName(user.firstName ?? '');
       setLastName(user.lastName ?? '');
       setPhone(user.phone ?? '');
+      setGender(user.gender ?? null);
       // Utiliser role pour déterminer si l'utilisateur est conducteur
       const isDriver = user?.role === 'driver' || user?.role === 'both';
       setWantsToBeDriver(isDriver);
@@ -63,7 +62,10 @@ export default function EditProfileScreen() {
   }, [user?.role]);
 
   const handleSave = async () => {
-    if (!firstName.trim() || !lastName.trim()) {
+    const legalFirstName = normalizeLegalName(firstName);
+    const legalLastName = normalizeLegalName(lastName);
+
+    if (!legalFirstName || !legalLastName) {
       setFeedback({
         visible: true,
         success: false,
@@ -73,9 +75,12 @@ export default function EditProfileScreen() {
     }
     try {
       const formData = new FormData();
-      formData.append('firstName', firstName.trim());
-      formData.append('lastName', lastName.trim());
+      if (!isLegalIdentityLocked) {
+        formData.append('firstName', legalFirstName);
+        formData.append('lastName', legalLastName);
+      }
       formData.append('phone', phone.trim());
+      if (gender) formData.append('gender', gender);
       // Ne modifier le rôle que si l'utilisateur n'est pas déjà conducteur
       // et qu'il souhaite devenir conducteur
       if (canBecomeDriver && wantsToBeDriver) {
@@ -93,15 +98,16 @@ export default function EditProfileScreen() {
           firstName: updated.firstName,
           lastName: updated.lastName,
           phone: updated.phone,
+          gender: updated.gender,
           avatar: updated.profilePicture ?? updated.avatar,
           profilePicture: updated.profilePicture,
           role: updated.role,
           isDriver: updated.isDriver,
         }),
       );
-      await refetch();
+      void refetch();
       const successMessage = wantsToBeDriver && canBecomeDriver
-        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de compléter la vérification KYC pour devenir conducteur.'
+        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de vérifier votre identité pour devenir conducteur.'
         : 'Profil mis à jour avec succès.';
       setFeedback({
         visible: true,
@@ -109,18 +115,17 @@ export default function EditProfileScreen() {
         message: successMessage,
       });
     } catch (error: any) {
-      const message = error?.data?.message ?? error?.error ?? 'Impossible de sauvegarder les informations.';
       setFeedback({
         visible: true,
         success: false,
-        message: Array.isArray(message) ? message.join('\n') : message,
+        message: getApiErrorMessage(error, 'Impossible de sauvegarder les informations.'),
       });
     }
   };
 
   const handleChangePhoto = async () => {
     await changeProfilePhoto();
-    await refetch();
+    void refetch();
   };
 
   return (
@@ -154,24 +159,40 @@ export default function EditProfileScreen() {
 
         <Animated.View entering={FadeInDown.delay(100)} style={styles.card}>
           <Text style={styles.sectionTitle}>Informations personnelles</Text>
+          <View style={styles.legalIdentityNotice}>
+            <Ionicons
+              name={isLegalIdentityLocked ? 'lock-closed-outline' : 'id-card-outline'}
+              size={19}
+              color={isLegalIdentityLocked ? Colors.success : Colors.primary}
+            />
+            <Text style={styles.legalIdentityNoticeText}>
+              {isLegalIdentityLocked
+                ? 'Vos noms sont protégés après la vérification de votre identité. Contactez le support pour signaler un changement légal.'
+                : 'Saisissez vos prénom(s) et votre nom comme sur votre pièce d’identité. Le post-nom est facultatif.'}
+            </Text>
+          </View>
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Prénom</Text>
+            <Text style={styles.inputLabel}>Prénom(s)</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Prénom"
+              style={[styles.input, isLegalIdentityLocked && styles.inputLocked]}
+              placeholder="Prénom(s)"
               placeholderTextColor={Colors.gray[400]}
               value={firstName}
               onChangeText={setFirstName}
+              autoCapitalize="words"
+              editable={!isLegalIdentityLocked}
             />
           </View>
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Nom</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Nom"
+              style={[styles.input, isLegalIdentityLocked && styles.inputLocked]}
+              placeholder="Nom (post-nom facultatif)"
               placeholderTextColor={Colors.gray[400]}
               value={lastName}
               onChangeText={setLastName}
+              autoCapitalize="words"
+              editable={!isLegalIdentityLocked}
             />
           </View>
           <View style={styles.inputGroup}>
@@ -185,6 +206,7 @@ export default function EditProfileScreen() {
               onChangeText={setPhone}
             />
           </View>
+          <GenderSelector value={gender} onChange={setGender} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200)} style={styles.card}>
@@ -203,7 +225,7 @@ export default function EditProfileScreen() {
                 {isCurrentlyDriver
                   ? 'Vous êtes conducteur. Vous pouvez proposer des trajets sur Zwanga.'
                   : canBecomeDriver
-                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et compléter la vérification KYC.'
+                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et vérifier votre identité.'
                     : 'Vous êtes déjà conducteur.'}
               </Text>
             </View>
@@ -252,7 +274,7 @@ export default function EditProfileScreen() {
                 </View>
                 <View style={styles.stepItem}>
                   <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.stepText}>Compléter la vérification KYC</Text>
+                  <Text style={styles.stepText}>Vérifier mon identité</Text>
                 </View>
               </View>
               <TouchableOpacity
@@ -316,233 +338,5 @@ export default function EditProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  scrollContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.lg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Spacing.md,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...CommonStyles.shadowSm,
-  },
-  headerTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  card: {
-    backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.lg,
-    ...CommonStyles.shadowSm,
-    gap: Spacing.md,
-  },
-  sectionTitle: {
-    fontSize: FontSizes.base,
-    fontWeight: FontWeights.semibold,
-    color: Colors.gray[900],
-  },
-  sectionSubtitle: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[500],
-    marginTop: Spacing.xs,
-  },
-  photoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    alignSelf: 'flex-start',
-  },
-  photoButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.semibold,
-  },
-  inputGroup: {
-    gap: Spacing.xs,
-  },
-  inputLabel: {
-    color: Colors.gray[600],
-    fontSize: FontSizes.sm,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    fontSize: FontSizes.base,
-    color: Colors.gray[900],
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-  },
-  toggleText: {
-    flex: 1,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  driverBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.success + '15',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
-    borderRadius: BorderRadius.full,
-  },
-  badgeText: {
-    fontSize: FontSizes.xs,
-    color: Colors.success,
-    fontWeight: FontWeights.semibold,
-  },
-  driverCard: {
-    marginTop: Spacing.md,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary + '10',
-  },
-  driverCardActive: {
-    backgroundColor: Colors.success + '10',
-    borderWidth: 1,
-    borderColor: Colors.success + '30',
-  },
-  driverCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  driverCardTitle: {
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  driverCardText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-    marginBottom: Spacing.sm,
-    lineHeight: 18,
-  },
-  stepsList: {
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  stepItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  stepText: {
-    fontSize: FontSizes.sm,
-    color: Colors.gray[700],
-  },
-  driverButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    alignSelf: 'flex-start',
-    marginTop: Spacing.xs,
-  },
-  driverButtonText: {
-    color: Colors.primary,
-    fontWeight: FontWeights.semibold,
-    fontSize: FontSizes.sm,
-  },
-  footer: {
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray[200],
-    backgroundColor: Colors.white,
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.xl,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.bold,
-    fontSize: FontSizes.base,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.lg,
-  },
-  modalCard: {
-    width: '100%',
-    borderRadius: BorderRadius.xl,
-    backgroundColor: Colors.white,
-    padding: Spacing.xl,
-    alignItems: 'center',
-    ...CommonStyles.shadowLg,
-    gap: Spacing.md,
-  },
-  modalIconWrapper: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalIconSuccess: {
-    backgroundColor: Colors.success,
-  },
-  modalIconError: {
-    backgroundColor: Colors.danger,
-  },
-  modalTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[900],
-  },
-  modalMessage: {
-    textAlign: 'center',
-    color: Colors.gray[600],
-  },
-  modalButton: {
-    marginTop: Spacing.sm,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.full,
-  },
-  modalButtonText: {
-    color: Colors.white,
-    fontWeight: FontWeights.semibold,
-  },
-});
+
 

@@ -1,0 +1,115 @@
+/**
+ * Handler d'événements en arrière-plan pour Notifee
+ * Ce fichier doit être importé au niveau racine de l'application (_layout.tsx)
+ * pour que les événements de notification soient gérés même quand l'app est fermée
+ */
+
+import { Linking } from 'react-native';
+import { ONGOING_TRIP_NOTIFICATION_ID } from './ongoingTripNotification';
+import { getNotificationHref } from '@/utils/notificationNavigation';
+
+// Types Notifee
+type NotifeeModule = typeof import('@notifee/react-native');
+type NotifeeDefault = NotifeeModule['default'];
+type NotifeeEventTypeEnum = NotifeeModule['EventType'];
+
+let notifee: NotifeeDefault | null = null;
+let EventTypeEnum: NotifeeEventTypeEnum | null = null;
+
+async function openAppDeepLink(deepLink: string): Promise<void> {
+  try {
+    await Linking.openURL(deepLink);
+    return;
+  } catch (error) {
+    console.warn('[NotifeeBackgroundHandler] Deep link failed:', deepLink, error);
+  }
+
+  if (deepLink === 'zwanga://') {
+    return;
+  }
+
+  try {
+    await Linking.openURL('zwanga://');
+  } catch (fallbackError) {
+    console.warn('[NotifeeBackgroundHandler] App fallback link failed:', fallbackError);
+  }
+}
+
+// Charger Notifee dynamiquement
+try {
+  const notifeeModule = require('@notifee/react-native') as NotifeeModule;
+  notifee = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
+  EventTypeEnum = notifeeModule.EventType;
+} catch (error) {
+  console.warn('[NotifeeBackgroundHandler] Notifee non disponible');
+}
+
+/**
+ * Configure le handler d'événements en arrière-plan pour Notifee
+ * Ce handler est appelé même quand l'app est complètement fermée
+ */
+if (notifee && EventTypeEnum) {
+  notifee.onBackgroundEvent(async ({ type, detail }) => {
+    console.log('[NotifeeBackgroundHandler] Background event:', type, detail);
+
+    const { notification, pressAction } = detail;
+
+    // Gérer les pressions sur les notifications
+    if (type === EventTypeEnum!.PRESS || type === EventTypeEnum!.ACTION_PRESS) {
+      const data = notification?.data || {};
+      
+      console.log('[NotifeeBackgroundHandler] Notification pressée en background:', data);
+
+      // Pour les notifications de trajet en cours
+      if (data.type === 'ongoing_trip' || notification?.id === ONGOING_TRIP_NOTIFICATION_ID) {
+        const href = getNotificationHref({ ...data, type: 'ongoing_trip' });
+        const deepLink = typeof href === 'string' ? `zwanga://${href.replace(/^\//, '')}` : 'zwanga://';
+
+        console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
+
+        // Ouvrir l'app avec le deep link sans propager une erreur native.
+        await openAppDeepLink(deepLink);
+        return;
+      }
+
+      // Pour les autres types de notifications, utiliser navigateTo ou les données standard
+      const navigateTo = data.navigateTo as string | undefined;
+      const tripId = data.tripId as string | undefined;
+      const conversationId = data.conversationId as string | undefined;
+      const requestId = data.requestId as string | undefined;
+
+      let deepLink = 'zwanga://';
+
+      if (navigateTo) {
+        deepLink += navigateTo.startsWith('/') ? navigateTo.slice(1) : navigateTo;
+      } else if (requestId) {
+        deepLink += `request/${requestId}`;
+      } else if (tripId) {
+        // Déterminer si c'est un conducteur ou passager
+        const role = data.role as string | undefined;
+        if (role === 'driver') {
+          deepLink += `trip/manage/${tripId}`;
+        } else {
+          deepLink += `trip/${tripId}`;
+        }
+      } else if (conversationId) {
+        deepLink += `chat/${conversationId}`;
+      }
+
+      console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
+
+      await openAppDeepLink(deepLink);
+    }
+
+    // Gérer les dismissals (optionnel)
+    if (type === EventTypeEnum!.DISMISSED) {
+      console.log('[NotifeeBackgroundHandler] Notification dismissed:', notification?.id);
+      // Pas d'action spéciale pour l'instant
+    }
+  });
+
+  console.log('[NotifeeBackgroundHandler] Background handler configuré');
+}
+
+export {};
+

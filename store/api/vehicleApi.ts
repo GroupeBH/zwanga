@@ -1,8 +1,10 @@
 import { baseApi } from './baseApi';
-import type { Vehicle } from '../../types';
+import type { TripRequestVehicleType, Vehicle } from '../../types';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '../../constants/network';
 import type { BaseEndpointBuilder } from './types';
 
 type CreateVehiclePayload = {
+  type: TripRequestVehicleType;
   brand: string;
   model: string;
   color: string;
@@ -14,41 +16,67 @@ type UpdateVehiclePayload = Partial<CreateVehiclePayload> & {
   isActive?: boolean;
 };
 
+const vehicleListTag = { type: 'Vehicle' as const, id: 'LIST' };
+const currentUserTag = { type: 'User' as const, id: 'CURRENT' };
+
 export const vehicleApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
     getVehicles: builder.query<Vehicle[], void>({
       query: () => '/vehicles',
       providesTags: (result: Vehicle[] | undefined) =>
         result
-          ? [...result.map(({ id }) => ({ type: 'Vehicle' as const, id })), 'Vehicle']
-          : ['Vehicle'],
+          ? [...result.map(({ id }) => ({ type: 'Vehicle' as const, id })), vehicleListTag]
+          : [vehicleListTag],
     }),
     createVehicle: builder.mutation<Vehicle, CreateVehiclePayload>({
       query: (body: CreateVehiclePayload) => ({
         url: '/vehicles',
         method: 'POST',
         body,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
-      invalidatesTags: ['Vehicle', 'User'],
+      async onQueryStarted(_body, { dispatch, queryFulfilled }) {
+        try {
+          const { data: createdVehicle } = await queryFulfilled;
+
+          dispatch(
+            vehicleApi.util.updateQueryData('getVehicles', undefined, (draft) => {
+              const alreadyExists = draft.some((vehicle) => vehicle.id === createdVehicle.id);
+              if (!alreadyExists) {
+                draft.unshift(createdVehicle);
+              }
+            }),
+          );
+        } catch {
+          // L'erreur est gérée par le composant appelant.
+        }
+      },
+      invalidatesTags: [vehicleListTag, currentUserTag],
     }),
     updateVehicle: builder.mutation<Vehicle, { id: string; data: UpdateVehiclePayload }>({
       query: ({ id, data }: { id: string; data: UpdateVehiclePayload }) => ({
         url: `/vehicles/${id}`,
         method: 'PUT',
         body: data,
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'Vehicle', id },
-        'Vehicle',
-        'User',
+        vehicleListTag,
+        currentUserTag,
       ],
     }),
     deleteVehicle: builder.mutation<{ message: string }, string>({
       query: (id: string) => ({
         url: `/vehicles/${id}`,
         method: 'DELETE',
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
-      invalidatesTags: (_result, _error, id: string) => [{ type: 'Vehicle', id }, 'Vehicle', 'User'],
+      invalidatesTags: (_result, _error, id: string) => [
+        { type: 'Vehicle', id },
+        vehicleListTag,
+        currentUserTag,
+      ],
     }),
   }),
 });

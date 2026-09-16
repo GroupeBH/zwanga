@@ -1,0 +1,142 @@
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { StyleSheet } from 'react-native';
+
+export const styles = StyleSheet.create({
+  proCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
+    padding: Spacing.md,
+    gap: Spacing.md,
+    ...CommonStyles.shadowSm,
+  },
+  proCardActive: {
+    borderColor: Colors.success + '40',
+    backgroundColor: '#FFFFFF',
+  },
+  proHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  proIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proIconActive: {
+    backgroundColor: Colors.success,
+  },
+  proTitleContent: {
+    flex: 1,
+  },
+  proTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  proTitle: {
+    fontSize: FontSizes.base,
+    fontWeight: FontWeights.bold,
+    color: Colors.gray[900],
+  },
+  proBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.success + '15',
+  },
+  proBadgeText: {
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
+    color: Colors.successDark,
+  },
+  proSubtitle: {
+    marginTop: 2,
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    lineHeight: 17,
+  },
+  proBenefitRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  proBenefitPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.gray[50],
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+  },
+  proBenefitText: {
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
+    color: Colors.gray[700],
+  },
+  proFundingText: {
+    fontSize: FontSizes.xs,
+    color: Colors.gray[600],
+    lineHeight: 17,
+  },
+  proPrimaryButton: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  proPrimaryButtonText: {
+    color: Colors.white,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  proSecondaryButton: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: Colors.primary + '35',
+    backgroundColor: Colors.primary + '08',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  proSecondaryButtonText: {
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+  proSecondaryPrice: {
+    marginTop: 2,
+    color: Colors.gray[600],
+    fontSize: 10,
+    fontWeight: FontWeights.semibold,
+  },
+  proActivePanel: {
+    minHeight: 46,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.success + '10',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  proActiveText: {
+    flex: 1,
+    color: Colors.successDark,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
+});

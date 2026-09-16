@@ -1,28 +1,29 @@
+import { useAuthForegroundSession } from '../hooks/auth/useAuthForegroundSession';
 import { Colors } from '@/constants/styles';
-import { clearStoredFcmToken, obtainFcmToken } from '@/services/pushNotifications';
-import { refreshAccessToken } from '@/services/tokenRefresh';
+import { clearStoredFcmToken, obtainFcmToken, subscribeToFcmRefresh } from '@/services/pushNotifications';
+import { proactiveTokenRefresh, validateAndRefreshTokens } from '@/services/tokenRefresh';
+import { getTokens } from '@/services/tokenStorage';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import {
-  selectAccessToken,
-  selectIsAuthenticated,
-  selectIsLoading,
-  selectRefreshToken,
-} from '@/store/selectors';
-import { logout } from '@/store/slices/authSlice';
-import { isTokenExpired } from '@/utils/jwt';
-import { useRouter, useSegments } from 'expo-router';
-import { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { selectAccessToken, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
+import { performLogout, setTokens } from '@/store/slices/authSlice';
+import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
+import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
+import { useCallback, useEffect, useRef } from 'react';
+import { ActivityIndicator, AppState, InteractionManager, StyleSheet, View } from 'react-native';
+import type { AppStateStatus } from 'react-native';
+
+const FCM_SYNC_RETRY_DELAY_MS = 60_000;
 
 /**
- * Composant de protection des routes
- * Redirige vers /auth si l'utilisateur n'est pas authentifié
- * Redirige vers /(tabs) si l'utilisateur est authentifié et sur /auth
+ * Route guard:
+ * - redirects unauthenticated users to /auth-entry;
+ * - redirects authenticated users away from auth screens.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
   const dispatch = useAppDispatch();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const isLoading = useAppSelector(selectIsLoading);
@@ -30,58 +31,195 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const refreshToken = useAppSelector(selectRefreshToken);
   const [updateFcmTokenMutation] = useUpdateFcmTokenMutation();
   const inAuthGroup = segments[0] === 'auth';
+  const currentSegment = segments[0];
+  const isPublicRoute =
+    currentSegment === 'splash' ||
+    currentSegment === 'onboarding' ||
+    currentSegment === 'auth-entry' ||
+    currentSegment === 'background-location-disclosure';
+  const hasCheckedSecureStore = useRef(false);
+  const isLoggingOut = useRef(false);
+  const lastAuthTime = useRef<number | null>(null);
+  const isRedirectingAfterLogout = useRef(false);
+  const lastFcmSyncAccessToken = useRef<string | null>(null);
+  const lastSyncedFcmRegistration = useRef<string | null>(null);
+  const fcmSyncInFlightRegistration = useRef<string | null>(null);
+  const fcmSyncRetry = useRef<{ key: string; notBefore: number } | null>(null);
+  const latestAuthState = useRef({ isAuthenticated, accessToken, refreshToken });
+  const lastAppState = useRef<AppStateStatus>(AppState.currentState);
+  const appBackgroundedAt = useRef<number | null>(null);
+  const isForegroundRefreshInFlight = useRef(false);
+  const lastForegroundRefreshAt = useRef(0);
+  const pendingRedirectRef = useRef<'auth-entry' | '(tabs)' | null>(null);
 
+  const replaceRootRoute = useCallback(
+    (target: 'auth-entry' | '(tabs)') => {
+      if (
+        !rootNavigationState?.key ||
+        !rootNavigationState.routeNames?.includes(target) ||
+        currentSegment === target ||
+        pendingRedirectRef.current === target
+      ) {
+        return;
+      }
+
+      pendingRedirectRef.current = target;
+      router.replace(target === 'auth-entry' ? '/auth-entry' : '/(tabs)');
+      setTimeout(() => {
+        if (pendingRedirectRef.current === target) {
+          pendingRedirectRef.current = null;
+        }
+      }, 600);
+    },
+    [currentSegment, rootNavigationState?.key, rootNavigationState?.routeNames, router],
+  );
+
+  useEffect(() => {
+    latestAuthState.current = { isAuthenticated, accessToken, refreshToken };
+  }, [isAuthenticated, accessToken, refreshToken]);
+
+  // Validate SecureStore tokens before hydrating Redux (ex: hot reload).
+  useEffect(() => {
+    if (isLoading || hasCheckedSecureStore.current) return;
+
+    const checkSecureStore = async () => {
+      if (!accessToken && !refreshToken && !isAuthenticated) {
+        if (__DEV__) {
+          console.log('[AuthGuard] Redux empty - validating SecureStore session...');
+        }
+        try {
+          const hasValidSession = await validateAndRefreshTokens();
+          if (!hasValidSession) {
+            if (__DEV__) {
+              console.log('[AuthGuard] No valid session found in SecureStore');
+            }
+            return;
+          }
+
+          const storedTokens = await getTokens();
+          if (storedTokens.accessToken && storedTokens.refreshToken) {
+            if (__DEV__) {
+              console.log('[AuthGuard] Valid session found - hydrating Redux');
+            }
+            dispatch(
+              setTokens({
+                accessToken: storedTokens.accessToken,
+                refreshToken: storedTokens.refreshToken,
+              })
+            );
+          }
+        } finally {
+          hasCheckedSecureStore.current = true;
+        }
+      } else {
+        hasCheckedSecureStore.current = true;
+      }
+    };
+
+    checkSecureStore();
+  }, [isLoading, accessToken, refreshToken, isAuthenticated, dispatch]);
+
+  // Do not hold the first screen while refreshing an access token that is still valid.
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void proactiveTokenRefresh();
+    });
+    return () => task.cancel();
+  }, [isLoading, isAuthenticated]);
+
+  // Proactive refresh on foreground. Expired startup sessions are handled by initializeAuth().
+  useAuthForegroundSession({
+    isLoading,
+    lastAuthTime,
+    lastAppState,
+    appBackgroundedAt,
+    isAuthenticated,
+    accessToken,
+    refreshToken,
+    latestAuthState,
+    isForegroundRefreshInFlight,
+    lastForegroundRefreshAt,
+    dispatch,
+  });
+
+  // Detect successful auth to avoid false-positive logout races.
+  const wasAuthenticated = useRef(false);
+  useEffect(() => {
+    const hasTokenSession = Boolean(isAuthenticated && accessToken && refreshToken);
+    if (hasTokenSession && !wasAuthenticated.current) {
+      lastAuthTime.current = Date.now();
+      if (__DEV__) {
+        console.log('[AuthGuard] Successful authentication detected');
+      }
+    }
+    wasAuthenticated.current = hasTokenSession;
+  }, [isAuthenticated, accessToken, refreshToken]);
+
+  // Token sanity and route enforcement.
   useEffect(() => {
     if (isLoading) return;
 
     const enforceTokens = async () => {
-      // Si l'utilisateur est authentifié mais qu'on est dans le groupe auth, ne pas vérifier les tokens
-      // (permet de laisser l'utilisateur compléter le processus d'inscription/KYC)
+      const timeSinceLastAuth = lastAuthTime.current
+        ? Date.now() - lastAuthTime.current
+        : Infinity;
+      const justAuthenticated = timeSinceLastAuth < 3000;
+
       if (isAuthenticated && inAuthGroup) {
         return;
       }
 
-      // Si l'utilisateur est authentifié mais qu'on n'a pas encore de tokens dans le store Redux,
-      // ne pas déconnecter immédiatement - les tokens sont peut-être en train d'être chargés
-      // ou viennent d'être sauvegardés dans SecureStore via onQueryStarted
-      // On attendra que les tokens soient chargés lors du prochain cycle de rendu
       if (isAuthenticated && !accessToken && !refreshToken) {
-        console.log('[AuthGuard] Utilisateur authentifié mais tokens non encore dans le store - attente...');
-        return;
-      }
-
-      // Aucun token disponible ET utilisateur non authentifié : rediriger vers /auth
-      if (!accessToken && !refreshToken && !isAuthenticated) {
-        if (!inAuthGroup) {
-          router.replace('/auth');
-        }
-        return;
-      }
-
-      // Refresh token expiré -> déconnexion
-      if (refreshToken && isTokenExpired(refreshToken)) {
-        dispatch(logout());
-        if (!inAuthGroup) {
-          router.replace('/auth');
-        }
-        return;
-      }
-
-      // Access token manquant ou expiré mais refresh token valide -> tentative de refresh
-      if (!accessToken || (accessToken && isTokenExpired(accessToken))) {
-        const refreshed = refreshToken ? await refreshAccessToken(refreshToken) : null;
-        // Ne pas rediriger vers /auth si le refresh a échoué à cause d'une erreur réseau
-        // L'utilisateur reste connecté et peut utiliser l'app en mode offline
-        // On redirige seulement si l'utilisateur n'est vraiment pas authentifié ET qu'on n'est pas en erreur réseau
-        if (!refreshed && !inAuthGroup && !isAuthenticated && accessToken && refreshToken) {
-          // Si on a des tokens mais que le refresh a échoué, c'est peut-être une erreur réseau
-          // Ne pas rediriger immédiatement - laisser l'utilisateur utiliser l'app en mode offline
-          console.log('[AuthGuard] Refresh échoué mais tokens présents - peut-être offline, pas de redirection');
+        if (justAuthenticated) {
+          if (__DEV__) {
+            console.log('[AuthGuard] Recent auth, waiting token propagation...');
+          }
           return;
         }
-        if (!refreshed && !inAuthGroup && !isAuthenticated && !accessToken && !refreshToken) {
-          // Pas de tokens du tout - rediriger vers /auth
-          router.replace('/auth');
+        if (__DEV__) {
+          console.log('[AuthGuard] Authenticated but tokens missing in Redux');
+        }
+        return;
+      }
+
+      if (
+        !accessToken &&
+        !refreshToken &&
+        !isAuthenticated &&
+        !justAuthenticated &&
+        !isLoggingOut.current
+      ) {
+        if (!inAuthGroup && !isPublicRoute && !isRedirectingAfterLogout.current) {
+          replaceRootRoute('auth-entry');
+        }
+        return;
+      }
+
+      if (refreshToken && isTokenExpired(refreshToken) && !justAuthenticated) {
+        if (!isLoggingOut.current) {
+          isLoggingOut.current = true;
+          isRedirectingAfterLogout.current = true;
+
+          try {
+            await dispatch(performLogout()).unwrap();
+            if (__DEV__) {
+              console.log('[AuthGuard] Logout done - redirecting to /auth-entry');
+            }
+            if (!inAuthGroup) {
+              replaceRootRoute('auth-entry');
+            }
+          } catch (error) {
+            console.error('[AuthGuard] Logout error:', error);
+            if (!inAuthGroup) {
+              replaceRootRoute('auth-entry');
+            }
+          } finally {
+            isLoggingOut.current = false;
+            setTimeout(() => {
+              isRedirectingAfterLogout.current = false;
+            }, 1000);
+          }
         }
       }
     };
@@ -93,68 +231,142 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     isAuthenticated,
     isLoading,
     dispatch,
-    router,
+    replaceRootRoute,
     inAuthGroup,
+    isPublicRoute,
   ]);
 
   useEffect(() => {
-    // Attendre que le chargement soit terminé avant de rediriger
     if (isLoading) {
       return;
     }
 
-    // Déterminer si on est dans une route protégée (tabs)
-    console.log(`[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(segments)}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`);
-
-    // Si l'utilisateur est authentifié mais qu'on est dans le groupe auth, ne pas rediriger
-    // (permet de laisser l'utilisateur compléter le processus d'inscription/KYC)
-    if (isAuthenticated && inAuthGroup) {
-      console.log('[AuthGuard] Authentifié dans le groupe auth. Pas de redirection automatique (pour permettre KYC).');
-      return;
+    if (__DEV__) {
+      console.log(
+        `[AuthGuard] Check: Auth=${isAuthenticated}, InAuthGroup=${inAuthGroup}, Segments=${JSON.stringify(
+          segments
+        )}, AccessToken=${!!accessToken}, RefreshToken=${!!refreshToken}`
+      );
     }
 
-    // Si l'utilisateur n'est pas authentifié et qu'on n'est pas dans le groupe auth, rediriger vers /auth
-    // Mais seulement si on n'a vraiment pas de tokens (pour éviter les redirections pendant la connexion)
-    if (!isAuthenticated && !inAuthGroup && !accessToken && !refreshToken) {
-      console.log('[AuthGuard] Non authentifié et hors du groupe auth - redirection vers /auth');
-      router.replace('/auth');
+    if (isAuthenticated && accessToken && refreshToken) {
+      if (segments[0] === 'auth-entry') {
+        if (__DEV__) {
+          console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
+        }
+        replaceRootRoute('(tabs)');
+        return;
+      }
+
+      if (inAuthGroup && segments[0] === 'auth' && segments.length === 1) {
+        if (__DEV__) {
+          console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
+        }
+        replaceRootRoute('(tabs)');
+        return;
+      }
     }
-  }, [isAuthenticated, isLoading, segments, inAuthGroup, router, accessToken, refreshToken]);
+
+    if (!isAuthenticated && !inAuthGroup && !isPublicRoute && !accessToken && !refreshToken) {
+      if (__DEV__) {
+        console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
+      }
+      replaceRootRoute('auth-entry');
+    }
+  }, [
+    isAuthenticated,
+    isLoading,
+    segments,
+    inAuthGroup,
+    isPublicRoute,
+    replaceRootRoute,
+    accessToken,
+    refreshToken,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let interactionTask: { cancel: () => void } | null = null;
+    let unsubscribeTokenRefresh: (() => void) | null = null;
 
     const syncTokenWithBackend = async (token: string | null) => {
-      if (!token) {
+      const userId = accessToken ? getUserIdFromToken(accessToken) : null;
+      if (!token || !userId) {
         return;
       }
+
+      const registrationKey = `${userId}:${token}`;
+      const retry = fcmSyncRetry.current;
+      if (
+        lastSyncedFcmRegistration.current === registrationKey ||
+        fcmSyncInFlightRegistration.current === registrationKey ||
+        (retry?.key === registrationKey && Date.now() < retry.notBefore)
+      ) {
+        return;
+      }
+
+      fcmSyncInFlightRegistration.current = registrationKey;
       try {
         await updateFcmTokenMutation({ fcmToken: token }).unwrap();
+        lastSyncedFcmRegistration.current = registrationKey;
+        fcmSyncRetry.current = null;
       } catch (error) {
-        console.warn('Impossible d\'envoyer le token FCM au serveur:', error);
+        fcmSyncRetry.current = {
+          key: registrationKey,
+          notBefore: Date.now() + FCM_SYNC_RETRY_DELAY_MS,
+        };
+        console.warn('Unable to send FCM token to backend:', error);
+      } finally {
+        if (fcmSyncInFlightRegistration.current === registrationKey) {
+          fcmSyncInFlightRegistration.current = null;
+        }
       }
     };
 
     const registerPushToken = async () => {
       if (!isAuthenticated) {
+        lastFcmSyncAccessToken.current = null;
+        lastSyncedFcmRegistration.current = null;
+        fcmSyncInFlightRegistration.current = null;
+        fcmSyncRetry.current = null;
         await clearStoredFcmToken();
+        return;
+      }
+
+      if (!accessToken || lastFcmSyncAccessToken.current === accessToken) {
         return;
       }
 
       const token = await obtainFcmToken();
       if (!cancelled) {
         await syncTokenWithBackend(token);
+        lastFcmSyncAccessToken.current = accessToken;
       }
     };
 
-    registerPushToken();
+    interactionTask = InteractionManager.runAfterInteractions(() => {
+      if (isAuthenticated) {
+        unsubscribeTokenRefresh = subscribeToFcmRefresh(syncTokenWithBackend);
+      }
+      timeout = setTimeout(() => {
+        if (cancelled || AppState.currentState !== 'active') {
+          return;
+        }
+        registerPushToken();
+      }, 1200);
+    });
 
     return () => {
       cancelled = true;
+      interactionTask?.cancel();
+      unsubscribeTokenRefresh?.();
+      if (timeout) {
+        clearTimeout(timeout);
+      }
     };
-  }, [isAuthenticated, updateFcmTokenMutation]);
+  }, [isAuthenticated, accessToken, updateFcmTokenMutation]);
 
-  // Afficher un loader pendant le chargement initial
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -174,4 +386,3 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
 });
-

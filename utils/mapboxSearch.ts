@@ -1,100 +1,6 @@
-import Constants from 'expo-constants';
-
-/* =====================================================
-   CONFIG
-===================================================== */
-
-const mapboxToken =
-  Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-  process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN;
-
-// Proximité par défaut : Kinshasa
-const DEFAULT_PROXIMITY = {
-  latitude: -4.325,
-  longitude: 15.322,
-};
-
-// Bounding box de la République Démocratique du Congo
-// Format: [longitude ouest, latitude sud, longitude est, latitude nord]
-const RDC_BBOX = '12.0,-13.5,31.3,5.4';
-
-// Code ISO du pays pour la RDC
-const RDC_COUNTRY_CODE = 'cd';
-
-// Configuration des villes principales de la RDC pour améliorer la précision
-const MAJOR_CITIES = {
-  kinshasa: {
-    name: 'Kinshasa',
-    center: { latitude: -4.325, longitude: 15.322 },
-    bbox: { minLng: 15.0, maxLng: 15.5, minLat: -4.6, maxLat: -4.2 },
-    aliases: ['kinshasa', 'kin', 'kinsasa'],
-  },
-  lubumbashi: {
-    name: 'Lubumbashi',
-    center: { latitude: -11.664, longitude: 27.482 },
-    bbox: { minLng: 27.3, maxLng: 27.7, minLat: -11.8, maxLat: -11.5 },
-    aliases: ['lubumbashi', 'lubum', 'elizabethville'],
-  },
-  goma: {
-    name: 'Goma',
-    center: { latitude: -1.679, longitude: 29.228 },
-    bbox: { minLng: 29.1, maxLng: 29.3, minLat: -1.75, maxLat: -1.6 },
-    aliases: ['goma'],
-  },
-  bukavu: {
-    name: 'Bukavu',
-    center: { latitude: -2.490, longitude: 28.860 },
-    bbox: { minLng: 28.8, maxLng: 28.95, minLat: -2.55, maxLat: -2.45 },
-    aliases: ['bukavu', 'costermansville'],
-  },
-  matadi: {
-    name: 'Matadi',
-    center: { latitude: -5.817, longitude: 13.450 },
-    bbox: { minLng: 13.3, maxLng: 13.6, minLat: -5.9, maxLat: -5.7 },
-    aliases: ['matadi'],
-  },
-  kolwezi: {
-    name: 'Kolwezi',
-    center: { latitude: -10.716, longitude: 25.467 },
-    bbox: { minLng: 25.3, maxLng: 25.6, minLat: -10.8, maxLat: -10.6 },
-    aliases: ['kolwezi', 'kolwesi'],
-  },
-} as const;
-
-// Fonction pour détecter si une suggestion appartient à une ville majeure
-function detectCity(suggestion: MapboxSearchSuggestion): string | null {
-  const locality = suggestion.context?.locality?.toLowerCase() || '';
-  const region = suggestion.context?.region?.toLowerCase() || '';
-  const name = suggestion.name?.toLowerCase() || '';
-  const fullAddress = suggestion.fullAddress?.toLowerCase() || '';
-  
-  const searchText = `${locality} ${region} ${name} ${fullAddress}`;
-  
-  for (const [cityKey, cityConfig] of Object.entries(MAJOR_CITIES)) {
-    // Vérifier les alias et le nom de la ville
-    if (cityConfig.aliases.some(alias => searchText.includes(alias))) {
-      return cityKey;
-    }
-    
-    // Vérifier les coordonnées dans la bounding box de la ville
-    if (suggestion.coordinates.latitude !== null && suggestion.coordinates.longitude !== null) {
-      const lat = suggestion.coordinates.latitude;
-      const lng = suggestion.coordinates.longitude;
-      const bbox = cityConfig.bbox;
-      
-      if (
-        lng >= bbox.minLng &&
-        lng <= bbox.maxLng &&
-        lat >= bbox.minLat &&
-        lat <= bbox.maxLat
-      ) {
-        return cityKey;
-      }
-    }
-  }
-  
-  return null;
-}
+import { DEFAULT_PROXIMITY, RDC_BBOX, RDC_COUNTRY_CODE, MAJOR_CITIES, detectCity } from './mapboxSearchModel';
+import { store } from '@/store';
+import { isMapboxConfigured, mapboxApi } from '@/store/api/mapboxApi';
 
 /* =====================================================
    SESSION TOKEN (obligatoire Mapbox Search Box)
@@ -151,7 +57,7 @@ export async function searchMapboxPlaces(
   proximity?: { longitude: number; latitude: number },
   limit: number = 5,
 ): Promise<MapboxSearchSuggestion[]> {
-  if (!mapboxToken || !query?.trim()) return [];
+  if (!isMapboxConfigured() || !query?.trim()) return [];
 
   const trimmedQuery = query.trim().substring(0, 256);
   const validLimit = Math.min(Math.max(limit, 1), 10);
@@ -174,38 +80,27 @@ export async function searchMapboxPlaces(
     DEFAULT_PROXIMITY;
 
   try {
-    const params = new URLSearchParams();
-    params.append('q', trimmedQuery);
-    params.append('access_token', mapboxToken);
-    params.append('session_token', getSessionToken());
-    params.append('limit', validLimit.toString());
-    params.append('language', 'fr');
-
-    // 🔒 RESTRICTION GÉOGRAPHIQUE : République Démocratique du Congo uniquement
-    params.append('country', RDC_COUNTRY_CODE);
-    params.append('bbox', RDC_BBOX);
-
-    // Types de lieux détaillés : adresses, rues/avenues, quartiers, districts, localités, POI
-    // Inclut tous les types pertinents pour obtenir des résultats précis dans les villes majeures
-    params.append(
-      'types',
-      'address,street,neighborhood,district,locality,place,poi',
+    const request = store.dispatch(
+      mapboxApi.endpoints.suggestPlaces.initiate(
+        {
+          query: trimmedQuery,
+          sessionToken: getSessionToken(),
+          limit: validLimit,
+          language: 'fr',
+          country: RDC_COUNTRY_CODE,
+          bbox: RDC_BBOX,
+          types: 'address,street,neighborhood,district,locality,place,poi',
+          proximity: `${effectiveProximity.longitude},${effectiveProximity.latitude}`,
+        },
+        { forceRefetch: true, subscribe: false },
+      ),
     );
-
-    params.append(
-      'proximity',
-      `${effectiveProximity.longitude},${effectiveProximity.latitude}`,
-    );
-
-    const url = `https://api.mapbox.com/search/searchbox/v1/suggest?${params.toString()}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      console.warn('Mapbox suggest error:', response.status);
-      return [];
+    let data: any;
+    try {
+      data = await request.unwrap();
+    } finally {
+      request.unsubscribe();
     }
-
-    const data = await response.json();
     if (!Array.isArray(data?.suggestions)) return [];
 
     return data.suggestions
@@ -341,21 +236,24 @@ export async function searchMapboxPlaces(
 export async function getMapboxPlaceDetails(
   suggestionId: string,
 ): Promise<MapboxSearchSuggestion | null> {
-  if (!mapboxToken) return null;
+  if (!isMapboxConfigured()) return null;
 
   try {
-    const params = new URLSearchParams({
-      id: suggestionId,
-      access_token: mapboxToken,
-      session_token: getSessionToken(),
-    });
-
-    const url = `https://api.mapbox.com/search/searchbox/v1/retrieve?${params.toString()}`;
-    const response = await fetch(url);
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
+    const request = store.dispatch(
+      mapboxApi.endpoints.retrievePlace.initiate(
+        {
+          suggestionId,
+          sessionToken: getSessionToken(),
+        },
+        { forceRefetch: true, subscribe: false },
+      ),
+    );
+    let data: any;
+    try {
+      data = await request.unwrap();
+    } finally {
+      request.unsubscribe();
+    }
     const feature = data?.features?.[0];
     if (!feature?.geometry?.coordinates) return null;
 

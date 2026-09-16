@@ -1,12 +1,11 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import type { Trip } from '@/types';
-import { formatTime, formatDateWithRelativeLabel } from '@/utils/dateHelpers';
+import { formatDateTime } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
 
 interface TripCardProps {
   trip: Trip;
@@ -16,9 +15,11 @@ interface TripCardProps {
   showDetailsButton?: boolean;
 }
 
-export function TripCard({ trip, index = 0, onPress, showReserveButton = false, showDetailsButton = true }: TripCardProps) {
+export function TripCard({ trip, onPress, showReserveButton = false, showDetailsButton = true }: TripCardProps) {
   const router = useRouter();
   const calculatedArrivalTime = useTripArrivalTime(trip);
+  const hasPremiumBadge = Boolean(trip.driver?.premiumBadge || trip.driver?.premiumBadgeEnabled);
+  const isFeatured = Boolean(trip.isFeatured);
 
   const handlePress = () => {
     if (onPress) {
@@ -28,20 +29,27 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
     }
   };
 
-  const arrivalTimeDisplay = calculatedArrivalTime 
-    ? formatTime(calculatedArrivalTime.toISOString())
-    : formatTime(trip.arrivalTime);
+  const arrivalDateTimeDisplay = calculatedArrivalTime
+    ? formatDateTime(calculatedArrivalTime.toISOString())
+    : formatDateTime(trip.arrivalTime);
 
   return (
-    <Animated.View
-      entering={FadeInDown.delay(index * 100)}
-      style={styles.tripCard}
-    >
+    <View style={[styles.tripCard, isFeatured && styles.tripCardFeatured]}>
       <View style={styles.tripHeader}>
         <View style={styles.tripDriverInfo}>
           <View style={styles.avatar} />
           <View style={styles.tripDriverDetails}>
-            <Text style={styles.driverName}>{trip.driverName}</Text>
+            <View style={styles.driverNameRow}>
+              <Text style={styles.driverName} numberOfLines={1}>
+                {trip.driverName}
+              </Text>
+              {hasPremiumBadge && (
+                <View style={styles.proBadge}>
+                  <Ionicons name="shield-checkmark" size={12} color={Colors.white} />
+                  <Text style={styles.proBadgeText}>Pro</Text>
+                </View>
+              )}
+            </View>
             <View style={styles.driverMeta}>
               <Ionicons name="star" size={14} color={Colors.secondary} />
               <Text style={styles.driverRating}>{trip.driverRating}</Text>
@@ -66,12 +74,8 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
           <Ionicons name="location" size={16} color={Colors.success} />
           <Text style={styles.routeText}>{trip.departure.name}</Text>
           <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>
-              {formatDateWithRelativeLabel(trip.departureTime, false)}
-            </Text>
-            <Text style={styles.routeTime}>
-              {formatTime(trip.departureTime)}
-            </Text>
+            <Text style={styles.routeDateLabel}>Départ</Text>
+            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
           </View>
         </View>
 
@@ -79,14 +83,8 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
           <Ionicons name="navigate" size={16} color={Colors.primary} />
           <Text style={styles.routeText}>{trip.arrival.name}</Text>
           <View style={styles.timeContainer}>
-            {calculatedArrivalTime && (
-              <Text style={styles.routeDateLabel}>
-                {formatDateWithRelativeLabel(calculatedArrivalTime.toISOString(), false)}
-              </Text>
-            )}
-            <Text style={styles.routeTime}>
-              {arrivalTimeDisplay}
-            </Text>
+            <Text style={styles.routeDateLabel}>Arrivée estimée</Text>
+            <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
           </View>
         </View>
       </View>
@@ -115,7 +113,7 @@ export function TripCard({ trip, index = 0, onPress, showReserveButton = false, 
           </TouchableOpacity>
         )}
       </View>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -125,7 +123,12 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xl,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
-    ...Colors.shadowSm,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
+    ...CommonStyles.shadowSm,
+  },
+  tripCardFeatured: {
+    borderColor: Colors.primary + '45',
   },
   tripHeader: {
     flexDirection: 'row',
@@ -148,11 +151,31 @@ const styles = StyleSheet.create({
   tripDriverDetails: {
     flex: 1,
   },
+  driverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
   driverName: {
+    flex: 1,
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
-    marginBottom: Spacing.xs,
+  },
+  proBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: BorderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  proBadgeText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: FontWeights.bold,
   },
   driverMeta: {
     flexDirection: 'row',

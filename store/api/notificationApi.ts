@@ -48,6 +48,23 @@ type MarkNotificationsAsReadPayload = {
 export const notificationApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
+    getNotificationPages: builder.infiniteQuery<NotificationsResponse, void, number>({
+      keepUnusedDataFor: 30,
+      infiniteQueryOptions: {
+        initialPageParam: 0,
+        getNextPageParam: (lastPage, _pages, offset) => {
+          const nextOffset = offset + lastPage.notifications.length;
+          return lastPage.notifications.length > 0 && nextOffset < lastPage.total
+            ? nextOffset : undefined;
+        },
+      },
+      query: ({ pageParam }) => ({ url: '/notifications', params: { limit: 40, offset: pageParam } }),
+      transformResponse: (response: { notifications: ServerNotification[]; total: number; unreadCount: number }) => ({
+        ...response,
+        notifications: response.notifications.map(mapServerNotificationToClient),
+      }),
+      providesTags: ['Notification'],
+    }),
     // Récupérer toutes les notifications de l'utilisateur
     getNotifications: builder.query<NotificationsResponse, GetNotificationsParams | void>({
       query: (params) => {
@@ -131,6 +148,7 @@ export const notificationApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetNotificationPagesInfiniteQuery,
   useGetNotificationsQuery,
   useMarkNotificationsAsReadMutation,
   useMarkAllNotificationsAsReadMutation,

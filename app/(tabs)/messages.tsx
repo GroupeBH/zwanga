@@ -1,30 +1,39 @@
-import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { useListConversationsQuery } from '@/store/api/messageApi';
+import { styles } from '../../features/screen-styles/app/tabs/messages/index';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { Colors } from '@/constants/styles';
+import { useDeleteConversationMutation, useListConversationPagesInfiniteQuery } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectConversations, selectUser } from '@/store/selectors';
 import { setConversations } from '@/store/slices/messagesSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MessagesScreen() {
+  const isScreenActive = useScreenIsActive();
   const dispatch = useAppDispatch();
   const user = useAppSelector(selectUser);
   const conversations = useAppSelector(selectConversations);
   const [search, setSearch] = useState('');
-  const { data, isLoading, isFetching } = useListConversationsQuery({ page: 1, limit: 50 });
+  const { data, isLoading, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useListConversationPagesInfiniteQuery(undefined, {
+    skip: !isScreenActive,
+    refetchOnMountOrArgChange: 30,
+    refetchOnReconnect: true,
+  });
   const router = useRouter();
+  const [deleteConversation] = useDeleteConversationMutation();
+  const { showDialog } = useDialog();
 
   useEffect(() => {
-    if (data?.data) {
-      dispatch(setConversations(data.data));
+    if (data) {
+      dispatch(setConversations(Array.from(new Map(data.pages.flatMap((page) => page.data).map((item) => [item.id, item])).values())));
     }
   }, [data, dispatch]);
 
-  const formatTimestamp = (rawValue: Date | string | number | null | undefined) => {
+  const formatTimestamp = useCallback((rawValue: Date | string | number | null | undefined) => {
     if (!rawValue) {
       return '--';
     }
@@ -53,7 +62,7 @@ export default function MessagesScreen() {
     if (minutes < 60) return `${minutes}m`;
     if (hours < 24) return `${hours}h`;
     return `${days}j`;
-  };
+  }, []);
 
   const filteredConversations = useMemo(() => {
     if (!search.trim()) {
@@ -75,7 +84,7 @@ export default function MessagesScreen() {
     });
   }, [conversations, search, user?.id]);
 
-  const getConversationTitle = (conversation: typeof conversations[number]) => {
+  const getConversationTitle = useCallback((conversation: typeof conversations[number]) => {
     if (conversation.title) {
       return conversation.title;
     }
@@ -87,7 +96,92 @@ export default function MessagesScreen() {
       }
     }
     return 'Conversation';
-  };
+  }, [user?.id]);
+
+  const handleDeleteConversation = useCallback((conversationId: string) => {
+    if (!conversationId) return;
+
+    showDialog({
+      title: 'Supprimer la conversation',
+      message:
+        'Voulez-vous vraiment supprimer cette conversation ? Elle disparaîtra de votre liste. Les messages pourront être définitivement supprimés si plus aucun participant ne la conserve.',
+      variant: 'danger',
+      actions: [
+        { label: 'Annuler', variant: 'ghost' },
+        {
+          label: 'Supprimer',
+          variant: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteConversation({ conversationId }).unwrap();
+            } catch (error) {
+              console.warn('[Messages] Failed to delete conversation', error);
+            }
+          },
+        },
+      ],
+    });
+  }, [deleteConversation, showDialog]);
+
+  const renderConversation = useCallback(
+    ({ item: conversation }: { item: typeof conversations[number] }) => {
+      const subtitle = conversation.lastMessage?.content ?? 'Conversation démarrée';
+      const timestamp = formatTimestamp(
+        conversation.lastMessage?.createdAt ?? conversation.lastMessageAt,
+      );
+      const title = getConversationTitle(conversation);
+
+      return (
+        <View style={styles.conversationRow}>
+          <TouchableOpacity
+            style={styles.conversationItem}
+            onPress={() =>
+              router.push({
+                pathname: '/chat/[id]',
+                params: { id: conversation.id, title },
+              })
+            }
+          >
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar} />
+              <View style={styles.onlineBadge} />
+            </View>
+
+            <View style={styles.conversationContent}>
+              <View style={styles.conversationHeader}>
+                <Text style={styles.conversationName}>{title}</Text>
+                <Text style={styles.conversationTime}>{timestamp}</Text>
+              </View>
+              <View style={styles.conversationFooter}>
+                <Text
+                  style={[
+                    styles.conversationMessage,
+                    (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {subtitle}
+                </Text>
+                {(conversation.unreadCount ?? 0) > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.deleteConversationButton}
+            onPress={() => handleDeleteConversation(conversation.id)}
+          >
+            <Ionicons name="trash-outline" size={20} color={Colors.danger} />
+          </TouchableOpacity>
+        </View>
+      );
+    },
+    [formatTimestamp, getConversationTitle, handleDeleteConversation, router],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -123,245 +217,36 @@ export default function MessagesScreen() {
         </View>
       )}
 
-      <ScrollView
+      <FlatList
         style={styles.scrollView}
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
-      >
-        {filteredConversations.length === 0 ? (
+        keyboardShouldPersistTaps="handled"
+        data={filteredConversations}
+        renderItem={renderConversation}
+        keyExtractor={(conversation) => conversation.id}
+        initialNumToRender={8}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
+        windowSize={7}
+        refreshing={isFetching && !isFetchingNextPage}
+        onRefresh={refetch}
+        onEndReached={() => { if (hasNextPage && !isFetching) void fetchNextPage(); }}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={Colors.primary} /> : null}
+        removeClippedSubviews
+        ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="chatbubbles-outline" size={48} color={Colors.gray[500]} />
             </View>
             <Text style={styles.emptyTitle}>Aucun message</Text>
-            <Text style={styles.emptyText}>
-              Vos conversations apparaîtront ici
-            </Text>
+            <Text style={styles.emptyText}>Vos conversations apparaîtront ici</Text>
           </View>
-        ) : (
-          filteredConversations.map((conversation, index) => {
-            const subtitle = conversation.lastMessage?.content ?? 'Conversation démarrée';
-            const timestamp = formatTimestamp(conversation.lastMessage?.createdAt ?? conversation.lastMessageAt);
-            const title = getConversationTitle(conversation);
-            return (
-              <Animated.View
-                key={conversation.id}
-                entering={FadeInDown.delay(index * 50)}
-              >
-                <TouchableOpacity
-                  style={styles.conversationItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/chat/[id]',
-                      params: {
-                        id: conversation.id,
-                        title,
-                      },
-                    })
-                  }
-                >
-                  <View style={styles.avatarContainer}>
-                    <View style={styles.avatar} />
-                    <View style={styles.onlineBadge} />
-                  </View>
-
-                  <View style={styles.conversationContent}>
-                    <View style={styles.conversationHeader}>
-                      <Text style={styles.conversationName}>{title}</Text>
-                      <Text style={styles.conversationTime}>{timestamp}</Text>
-                    </View>
-                    <View style={styles.conversationFooter}>
-                      <Text
-                        style={[
-                          styles.conversationMessage,
-                          (conversation.unreadCount ?? 0) > 0 && styles.conversationMessageUnread,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {subtitle}
-                      </Text>
-                      {(conversation.unreadCount ?? 0) > 0 && (
-                        <View style={styles.unreadBadge}>
-                          <Text style={styles.unreadBadgeText}>{conversation.unreadCount}</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              </Animated.View>
-            );
-          })
-        )}
-      </ScrollView>
+        }
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.gray[50],
-  },
-  header: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[200],
-  },
-  headerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-  },
-  headerTitle: {
-    fontSize: FontSizes.xxl,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-  },
-  addButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.gray[100],
-    borderRadius: BorderRadius.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: Spacing.md,
-    fontSize: FontSizes.base,
-    color: Colors.gray[800],
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: 120, // Increased for edge-to-edge
-  },
-  loadingBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.gray[100],
-  },
-  loadingText: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.sm,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.xxl * 2,
-  },
-  emptyIcon: {
-    width: 96,
-    height: 96,
-    backgroundColor: Colors.gray[200],
-    borderRadius: BorderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.lg,
-  },
-  emptyTitle: {
-    fontSize: FontSizes.lg,
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    marginBottom: Spacing.sm,
-  },
-  emptyText: {
-    color: Colors.gray[600],
-    textAlign: 'center',
-    fontSize: FontSizes.base,
-  },
-  conversationItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
-    backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: Spacing.md,
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    backgroundColor: Colors.gray[300],
-    borderRadius: BorderRadius.full,
-  },
-  onlineBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 16,
-    height: 16,
-    backgroundColor: Colors.success,
-    borderRadius: BorderRadius.full,
-    borderWidth: 2,
-    borderColor: Colors.white,
-  },
-  conversationContent: {
-    flex: 1,
-  },
-  conversationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.xs,
-  },
-  conversationName: {
-    fontWeight: FontWeights.bold,
-    color: Colors.gray[800],
-    flex: 1,
-    fontSize: FontSizes.base,
-  },
-  conversationTime: {
-    fontSize: FontSizes.xs,
-    color: Colors.gray[500],
-  },
-  conversationFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  conversationMessage: {
-    flex: 1,
-    color: Colors.gray[600],
-    fontSize: FontSizes.base,
-  },
-  conversationMessageUnread: {
-    color: Colors.gray[800],
-    fontWeight: FontWeights.medium,
-  },
-  unreadBadge: {
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: Spacing.sm,
-  },
-  unreadBadgeText: {
-    color: Colors.white,
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.bold,
-  },
-});
+
