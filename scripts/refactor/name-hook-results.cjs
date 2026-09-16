@@ -5,7 +5,7 @@ const ts = require('typescript');
 const file = process.argv[2];
 const configFile = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
 const config = ts.parseJsonConfigFileContent(configFile.config, ts.sys, process.cwd());
-const program = ts.createProgram(config.fileNames, config.options);
+const program = ts.createProgram([path.resolve(file), ...config.fileNames.filter(name => name.endsWith('.d.ts'))], config.options);
 const checker = program.getTypeChecker();
 const source = program.getSourceFile(path.resolve(file));
 const text = source.text;
@@ -16,6 +16,11 @@ const groups = {
   useRequestDriverActions: 'driverActions', useRequestEditInitialization: 'editor',
   useRequestPassengerActions: 'passengerActions', buildRequestDetailPresentation: 'presentation',
 };
+for (const mapping of process.argv.slice(3)) {
+  const [hook, group] = mapping.split('=');
+  if (!hook || !/^[A-Za-z_$][\w$]*$/.test(group)) throw new Error('Expected hook=resultName');
+  groups[hook] = group;
+}
 const symbols = new Map(), edits = [], declarations = new Set();
 function collect(node) {
   if (ts.isVariableDeclaration(node) && ts.isObjectBindingPattern(node.name) &&

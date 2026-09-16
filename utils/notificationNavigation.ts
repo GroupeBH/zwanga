@@ -84,6 +84,9 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
     if (data.role === 'passenger' && bookingId) return `/booking/navigate/${bookingId}`;
     if (data.role === 'driver' && tripId) return `/trip/navigate/${tripId}`;
   }
+  if (type === 'ongoing_trip' && data.role === 'passenger' && bookingId) {
+    return `/booking/navigate/${bookingId}`;
+  }
 
   if (type === 'referral_new_referral') return '/referrals';
   if (type === 'driver_trip_revenue' || type === 'driver_booking_earning_confirmed') return '/driver-earnings';
@@ -93,7 +96,7 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
   if ((type === 'rate' || type === 'review') && tripId) return `/rate/${tripId}`;
   if (type === 'trip_manage' && tripId) return `/trip/manage/${tripId}`;
   if (type === 'ongoing_trip' && !tripId && typeof data.navigateTo === 'string' &&
-    /^\/trip\/(manage\/)?[a-zA-Z0-9_-]+$/.test(data.navigateTo)) {
+    /^\/(trip\/(manage\/)?|booking\/navigate\/)[a-zA-Z0-9_-]+$/.test(data.navigateTo)) {
     return data.navigateTo as Href;
   }
 
@@ -121,7 +124,11 @@ export const handleNotificationNavigation = (
   // Allow a dismissed notification/modal to release its native view before navigation.
   setTimeout(() => {
     try {
-      router.push(href ?? '/(tabs)');
+      if (href !== null) {
+        router.push(href);
+      } else {
+        router.push('/(tabs)');
+      }
     } catch (error) {
       console.warn('[notificationNavigation] Impossible d’ouvrir la notification:', error);
     }

@@ -1,66 +1,28 @@
 import { styles } from '../features/screen-styles/app/driver-earnings/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import {
   useGetMyDriverEarningsQuery,
   useGetMyDriverPayoutsQuery,
   useGetMyDriverSettlementQuery,
-  useRequestDriverPayoutMutation,
 } from '@/store/api/driverSettlementsApi';
-import type { DriverEarning, DriverPayoutStatus } from '@/types';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
+import type { DriverEarning } from '@/types';
+import { formatAmount, formatDate, maskPhone } from '@/features/driver-earnings/payoutModel';
+import { PayoutHistory } from '@/features/driver-earnings/PayoutHistory';
+import { useDriverPayout } from '@/hooks/driver-earnings/useDriverPayout';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import * as Crypto from 'expo-crypto';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const formatAmount = (value?: number | string | null, currency = 'CDF') => {
-  const amount = Number(value ?? 0);
-  const safeAmount = Number.isFinite(amount) ? amount : 0;
-  return `${new Intl.NumberFormat('fr-FR', {
-    maximumFractionDigits: 2,
-  }).format(safeAmount)} ${currency}`;
-};
-
-const formatDate = (value?: string | null) => {
-  if (!value) return 'Date indisponible';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Date indisponible';
-  return date.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-};
-
-const maskPhone = (value?: string | null) => {
-  if (!value) return 'numéro du profil';
-  const phone = value.trim();
-  return phone.length > 8 ? `${phone.slice(0, 5)}•••${phone.slice(-4)}` : phone;
-};
 
 const getPaymentModeLabel = (earning: DriverEarning) =>
   earning.paymentMode === 'points' ? 'Payé en jetons' : 'Paiement électronique';
 
-const PAYOUT_STATUS: Record<
-  DriverPayoutStatus,
-  { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }
-> = {
-  pending: { label: 'Confirmation en attente', icon: 'time-outline', color: Colors.warningDark },
-  initiated: { label: 'Traitement FlexPay', icon: 'sync-outline', color: Colors.infoDark },
-  succeeded: { label: 'Versé', icon: 'checkmark-circle-outline', color: Colors.successDark },
-  failed: { label: 'Échec — solde libéré', icon: 'alert-circle-outline', color: Colors.danger },
-  cancelled: { label: 'Annulé — solde libéré', icon: 'close-circle-outline', color: Colors.gray[600] },
-};
-
 export default function DriverEarningsScreen() {
   const isScreenActive = useScreenIsActive();
   const router = useRouter();
-  const { showDialog } = useDialog();
   const [refreshing, setRefreshing] = useState(false);
   const {
     data: summary,
@@ -94,7 +56,6 @@ export default function DriverEarningsScreen() {
     refetchOnFocus: true,
     refetchOnReconnect: false,
   });
-  const [requestPayout, { isLoading: isWithdrawing }] = useRequestDriverPayoutMutation();
 
   const sortedEarnings = useMemo(
     () =>
@@ -114,90 +75,19 @@ export default function DriverEarningsScreen() {
   );
   const currency = summary?.currency ?? earnings[0]?.currency ?? 'CDF';
   const availableBalance = Number(summary?.availableBalance ?? 0);
-  const minimumPayout = Number(summary?.minimumPayoutAmount ?? 1);
   const commissionPercent = Math.round(Number(summary?.commissionRate ?? 0) * 100);
   const isLoading = summaryLoading || earningsLoading;
   const hasError = summaryError || earningsError;
-  const canOpenWithdrawal =
-    Boolean(summary) && availableBalance >= minimumPayout && !isWithdrawing;
-
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       await Promise.allSettled([refetchSummary(), refetchEarnings(), refetchPayouts()]);
     } finally {
       setRefreshing(false);
     }
-  };
-
-  const submitPayout = async (amount: number) => {
-    try {
-      const payout = await requestPayout({
-        amount,
-        idempotencyKey: Crypto.randomUUID(),
-      }).unwrap();
-      await refresh();
-
-      if (payout.status === 'succeeded') {
-        showDialog({
-          variant: 'success',
-          title: 'Versement confirmé',
-          message: `${formatAmount(payout.amount, payout.currency)} ont été versés sur ${maskPhone(
-            payout.phone,
-          )}.`,
-        });
-        return;
-      }
-
-      showDialog({
-        variant: 'info',
-        title: 'Retrait transmis',
-        message: `${formatAmount(payout.amount, payout.currency)} sont réservés pendant la confirmation FlexPay. Aucun second retrait ne sera créé si la connexion est interrompue.`,
-      });
-    } catch (error) {
-      showDialog({
-        variant: 'danger',
-        title: 'Retrait impossible',
-        message: getApiErrorMessage(
-          error,
-          "Le retrait n’a pas pu être lancé. Votre solde reste disponible.",
-        ),
-      });
-    }
-  };
-
-  const handlePayout = (requestedAmount = availableBalance) => {
-    if (!summary) return;
-    if (!summary.kycApproved) {
-      showDialog({
-        variant: 'warning',
-        title: 'Vérification requise',
-        message: 'Votre identité doit être vérifiée avant tout versement Mobile Money.',
-      });
-      return;
-    }
-    if (requestedAmount < minimumPayout || requestedAmount > availableBalance) {
-      showDialog({
-        variant: 'warning',
-        title: 'Solde insuffisant',
-        message: `Le retrait minimum est de ${formatAmount(minimumPayout, currency)}.`,
-      });
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      icon: 'phone-portrait-outline',
-      title: 'Confirmer le versement',
-      message: `${formatAmount(requestedAmount, currency)} seront envoyés par FlexPay vers ${maskPhone(
-        summary.payoutPhone,
-      )}. Le montant restera bloqué jusqu’à la confirmation finale.`,
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        { label: 'Confirmer', variant: 'primary', onPress: () => submitPayout(requestedAmount) },
-      ],
-    });
-  };
+  }, [refetchSummary, refetchEarnings, refetchPayouts]);
+  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, handlePayout, checkPayout, storageError, hasUnconfirmedIntent } =
+    useDriverPayout({ summary, payouts, refresh });
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -252,16 +142,24 @@ export default function DriverEarningsScreen() {
               <Ionicons name="phone-portrait-outline" size={19} color={Colors.white} />
             )}
             <Text style={styles.payoutButtonText}>
-              {isWithdrawing ? 'Envoi en cours…' : 'Recevoir sur Mobile Money'}
+              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier ma demande' : 'Recevoir mes gains'}
             </Text>
           </TouchableOpacity>
           <Text style={styles.payoutDestination}>
             Destination : {maskPhone(summary?.payoutPhone)} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
           </Text>
 
+          <Text style={styles.balanceHint}>
+            Zwanga verse vos gains sur votre Mobile Money. Aucun compte FlexPay n’est nécessaire pour les recevoir.
+          </Text>
+          {storageError && <Text style={styles.balanceHint}>Impossible de restaurer le suivi du versement sur ce téléphone. Contactez l’assistance avant une nouvelle demande.</Text>}
+          <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/support')} style={styles.headerButton} accessibilityLabel="Contacter l’assistance pour mes gains">
+            <Ionicons name="help-circle-outline" size={24} color={Colors.white} />
+          </TouchableOpacity>
+
           <View style={styles.balanceBreakdown}>
             <View style={styles.breakdownItem}>
-              <Text style={styles.breakdownLabel}>Retrait en cours</Text>
+              <Text style={styles.breakdownLabel}>Versement en cours</Text>
               <Text style={styles.breakdownValue}>
                 {formatAmount(summary?.pendingPayoutBalance, currency)}
               </Text>
@@ -274,41 +172,9 @@ export default function DriverEarningsScreen() {
           </View>
         </Animated.View>
 
-        {recentPayouts.length > 0 && (
-          <Animated.View entering={FadeInDown.delay(110)} style={styles.section}>
-            <View style={styles.sectionHeading}>
-              <View>
-                <Text style={styles.sectionTitle}>Versements récents</Text>
-                <Text style={styles.sectionMeta}>Suivi de la confirmation FlexPay</Text>
-              </View>
-            </View>
-            {recentPayouts.map((payout) => {
-              const presentation = PAYOUT_STATUS[payout.status];
-              return (
-                <View key={payout.id} style={styles.payoutRow}>
-                  <Ionicons name={presentation.icon} size={21} color={presentation.color} />
-                  <View style={styles.rowCopy}>
-                    <Text style={styles.rowTitle}>{formatAmount(payout.amount, payout.currency)}</Text>
-                    <Text style={[styles.rowMeta, { color: presentation.color }]}>
-                      {presentation.label} · {formatDate(payout.processedAt ?? payout.requestedAt ?? payout.createdAt)}
-                    </Text>
-                  </View>
-                  {(['failed', 'cancelled'] as DriverPayoutStatus[]).includes(payout.status) &&
-                    Number(payout.amount) <= availableBalance && (
-                      <TouchableOpacity
-                        accessibilityLabel="Relancer ce retrait"
-                        disabled={isWithdrawing}
-                        onPress={() => handlePayout(Number(payout.amount))}
-                        style={styles.retryButton}
-                      >
-                        <Text style={styles.retryButtonText}>Réessayer</Text>
-                      </TouchableOpacity>
-                    )}
-                </View>
-              );
-            })}
-          </Animated.View>
-        )}
+        <PayoutHistory payouts={recentPayouts} availableBalance={availableBalance} busy={isWithdrawing}
+          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={handlePayout} onCheck={checkPayout}
+          onSupport={() => router.push('/support')} />
 
         <Animated.View entering={FadeInDown.delay(150)} style={styles.section}>
           <View style={styles.sectionHeading}>
@@ -368,5 +234,4 @@ export default function DriverEarningsScreen() {
     </SafeAreaView>
   );
 }
-
 

@@ -48,7 +48,7 @@ export const copyReferralLink = async (value?: string | null) => {
   } catch (error) {
     console.warn('[referrals] Presse-papiers natif indisponible:', error);
     throw new Error(
-      "La copie n'est pas disponible dans cette version de l'application. Reinstallez l'application puis reessayez.",
+      "La copie n'est pas disponible dans cette version de l'application. Réinstallez l'application puis réessayez.",
     );
   }
   return shareLink;

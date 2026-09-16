@@ -71,8 +71,8 @@ export function NavigationPickupBypassModal({
             </Text>
           </View>
           <Text style={styles.waypointModalWaitingText}>
-            Vous avez depasse le point de prise en charge sans confirmation automatique.
-            Le passager est-il deja a bord ?
+            Vous avez dépassé le point de prise en charge sans confirmation automatique.
+            Le passager est-il déjà à bord ?
           </Text>
           <View style={[styles.waypointGpsStatus, styles.pickupBypassStatus]}>
             <Ionicons name="navigate-circle" size={18} color={Colors.warningDark} />
@@ -82,7 +82,7 @@ export function NavigationPickupBypassModal({
                     1,
                     pickupBypassConfirmation.distanceMeters,
                   )} m`
-                : 'Point de prise en charge depasse'}
+                : 'Point de prise en charge dépassé'}
             </Text>
           </View>
           <View style={styles.waypointModalActions}>
@@ -133,7 +133,7 @@ export function NavigationPickupBypassModal({
                         styles.pickupBypassCancelButtonText,
                       ]}
                     >
-                      Annuler reservation
+                      Annuler la réservation
                     </Text>
                   </>
                 )}

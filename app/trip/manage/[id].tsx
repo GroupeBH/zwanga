@@ -1,1020 +1,22 @@
+import { useManageTripController } from '../../../hooks/manage-trip/useManageTripController';
+import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
+import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
+import { labelStatus, statusColor } from '../../../features/manage-trip/manageTripStatus';
 import { styles } from '../../../features/screen-styles/app/trip/manage/detail/index';
-import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
-import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors, Spacing } from '@/constants/styles';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
-import { useUserLocation } from '@/hooks/useUserLocation';
-import { trackEvent } from '@/services/analytics';
-import { trackingSocket, type BookingAutoProgressPayload } from '@/services/trackingSocket';
-import {
-  useAcceptBookingMutation,
-  useCancelBookingMutation,
-  useGetTripBookingsQuery,
-  useRejectBookingMutation,
-} from '@/store/api/bookingApi';
-import { useGeocodeMutation } from '@/store/api/googleMapsApi';
-import {
-  useGetTripByIdQuery,
-  usePauseTripMutation,
-  useRequestDriverTripInterruptionMutation,
-  useStartTripMutation,
-  useUpdateTripMutation,
-} from '@/store/api/tripApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
-import type { Booking, BookingStatus, TripInterruptionReason } from '@/types';
-import { formatDateTime } from '@/utils/dateHelpers';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
-import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
-import { buildManualGeocodeQuery, mapGeocodeResponseToSelection } from '@/utils/manualAddressGeocode';
 import { openWhatsApp } from '@/utils/phoneHelpers';
-import { calculateDistance } from '@/utils/routeHelpers';
-import { getGeoPointCoordinate, getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type FeedbackState = { type: 'success' | 'error'; message: string } | null;
-
-const BOOKING_STATUS_CONFIG: Record<
-  BookingStatus,
-  { label: string; color: string; background: string }
-> = {
-  pending: {
-    label: 'En attente',
-    color: Colors.secondary,
-    background: 'rgba(247, 184, 1, 0.15)',
-  },
-  accepted: {
-    label: 'Confirmée',
-    color: Colors.success,
-    background: 'rgba(46, 204, 113, 0.18)',
-  },
-  rejected: {
-    label: 'Refusée',
-    color: Colors.danger,
-    background: 'rgba(239, 68, 68, 0.16)',
-  },
-  cancelled: {
-    label: 'Annulée',
-    color: Colors.gray[600],
-    background: 'rgba(156, 163, 175, 0.2)',
-  },
-  no_show: {
-    label: 'Non embarqué',
-    color: Colors.danger,
-    background: 'rgba(239, 68, 68, 0.12)',
-  },
-  boarding_uncertain: {
-    label: 'Embarquement non confirmé',
-    color: Colors.warning,
-    background: 'rgba(245, 158, 11, 0.14)',
-  },
-  completed: {
-    label: 'Terminée',
-    color: Colors.gray[600],
-    background: 'rgba(107, 114, 128, 0.18)',
-  },
-  expired: {
-    label: 'Expirée',
-    color: Colors.gray[600],
-    background: 'rgba(156, 163, 175, 0.2)',
-  },
-};
-
-const hasPassengerBoarded = (booking: Booking) =>
-  Boolean(booking.pickedUp || booking.pickedUpConfirmedByPassenger);
-
-const hasPassengerDroppedOff = (booking: Booking) =>
-  Boolean(
-    booking.status === 'completed' ||
-      booking.droppedOff ||
-      booking.droppedOffConfirmedByPassenger ||
-      booking.droppedOffAt ||
-      booking.droppedOffConfirmedAt,
-  );
-
-type ManageAutoProgressEvent = BookingAutoProgressPayload['events'][number];
-
-const MANAGE_AUTO_PROGRESS_PRIORITY: Record<ManageAutoProgressEvent['type'], number> = {
-  driver_near_pickup: 0,
-  driver_arrived_pickup: 1,
-  parties_nearby: 2,
-  passenger_ready_pickup: 3,
-  pickup_confirmed: 4,
-  passenger_no_show: 5,
-  passenger_boarding_uncertain: 6,
-  passenger_near_destination: 7,
-  dropoff_confirmed: 8,
-  driver_near_destination: 9,
-  driver_arrived_destination: 10,
-};
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ManageTripScreen() {
-  const isScreenActive = useScreenIsActive();
-  const router = useRouter();
-  const goHome = useCallback(() => {
-    router.replace('/(tabs)');
-  }, [router]);
-  const { id } = useLocalSearchParams();
-  const insets = useSafeAreaInsets();
-  const tripId = typeof id === 'string' ? id : '';
-  const user = useAppSelector(selectUser);
-  const { isIdentityVerified } = useIdentityCheck();
-  
-  // Polling intelligent basé sur le statut du trajet
-  const [pollingInterval, setPollingInterval] = useState<number>(0);
-  
-  const {
-    data: trip,
-    isLoading: tripLoading,
-    isFetching: tripFetching,
-    refetch: refetchTrip,
-  } = useGetTripByIdQuery(tripId, { 
-    skip: !tripId,
-    pollingInterval: isScreenActive ? pollingInterval : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnMountOrArgChange: true,
-    refetchOnReconnect: false,
-  });
+  const model = useManageTripController();
 
-  // Mettre à jour l'intervalle de polling en fonction du statut du trajet
-  // Note: polling réduit car la navigation gère le temps réel via WebSocket
-  useEffect(() => {
-    if (!trip) {
-      setPollingInterval(0);
-      return;
-    }
-    
-    // Polling léger - la navigation gère le temps réel pour les trajets en cours
-    if (trip.status === 'ongoing') {
-      setPollingInterval(60000); // 60 secondes - juste pour sync occasionnel
-    } else if (trip.status === 'upcoming') {
-      setPollingInterval(60000); // 60 secondes pour les trajets à venir
-    } else {
-      setPollingInterval(0); // Pas de polling pour les trajets terminés/annulés
-    }
-  }, [trip?.status]);
-
-  const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
-  const { lastKnownLocation } = useUserLocation({
-    autoRequest: Boolean(isScreenActive && isOwner && trip?.status === 'ongoing'),
-    trackingProfile: 'navigation',
-  });
-  const {
-    data: bookings,
-    isLoading: bookingsLoading,
-    isFetching: bookingsFetching,
-    refetch: refetchBookings,
-  } = useGetTripBookingsQuery(tripId, { 
-    skip: !tripId,
-    // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
-    pollingInterval: isScreenActive ? (trip?.status === 'upcoming' ? 60000 : 0) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
-  });
-  const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
-  const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
-  const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
-  const [updateTripStatus, { isLoading: isUpdatingTripStatus }] = useUpdateTripMutation();
-  const [updateTripRoute, { isLoading: isUpdatingRoute }] = useUpdateTripMutation();
-  const [geocodeManualAddress] = useGeocodeMutation();
-  const [startTrip, { isLoading: isStartingTrip }] = useStartTripMutation();
-  const [pauseTrip, { isLoading: isPausingTrip }] = usePauseTripMutation();
-  const [requestDriverTripInterruption, { isLoading: isRequestingDriverInterruption }] =
-    useRequestDriverTripInterruptionMutation();
-
-  // console.log("this bookings", bookings);
-
-  const { showDialog } = useDialog();
-  const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [rejectModalVisible, setRejectModalVisible] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectError, setRejectError] = useState('');
-  const [targetBooking, setTargetBooking] = useState<Booking | null>(null);
-  const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
-  const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
-  const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [securityModalVisible, setSecurityModalVisible] = useState(false);
-  const [editRouteModalVisible, setEditRouteModalVisible] = useState(false);
-  const [editDepartureAddress, setEditDepartureAddress] = useState('');
-  const [editArrivalAddress, setEditArrivalAddress] = useState('');
-  const [editRouteError, setEditRouteError] = useState('');
-  const [isResolvingRoute, setIsResolvingRoute] = useState(false);
-  const presentedManageAutoProgressKeysRef = useRef<Set<string>>(new Set());
-  const highestManageAutoProgressPriorityRef = useRef<Map<string, number>>(new Map());
-  const lastManageDriverLocationSentAtRef = useRef(0);
-  const bookingsRef = useRef<Booking[] | undefined>(undefined);
-  const showDialogRef = useRef(showDialog);
-  const refetchTripRef = useRef<(() => unknown) | null>(null);
-  const refetchBookingsRef = useRef<(() => unknown) | null>(null);
-  const isSavingRoute = isUpdatingRoute || isResolvingRoute;
-
-  const refreshAll = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([refetchTrip(), refetchBookings()]);
-    } catch (error) {
-      console.warn('Error refreshing trip data:', error);
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refetchTrip, refetchBookings]);
-
-  const reconcileBookingStatus = useCallback(
-    async (error: unknown, bookingId: string, expectedStatuses: readonly BookingStatus[]) =>
-      reconcileAmbiguousMutation({
-        error,
-        loadSnapshot: async () => {
-          const result = await refetchBookings();
-          return result.data?.find((booking) => booking.id === bookingId) ?? null;
-        },
-        isApplied: (booking) => expectedStatuses.includes(booking.status),
-      }),
-    [refetchBookings],
-  );
-
-  const reconcileTripStatus = useCallback(
-    async (error: unknown, expectedStatuses: readonly string[]) =>
-      reconcileAmbiguousMutation({
-        error,
-        loadSnapshot: async () => (await refetchTrip()).data ?? null,
-        isApplied: (latestTrip) => expectedStatuses.includes(latestTrip.status),
-      }),
-    [refetchTrip],
-  );
-
-  const rememberAcceptedBooking = useCallback((bookingId: string) => {
-    setLocallyAcceptedBookingIds((current) => {
-      if (current.has(bookingId)) return current;
-
-      const next = new Set(current);
-      next.add(bookingId);
-      return next;
-    });
-  }, []);
-
-  const visibleBookings = useMemo(() => {
-    if (!bookings || locallyAcceptedBookingIds.size === 0) return bookings;
-
-    return bookings.map((booking) =>
-      locallyAcceptedBookingIds.has(booking.id) && booking.status === 'pending'
-        ? { ...booking, status: 'accepted' as const }
-        : booking,
-    );
-  }, [bookings, locallyAcceptedBookingIds]);
-
-  useEffect(() => {
-    bookingsRef.current = visibleBookings;
-  }, [visibleBookings]);
-
-  useEffect(() => {
-    showDialogRef.current = showDialog;
-  }, [showDialog]);
-
-  useEffect(() => {
-    refetchTripRef.current = refetchTrip;
-  }, [refetchTrip]);
-
-  useEffect(() => {
-    refetchBookingsRef.current = refetchBookings;
-  }, [refetchBookings]);
-
-  useEffect(() => {
-    presentedManageAutoProgressKeysRef.current.clear();
-    highestManageAutoProgressPriorityRef.current.clear();
-    lastManageDriverLocationSentAtRef.current = 0;
-  }, [tripId]);
-
-  useEffect(() => {
-    if (!isOwner || trip?.status !== 'ongoing' || !tripId) {
-      return;
-    }
-
-    let isCancelled = false;
-
-    void trackingSocket
-      .joinTrip(tripId)
-      .then(() => {
-        if (isCancelled) return;
-      })
-      .catch((error) => {
-        console.warn('[ManageTrip] Connexion tracking impossible:', error);
-      });
-
-    const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
-      if (isCancelled || payload.tripId !== tripId || payload.events.length === 0) {
-        return;
-      }
-
-      payload.events
-        .filter((event) => event.type !== 'driver_near_pickup')
-        .sort(
-          (first, second) =>
-            MANAGE_AUTO_PROGRESS_PRIORITY[first.type] -
-            MANAGE_AUTO_PROGRESS_PRIORITY[second.type],
-        )
-        .forEach((event) => {
-          const key = `${tripId}:${event.type}:${event.bookingId ?? event.tripId}`;
-          if (presentedManageAutoProgressKeysRef.current.has(key)) {
-            return;
-          }
-
-          if (event.bookingId) {
-            const nextPriority = MANAGE_AUTO_PROGRESS_PRIORITY[event.type];
-            const highestPriorityForBooking =
-              highestManageAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
-            if (highestPriorityForBooking > nextPriority) {
-              return;
-            }
-            highestManageAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
-          }
-
-          const booking = bookingsRef.current?.find((item) => item.id === event.bookingId);
-          const passengerName = booking?.passengerName || 'le passager';
-          const roundedDistance =
-            typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
-              ? Math.max(1, Math.round(event.distanceMeters))
-              : null;
-          const distanceText = roundedDistance ? ` Distance detectée: ${roundedDistance} m.` : '';
-          const isTripDestinationReachedZone =
-            event.type === 'driver_near_destination' &&
-            roundedDistance !== null &&
-            roundedDistance <= 10;
-
-          const dialogByType: Record<
-            ManageAutoProgressEvent['type'],
-            {
-              variant: 'info' | 'success' | 'warning';
-              icon: keyof typeof Ionicons.glyphMap;
-              title: string;
-              message: string;
-            }
-          > = {
-            driver_near_pickup: {
-              variant: 'info',
-              icon: 'car-sport',
-              title: 'Conducteur proche',
-              message: `Vous approchez du point de récupération de ${passengerName}.${distanceText}`,
-            },
-            driver_arrived_pickup: {
-              variant: 'info',
-              icon: 'location',
-              title: 'Point de récupération atteint',
-              message: `Vous êtes arrivé au point de récupération de ${passengerName}. Le passager est notifié.`,
-            },
-            parties_nearby: {
-              variant: 'success',
-              icon: 'people',
-              title: 'Passager prêt à embarquer',
-              message: `${passengerName} est là et prêt à être embarqué.`,
-            },
-            passenger_ready_pickup: {
-              variant: 'success',
-              icon: 'hand-left',
-              title: "Le passager s'est signalé",
-              message: `${passengerName} indique qu'il est au point de récupération.`,
-            },
-            pickup_confirmed: {
-              variant: 'success',
-              icon: 'checkmark-circle',
-              title: 'Passager embarqué',
-              message: `${passengerName} a été embarqué. Vous pouvez continuer vers sa destination.`,
-            },
-            passenger_no_show: {
-              variant: 'info',
-              icon: 'person-remove',
-              title: 'Passager non embarqué',
-              message: `${passengerName} n'a pas été détecté à bord. La réservation est clôturée sans paiement.`,
-            },
-            passenger_boarding_uncertain: {
-              variant: 'warning',
-              icon: 'help-circle',
-              title: 'Embarquement non confirmé',
-              message: `Le trajet est arrivé à destination sans preuve GPS suffisante de l'embarquement de ${passengerName}. La réservation est clôturée sans paiement.`,
-            },
-            passenger_near_destination: {
-              variant: 'info',
-              icon: 'flag',
-              title: 'Destination passager proche',
-              message: `Le point d'arrivée de ${passengerName} va être atteint.${distanceText}`,
-            },
-            dropoff_confirmed: {
-              variant: 'success',
-              icon: 'flag',
-              title: 'Destination passager atteinte',
-              message: `Nous sommes arrivés au point de destination de ${passengerName}.`,
-            },
-            driver_near_destination: {
-              variant: 'info',
-              icon: 'flag',
-              title: isTripDestinationReachedZone
-                ? 'Destination finale atteinte'
-                : 'Destination finale proche',
-              message: isTripDestinationReachedZone
-                ? `Le point d'arrivée du trajet est atteint. Le trajet sera terminé automatiquement dans 10 minutes si le véhicule reste sur place.${distanceText}`
-                : `Le point d'arrivée du trajet est presque atteint.${distanceText}`,
-            },
-            driver_arrived_destination: {
-              variant: 'success',
-              icon: 'flag',
-              title: 'Trajet terminé',
-              message: `Vous avez atteint la destination finale.${distanceText}`,
-            },
-          };
-
-          presentedManageAutoProgressKeysRef.current.add(key);
-          showDialogRef.current(dialogByType[event.type]);
-        });
-
-      void refetchTripRef.current?.();
-      void refetchBookingsRef.current?.();
-    });
-
-    return () => {
-      isCancelled = true;
-      void trackingSocket.leaveTrip(tripId);
-      unsubscribeAutoProgress();
-    };
-  }, [isOwner, trip?.status, tripId]);
-
-  useEffect(() => {
-    if (
-      !isOwner ||
-      trip?.status !== 'ongoing' ||
-      !tripId ||
-      !lastKnownLocation?.coords
-    ) {
-      return;
-    }
-
-    const now = Date.now();
-    if (now - lastManageDriverLocationSentAtRef.current < 4000) {
-      return;
-    }
-
-    lastManageDriverLocationSentAtRef.current = now;
-    void trackingSocket
-      .updateDriverLocation(tripId, [
-        lastKnownLocation.coords.longitude,
-        lastKnownLocation.coords.latitude,
-      ])
-      .catch((error) => {
-        console.warn('[ManageTrip] Position conducteur non envoyée:', error);
-      });
-  }, [
-    isOwner,
-    lastKnownLocation?.coords?.latitude,
-    lastKnownLocation?.coords?.longitude,
-    trip?.status,
-    tripId,
-  ]);
-
-  const openTripSecurityModal = () => {
-    setSecurityModalVisible(true);
-  };
-
-  const closeTripSecurityModal = () => {
-    setSecurityModalVisible(false);
-  };
-
-  const openEditRouteModal = () => {
-    if (!trip || trip.status !== 'upcoming') {
-      return;
-    }
-    setEditDepartureAddress((trip.departure.address || '').trim());
-    setEditArrivalAddress((trip.arrival.address || '').trim());
-    setEditRouteError('');
-    setEditRouteModalVisible(true);
-  };
-
-  const closeEditRouteModal = () => {
-    if (isSavingRoute) return;
-    setEditRouteModalVisible(false);
-    setEditRouteError('');
-  };
-
-  const resolveManualRouteCoordinates = useCallback(
-    async (address: string, label: string): Promise<[number, number] | null> => {
-      const trimmedAddress = address.trim();
-      if (!trimmedAddress) {
-        return null;
-      }
-
-      try {
-        const response = await geocodeManualAddress({
-          address: buildManualGeocodeQuery(trimmedAddress),
-          region: 'cd',
-        }).unwrap();
-        const selection = mapGeocodeResponseToSelection(trimmedAddress, response);
-        if (!selection) {
-          return null;
-        }
-        return [selection.longitude, selection.latitude];
-      } catch (error) {
-        console.warn(`Manual ${label} geocode failed`, error);
-        return null;
-      }
-    },
-    [geocodeManualAddress],
-  );
-
-  const handleSaveRouteAddresses = async () => {
-    if (!trip || isSavingRoute) return;
-
-    const nextDeparture = editDepartureAddress.trim();
-    const nextArrival = editArrivalAddress.trim();
-
-    if (!nextDeparture || !nextArrival) {
-      setEditRouteError("Renseignez les adresses de départ et d'arrivée.");
-      return;
-    }
-
-    if (nextDeparture.toLowerCase() === nextArrival.toLowerCase()) {
-      setEditRouteError("Les adresses de départ et d'arrivée doivent être differentes.");
-      return;
-    }
-
-    const currentDeparture = (trip.departure.address || '').trim();
-    const currentArrival = (trip.arrival.address || '').trim();
-    const updates: {
-      departureLocation?: string;
-      arrivalLocation?: string;
-      departureCoordinates?: [number, number];
-      arrivalCoordinates?: [number, number];
-    } = {};
-
-    if (nextDeparture !== currentDeparture) {
-      updates.departureLocation = nextDeparture;
-    }
-    if (nextArrival !== currentArrival) {
-      updates.arrivalLocation = nextArrival;
-    }
-
-    if (!updates.departureLocation && !updates.arrivalLocation) {
-      setEditRouteModalVisible(false);
-      return;
-    }
-
-    setIsResolvingRoute(true);
-
-    if (updates.departureLocation) {
-      const coordinates = await resolveManualRouteCoordinates(nextDeparture, 'departure');
-      if (!coordinates) {
-        setIsResolvingRoute(false);
-        setEditRouteError(
-          'Impossible de localiser cette adresse de départ. Vérifiez le texte puis réessayez.',
-        );
-        return;
-      }
-      updates.departureCoordinates = coordinates;
-    }
-
-    if (updates.arrivalLocation) {
-      const coordinates = await resolveManualRouteCoordinates(nextArrival, 'arrival');
-      if (!coordinates) {
-        setIsResolvingRoute(false);
-        setEditRouteError(
-          'Impossible de localiser cette adresse d\'arrivée. Vérifiez le texte puis réessayez.',
-        );
-        return;
-      }
-      updates.arrivalCoordinates = coordinates;
-    }
-
-    try {
-      await updateTripRoute({ id: trip.id, updates }).unwrap();
-      void trackEvent('trip_route_updated', {
-        trip_id: trip.id,
-        source_screen: 'trip_manage',
-        departure_updated: Boolean(updates.departureLocation),
-        arrival_updated: Boolean(updates.arrivalLocation),
-      });
-      setEditRouteModalVisible(false);
-      setEditRouteError('');
-      showFeedback('success', 'Les adresses du trajet ont été mises à jour.');
-      refreshAll();
-    } catch (error: any) {
-      setEditRouteError(
-        getApiErrorMessage(error, 'Impossible de mettre à jour les adresses du trajet.'),
-      );
-    } finally {
-      setIsResolvingRoute(false);
-    }
-  };
-
-  // Calculate arrival coordinate for canCompleteTrip
-  const arrivalCoordinate = useMemo(
-    () =>
-      getTripLocationCoordinate({
-        lat: trip?.arrival?.lat,
-        lng: trip?.arrival?.lng,
-        hasCoordinates: trip?.arrival?.hasCoordinates,
-      }),
-    [trip?.arrival?.hasCoordinates, trip?.arrival?.lat, trip?.arrival?.lng],
-  );
-
-  const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
-    setFeedback({
-      type,
-      message: Array.isArray(message) ? message.join('\n') : message,
-    });
-  };
-
-  const openRejectModal = (booking: Booking) => {
-    setTargetBooking(booking);
-    setRejectReason('');
-    setRejectError('');
-    setRejectModalVisible(true);
-  };
-
-  const closeRejectModal = () => {
-    if (isRejecting) return;
-    setRejectModalVisible(false);
-    setTargetBooking(null);
-    setRejectReason('');
-    setRejectError('');
-  };
-
-  const handleAcceptBooking = async (bookingId: string) => {
-    setProcessingBookingId(bookingId);
-    try {
-      await acceptBooking(bookingId).unwrap();
-      rememberAcceptedBooking(bookingId);
-      void trackEvent('booking_accepted', {
-        booking_id: bookingId,
-        trip_id: trip?.id ?? '',
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'La réservation a été acceptée.');
-      refreshAll();
-    } catch (error: any) {
-      const acceptedBooking = await reconcileBookingStatus(error, bookingId, ['accepted']);
-      if (acceptedBooking) {
-        rememberAcceptedBooking(bookingId);
-        showFeedback('success', 'La réservation a bien été acceptée malgré la connexion lente.');
-        void refreshAll();
-        return;
-      }
-      showFeedback(
-        'error',
-        getApiErrorMessage(error, 'Impossible d’accepter cette réservation.'),
-      );
-    } finally {
-      setProcessingBookingId(null);
-    }
-  };
-
-  const handleRejectSubmit = async () => {
-    if (!targetBooking) return;
-    if (!rejectReason.trim()) {
-      setRejectError('Veuillez indiquer un motif de refus.');
-      return;
-    }
-    setProcessingBookingId(targetBooking.id);
-    try {
-      await rejectBooking({ id: targetBooking.id, reason: rejectReason.trim() }).unwrap();
-      void trackEvent('booking_rejected', {
-        booking_id: targetBooking.id,
-        trip_id: trip?.id ?? '',
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'La réservation a été refusée.');
-      closeRejectModal();
-      refreshAll();
-    } catch (error: any) {
-      const rejectedBooking = await reconcileBookingStatus(error, targetBooking.id, ['rejected']);
-      if (rejectedBooking) {
-        setRejectModalVisible(false);
-        setTargetBooking(null);
-        setRejectReason('');
-        setRejectError('');
-        showFeedback('success', 'La réservation a bien été refusée malgré la connexion lente.');
-        void refreshAll();
-        return;
-      }
-      setRejectError(
-        getApiErrorMessage(error, 'Impossible de refuser cette réservation.'),
-      );
-    } finally {
-      setProcessingBookingId(null);
-    }
-  };
-
-  const handleCancelBookingBeforePickup = (booking: Booking) => {
-    if (!trip) return;
-
-    if (booking.status !== 'accepted' || hasPassengerBoarded(booking)) {
-      showFeedback('error', 'Impossible d\'annuler cette réservation : le passager a déjà embarqué.');
-      return;
-    }
-
-    const passengerName = booking.passengerName || 'ce passager';
-
-    showDialog({
-      variant: 'warning',
-      title: 'Annuler la réservation',
-      message: `Voulez-vous annuler la réservation de ${passengerName} ? Cette action est possible uniquement avant l'embarquement du passager.`,
-      actions: [
-        { label: 'Retour', variant: 'ghost' },
-        {
-          label: 'Oui, annuler',
-          variant: 'primary',
-          onPress: async () => {
-            setProcessingBookingId(booking.id);
-            try {
-              await cancelBooking(booking.id).unwrap();
-              void trackEvent('driver_booking_cancelled_before_pickup', {
-                booking_id: booking.id,
-                trip_id: trip.id,
-                source_screen: 'trip_manage',
-              });
-              showFeedback('success', 'La réservation a été annulée. Le passager sera notifié.');
-              refreshAll();
-            } catch (error: any) {
-              const cancelledBooking = await reconcileBookingStatus(error, booking.id, ['cancelled']);
-              if (cancelledBooking) {
-                showFeedback('success', 'La réservation a bien été annulée malgré la connexion lente.');
-                void refreshAll();
-                return;
-              }
-              showFeedback(
-                'error',
-                getApiErrorMessage(error, 'Impossible d\'annuler cette réservation.'),
-              );
-            } finally {
-              setProcessingBookingId(null);
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const handleStartTrip = async () => {
-    if (!trip) return;
-    showDialog({
-      variant: 'info',
-      title: 'Démarrer le trajet',
-      message: 'Voulez-vous démarrer ce trajet maintenant ? Les passagers seront notifiés.',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Démarrer',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await startTrip(trip.id).unwrap();
-              void trackEvent('trip_started', {
-                trip_id: trip.id,
-                source_screen: 'trip_manage',
-              });
-              showFeedback('success', 'Le trajet a été démarré avec succès.');
-              refreshAll();
-            } catch (error: any) {
-              const startedTrip = await reconcileTripStatus(error, ['ongoing']);
-              if (startedTrip) {
-                showFeedback('success', 'Le trajet a bien démarré malgré la connexion lente.');
-                void refreshAll();
-                return;
-              }
-              showFeedback(
-                'error',
-                getApiErrorMessage(error, 'Impossible de démarrer ce trajet.'),
-              );
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  const pauseTripWithoutPassengerConfirmation = async () => {
-    if (!trip) return;
-
-    try {
-      await pauseTrip(trip.id).unwrap();
-      void trackEvent('trip_paused', {
-        trip_id: trip.id,
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'Le trajet a été interrompu avec succès.');
-      refreshAll();
-    } catch (error: any) {
-      const pausedTrip = await reconcileTripStatus(error, ['upcoming']);
-      if (pausedTrip) {
-        showFeedback('success', 'Le trajet a bien été interrompu malgré la connexion lente.');
-        void refreshAll();
-        return;
-      }
-      showFeedback(
-        'error',
-        getApiErrorMessage(error, 'Impossible d\'interrompre ce trajet.'),
-      );
-    }
-  };
-
-  const sendDriverInterruptionRequest = async (reason: TripInterruptionReason) => {
-    if (!trip) return;
-
-    try {
-      await requestDriverTripInterruption({
-        tripId: trip.id,
-        reason,
-        note:
-          reason === 'emergency'
-            ? 'Le conducteur demande une interruption urgente du trajet.'
-            : 'Le conducteur demande une interruption du trajet.',
-        coordinates: lastKnownLocation?.coords
-          ? {
-              latitude: lastKnownLocation.coords.latitude,
-              longitude: lastKnownLocation.coords.longitude,
-            }
-          : null,
-      }).unwrap();
-      void trackEvent('trip_interruption_requested', {
-        trip_id: trip.id,
-        reason,
-        source_screen: 'trip_manage',
-      });
-      showFeedback(
-        'success',
-        'Demande envoyée. Tous les passagers à bord doivent confirmer.',
-      );
-      refreshAll();
-    } catch (error: any) {
-      showFeedback(
-        'error',
-        getApiErrorMessage(error, "Impossible d'envoyer la demande d'interruption."),
-      );
-    }
-  };
-
-  const handlePauseTrip = async () => {
-    if (!trip) return;
-    const passengersOnBoard = (visibleBookings ?? []).filter(
-      (booking) =>
-        booking.status === 'accepted' &&
-        hasPassengerBoarded(booking) &&
-        !hasPassengerDroppedOff(booking),
-    );
-
-    if (passengersOnBoard.length === 0) {
-      showDialog({
-        variant: 'warning',
-        title: 'Interrompre le trajet',
-        message: "Aucun passager n'est à bord. Vous pouvez interrompre ce trajet directement.",
-        actions: [
-          { label: 'Annuler', variant: 'ghost' },
-          {
-            label: 'Interrompre',
-            variant: 'secondary',
-            onPress: pauseTripWithoutPassengerConfirmation,
-          },
-        ],
-      });
-      return;
-    }
-
-    showDialog({
-      variant: 'warning',
-      title: 'Demander une interruption',
-      message:
-        'Cette interruption devra être confirmée par tous les passagers à bord avant de prendre effet.',
-      actions: [
-        { label: 'Annuler', variant: 'ghost' },
-        {
-          label: 'Urgence',
-          variant: 'danger',
-          onPress: () => sendDriverInterruptionRequest('emergency'),
-        },
-        {
-          label: 'Autre raison',
-          variant: 'secondary',
-          onPress: () => sendDriverInterruptionRequest('other'),
-        },
-      ],
-    });
-  };
-
-  const handleOpenNavigation = () => {
-    if (!trip) return;
-
-    if (trip.status !== 'ongoing') {
-      showDialog({
-        variant: 'info',
-        title: 'Navigation indisponible',
-        message: "Demarrez d'abord le trajet pour acceder à la navigation en direct.",
-      });
-      return;
-    }
-
-    if (!getTripLocationCoordinate(trip.arrival)) {
-      showDialog({
-        title: 'Erreur',
-        message: 'Les coordonnées de destination sont indisponibles.',
-        variant: 'danger',
-      });
-      return;
-    }
-
-    // Ouvrir l'écran de navigation intégré
-    router.push(`/trip/navigate/${trip.id}`);
-  };
-
-  const handleOpenTripEdit = () => {
-    if (!trip || (trip.status !== 'upcoming' && trip.status !== 'ongoing')) {
-      return;
-    }
-
-    router.push(`/trip/${trip.id}?openEdit=1`);
-  };
-
-  const handleCancelTrip = () => {
-    if (!trip) return;
-    showDialog({
-      variant: 'warning',
-      title: 'Annuler le trajet',
-      message: 'Les passagers seront notifiés immédiatement. Voulez-vous continuer ?',
-      actions: [
-        { label: 'Retour', variant: 'ghost' },
-        {
-          label: 'Oui, annuler',
-          variant: 'primary',
-          onPress: async () => {
-            try {
-              await updateTripStatus({ id: trip.id, updates: { status: 'cancelled' } }).unwrap();
-              void trackEvent('trip_cancelled', {
-                trip_id: trip.id,
-                source_screen: 'trip_manage',
-              });
-              showFeedback('success', 'Le trajet a été annulé.');
-              goHome();
-            } catch (error: any) {
-              showFeedback(
-                'error',
-                getApiErrorMessage(error, "Impossible d'annuler ce trajet."),
-              );
-            }
-          },
-        },
-      ],
-    });
-  };
-
-  // Vérifier si l'arrivée de tous les passagers est confirmée
-  const allPassengersDroppedOff = useMemo(() => {
-    if (!visibleBookings || visibleBookings.length === 0) return true;
-    const acceptedBookings = visibleBookings.filter((booking) => booking.status === 'accepted');
-    if (acceptedBookings.length === 0) return true;
-    return acceptedBookings.every(
-      (booking) => booking.droppedOff && booking.droppedOffConfirmedByPassenger,
-    );
-  }, [visibleBookings]);
-
-  const tripStatus = trip?.status;
-  const tripCurrentLocation = trip?.currentLocation;
-
-  // Vérifier si le conducteur est arrivé à destination (distance < 100m)
-  const isAtDestination = useMemo(() => {
-    if (!arrivalCoordinate || tripStatus !== 'ongoing') return false;
-    
-    // Obtenir la position actuelle du conducteur
-    const currentCoordinate = getGeoPointCoordinate(tripCurrentLocation);
-
-    if (!currentCoordinate) return false;
-
-    // Calculer la distance en kilomètres
-    const distanceKm = calculateDistance(currentCoordinate, arrivalCoordinate);
-    // Convertir en mètres et vérifier si < 100m
-    const distanceMeters = distanceKm * 1000;
-    return distanceMeters < 100; // 100 mètres de tolérance
-  }, [arrivalCoordinate, tripCurrentLocation, tripStatus]);
-
-  // Le statut de finalisation automatique apparait si :
-  // - Le trajet est en cours
-  // - L'arrivée de tous les passagers est confirmée
-  // - Le conducteur est arrivé à destination
-  const canCompleteTrip = trip?.status === 'ongoing' && allPassengersDroppedOff && isAtDestination;
-
-  // console.log("this user is owner", isOwner);
-  // console.log("this user is", user);
-
-  const pendingBookings = (visibleBookings ?? []).filter((booking) => booking.status === 'pending');
-
-  if (!tripId) {
+  if (!model.state.tripId) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -1024,7 +26,7 @@ export default function ManageTripScreen() {
     );
   }
 
-  if (!trip && (tripLoading || tripFetching)) {
+  if (!model.trip && (model.state.tripLoading || model.state.tripFetching)) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -1035,7 +37,7 @@ export default function ManageTripScreen() {
     );
   }
 
-  if (!trip) {
+  if (!model.trip) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -1045,7 +47,7 @@ export default function ManageTripScreen() {
     );
   }
 
-  if (!isOwner) {
+  if (!model.state.isOwner) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -1055,7 +57,7 @@ export default function ManageTripScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.primaryButton, { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl }]}
-            onPress={goHome}
+            onPress={model.state.goHome}
           >
             <Text style={styles.primaryButtonText}>Retour</Text>
           </TouchableOpacity>
@@ -1064,7 +66,7 @@ export default function ManageTripScreen() {
     );
   }
 
-  if (!isIdentityVerified) {
+  if (!model.state.isIdentityVerified) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
@@ -1074,7 +76,7 @@ export default function ManageTripScreen() {
           </Text>
           <TouchableOpacity
             style={[styles.primaryButton, { marginTop: Spacing.lg }]}
-            onPress={() => router.push('/profile')}
+            onPress={() => model.state.router.push('/profile')}
           >
             <Text style={styles.primaryButtonText}>Vérifier mon identité</Text>
           </TouchableOpacity>
@@ -1088,7 +90,7 @@ export default function ManageTripScreen() {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton} 
-          onPress={goHome}
+          onPress={model.state.goHome}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
@@ -1096,19 +98,19 @@ export default function ManageTripScreen() {
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>Gestion du trajet</Text>
           <View style={styles.headerBadge}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor(trip.status).color }]} />
-            <Text style={[styles.headerSubtitle, { color: statusColor(trip.status).color }]}>
-              {labelStatus(trip.status)}
+            <View style={[styles.statusDot, { backgroundColor: statusColor(model.trip.status).color }]} />
+            <Text style={[styles.headerSubtitle, { color: statusColor(model.trip.status).color }]}>
+              {labelStatus(model.trip.status)}
             </Text>
           </View>
         </View>
         <TouchableOpacity
           style={styles.refreshButton}
-          onPress={refreshAll}
-          disabled={tripFetching || bookingsFetching}
+          onPress={model.refreshAll}
+          disabled={model.state.tripFetching || model.state.bookingsFetching}
           activeOpacity={0.7}
         >
-          {tripFetching || bookingsFetching ? (
+          {model.state.tripFetching || model.state.bookingsFetching ? (
             <ActivityIndicator size="small" color={Colors.primary} />
           ) : (
             <Ionicons name="refresh" size={20} color={Colors.primary} />
@@ -1116,436 +118,66 @@ export default function ManageTripScreen() {
         </TouchableOpacity>
       </View>
 
-      {feedback && (
+      {model.state.feedback && (
         <Animated.View
           entering={FadeInDown}
           style={[
             styles.feedbackBanner,
-            feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
+            model.state.feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
           ]}
         >
           <Ionicons
-            name={feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
+            name={model.state.feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
             size={20}
             color={Colors.white}
           />
-          <Text style={styles.feedbackText}>{feedback.message}</Text>
-          <TouchableOpacity onPress={() => setFeedback(null)}>
+          <Text style={styles.feedbackText}>{model.state.feedback.message}</Text>
+          <TouchableOpacity onPress={() => model.state.setFeedback(null)}>
             <Ionicons name="close" size={18} color={Colors.white} />
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refreshAll} tintColor={Colors.primary} />
-        }
-      >
-        {/* Résumé du trajet */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryHeader}>
-            <View style={styles.timeContainer}>
-              <Ionicons name="time-outline" size={20} color={Colors.gray[600]} />
-              <Text style={styles.timeText} numberOfLines={2}>
-                Départ {formatDateTime(trip.departureTime)}
-              </Text>
-            </View>
-            <View style={[styles.statusBadge, { backgroundColor: statusColor(trip.status).color + '20' }]}>
-              <Text style={[styles.statusBadgeText, { color: statusColor(trip.status).color }]}>
-                {labelStatus(trip.status).toUpperCase()}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.itineraryContainer}>
-            <View style={styles.itineraryTimeline}>
-              <View style={[styles.timelineDot, { backgroundColor: Colors.primary }]} />
-              <View style={styles.timelineLine} />
-              <View style={[styles.timelineDot, { backgroundColor: Colors.secondary }]} />
-            </View>
-            <View style={styles.itineraryDetails}>
-              <View style={styles.itineraryPoint}>
-                <Text style={styles.itineraryLabel}>Départ</Text>
-                <Text style={styles.itineraryValue} numberOfLines={2}>{trip.departure.address}</Text>
-              </View>
-              <View style={styles.itineraryPoint}>
-                <Text style={styles.itineraryLabel}>Arrivée</Text>
-                <Text style={styles.itineraryValue} numberOfLines={2}>{trip.arrival.address}</Text>
-              </View>
-            </View>
-          </View>
-
-          {trip.status === 'upcoming' && (
-            <TouchableOpacity style={styles.editRouteButton} onPress={openEditRouteModal} activeOpacity={0.9}>
-              <Ionicons name="create-outline" size={16} color={Colors.primary} />
-              <Text style={styles.editRouteButtonText}>Modifier les adresses</Text>
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <View style={styles.statIconContainer}>
-                <Ionicons name="people" size={18} color={Colors.primary} />
-              </View>
-              <View>
-                <Text style={styles.statLabel}>Places</Text>
-                <Text style={styles.statValue}>{trip.availableSeats} / {trip.totalSeats}</Text>
-              </View>
-            </View>
-            <View style={styles.statItem}>
-              <View style={styles.statIconContainer}>
-                <Ionicons name="cash" size={18} color={Colors.success} />
-              </View>
-              <View>
-                <Text style={styles.statLabel}>Prix</Text>
-                <Text style={styles.statValue}>{trip.price} FC</Text>
-              </View>
-            </View>
-          </View>
-
-        </View>
-
-        {/* Liste des passagers */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Passagers</Text>
-              <Text style={styles.sectionSubtitle}>
-                {visibleBookings?.length || 0} réservation(s) au total
-              </Text>
-            </View>
-            {(trip.status === 'upcoming' || trip.status === 'ongoing') && (
-              <TouchableOpacity 
-                style={styles.actionIconButton}
-                onPress={handleOpenNavigation}
-              >
-                <Ionicons name="navigate" size={20} color={Colors.primary} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {visibleBookings && visibleBookings.length > 0 ? (
-            visibleBookings.map((booking) => (
-              <View key={booking.id} style={styles.bookingCard}>
-                <View style={styles.bookingHeader}>
-                  <TouchableOpacity
-                    style={styles.avatar}
-                    onPress={() => router.push(`/passenger/${booking.passengerId}`)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ color: Colors.white, fontWeight: 'bold' }}>
-                      {(booking.passengerName || 'P').charAt(0)}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.bookingInfo}
-                    onPress={() => router.push(`/passenger/${booking.passengerId}`)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.bookingName}>{booking.passengerName}</Text>
-                    <Text style={styles.bookingMeta}>
-                      {booking.numberOfSeats} place(s) • {(booking.numberOfSeats * (trip?.price ?? 0)).toLocaleString()} FC
-                    </Text>
-                    {booking.passengerDestination && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 4 }}>
-                        <Ionicons name="location-outline" size={12} color={Colors.gray[500]} />
-                        <Text style={{ fontSize: 11, color: Colors.gray[500] }} numberOfLines={1}>
-                          Vers: {booking.passengerDestination}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                  <View style={{ flexDirection: 'column', alignItems: 'flex-end', gap: Spacing.xs }}>
-                    <View style={[styles.statusBadge, { backgroundColor: BOOKING_STATUS_CONFIG[booking.status].background }]}>
-                      <Text style={[styles.statusBadgeText, { color: BOOKING_STATUS_CONFIG[booking.status].color }]}>
-                        {BOOKING_STATUS_CONFIG[booking.status].label}
-                      </Text>
-                    </View>
-                    {/* Bouton de notation dans la carte du passager */}
-                    {booking.status === 'accepted' && (
-                      (booking.droppedOff && booking.droppedOffConfirmedByPassenger) || 
-                      (trip.status === 'completed')
-                    ) && (
-                      <TouchableOpacity
-                        style={[styles.rateButtonInCard, { backgroundColor: Colors.secondary }]}
-                        onPress={() => router.push(`/rate/${trip.id}?passengerId=${booking.passengerId}`)}
-                      >
-                        <Ionicons name="star" size={14} color={Colors.white} />
-                        <Text style={[styles.rateButtonInCardText, { color: Colors.white }]}>Noter</Text>
-                      </TouchableOpacity>
-                    )}
-                    {/* Bouton pour voir le profil du passager */}
-                    <TouchableOpacity
-                      style={[styles.viewProfileButton]}
-                      onPress={() => router.push(`/passenger/${booking.passengerId}`)}
-                    >
-                      <Ionicons name="person-outline" size={14} color={Colors.primary} />
-                      <Text style={[styles.viewProfileButtonText, { color: Colors.primary }]}>Profil</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {booking.status === 'pending' && (
-                  <View style={styles.bookingFooter}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.rejectButton]}
-                      onPress={() => openRejectModal(booking)}
-                      disabled={isAccepting || isRejecting}
-                    >
-                      <Text style={[styles.actionText, { color: Colors.danger }]}>Refuser</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.acceptButton]}
-                      onPress={() => handleAcceptBooking(booking.id)}
-                      disabled={isAccepting || isRejecting}
-                    >
-                      {processingBookingId === booking.id ? (
-                        <ActivityIndicator size="small" color={Colors.white} />
-                      ) : (
-                        <Text style={styles.actionText}>Accepter</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {booking.status === 'accepted' && (
-                  <View style={styles.bookingFooter}>
-                    <TouchableOpacity
-                      style={[styles.actionButton, { backgroundColor: Colors.gray[100] }]}
-                      onPress={() => {
-                        setSelectedPassengerPhone(booking.passengerPhone || null);
-                        setSelectedPassengerName(booking.passengerName || null);
-                        setContactModalVisible(true);
-                      }}
-                    >
-                      <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
-                      <Text style={[styles.actionText, { color: Colors.primary }]}>Contacter</Text>
-                    </TouchableOpacity>
-
-                    {!trip.tripRequestId &&
-                      !hasPassengerBoarded(booking) &&
-                      (trip.status === 'upcoming' || trip.status === 'ongoing') && (
-                      <TouchableOpacity
-                        style={[styles.actionButton, styles.cancelBookingButton]}
-                        onPress={() => handleCancelBookingBeforePickup(booking)}
-                        disabled={
-                          isCancellingBooking ||
-                          processingBookingId === booking.id
-                        }
-                      >
-                        {processingBookingId === booking.id && isCancellingBooking ? (
-                          <ActivityIndicator size="small" color={Colors.danger} />
-                        ) : (
-                          <>
-                            <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
-                            <Text style={[styles.actionText, { color: Colors.danger }]}>Annuler</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    )}
-                    
-                    {trip.status === 'ongoing' && !booking.pickedUp && (
-                      <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeInfo]}>
-                        <View style={[styles.bookingStatusDot, { backgroundColor: Colors.info }]} />
-                        <Text style={[styles.bookingStatusText, { color: Colors.info }]}>A prendre en charge</Text>
-                      </View>
-                    )}
-
-                    {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-                      <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeSuccess]}>
-                        <View style={[styles.bookingStatusDot, { backgroundColor: Colors.success }]} />
-                        <Text style={[styles.bookingStatusText, { color: Colors.success }]}>Arrivée en cours</Text>
-                      </View>
-                    )}
-
-                    {trip.status === 'ongoing' && booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-                      <View style={[styles.bookingStatusBadge, styles.bookingStatusBadgeSecondary]}>
-                        <View style={[styles.bookingStatusDot, { backgroundColor: Colors.secondary }]} />
-                        <Text style={[styles.bookingStatusText, { color: Colors.secondary }]}>Trajet en cours</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            ))
-          ) : (
-            <View style={{ alignItems: 'center', padding: Spacing.xl }}>
-              <Ionicons name="people-outline" size={48} color={Colors.gray[300]} />
-              <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
-                Aucune réservation pour le moment.
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Sécurité du trajet</Text>
-              <Text style={styles.sectionSubtitle}>
-                Choisissez clairement les proches à notifier pour ce trajet.
-              </Text>
-            </View>
-            <View style={styles.sectionIconBadge}>
-              <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
-            </View>
-          </View>
-          <TouchableOpacity
-            style={styles.securityQuickButton}
-            onPress={openTripSecurityModal}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="people" size={18} color={Colors.white} />
-            <Text style={styles.securityQuickButtonText}>Choisir qui notifier</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.securitySecondaryButton}
-            onPress={() => router.push('/security')}
-            activeOpacity={0.9}
-          >
-            <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-            <Text style={styles.securitySecondaryButtonText}>
-              {"Ajouter ou gérer mes contacts d'urgence"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+      <ManageTripContent
+        state={model.state}
+        refreshAll={model.refreshAll}
+        routeEditor={model.routeEditor}
+        tracking={model.tracking}
+        actions={model.actions}
+        bookingsActions={model.bookingsActions}
+        openTripSecurityModal={model.openTripSecurityModal}
+      />
 
       {/* Sticky Footer pour les actions du trajet */}
-      <View style={[styles.stickyFooter, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}>
-        {trip.status === 'upcoming' && (
-          <>
-            <View style={styles.upcomingActionsRow}>
-              <TouchableOpacity
-                style={[styles.primaryButton, styles.startTripButton, styles.footerPrimaryAction]}
-                onPress={handleStartTrip}
-                disabled={isStartingTrip}
-                activeOpacity={0.8}
-              >
-                {isStartingTrip ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="play" size={20} color={Colors.white} />
-                    <Text style={styles.primaryButtonText}>Démarrer</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.footerSecondaryAction, styles.editTripFooterButton]}
-                onPress={handleOpenTripEdit}
-                activeOpacity={0.8}
-                accessibilityRole="button"
-                accessibilityLabel="Modifier le trajet"
-              >
-                <Ionicons name="create-outline" size={20} color={Colors.primary} />
-                <Text style={styles.footerSecondaryActionText} numberOfLines={1}>Modifier</Text>
-              </TouchableOpacity>
-            </View>
-            {!trip.tripRequestId && (
-              <TouchableOpacity
-                style={[styles.secondaryButton, styles.footerFullWidthButton, styles.cancelTripFooterButton]}
-                onPress={handleCancelTrip}
-                disabled={isUpdatingTripStatus}
-                activeOpacity={0.8}
-              >
-                {isUpdatingTripStatus ? (
-                  <ActivityIndicator color={Colors.danger} />
-                ) : (
-                  <Text style={[styles.secondaryButtonText, { color: Colors.danger }]}>Annuler</Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-
-        {canCompleteTrip && (
-          <View style={[styles.primaryButton, styles.completeTripButton, styles.footerFullWidthButton]}>
-            <Ionicons name="checkmark-done" size={20} color={Colors.white} />
-            <Text style={styles.primaryButtonText}>Finalisation automatique</Text>
-          </View>
-        )}
-
-        {trip.status === 'ongoing' && !canCompleteTrip && (
-          <View style={styles.ongoingActionsRow}>
-            <TouchableOpacity
-              style={[styles.primaryButton, styles.navigationButton, styles.footerPrimaryAction]}
-              onPress={handleOpenNavigation}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="navigate" size={20} color={Colors.white} />
-              <Text style={styles.primaryButtonText} numberOfLines={1}>Navigation</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.footerSecondaryAction, styles.editTripFooterButton]}
-              onPress={handleOpenTripEdit}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Modifier le trajet"
-            >
-              <Ionicons name="create-outline" size={20} color={Colors.primary} />
-              <Text style={styles.footerSecondaryActionText} numberOfLines={1}>Modifier</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.footerSecondaryAction, styles.pauseTripFooterButton]}
-              onPress={handlePauseTrip}
-              disabled={isPausingTrip || isRequestingDriverInterruption}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Interrompre le trajet"
-            >
-              {isPausingTrip || isRequestingDriverInterruption ? (
-                <ActivityIndicator color={Colors.warning} />
-              ) : (
-                <>
-                  <Ionicons name="pause" size={20} color={Colors.warning} />
-                  <Text style={[styles.footerSecondaryActionText, styles.pauseTripFooterButtonText]} numberOfLines={1}>
-                    Pause
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {trip.status === 'completed' && (
-          <TouchableOpacity
-            style={[styles.primaryButton, styles.footerFullWidthButton, { backgroundColor: Colors.secondary }]}
-            onPress={() => router.push(`/rate/${trip.id}`)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="star" size={20} color={Colors.white} />
-            <Text style={styles.primaryButtonText}>Évaluer les passagers</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      <ManageTripActionsFooter
+        state={model.state}
+        actions={model.actions}
+        canCompleteTrip={model.canCompleteTrip}
+      />
 
       <Modal
         animationType="slide"
         transparent
-        visible={securityModalVisible}
-        onRequestClose={closeTripSecurityModal}
+        visible={model.state.securityModalVisible}
+        onRequestClose={model.closeTripSecurityModal}
       >
         <View style={styles.securityModalOverlay}>
           <TouchableOpacity
             style={styles.securityModalBackdrop}
             activeOpacity={1}
-            onPress={closeTripSecurityModal}
+            onPress={model.closeTripSecurityModal}
           />
           <View
             style={[
               styles.securityModalContent,
-              { paddingBottom: Math.max(insets.bottom, Spacing.md) + Spacing.md },
+              { paddingBottom: Math.max(model.state.insets.bottom, Spacing.md) + Spacing.md },
             ]}
           >
             <View style={styles.securityModalHeader}>
               <Text style={styles.securityModalTitle}>Sécurité du trajet</Text>
               <TouchableOpacity
                 style={styles.securityModalCloseButton}
-                onPress={closeTripSecurityModal}
+                onPress={model.closeTripSecurityModal}
               >
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
               </TouchableOpacity>
@@ -1557,10 +189,10 @@ export default function ManageTripScreen() {
               keyboardShouldPersistTaps="handled"
             >
               <TripSecurityPanel
-                tripId={trip.id}
+                tripId={model.trip.id}
                 role="driver"
-                tripStatus={trip.status}
-                openSelectorByDefault={securityModalVisible}
+                tripStatus={model.trip.status}
+                openSelectorByDefault={model.state.securityModalVisible}
                 compact
               />
             </ScrollView>
@@ -1572,11 +204,11 @@ export default function ManageTripScreen() {
       <Modal
         animationType="slide"
         transparent
-        visible={editRouteModalVisible}
-        onRequestClose={closeEditRouteModal}
+        visible={model.state.editRouteModalVisible}
+        onRequestClose={model.routeEditor.closeEditRouteModal}
       >
         <View style={styles.bookingModalOverlay}>
-          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Modifier le trajet</Text>
             <Text style={styles.bookingModalDescription}>
               {"Mettez à jour l'adresse de départ et/ou d'arrivée."}
@@ -1587,12 +219,12 @@ export default function ManageTripScreen() {
               style={styles.editRouteInput}
               placeholder="Ex: avenue Kasa-Vubu, Bandal"
               placeholderTextColor={Colors.gray[400]}
-              value={editDepartureAddress}
+              value={model.state.editDepartureAddress}
               onChangeText={(text) => {
-                setEditDepartureAddress(text);
-                if (editRouteError) setEditRouteError('');
+                model.state.setEditDepartureAddress(text);
+                if (model.state.editRouteError) model.state.setEditRouteError('');
               }}
-              editable={!isSavingRoute}
+              editable={!model.state.isSavingRoute}
             />
 
             <Text style={styles.editRouteLabel}>{"Adresse d'arrivée"}</Text>
@@ -1600,30 +232,30 @@ export default function ManageTripScreen() {
               style={styles.editRouteInput}
               placeholder="Ex: rond-point Victoire"
               placeholderTextColor={Colors.gray[400]}
-              value={editArrivalAddress}
+              value={model.state.editArrivalAddress}
               onChangeText={(text) => {
-                setEditArrivalAddress(text);
-                if (editRouteError) setEditRouteError('');
+                model.state.setEditArrivalAddress(text);
+                if (model.state.editRouteError) model.state.setEditRouteError('');
               }}
-              editable={!isSavingRoute}
+              editable={!model.state.isSavingRoute}
             />
 
-            {editRouteError ? <Text style={styles.bookingModalError}>{editRouteError}</Text> : null}
+            {model.state.editRouteError ? <Text style={styles.bookingModalError}>{model.state.editRouteError}</Text> : null}
 
             <View style={styles.bookingModalActions}>
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
-                onPress={closeEditRouteModal}
-                disabled={isSavingRoute}
+                onPress={model.routeEditor.closeEditRouteModal}
+                disabled={model.state.isSavingRoute}
               >
                 <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
-                onPress={handleSaveRouteAddresses}
-                disabled={isSavingRoute}
+                onPress={model.routeEditor.handleSaveRouteAddresses}
+                disabled={model.state.isSavingRoute}
               >
-                {isSavingRoute ? (
+                {model.state.isSavingRoute ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.bookingModalButtonPrimaryText}>Enregistrer</Text>
@@ -1635,9 +267,9 @@ export default function ManageTripScreen() {
       </Modal>
 
 
-      <Modal animationType="slide" transparent visible={rejectModalVisible}>
+      <Modal animationType="slide" transparent visible={model.state.rejectModalVisible}>
         <View style={styles.bookingModalOverlay}>
-          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Refuser la réservation</Text>
             <Text style={styles.bookingModalDescription}>
               Expliquez brièvement au passager la raison du refus.
@@ -1646,29 +278,29 @@ export default function ManageTripScreen() {
               style={styles.bookingSeatInput}
               placeholder="Ex: Nombre de places insuffisant"
               placeholderTextColor={Colors.gray[400]}
-              value={rejectReason}
+              value={model.state.rejectReason}
               onChangeText={(text) => {
-                setRejectReason(text);
-                if (rejectError) setRejectError('');
+                model.state.setRejectReason(text);
+                if (model.state.rejectError) model.state.setRejectError('');
               }}
               multiline
-              editable={!isRejecting}
+              editable={!model.state.isRejecting}
             />
-            {rejectError ? <Text style={styles.bookingModalError}>{rejectError}</Text> : null}
+            {model.state.rejectError ? <Text style={styles.bookingModalError}>{model.state.rejectError}</Text> : null}
             <View style={styles.bookingModalActions}>
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
-                onPress={closeRejectModal}
-                disabled={isRejecting}
+                onPress={model.bookingsActions.closeRejectModal}
+                disabled={model.state.isRejecting}
               >
                 <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
-                onPress={handleRejectSubmit}
-                disabled={isRejecting}
+                onPress={model.bookingsActions.handleRejectSubmit}
+                disabled={model.state.isRejecting}
               >
-                {isRejecting ? (
+                {model.state.isRejecting ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
@@ -1682,17 +314,17 @@ export default function ManageTripScreen() {
 
       {/* Contact Modal pour les passagers */}
       <Modal
-        visible={contactModalVisible}
+        visible={model.state.contactModalVisible}
         animationType="fade"
         transparent
-        onRequestClose={() => setContactModalVisible(false)}
+        onRequestClose={() => model.state.setContactModalVisible(false)}
       >
         <TouchableOpacity
           style={styles.contactModalOverlay}
           activeOpacity={1}
-          onPress={() => setContactModalVisible(false)}
+          onPress={() => model.state.setContactModalVisible(false)}
         >
-          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
+          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
             <View style={styles.contactModalHeader}>
               <View style={styles.contactModalIconWrapper}>
                 <View style={styles.contactModalIconBadge}>
@@ -1700,7 +332,7 @@ export default function ManageTripScreen() {
                 </View>
               </View>
               <Text style={styles.contactModalTitle}>
-                Contacter {selectedPassengerName || 'le passager'}
+                Contacter {model.state.selectedPassengerName || 'le passager'}
               </Text>
               <Text style={styles.contactModalSubtitle}>
                 Contact via WhatsApp uniquement
@@ -1711,10 +343,10 @@ export default function ManageTripScreen() {
               <TouchableOpacity
                 style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
                 onPress={async () => {
-                  setContactModalVisible(false);
-                  if (selectedPassengerPhone) {
-                    await openWhatsApp(selectedPassengerPhone, (errorMsg) => {
-                      showDialog({
+                  model.state.setContactModalVisible(false);
+                  if (model.state.selectedPassengerPhone) {
+                    await openWhatsApp(model.state.selectedPassengerPhone, (errorMsg) => {
+                      model.state.showDialog({
                         variant: 'danger',
                         title: 'Erreur',
                         message: errorMsg,
@@ -1736,7 +368,7 @@ export default function ManageTripScreen() {
 
             <TouchableOpacity
               style={styles.contactModalCancelButton}
-              onPress={() => setContactModalVisible(false)}
+              onPress={() => model.state.setContactModalVisible(false)}
             >
               <Text style={styles.contactModalCancelText}>Annuler</Text>
             </TouchableOpacity>
@@ -1746,34 +378,5 @@ export default function ManageTripScreen() {
     </SafeAreaView>
   );
 }
-
-const labelStatus = (status: string) => {
-  switch (status) {
-    case 'upcoming':
-      return 'À venir';
-    case 'ongoing':
-      return 'En cours';
-    case 'completed':
-      return 'Terminé';
-    case 'cancelled':
-      return 'Annulé';
-    default:
-      return status;
-  }
-};
-
-const statusColor = (status: string) => {
-  switch (status) {
-    case 'upcoming':
-      return { color: Colors.secondary };
-    case 'ongoing':
-      return { color: Colors.info };
-    case 'completed':
-      return { color: Colors.success };
-    case 'cancelled':
-    default:
-      return { color: Colors.gray[600] };
-  }
-};
 
 

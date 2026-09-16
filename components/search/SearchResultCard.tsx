@@ -106,7 +106,7 @@ export const SearchResultCard = React.memo(function SearchResultCard({
             {trip.description || `${vehicleLabel[trip.vehicleType || 'car']} • ${seatsLabel}`}
           </Text>
           <Text style={styles.arrivalEstimateText} numberOfLines={1}>
-            Arrivée estimee {arrivalDateTime}
+            Arrivée estimée {arrivalDateTime}
           </Text>
         </View>
       </View>

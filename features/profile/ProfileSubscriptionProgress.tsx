@@ -3,6 +3,7 @@ import { styles } from '@/features/profile/ProfileSubscriptionModal.styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import type { SubscriptionPaymentProgressStep } from './profileModel';
 
 interface ProfileSubscriptionProgressProps {
   subscriptionPaymentProgressSteps: SubscriptionPaymentProgressStep[];

@@ -14,7 +14,7 @@ interface TripVehicleDetailsModalProps {
   tripVehicleIconName: "car" | "bicycle" | "car-sport";
   tripVehicleLabel: string;
   tripVehicleTypeLabel: string;
-  tripVehicleStatusLabel: 'Indisponible' | 'Actif' | null;
+  tripVehicleStatusLabel: string | null;
   tripVehicleLicensePlate: string | null;
   visibleTripVehicleDetailRows: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string; }[];
 }

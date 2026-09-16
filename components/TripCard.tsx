@@ -83,7 +83,7 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
           <Ionicons name="navigate" size={16} color={Colors.primary} />
           <Text style={styles.routeText}>{trip.arrival.name}</Text>
           <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>Arrivée estimee</Text>
+            <Text style={styles.routeDateLabel}>Arrivée estimée</Text>
             <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
           </View>
         </View>

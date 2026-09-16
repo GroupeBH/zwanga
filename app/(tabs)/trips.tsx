@@ -1,988 +1,26 @@
+import { useTripsController } from '../../hooks/trips/useTripsController';
+import { TripsEditModal } from '../../features/trips/TripsEditModal';
 import { styles } from '../../features/screen-styles/app/tabs/trips/index';
-import LocationPickerModal, { type MapLocationSelection } from '@/components/LocationPickerModal';
-import { FormModal } from '@/components/forms/FormLayout';
+import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
-import { Colors, FontWeights, Spacing } from '@/constants/styles';
-import { useTutorialGuide } from '@/contexts/TutorialContext';
-import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import {
-  useDeleteTripMutation,
-  useGetMyRecurringTripsQuery,
-  useGetMyTripsQuery,
-  useUpdateTripMutation,
-} from '@/store/api/tripApi';
-import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
-import type { Booking, Trip } from '@/types';
-import { formatDateTime } from '@/utils/dateHelpers';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
-import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
-import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
+import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerAndroid, DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useIsFocused } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
-  Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-
-type MainTab = 'published' | 'bookings';
-type SubTab = 'upcoming' | 'completed';
-type EditTripStep = 1 | 2;
-type TripListItem =
-  | { kind: 'published'; trip: Trip }
-  | { booking: Booking; kind: 'booking' };
-
-const normalizeSearchText = (value: unknown) =>
-  String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-
-const getLocationText = (selection: MapLocationSelection | null, manualAddress: string) =>
-  (manualAddress.trim() || selection?.title || selection?.address || '').trim();
-
-const getLocationCoordinatesTuple = (
-  selection: MapLocationSelection | null,
-): [number, number] | undefined => {
-  if (!selection || !Number.isFinite(selection.latitude) || !Number.isFinite(selection.longitude)) {
-    return undefined;
-  }
-  return [selection.longitude, selection.latitude];
-};
-
-const getDefaultFutureDate = () => {
-  const base = new Date();
-  base.setMinutes(0, 0, 0);
-  base.setHours(base.getHours() + 1);
-  return base;
-};
-
-function ArrivalTimeBlock({ trip }: { trip: Trip }) {
-  const calculatedArrivalTime = useTripArrivalTime(trip);
-  const arrivalDateTimeDisplay = calculatedArrivalTime
-    ? formatDateTime(calculatedArrivalTime.toISOString())
-    : formatDateTime(trip.arrivalTime);
-
-  return (
-    <View style={styles.timeContainer}>
-      <Text style={styles.routeDateLabel}>Arrivée estimee</Text>
-      <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
-    </View>
-  );
-}
-
-function canManagePublishedTrip(trip: Trip) {
-  if (trip.status === 'completed') return false;
-
-  if (trip.status !== 'ongoing' && trip.departureTime) {
-    const departureTime = new Date(trip.departureTime).getTime();
-    if (Number.isFinite(departureTime) && departureTime < Date.now()) return false;
-  }
-
-  return trip.status === 'upcoming' || trip.status === 'ongoing';
-}
-
-function getTripStatusBadge(trip: Trip): TripStatusBadge {
-  const departureTime = trip.departureTime ? new Date(trip.departureTime).getTime() : Number.NaN;
-  const isExpired =
-    trip.status !== 'ongoing' &&
-    Number.isFinite(departureTime) &&
-    departureTime < Date.now();
-
-  if (isExpired && trip.status !== 'completed') {
-    return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
-  }
-
-  switch (trip.status) {
-    case 'upcoming':
-      return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'À venir' };
-    case 'ongoing':
-      return { bgColor: 'rgba(52, 152, 219, 0.1)', textColor: Colors.info, label: 'En cours' };
-    case 'completed':
-      return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminé' };
-    default:
-      return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: trip.status };
-  }
-}
-
-function getBookingStatusBadge(booking: Booking): TripStatusBadge {
-  switch (booking.status) {
-    case 'pending':
-      return { bgColor: 'rgba(247, 184, 1, 0.1)', textColor: Colors.secondary, label: 'En attente' };
-    case 'accepted':
-      return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Confirmée' };
-    case 'rejected':
-      return { bgColor: 'rgba(239, 68, 68, 0.1)', textColor: Colors.danger, label: 'Refusée' };
-    case 'cancelled':
-      return { bgColor: 'rgba(156, 163, 175, 0.1)', textColor: Colors.gray[600], label: 'Annulée' };
-    case 'completed':
-      return { bgColor: 'rgba(46, 204, 113, 0.1)', textColor: Colors.success, label: 'Terminée' };
-    case 'no_show':
-      return { bgColor: 'rgba(59, 130, 246, 0.1)', textColor: Colors.info, label: 'Non embarqué' };
-    case 'boarding_uncertain':
-      return { bgColor: 'rgba(245, 158, 11, 0.1)', textColor: Colors.warning, label: 'Embarquement non confirmé' };
-    default:
-      return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: booking.status };
-  }
-}
-
-type TripStatusBadge = { bgColor: string; textColor: string; label: string };
-
-type PublishedTripCardProps = {
-  canManage: boolean;
-  onDelete: (trip: Trip) => void;
-  onDetails: (tripId: string) => void;
-  onEdit: (trip: Trip) => void;
-  status: TripStatusBadge;
-  trip: Trip;
-};
-
-const PublishedTripCard = React.memo(function PublishedTripCard({
-  canManage,
-  onDelete,
-  onDetails,
-  onEdit,
-  status,
-  trip,
-}: PublishedTripCardProps) {
-  return (
-    <View style={styles.tripCard}>
-      <View style={styles.tripHeader}>
-        <View style={styles.tripDriverInfo}>
-          {trip.driverAvatar ? (
-            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatar} />
-          )}
-          <View style={styles.tripDriverDetails}>
-            <Text style={styles.driverName}>{trip.driverName}</Text>
-            <View style={styles.driverMeta}>
-              <Ionicons name="star" size={14} color={Colors.secondary} />
-              <Text style={styles.driverRating}>{trip.driverRating}</Text>
-              {trip.vehicle || trip.vehicleInfo ? (
-                <>
-                  <View style={styles.dot} />
-                  <Text style={styles.vehicleInfo}>
-                    {trip.vehicle
-                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                      : trip.vehicleInfo}
-                  </Text>
-                </>
-              ) : null}
-            </View>
-          </View>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
-          <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
-        </View>
-      </View>
-
-      <View style={styles.routeContainer}>
-        <View style={styles.routeRow}>
-          <Ionicons name="location" size={16} color={Colors.success} />
-          <Text style={styles.routeText}>{trip.departure.name}</Text>
-          <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>Départ</Text>
-            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
-          </View>
-        </View>
-        <View style={styles.routeDivider} />
-        <View style={styles.routeRow}>
-          <Ionicons name="navigate" size={16} color={Colors.primary} />
-          <Text style={styles.routeText}>{trip.arrival.name}</Text>
-          <ArrivalTimeBlock trip={trip} />
-        </View>
-      </View>
-
-      <View style={styles.tripFooter}>
-        <View style={styles.tripFooterLeft}>
-          <View style={styles.infoItem}>
-            <Ionicons name="people" size={16} color={Colors.gray[600]} />
-            <Text style={styles.infoText}>{trip.availableSeats} places</Text>
-          </View>
-          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-            {trip.price === 0 ? (
-              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
-            ) : (
-              <Text style={styles.infoText}>{trip.price} FC</Text>
-            )}
-          </View>
-        </View>
-        <TouchableOpacity style={styles.detailsButton} onPress={() => onDetails(trip.id)}>
-          <Text style={styles.detailsButtonText}>Détails</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.ownerActionsRow}>
-        <TouchableOpacity
-          style={[styles.ownerActionButton, !canManage && styles.ownerActionDisabled]}
-          onPress={() => onEdit(trip)}
-          disabled={!canManage}
-        >
-          <Ionicons name="create-outline" size={16} color={Colors.primary} />
-          <Text style={styles.ownerActionText}>Modifier</Text>
-        </TouchableOpacity>
-        {!trip.tripRequestId && (
-          <TouchableOpacity
-            style={[styles.ownerActionButton, styles.ownerActionDanger, { marginRight: 0 }]}
-            onPress={() => onDelete(trip)}
-          >
-            <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-            <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>Supprimer</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
-});
-
-type BookingTripCardProps = {
-  booking: Booking;
-  onDetails: (tripId: string) => void;
-  status: TripStatusBadge;
-};
-
-const BookingTripCard = React.memo(function BookingTripCard({
-  booking,
-  onDetails,
-  status,
-}: BookingTripCardProps) {
-  const trip = booking.trip;
-  if (!trip) return null;
-
-  return (
-    <View style={styles.tripCard}>
-      <View style={styles.tripHeader}>
-        <View style={styles.tripDriverInfo}>
-          {trip.driverAvatar ? (
-            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatar} />
-          )}
-          <View style={styles.tripDriverDetails}>
-            <Text style={styles.driverName}>{trip.driverName}</Text>
-            <View style={styles.driverMeta}>
-              <Ionicons name="star" size={14} color={Colors.secondary} />
-              <Text style={styles.driverRating}>{trip.driverRating}</Text>
-              {trip.vehicle || trip.vehicleInfo ? (
-                <>
-                  <View style={styles.dot} />
-                  <Text style={styles.vehicleInfo}>
-                    {trip.vehicle
-                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                      : trip.vehicleInfo}
-                  </Text>
-                </>
-              ) : null}
-            </View>
-          </View>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
-          <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
-        </View>
-      </View>
-
-      <View style={styles.routeContainer}>
-        <View style={styles.routeRow}>
-          <Ionicons name="location" size={16} color={Colors.success} />
-          <Text style={styles.routeText}>{trip.departure.name}</Text>
-          <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>Départ</Text>
-            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
-          </View>
-        </View>
-        <View style={styles.routeDivider} />
-        <View style={styles.routeRow}>
-          <Ionicons name="navigate" size={16} color={Colors.primary} />
-          <Text style={styles.routeText}>{booking.passengerDestination || trip.arrival.name}</Text>
-          <ArrivalTimeBlock trip={trip} />
-        </View>
-      </View>
-
-      <View style={styles.tripFooter}>
-        <View style={styles.tripFooterLeft}>
-          <View style={styles.infoItem}>
-            <Ionicons name="people" size={16} color={Colors.gray[600]} />
-            <Text style={styles.infoText}>
-              {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
-            </Text>
-          </View>
-          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-            {trip.price === 0 ? (
-              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
-            ) : (
-              <Text style={styles.infoText}>{trip.price * booking.numberOfSeats} FC</Text>
-            )}
-          </View>
-        </View>
-        <TouchableOpacity style={styles.detailsButton} onPress={() => onDetails(trip.id)}>
-          <Text style={styles.detailsButtonText}>Détails</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-});
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function TripsScreen() {
-  const router = useRouter();
-  const isFocused = useIsFocused();
-  const insets = useSafeAreaInsets();
-  const [mainTab, setMainTab] = useState<MainTab>('published');
-  const [subTab, setSubTab] = useState<SubTab>('upcoming');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const {
-    data: myTrips,
-    isLoading: tripsLoading,
-    isFetching: tripsFetching,
-    isError: tripsError,
-    refetch: refetchTrips,
-  } = useGetMyTripsQuery(undefined, {
-    pollingInterval: isFocused ? 60000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
-  });
-  const {
-    data: myBookings,
-    isLoading: bookingsLoading,
-    isFetching: bookingsFetching,
-    isError: bookingsError,
-    refetch: refetchBookings,
-  } = useGetMyBookingsQuery(undefined, {
-    pollingInterval: isFocused ? 60000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
-  });
-  const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
-  const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery();
-  const activeUserVehicles = useMemo(
-    () => userVehicles.filter((vehicle) => vehicle.isActive !== false),
-    [userVehicles],
-  );
-  const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
-  const [deleteTripMutation, { isLoading: isDeletingTrip }] = useDeleteTripMutation();
-  const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Trip | null>(null);
-  const [editStep, setEditStep] = useState<EditTripStep>(1);
-  const [editSeats, setEditSeats] = useState('');
-  const [editPrice, setEditPrice] = useState('');
-  const [editDateTime, setEditDateTime] = useState<Date | null>(null);
-  const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
-  const [editRouteMode, setEditRouteMode] = useState<'map' | 'manual'>('map');
-  const [editDepartureSelection, setEditDepartureSelection] = useState<MapLocationSelection | null>(null);
-  const [editArrivalSelection, setEditArrivalSelection] = useState<MapLocationSelection | null>(null);
-  const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
-  const [editArrivalManualAddress, setEditArrivalManualAddress] = useState('');
-  const [editRoutePickerTarget, setEditRoutePickerTarget] = useState<'departure' | 'arrival' | null>(null);
-  const [editVehicleId, setEditVehicleId] = useState<string | null>(null);
-  const [editModalSuspended, setEditModalSuspended] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(
-    null,
-  );
-  const { shouldShow: shouldShowTripsGuide, complete: completeTripsGuide } =
-    useTutorialGuide('trips_screen');
-  const [tripsGuideVisible, setTripsGuideVisible] = useState(false);
-
-  useEffect(() => {
-    if (shouldShowTripsGuide) {
-      setTripsGuideVisible(true);
-    }
-  }, [shouldShowTripsGuide]);
-
-  const dismissTripsGuide = () => {
-    setTripsGuideVisible(false);
-    completeTripsGuide();
-  };
-
-  const trips = useMemo(() => myTrips ?? [], [myTrips]);
-  const activeRecurringTemplates = useMemo(
-    () => recurringTemplates.filter((template) => template.status === 'active').length,
-    [recurringTemplates],
-  );
-
-  const upcomingTrips = useMemo(
-    () => {
-      const now = new Date();
-      const filtered = trips.filter((trip) => {
-        // Si le trajet est déjà complété, il n'est pas à venir
-        if (trip.status === 'completed') {
-          return false;
-        }
-
-        // Si le trajet est 'upcoming' ou 'ongoing', vérifier si la date de départ est passée
-        if (trip.status === 'ongoing') {
-          return true;
-        }
-
-        if (trip.status === 'upcoming') {
-          if (trip.departureTime) {
-            const departureDate = new Date(trip.departureTime);
-            // Si la date de départ est passée, le trajet est expiré
-            if (departureDate < now) {
-              return false;
-            }
-          }
-          return true;
-        }
-
-        return false;
-      });
-
-      // Trier par date de départ (les plus récents en premier)
-      return filtered.sort((a, b) => {
-        const dateA = new Date(a.departureTime).getTime();
-        const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
-      }).sort((a, b) => {
-        const dateA = new Date(a.departureTime).getTime();
-        const dateB = new Date(b.departureTime).getTime();
-        return dateA - dateB;
-      });
-    },
-    [trips],
-  );
-
-  const completedTrips = useMemo(
-    () => {
-      const now = new Date();
-      const filtered = trips.filter((trip) => {
-        // Les trajets avec status 'completed' sont dans l'historique
-        if (trip.status === 'completed') {
-          return true;
-        }
-
-        // Les trajets 'upcoming' ou 'ongoing' dont la date de départ est passée sont expirés
-        if (trip.status === 'upcoming') {
-          if (trip.departureTime) {
-            const departureDate = new Date(trip.departureTime);
-            // Si la date de départ est passée, le trajet est expiré et va dans l'historique
-            if (departureDate < now) {
-              return true;
-            }
-          }
-        }
-
-        return false;
-      });
-
-      // Trier par date de départ (les plus récents en premier)
-      return filtered.sort((a, b) => {
-        const dateA = new Date(a.departureTime).getTime();
-        const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
-      });
-    },
-    [trips],
-  );
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      await Promise.all([refetchTrips(), refetchBookings()]);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  // Filtrer les réservations par statut (à venir / terminées)
-  const upcomingBookings = useMemo(() => {
-    const now = new Date();
-    return (myBookings ?? []).filter((booking) => {
-      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
-        return false;
-      }
-      if (booking.trip?.status === 'ongoing') {
-        return true;
-      }
-      if (booking.trip?.departureTime) {
-        const departureDate = new Date(booking.trip.departureTime);
-        return departureDate >= now;
-      }
-      return booking.status === 'pending' || booking.status === 'accepted';
-    }).sort((a, b) => {
-      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
-      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
-      return dateB - dateA;
-    }).sort((a, b) => {
-      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
-      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
-      return dateA - dateB;
-    });
-  }, [myBookings]);
-
-  const completedBookingsList = useMemo(() => {
-    const now = new Date();
-    return (myBookings ?? []).filter((booking) => {
-      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
-        return true;
-      }
-      if (booking.trip?.status === 'ongoing') {
-        return false;
-      }
-      if (booking.trip?.departureTime) {
-        const departureDate = new Date(booking.trip.departureTime);
-        return departureDate < now;
-      }
-      return false;
-    }).sort((a, b) => {
-      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
-      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
-      return dateB - dateA;
-    });
-  }, [myBookings]);
-
-  const displayTrips = subTab === 'upcoming' ? upcomingTrips : completedTrips;
-  const displayBookings = subTab === 'upcoming' ? upcomingBookings : completedBookingsList;
-  const normalizedSearchQuery = normalizeSearchText(searchQuery);
-  const filteredTrips = useMemo(() => {
-    if (!normalizedSearchQuery) return displayTrips;
-
-    return displayTrips.filter((trip) =>
-      normalizeSearchText([
-        trip.departure?.name,
-        trip.departure?.address,
-        trip.arrival?.name,
-        trip.arrival?.address,
-        trip.driverName,
-        trip.vehicle?.brand,
-        trip.vehicle?.model,
-        trip.vehicleInfo,
-      ].join(' ')).includes(normalizedSearchQuery),
-    );
-  }, [displayTrips, normalizedSearchQuery]);
-  const filteredBookings = useMemo(() => {
-    if (!normalizedSearchQuery) return displayBookings;
-
-    return displayBookings.filter((booking) => {
-      const trip = booking.trip;
-      return normalizeSearchText([
-        trip?.departure?.name,
-        trip?.departure?.address,
-        booking.passengerDestination,
-        trip?.arrival?.name,
-        trip?.arrival?.address,
-        trip?.driverName,
-        trip?.vehicle?.brand,
-        trip?.vehicle?.model,
-        trip?.vehicleInfo,
-      ].join(' ')).includes(normalizedSearchQuery);
-    });
-  }, [displayBookings, normalizedSearchQuery]);
-  const tripListData = useMemo<TripListItem[]>(
-    () =>
-      mainTab === 'published'
-        ? filteredTrips.map((trip) => ({ kind: 'published' as const, trip }))
-        : filteredBookings.map((booking) => ({ kind: 'booking' as const, booking })),
-    [filteredBookings, filteredTrips, mainTab],
-  );
-  const showLoader = (mainTab === 'published' ? tripsLoading : bookingsLoading) && (mainTab === 'published' ? trips.length === 0 : (myBookings?.length ?? 0) === 0);
-  const isError = mainTab === 'published' ? tripsError : bookingsError;
-  const isFetching = mainTab === 'published' ? tripsFetching : bookingsFetching;
-
-  const getEditBaseDate = () => {
-    if (editDateTime) {
-      return new Date(editDateTime);
-    }
-    return getDefaultFutureDate();
-  };
-
-  const applyEditDatePart = (pickedDate: Date) => {
-    const base = getEditBaseDate();
-    const next = new Date(base);
-    next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
-    return next;
-  };
-
-  const applyEditTimePart = (pickedDate: Date) => {
-    const base = getEditBaseDate();
-    const next = new Date(base);
-    next.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
-    return next;
-  };
-
-  const openDateOrTimePicker = (mode: 'date' | 'time') => {
-    const value = getEditBaseDate();
-    if (Platform.OS === 'android') {
-      DateTimePickerAndroid.open({
-        mode,
-        value,
-        is24Hour: true,
-        minimumDate: mode === 'date' ? new Date() : undefined,
-        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (!selectedDate) {
-            return;
-          }
-          setEditDateTime(mode === 'date' ? applyEditDatePart(selectedDate) : applyEditTimePart(selectedDate));
-        },
-      });
-    } else {
-      setIosPickerMode(mode);
-    }
-  };
-
-  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (!selectedDate || !iosPickerMode) {
-      return;
-    }
-    setEditDateTime(
-      iosPickerMode === 'date' ? applyEditDatePart(selectedDate) : applyEditTimePart(selectedDate),
-    );
-  };
-
-  const closeIosPicker = () => setIosPickerMode(null);
-
-  const openEditModal = useCallback((trip: Trip) => {
-    const departureCoordinate = getTripLocationCoordinate(trip.departure);
-    const arrivalCoordinate = getTripLocationCoordinate(trip.arrival);
-
-    const departureSelection =
-      departureCoordinate
-        ? {
-            title: trip.departure?.name || 'Départ',
-            address:
-              trip.departure?.address ||
-              `${departureCoordinate.latitude.toFixed(5)}, ${departureCoordinate.longitude.toFixed(5)}`,
-            latitude: departureCoordinate.latitude,
-            longitude: departureCoordinate.longitude,
-          }
-        : null;
-    const arrivalSelection =
-      arrivalCoordinate
-        ? {
-            title: trip.arrival?.name || 'Arrivée',
-            address:
-              trip.arrival?.address ||
-              `${arrivalCoordinate.latitude.toFixed(5)}, ${arrivalCoordinate.longitude.toFixed(5)}`,
-            latitude: arrivalCoordinate.latitude,
-            longitude: arrivalCoordinate.longitude,
-          }
-        : null;
-
-    setEditingTrip(trip);
-    setEditSeats(String(trip.availableSeats));
-    setEditPrice(String(trip.price));
-    const parsedDate = trip.departureTime ? new Date(trip.departureTime) : null;
-    setEditDateTime(parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
-    setEditDepartureSelection(departureSelection);
-    setEditArrivalSelection(arrivalSelection);
-    setEditDepartureManualAddress((trip.departure?.address || trip.departure?.name || '').trim());
-    setEditArrivalManualAddress((trip.arrival?.address || trip.arrival?.name || '').trim());
-    setEditRouteMode(departureSelection && arrivalSelection ? 'map' : 'manual');
-    setEditRoutePickerTarget(null);
-    setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
-    setEditStep(1);
-  }, []);
-
-  const closeEditModal = () => {
-    setEditingTrip(null);
-    setEditStep(1);
-    setEditSeats('');
-    setEditPrice('');
-    setEditDateTime(null);
-    setIosPickerMode(null);
-    setEditRouteMode('map');
-    setEditDepartureSelection(null);
-    setEditArrivalSelection(null);
-    setEditDepartureManualAddress('');
-    setEditArrivalManualAddress('');
-    setEditRoutePickerTarget(null);
-    setEditVehicleId(null);
-    setEditModalSuspended(false);
-  };
-
-  const swapEditRoutePoints = () => {
-    setEditDepartureSelection(editArrivalSelection);
-    setEditArrivalSelection(editDepartureSelection);
-    setEditDepartureManualAddress(editArrivalManualAddress);
-    setEditArrivalManualAddress(editDepartureManualAddress);
-  };
-
-  const openEditRoutePicker = (target: 'departure' | 'arrival') => {
-    Keyboard.dismiss();
-    setEditModalSuspended(true);
-    setTimeout(() => setEditRoutePickerTarget(target), 320);
-  };
-
-  const restoreEditModalAfterPicker = () => {
-    setEditRoutePickerTarget(null);
-    setTimeout(() => setEditModalSuspended(false), 320);
-  };
-
-  const handleContinueEditTrip = () => {
-    const departureAddress =
-      editRouteMode === 'manual'
-        ? editDepartureManualAddress.trim()
-        : getLocationText(editDepartureSelection, '');
-    const arrivalAddress =
-      editRouteMode === 'manual'
-        ? editArrivalManualAddress.trim()
-        : getLocationText(editArrivalSelection, '');
-
-    if (!departureAddress || !arrivalAddress) {
-      showFeedback('error', 'Indiquez un départ et une arrivée avant de continuer.');
-      return;
-    }
-
-    if (departureAddress.toLowerCase() === arrivalAddress.toLowerCase()) {
-      showFeedback('error', "Le départ et l'arrivée doivent être différents.");
-      return;
-    }
-
-    Keyboard.dismiss();
-    setIosPickerMode(null);
-    setEditStep(2);
-  };
-
-  const handleBackToEditRoute = () => {
-    Keyboard.dismiss();
-    setIosPickerMode(null);
-    setEditStep(1);
-  };
-
-  const openDeleteModal = useCallback((trip: Trip) => setDeleteTarget(trip), []);
-  const closeDeleteModal = () => setDeleteTarget(null);
-
-  const formattedEditDate = useMemo(() => {
-    if (!editDateTime) {
-      return 'Choisir la date';
-    }
-    return new Intl.DateTimeFormat('fr-FR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }).format(editDateTime);
-  }, [editDateTime]);
-
-  const formattedEditTime = useMemo(() => {
-    if (!editDateTime) {
-      return 'Choisir l\'heure';
-    }
-    return new Intl.DateTimeFormat('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(editDateTime);
-  }, [editDateTime]);
-
-  const editDepartureDisplay = useMemo(() => {
-    if (editRouteMode === 'manual') {
-      return editDepartureManualAddress.trim() || 'Renseigner le départ';
-    }
-    return (
-      editDepartureSelection?.title ||
-      editDepartureSelection?.address ||
-      editDepartureManualAddress.trim() ||
-      'Choisir le point de départ'
-    );
-  }, [editDepartureManualAddress, editDepartureSelection, editRouteMode]);
-
-  const editArrivalDisplay = useMemo(() => {
-    if (editRouteMode === 'manual') {
-      return editArrivalManualAddress.trim() || "Renseigner l'arrivée";
-    }
-    return (
-      editArrivalSelection?.title ||
-      editArrivalSelection?.address ||
-      editArrivalManualAddress.trim() ||
-      "Choisir le point d'arrivée"
-    );
-  }, [editArrivalManualAddress, editArrivalSelection, editRouteMode]);
-
-  const editModalBottomPadding = Platform.OS === 'android' ? 16 : Math.max(insets.bottom, 16) + 8;
-
-  const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
-    setFeedback({
-      type,
-      message: Array.isArray(message) ? message.join('\n') : message,
-    });
-  };
-
-  const handleSaveTrip = async () => {
-    if (!editingTrip || !editDateTime) {
-      return;
-    }
-
-    if (!editVehicleId) {
-      showFeedback('error', 'Sélectionnez le véhicule utilisé pour ce trajet.');
-      return;
-    }
-
-    const seatsValue = parseInt(editSeats, 10);
-    const priceValue = parseFloat(editPrice);
-    if (Number.isNaN(seatsValue) || Number.isNaN(priceValue) || seatsValue <= 0 || priceValue < 0) {
-      showFeedback('error', 'Veuillez vérifier le nombre de places et le prix.');
-      return;
-    }
-
-    const departureAddress =
-      editRouteMode === 'manual'
-        ? editDepartureManualAddress.trim()
-        : getLocationText(editDepartureSelection, '');
-    const arrivalAddress =
-      editRouteMode === 'manual'
-        ? editArrivalManualAddress.trim()
-        : getLocationText(editArrivalSelection, '');
-
-    if (!departureAddress || !arrivalAddress) {
-      showFeedback('error', 'Indiquez un départ et une arrivée avant d’enregistrer.');
-      return;
-    }
-
-    if (departureAddress.toLowerCase() === arrivalAddress.toLowerCase()) {
-      showFeedback('error', "Le départ et l'arrivée doivent être différents.");
-      return;
-    }
-
-    const currentDepartureAddress = (editingTrip.departure?.address || editingTrip.departure?.name || '').trim();
-    const currentArrivalAddress = (editingTrip.arrival?.address || editingTrip.arrival?.name || '').trim();
-    const updates: {
-      totalSeats: number;
-      pricePerSeat: number;
-      departureDate: string;
-      departureLocation?: string;
-      arrivalLocation?: string;
-      departureCoordinates?: [number, number];
-      arrivalCoordinates?: [number, number];
-      vehicleId?: string;
-    } = {
-      totalSeats: seatsValue,
-      pricePerSeat: priceValue,
-      departureDate: editDateTime.toISOString(),
-      vehicleId: editVehicleId,
-    };
-
-    if (departureAddress !== currentDepartureAddress) {
-      updates.departureLocation = departureAddress;
-    }
-    if (arrivalAddress !== currentArrivalAddress) {
-      updates.arrivalLocation = arrivalAddress;
-    }
-
-    if (editRouteMode === 'map') {
-      const departureTuple = getLocationCoordinatesTuple(editDepartureSelection);
-      const arrivalTuple = getLocationCoordinatesTuple(editArrivalSelection);
-      const currentDepartureLat = Number(editingTrip.departure?.lat);
-      const currentDepartureLng = Number(editingTrip.departure?.lng);
-      const currentArrivalLat = Number(editingTrip.arrival?.lat);
-      const currentArrivalLng = Number(editingTrip.arrival?.lng);
-
-      if (
-        departureTuple &&
-        (!Number.isFinite(currentDepartureLat) ||
-          !Number.isFinite(currentDepartureLng) ||
-          Math.abs(departureTuple[1] - currentDepartureLat) > 0.000001 ||
-          Math.abs(departureTuple[0] - currentDepartureLng) > 0.000001)
-      ) {
-        updates.departureCoordinates = departureTuple;
-      }
-
-      if (
-        arrivalTuple &&
-        (!Number.isFinite(currentArrivalLat) ||
-          !Number.isFinite(currentArrivalLng) ||
-          Math.abs(arrivalTuple[1] - currentArrivalLat) > 0.000001 ||
-          Math.abs(arrivalTuple[0] - currentArrivalLng) > 0.000001)
-      ) {
-        updates.arrivalCoordinates = arrivalTuple;
-      }
-    }
-
-    try {
-      await updateTripMutation({
-        id: editingTrip.id,
-        updates,
-      }).unwrap();
-      showFeedback('success', 'Le trajet a été mis à jour.');
-      closeEditModal();
-    } catch (error: any) {
-      showFeedback(
-        'error',
-        getApiErrorMessage(error, 'Impossible de mettre à jour ce trajet pour le moment.'),
-      );
-    }
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteTarget) {
-      return;
-    }
-    try {
-      await deleteTripMutation(deleteTarget.id).unwrap();
-      showFeedback('success', 'Le trajet a été supprimé.');
-      closeDeleteModal();
-    } catch (error: any) {
-      const deletedTripId = deleteTarget.id;
-      const reconciledTrips = await reconcileAmbiguousMutation({
-        error,
-        loadSnapshot: async () => (await refetchTrips()).data ?? null,
-        isApplied: (latestTrips) => !latestTrips.some((trip) => trip.id === deletedTripId),
-      });
-      if (reconciledTrips) {
-        showFeedback('success', 'Le trajet a bien été supprimé malgré la connexion lente.');
-        closeDeleteModal();
-        return;
-      }
-      showFeedback(
-        'error',
-        getApiErrorMessage(error, 'Impossible de supprimer ce trajet pour le moment.'),
-      );
-    }
-  };
-
-  const openPublishedTripDetails = useCallback(
-    (selectedTripId: string) => router.push(`/trip/manage/${selectedTripId}`),
-    [router],
-  );
-  const openBookingTripDetails = useCallback(
-    (selectedTripId: string) => router.push(`/trip/${selectedTripId}`),
-    [router],
-  );
-  const renderTripListItem = useCallback(
-    ({ item }: { item: TripListItem }) => {
-      if (item.kind === 'published') {
-        return (
-          <PublishedTripCard
-            trip={item.trip}
-            status={getTripStatusBadge(item.trip)}
-            canManage={canManagePublishedTrip(item.trip)}
-            onDetails={openPublishedTripDetails}
-            onEdit={openEditModal}
-            onDelete={openDeleteModal}
-          />
-        );
-      }
-
-      return (
-        <BookingTripCard
-          booking={item.booking}
-          status={getBookingStatusBadge(item.booking)}
-          onDetails={openBookingTripDetails}
-        />
-      );
-    },
-    [openBookingTripDetails, openDeleteModal, openEditModal, openPublishedTripDetails],
-  );
+  const model = useTripsController();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -992,7 +30,7 @@ export default function TripsScreen() {
           <Text style={styles.headerTitle}>Mes trajets</Text>
           <TouchableOpacity
             style={styles.headerPublishButton}
-            onPress={() => router.push('/publish')}
+            onPress={() => model.state.router.push('/publish')}
             accessibilityLabel="Publier un trajet"
           >
             <Ionicons name="add" size={24} color={Colors.white} />
@@ -1002,31 +40,31 @@ export default function TripsScreen() {
         {/* Main Tabs */}
         <View style={styles.mainTabsContainer}>
           <TouchableOpacity
-            style={[styles.mainTab, mainTab === 'published' && styles.mainTabActive]}
+            style={[styles.mainTab, model.state.mainTab === 'published' && styles.mainTabActive]}
             onPress={() => {
-              setMainTab('published');
-              setSubTab('upcoming');
+              model.state.setMainTab('published');
+              model.state.setSubTab('upcoming');
             }}
           >
             <Text
               numberOfLines={1}
-              style={[styles.mainTabText, mainTab === 'published' && styles.mainTabTextActive]}
+              style={[styles.mainTabText, model.state.mainTab === 'published' && styles.mainTabTextActive]}
             >
-              Publiés {trips.length}
+              Publiés {model.list.trips.length}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.mainTab, mainTab === 'bookings' && styles.mainTabActive]}
+            style={[styles.mainTab, model.state.mainTab === 'bookings' && styles.mainTabActive]}
             onPress={() => {
-              setMainTab('bookings');
-              setSubTab('upcoming');
+              model.state.setMainTab('bookings');
+              model.state.setSubTab('upcoming');
             }}
           >
             <Text
               numberOfLines={1}
-              style={[styles.mainTabText, mainTab === 'bookings' && styles.mainTabTextActive]}
+              style={[styles.mainTabText, model.state.mainTab === 'bookings' && styles.mainTabTextActive]}
             >
-              Réservations {myBookings?.length ?? 0}
+              Réservations {model.state.myBookings?.length ?? 0}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1034,25 +72,25 @@ export default function TripsScreen() {
         {/* Sub Tabs */}
         <View style={styles.subTabsContainer}>
           <TouchableOpacity
-            style={[styles.subTab, subTab === 'upcoming' && styles.subTabActive]}
-            onPress={() => setSubTab('upcoming')}
+            style={[styles.subTab, model.state.subTab === 'upcoming' && styles.subTabActive]}
+            onPress={() => model.state.setSubTab('upcoming')}
           >
             <Text
               numberOfLines={1}
-              style={[styles.subTabText, subTab === 'upcoming' && styles.subTabTextActive]}
+              style={[styles.subTabText, model.state.subTab === 'upcoming' && styles.subTabTextActive]}
             >
-              À venir {mainTab === 'published' ? upcomingTrips.length : upcomingBookings.length}
+              À venir {model.state.mainTab === 'published' ? model.list.upcomingTrips.length : model.list.upcomingBookings.length}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.subTab, subTab === 'completed' && styles.subTabActive]}
-            onPress={() => setSubTab('completed')}
+            style={[styles.subTab, model.state.subTab === 'completed' && styles.subTabActive]}
+            onPress={() => model.state.setSubTab('completed')}
           >
             <Text
               numberOfLines={1}
-              style={[styles.subTabText, subTab === 'completed' && styles.subTabTextActive]}
+              style={[styles.subTabText, model.state.subTab === 'completed' && styles.subTabTextActive]}
             >
-              Terminés {mainTab === 'published' ? completedTrips.length : completedBookingsList.length}
+              Terminés {model.state.mainTab === 'published' ? model.list.completedTrips.length : model.list.completedBookingsList.length}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1060,48 +98,48 @@ export default function TripsScreen() {
         <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={20} color={Colors.gray[500]} />
           <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={model.state.searchQuery}
+            onChangeText={model.state.setSearchQuery}
             placeholder="Rechercher..."
             placeholderTextColor={Colors.gray[400]}
             style={styles.searchInput}
             returnKeyType="search"
             clearButtonMode="while-editing"
           />
-          {searchQuery.length > 0 && Platform.OS !== 'ios' ? (
-            <TouchableOpacity style={styles.searchClearButton} onPress={() => setSearchQuery('')}>
+          {model.state.searchQuery.length > 0 && Platform.OS !== 'ios' ? (
+            <TouchableOpacity style={styles.searchClearButton} onPress={() => model.state.setSearchQuery('')}>
               <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
             </TouchableOpacity>
           ) : null}
         </View>
       </View>
 
-      {isError && (
+      {model.list.isError && (
         <View style={styles.errorBanner}>
           <Ionicons name="warning" size={16} color={Colors.white} />
           <Text style={styles.errorText}>
-            Impossible de charger les {mainTab === 'published' ? 'trajets' : 'réservations'}. Réessayez.
+            Impossible de charger les {model.state.mainTab === 'published' ? 'trajets' : 'réservations'}. Réessayez.
           </Text>
-          <TouchableOpacity onPress={mainTab === 'published' ? refetchTrips : refetchBookings}>
+          <TouchableOpacity onPress={model.state.mainTab === 'published' ? model.state.refetchTrips : model.state.refetchBookings}>
             <Text style={styles.errorAction}>Rafraîchir</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {feedback && (
+      {model.state.feedback && (
         <TouchableOpacity
           style={[
             styles.feedbackBanner,
-            feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
+            model.state.feedback.type === 'success' ? styles.feedbackSuccess : styles.feedbackError,
           ]}
-          onPress={() => setFeedback(null)}
+          onPress={() => model.state.setFeedback(null)}
         >
           <Ionicons
-            name={feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
+            name={model.state.feedback.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
             size={18}
             color={Colors.white}
           />
-          <Text style={styles.feedbackText}>{feedback.message}</Text>
+          <Text style={styles.feedbackText}>{model.state.feedback.message}</Text>
           <Ionicons name="close" size={16} color={Colors.white} />
         </TouchableOpacity>
       )}
@@ -1111,8 +149,8 @@ export default function TripsScreen() {
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        data={showLoader ? [] : tripListData}
-        renderItem={renderTripListItem}
+        data={model.list.showLoader ? [] : model.list.tripListData}
+        renderItem={model.renderTripListItem}
         keyExtractor={(item) =>
           item.kind === 'published'
             ? `trip-${item.trip.id}`
@@ -1125,16 +163,16 @@ export default function TripsScreen() {
         removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing || isFetching}
-            onRefresh={handleRefresh}
+            refreshing={model.state.isRefreshing || model.list.isFetching}
+            onRefresh={model.list.handleRefresh}
             tintColor={Colors.primary}
           />
         }
         ListHeaderComponent={
-          mainTab === 'published' ? (
+          model.state.mainTab === 'published' ? (
             <TouchableOpacity
               style={styles.recurringHubCard}
-              onPress={() => router.push('/recurring-trips')}
+              onPress={() => model.state.router.push('/recurring-trips')}
             >
               <View style={styles.recurringHubIcon}>
                 <Ionicons name="repeat" size={20} color={Colors.white} />
@@ -1142,8 +180,8 @@ export default function TripsScreen() {
               <View style={styles.recurringHubContent}>
                 <Text style={styles.recurringHubTitle}>Trajets réguliers</Text>
                 <Text style={styles.recurringHubText}>
-                  {recurringTemplates.length > 0
-                    ? `${activeRecurringTemplates} actif(s), ${recurringTemplates.length} trajet(s) enregistré(s)`
+                  {model.state.recurringTemplates.length > 0
+                    ? `${model.list.activeRecurringTemplates} actif(s), ${model.state.recurringTemplates.length} trajet(s) enregistré(s)`
                     : 'Publier automatiquement vos trajets habituels'}
                 </Text>
               </View>
@@ -1155,11 +193,11 @@ export default function TripsScreen() {
           ) : null
         }
         ListEmptyComponent={
-          showLoader ? (
+          model.list.showLoader ? (
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="large" color={Colors.primary} />
               <Text style={styles.loaderText}>
-                Chargement des {mainTab === 'published' ? 'trajets' : 'réservations'}...
+                Chargement des {model.state.mainTab === 'published' ? 'trajets' : 'réservations'}...
               </Text>
             </View>
           ) : (
@@ -1167,9 +205,9 @@ export default function TripsScreen() {
               <View style={styles.emptyIcon}>
                 <Ionicons
                   name={
-                    normalizedSearchQuery
+                    model.list.normalizedSearchQuery
                       ? 'search-outline'
-                      : mainTab === 'published'
+                      : model.state.mainTab === 'published'
                         ? 'car-outline'
                         : 'calendar-outline'
                   }
@@ -1178,34 +216,34 @@ export default function TripsScreen() {
                 />
               </View>
               <Text style={styles.emptyTitle}>
-                {normalizedSearchQuery
+                {model.list.normalizedSearchQuery
                   ? 'Aucun résultat'
-                  : mainTab === 'published'
+                  : model.state.mainTab === 'published'
                     ? 'Aucun trajet'
                     : 'Aucune réservation'}
               </Text>
               <Text style={styles.emptyText}>
-                {normalizedSearchQuery
-                  ? `Aucun trajet ne correspond à « ${searchQuery.trim()} ».`
-                  : mainTab === 'published'
-                    ? subTab === 'upcoming'
+                {model.list.normalizedSearchQuery
+                  ? `Aucun trajet ne correspond à « ${model.state.searchQuery.trim()} ».`
+                  : model.state.mainTab === 'published'
+                    ? model.state.subTab === 'upcoming'
                       ? "Vous n'avez pas de trajet à venir"
                       : "Vous n'avez pas encore terminé de trajet"
-                    : subTab === 'upcoming'
+                    : model.state.subTab === 'upcoming'
                       ? "Vous n'avez pas de réservation à venir"
                       : "Vous n'avez pas encore terminé de réservation"}
               </Text>
-              {normalizedSearchQuery ? (
+              {model.list.normalizedSearchQuery ? (
                 <TouchableOpacity
                   style={styles.emptySecondaryButton}
-                  onPress={() => setSearchQuery('')}
+                  onPress={() => model.state.setSearchQuery('')}
                 >
                   <Text style={styles.emptySecondaryButtonText}>Effacer la recherche</Text>
                 </TouchableOpacity>
-              ) : mainTab === 'published' && subTab === 'upcoming' ? (
+              ) : model.state.mainTab === 'published' && model.state.subTab === 'upcoming' ? (
                 <TouchableOpacity
                   style={styles.emptyButton}
-                  onPress={() => router.push('/publish')}
+                  onPress={() => model.state.router.push('/publish')}
                 >
                   <Text style={styles.emptyButtonText}>Publier un trajet</Text>
                 </TouchableOpacity>
@@ -1216,368 +254,75 @@ export default function TripsScreen() {
       />
 
       {/* FAB - Publier un trajet (seulement pour les trajets publiés) */}
-      {mainTab === 'published' && (
+      {model.state.mainTab === 'published' && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => router.push('/publish')}
+          onPress={() => model.state.router.push('/publish')}
         >
           <Ionicons name="add" size={32} color={Colors.white} />
         </TouchableOpacity>
       )}
 
-      <FormModal
-        transparent={Platform.OS === 'android'}
-        animationType="slide"
-        presentationStyle={Platform.OS === 'ios' ? 'pageSheet' : 'overFullScreen'}
-        statusBarTranslucent={Platform.OS === 'android'}
-        navigationBarTranslucent={Platform.OS === 'android'}
-        visible={Boolean(editingTrip) && !editModalSuspended}
-        onRequestClose={closeEditModal}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={0}
-          style={[styles.modalKeyboard, Platform.OS === 'ios' && styles.modalKeyboardIos]}
-        >
-          <View style={[styles.modalOverlay, Platform.OS === 'ios' && styles.modalOverlayIos]}>
-            {Platform.OS === 'android' && (
-              <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={closeEditModal} />
-            )}
-            <View
-              style={[
-                styles.modalCard,
-                Platform.OS === 'ios' && styles.modalCardIos,
-                { paddingBottom: editModalBottomPadding },
-              ]}
-            >
-              {Platform.OS === 'android' && <View style={styles.modalHandle} />}
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Modifier le trajet</Text>
-                {editingTrip && (
-                  <Text style={styles.modalSubtitle} numberOfLines={1}>
-                    {editingTrip.departure.name} {'->'} {editingTrip.arrival.name}
-                  </Text>
-                )}
-              </View>
-              <TouchableOpacity style={styles.modalCloseButton} onPress={closeEditModal}>
-                <Ionicons name="close" size={20} color={Colors.gray[600]} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalStepIndicator}>
-              <View style={[styles.modalStepPill, editStep === 1 && styles.modalStepPillActive]}>
-                <Text style={[styles.modalStepText, editStep === 1 && styles.modalStepTextActive]}>
-                  1. Itinéraire
-                </Text>
-              </View>
-              <View style={[styles.modalStepPill, editStep === 2 && styles.modalStepPillActive]}>
-                <Text style={[styles.modalStepText, editStep === 2 && styles.modalStepTextActive]}>
-                  2. Details
-                </Text>
-              </View>
-            </View>
-
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-              style={[styles.modalScrollView, Platform.OS === 'ios' && styles.modalScrollViewIos]}
-              contentContainerStyle={styles.modalScrollContent}
-              scrollIndicatorInsets={{ bottom: editModalBottomPadding }}
-            >
-
-              {editStep === 1 ? (
-                <>
-            <View style={styles.modalRouteCard}>
-              <View style={styles.modalRouteHeader}>
-                <Text style={styles.modalRouteTitle}>Points du trajet</Text>
-                <TouchableOpacity style={styles.modalSwapButton} onPress={swapEditRoutePoints}>
-                  <Ionicons name="swap-vertical" size={16} color={Colors.primary} />
-                  <Text style={styles.modalSwapButtonText}>Echanger</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.modalRouteModeRow}>
-                <TouchableOpacity
-                  style={[
-                    styles.modalRouteModeChip,
-                    editRouteMode === 'map' && styles.modalRouteModeChipActive,
-                  ]}
-                  onPress={() => setEditRouteMode('map')}
-                >
-                  <Ionicons
-                    name="map-outline"
-                    size={14}
-                    color={editRouteMode === 'map' ? Colors.primary : Colors.gray[500]}
-                  />
-                  <Text
-                    style={[
-                      styles.modalRouteModeChipText,
-                      editRouteMode === 'map' && styles.modalRouteModeChipTextActive,
-                    ]}
-                  >
-                    Sélection sur carte
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.modalRouteModeChip,
-                    editRouteMode === 'manual' && styles.modalRouteModeChipActive,
-                  ]}
-                  onPress={() => setEditRouteMode('manual')}
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={14}
-                    color={editRouteMode === 'manual' ? Colors.primary : Colors.gray[500]}
-                  />
-                  <Text
-                    style={[
-                      styles.modalRouteModeChipText,
-                      editRouteMode === 'manual' && styles.modalRouteModeChipTextActive,
-                    ]}
-                  >
-                    Saisie manuelle
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {editRouteMode === 'manual' ? (
-                <>
-                  <Text style={styles.modalLabel}>Adresse de départ</Text>
-                  <TextInput
-                    style={[styles.modalInput, styles.modalRouteInput]}
-                    placeholder="Ex: avenue Kasa-Vubu, Bandal"
-                    placeholderTextColor={Colors.gray[400]}
-                    value={editDepartureManualAddress}
-                    onChangeText={setEditDepartureManualAddress}
-                    returnKeyType="next"
-                  />
-                  <Text style={styles.modalLabel}>Adresse d’arrivée</Text>
-                  <TextInput
-                    style={[styles.modalInput, styles.modalRouteInput]}
-                    placeholder="Ex: rond-point Victoire"
-                    placeholderTextColor={Colors.gray[400]}
-                    value={editArrivalManualAddress}
-                    onChangeText={setEditArrivalManualAddress}
-                    returnKeyType="done"
-                    onSubmitEditing={handleContinueEditTrip}
-                  />
-                </>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.modalRoutePointButton}
-                    onPress={() => openEditRoutePicker('departure')}
-                  >
-                    <View style={styles.modalRoutePointIcon}>
-                      <Ionicons name="location" size={15} color={Colors.success} />
-                    </View>
-                    <View style={styles.modalRoutePointContent}>
-                      <Text style={styles.modalRoutePointLabel}>Départ</Text>
-                      <Text style={styles.modalRoutePointValue} numberOfLines={2}>
-                        {editDepartureDisplay}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.modalRoutePointButton}
-                    onPress={() => openEditRoutePicker('arrival')}
-                  >
-                    <View style={styles.modalRoutePointIcon}>
-                      <Ionicons name="navigate" size={15} color={Colors.primary} />
-                    </View>
-                    <View style={styles.modalRoutePointContent}>
-                      <Text style={styles.modalRoutePointLabel}>Arrivée</Text>
-                      <Text style={styles.modalRoutePointValue} numberOfLines={2}>
-                        {editArrivalDisplay}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
-                </>
-              ) : (
-                <>
-
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Véhicule du trajet</Text>
-              {vehiclesLoading ? (
-                <View style={styles.modalVehicleLoading}>
-                  <ActivityIndicator size="small" color={Colors.primary} />
-                  <Text style={styles.modalVehicleLoadingText}>Chargement des véhicules...</Text>
-                </View>
-              ) : activeUserVehicles.length === 0 ? (
-                <View style={styles.modalVehicleEmpty}>
-                  <Ionicons name="car-outline" size={20} color={Colors.gray[500]} />
-                  <Text style={styles.modalVehicleEmptyText}>
-                    Aucun véhicule actif. Ajoutez-en un depuis votre profil.
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.modalVehicleList}>
-                  {activeUserVehicles.map((vehicle) => {
-                    const selected = editVehicleId === vehicle.id;
-                    return (
-                      <TouchableOpacity
-                        key={vehicle.id}
-                        style={[styles.modalVehicleOption, selected && styles.modalVehicleOptionSelected]}
-                        onPress={() => setEditVehicleId(vehicle.id)}
-                        activeOpacity={0.82}
-                      >
-                        <View style={[styles.modalVehicleIcon, selected && styles.modalVehicleIconSelected]}>
-                          <Ionicons
-                            name="car-sport-outline"
-                            size={20}
-                            color={selected ? Colors.white : Colors.primary}
-                          />
-                        </View>
-                        <View style={styles.modalVehicleCopy}>
-                          <Text style={styles.modalVehicleName}>{vehicle.brand} {vehicle.model}</Text>
-                          <Text style={styles.modalVehicleMeta}>
-                            {[vehicle.color, vehicle.licensePlate].filter(Boolean).join(' • ')}
-                          </Text>
-                        </View>
-                        <Ionicons
-                          name={selected ? 'checkmark-circle' : 'ellipse-outline'}
-                          size={22}
-                          color={selected ? Colors.primary : Colors.gray[300]}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Places disponibles</Text>
-              <TextInput
-                style={styles.modalInput}
-                keyboardType="numeric"
-                placeholder="4"
-                placeholderTextColor={Colors.gray[400]}
-                value={editSeats}
-                onChangeText={setEditSeats}
-              />
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Prix (FC)</Text>
-              <TextInput
-                style={styles.modalInput}
-                keyboardType="numeric"
-                placeholder="5000"
-                placeholderTextColor={Colors.gray[400]}
-                value={editPrice}
-                onChangeText={setEditPrice}
-              />
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>Date et heure de départ</Text>
-              <View style={styles.modalDatetimeRow}>
-                <TouchableOpacity
-                  style={styles.modalDatetimeButton}
-                  onPress={() => openDateOrTimePicker('date')}
-                >
-                  <Ionicons name="calendar" size={18} color={Colors.primary} />
-                  <View style={{ marginLeft: Spacing.sm }}>
-                    <Text style={styles.modalDatetimeLabel}>Date</Text>
-                    <Text style={styles.modalDatetimeValue}>{formattedEditDate}</Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalDatetimeButton, { marginRight: 0 }]}
-                  onPress={() => openDateOrTimePicker('time')}
-                >
-                  <Ionicons name="time" size={18} color={Colors.gray[700]} />
-                  <View style={{ marginLeft: Spacing.sm }}>
-                    <Text style={styles.modalDatetimeLabel}>Heure</Text>
-                    <Text style={styles.modalDatetimeValue}>{formattedEditTime}</Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {Platform.OS === 'ios' && iosPickerMode && (
-              <View style={styles.iosPickerContainer}>
-                <DateTimePicker
-                  value={getEditBaseDate()}
-                  mode={iosPickerMode}
-                  display="inline"
-                  minuteInterval={5}
-                  minimumDate={iosPickerMode === 'date' ? new Date() : undefined}
-                  onChange={handleIosPickerChange}
-                />
-                <TouchableOpacity style={styles.iosPickerCloseButton} onPress={closeIosPicker}>
-                  <Text style={styles.iosPickerCloseText}>Terminé</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-                </>
-              )}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={editStep === 1 ? closeEditModal : handleBackToEditRoute}
-              >
-                {editStep === 2 && (
-                  <Ionicons name="arrow-back" size={18} color={Colors.gray[800]} style={{ marginRight: 4 }} />
-                )}
-                <Text style={styles.modalButtonSecondaryText}>{editStep === 1 ? 'Annuler' : 'Retour'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary, { marginRight: 0 }]}
-                onPress={editStep === 1 ? handleContinueEditTrip : handleSaveTrip}
-                disabled={isSavingTrip}
-              >
-                {editStep === 1 ? (
-                  <>
-                    <Text style={styles.modalButtonPrimaryText}>Suivant</Text>
-                    <Ionicons name="arrow-forward" size={18} color={Colors.white} style={{ marginLeft: 4 }} />
-                  </>
-                ) : isSavingTrip ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.modalButtonPrimaryText}>Enregistrer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </FormModal>
+      <TripsEditModal
+        editingTrip={model.state.editingTrip}
+        editModalSuspended={model.state.editModalSuspended}
+        closeEditModal={model.editor.closeEditModal}
+        editModalBottomPadding={model.editModalBottomPadding}
+        editStep={model.state.editStep}
+        swapEditRoutePoints={model.editor.swapEditRoutePoints}
+        editRouteMode={model.state.editRouteMode}
+        setEditRouteMode={model.state.setEditRouteMode}
+        editDepartureManualAddress={model.state.editDepartureManualAddress}
+        setEditDepartureManualAddress={model.state.setEditDepartureManualAddress}
+        editArrivalManualAddress={model.state.editArrivalManualAddress}
+        setEditArrivalManualAddress={model.state.setEditArrivalManualAddress}
+        handleContinueEditTrip={model.editor.handleContinueEditTrip}
+        openEditRoutePicker={model.editor.openEditRoutePicker}
+        editDepartureDisplay={model.editDepartureDisplay}
+        editArrivalDisplay={model.editArrivalDisplay}
+        vehiclesLoading={model.state.vehiclesLoading}
+        activeUserVehicles={model.state.activeUserVehicles}
+        editVehicleId={model.state.editVehicleId}
+        setEditVehicleId={model.state.setEditVehicleId}
+        editSeats={model.state.editSeats}
+        setEditSeats={model.state.setEditSeats}
+        editPrice={model.state.editPrice}
+        setEditPrice={model.state.setEditPrice}
+        openDateOrTimePicker={model.schedule.openDateOrTimePicker}
+        formattedEditDate={model.formattedEditDate}
+        formattedEditTime={model.formattedEditTime}
+        iosPickerMode={model.state.iosPickerMode}
+        getEditBaseDate={model.schedule.getEditBaseDate}
+        handleIosPickerChange={model.schedule.handleIosPickerChange}
+        closeIosPicker={model.schedule.closeIosPicker}
+        handleBackToEditRoute={model.editor.handleBackToEditRoute}
+        handleSaveTrip={model.actions.handleSaveTrip}
+        isSavingTrip={model.state.isSavingTrip}
+      />
 
       <LocationPickerModal
-        visible={editRoutePickerTarget !== null}
-        title={editRoutePickerTarget === 'departure' ? 'Choisir le départ' : "Choisir l'arrivée"}
+        visible={model.state.editRoutePickerTarget !== null}
+        title={model.state.editRoutePickerTarget === 'departure' ? 'Choisir le départ' : "Choisir l'arrivée"}
         initialLocation={
-          editRoutePickerTarget === 'departure' ? editDepartureSelection : editArrivalSelection
+          model.state.editRoutePickerTarget === 'departure' ? model.state.editDepartureSelection : model.state.editArrivalSelection
         }
         autoLocateOnOpen={false}
-        onClose={restoreEditModalAfterPicker}
+        onClose={model.editor.restoreEditModalAfterPicker}
         onSelect={(location) => {
-          const target = editRoutePickerTarget;
-          setEditRouteMode('map');
+          const target = model.state.editRoutePickerTarget;
+          model.state.setEditRouteMode('map');
           if (target === 'departure') {
-            setEditDepartureSelection(location);
-            setEditDepartureManualAddress(location.title || location.address);
+            model.state.setEditDepartureSelection(location);
+            model.state.setEditDepartureManualAddress(location.title || location.address);
           } else if (target === 'arrival') {
-            setEditArrivalSelection(location);
-            setEditArrivalManualAddress(location.title || location.address);
+            model.state.setEditArrivalSelection(location);
+            model.state.setEditArrivalManualAddress(location.title || location.address);
           }
-          restoreEditModalAfterPicker();
+          model.editor.restoreEditModalAfterPicker();
         }}
       />
 
-      <Modal transparent animationType="fade" visible={Boolean(deleteTarget)}>
+      <Modal transparent animationType="fade" visible={Boolean(model.state.deleteTarget)}>
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmCard}>
             <View style={styles.confirmIcon}>
@@ -1590,7 +335,7 @@ export default function TripsScreen() {
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.modalButtonSecondary]}
-                onPress={closeDeleteModal}
+                onPress={model.closeDeleteModal}
               >
                 <Text style={styles.modalButtonSecondaryText}>Annuler</Text>
               </TouchableOpacity>
@@ -1601,10 +346,10 @@ export default function TripsScreen() {
                   styles.modalButtonDanger,
                   { marginRight: 0 },
                 ]}
-                onPress={handleConfirmDelete}
-                disabled={isDeletingTrip}
+                onPress={model.actions.handleConfirmDelete}
+                disabled={model.state.isDeletingTrip}
               >
-                {isDeletingTrip ? (
+                {model.state.isDeletingTrip ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.modalButtonPrimaryText}>Supprimer</Text>
@@ -1616,13 +361,12 @@ export default function TripsScreen() {
       </Modal>
 
       <TutorialOverlay
-        visible={tripsGuideVisible}
+        visible={model.state.tripsGuideVisible}
         title="Gérez vos trajets"
         message="Retrouvez vos trajets publiés, modifiez-les ou publiez un nouveau trajet depuis ce tableau de bord."
-        onDismiss={dismissTripsGuide}
+        onDismiss={model.dismissTripsGuide}
       />
     </SafeAreaView>
   );
 }
-
 

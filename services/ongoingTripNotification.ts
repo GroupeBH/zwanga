@@ -18,6 +18,7 @@ export interface OngoingTripInfo {
   departure: string;
   arrival: string;
   role: 'driver' | 'passenger';
+  bookingId?: string;
   departureTime?: string;
 }
 
@@ -173,9 +174,10 @@ async function showOngoingTripNotification(tripInfo: OngoingTripInfo): Promise<v
         type: 'ongoing_trip',
         tripId: tripInfo.tripId,
         role: tripInfo.role,
+        ...(tripInfo.bookingId ? { bookingId: tripInfo.bookingId } : {}),
         navigateTo: isDriver 
           ? `/trip/manage/${tripInfo.tripId}` 
-          : `/trip/${tripInfo.tripId}`,
+          : tripInfo.bookingId ? `/booking/navigate/${tripInfo.bookingId}` : `/trip/${tripInfo.tripId}`,
       },
     });
 

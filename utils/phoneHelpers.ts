@@ -7,9 +7,12 @@ import { Linking } from 'react-native';
 export function formatPhoneForCall(phone: string): string {
   // Garder le + au début si présent, puis ne garder que les chiffres
   const cleaned = phone.trim().replace(/[^\d+]/g, '');
+  const digits = cleaned.replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00')) return '+' + digits.substring(2);
   // Si le numéro commence par +, le garder, sinon ajouter +
   if (cleaned.startsWith('+')) {
-    return cleaned;
+    return '+' + digits;
   }
   // Si le numéro commence par 0, le remplacer par +243 (RDC)
   if (cleaned.startsWith('0')) {
@@ -89,36 +92,18 @@ export async function openPhoneCall(
   // Mais pour être sûr, on retire les caractères spéciaux sauf les chiffres et le +
   const cleanedNumber = phoneNumber.replace(/[^\d+]/g, '');
   
-  // Construire l'URL tel: avec le numéro nettoyé
+  if (!cleanedNumber || !/\d/.test(cleanedNumber)) {
+    onError?.('Numéro de téléphone invalide.');
+    return;
+  }
+  // L'ouverture est déclenchée uniquement par le bouton Appeler. Ne pas la
+  // bloquer sur canOpenURL : les requêtes de visibilité natives peuvent manquer.
   const url = `tel:${cleanedNumber}`;
   
   try {
-    // Vérifier si l'URL peut être ouverte
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
-    } else {
-      // Essayer avec le format sans +
-      const urlWithoutPlus = `tel:${cleanedNumber.replace(/^\+/, '')}`;
-      const canOpenWithoutPlus = await Linking.canOpenURL(urlWithoutPlus);
-      
-      if (canOpenWithoutPlus) {
-        await Linking.openURL(urlWithoutPlus);
-      } else {
-        const errorMsg = 'Impossible d\'ouvrir l\'application d\'appel. Vérifiez que votre appareil peut passer des appels.';
-        if (onError) {
-          onError(errorMsg);
-        } else {
-          console.error(errorMsg);
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Erreur lors de l\'ouverture de l\'appel:', error);
-    const errorMsg = 'Impossible d\'ouvrir l\'application d\'appel.';
-    if (onError) {
-      onError(errorMsg);
-    }
+    await Linking.openURL(url);
+  } catch {
+    onError?.('L’appel n’a pas été ouvert. Réessayez ou utilisez WhatsApp.');
   }
 }
 
@@ -130,7 +115,7 @@ export async function openWhatsApp(
   onError?: (message: string) => void
 ): Promise<void> {
   if (!phone || phone.trim() === '') {
-    const errorMsg = 'Numero de telephone invalide.';
+    const errorMsg = 'Numéro de téléphone invalide.';
     if (onError) {
       onError(errorMsg);
     }
@@ -141,7 +126,7 @@ export async function openWhatsApp(
   // Pour l'URL WhatsApp, retirer le + car WhatsApp nécessite le format sans +
   const phoneNumberForUrl = phoneNumber.replace(/\D/g, '');
   if (!phoneNumberForUrl) {
-    const errorMsg = 'Numero de telephone invalide.';
+    const errorMsg = 'Numéro de téléphone invalide.';
     if (onError) {
       onError(errorMsg);
     }
@@ -151,32 +136,12 @@ export async function openWhatsApp(
   const webUrl = `https://wa.me/${phoneNumberForUrl}`;
   
   try {
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
-    } else {
-      // Essayer avec https://wa.me/ si l'app n'est pas installée
-      // Pour wa.me, on peut garder le + ou le retirer, les deux fonctionnent
-      const canOpenWeb = await Linking.canOpenURL(webUrl);
-      if (canOpenWeb) {
-        await Linking.openURL(webUrl);
-      } else {
-        const errorMsg = 'WhatsApp n\'est pas installé sur votre appareil.';
-        if (onError) {
-          onError(errorMsg);
-        } else {
-          console.error(errorMsg);
-        }
-      }
-    }
-  } catch (error) {
-    console.warn('Ouverture WhatsApp native indisponible, fallback web:', error);
+    await Linking.openURL(url);
+  } catch {
     try {
       await Linking.openURL(webUrl);
       return;
-    } catch (fallbackError) {
-      console.error('Erreur lors de l\'ouverture de WhatsApp:', fallbackError);
-    }
+    } catch { /* Afficher un message compréhensible, sans erreur native. */ }
     const errorMsg = 'Impossible d\'ouvrir WhatsApp.';
     if (onError) {
       onError(errorMsg);

@@ -42,7 +42,7 @@ export function rideRetry(error: unknown, attempts: number, now: number) {
   };
   if (typeof status === 'number' && status >= 400 && status < 500 && ![408, 429].includes(status)) {
     return { state: 'blocked' as const, nextAttemptAt: 0, message: preciseMessages[data?.code ?? ''] ?? (status === 404
-      ? 'La confirmation manuelle n’est pas disponible pour ce trajet. Actualisez son détail ou contactez l’assistance.'
+      ? 'La confirmation de cette étape n’est pas disponible pour ce trajet. Actualisez son détail ou contactez l’assistance.'
       : 'Cette action ne peut plus être validée automatiquement. Actualisez le trajet ou contactez l’assistance.') };
   }
   return { state: 'queued' as const, nextAttemptAt: now + Math.min(120_000, Math.round(3_000 * 2 ** Math.min(attempts, 6) * (1 + Math.random() * 0.2))), message: 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.' };

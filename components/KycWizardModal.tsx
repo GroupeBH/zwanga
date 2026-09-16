@@ -1,96 +1,26 @@
+import { useKycCaptureViews } from '../hooks/identity/useKycCaptureViews';
+import { useKycCaptureActions } from '../hooks/identity/useKycCaptureActions';
+import {
+  KycCaptureKey,
+  KycWizardModalProps,
+  DOCUMENT_STEPS,
+  STABILITY_THRESHOLD,
+  STABILITY_DURATION_MS,
+  MANUAL_CAPTURE_DELAY_MS,
+} from '../features/identity/kycCaptureModel';
+
+export type { KycCaptureKey } from '../features/identity/kycCaptureModel';
+export type { KycCaptureResult } from '../features/identity/kycCaptureModel';
 import { styles } from '../features/screen-styles/components/KycWizardModal/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
-import { Colors, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
+
 import { Accelerometer, type AccelerometerMeasurement } from 'expo-sensors';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
-
-export type KycCaptureKey = 'front' | 'selfie';
-
-export interface KycCaptureResult {
-  front: string;
-  selfie: string;
-}
-
-interface KycWizardModalProps {
-  visible: boolean;
-  onClose: () => void;
-  onComplete: (payload: KycCaptureResult) => void;
-  isSubmitting: boolean;
-  initialValues?: Partial<Record<KycCaptureKey, string | null>>;
-}
-
-const DOCUMENT_STEPS: { key: KycCaptureKey; title: string; description: string }[] = [
-  {
-    key: 'front',
-    title: 'Scanner le recto',
-    description: 'Cadrez le recto de votre pièce d’identité dans le gabarit lumineux.',
-  },
-  {
-    key: 'selfie',
-    title: 'Selfie de vérification',
-    description: 'Regardez la caméra et centrez votre visage dans le cercle.',
-  },
-];
-
-const STABILITY_THRESHOLD = 0.045;
-const STABILITY_DURATION_MS = 1500;
-const KYC_CAPTURE_MAX_EDGE = 1600;
-const KYC_CAPTURE_MIN_EDGE = 720;
-const KYC_CAPTURE_QUALITY = 0.6;
-const MANUAL_CAPTURE_DELAY_MS = 5000;
-const ANDROID_CAMERA_RELEASE_DELAY_MS = 300;
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const parsePictureSize = (size: string) => {
-  const match = /^(\d+)x(\d+)$/.exec(size);
-  if (!match) {
-    return null;
-  }
-
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!Number.isFinite(width) || !Number.isFinite(height)) {
-    return null;
-  }
-
-  return {
-    size,
-    width,
-    height,
-    area: width * height,
-    maxEdge: Math.max(width, height),
-    minEdge: Math.min(width, height),
-  };
-};
-
-const chooseKycPictureSize = (sizes: string[]) => {
-  const parsedSizes = sizes
-    .map(parsePictureSize)
-    .filter((size): size is NonNullable<ReturnType<typeof parsePictureSize>> => Boolean(size));
-
-  if (parsedSizes.length === 0) {
-    return undefined;
-  }
-
-  const readableSizes = parsedSizes.filter((size) => size.minEdge >= KYC_CAPTURE_MIN_EDGE);
-  const cappedSizes = readableSizes.filter((size) => size.maxEdge <= KYC_CAPTURE_MAX_EDGE);
-
-  if (cappedSizes.length > 0) {
-    return [...cappedSizes].sort((a, b) => b.area - a.area)[0].size;
-  }
-
-  if (readableSizes.length > 0) {
-    return [...readableSizes].sort((a, b) => a.area - b.area)[0].size;
-  }
-
-  return [...parsedSizes].sort((a, b) => b.area - a.area)[0].size;
-};
 
 export function KycWizardModal({
   visible,
@@ -269,142 +199,23 @@ export function KycWizardModal({
     setIsNativeCameraOpening(false);
   }, [currentCaptureKey]);
 
-  const cleanupManualFallbackTimer = () => {
-    if (manualFallbackTimerRef.current) {
-      clearTimeout(manualFallbackTimerRef.current);
-      manualFallbackTimerRef.current = null;
-    }
-  };
-
-  const cleanupStabilityTracking = () => {
-    cleanupManualFallbackTimer();
-    if (stabilityTimerRef.current) {
-      clearTimeout(stabilityTimerRef.current);
-      stabilityTimerRef.current = null;
-    }
-    lastMeasurementRef.current = null;
-    setIsDeviceStable(false);
-    setCaptureCountdown(null);
-  };
-
-  const handleCameraReady = useCallback(async () => {
-    setIsCameraReady(true);
-
-    if (Platform.OS !== 'android') {
-      return;
-    }
-
-    try {
-      const availableSizes = await cameraRef.current?.getAvailablePictureSizesAsync();
-      setAndroidPictureSize(chooseKycPictureSize(availableSizes ?? []));
-    } catch (error) {
-      console.warn('Unable to select a compact KYC picture size:', error);
-    }
-  }, []);
-
-  const captureWithNativeCamera = useCallback(async () => {
-    if (!currentCaptureKey || isCapturingRef.current) {
-      return;
-    }
-
-    isCapturingRef.current = true;
-    setIsCapturing(true);
-    setManualCaptureAvailable(false);
-    setIsNativeCameraOpening(true);
-    setIsCameraReady(false);
-    cleanupManualFallbackTimer();
-    cleanupStabilityTracking();
-
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        setManualCaptureAvailable(true);
-        return;
-      }
-
-      await wait(ANDROID_CAMERA_RELEASE_DELAY_MS);
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: 'images',
-        allowsEditing: true,
-        aspect: currentCaptureKey === 'selfie' ? [1, 1] : [3, 2],
-        quality: KYC_CAPTURE_QUALITY,
-        base64: false,
-        exif: false,
-      });
-      const imageUri = result.assets?.[0]?.uri;
-
-      if (!result.canceled && imageUri) {
-        setCaptures((prev) => ({
-          ...prev,
-          [currentCaptureKey]: imageUri,
-        }));
-        return;
-      }
-
-      setManualCaptureAvailable(true);
-    } catch (error) {
-      console.warn('[KycWizard] Native camera capture failed:', error);
-      setManualCaptureAvailable(true);
-    } finally {
-      isCapturingRef.current = false;
-      setIsCapturing(false);
-      setIsNativeCameraOpening(false);
-      setIsDeviceStable(false);
-      setCaptureCountdown(null);
-    }
-  }, [currentCaptureKey]);
-
-  const captureCurrentFrame = useCallback(async (showManualFallback = false) => {
-    if (!cameraRef.current || isCapturingRef.current || !currentCaptureKey) {
-      if (showManualFallback && !currentCaptureValue) {
-        setManualCaptureAvailable(true);
-      }
-      return;
-    }
-    isCapturingRef.current = true;
-    setIsCapturing(true);
-    setManualCaptureAvailable(false);
-    let didCapture = false;
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: KYC_CAPTURE_QUALITY,
-        base64: false,
-        exif: false,
-        skipProcessing: false,
-      });
-      if (photo?.uri) {
-        didCapture = true;
-        setCaptures((prev) => ({
-          ...prev,
-          [currentCaptureKey]: photo.uri,
-        }));
-      }
-    } catch (error) {
-      console.warn('Auto capture failed:', error);
-    } finally {
-      isCapturingRef.current = false;
-      setIsCapturing(false);
-      setIsDeviceStable(false);
-      setCaptureCountdown(null);
-      if (showManualFallback && !didCapture) {
-        setManualCaptureAvailable(true);
-      }
-    }
-  }, [currentCaptureKey, currentCaptureValue]);
-
-  const autoCapture = useCallback(async () => {
-    await captureCurrentFrame(true);
-  }, [captureCurrentFrame]);
-
-  const handleManualCapture = useCallback(async () => {
-    if (Platform.OS === 'android') {
-      await captureWithNativeCamera();
-      return;
-    }
-
-    await captureCurrentFrame(true);
-  }, [captureCurrentFrame, captureWithNativeCamera]);
+  const { cleanupManualFallbackTimer, cleanupStabilityTracking, autoCapture, handleCameraReady, handleManualCapture } = useKycCaptureActions({
+    manualFallbackTimerRef,
+    stabilityTimerRef,
+    lastMeasurementRef,
+    setIsDeviceStable,
+    setCaptureCountdown,
+    setIsCameraReady,
+    cameraRef,
+    setAndroidPictureSize,
+    currentCaptureKey,
+    isCapturingRef,
+    setIsCapturing,
+    setManualCaptureAvailable,
+    setIsNativeCameraOpening,
+    setCaptures,
+    currentCaptureValue,
+  });
 
   useEffect(() => {
     if (captureCountdown === null) {
@@ -457,164 +268,26 @@ export function KycWizardModal({
     }
   };
 
-  const renderCameraContent = () => {
-    if (!needsCamera) {
-      return null;
-    }
-
-    if (!permission) {
-      return (
-        <View style={styles.permissionCard}>
-          <Text style={styles.permissionTitle}>Caméra requise</Text>
-          <Text style={styles.permissionSubtitle}>
-            Autorisez l’accès à la caméra pour scanner vos documents en toute sécurité.
-          </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestCameraPermissionSafely}>
-            <Text style={styles.permissionButtonText}>Autoriser la caméra</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (!permission.granted) {
-      return (
-        <View style={styles.permissionCard}>
-          <Ionicons name="lock-closed" size={28} color={Colors.primary} />
-          <Text style={[styles.permissionTitle, { marginTop: Spacing.sm }]}>Autorisation refusée</Text>
-          <Text style={styles.permissionSubtitle}>
-            Rendez-vous dans les réglages pour donner l’accès à la caméra.
-          </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestCameraPermissionSafely}>
-            <Text style={styles.permissionButtonText}>Réessayer</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (currentCaptureValue) {
-      return (
-        <View style={styles.previewContainer}>
-          <Image
-            source={{ uri: currentCaptureValue }}
-            style={styles.previewImage}
-            resizeMode="cover"
-            fadeDuration={0}
-          />
-          <TouchableOpacity
-            style={styles.retakeButton}
-            onPress={() => handleRetake(currentCaptureKey!)}
-          >
-            <Ionicons name="refresh" size={18} color={Colors.white} />
-            <Text style={styles.retakeButtonText}>Recommencer le scan</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.cameraWrapper}>
-        {isNativeCameraOpening ? (
-          <View style={styles.cameraFallback}>
-            <ActivityIndicator color={Colors.white} />
-            <Text style={styles.cameraFallbackText}>Ouverture de la caméra du téléphone...</Text>
-          </View>
-        ) : (
-          <CameraView
-            ref={(ref) => {
-              cameraRef.current = ref;
-            }}
-            style={styles.camera}
-            facing={currentCaptureKey === 'selfie' ? 'front' : 'back'}
-            autofocus="on"
-            onCameraReady={handleCameraReady}
-            pictureSize={Platform.OS === 'android' ? androidPictureSize : undefined}
-          />
-        )}
-        <View pointerEvents="box-none" style={styles.cameraOverlay}>
-            {!isCameraReady && !isNativeCameraOpening && (
-              <View pointerEvents="none" style={styles.cameraPreparing}>
-                <ActivityIndicator color={Colors.white} />
-                <Text style={styles.cameraPreparingText}>Préparation de la caméra...</Text>
-              </View>
-            )}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.captureFrame,
-                currentCaptureKey === 'selfie' && styles.captureFrameRound,
-              ]}
-            />
-            {!manualCaptureAvailable && !isNativeCameraOpening && (
-              <View pointerEvents="none" style={styles.overlayInstruction}>
-                <Ionicons
-                  name={currentCaptureKey === 'selfie' ? 'happy' : 'scan'}
-                  size={18}
-                  color={Colors.white}
-                />
-                <Text style={styles.overlayInstructionText}>
-                  {isDeviceStable
-                    ? 'Document détecté, ne bougez plus…'
-                    : 'Alignez l’élément dans le cadre'}
-                </Text>
-              </View>
-            )}
-            {captureCountdown !== null && (
-              <View pointerEvents="none" style={styles.countdownBadge}>
-                <Text style={styles.countdownText}>
-                  {captureCountdown <= 0 ? 'SCAN…' : captureCountdown}
-                </Text>
-              </View>
-            )}
-            {manualCaptureAvailable && captureCountdown === null && !isNativeCameraOpening && (
-              <TouchableOpacity
-                style={styles.manualCaptureButton}
-                onPress={handleManualCapture}
-                disabled={isCapturing}
-              >
-                {isCapturing ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="camera" size={18} color={Colors.white} />
-                    <Text style={styles.manualCaptureButtonText}>Scanner maintenant</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-        </View>
-      </View>
-    );
-  };
-
-  const renderReviewContent = () => {
-    if (!isReviewStep) {
-      return null;
-    }
-    return (
-      <View style={styles.reviewGrid}>
-        {(['front', 'selfie'] as KycCaptureKey[]).map((key) => (
-          <View key={key} style={styles.reviewItem}>
-            <Image
-              source={{ uri: captures[key]! }}
-              style={styles.reviewImage}
-              resizeMode="cover"
-              fadeDuration={0}
-            />
-            <View style={styles.reviewLabelRow}>
-              <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-              <Text style={styles.reviewLabel}>
-                {key === 'front' ? 'Recto' : 'Selfie'}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.reviewRetake} onPress={() => handleRetake(key)}>
-              <Ionicons name="refresh" size={14} color={Colors.primary} />
-              <Text style={styles.reviewRetakeText}>Refaire</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
-      </View>
-    );
-  };
+  const { renderCameraContent, renderReviewContent } = useKycCaptureViews({
+    needsCamera,
+    permission,
+    requestCameraPermissionSafely,
+    currentCaptureValue,
+    handleRetake,
+    currentCaptureKey,
+    isNativeCameraOpening,
+    cameraRef,
+    handleCameraReady,
+    androidPictureSize,
+    isCameraReady,
+    manualCaptureAvailable,
+    isDeviceStable,
+    captureCountdown,
+    handleManualCapture,
+    isCapturing,
+    isReviewStep,
+    captures,
+  });
 
   if (!visible) {
     return null;

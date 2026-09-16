@@ -8,7 +8,7 @@ if (!file || !target) throw new Error('Source, line range, component name and ta
 if (fs.existsSync(target)) throw new Error(`Refusing to overwrite ${target}`);
 const configFile = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
 const config = ts.parseJsonConfigFileContent(configFile.config, ts.sys, process.cwd());
-const program = ts.createProgram(config.fileNames, config.options);
+const program = ts.createProgram([path.resolve(file), ...config.fileNames.filter(name => name.endsWith('.d.ts'))], config.options);
 const source = program.getSourceFile(path.resolve(file));
 const checker = program.getTypeChecker();
 const text = source.text;
@@ -39,6 +39,21 @@ for (const declaration of imports) {
   if (declaration.importClause) bindings(declaration.importClause);
 }
 const captures = new Map();
+function hookResultType(declaration) {
+  if (ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isCallExpression(declaration.initializer) &&
+      ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text.startsWith('use')) {
+    return `ReturnType<typeof ${declaration.initializer.expression.text}>`;
+  }
+  if (!ts.isBindingElement(declaration)) return null;
+  const pattern = declaration.parent;
+  const variable = pattern.parent;
+  if (!ts.isVariableDeclaration(variable) || !variable.initializer || !ts.isCallExpression(variable.initializer)) return null;
+  const callee = variable.initializer.expression;
+  if (!ts.isIdentifier(callee) || !callee.text.startsWith('use')) return null;
+  const index = ts.isArrayBindingPattern(pattern) ? pattern.elements.indexOf(declaration)
+    : `'${declaration.propertyName?.getText(source) || declaration.name.getText(source)}'`;
+  return `ReturnType<typeof ${callee.text}>[${index}]`;
+}
 function collect(node) {
   if (ts.isIdentifier(node)) {
     const symbol = ts.isShorthandPropertyAssignment(node.parent)
@@ -60,8 +75,10 @@ function collect(node) {
         throw new Error(`Move the module-level dependency ${valueSymbol.name} before extracting JSX`);
       }
       const type = checker.getTypeOfSymbolAtLocation(valueSymbol, selected);
-      const rendered = valueDeclaration?.type?.getText(source) || checker.typeToString(type, node,
+      let rendered = valueDeclaration?.type?.getText(source) || checker.typeToString(type, node,
         ts.TypeFormatFlags.NoTruncation | ts.TypeFormatFlags.UseAliasDefinedOutsideCurrentScope);
+      if (rendered.length > 350) rendered = hookResultType(valueDeclaration) || rendered;
+      if (rendered.length > 1200) throw new Error(`Type needs a domain contract: ${valueSymbol.name}`);
       captures.set(valueSymbol.name, rendered);
     }
   }

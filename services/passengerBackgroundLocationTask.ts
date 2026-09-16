@@ -1,27 +1,23 @@
+import { getBookingSnapshot, getTripSnapshot } from './background/passengerTrackingReads';
+import { FETCH_TIMEOUT_MS, LOCATION_FAILURE_BACKOFF_MS, BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS } from './background/passengerTrackingPolicy';
+import { getActiveTrackingSession, saveTrackingSession, hasStartedUpdates, stopRegisteredTask } from './background/passengerTaskLifecycle';
+import { PassengerTrackingSession, PassengerTrackingReadiness } from './background/passengerTrackingTypes';
+import { PASSENGER_BACKGROUND_LOCATION_TASK, ACTIVE_BOOKING_KEY } from './background/passengerTaskName';
+export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
+import { getRtkErrorStatus, getRtkErrorMessage, shouldBackOffAfterBackgroundResponse, isInactiveTripResponse, isTerminalPassengerTrackingResponse } from './background/passengerTrackingErrors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
-import { recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
+import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
+import { publishNativeRideLocation } from './rideLocationStream';
 
-import {
-  ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
-  ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
-  PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS,
-} from '@/constants/rideProgress';
+import { ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS, PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS } from '@/constants/rideProgress';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
-import { tripApi } from '@/store/api/tripApi';
+
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-
-export const PASSENGER_BACKGROUND_LOCATION_TASK =
-  'zwanga-passenger-background-location';
-
-const ACTIVE_BOOKING_KEY = 'zwanga.activePassengerBackgroundBookingId';
-const FETCH_TIMEOUT_MS = 18_000;
-const LOCATION_FAILURE_BACKOFF_MS = 30_000;
-const BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS = 10 * 60_000;
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
 let lastTripStatusCheckAt = 0;
@@ -38,190 +34,9 @@ type StartOptions = {
   waitForActiveTrip?: boolean;
 };
 
-type PassengerTrackingSession = {
-  bookingId: string;
-  tripId?: string | null;
-  waitForActiveTrip: boolean;
-};
-
-type PassengerTrackingReadiness = 'active' | 'waiting' | 'terminal';
-
-const getActiveTrackingSession = async (): Promise<PassengerTrackingSession | null> => {
-  try {
-    const storedValue = (await AsyncStorage.getItem(ACTIVE_BOOKING_KEY))?.trim();
-    if (!storedValue) return null;
-
-    // Keep compatibility with sessions created before the tracking state became structured.
-    if (!storedValue.startsWith('{')) {
-      return {
-        bookingId: storedValue,
-        waitForActiveTrip: false,
-      };
-    }
-
-    const parsed = JSON.parse(storedValue) as Partial<PassengerTrackingSession>;
-    const bookingId = parsed.bookingId?.trim();
-    if (!bookingId) return null;
-
-    return {
-      bookingId,
-      tripId: parsed.tripId?.trim() || null,
-      waitForActiveTrip: parsed.waitForActiveTrip === true,
-    };
-  } catch (error) {
-    console.warn('[PassengerBackgroundLocation] Lecture session impossible:', error);
-    return null;
-  }
-};
-
-const saveTrackingSession = async (session: PassengerTrackingSession) => {
-  await AsyncStorage.setItem(ACTIVE_BOOKING_KEY, JSON.stringify(session));
-};
-
-const hasStartedUpdates = async () => {
-  if (Platform.OS === 'web' || !(await TaskManager.isAvailableAsync())) {
-    return false;
-  }
-  return Location.hasStartedLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK);
-};
-
-const stopRegisteredTask = async () => {
-  try {
-    if (await hasStartedUpdates()) {
-      await Location.stopLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK);
-    }
-  } catch (error) {
-    console.warn('[PassengerBackgroundLocation] Arret task impossible:', error);
-  }
-};
-
-const normalizeErrorMessage = (value: unknown) =>
-  String(value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-const getRtkErrorStatus = (error: unknown) => {
-  if (!error || typeof error !== 'object' || !('status' in error)) {
-    return undefined;
-  }
-
-  return (error as { status?: number | string }).status;
-};
-
-const getRtkErrorMessage = (error: unknown) => {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-
-  const { data, error: errorMessage } = error as {
-    data?: unknown;
-    error?: unknown;
-  };
-
-  if (typeof data === 'string') {
-    return data;
-  }
-
-  if (data && typeof data === 'object') {
-    const message = (data as { message?: unknown; error?: unknown }).message;
-    if (Array.isArray(message)) {
-      return message.join(' ');
-    }
-    if (typeof message === 'string') {
-      return message;
-    }
-
-    const dataError = (data as { error?: unknown }).error;
-    if (typeof dataError === 'string') {
-      return dataError;
-    }
-  }
-
-  return typeof errorMessage === 'string' ? errorMessage : '';
-};
-
-const shouldBackOffAfterBackgroundResponse = (status: number | string | undefined) =>
-  status === 'FETCH_ERROR' ||
-  status === 'TIMEOUT_ERROR' ||
-  status === 408 ||
-  status === 425 ||
-  status === 429 ||
-  (typeof status === 'number' && status >= 500);
-
-const isInactiveTripResponse = (status: number | string | undefined, message: string) =>
-  status === 400 &&
-  normalizeErrorMessage(message).includes('trajet doit etre actif');
-
-const isTerminalPassengerTrackingResponse = (
-  status: number | string | undefined,
-  message: string,
-) => {
-  if (status === 401 || status === 403 || status === 404) return true;
-  if (status !== 400) return false;
-
-  const normalizedMessage = normalizeErrorMessage(message);
-  return (
-    normalizedMessage.includes('reservations acceptees') ||
-    normalizedMessage.includes('reservation acceptee')
-  );
-};
-
 const stopTrackingSession = async () => {
   await AsyncStorage.removeItem(ACTIVE_BOOKING_KEY);
   await stopRegisteredTask();
-};
-
-const getBookingSnapshot = async (bookingId: string) => {
-  const dispatchRequest = async () => {
-    const request = store.dispatch(
-      bookingApi.endpoints.getBookingById.initiate(bookingId, {
-        forceRefetch: true,
-        subscribe: false,
-      }),
-    );
-    const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
-
-    try {
-      return await request;
-    } finally {
-      clearTimeout(timeout);
-      request.unsubscribe();
-    }
-  };
-
-  let result = await dispatchRequest();
-  if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
-    result = await dispatchRequest();
-  }
-
-  return result;
-};
-
-const getTripSnapshot = async (tripId: string) => {
-  const dispatchRequest = async () => {
-    const request = store.dispatch(
-      tripApi.endpoints.getTripById.initiate(tripId, {
-        forceRefetch: true,
-        subscribe: false,
-      }),
-    );
-    const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
-
-    try {
-      return await request;
-    } finally {
-      clearTimeout(timeout);
-      request.unsubscribe();
-    }
-  };
-
-  let result = await dispatchRequest();
-  if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
-    result = await dispatchRequest();
-  }
-
-  return result;
 };
 
 const getPassengerTrackingReadiness = async (
@@ -300,6 +115,7 @@ async function putPassengerLocation(
   const now = Date.now();
   if (
     !coordinate ||
+    isLocationDeliveryPending(`passenger:${bookingId}`) ||
     wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'rest') ||
     now - lastSentAt < ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
   ) {
@@ -436,6 +252,7 @@ const definePassengerBackgroundLocationTask = () => {
           .filter((location) => typeof location?.timestamp === 'number')
           .sort((a, b) => b.timestamp - a.timestamp)[0];
         if (latestLocation) {
+          publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
           await putPassengerLocation(session.bookingId, latestLocation);
         }
       },
@@ -510,6 +327,7 @@ export async function startPassengerBackgroundLocationTracking(
     await Location.startLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK, {
       accuracy: Location.Accuracy.High,
       timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
+      deferredUpdatesInterval: 2000, // Keep the latest sample within the 10-second boarding window.
       distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
       pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,

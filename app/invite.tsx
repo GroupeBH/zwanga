@@ -193,7 +193,7 @@ export default function InviteScreen() {
                 <View style={styles.referralCopy}>
                     <Text style={styles.referralEyebrow}>VOTRE LIEN PERSONNEL</Text>
                     <Text style={styles.referralLinkTitle}>Invitation automatique</Text>
-                    <Text style={styles.referralHint}>Aucun code a saisir apres l’installation.</Text>
+                    <Text style={styles.referralHint}>Aucun code à saisir après l’installation.</Text>
                 </View>
                 <TouchableOpacity
                     style={[styles.shareButton, (isSharing || isReferralFetching) && styles.disabled]}

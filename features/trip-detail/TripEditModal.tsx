@@ -140,7 +140,7 @@ export function TripEditModal({
             </View>
             <View style={[styles.editStepPill, editStep === 2 && styles.editStepPillActive]}>
               <Text style={[styles.editStepText, editStep === 2 && styles.editStepTextActive]}>
-                2. Details
+                2. Détails
               </Text>
             </View>
           </View>

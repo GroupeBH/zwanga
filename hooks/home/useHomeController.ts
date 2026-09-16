@@ -18,7 +18,7 @@ export function useHomeController() {
   const location = useHomeLocation({ ...context, ...driverActivity });
   const tripFeed = useHomeTripFeed({ ...location, ...context });
   const passengerActivity = useHomePassengerActivity({ ...context, driverCoordinate: location.liveUserCoordinate });
-  const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity });
+  const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, liveUserCoordinate: location.liveUserCoordinate });
   const requestHighlight = useHomeRequestHighlight({
     enabled: context.isFocused && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
       && !tripFeed.showInitialHomeLoader && !tripSelection.featuredDriverReservation,

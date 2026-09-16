@@ -1,91 +1,25 @@
+import { useRequestRouteEffects } from './useRequestRouteEffects';
+import { useRequestQuickPlaces } from './useRequestQuickPlaces';
+import { useRequestBudgetSummary } from './useRequestBudgetSummary';
+import { useRequestRoutePrefill } from './useRequestRoutePrefill';
 import { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
-import { MapLocationSelection } from '@/components/LocationPickerModal';
-import {
-  areSameCoordinate,
-  buildRoutePreviewRegion,
-  clampRequestPrice,
-  clampRequestSeats,
-  formatCdfPrice,
-  formatDistanceKm,
-  getLocationText,
-  getMapCoordinate,
-  getRenderableRouteCoordinates,
-  getRequestBudgetState,
-  LatLng,
-  parseNumberParam,
-  PickerTarget,
-  RequestFormStep
-} from '@/features/trip-request/requestFormModel';
-import { useManualAddressGeocode } from '@/hooks/useManualAddressGeocode';
+import { clampRequestPrice, LatLng, PickerTarget, RequestFormStep } from '@/features/trip-request/requestFormModel';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
-import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
-import {
-  buildManualGeocodeQuery,
-  mapGeocodeResponseToSelection
-} from '@/utils/manualAddressGeocode';
-import { getRouteCoordinates } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  InteractionManager
-} from 'react-native';
-import { type Region } from 'react-native-maps';
+import { startTransition, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRequestDraft } from './useRequestDraft';
 import { useRequestSchedule } from './useRequestSchedule';
 import { useRequestSubmission } from './useRequestSubmission';
-import { useRequestVehicleOptions } from './useRequestVehicleOptions';
-export function useRequestTripController() {
-  const {
-    departureLocation,
-    arrivalLocation,
-    departureManualAddress,
-    departureReference,
-    arrivalManualAddress,
-    arrivalReference,
-    timePreset,
-    departureDateMin,
-    flexibilityMinutes,
-    numberOfSeats,
-    hasSpecifiedNumberOfSeats,
-    selectedVehicleType,
-    maxPricePerSeat,
-    hasEditedBudget,
-    requestPaymentMode,
-    description,
-    setDepartureLocation,
-    setArrivalLocation,
-    setDepartureManualAddress,
-    setDepartureReference,
-    setArrivalManualAddress,
-    setArrivalReference,
-    setTimePreset,
-    setDepartureDateMin,
-    setFlexibilityMinutes,
-    setNumberOfSeats,
-    setHasSpecifiedNumberOfSeats,
-    setSelectedVehicleType,
-    setMaxPricePerSeat,
-    setHasEditedBudget,
-    setRequestPaymentMode,
-    setDescription
-  } = useRequestDraft();
 
-  const {
-    iosPickerMode,
-    setIosPickerMode,
-    departureTimeRangeLabel,
-    timeSummary,
-    selectedTimePreset,
-    getCurrentDepartureWindow,
-    applyPreset,
-    openCustomPicker,
-    handleIosPickerChange
-  } = useRequestSchedule({ timePreset, departureDateMin, flexibilityMinutes, setTimePreset, setDepartureDateMin, setFlexibilityMinutes });
+export function useRequestTripController() {
+  const draft = useRequestDraft();
+
+  const schedule = useRequestSchedule({ timePreset: draft.timePreset, departureDateMin: draft.departureDateMin, flexibilityMinutes: draft.flexibilityMinutes, setTimePreset: draft.setTimePreset, setDepartureDateMin: draft.setDepartureDateMin, setFlexibilityMinutes: draft.setFlexibilityMinutes });
 
   const router = useRouter();
 
@@ -138,263 +72,60 @@ export function useRequestTripController() {
 
   const [hasAppliedRoutePrefill, setHasAppliedRoutePrefill] = useState(false);
 
-  useEffect(() => {
-    screenMountedRef.current = true;
-    return () => {
-      screenMountedRef.current = false;
-    };
-  }, []);
-
-  const routePreviewRegion = useMemo<Region>(() => {
-    const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
-      (point): point is LatLng => Boolean(point),
-    );
-    const previewPoints = routeCoordinates.length > 1 ? routeCoordinates : selectedPoints;
-
-    return buildRoutePreviewRegion(previewPoints);
-  }, [
-    arrivalLocation,
-    departureLocation,
+  const { favoriteSuggestions, routePreviewRegion } = useRequestRoutePrefill({
+    screenMountedRef,
+    departureLocation: draft.departureLocation,
+    arrivalLocation: draft.arrivalLocation,
     routeCoordinates,
-  ]);
-
-  const favoriteSuggestions = useMemo(() => favoriteLocations.slice(0, 4), [favoriteLocations]);
-
-  useEffect(() => {
-    if (hasAppliedRoutePrefill) {
-      return;
-    }
-
-    const departureParam = typeof requestParams.departure === 'string' ? requestParams.departure.trim() : '';
-    const arrivalParam = typeof requestParams.arrival === 'string' ? requestParams.arrival.trim() : '';
-    const seatsParam = parseNumberParam(requestParams.seats) ?? parseNumberParam(requestParams.minSeats);
-
-    if (seatsParam !== undefined) {
-      setNumberOfSeats(clampRequestSeats(seatsParam));
-    }
-
-    if (!departureParam && !arrivalParam) {
-      setHasAppliedRoutePrefill(true);
-      return;
-    }
-
-    setAddressInputMode('manual');
-    setRequestFormStep('route');
-
-    if (departureParam) {
-      departureTouchedRef.current = true;
-      setDepartureLocation(null);
-      setDepartureManualAddress(departureParam);
-    }
-
-    if (arrivalParam) {
-      setArrivalLocation(null);
-      setArrivalManualAddress(arrivalParam);
-    }
-
-    setAddressSectionStep(!departureParam ? 'departure' : 'arrival');
-    setHasAppliedRoutePrefill(true);
-  }, [
+    favoriteLocations,
     hasAppliedRoutePrefill,
-    requestParams.arrival,
-    requestParams.departure,
-    requestParams.minSeats,
-    requestParams.seats,
-    setArrivalLocation,
-    setArrivalManualAddress,
-    setDepartureLocation,
-    setDepartureManualAddress,
-    setNumberOfSeats,
-  ]);
-
-  useEffect(() => {
-    if (
-      !hasAppliedRoutePrefill ||
-      departureAutoFillStartedRef.current ||
-      departureTouchedRef.current ||
-      departureLocation ||
-      departureManualAddress.trim()
-    ) {
-      return;
-    }
-
-    departureAutoFillStartedRef.current = true;
-
-    const initializeDeparture = async () => {
-      const applyCoordinate = async (coordinate: LatLng) => {
-        const selection = await buildCurrentLocationSelection(coordinate);
-        if (!screenMountedRef.current || departureTouchedRef.current) {
-          return false;
-        }
-
-        setDepartureLocation(selection);
-        setDepartureManualAddress(selection.title || selection.address);
-        setAddressSectionStep('arrival');
-        return true;
-      };
-      const knownLatitude = Number(lastKnownLocation?.coords?.latitude);
-      const knownLongitude = Number(lastKnownLocation?.coords?.longitude);
-      const knownTimestamp = Number(lastKnownLocation?.timestamp);
-      const knownCoordinate =
-        Number.isFinite(knownLatitude) &&
-          Number.isFinite(knownLongitude) &&
-          Number.isFinite(knownTimestamp) &&
-          Date.now() - knownTimestamp <= 15 * 60 * 1000
-          ? { latitude: knownLatitude, longitude: knownLongitude }
-          : null;
-
-      if (knownCoordinate) {
-        await applyCoordinate(knownCoordinate);
-      }
-
-      if (!screenMountedRef.current || departureTouchedRef.current) {
-        return;
-      }
-
-      const position = await getCurrentLocation();
-      if (!screenMountedRef.current || !position || departureTouchedRef.current) {
-        return;
-      }
-
-      const currentCoordinate = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      };
-      if (knownCoordinate && areSameCoordinate(knownCoordinate, currentCoordinate)) {
-        return;
-      }
-
-      await applyCoordinate(currentCoordinate);
-    };
-
-    void initializeDeparture();
-  }, [
-    departureLocation,
-    departureManualAddress,
-    getCurrentLocation,
-    hasAppliedRoutePrefill,
+    requestParams,
+    setNumberOfSeats: draft.setNumberOfSeats,
+    setHasAppliedRoutePrefill,
+    setAddressInputMode,
+    setRequestFormStep,
+    departureTouchedRef,
+    setDepartureLocation: draft.setDepartureLocation,
+    setDepartureManualAddress: draft.setDepartureManualAddress,
+    setArrivalLocation: draft.setArrivalLocation,
+    setArrivalManualAddress: draft.setArrivalManualAddress,
+    setAddressSectionStep,
+    departureAutoFillStartedRef,
+    departureManualAddress: draft.departureManualAddress,
     lastKnownLocation,
-    setDepartureLocation,
-    setDepartureManualAddress,
-  ]);
-
-  const departureAddress = getLocationText(departureLocation, departureManualAddress);
-
-  const arrivalAddress = getLocationText(arrivalLocation, arrivalManualAddress);
-
-  const hasDepartureAddress = departureAddress.length > 0;
-
-  const hasArrivalAddress = arrivalAddress.length > 0;
-
-  const { vehicleOptions, routeDistanceMeters, isPriceLoading, isVehicleOptionsError, retryVehicleOptions } = useRequestVehicleOptions({
-    departureAddress, arrivalAddress, departureReference, arrivalReference, departureLocation, arrivalLocation,
-    numberOfSeats, hasSpecifiedNumberOfSeats,
+    getCurrentLocation,
   });
 
-  const selectedVehicleOption = useMemo(
-    () => vehicleOptions.find((option) => option.vehicleType === selectedVehicleType),
-    [selectedVehicleType, vehicleOptions],
-  );
+  const { vehicleOptions, recommendedPricePerSeat, hasDepartureAddress, hasArrivalAddress, departureAddress, arrivalAddress, canSubmitRequestDetails, budgetValue, selectedVehicleOptionUnavailable, budgetHintLabel, budgetLabel, isPriceLoading, isVehicleOptionsError, requestSeatsLabel, routeDistanceLabel, retryVehicleOptions, totalBudgetLabel } = useRequestBudgetSummary({
+    departureLocation: draft.departureLocation,
+    departureManualAddress: draft.departureManualAddress,
+    arrivalLocation: draft.arrivalLocation,
+    arrivalManualAddress: draft.arrivalManualAddress,
+    departureReference: draft.departureReference,
+    arrivalReference: draft.arrivalReference,
+    numberOfSeats: draft.numberOfSeats,
+    hasSpecifiedNumberOfSeats: draft.hasSpecifiedNumberOfSeats,
+    selectedVehicleType: draft.selectedVehicleType,
+    maxPricePerSeat: draft.maxPricePerSeat,
+    hasEditedBudget: draft.hasEditedBudget,
+  });
 
-  const {
+  const { setDepartureManualGeocodeStatus, setArrivalManualGeocodeStatus, arrivalManualGeocodeStatus, departureManualGeocodeStatus } = useRequestRouteEffects({
+    addressInputMode,
+    departureManualAddress: draft.departureManualAddress,
+    departureLocation: draft.departureLocation,
+    setDepartureLocation: draft.setDepartureLocation,
+    arrivalManualAddress: draft.arrivalManualAddress,
+    arrivalLocation: draft.arrivalLocation,
+    setArrivalLocation: draft.setArrivalLocation,
+    setRouteCoordinates,
+    setIsRouteLoading,
+    vehicleOptions,
+    setSelectedVehicleType: draft.setSelectedVehicleType,
+    hasEditedBudget: draft.hasEditedBudget,
+    setMaxPricePerSeat: draft.setMaxPricePerSeat,
     recommendedPricePerSeat,
-    selectedVehicleOptionUnavailable,
-    canSubmitRequestDetails,
-    budgetValue,
-  } = getRequestBudgetState(maxPricePerSeat, hasEditedBudget, selectedVehicleOption);
-
-  const budgetLabel = budgetValue > 0
-    ? formatCdfPrice(budgetValue)
-    : isPriceLoading
-      ? 'Calcul...'
-      : 'Prix à calculer';
-
-  const requestSeatsLabel = `${numberOfSeats} place${numberOfSeats > 1 ? 's' : ''}`;
-
-  const totalBudgetValue = budgetValue > 0 ? budgetValue * numberOfSeats : 0;
-
-  const totalBudgetLabel = totalBudgetValue > 0
-    ? formatCdfPrice(totalBudgetValue)
-    : isPriceLoading
-      ? 'Calcul...'
-      : 'À définir';
-
-  const budgetHintLabel = hasEditedBudget
-    ? 'Votre budget maximum par place'
-    : isVehicleOptionsError && vehicleOptions.length === 0
-      ? 'Fixez votre budget pour continuer'
-      : 'Prix recommandé par place';
-
-  const routeDistanceLabel = formatDistanceKm(routeDistanceMeters);
-
-  const [departureManualGeocodeStatus, setDepartureManualGeocodeStatus] = useManualAddressGeocode({
-    enabled: addressInputMode === 'manual', address: departureManualAddress,
-    selection: departureLocation, onResolved: setDepartureLocation,
   });
-
-  const [arrivalManualGeocodeStatus, setArrivalManualGeocodeStatus] = useManualAddressGeocode({
-    enabled: addressInputMode === 'manual', address: arrivalManualAddress,
-    selection: arrivalLocation, onResolved: setArrivalLocation,
-  });
-
-  useEffect(() => {
-    const origin = getMapCoordinate(departureLocation);
-    const destination = getMapCoordinate(arrivalLocation);
-
-    if (!origin || !destination) {
-      setRouteCoordinates([]);
-      setIsRouteLoading(false);
-      return;
-    }
-
-    let isCurrent = true;
-    setIsRouteLoading(true);
-    setRouteCoordinates([]);
-
-    const interaction = InteractionManager.runAfterInteractions(() => {
-      if (!isCurrent) return;
-
-      getRouteCoordinates(origin, destination)
-        .then((coordinates) => {
-          if (!isCurrent) return;
-          setRouteCoordinates(getRenderableRouteCoordinates(coordinates, origin, destination));
-        })
-        .catch((error) => {
-          if (!isCurrent) return;
-          console.warn('Impossible de calculer l itinéraire de demande', error);
-          setRouteCoordinates([]);
-        })
-        .finally(() => {
-          if (isCurrent) {
-            setIsRouteLoading(false);
-          }
-        });
-    });
-
-    return () => {
-      isCurrent = false;
-      interaction.cancel();
-    };
-  }, [
-    arrivalLocation,
-    departureLocation,
-  ]);
-
-  useEffect(() => {
-    if (!vehicleOptions.length) return;
-    setSelectedVehicleType((current) => {
-      const option = vehicleOptions.find((option) => option.vehicleType === current);
-      return option?.availableForRequestedSeats ? current
-        : vehicleOptions.find((option) => option.availableForRequestedSeats)?.vehicleType ?? current;
-    });
-  }, [vehicleOptions, setSelectedVehicleType]);
-
-  useEffect(() => {
-    if (hasEditedBudget) return;
-    setMaxPricePerSeat(
-      recommendedPricePerSeat === null ? '' : String(recommendedPricePerSeat),
-    );
-  }, [hasEditedBudget, recommendedPricePerSeat, setMaxPricePerSeat]);
 
   const primaryLabel =
     requestFormStep === 'route'
@@ -406,8 +137,8 @@ export function useRequestTripController() {
       : 'Envoyer la demande';
 
   const updateBudget = (value: number) => {
-    setHasEditedBudget(true);
-    setMaxPricePerSeat(String(clampRequestPrice(value)));
+    draft.setHasEditedBudget(true);
+    draft.setMaxPricePerSeat(String(clampRequestPrice(value)));
   };
 
   const openPickerFor = (target: PickerTarget) => {
@@ -421,109 +152,34 @@ export function useRequestTripController() {
 
   const swapRoutePoints = () => {
     departureTouchedRef.current = true;
-    const tempLoc = departureLocation;
-    const tempManual = departureManualAddress;
-    const tempRef = departureReference;
-    setDepartureLocation(arrivalLocation);
-    setDepartureManualAddress(arrivalManualAddress);
-    setDepartureReference(arrivalReference);
-    setArrivalLocation(tempLoc);
-    setArrivalManualAddress(tempManual);
-    setArrivalReference(tempRef);
+    const tempLoc = draft.departureLocation;
+    const tempManual = draft.departureManualAddress;
+    const tempRef = draft.departureReference;
+    draft.setDepartureLocation(draft.arrivalLocation);
+    draft.setDepartureManualAddress(draft.arrivalManualAddress);
+    draft.setDepartureReference(draft.arrivalReference);
+    draft.setArrivalLocation(tempLoc);
+    draft.setArrivalManualAddress(tempManual);
+    draft.setArrivalReference(tempRef);
   };
 
-  const getQuickSelectionTarget = (): PickerTarget => {
-    if (addressSectionStep === 'departure' || addressSectionStep === 'arrival') {
-      return addressSectionStep;
-    }
-
-    return !hasDepartureAddress ? 'departure' : 'arrival';
-  };
-
-  const applySelectionToSlot = (target: PickerTarget, selection: MapLocationSelection) => {
-    setAddressInputMode('map');
-    if (target === 'departure') {
-      departureTouchedRef.current = true;
-      setDepartureLocation(selection);
-      setDepartureManualAddress(selection.title || selection.address);
-      setAddressSectionStep('arrival');
-      return;
-    }
-
-    setArrivalLocation(selection);
-    setArrivalManualAddress(selection.title || selection.address);
-    setAddressSectionStep('arrival');
-  };
-
-  const applySelectionToNextSlot = (selection: MapLocationSelection) => {
-    applySelectionToSlot(getQuickSelectionTarget(), selection);
-  };
-
-  const applyQuickPlaceToNextSlot = async (place: string) => {
-    const target = getQuickSelectionTarget();
-    const requestSeq = quickPlaceRequestSeqRef.current[target] + 1;
-    quickPlaceRequestSeqRef.current[target] = requestSeq;
-    setQuickPlaceResolvingKey(place);
-    setAddressInputMode('map');
-
-    if (target === 'departure') {
-      departureTouchedRef.current = true;
-      setDepartureLocation(null);
-      setDepartureManualAddress(place);
-      setDepartureManualGeocodeStatus('searching');
-      setAddressSectionStep('arrival');
-    } else {
-      setArrivalLocation(null);
-      setArrivalManualAddress(place);
-      setArrivalManualGeocodeStatus('searching');
-      setAddressSectionStep('arrival');
-    }
-
-    try {
-      const response = await geocodeManualAddress({
-        address: buildManualGeocodeQuery(place),
-        region: 'cd',
-      }).unwrap();
-      if (!screenMountedRef.current || quickPlaceRequestSeqRef.current[target] !== requestSeq) {
-        return;
-      }
-
-      const selection = mapGeocodeResponseToSelection(place, response);
-      if (!selection) {
-        throw new Error('Lieu rapide introuvable');
-      }
-
-      setAddressInputMode('map');
-      if (target === 'departure') {
-        setDepartureLocation(selection);
-        setDepartureManualAddress(selection.title || selection.address);
-        setDepartureManualGeocodeStatus('found');
-        setAddressSectionStep('arrival');
-        return;
-      }
-
-      setArrivalLocation(selection);
-      setArrivalManualAddress(selection.title || selection.address);
-      setArrivalManualGeocodeStatus('found');
-      setAddressSectionStep('arrival');
-    } catch (error) {
-      if (!screenMountedRef.current || quickPlaceRequestSeqRef.current[target] !== requestSeq) {
-        return;
-      }
-
-      console.warn('Quick place geocode failed', error);
-      setAddressInputMode('manual');
-      if (target === 'departure') {
-        setDepartureManualGeocodeStatus('missing');
-      } else {
-        setArrivalManualGeocodeStatus('missing');
-      }
-    } finally {
-      if (screenMountedRef.current && quickPlaceRequestSeqRef.current[target] === requestSeq) {
-        setQuickPlaceResolvingKey(null);
-      }
-    }
-  };
+  const { applyQuickPlaceToNextSlot, applySelectionToNextSlot } = useRequestQuickPlaces({
+    addressSectionStep,
+    hasDepartureAddress,
+    setAddressInputMode,
+    departureTouchedRef,
+    setDepartureLocation: draft.setDepartureLocation,
+    setDepartureManualAddress: draft.setDepartureManualAddress,
+    setAddressSectionStep,
+    setArrivalLocation: draft.setArrivalLocation,
+    setArrivalManualAddress: draft.setArrivalManualAddress,
+    quickPlaceRequestSeqRef,
+    setQuickPlaceResolvingKey,
+    setDepartureManualGeocodeStatus,
+    setArrivalManualGeocodeStatus,
+    geocodeManualAddress,
+    screenMountedRef,
+  });
 
   const {
     createdRequestId,
@@ -538,18 +194,18 @@ export function useRequestTripController() {
     goToRequestSuccessDetail,
     goHomeAfterRequestSuccess
   } = useRequestSubmission({
-    arrivalLocation,
-    departureLocation,
-    timePreset,
-    setDepartureDateMin,
-    setFlexibilityMinutes,
-    description,
-    departureReference,
-    arrivalReference,
-    hasSpecifiedNumberOfSeats,
-    numberOfSeats,
-    selectedVehicleType,
-    requestPaymentMode,
+    arrivalLocation: draft.arrivalLocation,
+    departureLocation: draft.departureLocation,
+    timePreset: draft.timePreset,
+    setDepartureDateMin: draft.setDepartureDateMin,
+    setFlexibilityMinutes: draft.setFlexibilityMinutes,
+    description: draft.description,
+    departureReference: draft.departureReference,
+    arrivalReference: draft.arrivalReference,
+    hasSpecifiedNumberOfSeats: draft.hasSpecifiedNumberOfSeats,
+    numberOfSeats: draft.numberOfSeats,
+    selectedVehicleType: draft.selectedVehicleType,
+    requestPaymentMode: draft.requestPaymentMode,
     departureAddress,
     arrivalAddress,
     hasDepartureAddress,
@@ -557,7 +213,7 @@ export function useRequestTripController() {
     canSubmitRequestDetails,
     budgetValue,
     selectedVehicleOptionUnavailable,
-    getCurrentDepartureWindow,
+    getCurrentDepartureWindow: schedule.getCurrentDepartureWindow,
     setRequestFormStep,
     setAddressSectionStep
   });
@@ -595,52 +251,52 @@ export function useRequestTripController() {
     activePicker,
     addressInputMode,
     addressSectionStep,
-    applyPreset,
+    applyPreset: schedule.applyPreset,
     applyQuickPlaceToNextSlot,
     applySelectionToNextSlot,
     arrivalAddress,
-    arrivalLocation,
-    arrivalManualAddress,
+    arrivalLocation: draft.arrivalLocation,
+    arrivalManualAddress: draft.arrivalManualAddress,
     arrivalManualGeocodeStatus,
     budgetHintLabel,
     budgetLabel,
     budgetValue,
     createdRequestId,
     departureAddress,
-    departureDateMin,
-    departureLocation,
-    departureManualAddress,
+    departureDateMin: draft.departureDateMin,
+    departureLocation: draft.departureLocation,
+    departureManualAddress: draft.departureManualAddress,
     departureManualGeocodeStatus,
-    departureTimeRangeLabel,
+    departureTimeRangeLabel: schedule.departureTimeRangeLabel,
     departureTouchedRef,
-    description,
+    description: draft.description,
     favoriteSuggestions,
-    flexibilityMinutes,
+    flexibilityMinutes: draft.flexibilityMinutes,
     goHomeAfterRequestSuccess,
     goToRequestSuccessDetail,
     handleCreateRequest,
-    handleIosPickerChange,
+    handleIosPickerChange: schedule.handleIosPickerChange,
     handlePrimaryAction,
     hasArrivalAddress,
     hasDepartureAddress,
-    hasSpecifiedNumberOfSeats,
+    hasSpecifiedNumberOfSeats: draft.hasSpecifiedNumberOfSeats,
     insets,
-    iosPickerMode,
+    iosPickerMode: schedule.iosPickerMode,
     isCreating,
     isPriceLoading,
     isRequestSuccessVisible,
     isResolvingSentRequest,
     isRouteLoading,
     isVehicleOptionsError,
-    numberOfSeats,
-    openCustomPicker,
+    numberOfSeats: draft.numberOfSeats,
+    openCustomPicker: schedule.openCustomPicker,
     openPickerFor,
     primaryButtonDisabled,
     primaryIconName,
     primaryLabel,
     quickPlaceResolvingKey,
     requestFormStep,
-    requestPaymentMode,
+    requestPaymentMode: draft.requestPaymentMode,
     requestSeatsLabel,
     requestSuccessDetailLabel,
     requestSuccessText,
@@ -648,23 +304,23 @@ export function useRequestTripController() {
     routeDistanceLabel,
     routePreviewRegion,
     router,
-    selectedTimePreset,
-    selectedVehicleType,
+    selectedTimePreset: schedule.selectedTimePreset,
+    selectedVehicleType: draft.selectedVehicleType,
     setActivePicker,
     setAddressInputMode,
     setAddressSectionStep,
-    setArrivalLocation,
-    setArrivalManualAddress,
-    setDepartureLocation,
-    setDepartureManualAddress,
-    setDescription,
-    setFlexibilityMinutes,
-    setHasSpecifiedNumberOfSeats,
-    setIosPickerMode,
-    setNumberOfSeats,
+    setArrivalLocation: draft.setArrivalLocation,
+    setArrivalManualAddress: draft.setArrivalManualAddress,
+    setDepartureLocation: draft.setDepartureLocation,
+    setDepartureManualAddress: draft.setDepartureManualAddress,
+    setDescription: draft.setDescription,
+    setFlexibilityMinutes: draft.setFlexibilityMinutes,
+    setHasSpecifiedNumberOfSeats: draft.setHasSpecifiedNumberOfSeats,
+    setIosPickerMode: schedule.setIosPickerMode,
+    setNumberOfSeats: draft.setNumberOfSeats,
     setRequestFormStep,
-    setRequestPaymentMode,
-    setSelectedVehicleType,
+    setRequestPaymentMode: draft.setRequestPaymentMode,
+    setSelectedVehicleType: draft.setSelectedVehicleType,
     setShowAdvanced,
     setShowQuickLandmarks,
     retryVehicleOptions,
@@ -673,8 +329,8 @@ export function useRequestTripController() {
     submissionError,
     submissionRecoveryMessage,
     swapRoutePoints,
-    timePreset,
-    timeSummary,
+    timePreset: draft.timePreset,
+    timeSummary: schedule.timeSummary,
     totalBudgetLabel,
     updateBudget,
     vehicleOptions
