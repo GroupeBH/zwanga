@@ -7,11 +7,12 @@ import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import type { Trip } from '@/types';
 import type { Router } from 'expo-router';
+import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import { getRouteTitle, type RouteLocationLabels } from '@/utils/routeLocationLabels';
 
 interface TripSummaryProps {
   config: { color: string; bgColor: string; label: string; };
-  tripDepartureName: string;
-  tripArrivalName: string;
+  routeLabels: RouteLocationLabels;
   tripPriceLabel: string;
   trip: Trip | undefined;
   tripDepartureTimeLabel: string;
@@ -34,8 +35,7 @@ interface TripSummaryProps {
 
 export function TripSummary({
   config,
-  tripDepartureName,
-  tripArrivalName,
+  routeLabels,
   tripPriceLabel,
   trip,
   tripDepartureTimeLabel,
@@ -64,7 +64,7 @@ export function TripSummary({
             <Text style={styles.tripHeroEyebrow}>{config.label}</Text>
           </View>
           <Text style={styles.tripHeroTitle} numberOfLines={2}>
-            {tripDepartureName} vers {tripArrivalName}
+            {getRouteTitle(routeLabels)}
           </Text>
         </View>
         <View style={styles.tripPriceBadge}>
@@ -127,31 +127,7 @@ export function TripSummary({
         </View>
       )}
 
-      {/* <View style={styles.tripCompactRoute}>
-        <View style={styles.tripCompactRail}>
-          <View style={[styles.tripCompactDot, styles.tripCompactStartDot]} />
-          <View style={styles.tripCompactLine} />
-          <View style={[styles.tripCompactDot, styles.tripCompactEndDot]} />
-        </View>
-        <View style={styles.tripCompactRouteCopy}>
-          <View style={styles.tripCompactStop}>
-            <View style={styles.tripCompactStopTop}>
-              <Text style={[styles.tripCompactStopLabel, styles.tripCompactDepartureLabel]}>Départ</Text>
-              <Text style={styles.tripCompactStopTime}>{tripDepartureTimeLabel}</Text>
-            </View>
-            <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripDepartureName}</Text>
-            <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripDepartureAddress}</Text>
-          </View>
-          <View style={styles.tripCompactStop}>
-            <View style={styles.tripCompactStopTop}>
-              <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivée estimee</Text>
-              <Text style={styles.tripCompactStopTime}>{tripArrivalTimeLabel}</Text>
-            </View>
-            <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripArrivalName}</Text>
-            <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripArrivalAddress}</Text>
-          </View>
-        </View>
-      </View> */}
+      <RouteLocationDetails labels={routeLabels} />
 
       <View style={styles.tripDirectInfoRow}>
         <TouchableOpacity

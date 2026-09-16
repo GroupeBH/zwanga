@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Callout, Marker, Polyline } from 'react-native-maps';
-import type { Trip } from '@/types';
+import type { RouteLocationLabels } from '@/utils/routeLocationLabels';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
@@ -23,7 +23,7 @@ interface TripMapModalProps {
   routeMapCoordinates: { latitude: number; longitude: number; }[];
   hasDetailedRouteMapCoordinates: boolean;
   departureCoordinate: MapCoordinate;
-  trip: Trip | undefined;
+  routeLabels: RouteLocationLabels;
   arrivalCoordinate: MapCoordinate;
   passengerDestinationMarkers: { id: string; coordinate: { latitude: number; longitude: number; }; title: string; description: string; }[];
 }
@@ -36,7 +36,7 @@ export function TripMapModal({
   routeMapCoordinates,
   hasDetailedRouteMapCoordinates,
   departureCoordinate,
-  trip,
+  routeLabels,
   arrivalCoordinate,
   passengerDestinationMarkers,
 }: TripMapModalProps) {
@@ -72,8 +72,8 @@ export function TripMapModal({
               anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
               image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
               pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
-              title="Départ"
-              description={trip?.departure?.address}
+              title={`Départ · ${routeLabels.departure.title}`}
+              description={routeLabels.departure.address}
               tracksViewChanges={false}
             >
               {USE_CUSTOM_MAP_MARKERS ? (
@@ -84,7 +84,8 @@ export function TripMapModal({
               <Callout>
                 <View>
                   <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                  <Text>{trip?.departure?.address}</Text>
+                  <Text>{routeLabels.departure.title}</Text>
+                  <Text>{routeLabels.departure.address}</Text>
                 </View>
               </Callout>
                 </>
@@ -96,8 +97,8 @@ export function TripMapModal({
               anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
               image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
               pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
-              title="Arrivée"
-              description={trip?.arrival?.address}
+              title={`Arrivée · ${routeLabels.arrival.title}`}
+              description={routeLabels.arrival.address}
               tracksViewChanges={false}
             >
               {USE_CUSTOM_MAP_MARKERS ? (
@@ -108,7 +109,8 @@ export function TripMapModal({
               <Callout>
                 <View>
                   <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
-                  <Text>{trip?.arrival?.address}</Text>
+                  <Text>{routeLabels.arrival.title}</Text>
+                  <Text>{routeLabels.arrival.address}</Text>
                 </View>
               </Callout>
                 </>

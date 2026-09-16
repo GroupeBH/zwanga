@@ -153,7 +153,7 @@ export default function TripDetailsScreen() {
             routeMapCoordinates={model.mapPresentation.routeMapCoordinates}
             hasDetailedRouteMapCoordinates={model.mapPresentation.hasDetailedRouteMapCoordinates}
             departureCoordinate={model.route.departureCoordinate}
-            trip={model.data.trip}
+            routeLabels={model.presentation.routeLabels}
             arrivalCoordinate={model.route.arrivalCoordinate}
             passengerDestinationMarkers={model.mapPresentation.passengerDestinationMarkers}
           />
@@ -386,4 +386,3 @@ export default function TripDetailsScreen() {
     </SafeAreaView>
   );
 }
-

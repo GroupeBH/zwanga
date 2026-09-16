@@ -131,6 +131,7 @@ export function useRequestDetailController() {
     startTrip: data.startTrip,
     setAreDirectOptionsExpanded: form.setAreDirectOptionsExpanded,
     isCurrentDriverAssigned: availability.isCurrentDriverAssigned,
+    showDirectAcceptModal: form.showDirectAcceptModal,
   });
 
   const editor = useRequestEditInitialization({
@@ -219,6 +220,7 @@ export function useRequestDetailController() {
     isCancelling: data.isCancelling,
     handleCancelRequest: passengerActions.handleCancelRequest,
     handleStartTripFromRequest: driverActions.handleStartTripFromRequest,
+    onDirectAcceptModalDismiss: driverActions.onDirectAcceptModalDismiss,
     isStartingTripFromRequest: data.isStartingTripFromRequest,
     handleOpenDirectAcceptModal: driverActions.handleOpenDirectAcceptModal,
     isAcceptingTripRequest: data.isAcceptingTripRequest,

@@ -101,8 +101,8 @@
       "sha256": "3f639372b2aee03a8c7584f282eacc2c46404ac299b63e1a943f24e1dd4a73b4"
     },
     "features/screen-styles/app/wallet/index.ts": {
-      "keys": 73,
-      "sha256": "f5168c50ff9773b2c73dae95397a6d9132ba0a04e3215865647fc1b2cd77d995"
+      "keys": 76,
+      "sha256": "056b7786deb7b9350c136fc0873319ff774da57f174bce6e96c967547db60d0e"
     },
     "features/screen-styles/components/auth/styles/index.ts": {
       "keys": 162,

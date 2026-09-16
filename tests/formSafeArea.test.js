@@ -141,10 +141,12 @@ for (const [file, footers] of [
 }
 
 test('creation and update modals consistently use the protected layout', () => {
+  // Wallet sheets intentionally use a screen-local overlay, not a native Modal.
+  // Their safe insets and lifecycle are covered in walletSheetKeyboard.test.js.
   for (const file of [
     'features/request-detail/RequestAcceptModal.tsx', 'features/request-detail/RequestEditModal.tsx',
     'features/security/EmergencyContactFormModal.tsx', 'app/favorite-locations.tsx',
-    'features/wallet/WalletSheetModal.tsx', 'features/support/SupportTicketModal.tsx',
+    'features/support/SupportTicketModal.tsx',
     'app/trip/manage/[id].tsx', 'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
     'components/LocationPickerModal.tsx', 'components/profile/ProfilePinModal.tsx',
     'components/profile/ProfileSubscriptionModal.tsx', 'components/PassengerArrivalPaymentCoordinator.tsx',

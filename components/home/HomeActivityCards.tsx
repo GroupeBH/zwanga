@@ -52,13 +52,6 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
   highlightedRequestDistance,
 }: Props) {
   return (<>
-    {highlightedDriverRequest && (
-      <HomeRequestHighlightCard
-        request={highlightedDriverRequest}
-        distanceMeters={highlightedRequestDistance}
-        onOpen={openTripRequestDetail}
-      />
-    )}
     {featuredDriverReservation && featuredDriverReservationStatus && (
       <TouchableOpacity
         activeOpacity={0.9}
@@ -96,7 +89,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
         </View>
       </TouchableOpacity>
     )}
-    {featuredDriverUpcomingTrip && !highlightedDriverRequest && (
+    {featuredDriverUpcomingTrip && (
       <TouchableOpacity
         activeOpacity={0.9}
         accessibilityRole="button"
@@ -128,6 +121,13 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
         </View>
       </TouchableOpacity>
+    )}
+    {highlightedDriverRequest && (
+      <HomeRequestHighlightCard
+        request={highlightedDriverRequest}
+        distanceMeters={highlightedRequestDistance}
+        onOpen={openTripRequestDetail}
+      />
     )}
     {activeTripRequest && activeRequestStatus && (
       <TouchableOpacity

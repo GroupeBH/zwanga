@@ -14,6 +14,8 @@ import React from 'react';
 import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
 import type { TripRequest } from '@/types';
+import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 
 interface RequestPassengerSummaryProps {
   statusConfig: { label: string; color: string; bg: string };
@@ -54,6 +56,7 @@ export function RequestPassengerSummary({
   isCancelling,
   handleCancelRequest,
 }: RequestPassengerSummaryProps) {
+  const routeLabels = useRouteLocationLabels(tripRequest);
   return (
     <Animated.View
       entering={FadeInDown.duration(280)}
@@ -98,24 +101,10 @@ export function RequestPassengerSummary({
       </View>
 
       <Animated.View layout={LinearTransition.duration(220)} style={styles.driverRouteCard}>
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Départ</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.departure.name}</Text>
-          </View>
-        </View>
-        <View style={[styles.ownerHeroRouteLine, styles.driverRouteLine]} />
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Destination</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.arrival.name}</Text>
-          </View>
-        </View>
+        <RouteLocationDetails labels={routeLabels} tone="dark" trailingInset={44} />
         <CollapsibleRouteMap
-          arrivalName={tripRequest.arrival.name}
-          departureName={tripRequest.departure.name}
+          arrivalName={routeLabels.arrival.address}
+          departureName={routeLabels.departure.address}
           mapData={requestRouteMapData}
           routeCoordinates={displayedRouteCoordinates}
         />

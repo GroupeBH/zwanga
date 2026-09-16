@@ -3,6 +3,8 @@ import { EditTripStep } from './tripDetailModel';
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
+import { getRouteTitle } from '@/utils/routeLocationLabels';
 import { Ionicons } from '@expo/vector-icons';
 import { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import React from 'react';
@@ -86,6 +88,7 @@ export function TripEditModal({
   isSavingTrip,
   handleSaveTrip,
 }: TripEditModalProps) {
+  const routeLabels = useRouteLocationLabels(trip, editTripModalVisible);
   return (
     <FormModal
       transparent={Platform.OS === 'android'}
@@ -123,7 +126,7 @@ export function TripEditModal({
               <Text style={styles.editModalTitle}>Modifier le trajet</Text>
               {trip && (
                 <Text style={styles.editModalSubtitle} numberOfLines={1}>
-                  {trip.departure.name} {'->'} {trip.arrival.name}
+                  {getRouteTitle(routeLabels)}
                 </Text>
               )}
             </View>

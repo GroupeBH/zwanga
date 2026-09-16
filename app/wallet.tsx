@@ -6,17 +6,25 @@ import { styles } from '../features/screen-styles/app/wallet/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import { Stack } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const WALLET_NAVIGATION_OPTIONS = { gestureEnabled: true };
+const SHEET_NAVIGATION_OPTIONS = { gestureEnabled: false };
+
 export default function WalletScreen() {
   const wallet = useWalletController();
 
   return (
     <SafeAreaView style={styles.container}>
+      <Stack.Screen options={wallet.activeModal ? SHEET_NAVIGATION_OPTIONS : WALLET_NAVIGATION_OPTIONS} />
+      <View style={styles.scrollRoot} pointerEvents={wallet.activeModal ? 'none' : 'auto'}
+        accessibilityElementsHidden={wallet.activeModal !== null}
+        importantForAccessibility={wallet.activeModal ? 'no-hide-descendants' : 'auto'}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => wallet.router.back()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
@@ -149,6 +157,7 @@ export default function WalletScreen() {
           )}
         </View>
       </ScrollView>
+      </View>
 
       <WalletTopUpModal
         setActiveModal={wallet.setActiveModal}
@@ -183,6 +192,7 @@ export default function WalletScreen() {
       >
         <TextInput
           keyboardType="numeric"
+          accessibilityLabel="Nombre de jetons à partager"
           onChangeText={wallet.setTransferAmount}
           placeholder="Nombre de jetons"
           placeholderTextColor={Colors.gray[400]}
@@ -192,6 +202,7 @@ export default function WalletScreen() {
         <TextInput
           autoCapitalize="none"
           keyboardType="default"
+          accessibilityLabel="Destinataire du partage"
           onChangeText={wallet.setTransferRecipient}
           placeholder="Téléphone, email ou ID utilisateur"
           placeholderTextColor={Colors.gray[400]}
@@ -199,6 +210,7 @@ export default function WalletScreen() {
           value={wallet.transferRecipient}
         />
         <TextInput
+          accessibilityLabel="Note optionnelle du partage"
           onChangeText={wallet.setTransferNote}
           placeholder="Note optionnelle"
           placeholderTextColor={Colors.gray[400]}
@@ -224,5 +236,3 @@ export default function WalletScreen() {
     </SafeAreaView>
   );
 }
-
-

@@ -39,9 +39,20 @@ function text(tree) {
   return React.isValidElement(tree) ? text(tree.props.children) : '';
 }
 
+function driverActionsHook() {
+  const hooks = hookHarness();
+  const { useRequestDriverActions } = loader({
+    ...mocks, react: { ...React, ...hooks.react },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/store/hooks': { useAppDispatch: () => noop },
+    '@/store/api/tripApi': { tripApi: { util: { upsertQueryEntries: value => value } } },
+  })('hooks/request-detail/useRequestDriverActions.ts');
+  return params => hooks.render(() => useRequestDriverActions(params));
+}
+
 test('request acceptance still uses the selected vehicle and confirmed price is never replaced in its payload', async () => {
   const calls = [], dialogs = [], routes = [];
-  const { useRequestDriverActions } = loader(mocks)('hooks/request-detail/useRequestDriverActions.ts');
+  const useRequestDriverActions = driverActionsHook();
   const params = {
     tripRequest: request, id: request.id, showDialog: value => dialogs.push(value),
     router: { push: value => routes.push(value) }, refetch: noop,
@@ -70,7 +81,7 @@ test('request acceptance still uses the selected vehicle and confirmed price is 
 test('a start failure after acceptance keeps access to the created trip without accepting a second time', async () => {
   const dialogs = [], routes = [];
   let accepts = 0;
-  const { useRequestDriverActions } = loader(mocks)('hooks/request-detail/useRequestDriverActions.ts');
+  const useRequestDriverActions = driverActionsHook();
   await useRequestDriverActions({
     tripRequest: request, id: request.id, showDialog: value => dialogs.push(value),
     router: { push: value => routes.push(value) }, refetch: noop,

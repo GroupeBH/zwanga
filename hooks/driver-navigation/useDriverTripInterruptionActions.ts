@@ -13,9 +13,12 @@ import type { Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 
 interface Params {
+  isScreenActive: boolean;
+  navigateBackSafely: () => void;
+  isExitingRef: React.RefObject<boolean>;
   tripId: string;
   isRestartingTrip: boolean;
   isTripFetching: boolean;
@@ -45,6 +48,9 @@ interface Params {
 }
 
 export function useDriverTripInterruptionActions({
+  isScreenActive,
+  navigateBackSafely,
+  isExitingRef,
   tripId,
   isRestartingTrip,
   isTripFetching,
@@ -72,6 +78,22 @@ export function useDriverTripInterruptionActions({
   cleanupNavigationUi,
   requestDriverTripInterruption,
 }: Params) {
+  // Late replies cannot redirect a different screen or clear its location refs.
+  const session = useMemo(() => ({ tripId, active: true, mounted: true, busy: false }), [tripId]);
+  session.active = isScreenActive;
+  useEffect(() => {
+    session.mounted = true;
+    return () => { session.mounted = false; };
+  }, [session]);
+  const canUpdateNavigation = useCallback(() => session.mounted && session.active && !isExitingRef.current,
+    [isExitingRef, session]);
+  const refreshInBackground = useCallback(() => {
+    // Slow follow-up reads must neither hold the exit nor turn success into failure.
+    void Promise.allSettled([
+      Promise.resolve().then(() => refetchTrip()),
+      Promise.resolve().then(() => refetchBookings()),
+    ]);
+  }, [refetchBookings, refetchTrip]);
   const handleRestartTripFromNavigation = useCallback(async () => {
     if (!tripId || isRestartingTrip || isTripFetching) {
       return;
@@ -139,64 +161,56 @@ export function useDriverTripInterruptionActions({
   ]);
 
   const pauseTripWithoutPassengerConfirmation = useCallback(async () => {
-    if (!tripId) return;
+    if (!tripId || session.busy || !canUpdateNavigation()) return;
+    session.busy = true;
 
     try {
       await pauseTrip(tripId).unwrap();
-      void stopDriverBackgroundLocationTracking(tripId);
-      locationSubscription.current?.remove();
-      locationSubscription.current = null;
-      currentLocationRef.current = null;
-      setIsSocketConnected(false);
-      setLivePassengerLocations({});
-      cleanupNavigationUi();
-      refetchTrip();
-      refetchBookings();
-      showDialog({
-        variant: 'success',
-        icon: 'checkmark-circle',
-        title: 'Trajet interrompu',
-        message: 'Le trajet a été interrompu avec succès.',
-      });
     } catch (error: any) {
       const pausedTrip = await reconcileTripStatus(error, ['upcoming']);
-      if (pausedTrip) {
-        void stopDriverBackgroundLocationTracking(tripId);
-        locationSubscription.current?.remove();
-        locationSubscription.current = null;
-        currentLocationRef.current = null;
-        setIsSocketConnected(false);
-        setLivePassengerLocations({});
-        cleanupNavigationUi();
-        await Promise.all([refetchTrip(), refetchBookings()]);
-        showDialog({
-          variant: 'success',
-          icon: 'checkmark-circle',
-          title: 'Trajet interrompu',
-          message: 'Le trajet a bien été interrompu malgré la connexion lente.',
+      if (!pausedTrip) {
+        session.busy = false;
+        if (canUpdateNavigation()) showDialog({
+          variant: 'danger',
+          icon: 'alert-circle',
+          title: 'Interruption impossible',
+          message: getApiErrorMessage(error, "Impossible d'interrompre ce trajet."),
         });
         return;
       }
-      showDialog({
-        variant: 'danger',
-        icon: 'alert-circle',
-        title: 'Interruption impossible',
-        message: getApiErrorMessage(error, "Impossible d'interrompre ce trajet."),
-      });
     }
+    session.busy = false;
+    // Only an acknowledged pause (or a verified snapshot) stops trip tracking.
+    void stopDriverBackgroundLocationTracking(tripId);
+    if (!canUpdateNavigation()) return;
+    locationSubscription.current?.remove();
+    locationSubscription.current = null;
+    currentLocationRef.current = null;
+    setIsSocketConnected(false);
+    setLivePassengerLocations({});
+    cleanupNavigationUi();
+    refreshInBackground();
+    navigateBackSafely();
   }, [
+    canUpdateNavigation,
     cleanupNavigationUi,
+    currentLocationRef,
+    locationSubscription,
+    navigateBackSafely,
     pauseTrip,
     reconcileTripStatus,
-    refetchBookings,
-    refetchTrip,
+    refreshInBackground,
+    session,
+    setIsSocketConnected,
+    setLivePassengerLocations,
     showDialog,
     tripId,
   ]);
 
   const sendDriverInterruptionRequest = useCallback(
     async (reason: TripInterruptionReason) => {
-      if (!tripId) return;
+      if (!tripId || session.busy || !canUpdateNavigation()) return;
+      session.busy = true;
 
       const currentCoordinate = currentLocationRef.current
         ? normalizeTripMapCoordinate(
@@ -206,7 +220,7 @@ export function useDriverTripInterruptionActions({
         : null;
 
       try {
-        await requestDriverTripInterruption({
+        const updatedTrip = await requestDriverTripInterruption({
           tripId,
           reason,
           note:
@@ -215,26 +229,32 @@ export function useDriverTripInterruptionActions({
               : 'Le conducteur demande une interruption du trajet.',
           coordinates: currentCoordinate,
         }).unwrap();
-        await Promise.all([refetchTrip(), refetchBookings()]);
-        showDialog({
-          variant: 'success',
-          icon: 'send',
-          title: 'Demande envoyée',
-          message: 'Tous les passagers à bord doivent confirmer avant interruption du trajet.',
-        });
+        if (updatedTrip.status === 'upcoming') void stopDriverBackgroundLocationTracking(tripId);
       } catch (error: any) {
-        showDialog({
+        session.busy = false;
+        if (canUpdateNavigation()) showDialog({
           variant: 'danger',
           icon: 'alert-circle',
           title: 'Demande impossible',
           message: getApiErrorMessage(error, "Impossible d'envoyer la demande d'interruption."),
         });
+        return;
       }
+      session.busy = false;
+      if (!canUpdateNavigation()) return;
+      // Pending passenger approval is NOT a pause: background tracking stays on.
+      cleanupNavigationUi();
+      refreshInBackground();
+      navigateBackSafely();
     },
     [
-      refetchBookings,
-      refetchTrip,
+      canUpdateNavigation,
+      cleanupNavigationUi,
+      currentLocationRef,
+      navigateBackSafely,
+      refreshInBackground,
       requestDriverTripInterruption,
+      session,
       showDialog,
       tripId,
     ],

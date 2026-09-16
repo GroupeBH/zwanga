@@ -3,13 +3,14 @@ import { TRIP_REQUEST_VEHICLE_LABELS } from '../../features/request-detail/reque
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { hasTripRequestExpired } from '@/features/trip-request/requestExpiration';
+import { useTripStartTransition } from '@/hooks/navigation/useTripStartTransition';
 import { useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptTripRequestMutation,
   useGetTripRequestByIdQuery,
   useStartTripFromRequestMutation,
 } from '@/store/api/tripRequestApi';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequest, TripRequestVehicleType, Vehicle } from '@/types';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
@@ -19,7 +20,6 @@ import {
   isPassengerKycRequiredError,
 } from '@/utils/errorHelpers';
 import React from 'react';
-import type { Vehicle, TripRequest } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
@@ -44,6 +44,7 @@ interface Params {
   startTrip: ReturnType<typeof useStartTripMutation>[0];
   setAreDirectOptionsExpanded: React.Dispatch<React.SetStateAction<boolean>>;
   isCurrentDriverAssigned: boolean;
+  showDirectAcceptModal: boolean;
 }
 
 export function useRequestDriverActions({
@@ -68,9 +69,11 @@ export function useRequestDriverActions({
   startTrip,
   setAreDirectOptionsExpanded,
   isCurrentDriverAssigned,
+  showDirectAcceptModal,
 }: Params) {
+  const transition = useTripStartTransition(id, router, showDirectAcceptModal);
   const handleStartTripFromRequest = async () => {
-    if (!tripRequest || !id) return;
+    if (!tripRequest || !id || !transition.isCurrent()) return;
 
     showDialog({
       title: 'Démarrer le trajet',
@@ -82,25 +85,12 @@ export function useRequestDriverActions({
           label: 'Démarrer',
           variant: 'primary',
           onPress: async () => {
+            if (!transition.begin()) return;
             try {
               const result = await startTripFromRequest(id).unwrap();
-              showDialog({
-                title: 'Trajet démarré',
-                message: 'Le trajet a été créé et démarré avec succès. Le passager a été automatiquement réservé.',
-                variant: 'success',
-                actions: [
-                  {
-                    label: 'Voir le trajet',
-                    variant: 'primary',
-                    onPress: () => {
-                      refetch();
-                      router.push(`/trip/manage/${result.trip.id}`);
-                    },
-                  },
-                  { label: 'OK', variant: 'ghost', onPress: () => refetch() },
-                ],
-              });
+              transition.openNavigation(result.trip);
             } catch (error: any) {
+              if (!transition.isCurrent()) return;
               const isQuotaError = isDailyPublicationLimitError(error);
 
               showDialog({
@@ -114,6 +104,8 @@ export function useRequestDriverActions({
                 message: getApiErrorMessage(error, 'Impossible de démarrer le trajet.'),
                 variant: 'danger',
               });
+            } finally {
+              transition.finish();
             }
           },
         },
@@ -122,7 +114,7 @@ export function useRequestDriverActions({
   };
 
   const handleDirectAcceptTripRequest = async (startImmediately: boolean) => {
-    if (!tripRequest || !id || !directAcceptDepartureDate) return;
+    if (!tripRequest || !id || !directAcceptDepartureDate || !transition.isCurrent()) return;
     if (!canAcceptRequest || hasTripRequestExpired(tripRequest)) {
       setShowDirectAcceptModal(false);
       showDialog({
@@ -180,38 +172,20 @@ export function useRequestDriverActions({
       payload.arrivalCoordinates = directArrivalCoordinates;
     }
 
+    if (!transition.begin()) return;
     try {
       const result = await acceptTripRequest({
         tripRequestId: id,
         payload,
       }).unwrap();
-      setShowDirectAcceptModal(false);
+      if (transition.isCurrent()) setShowDirectAcceptModal(false);
 
       if (startImmediately) {
         try {
-          await startTrip(result.trip.id).unwrap();
-
-          showDialog({
-            title: 'Trajet d\u00E9marr\u00E9',
-            message: 'La demande a \u00E9t\u00E9 accept\u00E9e et le trajet a d\u00E9marr\u00E9. Le passager a d\u00E9j\u00E0 \u00E9t\u00E9 r\u00E9serv\u00E9 automatiquement.',
-            variant: 'success',
-            actions: [
-              {
-                label: 'Ouvrir le trajet',
-                variant: 'primary',
-                onPress: () => {
-                  refetch();
-                  router.push(`/trip/manage/${result.trip.id}`);
-                },
-              },
-              {
-                label: 'Plus tard',
-                variant: 'ghost',
-                onPress: () => refetch(),
-              },
-            ],
-          });
+          const startedTrip = await startTrip(result.trip.id).unwrap();
+          transition.openNavigation(startedTrip);
         } catch (startError: any) {
+          if (!transition.isCurrent()) return;
           const startErrorMessage = getApiErrorMessage(
             startError,
             'La demande est accept\u00E9e, mais le trajet n\u2019a pas pu d\u00E9marrer tout de suite.',
@@ -242,6 +216,7 @@ export function useRequestDriverActions({
         return;
       }
 
+      if (!transition.isCurrent()) return;
       showDialog({
         title: 'Demande accept\u00E9e',
         message: 'Le trajet a \u00E9t\u00E9 cr\u00E9\u00E9 imm\u00E9diatement et le passager a d\u00E9j\u00E0 \u00E9t\u00E9 r\u00E9serv\u00E9. Vous pouvez maintenant ouvrir le trajet quand vous \u00EAtes pr\u00EAt.',
@@ -263,6 +238,7 @@ export function useRequestDriverActions({
         ],
       });
     } catch (error: any) {
+      if (!transition.isCurrent()) return;
       setShowDirectAcceptModal(false);
       const resolvedMessage = getApiErrorMessage(
         error,
@@ -296,6 +272,8 @@ export function useRequestDriverActions({
             ]
           : undefined,
       });
+    } finally {
+      transition.finish();
     }
   };
 
@@ -323,6 +301,7 @@ export function useRequestDriverActions({
   };
 
   return {
+    onDirectAcceptModalDismiss: transition.onModalDismiss,
     handleViewTrip,
     handleStartTripFromRequest,
     handleOpenDirectAcceptModal,

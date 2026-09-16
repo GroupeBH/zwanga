@@ -176,6 +176,11 @@ export const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     lineHeight: 17,
   },
+  sheetHost: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 24,
+  },
   sheetOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -186,13 +191,20 @@ export const styles = StyleSheet.create({
   },
   sheetKeyboard: {
     flex: 1,
+    minHeight: 0,
     width: '100%',
+  },
+  sheetViewport: {
+    flex: 1,
+    minHeight: 0,
     justifyContent: 'flex-end',
   },
   sheetCard: {
     width: '100%',
-    minHeight: '90%',
-    maxHeight: '96%',
+    minHeight: 0,
+    maxHeight: '100%',
+    flexShrink: 1,
+    overflow: 'hidden',
     backgroundColor: Colors.white,
     borderTopLeftRadius: BorderRadius.xxl,
     borderTopRightRadius: BorderRadius.xxl,
@@ -204,6 +216,7 @@ export const styles = StyleSheet.create({
   },
   sheetHeader: {
     minHeight: 76,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
@@ -244,8 +257,12 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sheetContent: {
+  sheetScroll: {
     flex: 1,
+    minHeight: 0,
+  },
+  sheetContent: {
+    flexGrow: 1,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
     gap: Spacing.md,

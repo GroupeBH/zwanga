@@ -10,6 +10,8 @@ export interface GeocodeRequest {
 export interface ReverseGeocodeRequest {
   lat: number;
   lng: number;
+  language?: string;
+  region?: string;
 }
 
 export interface GeocodeResponse {
@@ -198,6 +200,17 @@ export const googleMapsApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Read-only POST: route details share one request/cache entry per GPS point.
+    // Keep the picker mutation unchanged; its cancellation lifecycle is different.
+    getRouteLocationAddress: builder.query<GeocodeResponse, ReverseGeocodeRequest>({
+      query: (body) => ({
+        url: '/google-maps/reverse-geocode',
+        method: 'POST',
+        body,
+      }),
+      keepUnusedDataFor: 300,
+    }),
+
     getLandmarks: builder.query<LandmarkPlace[], LandmarkPlacesRequest | void>({
       query: (params) => ({
         url: '/google-maps/places/landmarks',
@@ -218,6 +231,7 @@ export const googleMapsApi = baseApi.injectEndpoints({
 export const {
   useGeocodeMutation,
   useReverseGeocodeMutation,
+  useGetRouteLocationAddressQuery,
   usePlacesAutocompleteQuery,
   useLazyPlacesAutocompleteQuery,
   useGetPlaceDetailsQuery,

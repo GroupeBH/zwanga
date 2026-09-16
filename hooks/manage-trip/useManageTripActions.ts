@@ -1,6 +1,7 @@
 import type { TrackedLocation } from '@/store/slices/locationSlice';
 import { hasPassengerBoarded, hasPassengerDroppedOff } from '../../features/manage-trip/manageTripModel';
 import { useDialog } from '@/components/ui/DialogProvider';
+import { useTripStartTransition } from '@/hooks/navigation/useTripStartTransition';
 import { trackEvent } from '@/services/analytics';
 import {
   usePauseTripMutation,
@@ -8,10 +9,9 @@ import {
   useStartTripMutation,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
-import type { Booking, TripInterruptionReason } from '@/types';
+import type { Booking, Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
-import type { Trip } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
@@ -45,8 +45,9 @@ export function useManageTripActions({
   updateTripStatus,
   goHome,
 }: Params) {
+  const startTransition = useTripStartTransition(trip?.id, router);
   const handleStartTrip = async () => {
-    if (!trip) return;
+    if (!trip || !startTransition.isCurrent()) return;
     showDialog({
       variant: 'info',
       title: 'Démarrer le trajet',
@@ -57,26 +58,26 @@ export function useManageTripActions({
           label: 'Démarrer',
           variant: 'primary',
           onPress: async () => {
+            if (!startTransition.begin()) return;
+            let startedTrip: Trip | null;
             try {
-              await startTrip(trip.id).unwrap();
-              void trackEvent('trip_started', {
-                trip_id: trip.id,
-                source_screen: 'trip_manage',
-              });
-              showFeedback('success', 'Le trajet a été démarré avec succès.');
-              refreshAll();
+              startedTrip = await startTrip(trip.id).unwrap();
             } catch (error: any) {
-              const startedTrip = await reconcileTripStatus(error, ['ongoing']);
-              if (startedTrip) {
-                showFeedback('success', 'Le trajet a bien démarré malgré la connexion lente.');
-                void refreshAll();
+              startedTrip = await reconcileTripStatus(error, ['ongoing']);
+              if (!startedTrip) {
+                if (startTransition.isCurrent()) {
+                  showFeedback('error', getApiErrorMessage(error, 'Impossible de démarrer ce trajet.'));
+                }
+                startTransition.finish();
                 return;
               }
-              showFeedback(
-                'error',
-                getApiErrorMessage(error, 'Impossible de démarrer ce trajet.'),
-              );
             }
+            void trackEvent('trip_started', {
+              trip_id: trip.id,
+              source_screen: 'trip_manage',
+            });
+            startTransition.openNavigation(startedTrip);
+            startTransition.finish();
           },
         },
       ],

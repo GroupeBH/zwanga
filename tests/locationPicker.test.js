@@ -112,7 +112,7 @@ test('map selection is committed before its address resolves and confirmation wo
   assert.equal(app.render().addressLoading, true);
   app.render().confirm();
   assert.equal(app.calls.selected[0].latitude, next.latitude);
-  assert.equal(app.calls.selected[0].address, '-4.40000, 15.40000');
+  assert.equal(app.calls.selected[0].address, 'Position exacte enregistrée sur la carte');
   app.calls.reverse[0].reject(Error('offline')); await flush();
 });
 
@@ -127,6 +127,60 @@ test('an old reverse-geocode result cannot move or rename a new selected point',
   old.resolve({ formattedAddress: 'Ancienne adresse' }); await flush();
   assert.notEqual(app.render().selection.title, 'Ancienne adresse');
   assert.equal(app.render().selection.latitude, -4.42);
+});
+
+test('reverse geocoding resolves a readable label, caches it and never moves the selected point', async t => {
+  const app = pickerApp(t);
+  const next = { latitude: -4.38, longitude: 15.32 };
+  app.render().settleMap(next); app.render(); t.mock.timers.tick(400);
+  assert.deepEqual(app.calls.reverse[0].args, { lat: next.latitude, lng: next.longitude, language: 'fr', region: 'cd' });
+  app.calls.reverse[0].resolve({
+    formattedAddress: 'J83F+5G4, Av. Bakole 1, Kinshasa', lat: -4.39, lng: 15.33,
+    addressComponents: [{ longName: 'Av. Bakole 1', types: ['route'] }],
+  });
+  await flush();
+  assert.deepEqual(app.render().selection, { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa' });
+  app.render().settleMap(point); app.render();
+  app.render().settleMap(next); app.render();
+  t.mock.timers.tick(400);
+  assert.equal(app.calls.reverse.length, 1, 'cached names need no further geocoding call');
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa' });
+});
+
+test('historical selections and favorite labels are cleaned when entering the picker', t => {
+  const app = pickerApp(t, { initialLocation: { ...point, title: 'J83F+5G4', address: 'J83F+5G4, Av. Bakole 1, Kinshasa' } });
+  assert.equal(app.render().selection.title, 'Av. Bakole 1');
+  app.render().choose({ ...point, title: 'Maison', address: 'HF6ZT7E, Av. Bakole 1, Kinshasa' });
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], { ...point, title: 'Maison', address: 'Av. Bakole 1, Kinshasa' });
+  assert.equal(app.calls.reverse.length, 0);
+});
+
+test('a neighborhood-first reverse address submits the avenue to the parent form', async t => {
+  const app = pickerApp(t);
+  const next = { latitude: -4.45, longitude: 15.26 };
+  app.render().settleMap(next); app.render(); t.mock.timers.tick(400);
+  app.calls.reverse[0].resolve({
+    formattedAddress: 'Q/Mazamba Domicile, 3b Av Matadi, Kinshasa, RDC',
+    addressComponents: [{ longName: 'Q/Mazamba Domicile', types: ['premise'] }],
+  });
+  await flush();
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], {
+    ...next, title: '3b Av Matadi', address: '3b Av Matadi, Q/Mazamba Domicile, Kinshasa, RDC',
+  });
+  assert.equal(app.calls.reverse.length, 1);
+});
+
+test('a late address must not overwrite a favorite just selected at the same coordinate', async t => {
+  const app = pickerApp(t);
+  const next = { latitude: -4.38, longitude: 15.32 };
+  app.render().settleMap(next); app.render(); t.mock.timers.tick(400);
+  app.render().choose({ ...next, title: 'Maison', address: 'Av. Bakole 1, Kinshasa' });
+  app.calls.reverse[0].resolve({ formattedAddress: 'J83F+5G4, Ancienne avenue, Kinshasa' });
+  await flush();
+  assert.equal(app.render().selection.title, 'Maison');
 });
 
 test('denied and slow GPS never block manual map selection; repeated taps make one location request', async t => {

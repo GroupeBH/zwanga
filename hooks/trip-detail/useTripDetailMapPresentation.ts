@@ -11,6 +11,7 @@ import { splitRouteByProgress } from '@/utils/routeHelpers';
 import React, { useEffect, useMemo } from 'react';
 import type { Trip } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { getRouteStopLabel } from '@/utils/routeLocationLabels';
 
 interface Params {
   trip: Trip | undefined;
@@ -95,7 +96,7 @@ export function useTripDetailMapPresentation({
         markers.push({
           id: String(booking.id),
           coordinate,
-          title: booking.passengerDestination || booking.passengerName || 'Destination passager',
+          title: getRouteStopLabel({ address: booking.passengerDestination }, 'Destination passager').title,
           description: booking.passengerName || 'Passager',
         });
       });
