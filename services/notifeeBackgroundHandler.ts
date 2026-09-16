@@ -6,6 +6,7 @@
 
 import { Linking } from 'react-native';
 import { ONGOING_TRIP_NOTIFICATION_ID } from './ongoingTripNotification';
+import { getNotificationHref } from '@/utils/notificationNavigation';
 
 // Types Notifee
 type NotifeeModule = typeof import('@notifee/react-native');
@@ -61,24 +62,8 @@ if (notifee && EventTypeEnum) {
 
       // Pour les notifications de trajet en cours
       if (data.type === 'ongoing_trip' || notification?.id === ONGOING_TRIP_NOTIFICATION_ID) {
-        const navigateTo = data.navigateTo as string | undefined;
-        const tripId = data.tripId as string | undefined;
-        const role = data.role as string | undefined;
-
-        // Construire l'URL de deep link
-        let deepLink = 'zwanga://';
-        
-        if (navigateTo) {
-          // Convertir le chemin expo-router en deep link
-          // Ex: /trip/manage/123 -> trip/manage/123
-          deepLink += navigateTo.startsWith('/') ? navigateTo.slice(1) : navigateTo;
-        } else if (tripId) {
-          if (role === 'driver') {
-            deepLink += `trip/manage/${tripId}`;
-          } else {
-            deepLink += `trip/${tripId}`;
-          }
-        }
+        const href = getNotificationHref({ ...data, type: 'ongoing_trip' });
+        const deepLink = typeof href === 'string' ? `zwanga://${href.replace(/^\//, '')}` : 'zwanga://';
 
         console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
 

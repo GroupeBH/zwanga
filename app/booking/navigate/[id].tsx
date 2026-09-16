@@ -1,15 +1,19 @@
 import { usePassengerNavigationController } from '../../../hooks/passenger-navigation/usePassengerNavigationController';
 import { PassengerNavigationMap } from '../../../features/passenger-navigation/PassengerNavigationMap';
 import { PassengerNavigationInfoCard } from '../../../features/passenger-navigation/PassengerNavigationInfoCard';
+import { PassengerNavigationHeader } from '@/features/passenger-navigation/PassengerNavigationHeader';
+import { NavigationAssistanceModals } from '@/features/navigation/NavigationAssistanceModals';
+import { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import { styles } from '../../../features/screen-styles/app/booking/navigate/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Modal, StatusBar, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from '@/utils/reanimated';
 
 export default function PassengerNavigationScreen() {
   const model = usePassengerNavigationController();
+  const assistance = useNavigationAssistance({ role: 'passenger', trip: model.data.trip,
+    booking: model.data.booking, isScreenActive: model.data.isScreenActive });
 
   // Loading
   if ((model.data.bookingLoading && !model.data.booking) || (model.data.tripLoading && !model.data.trip)) {
@@ -55,12 +59,12 @@ export default function PassengerNavigationScreen() {
       ) : (
         <View style={[styles.map, styles.mapPlaceholder, { top: model.state.mapTopOffset }]}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.mapPlaceholderText}>Preparation de la navigation...</Text>
+          <Text style={styles.mapPlaceholderText}>Préparation de la navigation...</Text>
         </View>
       )}
 
       {model.presentation.canToggleRouteSegments && (
-        <View style={[styles.segmentToggle, { top: model.data.insets.top + 330 }]}>
+        <View style={[styles.segmentToggle, { top: model.state.mapTopOffset + 8, right: undefined, left: Math.max(model.data.insets.left, Spacing.md) }]}>
           <TouchableOpacity
             style={[
               styles.segmentToggleButton,
@@ -109,7 +113,7 @@ export default function PassengerNavigationScreen() {
       )}
 
       {/* Boutons flottants */}
-      <View style={[styles.floatingButtons, { top: model.data.insets.top + 70 }]}>
+      <View style={[styles.floatingButtons, { top: model.state.mapTopOffset + 8, right: Math.max(model.data.insets.right, Spacing.md) }]}>
         <TouchableOpacity
           style={[styles.floatingButton, model.state.isMapExpanded && styles.floatingButtonActive]}
           onPress={() => model.state.setIsMapExpanded((prev) => !prev)}
@@ -162,46 +166,7 @@ export default function PassengerNavigationScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Header */}
-      <Animated.View 
-        entering={FadeInDown.duration(300)} 
-        style={[styles.header, { paddingTop: model.data.insets.top + 8 }]}
-      >
-        <TouchableOpacity style={styles.headerButton} onPress={model.state.navigateBackSafely}>
-          <Ionicons name="arrow-back" size={24} color={Colors.gray[800]} />
-        </TouchableOpacity>
-        
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>
-            {model.presentation.tripStatus === 'waiting_pickup' ? 'En attente de récupération' :
-             model.presentation.tripStatus === 'pickup_confirmation_needed' ? 'Récupération détectée' :
-             model.presentation.tripStatus === 'in_transit' ? 'En route' :
-             model.presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivée détectée' :
-             model.presentation.tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet'}
-          </Text>
-          {model.state.isSocketConnected && !model.data.offlineBooking && !model.data.offlineTrip && (
-            <View style={styles.liveIndicator}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
-          )}
-        </View>
-
-        <TouchableOpacity
-          style={styles.headerButton}
-          onPress={() => void model.tripActions.handleShareTrip()}
-          disabled={model.data.isCreatingTripShareLink}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Partager le trajet"
-        >
-          {model.data.isCreatingTripShareLink ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <Ionicons name="share-social-outline" size={23} color={Colors.primary} />
-          )}
-        </TouchableOpacity>
-      </Animated.View>
+      <PassengerNavigationHeader model={model} assistance={assistance} />
 
       {/* Info Card */}
       {!model.state.isMapExpanded && (
@@ -215,7 +180,7 @@ export default function PassengerNavigationScreen() {
       )}
 
       <Modal
-        visible={Boolean(model.state.pickupNotice) && !model.context.hasPassengerDroppedOff}
+        visible={Boolean(model.state.pickupNotice) && !model.context.hasPassengerDroppedOff && !assistance.isOpen}
         transparent
         animationType="slide"
         onRequestClose={() => model.state.setPickupNotice(null)}
@@ -280,7 +245,7 @@ export default function PassengerNavigationScreen() {
           </View>
         </View>
       </Modal>
+      <NavigationAssistanceModals assistance={assistance} role="passenger" insets={model.data.insets} />
     </View>
   );
 }
-

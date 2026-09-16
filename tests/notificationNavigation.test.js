@@ -13,6 +13,14 @@ test('manual confirmation notices open the recipient navigation, not the origina
   assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'driver', bookingId: 'booking', tripId: 'trip' }), '/trip/navigate/trip');
 });
 
+test('ongoing passenger notices open their reservation navigation with legacy fallbacks', () => {
+  const payload = { type: 'ongoing_trip', role: 'passenger', tripId: 'trip', bookingId: 'reservation', navigateTo: '/trip/trip' };
+  assert.equal(getNotificationHref(payload, { id: 'passenger', isDriver: true }), '/booking/navigate/reservation');
+  assert.equal(getNotificationHref({ data: payload }), '/booking/navigate/reservation');
+  assert.equal(getNotificationHref({ type: 'ongoing_trip', navigateTo: '/booking/navigate/reservation' }), '/booking/navigate/reservation');
+  assert.equal(getNotificationHref({ type: 'ongoing_trip', role: 'passenger', tripId: 'trip' }), '/trip/trip');
+});
+
 test('accepted requests open the created trip, with support for legacy and nested payloads', () => {
   for (const type of ['trip_request_accepted', 'trip-request-accepted']) {
     assert.equal(getNotificationHref({ type, tripRequestId: 'request', tripId: 'trip' }), '/trip/trip');

@@ -2,7 +2,9 @@
 
 Documentation détaillée : [parcours et architecture côté mobile](RIDE_RECOVERY_MOBILE.md), [bilan des modifications de la conversation](MODIFICATIONS_CONVERSATION.md).
 
-Les accès se trouvent dans les navigations d’un trajet `ongoing` : « Manuel » dans l’en-tête conducteur, « Confirmation manuelle » dans le panneau inférieur passager. Ce dernier est masqué lorsque la carte est agrandie. Le bouton n’est pas ajouté au détail ordinaire d’une demande ou à l’accueil ; déployer uniquement le backend ne fait pas apparaître ces contrôles sur le téléphone.
+Les accès se trouvent dans les navigations d’un trajet `ongoing`. Le passager voit « Je suis à bord » puis « Je suis arrivé » selon l’étape disponible. Le conducteur voit « Confirmer l’embarquement » ou « Confirmer la dépose » ; lorsque plusieurs passagers sont à des étapes différentes, le bouton indique « Embarquement ou dépose ». Si aucune nouvelle réponse n’est disponible, « Voir les confirmations » donne accès aux états en attente, aux désaccords et aux étapes terminées. Les icônes voiture, drapeau ou liste remplacent la main. Le clic ouvre toujours le modal de vérification sans envoyer de déclaration.
+
+L’accès passager reste masqué lorsque la carte est agrandie. Le bouton n’est pas ajouté au détail ordinaire d’une demande ou à l’accueil ; déployer uniquement le backend ne fait pas apparaître ces contrôles sur le téléphone. Le remplacement des libellés ne change ni la synchronisation ni les règles de confirmation, et n’ajoute aucune technologie de proximité.
 
 ## Comportement
 

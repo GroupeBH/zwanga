@@ -10,16 +10,19 @@ import React, { memo, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOutboxError } from './rideOutboxEngine';
+import { rideBookingStages, rideRecoveryTrigger } from './rideRecoveryPresentation';
 import {
   isNearRideStop,
   rideEntryMessage,
   type RideDecision,
+  type RideOutboxEntry,
   type RideSnapshot,
   type RideStage,
 } from './rideRecoveryModel';
 
 const EMPTY_BOOKINGS: Booking[] = [];
 const EMPTY_SNAPSHOTS: RideSnapshot[] = [];
+const EMPTY_ENTRIES: RideOutboxEntry[] = [];
 export interface RecoveryFix { latitude: number; longitude: number; recordedAt: number; accuracy?: number }
 interface Props {
   tripId: string;
@@ -41,12 +44,16 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [delayed, setDelayed] = useState(false);
-  const entries = recovery.userId === userId ? recovery.entries : [];
+  const entries = recovery.userId === userId ? recovery.entries : EMPTY_ENTRIES;
   const relevant = useMemo(() => (booking ? [booking] : bookings).filter(item => ['accepted', 'completed'].includes(item.status)), [booking, bookings]);
   const { currentData: snapshots = EMPTY_SNAPSHOTS, isError, refetch } = useGetRideDeclarationsQuery(
     actor === 'passenger' ? { bookingId: booking?.id } : { tripId },
     { skip: !active || !tripId || !online, pollingInterval: active ? 30_000 : 0, skipPollingIfUnfocused: true, refetchOnFocus: true, refetchOnReconnect: true },
   );
+  const bookingRows = useMemo(() => relevant.map(item => ({
+    item, stages: rideBookingStages(item, snapshots.find(value => value.bookingId === item.id), entries, actor),
+  })), [actor, entries, relevant, snapshots]);
+  const trigger = useMemo(() => rideRecoveryTrigger(actor, bookingRows.flatMap(row => row.stages.filter(stage => !stage.unavailable).map(stage => stage.stage))), [actor, bookingRows]);
   const nearStop = relevant.some(item => {
     const pickedUp = item.pickedUp || snapshots.find(snapshot => snapshot.bookingId === item.id)?.pickup.status === 'confirmed';
     return !item.droppedOff && isNearRideStop(fix ?? null, pickedUp ? (item.passengerDestinationCoordinates ?? destination) : item.passengerOriginCoordinates);
@@ -79,12 +86,12 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const highlighted = delayed || hasPending || !online || isError;
   return <>
     <TouchableOpacity onPress={() => setVisible(true)} style={[styles.trigger, compact && styles.compact, highlighted && styles.triggerHighlighted]}
-      accessibilityRole="button" accessibilityLabel="Ouvrir les confirmations manuelles du trajet">
-      <Ionicons name="hand-left-outline" size={20} color={Colors.primaryDark} />
-      <Text style={styles.triggerLabel}>{compact ? (hasPending ? 'À confirmer' : 'Manuel') : 'Confirmation manuelle'}</Text>
+      accessibilityRole="button" accessibilityLabel={trigger.accessibilityLabel} accessibilityHint="Ouvre les étapes du trajet à vérifier avant de confirmer.">
+      <Ionicons name={trigger.icon} size={20} color={Colors.primaryDark} />
+      <Text style={styles.triggerLabel}>{trigger.label}</Text>
       {!compact && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
     </TouchableOpacity>
-    {!compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vous pouvez confirmer manuellement.'}</Text>}
+    {!compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Confirmez votre embarquement ou votre arrivée.'}</Text>}
     <FormModal visible={visible} transparent animationType="slide" onRequestClose={close} statusBarTranslucent>
       <View style={styles.overlay}>
         <SafeAreaView edges={['bottom']} style={styles.sheet}>
@@ -96,19 +103,10 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
             <Text style={styles.explanation}>Chaque personne confirme pour elle-même. L’autre personne pourra répondre quand elle retrouvera une connexion. Aucune confirmation locale ne vaut paiement.</Text>
             {isError && <Text style={styles.notice}>Le serveur n’est pas joignable pour le moment. Les informations ci-dessous peuvent ne pas être à jour.</Text>}
             {relevant.length === 0 && <Text style={styles.explanation}>Aucune réservation à confirmer pour ce trajet.</Text>}
-            {relevant.map(item => {
-              const snapshot = snapshots.find(value => value.bookingId === item.id);
+            {bookingRows.map(({ item, stages }) => {
               return <View key={item.id} style={styles.booking}>
                 {actor === 'driver' && <Text style={styles.passenger}>{item.passengerName || 'Passager'} · {item.numberOfSeats} place{item.numberOfSeats > 1 ? 's' : ''}</Text>}
-                {(['pickup', 'dropoff'] as const).map(stage => {
-                  const entry = entries.find(value => value.bookingId === item.id && value.stage === stage);
-                  const serverStage = snapshot?.[stage];
-                  const status = (stage === 'pickup' ? item.pickedUp : item.droppedOff) ? 'confirmed' : serverStage?.status;
-                  const localPickup = entries.some(value => value.bookingId === item.id && value.stage === 'pickup' && value.decision === 'confirm' && !['blocked', 'disputed'].includes(value.state));
-                  const canArrive = item.pickedUp || snapshot?.pickup.status === 'confirmed' || localPickup;
-                  const unavailable = Boolean(entry || serverStage?.[actor] || status === 'confirmed' || status === 'disputed' || (stage === 'dropoff' && !canArrive));
-                  const other = serverStage?.[actor === 'driver' ? 'passenger' : 'driver'];
-                  const label = stage === 'pickup' ? (actor === 'driver' ? 'Passager à bord' : 'Je suis à bord') : (actor === 'driver' ? 'Passager arrivé' : 'Je suis arrivé');
+                {stages.map(({ stage, entry, status, canArrive, unavailable, other, label }) => {
                   return <View key={stage} style={styles.stage}>
                     <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{stage === 'pickup' ? 'Embarquement' : 'Arrivée'}</Text></View>
                     <Text style={styles.status} accessibilityLiveRegion="polite">{rideEntryMessage(entry, status)}</Text>
@@ -140,9 +138,9 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
 
 const styles = StyleSheet.create({
   trigger: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[200] },
-  compact: { alignSelf: 'center', flexDirection: 'column', gap: 2, paddingHorizontal: 8 },
+  compact: { alignSelf: 'center', flexDirection: 'column', gap: 2, paddingHorizontal: 8, maxWidth: 126 },
   triggerHighlighted: { borderColor: Colors.primary, backgroundColor: '#FFF4EC' },
-  triggerLabel: { color: Colors.primaryDark, fontWeight: '700', fontSize: 12 },
+  triggerLabel: { color: Colors.primaryDark, fontWeight: '700', fontSize: 12, textAlign: 'center', flexShrink: 1 },
   hint: { color: Colors.gray[600], fontSize: 12, lineHeight: 18, marginTop: 5 },
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10, 20, 30, 0.45)' },
   sheet: { height: '85%', backgroundColor: Colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },

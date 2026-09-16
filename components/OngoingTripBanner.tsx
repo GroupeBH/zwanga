@@ -55,7 +55,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     if (!user) return null;
 
     // Chercher un trajet en cours comme conducteur
-    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing');
+    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing' && trip.driverId === user.id);
     if (driverOngoingTrip) {
       return {
         trip: driverOngoingTrip,
@@ -67,6 +67,9 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     // Chercher un trajet en cours comme passager
     const passengerOngoingBooking = myBookings?.find(
       (booking) => {
+        if (booking.passengerId !== user.id) {
+          return false;
+        }
         if (booking.status === 'completed') {
           return false;
         }
@@ -76,7 +79,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
         if (booking.trip?.status !== 'ongoing') {
           return false;
         }
-        if (booking.droppedOff === true) {
+        if (booking.droppedOff === true || booking.droppedOffConfirmedByPassenger === true) {
           return false;
         }
         return true;
@@ -94,7 +97,7 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   }, [myTrips, myBookings, user]);
 
   // Ref pour suivre le trajet précédent
-  const previousTripIdRef = useRef<string | null>(getCurrentTripInfo()?.tripId ?? null);
+  const previousTripRef = useRef(getCurrentTripInfo());
 
   // Démarrer/arrêter le suivi de notification permanente
   useEffect(() => {
@@ -105,24 +108,26 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     }
     
     // Si le trajet a changé
-    if (currentTripId !== previousTripIdRef.current) {
+    if (currentTripId !== (previousTripRef.current?.tripId ?? null) ||
+        ongoingTrip?.role !== previousTripRef.current?.role ||
+        (ongoingTrip?.bookingId ?? null) !== (previousTripRef.current?.bookingId ?? null)) {
       // Arrêter le suivi précédent si nécessaire
-      if (previousTripIdRef.current) {
+      if (previousTripRef.current) {
         stopOngoingTripTracking();
       }
       
       // Démarrer le nouveau suivi si un trajet est en cours
-      if (ongoingTrip?.trip) {
-        startOngoingTripTracking({
-          tripId: ongoingTrip.trip.id,
-          departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Départ',
-          arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivée',
-          role: ongoingTrip.role,
-          departureTime: ongoingTrip.trip.departureTime,
-        });
-      }
+      const nextTripInfo = ongoingTrip?.trip ? {
+        tripId: ongoingTrip.trip.id,
+        departure: ongoingTrip.trip.departure?.name ?? ongoingTrip.trip.departure?.address ?? 'Départ',
+        arrival: ongoingTrip.trip.arrival?.name ?? ongoingTrip.trip.arrival?.address ?? 'Arrivée',
+        role: ongoingTrip.role,
+        ...(ongoingTrip.bookingId ? { bookingId: ongoingTrip.bookingId } : {}),
+        departureTime: ongoingTrip.trip.departureTime,
+      } : null;
+      if (nextTripInfo) startOngoingTripTracking(nextTripInfo);
       
-      previousTripIdRef.current = currentTripId;
+      previousTripRef.current = nextTripInfo;
     }
   }, [myBookingsLoading, myTripsLoading, ongoingTrip]);
 
@@ -209,6 +214,8 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     >
       <TouchableOpacity
         onPress={handlePress}
+        accessibilityRole="button"
+        accessibilityLabel={isDriver ? 'Reprendre la navigation conducteur' : 'Reprendre ma navigation passager'}
         activeOpacity={0.9}
         style={styles.touchable}
       >
@@ -280,5 +287,3 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     </Animated.View>
   );
 }
-
-

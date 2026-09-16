@@ -62,10 +62,6 @@ export const styles = StyleSheet.create({
   },
   // Barre compacte des passagers
   passengersBar: {
-    position: 'absolute',
-    top: 100,
-    left: Spacing.md,
-    right: Spacing.md,
     gap: Spacing.sm,
   },
   passengersStatsButton: {

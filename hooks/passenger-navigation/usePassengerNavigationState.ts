@@ -13,7 +13,7 @@ import { type NavigationCoordinate } from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler } from 'react-native';
+import { BackHandler, type LayoutChangeEvent } from 'react-native';
 import MapView from 'react-native-maps';
 import type { MapMarker } from 'react-native-maps';
 import type { EdgeInsets } from 'react-native-safe-area-context';
@@ -88,7 +88,12 @@ export function usePassengerNavigationState({
   const routeSignatureRef = useRef('');
   const isMountedRef = useRef(true);
   const isExitingRef = useRef(false);
-  const mapTopOffset = insets.top + 84;
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const onHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+    const height = Math.ceil(event.nativeEvent.layout.height);
+    if (Number.isFinite(height) && height > 0) setHeaderHeight(previous => previous === height ? previous : height);
+  }, []);
+  const mapTopOffset = headerHeight || insets.top + 140;
 
   const navigateBackSafely = useCallback(() => {
     if (isExitingRef.current) {
@@ -184,6 +189,7 @@ export function usePassengerNavigationState({
     runMapCommand,
     mapRef,
     mapTopOffset,
+    onHeaderLayout,
     isMapExpanded,
     isNativeMapReady,
     hasFitInitialMapRef,

@@ -1,5 +1,7 @@
 import { DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS, getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import type { FeaturedDriverReservation } from '@/features/home/homeTypes';
+import { rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
+import type { MapCoordinate } from '@/utils/tripCoordinates';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
 
@@ -28,7 +30,7 @@ type Props =
     | 'driverReservationHighlightTrip'
     | 'driverReservationHighlightBookings'
     | 'myDriverTrips'
-  >;
+  > & { liveUserCoordinate?: MapCoordinate | null };
 export function useHomeTripSelection({
   remoteTrips,
   storedTrips,
@@ -43,7 +45,10 @@ export function useHomeTripSelection({
   driverReservationHighlightTrip,
   driverReservationHighlightBookings,
   myDriverTrips,
+  liveUserCoordinate = null,
 }: Props) {
+  const latitude = liveUserCoordinate?.latitude;
+  const longitude = liveUserCoordinate?.longitude;
   const latestTrips = useMemo(() => {
     const tripsById = new Map<string, Trip>();
     (remoteTrips ?? storedTrips ?? []).forEach((trip) => tripsById.set(trip.id, trip));
@@ -54,53 +59,23 @@ export function useHomeTripSelection({
     });
 
     const baseTrips = Array.from(tripsById.values());
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayStartTs = todayStart.getTime();
-    const tomorrowStartTs = todayStartTs + 24 * 60 * 60 * 1000;
+    const eligibleTrips = baseTrips.filter((trip) => {
+      if (!hasUpcomingDeparture(trip)) {
+        return false;
+      }
 
-    return [...baseTrips]
-      .filter((trip) => {
-        if (!hasUpcomingDeparture(trip)) {
-          return false;
-        }
+      if (!currentUser?.id) {
+        return true;
+      }
 
-        if (!currentUser?.id) {
-          return true;
-        }
+      if (trip.driverId === currentUser.id) {
+        return false;
+      }
 
-        if (trip.driverId === currentUser.id) {
-          return false;
-        }
-
-        return !completedBookingTripIds.has(trip.id);
-      })
-      .sort((a, b) => {
-        const aIsBooked = bookedTripIds.has(a.id);
-        const bIsBooked = bookedTripIds.has(b.id);
-
-        if (aIsBooked !== bIsBooked) {
-          return aIsBooked ? -1 : 1;
-        }
-
-        const departureA = new Date(a.departureTime).getTime();
-        const departureB = new Date(b.departureTime).getTime();
-        const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
-        const safeDepartureB = Number.isFinite(departureB) ? departureB : Number.MAX_SAFE_INTEGER;
-        const aIsToday = safeDepartureA >= todayStartTs && safeDepartureA < tomorrowStartTs;
-        const bIsToday = safeDepartureB >= todayStartTs && safeDepartureB < tomorrowStartTs;
-
-        if (aIsToday !== bIsToday) {
-          return aIsToday ? -1 : 1;
-        }
-
-        if (safeDepartureA !== safeDepartureB) {
-          return safeDepartureA - safeDepartureB;
-        }
-
-        return a.id.localeCompare(b.id);
-      })
-      .slice(0, RECENT_TRIPS_LIMIT);
+      return !completedBookingTripIds.has(trip.id);
+    });
+    const origin = latitude !== undefined && longitude !== undefined ? { latitude, longitude } : null;
+    return rankHomeTripsByProximity(eligibleTrips, origin, bookedTripIds).slice(0, RECENT_TRIPS_LIMIT);
   }, [
     remoteTrips,
     storedTrips,
@@ -108,6 +83,8 @@ export function useHomeTripSelection({
     bookedTripIds,
     currentUser?.id,
     completedBookingTripIds,
+    latitude,
+    longitude,
   ]);
 
   const ongoingBookedTrip = useMemo(() => {

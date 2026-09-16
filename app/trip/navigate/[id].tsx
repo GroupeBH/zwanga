@@ -1,6 +1,6 @@
 import { useDriverNavigationController } from '../../../hooks/driver-navigation/useDriverNavigationController';
 import { DriverNavigationControls } from '../../../features/driver-navigation/DriverNavigationControls';
-import { DriverNavigationPassengersBar } from '../../../features/driver-navigation/DriverNavigationPassengersBar';
+import { DriverNavigationTopPanel } from '@/features/driver-navigation/DriverNavigationTopPanel';
 import { DriverNavigationMap } from '../../../features/driver-navigation/DriverNavigationMap';
 import { NavigationLocationDisclosure } from '../../../features/driver-navigation/NavigationLocationDisclosure';
 import { NavigationPassengersModal } from '../../../features/driver-navigation/NavigationPassengersModal';
@@ -12,7 +12,8 @@ import { NavigationTripEndModal } from '../../../features/driver-navigation/Navi
 import { cleanHtmlInstructions } from '../../../features/driver-navigation/navigationPresentation';
 import { KINSHASA_FALLBACK_MAP_COORDINATE } from '../../../features/driver-navigation/navigationModel';
 import { styles } from '../../../features/screen-styles/app/trip/navigate/detail/index';
-import { RideRecoveryControl } from '@/features/ride-recovery/RideRecoveryControl';
+import { NavigationAssistanceModals } from '@/features/navigation/NavigationAssistanceModals';
+import { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -20,6 +21,12 @@ import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'reac
 
 export default function NavigationScreen() {
   const model = useDriverNavigationController();
+  const assistance = useNavigationAssistance({
+    role: 'driver', trip: model.session.foundation.data.trip,
+    bookings: model.session.foundation.data.bookings,
+    isScreenActive: model.session.foundation.data.isScreenActive,
+  });
+  const assistanceOrSecurityVisible = assistance.isOpen || model.session.foundation.mapState.securityModalVisible;
 
   if ((model.session.foundation.data.isLoading && !model.session.foundation.data.trip) || (model.session.foundation.data.bookingsLoading && !model.session.foundation.data.bookings) || !model.session.foundation.data.trip) {
     return (
@@ -53,7 +60,7 @@ export default function NavigationScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       
       {/* La carte native est libérée avant les changements d'écran. */}
       {model.session.foundation.mapState.shouldRenderMap ? (
@@ -65,55 +72,6 @@ export default function NavigationScreen() {
       ) : <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
         <ActivityIndicator color={Colors.primary} size="large" />
       </View>}
-
-      {model.session.foundation.data.isTripOngoing && model.presentation.canToggleRouteSections && (
-        <View style={styles.routeSectionToggle}>
-          <TouchableOpacity
-            style={[
-              styles.routeSectionToggleButton,
-              model.session.foundation.mapState.routeSectionFocus === 'next' && styles.routeSectionToggleNextActive,
-            ]}
-            onPress={() => model.session.foundation.mapState.setRouteSectionFocus('next')}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name="navigate-outline"
-              size={15}
-              color={model.session.foundation.mapState.routeSectionFocus === 'next' ? Colors.white : Colors.primaryDark}
-            />
-            <Text
-              style={[
-                styles.routeSectionToggleText,
-                model.session.foundation.mapState.routeSectionFocus === 'next' && styles.routeSectionToggleTextActive,
-              ]}
-            >
-              Prochain
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.routeSectionToggleButton,
-              model.session.foundation.mapState.routeSectionFocus === 'remaining' && styles.routeSectionToggleRemainingActive,
-            ]}
-            onPress={() => model.session.foundation.mapState.setRouteSectionFocus('remaining')}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name="map-outline"
-              size={15}
-              color={model.session.foundation.mapState.routeSectionFocus === 'remaining' ? Colors.white : Colors.infoDark}
-            />
-            <Text
-              style={[
-                styles.routeSectionToggleText,
-                model.session.foundation.mapState.routeSectionFocus === 'remaining' && styles.routeSectionToggleTextActive,
-              ]}
-            >
-              Reste
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
 
       {!model.session.foundation.data.isTripOngoing && (
         <View style={styles.preStartOverlay}>
@@ -168,50 +126,7 @@ export default function NavigationScreen() {
         </View>
       )}
 
-      {/* Header avec infos */}
-      <View style={styles.header} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={model.handleExitNavigation}
-          hitSlop={12}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Quitter la navigation"
-        >
-          <Ionicons name="close" size={28} color={Colors.white} />
-        </TouchableOpacity>
-
-        <View style={styles.headerInfo}>
-          <View style={styles.etaRow}>
-            <Text style={styles.etaText}>{model.presentation.displayedDurationText}</Text>
-            {/* Indicateur temps réel */}
-            <View style={[styles.liveIndicator, model.session.foundation.mapState.isSocketConnected && styles.liveIndicatorActive]}>
-              <View style={[styles.liveDot, model.session.foundation.mapState.isSocketConnected && styles.liveDotActive]} />
-              <Text style={[styles.liveText, model.session.foundation.mapState.isSocketConnected && styles.liveTextActive]}>
-                {model.session.foundation.data.offlineTrip || model.session.foundation.data.offlineBookings ? 'Hors connexion' : model.session.foundation.mapState.isSocketConnected ? 'LIVE' : '...'}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.distanceRow}>
-            <Text style={styles.distanceText}>{model.presentation.displayedDistanceText}</Text>
-            {model.presentation.displayedEtaText && (
-              <Text style={styles.arrivalTimeText}>ETA {model.presentation.displayedEtaText}</Text>
-            )}
-          </View>
-        </View>
-        {model.session.foundation.data.isTripOngoing && <RideRecoveryControl tripId={model.session.foundation.data.tripId} bookings={model.session.foundation.data.bookings} actor="driver" compact
-          fix={model.session.foundation.mapState.currentLocation ? { ...model.session.foundation.mapState.currentLocation.coords, recordedAt: model.session.foundation.mapState.currentLocation.timestamp, accuracy: model.session.foundation.mapState.currentLocation.coords.accuracy ?? undefined } : null}
-          destination={model.session.foundation.data.tripArrivalCoordinate} />}
-      </View>
-
-      {/* Barre compacte des passagers */}
-      {model.session.foundation.data.isTripOngoing && (model.session.foundation.mapState.waypoints.length > 0 || model.session.foundation.passengers.activePendingBooking) && (
-        <DriverNavigationPassengersBar
-          foundation={model.session.foundation}
-          passengerPresentation={model.passengerPresentation}
-          bookingActions={model.bookingActions}
-        />
-      )}
+      <DriverNavigationTopPanel model={model} assistance={assistance} />
 
       {/* Instructions de navigation */}
       {model.session.foundation.data.isTripOngoing && !model.session.foundation.mapState.isLoadingRoute && currentStep && (
@@ -272,7 +187,7 @@ export default function NavigationScreen() {
       />
 
       <NavigationSecurityModal
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible}
+        securityModalVisible={model.session.foundation.mapState.securityModalVisible && !assistance.isOpen}
         backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
         setSecurityModalVisible={model.session.foundation.mapState.setSecurityModalVisible}
         insets={model.session.foundation.data.insets}
@@ -282,7 +197,7 @@ export default function NavigationScreen() {
       <NavigationTripEndModal
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}
         backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible}
+        securityModalVisible={assistanceOrSecurityVisible}
         dismissTripEndNotice={model.pickupActions.dismissTripEndNotice}
         insets={model.session.foundation.data.insets}
         trip={model.session.foundation.data.trip}
@@ -292,7 +207,7 @@ export default function NavigationScreen() {
       <NavigationPickupBypassModal
         pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}
         backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible}
+        securityModalVisible={assistanceOrSecurityVisible}
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}
         insets={model.session.foundation.data.insets}
         trip={model.session.foundation.data.trip}
@@ -307,7 +222,7 @@ export default function NavigationScreen() {
       <NavigationPickupNoticeModal
         pickupNotice={model.session.foundation.mapState.pickupNotice}
         backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible}
+        securityModalVisible={assistanceOrSecurityVisible}
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}
         pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}
         dismissPickupNotice={model.pickupActions.dismissPickupNotice}
@@ -320,7 +235,7 @@ export default function NavigationScreen() {
         waypointModalVisible={model.session.foundation.mapState.waypointModalVisible}
         activeWaypoint={model.session.foundation.mapState.activeWaypoint}
         backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible}
+        securityModalVisible={assistanceOrSecurityVisible}
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}
         pickupNotice={model.session.foundation.mapState.pickupNotice}
         pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}
@@ -333,7 +248,7 @@ export default function NavigationScreen() {
       <NavigationPassengersModal
         passengersPanelVisible={model.session.foundation.mapState.passengersPanelVisible}
         backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible}
+        securityModalVisible={assistanceOrSecurityVisible}
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}
         pickupNotice={model.session.foundation.mapState.pickupNotice}
         pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}
@@ -348,7 +263,8 @@ export default function NavigationScreen() {
         setWaypointModalVisible={model.session.foundation.mapState.setWaypointModalVisible}
         openReportForWaypoint={model.pickupActions.openReportForWaypoint}
       />
+      <NavigationAssistanceModals assistance={assistance} role="driver" insets={model.session.foundation.data.insets}
+        blocked={model.session.foundation.mapState.backgroundDisclosureVisible} />
     </View>
   );
 }
-

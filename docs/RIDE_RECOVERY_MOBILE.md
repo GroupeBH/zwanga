@@ -1,6 +1,6 @@
 # Confirmations manuelles et connexion instable — application mobile
 
-État du code local vérifié le **14 septembre 2026**. Ce document décrit ce qui est effectivement implémenté, pas une fonctionnalité supposée déjà déployée sur les stores.
+État initial du code local vérifié le **14 septembre 2026**, libellés actualisés le **16 septembre 2026**. Ce document décrit ce qui est effectivement implémenté, pas une fonctionnalité supposée déjà déployée sur les stores.
 
 Voir aussi le [bilan détaillé de la conversation](MODIFICATIONS_CONVERSATION.md) et le [résumé mobile/backend](ride-recovery.md).
 
@@ -10,9 +10,11 @@ Elle n’est ni dans `.env`, ni dans le layout des onglets. Elle est branchée s
 
 | Utilisateur | Écran et point d’entrée | Texte visible | Condition importante |
 | --- | --- | --- | --- |
-| Conducteur | [Navigation conducteur](<../app/trip/navigate/[id].tsx>), composant `RideRecoveryControl` dans l’en-tête | « Manuel », ou « À confirmer » si une confirmation est en attente | Le trajet doit avoir le statut mobile `ongoing`. |
-| Passager | [Navigation passager](<../app/booking/navigate/[id].tsx>), même composant dans le panneau inférieur | « Confirmation manuelle » | Le trajet doit être `ongoing` et la carte ne doit pas être agrandie. |
+| Conducteur | [Navigation conducteur](<../app/trip/navigate/[id].tsx>), composant `RideRecoveryControl` dans l’en-tête | « Confirmer l’embarquement », « Confirmer la dépose » ou « Embarquement ou dépose » selon les actions disponibles | Le trajet doit avoir le statut mobile `ongoing`. |
+| Passager | [Navigation passager](<../app/booking/navigate/[id].tsx>), même composant dans le panneau inférieur | « Je suis à bord » puis « Je suis arrivé » | Le trajet doit être `ongoing` et la carte ne doit pas être agrandie. |
 | Les deux | [RideRecoveryControl](../features/ride-recovery/RideRecoveryControl.tsx) | Modal « Confirmer une étape » | Ouverture volontaire par le bouton ; hauteur déclarée de 85 % du conteneur disponible. |
+
+Si aucune réponse supplémentaire n’est disponible, le bouton indique « Voir les confirmations ». Son libellé utilise les mêmes règles de disponibilité que le modal, y compris les déclarations sauvegardées hors connexion. Les icônes voiture, drapeau ou liste remplacent la main ; un groupe représente les différentes étapes possibles côté conducteur. Le changement reste visuel : l’ouverture ne confirme rien et ne lance aucune requête supplémentaire.
 
 Repères lors de l’audit : intégration conducteur vers la ligne 5333 ; passager vers la ligne 2409. Les noms de composants sont des repères plus durables que les numéros de ligne.
 
@@ -53,7 +55,7 @@ Le composant accentue son bouton lorsque l’un de ces cas est présent :
 | --- | --- |
 | Connexion déclarée indisponible par l’état réseau RTK Query | Mise en évidence ; côté passager, explication de l’enregistrement local. |
 | Échec de lecture des confirmations serveur | Mise en évidence ; le modal signale que les données peuvent ne pas être à jour. |
-| Déclaration locale non confirmée, attente de l’autre personne ou désaccord serveur | Mise en évidence ; conducteur : « À confirmer ». |
+| Déclaration locale non confirmée, attente de l’autre personne ou désaccord serveur | Mise en évidence ; le libellé reste lié à l’action disponible ou à la consultation des confirmations. |
 | Proximité d’un point d’embarquement/d’arrivée maintenue par l’état de l’écran pendant 20 secondes | Mise en évidence avec proposition de confirmer si la validation tarde. |
 
 La fonction [isNearRideStop](../features/ride-recovery/rideRecoveryModel.ts) exige, lors de son évaluation : une position datée d’au plus 30 secondes, non future, une précision renseignée comprise entre 0 et 100 mètres et une distance d’au plus 200 mètres du point visé. Avant embarquement, le point visé est l’origine de la réservation ; ensuite, sa destination, avec le repli de destination fourni par l’écran lorsque disponible.
