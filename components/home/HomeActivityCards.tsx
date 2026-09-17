@@ -78,7 +78,9 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
             {featuredDriverReservationPassengerName} · {featuredDriverReservationSeatsLabel}
           </Text>
           <Text style={styles.driverReservationRoute} numberOfLines={1}>
-            {placeName(featuredDriverReservation.trip.departure)} vers {placeName(featuredDriverReservation.trip.arrival)}
+            <Text style={styles.reservationPlaceName}>{placeName(featuredDriverReservation.trip.departure)}</Text>
+            {' vers '}
+            <Text style={styles.reservationPlaceName}>{placeName(featuredDriverReservation.trip.arrival)}</Text>
           </Text>
         </View>
         <View style={styles.driverReservationAction}>
@@ -111,7 +113,9 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
             {formatDateWithRelativeLabel(featuredDriverUpcomingTrip.departureTime, true)} · {featuredDriverUpcomingTripSeatsLabel}
           </Text>
           <Text style={styles.driverReservationRoute} numberOfLines={1}>
-            {placeName(featuredDriverUpcomingTrip.departure)} vers {placeName(featuredDriverUpcomingTrip.arrival)}
+            <Text style={styles.reservationPlaceName}>{placeName(featuredDriverUpcomingTrip.departure)}</Text>
+            {' vers '}
+            <Text style={styles.reservationPlaceName}>{placeName(featuredDriverUpcomingTrip.arrival)}</Text>
           </Text>
         </View>
         <View style={styles.driverReservationAction}>

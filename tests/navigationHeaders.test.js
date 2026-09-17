@@ -25,7 +25,7 @@ function driverModel() {
   };
   return { session: { foundation }, presentation: { hasValidTripCoordinates: true, canToggleRouteSections: true,
     displayedDurationText: '37 min', displayedDistanceText: '12,6 km', displayedEtaText: '06:50' },
-    passengerPresentation: {}, bookingActions: {}, tripActions: {}, interruptionActions: {}, pickupActions: {}, voice: {}, handleExitNavigation() {} };
+    passengerPresentation: {}, bookingActions: {}, tripActions: {}, interruptionActions: {}, pickupActions: {}, voice: {}, handleExitNavigation() {}, forceRecalculateRoute() {} };
 }
 
 test('driver header reserves safe-area space and puts confirmation outside the duration/distance block', () => {
@@ -44,6 +44,12 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(recovery.props.bookings, model.session.foundation.data.bookings);
   assert.equal(recovery.props.actor, 'driver'); assert.equal(recovery.props.compact, undefined);
   assert.equal(recovery.props.fix.recordedAt, 123); assert.equal(recovery.props.fix.accuracy, 10);
+  const confirmation = all(tree).find(node => node.props?.children === recovery);
+  const confirmationStyle = flatStyle(confirmation.props.style);
+  assert.equal(confirmationStyle.backgroundColor, '#FFFFFF');
+  assert.ok(confirmationStyle.padding >= 8);
+  assert.ok(confirmationStyle.borderRadius > 0);
+  assert.equal(confirmationStyle.height, undefined, 'allow confirmation and its hint to wrap with larger text');
   const buttons = all(tree).find(node => node.type === 'AssistanceButtons');
   assert.equal(buttons.props.role, 'driver'); assert.equal(buttons.props.onSos, assistance.openSos);
   assert.equal(buttons.props.onContact, assistance.openContacts);
@@ -107,7 +113,7 @@ test('passenger map top offset follows actual header height, including larger te
   hooks.unmount();
 });
 
-test('driver options keep all actions, loading guards and recenter behavior without eight overlapping controls', () => {
+test('driver exposes icon-only rerouting directly and keeps my position in options', () => {
   const hooks = hookHarness(); const calls = [];
   const { DriverNavigationControls } = loader({ ...defaults, react: { ...React, ...hooks.react },
     '../screen-styles/app/trip/navigate/detail/index': { styles: {} },
@@ -117,20 +123,26 @@ test('driver options keep all actions, loading guards and recenter behavior with
   foundation.mapState.setSecurityModalVisible = () => calls.push('security');
   foundation.passengers.passengerMapLocations = [{}];
   foundation.focusMapOnCoordinates = (...args) => calls.push(args);
-  const props = { foundation, voice: { toggleVoiceGuidance: () => calls.push('voice') },
+  const props = { foundation, forceRecalculateRoute: () => calls.push('recalculate'), voice: { toggleVoiceGuidance: () => calls.push('voice') },
     tripActions: { handleEditTripFromNavigation: () => calls.push('edit'), handlePauseTripFromNavigation: () => calls.push('pause'), handleShareTrip: async () => calls.push('share') },
-    passengerPresentation: { fitVehicleAndPassengers: () => calls.push('passengers') }, forceRecalculateRoute: () => calls.push('recalculate') };
+    passengerPresentation: { fitVehicleAndPassengers: () => calls.push('passengers') } };
   let tree; const render = () => { tree = hooks.render(() => DriverNavigationControls(props)); };
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   render(); assert.equal(all(tree).filter(node => node.type === 'Button').length, 4);
+  const rerouteLabel = 'Recalculer l’itinéraire';
+  assert.equal(words(button(rerouteLabel)), '', 'keep an accessible label without visible caption');
+  assert.equal(all(button(rerouteLabel)).find(node => node.type === 'Icon').props.name, 'refresh');
+  assert.equal(button('Recentrer sur ma position'), undefined);
+  assert.equal(button('Ma position'), undefined);
   button('Demander une interruption du trajet').props.onPress();
   button('Activer le guidage vocal').props.onPress();
-  for (const [label, result] of [['Prévenir mes proches', 'security'], ['Modifier le trajet', 'edit'], ['Partager le trajet', 'share'], ['Voir les passagers', 'passengers'], ['Recalculer l’itinéraire', 'recalculate']]) {
+  for (const [label, result] of [['Prévenir mes proches', 'security'], ['Modifier le trajet', 'edit'], ['Partager le trajet', 'share'], ['Voir les passagers', 'passengers']]) {
     button('Options de navigation').props.onPress(); render(); button(label).props.onPress(); render();
     assert.equal(calls.at(-1), result); assert.equal(button(label), undefined);
   }
   assert.deepEqual(calls.slice(0, 2), ['pause', 'voice']);
-  button('Recentrer sur ma position').props.onPress();
+  button(rerouteLabel).props.onPress(); render(); assert.equal(calls.at(-1), 'recalculate');
+  button('Options de navigation').props.onPress(); render(); button('Ma position').props.onPress(); render();
   assert.deepEqual(calls.at(-1)[0], [{ latitude: -4.3, longitude: 15.2 }]);
   assert.equal(calls.at(-1)[1].logContext, 'recenter-driver');
   foundation.data.isCreatingTripShareLink = true; foundation.mapState.isLoadingRoute = true;
@@ -139,9 +151,31 @@ test('driver options keep all actions, loading guards and recenter behavior with
   const popupStyle = flatStyle(popup.props.style); const frame = flatStyle(tree.props.style);
   assert.ok(frame.width >= popupStyle.width + popupStyle.right);
   assert.ok(frame.minHeight >= popupStyle.maxHeight);
-  assert.equal(button('Partager le trajet').props.disabled, true); assert.equal(button('Recalculer l’itinéraire').props.disabled, true);
+  assert.equal(button('Partager le trajet').props.disabled, true);
+  assert.equal(button(rerouteLabel).props.disabled, true);
+  assert.equal(button(rerouteLabel).props.accessibilityState.busy, true);
+  assert.ok(all(button(rerouteLabel)).find(node => node.type === 'Spinner'));
+  const loadingCount = calls.length;
+  button(rerouteLabel).props.onPress(); assert.equal(calls.length, loadingCount);
+  assert.ok(!button('Ma position').props.disabled);
+  const latestPosition = { coords: { latitude: -4.31, longitude: 15.21 } };
+  foundation.refs.currentLocationRef.current = latestPosition;
+  button('Ma position').props.onPress(); render();
+  assert.equal(button('Ma position'), undefined);
+  assert.deepEqual(calls.at(-1)[0], [{ latitude: -4.31, longitude: 15.21 }]);
+  assert.equal(calls.at(-1)[1].logContext, 'recenter-driver');
+  const count = calls.length;
+  foundation.refs.currentLocationRef.current = null; foundation.mapState.currentLocation = null;
+  button('Options de navigation').props.onPress(); render();
+  button('Ma position').props.onPress(); render(); assert.equal(calls.length, count);
+  foundation.refs.currentLocationRef.current = latestPosition;
   assert.equal(button('Demander une interruption du trajet').props.disabled, true);
+  button('Options de navigation').props.onPress(); render();
+  const staleRecenter = button('Ma position').props.onPress;
+  foundation.mapState.isLoadingRoute = false;
   foundation.data.isScreenActive = false; render(); render(); assert.equal(button('Partager le trajet'), undefined);
+  assert.equal(button(rerouteLabel).props.disabled, true);
+  button(rerouteLabel).props.onPress(); staleRecenter(); assert.equal(calls.length, count);
   hooks.unmount();
 });
 
@@ -160,6 +194,7 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   components.forEach(name => { mocked[`../../../features/driver-navigation/${name}`] = { [name]: name }; });
   const screen = loader(mocked)('app/trip/navigate/[id].tsx').default;
   const tree = screen(); assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
+  assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.forceRecalculateRoute, model.forceRecalculateRoute);
   for (const type of ['NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal']) {
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);
   }

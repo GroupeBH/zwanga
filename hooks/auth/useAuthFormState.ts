@@ -1,4 +1,5 @@
 import { SocialAuthProvider } from '../../features/auth/authModel';
+import { emptyPinResetOtp } from './usePinResetFlow';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import {
@@ -35,7 +36,7 @@ export function useAuthFormState({
 
   // Reset PIN State
   const [resetPinStep, setResetPinStep] = useState<'otp' | 'newPin'>('otp');
-  const [resetOtpCode, setResetOtpCode] = useState(['', '', '', '', '']);
+  const [resetOtpCode, setResetOtpCode] = useState(emptyPinResetOtp);
   const [resetNewPin, setResetNewPin] = useState('');
   const [resetNewPinConfirm, setResetNewPinConfirm] = useState('');
   const resetOtpInputRefs = useRef<Array<TextInput | null>>([]);

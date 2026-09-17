@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4 },
   metric: { color: '#E3EAED', fontSize: 14, fontWeight: '600', flexShrink: 1 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 8 },
-  confirmation: { flex: 1, minWidth: 130 },
+  confirmation: { flex: 1, minWidth: 130, backgroundColor: Colors.white, borderRadius: 18, padding: 8 },
   details: { gap: 8, paddingBottom: 4 },
   segments: { flexDirection: 'row', gap: 4, borderRadius: 16, padding: 4, backgroundColor: Colors.white },
   segment: { flex: 1, minHeight: 44, padding: 8, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },

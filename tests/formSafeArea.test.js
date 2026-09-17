@@ -73,7 +73,7 @@ function vehicleForm() {
       addListener: (event, listener) => { listeners.set(event, listener); return { remove: () => listeners.delete(event) }; },
     } },
   })('components/VehicleFormModal.tsx');
-  const props = { visible: false, vehicleType: 'car', brand: '', model: '', color: '', licensePlate: '',
+  const props = { visible: false, vehicleType: 'car', brand: '', model: '', color: '', licensePlate: '1234AB56',
     onClose: () => calls.push('close'), onSubmit: () => calls.push('submit') };
   return { hooks, listeners, calls, props, render: () => hooks.render(() => VehicleFormModal(props)) };
 }

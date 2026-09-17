@@ -73,6 +73,7 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Accueil',
+            freezeOnBlur: false,
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
                 activeIcon: 'home',
@@ -118,6 +119,7 @@ export default function TabLayout() {
           name="messages"
           options={{
             title: 'Messages',
+            freezeOnBlur: false,
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
                 activeIcon: 'chatbubbles',

@@ -6,7 +6,7 @@ import {
 } from '@/store/api/messageApi';
 import { useAppDispatch } from '@/store/hooks';
 import { addMessage as addMessageAction } from '@/store/slices/messagesSlice';
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import type { Conversation } from '@/types';
 
 interface Params {
@@ -20,6 +20,7 @@ interface Params {
   dispatch: ReturnType<typeof useAppDispatch>;
   sendMessageMutation: ReturnType<typeof useSendConversationMessageMutation>[0];
   conversation: Conversation | undefined;
+  isCurrent: () => boolean;
 }
 
 export function useChatSendMessage({
@@ -33,20 +34,28 @@ export function useChatSendMessage({
   dispatch,
   sendMessageMutation,
   conversation,
+  isCurrent,
 }: Params) {
+  const session = useMemo(() => ({ conversationId, busy: false, mounted: true }), [conversationId]);
+  useEffect(() => {
+    session.mounted = true;
+    return () => { session.mounted = false; };
+  }, [session]);
+  const canUpdate = () => session.mounted && isCurrent();
   const handleSend = async () => {
-    if (!message.trim() || !conversationId || sending) {
+    if (!message.trim() || !conversationId || sending || session.busy || !canUpdate()) {
       return;
     }
 
     const content = message.trim();
+    session.busy = true;
     setMessage('');
 
     // Mode édition
     if (editingMessageId) {
       try {
         const updated = await editMessageMutation({ messageId: editingMessageId, content, conversationId }).unwrap();
-        setEditingMessageId(null);
+        if (canUpdate()) setEditingMessageId(null);
         dispatch(
           messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
             const index = draft.findIndex((m) => m.id === updated.id);
@@ -57,6 +66,9 @@ export function useChatSendMessage({
         );
       } catch (error) {
         console.warn('Erreur lors de la modification du message:', error);
+        if (canUpdate()) setMessage(current => current || content);
+      } finally {
+        session.busy = false;
       }
       return;
     }
@@ -83,7 +95,9 @@ export function useChatSendMessage({
       );
     } catch (error) {
       console.warn('Erreur lors de l\'envoi du message:', error);
-      setMessage(content);
+      if (canUpdate()) setMessage(current => current || content);
+    } finally {
+      session.busy = false;
     }
   };
 

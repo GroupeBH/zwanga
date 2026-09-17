@@ -83,6 +83,16 @@ export function useDriverNavigationController() {
   // Mettre à jour l'étape actuelle en fonction de la position
   session.foundation.refs.fetchRouteRef.current = routeQuery.fetchRoute;
 
+  const forceRecalculateRoute = () => {
+    if (!session.foundation.data.isScreenActive || !session.foundation.data.isTripOngoing
+      || !session.foundation.mapState.isMountedRef.current || session.foundation.mapState.isLoadingRoute) return;
+    // Reuse the guarded RTK Query path, without clearing route signatures or the displayed route.
+    void routeQuery.fetchRoute({
+      originOverride: routeContext.getFreshDriverCoordinate() ?? undefined,
+      announceReroute: true,
+    });
+  };
+
   const stepProgress = useDriverNavigationStepProgress({
     stepsRef: session.foundation.refs.stepsRef,
     waypointsRef: session.foundation.refs.waypointsRef,
@@ -109,17 +119,6 @@ export function useDriverNavigationController() {
     notices: session.notices,
     completion: session.completion,
   });
-
-  // Forcer le recalcul de l'itinéraire
-  const forceRecalculateRoute = () => {
-    session.foundation.refs.lastRouteFetchTimeRef.current = 0; // Reset le timestamp
-    session.foundation.refs.routeFetchedRef.current = false; // Permettre un nouveau fetch
-    session.foundation.refs.routeSignatureRef.current = '';
-    if (session.foundation.data.trip && session.foundation.data.tripDepartureCoordinate && session.foundation.destination.activeRouteDestination) {
-      const originOverride = session.foundation.data.isTripOngoing ? routeContext.getFreshDriverCoordinate() ?? undefined : undefined;
-      routeQuery.fetchRoute({ originOverride });
-    }
-  };
 
   const bookingActions = useDriverBookingActions({
     setProcessingBookingId: session.foundation.mapState.setProcessingBookingId,

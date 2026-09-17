@@ -92,7 +92,9 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           {sheetTitle}
         </Text>
         <Text style={styles.sheetSubtitle} numberOfLines={1}>
-          {sheetSubtitle}
+          {sheetLoading && !isHomeSheetLockedRetracted
+            ? (isRequestsSheetMode ? 'Recherche des demandes proches…' : 'Recherche des trajets proches…')
+            : sheetSubtitle}
         </Text>
       </TouchableOpacity>
       <View style={styles.sheetHeaderActions}>

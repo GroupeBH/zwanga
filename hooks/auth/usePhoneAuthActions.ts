@@ -9,8 +9,10 @@ import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import React from 'react';
 import { NativeSyntheticEvent, TextInput, TextInputKeyPressEventData } from 'react-native';
 import { AuthMode, AuthStep } from '@/components/auth';
+import { emptyPinResetOtp, PIN_RESET_OTP_LENGTH, usePinResetFlow } from './usePinResetFlow';
 
 interface Params {
+  step: AuthStep;
   phone: string;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   setPhone: React.Dispatch<React.SetStateAction<string>>;
@@ -44,6 +46,7 @@ interface Params {
 }
 
 export function usePhoneAuthActions({
+  step,
   phone,
   showDialog,
   setPhone,
@@ -75,6 +78,7 @@ export function usePhoneAuthActions({
   resetNewPin,
   resetNewPinConfirm,
 }: Params) {
+  const pinReset = usePinResetFlow(phone, step === 'resetPin' && mode === 'login');
   const handlePhoneSubmit = async () => {
     const normalizedPhone = phone.trim();
     if (normalizedPhone.length < 10) {
@@ -193,15 +197,16 @@ export function usePhoneAuthActions({
 
   // Reset PIN Handlers
   const handleForgotPin = async () => {
+    if (pinReset.isBusy) return;
     setStep('resetPin');
     setResetPinStep('otp');
-    setResetOtpCode(['', '', '', '', '']);
+    setResetOtpCode(emptyPinResetOtp());
     setResetNewPin('');
     setResetNewPinConfirm('');
     try {
       setIsSendingResetOtp(true);
-      await sendPhoneVerificationOtp({ phone, context: 'update' }).unwrap();
-      showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
+      if (!await pinReset.requestOtp()) return;
+      showDialog({ variant: 'success', title: 'Demande envoyée', message: 'Si ce numéro correspond à un compte éligible, vous recevrez un code SMS.' });
       focusAfterInteractions({ current: resetOtpInputRefs.current[0] });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
@@ -247,12 +252,13 @@ export function usePhoneAuthActions({
 
   const handleVerifyResetOtp = async () => {
     const code = resetOtpCode.join('');
-    if (code.length !== 5) {
+    if (code.length !== PIN_RESET_OTP_LENGTH) {
       showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet' });
       return;
     }
     try {
-      await verifyPhoneOtp({ phone, otp: code }).unwrap();
+      if (!await pinReset.verifyOtp(code)) return;
+      setResetOtpCode(emptyPinResetOtp());
       setResetPinStep('newPin');
       focusAfterInteractions(resetPinInputRef);
     } catch (error: any) {
@@ -274,22 +280,25 @@ export function usePhoneAuthActions({
       return;
     }
     try {
-      const result = await login({ phone, newPin: resetNewPin }).unwrap();
-      await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
-      await trackEvent('login_success', { method: 'pin_reset' });
-      showDialog({ variant: 'success', title: 'PIN réinitialisé', message: 'Vous êtes maintenant connecté.' });
+      if (!await pinReset.confirmPin(resetNewPin)) return;
+      showDialog({ variant: 'success', title: 'PIN réinitialisé', message: 'Connectez-vous avec votre nouveau PIN.' });
       setStep('pin');
       setResetPinStep('otp');
-      setResetOtpCode(['', '', '', '', '']);
+      setResetOtpCode(emptyPinResetOtp());
       setResetNewPin('');
       setResetNewPinConfirm('');
       setPin('');
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de réinitialiser le PIN pour le moment.') });
+      setResetPinStep('otp');
+      setResetOtpCode(emptyPinResetOtp());
+      setResetNewPin('');
+      setResetNewPinConfirm('');
+      showDialog({ variant: 'danger', title: 'Réinitialisation non confirmée', message: getAuthErrorMessage(error, 'Demandez un nouveau code SMS pour réessayer. Si le PIN a déjà été changé, connectez-vous avec le nouveau PIN.') });
     }
   };
 
   return {
+    isResettingPin: pinReset.isBusy,
     handlePhoneSubmit,
     handleSmsSubmit,
     handlePinChange,

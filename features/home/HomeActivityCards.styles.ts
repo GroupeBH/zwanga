@@ -51,6 +51,7 @@ export const styles = StyleSheet.create({
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.medium,
   },
+  reservationPlaceName: { fontWeight: FontWeights.bold, color: HOME_COLORS.ink },
   driverReservationAction: {
     maxWidth: 86,
     marginLeft: Spacing.sm,

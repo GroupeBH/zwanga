@@ -27,30 +27,26 @@ export function useHomeTripFeed({
   storedTrips,
   dispatch,
 }: Props) {
+  const latitude = lastKnownLocation?.coords?.latitude;
+  const longitude = lastKnownLocation?.coords?.longitude;
+  const roundedLatitude = typeof latitude === 'number' && Number.isFinite(latitude) ? roundCoordinate(latitude) : null;
+  const roundedLongitude = typeof longitude === 'number' && Number.isFinite(longitude) ? roundCoordinate(longitude) : null;
   const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
-    const latitude = lastKnownLocation?.coords?.latitude;
-    const longitude = lastKnownLocation?.coords?.longitude;
-
-    if (
-      typeof latitude !== 'number' ||
-      typeof longitude !== 'number' ||
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude)
-    ) {
+    if (roundedLatitude === null || roundedLongitude === null) {
       return null;
     }
 
     return {
       departureCoordinates: [
-        roundCoordinate(longitude),
-        roundCoordinate(latitude),
+        roundedLongitude,
+        roundedLatitude,
       ],
       departureRadiusKm: locationRadiusKm,
       minSeats: HOME_MIN_AVAILABLE_SEATS,
     };
   }, [
-    lastKnownLocation?.coords?.latitude,
-    lastKnownLocation?.coords?.longitude,
+    roundedLatitude,
+    roundedLongitude,
     locationRadiusKm,
   ]);
 
@@ -80,7 +76,7 @@ export function useHomeTripFeed({
       minSeats: HOME_MIN_AVAILABLE_SEATS,
     },
     {
-      skip: !nearbyTripsPayload,
+      skip: !isFocused || !nearbyTripsPayload,
       pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
       skipPollingIfUnfocused: true,
       refetchOnFocus: isFocused,
@@ -121,12 +117,13 @@ export function useHomeTripFeed({
     : generalTripsError && !generalTrips && storedTrips.length === 0;
 
   const refetchTrips = useCallback(() => {
+    if (!isFocused) return;
     if (nearbyTripsPayload) {
       void refetchNearbyTrips();
     }
 
     return refetchGeneralTrips();
-  }, [nearbyTripsPayload, refetchNearbyTrips, refetchGeneralTrips]);
+  }, [isFocused, nearbyTripsPayload, refetchNearbyTrips, refetchGeneralTrips]);
 
   useEffect(() => {
     if (remoteTrips) {

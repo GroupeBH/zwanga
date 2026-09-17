@@ -1,4 +1,5 @@
-import { HOME_MAP_ANIMATION_MIN_INTERVAL_MS, KINSHASA_REGION } from '@/features/home/homeMapPolicy';
+import { KINSHASA_REGION } from '@/features/home/homeMapPolicy';
+import { useHomeMapCamera } from './useHomeMapCamera';
 import { getLocationCoordinate, getTripMapCoordinate } from '@/features/home/homeModel';
 import {
   getTripLocationCoordinate
@@ -48,10 +49,6 @@ export function useHomeMap({
 }: Props) {
   const mapRef = useRef<MapView>(null);
 
-  const mapAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const lastMapAnimationAtRef = useRef(0);
-
   const tripMarkerRefs = useRef<Record<string, MapMarker | null>>({});
 
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
@@ -64,7 +61,7 @@ export function useHomeMap({
 
   useEffect(() => {
     setLoadedTripMarkerKeys(new Set());
-  }, [isFocused]);
+  }, [isFocused, ongoingDriverTrip?.id]);
 
   const [mapFocusedOnUser, setMapFocusedOnUser] = useState(false);
 
@@ -165,52 +162,9 @@ export function useHomeMap({
     tripsWithMapCoordinates,
   ]);
 
-  useEffect(() => {
-    if (!isFocused || mapFocusedOnUser || openingMapDetailKey) {
-      return;
-    }
-
-    if (mapAnimationTimerRef.current) {
-      clearTimeout(mapAnimationTimerRef.current);
-      mapAnimationTimerRef.current = null;
-    }
-
-    const animateMap = () => {
-      mapAnimationTimerRef.current = null;
-      lastMapAnimationAtRef.current = Date.now();
-      mapRef.current?.animateToRegion(mapRegion, 420);
-    };
-    const elapsed = Date.now() - lastMapAnimationAtRef.current;
-    const delay = Math.max(HOME_MAP_ANIMATION_MIN_INTERVAL_MS - elapsed, 0);
-
-    if (delay === 0) {
-      animateMap();
-      return;
-    }
-
-    mapAnimationTimerRef.current = setTimeout(animateMap, delay);
-    return () => {
-      if (mapAnimationTimerRef.current) {
-        clearTimeout(mapAnimationTimerRef.current);
-        mapAnimationTimerRef.current = null;
-      }
-    };
-  }, [isFocused, mapFocusedOnUser, mapRegion, openingMapDetailKey]);
-
-  useEffect(() => {
-    if (!isFocused || !mapFocusedOnUser || !liveUserCoordinate || openingMapDetailKey) {
-      return;
-    }
-
-    mapRef.current?.animateToRegion(
-      {
-        ...liveUserCoordinate,
-        latitudeDelta: 0.025,
-        longitudeDelta: 0.025,
-      },
-      420,
-    );
-  }, [isFocused, liveUserCoordinate, mapFocusedOnUser, openingMapDetailKey]);
+  const cameraRegion = mapFocusedOnUser && liveUserCoordinate
+    ? { ...liveUserCoordinate, latitudeDelta: 0.025, longitudeDelta: 0.025 } : mapRegion;
+  useHomeMapCamera(mapRef, isFocused && !openingMapDetailKey, cameraRegion);
   return {
     setMapFocusedOnUser,
     mapRef,

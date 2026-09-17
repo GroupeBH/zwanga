@@ -1,5 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import type { TripRequestVehicleType } from '@/types';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
+import { isValidVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import * as ImagePicker from 'expo-image-picker';
 import React from 'react';
 import { AuthStep } from '@/components/auth';
@@ -114,6 +116,10 @@ export function useSignupProfileActions({
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez compléter les informations du véhicule.' });
         return;
       }
+      if (!isValidVehiclePlate(vehiclePlate)) {
+        showDialog({ variant: 'warning', title: 'Plaque d’immatriculation invalide', message: VEHICLE_PLATE_FORMAT_MESSAGE });
+        return;
+      }
       setStep('kyc');
     } else {
       handleFinalRegister();
@@ -125,4 +131,3 @@ export function useSignupProfileActions({
     validateProfileAndContinue,
   };
 }
-import type { TripRequestVehicleType } from '@/types';

@@ -27,7 +27,7 @@ function describeRefusal(value?: string | null): string {
   const message = (value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   if (/solde chauffeur|minimum|solde conducteur/.test(message)) return 'Le montant demandé dépasse le solde disponible ou ne respecte pas le minimum. Actualisez vos revenus.';
   if (/identite|kyc/.test(message)) return 'Votre identité doit être vérifiée avant le versement de vos gains.';
-  if (/numero|telephone|phone/.test(message) && /invalid|incomplet|requis/.test(message)) return 'Vérifiez le numéro Mobile Money de votre profil (par exemple 0891234567).';
+  if (/numero|telephone|phone/.test(message) && /invalid|incomplet|requis/.test(message)) return 'Vérifiez le numéro Mobile Money choisi pour ce versement (par exemple 0891234567).';
   if (/solde|insufficient|insuffisant|balance|zwanga ne peut/.test(message)) return 'Zwanga ne peut pas effectuer ce versement pour le moment. Vos gains sont conservés. Contactez l’assistance.';
   if (/token|merchant|marchand|configur|indisponible|unauthoriz|forbidden/.test(message)) return 'Le service de versement Zwanga est indisponible. Contactez l’assistance si le problème persiste.';
   return 'Le versement n’a pas abouti. Vérifiez que votre numéro possède un compte Mobile Money actif, ou contactez l’assistance.';

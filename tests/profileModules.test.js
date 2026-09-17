@@ -132,7 +132,7 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
 
 test('ambiguous vehicle creation verifies the new vehicle without replaying the mutation', async () => {
   const calls = [];
-  const vehicle = { id: 'new', type: 'car', brand: 'Dacia', model: 'Sandero', color: 'violet', licensePlate: 'ABC123' };
+  const vehicle = { id: 'new', type: 'car', brand: 'Dacia', model: 'Sandero', color: 'violet', licensePlate: '1234AB56' };
   const app = environment({
     '@/store/api/vehicleApi': {
       useCreateVehicleMutation: () => [action(async payload => { calls.push(payload); throw { status: 'TIMEOUT_ERROR' }; }), { isLoading: false }],
@@ -148,7 +148,7 @@ test('ambiguous vehicle creation verifies the new vehicle without replaying the 
   form.handleVehicleBrandChange(' Dacia ');
   form.handleVehicleModelChange('Sandero');
   form.handleVehicleColorChange('violet');
-  form.handleVehiclePlateChange('ABC123');
+  form.handleVehiclePlateChange('1234ab56');
   form = render();
   await form.handleSaveVehicle();
   assert.equal(calls.length, 1);
@@ -178,34 +178,101 @@ test('vehicle deletion still requires confirmation and reconciles a transport ti
   app.hooks.unmount();
 });
 
-test('PIN input sanitation, OTP verification and reset preserve existing API payloads', async (t) => {
+test('profile forgotten PIN uses the reset proof and clears the local session', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const calls = [];
-  const mutation = (name) => [action(async payload => { calls.push({ name, payload }); }), { isLoading: false }];
+  const mutation = (name) => [payload => ({
+    unwrap: async () => {
+      calls.push({ name, payload });
+      return name === 'verify' ? { resetToken: 'proof', expiresInSeconds: 300 } : {};
+    },
+    reset() {},
+  }), { isLoading: false }];
   const app = environment({ '@/store/api/userApi': {
-    useUpdatePinMutation: () => mutation('update'), useUpdatePinWithOtpMutation: () => mutation('reset'),
-    useSendPhoneVerificationOtpMutation: () => mutation('send'), useVerifyPhoneOtpMutation: () => mutation('verify'),
-  } });
+    useUpdatePinMutation: () => mutation('update'),
+  },
+    '@/store/api/authApi': {
+      useRequestPinResetOtpMutation: () => mutation('send'),
+      useVerifyPinResetOtpMutation: () => mutation('verify'),
+      useResetPinMutation: () => mutation('reset'),
+    },
+    '@/services/tokenStorage': { clearTokens: async () => calls.push({ name: 'clear' }) },
+    '@/store/hooks': { useAppDispatch: () => value => calls.push(value) },
+    '@/store/slices/authSlice': { logout: () => ({ name: 'logout' }) },
+  });
   const { useProfilePin } = app.load('hooks/profile/useProfilePin.ts');
   const render = () => app.hooks.render(() => useProfilePin({ currentUser: { phone: '0991234567' } }));
   render().handleOpenPinModal();
   render().handleOldPinChange('1x234567');
   assert.equal(render().oldPin, '1234');
   await render().handleForgotPin();
-  assert.deepEqual(calls[0], { name: 'send', payload: { phone: '0991234567', context: 'update' } });
-  render().handleOtpInputChange('12345', 0);
+  assert.deepEqual(calls[0], { name: 'send', payload: { phone: '0991234567' } });
+  render().handleOtpInputChange('123456', 0);
   await render().handleVerifyOtpForPinChange();
   assert.equal(render().pinStep, 'newPin');
-  assert.deepEqual(calls[1].payload, { phone: '0991234567', otp: '12345' });
+  assert.deepEqual(calls[1].payload, { phone: '0991234567', otp: '123456' });
   render().handleNewPinChange('5678');
   render().handleNewPinConfirmChange('5678');
   await render().handleUpdatePin();
-  assert.deepEqual(calls[2], { name: 'reset', payload: { newPin: '5678' } });
+  assert.deepEqual(calls[2], { name: 'reset', payload: { resetToken: 'proof', newPin: '5678' } });
+  assert.deepEqual(calls.slice(3), [{ name: 'clear' }, { name: 'logout' }]);
   assert.equal(render().oldPin, '');
   assert.equal(render().newPin, '');
-  assert.deepEqual(render().otpCode, ['', '', '', '', '']);
+  assert.deepEqual(render().otpCode, ['', '', '', '', '', '']);
   app.hooks.unmount();
 });
+
+for (const refused of [false, true]) {
+  test(`profile sends the old PIN to the server and logs out only after success (refused=${refused})`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const calls = [], navigation = [];
+    const unused = () => [() => { throw new Error('OTP not expected for a known PIN'); }, { isLoading: false }];
+    const app = environment({
+      '@/store/api/userApi': {
+        useUpdatePinMutation: () => [payload => ({
+          unwrap: async () => {
+            calls.push({ name: 'update', payload });
+            if (refused) throw { status: 401 };
+            return {};
+          },
+          reset: () => calls.push({ name: 'discard' }),
+        }), { isLoading: false }],
+      },
+      '@/store/api/authApi': {
+        useRequestPinResetOtpMutation: unused,
+        useVerifyPinResetOtpMutation: unused,
+        useResetPinMutation: unused,
+      },
+      '@/services/tokenStorage': { clearTokens: async () => calls.push({ name: 'clear' }) },
+      '@/store/hooks': { useAppDispatch: () => value => calls.push(value) },
+      '@/store/slices/authSlice': { logout: () => ({ name: 'logout' }) },
+      'expo-router': { useRouter: () => ({ replace: route => navigation.push(route) }) },
+    });
+    const { useProfilePin } = app.load('hooks/profile/useProfilePin.ts');
+    const render = () => app.hooks.render(() => useProfilePin({ currentUser: { phone: '0991234567' } }));
+    render().handleOpenPinModal();
+    render().handleOldPinChange('1234');
+    render().handleVerifyOldPin();
+    render().handleNewPinChange('5678');
+    render().handleNewPinConfirmChange('5678');
+    await render().handleUpdatePin();
+    assert.deepEqual(calls[0], { name: 'update', payload: { oldPin: '1234', newPin: '5678' } });
+    assert.equal(render().oldPin, '');
+    assert.equal(render().newPin, '');
+    if (refused) {
+      assert.deepEqual(calls.map(call => call.name), ['update', 'discard']);
+      assert.equal(render().pinStep, 'oldPin');
+      assert.deepEqual(navigation, []);
+      assert.equal(app.dialogs.at(-1).variant, 'danger');
+    } else {
+      assert.deepEqual(calls.map(call => call.name), ['update', 'discard', 'clear', 'logout']);
+      assert.deepEqual(navigation, ['/auth?mode=login']);
+      assert.equal(render().pinModalVisible, false);
+      assert.equal(app.dialogs.at(-1).variant, 'success');
+    }
+    app.hooks.unmount();
+  });
+}
 
 test('restoring a payment rejects a stored reference belonging to another account', async () => {
   const deleted = [];

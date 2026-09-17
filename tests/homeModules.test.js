@@ -324,12 +324,15 @@ test('map camera animation is cancelled on blur, and invalid coordinates use the
   assert.equal(render().mapRegion.latitude, -4.325);
   render().mapRef.current = { animateToRegion: region => movements.push(region) };
   props.homeMapTrips = [trip('a')]; render();
+  assert.equal(movements.length, 1);
+  movements.length = 0;
+  props.homeMapTrips = [trip('b', { departure: arrival })]; render();
   props.isFocused = false; render();
   t.mock.timers.tick(1500);
   assert.deepEqual(movements, []);
   props.isFocused = true; render();
   assert.equal(movements.length, 1);
-  assert.equal(movements[0].longitude, departure.lng);
+  assert.equal(movements[0].longitude, arrival.lng);
   app.hooks.unmount();
 });
 

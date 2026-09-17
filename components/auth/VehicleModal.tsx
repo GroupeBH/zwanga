@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
+import { VehiclePlateHint } from '@/components/forms/VehiclePlateHint';
+import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_EXAMPLE } from '@/utils/vehiclePlate';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from './styles';
@@ -30,6 +32,7 @@ export function VehicleModal({
   onColorChange,
   onPlateChange,
 }: VehicleModalProps) {
+  const plateValid = isValidVehiclePlate(vehiclePlate);
   return (
     <Modal
       visible={visible}
@@ -84,17 +87,21 @@ export function VehicleModal({
               <Ionicons name="card-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="Plaque (ex: 1234AB01)"
+                accessibilityLabel="Plaque d'immatriculation"
+                placeholder={`Plaque (ex. ${VEHICLE_PLATE_EXAMPLE})`}
                 placeholderTextColor={Colors.gray[400]}
                 value={vehiclePlate}
-                onChangeText={onPlateChange}
+                onChangeText={(text) => onPlateChange(normalizeVehiclePlate(text))}
                 autoCapitalize="characters"
+                autoCorrect={false}
               />
             </View>
+            <VehiclePlateHint value={vehiclePlate} />
 
             <TouchableOpacity
-              style={[styles.mainButton, styles.mainButtonActive]}
-              onPress={onClose}
+              style={[styles.mainButton, plateValid ? styles.mainButtonActive : styles.mainButtonDisabled]}
+              disabled={!plateValid}
+              onPress={() => { if (plateValid) onClose(); }}
             >
               <Text style={styles.mainButtonText}>Valider</Text>
             </TouchableOpacity>

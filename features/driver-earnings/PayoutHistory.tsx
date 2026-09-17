@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import type { DriverPayout, DriverPayoutStatus } from '@/types';
 import { styles } from '@/features/screen-styles/app/driver-earnings';
-import { formatAmount, formatDate, getPayoutMessage, isPayoutPending } from './payoutModel';
+import { formatAmount, formatDate, getPayoutMessage, isPayoutPending, maskPhone } from './payoutModel';
 import { historyStyles } from './PayoutHistory.styles';
 
 const STATUS: Record<DriverPayoutStatus, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
@@ -46,6 +46,7 @@ export function PayoutHistory({ payouts, availableBalance, busy, canRetry, onRet
               <Text style={styles.rowTitle}>{formatAmount(payout.amount, payout.currency)}</Text>
               <Text style={[styles.rowMeta, { color: presentation.color }]}>{presentation.label} · {formatDate(payout.processedAt ?? payout.requestedAt ?? payout.createdAt)}</Text>
               <Text style={styles.rowMeta}>{getPayoutMessage(payout)}</Text>
+              <Text style={styles.rowMeta}>Vers {maskPhone(payout.phone)}</Text>
               <Text selectable style={styles.rowMeta}>Référence : {payout.reference ?? payout.orderNumber ?? payout.id}</Text>
               <View style={historyStyles.actions}>
                 {pending && payout.orderNumber && (

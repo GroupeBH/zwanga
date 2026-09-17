@@ -27,12 +27,27 @@ export function DriverNavigationControls({
   const menuWidth = Math.min(240, width - foundation.data.insets.left - foundation.data.insets.right - 96);
   const menuMaxHeight = height * 0.35;
   useEffect(() => { if (!foundation.data.isScreenActive) setOptionsVisible(false); }, [foundation.data.isScreenActive]);
+  const recenterOnMyPosition = () => {
+    if (!foundation.data.isScreenActive) return;
+    const location = normalizeDriverLocationObject(foundation.refs.currentLocationRef.current)
+      ?? normalizeDriverLocationObject(foundation.mapState.currentLocation);
+    if (!location) return;
+    foundation.focusMapOnCoordinates(
+      [{ latitude: location.coords.latitude, longitude: location.coords.longitude }],
+      {
+        durationMs: 300,
+        edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
+        logContext: 'recenter-driver',
+        singleCoordinateDelta: 0.005,
+      },
+    );
+  };
   const options: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; action: () => void; disabled?: boolean }[] = [
     { label: 'Prévenir mes proches', icon: 'shield-checkmark', action: () => foundation.mapState.setSecurityModalVisible(true) },
     { label: 'Modifier le trajet', icon: 'create-outline', action: tripActions.handleEditTripFromNavigation },
     { label: 'Partager le trajet', icon: 'share-social-outline', action: () => void tripActions.handleShareTrip(), disabled: foundation.data.isCreatingTripShareLink },
     ...(foundation.passengers.passengerMapLocations.length > 0 ? [{ label: 'Voir les passagers', icon: 'people' as const, action: passengerPresentation.fitVehicleAndPassengers }] : []),
-    { label: 'Recalculer l’itinéraire', icon: 'refresh', action: forceRecalculateRoute, disabled: foundation.mapState.isLoadingRoute },
+    { label: 'Ma position', icon: 'locate', action: recenterOnMyPosition },
   ];
   return (
     <View pointerEvents="box-none" style={[styles.floatingButtons, {
@@ -100,33 +115,22 @@ export function DriverNavigationControls({
         <Text style={menuStyles.caption}>Options</Text>
       </TouchableOpacity>
 
-      {/* Bouton recentrer */}
+      {/* Recalcul direct ; le recentrage reste dans les options. */}
       <TouchableOpacity
-        style={styles.floatingButton}
+        style={[styles.floatingButton, foundation.mapState.isLoadingRoute && styles.floatingButtonDisabled]}
         accessibilityRole="button"
-        accessibilityLabel="Recentrer sur ma position"
+        accessibilityLabel="Recalculer l’itinéraire"
+        accessibilityState={{ busy: foundation.mapState.isLoadingRoute, disabled: foundation.mapState.isLoadingRoute || !foundation.data.isScreenActive }}
+        disabled={foundation.mapState.isLoadingRoute || !foundation.data.isScreenActive}
         onPress={() => {
-          const loc = foundation.refs.currentLocationRef.current || foundation.mapState.currentLocation;
-          const normalizedLocation = normalizeDriverLocationObject(loc);
-          if (normalizedLocation) {
-            foundation.focusMapOnCoordinates(
-              [
-                {
-                  latitude: normalizedLocation.coords.latitude,
-                  longitude: normalizedLocation.coords.longitude,
-                },
-              ],
-              {
-                durationMs: 300,
-                edgePadding: { top: 150, right: 50, bottom: 300, left: 50 },
-                logContext: 'recenter-driver',
-                singleCoordinateDelta: 0.005,
-              },
-            );
-          }
+          if (foundation.mapState.isLoadingRoute || !foundation.data.isScreenActive) return;
+          setOptionsVisible(false);
+          forceRecalculateRoute();
         }}
       >
-        <Ionicons name="locate" size={24} color={Colors.primary} />
+        {foundation.mapState.isLoadingRoute
+          ? <ActivityIndicator size="small" color={Colors.primary} />
+          : <Ionicons name="refresh" size={22} color={Colors.primary} />}
       </TouchableOpacity>
     </View>
   );

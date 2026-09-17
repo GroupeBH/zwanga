@@ -1,7 +1,6 @@
 import { HomeHeader } from '@/components/home/HomeHeader';
 import { HomeLocationButton } from '@/components/home/HomeLocationButton';
 import { HomeMap } from '@/components/home/HomeMap';
-import { HomeTripsLoadingScreen } from '@/components/home/HomeTripsLoadingScreen';
 import { HomeTripsSheet } from '@/components/home/HomeTripsSheet';
 import { styles } from '@/features/home/HomeScreen.styles';
 import { useHomeController } from '@/hooks/home/useHomeController';
@@ -9,7 +8,7 @@ import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 export default function HomeScreen() {
   const home = useHomeController();
-  if (home.showInitialHomeLoader) return <HomeTripsLoadingScreen />;
+  // Trip reads must never replace/remount the native map, including on a slow network.
   return <SafeAreaView style={styles.container} edges={[]}>
     <HomeMap
       shouldRenderHomeMap={home.shouldRenderHomeMap}

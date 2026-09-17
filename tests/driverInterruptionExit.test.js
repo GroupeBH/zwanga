@@ -61,7 +61,9 @@ test('without onboard passengers: one confirmation pauses and leaves, with no su
   const dialog = app.dialogs[0];
   assert.match(dialog.message, /gestion/);
   assert.equal(dialog.actions.find(a => a.label === 'Annuler').onPress, undefined);
-  await dialog.actions.find(a => a.label === 'Interrompre et quitter').onPress();
+  const interruptAction = dialog.actions.find(a => a.label === 'Interrompre et quitter');
+  assert.equal(interruptAction.variant, 'danger', 'the interruption action uses the red danger style');
+  await interruptAction.onPress();
   assert.deepEqual(app.mutations, [{ type: 'pause', id: 'trip-1' }]);
   assert.equal(app.dialogs.length, 1);
   assert.equal(app.events.filter(e => e === 'exit').length, 1);

@@ -68,7 +68,7 @@ class ChatSocketClient {
       this.rooms.delete(bookingId);
       if (this.socket?.connected) this.socket.emit('leave_booking', { bookingId });
     }
-    if (this.rooms.size === 0) this.disconnect(false);
+    if (this.rooms.size === 0 && this.listeners.size === 0) this.disconnect(false);
   }
 
   async leaveBookingRoom(bookingId: string) { this.releaseRoom(bookingId); }
@@ -87,7 +87,13 @@ class ChatSocketClient {
 
   subscribeToMessages(listener: MessageListener) {
     this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
+    void this.connect().catch(error => {
+      if (__DEV__ && this.listeners.has(listener)) console.warn('[ChatSocket] Connexion indisponible:', error);
+    });
+    return () => {
+      this.listeners.delete(listener);
+      if (this.listeners.size === 0 && this.rooms.size === 0) this.disconnect(false);
+    };
   }
 
   /** Also invalidates a connection still waiting for secure storage. */
@@ -102,7 +108,7 @@ class ChatSocketClient {
   }
 
   refreshAuthentication() {
-    if (this.rooms.size === 0) return;
+    if (this.rooms.size === 0 && this.listeners.size === 0) return;
     const generation = this.generation;
     void getValidAccessToken().then((token) => {
       if (generation !== this.generation || !this.socket) return;

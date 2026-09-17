@@ -34,15 +34,15 @@ export interface ReferralRegistrationAttributionPayload {
  */
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
-    // Connexion avec téléphone et PIN (ou newPin pour réinitialisation)
-    login: builder.mutation<AuthResponse, { phone: string; pin?: string; newPin?: string }>({
-      query: (credentials: { phone: string; pin?: string; newPin?: string }) => ({
+    // Le login accepte uniquement le PIN actuel.
+    login: builder.mutation<AuthResponse, { phone: string; pin: string }>({
+      query: ({ phone, pin }) => ({
         url: '/auth/login',
         method: 'POST',
-        body: credentials,
+        body: { phone, pin },
       }),
       async onQueryStarted(
-        _arg: { phone: string; pin?: string; newPin?: string },
+        _arg: { phone: string; pin: string },
         { dispatch, queryFulfilled }: { dispatch: any; queryFulfilled: Promise<{ data: AuthResponse }> },
       ) {
         try {
@@ -73,6 +73,31 @@ export const authApi = baseApi.injectEndpoints({
         }
       },
       invalidatesTags: [currentUserTag],
+    }),
+
+    requestPinResetOtp: builder.mutation<{ message: string }, { phone: string }>({
+      query: ({ phone }) => ({
+        url: '/auth/pin/reset/request-otp',
+        method: 'POST',
+        body: { phone },
+      }),
+    }),
+    verifyPinResetOtp: builder.mutation<
+      { resetToken: string; expiresInSeconds: number },
+      { phone: string; otp: string }
+    >({
+      query: ({ phone, otp }) => ({
+        url: '/auth/pin/reset/verify-otp',
+        method: 'POST',
+        body: { phone, otp },
+      }),
+    }),
+    resetPin: builder.mutation<{ message: string }, { resetToken: string; newPin: string }>({
+      query: ({ resetToken, newPin }) => ({
+        url: '/auth/pin/reset',
+        method: 'POST',
+        body: { resetToken, newPin },
+      }),
     }),
 
     // Inscription d'un nouvel utilisateur
@@ -329,6 +354,9 @@ export const authApi = baseApi.injectEndpoints({
 
 export const {
   useLoginMutation,
+  useRequestPinResetOtpMutation,
+  useVerifyPinResetOtpMutation,
+  useResetPinMutation,
   useRegisterMutation,
   useVerifyPhoneMutation,
   useVerifyKYCMutation,

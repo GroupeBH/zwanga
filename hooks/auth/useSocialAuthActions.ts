@@ -131,7 +131,7 @@ export function useSocialAuthActions({
     setPin('');
     setPinConfirm('');
     setResetPinStep('otp');
-    setResetOtpCode(['', '', '', '', '']);
+    setResetOtpCode(['', '', '', '', '', '']);
     setResetNewPin('');
     setResetNewPinConfirm('');
     setFirstName(seed.firstName ?? '');
