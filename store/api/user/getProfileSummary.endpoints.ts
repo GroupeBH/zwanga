@@ -132,22 +132,13 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
       }),
     }),
 // Modifier le PIN (nécessite l'ancien PIN pour validation)
-    updatePin: builder.mutation<{ message: string }, { newPin: string }>({
-      query: ({ newPin }: { newPin: string }) => ({
+    updatePin: builder.mutation<{ message: string }, { oldPin: string; newPin: string }>({
+      query: ({ oldPin, newPin }) => ({
         url: '/users/pin/change',
-        method: 'PUT',
-        body: { newPin },
+        method: 'POST',
+        body: { oldPin, newPin },
       }),
-      invalidatesTags: [currentUserTag],
-    }),
-// Modifier le PIN avec OTP (quand l'utilisateur a oublié son PIN)
-    updatePinWithOtp: builder.mutation<{ message: string }, { newPin: string }>({
-      query: ({ newPin }: { newPin: string }) => ({
-        url: '/users/pin/change',
-        method: 'PUT',
-        body: { newPin },
-      }),
-      invalidatesTags: [currentUserTag],
+      // Le parcours déconnecte la session après le changement du PIN.
     }),
 // ==================== Favorite Locations Endpoints ====================
 

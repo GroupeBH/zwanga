@@ -31,6 +31,19 @@ test('ranking uses the departure, not the arrival or the driver live position', 
   assert.deepEqual(ids(rank([far, near], origin, noBookings)), ['near', 'far']);
 });
 
+test('within a 500-metre zone the earliest departure wins, then distance breaks time ties', () => {
+  const early = later(600000), late = later(3600000);
+  const closerLater = trip('closer-later', { departureTime: late });
+  const slightlyFartherEarlier = trip('earlier', { departureTime: early,
+    departure: { lat: origin.latitude + 0.002, lng: origin.longitude } });
+  const fartherSameTime = trip('farther-same-time', { departureTime: early,
+    departure: { lat: origin.latitude + 0.003, lng: origin.longitude } });
+  const nextZoneEarlier = trip('next-zone', { departureTime: later(300000),
+    departure: { lat: origin.latitude + 0.006, lng: origin.longitude } });
+  assert.deepEqual(ids(rank([nextZoneEarlier, closerLater, fartherSameTime, slightlyFartherEarlier], origin, noBookings)),
+    ['earlier', 'farther-same-time', 'closer-later', 'next-zone']);
+});
+
 test('unknown departure coordinates follow located trips without hiding them', () => {
   const unknown = [trip('missing', { departure: null }), trip('zero', { departure: { lat: 0, lng: 0 } }),
     trip('invalid', { departure: { lat: NaN, lng: 15 } }),

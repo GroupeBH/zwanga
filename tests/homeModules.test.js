@@ -157,7 +157,7 @@ test('passenger activity excludes own, linked and expired requests and preserves
   const requests = [request('available'), request('own', { passengerId: 'me' }), request('linked', { tripId: 'trip' }), request('expired', { departureDateMax: '2020-01-01' })];
   const app = environment({
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({ data: { unreadCount: 2 } }) },
-    '@/store/api/bookingApi': { useGetMyBookingsQuery: () => ({ data: [], refetch() {} }) },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [], refetch() {} }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
       useGetMyTripRequestsQuery: () => ({ data: [request('own')] }),
@@ -324,12 +324,15 @@ test('map camera animation is cancelled on blur, and invalid coordinates use the
   assert.equal(render().mapRegion.latitude, -4.325);
   render().mapRef.current = { animateToRegion: region => movements.push(region) };
   props.homeMapTrips = [trip('a')]; render();
+  assert.equal(movements.length, 1);
+  movements.length = 0;
+  props.homeMapTrips = [trip('b', { departure: arrival })]; render();
   props.isFocused = false; render();
   t.mock.timers.tick(1500);
   assert.deepEqual(movements, []);
   props.isFocused = true; render();
   assert.equal(movements.length, 1);
-  assert.equal(movements[0].longitude, departure.lng);
+  assert.equal(movements[0].longitude, arrival.lng);
   app.hooks.unmount();
 });
 

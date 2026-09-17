@@ -32,6 +32,7 @@ export function useTripDetailController() {
   });
 
   const activity = useTripDetailActivity({
+    isScreenActive: data.isScreenActive,
     setRefreshing: bookingState.setRefreshing,
     refetchTrip: data.refetchTrip,
     refetchMyBookings: data.refetchMyBookings,
@@ -69,6 +70,7 @@ export function useTripDetailController() {
   });
 
   useTripDetailTracking({
+    isScreenActive: data.isScreenActive,
     trip: data.trip,
     canTrackTrip: activity.canTrackTrip,
     isTripDriver: data.isTripDriver,
@@ -235,6 +237,7 @@ export function useTripDetailController() {
     : statusConfig.upcoming;
 
   const route = useTripDetailRouteCoordinates({
+    isScreenActive: data.isScreenActive,
     trip: data.trip,
     setRouteCoordinates: bookingState.setRouteCoordinates,
     setRouteInfo: bookingState.setRouteInfo,
@@ -244,6 +247,7 @@ export function useTripDetailController() {
 
   // Calculate estimated coordinate based on progress
   const mapPresentation = useTripDetailMapPresentation({
+    isScreenActive: data.isScreenActive,
     trip: data.trip,
     progress: access.progress,
     departureCoordinate: route.departureCoordinate,

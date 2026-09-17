@@ -1,16 +1,14 @@
 import { MainTab, SubTab, EditTripStep } from '../../features/trips/tripsModel';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useTripsFeeds } from './useTripsFeeds';
 import {
   useDeleteTripMutation,
   useGetMyRecurringTripsQuery,
-  useGetMyTripsQuery,
   useUpdateTripMutation,
 } from '@/store/api/tripApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { Trip } from '@/types';
-import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,36 +17,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function useTripsScreenState() {
   const router = useRouter();
-  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const [mainTab, setMainTab] = useState<MainTab>('published');
   const [subTab, setSubTab] = useState<SubTab>('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const {
-    data: myTrips,
-    isLoading: tripsLoading,
-    isFetching: tripsFetching,
-    isError: tripsError,
-    refetch: refetchTrips,
-  } = useGetMyTripsQuery(undefined, {
-    pollingInterval: isFocused ? 60000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
-  });
-  const {
-    data: myBookings,
-    isLoading: bookingsLoading,
-    isFetching: bookingsFetching,
-    isError: bookingsError,
-    refetch: refetchBookings,
-  } = useGetMyBookingsQuery(undefined, {
-    pollingInterval: isFocused ? 60000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
-  });
+  const feeds = useTripsFeeds(mainTab, subTab, searchQuery);
+  const { myTrips, myBookings, tripsLoading, tripsFetching, tripsError, refetchTrips,
+    bookingsLoading, bookingsFetching, bookingsError, refetchBookings } = feeds;
   const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
   const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery();
   const activeUserVehicles = useMemo(
@@ -80,6 +56,7 @@ export function useTripsScreenState() {
   const [tripsGuideVisible, setTripsGuideVisible] = useState(false);
 
   return {
+    feeds,
     shouldShowTripsGuide,
     setTripsGuideVisible,
     completeTripsGuide,

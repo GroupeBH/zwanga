@@ -3,6 +3,7 @@ import { getCurrentTripInfo } from '@/services/ongoingTripNotification';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
@@ -17,7 +18,10 @@ export function useHomeContext() {
 
   const { showDialog } = useDialog();
 
+  // Route visibility must not toggle when a native permission dialog pauses the app.
   const isFocused = useIsFocused();
+  const isAppActive = useAppIsActive();
+  const isScreenActive = isFocused && isAppActive;
 
   const dispatch = useAppDispatch();
 
@@ -40,6 +44,7 @@ export function useHomeContext() {
   return {
     isDriver,
     isFocused,
+    isScreenActive,
     currentUser,
     trackedTripInfo,
     locationRadiusKm,

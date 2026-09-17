@@ -173,6 +173,45 @@ test('a late chat connection cannot remove rooms belonging to a new authenticate
   assert.equal(sockets[0].connected, false);
 });
 
+test('direct chat subscriptions share a socket and closing one cannot disconnect the other', async () => {
+  const { sockets, load } = socketFixture();
+  const chat = load('services/chatSocket.ts').chatSocket, received = [];
+  const first = chat.subscribeToMessages(message => received.push(message));
+  const second = chat.subscribeToMessages(message => received.push(message));
+  await tick();
+  assert.equal(sockets.length, 1);
+  sockets[0].fire('new_message', { id: 'a' });
+  assert.equal(received.length, 2);
+  first();
+  assert.equal(sockets[0].connected, true);
+  sockets[0].fire('new_message', { id: 'b' });
+  assert.equal(received.length, 3);
+  second();
+  assert.equal(sockets[0].connected, false);
+  assert.equal(sockets[0].handlers.size, 0);
+});
+
+test('closing a direct chat while its token is loading does not create an orphaned connection', async () => {
+  const token = deferred(), { sockets, load } = socketFixture(() => token.promise);
+  const chat = load('services/chatSocket.ts').chatSocket;
+  const stop = chat.subscribeToMessages(() => {});
+  stop(); token.resolve('token'); await tick();
+  assert.equal(sockets.length, 0);
+});
+
+test('fifty chat open/close cycles release all listeners and sockets', async () => {
+  const { sockets, load } = socketFixture(), chat = load('services/chatSocket.ts').chatSocket;
+  for (let i = 0; i < 50; i++) {
+    const stop = chat.subscribeToMessages(() => {});
+    await chat.joinBookingRoom('booking');
+    stop();
+    assert.equal(sockets.at(-1).connected, true);
+    await chat.leaveBookingRoom('booking');
+    assert.equal(sockets.filter(socket => socket.connected).length, 0);
+    assert.equal(sockets.reduce((sum, socket) => sum + socket.handlers.size, 0), 0);
+  }
+});
+
 test('tracking keeps one connection and suppresses only acknowledged passenger positions', async () => {
   const { sockets, load } = socketFixture();
   const tracking = load('services/trackingSocket.ts').trackingSocket;

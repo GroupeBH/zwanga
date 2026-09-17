@@ -38,7 +38,7 @@ function render(overrides = {}) {
     highlightedRequestDistance: 500,
     ...overrides,
   });
-  return { routes, buttons: nodes(tree).filter(node => node.type === 'Button') };
+  return { routes, elements: nodes(tree), buttons: nodes(tree).filter(node => node.type === 'Button') };
 }
 
 test('the upcoming trip remains visible before the nearby request and both keep their destinations', () => {
@@ -76,4 +76,15 @@ test('a received reservation also precedes a highlighted request without losing 
   assert.equal(buttons[0].props.accessibilityLabel, 'Ouvrir la réservation reçue');
   buttons.forEach(button => button.props.onPress());
   assert.deepEqual(routes, ['/trip/manage/reserved', '/request/nearest']);
+});
+
+test('reservation and upcoming trip departure/destination names are bold without making the separator bold', () => {
+  const { elements } = render({
+    featuredDriverReservation: { trip: { ...upcoming, id: 'reserved' } },
+    featuredDriverReservationStatus: { bg: '#fff', color: '#000', icon: 'time', label: 'À confirmer' },
+    featuredDriverReservationPassengerName: 'Alex', featuredDriverReservationSeatsLabel: '1 place',
+  });
+  const labels = elements.filter(node => node.type === 'Text' && ['Gombe', 'Lemba'].includes(node.props.children));
+  assert.equal(labels.length, 4);
+  labels.forEach(label => assert.equal(label.props.style.fontWeight, '700'));
 });

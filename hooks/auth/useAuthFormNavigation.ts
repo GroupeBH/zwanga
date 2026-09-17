@@ -189,7 +189,7 @@ export function useAuthFormNavigation({
     if (step === 'resetPin') {
       setStep('pin');
       setResetPinStep('otp');
-      setResetOtpCode(['', '', '', '', '']);
+      setResetOtpCode(['', '', '', '', '', '']);
       setResetNewPin('');
       setResetNewPinConfirm('');
       return;

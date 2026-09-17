@@ -1,6 +1,7 @@
 import { usePublishVehicleState } from './usePublishVehicleState';
 import type { TripRequestVehicleType, Vehicle } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import React from 'react';
 import { Keyboard } from 'react-native';
 
@@ -44,6 +45,10 @@ export function usePublishVehicleCreation({
       setVehicleFormError('Veuillez choisir le type et remplir tous les champs du véhicule.');
       return;
     }
+    if (!isValidVehiclePlate(vehicleLicensePlate)) {
+      setVehicleFormError(VEHICLE_PLATE_FORMAT_MESSAGE);
+      return;
+    }
 
     setVehicleFormError(null);
 
@@ -53,7 +58,7 @@ export function usePublishVehicleCreation({
         brand: vehicleBrand.trim(),
         model: vehicleModel.trim(),
         color: vehicleColor.trim(),
-        licensePlate: vehicleLicensePlate.trim(),
+        licensePlate: normalizeVehiclePlate(vehicleLicensePlate),
       }).unwrap();
 
       Keyboard.dismiss();

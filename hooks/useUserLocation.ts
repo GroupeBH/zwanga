@@ -21,6 +21,9 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
   const lastKnownLocation = useAppSelector(selectUserTrackedLocation);
   const watcherRef = useRef<Location.LocationSubscription | null>(null);
   const watcherGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+  const permissionInFlightRef = useRef<Promise<Location.LocationPermissionResponse> | null>(null);
+  const automaticPermissionAttemptedRef = useRef(false);
   const isNearbyTracking = options.trackingProfile === 'nearby';
 
   const stopWatching = useCallback(() => {
@@ -30,15 +33,37 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     dispatch(setTrackingEnabled(false));
   }, [dispatch]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; stopWatching(); };
+  }, [stopWatching]);
+
+  const getPermission = useCallback((allowPrompt: boolean) => {
+    if (permissionInFlightRef.current) return permissionInFlightRef.current;
+    const generation = watcherGenerationRef.current;
+    const pending = (async () => {
+      let permission = await Location.getForegroundPermissionsAsync();
+      if (mountedRef.current && generation === watcherGenerationRef.current
+        && AppState.currentState === 'active' && allowPrompt && permission.status !== Location.PermissionStatus.GRANTED
+        && permission.canAskAgain !== false) {
+        permission = await Location.requestForegroundPermissionsAsync();
+      }
+      return permission;
+    })();
+    permissionInFlightRef.current = pending;
+    const clear = () => { if (permissionInFlightRef.current === pending) permissionInFlightRef.current = null; };
+    void pending.then(clear, clear);
+    return pending;
+  }, []);
+
   const startWatching = useCallback(async () => {
+    if (!mountedRef.current || AppState.currentState !== 'active' || watcherRef.current) return;
     const generation = watcherGenerationRef.current + 1;
     watcherGenerationRef.current = generation;
-    watcherRef.current?.remove();
-    watcherRef.current = null;
 
     try {
       const enabled = await Location.hasServicesEnabledAsync();
-      if (generation !== watcherGenerationRef.current) {
+      if (!mountedRef.current || generation !== watcherGenerationRef.current || AppState.currentState !== 'active') {
         return;
       }
 
@@ -52,8 +77,11 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
           accuracy: isNearbyTracking ? Location.Accuracy.Balanced : Location.Accuracy.High,
           timeInterval: isNearbyTracking ? 15000 : 5000,
           distanceInterval: isNearbyTracking ? 50 : 25,
+          // Passive tracking must not open an Android settings activity on every resume.
+          mayShowUserSettingsDialog: false,
         },
         (location) => {
+          if (generation !== watcherGenerationRef.current || AppState.currentState !== 'active') return;
           dispatch(
             setLastKnownLocation({
               coords: {
@@ -78,34 +106,34 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     }
   }, [dispatch, isNearbyTracking]);
 
-  const requestPermission = useCallback(async () => {
+  const requestPermission = useCallback(async (allowPrompt = true) => {
+    const generation = watcherGenerationRef.current;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      dispatch(setLocationPermission(status as any));
+      const { status } = await getPermission(allowPrompt);
+      if (!mountedRef.current || generation !== watcherGenerationRef.current) return;
+      dispatch(setLocationPermission(status));
 
       if (status === Location.PermissionStatus.GRANTED) {
         await startWatching();
       }
     } catch (error) {
+      if (!mountedRef.current || generation !== watcherGenerationRef.current) return;
       console.warn('Permission localisation refusée', error);
       dispatch(setLocationPermission('denied'));
     }
-  }, [dispatch, startWatching]);
+  }, [dispatch, getPermission, startWatching]);
 
   const getCurrentLocation = useCallback(async () => {
     try {
-      let { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== Location.PermissionStatus.GRANTED) {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        status = permission.status;
-      }
-
-      dispatch(setLocationPermission(status as any));
+      const { status } = await getPermission(true);
+      if (!mountedRef.current) return null;
+      dispatch(setLocationPermission(status));
       if (status !== Location.PermissionStatus.GRANTED) {
         return null;
       }
 
       const enabled = await Location.hasServicesEnabledAsync();
+      if (!mountedRef.current) return null;
       dispatch(setTrackingEnabled(enabled));
       if (!enabled) {
         return null;
@@ -119,6 +147,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
         requiredAccuracy: isNearbyTracking ? 250 : 100,
       });
 
+      if (!mountedRef.current) return null;
       if (!location) {
         try {
           location = await Location.getCurrentPositionAsync({
@@ -136,6 +165,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
         }
       }
 
+      if (!mountedRef.current) return null;
       dispatch(
         setLastKnownLocation({
           coords: {
@@ -152,7 +182,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
       console.warn('Impossible de récupérer la position actuelle', error);
       return null;
     }
-  }, [dispatch, isNearbyTracking]);
+  }, [dispatch, getPermission, isNearbyTracking]);
 
   useEffect(() => {
     if (!options.autoRequest) {
@@ -160,7 +190,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     }
 
     let cancelled = false;
-    let startInFlight = false;
+    let pendingStart: Promise<void> | null = null;
     let backgroundStopTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const clearBackgroundStop = () => {
@@ -171,22 +201,18 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     };
 
     const syncWatcherWithAppState = (state = AppState.currentState) => {
+      if (cancelled) return;
       if (state === 'active') {
         clearBackgroundStop();
-        if (watcherRef.current || startInFlight) {
+        if (watcherRef.current || pendingStart) {
           return;
         }
 
-        startInFlight = true;
-        void requestPermission()
-          .then(() => {
-            if (cancelled || AppState.currentState !== 'active') {
-              stopWatching();
-            }
-          })
-          .finally(() => {
-            startInFlight = false;
-          });
+        const allowPrompt = !automaticPermissionAttemptedRef.current;
+        automaticPermissionAttemptedRef.current = true;
+        const started = requestPermission(allowPrompt);
+        pendingStart = started;
+        void started.finally(() => { if (pendingStart === started) pendingStart = null; });
         return;
       }
 
@@ -194,6 +220,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
       backgroundStopTimeout = setTimeout(() => {
         backgroundStopTimeout = null;
         if (!cancelled && AppState.currentState !== 'active') {
+          pendingStart = null;
           stopWatching();
         }
       }, 2_000);

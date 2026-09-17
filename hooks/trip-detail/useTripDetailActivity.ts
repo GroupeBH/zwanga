@@ -1,11 +1,10 @@
 import { useTripDetailData } from './useTripDetailData';
 import { useTripDetailBookingState } from './useTripDetailBookingState';
-import type { Booking } from '@/types';
-import { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from '@/utils/reanimated';
+import type { Booking, Trip, User, Review } from '@/types';
 import React, { useCallback, useEffect, useMemo } from 'react';
-import type { Trip, User, Review } from '@/types';
 
 interface Params {
+  isScreenActive: boolean;
   setRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
   refetchTrip: ReturnType<typeof useTripDetailData>['refetchTrip'];
   refetchMyBookings: ReturnType<typeof useTripDetailData>['refetchMyBookings'];
@@ -30,6 +29,7 @@ interface Params {
 }
 
 export function useTripDetailActivity({
+  isScreenActive,
   setRefreshing,
   refetchTrip,
   refetchMyBookings,
@@ -66,7 +66,7 @@ export function useTripDetailActivity({
     } finally {
       setRefreshing(false);
     }
-  }, [refetchTrip, refetchMyBookings, refetchTripBookings, refetchKycStatus]);
+  }, [refetchTrip, refetchMyBookings, refetchTripBookings, refetchKycStatus, setRefreshing]);
   const driverReviewCount = driverReviews?.length ?? 0;
   const rawDriverReviewAverage =
     driverAverageData?.averageRating ??
@@ -87,47 +87,31 @@ export function useTripDetailActivity({
     presentedTripDetailAutoProgressKeysRef.current.clear();
     highestTripDetailAutoProgressPriorityRef.current.clear();
     tripDetailBookingStateRef.current.clear();
-  }, [tripId]);
+  }, [tripId, presentedTripDetailAutoProgressKeysRef, highestTripDetailAutoProgressPriorityRef, tripDetailBookingStateRef]);
 
   useEffect(() => {
-    if (shouldShowTripGuide) {
+    if (isScreenActive && shouldShowTripGuide) {
       setTripGuideVisible(true);
     }
-  }, [shouldShowTripGuide]);
+  }, [isScreenActive, shouldShowTripGuide, setTripGuideVisible]);
 
   const dismissTripGuide = () => {
     setTripGuideVisible(false);
     completeTripGuide();
   };
 
-  const pulseAnim = useSharedValue(1);
-
-  // console.log('trip', trip);
-
+  const shouldWatchDriver = isScreenActive && isTripDriver && trip?.status === 'ongoing';
   useEffect(() => {
-    if (trip?.status === 'ongoing') {
-      pulseAnim.value = withRepeat(
-        withTiming(1.2, { duration: 1000 }),
-        -1,
-        true
-      );
-    }
-  }, [trip?.status]);
-
-  useEffect(() => {
-    if (!trip || !isTripDriver || trip.status !== 'ongoing') {
-      stopWatchingRef.current?.();
+    const stopWatching = stopWatchingRef.current;
+    if (!shouldWatchDriver) {
+      stopWatching?.();
       return;
     }
     requestLocationRef.current?.();
     return () => {
-      stopWatchingRef.current?.();
+      stopWatching?.();
     };
-  }, [trip?.id, trip?.status, isTripDriver]);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseAnim.value }],
-  }));
+  }, [shouldWatchDriver, tripId, requestLocationRef, stopWatchingRef]);
 
   const activeBooking = useMemo(() => {
     if (!trip || !myBookings) {
@@ -150,6 +134,7 @@ export function useTripDetailActivity({
   const hasAcceptedBooking = activeBooking?.status === 'accepted';
   // Activer le suivi live uniquement pour un trajet en cours.
   const canTrackTrip = Boolean(
+    isScreenActive &&
     trip &&
     trip.status === 'ongoing' &&
     user &&

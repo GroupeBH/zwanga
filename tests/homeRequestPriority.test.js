@@ -69,7 +69,7 @@ test('Home ranks the complete eligible list by driver position before applying i
   const loadHook = loader({
     ...nativeMocks, react: hooks.react,
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({}) },
-    '@/store/api/bookingApi': { useGetMyBookingsQuery: () => ({ data: [] }) },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
       useGetMyTripRequestsQuery: () => ({ data: [] }),

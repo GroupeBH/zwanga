@@ -7,9 +7,10 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectConversations, selectUser } from '@/store/selectors';
 import { setConversations } from '@/store/slices/messagesSlice';
 import { Ionicons } from '@expo/vector-icons';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Keyboard, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MessagesScreen() {
@@ -18,6 +19,8 @@ export default function MessagesScreen() {
   const user = useAppSelector(selectUser);
   const conversations = useAppSelector(selectConversations);
   const [search, setSearch] = useState('');
+  const opening = useRef(false);
+  useEffect(() => { opening.current = false; }, [isScreenActive]);
   const { data, isLoading, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useListConversationPagesInfiniteQuery(undefined, {
     skip: !isScreenActive,
     refetchOnMountOrArgChange: 30,
@@ -70,7 +73,7 @@ export default function MessagesScreen() {
     }
     const normalized = search.trim().toLowerCase();
     return conversations.filter((conversation) => {
-      const counterpart = conversation.participants.find((participant) => participant.userId !== user?.id);
+      const counterpart = conversation.participants?.find((participant) => participant.userId !== user?.id);
       const counterpartName = counterpart?.user
         ? `${counterpart.user.firstName ?? ''} ${counterpart.user.lastName ?? ''}`.trim()
         : '';
@@ -88,7 +91,7 @@ export default function MessagesScreen() {
     if (conversation.title) {
       return conversation.title;
     }
-    const counterpart = conversation.participants.find((participant) => participant.userId !== user?.id);
+    const counterpart = conversation.participants?.find((participant) => participant.userId !== user?.id);
     if (counterpart?.user) {
       const fullName = `${counterpart.user.firstName ?? ''} ${counterpart.user.lastName ?? ''}`.trim();
       if (fullName) {
@@ -115,7 +118,8 @@ export default function MessagesScreen() {
             try {
               await deleteConversation({ conversationId }).unwrap();
             } catch (error) {
-              console.warn('[Messages] Failed to delete conversation', error);
+              showDialog({ title: 'Suppression impossible', variant: 'danger',
+                message: getApiErrorMessage(error, 'La conversation n’a pas pu être supprimée. Réessayez.') });
             }
           },
         },
@@ -135,12 +139,15 @@ export default function MessagesScreen() {
         <View style={styles.conversationRow}>
           <TouchableOpacity
             style={styles.conversationItem}
-            onPress={() =>
+            onPress={() => {
+              if (!isScreenActive || opening.current) return;
+              opening.current = true;
+              Keyboard.dismiss();
               router.push({
                 pathname: '/chat/[id]',
                 params: { id: conversation.id, title },
-              })
-            }
+              });
+            }}
           >
             <View style={styles.avatarContainer}>
               <View style={styles.avatar} />
@@ -180,7 +187,7 @@ export default function MessagesScreen() {
         </View>
       );
     },
-    [formatTimestamp, getConversationTitle, handleDeleteConversation, router],
+    [formatTimestamp, getConversationTitle, handleDeleteConversation, router, isScreenActive],
   );
 
   return (
@@ -230,11 +237,11 @@ export default function MessagesScreen() {
         updateCellsBatchingPeriod={50}
         windowSize={7}
         refreshing={isFetching && !isFetchingNextPage}
-        onRefresh={refetch}
-        onEndReached={() => { if (hasNextPage && !isFetching) void fetchNextPage(); }}
+        onRefresh={() => { if (isScreenActive) void refetch(); }}
+        onEndReached={() => { if (isScreenActive && hasNextPage && !isFetching) void fetchNextPage(); }}
         onEndReachedThreshold={0.35}
         ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={Colors.primary} /> : null}
-        removeClippedSubviews
+        removeClippedSubviews={Platform.OS === 'android'}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
@@ -248,5 +255,4 @@ export default function MessagesScreen() {
     </SafeAreaView>
   );
 }
-
 

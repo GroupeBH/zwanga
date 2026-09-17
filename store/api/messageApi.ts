@@ -1,6 +1,7 @@
 import { baseApi } from './baseApi';
 import type { Conversation, Message } from '../../types';
 import type { BaseEndpointBuilder } from './types';
+import { buildMessagePages } from './messages/pages';
 
 type PaginatedResponse<T> = {
   data: T[];
@@ -49,6 +50,7 @@ type DeleteConversationPayload = {
 
 export const messageApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
+    ...buildMessagePages(builder),
     listConversationPages: builder.infiniteQuery<PaginatedResponse<Conversation>, void, number>({
       keepUnusedDataFor: 30,
       infiniteQueryOptions: {
@@ -190,6 +192,7 @@ export const messageApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetConversationMessagePagesInfiniteQuery,
   useListConversationPagesInfiniteQuery,
   useListConversationsQuery,
   useLazyListConversationsQuery,

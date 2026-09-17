@@ -4,6 +4,7 @@ import { styles } from '../../features/screen-styles/app/tabs/trips/index';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { Colors } from '@/constants/styles';
+import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
@@ -50,7 +51,7 @@ export default function TripsScreen() {
               numberOfLines={1}
               style={[styles.mainTabText, model.state.mainTab === 'published' && styles.mainTabTextActive]}
             >
-              Publiés {model.list.trips.length}
+              Publiés
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -64,7 +65,7 @@ export default function TripsScreen() {
               numberOfLines={1}
               style={[styles.mainTabText, model.state.mainTab === 'bookings' && styles.mainTabTextActive]}
             >
-              Réservations {model.state.myBookings?.length ?? 0}
+              Réservations
             </Text>
           </TouchableOpacity>
         </View>
@@ -79,7 +80,7 @@ export default function TripsScreen() {
               numberOfLines={1}
               style={[styles.subTabText, model.state.subTab === 'upcoming' && styles.subTabTextActive]}
             >
-              À venir {model.state.mainTab === 'published' ? model.list.upcomingTrips.length : model.list.upcomingBookings.length}
+              À venir
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -90,7 +91,7 @@ export default function TripsScreen() {
               numberOfLines={1}
               style={[styles.subTabText, model.state.subTab === 'completed' && styles.subTabTextActive]}
             >
-              Terminés {model.state.mainTab === 'published' ? model.list.completedTrips.length : model.list.completedBookingsList.length}
+              Historique
             </Text>
           </TouchableOpacity>
         </View>
@@ -101,6 +102,7 @@ export default function TripsScreen() {
             value={model.state.searchQuery}
             onChangeText={model.state.setSearchQuery}
             placeholder="Rechercher..."
+            maxLength={100}
             placeholderTextColor={Colors.gray[400]}
             style={styles.searchInput}
             returnKeyType="search"
@@ -160,10 +162,14 @@ export default function TripsScreen() {
         maxToRenderPerBatch={5}
         updateCellsBatchingPeriod={50}
         windowSize={7}
+        ListFooterComponent={model.state.feeds.history ? <HistoryPaginationFooter
+          loaded={model.list.tripListData.length} hasMore={model.state.feeds.hasMore}
+          loading={model.state.feeds.loadingMore} error={model.state.feeds.historyError}
+          onLoad={model.state.feeds.loadMore} /> : null}
         removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl
-            refreshing={model.state.isRefreshing || model.list.isFetching}
+            refreshing={model.state.isRefreshing || (model.list.isFetching && !model.state.feeds.loadingMore)}
             onRefresh={model.list.handleRefresh}
             tintColor={Colors.primary}
           />
@@ -228,10 +234,10 @@ export default function TripsScreen() {
                   : model.state.mainTab === 'published'
                     ? model.state.subTab === 'upcoming'
                       ? "Vous n'avez pas de trajet à venir"
-                      : "Vous n'avez pas encore terminé de trajet"
+                      : "Aucun trajet dans votre historique"
                     : model.state.subTab === 'upcoming'
                       ? "Vous n'avez pas de réservation à venir"
-                      : "Vous n'avez pas encore terminé de réservation"}
+                      : "Aucune réservation dans votre historique"}
               </Text>
               {model.list.normalizedSearchQuery ? (
                 <TouchableOpacity
@@ -369,4 +375,3 @@ export default function TripsScreen() {
     </SafeAreaView>
   );
 }
-

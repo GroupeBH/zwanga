@@ -114,7 +114,7 @@ export function useDriverTripActions({
           { label: 'Annuler', variant: 'ghost' },
           {
             label: 'Interrompre et quitter',
-            variant: 'secondary',
+            variant: 'danger',
             onPress: pauseTripWithoutPassengerConfirmation,
           },
         ],

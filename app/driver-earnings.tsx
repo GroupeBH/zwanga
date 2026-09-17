@@ -9,6 +9,7 @@ import {
 import type { DriverEarning } from '@/types';
 import { formatAmount, formatDate, maskPhone } from '@/features/driver-earnings/payoutModel';
 import { PayoutHistory } from '@/features/driver-earnings/PayoutHistory';
+import { PayoutDestinationModal } from '@/features/driver-earnings/PayoutDestinationModal';
 import { useDriverPayout } from '@/hooks/driver-earnings/useDriverPayout';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -86,8 +87,9 @@ export default function DriverEarningsScreen() {
       setRefreshing(false);
     }
   }, [refetchSummary, refetchEarnings, refetchPayouts]);
-  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, handlePayout, checkPayout, storageError, hasUnconfirmedIntent } =
-    useDriverPayout({ summary, payouts, refresh });
+  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, checkPayout, storageError, hasUnconfirmedIntent,
+    payoutForm, openPayoutForm, setPayoutPhone, confirmPayoutForm, closePayoutForm } =
+    useDriverPayout({ summary, payouts, refresh, isActive: isScreenActive });
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -133,7 +135,7 @@ export default function DriverEarningsScreen() {
           <TouchableOpacity
             accessibilityRole="button"
             disabled={!canOpenWithdrawal}
-            onPress={() => handlePayout()}
+            onPress={() => openPayoutForm()}
             style={[styles.payoutButton, !canOpenWithdrawal && styles.payoutButtonDisabled]}
           >
             {isWithdrawing ? (
@@ -146,11 +148,11 @@ export default function DriverEarningsScreen() {
             </Text>
           </TouchableOpacity>
           <Text style={styles.payoutDestination}>
-            Destination : {maskPhone(summary?.payoutPhone)} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
+            Numéro habituel : {summary?.payoutPhone ? maskPhone(summary.payoutPhone) : 'Non renseigné'} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
           </Text>
 
           <Text style={styles.balanceHint}>
-            Zwanga verse vos gains sur votre Mobile Money.
+            Zwanga verse vos gains sur votre Mobile Money. Vous pouvez choisir un autre numéro avant de confirmer.
           </Text>
           {storageError && <Text style={styles.balanceHint}>Impossible de restaurer le suivi du versement sur ce téléphone. Contactez l’assistance avant une nouvelle demande.</Text>}
           <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/support')} style={styles.headerButton} accessibilityLabel="Contacter l’assistance pour mes gains">
@@ -173,7 +175,7 @@ export default function DriverEarningsScreen() {
         </Animated.View>
 
         <PayoutHistory payouts={recentPayouts} availableBalance={availableBalance} busy={isWithdrawing}
-          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={handlePayout} onCheck={checkPayout}
+          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={openPayoutForm} onCheck={checkPayout}
           onSupport={() => router.push('/support')} />
 
         <Animated.View entering={FadeInDown.delay(150)} style={styles.section}>
@@ -231,6 +233,10 @@ export default function DriverEarningsScreen() {
           )}
         </Animated.View>
       </ScrollView>
+      <PayoutDestinationModal visible={Boolean(payoutForm)} amount={payoutForm?.amount ?? 0}
+        currency={currency} phone={payoutForm?.phone ?? ''} defaultPhone={summary?.payoutPhone}
+        disabled={!canOpenWithdrawal} onChangePhone={setPayoutPhone}
+        onContinue={confirmPayoutForm} onClose={closePayoutForm} />
     </SafeAreaView>
   );
 }

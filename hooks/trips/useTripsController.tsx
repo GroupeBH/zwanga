@@ -32,6 +32,7 @@ export function useTripsController() {
   };
 
   const list = useTripsListData({
+    pagedHistory: state.feeds.history,
     myTrips: state.myTrips,
     recurringTemplates: state.recurringTemplates,
     setIsRefreshing: state.setIsRefreshing,

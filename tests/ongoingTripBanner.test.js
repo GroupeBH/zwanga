@@ -30,8 +30,8 @@ function banner(initial = {}) {
       useAnimatedStyle: fn => fn(), withSpring: value => value, withTiming: value => value,
     },
     '@/store/hooks': { useAppSelector: () => data.user }, '@/store/selectors': { selectUser() {} },
-    '@/store/api/tripApi': { useGetMyTripsQuery: () => ({ data: data.trips }) },
-    '@/store/api/bookingApi': { useGetMyBookingsQuery: () => ({ data: data.bookings }) },
+    '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: data.trips }) },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: data.bookings }) },
     '@/services/ongoingTripNotification': {
       getCurrentTripInfo: () => data.tracked ?? null,
       startOngoingTripTracking: value => starts.push(value), stopOngoingTripTracking: () => stops.push(true),

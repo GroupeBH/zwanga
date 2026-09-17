@@ -86,7 +86,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
   },
   {
     id: 'cash',
-    label: "Paiement à l'arrivée",
+    label: 'Paiement cash',
     description: 'Réglez directement auprès du conducteur',
     icon: 'cash-outline',
     selection: 'radio',
@@ -94,7 +94,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
 ];
 export const getTripPaymentModeLabel = (mode?: TripPaymentMode | null) =>
   TRIP_PAYMENT_MODE_OPTIONS.find((option) => option.id === mode)?.label ??
-  "Paiement à l'arrivée";
+  'Paiement cash';
 export const getTripPaymentSelectionIcon = (
   option: (typeof TRIP_PAYMENT_MODE_OPTIONS)[number],
   selected: boolean,

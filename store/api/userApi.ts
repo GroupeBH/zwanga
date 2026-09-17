@@ -137,7 +137,6 @@ export const {
   useSendPhoneVerificationOtpMutation,
   useVerifyPhoneOtpMutation,
   useUpdatePinMutation,
-  useUpdatePinWithOtpMutation,
   // Favorite Locations
   useGetFavoriteLocationsQuery,
   useGetDefaultFavoriteLocationQuery,

@@ -2,6 +2,8 @@ import type { Trip } from '@/types';
 import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import { getTripLocationCoordinate, normalizeTripMapCoordinate, type MapCoordinate } from '@/utils/tripCoordinates';
 
+export const HOME_DEPARTURE_DISTANCE_BAND_METERS = 500;
+
 /** Rank departures locally, without a routing request or mutating the RTK Query cache. */
 export function rankHomeTripsByProximity(
   trips: readonly Trip[],
@@ -36,10 +38,13 @@ export function rankHomeTripsByProximity(
     if (left.distance !== null && right.distance === null) return -1;
     if (left.distance === null && right.distance !== null) return 1;
     if (left.distance !== null && right.distance !== null && left.distance !== right.distance) {
-      return left.distance - right.distance;
+      const distanceBand = Math.floor(left.distance / HOME_DEPARTURE_DISTANCE_BAND_METERS)
+        - Math.floor(right.distance / HOME_DEPARTURE_DISTANCE_BAND_METERS);
+      if (distanceBand) return distanceBand;
     }
-    // Keep the existing chronological fallback when GPS is missing or distances match.
+    // Within the same nearby zone, prefer the earliest departure, not a few metres gained.
     if (left.today !== right.today) return left.today ? -1 : 1;
-    return left.departureTime - right.departureTime || left.trip.id.localeCompare(right.trip.id);
+    return left.departureTime - right.departureTime
+      || (left.distance ?? 0) - (right.distance ?? 0) || left.trip.id.localeCompare(right.trip.id);
   }).map(({ trip }) => trip);
 }

@@ -6,8 +6,8 @@ import {
   startOngoingTripTracking,
   stopOngoingTripTracking,
 } from '@/services/ongoingTripNotification';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery } from '@/store/api/tripApi';
+import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { formatDateTime } from '@/utils/dateHelpers';
@@ -20,6 +20,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTim
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type OngoingTripBannerPosition = 'top' | 'bottom';
+const routeNameEmphasis = { fontWeight: '700' as const };
 
 interface OngoingTripBannerProps {
   position?: OngoingTripBannerPosition;
@@ -256,14 +257,14 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
               <View style={styles.routeRow}>
                 <View style={styles.routeDot} />
-                <Text style={styles.routeText} numberOfLines={1}>
+                <Text style={[styles.routeText, routeNameEmphasis]} numberOfLines={1}>
                   {trip.departure.name}
                 </Text>
               </View>
 
               <View style={styles.routeRow}>
                 <Ionicons name="navigate" size={14} color={Colors.primary} style={styles.routeIcon} />
-                <Text style={styles.routeText} numberOfLines={1}>
+                <Text style={[styles.routeText, routeNameEmphasis]} numberOfLines={1}>
                   {trip.arrival.name}
                 </Text>
               </View>

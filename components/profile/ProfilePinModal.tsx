@@ -133,7 +133,7 @@ export function ProfilePinModal({
               </Text>
               <View style={styles.formSection}>
                 <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-                <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
+                <Text style={styles.inputLabelSmall}>6 chiffres reçus par SMS</Text>
                 <View style={styles.smsCodeContainer}>
                   {otpCode.map((digit, index) => (
                     <TextInput
@@ -143,7 +143,9 @@ export function ProfilePinModal({
                       }}
                       style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
                       keyboardType="number-pad"
-                      maxLength={1}
+                      maxLength={otpCode.length}
+                      textContentType="oneTimeCode"
+                      autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
                       value={digit}
                       onChangeText={(text) => handleOtpInputChange(text, index)}
                       onKeyPress={(e) => handleOtpKeyPress(e, index)}
@@ -154,17 +156,19 @@ export function ProfilePinModal({
               <TouchableOpacity
                 style={[
                   styles.pinModalButton,
-                  otpCode.join('').length === 5 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled,
+                  otpCode.join('').length === 6 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled,
                 ]}
                 onPress={handleVerifyOtpForPinChange}
-                disabled={otpCode.join('').length !== 5}
+                disabled={otpCode.join('').length !== 6 || isSendingOtp || isUpdatingPinWithOtp}
               >
-                <Text style={styles.pinModalButtonText}>Vérifier</Text>
+                {isUpdatingPinWithOtp
+                  ? <ActivityIndicator color={Colors.white} />
+                  : <Text style={styles.pinModalButtonText}>Vérifier</Text>}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.pinModalResendButton}
                 onPress={handleForgotPin}
-                disabled={isSendingOtp}
+                disabled={isSendingOtp || isUpdatingPinWithOtp}
               >
                 {isSendingOtp ? (
                   <ActivityIndicator size="small" color={Colors.primary} />
@@ -222,7 +226,7 @@ export function ProfilePinModal({
                   newPin.length !== 4 || newPinConfirm.length !== 4 || isUpdatingPin || isUpdatingPinWithOtp
                 }
               >
-                {isUpdatingPin ? (
+                {isUpdatingPin || isUpdatingPinWithOtp ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.pinModalButtonText}>Modifier le PIN</Text>

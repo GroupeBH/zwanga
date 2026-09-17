@@ -1,16 +1,18 @@
 import { useBookingCards } from '../hooks/bookings/useBookingCards';
+import { useBookingsFeed } from '@/hooks/bookings/useBookingsFeed';
+import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { BookingTab } from '../features/bookings/bookingsModel';
 import { styles } from '../features/screen-styles/app/bookings/index';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
-import { useCancelBookingMutation, useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useCancelBookingMutation } from '@/store/api/bookingApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, FlatList, Modal, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,73 +24,13 @@ export default function BookingsScreen() {
   const [selectedDriverPhone, setSelectedDriverPhone] = useState<string | null>(null);
   const [selectedDriverName, setSelectedDriverName] = useState<string | null>(null);
 
-  const {
-    data: bookings,
-    isLoading,
-    isFetching,
-    isError,
-    refetch,
-  } = useGetMyBookingsQuery();
+  const feed = useBookingsFeed(activeTab);
+  const { activeBookings, displayBookings, isLoading, isFetching, isError, refetch } = feed;
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
 
-  const activeBookings = useMemo(
-    () => {
-      const now = new Date();
-      return (bookings ?? []).filter((booking) => {
-        // Les réservations rejetées, annulées ou complétées ne sont pas actives
-        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain' || booking.status === 'completed') {
-          return false;
-        }
-        
-        // Les réservations pending ou accepted sont actives seulement si le trajet n'est pas expiré
-        if (booking.status === 'pending' || booking.status === 'accepted') {
-          // Vérifier si le trajet associé a une date de départ passée
-          if (booking.trip?.departureTime) {
-            const departureDate = new Date(booking.trip.departureTime);
-            // Si la date de départ est passée, la réservation est expirée
-            if (booking.trip.status !== 'ongoing' && departureDate < now) {
-              return false;
-            }
-          }
-          return true;
-        }
-        
-        return false;
-      });
-    },
-    [bookings],
-  );
-
-  const historyBookings = useMemo(
-    () => {
-      const now = new Date();
-      return (bookings ?? []).filter((booking) => {
-        // Les réservations rejetées, annulées ou complétées sont dans l'historique
-        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain' || booking.status === 'completed') {
-          return true;
-        }
-        
-        // Les réservations pending ou accepted dont le trajet est expiré sont dans l'historique
-        if (booking.status === 'pending' || booking.status === 'accepted') {
-          if (booking.trip?.departureTime) {
-            const departureDate = new Date(booking.trip.departureTime);
-            // Si la date de départ est passée, la réservation est expirée et va dans l'historique
-            if (booking.trip.status !== 'ongoing' && departureDate < now) {
-              return true;
-            }
-          }
-        }
-        
-        return false;
-      });
-    },
-    [bookings],
-  );
-
-  const displayBookings = activeTab === 'active' ? activeBookings : historyBookings;
   const emptyText =
     activeTab === 'active'
-      ? 'Vous n&apos;avez pas encore de réservation active.'
+      ? "Vous n'avez pas encore de réservation active."
       : 'Aucune réservation passée pour le moment.';
 
   const handleCancel = (bookingId: string) => {
@@ -123,7 +65,6 @@ export default function BookingsScreen() {
   };
 
   const { renderBookingCard } = useBookingCards({
-    displayBookings,
     activeTab,
     router,
     setSelectedDriverPhone,
@@ -164,7 +105,7 @@ export default function BookingsScreen() {
           onPress={() => setActiveTab('history')}
         >
           <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
-            Historique ({historyBookings.length})
+            Historique
           </Text>
         </TouchableOpacity>
       </View>
@@ -179,19 +120,27 @@ export default function BookingsScreen() {
         </View>
       )}
 
-      <ScrollView
+      <FlatList
+        data={displayBookings}
+        keyExtractor={booking => booking.id}
+        renderItem={({ item }) => renderBookingCard(item.id, item)}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
         contentContainerStyle={styles.scrollViewContent}
         refreshControl={
-          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={Colors.primary} />
+          <RefreshControl refreshing={isFetching && !feed.loadingMore} onRefresh={refetch} tintColor={Colors.primary} />
         }
         showsVerticalScrollIndicator={false}
-      >
-        {isLoading && displayBookings.length === 0 ? (
+        ListFooterComponent={activeTab === 'history' ? <HistoryPaginationFooter
+          hasMore={feed.hasMore} loading={feed.loadingMore} error={isError}
+          loaded={displayBookings.length} onLoad={feed.loadMore} /> : null}
+        ListEmptyComponent={isLoading ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.loaderText}>Chargement de vos réservations…</Text>
           </View>
-        ) : displayBookings.length === 0 ? (
+        ) : (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons
@@ -210,10 +159,8 @@ export default function BookingsScreen() {
               <Text style={styles.primaryButtonText}>Rechercher un trajet</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          displayBookings.map((booking, index) => renderBookingCard(booking.id, booking, index))
         )}
-      </ScrollView>
+      />
 
       {/* Contact Modal */}
       <Modal
@@ -281,5 +228,3 @@ export default function BookingsScreen() {
     </SafeAreaView>
   );
 }
-
-

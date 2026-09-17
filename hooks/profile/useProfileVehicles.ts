@@ -21,6 +21,7 @@ import {
 } from '@/utils/errorHelpers';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import type { useProfileData } from './useProfileData';
 
 type Props = Pick<ReturnType<typeof useProfileData>,
@@ -87,7 +88,7 @@ export function useProfileVehicles({
     setVehicleBrand(vehicle.brand);
     setVehicleModel(vehicle.model);
     setVehicleColor(vehicle.color);
-    setVehiclePlate(vehicle.licensePlate);
+    setVehiclePlate(normalizeVehiclePlate(vehicle.licensePlate));
     setVehicleModalVisible(true);
   }, []);
 
@@ -117,7 +118,7 @@ export function useProfileVehicles({
   }, []);
 
   const handleVehiclePlateChange = useCallback((text: string) => {
-    setVehiclePlate(text);
+    setVehiclePlate(normalizeVehiclePlate(text));
     setVehicleFormError(null);
   }, []);
 
@@ -148,6 +149,10 @@ export function useProfileVehicles({
       setVehicleFormError('Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.');
       return;
     }
+    if (!isValidVehiclePlate(vehiclePlate)) {
+      setVehicleFormError(VEHICLE_PLATE_FORMAT_MESSAGE);
+      return;
+    }
 
     setVehicleFormError(null);
     const isEditing = editingVehicleId !== null;
@@ -158,7 +163,7 @@ export function useProfileVehicles({
         brand: vehicleBrand.trim(),
         model: vehicleModel.trim(),
         color: vehicleColor.trim(),
-        licensePlate: vehiclePlate.trim(),
+        licensePlate: normalizeVehiclePlate(vehiclePlate),
       };
 
       if (editingVehicleId) {

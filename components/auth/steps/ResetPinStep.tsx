@@ -41,7 +41,7 @@ export function ResetPinStep({
   isResending,
   isLoading,
 }: ResetPinStepProps) {
-  const isOtpComplete = otpCode.join('').length === 5;
+  const isOtpComplete = otpCode.join('').length === 6;
   const isPinValid = newPin.length === 4 && newPinConfirm.length === 4;
   const otpAutoComplete = Platform.OS === 'android' ? 'sms-otp' : 'one-time-code';
 
@@ -111,7 +111,7 @@ export function ResetPinStep({
         <>
           <View style={styles.formSection}>
             <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-            <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
+            <Text style={styles.inputLabelSmall}>6 chiffres reçus par SMS</Text>
             <View style={styles.smsCodeContainer}>
               {otpCode.map((digit, index) => (
                 <TextInput
@@ -119,7 +119,7 @@ export function ResetPinStep({
                   ref={(ref) => {
                     otpInputRefs.current[index] = ref;
                   }}
-                  style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
+                  style={[styles.smsInput, { width: '14%' }, digit ? styles.smsInputFilled : null]}
                   keyboardType="number-pad"
                   maxLength={otpCode.length}
                   autoComplete={otpAutoComplete as any}
@@ -139,15 +139,19 @@ export function ResetPinStep({
               isOtpComplete ? styles.mainButtonActive : styles.mainButtonDisabled,
             ]}
             onPress={onVerifyOtp}
-            disabled={!isOtpComplete}
+            disabled={!isOtpComplete || isLoading || isResending}
           >
-            <Text style={styles.mainButtonText}>Vérifier</Text>
-            <Ionicons name="arrow-forward" size={20} color="white" />
+            {isLoading ? <ActivityIndicator color="white" /> : (
+              <>
+                <Text style={styles.mainButtonText}>Vérifier</Text>
+                <Ionicons name="arrow-forward" size={20} color="white" />
+              </>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.resendButton}
             onPress={onResendOtp}
-            disabled={isResending}
+            disabled={isResending || isLoading}
           >
             {isResending ? (
               <ActivityIndicator size="small" color={Colors.primary} />

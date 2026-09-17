@@ -6,14 +6,16 @@ import {
   isValidMapCoordinate,
 } from '../../features/trip-detail/tripDetailModel';
 import type { Booking } from '@/types';
-import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
+import type { RouteInfo } from '@/utils/routeApi';
+import { useTripDetailArrivalEstimate } from './useTripDetailArrivalEstimate';
 import { splitRouteByProgress } from '@/utils/routeHelpers';
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import type { Trip } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { getRouteStopLabel } from '@/utils/routeLocationLabels';
 
 interface Params {
+  isScreenActive: boolean;
   trip: Trip | undefined;
   progress: number;
   departureCoordinate: { latitude: number; longitude: number; };
@@ -27,6 +29,7 @@ interface Params {
 }
 
 export function useTripDetailMapPresentation({
+  isScreenActive,
   trip,
   progress,
   departureCoordinate,
@@ -104,50 +107,11 @@ export function useTripDetailMapPresentation({
     return markers;
   }, [tripBookings]);
 
-  // Calculate estimated arrival time based on current position
-  useEffect(() => {
-    if (!trip || !routeInfo || trip.status !== 'ongoing' || !currentCoordinate) {
-      setEstimatedArrivalTime(null);
-      return;
-    }
-
-    let timeoutId: NodeJS.Timeout;
-    let isMounted = true;
-
-    const calculateETA = () => {
-      // Calculate remaining route from current position to destination
-      getRouteInfo(currentCoordinate, arrivalCoordinate)
-        .then((remainingRouteInfo) => {
-          if (!isMounted) return;
-          const remainingDurationSeconds = remainingRouteInfo.duration;
-          const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
-          setEstimatedArrivalTime(estimatedArrival);
-        })
-        .catch(() => {
-          if (!isMounted) return;
-          // Fallback: use progress to estimate remaining time
-          if (routeInfo.duration > 0 && typeof progress === 'number') {
-            const remainingProgress = (100 - Math.min(Math.max(progress, 0), 100)) / 100;
-            const remainingDurationSeconds = routeInfo.duration * remainingProgress;
-            const estimatedArrival = new Date(Date.now() + remainingDurationSeconds * 1000);
-            setEstimatedArrivalTime(estimatedArrival);
-          } else {
-            setEstimatedArrivalTime(null);
-          }
-        });
-    };
-
-    // Debounce: wait 5 seconds after position change before calculating
-    timeoutId = setTimeout(calculateETA, 5000);
-
-    // Also calculate immediately if this is the first time
-    calculateETA();
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timeoutId);
-    };
-  }, [trip?.status, routeInfo, currentCoordinate, arrivalCoordinate, progress]);
+  useTripDetailArrivalEstimate({
+    enabled: isScreenActive && trip?.status === 'ongoing', tripId: trip?.id,
+    origin: currentCoordinate, destination: arrivalCoordinate,
+    duration: routeInfo?.duration, progress, onEstimate: setEstimatedArrivalTime,
+  });
 
   const mapRegion = useMemo(() => {
     if (!hasValidRouteEndpoints) {

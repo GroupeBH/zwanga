@@ -7,6 +7,7 @@ import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
 import { useIsFocused } from '@react-navigation/native';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
@@ -17,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export function useTripDetailData() {
   const router = useRouter();
   const isFocused = useIsFocused();
+  const isAppActive = useAppIsActive();
+  const isScreenActive = isFocused && isAppActive;
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
@@ -35,12 +38,11 @@ export function useTripDetailData() {
   const {
     data: tripFromApi,
     isLoading: tripLoading,
-    isFetching: tripFetching,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     // Polling automatique basé sur le statut du trajet
-    pollingInterval: !isFocused ? 0 : tripFromStore?.status === 'ongoing'
+    pollingInterval: !isScreenActive ? 0 : tripFromStore?.status === 'ongoing'
       ? 15000 // 15 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
         ? 60000 // 60 secondes pour les trajets à venir
@@ -63,12 +65,10 @@ export function useTripDetailData() {
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
   const {
     data: myBookings,
-    isLoading: myBookingsLoading,
-    isFetching: myBookingsFetching,
     refetch: refetchMyBookings,
   } = useGetMyBookingsQuery(undefined, {
     // Polling pour les réservations si le trajet est actif
-    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isScreenActive ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,
@@ -76,12 +76,11 @@ export function useTripDetailData() {
   });
   const {
     data: tripBookings,
-    isLoading: tripBookingsLoading,
     refetch: refetchTripBookings,
   } = useGetTripBookingsQuery(tripId, {
     skip: !tripId,
     // Polling pour les réservations du trajet
-    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isScreenActive ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -124,6 +123,7 @@ export function useTripDetailData() {
     isTripDriver,
     shouldOpenEditFromParams,
     isFocused,
+    isScreenActive,
     openEditParamKey,
     showDialog,
     refetchTrip,

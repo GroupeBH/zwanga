@@ -138,7 +138,7 @@ export default function AuthScreen() {
               onResetPin={phoneActions.handleResetPinSubmit}
               onResendOtp={phoneActions.handleForgotPin}
               isResending={form.isSendingResetOtp}
-              isLoading={form.isLoggingIn}
+              isLoading={phoneActions.isResettingPin}
             />
           )}
 

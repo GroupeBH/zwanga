@@ -195,6 +195,7 @@ export function useAuthController() {
 
   // Phone Handlers
   const phoneActions = usePhoneAuthActions({
+    step: form.step,
     phone: form.phone,
     showDialog,
     setPhone: form.setPhone,

@@ -83,6 +83,9 @@ export type ServerTrip = {
   departureCoordinates?: CoordinatesTuple;
   arrivalCoordinates?: CoordinatesTuple;
   departureDate: string;
+  previewArrivalDate?: string | null;
+  estimatedDurationSeconds?: number | null;
+  arrivalEstimateSource?: 'trip_start' | 'route' | 'approximate' | 'unavailable';
   availableSeats: number;
   totalSeats?: number; // Nombre total de places (ajouté par le backend)
   pricePerSeat: number | string;

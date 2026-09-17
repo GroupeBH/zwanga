@@ -2,16 +2,15 @@ import { BookingTab, STATUS_CONFIG } from '../../features/bookings/bookingsModel
 import { styles } from '../../features/screen-styles/app/bookings/index';
 import { Colors } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { isApproximateArrival } from '@/utils/tripArrivalPreview';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from '@/utils/reanimated';
 import type { Booking } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
-  displayBookings: Booking[];
   activeTab: BookingTab;
   router: Router;
   setSelectedDriverPhone: React.Dispatch<React.SetStateAction<string | null>>;
@@ -21,8 +20,14 @@ interface Params {
   isCancelling: boolean;
 }
 
-export function useBookingCards({
-  displayBookings,
+export function useBookingCards(params: Params) {
+  const renderBookingCard = (bookingId: string, booking: Booking) =>
+    <BookingCardWithArrival key={bookingId} {...params} booking={booking} />;
+  return { renderBookingCard };
+}
+
+const BookingCardWithArrival = React.memo(function BookingCardWithArrival({
+  booking,
   activeTab,
   router,
   setSelectedDriverPhone,
@@ -30,9 +35,7 @@ export function useBookingCards({
   setContactModalVisible,
   handleCancel,
   isCancelling,
-}: Params) {
-  const renderBookingCard = (bookingId: string, booking: typeof displayBookings[number], index: number) => {
-    const BookingCardWithArrival = () => {
+}: Params & { booking: Booking }) {
       const trip = booking.trip;
       
       // Vérifier si la réservation est expirée (trajet avec date de départ passée)
@@ -56,14 +59,10 @@ export function useBookingCards({
       const calculatedArrivalTime = useTripArrivalTime(trip || null);
       const arrivalTimeDisplay = calculatedArrivalTime && trip
         ? formatDateTime(calculatedArrivalTime.toISOString())
-        : trip?.arrivalTime
-        ? formatDateTime(trip.arrivalTime)
-        : '';
+        : 'non disponible';
 
       return (
-        <Animated.View
-          key={bookingId}
-          entering={FadeInDown.delay(index * 80)}
+        <View
           style={styles.bookingCard}
         >
           <View style={styles.bookingHeader}>
@@ -83,7 +82,7 @@ export function useBookingCards({
                   {trip?.departure?.name ?? 'Trajet'} → {trip?.arrival?.name ?? ''}
                 </Text>
                 <Text style={styles.bookingSubtitle} numberOfLines={1} ellipsizeMode="tail">
-                  {trip ? `${formatDateTime(trip.departureTime)} -> arrivée estimée ${arrivalTimeDisplay}` : ''}
+                  {trip ? `${formatDateTime(trip.departureTime)} → arrivée ${isApproximateArrival(trip) ? 'approx.' : 'estimée'} ${arrivalTimeDisplay}` : ''}
                 </Text>
               </View>
             </View>
@@ -215,14 +214,6 @@ export function useBookingCards({
             </TouchableOpacity>
           )}
         </View>
-      </Animated.View>
+      </View>
       );
-    };
-
-    return <BookingCardWithArrival key={bookingId} />;
-  };
-
-  return {
-    renderBookingCard,
-  };
-}
+});

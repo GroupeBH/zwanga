@@ -1,7 +1,7 @@
 import { EMPTY_HOME_BOOKINGS, EMPTY_HOME_TRIPS, hasUpcomingDeparture, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS } from '@/features/home/homeModel';
 import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import {
-  useGetMyTripsQuery,
+  useGetMyActivityTripsQuery as useGetMyTripsQuery,
   useGetTripByIdQuery
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';

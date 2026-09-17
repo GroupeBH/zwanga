@@ -17,9 +17,11 @@ type Params = {
   summary?: DriverSettlementSummary;
   payouts: DriverPayout[];
   refresh: () => Promise<unknown>;
+  isActive?: boolean;
 };
+type PayoutForm = { userId: string; amount: number; phone: string };
 
-export function useDriverPayout({ summary, payouts, refresh }: Params) {
+export function useDriverPayout({ summary, payouts, refresh, isActive = true }: Params) {
   const userId = useAppSelector(selectUser)?.id;
   const { showDialog } = useDialog();
   const [requestPayout] = useRequestDriverPayoutMutation();
@@ -28,8 +30,12 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const [storageError, setStorageError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState<PayoutForm | null>(null);
+  const formRef = useRef<PayoutForm | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
+  const screenActive = useRef(isActive);
+  screenActive.current = isActive;
   const account = useRef(userId);
   account.current = userId;
 
@@ -37,6 +43,9 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
+
+  const closePayoutForm = useCallback(() => { formRef.current = null; setForm(null); }, []);
+  useEffect(() => { closePayoutForm(); }, [userId, isActive, closePayoutForm]);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +88,7 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
   };
 
   const submit = async (amount: number, phone: string, restored?: DriverPayoutIntent) => {
-    if (!userId || !mounted.current || inFlight.current || account.current !== userId) return;
+    if (!userId || !mounted.current || !screenActive.current || inFlight.current || account.current !== userId) return;
     inFlight.current = true;
     setBusy(true);
     let stored: DriverPayoutIntent | undefined;
@@ -98,7 +107,7 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
       }
       const payout = await requestPayout({ amount: stored.amount, phone: stored.phone, idempotencyKey: stored.idempotencyKey }).unwrap();
       try { await clearIntent(stored); } catch { if (stillHere()) setStorageError(true); }
-      if (!stillHere()) return;
+      if (!stillHere() || !screenActive.current) return;
       present(payout);
       await refresh();
     } catch (error) {
@@ -106,7 +115,7 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
       if (stored && !restored && !isPayoutOutcomeUncertain(error)) {
         try { await clearIntent(stored); } catch { if (stillHere()) setStorageError(true); }
       }
-      if (stillHere()) {
+      if (stillHere() && screenActive.current) {
         showDialog({
           variant: isPayoutOutcomeUncertain(error) ? 'info' : 'warning',
           title: isPayoutOutcomeUncertain(error) ? 'Confirmation à vérifier' : 'Versement indisponible',
@@ -123,16 +132,11 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
   const activeIntent = intent?.userId === userId ? intent : null;
   const available = Number(summary?.availableBalance ?? 0);
   const minimum = Number(summary?.minimumPayoutAmount ?? 1);
-  const canSubmit = Boolean(userId && readyFor === userId && !storageError && !busy &&
+  const canSubmit = Boolean(isActive && userId && readyFor === userId && !storageError && !busy &&
     (activeIntent || (summary && Number.isFinite(available) && available >= minimum)));
 
-  const handlePayout = (amount = available) => {
-    if (!canSubmit) return;
-    const phone = activeIntent?.phone ?? normalizePayoutPhone(summary?.payoutPhone);
-    if (!phone) {
-      showDialog({ variant: 'warning', title: 'Numéro Mobile Money à vérifier', message: 'Ajoutez un numéro valide dans votre profil (par exemple 0891234567). Il doit posséder un compte Mobile Money actif.' });
-      return;
-    }
+  const handlePayout = (amount = available, recipientPhone?: string) => {
+    if (!canSubmit || !screenActive.current || account.current !== userId) return;
     if (!activeIntent && !summary?.kycApproved) {
       showDialog({ variant: 'warning', title: 'Vérification d’identité requise', message: 'Votre identité doit être vérifiée avant le versement de vos gains.' });
       return;
@@ -141,13 +145,19 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
       showDialog({ variant: 'warning', title: 'Montant indisponible', message: `Le minimum est de ${formatAmount(minimum, summary?.currency)}. Actualisez vos revenus pour vérifier le solde disponible.` });
       return;
     }
+    // An uncertain transfer must always retain its original recipient and key.
+    const phone = activeIntent?.phone ?? normalizePayoutPhone(recipientPhone ?? summary?.payoutPhone);
+    if (!phone) {
+      showDialog({ variant: 'warning', title: 'Numéro Mobile Money à vérifier', message: 'Saisissez un numéro Mobile Money valide pour ce versement (par exemple 0891234567). Votre numéro de profil ne sera pas modifié.' });
+      return;
+    }
     let consumed = false;
     showDialog({
       variant: 'info', icon: 'phone-portrait-outline',
       title: activeIntent ? 'Vérifier le versement demandé' : 'Recevoir mes gains',
       message: activeIntent
-        ? `Vérifier la même demande de ${formatAmount(activeIntent.amount, summary?.currency)} vers ${maskPhone(phone)}, sans créer un second versement.`
-        : `Zwanga vous enverra ${formatAmount(amount, summary?.currency)} depuis son compte marchand vers ${maskPhone(phone)}. Aucun paiement ni compte FlexPay ne vous est demandé.`,
+        ? `Vérifier la même demande de ${formatAmount(activeIntent.amount, summary?.currency)} vers ${phone}, sans créer un second versement. Le numéro ne peut pas être changé tant que le résultat n’est pas confirmé.`
+        : `Zwanga vous enverra ${formatAmount(amount, summary?.currency)} depuis son compte marchand vers ${phone}. Vérifiez bien ce numéro avant de confirmer. Votre numéro de profil ne sera pas modifié.`,
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         { label: activeIntent ? 'Vérifier cette demande' : 'Demander le versement', variant: 'primary', onPress: () => {
@@ -157,6 +167,30 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
         } },
       ],
     });
+  };
+
+  const openPayoutForm = (amount = available) => {
+    if (!canSubmit || inFlight.current || !userId || !screenActive.current || account.current !== userId) return;
+    if (activeIntent || !summary?.kycApproved || !Number.isFinite(amount) || amount < minimum || amount > available) {
+      handlePayout(amount);
+      return;
+    }
+    const next = { userId, amount, phone: normalizePayoutPhone(summary?.payoutPhone) ?? summary?.payoutPhone?.trim() ?? '' };
+    formRef.current = next;
+    setForm(next);
+  };
+  const setPayoutPhone = (phone: string) => {
+    if (!canSubmit || activeIntent || inFlight.current) return;
+    const current = formRef.current;
+    if (!current || current.userId !== userId || account.current !== userId || !screenActive.current) return;
+    formRef.current = { ...current, phone };
+    setForm(formRef.current);
+  };
+  const confirmPayoutForm = () => {
+    const current = formRef.current;
+    if (!current || current.userId !== userId || !canSubmit || inFlight.current) return;
+    closePayoutForm();
+    handlePayout(current.amount, current.phone);
   };
 
   const checkPayout = async (payout: DriverPayout) => {
@@ -172,5 +206,9 @@ export function useDriverPayout({ summary, payouts, refresh }: Params) {
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   };
 
-  return { canSubmit, busy, handlePayout, checkPayout, storageError, hasUnconfirmedIntent: Boolean(activeIntent) };
+  return {
+    canSubmit, busy, handlePayout, checkPayout, storageError, hasUnconfirmedIntent: Boolean(activeIntent),
+    payoutForm: form?.userId === userId && isActive && !activeIntent ? form : null,
+    openPayoutForm, setPayoutPhone, confirmPayoutForm, closePayoutForm,
+  };
 }

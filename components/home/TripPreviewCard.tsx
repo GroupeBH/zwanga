@@ -2,6 +2,7 @@ import { Colors } from '@/constants/styles';
 import { formatPrice, getInitials, HOME_COLORS, placeName, vehicleIcon, vehicleLabel } from '@/features/home/homeModel';
 import type { TripPreviewCardProps } from '@/features/home/homeTypes';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { isApproximateArrival } from '@/utils/tripArrivalPreview';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -25,7 +26,7 @@ export const TripPreviewCard = React.memo(function TripPreviewCard({
   const hasDriverRating = Number.isFinite(parsedRating) && parsedRating > 0;
   const arrivalDateTime = calculatedArrivalTime
     ? formatDateTime(calculatedArrivalTime.toISOString())
-    : formatDateTime(trip.arrivalTime);
+    : 'Non disponible';
   const tripVehicleType = trip.vehicleType || 'car';
   const driverName = trip.driverName || 'Conducteur Zwanga';
   const seatsLabel = `${trip.availableSeats} place${trip.availableSeats > 1 ? 's' : ''}`;
@@ -88,7 +89,7 @@ export const TripPreviewCard = React.memo(function TripPreviewCard({
             </Text>
           </View>
           <View>
-            <Text style={styles.tripPreviewRouteLabel}>ARRIVÉE ESTIMÉE - {arrivalDateTime}</Text>
+            <Text style={styles.tripPreviewRouteLabel}>{isApproximateArrival(trip) ? 'ARRIVÉE APPROX.' : 'ARRIVÉE ESTIMÉE'} - {arrivalDateTime}</Text>
             <Text style={styles.tripPreviewRouteText} numberOfLines={1}>
               {placeName(trip.arrival)}
             </Text>

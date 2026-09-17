@@ -14,23 +14,26 @@ import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 
 export function useHomeController() {
   const context = useHomeContext();
-  const driverActivity = useHomeDriverActivity({ ...context });
+  // Queries, sockets and camera commands pause outside the foreground. Map ownership
+  // and the GPS lifecycle follow route focus; useUserLocation handles AppState itself.
+  const foregroundContext = { ...context, isFocused: context.isScreenActive };
+  const driverActivity = useHomeDriverActivity({ ...foregroundContext });
   const location = useHomeLocation({ ...context, ...driverActivity });
-  const tripFeed = useHomeTripFeed({ ...location, ...context });
-  const passengerActivity = useHomePassengerActivity({ ...context, driverCoordinate: location.liveUserCoordinate });
+  const tripFeed = useHomeTripFeed({ ...location, ...foregroundContext });
+  const passengerActivity = useHomePassengerActivity({ ...foregroundContext, driverCoordinate: location.liveUserCoordinate });
   const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, liveUserCoordinate: location.liveUserCoordinate });
   const requestHighlight = useHomeRequestHighlight({
-    enabled: context.isFocused && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
+    enabled: context.isScreenActive && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
       && !tripFeed.showInitialHomeLoader && !tripSelection.featuredDriverReservation,
     userId: context.currentUser?.id,
     requests: passengerActivity.availableDriverRequests,
     driverCoordinate: location.liveUserCoordinate,
   });
-  const tracking = useHomeTracking({ ...context, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
+  const tracking = useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
   const passengerMarkers = useHomePassengerMarkers({ ...driverActivity, ...tracking });
   const mapNavigation = useHomeMapNavigation({ ...context });
-  const map = useHomeMap({ ...context, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation });
-  const userLocation = useHomeUserLocation({ ...context, ...location, ...driverActivity, ...map, ...mapNavigation });
+  const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation });
+  const userLocation = useHomeUserLocation({ ...foregroundContext, ...location, ...driverActivity, ...map, ...mapNavigation });
   const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed });
   return {
     ...context,

@@ -10,14 +10,14 @@ import { trackEvent } from '@/services/analytics';
 import { useAppleMobileMutation, useGoogleMobileMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
-import type { UserGender } from '@/types';
+import type { TripRequestVehicleType, UserGender } from '@/types';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
+import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import { consumePendingReferralAttribution, getPendingReferralAttribution } from '@/utils/referralAttribution';
 import React from 'react';
 import { Platform } from 'react-native';
 import { AuthStep } from '@/components/auth';
 import type { Router } from 'expo-router';
-import type { TripRequestVehicleType } from '@/types';
 import type { StartDiditKycOptions, DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 
 interface Params {
@@ -160,6 +160,10 @@ export function useRegistrationActions({
         });
         return;
       }
+      if (requiresVehicle && !isValidVehiclePlate(vehiclePlate)) {
+        showDialog({ variant: 'warning', title: 'Plaque d’immatriculation invalide', message: VEHICLE_PLATE_FORMAT_MESSAGE });
+        return;
+      }
 
       const signupVehicle = requiresVehicle
         ? {
@@ -167,7 +171,7 @@ export function useRegistrationActions({
             brand: vehicleBrand.trim(),
             model: vehicleModel.trim(),
             color: vehicleColor.trim(),
-            licensePlate: vehiclePlate.trim(),
+            licensePlate: normalizeVehiclePlate(vehiclePlate),
           }
         : undefined;
       
@@ -242,7 +246,7 @@ export function useRegistrationActions({
         formData.append('vehicle[brand]', vehicleBrand.trim());
         formData.append('vehicle[model]', vehicleModel.trim());
         formData.append('vehicle[color]', vehicleColor.trim());
-        formData.append('vehicle[licensePlate]', vehiclePlate.trim());
+        formData.append('vehicle[licensePlate]', normalizeVehiclePlate(vehiclePlate));
       }
       if (email) formData.append('email', email.trim());
 

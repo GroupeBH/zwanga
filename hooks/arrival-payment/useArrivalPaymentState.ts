@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ZWANGA_POINT_VALUE_CDF } from '@/constants/paymentFeatures';
 import {
-  useGetMyBookingsQuery,
+  useGetMyActivityBookingsQuery as useGetMyBookingsQuery,
   useInitiateBookingPaymentMutation,
   useLazyCheckBookingPaymentStatusQuery,
   useUpdateBookingPaymentModeMutation,
