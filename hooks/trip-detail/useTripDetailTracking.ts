@@ -6,11 +6,11 @@ import {
   TRIP_DETAIL_AUTO_PROGRESS_PRIORITY,
 } from '../../features/trip-detail/tripDetailModel';
 import { trackingSocket } from '@/services/trackingSocket';
-import type { Booking } from '@/types';
-import React, { useEffect } from 'react';
-import type { Trip } from '@/types';
+import type { Booking, Trip } from '@/types';
+import React, { useEffect, useRef } from 'react';
 
 interface Params {
+  isScreenActive: boolean;
   trip: Trip | undefined;
   canTrackTrip: boolean;
   isTripDriver: boolean;
@@ -29,6 +29,7 @@ interface Params {
 }
 
 export function useTripDetailTracking({
+  isScreenActive,
   trip,
   canTrackTrip,
   isTripDriver,
@@ -45,8 +46,14 @@ export function useTripDetailTracking({
   refetchTripBookings,
   lastKnownLocation,
 }: Params) {
+  const tripId = trip?.id;
+  const tripStatus = trip?.status;
+  const latitude = lastKnownLocation?.coords?.latitude;
+  const longitude = lastKnownLocation?.coords?.longitude;
+  const latest = useRef({ presentTripDetailAutoProgressEvent, refetchTrip, refetchMyBookings, refetchTripBookings });
+  latest.current = { presentTripDetailAutoProgressEvent, refetchTrip, refetchMyBookings, refetchTripBookings };
   useEffect(() => {
-    if (!trip || !canTrackTrip) {
+    if (!isScreenActive || !trip || !canTrackTrip) {
       return;
     }
 
@@ -94,6 +101,7 @@ export function useTripDetailTracking({
 
     tripDetailBookingStateRef.current = nextState;
   }, [
+    isScreenActive,
     activeBooking,
     bookingForTrip,
     canTrackTrip,
@@ -101,21 +109,22 @@ export function useTripDetailTracking({
     presentTripDetailAutoProgressEvent,
     trip,
     tripBookings,
+    tripDetailBookingStateRef,
   ]);
 
   useEffect(() => {
-    if (!trip || !canTrackTrip) {
+    if (!isScreenActive || !tripId || !canTrackTrip) {
       setTrackingError(null);
       return;
     }
     let isMounted = true;
     trackingSocket
-      .joinTrip(trip.id)
-      .then(() => trackingSocket.requestDriverLocation(trip.id))
+      .joinTrip(tripId)
+      .then(() => { if (isMounted) return trackingSocket.requestDriverLocation(tripId); })
       .catch(() => { });
 
     const unsubscribeLocation = trackingSocket.subscribeToDriverLocation((payload) => {
-      if (!isMounted || payload.tripId !== trip.id) {
+      if (!isMounted || payload.tripId !== tripId) {
         return;
       }
       const nextCoordinate = arrayToLatLng(payload.coordinates ?? null);
@@ -135,7 +144,7 @@ export function useTripDetailTracking({
     });
 
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
-      if (!isMounted || payload.tripId !== trip.id || payload.events.length === 0) {
+      if (!isMounted || payload.tripId !== tripId || payload.events.length === 0) {
         return;
       }
 
@@ -146,46 +155,46 @@ export function useTripDetailTracking({
             TRIP_DETAIL_AUTO_PROGRESS_PRIORITY[second.type],
         )
         .forEach((event) => {
-          presentTripDetailAutoProgressEvent(event);
+          latest.current.presentTripDetailAutoProgressEvent(event);
         });
 
-      void refetchTrip();
-      void refetchMyBookings();
-      void refetchTripBookings();
+      void latest.current.refetchTrip();
+      void latest.current.refetchMyBookings();
+      void latest.current.refetchTripBookings();
     });
 
     return () => {
       isMounted = false;
-      trackingSocket.leaveTrip(trip.id);
+      trackingSocket.leaveTrip(tripId);
       unsubscribeLocation();
       unsubscribeErrors();
       unsubscribeAutoProgress();
     };
   }, [
-    trip?.id,
-    trip?.status,
+    isScreenActive,
+    tripId,
+    tripStatus,
     canTrackTrip,
-    presentTripDetailAutoProgressEvent,
-    refetchMyBookings,
-    refetchTrip,
-    refetchTripBookings,
+    setTrackingError,
+    setLiveDriverCoordinate,
+    setLiveDriverUpdatedAt,
   ]);
 
   useEffect(() => {
-    if (!trip || !isTripDriver || trip.status !== 'ongoing') {
+    if (!isScreenActive || !tripId || !isTripDriver || tripStatus !== 'ongoing') {
       return;
     }
-    const coords = lastKnownLocation?.coords;
-    if (!coords) {
+    if (latitude === undefined || longitude === undefined) {
       return;
     }
-    trackingSocket.updateDriverLocation(trip.id, [Number(coords.longitude), Number(coords.latitude)]);
+    trackingSocket.updateDriverLocation(tripId, [Number(longitude), Number(latitude)]);
   }, [
-    trip?.id,
-    trip?.status,
+    isScreenActive,
+    tripId,
+    tripStatus,
     isTripDriver,
-    lastKnownLocation?.coords?.latitude,
-    lastKnownLocation?.coords?.longitude,
+    latitude,
+    longitude,
   ]);
 
   return {

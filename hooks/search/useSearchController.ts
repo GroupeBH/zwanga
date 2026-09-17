@@ -2,19 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDialog } from '@/components/ui/DialogProvider';
 import type { SearchMode, SearchSortMode as SortMode } from '@/components/search/SearchResultsToolbar';
-import type { Trip } from '@/types';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { useLatestTripSearch } from './useLatestTripSearch';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips, selectUserCoordinates } from '@/store/selectors';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetAvailableTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
   useGetTripsQuery,
-  useSearchTripsByCoordinatesMutation,
   type TripSearchParams,
   type TripSearchByPointsPayload,
 } from '@/store/api/tripApi';
 import { trackEvent } from '@/services/analytics';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import {
   MIN_SEARCH_SEATS,
@@ -27,6 +26,7 @@ import { useSearchNavigation } from './useSearchNavigation';
 import { useSearchResults } from './useSearchResults';
 
 export function useSearchController() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { showDialog } = useDialog();
   const searchParams = useLocalSearchParams<{
@@ -56,8 +56,8 @@ export function useSearchController() {
   const [desiredSeats, setDesiredSeats] = useState(MIN_SEARCH_SEATS);
   const [searchMode, setSearchMode] = useState<SearchMode>('trips');
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
-  const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
-  const [advancedError, setAdvancedError] = useState<string | null>(null);
+  const { trips: advancedTrips, error: advancedError, loading: isAdvancedSearching,
+    run: runAdvancedSearch, clear: clearAdvancedSearch } = useLatestTripSearch(isScreenActive && searchMode === 'trips');
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
   const [tripSortMode, setTripSortMode] = useState<SortMode>('cheap');
   const [requestSortMode, setRequestSortMode] = useState<SortMode>('nearby');
@@ -68,7 +68,6 @@ export function useSearchController() {
     searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
   );
   const { openingTripId, openingRequestId, handleOpenTrip, handleOpenTripRequest } = useSearchNavigation({ router, showDialog });
-  const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] = useSearchTripsByCoordinatesMutation();
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
 
@@ -116,30 +115,10 @@ export function useSearchController() {
     });
   }, [searchParams.departure, searchParams.arrival, searchParams.minSeats, searchParams.seats]);
 
-  const runAdvancedSearch = async (payload: TripSearchByPointsPayload) => {
-    setAdvancedError(null);
-    setAdvancedTrips(null);
-
-    try {
-      const results = await searchTripsByCoordinates(payload).unwrap();
-      setAdvancedTrips(results);
-      void trackEvent('search_results_viewed', {
-        search_mode: 'coordinates',
-        results_count: results.length,
-        departure_radius_km: payload.departureRadiusKm,
-        arrival_radius_km: payload.arrivalRadiusKm,
-      });
-    } catch (error: any) {
-      setAdvancedError(
-        getApiErrorMessage(error, 'Impossible de filtrer par carte pour le moment. Réessayez dans un instant.'),
-      );
-    }
-  };
-
   useEffect(() => {
+    if (!isScreenActive) return;
     if (searchMode !== 'trips') {
-      setAdvancedTrips(null);
-      setAdvancedError(null);
+      clearAdvancedSearch();
       setLastAdvancedPayload(null);
       return;
     }
@@ -174,12 +153,13 @@ export function useSearchController() {
       setLastAdvancedPayload(payload);
       runAdvancedSearch(payload);
     } else {
-      setAdvancedTrips(null);
-      setAdvancedError(null);
+      clearAdvancedSearch();
       setLastAdvancedPayload(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    isScreenActive,
+    runAdvancedSearch,
+    clearAdvancedSearch,
     searchMode,
     searchParams.mode,
     searchParams.departureLat,
@@ -220,8 +200,7 @@ export function useSearchController() {
 
       setDeparture(nextDeparture);
       setArrival(nextArrival);
-      setAdvancedTrips(null);
-      setAdvancedError(null);
+      clearAdvancedSearch();
       setLastAdvancedPayload(null);
       setQueryParams({
         departureLocation: nextDeparture || undefined,
@@ -232,6 +211,7 @@ export function useSearchController() {
 
     return () => clearTimeout(timeout);
   }, [
+    clearAdvancedSearch,
     arrival,
     departure,
     desiredSeats,
@@ -244,8 +224,7 @@ export function useSearchController() {
     const nextArrival = draftArrival.trim();
     setDeparture(nextDeparture);
     setArrival(nextArrival);
-    setAdvancedTrips(null);
-    setAdvancedError(null);
+    clearAdvancedSearch();
     setLastAdvancedPayload(null);
     setQueryParams({
       departureLocation: nextDeparture || undefined,

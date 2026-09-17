@@ -51,6 +51,8 @@ export interface Trip {
   arrival: Location;
   departureTime: string; // ISO string date
   arrivalTime: string; // ISO string date
+  estimatedDurationSeconds?: number | null;
+  arrivalEstimateSource?: 'trip_start' | 'route' | 'approximate' | 'unavailable';
   price: number;
   isFree?: boolean;
   availableSeats: number;

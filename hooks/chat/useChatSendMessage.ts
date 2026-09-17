@@ -1,9 +1,9 @@
 import { trackEvent } from '@/services/analytics';
 import {
-  messageApi,
   useEditConversationMessageMutation,
   useSendConversationMessageMutation,
 } from '@/store/api/messageApi';
+import { updateMessageCache } from '@/store/api/messages/updateMessageCache';
 import { useAppDispatch } from '@/store/hooks';
 import { addMessage as addMessageAction } from '@/store/slices/messagesSlice';
 import React, { useEffect, useMemo } from 'react';
@@ -56,14 +56,7 @@ export function useChatSendMessage({
       try {
         const updated = await editMessageMutation({ messageId: editingMessageId, content, conversationId }).unwrap();
         if (canUpdate()) setEditingMessageId(null);
-        dispatch(
-          messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-            const index = draft.findIndex((m) => m.id === updated.id);
-            if (index !== -1) {
-              draft[index] = updated;
-            }
-          }),
-        );
+        updateMessageCache(dispatch, conversationId, { message: updated, editOnly: true });
       } catch (error) {
         console.warn('Erreur lors de la modification du message:', error);
         if (canUpdate()) setMessage(current => current || content);
@@ -81,11 +74,7 @@ export function useChatSendMessage({
         has_booking: Boolean(conversation?.bookingId),
         content_length: content.length,
       });
-      dispatch(
-        messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-          if (!draft.some((message) => message.id === saved.id)) draft.push(saved);
-        }),
-      );
+      updateMessageCache(dispatch, conversationId, { message: saved });
       dispatch(
         addMessageAction({
           conversationId,

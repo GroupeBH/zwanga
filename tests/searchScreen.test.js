@@ -92,6 +92,7 @@ function screenApp() {
     'expo-router': { useRouter: () => router, useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/hooks/useTripArrivalTime': { useTripArrivalTime: () => null },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/utils/errorHelpers': { getApiErrorMessage: (_error, fallback) => fallback },
     '@/store/hooks': { useAppSelector: selector => selector(state) },

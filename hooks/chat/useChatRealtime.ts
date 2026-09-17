@@ -1,5 +1,5 @@
 import { chatSocket } from '@/services/chatSocket';
-import { messageApi } from '@/store/api/messageApi';
+import { updateMessageCache } from '@/store/api/messages/updateMessageCache';
 import type { useAppDispatch } from '@/store/hooks';
 import { addMessage } from '@/store/slices/messagesSlice';
 import { useEffect } from 'react';
@@ -15,9 +15,7 @@ export function useChatRealtime({ enabled, conversationId, bookingId, userId, di
     const unsubscribe = chatSocket.subscribeToMessages(incoming => {
       if (cancelled || !isCurrent() || !incoming || incoming.conversationId !== conversationId
         || typeof incoming.id !== 'string' || typeof incoming.content !== 'string') return;
-      dispatch(messageApi.util.updateQueryData('getConversationMessages', { conversationId }, draft => {
-        if (!draft.some(message => message.id === incoming.id)) draft.push(incoming);
-      }));
+      updateMessageCache(dispatch, conversationId, { message: incoming });
       dispatch(addMessage({ conversationId, message: incoming, isMine: incoming.senderId === userId }));
     });
     // Subscription precedes joining so the first message cannot be lost during connection.

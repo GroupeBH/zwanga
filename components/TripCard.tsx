@@ -2,6 +2,7 @@ import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } f
 import type { Trip } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { isApproximateArrival } from '@/utils/tripArrivalPreview';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
@@ -31,7 +32,7 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
 
   const arrivalDateTimeDisplay = calculatedArrivalTime
     ? formatDateTime(calculatedArrivalTime.toISOString())
-    : formatDateTime(trip.arrivalTime);
+    : 'Non disponible';
 
   return (
     <View style={[styles.tripCard, isFeatured && styles.tripCardFeatured]}>
@@ -83,7 +84,7 @@ export function TripCard({ trip, onPress, showReserveButton = false, showDetails
           <Ionicons name="navigate" size={16} color={Colors.primary} />
           <Text style={styles.routeText}>{trip.arrival.name}</Text>
           <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>Arrivée estimée</Text>
+            <Text style={styles.routeDateLabel}>{isApproximateArrival(trip) ? 'Arrivée approx.' : 'Arrivée estimée'}</Text>
             <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
           </View>
         </View>

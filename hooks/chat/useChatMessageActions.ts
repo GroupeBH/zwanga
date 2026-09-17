@@ -1,5 +1,6 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { messageApi, useDeleteConversationMessageMutation } from '@/store/api/messageApi';
+import { useDeleteConversationMessageMutation } from '@/store/api/messageApi';
+import { updateMessageCache } from '@/store/api/messages/updateMessageCache';
 import { useAppDispatch } from '@/store/hooks';
 import { Message } from '@/types';
 import React, { useCallback } from 'react';
@@ -48,14 +49,7 @@ export function useChatMessageActions({
             if (!isCurrent()) return;
             try {
               await deleteMessageMutation({ messageId: msg.id, conversationId }).unwrap();
-              dispatch(
-                messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-                  const index = draft.findIndex((m) => m.id === msg.id);
-                  if (index !== -1) {
-                    draft.splice(index, 1);
-                  }
-                }),
-              );
+              updateMessageCache(dispatch, conversationId, { deletedId: msg.id });
             } catch (error) {
               console.warn('Erreur lors de la suppression du message:', error);
             }

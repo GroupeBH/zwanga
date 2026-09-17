@@ -1,4 +1,5 @@
 import { buildCreateBookingEndpoints } from './booking/createBooking.endpoints';
+import { buildBookingHistory } from './booking/history';
 import { buildConfirmDropoffByPassengerEndpoints } from './booking/confirmDropoffByPassenger.endpoints';
 import {
   bookingListTag,
@@ -19,6 +20,7 @@ export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
     ...buildCreateBookingEndpoints(builder),
+    ...buildBookingHistory(builder),
     acceptBooking: builder.mutation<Booking, string>({
       query: (id: string) => ({
         url: `/bookings/${id}/accept`,
@@ -40,6 +42,11 @@ export const bookingApi = baseApi.injectEndpoints({
           );
           dispatch(
             bookingApi.util.updateQueryData('getMyBookings', undefined, (draft) => {
+              patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
+            }),
+          );
+          dispatch(
+            bookingApi.util.updateQueryData('getMyActivityBookings', undefined, (draft) => {
               patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
             }),
           );
@@ -68,6 +75,8 @@ export const bookingApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetMyBookingHistoryInfiniteQuery,
+  useGetMyActivityBookingsQuery,
   useCreateBookingMutation,
   useGetMyBookingsQuery,
   useGetTripBookingsQuery,

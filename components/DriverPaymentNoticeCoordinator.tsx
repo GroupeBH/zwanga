@@ -8,7 +8,6 @@ import {
   getPaymentModeLabel,
   isDriverUser,
   isTripEligibleForNotice,
-  buildPaymentNotice,
 } from '../features/driver-payments/paymentNoticeModel';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,15 +26,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { bookingApi } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery } from '@/store/api/tripApi';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
+import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 
 export function DriverPaymentNoticeCoordinator() {
   const isAppActive = useAppIsActive();
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
@@ -44,13 +41,11 @@ export function DriverPaymentNoticeCoordinator() {
   const [isSeenLoaded, setIsSeenLoaded] = useState(false);
   const [activeNotice, setActiveNotice] = useState<DriverPaymentNotice | null>(null);
   const [isClosingForTripNavigation, setIsClosingForTripNavigation] = useState(false);
-  const seenNoticesRef = useRef<SeenDriverPaymentNotices>({});
   const pendingTripNavigationRef = useRef<string | null>(null);
-  const scanInFlightRef = useRef(false);
 
   const { data: myTrips = [] } = useGetMyTripsQuery(undefined, {
     skip: !isAuthenticated || !driverUser,
-    pollingInterval: DRIVER_PAYMENT_NOTICE_REFRESH_MS,
+    pollingInterval: isAppActive ? DRIVER_PAYMENT_NOTICE_REFRESH_MS : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -64,11 +59,6 @@ export function DriverPaymentNoticeCoordinator() {
         .slice(0, DRIVER_PAYMENT_NOTICE_MAX_TRIPS),
     [myTrips],
   );
-  const relevantTripIdsKey = relevantTrips.map((trip) => trip.id).join('|');
-
-  useEffect(() => {
-    seenNoticesRef.current = seenNotices;
-  }, [seenNotices]);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,82 +154,22 @@ export function DriverPaymentNoticeCoordinator() {
       !driverUser ||
       !isSeenLoaded ||
       !isAppActive ||
-      !relevantTripIdsKey ||
       activeNotice ||
       isClosingForTripNavigation
     ) {
       return;
     }
 
-    let cancelled = false;
-
-    const scanPayments = async () => {
-      if (!isAppActive || scanInFlightRef.current || cancelled) return;
-      scanInFlightRef.current = true;
-
-      try {
-        const tripById = new Map(relevantTrips.map((trip) => [trip.id, trip]));
-        const tripIds = relevantTripIdsKey.split('|').filter(Boolean);
-        const results = await Promise.allSettled(
-          tripIds.map(async (tripId) => {
-            const request = dispatch(
-              bookingApi.endpoints.getTripBookings.initiate(tripId, {
-                forceRefetch: DRIVER_PAYMENT_NOTICE_REFRESH_MS / 1000,
-                subscribe: false,
-              }),
-            );
-
-            try {
-              return {
-                tripId,
-                bookings: await request.unwrap(),
-              };
-            } finally {
-              request.unsubscribe();
-            }
-          }),
-        );
-
-        if (cancelled) return;
-
-        for (const result of results) {
-          if (result.status !== 'fulfilled') continue;
-          const trip = tripById.get(result.value.tripId);
-          if (!trip) continue;
-
-          const notice = result.value.bookings
-            .map((booking) => buildPaymentNotice(booking, trip))
-            .find((candidate): candidate is DriverPaymentNotice =>
-              Boolean(candidate && !seenNoticesRef.current[candidate.key]),
-            );
-
-          if (notice) {
-            setActiveNotice(notice);
-            return;
-          }
-        }
-      } catch (error) {
-        console.warn('[DriverPaymentNotice] Verification impossible:', error);
-      } finally {
-        scanInFlightRef.current = false;
-      }
-    };
-
-    void scanPayments();
-    const interval = setInterval(() => void scanPayments(), DRIVER_PAYMENT_NOTICE_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    const notice = relevantTrips.flatMap(trip => trip.paymentNotices)
+      .find(candidate => !seenNotices[candidate.key]);
+    if (notice) setActiveNotice(notice);
   }, [
     activeNotice,
-    dispatch,
     driverUser,
     isAuthenticated,
     isClosingForTripNavigation,
     isSeenLoaded,
-    relevantTripIdsKey,
+    seenNotices,
     relevantTrips,
     isAppActive,
   ]);

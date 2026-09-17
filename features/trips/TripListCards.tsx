@@ -1,6 +1,7 @@
 import { styles } from '../screen-styles/app/tabs/trips/index';
 import { Colors, FontWeights, Spacing } from '@/constants/styles';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { isApproximateArrival } from '@/utils/tripArrivalPreview';
 import type { Booking, Trip } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,11 +12,11 @@ export function ArrivalTimeBlock({ trip }: { trip: Trip }) {
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const arrivalDateTimeDisplay = calculatedArrivalTime
     ? formatDateTime(calculatedArrivalTime.toISOString())
-    : formatDateTime(trip.arrivalTime);
+    : 'Non disponible';
 
   return (
     <View style={styles.timeContainer}>
-      <Text style={styles.routeDateLabel}>Arrivée estimée</Text>
+      <Text style={styles.routeDateLabel}>{isApproximateArrival(trip) ? 'Arrivée approx.' : 'Arrivée estimée'}</Text>
       <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
     </View>
   );

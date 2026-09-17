@@ -1,4 +1,5 @@
 import { buildGetTripsEndpoints } from './trip/getTrips.endpoints';
+import { buildTripHistory } from './trip/history';
 import { buildConfirmDriverTripInterruptionEndpoints } from './trip/confirmDriverTripInterruption.endpoints';
 
 export type { TripSearchParams } from './trip/contracts';
@@ -21,11 +22,14 @@ export const tripApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
     ...buildGetTripsEndpoints(builder),
+    ...buildTripHistory(builder),
     ...buildConfirmDriverTripInterruptionEndpoints(builder),
   }),
 });
 
 export const {
+  useGetMyTripHistoryInfiniteQuery,
+  useGetMyActivityTripsQuery,
   useGetTripsQuery,
   useGetTripsByCoordinatesQuery,
   useGetAllTripsQuery,
@@ -57,6 +61,4 @@ export const {
   useLazyGetDriverLocationQuery,
   useSetDriverEmergencyContactsMutation,
 } = tripApi;
-
-
 

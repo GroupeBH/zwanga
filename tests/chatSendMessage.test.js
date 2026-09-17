@@ -10,7 +10,9 @@ function fixture(editing = false) {
   const mutation = args => { requests.push(args); return { unwrap: () => pending }; };
   const { useChatSendMessage } = loader({ react: hooks.react,
     '@/services/analytics': { trackEvent() {} },
-    '@/store/api/messageApi': { messageApi: { util: { updateQueryData: (_name, args, recipe) => { recipe(messages); return args; } } } },
+    '@/store/api/messageApi': { messageApi: { util: { updateQueryData: (name, args, recipe) => {
+      if (name === 'getConversationMessages') recipe(messages); return args;
+    } } } },
     '@/store/slices/messagesSlice': { addMessage: payload => payload },
   })('hooks/chat/useChatSendMessage.ts');
   const props = { conversationId: 'chat', sending: false, editingMessageId: editing ? 'edit' : null,

@@ -1,5 +1,5 @@
 import { EMPTY_HOME_TRIP_REQUESTS, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS, isTripRequestWithinAcceptanceWindow, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   useGetTripByIdQuery

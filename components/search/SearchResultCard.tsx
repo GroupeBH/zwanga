@@ -9,6 +9,7 @@ import {
 } from '@/features/search/searchModel';
 import { SEARCH_COLORS } from '@/features/search/searchTheme';
 import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
+import { isApproximateArrival } from '@/utils/tripArrivalPreview';
 import type { Trip } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,7 +31,7 @@ export const SearchResultCard = React.memo(function SearchResultCard({
   const calculatedArrivalTime = useTripArrivalTime(trip);
   const arrivalIso = calculatedArrivalTime?.toISOString() ?? trip.arrivalTime;
   const departureDateTime = formatDateTime(trip.departureTime);
-  const arrivalDateTime = formatDateTime(arrivalIso);
+  const arrivalDateTime = calculatedArrivalTime ? formatDateTime(arrivalIso) : 'non disponible';
   const parsedRating = Number(trip.driverRating);
   const hasRating = Number.isFinite(parsedRating) && parsedRating > 0;
   const driverName = trip.driverName || 'Conducteur Zwanga';
@@ -93,7 +94,7 @@ export const SearchResultCard = React.memo(function SearchResultCard({
         </View>
         <View style={styles.durationBlock}>
           <View style={styles.durationLine} />
-          <Text style={styles.durationText}>{formatDurationMinutes(trip.departureTime, arrivalIso)}</Text>
+          <Text style={styles.durationText}>{calculatedArrivalTime ? `${isApproximateArrival(trip) ? '≈ ' : ''}${formatDurationMinutes(trip.departureTime, arrivalIso)}` : '—'}</Text>
           <Ionicons name="car-sport" size={16} color={SEARCH_COLORS.body} />
         </View>
         <View style={styles.vehicleBlock}>
@@ -106,7 +107,7 @@ export const SearchResultCard = React.memo(function SearchResultCard({
             {trip.description || `${vehicleLabel[trip.vehicleType || 'car']} • ${seatsLabel}`}
           </Text>
           <Text style={styles.arrivalEstimateText} numberOfLines={1}>
-            Arrivée estimée {arrivalDateTime}
+            {isApproximateArrival(trip) ? 'Arrivée approx.' : 'Arrivée estimée'} {arrivalDateTime}
           </Text>
         </View>
       </View>

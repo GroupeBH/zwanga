@@ -96,7 +96,9 @@ function realtimeFixture() {
       joinBookingRoom: () => { calls.push('join'); return new Promise(() => {}); },
       leaveBookingRoom: async () => { calls.push('leave'); },
     } },
-    '@/store/api/messageApi': { messageApi: { util: { updateQueryData: (_endpoint, args, recipe) => { recipe(messages); return args; } } } },
+    '@/store/api/messageApi': { messageApi: { util: { updateQueryData: (endpoint, args, recipe) => {
+      if (endpoint === 'getConversationMessages') recipe(messages); return args;
+    } } } },
     '@/store/slices/messagesSlice': { addMessage: payload => payload },
   })('hooks/chat/useChatRealtime.ts');
   return { hooks, props, calls, subscriptions, messages, actions, stopCurrent: () => { current = false; },

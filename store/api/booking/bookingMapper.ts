@@ -11,7 +11,7 @@ import type {
   TripInterruptionReason,
   TripInterruptionStatus,
 } from '../../../types';
-import { mapServerTripToClient } from '../tripApi';
+import { mapServerTripToClient } from '../trip/tripMapper';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 export const formatPassengerName = (passenger?: ServerUser | null) => {

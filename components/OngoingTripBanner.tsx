@@ -6,8 +6,8 @@ import {
   startOngoingTripTracking,
   stopOngoingTripTracking,
 } from '@/services/ongoingTripNotification';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery } from '@/store/api/tripApi';
+import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { formatDateTime } from '@/utils/dateHelpers';

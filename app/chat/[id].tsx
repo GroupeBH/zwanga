@@ -9,7 +9,7 @@ import { useChatRealtime } from '@/hooks/chat/useChatRealtime';
 import {
   useDeleteConversationMessageMutation,
   useEditConversationMessageMutation,
-  useGetConversationMessagesQuery,
+  useGetConversationMessagePagesInfiniteQuery,
   useGetConversationQuery,
   useMarkConversationAsReadMutation,
   useSendConversationMessageMutation,
@@ -54,7 +54,9 @@ export default function ChatScreen() {
   const { data: conversation, isLoading: conversationLoading, refetch: refetchConversation } = useGetConversationQuery(conversationId, {
     skip: !conversationId || !chatActive,
   });
-  const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages } = useGetConversationMessagesQuery(
+  const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages,
+    hasNextPage, fetchNextPage, isFetchingNextPage, isError: messagesError,
+  } = useGetConversationMessagePagesInfiniteQuery(
     { conversationId },
     { skip: !conversationId || !chatActive, refetchOnMountOrArgChange: 30, refetchOnReconnect: true },
   );
@@ -63,7 +65,16 @@ export default function ChatScreen() {
   const [editMessageMutation] = useEditConversationMessageMutation();
   const [deleteMessageMutation] = useDeleteConversationMessageMutation();
 
-  const messages = useMemo(() => Array.isArray(messagesData) ? messagesData : [], [messagesData]);
+  const messages = useMemo(() => {
+    const seen = new Set<string>();
+    return (messagesData?.pages ?? []).flatMap(page => page.data).filter(item => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id); return true;
+    });
+  }, [messagesData]);
+  const loadOlder = useCallback(() => {
+    if (isCurrent() && hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [isCurrent, hasNextPage, isFetchingNextPage, fetchNextPage]);
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -203,6 +214,8 @@ export default function ChatScreen() {
         {chatActive && <ChatMessageList
           messages={messages} userId={user?.id} loading={messagesLoading}
           refreshing={refreshing} onRefresh={onRefresh} onMessageActions={onMessageActions}
+          newestFirst hasOlder={hasNextPage} loadingOlder={isFetchingNextPage}
+          olderError={messagesError && Boolean(messagesData?.pages.length)} onLoadOlder={loadOlder} error={messagesError}
         />}
 
         <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 8) + 8 }]}>

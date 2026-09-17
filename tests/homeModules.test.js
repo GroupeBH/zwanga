@@ -157,7 +157,7 @@ test('passenger activity excludes own, linked and expired requests and preserves
   const requests = [request('available'), request('own', { passengerId: 'me' }), request('linked', { tripId: 'trip' }), request('expired', { departureDateMax: '2020-01-01' })];
   const app = environment({
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({ data: { unreadCount: 2 } }) },
-    '@/store/api/bookingApi': { useGetMyBookingsQuery: () => ({ data: [], refetch() {} }) },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [], refetch() {} }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
       useGetMyTripRequestsQuery: () => ({ data: [request('own')] }),

@@ -51,6 +51,8 @@ function screenFixture() {
   const dispatch = () => {};
   const read = () => ({ unwrap: async () => ({}) });
   const messages = [msg('a', '2026-09-17T10:00:00Z')];
+  const messagePages = { pages: [{ data: messages, nextCursor: null }], pageParams: [null] };
+  const fetchNextPage = () => {};
   const conversation = { id: 'chat', bookingId: 'booking', participants: [] };
   const refetch = async () => {};
   const showDialog = () => {};
@@ -69,7 +71,10 @@ function screenFixture() {
     } },
     '@/store/api/messageApi': {
       useGetConversationQuery: (_args, options) => { queryCalls.push(options); return { data: conversation, refetch }; },
-      useGetConversationMessagesQuery: (_args, options) => { queryCalls.push(options); return { data: messages, refetch }; },
+      useGetConversationMessagePagesInfiniteQuery: (_args, options) => {
+        queryCalls.push(options);
+        return { data: messagePages, refetch, hasNextPage: false, isFetchingNextPage: false, fetchNextPage };
+      },
       useSendConversationMessageMutation: () => [read, { isLoading: false }],
       useEditConversationMessageMutation: () => [read], useDeleteConversationMessageMutation: () => [read],
       useMarkConversationAsReadMutation: () => [read],

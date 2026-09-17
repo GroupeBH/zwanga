@@ -9,8 +9,8 @@ import {
   PASSENGER_TRACKING_PREARM_PAST_GRACE_MS,
   PASSENGER_TRACKING_PREARM_WINDOW_MS,
 } from '@/constants/rideProgress';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityTripsQuery as useGetMyTripsQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';

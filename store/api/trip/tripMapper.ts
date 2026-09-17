@@ -118,7 +118,10 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       hasCoordinates: Boolean(arrivalCoords),
     },
     departureTime: trip.departureDate,
-    arrivalTime: trip.departureDate,
+    arrivalTime: trip.previewArrivalDate && Number.isFinite(Date.parse(trip.previewArrivalDate))
+      ? trip.previewArrivalDate : trip.departureDate,
+    estimatedDurationSeconds: trip.estimatedDurationSeconds,
+    arrivalEstimateSource: trip.arrivalEstimateSource,
     price: Number(trip.pricePerSeat),
     isFree: trip.isFree ?? Number(trip.pricePerSeat) === 0,
     availableSeats: trip.availableSeats,
