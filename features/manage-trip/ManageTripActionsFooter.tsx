@@ -1,6 +1,7 @@
 import { useManageTripState } from '../../hooks/manage-trip/useManageTripState';
 import { styles } from '../screen-styles/app/trip/manage/detail/index';
 import { Colors } from '@/constants/styles';
+import { isPendingTripInterruption } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
@@ -18,6 +19,7 @@ export function ManageTripActionsFooter({
 }: ManageTripActionsFooterProps) {
   const trip = state.trip;
   if (!trip) return null;
+  const interruptionPending = isPendingTripInterruption(trip.interruptionRequest?.status);
   return (
     <View style={[styles.stickyFooter, { paddingBottom: Math.max(state.insets.bottom, 16) + 16 }]}>
       {trip.status === 'upcoming' && (
@@ -96,18 +98,18 @@ export function ManageTripActionsFooter({
           <TouchableOpacity
             style={[styles.footerSecondaryAction, styles.pauseTripFooterButton]}
             onPress={actions.handlePauseTrip}
-            disabled={state.isPausingTrip || state.isRequestingDriverInterruption}
+            disabled={state.isPausingTrip || state.isRequestingDriverInterruption || interruptionPending}
             activeOpacity={0.8}
             accessibilityRole="button"
-            accessibilityLabel="Interrompre le trajet"
+            accessibilityLabel={interruptionPending ? 'Interruption en attente de confirmation' : 'Interrompre le trajet'}
           >
             {state.isPausingTrip || state.isRequestingDriverInterruption ? (
               <ActivityIndicator color={Colors.warning} />
             ) : (
               <>
-                <Ionicons name="pause" size={20} color={Colors.warning} />
+                <Ionicons name={interruptionPending ? 'hourglass-outline' : 'pause'} size={20} color={Colors.warning} />
                 <Text style={[styles.footerSecondaryActionText, styles.pauseTripFooterButtonText]} numberOfLines={1}>
-                  Pause
+                  {interruptionPending ? 'En attente' : 'Pause'}
                 </Text>
               </>
             )}

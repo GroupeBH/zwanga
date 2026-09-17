@@ -6,6 +6,7 @@ import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import type { Booking } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { shareTrip } from '@/utils/shareHelpers';
+import { getRouteStopLabel } from '@/utils/routeLocationLabels';
 import { useCallback } from 'react';
 import type { Trip, User, Conversation } from '@/types';
 import type { Router } from 'expo-router';
@@ -90,8 +91,8 @@ export function useTripDetailContactActions({
 
       await shareTrip(
         response.publicUrl,
-        trip.departure?.name ?? trip.departure?.address,
-        trip.arrival?.name ?? trip.arrival?.address,
+        getRouteStopLabel({ name: trip.departure?.name, address: trip.departure?.address }, 'Point de départ').title,
+        getRouteStopLabel({ name: trip.arrival?.name, address: trip.arrival?.address }, 'Destination').title,
       );
     } catch (error: any) {
       showDialog({

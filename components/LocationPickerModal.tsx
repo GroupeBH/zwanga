@@ -8,7 +8,7 @@ import { useGetLandmarksQuery } from '@/store/api/googleMapsApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { useLocationPicker } from '@/hooks/location-picker/useLocationPicker';
 import { LocationPickerMap } from '@/components/location-picker/LocationPickerMap';
-import { pointSelection, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
+import { pointSelection, readableSelection, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
 import { styles } from '@/features/location-picker/LocationPicker.styles';
 
 export type { MapLocationSelection } from '@/features/location-picker/locationPickerModel';
@@ -35,7 +35,7 @@ function PickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute 
   const { data: favorites } = useGetFavoriteLocationsQuery();
   const { data: landmarks } = useGetLandmarksQuery({ city: 'kinshasa', limit: 6 });
   const favoriteRows = useMemo(() => (favorites ?? []).map(favorite => ({
-    id: favorite.id, title: favorite.name, address: favorite.address, ...favorite.coordinates,
+    id: favorite.id, ...readableSelection({ title: favorite.name, address: favorite.address, ...favorite.coordinates }),
   })), [favorites]);
   const { choose } = picker;
   const onMapPress = useCallback((point: PickerCoordinate) => choose(pointSelection(point), true), [choose]);

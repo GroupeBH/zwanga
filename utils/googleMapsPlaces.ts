@@ -1,8 +1,9 @@
 import { normalizeSearchText, unique, containsAlias, analyzeQuery, scoreSuggestionForQuery, getTypeSpecificityScore, shouldRunPreciseTextSearch } from './places/searchRanking';
 import { DEFAULT_PROXIMITY, MAJOR_CITIES, MajorCityConfig, RDC_BBOX, GoogleMapsSearchSuggestion } from './places/searchModel';
-export type { GoogleMapsSearchSuggestion } from './places/searchModel';
 import { store } from '@/store';
 import { googleMapsApi, type PlaceDetails } from '@/store/api/googleMapsApi';
+import { readableLocation } from '@/utils/readableLocation';
+export type { GoogleMapsSearchSuggestion } from './places/searchModel';
 
 /* =====================================================
    CITY AND LOCATION HELPERS
@@ -155,12 +156,12 @@ const mapPlaceDetailsToSuggestion = (
     return null;
   }
 
-  const formattedAddress = place.formattedAddress || '';
+  const label = readableLocation({ ...place, fallbackTitle: fallbackName });
 
   return {
     id: place.placeId,
-    name: place.name || formattedAddress.split(',')[0]?.trim() || fallbackName,
-    fullAddress: formattedAddress || place.name || fallbackName,
+    name: label.title,
+    fullAddress: label.address,
     placeType: Array.isArray(place.types) && place.types.length > 0 ? place.types : ['geocode'],
     coordinates: {
       latitude,
@@ -273,11 +274,12 @@ export async function searchGoogleMapsPlaces(
             const fullAddress = secondaryText
               ? `${mainText}, ${secondaryText}`
               : prediction.description || mainText;
+            const label = readableLocation({ name: mainText, formattedAddress: fullAddress });
 
             return {
               id: prediction.placeId,
-              name: mainText,
-              fullAddress,
+              name: label.title,
+              fullAddress: label.address,
               placeType: ['geocode'],
               coordinates: {
                 latitude: null,
@@ -329,9 +331,7 @@ export async function searchGoogleMapsPlaces(
   }
 }
 
-/* =====================================================
-   RETRIEVE DETAILS
-===================================================== */
+/* Retrieve details */
 
 export async function getGoogleMapsPlaceDetails(
   placeId: string,
@@ -375,11 +375,12 @@ export async function getGoogleMapsPlaceDetails(
     const placeType = types.filter((type: string) =>
       !['geocode', 'establishment', 'point_of_interest'].includes(type),
     );
+    const label = readableLocation(place);
 
     return {
       id: placeId,
-      name: place.name || '',
-      fullAddress: place.formattedAddress || '',
+      name: label.title,
+      fullAddress: label.address,
       placeType: placeType.length > 0 ? placeType : ['geocode'],
       coordinates: {
         latitude: place.lat,

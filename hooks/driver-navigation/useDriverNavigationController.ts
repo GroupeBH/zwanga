@@ -10,6 +10,7 @@ import { useDriverVoiceGuidance } from './useDriverVoiceGuidance';
 import { useDriverPickupActions } from './useDriverPickupActions';
 import { useDriverTripActions } from './useDriverTripActions';
 import { useDriverTripInterruptionActions } from './useDriverTripInterruptionActions';
+import { useDriverNavigationExitPrompt } from './useDriverNavigationExitPrompt';
 import { useDriverBookingActions } from './useDriverBookingActions';
 import { useCallback } from 'react';
 
@@ -188,25 +189,17 @@ export function useDriverNavigationController() {
     session.foundation.mapState.navigateAfterRelease(() => session.foundation.data.router.replace(`/rate/${session.foundation.data.tripId}`));
   }, [pickupActions.dismissTripEndNotice, session.foundation.mapState.navigateAfterRelease, session.foundation.data.router, session.foundation.data.tripId]);
 
-  // Quitter la navigation
-  const handleExitNavigation = useCallback(() => {
-    session.foundation.data.showDialog({
-      title: 'Quitter la navigation',
-      message: 'Voulez-vous vraiment quitter la navigation GPS ?',
-      variant: 'warning',
-      icon: 'exit-outline',
-      actions: [
-        {
-          label: 'Quitter',
-          variant: 'primary',
-          onPress: session.foundation.exitActions.navigateBackSafely,
-        },
-        { label: 'Annuler', variant: 'secondary' },
-      ],
-    });
-  }, [session.foundation.exitActions.navigateBackSafely, session.foundation.data.showDialog]);
+  const handleExitNavigation = useDriverNavigationExitPrompt({
+    status: session.foundation.data.trip?.status,
+    interruptionPending: Boolean(session.foundation.passengers.activeDriverInterruptionRequest),
+    navigateBackSafely: session.foundation.exitActions.navigateBackSafely,
+    showDialog: session.foundation.data.showDialog,
+  });
 
   const interruptionActions = useDriverTripInterruptionActions({
+    isScreenActive: session.foundation.data.isScreenActive,
+    navigateBackSafely: session.foundation.exitActions.navigateBackSafely,
+    isExitingRef: session.foundation.refs.isExitingRef,
     tripId: session.foundation.data.tripId,
     isRestartingTrip: session.foundation.data.isRestartingTrip,
     isTripFetching: session.foundation.data.isTripFetching,

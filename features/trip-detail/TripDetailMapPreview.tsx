@@ -50,8 +50,8 @@ export function TripDetailMapPreview({
             anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
             image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
             pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
-            title="Départ"
-            description={model.data.trip?.departure?.address}
+            title={`Départ · ${model.presentation.routeLabels.departure.title}`}
+            description={model.presentation.routeLabels.departure.address}
             tracksViewChanges={false}
           >
             {USE_CUSTOM_MAP_MARKERS ? (
@@ -66,8 +66,8 @@ export function TripDetailMapPreview({
             anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
             image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
             pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
-            title="Arrivée"
-            description={model.data.trip?.arrival?.address}
+            title={`Arrivée · ${model.presentation.routeLabels.arrival.title}`}
+            description={model.presentation.routeLabels.arrival.address}
             tracksViewChanges={false}
           >
             {USE_CUSTOM_MAP_MARKERS ? (

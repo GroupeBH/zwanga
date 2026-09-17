@@ -249,6 +249,7 @@ export default function TripRequestDetailsScreen() {
           <RequestAcceptModal
             showDirectAcceptModal={model.showDirectAcceptModal}
             closeDirectAcceptModal={model.closeDirectAcceptModal}
+            onDirectAcceptModalDismiss={model.onDirectAcceptModalDismiss}
             directAcceptDepartureDate={model.directAcceptDepartureDate}
             requestedVehicleType={model.requestedVehicleType}
             directAcceptRequiresPassengerKyc={model.directAcceptRequiresPassengerKyc}
@@ -364,4 +365,3 @@ export default function TripRequestDetailsScreen() {
     </SafeAreaView>
   );
 }
-

@@ -15,6 +15,8 @@ import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-na
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
 import type { DriverOffer, Vehicle, TripRequest } from '@/types';
 import type { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 
 interface RequestDriverSummaryProps {
   driverHero: { badge: string; title: string; subtitle: string; };
@@ -61,6 +63,7 @@ export function RequestDriverSummary({
   checkIdentity,
   compatibleActiveVehicles,
 }: RequestDriverSummaryProps) {
+  const routeLabels = useRouteLocationLabels(tripRequest);
   return (
     <Animated.View
       entering={FadeInDown.duration(280)}
@@ -102,25 +105,11 @@ export function RequestDriverSummary({
       <Text style={styles.ownerHeroSubtitle} numberOfLines={2}>{driverHero.subtitle}</Text>
 
       <Animated.View layout={LinearTransition.duration(220)} style={styles.driverRouteCard}>
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Départ</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.departure.name}</Text>
-          </View>
-        </View>
-        <View style={[styles.ownerHeroRouteLine, styles.driverRouteLine]} />
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Destination</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.arrival.name}</Text>
-          </View>
-        </View>
+        <RouteLocationDetails labels={routeLabels} tone="dark" trailingInset={44} />
 
         <CollapsibleRouteMap
-          arrivalName={tripRequest.arrival.name}
-          departureName={tripRequest.departure.name}
+          arrivalName={routeLabels.arrival.address}
+          departureName={routeLabels.departure.address}
           mapData={requestRouteMapData}
           routeCoordinates={displayedRouteCoordinates}
         />

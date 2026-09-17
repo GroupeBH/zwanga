@@ -6,9 +6,10 @@ import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearc
 import { findClosestPointOnRoute } from '@/utils/routeHelpers';
 import { BoundedCache } from '@/utils/boundedCache';
 import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
-import { DEFAULT_PICKER_LOCATION, getPickerCoordinate, pointSelection, samePickerPoint, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
+import { DEFAULT_PICKER_LOCATION, getPickerCoordinate, pointSelection, readableSelection, samePickerPoint, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
+import { readableLocation, type ReadableLocation } from '@/utils/readableLocation';
 
-const addresses = new BoundedCache<string>(40);
+const addresses = new BoundedCache<ReadableLocation>(40);
 const EMPTY_ROUTE: PickerCoordinate[] = [];
 const ignoreMutationState = () => ({});
 
@@ -30,7 +31,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     const source = initialLocation ?? DEFAULT_PICKER_LOCATION;
     const point = normalize(source) ?? normalize(DEFAULT_PICKER_LOCATION)!;
     const sourcePoint = getPickerCoordinate(source.latitude, source.longitude);
-    return sourcePoint && samePickerPoint(point, sourcePoint) ? { ...source, ...point } : pointSelection(point);
+    return sourcePoint && samePickerPoint(point, sourcePoint) ? readableSelection({ ...source, ...point }) : pointSelection(point);
   });
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
@@ -68,7 +69,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     cancel();
     touchedRef.current = true;
     const changedBySnap = !samePickerPoint(point, getPickerCoordinate(value.latitude, value.longitude)!);
-    const next = changedBySnap ? pointSelection(point) : { ...value, ...point };
+    const next = changedBySnap ? pointSelection(point) : readableSelection({ ...value, ...point });
     selectionRef.current = next;
     setSelection(next);
     setNeedsAddress(lookupAddress || changedBySnap);
@@ -108,10 +109,13 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     let current = true;
     let request: ReturnType<typeof reverseGeocode> | undefined;
     const point = { latitude: selection.latitude, longitude: selection.longitude };
+    const selectedAtStart = selectionRef.current;
     const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`;
-    const apply = (address: string) => {
-      if (current && activeRef.current && samePickerPoint(selectionRef.current, point)) {
-        setSelection(previous => ({ ...previous, title: address.split(',')[0]?.trim() || previous.title, address }));
+    const apply = (label: ReadableLocation) => {
+      if (current && activeRef.current && selectionRef.current === selectedAtStart) {
+        const next = { ...selectionRef.current, ...label };
+        selectionRef.current = next;
+        setSelection(next);
         setNeedsAddress(false);
       }
     };
@@ -119,12 +123,11 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     if (cached) { apply(cached); return; }
     setAddressLoading(true);
     const timer = setTimeout(() => {
-      request = reverseGeocode({ lat: point.latitude, lng: point.longitude });
+      request = reverseGeocode({ lat: point.latitude, lng: point.longitude, language: 'fr', region: 'cd' });
       void request.unwrap().then(response => {
-        if (response.formattedAddress?.trim()) {
-          if (current) addresses.set(key, response.formattedAddress, 300_000);
-          apply(response.formattedAddress);
-        }
+        const label = readableLocation(response);
+        if (current) addresses.set(key, label, 300_000);
+        apply(label);
       }).catch(() => { /* The coordinate remains valid and can be confirmed offline. */ })
         .finally(() => { if (current) { setAddressLoading(false); setNeedsAddress(false); } });
     }, 400);
@@ -168,7 +171,9 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
         const result = await request.unwrap();
         if (!token.isCurrent()) return;
         point = getPickerCoordinate(result.lat, result.lng);
-        address = result.formattedAddress || address;
+        const label = readableLocation({ ...result, name });
+        name = label.title;
+        address = label.address;
       }
       if (!token.isCurrent()) return;
       if (point) choose({ ...point, title: name, address });

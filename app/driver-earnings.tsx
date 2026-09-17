@@ -150,7 +150,7 @@ export default function DriverEarningsScreen() {
           </Text>
 
           <Text style={styles.balanceHint}>
-            Zwanga verse vos gains sur votre Mobile Money. Aucun compte FlexPay n’est nécessaire pour les recevoir.
+            Zwanga verse vos gains sur votre Mobile Money.
           </Text>
           {storageError && <Text style={styles.balanceHint}>Impossible de restaurer le suivi du versement sur ce téléphone. Contactez l’assistance avant une nouvelle demande.</Text>}
           <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/support')} style={styles.headerButton} accessibilityLabel="Contacter l’assistance pour mes gains">
@@ -234,4 +234,3 @@ export default function DriverEarningsScreen() {
     </SafeAreaView>
   );
 }
-

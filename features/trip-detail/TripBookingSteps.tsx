@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import type { Trip } from '@/types';
+import { getRouteStopLabel } from '@/utils/routeLocationLabels';
 
 interface TripBookingStepsProps {
   viewportHeight: number;
@@ -284,8 +285,8 @@ export function TripBookingSteps({
               <Text style={[styles.bookingSummaryPointLabel, styles.bookingSummaryPointLabelDeparture]}>
                 D&eacute;part / prise en charge
               </Text>
-              <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                {passengerOriginDisplay || trip?.departure?.address}
+              <Text style={styles.bookingSummaryText}>
+                {getRouteStopLabel({ address: passengerOriginDisplay || trip?.departure?.address }, 'Point de départ').address}
               </Text>
             </View>
           </View>
@@ -297,8 +298,8 @@ export function TripBookingSteps({
               <Text style={[styles.bookingSummaryPointLabel, styles.bookingSummaryPointLabelArrival]}>
                 Arriv&eacute;e / destination
               </Text>
-              <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                {passengerDestinationDisplay || trip?.arrival?.address}
+              <Text style={styles.bookingSummaryText}>
+                {getRouteStopLabel({ address: passengerDestinationDisplay || trip?.arrival?.address }, 'Destination').address}
               </Text>
             </View>
           </View>

@@ -82,6 +82,7 @@ export function useDriverTripActions({
         variant: 'info',
         icon: 'hourglass-outline',
         actions: [
+          { label: 'Quitter la navigation', variant: 'primary', onPress: handleExitNavigation },
           { label: 'Fermer', variant: 'ghost' },
           {
             label: 'Annuler la demande',
@@ -106,13 +107,13 @@ export function useDriverTripActions({
     if (passengersOnBoard.length === 0) {
       showDialog({
         title: 'Interrompre le trajet',
-        message: "Aucun passager n'est à bord. Vous pouvez interrompre ce trajet directement.",
+        message: "Aucun passager n'est à bord. Le trajet sera interrompu et vous reviendrez à sa gestion.",
         variant: 'warning',
         icon: 'pause-circle-outline',
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
-            label: 'Interrompre',
+            label: 'Interrompre et quitter',
             variant: 'secondary',
             onPress: pauseTripWithoutPassengerConfirmation,
           },
@@ -124,7 +125,7 @@ export function useDriverTripActions({
     showDialog({
       title: 'Demander une interruption',
       message:
-        'Cette interruption devra être confirmée par tous les passagers à bord avant de prendre effet.',
+        'Choisissez le motif pour envoyer la demande et quitter la navigation. Le trajet reste en cours jusqu’à la confirmation de tous les passagers à bord.',
       variant: 'warning',
       icon: 'stop-circle-outline',
       actions: [
@@ -142,6 +143,8 @@ export function useDriverTripActions({
       ],
     });
   }, [
+    bookingsRef,
+    handleExitNavigation,
     activeDriverInterruptionConfirmedCount,
     activeDriverInterruptionRequest,
     activeDriverInterruptionRequiredCount,

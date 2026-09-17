@@ -9,7 +9,7 @@ import { styles } from '../screen-styles/app/request/detail/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors } from '@/constants/styles';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -25,11 +25,11 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
-import type { Vehicle } from '@/types';
 
 interface RequestAcceptModalProps {
   showDirectAcceptModal: boolean;
   closeDirectAcceptModal: () => void;
+  onDirectAcceptModalDismiss: () => void;
   directAcceptDepartureDate: Date | null;
   requestedVehicleType: TripRequestVehicleType;
   directAcceptRequiresPassengerKyc: boolean;
@@ -56,6 +56,7 @@ interface RequestAcceptModalProps {
 export function RequestAcceptModal({
   showDirectAcceptModal,
   closeDirectAcceptModal,
+  onDirectAcceptModalDismiss,
   directAcceptDepartureDate,
   requestedVehicleType,
   directAcceptRequiresPassengerKyc,
@@ -84,6 +85,7 @@ export function RequestAcceptModal({
       animationType="slide"
       transparent
       onRequestClose={closeDirectAcceptModal}
+      onDismiss={onDirectAcceptModalDismiss}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

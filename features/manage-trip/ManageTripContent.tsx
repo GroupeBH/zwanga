@@ -1,4 +1,5 @@
 import { ManageTripBookings } from './ManageTripBookings';
+import { ManageTripInterruptionNotice } from './ManageTripInterruptionNotice';
 import { useManageTripState } from '../../hooks/manage-trip/useManageTripState';
 import { labelStatus, statusColor } from './manageTripStatus';
 import { styles } from '../screen-styles/app/trip/manage/detail/index';
@@ -39,6 +40,8 @@ export function ManageTripContent({
         <RefreshControl refreshing={state.refreshing} onRefresh={refreshAll} tintColor={Colors.primary} />
       }
     >
+      <ManageTripInterruptionNotice trip={trip} />
+
       {/* Résumé du trajet */}
       <View style={styles.summaryCard}>
         <View style={styles.summaryHeader}>

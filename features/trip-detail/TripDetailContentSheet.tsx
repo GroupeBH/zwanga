@@ -41,8 +41,7 @@ export function TripDetailContentSheet({
 
       <TripSummary
         config={config}
-        tripDepartureName={presentation.tripDepartureName}
-        tripArrivalName={presentation.tripArrivalName}
+        routeLabels={presentation.routeLabels}
         tripPriceLabel={presentation.tripPriceLabel}
         trip={data.trip}
         tripDepartureTimeLabel={presentation.tripDepartureTimeLabel}
