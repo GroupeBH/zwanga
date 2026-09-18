@@ -163,3 +163,52 @@ const personalMarkup = renderToStaticMarkup(h(native.View, { style: { padding: 1
   personalLists(320), personalLists(390)));
 fs.writeFileSync(path.join(directory, 'personal-lists.html'), `<!doctype html><html lang="fr"><meta charset="utf-8"><style>${native.StyleSheet.getSheet().textContent} body{margin:0;background:#e6eaee;font-family:Arial,sans-serif}</style>${personalMarkup}</html>`);
 console.log(path.join(directory, 'personal-lists.html'));
+
+const { ManageTripSummary } = load('features/manage-trip/ManageTripSummary.tsx');
+function managementSummary(width) {
+  const summaryTrip = { ...trip, departure: { address: 'Kintambo Magasin, Kinshasa' },
+    arrival: { address: 'Avenue De La Victoire, Kinshasa' }, totalSeats: 4, price: 0, status: 'ongoing' };
+  return h(native.View, { style: { width, padding: 12, backgroundColor: '#F8F9FA', borderRadius: 20 } },
+    h(native.Text, { style: { fontSize: 20, fontWeight: '700', marginBottom: 16 } }, `Gestion du trajet · ${width} px`),
+    sectionTitle('EN COURS · CAS DE LA CAPTURE'),
+    h(ManageTripSummary, { trip: summaryTrip }),
+    sectionTitle('À VENIR · PRIX PAR PLACE'),
+    h(ManageTripSummary, { trip: { ...summaryTrip, price: 5000, status: 'upcoming' }, onEditRoute: noop }),
+    sectionTitle('NOMS LONGS ET MONTANT ÉLEVÉ'),
+    h(ManageTripSummary, { trip: { ...summaryTrip, price: 125000, availableSeats: 0,
+      departure: { name: 'Université Pédagogique Nationale (UPN)', address: 'Route de Matadi, Kinshasa' },
+      arrival: { name: 'Centre hospitalier universitaire de Kinshasa', address: 'Mont Amba, Kinshasa' } } }),
+  );
+}
+const managementMarkup = renderToStaticMarkup(h(native.View, {
+  style: { padding: 16, gap: 16, flexDirection: 'row', alignItems: 'flex-start' },
+}, managementSummary(320), managementSummary(390)));
+fs.writeFileSync(path.join(directory, 'manage-summary.html'), `<!doctype html><html lang="fr"><meta charset="utf-8"><style>${native.StyleSheet.getSheet().textContent} body{margin:0;background:#e6eaee;font-family:Arial,sans-serif}</style>${managementMarkup}</html>`);
+console.log(path.join(directory, 'manage-summary.html'));
+
+const { TripSummary } = load('features/trip-detail/TripSummary.tsx');
+const { getRouteLocationLabels } = load('utils/routeLocationLabels.ts');
+function tripDetail(width) {
+  const item = { ...trip, driverId: 'driver', driverName: 'Sacha Tondebo', price: 4000, status: 'upcoming', requiresPassengerKyc: true,
+    departure: { name: 'Université Pédagogique Nationale (UPN)', address: 'Université Pédagogique Nationale (UPN)' },
+    arrival: { name: 'Kintambo Magasin', address: 'Kintambo Magasin' } };
+  const props = { trip: item, routeLabels: getRouteLocationLabels(item), config: { label: 'À venir', color: '#F7B801' },
+    tripPriceLabel: '4000 FC', tripDepartureTimeLabel: '18/09/2026 18:30', tripArrivalTimeLabel: '18/09/2026 18:59',
+    tripSeatsLabel: '2 places', tripRouteDistanceLabel: '9.5 km', progress: 20, estimatedArrivalTime: null,
+    driverReviewAverage: 4.5, tripVehicleLabel: 'Yamaha uyt', tripVehicleMetaLabel: 'Noir · 1234AB01',
+    tripVehicleIconName: 'bicycle', driverPhone: '000', router: { push: noop },
+    setVehicleDetailModalVisible: noop, handleContactDriver: noop, setContactModalVisible: noop };
+  return h(native.View, { style: { width, backgroundColor: 'white', borderRadius: 20, paddingVertical: 16, gap: 12 } },
+    h(native.Text, { style: { padding: 16, fontSize: 20, fontWeight: '700' } }, `Détail du trajet · ${width} px`),
+    h(TripSummary, props),
+    sectionTitle('EN COURS · ADRESSES ET REPÈRES COMPLETS'),
+    h(TripSummary, { ...props, trip: { ...item, status: 'ongoing' }, config: { label: 'En cours', color: '#3498DB' },
+      routeLabels: getRouteLocationLabels({ ...item,
+        departure: { ...item.departure, address: 'Route de Matadi, Kinshasa', reference: 'Portail principal' } }) }),
+  );
+}
+const detailMarkup = renderToStaticMarkup(h(native.View, {
+  style: { padding: 16, gap: 16, flexDirection: 'row', alignItems: 'flex-start' },
+}, tripDetail(320), tripDetail(390)));
+fs.writeFileSync(path.join(directory, 'trip-detail.html'), `<!doctype html><html lang="fr"><meta charset="utf-8"><style>${native.StyleSheet.getSheet().textContent} body{margin:0;background:#e6eaee;font-family:Arial,sans-serif}</style>${detailMarkup}</html>`);
+console.log(path.join(directory, 'trip-detail.html'));

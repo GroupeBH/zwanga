@@ -52,7 +52,29 @@ Le panneau développé n’a plus de hauteur fixe : la liste horizontale virtual
 
 Avant diffusion : vérifier sur iOS et Android les textes agrandis, les longues adresses, les différentes réservations et les actions pendant une connexion lente. Les aperçus web et tests simulés ne remplacent pas une validation native.
 
+## Résumé dans « Gestion du trajet »
+
+`ManageTripSummary` isole le résumé conducteur : horaire discret, deux lignes de lieux en gras, puis places disponibles/capacité et tarif sur une ligne. Le statut reste dans l’en-tête de l’écran au lieu d’être répété. La grande frise et les sous-cartes avec icônes entourées sont supprimées. Un tarif nul affiche « Gratuit » ; un tarif positif est indiqué par place, sans multiplication ni modification des données métier.
+
+Les libellés utilisent le formateur local commun `getRouteStopLabel`, sans géocodage supplémentaire ni réécriture des adresses stockées. Les lecteurs d’écran disposent de l’adresse complète et du sens départ/arrivée. Les lieux peuvent occuper deux lignes ; les statistiques reviennent à la ligne si nécessaire. Aucune hauteur fixe ni désactivation de l’agrandissement du texte n’est imposée.
+
+La modification des adresses conserve son action et sa condition `upcoming`, avec une zone tactile d’au moins 44 points. Passagers, interruptions, sécurité, rafraîchissement et boutons fixes restent inchangés. Le résumé est mémorisé avec `React.memo`, sans effet, animation, mesure de disposition ni abonnement réseau.
+
+`tests/manageTripSummary.test.js`, inclus dans les deux commandes de tests ci-dessus, vérifie ces informations et actions. Le script d’aperçu produit également `manage-summary.html` à 320 et 390 pixels avec trajets gratuits/payants, longs noms et grandes valeurs. Cet aperçu web ne constitue pas un test de crash sur appareil natif.
+
 ## Durcissement iOS / Android après compactage
+
+### Détail public et recherche
+
+Dans `TripSummary`, le grand titre « départ vers destination » a été supprimé : chaque lieu n’apparaît qu’une fois dans le bloc d’adresses. Les horaires complets accompagnent désormais les lieux, avec la mention « Arrivée estimée ». Le composant commun `RouteLocationDetails` conserve les adresses complémentaires, les repères et les textes accessibles, sans tronquer les lieux. Son mode compact et ses horaires sont optionnels ; les détails des demandes gardent leur présentation par défaut.
+
+Statut/prix et places/distance sont présentés sur des lignes légères, sans les quatre tuiles d’information. La photo du conducteur, son profil, le détail du véhicule et les deux actions de contact restent présents. L’exigence d’identité vérifiée est conservée dans un bandeau court. La carte garde son ouverture plein écran, mais son ancien cartouche d’horaire et son bouton d’agrandissement font place à un seul accès « Voir la carte ». L’animation d’entrée du résumé a été retirée ; aucun timer, requête ou calcul d’itinéraire supplémentaire n’est introduit.
+
+`useSearchResults` exclut les trajets du compte connecté (`driverId` ou `driver.id`) avant le tri et le comptage. La règle couvre les résultats serveur, la recherche par coordonnées et le cache local, sans modifier les données partagées ni les trajets accessibles dans « Mes trajets ». Le profil déjà présent dans Redux sert de repli pendant le chargement du profil distant. Le filtrage est mémorisé selon l’identifiant utilisateur et se met à jour lors d’un changement de compte.
+
+Vérifications : `searchOwnTrips.test.js`, `searchScreen.test.js`, `tripDetailCompact.test.js`, `routeLocationDetails.test.js` et `tripDetailPerformance.test.js` sont inclus dans `test:ui-stability`. L’aperçu `trip-detail.html` couvre 320 et 390 pixels, les noms longs, les références et un trajet en cours.
+
+### Cycle de vie des listes et de la carte d’accueil
 
 - `HomeMap` est mémorisé avec la comparaison superficielle standard de React : une mesure du panneau ou un changement d’un autre élément de l’interface ne suffit plus à rendre les marqueurs natifs lorsque leurs entrées sont inchangées. Les changements de coordonnées, marqueurs, trajet ou visibilité restent pris en compte ; aucun comparateur personnalisé ne les ignore.
 - `useHomeSheet` invalide les anciens événements de mise en page après repli, rotation, changement de visibilité ou démontage. Les mesures identiques sont toujours dédupliquées. Une mesure courante reçue pendant que l’écran est caché reste conservée, pour que le bouton de recentrage soit correctement placé au retour même si des données sont arrivées entre-temps.

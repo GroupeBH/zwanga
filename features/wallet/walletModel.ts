@@ -37,6 +37,9 @@ export const LEDGER_META: Record<
   { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }
 > = {
   top_up: { label: 'Recharge', icon: 'add-circle-outline', color: Colors.successDark },
+  withdrawal: { label: 'Retrait de jetons achetés', icon: 'cash-outline', color: Colors.danger },
+  withdrawal_refund: { label: 'Retrait non effectué : jetons restitués', icon: 'return-down-back-outline', color: Colors.successDark },
+  admin_adjustment: { label: 'Ajustement du portefeuille', icon: 'swap-horizontal-outline', color: Colors.gray[700] },
   loyalty_reward: { label: 'Fidélité', icon: 'sparkles-outline', color: Colors.secondaryDark },
   booking_payment: { label: 'Trajet payé', icon: 'car-outline', color: Colors.danger },
   booking_refund: { label: 'Remboursement', icon: 'return-down-back-outline', color: Colors.success },

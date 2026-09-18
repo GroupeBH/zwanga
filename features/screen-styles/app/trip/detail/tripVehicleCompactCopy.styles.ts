@@ -14,7 +14,7 @@ export const styles = StyleSheet.create({
   },
   tripVehicleCompactMeta: {
     marginTop: 1,
-    color: Colors.gray[500],
+    color: Colors.gray[600],
     fontSize: 11,
     fontWeight: FontWeights.medium,
   },
@@ -237,10 +237,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
-    padding: Spacing.md,
-    borderRadius: BorderRadius.lg,
-    borderWidth: 1,
-    borderColor: Colors.primary + '30',
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.md,
     backgroundColor: Colors.primary + '08',
   },
   passengerKycTripNoticeIcon: {
@@ -256,9 +254,10 @@ export const styles = StyleSheet.create({
     minWidth: 0,
   },
   passengerKycTripNoticeTitle: {
-    color: Colors.gray[900],
-    fontSize: FontSizes.sm,
-    fontWeight: FontWeights.bold,
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    lineHeight: 18,
+    fontWeight: FontWeights.semibold,
   },
   passengerKycTripNoticeText: {
     marginTop: 3,
@@ -273,7 +272,9 @@ export const styles = StyleSheet.create({
   },
   tripInlineActionButton: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.xs,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -287,6 +288,7 @@ export const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
   },
   tripInlineActionText: {
+    flexShrink: 1,
     color: Colors.gray[800],
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,

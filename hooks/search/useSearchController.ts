@@ -5,7 +5,7 @@ import type { SearchMode, SearchSortMode as SortMode } from '@/components/search
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useLatestTripSearch } from './useLatestTripSearch';
 import { useAppSelector } from '@/store/hooks';
-import { selectTrips, selectUserCoordinates } from '@/store/selectors';
+import { selectTrips, selectUser, selectUserCoordinates } from '@/store/selectors';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetAvailableTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
@@ -43,7 +43,10 @@ export function useSearchController() {
     seats?: string;
   }>();
   const storedTrips = useAppSelector(selectTrips);
-  const { data: currentUser } = useGetCurrentUserQuery();
+  const storedUser = useAppSelector(selectUser);
+  const { data: profile } = useGetCurrentUserQuery();
+  // Keep ownership filtering while the profile refresh is slow or unavailable.
+  const currentUser = profile ?? storedUser ?? undefined;
   const isDriverAccount = Boolean(
     currentUser?.isDriver ||
       currentUser?.role === 'driver' ||

@@ -50,6 +50,11 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
         return false;
       }
 
+      // Applied to every source (remote, map search and cached trips), before counts/sorting.
+      if (currentUser?.id && (trip.driverId === currentUser.id || trip.driver?.id === currentUser.id)) {
+        return false;
+      }
+
       const departureText = `${trip.departure?.name ?? ''} ${trip.departure?.address ?? ''}`;
       const arrivalText = `${trip.arrival?.name ?? ''} ${trip.arrival?.address ?? ''}`;
       const routeText = `${departureText} ${arrivalText}`;
@@ -74,7 +79,7 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
 
       return safeDepartureA - safeDepartureB;
     });
-  }, [arrival, baseTrips, departure, desiredSeats, searchMode, sortMode]);
+  }, [arrival, baseTrips, currentUser?.id, departure, desiredSeats, searchMode, sortMode]);
 
   const filteredTripRequests = useMemo(() => {
     if (searchMode !== 'requests' || !isDriverAccount) {

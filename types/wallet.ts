@@ -25,6 +25,9 @@ export interface WalletAccount {
   userId: string;
   type: 'points';
   balance: number | string;
+  withdrawableBalance?: number | string;
+  reservedWithdrawalBalance?: number | string;
+  withdrawalsBlocked?: boolean;
   currency: string;
   createdAt: string;
   updatedAt: string;
@@ -39,7 +42,10 @@ export type WalletLedgerEntryType =
   | 'subscription_payment'
   | 'subscription_reward'
   | 'transfer_out'
-  | 'transfer_in';
+  | 'transfer_in'
+  | 'admin_adjustment'
+  | 'withdrawal'
+  | 'withdrawal_refund';
 
 export interface WalletLedgerEntry {
   id: string;
@@ -48,6 +54,7 @@ export interface WalletLedgerEntry {
   accountType: 'points';
   type: WalletLedgerEntryType;
   amount: number | string;
+  withdrawableAmount?: number | string | null;
   balanceAfter: number | string;
   currency: string;
   relatedEntityType?: string | null;
@@ -60,6 +67,17 @@ export interface WalletLedgerEntry {
 export interface WalletSummary {
   account: WalletAccount;
   recentEntries: WalletLedgerEntry[];
+  withdrawal?: {
+    enabled: boolean; currency: string; moneyPerToken: number; minimumTokens: number;
+    availableMoney: number; nonWithdrawableTokens: number; blocked: boolean;
+  };
+}
+
+export interface WalletWithdrawal {
+  id: string; idempotencyKey: string; tokens: number; amount: number; currency: string;
+  moneyPerToken: number; phone: string; createdAt: string; orderNumber: string | null;
+  status: 'pending' | 'initiated' | 'succeeded' | 'failed' | 'cancelled' | 'review';
+  message: string;
 }
 
 export interface WalletPaymentResponse {

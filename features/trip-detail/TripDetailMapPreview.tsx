@@ -25,6 +25,8 @@ export function TripDetailMapPreview({
       style={styles.mapContainer}
       onPress={() => model.bookingState.setMapModalVisible(true)}
       activeOpacity={0.95}
+      accessibilityRole="button"
+      accessibilityLabel="Agrandir la carte du trajet"
     >
       <View style={[styles.mapPreview, { height: Math.min(214, Math.max(172, model.data.viewportHeight * 0.27)) }]}>
         <MapView
@@ -98,18 +100,10 @@ export function TripDetailMapPreview({
           ))}
         </MapView>
 
-        <View style={styles.mapOverlay}>
-          <View>
-            <Text style={styles.mapOverlayLabel}>DÉPART</Text>
-            <Text style={styles.mapOverlayValue}>{model.presentation.tripDepartureTimeLabel}</Text>
-          </View>
-          <View style={styles.mapOverlayDivider} />
-          <Text style={styles.mapOverlayText}>Agrandir</Text>
-        </View>
-
         <View style={styles.expandButton}>
           <View style={styles.expandButtonInner}>
-            <Ionicons name="expand" size={20} color={Colors.gray[700]} />
+            <Ionicons name="expand" size={16} color={Colors.gray[700]} />
+            <Text style={styles.mapOverlayText}>Voir la carte</Text>
           </View>
         </View>
       </View>
