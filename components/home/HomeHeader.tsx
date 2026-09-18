@@ -29,7 +29,6 @@ type Props =
   & Pick<ReturnType<typeof useHomeSheet>,
     'avatarUri'
     | 'firstName'
-    | 'availableTripsLabel'
     | 'unreadNotifications'
   >
   & Pick<ReturnType<typeof useHomeDriverActivity>,
@@ -37,7 +36,6 @@ type Props =
   >
   & Pick<ReturnType<typeof useHomeTripSelection>,
     'ongoingBookedTrip'
-    | 'latestTrips'
     | 'featuredDriverReservation'
     | 'featuredDriverReservationStatus'
     | 'featuredDriverReservationPassengerName'
@@ -62,8 +60,6 @@ export const HomeHeader = React.memo(function HomeHeader({
   ongoingDriverTrip,
   trackedTripInfo,
   ongoingBookedTrip,
-  availableTripsLabel,
-  latestTrips,
   unreadNotifications,
   featuredDriverReservation,
   featuredDriverReservationStatus,
@@ -79,6 +75,10 @@ export const HomeHeader = React.memo(function HomeHeader({
   dismissPriority,
   prioritiesEnabled,
 }: Props) {
+  const activeTripLabel = ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+    ? 'Trajet conducteur en cours'
+    : ongoingBookedTrip || trackedTripInfo?.role === 'passenger'
+      ? 'Trajet réservé en cours' : null;
   return (<View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
     <View style={styles.headerCard}>
       <TouchableOpacity
@@ -99,22 +99,20 @@ export const HomeHeader = React.memo(function HomeHeader({
           <Text style={styles.greeting} numberOfLines={1}>
             Bonjour, {firstName}
           </Text>
-          <View style={styles.statusRow}>
+          {activeTripLabel && <View style={styles.statusRow}>
             <View style={styles.statusDot} />
             <Text style={styles.statusText} numberOfLines={1}>
-              {ongoingDriverTrip || trackedTripInfo?.role === 'driver'
-                ? 'Trajet conducteur en cours'
-                : ongoingBookedTrip || trackedTripInfo?.role === 'passenger'
-                  ? 'Trajet réservé en cours'
-                  : `${availableTripsLabel} disponible${latestTrips.length > 1 ? 's' : ''}`}
+              {activeTripLabel}
             </Text>
-          </View>
+          </View>}
         </View>
       </TouchableOpacity>
 
       <TouchableOpacity
         activeOpacity={0.75}
         style={styles.notificationButton}
+        accessibilityRole="button"
+        accessibilityLabel="Ouvrir les notifications"
         onPress={() => router.push('/notifications')}
       >
         <Ionicons name="notifications-outline" size={23} color={Colors.primary} />
@@ -134,7 +132,7 @@ export const HomeHeader = React.memo(function HomeHeader({
         style={[styles.actionButton, styles.actionPublishButton]}
         onPress={() => router.push('/publish')}
       >
-        <Ionicons name="add-circle-outline" size={20} color={Colors.white} />
+        <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
         <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Publier</Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -142,7 +140,7 @@ export const HomeHeader = React.memo(function HomeHeader({
         style={[styles.actionButton, styles.actionRequestButton]}
         onPress={() => router.push(getTripRequestCreateHref())}
       >
-        <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
+        <Ionicons name="paper-plane-outline" size={16} color={Colors.white} />
         <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Demander</Text>
       </TouchableOpacity>
       <TouchableOpacity

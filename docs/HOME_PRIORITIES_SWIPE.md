@@ -10,6 +10,18 @@
 - Le raccourci du trajet en cours et la reprise de navigation ne sont pas concernés.
 - Un simple toucher conserve l’ouverture du détail. Une action accessible « Masquer cette priorité sur l’accueil » est aussi disponible aux lecteurs d’écran.
 
+## Présentation compacte des cartes
+
+Les priorités, les aperçus du panneau inférieur et les résultats de recherche partagent `components/trip/CompactTripCard.tsx`. Les priorités présentent le départ et la destination en ligne ; les aperçus et résultats de recherche leur donnent chacun une ligne. Dans les deux cas, les noms restent en gras et sont disponibles en entier au lecteur d’écran et dans le détail.
+
+Les informations mises en avant sont l’horaire de départ, les places, le tarif par place ou le budget maximum par place, et le type de véhicule lorsqu’il est disponible. Les demandes affichent une plage de **départ**, pas une heure limite d’arrivée. Un grand montant place sa mention « max / place » sur une seconde ligne pour éviter de la tronquer. Le nom et la note du conducteur restent secondaires dans les aperçus.
+
+Les cartes de trajets publiés sur l’accueil et dans la recherche conservent une photo ronde du conducteur de 32 points, à côté de son nom et de sa note. Elle réutilise `driverAvatar` ou `driver.profilePicture`, sans requête de profil supplémentaire. Les initiales restent derrière la photo pendant son chargement ou en cas d’échec ; aucune animation ou mise à jour d’état n’est nécessaire. Les pastilles et boutons décoratifs ont été retirés. Les estimations d’arrivée et les informations complémentaires restent dans les écrans de détail. Le panneau ouvert prend maintenant la hauteur naturelle de ses cartes, avec 8 points sous la liste, sans bande vide supplémentaire ; fermé, il mesure 68 points. Le bouton de recentrage suit la hauteur mesurée du panneau sans la modifier. Le compteur de trajets sous la salutation a été retiré. Les marges de sécurité et le retrait automatique pendant un trajet sont préservés.
+
+L’accueil utilise des marges latérales de 12 points, un espacement de 6 points entre ses blocs et des actions sur une ligne. Le double espacement supérieur a été supprimé. Les listes de trajets et demandes partagent des cartes plus larges, avec 8 points entre elles. Dans la recherche, les résultats sont séparés de 8 points, les filtres restent sur des lignes à hauteur naturelle et le sélecteur de places conserve sa limite de 4. Les actions principales gardent des cibles de 44 points ; aucune requête, règle de tri, navigation ou gestion Redux n’est changée. Les cartes désactivées pendant l’ouverture d’un résultat ne déclenchent aucune navigation.
+
+Cette présentation ne lance ni calcul d’itinéraire ni requête supplémentaire et ne modifie pas les prix. Le swipe conserve son cycle de vie et ses protections iOS. `node scripts/preview-home-cards.cjs` produit des aperçus web statiques des vrais composants dans `.expo/home-cards-preview`, sans appeler les API. Les tests `tests/compactSearchCards.test.js` couvrent les informations, les clics désactivés, les cibles tactiles et les cas de prix incomplets. Les aperçus et tests ne remplacent pas une vérification native sur téléphone.
+
 ## État et durée
 
 `homePriorityDismissalsSlice` conserve uniquement des identifiants de cartes dans Redux Toolkit, avec une limite de 200 entrées par compte. Aucun objet métier n’y est dupliqué.

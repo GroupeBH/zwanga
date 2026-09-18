@@ -61,7 +61,9 @@ type Props =
   & Pick<ReturnType<typeof useHomeContext>,
     'router'
   >;
-export function HomeMap({
+// Sheet measurements and overlay state must not reconcile native markers when
+// map inputs are unchanged. Default shallow comparison still admits GPS updates.
+export const HomeMap = React.memo(function HomeMap({
   shouldRenderHomeMap,
   mapRef,
   mapRegion,
@@ -244,4 +246,4 @@ export function HomeMap({
       <View style={styles.map} />
     )}
   </>);
-}
+});

@@ -23,6 +23,7 @@ type Props =
   Pick<ReturnType<typeof useHomeSheet>,
     'sheetBottomOffset'
     | 'sheetHeight'
+    | 'onSheetLayout'
     | 'effectiveTripsSheetOpen'
     | 'toggleTripsSheet'
     | 'sheetTitle'
@@ -42,6 +43,7 @@ type Props =
   >
   & Pick<ReturnType<typeof useHomeContext>,
     'isDriver'
+    | 'isScreenActive'
   >
   & Pick<ReturnType<typeof useHomePassengerActivity>,
     'availableDriverRequests'
@@ -57,6 +59,7 @@ type Props =
 export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   sheetBottomOffset,
   sheetHeight,
+  onSheetLayout,
   effectiveTripsSheetOpen,
   toggleTripsSheet,
   isHomeSheetLockedRetracted,
@@ -64,6 +67,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   sheetSubtitle,
   openSheetIndex,
   isDriver,
+  isScreenActive,
   isRequestsSheetMode,
   setHomeSheetMode,
   availableDriverRequests,
@@ -78,7 +82,11 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   selectedTrip,
   openTripDetail,
 }: Props) {
-  return (<View style={[styles.tripsSheet, { bottom: sheetBottomOffset, height: sheetHeight }]}>
+  return (<View onLayout={onSheetLayout} style={[styles.tripsSheet, {
+    bottom: sheetBottomOffset,
+    // Expanded content wraps naturally; the former fixed height left a blank footer.
+    height: effectiveTripsSheetOpen ? undefined : sheetHeight,
+  }]}>
     <View style={styles.sheetHeader}>
       <TouchableOpacity
         activeOpacity={0.78}
@@ -98,7 +106,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
         </Text>
       </TouchableOpacity>
       <View style={styles.sheetHeaderActions}>
-        <TouchableOpacity activeOpacity={0.75} onPress={openSheetIndex}>
+        <TouchableOpacity activeOpacity={0.75} onPress={openSheetIndex} hitSlop={{ top: 14, bottom: 14, left: 4, right: 4 }} accessibilityRole="button">
           <Text style={styles.seeAllText} numberOfLines={1}>Voir tout</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -169,7 +177,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
     )}
 
     {effectiveTripsSheetOpen && sheetLoading && (
-      <HomeSheetLoadingState />
+      <HomeSheetLoadingState active={isScreenActive} />
     )}
 
     {effectiveTripsSheetOpen && sheetError && !sheetLoading && (
@@ -209,6 +217,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
     {effectiveTripsSheetOpen && !sheetLoading && !sheetError && isRequestsSheetMode && availableDriverRequests.length > 0 && (
       <FlatList
         horizontal
+        style={styles.tripsList}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tripsHorizontalContent}
         data={availableDriverRequests}
@@ -229,6 +238,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
     {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !isRequestsSheetMode && latestTrips.length > 0 && (
       <FlatList
         horizontal
+        style={styles.tripsList}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tripsHorizontalContent}
         data={latestTrips}

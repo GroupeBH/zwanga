@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Easing,
@@ -9,16 +9,20 @@ import {
 } from 'react-native';
 
 import { styles } from '@/features/home/HomeSheetLoadingState.styles';
-export function HomeSheetLoadingState() {
-  const shimmerProgress = useRef(new Animated.Value(0)).current;
+export function HomeSheetLoadingState({ active = true }: { active?: boolean }) {
+  const progressRef = useRef<Animated.Value | null>(null);
+  if (progressRef.current === null) progressRef.current = new Animated.Value(0);
+  const shimmerProgress = progressRef.current;
 
   useEffect(() => {
+    if (!active) return;
     const shimmerAnimation = Animated.loop(
       Animated.timing(shimmerProgress, {
         toValue: 1,
         duration: 1400,
         easing: Easing.linear,
         useNativeDriver: true,
+        isInteraction: false,
       }),
     );
 
@@ -27,12 +31,12 @@ export function HomeSheetLoadingState() {
     return () => {
       shimmerAnimation.stop();
     };
-  }, [shimmerProgress]);
+  }, [active, shimmerProgress]);
 
-  const shimmerTranslateX = shimmerProgress.interpolate({
+  const shimmerTranslateX = useMemo(() => shimmerProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [-90, 230],
-  });
+  }), [shimmerProgress]);
 
   return (
     <View style={styles.sheetLoadingState}>

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useGetMyActivityBookingsQuery, useGetMyBookingHistoryInfiniteQuery } from '@/store/api/bookingApi';
 import { flattenHistoryPages, isHistoricalBooking } from '@/utils/rideHistory';
@@ -17,11 +17,15 @@ export function useBookingsFeed(tab: BookingTab) {
     (booking.status === 'pending' || booking.status === 'accepted') && !isHistoricalBooking(booking)), [activity.data]);
   const historyBookings = useMemo(() => flattenHistoryPages(history.currentData?.pages), [history.currentData]);
   const selected = tab === 'history' ? history : activity;
+  const { refetch: refreshSelected, isUninitialized } = selected;
+  const refetch = useCallback(() => {
+    if (!isUninitialized) void refreshSelected();
+  }, [isUninitialized, refreshSelected]);
   return {
     activeBookings,
     displayBookings: tab === 'history' ? historyBookings : activeBookings,
     isLoading: selected.isLoading, isFetching: selected.isFetching, isError: selected.isError,
-    refetch: () => { if (!selected.isUninitialized) void selected.refetch(); },
+    refetch,
     hasMore: history.hasNextPage, loadingMore: history.isFetchingNextPage,
     loadMore: () => {
       if (active && tab === 'history' && history.hasNextPage && !history.isFetching) void history.fetchNextPage();

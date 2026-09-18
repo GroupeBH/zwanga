@@ -1,9 +1,9 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { Spacing } from '@/constants/styles';
 import type { HomeSheetMode } from '@/features/home/homeTypes';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Platform
+  Platform, type LayoutChangeEvent,
 } from 'react-native';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
@@ -15,6 +15,7 @@ import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'isDriver'
+    | 'isScreenActive'
     | 'currentUser'
     | 'width'
     | 'insets'
@@ -46,6 +47,7 @@ type Props =
   >;
 export function useHomeSheet({
   isDriver,
+  isScreenActive = true,
   isHomeSheetLockedRetracted,
   currentUser,
   notificationsData,
@@ -97,18 +99,44 @@ export function useHomeSheet({
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
 
   const openSheetHeight = isDriver
-    ? Math.min(Math.max(height * 0.38, isCompactScreen ? 328 : 354), 388)
-    : Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
+    ? Math.min(Math.max(height * 0.30, isCompactScreen ? 294 : 298), 306)
+    : Math.min(Math.max(height * 0.26, isCompactScreen ? 246 : 250), 258);
 
-  const retractedSheetHeight = 78;
+  const retractedSheetHeight = 68;
 
   const effectiveTripsSheetOpen = tripsSheetOpen && !isHomeSheetLockedRetracted;
 
   const sheetHeight = effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
 
-  const locationButtonBottom = sheetBottomOffset + sheetHeight + Spacing.md;
+  const [sheetMeasurement, setSheetMeasurement] = useState<{ height: number; width: number; open: boolean } | null>(null);
+  // Native layout events can arrive after blur, rotation, collapse or unmount.
+  // Each committed layout context invalidates callbacks from the previous one.
+  const layoutContext = useMemo(() => ({ width, open: effectiveTripsSheetOpen, isScreenActive }),
+    [width, effectiveTripsSheetOpen, isScreenActive]);
+  const liveLayoutContext = useRef<typeof layoutContext | null>(null);
+  useLayoutEffect(() => {
+    // A hidden sheet may settle after a cached/network update. Retain its current
+    // valid size for the return to Home; only obsolete callbacks are discarded.
+    liveLayoutContext.current = layoutContext;
+    return () => { liveLayoutContext.current = null; };
+  }, [isScreenActive, layoutContext]);
+  // Measure only to position the map control. Never feed this height back into
+  // the sheet itself: its content determines its height, without a layout loop.
+  const onSheetLayout = useCallback((event: LayoutChangeEvent) => {
+    if (liveLayoutContext.current !== layoutContext) return;
+    const measuredHeight = Math.ceil(event.nativeEvent.layout.height);
+    if (!Number.isFinite(measuredHeight) || measuredHeight <= 0) return;
+    setSheetMeasurement(previous => {
+      if (liveLayoutContext.current !== layoutContext) return previous;
+      return previous?.height === measuredHeight && previous.width === width && previous.open === effectiveTripsSheetOpen
+        ? previous : { height: measuredHeight, width, open: effectiveTripsSheetOpen };
+    });
+  }, [layoutContext, width, effectiveTripsSheetOpen]);
+  const displayedSheetHeight = sheetMeasurement?.width === width
+    && sheetMeasurement.open === effectiveTripsSheetOpen ? sheetMeasurement.height : sheetHeight;
+  const locationButtonBottom = sheetBottomOffset + displayedSheetHeight + Spacing.md;
 
-  const tripCardWidth = Math.min(width - 56, 342);
+  const tripCardWidth = Math.min(width - 40, 354);
 
   const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
 
@@ -175,6 +203,7 @@ export function useHomeSheet({
     unreadNotifications,
     sheetBottomOffset,
     sheetHeight,
+    onSheetLayout,
     effectiveTripsSheetOpen,
     toggleTripsSheet,
     sheetTitle,

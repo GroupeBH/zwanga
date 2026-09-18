@@ -43,7 +43,7 @@ export const styles = StyleSheet.create({
     color: Colors.gray[600],
   },
   listContent: {
-    padding: Spacing.lg,
+    padding: Spacing.md,
   },
   requestCard: {
     backgroundColor: Colors.white,
