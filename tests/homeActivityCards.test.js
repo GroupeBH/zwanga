@@ -9,6 +9,7 @@ const load = loader({
     StyleSheet: { create: styles => styles },
   },
   '@expo/vector-icons': { Ionicons: 'Icon' },
+  './SwipeableHomePriority': { SwipeableHomePriority: ({ children }) => children },
 });
 const { HomeActivityCards } = load('components/home/HomeActivityCards.tsx');
 const upcoming = {
@@ -36,6 +37,8 @@ function render(overrides = {}) {
     featuredDriverUpcomingTripSeatsLabel: '3 places libres',
     highlightedDriverRequest: request,
     highlightedRequestDistance: 500,
+    prioritiesEnabled: true,
+    dismissPriority() {},
     ...overrides,
   });
   return { routes, elements: nodes(tree), buttons: nodes(tree).filter(node => node.type === 'Button') };
@@ -67,7 +70,7 @@ test('removing an expired highlight neither hides nor duplicates the upcoming tr
 test('a received reservation also precedes a highlighted request without losing its action', () => {
   const { buttons, routes } = render({
     featuredDriverUpcomingTrip: null,
-    featuredDriverReservation: { trip: { ...upcoming, id: 'reserved' } },
+    featuredDriverReservation: { trip: { ...upcoming, id: 'reserved' }, booking: { id: 'booking' } },
     featuredDriverReservationStatus: { bg: '#fff', color: '#000', icon: 'time', label: 'À confirmer' },
     featuredDriverReservationPassengerName: 'Alex',
     featuredDriverReservationSeatsLabel: '1 place',
@@ -80,11 +83,30 @@ test('a received reservation also precedes a highlighted request without losing 
 
 test('reservation and upcoming trip departure/destination names are bold without making the separator bold', () => {
   const { elements } = render({
-    featuredDriverReservation: { trip: { ...upcoming, id: 'reserved' } },
+    featuredDriverReservation: { trip: { ...upcoming, id: 'reserved' }, booking: { id: 'booking' } },
     featuredDriverReservationStatus: { bg: '#fff', color: '#000', icon: 'time', label: 'À confirmer' },
     featuredDriverReservationPassengerName: 'Alex', featuredDriverReservationSeatsLabel: '1 place',
   });
   const labels = elements.filter(node => node.type === 'Text' && ['Gombe', 'Lemba'].includes(node.props.children));
   assert.equal(labels.length, 4);
   labels.forEach(label => assert.equal(label.props.style.fontWeight, '700'));
+});
+
+test('screen readers retain an equivalent dismiss action without navigating', () => {
+  const hidden = [];
+  const { buttons, routes } = render({ dismissPriority: key => hidden.push(key) });
+  assert.equal(buttons[0].props.accessibilityActions[0].name, 'dismiss');
+  buttons[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'dismiss' } });
+  assert.deepEqual(hidden, [`trip:${upcoming.id}:${upcoming.departureTime}`]);
+  assert.deepEqual(routes, []);
+  const inactive = render({ prioritiesEnabled: false, dismissPriority: key => hidden.push(key) });
+  inactive.buttons[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'dismiss' } });
+  assert.equal(hidden.length, 1);
+});
+
+test('no priority leaves no footer, message or undo button behind', () => {
+  const { elements, buttons } = render({ featuredDriverUpcomingTrip: null,
+    highlightedDriverRequest: null });
+  assert.equal(elements.filter(node => ['Text', 'View'].includes(node.type)).length, 0);
+  assert.equal(buttons.length, 0);
 });

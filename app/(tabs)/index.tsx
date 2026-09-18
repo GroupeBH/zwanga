@@ -39,6 +39,8 @@ export default function HomeScreen() {
       isCenteringOnUser={home.isCenteringOnUser}
     />
     <HomeHeader
+      dismissPriority={home.dismissPriority}
+      prioritiesEnabled={home.isScreenActive}
       highlightedDriverRequest={home.highlightedDriverRequest}
       highlightedRequestDistance={home.highlightedRequestDistance}
       insets={home.insets}

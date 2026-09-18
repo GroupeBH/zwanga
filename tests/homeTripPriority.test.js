@@ -125,7 +125,7 @@ test('Home forwards its existing location to the published-trip selection', () =
   let selectedProps;
   const hookNames = ['useHomeContext', 'useHomeDriverActivity', 'useHomeLocation', 'useHomeMap', 'useHomeMapNavigation',
     'useHomePassengerActivity', 'useHomePassengerMarkers', 'useHomeSheet', 'useHomeTracking', 'useHomeTripFeed',
-    'useHomeTripSelection', 'useHomeUserLocation', 'useHomeRequestHighlight'];
+    'useHomeTripSelection', 'useHomeUserLocation', 'useHomeRequestHighlight', 'useHomePriorityDismissals'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, { [name]: () => ({}) }]));
   mocks['./useHomeLocation'].useHomeLocation = () => ({ liveUserCoordinate: origin });
   mocks['./useHomeTripSelection'].useHomeTripSelection = props => { selectedProps = props; return {}; };

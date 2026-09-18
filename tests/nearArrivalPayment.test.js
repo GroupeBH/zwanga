@@ -13,10 +13,12 @@ function booking(patch = {}) {
 }
 const policy = loader()('features/arrival-payment/nearArrivalPolicy.ts');
 
-test('the 150-metre threshold uses the passenger destination, not the final stop of the vehicle', () => {
+test('the 500-metre threshold uses the passenger destination, not the final stop of the vehicle', () => {
   const value = booking(), date = new Date(now).toISOString();
-  assert.equal(policy.isNearPaymentDestination(value, point(150), date, now), true);
-  assert.equal(policy.isNearPaymentDestination(value, point(151), date, now), false);
+  for (const distance of [150, 151, 300, 499, 500]) {
+    assert.equal(policy.isNearPaymentDestination(value, point(distance), date, now), true);
+  }
+  assert.equal(policy.isNearPaymentDestination(value, point(501), date, now), false);
   assert.equal(policy.isNearPaymentDestination(value, point(0), date, now), true);
   assert.equal(policy.isNearPaymentDestination({ ...value, passengerDestinationCoordinates: null }, point(0), date, now), false);
 });
@@ -64,13 +66,13 @@ function app(t, patch = {}) {
   return { props, render, emit, hooks, listeners, progress, joins: () => joins, leaves: () => leaves, reads: () => reads };
 }
 
-test('crossing 150 metres opens once and GPS jitter does not close the payment sheet', t => {
-  const env = app(t);
+for (const paymentMode of ['electronic', 'points']) test(`crossing 500 metres opens once for ${paymentMode} and GPS jitter does not close the payment sheet`, t => {
+  const env = app(t, { bookings: [booking({ paymentMode })] });
   assert.equal(env.render(), null);
-  env.emit(151); assert.equal(env.render(), null);
-  env.emit(150); assert.equal(env.render().id, 'booking');
+  env.emit(501); assert.equal(env.render(), null);
+  env.emit(500); assert.equal(env.render().id, 'booking');
   for (let i = 0; i < 100; i++) { env.emit(100); env.render(); }
-  env.emit(170); assert.equal(env.render().id, 'booking');
+  env.emit(520); assert.equal(env.render().id, 'booking');
   assert.equal(env.joins(), 1, 'GPS updates do not reconnect or create new watchers');
   assert.equal(env.props.bookings[0].status, 'accepted');
   assert.equal(env.props.bookings[0].paymentAmount, 5000);
@@ -79,10 +81,10 @@ test('crossing 150 metres opens once and GPS jitter does not close the payment s
 test('HTTP rescue positions and stored passenger positions can trigger the same modal', t => {
   const env = app(t);
   env.render();
-  const coordinate = point(149);
+  const coordinate = point(499);
   env.props.snapshot = { coordinates: [coordinate.longitude, coordinate.latitude], updatedAt: new Date(now).toISOString() };
   assert.equal(env.render().id, 'booking');
-  const stored = app(t, { bookings: [booking({ paymentMode: 'points', passengerLocationCoordinates: point(140), passengerLocationUpdatedAt: new Date(now).toISOString() })] });
+  const stored = app(t, { bookings: [booking({ paymentMode: 'points', passengerLocationCoordinates: point(500), passengerLocationUpdatedAt: new Date(now).toISOString() })] });
   assert.equal(stored.render().id, 'booking');
 });
 

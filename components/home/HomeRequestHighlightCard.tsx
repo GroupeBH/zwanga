@@ -6,18 +6,20 @@ import type { TripRequest } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View, type AccessibilityProps } from 'react-native';
 
 type Props = {
   request: TripRequest;
   distanceMeters: number | null;
   onOpen: (requestId: string) => void;
-};
+} & Pick<AccessibilityProps, 'accessibilityActions' | 'onAccessibilityAction'>;
 
-export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlightCard({ request, distanceMeters, onOpen }: Props) {
+export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlightCard({ request, distanceMeters, onOpen, accessibilityActions, onAccessibilityAction }: Props) {
   const distanceLabel = formatRequestDistance(distanceMeters);
   return (
     <TouchableOpacity
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={onAccessibilityAction}
       activeOpacity={0.9}
       accessibilityRole="button"
       accessibilityLabel={`Voir la demande à accepter, de ${placeName(request.departure)} à ${placeName(request.arrival)}${distanceLabel ? `, ${distanceLabel}` : ''}`}

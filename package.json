@@ -15,7 +15,7 @@
     "test:performance": "node --test ./tests/performancePolicy.test.js",
     "test:trip-request": "node --test ./tests/tripRequestForm.test.js ./tests/tripRequestEditPricing.test.js ./tests/tripRequestExpiration.test.js ./tests/passengerSeats.test.js",
     "test:profile": "node --test ./tests/profileModules.test.js",
-    "test:home": "node --test ./tests/homeModules.test.js ./tests/homeRequestPriority.test.js",
+    "test:home": "node --test ./tests/home*.test.js",
     "test:search": "node --test ./tests/searchScreen.test.js",
     "test:navigation": "node --test ./tests/navigationLifecycle.test.js",
     "test:ride-recovery": "node --test ./tests/rideRecovery.test.js ./tests/rideRecoveryUI.test.js",

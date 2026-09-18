@@ -19,6 +19,7 @@ import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import { HomeActivityCards } from './HomeActivityCards';
+import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDismissals';
 type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'insets'
@@ -51,7 +52,8 @@ type Props =
   & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest' | 'highlightedRequestDistance'>
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openTripRequestDetail'
-  >;
+  > & Pick<ReturnType<typeof useHomePriorityDismissals>, 'dismissPriority'>
+  & { prioritiesEnabled: boolean };
 export const HomeHeader = React.memo(function HomeHeader({
   insets,
   router,
@@ -74,6 +76,8 @@ export const HomeHeader = React.memo(function HomeHeader({
   openTripRequestDetail,
   highlightedDriverRequest,
   highlightedRequestDistance,
+  dismissPriority,
+  prioritiesEnabled,
 }: Props) {
   return (<View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
     <View style={styles.headerCard}>
@@ -152,6 +156,8 @@ export const HomeHeader = React.memo(function HomeHeader({
     </View>
 
     <HomeActivityCards
+      dismissPriority={dismissPriority}
+      prioritiesEnabled={prioritiesEnabled}
       highlightedDriverRequest={highlightedDriverRequest}
       highlightedRequestDistance={highlightedRequestDistance}
       featuredDriverReservation={featuredDriverReservation}
