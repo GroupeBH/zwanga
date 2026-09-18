@@ -39,6 +39,8 @@ export default function HomeScreen() {
       isCenteringOnUser={home.isCenteringOnUser}
     />
     <HomeHeader
+      dismissPriority={home.dismissPriority}
+      prioritiesEnabled={home.isScreenActive}
       highlightedDriverRequest={home.highlightedDriverRequest}
       highlightedRequestDistance={home.highlightedRequestDistance}
       insets={home.insets}
@@ -48,8 +50,6 @@ export default function HomeScreen() {
       ongoingDriverTrip={home.ongoingDriverTrip}
       trackedTripInfo={home.trackedTripInfo}
       ongoingBookedTrip={home.ongoingBookedTrip}
-      availableTripsLabel={home.availableTripsLabel}
-      latestTrips={home.latestTrips}
       unreadNotifications={home.unreadNotifications}
       featuredDriverReservation={home.featuredDriverReservation}
       featuredDriverReservationStatus={home.featuredDriverReservationStatus}
@@ -64,6 +64,7 @@ export default function HomeScreen() {
     <HomeTripsSheet
       sheetBottomOffset={home.sheetBottomOffset}
       sheetHeight={home.sheetHeight}
+      onSheetLayout={home.onSheetLayout}
       effectiveTripsSheetOpen={home.effectiveTripsSheetOpen}
       toggleTripsSheet={home.toggleTripsSheet}
       isHomeSheetLockedRetracted={home.isHomeSheetLockedRetracted}
@@ -71,6 +72,7 @@ export default function HomeScreen() {
       sheetSubtitle={home.sheetSubtitle}
       openSheetIndex={home.openSheetIndex}
       isDriver={home.isDriver}
+      isScreenActive={home.isScreenActive}
       isRequestsSheetMode={home.isRequestsSheetMode}
       setHomeSheetMode={home.setHomeSheetMode}
       availableDriverRequests={home.availableDriverRequests}

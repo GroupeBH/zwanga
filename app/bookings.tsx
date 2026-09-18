@@ -11,7 +11,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,7 +33,7 @@ export default function BookingsScreen() {
       ? "Vous n'avez pas encore de réservation active."
       : 'Aucune réservation passée pour le moment.';
 
-  const handleCancel = (bookingId: string) => {
+  const handleCancel = useCallback((bookingId: string) => {
     showDialog({
       variant: 'warning',
       title: 'Annuler la réservation',
@@ -62,9 +62,9 @@ export default function BookingsScreen() {
         },
       ],
     });
-  };
+  }, [cancelBooking, refetch, showDialog]);
 
-  const { renderBookingCard } = useBookingCards({
+  const { renderBookingListItem } = useBookingCards({
     activeTab,
     router,
     setSelectedDriverPhone,
@@ -123,7 +123,7 @@ export default function BookingsScreen() {
       <FlatList
         data={displayBookings}
         keyExtractor={booking => booking.id}
-        renderItem={({ item }) => renderBookingCard(item.id, item)}
+        renderItem={renderBookingListItem}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={5}

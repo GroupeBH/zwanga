@@ -11,10 +11,11 @@ import {
 import { useMemo } from 'react';
 import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'> & { driverCoordinate?: MapCoordinate | null };
-export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo, driverCoordinate = null }: Props) {
+type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'> & { driverCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
+export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo, driverCoordinate = null, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
   const { data: notificationsData } = useGetNotificationsQuery({ limit: 1 }, {
     refetchOnMountOrArgChange: true,
   });
@@ -132,6 +133,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
               request.status === 'offers_received' ||
               request.status === 'driver_selected') &&
             !request.tripId &&
+            !hiddenHomePriorities[homePriorityKeys.ownRequest(request)] &&
             isTripRequestWithinAcceptanceWindow(request),
         )
         .sort((a, b) => {
@@ -156,7 +158,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
           return updatedB - updatedA;
         })[0] ?? null
     );
-  }, [myTripRequests]);
+  }, [myTripRequests, hiddenHomePriorities]);
 
   const activeTripRequestPendingOffers = useMemo(
     () => activeTripRequest?.offers?.filter((offer) => offer.status === 'pending').length ?? 0,

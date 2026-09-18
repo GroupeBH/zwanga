@@ -6,6 +6,7 @@ import type {
   WalletPaymentResponse,
   WalletSummary,
   WalletTransferResponse,
+  WalletWithdrawal,
 } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -112,6 +113,9 @@ const mapWalletAccount = (value: unknown): WalletAccount => {
       0,
     ) as number | string,
     currency: String(account.currency ?? 'PTS'),
+    withdrawableBalance: Number(account.withdrawableBalance ?? 0),
+    reservedWithdrawalBalance: Number(account.reservedWithdrawalBalance ?? 0),
+    withdrawalsBlocked: account.withdrawalsBlocked === true,
     createdAt: String(account.createdAt ?? account.created_at ?? ''),
     updatedAt: String(account.updatedAt ?? account.updated_at ?? ''),
   };
@@ -127,6 +131,7 @@ const mapWalletLedgerEntry = (value: unknown): WalletLedgerEntry => {
     accountType: 'points',
     type: (entry.type ?? 'top_up') as WalletLedgerEntry['type'],
     amount: pickFirstDefined(entry.amount, 0) as number | string,
+    withdrawableAmount: entry.withdrawableAmount ?? null,
     balanceAfter: pickFirstDefined(entry.balanceAfter, entry.balance_after, 0) as number | string,
     currency: String(entry.currency ?? 'PTS'),
     relatedEntityType: entry.relatedEntityType ?? entry.related_entity_type ?? null,
@@ -172,6 +177,7 @@ const mapWalletSummary = (response: RawWalletSummary): WalletSummary => {
   return {
     account: mapWalletAccount(account),
     recentEntries: Array.isArray(entries) ? entries.map(mapWalletLedgerEntry) : [],
+    withdrawal: root.withdrawal,
   };
 };
 
@@ -193,6 +199,17 @@ const isWalletPaymentSucceeded = (response: WalletPaymentResponse) =>
 export const walletApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
+    getWalletWithdrawals: builder.query<WalletWithdrawal[], void>({
+      query: () => '/wallet/withdrawals', providesTags: [walletTag],
+    }),
+    requestWalletWithdrawal: builder.mutation<WalletWithdrawal, { tokens: number; phone: string; idempotencyKey: string }>({
+      query: (body) => ({ url: '/wallet/withdrawals', method: 'POST', body }),
+      invalidatesTags: [walletTag, paymentHistoryTag],
+    }),
+    checkWalletWithdrawal: builder.mutation<WalletWithdrawal, string>({
+      query: (id) => ({ url: `/wallet/withdrawals/${encodeURIComponent(id)}/status`, method: 'GET' }),
+      invalidatesTags: [walletTag, paymentHistoryTag],
+    }),
     getMyWallet: builder.query<WalletSummary, void>({
       query: () => '/wallet/me',
       providesTags: [walletTag],
@@ -252,4 +269,7 @@ export const {
   useInitiateWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
   useTransferWalletPointsMutation,
+  useGetWalletWithdrawalsQuery,
+  useRequestWalletWithdrawalMutation,
+  useCheckWalletWithdrawalMutation,
 } = walletApi;

@@ -261,7 +261,7 @@ export default function ReferralsScreen() {
               )}
             </TouchableOpacity>
             <Text style={styles.legalHint}>
-              Seuls les jetons issus du parrainage sont retirables. Les commissions restent en attente {summary?.rules.holdDays ?? 7} jours.
+              Retirez ici vos jetons de parrainage et les commissions de vos filleuls. Les commissions restent en attente {summary?.rules.holdDays ?? 7} jours. Les jetons achetés se retirent depuis le portefeuille ; les jetons de fidélité ne sont pas retirables.
             </Text>
           </View>
 

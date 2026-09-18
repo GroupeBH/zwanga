@@ -1,11 +1,10 @@
 import { ManageTripBookings } from './ManageTripBookings';
 import { ManageTripInterruptionNotice } from './ManageTripInterruptionNotice';
+import { ManageTripSummary } from './ManageTripSummary';
 import { useManageTripState } from '../../hooks/manage-trip/useManageTripState';
-import { labelStatus, statusColor } from './manageTripStatus';
 import { styles } from '../screen-styles/app/trip/manage/detail/index';
 import { Colors } from '@/constants/styles';
 import type { Booking } from '@/types';
-import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -42,69 +41,10 @@ export function ManageTripContent({
     >
       <ManageTripInterruptionNotice trip={trip} />
 
-      {/* Résumé du trajet */}
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryHeader}>
-          <View style={styles.timeContainer}>
-            <Ionicons name="time-outline" size={20} color={Colors.gray[600]} />
-            <Text style={styles.timeText} numberOfLines={2}>
-              Départ {formatDateTime(trip.departureTime)}
-            </Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor(trip.status).color + '20' }]}>
-            <Text style={[styles.statusBadgeText, { color: statusColor(trip.status).color }]}>
-              {labelStatus(trip.status).toUpperCase()}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.itineraryContainer}>
-          <View style={styles.itineraryTimeline}>
-            <View style={[styles.timelineDot, { backgroundColor: Colors.primary }]} />
-            <View style={styles.timelineLine} />
-            <View style={[styles.timelineDot, { backgroundColor: Colors.secondary }]} />
-          </View>
-          <View style={styles.itineraryDetails}>
-            <View style={styles.itineraryPoint}>
-              <Text style={styles.itineraryLabel}>Départ</Text>
-              <Text style={styles.itineraryValue} numberOfLines={2}>{trip.departure.address}</Text>
-            </View>
-            <View style={styles.itineraryPoint}>
-              <Text style={styles.itineraryLabel}>Arrivée</Text>
-              <Text style={styles.itineraryValue} numberOfLines={2}>{trip.arrival.address}</Text>
-            </View>
-          </View>
-        </View>
-
-        {trip.status === 'upcoming' && (
-          <TouchableOpacity style={styles.editRouteButton} onPress={routeEditor.openEditRouteModal} activeOpacity={0.9}>
-            <Ionicons name="create-outline" size={16} color={Colors.primary} />
-            <Text style={styles.editRouteButtonText}>Modifier les adresses</Text>
-          </TouchableOpacity>
-        )}
-
-        <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="people" size={18} color={Colors.primary} />
-            </View>
-            <View>
-              <Text style={styles.statLabel}>Places</Text>
-              <Text style={styles.statValue}>{trip.availableSeats} / {trip.totalSeats}</Text>
-            </View>
-          </View>
-          <View style={styles.statItem}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="cash" size={18} color={Colors.success} />
-            </View>
-            <View>
-              <Text style={styles.statLabel}>Prix</Text>
-              <Text style={styles.statValue}>{trip.price} FC</Text>
-            </View>
-          </View>
-        </View>
-
-      </View>
+      <ManageTripSummary
+        trip={trip}
+        onEditRoute={trip.status === 'upcoming' ? routeEditor.openEditRouteModal : undefined}
+      />
 
       {/* Liste des passagers */}
       <ManageTripBookings

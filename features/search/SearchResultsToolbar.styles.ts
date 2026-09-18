@@ -4,11 +4,11 @@ import { SEARCH_COLORS } from './searchTheme';
 
 export const styles = StyleSheet.create({
   container: {
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.lg,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: Spacing.sm,
+    gap: 6,
   },
   countRow: {
     flexDirection: 'row',
@@ -26,13 +26,13 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: 6,
   },
   sortButton: {
     minHeight: 44,
     maxWidth: '100%',
     flexShrink: 1,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: 10,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
     backgroundColor: Colors.gray[200],
@@ -44,7 +44,7 @@ export const styles = StyleSheet.create({
   },
   sortButtonText: {
     color: Colors.gray[900],
-    fontSize: FontSizes.sm,
+    fontSize: 12,
     fontWeight: FontWeights.semibold,
     textAlign: 'center',
   },

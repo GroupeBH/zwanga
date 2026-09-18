@@ -2,7 +2,7 @@
 
 ## Comportement
 
-À **150 mètres ou moins de son propre point de dépose**, un passager embarqué
+À **500 mètres ou moins de son propre point de dépose**, un passager embarqué
 ayant choisi **Mobile Money, carte bancaire ou jetons** voit le formulaire de
 paiement existant. Le seuil correspond à la distance géographique jusqu’au point,
 pas à la distance routière restante. Le déclenchement dépend des positions reçues.
@@ -47,7 +47,7 @@ lui-même les conditions, à partir de ses données enregistrées :
 
 1. Réservation acceptée, trajet en cours, embarquement enregistré.
 2. Mode électronique ou jetons, sans contestation d’embarquement/dépose.
-3. Position conducteur ou passager récente à 150 mètres au plus de la destination
+3. Position conducteur ou passager récente à 500 mètres au plus de la destination
    personnelle ; la destination du trajet n’est utilisée qu’en l’absence de destination personnelle.
 
 Les règles de paiement après l’arrivée restent disponibles. Pour les jetons,
@@ -61,6 +61,11 @@ ajustements d’interruption et des paiements électroniques en cours est conser
 **Déployer le backend avant l’application mobile.** Sans cette mise à jour serveur,
 le formulaire pourrait s’ouvrir mais le serveur refuserait le paiement anticipé.
 Aucune migration SQL, nouvelle variable d’environnement ou dépendance n’est nécessaire.
+
+Mise à jour du 18 septembre 2026 : seuil porté de 150 à 500 mètres dans le mobile
+et le backend, sans modifier les seuils de dépose ou de non-présentation.
+Tester notamment l'absence d'ouverture à 501 mètres puis l'ouverture à 500 mètres,
+pour les modes électronique et jetons ; aucun débit automatique à l'ouverture.
 
 Tests ciblés :
 

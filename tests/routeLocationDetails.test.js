@@ -171,7 +171,7 @@ test('trip summary renders the shared readable route block', () => {
   assert.strictEqual(block.props.labels, labels);
 });
 
-test('the trip header and route rows update together after recovering a missing address', () => {
+test('the single route block updates after recovering an address without restoring the duplicate title', () => {
   let result = { isFetching: true };
   const env = environment({ '@/store/api/googleMapsApi': { useGetRouteLocationAddressQuery: () => result } });
   const { useRouteLocationLabels } = env.load('hooks/useRouteLocationLabels.ts');
@@ -181,16 +181,18 @@ test('the trip header and route rows update together after recovering a missing 
   const render = () => {
     const routeLabels = env.hooks.render(() => useRouteLocationLabels(saved));
     const summary = TripSummary({ trip: saved, routeLabels, config: {}, driverReviewAverage: 4 });
-    return { routeLabels, texts: nodes(summary).filter(node => node.type === 'Text').map(node => node.props.children) };
+    const routeBlock = nodes(summary).find(node => node.type === 'RouteDetails');
+    return { routeLabels: routeBlock.props.labels, texts: nodes(summary).filter(node => node.type === 'Text').map(node => node.props.children) };
   };
   let view = render();
-  assert.ok(view.texts.includes('Départ : Botango'));
+  assert.equal(view.routeLabels.departure.title, 'Botango');
+  assert.equal(view.texts.includes('Départ : Botango'), false);
   const rows = nodes(RouteLocationDetails.type({ labels: view.routeLabels }), true);
   assert.ok(rows.some(node => node.type === 'Text' && node.props.children === 'Recherche de l’adresse…'));
   assert.ok(!view.texts.includes('Botango vers Destination'));
   result = { currentData: { formattedAddress: 'Av. Bakole 1, Kinshasa' }, isFetching: false };
   view = render();
-  assert.ok(view.texts.includes('Botango vers Av. Bakole 1'));
+  assert.equal(view.texts.includes('Botango vers Av. Bakole 1'), false);
   assert.equal(view.routeLabels.arrival.title, 'Av. Bakole 1');
 });
 

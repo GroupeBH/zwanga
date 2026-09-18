@@ -15,6 +15,7 @@ import locationReducer from './slices/locationSlice';
 import tripsReducer, { openInterruptionChoice } from './slices/tripsSlice';
 import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
 import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
+import homePriorityDismissalsReducer, { resetHomePriorityDismissals } from './slices/homePriorityDismissalsSlice';
 import { setStoreAccessor } from './storeAccessor';
 import { createTripRequestExpirationMiddleware } from './middleware/tripRequestExpiration';
 
@@ -59,6 +60,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     storeApi.dispatch({ type: 'messages/resetMessages' });
     storeApi.dispatch(resetRequestDrafts());
     storeApi.dispatch(resetHomeRequestHighlights());
+    storeApi.dispatch(resetHomePriorityDismissals());
     storeApi.dispatch(openInterruptionChoice(null));
     storeApi.dispatch(zwangaApi.util.resetApiState());
     storeApi.dispatch(authRefreshApi.util.resetApiState());
@@ -76,6 +78,7 @@ export const store = configureStore({
     trips: tripsReducer,
     requestDrafts: requestDraftsReducer,
     homeRequestHighlights: homeRequestHighlightsReducer,
+    homePriorityDismissals: homePriorityDismissalsReducer,
     messages: messagesReducer,
     location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,

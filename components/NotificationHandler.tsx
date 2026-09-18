@@ -1,4 +1,5 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
+import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
@@ -155,6 +156,10 @@ export function NotificationHandler() {
     ): boolean => {
       const type = data.type;
 
+      if (type === 'driver_trip_revenue' || type === 'driver_booking_earning_confirmed') {
+        dispatch(baseApi.util.invalidateTags([{ type: 'DriverSettlement', id: 'ME' }]));
+      }
+
       if (type === 'driver_trip_revenue') {
         // L'écran de navigation possède son propre modal, alimenté par Socket.IO
         // avec un repli REST. Ne pas ouvrir deux modals pour la même clôture.
@@ -165,35 +170,12 @@ export function NotificationHandler() {
           return false;
         }
 
-        const currency = typeof data.currency === 'string' ? data.currency : 'CDF';
-        const total = Number(data.totalExpectedAmount) || 0;
-        const confirmed = Number(data.confirmedAmount) || 0;
-        const cash = Number(data.cashToCollectAmount) || 0;
-        const electronicPending = Number(data.electronicPendingAmount) || 0;
-        const details: string[] = [];
-
-        if (total > 0) {
-          details.push(`Total du trajet : ${formatAmount(total, currency)}`);
-        }
-        if (confirmed > 0) {
-          details.push(`Acquis dans vos gains : ${formatAmount(confirmed, currency)}`);
-        }
-        if (cash > 0) {
-          details.push(`À encaisser en liquide : ${formatAmount(cash, currency)}`);
-        }
-        if (electronicPending > 0) {
-          details.push(
-            `Paiement électronique attendu : ${formatAmount(electronicPending, currency)}`,
-          );
-        }
+        const message = getTripRevenueMessage(data);
 
         showDialog({
           title: 'Votre gain du trajet',
-          message:
-            details.length > 0
-              ? details.join('\n')
-              : fallbackBody || 'Aucun montant à encaisser pour ce trajet.',
-          variant: 'success',
+          message,
+          variant: Number(data.confirmedAmount) > 0 && (data.ledgerVerified === true || data.ledgerVerified === 'true') ? 'success' : 'info',
           icon: 'wallet',
           dismissible: true,
           actions: [

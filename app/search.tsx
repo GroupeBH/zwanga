@@ -141,6 +141,10 @@ export default function SearchScreen() {
             </View>
           </View>
           <View style={styles.passengerBlock}>
+            <View style={styles.passengerCountBlock}>
+              <Text style={styles.passengerCount}>{desiredSeats}</Text>
+              <Text style={styles.passengerLabel}>PERS.</Text>
+            </View>
             <View style={styles.passengerStepper}>
               <TouchableOpacity
                 style={[styles.passengerStepButton, desiredSeats <= MIN_SEARCH_SEATS && styles.passengerStepButtonDisabled]}
@@ -152,10 +156,6 @@ export default function SearchScreen() {
               >
                 <Ionicons name="remove" size={16} color={desiredSeats <= MIN_SEARCH_SEATS ? Colors.gray[400] : Colors.primaryDark} />
               </TouchableOpacity>
-              <View style={styles.passengerCountBlock}>
-                <Text style={styles.passengerCount}>{desiredSeats}</Text>
-                <Text style={styles.passengerLabel}>PERS.</Text>
-              </View>
               <TouchableOpacity
                 style={[styles.passengerStepButton, desiredSeats >= MAX_SEARCH_SEATS && styles.passengerStepButtonDisabled]}
                 onPress={() => updateDesiredSeats(desiredSeats + 1)}
@@ -271,5 +271,4 @@ export default function SearchScreen() {
     </SafeAreaView>
   );
 }
-
 

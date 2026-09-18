@@ -1,6 +1,11 @@
 import { useWalletController } from '../hooks/wallet/useWalletController';
 import { WalletTopUpModal } from '../features/wallet/WalletTopUpModal';
 import { WalletSheetModal } from '../features/wallet/WalletSheetModal';
+import { WalletWithdrawalSection, WalletWithdrawalModal } from '../features/wallet/WalletWithdrawalSection';
+import { useWalletWithdrawal } from '@/hooks/wallet/useWalletWithdrawal';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
 import { formatWalletAmount } from '../features/wallet/walletModel';
 import { styles } from '../features/screen-styles/app/wallet/index';
 import { Colors } from '@/constants/styles';
@@ -18,6 +23,9 @@ const SHEET_NAVIGATION_OPTIONS = { gestureEnabled: false };
 
 export default function WalletScreen() {
   const wallet = useWalletController();
+  const user = useAppSelector(selectUser);
+  const screenActive = useScreenIsActive();
+  const withdrawal = useWalletWithdrawal(wallet.walletSummary, screenActive);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,7 +39,7 @@ export default function WalletScreen() {
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Jetons Zwanga</Text>
-          <Text style={styles.headerSubtitle}>Recharge, fidélité et partage</Text>
+          <Text style={styles.headerSubtitle}>Acheter, utiliser, partager et retirer</Text>
         </View>
         <TouchableOpacity onPress={wallet.refreshAll} style={styles.headerButton}>
           {wallet.isRefreshing ? (
@@ -64,8 +72,13 @@ export default function WalletScreen() {
             </Text>
           )}
           <Text style={styles.balanceHint}>
-            Les jetons achetés et les jetons de fidélité sont utilisables pour vos trajets et abonnements.
+            Les jetons achetés sont retirables en argent. Les jetons de fidélité ne sont pas retirables : ils sont utilisés en premier pour payer vos trajets et abonnements.
           </Text>
+          {wallet.walletSummary?.withdrawal ? <>
+            <Text style={styles.balanceLabel}>Achetés, y compris reçus par transfert : {formatWalletAmount(wallet.walletSummary.account.withdrawableBalance)}</Text>
+            <Text style={styles.balanceHint}>Non retirables (fidélité, bonus et autres crédits non éligibles) : {formatWalletAmount(wallet.walletSummary.withdrawal.nonWithdrawableTokens)}</Text>
+            <Text style={styles.balanceHint}>Réservés pour des retraits en cours : {formatWalletAmount(wallet.walletSummary.account.reservedWithdrawalBalance)}</Text>
+          </> : null}
         </View>
 
         <TouchableOpacity style={styles.referralBanner} onPress={() => wallet.router.push('/referrals')}>
@@ -74,10 +87,19 @@ export default function WalletScreen() {
           </View>
           <View style={styles.referralBannerText}>
             <Text style={styles.referralBannerTitle}>Jetons de parrainage</Text>
-            <Text style={styles.referralBannerHint}>Consultez vos commissions de 5 % et retirez vos gains.</Text>
+            <Text style={styles.referralBannerHint}>Retirez vos récompenses de parrainage et les commissions de vos filleuls.</Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
         </TouchableOpacity>
+
+        {user?.isDriver || user?.role === 'driver' ? <TouchableOpacity style={styles.referralBanner} onPress={() => wallet.router.push('/driver-earnings')}>
+          <Ionicons name="car-outline" size={22} color={Colors.primary} />
+          <View style={styles.referralBannerText}>
+            <Text style={styles.referralBannerTitle}>Mes revenus conducteur</Text>
+            <Text style={styles.referralBannerHint}>Consultez les revenus de vos trajets et retirez le solde disponible.</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+        </TouchableOpacity> : null}
 
         <View style={styles.actionRow}>
           <TouchableOpacity
@@ -107,6 +129,9 @@ export default function WalletScreen() {
             <Text style={styles.actionCardHint}>Envoyer à un utilisateur</Text>
           </TouchableOpacity>
         </View>
+
+        <WalletWithdrawalSection summary={wallet.walletSummary} withdrawal={withdrawal}
+          onOpen={() => wallet.setActiveModal('withdrawal')} />
 
         {wallet.topUpStatusMessage || wallet.topUpOrderNumber ? (
           <TouchableOpacity
@@ -159,6 +184,9 @@ export default function WalletScreen() {
       </ScrollView>
       </View>
 
+      <WalletWithdrawalModal summary={wallet.walletSummary} withdrawal={withdrawal}
+        visible={wallet.activeModal === 'withdrawal'} onClose={() => wallet.setActiveModal(null)} />
+
       <WalletTopUpModal
         setActiveModal={wallet.setActiveModal}
         activeModal={wallet.activeModal}
@@ -186,7 +214,7 @@ export default function WalletScreen() {
       <WalletSheetModal
         icon="share-outline"
         onClose={() => wallet.setActiveModal(null)}
-        subtitle="Téléphone +243, email ou identifiant utilisateur."
+        subtitle="Les jetons de fidélité sont transférés en premier et restent non retirables. Les jetons achetés restent retirables chez le destinataire."
         title="Partager des jetons"
         visible={wallet.activeModal === 'transfer'}
       >

@@ -4,6 +4,7 @@ import { rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
@@ -30,7 +31,7 @@ type Props =
     | 'driverReservationHighlightTrip'
     | 'driverReservationHighlightBookings'
     | 'myDriverTrips'
-  > & { liveUserCoordinate?: MapCoordinate | null };
+  > & { liveUserCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomeTripSelection({
   remoteTrips,
   storedTrips,
@@ -46,6 +47,7 @@ export function useHomeTripSelection({
   driverReservationHighlightBookings,
   myDriverTrips,
   liveUserCoordinate = null,
+  hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES,
 }: Props) {
   const latitude = liveUserCoordinate?.latitude;
   const longitude = liveUserCoordinate?.longitude;
@@ -128,6 +130,7 @@ export function useHomeTripSelection({
         (booking) =>
           booking.tripId === driverReservationHighlightTrip.id &&
           booking.status === 'pending' &&
+          !hiddenHomePriorities[homePriorityKeys.booking(booking)] &&
           !booking.droppedOff,
       )
       .sort((a, b) => {
@@ -143,7 +146,7 @@ export function useHomeTripSelection({
     }
 
     return null;
-  }, [activeHomeTrip, driverReservationHighlightBookings, driverReservationHighlightTrip, isDriver]);
+  }, [activeHomeTrip, driverReservationHighlightBookings, driverReservationHighlightTrip, isDriver, hiddenHomePriorities]);
 
   const featuredDriverUpcomingTrip = useMemo(() => {
     if (!isDriver || !currentUser?.id || activeHomeTrip || featuredDriverReservation) {
@@ -155,6 +158,7 @@ export function useHomeTripSelection({
 
     return [...myDriverTrips]
       .filter((trip) => {
+        if (hiddenHomePriorities[homePriorityKeys.upcomingTrip(trip)]) return false;
         if (trip.driverId !== currentUser.id || trip.status !== 'upcoming' || !hasUpcomingDeparture(trip)) {
           return false;
         }
@@ -163,7 +167,7 @@ export function useHomeTripSelection({
         return Number.isFinite(departureTs) && departureTs >= now && departureTs <= highlightUntil;
       })
       .sort((a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime())[0] ?? null;
-  }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips]);
+  }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips, hiddenHomePriorities]);
 
   const isRestoringTrackedTrip = Boolean(trackedTripInfo?.tripId && !activeHomeTrip);
 

@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 export const styles = StyleSheet.create({
   sheetLoadingState: {
-    marginHorizontal: Spacing.xl,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
     minHeight: 148,
     borderRadius: BorderRadius.xl,
     padding: Spacing.md,

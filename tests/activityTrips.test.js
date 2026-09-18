@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { mapActivityTrip } = loader()('store/api/trip/activityTripMapper.ts');
 
-test('activity trips reuse embedded payment information without losing locked fares, names or cash confirmations', () => {
+test('activity trips preserve electronic receipts and locked fares without inventing cash confirmations', () => {
   const trip = { id: 'trip', driverId: 'driver', departureLocation: 'Gombe', arrivalLocation: 'Lemba',
     departureDate: '2026-09-17T10:00:00Z', pricePerSeat: 5000, availableSeats: 2, status: 'ongoing',
     bookings: [
@@ -14,9 +14,9 @@ test('activity trips reuse embedded payment information without losing locked fa
     ] };
   const result = mapActivityTrip(trip);
   assert.equal(result.id, 'trip'); assert.equal(result.departure.name, 'Gombe');
-  assert.equal(result.paymentNotices.length, 2);
+  assert.equal(result.paymentNotices.length, 1);
   assert.deepEqual(result.paymentNotices.map(item => [item.tripId, item.bookingId, item.amount]), [
-    ['trip', 'electronic', 1500], ['trip', 'cash', 5000],
+    ['trip', 'electronic', 1500],
   ]);
   assert.equal(result.paymentNotices[0].passengerName, 'Alice A');
   assert.equal(result.paymentNotices[0].mode, 'electronic');

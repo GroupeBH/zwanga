@@ -10,7 +10,7 @@ import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -88,9 +88,9 @@ export default function TripRequestsScreen() {
           countLabel: `${requestsCount.my} demande${requestsCount.my > 1 ? 's' : ''}`,
         };
 
-  const handleRequestPress = (requestId: string) => {
+  const handleRequestPress = useCallback((requestId: string) => {
     router.push(getTripRequestDetailHref(requestId));
-  };
+  }, [router]);
 
   // Rendre une carte de demande disponible (pour les drivers)
   const { renderAvailableRequestCard, renderMyRequestCard } = useRequestCards({
@@ -143,6 +143,9 @@ export default function TripRequestsScreen() {
 
     return (
       <FlatList
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
         data={currentData}
         keyExtractor={(item) => item.id}
         renderItem={activeTab === 'available' ? renderAvailableRequestCard : renderMyRequestCard}
@@ -234,5 +237,4 @@ export default function TripRequestsScreen() {
     </SafeAreaView>
   );
 }
-
 

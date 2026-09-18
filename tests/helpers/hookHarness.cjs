@@ -29,6 +29,7 @@ function hookHarness(id = 'form') {
       return slots[index].value;
     },
     useCallback(callback, dependencies) { return react.useMemo(() => callback, dependencies); },
+    useLayoutEffect(effect, dependencies) { react.useEffect(effect, dependencies); },
     useEffect(effect, dependencies) {
       const index = cursor++;
       if (changed(slots[index]?.dependencies, dependencies)) {

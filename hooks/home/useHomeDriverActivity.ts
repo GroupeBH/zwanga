@@ -6,10 +6,11 @@ import {
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'>;
-export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo }: Props) {
+type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'> & { hiddenHomePriorities?: HiddenHomePriorities };
+export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
   const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
     skip: !isDriver,
     pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
@@ -69,6 +70,11 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
     };
 
     return [...myDriverTrips]
+      .filter(trip => {
+        const pending = trip.passengers?.filter(passenger => passenger.bookingStatus === 'pending') ?? [];
+        return !pending.length || pending.some(passenger => !passenger.bookingId ||
+          !hiddenHomePriorities[homePriorityKeys.booking({ id: passenger.bookingId })]);
+      })
       .filter(
         (trip) =>
           trip.driverId === currentUser.id &&
@@ -99,7 +105,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
 
         return getDepartureTime(a) - getDepartureTime(b);
       })[0] ?? null;
-  }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip]);
+  }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip, hiddenHomePriorities]);
 
   const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS } = useGetTripBookingsQuery(
     driverReservationHighlightTrip?.id ?? '',

@@ -1,26 +1,12 @@
-import { styles } from '../screen-styles/app/tabs/trips/index';
-import { Colors, FontWeights, Spacing } from '@/constants/styles';
-import { useTripArrivalTime } from '@/hooks/useTripArrivalTime';
-import { isApproximateArrival } from '@/utils/tripArrivalPreview';
+import { CompactTripCard } from '@/components/trip/CompactTripCard';
+import { Colors } from '@/constants/styles';
+import { homeDepartureLabel, homePriceLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
+import { getPlaceName, getVehicleName } from '@/features/search/searchModel';
 import type { Booking, Trip } from '@/types';
-import { formatDateTime } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, Text, TouchableOpacity, View } from 'react-native';
-
-export function ArrivalTimeBlock({ trip }: { trip: Trip }) {
-  const calculatedArrivalTime = useTripArrivalTime(trip);
-  const arrivalDateTimeDisplay = calculatedArrivalTime
-    ? formatDateTime(calculatedArrivalTime.toISOString())
-    : 'Non disponible';
-
-  return (
-    <View style={styles.timeContainer}>
-      <Text style={styles.routeDateLabel}>{isApproximateArrival(trip) ? 'Arrivée approx.' : 'Arrivée estimée'}</Text>
-      <Text style={styles.routeTime}>{arrivalDateTimeDisplay}</Text>
-    </View>
-  );
-}
+import { Text, TouchableOpacity, View } from 'react-native';
+import { styles } from './TripListCards.styles';
 
 export function canManagePublishedTrip(trip: Trip) {
   if (trip.status === 'completed') return false;
@@ -88,103 +74,53 @@ export type PublishedTripCardProps = {
   trip: Trip;
 };
 
+function tripIdentity(trip: Trip) {
+  const name = trip.driverName || 'Conducteur Zwanga';
+  const rating = Number(trip.driverRating);
+  return {
+    avatarName: name,
+    avatarUri: trip.driverAvatar?.trim() || trip.driver?.profilePicture,
+    secondary: [name, Number.isFinite(rating) && rating > 0 ? `★ ${rating.toFixed(1)}` : null,
+      getVehicleName(trip)].filter(Boolean).join(' · '),
+  };
+}
+
 export const PublishedTripCard = React.memo(function PublishedTripCard({
-  canManage,
-  onDelete,
-  onDetails,
-  onEdit,
-  status,
-  trip,
+  canManage, onDelete, onDetails, onEdit, status, trip,
 }: PublishedTripCardProps) {
   return (
-    <View style={styles.tripCard}>
-      <View style={styles.tripHeader}>
-        <View style={styles.tripDriverInfo}>
-          {trip.driverAvatar ? (
-            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatar} />
+    <View style={styles.card}>
+      <CompactTripCard
+        embedded
+        {...tripIdentity(trip)}
+        label={status.label}
+        labelColor={status.textColor}
+        departure={getPlaceName(trip.departure)}
+        arrival={getPlaceName(trip.arrival)}
+        metadata={`${homeDepartureLabel(trip.departureTime)} · ${homeSeatsLabel(trip.availableSeats, true)}`}
+        priceText={homePriceLabel(trip.price)}
+        priceHint={trip.price > 0 ? '/ place' : undefined}
+        accessibilityLabel="Gérer ce trajet"
+        onPress={() => onDetails(trip.id)}
+      />
+      {(canManage || !trip.tripRequestId) && (
+        <View style={styles.actions}>
+          {canManage && (
+            <TouchableOpacity style={styles.action} accessibilityRole="button"
+              accessibilityLabel="Modifier ce trajet" onPress={() => onEdit(trip)}>
+              <Ionicons name="create-outline" size={16} color={Colors.primary} />
+              <Text style={styles.actionText}>Modifier</Text>
+            </TouchableOpacity>
           )}
-          <View style={styles.tripDriverDetails}>
-            <Text style={styles.driverName}>{trip.driverName}</Text>
-            <View style={styles.driverMeta}>
-              <Ionicons name="star" size={14} color={Colors.secondary} />
-              <Text style={styles.driverRating}>{trip.driverRating}</Text>
-              {trip.vehicle || trip.vehicleInfo ? (
-                <>
-                  <View style={styles.dot} />
-                  <Text style={styles.vehicleInfo}>
-                    {trip.vehicle
-                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                      : trip.vehicleInfo}
-                  </Text>
-                </>
-              ) : null}
-            </View>
-          </View>
+          {!trip.tripRequestId && (
+            <TouchableOpacity style={[styles.action, styles.danger]} accessibilityRole="button"
+              accessibilityLabel="Supprimer ce trajet" onPress={() => onDelete(trip)}>
+              <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+              <Text style={[styles.actionText, styles.dangerText]}>Supprimer</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
-          <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
-        </View>
-      </View>
-
-      <View style={styles.routeContainer}>
-        <View style={styles.routeRow}>
-          <Ionicons name="location" size={16} color={Colors.success} />
-          <Text style={styles.routeText}>{trip.departure.name}</Text>
-          <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>Départ</Text>
-            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
-          </View>
-        </View>
-        <View style={styles.routeDivider} />
-        <View style={styles.routeRow}>
-          <Ionicons name="navigate" size={16} color={Colors.primary} />
-          <Text style={styles.routeText}>{trip.arrival.name}</Text>
-          <ArrivalTimeBlock trip={trip} />
-        </View>
-      </View>
-
-      <View style={styles.tripFooter}>
-        <View style={styles.tripFooterLeft}>
-          <View style={styles.infoItem}>
-            <Ionicons name="people" size={16} color={Colors.gray[600]} />
-            <Text style={styles.infoText}>{trip.availableSeats} places</Text>
-          </View>
-          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-            {trip.price === 0 ? (
-              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
-            ) : (
-              <Text style={styles.infoText}>{trip.price} FC</Text>
-            )}
-          </View>
-        </View>
-        <TouchableOpacity style={styles.detailsButton} onPress={() => onDetails(trip.id)}>
-          <Text style={styles.detailsButtonText}>Détails</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.ownerActionsRow}>
-        <TouchableOpacity
-          style={[styles.ownerActionButton, !canManage && styles.ownerActionDisabled]}
-          onPress={() => onEdit(trip)}
-          disabled={!canManage}
-        >
-          <Ionicons name="create-outline" size={16} color={Colors.primary} />
-          <Text style={styles.ownerActionText}>Modifier</Text>
-        </TouchableOpacity>
-        {!trip.tripRequestId && (
-          <TouchableOpacity
-            style={[styles.ownerActionButton, styles.ownerActionDanger, { marginRight: 0 }]}
-            onPress={() => onDelete(trip)}
-          >
-            <Ionicons name="trash-outline" size={16} color={Colors.danger} />
-            <Text style={[styles.ownerActionText, styles.ownerActionDangerText]}>Supprimer</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      )}
     </View>
   );
 });
@@ -196,84 +132,27 @@ export type BookingTripCardProps = {
 };
 
 export const BookingTripCard = React.memo(function BookingTripCard({
-  booking,
-  onDetails,
-  status,
+  booking, onDetails, status,
 }: BookingTripCardProps) {
   const trip = booking.trip;
   if (!trip) return null;
-
+  // Same displayed estimate as before; this card never changes the saved fare.
+  const total = trip.price * booking.numberOfSeats;
   return (
-    <View style={styles.tripCard}>
-      <View style={styles.tripHeader}>
-        <View style={styles.tripDriverInfo}>
-          {trip.driverAvatar ? (
-            <Image source={{ uri: trip.driverAvatar }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatar} />
-          )}
-          <View style={styles.tripDriverDetails}>
-            <Text style={styles.driverName}>{trip.driverName}</Text>
-            <View style={styles.driverMeta}>
-              <Ionicons name="star" size={14} color={Colors.secondary} />
-              <Text style={styles.driverRating}>{trip.driverRating}</Text>
-              {trip.vehicle || trip.vehicleInfo ? (
-                <>
-                  <View style={styles.dot} />
-                  <Text style={styles.vehicleInfo}>
-                    {trip.vehicle
-                      ? `${trip.vehicle.brand} ${trip.vehicle.model}${trip.vehicle.color ? ` • ${trip.vehicle.color}` : ''}`
-                      : trip.vehicleInfo}
-                  </Text>
-                </>
-              ) : null}
-            </View>
-          </View>
-        </View>
-        <View style={[styles.statusBadge, { backgroundColor: status.bgColor }]}>
-          <Text style={[styles.statusText, { color: status.textColor }]}>{status.label}</Text>
-        </View>
-      </View>
-
-      <View style={styles.routeContainer}>
-        <View style={styles.routeRow}>
-          <Ionicons name="location" size={16} color={Colors.success} />
-          <Text style={styles.routeText}>{trip.departure.name}</Text>
-          <View style={styles.timeContainer}>
-            <Text style={styles.routeDateLabel}>Départ</Text>
-            <Text style={styles.routeTime}>{formatDateTime(trip.departureTime)}</Text>
-          </View>
-        </View>
-        <View style={styles.routeDivider} />
-        <View style={styles.routeRow}>
-          <Ionicons name="navigate" size={16} color={Colors.primary} />
-          <Text style={styles.routeText}>{booking.passengerDestination || trip.arrival.name}</Text>
-          <ArrivalTimeBlock trip={trip} />
-        </View>
-      </View>
-
-      <View style={styles.tripFooter}>
-        <View style={styles.tripFooterLeft}>
-          <View style={styles.infoItem}>
-            <Ionicons name="people" size={16} color={Colors.gray[600]} />
-            <Text style={styles.infoText}>
-              {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''}
-            </Text>
-          </View>
-          <View style={[styles.infoItem, { marginLeft: Spacing.lg }]}>
-            <Ionicons name="cash" size={16} color={Colors.gray[600]} />
-            {trip.price === 0 ? (
-              <Text style={[styles.infoText, { color: Colors.success, fontWeight: FontWeights.bold }]}>Gratuit</Text>
-            ) : (
-              <Text style={styles.infoText}>{trip.price * booking.numberOfSeats} FC</Text>
-            )}
-          </View>
-        </View>
-        <TouchableOpacity style={styles.detailsButton} onPress={() => onDetails(trip.id)}>
-          <Text style={styles.detailsButtonText}>Détails</Text>
-          <Ionicons name="chevron-forward" size={16} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.card}>
+      <CompactTripCard
+        embedded
+        {...tripIdentity(trip)}
+        label={status.label}
+        labelColor={status.textColor}
+        departure={getPlaceName(trip.departure)}
+        arrival={booking.passengerDestination || getPlaceName(trip.arrival)}
+        metadata={`${homeDepartureLabel(trip.departureTime)} · ${homeSeatsLabel(booking.numberOfSeats)}`}
+        priceText={homePriceLabel(total)}
+        priceHint={total > 0 ? 'total' : undefined}
+        accessibilityLabel="Voir le trajet réservé"
+        onPress={() => onDetails(trip.id)}
+      />
     </View>
   );
 });

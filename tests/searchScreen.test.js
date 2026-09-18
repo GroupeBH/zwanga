@@ -78,9 +78,10 @@ const request = (id, extra = {}) => ({ id, passengerId: 'passenger', status: 'pe
 function screenApp() {
   const hooks = hookHarness(), params = {}, queryCalls = [], routes = [];
   const router = { push: value => routes.push(value), back() {} };
-  const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true };
+  const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false };
   const coords = { latitude: -4.325, longitude: 15.3222 };
   const state = {
+    auth: { user: { id: 'me', firstName: 'Alice', isDriver: true } },
     trips: { items: [] },
     location: { get lastKnownLocation() { app.coordinateReads++; return { coords }; } },
   };
@@ -96,7 +97,7 @@ function screenApp() {
     '@/services/analytics': { trackEvent: async () => {} },
     '@/utils/errorHelpers': { getApiErrorMessage: (_error, fallback) => fallback },
     '@/store/hooks': { useAppSelector: selector => selector(state) },
-    '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: { id: 'me', firstName: 'Alice', isDriver: app.isDriver } }) },
+    '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', isDriver: app.isDriver } }) },
     '@/store/api/tripApi': {
       useGetTripsQuery: (args, options) => { queryCalls.push({ name: 'trips', args, options }); return { data: app.trips, isLoading: false, isFetching: false, refetch() {} }; },
       useSearchTripsByCoordinatesMutation: () => [() => { throw new Error('Unexpected coordinate request'); }, { isLoading: false }],
@@ -161,6 +162,23 @@ test('the screen keeps one virtualized list and the compact toolbar in its heade
   assert.equal(list.props.keyboardShouldPersistTaps, 'handled');
   assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet trouvé');
   assert.equal(list.props.data[0].trip.id, 'trip');
+  app.hooks.unmount();
+});
+
+test('signed-in users never see their own trips or count them, including while the profile is unavailable', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  app.trips = Object.freeze([{ ...trip('own'), driverId: 'me', price: 0 }, trip('other')]);
+  for (const profileUnavailable of [false, true]) {
+    app.profileUnavailable = profileUnavailable;
+    const tree = app.render();
+    assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['other']);
+    assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet trouvé');
+  }
+  app.trips = Object.freeze([{ ...trip('own'), driverId: 'me' }]);
+  const tree = app.render();
+  assert.equal(app.list(tree).props.data.length, 0);
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '0 trajet trouvé');
   app.hooks.unmount();
 });
 

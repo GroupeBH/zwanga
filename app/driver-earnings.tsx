@@ -19,7 +19,8 @@ import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const getPaymentModeLabel = (earning: DriverEarning) =>
-  earning.paymentMode === 'points' ? 'Payé en jetons' : 'Paiement électronique';
+  earning.paymentMode === 'cash' ? 'Participation Zwanga (trajet en cash)' :
+    earning.paymentMode === 'points' ? 'Payé en jetons' : 'Paiement électronique';
 
 export default function DriverEarningsScreen() {
   const isScreenActive = useScreenIsActive();

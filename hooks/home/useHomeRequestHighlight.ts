@@ -6,20 +6,22 @@ import { startHomeRequestHighlight } from '@/store/slices/homeRequestHighlightsS
 import type { TripRequest } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { useEffect, useState } from 'react';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 type Props = {
   enabled: boolean;
   userId?: string;
   requests: TripRequest[];
   driverCoordinate: MapCoordinate | null;
+  hiddenHomePriorities?: HiddenHomePriorities;
 };
 
-export function useHomeRequestHighlight({ enabled, userId, requests, driverCoordinate }: Props) {
+export function useHomeRequestHighlight({ enabled, userId, requests, driverCoordinate, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
   const dispatch = useAppDispatch();
   const appActive = useAppIsActive();
   const authenticatedUserId = useAppSelector(state => state.auth.user?.id);
   const [, forceUpdate] = useState(0);
-  const candidate = requests[0] ?? null;
+  const candidate = requests.find(request => !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)]) ?? null;
   const now = Date.now();
   const canShow = enabled && appActive && Boolean(userId && userId === authenticatedUserId)
     && candidate !== null && candidate.passengerId !== userId
