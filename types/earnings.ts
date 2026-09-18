@@ -59,6 +59,10 @@ export interface DriverTripRevenueSummary {
   currency: string;
   commissionRate: number;
   confirmedAmount: number;
+  /** Only true when confirmedAmount was read from the persisted earnings ledger. */
+  ledgerVerified?: boolean;
+  creditPendingAmount?: number;
+  zwangaSubsidyAmount?: number;
   cashToCollectAmount: number;
   electronicPendingAmount: number;
   totalExpectedAmount: number;

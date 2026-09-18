@@ -161,7 +161,7 @@ export function DriverPaymentNoticeCoordinator() {
     }
 
     const notice = relevantTrips.flatMap(trip => trip.paymentNotices)
-      .find(candidate => !seenNotices[candidate.key]);
+      .find(candidate => candidate.mode !== 'cash' && !seenNotices[candidate.key]);
     if (notice) setActiveNotice(notice);
   }, [
     activeNotice,
@@ -196,7 +196,7 @@ export function DriverPaymentNoticeCoordinator() {
             </View>
             <Text style={styles.title}>Paiement passager confirmé</Text>
             <Text style={styles.message}>
-              {activeNotice.passengerName} a confirmé le paiement du trajet.
+              Le paiement de {activeNotice.passengerName} a été confirmé.
             </Text>
 
             <ScrollView bounces={false} style={styles.details} contentContainerStyle={styles.detailsContent}>

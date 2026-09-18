@@ -20,6 +20,8 @@ import * as Location from 'expo-location';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import React, { useCallback } from 'react';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { useAppDispatch } from '@/store/hooks';
+import { baseApi } from '@/store/api/baseApi';
 
 interface Params {
   isMountedRef: React.RefObject<boolean>;
@@ -66,6 +68,7 @@ export function useDriverCompletionActions({
   refetchTrip,
   refetchBookings,
 }: Params) {
+  const dispatch = useAppDispatch();
   const presentTripDestinationNotice = useCallback(
     (
       event: BookingAutoProgressEvent,
@@ -127,6 +130,7 @@ export function useDriverCompletionActions({
         return;
       }
 
+      dispatch(baseApi.util.invalidateTags([{ type: 'DriverSettlement', id: 'ME' }]));
       const notice: TripEndNotice = {
         tripId: event.tripId,
         completedWhileAppInactive: options.completedWhileAppInactive,
@@ -137,7 +141,7 @@ export function useDriverCompletionActions({
       tripEndNoticeRef.current = notice;
       setTripEndNotice(notice);
 
-      if (!event.revenueSummary) {
+      if (!event.revenueSummary?.ledgerVerified) {
         void getDriverTripRevenueSummary(event.tripId)
           .unwrap()
           .then((revenueSummary) => {
@@ -185,7 +189,7 @@ export function useDriverCompletionActions({
         );
       });
     },
-    [getDriverTripRevenueSummary, showDialog],
+    [dispatch, getDriverTripRevenueSummary, showDialog, isMountedRef, presentedTripDestinationKeysRef, setTripEndNotice, tripEndNoticeRef],
   );
 
   const resolveCompletedTripDistanceMeters = useCallback(
@@ -223,7 +227,7 @@ export function useDriverCompletionActions({
         ? Math.max(1, Math.round(distanceMeters))
         : undefined;
     },
-    [tripArrivalCoordinate],
+    [tripArrivalCoordinate, currentLocationRef, lastAcceptedDriverCoordinateRef],
   );
 
   const presentCompletedTripFromServerSync = useCallback(
@@ -250,7 +254,7 @@ export function useDriverCompletionActions({
       completedDuringInactiveCandidateRef.current = false;
       return true;
     },
-    [presentTripDestinationNotice, resolveCompletedTripDistanceMeters, tripId],
+    [presentTripDestinationNotice, resolveCompletedTripDistanceMeters, tripId, completedDuringInactiveCandidateRef],
   );
 
   const getTripDestinationReferenceRoute = useCallback((): RouteCoordinate[] => {
@@ -264,7 +268,7 @@ export function useDriverCompletionActions({
     return [tripDepartureCoordinate, tripArrivalCoordinate].filter(
       (coordinate): coordinate is RouteCoordinate => Boolean(coordinate),
     );
-  }, [activeNavigationDestination?.kind, tripArrivalCoordinate, tripDepartureCoordinate]);
+  }, [activeNavigationDestination?.kind, tripArrivalCoordinate, tripDepartureCoordinate, routeCoordinatesRef]);
 
   const tryCompleteTripFromNavigation = useCallback(
     (
@@ -314,6 +318,8 @@ export function useDriverCompletionActions({
         });
     },
     [
+      autoCompletingTripRef,
+      completedDuringInactiveCandidateRef,
       completeTrip,
       presentTripDestinationNotice,
       reconcileTripStatus,

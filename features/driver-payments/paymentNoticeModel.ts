@@ -1,4 +1,4 @@
-import { selectUser } from '@/store/selectors';
+import type { selectUser } from '@/store/selectors';
 import type { Booking, Trip, TripPaymentMode } from '@/types';
 
 export const DRIVER_PAYMENT_NOTICE_REFRESH_MS = 60_000;
@@ -40,7 +40,7 @@ export function formatMoney(value: number, currency?: string | null) {
 export function getPaymentModeLabel(mode?: TripPaymentMode | null) {
   if (mode === 'points') return 'Jetons Zwanga';
   if (mode === 'electronic') return 'Paiement électronique';
-  return 'Especes';
+  return 'Paiement cash';
 }
 
 export function hasPassengerArrived(booking: Booking) {
@@ -53,8 +53,9 @@ export function hasPassengerArrived(booking: Booking) {
 }
 
 export function isBookingPaymentConfirmed(booking: Booking) {
-  if (booking.paymentStatus === 'succeeded') return true;
-  return booking.paymentMode === 'cash' && booking.paymentStatus === 'not_required' && hasPassengerArrived(booking);
+  // Arrival is not a receipt: cash is handed directly to the driver.
+  return (booking.paymentMode === 'electronic' || booking.paymentMode === 'points') &&
+    booking.paymentStatus === 'succeeded';
 }
 
 export function isDriverUser(user: ReturnType<typeof selectUser>) {
@@ -82,6 +83,6 @@ export function buildPaymentNotice(booking: Booking, trip: Trip): DriverPaymentN
     amount,
     currency: booking.paymentCurrency ?? 'CDF',
     mode: booking.paymentMode ?? 'cash',
-    paidAt: booking.paidAt ?? booking.updatedAt,
+    paidAt: booking.paidAt,
   };
 }
