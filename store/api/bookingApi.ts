@@ -95,6 +95,7 @@ export const {
   useConfirmDropoffMutation,
   useConfirmDropoffByPassengerMutation,
   useRequestPassengerTripInterruptionMutation,
+  useGetPassengerInterruptionFarePreviewQuery,
   useCancelPassengerTripInterruptionMutation,
   useConfirmPassengerTripInterruptionMutation,
   useRejectPassengerTripInterruptionMutation,

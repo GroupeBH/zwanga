@@ -31,6 +31,7 @@ export type ElectronicPaymentChannel = {
 };
 
 export type PaymentCompletionSummary = {
+  cashInstructions?: boolean;
   bookingId: string;
   beforeArrival?: boolean;
   mode: TripPaymentMode;

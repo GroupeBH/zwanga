@@ -16,6 +16,7 @@ const native = {
 const safeArea = { SafeAreaProvider: 'SafeAreaProvider', SafeAreaView: 'SafeAreaView' };
 const read = file => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
 const loadLayout = (os = 'android') => loader({
+  '@/features/navigation/RideModal': { RideModal: 'Modal' },
   'react-native': { ...native, Platform: { OS: os } },
   'react-native-safe-area-context': safeArea,
 })('components/forms/FormLayout.tsx');
@@ -66,6 +67,7 @@ function vehicleForm() {
   const listeners = new Map();
   const calls = [];
   const { VehicleFormModal } = loader({
+    '@/features/navigation/RideModal': { RideModal: 'Modal' },
     react: hooks.react, 'react-native-safe-area-context': safeArea,
     '@expo/vector-icons': { Ionicons: 'Ionicons' },
     'react-native': { ...native, Keyboard: {

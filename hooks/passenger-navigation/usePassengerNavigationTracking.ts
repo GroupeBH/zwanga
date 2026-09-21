@@ -1,7 +1,8 @@
 import { usePassengerNavigationData } from './usePassengerNavigationData';
 import { BookingAutoProgressEvent } from '../../features/passenger-navigation/navigationModel';
 import { trackingSocket, type DriverLocationPayload } from '@/services/trackingSocket';
-import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { areTripMapCoordinatesSame, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { createDriverLocationDisplay } from '@/features/passenger-navigation/driverLocationDisplay';
 import {
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
   isPlausibleLocationUpdate,
@@ -92,6 +93,11 @@ export function usePassengerNavigationTracking({
     }
 
     let isCancelled = false;
+    const display = createDriverLocationDisplay((coordinate, timestamp) => {
+      if (isCancelled || !isMountedRef.current) return;
+      setDriverLocation(current => areTripMapCoordinatesSame(current, coordinate) ? current : coordinate);
+      setLastUpdate(current => current?.getTime() === timestamp ? current : new Date(timestamp));
+    });
     setIsSocketConnected(false);
     const unsubscribeConnection = trackingSocket.subscribeToConnectionState((connected) => {
       if (!isCancelled && isMountedRef.current) setIsSocketConnected(connected);
@@ -125,6 +131,7 @@ export function usePassengerNavigationTracking({
           ? new Date(payload.updatedAt).getTime()
           : Date.now();
         const safeUpdatedAtMs = Number.isFinite(updatedAtMs) ? updatedAtMs : Date.now();
+        if (lastAcceptedDriverTimestampRef.current !== null && safeUpdatedAtMs <= lastAcceptedDriverTimestampRef.current) return;
         if (
           !isPlausibleLocationUpdate({
             previous: lastAcceptedDriverCoordinateRef.current,
@@ -140,13 +147,12 @@ export function usePassengerNavigationTracking({
 
         lastAcceptedDriverCoordinateRef.current = coordinate;
         lastAcceptedDriverTimestampRef.current = safeUpdatedAtMs;
-        setDriverLocation(coordinate);
-        setLastUpdate(new Date(safeUpdatedAtMs));
+        display.push(coordinate, safeUpdatedAtMs);
       }
     });
 
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
-      if (!isMountedRef.current || payload.tripId !== tripId) return;
+      if (isCancelled || !isMountedRef.current || payload.tripId !== tripId) return;
       const bookingEvents = payload.events.filter((event) => event.bookingId === bookingId);
       const tripDestinationEvents = payload.events.filter(
         (event) =>
@@ -194,6 +200,7 @@ export function usePassengerNavigationTracking({
 
     return () => {
       isCancelled = true;
+      display.dispose();
       trackingSocket.leaveTrip(tripId);
       unsubscribeConnection();
       unsubscribeLocation();

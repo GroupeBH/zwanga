@@ -4,19 +4,15 @@ import {
   formatPaymentPhone,
   hasPassengerArrived,
   selectArrivedPaymentBooking,
-  getStorageKey,
 } from '../../features/arrival-payment/paymentModel';
-import {
-  PaymentChannel,
-  StoredBookingPaymentState,
-  StoredPaymentState,
-  PaymentCompletionSummary,
-} from '../../features/arrival-payment/paymentTypes';
+import { PaymentChannel, PaymentCompletionSummary } from '../../features/arrival-payment/paymentTypes';
 import { ARRIVAL_BOOKING_REFRESH_MS } from '../../features/arrival-payment/paymentPolicy';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useNearArrivalPayment } from './useNearArrivalPayment';
 import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { usePaymentPersistence } from './usePaymentPersistence';
+import { useBookingPaymentMode } from './useBookingPaymentMode';
+import { useArrivalPaymentRefresh } from './useArrivalPaymentRefresh';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -35,7 +31,8 @@ import {
 } from '@/store/api/walletApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
-import type { TripPaymentMode } from '@/types';
+import type { Booking } from '@/types';
+const EMPTY_BOOKINGS: Booking[] = [];
 
 
 
@@ -47,9 +44,8 @@ export function useArrivalPaymentState() {
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
-  const [storedState, setStoredState] = useState<StoredPaymentState>({});
-  const [isStoredStateLoaded, setIsStoredStateLoaded] = useState(false);
-  const [selectedMode, setSelectedMode] = useState<TripPaymentMode>('cash');
+  const { storedState, isStoredStateLoaded, persistBookingState, isSessionCurrent } = usePaymentPersistence(user?.id, isAuthenticated);
+  const [deferredBookingId, setDeferredBookingId] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<PaymentChannel>('mpesa');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -60,10 +56,9 @@ export function useArrivalPaymentState() {
   const [resolvedInterruption, setResolvedInterruption] = useState<string | null>(null);
   const activeBookingIdRef = useRef<string | null>(null);
   const pendingInvoicePaymentIdRef = useRef<string | null | undefined>(undefined);
-  const paymentCheckInFlightRef = useRef(false);
 
   const {
-    data: bookings = [],
+    data: bookings = EMPTY_BOOKINGS,
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
     skip: !isAuthenticated,
@@ -73,12 +68,16 @@ export function useArrivalPaymentState() {
     refetchOnReconnect: false,
   });
 
-  const earlyBooking = useNearArrivalPayment(bookings, user?.id, isAuthenticated && isAppActive && isStoredStateLoaded, storedState);
+  const isResumeReady = useArrivalPaymentRefresh(isAuthenticated && isAppActive, refetchBookings);
+  const earlyBooking = useNearArrivalPayment(bookings, user?.id, isAuthenticated && isResumeReady && isStoredStateLoaded, storedState);
   const arrivedBooking = useMemo(() => {
-    if (!isStoredStateLoaded) return null;
-
+    if (!isAuthenticated || !isStoredStateLoaded) return null;
+    // A successful server refresh must not swap this form for an older cash booking.
+    const pinned = bookings.find(booking => booking.id === activeBookingIdRef.current);
+    const pinnedArrival = pinned && selectArrivedPaymentBooking([pinned], storedState);
+    if (pinnedArrival) return pinnedArrival;
     return selectArrivedPaymentBooking(bookings, storedState);
-  }, [bookings, isStoredStateLoaded, storedState]);
+  }, [bookings, isAuthenticated, isStoredStateLoaded, storedState]);
   const arrivalBooking = arrivedBooking ?? earlyBooking;
   const isBeforeArrival = Boolean(arrivalBooking && !hasPassengerArrived(arrivalBooking));
 
@@ -151,6 +150,7 @@ export function useArrivalPaymentState() {
   const paymentAlreadySucceeded =
     arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0;
   const activeStoredState = arrivalBooking ? storedState[arrivalBooking.id] : undefined;
+  const { selectedMode, setSelectedMode } = useBookingPaymentMode(arrivalBooking, activeStoredState);
   const hasPendingProviderPayment = Boolean(
     activeStoredState?.bookingPaymentOrderNumber || activeStoredState?.walletTopUpOrderNumber,
   );
@@ -161,38 +161,22 @@ export function useArrivalPaymentState() {
   );
   const mobileMoneyPhone = formatPaymentPhone(paymentPhone || user?.phone);
 
-  const persistBookingState = useCallback(
-    (bookingId: string, patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => {
-      if (!user?.id) return;
-
-      setStoredState((current) => {
-        const nextBookingState = { ...(current[bookingId] ?? {}) };
-        Object.entries(patch).forEach(([key, value]) => {
-          const typedKey = key as keyof StoredBookingPaymentState;
-          if (value) {
-            (nextBookingState as Record<string, string | undefined>)[typedKey] = value;
-          } else {
-            delete (nextBookingState as Record<string, string | undefined>)[typedKey];
-          }
-        });
-        const next = { ...current, [bookingId]: nextBookingState };
-        void AsyncStorage.setItem(getStorageKey(user.id), JSON.stringify(next));
-        return next;
-      });
-    },
-    [user?.id],
-  );
-
   const acknowledgeBooking = useCallback(
     (bookingId: string) => {
+      const acknowledgedAt = new Date().toISOString();
       persistBookingState(bookingId, {
-        acknowledgedAt: new Date().toISOString(),
+        acknowledgedAt,
         bookingPaymentOrderNumber: null,
         bookingPaymentUrl: null,
         walletTopUpOrderNumber: null,
       });
+      // Do not chain unrelated historical confirmations after closing this one.
+      const next = selectArrivedPaymentBooking(bookings, {
+        ...storedState, [bookingId]: { ...storedState[bookingId], acknowledgedAt },
+      });
+      setDeferredBookingId(next?.id ?? null);
     },
-    [persistBookingState],
+    [bookings, persistBookingState, storedState],
   );
   const deferEarlyPayment = useCallback(() => {
     if (!arrivalBooking || !isBeforeArrival || isBusy || hasPendingProviderPayment) return;
@@ -200,6 +184,11 @@ export function useArrivalPaymentState() {
   }, [arrivalBooking, hasPendingProviderPayment, isBeforeArrival, isBusy, persistBookingState]);
 
   return {
+    isResumeReady,
+    isSessionCurrent,
+    isPaymentDeferred: arrivalBooking?.id === deferredBookingId,
+    deferPayment: () => { if (arrivalBooking) setDeferredBookingId(arrivalBooking.id); },
+    resumePayment: () => setDeferredBookingId(null),
     refetchBookings,
     refetchWallet,
     refetchPaymentHistory,
@@ -212,10 +201,8 @@ export function useArrivalPaymentState() {
     setStatusMessage,
     checkBookingPaymentStatus,
     updatePaymentMode,
-    setIsStoredStateLoaded,
     isAuthenticated,
     user,
-    setStoredState,
     arrivalBooking,
     isBeforeArrival,
     deferEarlyPayment,
@@ -226,7 +213,6 @@ export function useArrivalPaymentState() {
     setPaymentPhone,
     activeStoredState,
     isAppActive,
-    paymentCheckInFlightRef,
     setIsCheckingPayment,
     checkWalletTopUpStatus,
     paymentAmount,

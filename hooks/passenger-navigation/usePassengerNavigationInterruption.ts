@@ -5,11 +5,11 @@ import {
   useGetTripByIdQuery,
   useRejectDriverTripInterruptionMutation,
 } from '@/store/api/tripApi';
-import type { TripInterruptionReason } from '@/types';
+import type { TripInterruptionReason, Trip, Booking } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { isPendingTripInterruption } from '@/utils/tripInterruption';
-import { useCallback } from 'react';
-import type { Trip, Booking } from '@/types';
+import { createElement, useCallback, useRef } from 'react';
+import { PassengerInterruptionFarePreview } from '@/features/passenger-navigation/PassengerInterruptionFarePreview';
 
 interface Params {
   booking: Booking | undefined;
@@ -38,6 +38,7 @@ export function usePassengerNavigationInterruption({
   confirmDriverTripInterruption,
   rejectDriverTripInterruption,
 }: Params) {
+  const sendingInterruptionRef = useRef(false);
   const pendingPassengerInterruptionRequest = isPendingTripInterruption(
     booking?.interruptionRequest?.status,
   )
@@ -77,7 +78,8 @@ export function usePassengerNavigationInterruption({
 
   const sendPassengerInterruptionRequest = useCallback(
     async (reason: TripInterruptionReason) => {
-      if (!booking?.id) return;
+      if (!booking?.id || sendingInterruptionRef.current) return;
+      sendingInterruptionRef.current = true;
 
       try {
         await requestPassengerTripInterruption({
@@ -101,6 +103,8 @@ export function usePassengerNavigationInterruption({
           title: 'Demande impossible',
           message: getApiErrorMessage(error, "Impossible d'envoyer votre demande d'interruption."),
         });
+      } finally {
+        sendingInterruptionRef.current = false;
       }
     },
     [
@@ -114,13 +118,13 @@ export function usePassengerNavigationInterruption({
   );
 
   const openPassengerInterruptionDialog = useCallback(() => {
-    if (!canRequestPassengerInterruption || isRequestingPassengerInterruption) return;
+    if (!booking || !canRequestPassengerInterruption || isRequestingPassengerInterruption || sendingInterruptionRef.current) return;
 
     showDialog({
       variant: 'warning',
       icon: 'walk-outline',
       title: 'Descendre avant destination',
-      message: 'Le conducteur devra confirmer cette interruption avant la fin de votre trajet.',
+      content: createElement(PassengerInterruptionFarePreview, { booking, coordinates: passengerLocation }),
       actions: [
         { label: 'Annuler', variant: 'ghost' },
         {
@@ -136,6 +140,8 @@ export function usePassengerNavigationInterruption({
       ],
     });
   }, [
+    booking,
+    passengerLocation,
     canRequestPassengerInterruption,
     isRequestingPassengerInterruption,
     sendPassengerInterruptionRequest,

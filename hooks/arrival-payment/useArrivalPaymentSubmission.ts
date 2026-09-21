@@ -17,6 +17,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 
 interface Params {
+  isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
   paymentAmount: number | null;
   isBusy: boolean;
@@ -25,7 +26,7 @@ interface Params {
   setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
   paymentAlreadySucceeded: boolean;
   showCompletionSummary: (sourceBooking: Booking, options?: { mode?: TripPaymentMode | null; channel?: PaymentChannel; paymentReference?: string | null; }) => Promise<void>;
-  selectedMode: TripPaymentMode;
+  selectedMode: TripPaymentMode | null;
   selectedChannel: PaymentChannel;
   updatePaymentMode: ReturnType<typeof useUpdateBookingPaymentModeMutation>[0];
   requiredPoints: number | null;
@@ -44,6 +45,7 @@ interface Params {
 }
 
 export function useArrivalPaymentSubmission({
+  isSessionCurrent,
   arrivalBooking,
   paymentAmount,
   isBusy,
@@ -62,7 +64,6 @@ export function useArrivalPaymentSubmission({
   mobileMoneyPhone,
   initiateWalletTopUp,
   persistBookingState,
-  refetchWallet,
   moneyComplement,
   paymentCurrency,
   initiateBookingPayment,
@@ -71,7 +72,7 @@ export function useArrivalPaymentSubmission({
 }: Params) {
   const submissionInFlight = useRef(false);
   const submitPayment = useCallback(async () => {
-    if (!arrivalBooking || paymentAmount === null || isBusy || hasPendingProviderPayment) return;
+    if (!isSessionCurrent() || !arrivalBooking || !selectedMode || paymentAmount === null || isBusy || hasPendingProviderPayment) return;
     if (!hasPassengerArrived(arrivalBooking) && selectedMode === 'cash') return;
 
     setPaymentError('');
@@ -125,6 +126,7 @@ export function useArrivalPaymentSubmission({
             walletTopUpOrderNumber: response.payment.orderNumber,
           });
         }
+        if (!isSessionCurrent()) return;
         if (response.payment.paymentUrl) {
           await openExternalUrlSafely(response.payment.paymentUrl, {
             logLabel: 'PassengerArrivalPointsComplement',
@@ -132,7 +134,6 @@ export function useArrivalPaymentSubmission({
         }
 
         if (response.payment.status === 'succeeded') {
-          await refetchWallet();
           await settleWithPoints(arrivalBooking.id);
           return;
         }
@@ -162,6 +163,7 @@ export function useArrivalPaymentSubmission({
         }).unwrap();
       }
 
+      if (!isSessionCurrent()) return;
       const cardRedirectUrls =
         method === 'card' ? createBookingCardPaymentRedirectUrls(arrivalBooking.id) : null;
       const response = await initiateBookingPayment({
@@ -185,6 +187,7 @@ export function useArrivalPaymentSubmission({
           bookingPaymentUrl: response.payment.paymentUrl,
         });
       }
+      if (!isSessionCurrent()) return;
       if (response.payment.paymentUrl) {
         if (method === 'card' && cardRedirectUrls) {
           const finished = await openCardPaymentUrl(
@@ -218,9 +221,12 @@ export function useArrivalPaymentSubmission({
         ),
       );
     } catch (error: any) {
-      setPaymentError(getApiErrorMessage(error, "Le paiement n'a pas pu être effectué."));
+      if (isSessionCurrent()) setPaymentError(getApiErrorMessage(error, "Le paiement n'a pas pu être effectué."));
     }
   }, [
+    isSessionCurrent,
+    setPaymentError,
+    setStatusMessage,
     arrivalBooking,
     handleCompletedBookingPayment,
     initiateBookingPayment,
@@ -236,7 +242,6 @@ export function useArrivalPaymentSubmission({
     paymentAmount,
     paymentCurrency,
     persistBookingState,
-    refetchWallet,
     requiredPoints,
     selectedChannel,
     selectedMode,

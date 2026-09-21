@@ -12,8 +12,7 @@ import React from 'react';
 import { ActivityIndicator, Keyboard, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { Colors } from '@/constants/styles';
-import type { TripPaymentMode } from '@/types';
-import type { Booking } from '@/types';
+import type { Booking, TripPaymentMode } from '@/types';
 
 interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking;
@@ -25,11 +24,11 @@ interface ArrivalPaymentFieldsProps {
   arePointsRecommended: boolean;
   isBusy: boolean;
   hasPendingProviderPayment: boolean;
-  setSelectedMode: React.Dispatch<React.SetStateAction<TripPaymentMode>>;
+  setSelectedMode: React.Dispatch<React.SetStateAction<TripPaymentMode | null>>;
   setPaymentError: React.Dispatch<React.SetStateAction<string>>;
   setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
   pointsCoveragePercentage: number;
-  selectedMode: TripPaymentMode;
+  selectedMode: TripPaymentMode | null;
   isWalletFetching: boolean;
   walletBalance: number;
   pointsUsed: number;
@@ -107,7 +106,7 @@ export function ArrivalPaymentFields({
       : formatMoney(paymentAmount, paymentCurrency)}
                   </Text>
                   <Text style={styles.amountHint}>
-    {isBeforeArrival ? 'Vous êtes à proximité de votre destination. Réglez maintenant pour pouvoir descendre sans attendre. Votre trajet continue normalement.' : 'Choisissez comment régler ce trajet. Cette fenêtre restera ouverte jusqu’à votre action.'}
+    {isBeforeArrival ? 'Vous êtes à proximité de votre destination. Réglez maintenant pour pouvoir descendre sans attendre. Votre trajet continue normalement.' : 'Choisissez comment régler ce trajet. Vous pouvez fermer cette fenêtre et reprendre le paiement plus tard.'}
                   </Text>
                 </View>
 

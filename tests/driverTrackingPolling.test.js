@@ -67,3 +67,14 @@ test('driver UI releases the socket room and timer in the background and rejoins
   env.hooks.unmount();
   assert.equal(env.locations.size, 0);
 });
+
+test('refreshing booking callbacks for an hour does not recreate the tracking subscription', async t => {
+  const env = fixture(t); env.render(); await flush();
+  for (let i = 0; i < 180; i++) {
+    env.props.data = { ...env.props.data, refetchBookings() {}, refetchTrip() {}, showDialog() {} };
+    env.props.notices = { getPassengerNameForBooking: () => 'Updated passenger', presentPassengerBoardedNotice() {} };
+    env.props.completion = { presentTripDestinationNotice() {} };
+    env.render();
+  }
+  assert.equal(env.joins(), 1); assert.equal(env.leaves(), 0); assert.equal(env.requests(), 1); assert.equal(env.locations.size, 1);
+});

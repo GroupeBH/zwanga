@@ -182,6 +182,7 @@ test('driver exposes icon-only rerouting directly and keeps my position in optio
 test('driver navigation wires contacts to this trip and defers automatic notice modals during assistance', () => {
   const model = driverModel(); const received = [];
   const mocked = { ...defaults,
+    '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
     '../../../hooks/driver-navigation/useDriverNavigationController': { useDriverNavigationController: () => model },
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true, panel: 'sos' }; } },
     '@/features/driver-navigation/DriverNavigationTopPanel': { DriverNavigationTopPanel: 'TopPanel' },
@@ -206,6 +207,8 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
   const model = { data: { trip: { id: 't', departure: { address: 'Départ' } }, booking: { id: 'b', tripId: 't' }, insets, isScreenActive: true },
     state: { isMapExpanded: true, mapTopOffset: 200, pickupNotice: {}, setPickupNotice() {} }, presentation: {}, context: {}, tripActions: {}, camera: {} };
   const mocked = { ...defaults,
+    '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
+    '@/features/navigation/RideModal': { RideModal: 'Modal' },
     '../../../hooks/passenger-navigation/usePassengerNavigationController': { usePassengerNavigationController: () => model },
     '../../../features/passenger-navigation/PassengerNavigationMap': { PassengerNavigationMap: 'Map' },
     '../../../features/passenger-navigation/PassengerNavigationInfoCard': { PassengerNavigationInfoCard: 'InfoCard' },

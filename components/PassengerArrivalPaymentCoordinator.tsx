@@ -28,16 +28,26 @@ import {
   View,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { useAppSelector } from '@/store/hooks';
+import { selectIsAuthenticated, selectUser } from '@/store/selectors';
+import { PendingPaymentReminder } from '@/features/arrival-payment/PendingPaymentReminder';
 import { Colors, Spacing } from '@/constants/styles';
 import { openInterruptionChoice } from '@/store/slices/tripsSlice';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export function PassengerArrivalPaymentCoordinator() {
+  const user = useAppSelector(selectUser);
+  const authenticated = useAppSelector(selectIsAuthenticated);
+  return authenticated && user?.id ? <ArrivalPaymentSession key={user.id} /> : null;
+}
+
+function ArrivalPaymentSession() {
   const state = useArrivalPaymentState();
   const interruptionChoice = state.interruptionChoice;
 
   const completion = useArrivalPaymentCompletion({
+    isSessionCurrent: state.isSessionCurrent,
     refetchBookings: state.refetchBookings,
     refetchWallet: state.refetchWallet,
     refetchPaymentHistory: state.refetchPaymentHistory,
@@ -50,6 +60,7 @@ export function PassengerArrivalPaymentCoordinator() {
   });
 
   const provider = useArrivalPaymentProvider({
+    isSessionCurrent: state.isSessionCurrent,
     setStatusMessage: state.setStatusMessage,
     setPaymentError: state.setPaymentError,
     checkBookingPaymentStatus: state.checkBookingPaymentStatus,
@@ -60,33 +71,10 @@ export function PassengerArrivalPaymentCoordinator() {
     showCompletionSummary: completion.showCompletionSummary,
   });
 
-  useArrivalPaymentMonitoring({
-    setIsStoredStateLoaded: state.setIsStoredStateLoaded,
-    isAuthenticated: state.isAuthenticated,
-    user: state.user,
-    setStoredState: state.setStoredState,
-    arrivalBooking: state.arrivalBooking,
-    activeBookingIdRef: state.activeBookingIdRef,
-    storedState: state.storedState,
-    setSelectedMode: state.setSelectedMode,
-    setSelectedChannel: state.setSelectedChannel,
-    setPaymentPhone: state.setPaymentPhone,
-    setCompletionSummary: state.setCompletionSummary,
-    setStatusMessage: state.setStatusMessage,
-    setPaymentError: state.setPaymentError,
-    persistBookingState: state.persistBookingState,
-    activeStoredState: state.activeStoredState,
-    isAppActive: state.isAppActive,
-    paymentCheckInFlightRef: state.paymentCheckInFlightRef,
-    setIsCheckingPayment: state.setIsCheckingPayment,
-    checkWalletTopUpStatus: state.checkWalletTopUpStatus,
-    refetchWallet: state.refetchWallet,
-    settleWithPoints: provider.settleWithPoints,
-    checkBookingPaymentStatus: state.checkBookingPaymentStatus,
-    handleCompletedBookingPayment: completion.handleCompletedBookingPayment,
-  });
+  useArrivalPaymentMonitoring({ state, provider, completion });
 
   const submission = useArrivalPaymentSubmission({
+    isSessionCurrent: state.isSessionCurrent,
     arrivalBooking: state.arrivalBooking,
     paymentAmount: state.paymentAmount,
     isBusy: state.isBusy,
@@ -127,20 +115,18 @@ export function PassengerArrivalPaymentCoordinator() {
     openCardPaymentUrl: provider.openCardPaymentUrl,
   });
 
-  const shouldKeepModalMounted = Boolean(interruptionChoice || state.arrivalBooking || state.completionSummary || state.isClosingForInvoice);
-  const isModalVisible = Boolean((interruptionChoice || state.arrivalBooking || state.completionSummary) && !state.isClosingForInvoice);
-
-  if (!shouldKeepModalMounted) return null;
+  const isModalVisible = state.isAppActive && state.isResumeReady && !state.isClosingForInvoice && Boolean(
+    interruptionChoice || state.completionSummary || (state.arrivalBooking && !state.isPaymentDeferred));
 
   const destination = state.arrivalBooking?.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' :
     state.arrivalBooking?.passengerDestination ??
     state.arrivalBooking?.trip?.arrival?.address ??
     state.arrivalBooking?.trip?.arrival?.name ??
     'Votre destination';
-  const actionLabel = state.paymentAlreadySucceeded
+  const actionLabel = !state.selectedMode ? 'Choisir un mode de paiement' : state.paymentAlreadySucceeded
     ? state.isBeforeArrival ? 'Continuer le trajet' : 'Terminer'
     : state.selectedMode === 'cash'
-      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Confirmer le paiement en espèces'
+      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Continuer avec le paiement cash'
       : state.selectedMode === 'points'
         ? state.missingPoints > 0
           ? `Ajouter ${formatMoney(state.moneyComplement, state.paymentCurrency)} et payer`
@@ -156,6 +142,7 @@ export function PassengerArrivalPaymentCoordinator() {
     needsMobileMoneyPhone && (!state.mobileMoneyPhone || !DRC_PAYMENT_PHONE_REGEX.test(state.mobileMoneyPhone));
   const isPayButtonDisabled =
     state.isBusy ||
+    !state.selectedMode ||
     state.hasPendingProviderPayment ||
     state.paymentAmount === null ||
     (state.isBeforeArrival && state.selectedMode === 'cash') ||
@@ -163,19 +150,24 @@ export function PassengerArrivalPaymentCoordinator() {
     (state.selectedMode === 'points' && state.isWalletFetching);
 
   return (
+    <>
+    <PendingPaymentReminder visible={state.isAppActive && state.isPaymentDeferred && !isModalVisible}
+      bottom={state.insets.bottom + 80} onResume={state.resumePayment} />
     <Modal
+      inApp
+      priority={70}
       visible={isModalVisible}
       transparent
       animationType="slide"
       statusBarTranslucent
       presentationStyle="overFullScreen"
       onDismiss={navigation.handleModalDismiss}
-      onRequestClose={state.completionSummary ? navigation.handleDismissSummary : state.deferEarlyPayment}
+      onRequestClose={state.completionSummary ? navigation.handleDismissSummary : state.deferPayment}
     >
       <View style={styles.overlay}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.keyboardAvoidingView}
+          style={[styles.keyboardAvoidingView, { flex: 1 }]}
         >
           <View style={[styles.sheet, { paddingBottom: Math.max(state.insets.bottom, Spacing.lg) + Spacing.md }]}>
             <View style={styles.handle} />
@@ -200,13 +192,13 @@ export function PassengerArrivalPaymentCoordinator() {
                       <Ionicons name="checkmark" size={30} color={Colors.white} />
                     </View>
                     <View style={styles.headerCopy}>
-                      <Text style={styles.eyebrow}>PAIEMENT CONFIRMÉ</Text>
+                      <Text style={styles.eyebrow}>{state.completionSummary.cashInstructions ? 'PAIEMENT CASH' : 'PAIEMENT CONFIRMÉ'}</Text>
                       <Text style={styles.title}>{state.completionSummary.beforeArrival ? 'Votre paiement est réglé' : 'Trajet terminé'}</Text>
                     </View>
                   </View>
 
                   <View style={styles.amountCard}>
-                    <Text style={styles.amountLabel}>Montant réglé</Text>
+                    <Text style={styles.amountLabel}>{state.completionSummary.cashInstructions ? 'Montant à remettre au conducteur' : 'Montant réglé'}</Text>
                     <Text style={styles.amountValue}>
                       {formatMoney(state.completionSummary.amount, state.completionSummary.currency)}
                     </Text>
@@ -243,7 +235,7 @@ export function PassengerArrivalPaymentCoordinator() {
                   <View style={styles.successBox}>
                     <Ionicons name="notifications-outline" size={22} color={Colors.successDark} />
                     <View style={styles.successCopy}>
-                      <Text style={styles.successTitle}>Conducteur informé</Text>
+                      <Text style={styles.successTitle}>{state.completionSummary.cashInstructions ? 'Règlement au conducteur' : 'Conducteur informé'}</Text>
                       <Text style={styles.successText}>{state.completionSummary.driverNotice}</Text>
                     </View>
                   </View>
@@ -325,6 +317,9 @@ export function PassengerArrivalPaymentCoordinator() {
               {state.isBusy || state.hasPendingProviderPayment ? 'Vérification...' : actionLabel}
             </Text>
                 </TouchableOpacity>
+                <TouchableOpacity onPress={state.deferPayment} style={[styles.payButton, styles.invoiceButton]}>
+                  <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Fermer et reprendre plus tard</Text>
+                </TouchableOpacity>
                 {state.isBeforeArrival && !state.paymentAlreadySucceeded && !state.isBusy && !state.hasPendingProviderPayment ? (
                   <TouchableOpacity onPress={state.deferEarlyPayment} style={[styles.payButton, styles.invoiceButton]}>
                     <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Payer à l’arrivée</Text>
@@ -336,5 +331,6 @@ export function PassengerArrivalPaymentCoordinator() {
         </KeyboardAvoidingView>
       </View>
     </Modal>
+    </>
   );
 }

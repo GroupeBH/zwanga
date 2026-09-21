@@ -21,6 +21,7 @@ interface Params {
   setPickupNotice: React.Dispatch<React.SetStateAction<PassengerPickupNotice | null>>;
   setPickupNoticeCountdown: React.Dispatch<React.SetStateAction<number | null>>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
+  showNotice: ReturnType<typeof useDialog>['showDialog'];
   hasPresentedBoardingUncertainNoticeRef: React.RefObject<boolean>;
   passengerLocationSubscriptionRef: React.RefObject<Location.LocationSubscription | null>;
   bookingId: string;
@@ -41,6 +42,7 @@ export function usePassengerNavigationNotices({
   setPickupNotice,
   setPickupNoticeCountdown,
   showDialog,
+  showNotice,
   hasPresentedBoardingUncertainNoticeRef,
   passengerLocationSubscriptionRef,
   bookingId,
@@ -193,7 +195,7 @@ export function usePassengerNavigationNotices({
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
 
-    showDialog({
+    showNotice({
       variant: 'success',
       icon: 'checkmark-circle',
       title: 'Prise en charge confirm\u00e9e',
@@ -207,7 +209,7 @@ export function usePassengerNavigationNotices({
         rate: 0.95,
       });
     });
-  }, [showDialog]);
+  }, [showNotice]);
 
   const presentDestinationApproachNotice = useCallback((event: BookingAutoProgressEvent) => {
     if (
@@ -229,7 +231,7 @@ export function usePassengerNavigationNotices({
       booking?.paymentStatus !== 'succeeded' && Number(booking?.paymentAmount) > 0;
     // Keep the voice notice, but do not stack an informational modal over the payment sheet.
     if (!usesEarlyPayment) {
-      showDialog({
+      showNotice({
         variant: 'info',
         icon: 'flag',
         title: 'Votre arrivée approche',
@@ -244,7 +246,7 @@ export function usePassengerNavigationNotices({
         rate: 0.95,
       });
     });
-  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus, showDialog]);
+  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus, showNotice]);
 
   return {
     presentBoardedNotice,
