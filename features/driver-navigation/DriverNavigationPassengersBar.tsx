@@ -2,7 +2,7 @@ import { useDriverNavigationFoundation } from '../../hooks/driver-navigation/use
 import { formatSeatCount, formatPendingBookingPayment } from './navigationPresentation';
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors } from '@/constants/styles';
-import { getTripInterruptionReasonLabel } from '@/utils/tripInterruption';
+import { DriverInterruptionPrompt } from './DriverInterruptionPrompt';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
@@ -19,6 +19,17 @@ export function DriverNavigationPassengersBar({
   passengerPresentation,
   bookingActions,
 }: DriverNavigationPassengersBarProps) {
+  const interruption = foundation.passengers.activePassengerInterruptionBooking;
+  if (interruption) {
+    const processing = foundation.mapState.processingBookingId === interruption.id;
+    return <DriverInterruptionPrompt booking={interruption}
+      queuedCount={foundation.passengers.pendingPassengerInterruptionQueueCount}
+      busy={processing || foundation.data.isConfirmingPassengerInterruption || foundation.data.isRejectingPassengerInterruption}
+      confirming={processing && foundation.data.isConfirmingPassengerInterruption}
+      rejecting={processing && foundation.data.isRejectingPassengerInterruption}
+      onConfirm={bookingActions.handleConfirmPassengerInterruption}
+      onReject={bookingActions.handleRejectPassengerInterruption} />;
+  }
   return (
     <View style={styles.passengersBar}>
       {/* Stats des passagers */}
@@ -197,89 +208,6 @@ export function DriverNavigationPassengersBar({
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      )}
-
-      {foundation.passengers.activePassengerInterruptionBooking && (
-        <View style={styles.interruptionPrompt}>
-          <View style={styles.interruptionPromptHeader}>
-            <View style={styles.interruptionPromptIcon}>
-              <Ionicons name="walk-outline" size={18} color={Colors.danger} />
-            </View>
-            <View style={styles.interruptionPromptTitleWrap}>
-              <Text style={styles.interruptionPromptEyebrow}>
-                Demande de descente
-                {foundation.passengers.pendingPassengerInterruptionQueueCount > 0
-                  ? ` +${foundation.passengers.pendingPassengerInterruptionQueueCount}`
-                  : ''}
-              </Text>
-              <Text style={styles.interruptionPromptTitle} numberOfLines={1}>
-                {foundation.passengers.activePassengerInterruptionBooking.passengerName || 'Passager'}
-              </Text>
-            </View>
-          </View>
-
-          <Text style={styles.interruptionPromptText}>
-            Motif: {getTripInterruptionReasonLabel(foundation.passengers.activePassengerInterruptionBooking.interruptionRequest?.reason)}.
-            Le passager demande à descendre avant sa destination.
-          </Text>
-
-          <View style={styles.interruptionPromptActions}>
-            <TouchableOpacity
-              style={[
-                styles.interruptionPromptButton,
-                styles.interruptionPromptRejectButton,
-                (foundation.mapState.processingBookingId === foundation.passengers.activePassengerInterruptionBooking.id ||
-                  foundation.data.isConfirmingPassengerInterruption ||
-                  foundation.data.isRejectingPassengerInterruption) &&
-                  styles.pendingBookingActionDisabled,
-              ]}
-              onPress={() => bookingActions.handleRejectPassengerInterruption(foundation.passengers.activePassengerInterruptionBooking)}
-              disabled={
-                foundation.mapState.processingBookingId === foundation.passengers.activePassengerInterruptionBooking.id ||
-                foundation.data.isConfirmingPassengerInterruption ||
-                foundation.data.isRejectingPassengerInterruption
-              }
-              activeOpacity={0.85}
-            >
-              {foundation.mapState.processingBookingId === foundation.passengers.activePassengerInterruptionBooking.id &&
-              foundation.data.isRejectingPassengerInterruption ? (
-                <ActivityIndicator size="small" color={Colors.danger} />
-              ) : (
-                <>
-                  <Ionicons name="close" size={18} color={Colors.danger} />
-                  <Text style={styles.interruptionPromptRejectText}>Refuser</Text>
-                </>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.interruptionPromptButton,
-                styles.interruptionPromptConfirmButton,
-                (foundation.mapState.processingBookingId === foundation.passengers.activePassengerInterruptionBooking.id ||
-                  foundation.data.isConfirmingPassengerInterruption ||
-                  foundation.data.isRejectingPassengerInterruption) &&
-                  styles.pendingBookingActionDisabled,
-              ]}
-              onPress={() => bookingActions.handleConfirmPassengerInterruption(foundation.passengers.activePassengerInterruptionBooking)}
-              disabled={
-                foundation.mapState.processingBookingId === foundation.passengers.activePassengerInterruptionBooking.id ||
-                foundation.data.isConfirmingPassengerInterruption ||
-                foundation.data.isRejectingPassengerInterruption
-              }
-              activeOpacity={0.85}
-            >
-              {foundation.mapState.processingBookingId === foundation.passengers.activePassengerInterruptionBooking.id &&
-              foundation.data.isConfirmingPassengerInterruption ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark" size={18} color={Colors.white} />
-                  <Text style={styles.interruptionPromptConfirmText}>Confirmer</Text>
-                </>
-              )}
-            </TouchableOpacity>
           </View>
         </View>
       )}

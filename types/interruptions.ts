@@ -45,6 +45,11 @@ export interface InterruptionFareQuote {
   travelledPercentage: number;
 }
 
+/** An estimate, not a payment instruction or a locked driver-interruption quote. */
+export type PassengerInterruptionFarePreview = Omit<InterruptionFareQuote, 'id' | 'requestId'> & {
+  isEstimate: true;
+};
+
 export interface DriverTripInterruptionRequest {
   id: string;
   tripId: string;

@@ -7,7 +7,7 @@ import { isFreshLivePassengerLocation } from '../../features/driver-navigation/n
 import { isCoordinateAllowedForNavigationRoute } from '../../features/driver-navigation/navigationMap';
 import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
 import { areTripMapCoordinatesSame, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface Params {
   data: ReturnType<typeof useDriverNavigationData>;
@@ -24,7 +24,11 @@ export function useDriverTrackingSocket({
   notices,
   refs,
 }: Params) {
+  const latest = useRef({ data, mapState, completion, notices, refs });
+  latest.current = { data, mapState, completion, notices, refs };
+  const { isScreenActive, tripId, isTripOngoing } = data;
   useEffect(() => {
+    const { data, mapState, refs } = latest.current;
     if (!data.isScreenActive || !data.tripId || !data.isTripOngoing) {
       mapState.setIsSocketConnected(false);
       return;
@@ -71,6 +75,7 @@ export function useDriverTrackingSocket({
     });
 
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
+      const { data, mapState, refs, notices, completion } = latest.current;
       if (!mapState.isMountedRef.current || isCancelled || payload.tripId !== data.tripId) return;
       if (payload.events.length > 0) {
         const hasTripDestinationEvent = payload.events.some(
@@ -177,6 +182,7 @@ export function useDriverTrackingSocket({
 
     const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
       (payload: PassengerLocationPayload) => {
+        const { data, mapState } = latest.current;
         if (
           !mapState.isMountedRef.current ||
           isCancelled ||
@@ -261,21 +267,7 @@ export function useDriverTrackingSocket({
         console.log('[Navigation] Déconnecté du suivi en temps réel');
       }
     };
-  }, [
-    data.isScreenActive,
-    data.isTripOngoing,
-    data.isKinshasaNavigationTrip,
-    notices.getPassengerNameForBooking,
-    notices.presentPassengerBoardedNotice,
-    notices.presentPassengerDestinationApproachNotice,
-    notices.presentPassengerDestinationNotice,
-    notices.presentPickupNotice,
-    completion.presentTripDestinationNotice,
-    data.refetchBookings,
-    data.refetchTrip,
-    data.showDialog,
-    data.tripId,
-  ]);
+  }, [isScreenActive, tripId, isTripOngoing]);
 
   return {
 

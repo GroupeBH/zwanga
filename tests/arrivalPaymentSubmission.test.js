@@ -9,6 +9,7 @@ function app(t, mode = 'points') {
   let resolvePoints;
   const gate = new Promise(resolve => { resolvePoints = resolve; });
   const props = {
+    isSessionCurrent: () => true,
     arrivalBooking: { id: 'booking', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000 },
     selectedMode: mode, selectedChannel: 'mpesa', paymentAmount: 5000, paymentCurrency: 'CDF',
     isBusy: false, hasPendingProviderPayment: false, paymentAlreadySucceeded: false,
@@ -44,7 +45,7 @@ test('opening the form never charges tokens; double taps submit once while waiti
   assert.equal(env.props.arrivalBooking.paymentAmount, 5000);
 });
 
-test('cash cannot be confirmed early, but the original cash confirmation works after arrival', async t => {
+test('cash mode selection is unavailable before arrival and shows instructions after arrival', async t => {
   const env = app(t, 'cash');
   await env.render().handlePayment();
   assert.equal(env.calls.cash, 0);

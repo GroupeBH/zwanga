@@ -132,6 +132,10 @@ test('typing in the transfer form preserves controlled values and cannot submit 
     '../hooks/wallet/useWalletController': { useWalletController: () => wallet },
     '../features/wallet/WalletTopUpModal': { WalletTopUpModal: 'TopUp' },
     '../features/wallet/WalletSheetModal': { WalletSheetModal: 'Sheet' },
+    '../features/wallet/WalletWithdrawalSection': { WalletWithdrawalSection: 'WithdrawalSection', WalletWithdrawalModal: 'WithdrawalModal' },
+    '@/hooks/wallet/useWalletWithdrawal': { useWalletWithdrawal: () => ({}) },
+    '@/store/hooks': { useAppSelector: () => null },
+    '@/store/selectors': { selectUser: () => null },
     '../features/wallet/walletModel': { formatWalletAmount: () => '0 jeton' },
     'expo-web-browser': { maybeCompleteAuthSession() {} },
   });
@@ -162,6 +166,31 @@ test('typing in the transfer form preserves controlled values and cannot submit 
   assert.equal(content().props.importantForAccessibility, 'auto');
   assert.equal(gestureEnabled(), true);
   assert.equal(wallet.transferAmount, '25'); h.hooks.unmount();
+});
+
+test('the withdrawal overlay is a screen-root sibling, outside the disabled background', () => {
+  const h = sheet();
+  const wallet = { activeModal: 'withdrawal', entries: [], setActiveModal: value => { wallet.activeModal = value; } };
+  const Screen = loader({ ...h.mocks,
+    '../hooks/wallet/useWalletController': { useWalletController: () => wallet },
+    '../features/wallet/WalletTopUpModal': { WalletTopUpModal: 'TopUp' },
+    '../features/wallet/WalletSheetModal': { WalletSheetModal: 'Sheet' },
+    '../features/wallet/WalletWithdrawalSection': { WalletWithdrawalSection: 'WithdrawalSection', WalletWithdrawalModal: 'WithdrawalModal' },
+    '@/hooks/wallet/useWalletWithdrawal': { useWalletWithdrawal: () => ({}) },
+    '@/store/hooks': { useAppSelector: () => null }, '@/store/selectors': { selectUser: () => null },
+    '../features/wallet/walletModel': { formatWalletAmount: () => '0 jeton' },
+    'expo-web-browser': { maybeCompleteAuthSession() {} },
+  })('app/wallet.tsx').default;
+  const screen = Screen();
+  const background = elements(screen).find(node => node.props?.accessibilityElementsHidden !== undefined);
+  const overlay = elements(screen).find(node => node.type === 'WithdrawalModal');
+  assert.equal(background.props.accessibilityElementsHidden, true);
+  assert.equal(background.props.pointerEvents, 'none');
+  assert.equal(elements(background).includes(overlay), false);
+  assert.equal(overlay.props.visible, true);
+  overlay.props.onClose();
+  assert.equal(elements(Screen()).find(node => node.type === 'WithdrawalModal').props.visible, false);
+  h.hooks.unmount();
 });
 
 test('iOS repeatedly removes the entire touch-blocking layer without native dismissal callbacks', () => {

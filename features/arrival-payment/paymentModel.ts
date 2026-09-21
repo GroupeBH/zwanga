@@ -207,5 +207,6 @@ export function selectArrivedPaymentBooking(bookings: Booking[], storedState: St
     if (!hasPassengerArrived(booking) || storedState[booking.id]?.acknowledgedAt) return false;
     return isFinanciallyPending(booking) || now - getArrivalTimestamp(booking) <= RECENT_ARRIVAL_WINDOW_MS ||
       Boolean(storedState[booking.id]?.requiredActionAt);
-  }).sort((left, right) => getArrivalTimestamp(right) - getArrivalTimestamp(left))[0] ?? null;
+  }).sort((left, right) => Number(isFinanciallyPending(right)) - Number(isFinanciallyPending(left)) ||
+    getArrivalTimestamp(right) - getArrivalTimestamp(left))[0] ?? null;
 }

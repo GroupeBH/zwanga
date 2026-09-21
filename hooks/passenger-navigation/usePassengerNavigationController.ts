@@ -1,3 +1,4 @@
+import { useRideNotice } from '@/hooks/navigation/useRideNotice';
 import { usePassengerRouteContext } from './usePassengerRouteContext';
 import { usePassengerDriverLocationSync } from './usePassengerDriverLocationSync';
 import { usePassengerNavigationTracking } from './usePassengerNavigationTracking';
@@ -21,6 +22,7 @@ import type { MapMarker } from 'react-native-maps';
 
 export function usePassengerNavigationController() {
   const data = usePassengerNavigationData();
+  const showNotice = useRideNotice(`passenger:${data.bookingId}`, data.isScreenActive);
 
   const state = usePassengerNavigationState({
     bookingId: data.bookingId,
@@ -54,6 +56,7 @@ export function usePassengerNavigationController() {
   });
 
   const notices = usePassengerNavigationNotices({
+    showNotice,
     isMountedRef: state.isMountedRef,
     hasPresentedArrivalModalRef: state.hasPresentedArrivalModalRef,
     refetchBooking: data.refetchBooking,
@@ -77,7 +80,7 @@ export function usePassengerNavigationController() {
     isMountedRef: state.isMountedRef,
     hasPresentedTripCompletedNoticeRef: state.hasPresentedTripCompletedNoticeRef,
     hasPresentedTripDestinationApproachNoticeRef: state.hasPresentedTripDestinationApproachNoticeRef,
-    showDialog: data.showDialog,
+    showDialog: showNotice,
     pickupNotice: state.pickupNotice,
     setPickupNoticeCountdown: state.setPickupNoticeCountdown,
     hasPresentedArrivalModalRef: state.hasPresentedArrivalModalRef,

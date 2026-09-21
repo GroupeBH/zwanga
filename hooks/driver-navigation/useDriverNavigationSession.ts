@@ -1,3 +1,4 @@
+import { useRideNotice } from '@/hooks/navigation/useRideNotice';
 import { useDriverNavigationFoundation } from './useDriverNavigationFoundation';
 import { useDriverMapPerspective } from './useDriverMapPerspective';
 import { useDriverLocationEmission } from './useDriverLocationEmission';
@@ -13,6 +14,7 @@ import { useDriverCompletionActions } from './useDriverCompletionActions';
 
 export function useDriverNavigationSession() {
   const foundation = useDriverNavigationFoundation();
+  const showNotice = useRideNotice(`driver:${foundation.data.tripId}`, foundation.data.isScreenActive);
 
   const notices = useDriverNavigationNotices({
     isMountedRef: foundation.mapState.isMountedRef,
@@ -30,7 +32,7 @@ export function useDriverNavigationSession() {
     setPickupNoticeCountdown: foundation.mapState.setPickupNoticeCountdown,
     setPickupBypassConfirmation: foundation.mapState.setPickupBypassConfirmation,
     setPickupBypassAction: foundation.mapState.setPickupBypassAction,
-    showDialog: foundation.data.showDialog,
+    showDialog: showNotice,
     presentedPassengerDestinationKeysRef: foundation.refs.presentedPassengerDestinationKeysRef,
     presentedPassengerDestinationApproachKeysRef: foundation.refs.presentedPassengerDestinationApproachKeysRef,
   });
@@ -38,7 +40,7 @@ export function useDriverNavigationSession() {
   const completion = useDriverCompletionActions({
     isMountedRef: foundation.mapState.isMountedRef,
     presentedTripDestinationKeysRef: foundation.refs.presentedTripDestinationKeysRef,
-    showDialog: foundation.data.showDialog,
+    showDialog: showNotice,
     tripEndNoticeRef: foundation.mapState.tripEndNoticeRef,
     setTripEndNotice: foundation.mapState.setTripEndNotice,
     getDriverTripRevenueSummary: foundation.data.getDriverTripRevenueSummary,

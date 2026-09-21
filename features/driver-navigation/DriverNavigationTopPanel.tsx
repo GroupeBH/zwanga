@@ -18,6 +18,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const { data, mapState, passengers } = model.session.foundation;
   const offline = data.offlineTrip || data.offlineBookings;
   const live = !offline && mapState.isSocketConnected;
+  const hasUrgentDropoff = Boolean(passengers.activePassengerInterruptionBooking);
   return <View pointerEvents="box-none" style={[styles.panel, {
     top: data.insets.top + 8, left: Math.max(data.insets.left, 12), right: Math.max(data.insets.right, 12),
   }]}>
@@ -42,15 +43,17 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       </View>
     </View>
     <View style={styles.actions}>
-      {data.isTripOngoing && <View style={styles.confirmation}>
+      {data.isTripOngoing && !hasUrgentDropoff && <View style={styles.confirmation}>
         <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
           fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
           destination={data.tripArrivalCoordinate} />
       </View>}
       <NavigationAssistanceButtons role="driver" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
-    {data.isTripOngoing && <ScrollView style={{ flexGrow: 0, maxHeight: Math.max(80, height * 0.3) }} contentContainerStyle={styles.details}
-      showsVerticalScrollIndicator={false} bounces={false}>
+    {data.isTripOngoing && (hasUrgentDropoff ? <DriverNavigationPassengersBar
+      foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
+      : <ScrollView style={{ flexGrow: 0, maxHeight: Math.max(80, height * 0.3) }} contentContainerStyle={styles.details}
+      showsVerticalScrollIndicator bounces={false}>
       {model.presentation.canToggleRouteSections && <View style={styles.segments}>
         {(['next', 'remaining'] as const).map(section => <TouchableOpacity key={section}
           style={[styles.segment, mapState.routeSectionFocus === section && styles.segmentActive]}
@@ -63,7 +66,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       </View>}
       {(mapState.waypoints.length > 0 || passengers.activePendingBooking) && <DriverNavigationPassengersBar
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
-    </ScrollView>}
+    </ScrollView>)}
   </View>;
 }
 

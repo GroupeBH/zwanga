@@ -183,6 +183,7 @@
       "confirmDropoff": "f13e77b03b41b64b0bbbc99b5c2036be4c995cbe8c14887ca08704e13850b7f9",
       "confirmDropoffByPassenger": "0da76855d8156244520c6d63f68180e8481354505fb48a7031e2ab87a7007afc",
       "requestPassengerTripInterruption": "2a806c2359610fee3b1dabab996157d18d2399c46d46681e4e5ba51c31bed44e",
+      "getPassengerInterruptionFarePreview": "88f44e03f4119e9af4019f368093db58db6dae6f7bce9cd54334cf217ae6a44f",
       "cancelPassengerTripInterruption": "8eb942bd2a9c3b3332ad464833740930c8cc22cdbca3dfeb75b32c11a4e95537",
       "confirmPassengerTripInterruption": "ac6b3e30d6b50cd99cf2b1124ac6f43854b1b60a2addc1060f4ff4ac24852f1f",
       "rejectPassengerTripInterruption": "b76d949e1f7b9d3694feab7bad20af35e943dbeaf629bcd38fe53b5cb9970530",

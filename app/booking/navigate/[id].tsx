@@ -8,7 +8,9 @@ import { styles } from '../../../features/screen-styles/app/booking/navigate/det
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, Modal, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function PassengerNavigationScreen() {
   const model = usePassengerNavigationController();
@@ -41,6 +43,7 @@ export default function PassengerNavigationScreen() {
   }
 
   return (
+    <RideOverlayScope scopeKey={`passenger:${model.data.bookingId}`} active={model.data.isScreenActive}>
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       
@@ -247,5 +250,6 @@ export default function PassengerNavigationScreen() {
       </Modal>
       <NavigationAssistanceModals assistance={assistance} role="passenger" insets={model.data.insets} />
     </View>
+    </RideOverlayScope>
   );
 }
