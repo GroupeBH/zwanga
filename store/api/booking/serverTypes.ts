@@ -12,6 +12,8 @@ export type ServerUser = {
 
 export type ServerBooking = {
   interruptionFareLocked?: boolean;
+  plannedDistanceMeters?: number | null;
+  travelledDistanceMeters?: number | null;
   id: string;
   tripId: string;
   passengerId: string;

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const React = require('react');
-const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificationNavigation } =
+const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificationNavigation, isTripInterruptionNotification } =
   loader()('utils/notificationNavigation.ts');
 
 const requestHref = id => ({ pathname: '/request-details/[id]', params: { id } });
@@ -50,10 +50,22 @@ test('actual backend emergency payloads route to the recipient’s trip view, ne
   for (const [type, role] of cases) {
     const data = { type, role, tripId: 'trip', bookingId: 'booking', requestId: 'interruption' };
     assert.equal(extractTripRequestId(data), null);
-    assert.equal(getNotificationHref(data), role === 'driver' ? '/trip/manage/trip' : '/trip/trip');
+    assert.equal(getNotificationHref(data), type === 'passenger_trip_interruption_confirmed'
+      ? '/booking/navigate/booking' : role === 'driver' ? '/trip/manage/trip' : '/trip/trip');
     assert.equal(getNotificationHref({ data }), getNotificationHref(data));
   }
   assert.equal(getNotificationHref({ type: 'driver_trip_interruption_requested', requestId: 'interruption' }), null);
+});
+
+test('both interruption families refresh booking/payment data, including nested push payloads', () => {
+  for (const type of ['passenger_trip_interruption_confirmed', 'passenger_trip_interruption_rejected',
+    'driver_trip_interruption_completed']) {
+    assert.equal(isTripInterruptionNotification({ type }), true);
+    assert.equal(isTripInterruptionNotification({ data: { type } }), true);
+  }
+  assert.equal(isTripInterruptionNotification({ type: 'message' }), false);
+  assert.equal(isTripInterruptionNotification({}), false);
+  assert.equal(getNotificationHref({ type: 'passenger_trip_interruption_confirmed', role: 'passenger', bookingId: 'booking' }), '/booking/navigate/booking');
 });
 
 test('request IDs are explicit first and request offers/overdue recovery retain the request route', () => {

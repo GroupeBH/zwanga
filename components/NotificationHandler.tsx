@@ -8,7 +8,7 @@ import { useGetMyTripRequestsQuery, useReleaseOverdueDriverMutation } from '@/st
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
 import { selectIsAuthenticated } from '@/store/selectors';
-import { getTripUrl, handleNotificationNavigation } from '@/utils/notificationNavigation';
+import { getTripUrl, handleNotificationNavigation, isTripInterruptionNotification } from '@/utils/notificationNavigation';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
 import { usePathname, useRouter } from 'expo-router';
@@ -216,7 +216,7 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
-      if (typeof data.type === 'string' && data.type.startsWith('driver_trip_interruption_')) {
+      if (isTripInterruptionNotification(data)) {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
       if (await handlePassengerOverdueNotification(data, fallbackBody)) {
@@ -235,7 +235,7 @@ export function NotificationHandler() {
     const foregroundListener = Notifications.addNotificationReceivedListener((notification) => {
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
-      if (typeof data.type === 'string' && data.type.startsWith('driver_trip_interruption_')) {
+      if (isTripInterruptionNotification(data)) {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
       if (data.type === 'trip_request_driver_overdue') {

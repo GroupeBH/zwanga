@@ -3,6 +3,7 @@ import type {
   DriverPayout,
   DriverSettlementSummary,
   DriverTripRevenueSummary,
+  DriverBookingRevenueSummary,
 } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -39,6 +40,11 @@ export const driverSettlementsApi = baseApi.injectEndpoints({
       query: () => '/driver-settlements/payouts',
       providesTags: [settlementTag],
     }),
+    getDriverBookingRevenueSummary: builder.query<DriverBookingRevenueSummary, string>({
+      query: bookingId => `/driver-settlements/bookings/${encodeURIComponent(bookingId)}/revenue-summary`,
+      providesTags: (_result, _error, bookingId) => [settlementTag, { type: 'Booking', id: bookingId }],
+      keepUnusedDataFor: 60,
+    }),
     requestDriverPayout: builder.mutation<DriverPayout, RequestDriverPayoutPayload>({
       query: (body) => ({
         url: '/driver-settlements/payouts',
@@ -62,6 +68,7 @@ export const {
   useGetMyDriverSettlementQuery,
   useGetMyDriverEarningsQuery,
   useLazyGetDriverTripRevenueSummaryQuery,
+  useGetDriverBookingRevenueSummaryQuery,
   useGetMyDriverPayoutsQuery,
   useRequestDriverPayoutMutation,
   useLazyCheckDriverPayoutStatusQuery,

@@ -73,3 +73,19 @@ test('an already settled booking shows its summary without another debit', async
   assert.equal(env.calls.points, 0);
   assert.equal(env.calls.summary, 1);
 });
+
+for (const mode of ['electronic', 'points']) test(`confirmed emergency dropoff stays payable with ${mode} at the reduced server fare`, async t => {
+  const env = app(t, mode);
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true,
+    interruptionFareLocked: true, paymentAmount: 1500, plannedDistanceMeters: 25000, travelledDistanceMeters: 5000 };
+  env.props.paymentAmount = 1500;
+  env.props.requiredPoints = 15;
+  const action = env.render();
+  assert.equal(env.calls.points + env.calls.electronic, 0);
+  const paying = action.handlePayment();
+  env.resolvePoints();
+  await paying;
+  assert.equal(env.calls[mode], 1);
+  assert.equal(env.calls.cash, 0, 'the payment mode does not silently become cash');
+  assert.equal(env.props.arrivalBooking.paymentAmount, 1500, 'no full-fare recalculation in the app');
+});

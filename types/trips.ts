@@ -112,6 +112,8 @@ export interface Passenger {
 
 export interface Booking {
   interruptionFareLocked?: boolean;
+  plannedDistanceMeters?: number | null;
+  travelledDistanceMeters?: number | null;
   id: string;
   tripId: string;
   passengerId: string;

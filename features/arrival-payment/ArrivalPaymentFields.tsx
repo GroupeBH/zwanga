@@ -13,6 +13,7 @@ import { ActivityIndicator, Keyboard, ScrollView, Text, TextInput, TouchableOpac
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { Colors } from '@/constants/styles';
 import type { Booking, TripPaymentMode } from '@/types';
+import { getInterruptionDistanceLabel } from './interruptionSettlement';
 
 interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking;
@@ -106,8 +107,11 @@ export function ArrivalPaymentFields({
       : formatMoney(paymentAmount, paymentCurrency)}
                   </Text>
                   <Text style={styles.amountHint}>
-    {isBeforeArrival ? 'Vous êtes à proximité de votre destination. Réglez maintenant pour pouvoir descendre sans attendre. Votre trajet continue normalement.' : 'Choisissez comment régler ce trajet. Vous pouvez fermer cette fenêtre et reprendre le paiement plus tard.'}
+    {isBeforeArrival ? 'Vous êtes à proximité de votre destination. Réglez maintenant pour pouvoir descendre sans attendre. Votre trajet continue normalement.' : arrivalBooking.interruptionFareLocked ? 'Montant définitif pour la partie du trajet effectuée, avec le minimum applicable sans dépasser votre prix initial. Vous pouvez régler maintenant ou reprendre le paiement plus tard.' : 'Choisissez comment régler ce trajet. Vous pouvez fermer cette fenêtre et reprendre le paiement plus tard.'}
                   </Text>
+                  {getInterruptionDistanceLabel(arrivalBooking) ? (
+                    <Text style={styles.amountHint}>{getInterruptionDistanceLabel(arrivalBooking)}</Text>
+                  ) : null}
                 </View>
 
                 {paymentAlreadySucceeded ? (

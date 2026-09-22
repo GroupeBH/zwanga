@@ -2,7 +2,7 @@ import type { Booking } from '@/types';
 import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import { normalizeTripMapCoordinate, getGeoPointCoordinate } from '@/utils/tripCoordinates';
 
-export const EARLY_PAYMENT_DISTANCE_METERS = 500;
+export const EARLY_PAYMENT_DISTANCE_METERS = 1000;
 export const EARLY_PAYMENT_LOCATION_MAX_AGE_MS = 30_000;
 
 export function isOnboardDigitalBooking(booking: Booking, passengerId: string) {

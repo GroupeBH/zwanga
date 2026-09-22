@@ -17,6 +17,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDriverLocationFallback } from './useDriverLocationFallback';
+import { useSyncArrivedPaymentBooking } from '@/hooks/arrival-payment/useSyncArrivedPaymentBooking';
 
 
 
@@ -37,6 +38,7 @@ export function usePassengerNavigationData() {
     skipPollingIfUnfocused: true,
   });
   const { data: booking, offline: offlineBooking } = useOfflineRideData(`booking:${bookingId}`, liveBooking, bookingError, liveBooking?.status === 'accepted');
+  useSyncArrivedPaymentBooking(liveBooking, isScreenActive);
   const tripId = booking?.tripId || '';
   const { data: liveTrip, error: tripError, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,

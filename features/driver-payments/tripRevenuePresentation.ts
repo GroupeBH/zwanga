@@ -4,12 +4,13 @@ type RevenuePayload = {
   creditPendingAmount?: unknown;
   cashToCollectAmount?: unknown;
   electronicPendingAmount?: unknown;
+  pointsPendingAmount?: unknown;
   totalExpectedAmount?: unknown;
   currency?: unknown;
 };
 
 export type TripRevenueRow = {
-  key: 'confirmed' | 'unverified' | 'creditPending' | 'cash' | 'electronicPending';
+  key: 'confirmed' | 'unverified' | 'creditPending' | 'cash' | 'electronicPending' | 'pointsPending';
   amount: number;
   label: string;
   hint: string;
@@ -49,6 +50,11 @@ export function getTripRevenueRows(summary: RevenuePayload): TripRevenueRow[] {
   if (electronic > 0) rows.push({
     key: 'electronicPending', amount: electronic, label: 'Paiement électronique attendu',
     hint: 'Le paiement n’est pas encore confirmé.', icon: 'time-outline', tone: 'info',
+  });
+  const points = amount(summary.pointsPendingAmount);
+  if (points > 0) rows.push({
+    key: 'pointsPending', amount: points, label: 'Paiement en jetons attendu',
+    hint: 'Les jetons ne sont pas encore réglés.', icon: 'time-outline', tone: 'info',
   });
   return rows;
 }

@@ -94,6 +94,7 @@ test('urgent driver prompt stays outside the clipped route scroll and keeps assi
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
+    './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const foundation = { data: { isTripOngoing: true, insets: { top: 20, left: 0, right: 0 } },
     mapState: { waypoints: [], isSocketConnected: true }, passengers: { activePassengerInterruptionBooking: booking } };
