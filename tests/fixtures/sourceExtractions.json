@@ -181,6 +181,7 @@
       "confirmPickup": "f0d60847d16a8d6d520fdc806d7e576360374b195a1c2ec8623200b7c057e04d",
       "confirmPickupByPassenger": "e4fa535c7c04a3e39903b340e05f6bb93f7db49a6b25406ccdb3c3af9253324d",
       "confirmDropoff": "f13e77b03b41b64b0bbbc99b5c2036be4c995cbe8c14887ca08704e13850b7f9",
+      "confirmCashReceipt": "a8b193191f2a91b6bb57e8674fbf815db52e19a0759bf5dd71ebaf97fad6d086",
       "confirmDropoffByPassenger": "0da76855d8156244520c6d63f68180e8481354505fb48a7031e2ab87a7007afc",
       "requestPassengerTripInterruption": "2a806c2359610fee3b1dabab996157d18d2399c46d46681e4e5ba51c31bed44e",
       "getPassengerInterruptionFarePreview": "88f44e03f4119e9af4019f368093db58db6dae6f7bce9cd54334cf217ae6a44f",

@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/styles';
 import { DriverBookingRevenue } from '@/features/driver-payments/DriverBookingRevenue';
+import { ConfirmCashReceipt } from '@/features/driver-payments/ConfirmCashReceipt';
 import type { Booking } from '@/types';
 import React, { memo, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -32,7 +33,8 @@ export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ booki
         <Text style={styles.choiceText}>{booking.passengerName || 'Passager'}</Text>
       </TouchableOpacity>)}
     </ScrollView>}
-    <DriverBookingRevenue bookingId={selected.id} active={active} />
+    <DriverBookingRevenue bookingId={selected.id} active={active} cashReceived={Boolean(selected.cashReceivedAt)} />
+    <ConfirmCashReceipt booking={selected} />
   </View>;
 });
 

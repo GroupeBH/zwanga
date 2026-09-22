@@ -42,6 +42,14 @@ test('electronic and points amounts awaiting payment are never shown as credited
   }
 });
 
+test('explicit cash receipt changes the cash label but never increases platform earnings', () => {
+  const app = receipt(); app.data(summary());
+  const text = words(app.render({ cashReceived: true })).replace(/\s+/g, ' ');
+  assert.match(text, /Cash reçu 2 000 CDF/);
+  assert.match(text, /pas dans votre solde de revenus/);
+  assert.doesNotMatch(text, /Gains crédités 5 000/);
+});
+
 test('loading, errors, stale passenger data and unconfirmed drops never become invented zero earnings', () => {
   const app = receipt();
   app.data(undefined);
@@ -74,6 +82,7 @@ test('navigation displays the latest confirmed passenger, retains other receipts
   const { DriverDropoffReceipts, getConfirmedDropoffs } = loader({
     react: { ...React, ...hooks.react, memo: component => component }, 'react-native': native,
     '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'Revenue' },
+    '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
   })('features/driver-navigation/DriverDropoffReceipts.tsx');
   const one = { id: 'one', tripId: 't', passengerName: 'Alice', status: 'completed', droppedOffAt: '2026-09-22T09:00:00Z' };
   const two = { ...one, id: 'two', passengerName: 'Bob', droppedOffAt: '2026-09-22T10:00:00Z' };

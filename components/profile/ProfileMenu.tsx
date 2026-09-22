@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/styles';
 import { styles } from '@/features/profile/ProfileMenu.styles';
+import { ProfileStoreReviewButton } from './ProfileStoreReviewButton';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -53,6 +54,7 @@ export function ProfileMenu({
           </View>
         </TouchableOpacity>
       ))}
+      <ProfileStoreReviewButton />
     </View>
   </View>);
 }

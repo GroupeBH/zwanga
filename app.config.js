@@ -66,6 +66,7 @@ module.exports = {
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
+      appStoreUrl: 'https://apps.apple.com/app/id6756211830',
       buildNumber: "121",
       supportsTablet: true,
       usesAppleSignIn: true,
@@ -96,6 +97,7 @@ module.exports = {
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
+      playStoreUrl: 'https://play.google.com/store/apps/details?id=com.zwanga',
       versionCode: 136,
       config: {
         googleMaps: {

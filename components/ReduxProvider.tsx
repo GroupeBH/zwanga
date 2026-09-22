@@ -2,6 +2,7 @@ import { DialogProvider } from '@/components/ui/DialogProvider';
 import { RideOutboxCoordinator } from '@/components/RideOutboxCoordinator';
 import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
 import { AccountActivityCoordinator } from '@/components/AccountActivityCoordinator';
+import { StoreReviewCoordinator } from '@/components/StoreReviewCoordinator';
 import { DriverPaymentNoticeCoordinator } from '@/components/DriverPaymentNoticeCoordinator';
 import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
 import { Colors } from '@/constants/styles';
@@ -58,6 +59,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
               <AuthGuard>
                 <PassengerArrivalPaymentCoordinator />
                 <DriverPaymentNoticeCoordinator />
+                <StoreReviewCoordinator />
                 <TutorialProvider>
                   <IdentityProvider>{children}</IdentityProvider>
                 </TutorialProvider>

@@ -223,6 +223,117 @@ limites SQL, la compatibilité, les tests et l'ordre de déploiement backend/mob
 Aucune mesure de température/FPS sur appareil physique ni déploiement n'a été
 réalisé : cette intervention ne garantit pas à elle seule l'absence de plantage.
 
+## 22 septembre 2026 — Noter l'application sur les stores
+
+**Problème.** Les évaluations des conducteurs/passagers ne sont pas des avis
+App Store ou Google Play ; le profil n'offrait pas d'accès dédié à ces derniers.
+
+**Solution appliquée.** Bouton « Noter l’application » dans le menu du profil,
+avec le nom du store et ouverture de la fiche officielle pour noter et commenter.
+Liens iOS/Android configurés dans `app.config.js`, fallback HTTPS si l'ouverture
+native échoue, message français en cas d'échec. Pas d'API native à quota sur ce
+bouton explicite, pas de nouvelle dépendance ni de modification backend.
+
+**Précautions.** Doubles appuis verrouillés, chargement local, réponses tardives
+neutralisées au démontage/à la perte de focus, aucune sollicitation automatique
+ou activité périodique. Pas de filtrage selon la satisfaction, pas de faux accusé
+de publication. Les avis sur les trajets et l'aide/support restent inchangés.
+
+**Détail par fichier et limites.** [Notes et avis sur l'application](APP_STORE_REVIEWS.md).
+La publication dépend de l'utilisateur et du store ; aucun test physique,
+build, déploiement ou avis réel n'a été effectué pendant l'implémentation.
+
+**Contrôles.** Neuf tests dédiés réussis ; 31/31 tests ciblés avec le profil et
+les écrans inactifs ; TypeScript réussi ; lint sans erreur (un avertissement
+préexistant dans `app.config.js`). Frontières réseau et `git diff --check` réussis.
+Suite mobile complète : **700/702 réussis**, avec les deux mêmes échecs
+préexistants de `tests/sourceExtractions.test.js` (styles des réservations et
+endpoints PIN), sans changement de leurs snapshots.
+
+## 22 septembre 2026 — Notation native après trajet et confirmation du cash
+
+**Problème.** Le profil ouvrait le store sans sollicitation native après un trajet
+réussi. Il fallait respecter les seuils choisis (1er, 10e, 20e, puis dizaines),
+limiter les sollicitations et éviter une fenêtre supplémentaire pendant les
+paiements/navigation. Le statut cash `not_required` ne prouvait pas un encaissement.
+
+**Solution mobile.** Ajout de `expo-store-review ~9.0.9`. Modules séparés
+`features/store-review/` pour l'éligibilité, le quota, la persistance et l'adaptateur
+natif ; `StoreReviewCoordinator` observe les caches RTK existants sans polling.
+Compteurs par rôle, quota commun de trois tentatives sur 365 jours, trace AsyncStorage
+par compte, dédoublonnage borné, écriture avant appel natif. Fenêtre demandée sur
+l'accueil après trois secondes calmes, une activité serveur fraîche depuis la
+reprise et la fermeture des modals. Le reçu conducteur participe désormais au
+registre `RideModal`. Aucun fallback automatique vers un navigateur/store.
+
+**Solution cash autorisée par l'utilisateur.** Contrôle réutilisable de confirmation
+dans les réservations conducteur et les reçus de dépose. Mutation RTK dédiée et
+nouvelle commande backend authentifiée `PUT /bookings/:id/cash-receipt` : conducteur,
+dépose, montant et devise revérifiés. Migration nullable pour les trois champs
+du reçu ; écriture conditionnelle idempotente, protection contre les saves obsolètes
+et changements concurrents du mode/montant. Projection d'activité et contrats
+mobiles enrichis. Aucun transfert, crédit de revenus ou calcul de subvention ajouté.
+
+**Conservé et limites.** Aucun critère de satisfaction, changement de prix ou
+confirmation automatique du cash. Les liens explicites du profil restent disponibles.
+Compteurs locaux à cette installation, sans reprise exhaustive de l'historique :
+la fenêtre d'activité existante de 48 h peut manquer des réussites pendant une
+longue absence. Les stores décident de l'affichage ; une tentative ne prouve pas
+un avis publié. Nouveaux builds natifs et migration backend nécessaires, non exécutés.
+
+**Vérifications.** 31/31 tests ciblés avis/cash mobile et 20/20 tests backend cash/
+activité réussis. Suite mobile complète : **723/725 réussis** ; les deux échecs
+préexistants concernent toujours l'extraction des styles réservations et les
+endpoints PIN de `userApi`. Seule l'empreinte du NOUVEL endpoint `confirmCashReceipt`
+a été ajoutée au snapshot ; les empreintes préexistantes défaillantes sont inchangées.
+TypeScript mobile/backend sans émission, lint mobile ciblé, frontières réseau et
+`git diff --check` réussis. 890 sources mobiles contrôlées ; seule l'exception
+préexistante `app/wallet.tsx` (414 lignes) reste au-dessus de 400 lignes.
+Pas d'essai physique, de migration PostgreSQL réelle, de mesure de chauffe ou
+de garantie d'absence de freeze natif. Repositories/SDK/stockage simulés dans les tests.
+
+**Détails et fichiers.** [Notation native, cash et procédure de déploiement](NATIVE_STORE_REVIEW.md).
+Le backend possède aussi `docs/CASH_RECEIPTS_AND_APP_REVIEWS.md`.
+Le guide `supabase-postgres-best-practices` a orienté les types des colonnes,
+l'écriture atomique et l'absence d'appels externes sous verrou.
+
+## 23 septembre 2026 — Bouton du profil : notation native sans redirection
+
+**Problème.** Le bouton « Noter l’application » ouvrait encore une fiche externe,
+contrairement au parcours souhaité sans quitter Zwanga.
+
+**Solution appliquée.** `hooks/useStoreReview.ts` utilise désormais l'adaptateur
+natif `features/store-review/nativeReview.ts`, vérifie sa disponibilité puis
+appelle `expo-store-review`. Aucun fallback vers le store/navigateur. Message
+français en cas d'indisponibilité détectée ou d'erreur. Sous-titre et accessibilité
+du `ProfileStoreReviewButton` adaptés, icône de lien externe remplacée par un
+chevron. Ancien utilitaire de redirection `utils/storeReview.ts` supprimé.
+
+**Précautions et conservé.** Verrou des doubles appuis, contrôles de focus,
+montage, génération, premier plan natif et registre des overlays après les
+attentes. Promesse native partagée pour éviter les appels simultanés entre
+consommateurs/remontages ; aucune hypothèse sur la fermeture réelle du dialogue
+iOS. Aucun polling ni appel réseau supplémentaire. Compteurs, quota AsyncStorage
+et déclenchement automatique après trajet inchangés ; le bouton volontaire
+reste distinct de ce quota de sollicitations automatiques. Aucun paiement,
+calcul de prix, reçu cash ou backend modifié dans cette intervention.
+
+**Vérifications.** 51/51 tests ciblés profil/notation/cash réussis. TypeScript
+sans émission et ESLint ciblé réussis. Frontières réseau et `git diff --check`
+réussis. 889 sources contrôlées ; seule l'exception préexistante `app/wallet.tsx`
+(414 lignes) dépasse 400. La suite complète n'a pas été relancée pour ce correctif.
+SDK et cycles de vie simulés : aucun essai physique, build ou déploiement réalisé.
+
+**Limites.** Le store peut ne pas afficher sa fenêtre malgré un appel réussi ;
+aucun avis publié ne peut être déduit de ce retour. Les binaires doivent inclure
+`ExpoStoreReview` ; un ancien binaire sans ce module affiche une information,
+sans crash de chargement attendu ni redirection. Cela ne constitue pas une
+garantie générale d'absence de freeze/crash natif.
+
+**Détails et recette.** [Notation depuis le profil](APP_STORE_REVIEWS.md).
+La documentation [Notation après trajet](NATIVE_STORE_REVIEW.md) renvoie maintenant
+vers ce comportement actualisé du bouton volontaire.
+
 ## Format pour les prochaines entrées
 
 Pour chaque problème corrigé : date/périmètre, problème constaté, solution

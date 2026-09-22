@@ -5,9 +5,10 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { getTripRevenueRows } from './tripRevenuePresentation';
 
 /** One shared RTK read, only while visible. No GPS, polling, payment or new modal. */
-export const DriverBookingRevenue = memo(function DriverBookingRevenue({ bookingId, active }: {
+export const DriverBookingRevenue = memo(function DriverBookingRevenue({ bookingId, active, cashReceived = false }: {
   bookingId: string;
   active: boolean;
+  cashReceived?: boolean;
 }) {
   const { currentData, isFetching, isError, refetch } = useGetDriverBookingRevenueSummaryQuery(bookingId, {
     skip: !active || !bookingId,
@@ -26,13 +27,14 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
         <Text style={styles.total}>{format(summary.totalExpectedAmount)}</Text>
       </View>
       {rows.map(row => <View key={row.key} style={styles.row}>
-        <Text style={styles.label}>{row.label}</Text>
+        <Text style={styles.label}>{row.key === 'cash' && cashReceived ? 'Cash reçu' : row.label}</Text>
         <Text style={[styles.amount, row.key === 'cash' ? styles.cash : row.key === 'confirmed' ? styles.confirmed : null]}>
           {format(row.amount)}
         </Text>
       </View>)}
       <Text style={styles.hint}>{rows.some(row => row.key === 'cash')
-        ? 'Le cash est à recevoir du passager, pas dans votre solde de revenus.'
+        ? cashReceived ? 'Le cash a été reçu directement du passager, pas dans votre solde de revenus.'
+          : 'Le cash est à recevoir du passager, pas dans votre solde de revenus.'
         : summary.totalExpectedAmount > 0 ? 'Seuls les gains crédités sont enregistrés dans vos revenus.'
           : 'Aucun gain à encaisser pour cette réservation.'}</Text>
     </> : <Text style={styles.hint}>{isError

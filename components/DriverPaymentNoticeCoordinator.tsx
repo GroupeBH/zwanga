@@ -9,13 +9,13 @@ import {
   isTripEligibleForNotice,
 } from '../features/driver-payments/paymentNoticeModel';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   InteractionManager,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -171,10 +171,7 @@ export function DriverPaymentNoticeCoordinator() {
     isAppActive,
   ]);
 
-  const shouldKeepModalMounted = Boolean(activeNotice || isClosingForTripNavigation);
   const isModalVisible = Boolean(activeNotice && !isClosingForTripNavigation);
-
-  if (!shouldKeepModalMounted) return null;
 
   return (
     <Modal

@@ -36,6 +36,8 @@ export function createRideOverlayStore() {
     getActive: () => active,
     getEntries: () => snapshot,
     hasNavigation: () => scopes.size > 0,
+    // Includes UIKit dismissals still in flight, not just the currently visible overlay.
+    isBusy: () => scopes.size > 0 || nativeOwners.size > 0 || entries.size > 0,
     getNotice: (scope: string) => notices.get(scope) ?? null,
     setScope(scope: string, enabled: boolean) {
       if (scopes.has(scope) === enabled) return;
