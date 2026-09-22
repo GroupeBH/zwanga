@@ -28,6 +28,7 @@ function setup() {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => active },
+    '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'BookingRevenue' },
     '@/store/hooks': { useAppSelector: fn => fn(state) },
     '@/store/api/rideRecoveryApi': { useGetRideDeclarationsQuery: (args, options) => { queries.push({ args, options }); return { currentData: snapshots, refetch() {} }; } },
     '@/services/rideOutbox': { rideOutbox: { enqueue: async input => { sent.push(input); } } },
@@ -82,6 +83,30 @@ test('background screens stop polling and the sheet reserves the safe-area foote
   assert.equal(h.queries.at(-1).options.pollingInterval, 0);
   const sheet = all(h.tree()).find(node => node.type === 'SafeAreaView');
   assert.equal(sheet.props.style.height, '85%'); assert.deepEqual(sheet.props.edges, ['bottom']);
+  h.hooks.unmount();
+});
+
+test('manual driver dropoff shows this passenger revenue only after server confirmation, not a queued declaration', () => {
+  const h = setup();
+  h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: true }], actor: 'driver' });
+  h.state.rideRecovery.entries = [{ bookingId: 'booking', tripId: 'trip', stage: 'dropoff', state: 'queued', decision: 'confirm' }];
+  h.render();
+  assert.equal(all(h.tree()).find(node => node.type === 'BookingRevenue'), undefined);
+  h.snapshots([{ bookingId: 'booking', pickup: { status: 'confirmed' }, dropoff: { status: 'awaiting_other', driver: 'confirm' } }]);
+  h.render();
+  assert.equal(all(h.tree()).find(node => node.type === 'BookingRevenue'), undefined);
+  h.snapshots([{ bookingId: 'booking', pickup: { status: 'confirmed' }, dropoff: { status: 'confirmed' } }]);
+  h.render();
+  let receipt = all(h.tree()).find(node => node.type === 'BookingRevenue');
+  assert.equal(receipt.props.bookingId, 'booking');
+  assert.equal(receipt.props.active, false, 'a closed sheet does not request earnings');
+  h.trigger().props.onPress(); h.render();
+  receipt = all(h.tree()).find(node => node.type === 'BookingRevenue');
+  assert.equal(receipt.props.active, true);
+  h.active(false); h.render();
+  assert.equal(all(h.tree()).find(node => node.type === 'BookingRevenue').props.active, false);
+  h.props({ tripId: 'trip', booking: { ...h.booking, droppedOff: true }, actor: 'passenger' }); h.render();
+  assert.equal(all(h.tree()).find(node => node.type === 'BookingRevenue'), undefined);
   h.hooks.unmount();
 });
 

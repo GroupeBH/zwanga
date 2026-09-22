@@ -12,6 +12,7 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const insets = { top: 47, bottom: 34, left: 0, right: 0 };
 const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
   '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'AssistanceButtons' } };
 
 function driverModel() {
@@ -54,6 +55,9 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(buttons.props.role, 'driver'); assert.equal(buttons.props.onSos, assistance.openSos);
   assert.equal(buttons.props.onContact, assistance.openContacts);
   const scroll = all(tree).find(node => node.type === 'ScrollView');
+  const receipts = all(scroll).find(node => node.type === 'DropoffReceipts');
+  assert.equal(receipts.props.bookings, model.session.foundation.data.bookings);
+  assert.equal(receipts.props.active, true);
   assert.equal(scroll.props.style.flexGrow, 0); assert.ok(scroll.props.style.maxHeight <= 210);
   model.session.foundation.data.offlineTrip = true;
   assert.match(words(DriverNavigationTopPanel({ model, assistance })), /Hors connexion/);

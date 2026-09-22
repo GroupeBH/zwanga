@@ -10,7 +10,8 @@ import {
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { Booking } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { getDriverInterruptionSettlementMessage } from '@/features/arrival-payment/interruptionSettlement';
 
 interface Params {
   setProcessingBookingId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -49,6 +50,12 @@ export function useDriverBookingActions({
   isRejectingPassengerInterruption,
   rejectPassengerTripInterruption,
 }: Params) {
+  const confirmingInterruptionRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const handleAcceptPendingBooking = useCallback(
     async (booking: Booking) => {
       setProcessingBookingId(booking.id);
@@ -81,7 +88,8 @@ export function useDriverBookingActions({
         setProcessingBookingId(null);
       }
     },
-    [acceptBooking, reconcileBookingStatus, refetchBookings, refetchTrip, rememberAcceptedBooking, showDialog, speakNavigationMessage],
+    [acceptBooking, lastRouteFetchTimeRef, reconcileBookingStatus, refetchBookings, refetchTrip,
+      rememberAcceptedBooking, routeFetchedRef, setProcessingBookingId, showDialog, speakNavigationMessage],
   );
 
   const handleRejectPendingBooking = useCallback(
@@ -115,17 +123,17 @@ export function useDriverBookingActions({
         setProcessingBookingId(null);
       }
     },
-    [reconcileBookingStatus, refetchBookings, refetchTrip, rejectBooking, showDialog, speakNavigationMessage],
+    [reconcileBookingStatus, refetchBookings, refetchTrip, rejectBooking, setProcessingBookingId, showDialog, speakNavigationMessage],
   );
 
   const handleConfirmPassengerInterruption = useCallback(
     (booking: Booking) => {
-      if (!booking.id || isConfirmingPassengerInterruption) return;
+      if (!booking.id || isConfirmingPassengerInterruption || confirmingInterruptionRef.current) return;
 
       showDialog({
         variant: 'warning',
         icon: 'walk-outline',
-        title: "Confirmer l'arrivée à destination",
+        title: 'Confirmer la descente',
         message: `${booking.passengerName || 'Ce passager'} demande à descendre avant sa destination. Confirmer l'interruption de sa participation ?`,
         actions: [
           { label: 'Annuler', variant: 'ghost' },
@@ -133,19 +141,28 @@ export function useDriverBookingActions({
             label: 'Confirmer',
             variant: 'primary',
             onPress: async () => {
+              if (confirmingInterruptionRef.current || !mountedRef.current) return;
+              confirmingInterruptionRef.current = true;
               setProcessingBookingId(booking.id);
               try {
-                await confirmPassengerTripInterruption(booking.id).unwrap();
+                const completedBooking = await confirmPassengerTripInterruption(booking.id).unwrap();
+                if (!mountedRef.current) return;
                 routeFetchedRef.current = false;
                 routeSignatureRef.current = '';
-                await Promise.all([refetchBookings(), refetchTrip()]);
+                // Confirmation is committed: slow/failed reads must not hide the receipt
+                // or report a failed confirmation that would invite a duplicate mutation.
+                void Promise.allSettled([
+                  Promise.resolve().then(() => refetchBookings()),
+                  Promise.resolve().then(() => refetchTrip()),
+                ]);
                 showDialog({
                   variant: 'success',
                   icon: 'checkmark-circle',
                   title: 'Descente confirmée',
-                  message: 'La participation du passager est interrompue.',
+                  message: getDriverInterruptionSettlementMessage(completedBooking),
                 });
               } catch (error: any) {
+                if (!mountedRef.current) return;
                 showDialog({
                   variant: 'danger',
                   icon: 'alert-circle',
@@ -153,7 +170,8 @@ export function useDriverBookingActions({
                   message: getApiErrorMessage(error, "Impossible de confirmer l'interruption."),
                 });
               } finally {
-                setProcessingBookingId(null);
+                confirmingInterruptionRef.current = false;
+                if (mountedRef.current) setProcessingBookingId(null);
               }
             },
           },
@@ -165,6 +183,9 @@ export function useDriverBookingActions({
       isConfirmingPassengerInterruption,
       refetchBookings,
       refetchTrip,
+      routeFetchedRef,
+      routeSignatureRef,
+      setProcessingBookingId,
       showDialog,
     ],
   );
@@ -217,6 +238,7 @@ export function useDriverBookingActions({
       refetchBookings,
       refetchTrip,
       rejectPassengerTripInterruption,
+      setProcessingBookingId,
       showDialog,
     ],
   );

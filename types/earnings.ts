@@ -65,7 +65,13 @@ export interface DriverTripRevenueSummary {
   zwangaSubsidyAmount?: number;
   cashToCollectAmount: number;
   electronicPendingAmount: number;
+  pointsPendingAmount?: number;
   totalExpectedAmount: number;
   completedBookings: number;
   generatedAt: string;
+}
+
+export interface DriverBookingRevenueSummary extends DriverTripRevenueSummary {
+  bookingId: string;
+  dropoffConfirmed: boolean;
 }

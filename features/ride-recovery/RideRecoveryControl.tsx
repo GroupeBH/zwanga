@@ -1,5 +1,6 @@
 import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
+import { DriverBookingRevenue } from '@/features/driver-payments/DriverBookingRevenue';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { rideOutbox } from '@/services/rideOutbox';
 import { useGetRideDeclarationsQuery } from '@/store/api/rideRecoveryApi';
@@ -110,6 +111,8 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
                   return <View key={stage} style={styles.stage}>
                     <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{stage === 'pickup' ? 'Embarquement' : 'Arrivée'}</Text></View>
                     <Text style={styles.status} accessibilityLiveRegion="polite">{rideEntryMessage(entry, status)}</Text>
+                    {actor === 'driver' && stage === 'dropoff' && (status === 'confirmed' || entry?.state === 'confirmed') &&
+                      <DriverBookingRevenue bookingId={item.id} active={active && visible} />}
                     {!unavailable && <View style={styles.actions}>
                       <TouchableOpacity style={styles.confirm} onPress={() => setChoice({ bookingId: item.id, stage, decision: 'confirm' })} accessibilityRole="button"><Text style={styles.confirmLabel}>{label}</Text></TouchableOpacity>
                       {other === 'confirm' && <TouchableOpacity style={styles.reject} onPress={() => setChoice({ bookingId: item.id, stage, decision: 'reject' })} accessibilityRole="button"><Text style={styles.rejectLabel}>Ce n’est pas exact</Text></TouchableOpacity>}

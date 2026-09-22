@@ -22,6 +22,11 @@ function getType(data: NotificationData): string {
   return typeof data.type === 'string' ? data.type.toLowerCase().replace(/-/g, '_') : '';
 }
 
+export function isTripInterruptionNotification(input: NotificationData): boolean {
+  const type = getType(normalizeData(input));
+  return type.startsWith('driver_trip_interruption_') || type.startsWith('passenger_trip_interruption_');
+}
+
 function isTripRequestType(type: string): boolean {
   // An interruption request belongs to a TRIP, not to /trip-requests/:id.
   return !type.includes('interruption') && (
@@ -79,6 +84,10 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
   const requestId = extractTripRequestId(data);
   const bookingId = getId(data.bookingId, data.booking?.id);
   const conversationId = getId(data.conversationId, data.conversation?.id);
+
+  if (type === 'passenger_trip_interruption_confirmed' && bookingId && data.role !== 'driver') {
+    return `/booking/navigate/${bookingId}`;
+  }
 
   if (type === 'ride_confirmation_required') {
     if (data.role === 'passenger' && bookingId) return `/booking/navigate/${bookingId}`;

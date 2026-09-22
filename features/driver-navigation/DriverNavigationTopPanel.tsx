@@ -7,6 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { DriverNavigationPassengersBar } from './DriverNavigationPassengersBar';
+import { DriverDropoffReceipts } from './DriverDropoffReceipts';
+
+const EMPTY_BOOKINGS: NonNullable<Props['model']['session']['foundation']['data']['bookings']> = [];
 
 interface Props {
   model: ReturnType<typeof useDriverNavigationController>;
@@ -50,10 +53,11 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       </View>}
       <NavigationAssistanceButtons role="driver" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
-    {data.isTripOngoing && (hasUrgentDropoff ? <DriverNavigationPassengersBar
+    {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff ? <DriverNavigationPassengersBar
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
       : <ScrollView style={{ flexGrow: 0, maxHeight: Math.max(80, height * 0.3) }} contentContainerStyle={styles.details}
       showsVerticalScrollIndicator bounces={false}>
+      <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive} />
       {model.presentation.canToggleRouteSections && <View style={styles.segments}>
         {(['next', 'remaining'] as const).map(section => <TouchableOpacity key={section}
           style={[styles.segment, mapState.routeSectionFocus === section && styles.segmentActive]}
