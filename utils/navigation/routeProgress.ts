@@ -98,7 +98,7 @@ function unprojectFromLocalMeters(
   };
 }
 
-function projectPointToSegment(
+export function projectPointToSegment(
   point: NavigationCoordinate,
   segmentStart: NavigationCoordinate,
   segmentEnd: NavigationCoordinate,

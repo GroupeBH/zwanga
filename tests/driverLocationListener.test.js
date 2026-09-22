@@ -5,24 +5,32 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 function tracking(t) {
   t.mock.timers.enable({ apis: ['Date'], now: 100_000 });
   let alignments = 0;
+  const { createRouteAnalysisCache } = loader()('utils/navigation/routeAnalysis.ts');
+  const analysis = createRouteAnalysisCache();
   const { createDriverLocationListener, normalizeHeading } = loader({
     'react-native': { Platform: { OS: 'android' } },
-    '@/utils/routeHelpers': { getRouteAlignedPosition: () => { alignments++; return null; } },
   })('features/driver-navigation/driverLocationListener.ts');
   const ref = current => ({ current });
   const calls = { send: 0, state: 0, step: 0, route: 0, animate: 0, stop: 0, position: 0 };
+  const animations = [];
   const mapState = {
     isMountedRef: ref(true), isTripOngoingRef: ref(true), isMapReadyRef: ref(true),
     appStateRef: ref('active'), lastAcceptedDriverCoordinateRef: ref(null),
     lastAcceptedDriverTimestampRef: ref(null), driverMarkerAnimationRef: ref(null),
     stopDriverMarkerAnimation: () => calls.stop++,
     driverPosition: {
-      timing: () => ({ start: () => calls.animate++ }),
+      timing: options => {
+        const animation = { options, complete: null,
+          start: callback => { calls.animate++; animation.complete = callback; } };
+        animations.push(animation); return animation;
+      },
       setValue: () => calls.position++,
     },
     setHeading: update => update(0), setCurrentLocation: () => calls.state++,
   };
   const refs = {
+    routeAnalysisScopeRef: ref('trip-1:destination'),
+    routeAnalysis: { analyze: (...args) => { alignments++; return analysis.analyze(...args); } },
     isExitingRef: ref(false), currentLocationRef: ref(null),
     hasFetchedInitialDriverRouteRef: ref(false), routeFetchedRef: ref(false),
     routeCoordinatesRef: ref([]), offRouteSampleCountRef: ref(0),
@@ -41,7 +49,7 @@ function tracking(t) {
     coords: { latitude: -4.32, longitude: 15.3, accuracy: 10, heading: 90, speed: 2 },
     ...extra,
   });
-  return { calls, mapState, refs, create, listener, fix, normalizeHeading, alignments: () => alignments, cancel: () => { cancelled = true; } };
+  return { calls, animations, mapState, refs, create, listener, fix, normalizeHeading, alignments: () => alignments, cancel: () => { cancelled = true; } };
 }
 
 test('GPS callback preserves independent state, backend and step throttles during repeated native updates', t => {
@@ -80,7 +88,6 @@ test('effect cancellation, unmount and navigation exit reject late GPS callbacks
 function trackingWithoutClock(env) {
   const { createDriverLocationListener } = loader({
     'react-native': { Platform: { OS: 'android' } },
-    '@/utils/routeHelpers': { getRouteAlignedPosition: () => null },
   })('features/driver-navigation/driverLocationListener.ts');
   return { ...env, listener: createDriverLocationListener({
     data: { tripId: 'trip-1' }, mapState: env.mapState, refs: env.refs,
@@ -130,14 +137,69 @@ test('iOS-style frequent callbacks do not repeatedly traverse the route or anima
   env.refs.evaluatePickupBypassRef.current = () => safetyChecks++;
   for (let i = 0; i < 1000; i++) env.listener(env.fix());
   assert.equal(env.alignments(), 1);
-  assert.equal(env.calls.animate, 1);
+  assert.equal(env.calls.animate, 0);
+  assert.equal(env.calls.position, 1, 'initial placement is immediate, not animated from an old position');
   assert.equal(safetyChecks, 1000, 'render throttling never skips the validated safety samples');
   t.mock.timers.tick(2000);
   env.listener(env.fix());
   assert.equal(env.alignments(), 2);
-  assert.equal(env.calls.animate, 1, 'a stationary vehicle does not keep an animation running');
+  assert.equal(env.calls.animate, 0, 'a stationary vehicle does not keep an animation running');
   t.mock.timers.tick(2000);
   const next = env.fix();
   env.listener({ ...next, coords: { ...next.coords, latitude: next.coords.latitude + 0.0001 } });
-  assert.equal(env.calls.animate, 2, 'movement updates the marker');
+  assert.equal(env.calls.animate, 1, 'movement updates the marker');
+});
+
+test('marker only animates latitude/longitude for 250 ms and does not hold navigation interactions', t => {
+  const env = tracking(t);
+  const move = step => {
+    t.mock.timers.tick(2000);
+    const point = env.fix();
+    env.listener({ ...point, coords: { ...point.coords, latitude: -4.32 + step * 0.0001 } });
+  };
+  env.listener(env.fix()); move(1); move(2);
+  assert.equal(env.animations.length, 2);
+  const [old, current] = env.animations;
+  assert.equal(current.options.duration, 250);
+  assert.equal(current.options.useNativeDriver, false);
+  assert.equal(current.options.isInteraction, false);
+  assert.equal('latitudeDelta' in current.options, false);
+  assert.equal('longitudeDelta' in current.options, false);
+  old.complete();
+  assert.equal(env.mapState.driverMarkerAnimationRef.current, current);
+  current.complete();
+  assert.equal(env.mapState.driverMarkerAnimationRef.current, null);
+  t.mock.timers.tick(11_000); move(3);
+  assert.equal(env.animations.length, 2, 'resume/long silence snaps to latest location');
+});
+
+test('indexed deviation still reroutes after two fixes, respects cooldown and follows replaced geometry', async t => {
+  const env = tracking(t);
+  env.refs.hasFetchedInitialDriverRouteRef.current = true;
+  env.refs.routeFetchedRef.current = true;
+  env.refs.routeCoordinatesRef.current = [
+    { latitude: -4.4, longitude: 15.3 }, { latitude: -4.3, longitude: 15.3 },
+  ];
+  const offRoute = () => {
+    const point = env.fix();
+    env.listener({ ...point, coords: { ...point.coords, longitude: 15.3008 } });
+  };
+  offRoute();
+  assert.equal(env.calls.route, 0);
+  t.mock.timers.tick(2000); offRoute();
+  assert.equal(env.calls.route, 1);
+  await Promise.resolve();
+  t.mock.timers.tick(2000); offRoute();
+  t.mock.timers.tick(2000); offRoute();
+  assert.equal(env.calls.route, 1, 'confirmed deviation must not bypass the 12-second cooldown');
+  t.mock.timers.tick(8000); offRoute();
+  assert.equal(env.calls.route, 2);
+  await Promise.resolve();
+  env.refs.routeCoordinatesRef.current = [
+    { latitude: -4.4, longitude: 15.3008 }, { latitude: -4.3, longitude: 15.3008 },
+  ];
+  t.mock.timers.tick(2000); offRoute();
+  assert.equal(env.refs.offRouteSampleCountRef.current, 0, 'new geometry immediately replaces old deviation');
+  t.mock.timers.tick(12_000); offRoute();
+  assert.equal(env.calls.route, 2);
 });
