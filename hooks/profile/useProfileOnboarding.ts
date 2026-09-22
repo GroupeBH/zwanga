@@ -16,6 +16,7 @@ type Props = Pick<ReturnType<typeof useProfileData>,
   | 'hasVehicle'
   | 'isKycApproved'
   | 'isKycPending'
+  | 'isScreenActive'
   | 'kycLoading'
   | 'needsDriverOnboarding'
   | 'refetchKycStatus'
@@ -30,6 +31,7 @@ export function useProfileOnboarding({
   hasVehicle,
   isKycApproved,
   isKycPending,
+  isScreenActive,
   kycLoading,
   needsDriverOnboarding,
   openCreateVehicleModal,
@@ -178,6 +180,7 @@ export function useProfileOnboarding({
   useEffect(() => {
     if (
       openedDriverOnboardingParamRef.current ||
+      !isScreenActive ||
       !openDriverOnboarding ||
       !currentUser ||
       vehiclesLoading ||
@@ -193,6 +196,7 @@ export function useProfileOnboarding({
   }, [
     currentUser,
     handleStartDriverOnboarding,
+    isScreenActive,
     kycLoading,
     needsDriverOnboarding,
     openDriverOnboarding,

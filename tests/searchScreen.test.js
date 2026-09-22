@@ -78,7 +78,7 @@ const request = (id, extra = {}) => ({ id, passengerId: 'passenger', status: 'pe
 function screenApp() {
   const hooks = hookHarness(), params = {}, queryCalls = [], routes = [];
   const router = { push: value => routes.push(value), back() {} };
-  const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false };
+  const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false, active: true };
   const coords = { latitude: -4.325, longitude: 15.3222 };
   const state = {
     auth: { user: { id: 'me', firstName: 'Alice', isDriver: true } },
@@ -93,11 +93,14 @@ function screenApp() {
     'expo-router': { useRouter: () => router, useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/hooks/useTripArrivalTime': { useTripArrivalTime: () => null },
-    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => app.active },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/utils/errorHelpers': { getApiErrorMessage: (_error, fallback) => fallback },
     '@/store/hooks': { useAppSelector: selector => selector(state) },
-    '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', isDriver: app.isDriver } }) },
+    '@/store/api/userApi': { useGetCurrentUserQuery: (args, options) => {
+      queryCalls.push({ name: 'profile', args, options });
+      return { data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', isDriver: app.isDriver } };
+    } },
     '@/store/api/tripApi': {
       useGetTripsQuery: (args, options) => { queryCalls.push({ name: 'trips', args, options }); return { data: app.trips, isLoading: false, isFetching: false, refetch() {} }; },
       useSearchTripsByCoordinatesMutation: () => [() => { throw new Error('Unexpected coordinate request'); }, { isLoading: false }],
@@ -245,5 +248,48 @@ test('nearby remains the default request ordering, explicit budget sorting and p
   app.switchMode(tree, 'requests'); tree = app.render();
   assert.equal(app.toolbar(tree).props.sortMode, 'cheap');
   assert.deepEqual(app.requests.map(item => item.id), ['far', 'near']);
+  app.hooks.unmount();
+});
+
+test('leaving search pauses display subscriptions and GPS sorting while retaining the visible list', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  let tree = app.render(); app.switchMode(tree, 'requests'); tree = app.render();
+  const previousList = app.list(tree).props.data;
+  const previousCount = app.toolbar(tree).props.resultsCountLabel;
+  app.active = false; app.coordinateReads = 0;
+  for (let i = 0; i < 50; i++) {
+    // Updates may still be published by Home or an ongoing trip's subscriptions.
+    app.requests = [request(`new-${i}`)];
+    tree = app.render();
+    assert.equal(app.list(tree).props.data, previousList);
+    assert.equal(app.toolbar(tree).props.resultsCountLabel, previousCount);
+    for (const name of ['profile', 'trips', 'requests']) {
+      assert.equal(app.queryCalls.filter(call => call.name === name).at(-1).options.skip, true);
+    }
+  }
+  assert.equal(app.coordinateReads, 0);
+  app.active = true; tree = app.render();
+  assert.deepEqual(app.list(tree).props.data.map(item => item.request.id), ['new-49']);
+  assert.equal(app.toolbar(tree).props.sortMode, 'nearby');
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, false);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.refetchOnMountOrArgChange, 30);
+  app.hooks.unmount();
+});
+
+test('a draft search survives blur and is applied only after returning to the screen', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.render();
+  let tree = app.render();
+  const input = () => nodes(app.list(tree).props.ListHeaderComponent).find(node =>
+    node.type === 'TextInput' && node.props.placeholder === 'Point de départ');
+  input().props.onChangeText('unknown');
+  tree = app.render(); t.mock.timers.tick(200);
+  app.active = false; tree = app.render(); t.mock.timers.tick(10000); tree = app.render();
+  assert.equal(input().props.value, 'unknown');
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.departureLocation, undefined);
+  app.active = true; tree = app.render(); t.mock.timers.tick(450); tree = app.render();
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.departureLocation, 'unknown');
+  assert.equal(app.list(tree).props.data.length, 0);
   app.hooks.unmount();
 });

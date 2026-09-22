@@ -19,14 +19,17 @@ export function useDriverNavigationFoundation() {
     tripDepartureCoordinate: data.tripDepartureCoordinate,
   });
 
+  const { runMapCommand, mapLayoutRef } = mapState;
   const focusMapOnCoordinates = useCallback(
     (
       coordinates: (RouteCoordinate | null | undefined)[],
       options: Parameters<typeof fitMapToSafeCoordinates>[2],
     ) => {
-      mapState.runMapCommand((map) => fitMapToSafeCoordinates(map, coordinates, options));
+      runMapCommand((map) => fitMapToSafeCoordinates(map, coordinates, {
+        ...options, layout: mapLayoutRef.current,
+      }));
     },
-    [mapState.runMapCommand],
+    [runMapCommand, mapLayoutRef],
   );
 
   const refs = useDriverNavigationRefs({

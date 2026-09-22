@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
+import { subscribeRideLocation } from '@/services/rideLocationStream';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 import { selectPermissionStatus, selectUserTrackedLocation } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -13,6 +15,7 @@ import {
 type UserLocationOptions = {
   autoRequest?: boolean;
   trackingProfile?: 'nearby' | 'navigation';
+  rideLocationKey?: string | null;
 };
 
 export function useUserLocation(options: UserLocationOptions = { autoRequest: true }) {
@@ -25,6 +28,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
   const permissionInFlightRef = useRef<Promise<Location.LocationPermissionResponse> | null>(null);
   const automaticPermissionAttemptedRef = useRef(false);
   const isNearbyTracking = options.trackingProfile === 'nearby';
+  const rideLocationKey = options.rideLocationKey;
 
   const stopWatching = useCallback(() => {
     watcherGenerationRef.current += 1;
@@ -72,28 +76,32 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
         return;
       }
 
-      const subscription = await Location.watchPositionAsync(
-        {
-          accuracy: isNearbyTracking ? Location.Accuracy.Balanced : Location.Accuracy.High,
-          timeInterval: isNearbyTracking ? 15000 : 5000,
-          distanceInterval: isNearbyTracking ? 50 : 25,
-          // Passive tracking must not open an Android settings activity on every resume.
-          mayShowUserSettingsDialog: false,
-        },
-        (location) => {
-          if (generation !== watcherGenerationRef.current || AppState.currentState !== 'active') return;
-          dispatch(
-            setLastKnownLocation({
-              coords: {
-                latitude: location.coords.latitude,
-                longitude: location.coords.longitude,
-              },
-              timestamp: location.timestamp,
-              accuracy: location.coords.accuracy,
-            }),
-          );
-        },
-      );
+      const watchOptions: Location.LocationOptions = {
+        accuracy: isNearbyTracking ? Location.Accuracy.Balanced : Location.Accuracy.High,
+        timeInterval: isNearbyTracking ? 15000 : 5000,
+        // A shared ride fallback must retain stationary boarding samples.
+        distanceInterval: rideLocationKey ? 0 : isNearbyTracking ? 50 : 25,
+        // Passive tracking must not open an Android settings activity on every resume.
+        mayShowUserSettingsDialog: false,
+      };
+      let lastPublishedAt = -Infinity;
+      const onLocation = (location: Location.LocationObject) => {
+        if (generation !== watcherGenerationRef.current || AppState.currentState !== 'active') return;
+        const coordinate = normalizeTripMapCoordinate(location.coords.latitude, location.coords.longitude);
+        if (!coordinate) return;
+        // iOS ignores timeInterval. Limit Redux/UI updates, never the native ride progress stream.
+        const now = Date.now();
+        if (now - lastPublishedAt < (isNearbyTracking ? 15000 : 5000)) return;
+        lastPublishedAt = now;
+        dispatch(setLastKnownLocation({
+          coords: coordinate,
+          timestamp: location.timestamp,
+          accuracy: location.coords.accuracy,
+        }));
+      };
+      const subscription = rideLocationKey
+        ? subscribeRideLocation(rideLocationKey, watchOptions, onLocation)
+        : await Location.watchPositionAsync(watchOptions, onLocation);
 
       if (generation !== watcherGenerationRef.current) {
         subscription.remove();
@@ -104,7 +112,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     } catch (error) {
       console.warn('Impossible de suivre la position', error);
     }
-  }, [dispatch, isNearbyTracking]);
+  }, [dispatch, isNearbyTracking, rideLocationKey]);
 
   const requestPermission = useCallback(async (allowPrompt = true) => {
     const generation = watcherGenerationRef.current;
