@@ -185,6 +185,44 @@ lisible. Les tests JavaScript ne permettent pas d'annoncer l'absence de freeze/c
   par cette intervention ; ils restent à traiter séparément.
 - `git diff --check` : réussi.
 
+## 22 septembre 2026 — Surveillance globale de l'activité personnelle
+
+**Problème.** Plusieurs coordinateurs et hooks d'accueil relisaient périodiquement
+les listes personnelles, y compris sans trajet actif. La déduplication RTK
+ne supprimait pas le coût des listes ni tous les rendus liés au chargement.
+
+**Solution appliquée.** Endpoint authentifié `/api/v1/me/activity` dans le backend,
+un coordinateur RTK mobile (60 s au repos / 30 s en activité), empreintes par
+catégorie et relecture uniquement des catégories modifiées ou en échec.
+Sélecteurs minimaux pour les abonnés globaux ; suppression de la double relance
+AppState du coordinateur GPS ; signal de préarmement passager ; cohérence de la
+lecture d'activité des réservations en contournant son ancien cache de liste.
+
+**Précautions.** Lectures initiales, reprise du paiement, tâches GPS natives,
+mutations, sockets, annonces visibles et pollings des détails/listes dédiés
+conservés. Erreurs réessayées sans vider l'état connu, changement de compte
+protégé, lectures concurrentes regroupées. Repli sur les anciens pollings si
+le nouveau backend n'est pas encore déployé (404/405 uniquement).
+
+**Documentation détaillée.** [Coordination de l'activité personnelle](ACCOUNT_ACTIVITY_COORDINATION.md)
+décrit les problèmes et solutions par fichier, le contrat, les cadences, les
+limites SQL, la compatibilité, les tests et l'ordre de déploiement backend/mobile.
+
+**Validation.**
+
+- Neuf tests mobiles ciblés et onze tests backend ciblés réussis (quatre suites).
+- TypeScript mobile/backend et ESLint ciblé : réussis.
+- Suite mobile complète : **691 tests réussis sur 693**. Les deux échecs restent
+  ceux constatés avant cette intervention dans `tests/sourceExtractions.test.js`
+  (styles de réservations et empreintes des endpoints PIN). Aucun snapshot
+  n'a été remplacé pour masquer ces écarts.
+- Frontières réseau et `git diff --check` : réussis.
+- Taille : nouveaux fichiers applicatifs sous 400 lignes ; seule alerte mobile
+  globale préexistante, `app/wallet.tsx` à 414 lignes (880 sources contrôlées).
+
+Aucune mesure de température/FPS sur appareil physique ni déploiement n'a été
+réalisé : cette intervention ne garantit pas à elle seule l'absence de plantage.
+
 ## Format pour les prochaines entrées
 
 Pour chaque problème corrigé : date/périmètre, problème constaté, solution

@@ -15,6 +15,7 @@
  */
 import { baseApi } from './baseApi';
 import './authApi';
+import './accountActivityApi';
 import './messageApi';
 import './notificationApi';
 import './reviewApi';

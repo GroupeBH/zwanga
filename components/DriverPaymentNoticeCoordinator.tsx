@@ -1,5 +1,4 @@
 import {
-  DRIVER_PAYMENT_NOTICE_REFRESH_MS,
   DRIVER_PAYMENT_NOTICE_MAX_TRIPS,
   SeenDriverPaymentNotices,
   DriverPaymentNotice,
@@ -29,6 +28,7 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
+import { sharedTripsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 
 export function DriverPaymentNoticeCoordinator() {
   const isAppActive = useAppIsActive();
@@ -44,11 +44,8 @@ export function DriverPaymentNoticeCoordinator() {
   const pendingTripNavigationRef = useRef<string | null>(null);
 
   const { data: myTrips = [] } = useGetMyTripsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated || !driverUser,
-    pollingInterval: isAppActive ? DRIVER_PAYMENT_NOTICE_REFRESH_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
 
   const relevantTrips = useMemo(

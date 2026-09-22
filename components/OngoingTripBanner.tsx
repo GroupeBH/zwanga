@@ -1,6 +1,7 @@
 import { styles } from '../features/screen-styles/components/OngoingTripBanner/index';
 import { getFloatingBannerBottomOffset } from '@/constants/navigation';
 import { Colors } from '@/constants/styles';
+import { sharedTripsOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
 import {
   getCurrentTripInfo,
   startOngoingTripTracking,
@@ -37,18 +38,14 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Récupérer les trajets de l'utilisateur (comme conducteur)
   const { data: myTrips, isLoading: myTripsLoading } = useGetMyTripsQuery(undefined, {
+    ...sharedTripsOptions,
     skip: !user,
-    // Pas de polling : les trajets en cours changent rarement de statut
-    // RTK Query invalide automatiquement le cache via les tags après startTrip, updateTrip, etc.
-    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Récupérer les réservations de l'utilisateur (comme passager)
   const { data: myBookings, isLoading: myBookingsLoading } = useGetMyBookingsQuery(undefined, {
+    ...sharedBookingsOptions,
     skip: !user,
-    // Pas de polling : les réservations changent rarement de statut
-    // RTK Query invalide automatiquement le cache via les tags après acceptBooking, updateBookingStatus, etc.
-    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Trouver un trajet en cours

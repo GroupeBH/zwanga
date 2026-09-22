@@ -13,6 +13,7 @@
     "check:source-size": "node ./scripts/check-source-size.cjs",
     "test:referrals": "node --test ./tests/referralAttributionPolicy.test.js",
     "test:performance": "node --test ./tests/performancePolicy.test.js",
+    "test:activity": "node --test ./tests/accountActivity.test.js",
     "test:trip-request": "node --test ./tests/tripRequestForm.test.js ./tests/tripRequestEditPricing.test.js ./tests/tripRequestExpiration.test.js ./tests/passengerSeats.test.js",
     "test:profile": "node --test ./tests/profileModules.test.js",
     "test:screen-idle": "node --test ./tests/screenIdlePolicy.test.js ./tests/profileModules.test.js ./tests/searchScreen.test.js ./tests/searchOwnTrips.test.js ./tests/performanceReadScheduling.test.js",

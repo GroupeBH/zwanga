@@ -98,6 +98,7 @@ export const baseApi = createApi({
   baseQuery: baseQueryWithReauth,
   keepUnusedDataFor: 180,
   tagTypes: [
+    'AccountActivity',
     'User',
     'Trip',
     'MyTrips',

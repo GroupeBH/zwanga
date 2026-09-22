@@ -6,17 +6,15 @@ import {
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
+import { sharedTripsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'> & { hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
   const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isDriver,
-    pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
   });
 
   const listedOngoingDriverTrip = useMemo(

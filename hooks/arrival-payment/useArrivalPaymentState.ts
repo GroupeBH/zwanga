@@ -6,7 +6,7 @@ import {
   selectArrivedPaymentBooking,
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel, PaymentCompletionSummary } from '../../features/arrival-payment/paymentTypes';
-import { ARRIVAL_BOOKING_REFRESH_MS } from '../../features/arrival-payment/paymentPolicy';
+import { sharedBookingsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useNearArrivalPayment } from './useNearArrivalPayment';
 import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
@@ -61,11 +61,8 @@ export function useArrivalPaymentState() {
     data: bookings = EMPTY_BOOKINGS,
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
-    pollingInterval: isAppActive ? ARRIVAL_BOOKING_REFRESH_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
 
   const isResumeReady = useArrivalPaymentRefresh(isAuthenticated && isAppActive, refetchBookings);

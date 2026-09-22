@@ -1,4 +1,5 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
+import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
@@ -28,11 +29,8 @@ export function NotificationHandler() {
     data: myTripRequests = [],
     refetch: refetchMyTripRequests,
   } = useGetMyTripRequestsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
-    pollingInterval: isAuthenticated ? 60_000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
   });
   const [releaseOverdueDriver] = useReleaseOverdueDriverMutation();
   const currentUserRef = useRef(currentUser);
@@ -233,6 +231,7 @@ export function NotificationHandler() {
     };
 
     const foregroundListener = Notifications.addNotificationReceivedListener((notification) => {
+      dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
       if (isTripInterruptionNotification(data)) {
@@ -246,6 +245,7 @@ export function NotificationHandler() {
     });
 
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+      dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       console.log('[NotificationHandler] Notification pressed from background.');
       const data = response.notification.request.content.data || {};
       void handleNotificationPress(data, response.notification.request.content.body);
