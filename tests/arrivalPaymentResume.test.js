@@ -82,6 +82,15 @@ test('cash mode update is described as instructions, not as a confirmed collecti
   assert.doesNotMatch(result.driverNotice, /confirmé le paiement/);
 });
 
+test('a driver-confirmed cash receipt never asks the passenger to hand the money over again', () => {
+  const { buildPaymentCompletionSummary } = loader({ 'expo-linking': linking })('features/arrival-payment/buildPaymentCompletionSummary.ts');
+  const result = buildPaymentCompletionSummary({ id: 'a', status: 'completed', paymentMode: 'cash', paymentAmount: 2000,
+    paymentStatus: 'not_required', cashReceivedAt: '2026-09-23T10:00:00Z' }, undefined, [], {});
+  assert.equal(result.cashInstructions, false);
+  assert.match(result.driverNotice, /conducteur.*confirmé.*réception.*cash/);
+  assert.doesNotMatch(result.driverNotice, /Remettez/);
+});
+
 test('local payment references are merged and written in order, including late responses for the original account', async () => {
   const hooks = hookHarness(), write = gate(), saves = [];
   const { usePaymentPersistence } = loader({ react: hooks.react, 'expo-linking': linking,
@@ -128,8 +137,9 @@ test('an unpaid electronic booking takes priority over a more recently updated c
 test('a paid booking remains pinned until closed, then older cash reminders stay collapsed', () => {
   const hooks = hookHarness(); const now = new Date().toISOString();
   let storedState = {}, bookings = [
-    { id: 'electronic', status: 'completed', paymentMode: 'electronic', paymentStatus: 'pending', paymentAmount: 2000, updatedAt: now },
-    { id: 'cash', status: 'completed', paymentMode: 'cash', paymentStatus: 'not_required', paymentAmount: 2000, updatedAt: now },
+    { id: 'foreign', passengerId: 'other', status: 'completed', paymentMode: 'electronic', paymentStatus: 'pending', paymentAmount: 9000, updatedAt: now },
+    { id: 'electronic', passengerId: 'user', numberOfSeats: 3, status: 'completed', paymentMode: 'electronic', paymentStatus: 'pending', paymentAmount: 2000, updatedAt: now },
+    { id: 'cash', passengerId: 'user', status: 'completed', paymentMode: 'cash', paymentStatus: 'not_required', paymentAmount: 2000, updatedAt: now },
   ];
   const mutation = () => [() => {}, { isLoading: false }];
   const persistBookingState = (id, patch) => { storedState = { ...storedState, [id]: { ...storedState[id], ...patch } }; };
@@ -146,14 +156,14 @@ test('a paid booking remains pinned until closed, then older cash reminders stay
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: bookings, refetch() {} }),
       useInitiateBookingPaymentMutation: mutation, useUpdateBookingPaymentModeMutation: mutation,
       useLazyCheckBookingPaymentStatusQuery: mutation },
-    '@/store/api/paymentApi': { useGetPaymentHistoryQuery: () => ({ data: [], refetch() {} }) },
+    '@/store/api/paymentApi': { useGetBookingPaymentHistoryQuery: () => ({ data: [], refetch() {} }) },
     '@/store/api/walletApi': { useGetMyWalletQuery: () => ({ refetch() {} }), useInitiateWalletTopUpMutation: mutation,
       useLazyCheckWalletTopUpStatusQuery: mutation },
   })('hooks/arrival-payment/useArrivalPaymentState.ts');
   const render = () => hooks.render(() => useArrivalPaymentState());
   const first = render(); assert.equal(first.arrivalBooking.id, 'electronic');
   first.activeBookingIdRef.current = 'electronic';
-  bookings = [bookings[1], { ...bookings[0], paymentStatus: 'succeeded' }];
+  bookings = [bookings[0], bookings[2], { ...bookings[1], paymentStatus: 'succeeded' }];
   assert.equal(render().arrivalBooking.id, 'electronic');
   render().acknowledgeBooking('electronic');
   assert.equal(render().arrivalBooking.id, 'cash'); assert.equal(render().isPaymentDeferred, true);
@@ -162,6 +172,8 @@ test('a paid booking remains pinned until closed, then older cash reminders stay
   render().setCompletionSummary({ bookingId: 'cash' });
   assert.equal(render().isPaymentDeferred, true, 'a late settlement summary must not undo the user dismissal');
   render().resumePayment(); assert.equal(render().isPaymentDeferred, false);
+  bookings = bookings.map(booking => booking.id === 'cash' ? { ...booking, cashReceivedAt: '2026-09-23T10:00:00Z' } : booking);
+  assert.equal(render().paymentAlreadySucceeded, true, 'cash received by the driver enables finishing, not changing modes');
   hooks.unmount();
 });
 

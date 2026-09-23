@@ -9,8 +9,10 @@ export function useBookingPaymentMode(booking: Booking | null, stored?: StoredBo
   const reportPaymentFailure = useCallback((bookingId: string) => setFailedBookingId(bookingId), []);
   const isLocked = isBusy || Boolean(stored?.bookingPaymentOrderNumber || stored?.walletTopUpOrderNumber)
     || booking?.paymentStatus === 'succeeded' || Boolean(booking?.cashReceivedAt);
+  const confirmedMode = (booking?.paymentStatus === 'succeeded' || booking?.cashReceivedAt) ? booking.paymentMode : null;
   const selectedMode = stored?.bookingPaymentOrderNumber ? 'electronic'
     : stored?.walletTopUpOrderNumber ? 'points'
+    : confirmedMode ? confirmedMode
     : draft?.bookingId === booking?.id && draft ? draft.mode : booking?.paymentMode ?? null;
   const setSelectedMode = useCallback((next: SetStateAction<TripPaymentMode | null>) => {
     if (!booking?.id || isLocked) return;

@@ -105,6 +105,8 @@ export function PassengerNavigationInfoCard({
         )}
       </View>
 
+      {/* This choice must remain reachable after the server pauses the trip. */}
+      <PausedPassengerRideNotice booking={booking} />
       {/* État automatique du trajet */}
       {trip.status === 'ongoing' && (
         <View style={styles.actionButtons}>
@@ -183,7 +185,6 @@ export function PassengerNavigationInfoCard({
             </TouchableOpacity>
           )}
 
-          <PausedPassengerRideNotice booking={booking} />
           {interruption.pendingDriverInterruptionRequest && (
             <View style={styles.driverInterruptionCard}>
               <View style={styles.driverInterruptionHeader}>
@@ -264,7 +265,9 @@ export function PassengerNavigationInfoCard({
       {trip.status !== 'ongoing' && (
         <View style={styles.notStartedBadge}>
           <Ionicons name="time" size={20} color={Colors.secondary} />
-          <Text style={styles.notStartedText}>Le trajet n&apos;a pas encore démarré</Text>
+          <Text style={styles.notStartedText}>
+            {trip.interruptionRequest?.status === 'confirmed' ? 'Le trajet est en pause' : 'Le trajet n’a pas encore démarré'}
+          </Text>
         </View>
       )}
     </Animated.View>

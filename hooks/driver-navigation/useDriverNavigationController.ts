@@ -12,12 +12,16 @@ import { useDriverTripActions } from './useDriverTripActions';
 import { useDriverTripInterruptionActions } from './useDriverTripInterruptionActions';
 import { useDriverNavigationExitPrompt } from './useDriverNavigationExitPrompt';
 import { useDriverBookingActions } from './useDriverBookingActions';
+import { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
 import { useCallback } from 'react';
 
 
 
 export function useDriverNavigationController() {
   const session = useDriverNavigationSession();
+  const beginBookingAction = useDriverBookingActionGuard({ tripId: session.foundation.data.tripId,
+    active: session.foundation.data.isScreenActive, bookings: session.foundation.passengers.visibleBookings,
+    setProcessingBookingId: session.foundation.mapState.setProcessingBookingId });
 
   const voice = useDriverVoiceGuidance({
     isMountedRef: session.foundation.mapState.isMountedRef,
@@ -121,7 +125,7 @@ export function useDriverNavigationController() {
   });
 
   const bookingActions = useDriverBookingActions({
-    setProcessingBookingId: session.foundation.mapState.setProcessingBookingId,
+    beginBookingAction,
     acceptBooking: session.foundation.data.acceptBooking,
     rememberAcceptedBooking: session.foundation.passengers.rememberAcceptedBooking,
     lastRouteFetchTimeRef: session.foundation.refs.lastRouteFetchTimeRef,
@@ -134,6 +138,7 @@ export function useDriverNavigationController() {
     rejectBooking: session.foundation.data.rejectBooking,
     isConfirmingPassengerInterruption: session.foundation.data.isConfirmingPassengerInterruption,
     confirmPassengerTripInterruption: session.foundation.data.confirmPassengerTripInterruption,
+    commitPassengerInterruptionResponse: session.foundation.data.commitPassengerInterruptionResponse,
     routeSignatureRef: session.foundation.refs.routeSignatureRef,
     isRejectingPassengerInterruption: session.foundation.data.isRejectingPassengerInterruption,
     rejectPassengerTripInterruption: session.foundation.data.rejectPassengerTripInterruption,
@@ -148,6 +153,7 @@ export function useDriverNavigationController() {
 
   // Fermer le modal de waypoint sans confirmer
   const pickupActions = useDriverPickupActions({
+    beginBookingAction,
     waypointModalVisibleRef: session.foundation.refs.waypointModalVisibleRef,
     setWaypointModalVisible: session.foundation.mapState.setWaypointModalVisible,
     setActiveWaypoint: session.foundation.mapState.setActiveWaypoint,
@@ -168,7 +174,6 @@ export function useDriverNavigationController() {
     offRouteSampleCountRef: session.foundation.refs.offRouteSampleCountRef,
     lastOffRouteRerouteAtRef: session.foundation.refs.lastOffRouteRerouteAtRef,
     pickupBypassAction: session.foundation.mapState.pickupBypassAction,
-    setProcessingBookingId: session.foundation.mapState.setProcessingBookingId,
     speakNavigationMessage: voice.speakNavigationMessage,
     showDialog: session.foundation.data.showDialog,
     cancelBooking: session.foundation.data.cancelBooking,
@@ -179,14 +184,16 @@ export function useDriverNavigationController() {
     reconcileBookingStatus: session.foundation.data.reconcileBookingStatus,
   });
 
+  const { dismissTripEndNotice } = pickupActions;
+  const { navigateAfterRelease } = session.foundation.mapState;
   const handleRatePassengersFromTripEnd = useCallback(() => {
     if (!session.foundation.data.tripId) {
       return;
     }
 
-    pickupActions.dismissTripEndNotice();
-    session.foundation.mapState.navigateAfterRelease(() => session.foundation.data.router.replace(`/rate/${session.foundation.data.tripId}`));
-  }, [pickupActions.dismissTripEndNotice, session.foundation.mapState.navigateAfterRelease, session.foundation.data.router, session.foundation.data.tripId]);
+    dismissTripEndNotice();
+    navigateAfterRelease(() => session.foundation.data.router.replace(`/rate/${session.foundation.data.tripId}`));
+  }, [dismissTripEndNotice, navigateAfterRelease, session.foundation.data.router, session.foundation.data.tripId]);
 
   const handleExitNavigation = useDriverNavigationExitPrompt({
     status: session.foundation.data.trip?.status,

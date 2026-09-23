@@ -15,8 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -122,10 +120,9 @@ export function DriverPaymentNoticeCoordinator() {
     if (!tripId) return;
 
     pendingTripNavigationRef.current = null;
-    InteractionManager.runAfterInteractions(() => {
-      navigateToTrip(tripId);
-      setIsClosingForTripNavigation(false);
-    });
+    // The in-app panel is already removed: no UIKit or interaction queue to await.
+    try { navigateToTrip(tripId); }
+    finally { setIsClosingForTripNavigation(false); }
   }, [navigateToTrip]);
 
   const openTrip = useCallback(() => {
@@ -133,17 +130,12 @@ export function DriverPaymentNoticeCoordinator() {
     markNoticeSeen(activeNotice);
     const tripId = activeNotice.tripId;
 
-    if (Platform.OS === 'ios') {
-      pendingTripNavigationRef.current = tripId;
-      setIsClosingForTripNavigation(true);
-    }
+    pendingTripNavigationRef.current = tripId;
+    setIsClosingForTripNavigation(true);
 
     setActiveNotice(null);
 
-    if (Platform.OS !== 'ios') {
-      navigateToTrip(tripId);
-    }
-  }, [activeNotice, markNoticeSeen, navigateToTrip]);
+  }, [activeNotice, markNoticeSeen]);
 
   useEffect(() => {
     if (
@@ -175,6 +167,7 @@ export function DriverPaymentNoticeCoordinator() {
 
   return (
     <Modal
+      inApp
       visible={isModalVisible}
       transparent
       animationType="fade"

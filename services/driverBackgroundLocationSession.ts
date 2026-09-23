@@ -2,6 +2,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const ACTIVE_DRIVER_TRIP_ID_KEY = 'zwanga.activeDriverBackgroundTripId';
 
+// All access to this key goes through this module, including native task callbacks.
+// Serialize read/modify/write so a late checkpoint cannot resurrect a cleared trip.
+let work: Promise<unknown> = Promise.resolve();
+let loaded = false;
+let cachedSession: ActiveDriverBackgroundTripSession | null = null;
+let persistedValue: string | null = null;
+const serial = <T>(operation: () => Promise<T>): Promise<T> => {
+  const next = work.then(operation);
+  work = next.catch(() => undefined);
+  return next;
+};
+
 export type DriverBackgroundLocationCoordinate = {
   latitude: number;
   longitude: number;
@@ -45,9 +57,7 @@ const normalizeNumber = (value: unknown) => {
   return Number.isFinite(numberValue) ? numberValue : null;
 };
 
-const normalizeSession = (
-  value: unknown,
-): ActiveDriverBackgroundTripSession | null => {
+const normalizeSession = (value: unknown): ActiveDriverBackgroundTripSession | null => {
   if (typeof value === 'string') {
     const tripId = value.trim();
     return tripId ? { tripId } : null;
@@ -79,81 +89,106 @@ export async function getActiveDriverBackgroundTripId() {
 }
 
 export async function getActiveDriverBackgroundTripSession() {
+  return serial(readSession);
+}
+
+async function readSession() {
+  if (loaded) return cachedSession;
   try {
     const rawValue = await AsyncStorage.getItem(ACTIVE_DRIVER_TRIP_ID_KEY);
     if (!rawValue) {
+      loaded = true;
       return null;
     }
 
     try {
-      return normalizeSession(JSON.parse(rawValue));
+      cachedSession = normalizeSession(JSON.parse(rawValue));
     } catch {
-      return normalizeSession(rawValue);
+      cachedSession = normalizeSession(rawValue);
     }
+    persistedValue = cachedSession ? JSON.stringify(cachedSession) : null;
+    loaded = true;
+    return cachedSession;
   } catch (error) {
     console.warn('[DriverBackgroundLocationSession] Lecture impossible:', error);
     return null;
   }
 }
 
+async function persistSession(session: ActiveDriverBackgroundTripSession | null) {
+  const value = session ? JSON.stringify(session) : null;
+  if (!loaded || value !== persistedValue) {
+    if (value === null) await AsyncStorage.removeItem(ACTIVE_DRIVER_TRIP_ID_KEY);
+    else await AsyncStorage.setItem(ACTIVE_DRIVER_TRIP_ID_KEY, value);
+  }
+  cachedSession = session;
+  persistedValue = value;
+  loaded = true;
+}
+
 export async function setActiveDriverBackgroundTripId(
   tripId: string,
   options: SetActiveDriverBackgroundTripOptions = {},
 ) {
-  try {
-    const session = normalizeSession({
-      ...options,
-      tripId,
-    });
+  return serial(async () => {
+    try {
+      const session = normalizeSession({
+        ...options,
+        tripId,
+      });
 
-    if (!session) {
+      if (!session) {
+        return false;
+      }
+
+      await readSession();
+      await persistSession(session);
+      return true;
+    } catch (error) {
+      console.warn('[DriverBackgroundLocationSession] Ecriture impossible:', error);
       return false;
     }
-
-    await AsyncStorage.setItem(ACTIVE_DRIVER_TRIP_ID_KEY, JSON.stringify(session));
-    return true;
-  } catch (error) {
-    console.warn('[DriverBackgroundLocationSession] Ecriture impossible:', error);
-    return false;
-  }
+  });
 }
 
 export async function updateActiveDriverBackgroundTripSession(
-  updater: (
-    session: ActiveDriverBackgroundTripSession,
-  ) => ActiveDriverBackgroundTripSession | null,
+  updater: (session: ActiveDriverBackgroundTripSession) => ActiveDriverBackgroundTripSession | null,
 ) {
-  try {
-    const currentSession = await getActiveDriverBackgroundTripSession();
-    if (!currentSession) {
+  return serial(async () => {
+    try {
+      const currentSession = await readSession();
+      if (!currentSession) {
+        return null;
+      }
+
+      const nextSession = normalizeSession(updater(currentSession));
+      if (!nextSession) {
+        await persistSession(null);
+        return null;
+      }
+
+      await persistSession(nextSession);
+      return nextSession;
+    } catch (error) {
+      console.warn('[DriverBackgroundLocationSession] Mise à jour impossible:', error);
       return null;
     }
-
-    const nextSession = normalizeSession(updater(currentSession));
-    if (!nextSession) {
-      await AsyncStorage.removeItem(ACTIVE_DRIVER_TRIP_ID_KEY);
-      return null;
-    }
-
-    await AsyncStorage.setItem(ACTIVE_DRIVER_TRIP_ID_KEY, JSON.stringify(nextSession));
-    return nextSession;
-  } catch (error) {
-    console.warn('[DriverBackgroundLocationSession] Mise à jour impossible:', error);
-    return null;
-  }
+  });
 }
 
 export async function clearActiveDriverBackgroundTripId(tripId?: string | null) {
-  try {
-    const activeTripId = await getActiveDriverBackgroundTripId();
-    if (!tripId || !activeTripId || activeTripId === tripId) {
-      await AsyncStorage.removeItem(ACTIVE_DRIVER_TRIP_ID_KEY);
-      return true;
-    }
+  return serial(async () => {
+    try {
+      const activeTripId = (await readSession())?.tripId;
+      if (!tripId || !activeTripId || activeTripId === tripId) {
+        await persistSession(null);
+        return true;
+      }
 
-    return false;
-  } catch (error) {
-    console.warn('[DriverBackgroundLocationSession] Nettoyage impossible:', error);
-    return false;
-  }
+      return false;
+    } catch (error) {
+      console.warn('[DriverBackgroundLocationSession] Nettoyage impossible:', error);
+      return false;
+    }
+  });
 }

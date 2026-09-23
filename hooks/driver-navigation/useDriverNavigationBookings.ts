@@ -15,6 +15,7 @@ import { type PassengerTrackingMarkerStatus } from '@/components/TrackingMapMark
 import type { Booking, Trip } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { isPendingTripInterruption } from '@/utils/tripInterruption';
+import { canRespondToPassengerInterruption } from '@/features/driver-navigation/passengerInterruptionResponse';
 import React, { useCallback, useMemo } from 'react';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
@@ -285,9 +286,7 @@ export function useDriverNavigationBookings({
   );
   const passengerInterruptionRequests = useMemo(
     () =>
-      (visibleBookings ?? []).filter((booking) =>
-        isPendingTripInterruption(booking.interruptionRequest?.status),
-      ),
+      (visibleBookings ?? []).filter(canRespondToPassengerInterruption),
     [visibleBookings],
   );
   const activePassengerInterruptionBooking = passengerInterruptionRequests[0] ?? null;

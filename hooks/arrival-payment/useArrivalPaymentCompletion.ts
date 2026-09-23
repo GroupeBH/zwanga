@@ -7,7 +7,7 @@ import {
 } from '../../features/arrival-payment/paymentTypes';
 import React, { useCallback } from 'react';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetBookingPaymentHistoryQuery } from '@/store/api/paymentApi';
 import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import type { Booking, BookingPaymentResponse, PaymentHistoryItem, TripPaymentMode, WalletSummary } from '@/types';
 
@@ -15,7 +15,7 @@ interface Params {
   isSessionCurrent: () => boolean;
   refetchBookings: ReturnType<typeof useGetMyBookingsQuery>['refetch'];
   refetchWallet: ReturnType<typeof useGetMyWalletQuery>['refetch'];
-  refetchPaymentHistory: ReturnType<typeof useGetPaymentHistoryQuery>['refetch'];
+  refetchPaymentHistory: ReturnType<typeof useGetBookingPaymentHistoryQuery>['refetch'];
   bookings: Booking[];
   wallet: WalletSummary | undefined;
   paymentHistory: PaymentHistoryItem[];

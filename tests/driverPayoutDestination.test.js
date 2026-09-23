@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
-const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements) : [node, ...elements(node.props?.children)];
+const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements) : [node, ...elements(node.props?.children), ...elements(node.props?.ListHeaderComponent), ...elements(node.props?.ListFooterComponent)];
 const native = { View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button', ScrollView: 'Scroll',
-  StyleSheet: { create: value => value }, ActivityIndicator: 'Spinner', RefreshControl: 'Refresh' };
+  FlatList: 'List', StyleSheet: { create: value => value }, ActivityIndicator: 'Spinner', RefreshControl: 'Refresh' };
 
 function formFixture() {
   const changes = []; let confirmations = 0;
@@ -63,7 +63,8 @@ test('earnings main button and failed-payout retry both open the recipient form;
     '@/features/driver-earnings/PayoutHistory': { PayoutHistory: 'History' },
     '@/features/driver-earnings/PayoutDestinationModal': { PayoutDestinationModal: 'DestinationModal' },
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: () => ({ data: summary }),
-      useGetMyDriverEarningsQuery: () => ({ data: [] }), useGetMyDriverPayoutsQuery: () => ({ data: [] }) },
+      useGetDriverEarningsPageQuery: () => ({ currentData: { data: [], total: 0, nextCursor: null } }),
+      useGetDriverPayoutsPageQuery: () => ({ currentData: { data: [], total: 0, nextCursor: null } }) },
   })('app/driver-earnings.tsx');
   const tree = hooks.render(Screen), nodes = elements(tree);
   const receive = nodes.find(node => node.type === 'Button' && elements(node).some(child => child.props?.children === 'Recevoir mes gains'));
@@ -75,6 +76,6 @@ test('earnings main button and failed-payout retry both open the recipient form;
   assert.equal(modal.props.phone, '+243991234567');
   assert.equal(modal.props.amount, 5000);
   assert.equal(modal.props.defaultPhone, '0891234567');
-  assert.ok(!elements(nodes.find(node => node.type === 'Scroll')).includes(modal));
+  assert.ok(!elements(nodes.find(node => node.type === 'List')).includes(modal));
   modal.props.onClose(); hooks.unmount();
 });

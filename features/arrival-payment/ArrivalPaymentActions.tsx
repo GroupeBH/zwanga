@@ -13,6 +13,7 @@ type Props = {
   actionLabel: string;
   isPayButtonDisabled: boolean;
   verification: PaymentVerification;
+  paymentError?: string;
   onPay: () => Promise<void>;
   onRetry: () => void;
   onClose: () => void;
@@ -23,9 +24,15 @@ export function ArrivalPaymentActions(props: Props) {
   const pending = props.hasPendingProviderPayment && !props.paymentAlreadySucceeded;
   const paused = props.verification.phase === 'paused';
   const disabled = pending ? props.isBusy || !paused : props.isPayButtonDisabled;
-  const label = props.isBusy ? 'Vérification…' : pending
+  const label = props.isBusy ? props.selectedMode === 'cash' && !pending ? 'Enregistrement…' : 'Vérification…' : pending
     ? paused ? 'Vérifier à nouveau' : 'En attente de confirmation' : props.actionLabel;
   return <>
+    {!pending && props.paymentError ? (
+      <View style={[local.notice, local.warning]} accessibilityLiveRegion="polite" accessibilityRole="alert">
+        <Ionicons name="alert-circle-outline" size={20} color={Colors.dangerDark} />
+        <Text style={local.noticeText}>{props.paymentError}</Text>
+      </View>
+    ) : null}
     {pending && props.verification.message ? (
       <View style={[local.notice, paused && local.warning]} accessibilityLiveRegion="polite">
         <Ionicons name={paused ? 'alert-circle-outline' : 'information-circle-outline'}

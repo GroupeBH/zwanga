@@ -27,6 +27,7 @@ function setup() {
     useDriverPickupActions: () => ({}), useDriverTripActions: () => ({}),
     useDriverTripInterruptionActions: () => ({}), useDriverNavigationExitPrompt: () => ({}),
     useDriverBookingActions: () => ({}),
+    useDriverBookingActionGuard: () => () => null,
   };
   const mocks = { react: hooks.react };
   for (const [name, implementation] of Object.entries(dependencies)) mocks[`./${name}`] = { [name]: implementation };

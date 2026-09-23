@@ -16,6 +16,7 @@ export function createRideOverlayStore() {
   const nativeOwners = new Set<string>();
   const entries = new Map<string, RideOverlayEntry>();
   const notices = new Map<string, RideNotice>();
+  const queuedNotices = new Map<string, RideNotice[]>();
   const listeners = new Set<() => void>();
   let active: RideOverlayEntry | null = null;
   let snapshot: RideOverlayEntry[] = [];
@@ -45,6 +46,7 @@ export function createRideOverlayStore() {
       else {
         scopes.delete(scope);
         notices.delete(scope);
+        queuedNotices.delete(scope);
         for (const [id, entry] of entries) if (entry.scope === scope) entries.delete(id);
       }
       notify();
@@ -58,11 +60,25 @@ export function createRideOverlayStore() {
     },
     showNotice(scope: string, notice: RideNotice) {
       if (!scopes.has(scope)) return;
-      // One short-lived notice per screen, not an ever-growing event history.
-      notices.set(scope, notice); notify();
+      const current = notices.get(scope);
+      const queue = queuedNotices.get(scope) ?? [];
+      if ([current, ...queue].some(item => item?.title === notice.title && item.message === notice.message)) return;
+      if (current) {
+        // Bounded informational FIFO, not a payment/confirmation queue.
+        if (queue.length >= 20) queue.shift();
+        queue.push(notice);
+        queuedNotices.set(scope, queue);
+      } else notices.set(scope, notice);
+      notify();
     },
     clearNotice(scope: string, expected?: RideNotice) {
       if (expected && notices.get(scope) !== expected) return;
+      const next = queuedNotices.get(scope)?.shift();
+      if (next) { notices.set(scope, { ...next, expiresAt: Date.now() + 10_000 }); notify(); }
+      else if (notices.delete(scope)) { queuedNotices.delete(scope); notify(); }
+    },
+    clearNotices(scope: string) {
+      queuedNotices.delete(scope);
       if (notices.delete(scope)) notify();
     },
   };

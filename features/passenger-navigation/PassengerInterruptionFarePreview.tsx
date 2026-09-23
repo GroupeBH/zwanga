@@ -26,6 +26,7 @@ export function PassengerInterruptionFarePreview({ booking, coordinates }: Props
 
   return <ScrollView style={{ maxHeight: height * 0.32 }} contentContainerStyle={styles.content} bounces={false}>
     <Text style={styles.explanation}>Le conducteur devra confirmer votre descente. Aucun paiement n’est déclenché par cette demande.</Text>
+    {booking.numberOfSeats > 1 && <Text style={styles.explanation}>Vous demandez la descente pour les {booking.numberOfSeats} personnes de votre réservation, pas pour les autres passagers du trajet.</Text>}
     <View style={styles.base}>
       <Text style={styles.label}>{minimum === null ? 'Minimum standard, plafonné au prix initial' : 'Minimum pour votre réservation'}</Text>
       <Text style={styles.minimum}>{minimum === null ? '1 500 FC' : minimum === 0 ? 'Gratuit' : money(minimum)}</Text>

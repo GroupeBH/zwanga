@@ -136,7 +136,7 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
     '@/store/api/vehicleApi': { useGetVehiclesQuery: query('vehicles', []) },
     '@/store/api/referralApi': { useGetMyReferralSummaryQuery: query('referrals', {}) },
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: query('settlements') },
-    '@/store/api/paymentApi': { useGetPaymentHistoryQuery: query('payments') },
+    '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans', []), useGetPremiumOverviewQuery: query('premium') },
     '@/store/api/reviewApi': { useGetReviewsQuery: query('reviews', []), useGetAverageRatingQuery: query('rating', {}) },
     '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests', []), useGetMyDriverOffersQuery: query('offers', []) },

@@ -303,6 +303,7 @@ function ArrivalPaymentSession() {
                   actionLabel={actionLabel}
                   isPayButtonDisabled={isPayButtonDisabled}
                   verification={monitoring.verification}
+                  paymentError={state.canChangeFailedPaymentMode ? undefined : state.paymentError}
                   onPay={submission.handlePayment}
                   onRetry={monitoring.retryVerification}
                   onClose={state.deferPayment}

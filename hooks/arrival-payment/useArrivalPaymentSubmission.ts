@@ -6,6 +6,7 @@ import {
   createBookingCardPaymentRedirectUrls,
   hasPassengerArrived,
   getPaymentFailureMessage,
+  normalizeAmount,
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel, StoredBookingPaymentState } from '../../features/arrival-payment/paymentTypes';
 import { DRC_PAYMENT_PHONE_REGEX } from '../../features/arrival-payment/paymentPolicy';
@@ -91,10 +92,22 @@ export function useArrivalPaymentSubmission({
 
     try {
       if (selectedMode === 'cash') {
+        // Continuing an existing cash booking is not a change of mode or a cash receipt.
+        // In particular the server rejects changing a mode after the driver received cash.
+        if (arrivalBooking.paymentMode === 'cash') {
+          await showCompletionSummary(arrivalBooking, { mode: 'cash' });
+          return;
+        }
         const updatedBooking = await updatePaymentMode({
           bookingId: arrivalBooking.id,
           paymentMode: 'cash',
         }).unwrap();
+        if (!isSessionCurrent()) return;
+        if (updatedBooking?.id !== arrivalBooking.id || updatedBooking.paymentMode !== 'cash' ||
+            normalizeAmount(updatedBooking.paymentAmount) === null) {
+          setPaymentError('Le passage au paiement cash n’a pas été confirmé. Actualisez la réservation avant de réessayer.');
+          return;
+        }
         await showCompletionSummary(updatedBooking, { mode: 'cash' });
         return;
       }
@@ -236,7 +249,9 @@ export function useArrivalPaymentSubmission({
         ),
       );
     } catch (error: any) {
-      if (isSessionCurrent()) setPaymentError(getApiErrorMessage(error, "Le paiement n'a pas pu être effectué."));
+      if (isSessionCurrent()) setPaymentError(getApiErrorMessage(error, selectedMode === 'cash'
+        ? 'Impossible d’enregistrer le paiement cash. Vérifiez votre connexion, puis réessayez.'
+        : "Le paiement n'a pas pu être effectué."));
     }
   }, [
     isSessionCurrent,

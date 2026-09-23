@@ -6,6 +6,8 @@
     "start": "expo start",
     "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js",
     "eas-build-pre-install": "node ./scripts/validate-referral-config.js && node ./scripts/validate-android-crashlytics.js",
+    "eas-build-on-success": "node ./scripts/validate-android-native.cjs --eas",
+    "check:android-native": "node ./scripts/validate-android-native.cjs",
     "check:android-crashlytics": "node ./scripts/validate-android-crashlytics.js",
     "test:android-crashlytics": "node --test ./tests/androidCrashlytics.test.js",
     "validate:referrals": "node ./scripts/validate-referral-config.js",

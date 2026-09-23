@@ -7,11 +7,15 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 function all(node) {
   if (!node || typeof node !== 'object') return [];
   if (Array.isArray(node)) return node.flatMap(all);
-  return [node, ...all(node.props?.children)];
+  return [node, ...all(node.props?.children), ...(node.type === 'List' ? [
+    ...all(node.props.ListHeaderComponent), ...node.props.data.flatMap((item, index) => all(node.props.renderItem({ item, index }))),
+  ] : [])];
 }
 function words(node) {
   if (typeof node === 'string') return node;
+  if (typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(words).join('');
+  if (node?.type === 'List') return words(node.props.ListHeaderComponent) + node.props.data.map((item, index) => words(node.props.renderItem({ item, index }))).join('');
   return node?.props ? words(node.props.children) : '';
 }
 function setup() {
@@ -21,8 +25,8 @@ function setup() {
   let active = true;
   const queries = [];
   const sent = [];
-  const booking = { id: 'booking', tripId: 'trip', status: 'accepted', numberOfSeats: 1, passengerName: 'Test' };
-  const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: value => value } };
+  const booking = { id: 'booking', passengerId: 'passenger', tripId: 'trip', status: 'accepted', numberOfSeats: 1, passengerName: 'Test' };
+  const native = { View: 'View', Text: 'Text', FlatList: 'List', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: value => value } };
   const { RideRecoveryControl } = loader({
     react: { ...React, ...hooks.react, memo: component => component },
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -145,7 +149,10 @@ test('driver labels cover pickup, dropoff and passengers at different stages', (
   h.props({ ...props, bookings: [h.booking, onboard] }); h.render();
   assert.equal(words(h.trigger()), 'Embarquement ou dépose');
   h.trigger().props.onPress(); h.render();
+  all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations de Test').props.onPress(); h.render();
   assert.ok(h.button('Confirmer l’embarquement'));
+  assert.equal(h.button('Confirmer la dépose'), undefined);
+  all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations de À bord').props.onPress(); h.render();
   assert.ok(h.button('Confirmer la dépose'));
   assert.deepEqual(h.sent, []);
   assert.ok(h.trigger().props.style.flat().some(style => style?.maxWidth === 126));
@@ -174,5 +181,49 @@ test('blocked, disputed or other-account pickup entries do not advertise arrival
   }
   h.state.rideRecovery.userId = 'someone-else'; h.render();
   assert.equal(words(h.trigger()), 'Je suis à bord');
+  h.hooks.unmount();
+});
+
+test('three reserved seats require one holder confirmation, not three individual actions', async () => {
+  const h = setup();
+  h.props({ tripId: 'trip', booking: { ...h.booking, numberOfSeats: 3 }, actor: 'passenger' }); h.render();
+  h.trigger().props.onPress(); h.render();
+  h.button('Je suis à bord').props.onPress(); h.render();
+  assert.match(words(h.tree()), /Test · 3 place/);
+  assert.match(words(h.tree()), /titulaire confirme pour toutes les places/);
+  assert.match(words(h.tree()), /pas les autres réservations/);
+  const save = h.button('Enregistrer ma réponse').props.onPress;
+  save(); save(); await new Promise(resolve => setImmediate(resolve)); h.render();
+  assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', decision: 'confirm' }]);
+  h.hooks.unmount();
+});
+
+test('foreign holders/trips cannot produce manual declarations even with a supplied booking', () => {
+  const h = setup();
+  for (const patch of [{ passengerId: 'other' }, { tripId: 'another-trip' }]) {
+    h.props({ tripId: 'trip', booking: { ...h.booking, ...patch }, actor: 'passenger' }); h.render();
+    assert.equal(h.button('Je suis à bord'), undefined);
+    assert.equal(all(h.tree()).find(node => node.type === 'List').props.data.length, 0);
+  }
+  assert.deepEqual(h.sent, []); h.hooks.unmount();
+});
+
+test('multiple groups keep the chosen booking pinned and revalidate it before writing', async () => {
+  const h = setup();
+  const bookings = Array.from({ length: 100 }, (_, i) => ({ ...h.booking, id: `b${i}`, passengerName: `Titulaire ${i}`, numberOfSeats: 3 }));
+  const props = { tripId: 'trip', bookings, actor: 'driver' };
+  h.props(props); h.render(); h.render(); h.trigger().props.onPress(); h.render();
+  const select = name => all(h.tree()).find(node => node.props?.accessibilityLabel === `Voir les confirmations de ${name}`);
+  select('Titulaire 1').props.onPress(); h.render();
+  h.button('Confirmer l’embarquement').props.onPress(); h.render();
+  h.props({ ...props, bookings: [...bookings].reverse() }); h.render();
+  assert.equal(select('Titulaire 1').props.accessibilityState.expanded, true);
+  assert.equal(select('Titulaire 2').props.disabled, true);
+  assert.equal(all(h.tree()).find(node => node.type === 'List').props.initialNumToRender, 6);
+  const save = h.button('Enregistrer ma réponse').props.onPress;
+  h.snapshots([{ bookingId: 'b1', pickup: { status: 'confirmed' }, dropoff: { status: 'none' } }]); h.render();
+  save(); await new Promise(resolve => setImmediate(resolve)); h.render();
+  assert.equal(h.sent.length, 0, 'an older action must not repeat a server-confirmed pickup');
+  assert.match(words(h.tree()), /Cette étape a changé/);
   h.hooks.unmount();
 });

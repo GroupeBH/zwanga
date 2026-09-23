@@ -39,7 +39,7 @@ function profileFixture() {
     '@/store/api/vehicleApi': { useGetVehiclesQuery: query('vehicles'), vehicleApi: { endpoints: { getVehicles: endpoint('vehicles') } } },
     '@/store/api/referralApi': { useGetMyReferralSummaryQuery: query('referrals'), referralApi: { endpoints: { getMyReferralSummary: endpoint('referrals') } } },
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: query('settlements'), driverSettlementsApi: { endpoints: { getMyDriverSettlement: endpoint('settlements') } } },
-    '@/store/api/paymentApi': { useGetPaymentHistoryQuery: query('payments') },
+    '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans'), useGetPremiumOverviewQuery: query('premium') },
     '@/store/api/reviewApi': { useGetReviewsQuery: query('reviews'), useGetAverageRatingQuery: query('rating') },
     '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests'), useGetMyDriverOffersQuery: query('offers') },

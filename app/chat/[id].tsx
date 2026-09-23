@@ -56,6 +56,7 @@ export default function ChatScreen() {
   });
   const { data: messagesData, isLoading: messagesLoading, refetch: refetchMessages,
     hasNextPage, fetchNextPage, isFetchingNextPage, isError: messagesError,
+    hasPreviousPage, fetchPreviousPage, isFetchingPreviousPage, isFetching: messagesFetching,
   } = useGetConversationMessagePagesInfiniteQuery(
     { conversationId },
     { skip: !conversationId || !chatActive, refetchOnMountOrArgChange: 30, refetchOnReconnect: true },
@@ -73,8 +74,14 @@ export default function ChatScreen() {
     });
   }, [messagesData]);
   const loadOlder = useCallback(() => {
-    if (isCurrent() && hasNextPage && !isFetchingNextPage) void fetchNextPage();
-  }, [isCurrent, hasNextPage, isFetchingNextPage, fetchNextPage]);
+    if (isCurrent() && hasNextPage && !messagesFetching) void fetchNextPage();
+  }, [isCurrent, hasNextPage, messagesFetching, fetchNextPage]);
+  const needsHeadReload = Boolean(messagesData?.pages[0]?.needsHeadReload);
+  const loadNewer = useCallback(() => {
+    if (!isCurrent() || messagesFetching) return;
+    if (needsHeadReload) void refetchMessages();
+    else if (hasPreviousPage) void fetchPreviousPage();
+  }, [isCurrent, hasPreviousPage, messagesFetching, fetchPreviousPage, needsHeadReload, refetchMessages]);
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -215,6 +222,7 @@ export default function ChatScreen() {
           messages={messages} userId={user?.id} loading={messagesLoading}
           refreshing={refreshing} onRefresh={onRefresh} onMessageActions={onMessageActions}
           newestFirst hasOlder={hasNextPage} loadingOlder={isFetchingNextPage}
+          hasNewer={hasPreviousPage || needsHeadReload} loadingNewer={isFetchingPreviousPage || (needsHeadReload && messagesFetching)} onLoadNewer={loadNewer}
           olderError={messagesError && Boolean(messagesData?.pages.length)} onLoadOlder={loadOlder} error={messagesError}
         />}
 

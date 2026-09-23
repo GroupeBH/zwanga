@@ -104,7 +104,7 @@ export function useDriverTrackingSocket({
               mapState.setPickupNotice(null);
               mapState.setPickupNoticeCountdown(null);
             }
-            data.showDialog({
+            notices.showInformation({
               variant: 'info',
               icon: 'person-remove',
               title: 'Passager non embarqué',
@@ -125,7 +125,7 @@ export function useDriverTrackingSocket({
               mapState.setPickupNotice(null);
               mapState.setPickupNoticeCountdown(null);
             }
-            data.showDialog({
+            notices.showInformation({
               variant: 'warning',
               icon: 'help-circle',
               title: 'Embarquement non confirmé',

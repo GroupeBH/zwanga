@@ -11,6 +11,7 @@ type Props = {
   onRefresh: () => void; onMessageActions: (message: Message) => void;
   newestFirst?: boolean; hasOlder?: boolean; loadingOlder?: boolean; olderError?: boolean;
   onLoadOlder?: () => void; error?: boolean;
+  hasNewer?: boolean; loadingNewer?: boolean; onLoadNewer?: () => void;
 };
 const visibleContentPosition = { minIndexForVisible: 0, autoscrollToTopThreshold: 80 };
 const keyExtractor = (item: Row) => item.id;
@@ -30,6 +31,7 @@ const formatDate = (value: string) => {
 export const ChatMessageList = memo(function ChatMessageList({
   messages, userId, loading, refreshing, onRefresh, onMessageActions,
   newestFirst, hasOlder, loadingOlder, olderError, onLoadOlder, error,
+  hasNewer, loadingNewer, onLoadNewer,
 }: Props) {
   const rows = useMemo(() => {
     const result: Row[] = [];
@@ -75,6 +77,11 @@ export const ChatMessageList = memo(function ChatMessageList({
       style={styles.messagesContainer} contentContainerStyle={styles.messagesContent}
       keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      ListHeaderComponent={hasNewer ? <TouchableOpacity onPress={onLoadNewer} disabled={loadingNewer}
+        accessibilityRole="button" style={{ padding: 16, alignItems: 'center' }}>
+        {loadingNewer ? <ActivityIndicator color={Colors.primary} />
+          : <Text style={{ color: Colors.primary }}>Voir les messages plus récents</Text>}
+      </TouchableOpacity> : null}
       ListFooterComponent={hasOlder ? <TouchableOpacity onPress={onLoadOlder} disabled={loadingOlder}
         accessibilityRole="button" style={{ padding: 16, alignItems: 'center' }}>
         {loadingOlder ? <ActivityIndicator color={Colors.primary} />

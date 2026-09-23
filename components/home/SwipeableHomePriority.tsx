@@ -10,10 +10,11 @@ type Props = {
   priorityKey: string;
   enabled: boolean;
   onDismiss: (key: string) => void;
+  dismissLabel?: string;
   children: React.ReactNode;
 };
 
-export const SwipeableHomePriority = React.memo(function SwipeableHomePriority({ priorityKey, enabled, onDismiss, children }: Props) {
+export const SwipeableHomePriority = React.memo(function SwipeableHomePriority({ priorityKey, enabled, onDismiss, dismissLabel = 'Masquer sur l’accueil', children }: Props) {
   const translation = useSharedValue(0);
   const width = useSharedValue(320);
   const activeToken = useSharedValue(0);
@@ -98,7 +99,7 @@ export const SwipeableHomePriority = React.memo(function SwipeableHomePriority({
     }}>
       <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         <Ionicons name="eye-off-outline" size={20} color={Colors.gray[600]} />
-        <Text style={styles.label}>Masquer sur l’accueil</Text>
+        <Text style={styles.label}>{dismissLabel}</Text>
       </Animated.View>
       <GestureDetector gesture={pan}>
         <Animated.View collapsable={false} style={animatedStyle}>{children}</Animated.View>

@@ -13,6 +13,8 @@ const insets = { top: 47, bottom: 34, left: 0, right: 0 };
 const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
+  './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'ReceiptsSheet' },
+  '@/features/navigation/RideModal': { RideModal: 'Modal' },
   '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'AssistanceButtons' } };
 
 function driverModel() {
@@ -180,6 +182,39 @@ test('driver exposes icon-only rerouting directly and keeps my position in optio
   foundation.data.isScreenActive = false; render(); render(); assert.equal(button('Partager le trajet'), undefined);
   assert.equal(button(rerouteLabel).props.disabled, true);
   button(rerouteLabel).props.onPress(); staleRecenter(); assert.equal(calls.length, count);
+  hooks.unmount();
+});
+
+test('driver can still access receipts through Options after hiding the banner, without automatic opening', () => {
+  const hooks = hookHarness();
+  const { DriverNavigationControls } = loader({ ...defaults, react: { ...React, ...hooks.react },
+    '../screen-styles/app/trip/navigate/detail/index': { styles: {} },
+    './navigationBooking': { normalizeDriverLocationObject: value => value },
+  })('features/driver-navigation/DriverNavigationControls.tsx');
+  const model = driverModel(), foundation = model.session.foundation;
+  const props = { foundation, tripActions: {}, voice: {}, passengerPresentation: {}, forceRecalculateRoute() {} };
+  const render = () => hooks.render(() => DriverNavigationControls(props));
+  const find = type => all(render()).find(node => node.type === type);
+  const button = label => all(render()).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
+  button('Options de navigation').props.onPress();
+  assert.equal(button('Gains des passagers'), undefined, 'no entry before the first dropoff');
+  foundation.data.bookings = [{ id: 'completed', tripId: 'trip', status: 'completed' },
+    { id: 'pending', tripId: 'trip', status: 'accepted' }, { id: 'elsewhere', tripId: 'other', status: 'completed' }];
+  assert.equal(find('ReceiptsSheet'), undefined);
+  button('Gains des passagers').props.onPress();
+  assert.equal(button('Gains des passagers'), undefined, 'the options popup closes before opening the sheet');
+  assert.equal(find('Modal').props.inApp, true);
+  assert.equal(find('Modal').props.visible, true);
+  assert.deepEqual(find('ReceiptsSheet').props.bookings.map(value => value.id), ['completed']);
+  find('ReceiptsSheet').props.onClose(); assert.equal(find('ReceiptsSheet'), undefined);
+  button('Options de navigation').props.onPress(); button('Gains des passagers').props.onPress();
+  foundation.data.isScreenActive = false;
+  assert.equal(find('ReceiptsSheet'), undefined);
+  foundation.data.isScreenActive = true; assert.equal(find('ReceiptsSheet'), undefined);
+  button('Options de navigation').props.onPress(); button('Gains des passagers').props.onPress();
+  foundation.data.tripId = 'other';
+  assert.equal(find('ReceiptsSheet'), undefined);
+  foundation.data.tripId = 'trip'; assert.equal(find('ReceiptsSheet'), undefined);
   hooks.unmount();
 });
 

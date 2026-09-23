@@ -58,12 +58,18 @@ function driver(t, refresh = () => Promise.resolve()) {
     '@/utils/errorHelpers': { getApiErrorMessage: () => 'Erreur' },
   })('hooks/driver-navigation/useDriverBookingActions.ts');
   const actions = hooks.render(() => useDriverBookingActions({
+    beginBookingAction: booking => {
+      processing.push(booking.id);
+      return { booking, isCurrent: () => true, finish: () => { if (processing.at(-1) === booking.id) processing.push(null); } };
+    },
     setProcessingBookingId: id => processing.push(id),
     confirmPassengerTripInterruption: () => { calls++; return { unwrap: () => pending }; },
+    commitPassengerInterruptionResponse() {},
     routeFetchedRef: { current: true }, routeSignatureRef: { current: 'route' },
     showDialog: dialog => dialogs.push(dialog), refetchBookings: refresh, refetchTrip: refresh,
   }));
-  actions.handleConfirmPassengerInterruption({ id: 'booking', passengerName: 'Passager' });
+  actions.handleConfirmPassengerInterruption({ id: 'booking', tripId: 'trip', passengerId: 'passenger',
+    passengerName: 'Passager', status: 'accepted', interruptionRequest: { id: 'request', status: 'pending' } });
   t.after(() => hooks.unmount());
   return { hooks, dialogs, processing, finish, calls: () => calls, confirm: dialogs[0].actions[1].onPress };
 }
@@ -76,7 +82,7 @@ test('dropoff summary uses the mutation result immediately despite failed refres
   await Promise.all([first, duplicate]);
   assert.equal(env.dialogs.length, 2);
   assert.equal(env.dialogs[1].title, 'Descente confirmée');
-  assert.equal(env.dialogs[1].message, message(settled()));
+  assert.equal(env.dialogs[1].message, `Passager\n\n${message(settled())}`);
   assert.deepEqual(env.processing, ['booking', null]);
 });
 
@@ -87,7 +93,7 @@ test('leaving driver navigation before the response cannot open a late modal', a
   env.finish(settled());
   await pending;
   assert.equal(env.dialogs.length, 1);
-  assert.deepEqual(env.processing, ['booking']);
+  assert.deepEqual(env.processing, ['booking', null], 'the action guard owns lock cleanup even after unmount');
 });
 
 test('fresh dropoff detail updates the payment list once, retaining the selected mode without another request', () => {

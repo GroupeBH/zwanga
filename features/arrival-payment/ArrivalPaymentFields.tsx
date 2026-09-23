@@ -110,7 +110,7 @@ export function ArrivalPaymentFields({
                 </View>
 
                 <View style={styles.amountCard}>
-                  <Text style={styles.amountLabel}>Montant du trajet</Text>
+                  <Text style={styles.amountLabel}>{arrivalBooking.numberOfSeats > 1 ? `Total pour ${arrivalBooking.numberOfSeats} places` : 'Montant du trajet'}</Text>
                   <Text style={styles.amountValue}>
     {paymentAmount === null
       ? 'Calcul en cours...'
@@ -361,12 +361,6 @@ export function ArrivalPaymentFields({
     {isBusy ? <ActivityIndicator size="small" color={Colors.infoDark} />
       : <Ionicons name="information-circle-outline" size={20} color={Colors.infoDark} />}
     <Text style={styles.statusText}>{statusMessage}</Text>
-                  </View>
-                ) : null}
-                {paymentError && !hasPaymentFailure ? (
-                  <View style={styles.errorBox}>
-    <Ionicons name="alert-circle" size={20} color={Colors.dangerDark} />
-    <Text style={styles.errorText}>{paymentError}</Text>
                   </View>
                 ) : null}
               </ScrollView>

@@ -136,7 +136,7 @@ test('a decline reveals selectable mode cards directly, with no new button, paym
     'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     'expo-linking': { createURL: () => 'zwanga://booking/payment' },
   })('features/arrival-payment/ArrivalPaymentFields.tsx');
-  const props = { arrivalBooking: { id: 'booking', paymentAmount: 1500 }, destination: 'Destination',
+  const props = { arrivalBooking: { id: 'booking', numberOfSeats: 3, paymentAmount: 1500 }, destination: 'Destination',
     paymentAmount: 1500, paymentCurrency: 'CDF', paymentAlreadySucceeded: false,
     selectedMode: 'points', hasPaymentFailure: false, walletBalance: 15, pointsUsed: 15,
     hasPendingProviderPayment: true, isBusy: false,
@@ -144,6 +144,7 @@ test('a decline reveals selectable mode cards directly, with no new button, paym
     amountCoveredByPoints: 1500, moneyComplement: 0 };
   const render = () => hooks.render(() => ArrivalPaymentFields(props));
   const form = render(); form.props.ref.current = { scrollTo: value => scrolls.push(value) };
+  assert.ok(flatten(form).some(child => child.type === 'Text' && child.props.children === 'Total pour 3 places'));
   flatten(form).find(child => child.props.onLayout).props.onLayout({ nativeEvent: { layout: { y: 210 } } });
   assert.equal(scrolls.length, 0);
   assert.ok(flatten(form).filter(child => child.props.accessibilityRole === 'radio').every(child => child.props.disabled));
@@ -160,4 +161,33 @@ test('a decline reveals selectable mode cards directly, with no new button, paym
   props.isBeforeArrival = true;
   assert.equal(flatten(render()).some(child => child.props.accessibilityLabel === 'Espèces'), false);
   hooks.unmount();
+});
+
+test('a confirmed cash receipt overrides an unsent points draft without authorizing another payment', () => {
+  const hooks = hookHarness();
+  const { useBookingPaymentMode } = loader({ react: hooks.react })('hooks/arrival-payment/useBookingPaymentMode.ts');
+  let booking = { id: 'booking', paymentMode: 'cash', paymentStatus: 'not_required' };
+  const render = () => hooks.render(() => useBookingPaymentMode(booking));
+  render().setSelectedMode('points'); assert.equal(render().selectedMode, 'points');
+  booking = { ...booking, cashReceivedAt: '2026-09-23T10:00:00Z' };
+  assert.equal(render().selectedMode, 'cash');
+  render().setSelectedMode('electronic'); assert.equal(render().selectedMode, 'cash');
+  hooks.unmount();
+});
+
+test('cash save errors stay visible next to the retry and close controls', () => {
+  const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner',
+    Keyboard: { dismiss() {} }, StyleSheet: { create: value => value } };
+  const { ArrivalPaymentActions } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' } })('features/arrival-payment/ArrivalPaymentActions.tsx');
+  let closed = false;
+  const props = { selectedMode: 'cash', isBusy: false, hasPendingProviderPayment: false,
+    paymentError: 'Le mode cash n’a pas pu être enregistré.', actionLabel: 'Continuer avec le paiement cash',
+    isPayButtonDisabled: false, verification: { phase: 'idle' }, onPay: async () => {}, onClose: () => { closed = true; } };
+  const nodes = flatten(ArrivalPaymentActions(props));
+  const alert = nodes.find(node => node.props.accessibilityRole === 'alert'); assert.ok(alert);
+  assert.ok(flatten(alert).some(node => node.type === 'Text' && node.props.children === props.paymentError));
+  const buttons = nodes.filter(node => node.type === 'Button');
+  assert.equal(buttons[0].props.disabled, false); buttons[1].props.onPress(); assert.equal(closed, true);
+  props.isBusy = true;
+  assert.ok(flatten(ArrivalPaymentActions(props)).some(node => node.type === 'Text' && node.props.children === 'Enregistrement…'));
 });

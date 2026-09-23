@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Modal, Platform, type ModalProps, type NativeSyntheticEvent } from 'react-native';
 import { RideOverlayContext, RideOverlayScopeContext } from './rideOverlayContext';
 import { RIDE_OVERLAY_PRIORITY } from './rideOverlayStore';
@@ -22,6 +22,35 @@ export function RideModal({ priority = RIDE_OVERLAY_PRIORITY.panel, inApp = fals
   const overlay = mode.current === 'overlay' || Boolean(scope && store);
   const wasRequested = useRef(false);
   const nativePresented = useRef(false);
+  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [forceUnmount, setForceUnmount] = useState(false);
+  const finishDismiss = useCallback(() => {
+    if (!nativePresented.current) return;
+    if (dismissTimer.current !== null) clearTimeout(dismissTimer.current);
+    dismissTimer.current = null;
+    nativePresented.current = false;
+    mode.current = null;
+    store?.blockNative(id, false);
+    callbacks.current.onDismiss?.();
+  }, [id, store]);
+
+  // Recovery is ordered: first REMOVE the native element, then release its blocker.
+  // Never just hide the blocker with a timer while leaving a UIKit controller mounted.
+  useEffect(() => {
+    if (requested) { setForceUnmount(false); return; }
+    if (overlay || !nativePresented.current || Platform.OS !== 'ios') return;
+    dismissTimer.current = setTimeout(() => {
+      dismissTimer.current = null;
+      setForceUnmount(true);
+    }, 2000);
+    return () => {
+      if (dismissTimer.current !== null) clearTimeout(dismissTimer.current);
+      dismissTimer.current = null;
+    };
+  }, [overlay, requested]);
+  useLayoutEffect(() => {
+    if (forceUnmount && !requested) finishDismiss();
+  }, [finishDismiss, forceUnmount, requested]);
 
   useLayoutEffect(() => {
     if (overlay && requested) {
@@ -50,12 +79,10 @@ export function RideModal({ priority = RIDE_OVERLAY_PRIORITY.panel, inApp = fals
     store?.blockNative(id, false);
   }, [store, id]);
 
-  if (overlay) return null;
+  if (overlay || (forceUnmount && !requested)) return null;
   return <Modal {...props} visible={requested} onDismiss={() => {
-    if (!nativePresented.current) return;
-    nativePresented.current = false;
-    mode.current = null;
-    store?.blockNative(id, false);
-    callbacks.current.onDismiss?.();
+    // Ignore a late close event if this component has already been reopened.
+    if (callbacks.current.visible !== false) return;
+    finishDismiss();
   }} />;
 }

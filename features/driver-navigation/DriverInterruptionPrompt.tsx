@@ -23,6 +23,7 @@ export function DriverInterruptionPrompt(props: Props) {
       <Text style={styles.title}>Demande de descente{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
     </View>
     <Text style={styles.name} numberOfLines={1}>{props.booking.passengerName || 'Passager'}</Text>
+    {props.booking.numberOfSeats > 1 && <Text style={styles.reason}>Pour les {props.booking.numberOfSeats} places de sa réservation</Text>}
     <Text style={styles.reason}>Motif : {getTripInterruptionReasonLabel(props.booking.interruptionRequest?.reason)}</Text>
     <View style={styles.actions}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refuser la demande de descente"

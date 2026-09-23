@@ -4,7 +4,7 @@ import {
   getMostRecentPendingSubscriptionPayment
 } from '@/features/profile/profileModel';
 import { useGetMyDriverSettlementQuery } from '@/store/api/driverSettlementsApi';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetPendingSubscriptionPaymentsQuery } from '@/store/api/paymentApi';
 import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import {
@@ -83,7 +83,7 @@ export function useProfileData() {
     refetch: refetchPremiumOverview,
   } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
 
-  const { data: paymentHistory, refetch: refetchPaymentHistory } = useGetPaymentHistoryQuery(undefined, {
+  const { data: paymentHistory, refetch: refetchPaymentHistory } = useGetPendingSubscriptionPaymentsQuery(undefined, {
     skip: !isDriver,
   });
 

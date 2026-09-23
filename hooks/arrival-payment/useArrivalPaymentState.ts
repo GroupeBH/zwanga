@@ -23,7 +23,7 @@ import {
   useLazyCheckBookingPaymentStatusQuery,
   useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetBookingPaymentHistoryQuery } from '@/store/api/paymentApi';
 import {
   useGetMyWalletQuery,
   useInitiateWalletTopUpMutation,
@@ -58,12 +58,13 @@ export function useArrivalPaymentState() {
   const pendingInvoicePaymentIdRef = useRef<string | null | undefined>(undefined);
 
   const {
-    data: bookings = EMPTY_BOOKINGS,
+    data: activityBookings = EMPTY_BOOKINGS,
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
     ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
   });
+  const bookings = useMemo(() => activityBookings.filter(booking => booking.passengerId === user?.id), [activityBookings, user?.id]);
 
   const isResumeReady = useArrivalPaymentRefresh(isAuthenticated && isAppActive, refetchBookings);
   const earlyBooking = useNearArrivalPayment(bookings, user?.id, isAuthenticated && isResumeReady && isStoredStateLoaded, storedState);
@@ -105,7 +106,12 @@ export function useArrivalPaymentState() {
   const {
     data: paymentHistory = [],
     refetch: refetchPaymentHistory,
-  } = useGetPaymentHistoryQuery(undefined, {
+  } = useGetBookingPaymentHistoryQuery({
+    bookingId: arrivalBooking?.id ?? '',
+    reference: arrivalBooking?.paymentReference,
+    tripId: arrivalBooking?.tripId,
+    transactionId: arrivalBooking?.paymentTransactionId,
+  }, {
     skip: !isAuthenticated || !arrivalBooking,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
@@ -145,7 +151,8 @@ export function useArrivalPaymentState() {
       : 0;
   const arePointsRecommended = pointsCoveragePercentage >= 75;
   const paymentAlreadySucceeded =
-    arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0;
+    arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0 ||
+    (arrivalBooking?.paymentMode === 'cash' && Boolean(arrivalBooking.cashReceivedAt));
   const activeStoredState = arrivalBooking ? storedState[arrivalBooking.id] : undefined;
   const { selectedMode, setSelectedMode, reportPaymentFailure, canChangeFailedPaymentMode } =
     useBookingPaymentMode(arrivalBooking, activeStoredState, isBusy);

@@ -29,6 +29,9 @@ import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { applyPassengerInterruptionResponse } from '@/store/api/booking/passengerInterruptionResponseCache';
+import type { Booking } from '@/types';
 
 
 
@@ -36,6 +39,8 @@ export function useDriverNavigationData() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { showDialog } = useDialog();
+  const dispatch = useAppDispatch();
+  const driverId = useAppSelector(state => state.auth.user?.id);
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
@@ -84,6 +89,9 @@ export function useDriverNavigationData() {
   const [getDriverLocationSnapshot] = useLazyGetDriverLocationQuery();
   const [createTripShareLink, { isLoading: isCreatingTripShareLink }] =
     useCreateTripShareLinkMutation();
+  const commitPassengerInterruptionResponse = useCallback((response: Booking, source: Booking) => {
+    if (driverId) dispatch(applyPassengerInterruptionResponse(response, source, driverId));
+  }, [dispatch, driverId]);
   const reconcileBookingStatus = useCallback(
     async (error: unknown, bookingId: string, expectedStatuses: readonly string[]) =>
       reconcileAmbiguousMutation({
@@ -198,6 +206,7 @@ export function useDriverNavigationData() {
     rejectBooking,
     isConfirmingPassengerInterruption,
     confirmPassengerTripInterruption,
+    commitPassengerInterruptionResponse,
     isRejectingPassengerInterruption,
     rejectPassengerTripInterruption,
     cancelBooking,
