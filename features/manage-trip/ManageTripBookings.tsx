@@ -3,6 +3,7 @@ import { BOOKING_STATUS_CONFIG, hasPassengerBoarded } from './manageTripModel';
 import { styles as baseStyles } from '../screen-styles/app/trip/manage/detail/index';
 import { bookingStyles } from './ManageTripBookings.styles';
 import { CompactCardAvatar } from '@/components/trip/CompactCardAvatar';
+import { ConfirmCashReceipt } from '@/features/driver-payments/ConfirmCashReceipt';
 import { Colors, Spacing } from '@/constants/styles';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
@@ -180,6 +181,7 @@ export function ManageTripBookings({
                 )}
               </View>
             )}
+            <ConfirmCashReceipt booking={booking} />
           </View>
         ))
       ) : (

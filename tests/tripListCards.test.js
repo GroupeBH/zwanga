@@ -5,6 +5,7 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', Image: 'Image',
   ActivityIndicator: 'Loading', StyleSheet: { create: value => value }, Platform: { OS: 'ios', select: value => value.ios } };
 const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
   '@/hooks/useTripArrivalTime': { useTripArrivalTime: () => { throw Error('No arrival estimates in compact lists'); } },
 });
 const { PublishedTripCard, BookingTripCard, canManagePublishedTrip, getTripStatusBadge, getBookingStatusBadge } = load('features/trips/TripListCards.tsx');

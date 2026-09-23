@@ -3,13 +3,12 @@ import {
   buildStoredPaymentFromHistory,
 } from '../../features/subscription-payment/paymentModel';
 import { PaymentChannel, StoredPayment } from '../../features/subscription-payment/paymentTypes';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetPendingSubscriptionPaymentsQuery } from '@/store/api/paymentApi';
 import { useGetPremiumOverviewQuery } from '@/store/api/subscriptionApi';
 import { useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useGetMyWalletQuery } from '@/store/api/walletApi';
-import type { PaymentHistoryItem } from '@/types';
+import type { PaymentHistoryItem, User } from '@/types';
 import React, { useCallback } from 'react';
-import type { User } from '@/types';
 
 interface Params {
   currentUser: User | null;
@@ -22,7 +21,7 @@ interface Params {
   refetchProfile: ReturnType<typeof useGetProfileSummaryQuery>['refetch'];
   isDriver: boolean;
   refetchPremiumOverview: ReturnType<typeof useGetPremiumOverviewQuery>['refetch'];
-  refetchPaymentHistory: ReturnType<typeof useGetPaymentHistoryQuery>['refetch'];
+  refetchPaymentHistory: ReturnType<typeof useGetPendingSubscriptionPaymentsQuery>['refetch'];
   refetchWallet: ReturnType<typeof useGetMyWalletQuery>['refetch'];
 }
 
@@ -86,7 +85,7 @@ export function useSubscriptionPaymentRestore({
     } finally {
       setRefreshing(false);
     }
-  }, [isDriver, refetchPaymentHistory, refetchPremiumOverview, refetchProfile, refetchWallet]);
+  }, [isDriver, refetchPaymentHistory, refetchPremiumOverview, refetchProfile, refetchWallet, setRefreshing]);
 
   return {
     restorePayment,

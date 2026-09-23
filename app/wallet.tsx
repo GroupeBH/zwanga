@@ -1,6 +1,6 @@
 import { useWalletController } from "../hooks/wallet/useWalletController";
 import { WalletTopUpModal } from "../features/wallet/WalletTopUpModal";
-import { WalletSheetModal } from "../features/wallet/WalletSheetModal";
+import { WalletTransferModal } from "../features/wallet/WalletTransferModal";
 import {
   WalletWithdrawalSection,
   WalletWithdrawalModal,
@@ -21,7 +21,6 @@ import {
   RefreshControl,
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -356,59 +355,7 @@ export default function WalletScreen() {
         handleCheckTopUpStatus={wallet.handleCheckTopUpStatus}
       />
 
-      <WalletSheetModal
-        icon="share-outline"
-        onClose={() => wallet.setActiveModal(null)}
-        subtitle="Les jetons de fidélité sont transférés en premier et restent non retirables. Les jetons achetés restent retirables chez le destinataire."
-        title="Partager des jetons"
-        visible={wallet.activeModal === "transfer"}
-      >
-        <TextInput
-          keyboardType="numeric"
-          accessibilityLabel="Nombre de jetons à partager"
-          onChangeText={wallet.setTransferAmount}
-          placeholder="Nombre de jetons"
-          placeholderTextColor={Colors.gray[400]}
-          style={styles.input}
-          value={wallet.transferAmount}
-        />
-        <TextInput
-          autoCapitalize="none"
-          keyboardType="default"
-          accessibilityLabel="Destinataire du partage"
-          onChangeText={wallet.setTransferRecipient}
-          placeholder="Téléphone, email ou ID utilisateur"
-          placeholderTextColor={Colors.gray[400]}
-          style={styles.input}
-          value={wallet.transferRecipient}
-        />
-        <TextInput
-          accessibilityLabel="Note optionnelle du partage"
-          onChangeText={wallet.setTransferNote}
-          placeholder="Note optionnelle"
-          placeholderTextColor={Colors.gray[400]}
-          style={styles.input}
-          value={wallet.transferNote}
-        />
-        <TouchableOpacity
-          activeOpacity={0.85}
-          disabled={wallet.isTransferring}
-          onPress={wallet.handleTransfer}
-          style={[
-            styles.primaryButton,
-            wallet.isTransferring && styles.disabled,
-          ]}
-        >
-          {wallet.isTransferring ? (
-            <ActivityIndicator color={Colors.white} />
-          ) : (
-            <>
-              <Ionicons name="send-outline" size={18} color={Colors.white} />
-              <Text style={styles.primaryButtonText}>Partager les jetons</Text>
-            </>
-          )}
-        </TouchableOpacity>
-      </WalletSheetModal>
+      <WalletTransferModal wallet={wallet} />
     </SafeAreaView>
   );
 }

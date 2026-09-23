@@ -6,7 +6,7 @@ import {
   selectArrivedPaymentBooking,
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel, PaymentCompletionSummary } from '../../features/arrival-payment/paymentTypes';
-import { ARRIVAL_BOOKING_REFRESH_MS } from '../../features/arrival-payment/paymentPolicy';
+import { sharedBookingsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useNearArrivalPayment } from './useNearArrivalPayment';
 import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
@@ -23,7 +23,7 @@ import {
   useLazyCheckBookingPaymentStatusQuery,
   useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetBookingPaymentHistoryQuery } from '@/store/api/paymentApi';
 import {
   useGetMyWalletQuery,
   useInitiateWalletTopUpMutation,
@@ -58,15 +58,13 @@ export function useArrivalPaymentState() {
   const pendingInvoicePaymentIdRef = useRef<string | null | undefined>(undefined);
 
   const {
-    data: bookings = EMPTY_BOOKINGS,
+    data: activityBookings = EMPTY_BOOKINGS,
     refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
-    pollingInterval: isAppActive ? ARRIVAL_BOOKING_REFRESH_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
+  const bookings = useMemo(() => activityBookings.filter(booking => booking.passengerId === user?.id), [activityBookings, user?.id]);
 
   const isResumeReady = useArrivalPaymentRefresh(isAuthenticated && isAppActive, refetchBookings);
   const earlyBooking = useNearArrivalPayment(bookings, user?.id, isAuthenticated && isResumeReady && isStoredStateLoaded, storedState);
@@ -108,7 +106,12 @@ export function useArrivalPaymentState() {
   const {
     data: paymentHistory = [],
     refetch: refetchPaymentHistory,
-  } = useGetPaymentHistoryQuery(undefined, {
+  } = useGetBookingPaymentHistoryQuery({
+    bookingId: arrivalBooking?.id ?? '',
+    reference: arrivalBooking?.paymentReference,
+    tripId: arrivalBooking?.tripId,
+    transactionId: arrivalBooking?.paymentTransactionId,
+  }, {
     skip: !isAuthenticated || !arrivalBooking,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
@@ -148,9 +151,11 @@ export function useArrivalPaymentState() {
       : 0;
   const arePointsRecommended = pointsCoveragePercentage >= 75;
   const paymentAlreadySucceeded =
-    arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0;
+    arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0 ||
+    (arrivalBooking?.paymentMode === 'cash' && Boolean(arrivalBooking.cashReceivedAt));
   const activeStoredState = arrivalBooking ? storedState[arrivalBooking.id] : undefined;
-  const { selectedMode, setSelectedMode } = useBookingPaymentMode(arrivalBooking, activeStoredState);
+  const { selectedMode, setSelectedMode, reportPaymentFailure, canChangeFailedPaymentMode } =
+    useBookingPaymentMode(arrivalBooking, activeStoredState, isBusy);
   const hasPendingProviderPayment = Boolean(
     activeStoredState?.bookingPaymentOrderNumber || activeStoredState?.walletTopUpOrderNumber,
   );
@@ -182,12 +187,13 @@ export function useArrivalPaymentState() {
     if (!arrivalBooking || !isBeforeArrival || isBusy || hasPendingProviderPayment) return;
     persistBookingState(arrivalBooking.id, { preArrivalDismissedAt: new Date().toISOString() });
   }, [arrivalBooking, hasPendingProviderPayment, isBeforeArrival, isBusy, persistBookingState]);
+  const presentedBookingId = completionSummary?.bookingId ?? arrivalBooking?.id;
 
   return {
     isResumeReady,
     isSessionCurrent,
-    isPaymentDeferred: arrivalBooking?.id === deferredBookingId,
-    deferPayment: () => { if (arrivalBooking) setDeferredBookingId(arrivalBooking.id); },
+    isPaymentDeferred: Boolean(presentedBookingId && presentedBookingId === deferredBookingId),
+    deferPayment: () => { if (presentedBookingId) setDeferredBookingId(presentedBookingId); },
     resumePayment: () => setDeferredBookingId(null),
     refetchBookings,
     refetchWallet,
@@ -209,6 +215,8 @@ export function useArrivalPaymentState() {
     activeBookingIdRef,
     storedState,
     setSelectedMode,
+    reportPaymentFailure,
+    canChangeFailedPaymentMode,
     setSelectedChannel,
     setPaymentPhone,
     activeStoredState,

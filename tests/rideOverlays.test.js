@@ -61,8 +61,64 @@ test('outside navigation existing native dismissal callbacks are preserved', () 
   assert.equal(closed, 1); env.hooks.unmount();
 });
 
+test('normal native dismissal cancels the fallback unmount', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const env = modalFixture(); let dismissed = 0;
+  const props = { visible: true, onDismiss: () => dismissed++ };
+  env.render(props);
+  env.render({ ...props, visible: false }).props.onDismiss();
+  t.mock.timers.tick(3000);
+  assert.equal(env.render({ ...props, visible: false }).type, 'NativeModal');
+  assert.equal(dismissed, 1); assert.equal(env.store.isBusy(), false);
+  env.hooks.unmount();
+});
+
 test('global arrival payment remains in-app on Home and cannot leave a native controller behind', () => {
   const env = modalFixture(); const props = { visible: true, inApp: true, children: 'payment' };
   assert.equal(env.render(props), null); assert.equal(env.store.getActive().scope, 'global');
   env.render({ ...props, visible: false }); assert.equal(env.store.getActive(), null); env.hooks.unmount();
+});
+
+test('global driver payment is in-app, so a confirmation cannot request a second UIKit controller', () => {
+  const fs = require('node:fs');
+  const source = fs.readFileSync('components/DriverPaymentNoticeCoordinator.tsx', 'utf8');
+  assert.match(source, /<Modal\s+inApp/);
+  assert.doesNotMatch(source, /runAfterInteractions/);
+  const env = modalFixture();
+  env.render({ visible: true, inApp: true, children: 'driver-payment' });
+  env.store.blockNative('dialog', true);
+  assert.equal(env.store.getActive(), null);
+  assert.equal(env.store.getEntries().length, 1, 'payment state is retained while confirmation is shown');
+  env.store.blockNative('dialog', false);
+  assert.equal(env.store.getActive().children, 'driver-payment');
+  env.hooks.unmount();
+});
+
+test('iOS missing onDismiss removes the native element before releasing the overlay blocker; once only', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const env = modalFixture(); let dismissed = 0;
+  const props = { visible: true, onDismiss: () => dismissed++ };
+  env.render(props);
+  const hidden = env.render({ ...props, visible: false });
+  assert.equal(env.store.isBusy(), true);
+  t.mock.timers.tick(2000);
+  assert.equal(env.render({ ...props, visible: false }), null);
+  assert.equal(env.store.isBusy(), false);
+  assert.equal(dismissed, 1);
+  hidden.props.onDismiss(); assert.equal(dismissed, 1);
+  env.hooks.unmount();
+});
+
+test('reopening or unmounting cancels dismissal recovery and ignores an old native close callback', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const env = modalFixture(); let dismissed = 0;
+  const props = { visible: true, onDismiss: () => dismissed++ };
+  env.render(props);
+  const hidden = env.render({ ...props, visible: false });
+  env.render(props); hidden.props.onDismiss();
+  t.mock.timers.tick(5000);
+  assert.equal(env.render(props).props.visible, true);
+  assert.equal(dismissed, 0);
+  env.render({ ...props, visible: false }); env.hooks.unmount();
+  t.mock.timers.tick(5000); assert.equal(dismissed, 0); assert.equal(env.store.isBusy(), false);
 });

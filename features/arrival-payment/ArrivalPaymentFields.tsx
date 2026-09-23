@@ -8,7 +8,7 @@ import {
 import { PaymentChannel, PAYMENT_OPTIONS, ELECTRONIC_PAYMENT_CHANNELS } from './paymentTypes';
 import { styles } from '../screen-styles/components/PassengerArrivalPaymentCoordinator/index';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, Keyboard, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { Colors } from '@/constants/styles';
@@ -30,6 +30,7 @@ interface ArrivalPaymentFieldsProps {
   setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
   pointsCoveragePercentage: number;
   selectedMode: TripPaymentMode | null;
+  hasPaymentFailure: boolean;
   isWalletFetching: boolean;
   walletBalance: number;
   pointsUsed: number;
@@ -62,6 +63,7 @@ export function ArrivalPaymentFields({
   setStatusMessage,
   pointsCoveragePercentage,
   selectedMode,
+  hasPaymentFailure,
   isWalletFetching,
   walletBalance,
   pointsUsed,
@@ -78,8 +80,16 @@ export function ArrivalPaymentFields({
   statusMessage,
   paymentError,
 }: ArrivalPaymentFieldsProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  const modePickerY = useRef(0);
+  useEffect(() => {
+    if ((selectedMode === null || hasPaymentFailure) && !paymentAlreadySucceeded) {
+      scrollRef.current?.scrollTo({ y: modePickerY.current, animated: false });
+    }
+  }, [selectedMode, paymentAlreadySucceeded, hasPaymentFailure]);
   return (
     <ScrollView
+                ref={scrollRef}
                 bounces={false}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.content}
@@ -100,7 +110,7 @@ export function ArrivalPaymentFields({
                 </View>
 
                 <View style={styles.amountCard}>
-                  <Text style={styles.amountLabel}>Montant du trajet</Text>
+                  <Text style={styles.amountLabel}>{arrivalBooking.numberOfSeats > 1 ? `Total pour ${arrivalBooking.numberOfSeats} places` : 'Montant du trajet'}</Text>
                   <Text style={styles.amountValue}>
     {paymentAmount === null
       ? 'Calcul en cours...'
@@ -123,8 +133,18 @@ export function ArrivalPaymentFields({
     </View>
                   </View>
                 ) : (
-                  <>
+                  <View onLayout={({ nativeEvent }) => {
+                    modePickerY.current = nativeEvent.layout.y;
+                    if (selectedMode === null || hasPaymentFailure) scrollRef.current?.scrollTo({ y: modePickerY.current, animated: false });
+                  }}>
+    {hasPaymentFailure ? <View style={styles.errorBox} accessibilityLiveRegion="polite">
+      <Ionicons name="alert-circle" size={20} color={Colors.dangerDark} />
+      <Text style={styles.errorText}>{paymentError || 'Le paiement a échoué.'} Sélectionnez un autre moyen de paiement ci-dessous, puis validez.</Text>
+    </View> : null}
     <Text style={styles.sectionTitle}>Moyen de paiement</Text>
+    {hasPendingProviderPayment ? <Text style={styles.amountHint}>
+      Paiement en attente : les autres moyens restent bloqués jusqu’à confirmation de son résultat.
+    </Text> : null}
     {arePointsRecommended ? (
       <TouchableOpacity
         activeOpacity={0.85}
@@ -163,6 +183,9 @@ export function ArrivalPaymentFields({
         return (
           <TouchableOpacity
             key={option.id}
+            accessibilityRole="radio"
+            accessibilityLabel={option.title}
+            accessibilityState={{ checked: isSelected, disabled: isBusy || hasPendingProviderPayment }}
             activeOpacity={0.85}
             disabled={isBusy || hasPendingProviderPayment}
             onPress={() => {
@@ -209,7 +232,7 @@ export function ArrivalPaymentFields({
         );
       })}
     </View>
-                  </>
+                  </View>
                 )}
 
                 {!paymentAlreadySucceeded && selectedMode === 'points' && (
@@ -335,14 +358,9 @@ export function ArrivalPaymentFields({
 
                 {statusMessage ? (
                   <View style={styles.statusBox}>
-    <ActivityIndicator size="small" color={Colors.infoDark} />
+    {isBusy ? <ActivityIndicator size="small" color={Colors.infoDark} />
+      : <Ionicons name="information-circle-outline" size={20} color={Colors.infoDark} />}
     <Text style={styles.statusText}>{statusMessage}</Text>
-                  </View>
-                ) : null}
-                {paymentError ? (
-                  <View style={styles.errorBox}>
-    <Ionicons name="alert-circle" size={20} color={Colors.dangerDark} />
-    <Text style={styles.errorText}>{paymentError}</Text>
                   </View>
                 ) : null}
               </ScrollView>

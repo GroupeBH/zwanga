@@ -54,3 +54,18 @@ test('memoization, seat/route filters and sorting still work after ownership exc
   app.params.departure = 'Unknown'; assert.equal(app.render().filteredTrips.length, 0);
   app.hooks.unmount();
 });
+
+test('hidden search keeps its snapshot without reading new routes, but clears it across accounts', () => {
+  const app = setup({ remoteTrips: trips });
+  const before = app.render();
+  app.params.isScreenActive = false;
+  app.params.remoteTrips = [{ get id() { throw new Error('Hidden list must not be traversed'); } }];
+  assert.equal(app.render().filteredTrips, before.filteredTrips);
+  assert.equal(app.render().baseTrips, before.baseTrips);
+  app.params.currentUser = { id: 'another-user' };
+  assert.deepEqual(app.render().filteredTrips, []);
+  assert.deepEqual(app.render().baseTrips, []);
+  app.params.remoteTrips = trips; app.params.isScreenActive = true;
+  assert.equal(app.render().filteredTrips.length, 3);
+  app.hooks.unmount();
+});

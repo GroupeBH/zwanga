@@ -49,12 +49,15 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const pendingDismissActionRef = useRef<PendingDialogAction | null>(null);
 
   const hideDialog = useCallback(() => {
+    pendingDismissActionRef.current = null;
     setDialog(null);
     setRunningActionLabel(null);
   }, []);
 
   const showDialog = useCallback(
     (options: DialogOptions) => {
+      // A new dialog supersedes an action awaiting dismissal of an older one.
+      pendingDismissActionRef.current = null;
       const variant = options.variant ?? 'info';
       const message =
         (variant === 'danger' || variant === 'warning') && options.message

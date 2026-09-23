@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDialog } from '@/components/ui/DialogProvider';
 import type { SearchMode, SearchSortMode as SortMode } from '@/components/search/SearchResultsToolbar';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { screenReadOptions } from '@/features/performance/screenReadPolicy';
 import { useLatestTripSearch } from './useLatestTripSearch';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips, selectUser, selectUserCoordinates } from '@/store/selectors';
@@ -18,6 +19,7 @@ import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import {
   MIN_SEARCH_SEATS,
   EMPTY_SEARCH_REQUESTS,
+  EMPTY_SEARCH_TRIPS,
   clampSearchSeats,
   parseNumberParam,
   type SearchResultListItem,
@@ -42,9 +44,10 @@ export function useSearchController() {
     mode?: string;
     seats?: string;
   }>();
-  const storedTrips = useAppSelector(selectTrips);
+  const storedTrips = useAppSelector(state => isScreenActive ? selectTrips(state) : EMPTY_SEARCH_TRIPS);
   const storedUser = useAppSelector(selectUser);
-  const { data: profile } = useGetCurrentUserQuery();
+  const reads = screenReadOptions(isScreenActive);
+  const { data: profile } = useGetCurrentUserQuery(undefined, reads);
   // Keep ownership filtering while the profile refresh is slow or unavailable.
   const currentUser = profile ?? storedUser ?? undefined;
   const isDriverAccount = Boolean(
@@ -68,7 +71,7 @@ export function useSearchController() {
   const setSortMode = searchMode === 'requests' ? setRequestSortMode : setTripSortMode;
   // GPS updates need not redraw the trips tab or a budget/time-sorted request list.
   const driverCoordinate = useAppSelector(state =>
-    searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
+    isScreenActive && searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
   );
   const { openingTripId, openingRequestId, handleOpenTrip, handleOpenTripRequest } = useSearchNavigation({ router, showDialog });
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
@@ -80,10 +83,8 @@ export function useSearchController() {
     isFetching: queryFetching,
     refetch,
   } = useGetTripsQuery(queryParams, {
-    skip: searchMode !== 'trips',
-    pollingInterval: 0,
-    refetchOnFocus: false,
-    refetchOnReconnect: false,
+    ...reads,
+    skip: reads.skip || searchMode !== 'trips',
   });
 
   const {
@@ -93,10 +94,8 @@ export function useSearchController() {
     isError: requestsError,
     refetch: refetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
-    skip: !isDriverAccount || searchMode !== 'requests',
-    pollingInterval: 0,
-    refetchOnFocus: false,
-    refetchOnReconnect: false,
+    ...reads,
+    skip: reads.skip || !isDriverAccount || searchMode !== 'requests',
   });
 
   useEffect(() => {
@@ -177,6 +176,7 @@ export function useSearchController() {
   const { baseTrips, filteredTrips, filteredTripRequests } = useSearchResults({
     advancedTrips, remoteTrips, storedTrips, searchMode, departure, arrival, desiredSeats,
     sortMode, driverCoordinate, availableTripRequests, isDriverAccount, currentUser,
+    isScreenActive,
   });
 
   const requestSearchError =
@@ -193,6 +193,7 @@ export function useSearchController() {
       ? queryFetching || isAdvancedSearching
       : isDriverAccount && requestsFetching;
   useEffect(() => {
+    if (!isScreenActive) return;
     const timeout = setTimeout(() => {
       const nextDeparture = draftDeparture.trim();
       const nextArrival = draftArrival.trim();
@@ -214,6 +215,7 @@ export function useSearchController() {
 
     return () => clearTimeout(timeout);
   }, [
+    isScreenActive,
     clearAdvancedSearch,
     arrival,
     departure,
@@ -223,6 +225,7 @@ export function useSearchController() {
   ]);
 
   const handleApplySearch = () => {
+    if (!isScreenActive) return;
     const nextDeparture = draftDeparture.trim();
     const nextArrival = draftArrival.trim();
     setDeparture(nextDeparture);
@@ -247,6 +250,7 @@ export function useSearchController() {
   };
 
   const handleRetry = () => {
+    if (!isScreenActive) return;
     if (searchMode === 'requests') {
       if (isDriverAccount) {
         refetchAvailableTripRequests();

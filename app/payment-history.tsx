@@ -4,7 +4,6 @@ import {
   FILTERS,
   statusMeta,
   methodLabels,
-  filterPayment,
   formatAmount,
   formatDate,
   getPaymentTitle,
@@ -13,15 +12,20 @@ import {
 } from '../features/payment-history/paymentHistoryModel';
 import { styles } from '../features/screen-styles/app/payment-history/index';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { Colors } from '@/constants/styles';
-import { useGetPaymentHistoryQuery, useLazyGetPaymentDetailsQuery } from '@/store/api/paymentApi';
+import { Colors, Spacing } from '@/constants/styles';
+import { useGetPaymentHistoryPageQuery, useGetPaymentHistorySummaryQuery, useLazyGetPaymentDetailsQuery } from '@/store/api/paymentApi';
+import { useHistoryCursor } from '@/hooks/useHistoryCursor';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import type { PaymentHistoryItem } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+const rowBackground = { backgroundColor: Colors.white };
+const pageInsets = { paddingHorizontal: Spacing.xl };
 
 export default function PaymentHistoryScreen() {
   const router = useRouter();
@@ -30,29 +34,25 @@ export default function PaymentHistoryScreen() {
   const isDownloadingRef = useRef(false);
   const openedPaymentIdRef = useRef<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<PaymentFilter>('all');
+  const isScreenActive = useScreenIsActive();
+  const cursor = useHistoryCursor(activeFilter);
   const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
   const [loadingDetailsPaymentId, setLoadingDetailsPaymentId] = useState<string | null>(null);
   const [downloadingPaymentId, setDownloadingPaymentId] = useState<string | null>(null);
   const {
-    data: payments = [],
+    currentData: paymentPage,
     isLoading,
     isFetching,
+    isError,
     refetch,
-  } = useGetPaymentHistoryQuery();
+  } = useGetPaymentHistoryPageQuery({ filter: activeFilter, before: cursor.before }, {
+    skip: !isScreenActive, refetchOnMountOrArgChange: 30,
+  });
+  const payments = paymentPage?.data ?? [];
+  const { data: summary, refetch: refetchSummary } = useGetPaymentHistorySummaryQuery(undefined, {
+    skip: !isScreenActive, refetchOnMountOrArgChange: 30,
+  });
   const [getPaymentDetails] = useLazyGetPaymentDetailsQuery();
-
-  const filteredPayments = useMemo(
-    () => payments.filter((payment) => filterPayment(payment, activeFilter)),
-    [activeFilter, payments],
-  );
-
-  const totalSucceeded = useMemo(
-    () =>
-      payments
-        .filter((payment) => payment.status === 'succeeded')
-        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
-    [payments],
-  );
 
   const handleOpenPaymentDetails = async (payment: PaymentHistoryItem) => {
     try {
@@ -109,7 +109,7 @@ export default function PaymentHistoryScreen() {
     const paymentMessage = formatPaymentMessage(payment.message);
 
     return (
-      <View key={payment.id} style={styles.paymentRow}>
+      <View key={payment.id} style={[styles.paymentRow, rowBackground]}>
         <TouchableOpacity
           style={styles.paymentMain}
           onPress={() => handleOpenPaymentDetails(payment)}
@@ -179,28 +179,35 @@ export default function PaymentHistoryScreen() {
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Historique paiements</Text>
           <Text style={styles.headerSubtitle}>
-            {payments.length} transaction{payments.length > 1 ? 's' : ''} enregistrée{payments.length > 1 ? 's' : ''}
+            {summary ? `${summary.total} transaction${summary.total > 1 ? 's' : ''} enregistrée${summary.total > 1 ? 's' : ''}` : 'Vos transactions'}
           </Text>
         </View>
       </View>
 
-      <ScrollView
+      <FlatList
+        data={payments}
+        keyExtractor={payment => payment.id}
+        renderItem={({ item }) => renderPayment(item)}
+        initialNumToRender={8} maxToRenderPerBatch={8} windowSize={5}
+        extraData={{ loadingDetailsPaymentId, downloadingPaymentId }}
         style={styles.content}
         contentContainerStyle={styles.contentContainer}
         refreshControl={
           <RefreshControl
             refreshing={isFetching && !isLoading}
             onRefresh={() => {
-              void refetch();
+              if (isScreenActive) void Promise.allSettled([refetch(), refetchSummary()]);
             }}
             tintColor={Colors.primary}
             colors={[Colors.primary]}
           />
         }
-      >
+        ListHeaderComponent={<>
         <View style={styles.summaryBand}>
           <Text style={styles.summaryLabel}>Total validé</Text>
-          <Text style={styles.summaryValue}>{formatAmount(totalSucceeded, 'CDF')}</Text>
+          <Text style={styles.summaryValue}>{summary
+            ? summary.succeededByCurrency.map(row => formatAmount(row.amount, row.currency)).join(' · ') || formatAmount(0, 'CDF')
+            : '—'}</Text>
         </View>
 
         <ScrollView
@@ -223,13 +230,13 @@ export default function PaymentHistoryScreen() {
             );
           })}
         </ScrollView>
-
-        {isLoading ? (
+        </>}
+        ListEmptyComponent={isLoading || (isFetching && !paymentPage) ? (
           <View style={styles.stateBlock}>
             <ActivityIndicator color={Colors.primary} />
             <Text style={styles.stateText}>Chargement des paiements...</Text>
           </View>
-        ) : filteredPayments.length === 0 ? (
+        ) : !isError ? (
           <View style={styles.stateBlock}>
             <Ionicons name="receipt-outline" size={32} color={Colors.gray[400]} />
             <Text style={styles.stateTitle}>Aucun paiement</Text>
@@ -237,10 +244,11 @@ export default function PaymentHistoryScreen() {
               Les transactions apparaîtront ici dès qu’un paiement sera initié.
             </Text>
           </View>
-        ) : (
-          <View style={styles.paymentList}>{filteredPayments.map(renderPayment)}</View>
-        )}
-      </ScrollView>
+        ) : null}
+        ListFooterComponent={<View style={pageInsets}><HistoryPagination page={cursor.page} hasNext={Boolean(paymentPage?.nextCursor)}
+          busy={isFetching} error={isError} onPrevious={cursor.previous}
+          onNext={() => cursor.next(paymentPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetch(); }} /></View>}
+      />
 
       {selectedPayment ? (
         <Modal
@@ -337,4 +345,3 @@ export default function PaymentHistoryScreen() {
     </SafeAreaView>
   );
 }
-

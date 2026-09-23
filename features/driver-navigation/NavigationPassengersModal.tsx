@@ -4,7 +4,7 @@ import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Text, TouchableOpacity, View } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface NavigationPassengersModalProps {
@@ -65,7 +65,7 @@ export function NavigationPassengersModal({
           activeOpacity={1}
           onPress={() => setPassengersPanelVisible(false)}
         />
-        <View style={[styles.passengersPanelContent, { paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md }]}>
+        <View style={[styles.passengersPanelContent, { height: '85%', maxHeight: '85%', paddingBottom: Math.max(insets.bottom, Spacing.lg) + Spacing.md }]}>
           <View style={styles.passengersPanelHandle} />
           
           {/* Header */}
@@ -88,8 +88,10 @@ export function NavigationPassengersModal({
           </View>
 
           {/* Liste des waypoints */}
-          <View style={styles.waypointsList}>
-            {waypoints.map((waypoint, index) => {
+          <FlatList data={waypoints} keyExtractor={waypoint => waypoint.id} extraData={currentWaypointIndex}
+            style={{ flex: 1 }} contentContainerStyle={styles.waypointsList} initialNumToRender={8}
+            maxToRenderPerBatch={8} windowSize={3} removeClippedSubviews={false}
+            renderItem={({ item: waypoint, index }) => {
               const isNext = index === currentWaypointIndex && !waypoint.completed;
               return (
                 <TouchableOpacity
@@ -134,8 +136,9 @@ export function NavigationPassengersModal({
                       {waypoint.passenger.name}
                     </Text>
                     <Text style={styles.waypointListType}>
-                      {waypoint.type === 'pickup' ? 'Prise en charge' : 'Arrivée'}
+                      {waypoint.type === 'pickup' ? 'Prise en charge' : 'Arrivée'} · {waypoint.booking.numberOfSeats} place(s)
                     </Text>
+                    <Text style={styles.waypointListType} numberOfLines={2}>{waypoint.address}</Text>
                   </View>
 
                   {!waypoint.completed && (
@@ -188,8 +191,7 @@ export function NavigationPassengersModal({
                   )}
                 </TouchableOpacity>
               );
-            })}
-          </View>
+            }} />
 
           {/* Bouton fermer */}
           <TouchableOpacity

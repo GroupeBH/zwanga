@@ -1,11 +1,11 @@
 import { useDriverNavigationFoundation } from '../../hooks/driver-navigation/useDriverNavigationFoundation';
-import { formatSeatCount, formatPendingBookingPayment } from './navigationPresentation';
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors } from '@/constants/styles';
 import { DriverInterruptionPrompt } from './DriverInterruptionPrompt';
+import { DriverPendingBookingPrompt } from './DriverPendingBookingPrompt';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import type { Booking } from '@/types';
 
 interface DriverNavigationPassengersBarProps {
@@ -29,6 +29,20 @@ export function DriverNavigationPassengersBar({
       rejecting={processing && foundation.data.isRejectingPassengerInterruption}
       onConfirm={bookingActions.handleConfirmPassengerInterruption}
       onReject={bookingActions.handleRejectPassengerInterruption} />;
+  }
+  const pending = foundation.passengers.activePendingBooking;
+  if (pending) {
+    const processing = foundation.passengers.isProcessingPendingBooking;
+    return <DriverPendingBookingPrompt booking={pending}
+      queuedCount={foundation.passengers.pendingBookingQueueCount}
+      pickupLabel={foundation.passengers.activePendingBookingPickupLabel}
+      dropoffLabel={foundation.passengers.activePendingBookingDropoffLabel}
+      tripPrice={foundation.data.trip?.price}
+      busy={foundation.data.isAcceptingBooking || foundation.data.isRejectingBooking || processing}
+      accepting={processing && foundation.data.isAcceptingBooking}
+      rejecting={processing && foundation.data.isRejectingBooking}
+      onAccept={bookingActions.handleAcceptPendingBooking}
+      onReject={bookingActions.handleRejectPendingBooking} />;
   }
   return (
     <View style={styles.passengersBar}>
@@ -122,105 +136,15 @@ export function DriverNavigationPassengersBar({
         </TouchableOpacity>
       )}
 
-      {foundation.passengers.activePendingBooking && (
-        <View style={styles.pendingBookingPrompt}>
-          <View style={styles.pendingBookingHeader}>
-            <View style={styles.pendingBookingIcon}>
-              <Ionicons name="person-add-outline" size={18} color={Colors.primary} />
-            </View>
-            <View style={styles.pendingBookingTitleWrap}>
-              <Text style={styles.pendingBookingEyebrow}>
-                Nouvelle réservation
-                {foundation.passengers.pendingBookingQueueCount > 0 ? ` +${foundation.passengers.pendingBookingQueueCount}` : ''}
-              </Text>
-              <Text style={styles.pendingBookingTitle} numberOfLines={1}>
-                {foundation.passengers.activePendingBooking.passengerName || 'Passager'}
-              </Text>
-            </View>
-            <View style={styles.pendingBookingSeatPill}>
-              <Ionicons name="people-outline" size={14} color={Colors.primaryDark} />
-              <Text style={styles.pendingBookingSeatText}>
-                {formatSeatCount(foundation.passengers.activePendingBooking.numberOfSeats)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.pendingBookingRoute}>
-            <View style={styles.pendingBookingRouteRow}>
-              <View style={[styles.pendingBookingRouteDot, styles.pendingBookingPickupDot]} />
-              <Text style={styles.pendingBookingRouteLabel} numberOfLines={1}>
-                {foundation.passengers.activePendingBookingPickupLabel}
-              </Text>
-            </View>
-            <View style={styles.pendingBookingRouteRow}>
-              <View style={[styles.pendingBookingRouteDot, styles.pendingBookingDropoffDot]} />
-              <Text style={styles.pendingBookingRouteLabel} numberOfLines={1}>
-                {foundation.passengers.activePendingBookingDropoffLabel}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.pendingBookingFooter}>
-            <Text style={styles.pendingBookingPaymentText} numberOfLines={1}>
-              {formatPendingBookingPayment(foundation.passengers.activePendingBooking, foundation.data.trip?.price)}
-            </Text>
-            <View style={styles.pendingBookingActions}>
-              <TouchableOpacity
-                style={[
-                  styles.pendingBookingActionButton,
-                  styles.pendingBookingRejectButton,
-                  foundation.passengers.isProcessingPendingBooking && styles.pendingBookingActionDisabled,
-                ]}
-                onPress={() => void bookingActions.handleRejectPendingBooking(foundation.passengers.activePendingBooking)}
-                disabled={foundation.data.isAcceptingBooking || foundation.data.isRejectingBooking || foundation.passengers.isProcessingPendingBooking}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Refuser la réservation"
-              >
-                {foundation.passengers.isProcessingPendingBooking && foundation.data.isRejectingBooking ? (
-                  <ActivityIndicator size="small" color={Colors.danger} />
-                ) : (
-                  <>
-                    <Ionicons name="close" size={18} color={Colors.danger} />
-                    <Text style={styles.pendingBookingRejectText}>Refuser</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.pendingBookingActionButton,
-                  styles.pendingBookingAcceptButton,
-                  foundation.passengers.isProcessingPendingBooking && styles.pendingBookingActionDisabled,
-                ]}
-                onPress={() => void bookingActions.handleAcceptPendingBooking(foundation.passengers.activePendingBooking)}
-                disabled={foundation.data.isAcceptingBooking || foundation.data.isRejectingBooking || foundation.passengers.isProcessingPendingBooking}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Accepter la réservation"
-              >
-                {foundation.passengers.isProcessingPendingBooking && foundation.data.isAcceptingBooking ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark" size={18} color={Colors.white} />
-                    <Text style={styles.pendingBookingAcceptText}>Accepter</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-
       {foundation.passengers.activeDriverInterruptionRequest && (
         <View style={styles.driverInterruptionStatusCard}>
           <Ionicons name="hourglass-outline" size={19} color={Colors.warning} />
           <View style={styles.driverInterruptionStatusCopy}>
             <Text style={styles.driverInterruptionStatusTitle}>
-              Interruption demandee
+              Interruption demandée
             </Text>
             <Text style={styles.driverInterruptionStatusText}>
-              {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} passager(s) ont confirmé.
+              {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} réservation(s) confirmée(s) par leur titulaire.
             </Text>
           </View>
         </View>

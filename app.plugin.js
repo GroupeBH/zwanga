@@ -127,6 +127,7 @@ const withReactNativeMapsFix = (config) => {
 };
 
 module.exports = (config) => {
+  config = require('./plugins/withPatchedReactAndroid')(config);
   config = withIOSModularHeaders(config);
   config = withAndroidLocationPermissions(config);
   config = withAndroidLargeScreenCompatibility(config);

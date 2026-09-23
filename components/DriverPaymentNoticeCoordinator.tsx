@@ -1,5 +1,4 @@
 import {
-  DRIVER_PAYMENT_NOTICE_REFRESH_MS,
   DRIVER_PAYMENT_NOTICE_MAX_TRIPS,
   SeenDriverPaymentNotices,
   DriverPaymentNotice,
@@ -10,14 +9,12 @@ import {
   isTripEligibleForNotice,
 } from '../features/driver-payments/paymentNoticeModel';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
-  Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +26,7 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constan
 import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
+import { sharedTripsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 
 export function DriverPaymentNoticeCoordinator() {
   const isAppActive = useAppIsActive();
@@ -44,11 +42,8 @@ export function DriverPaymentNoticeCoordinator() {
   const pendingTripNavigationRef = useRef<string | null>(null);
 
   const { data: myTrips = [] } = useGetMyTripsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated || !driverUser,
-    pollingInterval: isAppActive ? DRIVER_PAYMENT_NOTICE_REFRESH_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
 
   const relevantTrips = useMemo(
@@ -125,10 +120,9 @@ export function DriverPaymentNoticeCoordinator() {
     if (!tripId) return;
 
     pendingTripNavigationRef.current = null;
-    InteractionManager.runAfterInteractions(() => {
-      navigateToTrip(tripId);
-      setIsClosingForTripNavigation(false);
-    });
+    // The in-app panel is already removed: no UIKit or interaction queue to await.
+    try { navigateToTrip(tripId); }
+    finally { setIsClosingForTripNavigation(false); }
   }, [navigateToTrip]);
 
   const openTrip = useCallback(() => {
@@ -136,17 +130,12 @@ export function DriverPaymentNoticeCoordinator() {
     markNoticeSeen(activeNotice);
     const tripId = activeNotice.tripId;
 
-    if (Platform.OS === 'ios') {
-      pendingTripNavigationRef.current = tripId;
-      setIsClosingForTripNavigation(true);
-    }
+    pendingTripNavigationRef.current = tripId;
+    setIsClosingForTripNavigation(true);
 
     setActiveNotice(null);
 
-    if (Platform.OS !== 'ios') {
-      navigateToTrip(tripId);
-    }
-  }, [activeNotice, markNoticeSeen, navigateToTrip]);
+  }, [activeNotice, markNoticeSeen]);
 
   useEffect(() => {
     if (
@@ -174,13 +163,11 @@ export function DriverPaymentNoticeCoordinator() {
     isAppActive,
   ]);
 
-  const shouldKeepModalMounted = Boolean(activeNotice || isClosingForTripNavigation);
   const isModalVisible = Boolean(activeNotice && !isClosingForTripNavigation);
-
-  if (!shouldKeepModalMounted) return null;
 
   return (
     <Modal
+      inApp
       visible={isModalVisible}
       transparent
       animationType="fade"

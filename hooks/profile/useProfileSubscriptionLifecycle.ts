@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { useEffect, useRef } from 'react';
 import {
   AppState
@@ -61,6 +62,7 @@ export function useProfileSubscriptionLifecycle({
   subscriptionPaymentStorageKey,
 }: Props) {
   const router = useRouter();
+  const isFocused = useIsFocused();
 
   const { openSubscription, paymentStatus } = useLocalSearchParams<{
     openDriverOnboarding?: string;
@@ -139,7 +141,9 @@ export function useProfileSubscriptionLifecycle({
   }, [clearStoredSubscriptionPayment, isPremiumActive, isSubscriptionPaymentAutoChecking, paymentHistoryLoaded, recentPendingSubscriptionOrderNumber, setSubscriptionModalStep, setSubscriptionPaymentMessage, setSubscriptionPaymentOrderNumber, subscriptionPaymentOrderNumber]);
 
   useEffect(() => {
-    if (!isDriver) {
+    // Route focus (not AppState) lets a visible profile reconcile on foreground,
+    // while a hidden one only listens if an actual payment is still pending.
+    if (!isDriver || (!isFocused && !subscriptionPaymentOrderNumber)) {
       return undefined;
     }
 
@@ -175,7 +179,7 @@ export function useProfileSubscriptionLifecycle({
     return () => {
       appStateSubscription.remove();
     };
-  }, [checkSubscriptionPaymentByOrderNumber, isDriver, isSubscriptionCardPayment, isSubscriptionPaymentAutoChecking, refreshSubscriptionFromBackend, startSubscriptionPaymentAutoCheck, subscriptionPaymentMountedRef, subscriptionPaymentOrderNumber]);
+  }, [checkSubscriptionPaymentByOrderNumber, isDriver, isFocused, isSubscriptionCardPayment, isSubscriptionPaymentAutoChecking, refreshSubscriptionFromBackend, startSubscriptionPaymentAutoCheck, subscriptionPaymentMountedRef, subscriptionPaymentOrderNumber]);
 
   useEffect(() => {
     if (openedSubscriptionParamRef.current || !openSubscription || !currentUser) {

@@ -11,6 +11,9 @@ export type ServerUser = {
 };
 
 export type ServerBooking = {
+  cashReceivedAt?: string | null;
+  cashReceivedByDriverId?: string | null;
+  cashReceivedAmount?: number | string | null;
   interruptionFareLocked?: boolean;
   plannedDistanceMeters?: number | null;
   travelledDistanceMeters?: number | null;

@@ -1,146 +1,68 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
-import MapView from 'react-native-maps';
+import { useCallback, useEffect, useMemo, type RefObject } from 'react';
+import type MapView from 'react-native-maps';
 import type { Booking } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { fitNavigationCamera, getNavigationCameraRegion, type MapLayout } from '@/utils/navigation/mapCamera';
 
 interface Params {
-  passengerLocation: { latitude: number; longitude: number; } | null;
-  displayedDriverLocation: { latitude: number; longitude: number; } | null;
+  passengerLocation: MapCoordinate | null;
+  displayedDriverLocation: MapCoordinate | null;
   pickupCoordinate: MapCoordinate | null;
   dropoffCoordinate: MapCoordinate | null;
   runMapCommand: (command: (map: MapView) => void) => boolean;
-  mapRef: React.RefObject<MapView | null>;
+  mapLayoutRef: RefObject<MapLayout | null>;
   booking: Booking | undefined;
-  routeCoordinates: { latitude: number; longitude: number; }[];
-  mapTopOffset: number;
+  routeCoordinates: MapCoordinate[];
   isMapExpanded: boolean;
   isNativeMapReady: boolean;
-  hasFitInitialMapRef: React.RefObject<boolean>;
+  hasFitInitialMapRef: RefObject<boolean>;
 }
 
 export function usePassengerNavigationCamera({
-  passengerLocation,
-  displayedDriverLocation,
-  pickupCoordinate,
-  dropoffCoordinate,
-  runMapCommand,
-  mapRef,
-  booking,
-  routeCoordinates,
-  mapTopOffset,
-  isMapExpanded,
-  isNativeMapReady,
-  hasFitInitialMapRef,
+  passengerLocation, displayedDriverLocation, pickupCoordinate, dropoffCoordinate,
+  runMapCommand, mapLayoutRef, booking, routeCoordinates, isMapExpanded,
+  isNativeMapReady, hasFitInitialMapRef,
 }: Params) {
-  const mapRegion = useMemo(() => {
-    const points: { latitude: number; longitude: number }[] = [];
-    
-    if (passengerLocation) points.push(passengerLocation);
-    if (displayedDriverLocation) points.push(displayedDriverLocation);
-    if (pickupCoordinate) points.push(pickupCoordinate);
-    if (dropoffCoordinate) points.push(dropoffCoordinate);
+  const mapRegion = useMemo(() => getNavigationCameraRegion([
+    passengerLocation, displayedDriverLocation, pickupCoordinate, dropoffCoordinate,
+  ]), [passengerLocation, displayedDriverLocation, pickupCoordinate, dropoffCoordinate]);
 
-    if (points.length === 0) {
-      return {
-        latitude: -4.441931,
-        longitude: 15.266293,
-        latitudeDelta: 0.1,
-        longitudeDelta: 0.1,
-      };
-    }
+  const focusCoordinates = useCallback((points: (MapCoordinate | null | undefined)[], animated = true) => {
+    let fitted = false;
+    const accepted = runMapCommand(map => {
+      fitted = fitNavigationCamera(map, points, mapLayoutRef.current, {
+        // The map is already laid out below the header: do NOT add its height again.
+        edgePadding: { top: 24, right: 40, bottom: isMapExpanded ? 120 : 300, left: 40 },
+        animated,
+      });
+    });
+    return accepted && fitted;
+  }, [runMapCommand, mapLayoutRef, isMapExpanded]);
 
-    const lats = points.map(p => p.latitude);
-    const lngs = points.map(p => p.longitude);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
+  const centerOnDriver = useCallback(() => focusCoordinates([displayedDriverLocation]),
+    [focusCoordinates, displayedDriverLocation]);
+  const centerOnPassenger = useCallback(() => focusCoordinates([passengerLocation]),
+    [focusCoordinates, passengerLocation]);
 
-    const latDelta = Math.max((maxLat - minLat) * 1.5, 0.01);
-    const lngDelta = Math.max((maxLng - minLng) * 1.5, 0.01);
-
-    return {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: latDelta,
-      longitudeDelta: lngDelta,
-    };
-  }, [displayedDriverLocation, passengerLocation, pickupCoordinate, dropoffCoordinate]);
-
-  // Centrer sur le conducteur
-  const centerOnDriver = () => {
-    if (displayedDriverLocation) {
-      runMapCommand((map) => map.animateToRegion({
-        ...displayedDriverLocation,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 500));
-    }
-  };
-
-  // Centrer sur le passager
-  const centerOnPassenger = () => {
-    if (passengerLocation) {
-      runMapCommand((map) => map.animateToRegion({
-        ...passengerLocation,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 500));
-    }
-  };
-
-  // Centrer sur toute la route
-  const fitToRoute = useCallback(() => {
-    if (!mapRef.current) return;
-    
-    const coordinates: { latitude: number; longitude: number }[] = [];
-    
-    if (passengerLocation) coordinates.push(passengerLocation);
-    if (displayedDriverLocation) coordinates.push(displayedDriverLocation);
-    if (pickupCoordinate && !booking?.pickedUp) coordinates.push(pickupCoordinate);
-    if (dropoffCoordinate) coordinates.push(dropoffCoordinate);
-    if (routeCoordinates.length > 0) {
-      coordinates.push(routeCoordinates[0]);
-      coordinates.push(routeCoordinates[routeCoordinates.length - 1]);
-    }
-    
-    if (coordinates.length >= 2) {
-      runMapCommand((map) => map.fitToCoordinates(coordinates, {
-        edgePadding: {
-          top: mapTopOffset + 24,
-          right: 50,
-          bottom: isMapExpanded ? 120 : 300,
-          left: 50,
-        },
-        animated: true,
-      }));
-    }
-  }, [
-    displayedDriverLocation,
-    passengerLocation,
-    pickupCoordinate,
-    dropoffCoordinate,
-    routeCoordinates,
-    booking?.pickedUp,
-    mapTopOffset,
-    isMapExpanded,
-    runMapCommand,
-  ]);
+  const fitToRoute = useCallback((animated = true) => focusCoordinates([
+    passengerLocation, displayedDriverLocation,
+    !booking?.pickedUp ? pickupCoordinate : null, dropoffCoordinate,
+    routeCoordinates[0], routeCoordinates[routeCoordinates.length - 1],
+  ], animated), [focusCoordinates, passengerLocation, displayedDriverLocation,
+    booking?.pickedUp, pickupCoordinate, dropoffCoordinate, routeCoordinates]);
 
   useEffect(() => {
     if (!isNativeMapReady) {
       hasFitInitialMapRef.current = false;
       return;
     }
-    if (hasFitInitialMapRef.current) return;
-    hasFitInitialMapRef.current = true;
-    fitToRoute();
-  }, [fitToRoute, isNativeMapReady]);
+    if (!hasFitInitialMapRef.current) {
+      // Missing data/zero layout/denied command must allow a later attempt, without a timer.
+      hasFitInitialMapRef.current = fitToRoute(false);
+    }
+  }, [fitToRoute, isNativeMapReady, hasFitInitialMapRef]);
 
-  return {
-    mapRegion,
-    fitToRoute,
-    centerOnPassenger,
-    centerOnDriver,
-  };
+  // Keep the public handler argument-free: Pressable passes an event, not an animation flag.
+  const fitRouteOnPress = useCallback(() => fitToRoute(), [fitToRoute]);
+  return { mapRegion, fitToRoute: fitRouteOnPress, centerOnPassenger, centerOnDriver };
 }

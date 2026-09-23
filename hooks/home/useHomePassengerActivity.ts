@@ -1,4 +1,4 @@
-import { EMPTY_HOME_TRIP_REQUESTS, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS, isTripRequestWithinAcceptanceWindow, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
+import { EMPTY_HOME_TRIP_REQUESTS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS, isTripRequestWithinAcceptanceWindow, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
@@ -9,6 +9,7 @@ import {
   useGetMyTripRequestsQuery,
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
+import { sharedBookingsOptions, sharedRequestsOptions } from '@/features/activity/activityQueryOptions';
 import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
@@ -21,18 +22,12 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
   });
 
   const { data: myBookings, refetch: refetchMyBookings } = useGetMyBookingsQuery(undefined, {
-    pollingInterval: isFocused ? HOME_ACTIVE_BOOKINGS_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...sharedBookingsOptions,
   });
 
   const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS } = useGetMyTripRequestsQuery(undefined, {
+    ...sharedRequestsOptions,
     skip: !currentUser?.id,
-    pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
   });
 
   const {

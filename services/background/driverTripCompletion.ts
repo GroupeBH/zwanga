@@ -2,7 +2,7 @@ import { stopRegisteredDriverBackgroundLocationTask } from './driverTaskLifecycl
 import { getRtkErrorStatus, shouldBackOffAfterBackgroundResponse } from './driverTrackingErrors';
 import * as Location from 'expo-location';
 import { clearActiveDriverBackgroundTripId, getActiveDriverBackgroundTripSession, updateActiveDriverBackgroundTripSession } from '@/services/driverBackgroundLocationSession';
-import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { hasRecoverableSession, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { tripApi } from '@/store/api/tripApi';
 import { MAX_ACCEPTABLE_GPS_ACCURACY_METERS } from '@/utils/navigation/routeProgress';
@@ -22,7 +22,7 @@ export async function completeTripFromBackground(tripId: string) {
   completeTripRequestInFlight = true;
 
   try {
-    if (!(await getValidAccessToken())) {
+    if (!(await hasRecoverableSession())) {
       return false;
     }
 

@@ -12,8 +12,12 @@ import type { Booking } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useCallback } from 'react';
 import type { Router } from 'expo-router';
+import type { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
+import type { DriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
 
 interface Params {
+  commitBookingDecision: (source: Booking, status: DriverBookingDecision, response?: Booking) => void;
+  beginBookingAction: ReturnType<typeof useDriverBookingActionGuard>;
   waypointModalVisibleRef: React.RefObject<boolean>;
   setWaypointModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setActiveWaypoint: React.Dispatch<React.SetStateAction<Waypoint | null>>;
@@ -34,7 +38,6 @@ interface Params {
   offRouteSampleCountRef: React.RefObject<number>;
   lastOffRouteRerouteAtRef: React.RefObject<number>;
   pickupBypassAction: "confirm" | "cancel" | null;
-  setProcessingBookingId: React.Dispatch<React.SetStateAction<string | null>>;
   speakNavigationMessage: (message: string, options?: { force?: boolean; }) => Promise<void>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   cancelBooking: ReturnType<typeof useCancelBookingMutation>[0];
@@ -46,6 +49,8 @@ interface Params {
 }
 
 export function useDriverPickupActions({
+  commitBookingDecision,
+  beginBookingAction,
   waypointModalVisibleRef,
   setWaypointModalVisible,
   setActiveWaypoint,
@@ -66,7 +71,6 @@ export function useDriverPickupActions({
   offRouteSampleCountRef,
   lastOffRouteRerouteAtRef,
   pickupBypassAction,
-  setProcessingBookingId,
   speakNavigationMessage,
   showDialog,
   cancelBooking,
@@ -76,6 +80,9 @@ export function useDriverPickupActions({
   refetchTrip,
   reconcileBookingStatus,
 }: Params) {
+  const refreshInBackground = useCallback(() => {
+    void Promise.allSettled([Promise.resolve().then(() => refetchBookings()), Promise.resolve().then(() => refetchTrip())]);
+  }, [refetchBookings, refetchTrip]);
   const handleDismissWaypointModal = () => {
     waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
@@ -106,18 +113,18 @@ export function useDriverPickupActions({
     pickupNoticeRef.current = null;
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
-  }, []);
+  }, [pickupNoticeRef, setPickupNotice, setPickupNoticeCountdown]);
 
   const dismissTripEndNotice = useCallback(() => {
     tripEndNoticeRef.current = null;
     setTripEndNotice(null);
-  }, []);
+  }, [tripEndNoticeRef, setTripEndNotice]);
 
   const dismissPickupBypassConfirmation = useCallback(() => {
     pickupBypassConfirmationRef.current = null;
     setPickupBypassConfirmation(null);
     setPickupBypassAction(null);
-  }, []);
+  }, [pickupBypassConfirmationRef, setPickupBypassConfirmation, setPickupBypassAction]);
 
   const dismissPickupNoticeForBooking = useCallback((bookingId: string) => {
     const currentNotice = pickupNoticeRef.current;
@@ -128,7 +135,7 @@ export function useDriverPickupActions({
     pickupNoticeRef.current = null;
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
-  }, []);
+  }, [pickupNoticeRef, setPickupNotice, setPickupNoticeCountdown]);
 
   const markNavigationRouteDirty = useCallback(() => {
     lastRouteFetchTimeRef.current = 0;
@@ -136,7 +143,7 @@ export function useDriverPickupActions({
     routeSignatureRef.current = '';
     offRouteSampleCountRef.current = 0;
     lastOffRouteRerouteAtRef.current = 0;
-  }, []);
+  }, [lastRouteFetchTimeRef, routeFetchedRef, routeSignatureRef, offRouteSampleCountRef, lastOffRouteRerouteAtRef]);
 
   const handleConfirmBypassedPickup = useCallback(async () => {
     const confirmation = pickupBypassConfirmationRef.current;
@@ -145,19 +152,22 @@ export function useDriverPickupActions({
     }
 
     const bookingId = confirmation.waypoint.booking.id;
+    const action = beginBookingAction(confirmation.waypoint.booking, 'pickup-confirm');
+    if (!action) return;
     const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
     setPickupBypassAction('confirm');
-    setProcessingBookingId(bookingId);
 
     try {
       await rideOutbox.enqueue({ bookingId, tripId, stage: 'pickup', decision: 'confirm' });
+      if (!action.isCurrent()) return;
       dismissPickupNoticeForBooking(bookingId);
-      dismissPickupBypassConfirmation();
+      if (pickupBypassConfirmationRef.current === confirmation) dismissPickupBypassConfirmation();
       void speakNavigationMessage(
         `Votre confirmation pour ${passengerName} est enregistrée. En attente de validation.`,
         { force: true },
       );
     } catch (error: any) {
+      if (!action.isCurrent()) return;
       showDialog({
         variant: 'danger',
         icon: 'alert-circle',
@@ -165,14 +175,17 @@ export function useDriverPickupActions({
         message: getApiErrorMessage(error, "Impossible de confirmer la prise en charge pour le moment."),
       });
     } finally {
-      setProcessingBookingId(null);
-      setPickupBypassAction(null);
+      action.finish();
+      if (action.isCurrent()) setPickupBypassAction(null);
     }
   }, [
     tripId,
+    beginBookingAction,
     dismissPickupBypassConfirmation,
     dismissPickupNoticeForBooking,
     pickupBypassAction,
+    pickupBypassConfirmationRef,
+    setPickupBypassAction,
     showDialog,
     speakNavigationMessage,
   ]);
@@ -184,31 +197,40 @@ export function useDriverPickupActions({
     }
 
     const bookingId = confirmation.waypoint.booking.id;
+    const action = beginBookingAction(confirmation.waypoint.booking, 'pickup-cancel');
+    if (!action) return;
     const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
     setPickupBypassAction('cancel');
-    setProcessingBookingId(bookingId);
 
     try {
       await cancelBooking(bookingId).unwrap();
+      if (!action.isCurrent()) return;
+      commitBookingDecision(action.booking, 'cancelled');
+      action.complete();
       rememberCancelledBooking(bookingId);
       setPickupSkipped(bookingId, true);
       dismissPickupNoticeForBooking(bookingId);
-      dismissPickupBypassConfirmation();
+      if (pickupBypassConfirmationRef.current === confirmation) dismissPickupBypassConfirmation();
       markNavigationRouteDirty();
-      await Promise.all([refetchBookings(), refetchTrip()]);
+      refreshInBackground();
+      if (!action.isCurrent()) return;
       void speakNavigationMessage(
-        `La réservation de ${passengerName} est annulee. L'itineraire continue.`,
+        `La réservation de ${passengerName} est annulée. L’itinéraire continue.`,
         { force: true },
       );
     } catch (error: any) {
+      if (!action.isCurrent()) return;
       const cancelledBooking = await reconcileBookingStatus(error, bookingId, ['cancelled']);
+      if (!action.isCurrent()) return;
       if (cancelledBooking) {
+        commitBookingDecision(action.booking, 'cancelled', cancelledBooking);
+        action.complete();
         rememberCancelledBooking(bookingId);
         setPickupSkipped(bookingId, true);
         dismissPickupNoticeForBooking(bookingId);
-        dismissPickupBypassConfirmation();
+        if (pickupBypassConfirmationRef.current === confirmation) dismissPickupBypassConfirmation();
         markNavigationRouteDirty();
-        await Promise.all([refetchBookings(), refetchTrip()]);
+        refreshInBackground();
         return;
       }
       showDialog({
@@ -218,18 +240,21 @@ export function useDriverPickupActions({
         message: getApiErrorMessage(error, "Impossible d'annuler cette réservation pour le moment."),
       });
     } finally {
-      setProcessingBookingId(null);
-      setPickupBypassAction(null);
+      action.finish();
+      if (action.isCurrent()) setPickupBypassAction(null);
     }
   }, [
     cancelBooking,
+    commitBookingDecision,
+    refreshInBackground,
+    beginBookingAction,
     dismissPickupBypassConfirmation,
     dismissPickupNoticeForBooking,
     markNavigationRouteDirty,
     pickupBypassAction,
+    pickupBypassConfirmationRef,
+    setPickupBypassAction,
     reconcileBookingStatus,
-    refetchBookings,
-    refetchTrip,
     rememberCancelledBooking,
     setPickupSkipped,
     showDialog,

@@ -110,3 +110,20 @@ test('no priority leaves no footer, message or undo button behind', () => {
   assert.equal(elements.filter(node => ['Text', 'View'].includes(node.type)).length, 0);
   assert.equal(buttons.length, 0);
 });
+
+test('received reservations, upcoming departures and requests have distinct surfaces and meaningful icons', () => {
+  const { elements, buttons } = render({
+    featuredDriverReservation: { trip: upcoming, booking: { id: 'booking' } },
+    featuredDriverReservationStatus: { label: 'Nouvelle réservation' },
+    featuredDriverReservationPassengerName: 'Alex', featuredDriverReservationSeatsLabel: '1 place',
+  });
+  const surfaces = buttons.map(button => Object.assign({}, ...button.props.style.filter(Boolean)));
+  assert.equal(new Set(surfaces.map(style => style.backgroundColor)).size, 3);
+  assert.equal(new Set(surfaces.map(style => style.borderColor)).size, 3);
+  for (const icon of ['ticket-outline', 'time-outline', 'paper-plane-outline']) {
+    assert.ok(elements.some(node => node.type === 'Icon' && node.props.name === icon), icon);
+  }
+  assert.ok(elements.some(node => node.type === 'Text' && node.props.children === 'Nouvelle réservation'));
+  // A colour/category must never turn the backend's pending state into accepted.
+  assert.equal(elements.some(node => node.type === 'Text' && node.props.children === 'Réservation acceptée'), false);
+});

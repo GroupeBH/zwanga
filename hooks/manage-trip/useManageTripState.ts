@@ -77,6 +77,7 @@ export function useManageTripState() {
   const { lastKnownLocation } = useUserLocation({
     autoRequest: Boolean(isScreenActive && isOwner && trip?.status === 'ongoing'),
     trackingProfile: 'navigation',
+    rideLocationKey: isOwner && trip?.status === 'ongoing' ? `driver:${tripId}` : null,
   });
   const {
     data: bookings,

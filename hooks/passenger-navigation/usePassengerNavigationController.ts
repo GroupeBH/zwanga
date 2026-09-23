@@ -77,6 +77,7 @@ export function usePassengerNavigationController() {
   });
 
   const destinationNotice = usePassengerTripDestinationNotice({
+    isScreenActive: data.isScreenActive,
     isMountedRef: state.isMountedRef,
     hasPresentedTripCompletedNoticeRef: state.hasPresentedTripCompletedNoticeRef,
     hasPresentedTripDestinationApproachNoticeRef: state.hasPresentedTripDestinationApproachNoticeRef,
@@ -106,11 +107,12 @@ export function usePassengerNavigationController() {
     presentBoardedNotice: notices.presentBoardedNotice,
   });
 
+  const { refreshTrackingMarker } = state;
   const handleTrackingMarkerReady = useCallback(
     (markerKey: string, markerRef: React.MutableRefObject<MapMarker | null>) => {
-      state.refreshTrackingMarker(markerKey, () => markerRef.current);
+      refreshTrackingMarker(markerKey, () => markerRef.current);
     },
-    [state.refreshTrackingMarker],
+    [refreshTrackingMarker],
   );
 
   usePassengerDriverLocationSync({
@@ -228,10 +230,9 @@ export function usePassengerNavigationController() {
     pickupCoordinate: coordinates.pickupCoordinate,
     dropoffCoordinate: coordinates.dropoffCoordinate,
     runMapCommand: state.runMapCommand,
-    mapRef: state.mapRef,
+    mapLayoutRef: state.mapLayoutRef,
     booking: data.booking,
     routeCoordinates: state.routeCoordinates,
-    mapTopOffset: state.mapTopOffset,
     isMapExpanded: state.isMapExpanded,
     isNativeMapReady: state.isNativeMapReady,
     hasFitInitialMapRef: state.hasFitInitialMapRef,
@@ -254,6 +255,7 @@ export function usePassengerNavigationController() {
   });
 
   const interruption = usePassengerNavigationInterruption({
+    isScreenActive: data.isScreenActive,
     booking: data.booking,
     trip: data.trip,
     requestPassengerTripInterruption: data.requestPassengerTripInterruption,
@@ -264,6 +266,7 @@ export function usePassengerNavigationController() {
     isRequestingPassengerInterruption: data.isRequestingPassengerInterruption,
     tripId: data.tripId,
     confirmDriverTripInterruption: data.confirmDriverTripInterruption,
+    commitDriverInterruptionResponse: data.commitDriverInterruptionResponse,
     rejectDriverTripInterruption: data.rejectDriverTripInterruption,
   });
 

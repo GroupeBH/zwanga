@@ -16,14 +16,13 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef } from 'react';
-import { AppState } from 'react-native';
+import { sharedTripsOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
+import { useActivityTrackingSignal } from '@/hooks/useActivityTrackingSignal';
 import { usePathname } from 'expo-router';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { subscribeRideLocation } from '@/services/rideLocationStream';
 
-const ACTIVE_RIDE_REFRESH_INTERVAL_MS = 60_000;
 const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
-const ACTIVE_RIDE_FOREGROUND_REFETCH_COOLDOWN_MS = 30_000;
 
 const isIncompletePassengerBooking = (booking: {
   status: string;
@@ -55,33 +54,25 @@ export function ActiveRideLocationCoordinator() {
   const pathname = usePathname();
   const passengerNavigationVisible = pathname.startsWith('/booking/navigate/');
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const trackingBookingId = useActivityTrackingSignal();
   const activeDriverTripIdRef = useRef<string | null>(null);
   const activePassengerBookingIdRef = useRef<string | null>(null);
   const passengerBackgroundStartPromiseRef = useRef<Promise<boolean> | null>(null);
   const passengerForegroundSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
-  const lastForegroundRefetchAtRef = useRef(0);
 
   const {
     data: myTrips = [],
     isSuccess: areTripsLoaded,
-    refetch: refetchTrips,
   } = useGetMyTripsQuery(undefined, {
+    ...sharedTripsOptions,
     skip: !isAuthenticated,
-    pollingInterval: ACTIVE_RIDE_REFRESH_INTERVAL_MS,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
   const {
     data: myBookings = [],
     isSuccess: areBookingsLoaded,
-    refetch: refetchBookings,
   } = useGetMyBookingsQuery(undefined, {
+    ...sharedBookingsOptions,
     skip: !isAuthenticated,
-    pollingInterval: ACTIVE_RIDE_REFRESH_INTERVAL_MS,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
 
   const activeDriverTrip = useMemo(
@@ -96,6 +87,9 @@ export function ActiveRideLocationCoordinator() {
         booking.trip?.status === 'ongoing',
     );
     if (ongoingBooking) return ongoingBooking;
+    // Server signal changes when the time window opens even if the booking object did not.
+    const signalled = incompleteBookings.find(booking => booking.id === trackingBookingId);
+    if (signalled) return signalled;
 
     // Pre-arm the native task while the app is still awake. It will wait for the backend trip
     // status before sending positions, then continue even if iOS suspends the React Native app.
@@ -111,7 +105,7 @@ export function ActiveRideLocationCoordinator() {
           return Math.abs(firstDeparture - Date.now()) - Math.abs(secondDeparture - Date.now());
         })[0] ?? null
     );
-  }, [myBookings]);
+  }, [myBookings, trackingBookingId]);
 
   const driverTripId = activeDriverTrip?.id ?? null;
   const passengerBookingId = activePassengerBooking?.id ?? null;
@@ -280,23 +274,6 @@ export function ActiveRideLocationCoordinator() {
     passengerBookingId,
     passengerTripStatus,
   ]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') return;
-      const now = Date.now();
-      if (now - lastForegroundRefetchAtRef.current < ACTIVE_RIDE_FOREGROUND_REFETCH_COOLDOWN_MS) {
-        return;
-      }
-      lastForegroundRefetchAtRef.current = now;
-      void refetchTrips();
-      void refetchBookings();
-    });
-
-    return () => subscription.remove();
-  }, [isAuthenticated, refetchBookings, refetchTrips]);
 
   return null;
 }

@@ -109,21 +109,17 @@ export function useAuthForegroundSession({
         console.log('[AuthGuard] App foregrounded - proactive token check...');
       }
       proactiveTokenRefresh()
-        .then((valid) => {
-          if (!valid && latestAuthState.current.isAuthenticated) {
-            if (__DEV__) {
-              console.log('[AuthGuard] Invalid session after foreground - local logout');
-            }
-            dispatch({ type: 'auth/logout' });
-          }
-        })
+        // Only the session-scoped refresh service may revoke credentials.
+        // An old foreground callback must never log out a newer login.
+        .catch(() => undefined)
         .finally(() => {
           isForegroundRefreshInFlight.current = false;
         });
     });
 
     return () => subscription.remove();
-  }, [isLoading, dispatch]);
+  }, [isLoading, dispatch, appBackgroundedAt, isForegroundRefreshInFlight, lastAppState,
+    lastAuthTime, lastForegroundRefreshAt, latestAuthState]);
 
   return {
 

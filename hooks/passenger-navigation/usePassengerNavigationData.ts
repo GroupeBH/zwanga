@@ -18,6 +18,10 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDriverLocationFallback } from './useDriverLocationFallback';
 import { useSyncArrivedPaymentBooking } from '@/hooks/arrival-payment/useSyncArrivedPaymentBooking';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { applyDriverInterruptionResponse } from '@/store/api/trip/interruptionResponseCache';
+import type { Trip } from '@/types';
+import { useCallback } from 'react';
 
 
 
@@ -25,6 +29,8 @@ export function usePassengerNavigationData() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { showDialog } = useDialog();
+  const dispatch = useAppDispatch();
+  const passengerId = useAppSelector(state => state.auth.user?.id);
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
@@ -48,6 +54,9 @@ export function usePassengerNavigationData() {
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isTripOngoing = trip?.status === 'ongoing';
   const driverLocationSnapshot = useDriverLocationFallback(tripId, isScreenActive && isTripOngoing);
+  const commitDriverInterruptionResponse = useCallback((response: Trip, requestId: string) => {
+    if (passengerId) dispatch(applyDriverInterruptionResponse(response, { tripId, bookingId, passengerId, requestId }));
+  }, [bookingId, dispatch, passengerId, tripId]);
 
   const [updatePassengerLocation] = useUpdatePassengerLocationMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
@@ -81,6 +90,7 @@ export function usePassengerNavigationData() {
     requestPassengerTripInterruption,
     isRequestingPassengerInterruption,
     confirmDriverTripInterruption,
+    commitDriverInterruptionResponse,
     rejectDriverTripInterruption,
     bookingLoading,
     tripLoading,

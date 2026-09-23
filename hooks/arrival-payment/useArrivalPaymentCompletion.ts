@@ -7,7 +7,7 @@ import {
 } from '../../features/arrival-payment/paymentTypes';
 import React, { useCallback } from 'react';
 import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetBookingPaymentHistoryQuery } from '@/store/api/paymentApi';
 import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import type { Booking, BookingPaymentResponse, PaymentHistoryItem, TripPaymentMode, WalletSummary } from '@/types';
 
@@ -15,13 +15,15 @@ interface Params {
   isSessionCurrent: () => boolean;
   refetchBookings: ReturnType<typeof useGetMyBookingsQuery>['refetch'];
   refetchWallet: ReturnType<typeof useGetMyWalletQuery>['refetch'];
-  refetchPaymentHistory: ReturnType<typeof useGetPaymentHistoryQuery>['refetch'];
+  refetchPaymentHistory: ReturnType<typeof useGetBookingPaymentHistoryQuery>['refetch'];
   bookings: Booking[];
   wallet: WalletSummary | undefined;
   paymentHistory: PaymentHistoryItem[];
   setCompletionSummary: React.Dispatch<React.SetStateAction<PaymentCompletionSummary | null>>;
   persistBookingState: (bookingId: string, patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => void;
   setPaymentError: React.Dispatch<React.SetStateAction<string>>;
+  setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
+  reportPaymentFailure: (bookingId: string) => void;
 }
 
 export function useArrivalPaymentCompletion({
@@ -34,6 +36,8 @@ export function useArrivalPaymentCompletion({
   setCompletionSummary,
   persistBookingState,
   setPaymentError,
+  setStatusMessage,
+  reportPaymentFailure,
 }: Params) {
   const showCompletionSummary = useCallback(
     async (
@@ -43,6 +47,10 @@ export function useArrivalPaymentCompletion({
       if (!isSessionCurrent()) return;
       const summary = buildPaymentCompletionSummary(sourceBooking, wallet, paymentHistory, options);
       if (!summary) { setPaymentError('Choisissez le mode de paiement pour cette réservation.'); return; }
+      if (sourceBooking.paymentStatus === 'succeeded' || normalizeAmount(sourceBooking.paymentAmount) === 0 ||
+          (sourceBooking.paymentMode === 'cash' && sourceBooking.cashReceivedAt)) {
+        persistBookingState(sourceBooking.id, { settledAt: new Date().toISOString(), requiredActionAt: null });
+      }
       setCompletionSummary(summary);
       // Confirmation is usable immediately, even if these reads time out.
       void Promise.allSettled([
@@ -59,6 +67,7 @@ export function useArrivalPaymentCompletion({
     },
     [
       isSessionCurrent,
+      persistBookingState,
       setCompletionSummary,
       setPaymentError,
       paymentHistory,
@@ -89,17 +98,19 @@ export function useArrivalPaymentCompletion({
       }
 
       if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+        setStatusMessage('');
         persistBookingState(response.booking.id, {
           bookingPaymentOrderNumber: null,
           bookingPaymentUrl: null,
         });
         setPaymentError(getPaymentFailureMessage(response.payment.message));
+        reportPaymentFailure(response.booking.id);
         return true;
       }
 
       return false;
     },
-    [isSessionCurrent, persistBookingState, showCompletionSummary, setPaymentError],
+    [isSessionCurrent, persistBookingState, showCompletionSummary, setPaymentError, setStatusMessage, reportPaymentFailure],
   );
 
   return {

@@ -8,6 +8,7 @@ import type {
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
+import { readHistoryPage, type HistoryPage, type HistoryArgs } from './financeHistoryPage';
 
 type RequestDriverPayoutPayload = {
   amount: number;
@@ -20,6 +21,19 @@ const settlementTag = { type: 'DriverSettlement' as const, id: 'ME' };
 export const driverSettlementsApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
+    getDriverEarningsPage: builder.query<HistoryPage<DriverEarning>, HistoryArgs>({
+      keepUnusedDataFor: 15,
+      queryFn: (args, _api, _options, baseQuery) => readHistoryPage<DriverEarning>(baseQuery,
+        '/driver-settlements/earnings/page', '/driver-settlements/earnings', args,
+        { time: item => item.availableAt ?? item.createdAt }),
+      providesTags: [settlementTag],
+    }),
+    getDriverPayoutsPage: builder.query<HistoryPage<DriverPayout>, HistoryArgs>({
+      keepUnusedDataFor: 15,
+      queryFn: (args, _api, _options, baseQuery) => readHistoryPage<DriverPayout>(baseQuery,
+        '/driver-settlements/payouts/page', '/driver-settlements/payouts', args),
+      providesTags: [settlementTag],
+    }),
     getMyDriverSettlement: builder.query<DriverSettlementSummary, void>({
       query: () => '/driver-settlements/me',
       providesTags: [settlementTag],
@@ -65,6 +79,8 @@ export const driverSettlementsApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetDriverEarningsPageQuery,
+  useGetDriverPayoutsPageQuery,
   useGetMyDriverSettlementQuery,
   useGetMyDriverEarningsQuery,
   useLazyGetDriverTripRevenueSummaryQuery,

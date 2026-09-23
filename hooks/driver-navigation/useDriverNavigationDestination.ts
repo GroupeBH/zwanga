@@ -20,7 +20,6 @@ import {
   ROUTE_DEVIATION_THRESHOLD_METERS,
   calculateBearingDegrees,
   calculateDistanceMeters,
-  getPolylineProgress,
   normalizeHeadingDelta,
   resolveActiveDestination,
   type NavigationStop,
@@ -96,6 +95,7 @@ export function useDriverNavigationDestination({
     mapState.waypoints,
   ]);
   const activeRouteDestination = activeNavigationDestination?.coordinate ?? null;
+  refs.routeAnalysisScopeRef.current = `${data.tripId}:${activeNavigationDestination?.id ?? ''}`;
 
   refs.evaluatePickupBypassRef.current = (
     driverCoordinate: RouteCoordinate,
@@ -106,9 +106,6 @@ export function useDriverNavigationDestination({
     }
 
     const route = refs.routeCoordinatesRef.current;
-    const driverProgress = route.length >= 2
-      ? getPolylineProgress(driverCoordinate, route)
-      : null;
     const activeDestinationId = activeNavigationDestination?.id ?? null;
 
     for (const waypoint of refs.waypointsRef.current) {
@@ -153,9 +150,11 @@ export function useDriverNavigationDestination({
         continue;
       }
 
-      const pickupProgress = route.length >= 2
-        ? getPolylineProgress(pickupCoordinate, route)
-        : null;
+      // Expensive geometry is needed only AFTER eligibility and cheap proximity checks.
+      // The immutable route/pickup analysis is reused; every safety GPS sample is still evaluated.
+      const context = refs.routeAnalysisScopeRef.current;
+      const driverProgress = refs.routeAnalysis.analyze(route, driverCoordinate, context)?.progress;
+      const pickupProgress = refs.routeAnalysis.analyze(route, pickupCoordinate, context)?.progress;
       const hasPassedPickupOnRoute = Boolean(
         driverProgress &&
           pickupProgress &&

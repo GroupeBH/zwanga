@@ -149,6 +149,9 @@ export const mapDriverInterruptionRequest = (
 };
 
 export const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
+  cashReceivedAt: booking.cashReceivedAt ?? null,
+  cashReceivedByDriverId: booking.cashReceivedByDriverId ?? null,
+  cashReceivedAmount: booking.cashReceivedAmount ?? null,
   interruptionFareLocked: booking.interruptionFareLocked ?? false,
   plannedDistanceMeters: booking.plannedDistanceMeters ?? null,
   travelledDistanceMeters: booking.travelledDistanceMeters ?? null,

@@ -11,7 +11,8 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
   // The mutation/status response is authoritative, not an older list refetch.
   const mode = booking.paymentMode ?? options.mode;
   if (!mode) return null;
-  const cashInstructions = mode === 'cash' && booking.paymentStatus !== 'succeeded' && normalizeAmount(booking.paymentAmount) !== 0;
+  const cashReceived = mode === 'cash' && Boolean(booking.cashReceivedAt);
+  const cashInstructions = mode === 'cash' && !cashReceived && booking.paymentStatus !== 'succeeded' && normalizeAmount(booking.paymentAmount) !== 0;
   return {
     bookingId: booking.id, beforeArrival: !hasPassengerArrived(booking), mode, channel: options.channel,
     amount: normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0,
@@ -23,6 +24,7 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
     cashInstructions,
     driverNotice: cashInstructions
       ? 'Le mode cash est enregistré. Remettez le montant au conducteur si ce n’est pas encore fait.'
+      : cashReceived ? 'Le conducteur a confirmé la réception du cash. Vous n’avez rien à payer de nouveau.'
       : 'Le paiement est confirmé. Le conducteur peut consulter son état dans le trajet.',
   };
 }

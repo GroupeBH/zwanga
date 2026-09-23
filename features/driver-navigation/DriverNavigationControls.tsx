@@ -2,10 +2,14 @@ import type { useDriverNavigationFoundation } from '../../hooks/driver-navigatio
 import { normalizeDriverLocationObject } from './navigationBooking';
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors } from '@/constants/styles';
+import { RideModal } from '@/features/navigation/RideModal';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import type { RouteStep, Waypoint } from './navigationModel';
+import { getConfirmedDropoffs } from './driverDropoffReceiptsModel';
+import { DriverDropoffReceiptsSheet } from './DriverDropoffReceiptsSheet';
+import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
 
 interface DriverNavigationControlsProps {
   foundation: ReturnType<typeof useDriverNavigationFoundation>;
@@ -23,7 +27,16 @@ export function DriverNavigationControls({
   forceRecalculateRoute,
 }: DriverNavigationControlsProps) {
   const [optionsVisible, setOptionsVisible] = useState(false);
+  const { bookings, tripId, isScreenActive } = foundation.data;
+  const completed = useMemo(() => getConfirmedDropoffs(bookings ?? [], tripId), [bookings, tripId]);
+  const [receiptsTrip, setReceiptsTrip] = useState<string | null>(null);
+  const closeReceipts = useCallback(() => setReceiptsTrip(null), []);
+  useEffect(closeReceipts, [isScreenActive, tripId, closeReceipts]);
+  const receiptsVisible = isScreenActive && receiptsTrip === tripId && completed.length > 0;
   const { width, height } = useWindowDimensions();
+  const pendingBookingVisible = foundation.data.isTripOngoing && Boolean(foundation.passengers.activePendingBooking)
+    && !foundation.passengers.activePassengerInterruptionBooking;
+  const pendingLayout = getDriverPendingBookingLayout(height, foundation.data.insets.top, foundation.data.insets.bottom);
   const menuWidth = Math.min(240, width - foundation.data.insets.left - foundation.data.insets.right - 96);
   const menuMaxHeight = height * 0.35;
   useEffect(() => { if (!foundation.data.isScreenActive) setOptionsVisible(false); }, [foundation.data.isScreenActive]);
@@ -47,6 +60,8 @@ export function DriverNavigationControls({
     { label: 'Modifier le trajet', icon: 'create-outline', action: tripActions.handleEditTripFromNavigation },
     { label: 'Partager le trajet', icon: 'share-social-outline', action: () => void tripActions.handleShareTrip(), disabled: foundation.data.isCreatingTripShareLink },
     ...(foundation.passengers.passengerMapLocations.length > 0 ? [{ label: 'Voir les passagers', icon: 'people' as const, action: passengerPresentation.fitVehicleAndPassengers }] : []),
+    ...(completed.length > 0 ? [{ label: 'Gains des passagers', icon: 'receipt-outline' as const,
+      action: () => { if (isScreenActive) setReceiptsTrip(tripId); }, disabled: !isScreenActive }] : []),
     { label: 'Ma position', icon: 'locate', action: recenterOnMyPosition },
   ];
   return (
@@ -54,8 +69,13 @@ export function DriverNavigationControls({
       right: Math.max(foundation.data.insets.right, 16), alignItems: 'flex-end', justifyContent: 'flex-end',
       // Keep the popup within its parent's touch bounds, especially on Android.
       width: optionsVisible ? menuWidth + 58 : 48, minHeight: optionsVisible ? menuMaxHeight : undefined,
+    }, pendingBookingVisible && {
+      flexDirection: 'row', gap: 8, bottom: pendingLayout.controlsBottom,
+      width: optionsVisible ? Math.max(menuWidth, pendingLayout.controlsWidth) : pendingLayout.controlsWidth,
+      minHeight: optionsVisible ? menuMaxHeight + pendingLayout.menuBottom : undefined,
     }]}>
-      {optionsVisible && <View style={[menuStyles.menu, { width: menuWidth, maxHeight: menuMaxHeight }]}>
+      {optionsVisible && <View style={[menuStyles.menu, { width: menuWidth, maxHeight: menuMaxHeight },
+        pendingBookingVisible && { right: 0, bottom: pendingLayout.menuBottom }]}>
         <ScrollView bounces={false} contentContainerStyle={menuStyles.content}>
           {options.map(option => <TouchableOpacity key={option.label} style={[menuStyles.option, option.disabled && styles.floatingButtonDisabled]}
             disabled={option.disabled} onPress={() => { setOptionsVisible(false); option.action(); }}
@@ -132,6 +152,9 @@ export function DriverNavigationControls({
           ? <ActivityIndicator size="small" color={Colors.primary} />
           : <Ionicons name="refresh" size={22} color={Colors.primary} />}
       </TouchableOpacity>
+      <RideModal inApp visible={receiptsVisible} transparent animationType="none" onRequestClose={closeReceipts}>
+        {receiptsVisible && <DriverDropoffReceiptsSheet bookings={completed} active={isScreenActive} onClose={closeReceipts} />}
+      </RideModal>
     </View>
   );
 }

@@ -196,3 +196,19 @@ dependencies {
 
 apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'
+
+// ZWANGA_VERIFY_NATIVE_ARTIFACT
+tasks.matching { it.name == 'bundleRelease' || it.name == 'assembleRelease' }.configureEach {
+  doLast {
+    def kind = name == 'bundleRelease' ? 'bundle/release/*.aab' : 'apk/release/*.apk'
+    def artifacts = fileTree(layout.buildDirectory.dir('outputs')).matching { include kind }.files
+    if (artifacts.isEmpty()) throw new GradleException('No release artifact found for native library verification')
+    def abis = (findProperty('reactNativeArchitectures') ?: 'armeabi-v7a,arm64-v8a,x86,x86_64').toString()
+    artifacts.each { artifact ->
+      project.exec {
+        workingDir rootProject.projectDir.parentFile
+        commandLine 'node', 'scripts/validate-android-native.cjs', artifact.absolutePath, '--abis=' + abis
+      }
+    }
+  }
+}

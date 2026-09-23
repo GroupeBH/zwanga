@@ -18,6 +18,9 @@ type Props =
 export function useHomeLocation({ isFocused, trackedTripInfo, ongoingDriverTrip }: Props) {
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
+    rideLocationKey: ongoingDriverTrip ? `driver:${ongoingDriverTrip.id}`
+      : trackedTripInfo?.role === 'driver' ? `driver:${trackedTripInfo.tripId}`
+      : trackedTripInfo?.bookingId ? `passenger:${trackedTripInfo.bookingId}` : null,
     trackingProfile:
       trackedTripInfo || ongoingDriverTrip
         ? 'navigation'

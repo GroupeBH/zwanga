@@ -18,13 +18,16 @@ export const SearchResultCard = React.memo(function SearchResultCard({
   const ratingLabel = Number.isFinite(rating) && rating > 0 ? `★ ${rating.toFixed(1)}` : 'Nouveau conducteur';
   return (
     <CompactTripCard
+      searchAppearance="trip"
+      unavailable={!Number.isFinite(trip.availableSeats) || trip.availableSeats <= 0}
       disabled={disabled}
       label={homeDepartureLabel(trip.departureTime)}
       departure={getPlaceName(trip.departure)}
       arrival={getPlaceName(trip.arrival)}
       priceText={homePriceLabel(trip.price)}
       priceHint={trip.price > 0 ? '/ place' : undefined}
-      metadata={`${homeSeatsLabel(trip.availableSeats, true)} · ${getVehicleName(trip)}`}
+      metadataPrefix={homeSeatsLabel(trip.availableSeats, true)}
+      metadata={getVehicleName(trip)}
       secondary={`${driverName} · ${ratingLabel}`}
       avatarName={driverName}
       avatarUri={trip.driverAvatar?.trim() || trip.driver?.profilePicture}

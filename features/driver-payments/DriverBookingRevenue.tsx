@@ -5,9 +5,11 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { getTripRevenueRows } from './tripRevenuePresentation';
 
 /** One shared RTK read, only while visible. No GPS, polling, payment or new modal. */
-export const DriverBookingRevenue = memo(function DriverBookingRevenue({ bookingId, active }: {
+export const DriverBookingRevenue = memo(function DriverBookingRevenue({ bookingId, active, cashReceived = false, compact = false }: {
   bookingId: string;
   active: boolean;
+  cashReceived?: boolean;
+  compact?: boolean;
 }) {
   const { currentData, isFetching, isError, refetch } = useGetDriverBookingRevenueSummaryQuery(bookingId, {
     skip: !active || !bookingId,
@@ -19,6 +21,22 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
   const summary = currentData?.bookingId === bookingId ? currentData : undefined;
   const rows = summary?.dropoffConfirmed ? getTripRevenueRows(summary) : [];
   const format = (amount: number) => `${amount.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${summary?.currency ?? 'CDF'}`;
+  if (compact) {
+    const row = rows.length === 1 && rows[0].amount === summary?.totalExpectedAmount ? rows[0] : undefined;
+    const label = isError ? 'À actualiser' : !summary?.dropoffConfirmed ? 'Détail du gain'
+      : summary.totalExpectedAmount === 0 ? 'Gratuit'
+        : row?.key === 'cash' ? cashReceived ? 'Cash reçu' : 'Cash à recevoir'
+          : row?.key === 'confirmed' ? 'Gains crédités'
+            : row?.key === 'unverified' ? 'Gain à vérifier'
+              : row?.key === 'creditPending' ? 'Crédit en attente'
+                : row?.key === 'electronicPending' || row?.key === 'pointsPending' ? 'Paiement attendu'
+                  : 'Total · voir le détail';
+    return <View style={styles.compact}>
+      <Text style={styles.compactAmount} numberOfLines={1}>{summary?.dropoffConfirmed
+        ? format(summary.totalExpectedAmount) : isFetching ? 'Vérification…' : 'Voir le gain'}</Text>
+      <Text style={styles.compactLabel} numberOfLines={2}>{label}</Text>
+    </View>;
+  }
   return <View style={styles.receipt}>
     {summary?.dropoffConfirmed ? <>
       <View style={styles.row}>
@@ -26,13 +44,14 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
         <Text style={styles.total}>{format(summary.totalExpectedAmount)}</Text>
       </View>
       {rows.map(row => <View key={row.key} style={styles.row}>
-        <Text style={styles.label}>{row.label}</Text>
+        <Text style={styles.label}>{row.key === 'cash' && cashReceived ? 'Cash reçu' : row.label}</Text>
         <Text style={[styles.amount, row.key === 'cash' ? styles.cash : row.key === 'confirmed' ? styles.confirmed : null]}>
           {format(row.amount)}
         </Text>
       </View>)}
       <Text style={styles.hint}>{rows.some(row => row.key === 'cash')
-        ? 'Le cash est à recevoir du passager, pas dans votre solde de revenus.'
+        ? cashReceived ? 'Le cash a été reçu directement du passager, pas dans votre solde de revenus.'
+          : 'Le cash est à recevoir du passager, pas dans votre solde de revenus.'
         : summary.totalExpectedAmount > 0 ? 'Seuls les gains crédités sont enregistrés dans vos revenus.'
           : 'Aucun gain à encaisser pour cette réservation.'}</Text>
     </> : <Text style={styles.hint}>{isError
@@ -48,6 +67,9 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
 });
 
 const styles = StyleSheet.create({
+  compact: { alignItems: 'flex-end', gap: 2, flexShrink: 1 },
+  compactAmount: { color: Colors.gray[900], fontSize: 15, fontWeight: '700' },
+  compactLabel: { color: Colors.gray[600], fontSize: 11, textAlign: 'right' },
   receipt: { gap: 6, paddingTop: 6 },
   row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 6 },
   heading: { fontSize: 13, fontWeight: '700', color: Colors.gray[800], flexShrink: 1 },

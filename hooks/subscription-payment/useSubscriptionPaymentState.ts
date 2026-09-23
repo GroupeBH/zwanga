@@ -7,7 +7,7 @@ import {
 } from '../../features/subscription-payment/paymentModel';
 import { PaymentChannel, PaymentStage } from '../../features/subscription-payment/paymentTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetPendingSubscriptionPaymentsQuery } from '@/store/api/paymentApi';
 import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery,
@@ -55,7 +55,7 @@ export function useSubscriptionPaymentState() {
   const {
     data: paymentHistory,
     refetch: refetchPaymentHistory,
-  } = useGetPaymentHistoryQuery(undefined, { skip: !isDriver });
+  } = useGetPendingSubscriptionPaymentsQuery(undefined, { skip: !isDriver });
   const {
     data: walletSummary,
     refetch: refetchWallet,

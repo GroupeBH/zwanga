@@ -8,6 +8,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { DriverNavigationPassengersBar } from './DriverNavigationPassengersBar';
 import { DriverDropoffReceipts } from './DriverDropoffReceipts';
+import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
 
 const EMPTY_BOOKINGS: NonNullable<Props['model']['session']['foundation']['data']['bookings']> = [];
 
@@ -22,8 +23,11 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const offline = data.offlineTrip || data.offlineBookings;
   const live = !offline && mapState.isSocketConnected;
   const hasUrgentDropoff = Boolean(passengers.activePassengerInterruptionBooking);
+  const hasPendingBooking = data.isTripOngoing && !hasUrgentDropoff && Boolean(passengers.activePendingBooking);
+  const pendingLayout = getDriverPendingBookingLayout(height, data.insets.top, data.insets.bottom);
   return <View pointerEvents="box-none" style={[styles.panel, {
     top: data.insets.top + 8, left: Math.max(data.insets.left, 12), right: Math.max(data.insets.right, 12),
+    maxHeight: hasPendingBooking ? pendingLayout.panelMaxHeight : undefined,
   }]}>
     <View style={styles.header}>
       <TouchableOpacity style={styles.back} onPress={model.handleExitNavigation} hitSlop={8}
@@ -48,12 +52,13 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
     <View style={styles.actions}>
       {data.isTripOngoing && !hasUrgentDropoff && <View style={styles.confirmation}>
         <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
+          compact={hasPendingBooking || undefined}
           fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
           destination={data.tripArrivalCoordinate} />
       </View>}
       <NavigationAssistanceButtons role="driver" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
-    {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff ? <DriverNavigationPassengersBar
+    {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff || hasPendingBooking ? <DriverNavigationPassengersBar
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
       : <ScrollView style={{ flexGrow: 0, maxHeight: Math.max(80, height * 0.3) }} contentContainerStyle={styles.details}
       showsVerticalScrollIndicator bounces={false}>

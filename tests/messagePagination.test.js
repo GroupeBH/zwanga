@@ -6,7 +6,7 @@ const { buildMessagePages } = loader()('store/api/messages/pages.ts');
 const endpoint = buildMessagePages({ infiniteQuery: value => value }).getConversationMessagePages;
 
 test('message pages use bounded RTK reads with opaque cursors and stop at the last page', async () => {
-  const calls = [], page = { data: [message('latest', 30)], nextCursor: 'cursor' };
+  const calls = [], page = { data: [message('latest', 30)], nextCursor: 'cursor', previousCursor: 'newer', newestCursor: 'newer' };
   const result = await endpoint.queryFn({ queryArg: { conversationId: 'chat' }, pageParam: 'older-cursor' }, {}, {}, async request => {
     calls.push(request); return { data: page };
   });
@@ -31,6 +31,18 @@ test('old backend fallback preserves all history; errors and later-page 404 neve
     });
     assert.equal(response.error.status, status); assert.equal(calls, 1);
   }
+});
+
+test('the previous forward-only backend keeps all messages reachable during rollout', async () => {
+  const calls = [];
+  const result = await endpoint.queryFn({ queryArg: { conversationId: 'chat' }, pageParam: null }, {}, {}, async args => {
+    calls.push(args);
+    if (typeof args === 'object') return { data: { data: [message('latest', 30)], nextCursor: 'old-cursor' } };
+    return { data: Array.from({ length: 700 }, (_, i) => message(String(i), i % 60)) };
+  });
+  assert.equal(result.data.data.length, 700);
+  assert.equal(result.data.nextCursor, null);
+  assert.equal(calls[1], '/conversations/chat/messages');
 });
 
 test('message cache deduplicates echoes, edits/deletes older pages and preserves paging cursors', () => {

@@ -46,6 +46,7 @@ test('shows base immediately during calculation without polling or refetching on
   const env = previewEnvironment({ isFetching: true });
   const tree = env.render(); const text = words(tree).replace(/\s/g, '');
   assert.match(text, /Minimum.*1500FC.*initial:10000FC.*2places/);
+  assert.match(words(tree), /les 2 personnes de votre réservation, pas pour les autres passagers/);
   assert.ok(all(tree).some(node => node.type === 'Spinner'));
   assert.ok(tree.props.style.maxHeight < 200, 'content scrolls while dialog actions remain outside');
   assert.equal(env.queries[0].options.refetchOnFocus, false);
@@ -125,7 +126,7 @@ test('passenger sees price before requesting, with a coordinate snapshot and dup
   const { usePassengerNavigationInterruption } = loader({ react: { ...React, ...hooks.react },
     '@/features/passenger-navigation/PassengerInterruptionFarePreview': { PassengerInterruptionFarePreview: 'Preview' },
   })('hooks/passenger-navigation/usePassengerNavigationInterruption.ts');
-  const params = { booking, trip: { status: 'ongoing' }, passengerLocation: { latitude: -4.3, longitude: 15.3 },
+  const params = { isScreenActive: true, booking, trip: { status: 'ongoing' }, passengerLocation: { latitude: -4.3, longitude: 15.3 },
     isRequestingPassengerInterruption: false, showDialog: d => dialogs.push(d), refetchBooking: async () => {}, refetchTrip: async () => {},
     requestPassengerTripInterruption: payload => { sent.push(payload); return { unwrap: () => pending }; } };
   hooks.render(() => usePassengerNavigationInterruption(params)).openPassengerInterruptionDialog();

@@ -12,9 +12,10 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { useLazyCheckWalletTopUpStatusQuery } from '@/store/api/walletApi';
 import type { SubscriptionPaymentMethod, WalletPaymentResponse } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 interface Params {
+  captureScope: () => () => boolean;
   stopTopUpAutoCheck: () => void;
   clearStoredTopUp: () => Promise<void>;
   setTopUpOrderNumber: React.Dispatch<React.SetStateAction<string | null>>;
@@ -32,6 +33,7 @@ interface Params {
 }
 
 export function useWalletTopUpMonitoring({
+  captureScope,
   stopTopUpAutoCheck,
   clearStoredTopUp,
   setTopUpOrderNumber,
@@ -47,23 +49,33 @@ export function useWalletTopUpMonitoring({
   pollingRunIdRef,
   setIsAutoCheckingTopUp,
 }: Params) {
+  const activeRead = useRef<ReturnType<Params['checkWalletTopUpStatus']> | null>(null);
+  const inFlight = useRef<{ orderNumber: string; current: () => boolean; promise: Promise<TopUpCheckOutcome> } | null>(null);
+  useEffect(() => () => {
+    pollingRunIdRef.current += 1;
+    activeRead.current?.abort();
+    activeRead.current = null;
+    inFlight.current = null;
+    // This is a read cancellation, never a payment cancellation.
+    if (mountedRef.current) setIsAutoCheckingTopUp(false);
+  }, [captureScope, mountedRef, pollingRunIdRef, setIsAutoCheckingTopUp]);
   const finishSuccessfulTopUp = useCallback(
     async (
       response: WalletPaymentResponse,
       options: { suppressDialog?: boolean } = {},
     ) => {
+      const isCurrent = captureScope();
+      if (!isCurrent()) return false;
       stopTopUpAutoCheck();
       await clearStoredTopUp();
+      if (!isCurrent()) return false;
       setTopUpOrderNumber(null);
       setTopUpPaymentUrl(null);
       setTopUpStage('success');
       setTopUpAutoCheckAttempt(0);
       setTopUpStatusMessage('Recharge confirmée. Votre solde de jetons est en cours d’actualisation.');
       setActiveModal(null);
-      await refreshAll();
-      setTimeout(() => {
-        if (mountedRef.current) void refreshAll();
-      }, 2500);
+      void Promise.resolve().then(refreshAll).catch(() => undefined);
 
       if (!options.suppressDialog) {
         showDialog({
@@ -78,7 +90,8 @@ export function useWalletTopUpMonitoring({
 
       return true;
     },
-    [clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck],
+    [captureScope, clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck, setActiveModal,
+      setTopUpAutoCheckAttempt, setTopUpOrderNumber, setTopUpPaymentUrl, setTopUpStage, setTopUpStatusMessage],
   );
 
   const handleFailedTopUp = useCallback(
@@ -86,8 +99,11 @@ export function useWalletTopUpMonitoring({
       response: WalletPaymentResponse,
       options: { suppressDialog?: boolean } = {},
     ) => {
+      const isCurrent = captureScope();
+      if (!isCurrent()) return false;
       stopTopUpAutoCheck();
       await clearStoredTopUp();
+      if (!isCurrent()) return false;
       setTopUpOrderNumber(null);
       setTopUpPaymentUrl(null);
       setTopUpStage('failed');
@@ -97,7 +113,7 @@ export function useWalletTopUpMonitoring({
         "La recharge n'a pas été confirmée. Aucun jeton n'a été ajouté.",
       );
       setTopUpStatusMessage(message);
-      await refreshAll();
+      void Promise.resolve().then(refreshAll).catch(() => undefined);
 
       if (!options.suppressDialog) {
         showDialog({
@@ -109,7 +125,8 @@ export function useWalletTopUpMonitoring({
 
       return true;
     },
-    [clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck],
+    [captureScope, clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck,
+      setTopUpAutoCheckAttempt, setTopUpOrderNumber, setTopUpPaymentUrl, setTopUpStage, setTopUpStatusMessage],
   );
 
   const checkTopUpByOrderNumber = useCallback(
@@ -121,53 +138,71 @@ export function useWalletTopUpMonitoring({
         suppressSuccessDialog?: boolean;
       } = {},
     ): Promise<TopUpCheckOutcome> => {
-      try {
-        setTopUpOrderNumber(orderNumber);
-        setTopUpStage('checking');
-        const response = await checkWalletTopUpStatus(orderNumber).unwrap();
+      const isCurrent = captureScope();
+      if (!isCurrent()) return 'error';
+      if (inFlight.current?.current()) return inFlight.current.orderNumber === orderNumber ? inFlight.current.promise : 'error';
+      const run = { orderNumber, current: isCurrent, promise: Promise.resolve<TopUpCheckOutcome>('error') };
+      inFlight.current = run;
+      run.promise = (async (): Promise<TopUpCheckOutcome> => {
+        try {
+          setTopUpOrderNumber(orderNumber);
+          setTopUpStage('checking');
+          const request = checkWalletTopUpStatus(orderNumber);
+          activeRead.current = request;
+          const response = await request.unwrap();
+          if (!isCurrent()) return 'error';
 
-        if (isTopUpSucceeded(response)) {
-          await finishSuccessfulTopUp(response, {
-            suppressDialog: options.suppressSuccessDialog,
-          });
-          return 'success';
-        }
+          if (isTopUpSucceeded(response)) {
+            await finishSuccessfulTopUp(response, {
+              suppressDialog: options.suppressSuccessDialog,
+            });
+            return 'success';
+          }
 
-        if (isTopUpFailed(response)) {
-          await handleFailedTopUp(response, {
-            suppressDialog: options.suppressErrorDialog,
-          });
-          return 'failed';
-        }
+          if (isTopUpFailed(response)) {
+            await handleFailedTopUp(response, {
+              suppressDialog: options.suppressErrorDialog,
+            });
+            return 'failed';
+          }
 
-        await refreshAll();
-        setTopUpStage(response.payment.method === 'card' ? 'checking' : 'phone_confirmation');
-        setTopUpStatusMessage(
-          getPaymentStatusMessage(
-            response.payment.message,
-            options.pendingMessage ||
-              'Paiement en attente chez FlexPay. Nous continuons la vérification.',
-          ),
-        );
-        return 'pending';
-      } catch (error) {
-        if (options.suppressErrorDialog) {
-          setTopUpStage('waiting_long');
+          // A pending provider check does not change the balance or ledger.
+          setTopUpStage(response.payment.method === 'card' ? 'checking' : 'phone_confirmation');
           setTopUpStatusMessage(
-            'La vérification prend plus de temps que prévu. La référence reste gardée.',
+            getPaymentStatusMessage(
+              response.payment.message,
+              options.pendingMessage ||
+                'Paiement en attente chez FlexPay. Nous continuons la vérification.',
+            ),
           );
-          return 'error';
-        }
+          return 'pending';
+        } catch (error) {
+          if (!isCurrent()) return 'error';
+          setTopUpStage('waiting_long');
+          if (options.suppressErrorDialog) {
+            setTopUpStage('waiting_long');
+            setTopUpStatusMessage(
+              'La vérification prend plus de temps que prévu. La référence reste gardée.',
+            );
+            return 'error';
+          }
 
-        showDialog({
-          variant: 'danger',
-          title: 'Vérification impossible',
-          message: getApiErrorMessage(error, 'Impossible de vérifier cette recharge.'),
-        });
-        return 'error';
-      }
+          showDialog({
+            variant: 'danger',
+            title: 'Vérification impossible',
+            message: getApiErrorMessage(error, 'Impossible de vérifier cette recharge.'),
+          });
+          return 'error';
+        } finally {
+          if (inFlight.current === run) {
+            inFlight.current = null;
+            activeRead.current = null;
+          }
+        }
+      })();
+      return run.promise;
     },
-    [checkWalletTopUpStatus, finishSuccessfulTopUp, handleFailedTopUp, refreshAll, showDialog],
+    [captureScope, checkWalletTopUpStatus, finishSuccessfulTopUp, handleFailedTopUp, setTopUpOrderNumber, setTopUpStage, setTopUpStatusMessage, showDialog],
   );
 
   const startTopUpAutoCheck = useCallback(
@@ -176,7 +211,8 @@ export function useWalletTopUpMonitoring({
       paymentMethod: SubscriptionPaymentMethod,
       initialMessage?: string | null,
     ) => {
-      if (!orderNumber) return;
+      const isCurrent = captureScope();
+      if (!orderNumber || !isCurrent()) return;
 
       const runId = pollingRunIdRef.current + 1;
       pollingRunIdRef.current = runId;
@@ -195,12 +231,12 @@ export function useWalletTopUpMonitoring({
         let attempt = 0;
         let nextDelay = AUTO_CHECK_INITIAL_DELAY_MS;
 
-        while (mountedRef.current && pollingRunIdRef.current === runId) {
+        while (isCurrent() && pollingRunIdRef.current === runId) {
           const remainingMs = deadline - Date.now();
           if (remainingMs <= 0 || attempt >= AUTO_CHECK_MAX_ATTEMPTS) break;
 
           await wait(Math.min(nextDelay, remainingMs));
-          if (!mountedRef.current || pollingRunIdRef.current !== runId) return;
+          if (!isCurrent() || pollingRunIdRef.current !== runId) return;
 
           attempt += 1;
           setTopUpAutoCheckAttempt(attempt);
@@ -212,7 +248,7 @@ export function useWalletTopUpMonitoring({
             suppressErrorDialog: true,
           });
 
-          if (!mountedRef.current || pollingRunIdRef.current !== runId) return;
+          if (!isCurrent() || pollingRunIdRef.current !== runId) return;
           if (outcome === 'success' || outcome === 'failed') {
             setIsAutoCheckingTopUp(false);
             return;
@@ -221,7 +257,7 @@ export function useWalletTopUpMonitoring({
           nextDelay = AUTO_CHECK_INTERVAL_MS;
         }
 
-        if (mountedRef.current && pollingRunIdRef.current === runId) {
+        if (isCurrent() && pollingRunIdRef.current === runId) {
           setIsAutoCheckingTopUp(false);
           setTopUpStage('waiting_long');
           setTopUpStatusMessage(
@@ -230,7 +266,7 @@ export function useWalletTopUpMonitoring({
         }
       })();
     },
-    [checkTopUpByOrderNumber],
+    [captureScope, checkTopUpByOrderNumber, pollingRunIdRef, setIsAutoCheckingTopUp, setTopUpAutoCheckAttempt, setTopUpStage, setTopUpStatusMessage],
   );
 
   return {

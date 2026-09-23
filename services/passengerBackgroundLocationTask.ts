@@ -1,23 +1,24 @@
 import { getBookingSnapshot, getTripSnapshot } from './background/passengerTrackingReads';
 import { FETCH_TIMEOUT_MS, LOCATION_FAILURE_BACKOFF_MS, BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS } from './background/passengerTrackingPolicy';
-import { getActiveTrackingSession, saveTrackingSession, hasStartedUpdates, stopRegisteredTask } from './background/passengerTaskLifecycle';
+import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
+import { applyPassengerGpsProfile, stopPassengerGpsProfile, startPassengerGpsProfile,
+  updatePassengerGpsProfile, reservePassengerGpsStart, stopPassengerGpsIfIdle } from './background/passengerGpsProfile';
 import { PassengerTrackingSession, PassengerTrackingReadiness } from './background/passengerTrackingTypes';
-import { PASSENGER_BACKGROUND_LOCATION_TASK, ACTIVE_BOOKING_KEY } from './background/passengerTaskName';
-export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
+import { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
 import { getRtkErrorStatus, getRtkErrorMessage, shouldBackOffAfterBackgroundResponse, isInactiveTripResponse, isTerminalPassengerTrackingResponse } from './background/passengerTrackingErrors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 import { publishNativeRideLocation } from './rideLocationStream';
 
-import { ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS, PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS } from '@/constants/rideProgress';
-import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS, PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS } from '@/constants/rideProgress';
+import { hasRecoverableSession, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
 
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
 let lastTripStatusCheckAt = 0;
@@ -34,15 +35,14 @@ type StartOptions = {
   waitForActiveTrip?: boolean;
 };
 
-const stopTrackingSession = async () => {
-  await AsyncStorage.removeItem(ACTIVE_BOOKING_KEY);
-  await stopRegisteredTask();
-};
+const stopTrackingSession = stopPassengerGpsProfile;
 
 const getPassengerTrackingReadiness = async (
   session: PassengerTrackingSession,
 ): Promise<PassengerTrackingReadiness> => {
-  if (!session.waitForActiveTrip) return 'active';
+  if (!session.waitForActiveTrip) {
+    return await applyPassengerGpsProfile(session) ? 'active' : 'waiting';
+  }
 
   const now = Date.now();
   if (now - lastTripStatusCheckAt < PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS) {
@@ -51,7 +51,7 @@ const getPassengerTrackingReadiness = async (
   lastTripStatusCheckAt = now;
 
   try {
-    if (!(await getValidAccessToken())) return 'terminal';
+    if (!(await hasRecoverableSession())) return 'terminal';
 
     const bookingResult = await getBookingSnapshot(session.bookingId);
     const bookingErrorStatus = getRtkErrorStatus(bookingResult.error);
@@ -66,7 +66,8 @@ const getPassengerTrackingReadiness = async (
 
     const booking = bookingResult.data;
     const bookingStatus = booking.status?.toLowerCase();
-    if (['rejected', 'cancelled', 'completed', 'expired'].includes(bookingStatus ?? '')) {
+    if (booking.droppedOff || booking.droppedOffConfirmedByPassenger ||
+      ['rejected', 'cancelled', 'completed', 'expired'].includes(bookingStatus ?? '')) {
       return 'terminal';
     }
 
@@ -91,13 +92,17 @@ const getPassengerTrackingReadiness = async (
       return 'waiting';
     }
 
-    await saveTrackingSession({
+    const current = await getActiveTrackingSession();
+    if (current?.bookingId !== session.bookingId) return 'waiting';
+    const activeSession: PassengerTrackingSession = {
       bookingId: session.bookingId,
       tripId: resolvedTripId,
       waitForActiveTrip: false,
-    });
+    };
+    await updatePassengerGpsProfile(activeSession);
     lastSentAt = 0;
-    return 'active';
+    // This batch was acquired in the waiting profile. Only deliver the next precise samples.
+    return 'waiting';
   } catch (error) {
     console.warn('[PassengerBackgroundLocation] Verification trajet impossible:', error);
     return 'waiting';
@@ -129,8 +134,8 @@ async function putPassengerLocation(
   passengerLocationRequestInFlight = true;
 
   try {
-    if (!(await getValidAccessToken())) {
-      await stopTrackingSession();
+    if (!(await hasRecoverableSession())) {
+      await stopTrackingSession(bookingId);
       return false;
     }
 
@@ -182,11 +187,11 @@ async function putPassengerLocation(
       if (isInactiveTripResponse(responseStatus, responseMessage)) {
         const session = await getActiveTrackingSession();
         if (session?.bookingId === bookingId) {
-          await saveTrackingSession({ ...session, waitForActiveTrip: true });
+          await updatePassengerGpsProfile({ ...session, waitForActiveTrip: true });
           lastTripStatusCheckAt = 0;
         }
       } else if (isTerminalPassengerTrackingResponse(responseStatus, responseMessage)) {
-        await stopTrackingSession();
+        await stopTrackingSession(bookingId);
       } else if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
         passengerLocationBackoffUntil = Date.now() + LOCATION_FAILURE_BACKOFF_MS;
       }
@@ -237,13 +242,16 @@ const definePassengerBackgroundLocationTask = () => {
 
         const session = await getActiveTrackingSession();
         if (!session) {
-          await stopRegisteredTask();
+          await stopPassengerGpsIfIdle();
           return;
         }
 
-        const readiness = await getPassengerTrackingReadiness(session);
+        const readiness = await getPassengerTrackingReadiness(session).catch((error) => {
+          console.warn('[PassengerBackgroundLocation] Mise à jour du suivi indisponible:', error);
+          return 'waiting' as const;
+        });
         if (readiness === 'terminal') {
-          await stopTrackingSession();
+          await stopTrackingSession(session.bookingId);
           return;
         }
         if (readiness !== 'active') return;
@@ -270,6 +278,7 @@ export async function startPassengerBackgroundLocationTracking(
 ) {
   if (!bookingId || Platform.OS === 'web') return false;
 
+  const startRevision = reservePassengerGpsStart(bookingId);
   try {
     if (!(await TaskManager.isAvailableAsync())) return false;
 
@@ -315,35 +324,13 @@ export async function startPassengerBackgroundLocationTracking(
       tripId: options.tripId?.trim() || null,
       waitForActiveTrip: options.waitForActiveTrip === true,
     };
-    await saveTrackingSession(nextSession);
     if (previousSession?.bookingId !== bookingId) {
       lastSentAt = 0;
       lastTripStatusCheckAt = 0;
     } else if (previousSession.waitForActiveTrip && !nextSession.waitForActiveTrip) {
       lastTripStatusCheckAt = 0;
     }
-    if (await hasStartedUpdates()) return true;
-
-    await Location.startLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
-      deferredUpdatesInterval: 2000, // Keep the latest sample within the 10-second boarding window.
-      distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-      foregroundService:
-        Platform.OS === 'android'
-          ? {
-              notificationTitle: 'Course Zwanga en cours',
-              notificationBody:
-                'Votre position est partagée pour détecter la prise en charge et l’arrivée.',
-              notificationColor: '#FF6B35',
-              killServiceOnDestroy: false,
-            }
-          : undefined,
-    });
-    return true;
+    return await startPassengerGpsProfile(nextSession, startRevision);
   } catch (error) {
     console.warn('[PassengerBackgroundLocation] Demarrage impossible:', error);
     return false;
@@ -354,10 +341,7 @@ export async function stopPassengerBackgroundLocationTracking(
   bookingId?: string | null,
 ) {
   try {
-    const activeSession = await getActiveTrackingSession();
-    if (bookingId && activeSession?.bookingId && bookingId !== activeSession.bookingId) return;
-
-    await stopTrackingSession();
+    await stopTrackingSession(bookingId);
   } catch (error) {
     console.warn('[PassengerBackgroundLocation] Nettoyage impossible:', error);
   }

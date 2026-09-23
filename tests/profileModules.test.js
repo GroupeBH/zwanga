@@ -52,10 +52,11 @@ test('vehicle matching remains case insensitive and includes all vehicle fields'
   assert.equal(vehicleMatchesFormData(vehicle, { ...vehicle, type: 'moto' }), false);
 });
 
-function onboardingApp(extra = {}) {
+function onboardingApp(extra = {}, params = {}) {
   const calls = [], dialogs = [], hooks = hookHarness();
   const props = {
     currentUser: { id: 'passenger', role: 'passenger' },
+    isScreenActive: true,
     hasVehicle: false, isKycApproved: false, isKycPending: false, kycLoading: false,
     needsDriverOnboarding: true, vehiclesLoading: false,
     openCreateVehicleModal: () => calls.push('vehicle'),
@@ -63,7 +64,7 @@ function onboardingApp(extra = {}) {
   };
   const { useProfileOnboarding } = loader({
     react: hooks.react,
-    'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => ({}) },
+    'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: dialog => dialogs.push(dialog) }) },
     '@/hooks/useDiditKycFlow': { useDiditKycFlow: () => ({ startDiditKyc: async () => { calls.push('identity'); }, isStartingDiditKyc: false }) },
     '@/store/api/userApi': { useUpdateUserMutation: () => [form => ({ unwrap: async () => { calls.push(['role', form.get('role')]); } }), { isLoading: false }] },
@@ -90,6 +91,19 @@ test('only explicit driver onboarding requires a vehicle; approved identity is r
   app.hooks.unmount();
 });
 
+test('driver onboarding deep link waits for the profile to be active, then opens only once', () => {
+  const app = onboardingApp({ isScreenActive: false, isKycApproved: true }, { openDriverOnboarding: '1' });
+  app.render(); app.render();
+  assert.deepEqual(app.calls, []);
+  app.props.isScreenActive = true;
+  app.render(); app.render();
+  assert.deepEqual(app.calls, ['vehicle']);
+  app.props.isScreenActive = false; app.render();
+  app.props.isScreenActive = true; app.render();
+  assert.deepEqual(app.calls, ['vehicle']);
+  app.hooks.unmount();
+});
+
 test('pending/approved identities show a status instead of starting another verification', async () => {
   for (const status of ['isKycApproved', 'isKycPending']) {
     const app = onboardingApp({ [status]: true });
@@ -109,12 +123,20 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
   const user = { id: 'passenger', role: 'passenger', rating: 4 };
   const app = environment({
     '@/store/hooks': { useAppSelector: () => user },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    './useProfileRefresh': { useProfileRefresh: () => ({
+      refetchProfile: async () => refreshes.push('profile'),
+      refetchKycStatus: async () => refreshes.push('kyc'),
+      refetchVehicles: async () => refreshes.push('vehicles'),
+      refetchReferralSummary: async () => refreshes.push('referrals'),
+      refetchDriverSettlement: async () => refreshes.push('settlements'),
+    }) },
     '@/store/selectors': { selectUser: () => user },
     '@/store/api/userApi': { useGetProfileSummaryQuery: query('profile', { user, stats: {} }), useGetKycStatusQuery: query('kyc', {}) },
     '@/store/api/vehicleApi': { useGetVehiclesQuery: query('vehicles', []) },
     '@/store/api/referralApi': { useGetMyReferralSummaryQuery: query('referrals', {}) },
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: query('settlements') },
-    '@/store/api/paymentApi': { useGetPaymentHistoryQuery: query('payments') },
+    '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans', []), useGetPremiumOverviewQuery: query('premium') },
     '@/store/api/reviewApi': { useGetReviewsQuery: query('reviews', []), useGetAverageRatingQuery: query('rating', {}) },
     '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests', []), useGetMyDriverOffersQuery: query('offers', []) },

@@ -100,6 +100,16 @@ test('the wrapper leaves its children intact and does not introduce a second pre
   app.hooks.unmount();
 });
 
+test('the reusable swipe label can describe a receipt without changing the Home default or gesture', () => {
+  const app = fixture();
+  const label = () => app.render().props.children[0].props.children[1].props.children;
+  assert.equal(label(), 'Masquer sur l’accueil');
+  app.props.dismissLabel = 'Masquer le récapitulatif';
+  assert.equal(label(), 'Masquer le récapitulatif');
+  assert.equal(app.gestures.length, 1);
+  app.hooks.unmount();
+});
+
 test('returning to Home does not revive an old queued dismissal', () => {
   const app = fixture();
   app.pan().callbacks.onEnd({ translationX: 150, velocityX: 0 });

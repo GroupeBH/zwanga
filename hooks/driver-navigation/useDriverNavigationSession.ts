@@ -17,6 +17,10 @@ export function useDriverNavigationSession() {
   const showNotice = useRideNotice(`driver:${foundation.data.tripId}`, foundation.data.isScreenActive);
 
   const notices = useDriverNavigationNotices({
+    tripId: foundation.data.tripId,
+    isScreenActive: foundation.data.isScreenActive,
+    pickupNotice: foundation.mapState.pickupNotice,
+    pickupBypassConfirmation: foundation.mapState.pickupBypassConfirmation,
     isMountedRef: foundation.mapState.isMountedRef,
     waypointModalVisibleRef: foundation.refs.waypointModalVisibleRef,
     pickupBypassConfirmationRef: foundation.mapState.pickupBypassConfirmationRef,
@@ -61,6 +65,7 @@ export function useDriverNavigationSession() {
   });
 
   const foregroundCompletion = useDriverForegroundCompletion({
+    isScreenActive: foundation.data.isScreenActive,
     tripId: foundation.data.tripId,
     trip: foundation.data.trip,
     tripArrivalCoordinate: foundation.data.tripArrivalCoordinate,

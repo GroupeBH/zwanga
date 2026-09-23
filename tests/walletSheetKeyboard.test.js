@@ -132,6 +132,7 @@ test('typing in the transfer form preserves controlled values and cannot submit 
     '../hooks/wallet/useWalletController': { useWalletController: () => wallet },
     '../features/wallet/WalletTopUpModal': { WalletTopUpModal: 'TopUp' },
     '../features/wallet/WalletSheetModal': { WalletSheetModal: 'Sheet' },
+    './WalletSheetModal': { WalletSheetModal: 'Sheet' },
     '../features/wallet/WalletWithdrawalSection': { WalletWithdrawalSection: 'WithdrawalSection', WalletWithdrawalModal: 'WithdrawalModal' },
     '@/hooks/wallet/useWalletWithdrawal': { useWalletWithdrawal: () => ({}) },
     '@/store/hooks': { useAppSelector: () => null },
@@ -140,12 +141,13 @@ test('typing in the transfer form preserves controlled values and cannot submit 
     'expo-web-browser': { maybeCompleteAuthSession() {} },
   });
   const Screen = load('app/wallet.tsx').default;
+  const { WalletTransferModal } = load('features/wallet/WalletTransferModal.tsx');
   const content = () => elements(Screen()).find(node => node.props?.accessibilityElementsHidden !== undefined);
   const gestureEnabled = () => elements(Screen()).find(node => node.type === 'StackScreen').props.options.gestureEnabled;
   assert.equal(content().props.pointerEvents, 'none');
   assert.equal(content().props.accessibilityElementsHidden, true);
   assert.equal(gestureEnabled(), false);
-  const getSheet = () => elements(Screen()).find(node => node.type === 'Sheet');
+  const getSheet = () => WalletTransferModal(elements(Screen()).find(node => node.type === WalletTransferModal).props);
   const inputs = elements(getSheet()).filter(node => node.type === 'Input');
   assert.equal(inputs.length, 3);
   for (const [index, value] of ['25', '+243999000111', 'Merci'].entries()) {

@@ -17,10 +17,10 @@ export function RideNoticeBanner({ scope }: { scope: string }) {
   const close = useCallback(() => store?.clearNotice(scope, notice ?? undefined), [store, scope, notice]);
   useEffect(() => {
     if (!notice) return;
-    if (!foreground) { close(); return; }
+    if (!foreground) { store?.clearNotices(scope); return; }
     const timer = setTimeout(close, Math.max(0, notice.expiresAt - Date.now()));
     return () => clearTimeout(timer);
-  }, [notice, foreground, close]);
+  }, [notice, foreground, close, store, scope]);
   if (!notice || !foreground || notice.expiresAt <= Date.now()) return null;
   return <View pointerEvents="box-none" style={[styles.host, { bottom: insets.bottom + 12 }]}>
     <View style={styles.banner} accessibilityLiveRegion="polite">

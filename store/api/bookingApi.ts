@@ -1,5 +1,6 @@
 import { buildCreateBookingEndpoints } from './booking/createBooking.endpoints';
 import { buildBookingHistory } from './booking/history';
+import { buildCashReceiptEndpoints } from './booking/cashReceipt.endpoints';
 import { buildConfirmDropoffByPassengerEndpoints } from './booking/confirmDropoffByPassenger.endpoints';
 import {
   bookingListTag,
@@ -21,6 +22,7 @@ export const bookingApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
     ...buildCreateBookingEndpoints(builder),
     ...buildBookingHistory(builder),
+    ...buildCashReceiptEndpoints(builder),
     acceptBooking: builder.mutation<Booking, string>({
       query: (id: string) => ({
         url: `/bookings/${id}/accept`,
@@ -75,6 +77,7 @@ export const bookingApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useConfirmCashReceiptMutation,
   useGetMyBookingHistoryInfiniteQuery,
   useGetMyActivityBookingsQuery,
   useCreateBookingMutation,
