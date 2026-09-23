@@ -1,10 +1,13 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { validateAndRefreshTokens } from '../../services/tokenRefresh';
 import { clearTokens, getTokens, storeTokens } from '../../services/tokenStorage';
+import { getTokenSessionVersion } from '../../services/tokenSession';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
 
 interface AuthState {
+  initializationId?: string;
+  logoutRequestId?: string;
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -33,12 +36,14 @@ const initialState: AuthState = {
 export const performLogout = createAsyncThunk(
   'auth/performLogout',
   async (_, { dispatch }) => {
+    const version = getTokenSessionVersion();
     let backendLogoutSucceeded = false;
 
     // 1. Appeler le backend pour invalider le refresh token côté serveur
     // On ne bloque pas si ça échoue (l'utilisateur peut être offline)
     try {
       const { authApi } = await import('../api/authApi');
+      if (version !== getTokenSessionVersion()) return false;
       const logoutRequest = dispatch(authApi.endpoints.logout.initiate()) as {
         unwrap: () => Promise<unknown>;
         reset: () => void;
@@ -57,7 +62,7 @@ export const performLogout = createAsyncThunk(
     }
 
     // 2. Nettoyer les tokens dans SecureStore (access, refresh, FCM)
-    await clearTokens();
+    if (!(await clearTokens(version))) return false;
     console.log('[performLogout] SecureStore nettoyé');
 
     // 3. Nettoyer immédiatement l'auth Redux
@@ -78,7 +83,10 @@ export const saveTokensAndUpdateState = createAsyncThunk(
     try {
       // 1. Sauvegarder d'abord dans SecureStore (séquentiellement)
       console.log('[saveTokensAndUpdateState] Sauvegarde des tokens dans SecureStore...');
-      await storeTokens(tokens.accessToken, tokens.refreshToken);
+      const writing = storeTokens(tokens.accessToken, tokens.refreshToken);
+      const version = getTokenSessionVersion();
+      const saved = await writing;
+      if (!saved || version !== getTokenSessionVersion()) return null;
       console.log('[saveTokensAndUpdateState] Tokens sauvegardés dans SecureStore avec succès');
 
       // 2. Ensuite, mettre à jour le state Redux
@@ -166,6 +174,9 @@ const authSlice = createSlice({
       state.error = null;
     },
     setTokens: (state, action: PayloadAction<{ accessToken: string; refreshToken: string }>) => {
+      state.initializationId = undefined;
+      state.logoutRequestId = undefined;
+      state.isLoading = false;
       state.accessToken = action.payload.accessToken;
       state.refreshToken = action.payload.refreshToken;
       
@@ -182,6 +193,9 @@ const authSlice = createSlice({
       }
     },
     logout: (state) => {
+      state.initializationId = undefined;
+      state.logoutRequestId = undefined;
+      state.isLoading = false;
       // Réinitialiser l'état Redux (le nettoyage SecureStore est fait par performLogout)
       state.user = null;
       state.isAuthenticated = false;
@@ -203,10 +217,13 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(initializeAuth.pending, (state) => {
+      .addCase(initializeAuth.pending, (state, action) => {
+        state.initializationId = action.meta.requestId;
         state.isLoading = true;
       })
       .addCase(initializeAuth.fulfilled, (state, action) => {
+        if (state.initializationId !== action.meta.requestId) return;
+        state.initializationId = undefined;
         state.isLoading = false;
         if (action.payload) {
           state.accessToken = action.payload.accessToken;
@@ -227,12 +244,16 @@ const authSlice = createSlice({
         }
       })
       .addCase(initializeAuth.rejected, (state, action) => {
+        if (state.initializationId !== action.meta.requestId) return;
+        state.initializationId = undefined;
         state.isLoading = false;
         state.error = action.error.message || 'Erreur lors de l\'initialisation';
         state.isAuthenticated = false;
       })
       // Gérer le logout complet via performLogout
-      .addCase(performLogout.fulfilled, (state) => {
+      .addCase(performLogout.fulfilled, (state, action) => {
+        if (state.logoutRequestId !== action.meta.requestId) return;
+        state.logoutRequestId = undefined;
         state.user = null;
         state.isAuthenticated = false;
         state.accessToken = null;
@@ -241,10 +262,14 @@ const authSlice = createSlice({
         state.error = null;
         state.isLoading = false;
       })
-      .addCase(performLogout.pending, (state) => {
+      .addCase(performLogout.pending, (state, action) => {
+        state.initializationId = undefined;
+        state.logoutRequestId = action.meta.requestId;
         state.isLoading = true;
       })
-      .addCase(performLogout.rejected, (state) => {
+      .addCase(performLogout.rejected, (state, action) => {
+        if (state.logoutRequestId !== action.meta.requestId) return;
+        state.logoutRequestId = undefined;
         // Même en cas d'erreur, on déconnecte l'utilisateur
         state.user = null;
         state.isAuthenticated = false;

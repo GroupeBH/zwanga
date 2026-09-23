@@ -13,8 +13,10 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useCallback } from 'react';
 import type { Router } from 'expo-router';
 import type { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
+import type { DriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
 
 interface Params {
+  commitBookingDecision: (source: Booking, status: DriverBookingDecision, response?: Booking) => void;
   beginBookingAction: ReturnType<typeof useDriverBookingActionGuard>;
   waypointModalVisibleRef: React.RefObject<boolean>;
   setWaypointModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
@@ -47,6 +49,7 @@ interface Params {
 }
 
 export function useDriverPickupActions({
+  commitBookingDecision,
   beginBookingAction,
   waypointModalVisibleRef,
   setWaypointModalVisible,
@@ -77,6 +80,9 @@ export function useDriverPickupActions({
   refetchTrip,
   reconcileBookingStatus,
 }: Params) {
+  const refreshInBackground = useCallback(() => {
+    void Promise.allSettled([Promise.resolve().then(() => refetchBookings()), Promise.resolve().then(() => refetchTrip())]);
+  }, [refetchBookings, refetchTrip]);
   const handleDismissWaypointModal = () => {
     waypointModalVisibleRef.current = false;
     setWaypointModalVisible(false);
@@ -199,12 +205,14 @@ export function useDriverPickupActions({
     try {
       await cancelBooking(bookingId).unwrap();
       if (!action.isCurrent()) return;
+      commitBookingDecision(action.booking, 'cancelled');
+      action.complete();
       rememberCancelledBooking(bookingId);
       setPickupSkipped(bookingId, true);
       dismissPickupNoticeForBooking(bookingId);
       if (pickupBypassConfirmationRef.current === confirmation) dismissPickupBypassConfirmation();
       markNavigationRouteDirty();
-      await Promise.all([refetchBookings(), refetchTrip()]);
+      refreshInBackground();
       if (!action.isCurrent()) return;
       void speakNavigationMessage(
         `La réservation de ${passengerName} est annulée. L’itinéraire continue.`,
@@ -215,12 +223,14 @@ export function useDriverPickupActions({
       const cancelledBooking = await reconcileBookingStatus(error, bookingId, ['cancelled']);
       if (!action.isCurrent()) return;
       if (cancelledBooking) {
+        commitBookingDecision(action.booking, 'cancelled', cancelledBooking);
+        action.complete();
         rememberCancelledBooking(bookingId);
         setPickupSkipped(bookingId, true);
         dismissPickupNoticeForBooking(bookingId);
         if (pickupBypassConfirmationRef.current === confirmation) dismissPickupBypassConfirmation();
         markNavigationRouteDirty();
-        await Promise.all([refetchBookings(), refetchTrip()]);
+        refreshInBackground();
         return;
       }
       showDialog({
@@ -235,6 +245,8 @@ export function useDriverPickupActions({
     }
   }, [
     cancelBooking,
+    commitBookingDecision,
+    refreshInBackground,
     beginBookingAction,
     dismissPickupBypassConfirmation,
     dismissPickupNoticeForBooking,
@@ -243,8 +255,6 @@ export function useDriverPickupActions({
     pickupBypassConfirmationRef,
     setPickupBypassAction,
     reconcileBookingStatus,
-    refetchBookings,
-    refetchTrip,
     rememberCancelledBooking,
     setPickupSkipped,
     showDialog,

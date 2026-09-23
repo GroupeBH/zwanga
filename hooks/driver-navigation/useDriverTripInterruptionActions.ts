@@ -2,6 +2,7 @@ import type { NavigationCoordinate } from '@/utils/navigation/routeProgress';
 import { RouteStep, LivePassengerLocation } from '../../features/driver-navigation/navigationModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { stopDriverBackgroundLocationTracking } from '@/services/driverBackgroundLocationTask';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import {
   useGetTripByIdQuery,
@@ -13,7 +14,7 @@ import type { Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
-import React, { useCallback, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 interface Params {
   isScreenActive: boolean;
@@ -80,13 +81,16 @@ export function useDriverTripInterruptionActions({
 }: Params) {
   // Late replies cannot redirect a different screen or clear its location refs.
   const session = useMemo(() => ({ tripId, active: true, mounted: true, busy: false }), [tripId]);
+  const scope = useMemo(() => ({ tripId, isScreenActive, version: getTokenSessionVersion() }), [tripId, isScreenActive]);
+  const latestScope = useRef(scope);
+  latestScope.current = scope;
   session.active = isScreenActive;
   useEffect(() => {
     session.mounted = true;
     return () => { session.mounted = false; };
   }, [session]);
-  const canUpdateNavigation = useCallback(() => session.mounted && session.active && !isExitingRef.current,
-    [isExitingRef, session]);
+  const canUpdateNavigation = useCallback(() => session.mounted && session.active && !isExitingRef.current &&
+    latestScope.current === scope && scope.version === getTokenSessionVersion(), [isExitingRef, scope, session]);
   const refreshInBackground = useCallback(() => {
     // Slow follow-up reads must neither hold the exit nor turn success into failure.
     void Promise.allSettled([
@@ -95,12 +99,18 @@ export function useDriverTripInterruptionActions({
     ]);
   }, [refetchBookings, refetchTrip]);
   const handleRestartTripFromNavigation = useCallback(async () => {
-    if (!tripId || isRestartingTrip || isTripFetching) {
-      return;
-    }
-
+    if (!tripId || isRestartingTrip || isTripFetching || session.busy || !canUpdateNavigation()) return;
+    session.busy = true;
     try {
-      await startTrip(tripId).unwrap();
+      try {
+        await startTrip(tripId).unwrap();
+      } catch (error) {
+        if (!canUpdateNavigation()) return;
+        const restarted = await reconcileTripStatus(error, ['ongoing']);
+        if (!canUpdateNavigation()) return;
+        if (!restarted) throw error;
+      }
+      if (!canUpdateNavigation()) return;
       lastRouteFetchTimeRef.current = 0;
       routeFetchedRef.current = false;
       routeSignatureRef.current = '';
@@ -112,52 +122,22 @@ export function useDriverTripInterruptionActions({
       setRouteDurationSeconds(null);
       setSteps([]);
       setCurrentStepIndex(0);
-      await Promise.all([refetchTrip(), refetchBookings()]);
+      refreshInBackground();
       showDialog({
-        variant: 'success',
-        icon: 'play-circle',
-        title: 'Trajet redémarré',
+        variant: 'success', icon: 'play-circle', title: 'Trajet redémarré',
         message: 'La navigation va reprendre depuis votre position actuelle.',
       });
-    } catch (error: any) {
-      const restartedTrip = await reconcileTripStatus(error, ['ongoing']);
-      if (restartedTrip) {
-        lastRouteFetchTimeRef.current = 0;
-        routeFetchedRef.current = false;
-        routeSignatureRef.current = '';
-        hasFetchedInitialDriverRouteRef.current = false;
-        offRouteSampleCountRef.current = 0;
-        lastOffRouteRerouteAtRef.current = 0;
-        setRouteCoordinates([]);
-        setRouteDistanceMeters(null);
-        setRouteDurationSeconds(null);
-        setSteps([]);
-        setCurrentStepIndex(0);
-        await Promise.all([refetchTrip(), refetchBookings()]);
-        showDialog({
-          variant: 'success',
-          icon: 'play-circle',
-          title: 'Trajet redémarré',
-          message: 'Le trajet a bien redémarré malgré la connexion lente.',
-        });
-        return;
-      }
-      showDialog({
-        variant: 'danger',
-        icon: 'alert-circle',
-        title: 'Redemarrage impossible',
+    } catch (error) {
+      if (canUpdateNavigation()) showDialog({
+        variant: 'danger', icon: 'alert-circle', title: 'Redémarrage impossible',
         message: getApiErrorMessage(error, 'Impossible de redémarrer ce trajet.'),
       });
-    }
+    } finally { session.busy = false; }
   }, [
-    isRestartingTrip,
-    isTripFetching,
-    refetchBookings,
-    refetchTrip,
-    reconcileTripStatus,
-    showDialog,
-    startTrip,
-    tripId,
+    tripId, isRestartingTrip, isTripFetching, session, canUpdateNavigation, startTrip, reconcileTripStatus,
+    lastRouteFetchTimeRef, routeFetchedRef, routeSignatureRef, hasFetchedInitialDriverRouteRef,
+    offRouteSampleCountRef, lastOffRouteRerouteAtRef, setRouteCoordinates, setRouteDistanceMeters,
+    setRouteDurationSeconds, setSteps, setCurrentStepIndex, refreshInBackground, showDialog,
   ]);
 
   const pauseTripWithoutPassengerConfirmation = useCallback(async () => {

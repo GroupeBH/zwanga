@@ -47,6 +47,10 @@ export function useArrivalPaymentCompletion({
       if (!isSessionCurrent()) return;
       const summary = buildPaymentCompletionSummary(sourceBooking, wallet, paymentHistory, options);
       if (!summary) { setPaymentError('Choisissez le mode de paiement pour cette réservation.'); return; }
+      if (sourceBooking.paymentStatus === 'succeeded' || normalizeAmount(sourceBooking.paymentAmount) === 0 ||
+          (sourceBooking.paymentMode === 'cash' && sourceBooking.cashReceivedAt)) {
+        persistBookingState(sourceBooking.id, { settledAt: new Date().toISOString(), requiredActionAt: null });
+      }
       setCompletionSummary(summary);
       // Confirmation is usable immediately, even if these reads time out.
       void Promise.allSettled([
@@ -63,6 +67,7 @@ export function useArrivalPaymentCompletion({
     },
     [
       isSessionCurrent,
+      persistBookingState,
       setCompletionSummary,
       setPaymentError,
       paymentHistory,

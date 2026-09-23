@@ -1,93 +1,54 @@
 import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
-import { Mutex } from 'async-mutex';
 import { API_BASE_URL } from '../../config/env';
 import { DEFAULT_API_TIMEOUT_MS } from '../../constants/network';
-import { getValidAccessToken, refreshAccessToken } from '../../services/tokenRefresh';
-import type { RootState } from '../index';
+import { refreshAccessToken } from '../../services/tokenRefresh';
+import { getTokens } from '../../services/tokenStorage';
+import { getTokenSessionVersion } from '../../services/tokenSession';
+import { isTokenExpired } from '../../utils/jwt';
 
-/**
- * Base query avec gestion automatique du rafraîchissement des tokens
- */
-const baseQueryWithAuth = fetchBaseQuery({
-  baseUrl: API_BASE_URL,
-  // Never leave the whole UI waiting forever when the mobile connection stalls.
-  timeout: DEFAULT_API_TIMEOUT_MS,
-  prepareHeaders: async (headers, { getState }) => {
-    // Récupérer un access token valide (rafraîchi automatiquement si nécessaire)
-    const accessToken = await getValidAccessToken();
+const fetchQuery = fetchBaseQuery({ baseUrl: API_BASE_URL, timeout: DEFAULT_API_TIMEOUT_MS });
+const unavailable = (message: string): { error: FetchBaseQueryError } =>
+  ({ error: { status: 'FETCH_ERROR', error: message } });
 
-    if (accessToken) {
-      headers.set('authorization', `Bearer ${accessToken}`);
+/** A request belongs to its initial session, including refresh waits and retries. */
+export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
+  async (args, api, extraOptions) => {
+    const version = getTokenSessionVersion();
+    const isCurrent = () => version === getTokenSessionVersion() && !api.signal.aborted;
+    const stale = () => unavailable('La session a changé. Veuillez réessayer.');
+    const offline = () => unavailable('Connexion indisponible pour renouveler la session. Réessayez lorsque le réseau revient.');
+    let tokens = await getTokens();
+    if (!isCurrent()) return stale();
+    if (tokens.accessToken && isTokenExpired(tokens.accessToken)) {
+      if (tokens.refreshToken) await refreshAccessToken(tokens.refreshToken);
+      tokens = await getTokens();
+      if (!isCurrent()) return stale();
+      if (!tokens.accessToken || isTokenExpired(tokens.accessToken)) return offline();
     }
-    return headers;
-  },
-});
+    const execute = (accessToken: string | null) => {
+      const request = typeof args === 'string' ? { url: args } : args;
+      const headers = new Headers(request.headers as HeadersInit | undefined);
+      if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
+      return fetchQuery({ ...request, headers }, api, extraOptions);
+    };
+    let result = await execute(tokens.accessToken);
+    if (!isCurrent()) return stale();
+    if (result.error?.status !== 401 || !tokens.refreshToken) return result;
 
-const mutex = new Mutex();
-
-/**
- * Base query avec retry et gestion des erreurs 401
- */
-const baseQueryWithReauth: BaseQueryFn<
-  string | FetchArgs,
-  unknown,
-  FetchBaseQueryError
-> = async (args, api, extraOptions) => {
-  // Attendre si un refresh est en cours
-  await mutex.waitForUnlock();
-
-  // Première tentative
-  let result = await baseQueryWithAuth(args, api, extraOptions);
-
-  // Si erreur 401 (Unauthorized) - mais pas si c'est une erreur réseau
-  if (result.error && result.error.status === 401) {
-    if (!mutex.isLocked()) {
-      const release = await mutex.acquire();
-      try {
-        // Obtenir le refresh token actuel depuis le state ou storage
-        // Note: idealement on le chope du state
-        const state = api.getState() as RootState;
-        const refreshToken = state.auth.refreshToken;
-
-        if (refreshToken) {
-          // Tenter le refresh
-          const newAccessToken = await refreshAccessToken(refreshToken);
-
-          if (newAccessToken) {
-            // Refresh réussi, rejouer la requête initiale
-            // Le baseQueryWithAuth va choper le nouveau token via getValidAccessToken/state
-            result = await baseQueryWithAuth(args, api, extraOptions);
-          } else {
-            // Refresh échoué - peut-être une erreur réseau (offline)
-            // refreshAccessToken ne déconnecte plus en cas d'erreur réseau
-            // On retourne simplement l'erreur 401 originale
-            // result reste 401
-          }
-        } else {
-          // Pas de refresh token, on ne peut rien faire
-          // Logout déjà géré normalement par l'absence de tokens
-        }
-      } finally {
-        release();
-      }
-    } else {
-      // Si le mutex était locké, cela signifie qu'un refresh était en cours.
-      // On attend qu'il finisse, puis on rejoue la requête
-      await mutex.waitForUnlock();
-      result = await baseQueryWithAuth(args, api, extraOptions);
+    const latest = await getTokens();
+    if (!isCurrent()) return stale();
+    const renewed = latest.accessToken !== tokens.accessToken && latest.accessToken &&
+      !isTokenExpired(latest.accessToken) ? latest.accessToken :
+      await refreshAccessToken(latest.refreshToken ?? tokens.refreshToken);
+    if (!isCurrent()) return stale();
+    if (renewed && !isTokenExpired(renewed)) {
+      result = await execute(renewed);
+      return isCurrent() ? result : stale();
     }
-  }
-  
-  // Si erreur réseau (FETCH_ERROR), ne pas déconnecter l'utilisateur
-  // L'utilisateur peut continuer à utiliser l'app en mode offline
-  if (result.error && result.error.status === 'FETCH_ERROR') {
-    console.warn('[baseApi] Erreur réseau détectée - utilisateur reste connecté');
-    // Retourner l'erreur mais ne pas déconnecter
-  }
-
-  return result;
-};
+    // Preserve cached/offline ride context on transient renewal failure, not a false 401.
+    return offline();
+  };
 
 /**
  * API de base avec configuration commune

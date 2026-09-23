@@ -40,6 +40,7 @@ test('reset API contract uses the three POST endpoints and excludes newPin from 
   let endpoints;
   const load = loader({
     '../../services/tokenStorage': {},
+    '../../services/tokenRefresh': {},
     '../../store/slices/authSlice': {},
     './authRefreshApi': {},
     './baseApi': { baseApi: { injectEndpoints: definition => {

@@ -9,6 +9,18 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 23 septembre 2026 — Correctifs de résilience après la dernière revue
+
+Les renouvellements de session sur réseau instable, réponses tardives après changement
+de compte/écran, blocages des actions conducteur par des relectures et accumulation
+des états locaux de paiement ont été corrigés côté mobile. Le suivi GPS conserve son
+contexte récupérable sans autoriser d'envoi HTTP avec un jeton d'accès expiré.
+
+Le [compte rendu détaillé](CORRECTIFS_RESILIENCE_2026_09_23.md) précise, pour chaque
+point, le problème, les fichiers et solutions appliquées, les comportements conservés,
+les tests, les limites et les validations natives restant nécessaires. Aucun backend,
+paiement réel, build natif ou déploiement modifié/exécuté pour cette intervention.
+
 ## 22 septembre 2026 — Charge JavaScript de la navigation conducteur
 
 ### 1. Recherche répétée sur toute la géométrie du trajet

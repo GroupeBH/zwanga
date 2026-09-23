@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applyPassengerInterruptionResponse } from '@/store/api/booking/passengerInterruptionResponseCache';
+import { applyDriverBookingDecision, type DriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
 import type { Booking } from '@/types';
 
 
@@ -91,6 +92,9 @@ export function useDriverNavigationData() {
     useCreateTripShareLinkMutation();
   const commitPassengerInterruptionResponse = useCallback((response: Booking, source: Booking) => {
     if (driverId) dispatch(applyPassengerInterruptionResponse(response, source, driverId));
+  }, [dispatch, driverId]);
+  const commitBookingDecision = useCallback((source: Booking, status: DriverBookingDecision, response?: Booking) => {
+    if (driverId) dispatch(applyDriverBookingDecision(source, status, driverId, response));
   }, [dispatch, driverId]);
   const reconcileBookingStatus = useCallback(
     async (error: unknown, bookingId: string, expectedStatuses: readonly string[]) =>
@@ -207,6 +211,7 @@ export function useDriverNavigationData() {
     isConfirmingPassengerInterruption,
     confirmPassengerTripInterruption,
     commitPassengerInterruptionResponse,
+    commitBookingDecision,
     isRejectingPassengerInterruption,
     rejectPassengerTripInterruption,
     cancelBooking,

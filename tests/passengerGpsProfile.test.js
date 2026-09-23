@@ -22,7 +22,7 @@ function fixture(t, platform = 'ios') {
     'react-native': { Platform: { OS: platform } }, 'expo-location': location,
     'expo-task-manager': { isAvailableAsync: async () => true, isTaskDefined: () => false, defineTask: (_key, fn) => { task = fn; } },
     './background/passengerTrackingReads': { getBookingSnapshot: async () => { reads++; return { data: booking }; }, getTripSnapshot: async () => ({}) },
-    '@/services/tokenRefresh': { getValidAccessToken: async () => 'test-token' },
+    '@/services/tokenRefresh': { hasRecoverableSession: async () => true },
     './rideLocationStream': { publishNativeRideLocation: (...args) => published.push(args) },
     './locationDelivery': { isLocationDeliveryPending: () => false, wasLocationDeliveredRecently: () => false, recordLocationDelivery() {} },
     '@/store': { store: { dispatch: payload => { sent.push(payload); return Object.assign(Promise.resolve({ data: {} }), { reset() {}, abort() {} }); } } },

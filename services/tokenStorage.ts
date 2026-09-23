@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
+import { enqueueTokenWrite, getTokenSessionVersion, invalidateTokenSession } from './tokenSession';
 
 /**
  * Service de gestion des tokens JWT avec SecureStore
@@ -58,14 +59,17 @@ const hydrateTokensCache = async (): Promise<TokenPair> => {
   }
 
   if (!tokensHydrationPromise) {
+    const version = getTokenSessionVersion();
     tokensHydrationPromise = (async () => {
       const [accessToken, refreshToken] = await Promise.all([
         readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token'),
         readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token'),
       ]);
 
-      tokenCache = { accessToken, refreshToken };
-      tokensCacheHydrated = true;
+      if (version === getTokenSessionVersion()) {
+        tokenCache = { accessToken, refreshToken };
+        tokensCacheHydrated = true;
+      }
       return tokenCache;
     })().finally(() => {
       tokensHydrationPromise = null;
@@ -97,14 +101,19 @@ const hydrateFcmCache = async (): Promise<string | null> => {
  * Stocke le jeton d'accès de manière sécurisée
  */
 export async function storeAccessToken(token: string): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
-    tokenCache.accessToken = token;
-    tokensCacheHydrated = true;
-  } catch (error) {
-    console.error('Erreur lors du stockage de l\'access token:', error);
-    throw error;
-  }
+  const version = invalidateTokenSession();
+  await enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion()) return;
+    try {
+      await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
+      if (version !== getTokenSessionVersion()) return;
+      tokenCache.accessToken = token;
+      tokensCacheHydrated = true;
+    } catch (error) {
+      console.error('Erreur lors du stockage de l\'access token:', error);
+      throw error;
+    }
+  });
 }
 
 /**
@@ -119,14 +128,19 @@ export async function getAccessToken(): Promise<string | null> {
  * Stocke le jeton d'actualisation de manière sécurisée
  */
 export async function storeRefreshToken(token: string): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
-    tokenCache.refreshToken = token;
-    tokensCacheHydrated = true;
-  } catch (error) {
-    console.error('Erreur lors du stockage du refresh token:', error);
-    throw error;
-  }
+  const version = invalidateTokenSession();
+  await enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion()) return;
+    try {
+      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+      if (version !== getTokenSessionVersion()) return;
+      tokenCache.refreshToken = token;
+      tokensCacheHydrated = true;
+    } catch (error) {
+      console.error('Erreur lors du stockage du refresh token:', error);
+      throw error;
+    }
+  });
 }
 
 /**
@@ -140,19 +154,27 @@ export async function getRefreshToken(): Promise<string | null> {
 /**
  * Stocke les deux tokens (access et refresh)
  */
-export async function storeTokens(accessToken: string, refreshToken: string): Promise<void> {
-  try {
-    await Promise.all([
+export async function storeTokens(accessToken: string, refreshToken: string, expectedVersion?: number): Promise<boolean> {
+  const version = expectedVersion ?? invalidateTokenSession();
+  if (expectedVersion === undefined) {
+    tokenCache = { accessToken: null, refreshToken: null };
+    tokensCacheHydrated = true;
+  }
+  return enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion()) return false;
+    // Await both native writes even if one fails, so a queued logout runs last.
+    const writes = await Promise.allSettled([
       SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
       SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
     ]);
+    const failed = writes.find(result => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
 
+    if (version !== getTokenSessionVersion()) return false;
     tokenCache = { accessToken, refreshToken };
     tokensCacheHydrated = true;
-  } catch (error) {
-    console.error('Erreur lors du stockage des tokens:', error);
-    throw error;
-  }
+    return true;
+  });
 }
 
 /**
@@ -171,15 +193,15 @@ export async function getTokens(): Promise<TokenPair> {
  * Supprime le jeton d'accès du stockage sécurisé
  */
 export async function removeAccessToken(): Promise<void> {
+  invalidateTokenSession();
+  tokenCache.accessToken = null;
+  tokensCacheHydrated = true;
   try {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
+    await enqueueTokenWrite(() => SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY));
   } catch (error: any) {
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression de l\'access token:', error);
     }
-  } finally {
-    tokenCache.accessToken = null;
-    tokensCacheHydrated = true;
   }
 }
 
@@ -187,15 +209,15 @@ export async function removeAccessToken(): Promise<void> {
  * Supprime le jeton d'actualisation du stockage sécurisé
  */
 export async function removeRefreshToken(): Promise<void> {
+  invalidateTokenSession();
+  tokenCache.refreshToken = null;
+  tokensCacheHydrated = true;
   try {
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    await enqueueTokenWrite(() => SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY));
   } catch (error: any) {
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression du refresh token:', error);
     }
-  } finally {
-    tokenCache.refreshToken = null;
-    tokensCacheHydrated = true;
   }
 }
 
@@ -203,22 +225,20 @@ export async function removeRefreshToken(): Promise<void> {
  * Supprime tous les jetons du stockage sécurisé
  * Vide completement le SecureStore (access token, refresh token, FCM token)
  */
-export async function clearTokens(): Promise<void> {
-  try {
-    await Promise.all([
-      removeAccessToken(),
-      removeRefreshToken(),
-      removeFcmToken(),
-    ]);
-    console.log('Tous les jetons ont été supprimés du SecureStore');
-  } catch (error) {
-    console.error('Erreur lors de la suppression des tokens:', error);
-  } finally {
-    tokenCache = { accessToken: null, refreshToken: null };
-    tokensCacheHydrated = true;
-    fcmTokenCache = null;
-    fcmCacheHydrated = true;
-  }
+export async function clearTokens(expectedVersion?: number): Promise<boolean> {
+  if (expectedVersion !== undefined && expectedVersion !== getTokenSessionVersion()) return false;
+  const version = invalidateTokenSession();
+  tokenCache = { accessToken: null, refreshToken: null };
+  tokensCacheHydrated = true;
+  fcmTokenCache = null;
+  fcmCacheHydrated = true;
+  await enqueueTokenWrite(async () => {
+    await Promise.all([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY].map(async key => {
+      try { await SecureStore.deleteItemAsync(key); }
+      catch { console.warn('[TokenStorage] Nettoyage du stockage sécurisé indisponible.'); }
+    }));
+  });
+  return version === getTokenSessionVersion();
 }
 
 /**

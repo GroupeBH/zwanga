@@ -13,7 +13,7 @@ import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDelivered
 import { publishNativeRideLocation } from './rideLocationStream';
 
 import { ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS, PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS } from '@/constants/rideProgress';
-import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { hasRecoverableSession, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
 
@@ -51,7 +51,7 @@ const getPassengerTrackingReadiness = async (
   lastTripStatusCheckAt = now;
 
   try {
-    if (!(await getValidAccessToken())) return 'terminal';
+    if (!(await hasRecoverableSession())) return 'terminal';
 
     const bookingResult = await getBookingSnapshot(session.bookingId);
     const bookingErrorStatus = getRtkErrorStatus(bookingResult.error);
@@ -134,7 +134,7 @@ async function putPassengerLocation(
   passengerLocationRequestInFlight = true;
 
   try {
-    if (!(await getValidAccessToken())) {
+    if (!(await hasRecoverableSession())) {
       await stopTrackingSession(bookingId);
       return false;
     }

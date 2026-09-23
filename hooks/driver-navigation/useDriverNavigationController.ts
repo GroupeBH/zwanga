@@ -125,6 +125,7 @@ export function useDriverNavigationController() {
   });
 
   const bookingActions = useDriverBookingActions({
+    commitBookingDecision: session.foundation.data.commitBookingDecision,
     beginBookingAction,
     acceptBooking: session.foundation.data.acceptBooking,
     rememberAcceptedBooking: session.foundation.passengers.rememberAcceptedBooking,
@@ -153,6 +154,7 @@ export function useDriverNavigationController() {
 
   // Fermer le modal de waypoint sans confirmer
   const pickupActions = useDriverPickupActions({
+    commitBookingDecision: session.foundation.data.commitBookingDecision,
     beginBookingAction,
     waypointModalVisibleRef: session.foundation.refs.waypointModalVisibleRef,
     setWaypointModalVisible: session.foundation.mapState.setWaypointModalVisible,

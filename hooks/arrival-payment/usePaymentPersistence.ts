@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPaymentStateWriter, prunePaymentState } from '@/features/arrival-payment/paymentRetention';
 import { getStorageKey } from '@/features/arrival-payment/paymentModel';
 import type { StoredBookingPaymentState, StoredPaymentState } from '@/features/arrival-payment/paymentTypes';
 
@@ -8,7 +9,8 @@ export function usePaymentPersistence(userId: string | undefined, authenticated:
   const [storedState, setStoredState] = useState<StoredPaymentState>({});
   const [isStoredStateLoaded, setLoaded] = useState(false);
   const current = useRef<StoredPaymentState>({});
-  const writes = useRef(Promise.resolve());
+  const writeState = useMemo(() => createPaymentStateWriter(state => userId
+    ? AsyncStorage.setItem(getStorageKey(userId), JSON.stringify(state)) : Promise.resolve()), [userId]);
   const alive = useRef(true);
   useLayoutEffect(() => {
     alive.current = true;
@@ -24,13 +26,14 @@ export function usePaymentPersistence(userId: string | undefined, authenticated:
     void AsyncStorage.getItem(getStorageKey(userId)).then(raw => {
       if (cancelled) return;
       const parsed = raw ? JSON.parse(raw) : {};
-      current.current = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      current.current = prunePaymentState(parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {});
       setStoredState(current.current);
+      if (raw && Object.keys(parsed ?? {}).length !== Object.keys(current.current).length) writeState(current.current);
     }).catch(() => {
       // A corrupt local cache must not prevent a server-side payment check.
     }).finally(() => { if (!cancelled) setLoaded(true); });
     return () => { cancelled = true; };
-  }, [authenticated, userId]);
+  }, [authenticated, userId, writeState]);
 
   const persistBookingState = useCallback((bookingId: string,
     patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => {
@@ -40,12 +43,10 @@ export function usePaymentPersistence(userId: string | undefined, authenticated:
       if (value) (booking as Record<string, string>)[key] = value;
       else delete booking[key as keyof StoredBookingPaymentState];
     }
-    current.current = { ...current.current, [bookingId]: booking };
+    current.current = prunePaymentState({ ...current.current, [bookingId]: booking });
     if (alive.current) setStoredState(current.current);
-    const serialized = JSON.stringify(current.current);
     // Late financial responses still save their reference for the ORIGINAL account.
-    writes.current = writes.current.then(() => AsyncStorage.setItem(getStorageKey(userId), serialized))
-      .catch(() => { console.warn('[ArrivalPayment] Sauvegarde locale du paiement indisponible.'); });
-  }, [userId]);
+    writeState(current.current);
+  }, [userId, writeState]);
   return { storedState, isStoredStateLoaded, persistBookingState, isSessionCurrent };
 }

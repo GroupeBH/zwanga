@@ -4,6 +4,7 @@ import type { SubscriptionPaymentMethod, TripPaymentMode } from '@/types';
 export type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
 
 export type StoredBookingPaymentState = {
+  settledAt?: string;
   requiredActionAt?: string;
   acknowledgedAt?: string;
   preArrivalDismissedAt?: string;

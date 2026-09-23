@@ -18,11 +18,14 @@ export function useDriverBookingActionGuard(params: Params) {
   currentScope.current = scope;
   const mounted = useRef(true);
   const busy = useRef<object | null>(null);
+  const completed = useMemo(() => ({ tripId: params.tripId, keys: new Set<string>() }), [params.tripId]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const { setProcessingBookingId } = params;
   useEffect(() => { setProcessingBookingId(null); }, [scope, setProcessingBookingId]);
   return useCallback((booking: Booking, operation: Operation) => {
     const p = latest.current;
+    const key = `${booking.id}:${operation}:${booking.interruptionRequest?.id ?? ''}`;
+    if (completed.keys.has(key)) return null;
     if (!mounted.current || !p.active || busy.current || booking.tripId !== p.tripId) return null;
     const fresh = p.bookings?.find(item => item.id === booking.id && item.tripId === p.tripId);
     if (!fresh) return null;
@@ -39,10 +42,10 @@ export function useDriverBookingActionGuard(params: Params) {
     busy.current = token;
     p.setProcessingBookingId(fresh.id);
     const isCurrent = () => mounted.current && currentScope.current === startedScope && latest.current.active;
-    return { booking: fresh, isCurrent, finish() {
+    return { booking: fresh, isCurrent, complete() { completed.keys.add(key); }, finish() {
       if (busy.current !== token) return;
       busy.current = null;
       if (isCurrent()) latest.current.setProcessingBookingId(null);
     } };
-  }, []);
+  }, [completed]);
 }

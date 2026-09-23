@@ -13,9 +13,11 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { getDriverInterruptionSettlementMessage } from '@/features/arrival-payment/interruptionSettlement';
 import type { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
+import type { DriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
 import { canRespondToPassengerInterruption, isPassengerInterruptionResponse } from '@/features/driver-navigation/passengerInterruptionResponse';
 
 interface Params {
+  commitBookingDecision: (source: Booking, status: DriverBookingDecision, response?: Booking) => void;
   beginBookingAction: ReturnType<typeof useDriverBookingActionGuard>;
   acceptBooking: ReturnType<typeof useAcceptBookingMutation>[0];
   rememberAcceptedBooking: (bookingId: string) => void;
@@ -36,6 +38,7 @@ interface Params {
 }
 
 export function useDriverBookingActions({
+  commitBookingDecision,
   beginBookingAction,
   acceptBooking,
   rememberAcceptedBooking,
@@ -60,17 +63,22 @@ export function useDriverBookingActions({
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+  const refreshInBackground = useCallback(() => {
+    void Promise.allSettled([Promise.resolve().then(() => refetchBookings()), Promise.resolve().then(() => refetchTrip())]);
+  }, [refetchBookings, refetchTrip]);
   const handleAcceptPendingBooking = useCallback(
     async (booking: Booking) => {
       const action = beginBookingAction(booking, 'accept');
       if (!action) return;
       try {
-        await acceptBooking(booking.id).unwrap();
+        const accepted = await acceptBooking(booking.id).unwrap();
         if (!action.isCurrent()) return;
+        commitBookingDecision(action.booking, 'accepted', accepted);
+        action.complete();
         rememberAcceptedBooking(booking.id);
         lastRouteFetchTimeRef.current = 0;
         routeFetchedRef.current = false;
-        await Promise.all([refetchBookings(), refetchTrip()]);
+        refreshInBackground();
         if (!action.isCurrent()) return;
         void speakNavigationMessage(
           `${booking.passengerName || 'Passager'} accepte. Recalcul de l'itinéraire.`,
@@ -81,8 +89,10 @@ export function useDriverBookingActions({
         const acceptedBooking = await reconcileBookingStatus(error, booking.id, ['accepted']);
         if (!action.isCurrent()) return;
         if (acceptedBooking) {
+          commitBookingDecision(action.booking, 'accepted', acceptedBooking);
+          action.complete();
           rememberAcceptedBooking(booking.id);
-          await Promise.all([refetchBookings(), refetchTrip()]);
+          refreshInBackground();
           return;
         }
         showDialog({
@@ -97,7 +107,7 @@ export function useDriverBookingActions({
         action.finish();
       }
     },
-    [beginBookingAction, acceptBooking, lastRouteFetchTimeRef, reconcileBookingStatus, refetchBookings, refetchTrip,
+    [beginBookingAction, acceptBooking, commitBookingDecision, refreshInBackground, lastRouteFetchTimeRef, reconcileBookingStatus,
       rememberAcceptedBooking, routeFetchedRef, showDialog, speakNavigationMessage],
   );
 
@@ -106,12 +116,14 @@ export function useDriverBookingActions({
       const action = beginBookingAction(booking, 'reject');
       if (!action) return;
       try {
-        await rejectBooking({
+        const rejected = await rejectBooking({
           id: booking.id,
           reason: 'Refus depuis la navigation conducteur',
         }).unwrap();
         if (!action.isCurrent()) return;
-        await Promise.all([refetchBookings(), refetchTrip()]);
+        commitBookingDecision(action.booking, 'rejected', rejected);
+        action.complete();
+        refreshInBackground();
         if (!action.isCurrent()) return;
         void speakNavigationMessage(
           `${booking.passengerName || 'Passager'} refuse.`,
@@ -122,7 +134,9 @@ export function useDriverBookingActions({
         const rejectedBooking = await reconcileBookingStatus(error, booking.id, ['rejected']);
         if (!action.isCurrent()) return;
         if (rejectedBooking) {
-          await Promise.all([refetchBookings(), refetchTrip()]);
+          commitBookingDecision(action.booking, 'rejected', rejectedBooking);
+          action.complete();
+          refreshInBackground();
           return;
         }
         showDialog({
@@ -137,7 +151,7 @@ export function useDriverBookingActions({
         action.finish();
       }
     },
-    [beginBookingAction, reconcileBookingStatus, refetchBookings, refetchTrip, rejectBooking, showDialog, speakNavigationMessage],
+    [beginBookingAction, commitBookingDecision, refreshInBackground, reconcileBookingStatus, rejectBooking, showDialog, speakNavigationMessage],
   );
 
   const handleConfirmPassengerInterruption = useCallback(

@@ -5,6 +5,7 @@ import { nativeQueryListeners } from '../services/nativeQueryListeners';
 import { chatSocket } from '../services/chatSocket';
 import { trackingSocket } from '../services/trackingSocket';
 import { clearLocationDeliveries } from '../services/locationDelivery';
+import { invalidateTokenSession } from '../services/tokenSession';
 import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
 import { mapboxApi } from './api/mapboxApi';
@@ -38,16 +39,20 @@ const largeStatePaths = [
  * KYC data can never leak from the previous session on a shared device.
  */
 const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action) => {
-  const typedAction = action as { type?: string };
+  const typedAction = action as { type?: string; meta?: { requestId?: string } };
+  if (typedAction.type === 'auth/logout' || typedAction.type === 'auth/performLogout/pending') {
+    invalidateTokenSession();
+  }
   const previousUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
     .auth?.user?.id;
+  const previousLogoutRequestId = (storeApi.getState() as { auth?: { logoutRequestId?: string } }).auth?.logoutRequestId;
   const result = next(action);
   const currentUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
     .auth?.user?.id;
   const logoutAction =
     typedAction.type === 'auth/logout' ||
-    typedAction.type === 'auth/performLogout/fulfilled' ||
-    typedAction.type === 'auth/performLogout/rejected';
+    (Boolean(previousLogoutRequestId) && previousLogoutRequestId === typedAction.meta?.requestId &&
+      (typedAction.type === 'auth/performLogout/fulfilled' || typedAction.type === 'auth/performLogout/rejected'));
   const accountChanged =
     typedAction.type === 'auth/setTokens' &&
     Boolean(previousUserId && currentUserId && previousUserId !== currentUserId);
