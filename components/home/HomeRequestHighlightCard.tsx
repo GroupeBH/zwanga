@@ -23,6 +23,7 @@ export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlight
   return (
     <CompactTripCard
       inlineRoute
+      priorityAppearance="request"
       label={distance ? `Demande · ${distance}` : 'Demande à accepter'}
       priceText={hasBudget ? formatPrice(budget) : undefined}
       priceHint={hasBudget ? 'max / place' : undefined}

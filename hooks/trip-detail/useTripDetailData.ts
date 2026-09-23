@@ -75,16 +75,22 @@ export function useTripDetailData() {
     refetchOnReconnect: false,
   });
   const {
-    data: tripBookings,
-    refetch: refetchTripBookings,
+    data: driverTripBookings,
+    refetch: refetchDriverTripBookings,
   } = useGetTripBookingsQuery(tripId, {
-    skip: !tripId,
+    skip: !tripId || !isTripDriver,
     // Polling pour les réservations du trajet
     pollingInterval: !isScreenActive ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
   });
+  // This endpoint is driver-only. Passenger details use their own reservations.
+  const tripBookings = useMemo(() => isTripDriver ? driverTripBookings : myBookings?.filter(booking => booking.tripId === tripId),
+    [driverTripBookings, isTripDriver, myBookings, tripId]);
+  const refetchTripBookings = useCallback(() => {
+    if (isTripDriver && tripId) return refetchDriverTripBookings();
+  }, [isTripDriver, refetchDriverTripBookings, tripId]);
   const {
     lastKnownLocation,
     requestPermission: requestDriverLocationPermission,

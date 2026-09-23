@@ -1,6 +1,7 @@
 import { useArrivalPaymentState } from '../hooks/arrival-payment/useArrivalPaymentState';
 import { useArrivalPaymentMonitoring } from '../hooks/arrival-payment/useArrivalPaymentMonitoring';
 import { ArrivalPaymentFields } from '../features/arrival-payment/ArrivalPaymentFields';
+import { ArrivalPaymentActions } from '../features/arrival-payment/ArrivalPaymentActions';
 import { useArrivalPaymentNavigation } from '../hooks/arrival-payment/useArrivalPaymentNavigation';
 import { useArrivalPaymentProvider } from '../hooks/arrival-payment/useArrivalPaymentProvider';
 import { useArrivalPaymentSubmission } from '../hooks/arrival-payment/useArrivalPaymentSubmission';
@@ -18,8 +19,6 @@ import { PassengerInterruptionChoice } from '@/components/trip/PassengerInterrup
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
-  ActivityIndicator,
-  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -55,6 +54,8 @@ function ArrivalPaymentSession() {
     wallet: state.wallet,
     paymentHistory: state.paymentHistory,
     setCompletionSummary: state.setCompletionSummary,
+    setStatusMessage: state.setStatusMessage,
+    reportPaymentFailure: state.reportPaymentFailure,
     persistBookingState: state.persistBookingState,
     setPaymentError: state.setPaymentError,
   });
@@ -71,7 +72,7 @@ function ArrivalPaymentSession() {
     showCompletionSummary: completion.showCompletionSummary,
   });
 
-  useArrivalPaymentMonitoring({ state, provider, completion });
+  const monitoring = useArrivalPaymentMonitoring({ state, provider, completion });
 
   const submission = useArrivalPaymentSubmission({
     isSessionCurrent: state.isSessionCurrent,
@@ -79,6 +80,7 @@ function ArrivalPaymentSession() {
     paymentAmount: state.paymentAmount,
     isBusy: state.isBusy,
     hasPendingProviderPayment: state.hasPendingProviderPayment,
+    reportPaymentFailure: state.reportPaymentFailure,
     setPaymentError: state.setPaymentError,
     setStatusMessage: state.setStatusMessage,
     paymentAlreadySucceeded: state.paymentAlreadySucceeded,
@@ -116,7 +118,7 @@ function ArrivalPaymentSession() {
   });
 
   const isModalVisible = state.isAppActive && state.isResumeReady && !state.isClosingForInvoice && Boolean(
-    interruptionChoice || state.completionSummary || (state.arrivalBooking && !state.isPaymentDeferred));
+    interruptionChoice || (!state.isPaymentDeferred && (state.completionSummary || state.arrivalBooking)));
 
   const destination = state.arrivalBooking?.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' :
     state.arrivalBooking?.passengerDestination ??
@@ -275,6 +277,7 @@ function ArrivalPaymentSession() {
                   setStatusMessage={state.setStatusMessage}
                   pointsCoveragePercentage={state.pointsCoveragePercentage}
                   selectedMode={state.selectedMode}
+                  hasPaymentFailure={state.canChangeFailedPaymentMode}
                   isWalletFetching={state.isWalletFetching}
                   walletBalance={state.walletBalance}
                   pointsUsed={state.pointsUsed}
@@ -292,34 +295,18 @@ function ArrivalPaymentSession() {
                   paymentError={state.paymentError}
                 />
 
-          <TouchableOpacity
-            activeOpacity={0.88}
-            disabled={isPayButtonDisabled}
-            onPress={() => {
-              Keyboard.dismiss();
-              void submission.handlePayment();
-            }}
-            style={[
-              styles.payButton,
-              isPayButtonDisabled && styles.payButtonDisabled,
-            ]}
-          >
-            {state.isBusy ? (
-              <ActivityIndicator size="small" color={Colors.white} />
-            ) : (
-              <Ionicons
-                name={state.paymentAlreadySucceeded ? 'checkmark' : state.selectedMode === 'cash' ? 'cash' : 'lock-closed'}
-                size={20}
-                color={Colors.white}
-              />
-            )}
-            <Text style={styles.payButtonText}>
-              {state.isBusy || state.hasPendingProviderPayment ? 'Vérification...' : actionLabel}
-            </Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={state.deferPayment} style={[styles.payButton, styles.invoiceButton]}>
-                  <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Fermer et reprendre plus tard</Text>
-                </TouchableOpacity>
+                <ArrivalPaymentActions
+                  isBusy={state.isBusy}
+                  hasPendingProviderPayment={state.hasPendingProviderPayment}
+                  paymentAlreadySucceeded={state.paymentAlreadySucceeded}
+                  selectedMode={state.selectedMode}
+                  actionLabel={actionLabel}
+                  isPayButtonDisabled={isPayButtonDisabled}
+                  verification={monitoring.verification}
+                  onPay={submission.handlePayment}
+                  onRetry={monitoring.retryVerification}
+                  onClose={state.deferPayment}
+                />
                 {state.isBeforeArrival && !state.paymentAlreadySucceeded && !state.isBusy && !state.hasPendingProviderPayment ? (
                   <TouchableOpacity onPress={state.deferEarlyPayment} style={[styles.payButton, styles.invoiceButton]}>
                     <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Payer à l’arrivée</Text>

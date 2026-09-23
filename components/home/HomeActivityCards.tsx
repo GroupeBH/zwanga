@@ -59,6 +59,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
         <CompactTripCard
           {...dismissAccessibility(bookingKey)}
           inlineRoute
+          priorityAppearance="reservation"
           label={featuredDriverReservationStatus.label}
           departure={placeName(featuredDriverReservation.trip.departure)}
           arrival={placeName(featuredDriverReservation.trip.arrival)}
@@ -73,6 +74,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
         <CompactTripCard
           {...dismissAccessibility(tripKey)}
           inlineRoute
+          priorityAppearance="upcoming"
           label="Trajet bientôt"
           departure={placeName(featuredDriverUpcomingTrip.departure)}
           arrival={placeName(featuredDriverUpcomingTrip.arrival)}

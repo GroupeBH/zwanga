@@ -334,6 +334,188 @@ garantie générale d'absence de freeze/crash natif.
 La documentation [Notation après trajet](NATIVE_STORE_REVIEW.md) renvoie maintenant
 vers ce comportement actualisé du bouton volontaire.
 
+## 23 septembre 2026 — Sortie du paiement à l'arrivée après erreur FlexPay
+
+**Problème.** Une erreur 502 de vérification conservait un bouton « Vérification… »
+et des lectures périodiques sans limite. Le message était peu visible et fermer
+la fenêtre n'arrêtait pas la surveillance ; un résultat tardif pouvait la rouvrir.
+Un 404 distinct révélait aussi des appels passagers à la liste des réservations
+réservée au propriétaire conducteur, contrat confirmé dans le backend local.
+
+**Solution appliquée.** Monitoring borné : arrêt sur erreur, garde de lecture
+25 s, délai de 12 s après réponse, pause après deux minutes sans confirmation.
+Action « Vérifier à nouveau » sur la référence existante, état d'attente sans
+spinner permanent, message visible au-dessus des actions et sortie toujours
+utilisable. Fermeture/veille annulent uniquement la lecture en cours ; les
+références et mutations financières sont conservées. Le récapitulatif tardif
+respecte le choix de fermeture. Lectures conducteur limitées au propriétaire
+dans l'accueil, le détail et la notation ; côté passager, réservations personnelles.
+
+**Fichiers et précautions.** Hooks `arrival-payment/useArrivalPaymentMonitoring`
+et `useArrivalPaymentState`, constantes `paymentPolicy`, composant extrait
+`ArrivalPaymentActions`, `PassengerArrivalPaymentCoordinator`, `ArrivalPaymentFields` ;
+hooks `useHomeDriverActivity`, `useTripDetailData`, `useTripDetailSafetyActions`,
+`useRatingData` et contrat `RatingParticipantSelector`. Aucun élargissement de
+droits, nouveau paiement automatique, changement de montant ou interprétation
+d'une erreur réseau comme un paiement échoué. Toutes les requêtes restent RTK.
+
+**Vérifications.** 42/42 tests ciblés réussis, dont treize nouveaux scénarios.
+Suite complète : **738/740 réussis** ; les deux défauts préexistants de
+`sourceExtractions.test.js` (styles réservations et endpoints PIN) sont inchangés.
+TypeScript, lint ciblé, frontières réseau et `git diff --check` réussis.
+890 sources contrôlées ; seule `app/wallet.tsx` reste à 414 lignes, hors périmètre.
+Aucun paiement réel, build, déploiement ou test physique réalisé. La connexion
+backend–FlexPay reste un sujet distinct : l'UI ne rétablit pas le service tiers.
+
+**Détails, limites et recette.** [Vérification des paiements à l'arrivée](ARRIVAL_PAYMENT_VERIFICATION.md).
+
+## 23 septembre 2026 — Changer de moyen de paiement après un échec confirmé
+
+**Problème.** Après un paiement refusé ou annulé, les options redevenaient
+sélectionnables mais aucune action visible ne guidait le passager vers un autre
+moyen. Une recharge de complément refusée dès sa création pouvait également
+être enregistrée comme une transaction encore à surveiller.
+
+**Solution appliquée.** Action « Changer de mode de paiement » dans le pied du
+formulaire après un statut serveur `failed` ou `cancelled`, pour le règlement
+électronique ou la recharge complémentaire des jetons. Cette action retire la
+sélection courante et ramène aux options dans la même fenêtre. Le passager
+choisit puis valide explicitement ; sélectionner n'envoie aucune requête.
+Les réponses de création déjà refusées ne déclenchent ni ouverture de page
+de paiement ni enregistrement d'une nouvelle référence en attente.
+
+**Fichiers et précautions.** Hooks `useBookingPaymentMode`, `useArrivalPaymentState`,
+`useArrivalPaymentSubmission`, `useArrivalPaymentCompletion`, `useArrivalPaymentMonitoring` ;
+`ArrivalPaymentActions`, `ArrivalPaymentFields`, `PassengerArrivalPaymentCoordinator`.
+Verrouillage conservé tant qu'une référence reste incertaine, pendant une opération
+et après un paiement confirmé. Une erreur HTTP 502 ne vaut pas refus du paiement.
+Cash seulement après arrivée/dépose ; mêmes APIs RTK Query, règles tarifaires et
+confirmation d'encaissement. Backend local consulté, mais non modifié.
+
+**Vérifications.** 34/34 tests paiement ciblés réussis, dont neuf nouveaux tests.
+Suite complète : 747/749 réussis, avec les deux mêmes échecs préexistants de
+`sourceExtractions.test.js` (styles réservations, endpoints PIN), hors périmètre.
+TypeScript, ESLint ciblé, frontières réseau et contrôle du diff réussis.
+Tous les fichiers applicatifs modifiés restent sous 400 lignes ; seule l'exception
+préexistante `app/wallet.tsx` reste à 414 lignes. Aucun paiement réel, déploiement
+ou essai natif iOS/Android : la recette sur appareils reste nécessaire.
+
+**Détails.** [Changement de mode et protections](ARRIVAL_PAYMENT_VERIFICATION.md#changement-de-mode-apres-echec-confirme).
+
+## 23 septembre 2026 — Action de changement de paiement toujours visible
+
+**Problème constaté.** L'action précédente remplaçait le bouton principal
+uniquement après réception d'un refus financier et selon un indicateur en mémoire.
+Après une erreur de vérification 502, ou une réouverture sans cet indicateur,
+le passager ne voyait donc pas où changer de moyen de paiement.
+
+**Solution appliquée.** « Changer de mode de paiement » est une action distincte,
+toujours affichée pour un paiement non réglé, sous le bouton de paiement/vérification
+et au-dessus de la fermeture. Elle est utilisable sans attendre un indicateur
+d'échec local, lorsque le changement est autorisé. Une transaction non résolue
+ou une opération en cours la grise ; un texte explique le verrouillage en attente.
+Un compteur local de demandes de sélection ramène aux options même si aucun mode
+n'est sélectionné au moment d'un nouvel appui. Aucun appel réseau au clic.
+
+**Fichiers et précautions.** `ArrivalPaymentActions`, `ArrivalPaymentFields`,
+`PassengerArrivalPaymentCoordinator`, `useBookingPaymentMode`,
+`useArrivalPaymentState` et message de `useArrivalPaymentMonitoring`.
+Références incertaines conservées, cash seulement après dépose, bouton de relance
+et fermeture inchangés. Pas de modale supplémentaire ni timer/animation de défilement.
+
+**Vérifications.** 36/36 tests paiement ciblés réussis, dont visibilité sans
+indicateur d'échec, action présente mais bloquée après erreur de vérification,
+appuis répétés et absence de défilement lors de 100 rendus sans changement.
+TypeScript, ESLint ciblé, frontières réseau et diff validés. Fichiers applicatifs
+modifiés sous 400 lignes ; seule l'exception existante `app/wallet.tsx` reste à 414.
+Suite complète non relancée pour ce correctif ciblé ; ses résultats précédents
+ne sont pas une nouvelle validation. Aucun paiement réel ni essai iOS/Android.
+
+**Détails.** [Visibilité de l'action](ARRIVAL_PAYMENT_VERIFICATION.md#visibilite-du-changement-de-mode).
+
+## 23 septembre 2026 — Refus opérateur FlexPay et sélection directe du paiement
+
+**Problème confirmé.** Une vérification FlexPay réussie retournait une transaction
+refusée, avec le numéro de commande dans `reference` et sans `orderNumber` séparé.
+Le backend exigeait les preuves complètes de crédit avant de traiter ce refus ;
+il renvoyait donc une erreur 400 au lieu du statut financier `failed`. L'app
+conservait logiquement l'ordre incertain et bloquait les choix alternatifs.
+Le bouton ajouté pour changer de mode surchargeait par ailleurs le formulaire.
+
+**Solution appliquée.** Backend : séparation des preuves nécessaires pour
+enregistrer un refus et de celles exigées pour créditer des jetons. Un refus
+vérifié et correctement rattaché à l'ordre devient `failed`, avec un message
+français ; les contrôles des identifiants, des montants/devises fournis et des
+preuves de succès sont conservés. Mobile : suppression du bouton supplémentaire
+et de son compteur local. Après refus confirmé, retour automatique vers les
+cartes de paiement et sélection directe d'un autre mode, puis validation.
+
+**Fichiers.** Backend : `src/payments/payments.service.ts`,
+`wallet-topup-check-evidence.ts`, `wallet-topup-decline.spec.ts`.
+Mobile : `ArrivalPaymentActions`, `ArrivalPaymentFields`,
+`PassengerArrivalPaymentCoordinator`, `useBookingPaymentMode`, `useArrivalPaymentState`
+et tests `arrivalPaymentModeRecovery`/`arrivalPaymentVerification`.
+
+**Précautions et résultats.** 97/97 tests backend ciblés, 36/36 tests mobile
+ciblés réussis. Aucun crédit wallet sur refus, aucune nouvelle requête au choix
+d'un mode ; cash disponible seulement après dépose. Erreurs HTTP génériques
+toujours distinctes d'un refus financier. TypeScript mobile et backend production
+sans émission validés ; typage backend incluant tous les tests en échec dans des
+fixtures hors périmètre non modifiées, détaillées dans le document spécialisé.
+ESLint mobile ciblé et nouveaux modules backend, frontières réseau et diffs
+vérifiés. Aucune migration, modification de solde, tentative de paiement réel,
+mise en production ou validation native iOS/Android effectuée.
+
+**Déploiement et détails.** [Refus FlexPay et modes de paiement](FLEXPAY_REFUSALS_AND_PAYMENT_MODES.md).
+Le backend corrigé doit être redémarré/redéployé ; une nouvelle vérification de
+l'ordre existant permet ensuite à l'app de recevoir le refus et de déverrouiller
+les choix. Le mobile ne déduit pas un échec financier d'une ancienne erreur 400.
+
+## 23 septembre 2026 — Priorités distinctes sur l’accueil et indicateurs compacts en recherche
+
+**Périmètre et problème.** Les priorités de l’accueil utilisaient la même carte
+neutre pour une réservation reçue, un départ proche et une demande à accepter.
+Les indicateurs de places/offres en recherche manquaient de différenciation.
+La demande porte uniquement sur la présentation, sans agrandir les cartes de recherche.
+
+**Solution appliquée.** Trois variantes visuelles statiques de `CompactTripCard` :
+réservation reçue en vert avec une icône de billet, départ proche en bleu avec
+une horloge, demande à accepter en orange avec une icône d’envoi. Fond légèrement
+teinté, liseré latéral hors flux et libellé existant conservé : la couleur de
+catégorie ne transforme pas une réservation en attente en réservation acceptée.
+Dans les résultats de recherche, bordure neutre, date bleue et prix contrasté ;
+places disponibles en vert, places demandées en orange, offres en bleu et places
+indisponibles/inconnues en gris. Les mêmes textes occupent les mêmes lignes.
+Les rehauts inline ne changent ni padding, ni graisse, ni hauteur de ligne.
+Aucun nouveau statut métier n’est inventé et aucun badge supplémentaire n’est ajouté.
+
+**Fichiers.** `components/trip/CompactTripCard.tsx` et nouveau
+`CompactTripCard.variants.ts`, `components/home/HomeActivityCards.tsx`,
+`HomeRequestHighlightCard.tsx`, `components/search/SearchResultCard.tsx` et
+`SearchRequestResultCard.tsx`. Tests : `tests/compactCardAppearance.test.js`
+et `tests/homeActivityCards.test.js`.
+
+**Comportements conservés.** Dimensions et espacements de base des cartes,
+photos, prix par place, budget, plage horaire, véhicule, accès au détail, état
+désactivé, ordre des priorités et masquage par swipe/accessibilité inchangés.
+Les variantes sont opt-in : les autres listes et aperçus gardent leur aspect.
+Aucun nouvel effet, timer, abonnement Redux, appel réseau, animation ou image.
+La mémoïsation existante, la virtualisation et les gardes de cycle de vie restent
+en place. Le guide frontend a orienté le choix de teintes sobres et d’icônes
+informatives, sans ajout d’animations décoratives.
+
+**Vérifications et limites.** Suite `test:ui-stability` : **224/224 tests réussis**,
+dont cinq nouveaux tests de variantes, conservation de la géométrie déclarée,
+contenu accessible et contraste des petits textes (au moins 4,5:1). TypeScript
+sans émission, ESLint ciblé, frontières réseau et `git diff --check` validés.
+Contrôle de taille : 891 sources, seule exception préexistante `app/wallet.tsx`
+à 414 lignes ; aucun fichier applicatif modifié ici ne dépasse 400 lignes.
+Les comparaisons de rendu sont des tests JavaScript avec composants natifs simulés,
+pas des mesures de pixels, de mémoire ou de fluidité sur appareils. Aucun essai
+visuel natif iOS/Android ni build de production effectué pour cette retouche :
+vérifier les petits écrans, les grandes polices, les noms longs et le swipe sur
+appareils avant diffusion. Pas de promesse de suppression des crashs ou de chauffe.
+
 ## Format pour les prochaines entrées
 
 Pour chaque problème corrigé : date/périmètre, problème constaté, solution

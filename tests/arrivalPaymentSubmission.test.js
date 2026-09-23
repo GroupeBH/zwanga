@@ -5,7 +5,7 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 
 function app(t, mode = 'points') {
   const hooks = hookHarness();
-  const calls = { points: 0, electronic: 0, cash: 0, summary: 0 };
+  const calls = { points: 0, electronic: 0, cash: 0, summary: 0, failures: [], patches: [], urls: 0 };
   let resolvePoints;
   const gate = new Promise(resolve => { resolvePoints = resolve; });
   const props = {
@@ -14,7 +14,9 @@ function app(t, mode = 'points') {
     selectedMode: mode, selectedChannel: 'mpesa', paymentAmount: 5000, paymentCurrency: 'CDF',
     isBusy: false, hasPendingProviderPayment: false, paymentAlreadySucceeded: false,
     requiredPoints: 50, missingPoints: 0, isWalletFetching: false, moneyComplement: 0,
-    mobileMoneyPhone: '+243891234567', setPaymentError() {}, setStatusMessage() {}, persistBookingState() {},
+    mobileMoneyPhone: '+243891234567', setPaymentError() {}, setStatusMessage() {},
+    persistBookingState: (id, patch) => calls.patches.push({ id, patch }),
+    reportPaymentFailure: id => calls.failures.push(id),
     settleWithPoints: async () => { calls.points++; await gate; return true; },
     updatePaymentMode: () => { calls.cash++; return { unwrap: async () => props.arrivalBooking }; },
     initiateBookingPayment: () => { calls.electronic++; return { unwrap: async () => ({ booking: props.arrivalBooking, payment: { status: 'pending', orderNumber: 'existing' } }) }; },
@@ -25,7 +27,7 @@ function app(t, mode = 'points') {
     react: hooks.react,
     'expo-linking': { createURL: () => 'zwanga://booking/payment' },
     '@/constants/paymentFeatures': { ELECTRONIC_PAYMENTS_ENABLED: true },
-    '@/utils/safeExternalUrl': { openExternalUrlSafely: async () => {} },
+    '@/utils/safeExternalUrl': { openExternalUrlSafely: async () => { calls.urls++; } },
   })('hooks/arrival-payment/useArrivalPaymentSubmission.ts');
   const render = () => hooks.render(() => useArrivalPaymentSubmission(props));
   t.after(() => hooks.unmount());
@@ -88,4 +90,37 @@ for (const mode of ['electronic', 'points']) test(`confirmed emergency dropoff s
   assert.equal(env.calls[mode], 1);
   assert.equal(env.calls.cash, 0, 'the payment mode does not silently become cash');
   assert.equal(env.props.arrivalBooking.paymentAmount, 1500, 'no full-fare recalculation in the app');
+});
+
+for (const status of ['failed', 'cancelled']) test(`${status} top-up immediately allows mode recovery without storing an order or opening its URL`, async t => {
+  const env = app(t);
+  env.props.missingPoints = 20;
+  env.props.initiateWalletTopUp = () => ({ unwrap: async () => ({ payment: {
+    status, orderNumber: 'failed-order', paymentUrl: 'https://example.com/payment',
+  } }) });
+  await env.render().handlePayment();
+  assert.deepEqual(env.calls.failures, ['booking']);
+  assert.deepEqual(env.calls.patches, []);
+  assert.equal(env.calls.points + env.calls.urls, 0);
+});
+
+for (const status of ['failed', 'cancelled']) test(`${status} electronic initiation goes directly to completion failure handling`, async t => {
+  const env = app(t, 'electronic'); let received;
+  const response = { booking: env.props.arrivalBooking, payment: {
+    status, orderNumber: 'failed-order', paymentUrl: 'https://example.com/payment',
+  } };
+  env.props.initiateBookingPayment = () => ({ unwrap: async () => response });
+  env.props.handleCompletedBookingPayment = async value => { received = value; return true; };
+  await env.render().handlePayment();
+  assert.equal(received, response);
+  assert.deepEqual(env.calls.patches, []);
+  assert.equal(env.calls.urls, 0);
+});
+
+test('a submission transport error is not reported as confirmed payment failure', async t => {
+  const env = app(t);
+  env.props.missingPoints = 20;
+  env.props.initiateWalletTopUp = () => ({ unwrap: async () => { throw { status: 502 }; } });
+  await env.render().handlePayment();
+  assert.deepEqual(env.calls.failures, []);
 });

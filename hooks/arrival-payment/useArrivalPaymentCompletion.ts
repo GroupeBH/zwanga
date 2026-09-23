@@ -22,6 +22,8 @@ interface Params {
   setCompletionSummary: React.Dispatch<React.SetStateAction<PaymentCompletionSummary | null>>;
   persistBookingState: (bookingId: string, patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => void;
   setPaymentError: React.Dispatch<React.SetStateAction<string>>;
+  setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
+  reportPaymentFailure: (bookingId: string) => void;
 }
 
 export function useArrivalPaymentCompletion({
@@ -34,6 +36,8 @@ export function useArrivalPaymentCompletion({
   setCompletionSummary,
   persistBookingState,
   setPaymentError,
+  setStatusMessage,
+  reportPaymentFailure,
 }: Params) {
   const showCompletionSummary = useCallback(
     async (
@@ -89,17 +93,19 @@ export function useArrivalPaymentCompletion({
       }
 
       if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+        setStatusMessage('');
         persistBookingState(response.booking.id, {
           bookingPaymentOrderNumber: null,
           bookingPaymentUrl: null,
         });
         setPaymentError(getPaymentFailureMessage(response.payment.message));
+        reportPaymentFailure(response.booking.id);
         return true;
       }
 
       return false;
     },
-    [isSessionCurrent, persistBookingState, showCompletionSummary, setPaymentError],
+    [isSessionCurrent, persistBookingState, showCompletionSummary, setPaymentError, setStatusMessage, reportPaymentFailure],
   );
 
   return {

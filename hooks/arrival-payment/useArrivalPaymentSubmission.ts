@@ -5,6 +5,7 @@ import {
   getPaymentStatusMessage,
   createBookingCardPaymentRedirectUrls,
   hasPassengerArrived,
+  getPaymentFailureMessage,
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel, StoredBookingPaymentState } from '../../features/arrival-payment/paymentTypes';
 import { DRC_PAYMENT_PHONE_REGEX } from '../../features/arrival-payment/paymentPolicy';
@@ -23,6 +24,7 @@ interface Params {
   isBusy: boolean;
   hasPendingProviderPayment: boolean;
   setPaymentError: React.Dispatch<React.SetStateAction<string>>;
+  reportPaymentFailure: (bookingId: string) => void;
   setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
   paymentAlreadySucceeded: boolean;
   showCompletionSummary: (sourceBooking: Booking, options?: { mode?: TripPaymentMode | null; channel?: PaymentChannel; paymentReference?: string | null; }) => Promise<void>;
@@ -51,6 +53,7 @@ export function useArrivalPaymentSubmission({
   isBusy,
   hasPendingProviderPayment,
   setPaymentError,
+  reportPaymentFailure,
   setStatusMessage,
   paymentAlreadySucceeded,
   showCompletionSummary,
@@ -121,6 +124,14 @@ export function useArrivalPaymentSubmission({
           phone,
         }).unwrap();
 
+        if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+          if (isSessionCurrent()) {
+            setStatusMessage('');
+            setPaymentError(getPaymentFailureMessage(response.payment.message));
+            reportPaymentFailure(arrivalBooking.id);
+          }
+          return;
+        }
         if (response.payment.status !== 'succeeded' && response.payment.orderNumber) {
           persistBookingState(arrivalBooking.id, {
             walletTopUpOrderNumber: response.payment.orderNumber,
@@ -179,6 +190,10 @@ export function useArrivalPaymentSubmission({
           : {}),
       }).unwrap();
 
+      if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+        await handleCompletedBookingPayment(response, { mode: 'electronic', channel: selectedChannel });
+        return;
+      }
       if (response.payment.status !== 'succeeded' && response.payment.orderNumber) {
         persistBookingState(arrivalBooking.id, {
           bookingPaymentOrderNumber: response.payment.orderNumber,
@@ -226,6 +241,7 @@ export function useArrivalPaymentSubmission({
   }, [
     isSessionCurrent,
     setPaymentError,
+    reportPaymentFailure,
     setStatusMessage,
     arrivalBooking,
     handleCompletedBookingPayment,

@@ -1,6 +1,6 @@
 import { TabType, RateTargetType } from '../../features/rating/ratingTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useCreateReviewMutation } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
@@ -21,11 +21,20 @@ export function useRatingData() {
   const successReturnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasInitializedTargetRef = useRef(false);
   const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  const isTripDriver = trip?.driverId === user?.id;
-  // Charger les bookings - toujours charger pour le conducteur, et aussi pour les passagers
-  const { data: tripBookings, isLoading: bookingsLoading, error: bookingsError, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, {
-    skip: !tripId,
+  const isTripDriver = Boolean(user?.id && trip?.driverId === user.id);
+  const driverBookings = useGetTripBookingsQuery(tripId, {
+    skip: !tripId || !isTripDriver,
   });
+  const passengerBookings = useGetMyBookingsQuery(undefined, { skip: !tripId || !trip || !user?.id || isTripDriver });
+  const tripBookings = useMemo(() => isTripDriver ? driverBookings.data
+    : passengerBookings.data?.filter(booking => booking.tripId === tripId),
+  [driverBookings.data, isTripDriver, passengerBookings.data, tripId]);
+  const bookingsLoading = isTripDriver ? driverBookings.isLoading : passengerBookings.isLoading;
+  const bookingsError = isTripDriver ? driverBookings.error : passengerBookings.error;
+  const refetchBookings = () => {
+    if (isTripDriver) return driverBookings.refetch();
+    if (tripId && trip && user?.id) return passengerBookings.refetch();
+  };
 
   // Déterminer si l'utilisateur est un passager du trajet
   const isTripPassenger = useMemo(() => {
@@ -70,7 +79,7 @@ export function useRatingData() {
 
   // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
   const passengers = useMemo(() => {
-    const result: Array<{ id: string; name: string; seats: number }> = [];
+    const result: { id: string; name: string; seats: number }[] = [];
     
     // Pour le conducteur, utiliser les bookings en priorité (source la plus fiable)
     // Si on a des bookings, les utiliser

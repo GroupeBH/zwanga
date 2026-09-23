@@ -20,7 +20,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
   const listedOngoingDriverTrip = useMemo(
     () =>
       myDriverTrips.find(
-        (trip) => trip.status === 'ongoing' && (!currentUser?.id || trip.driverId === currentUser.id),
+        (trip) => Boolean(currentUser?.id) && trip.status === 'ongoing' && trip.driverId === currentUser?.id,
       ) ?? null,
     [currentUser?.id, myDriverTrips],
   );
@@ -39,12 +39,13 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
   });
 
   const ongoingDriverTrip = useMemo(() => {
-    if (refreshedDriverTrip) {
+    if (!isDriver || !currentUser?.id) return null;
+    if (refreshedDriverTrip?.id === driverTripLookupId && refreshedDriverTrip?.driverId === currentUser.id) {
       return refreshedDriverTrip.status === 'ongoing' ? refreshedDriverTrip : null;
     }
 
     return listedOngoingDriverTrip;
-  }, [listedOngoingDriverTrip, refreshedDriverTrip]);
+  }, [currentUser?.id, driverTripLookupId, isDriver, listedOngoingDriverTrip, refreshedDriverTrip]);
 
   const {
     data: ongoingDriverBookings = EMPTY_HOME_BOOKINGS,

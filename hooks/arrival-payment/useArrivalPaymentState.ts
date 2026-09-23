@@ -147,7 +147,8 @@ export function useArrivalPaymentState() {
   const paymentAlreadySucceeded =
     arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0;
   const activeStoredState = arrivalBooking ? storedState[arrivalBooking.id] : undefined;
-  const { selectedMode, setSelectedMode } = useBookingPaymentMode(arrivalBooking, activeStoredState);
+  const { selectedMode, setSelectedMode, reportPaymentFailure, canChangeFailedPaymentMode } =
+    useBookingPaymentMode(arrivalBooking, activeStoredState, isBusy);
   const hasPendingProviderPayment = Boolean(
     activeStoredState?.bookingPaymentOrderNumber || activeStoredState?.walletTopUpOrderNumber,
   );
@@ -179,12 +180,13 @@ export function useArrivalPaymentState() {
     if (!arrivalBooking || !isBeforeArrival || isBusy || hasPendingProviderPayment) return;
     persistBookingState(arrivalBooking.id, { preArrivalDismissedAt: new Date().toISOString() });
   }, [arrivalBooking, hasPendingProviderPayment, isBeforeArrival, isBusy, persistBookingState]);
+  const presentedBookingId = completionSummary?.bookingId ?? arrivalBooking?.id;
 
   return {
     isResumeReady,
     isSessionCurrent,
-    isPaymentDeferred: arrivalBooking?.id === deferredBookingId,
-    deferPayment: () => { if (arrivalBooking) setDeferredBookingId(arrivalBooking.id); },
+    isPaymentDeferred: Boolean(presentedBookingId && presentedBookingId === deferredBookingId),
+    deferPayment: () => { if (presentedBookingId) setDeferredBookingId(presentedBookingId); },
     resumePayment: () => setDeferredBookingId(null),
     refetchBookings,
     refetchWallet,
@@ -206,6 +208,8 @@ export function useArrivalPaymentState() {
     activeBookingIdRef,
     storedState,
     setSelectedMode,
+    reportPaymentFailure,
+    canChangeFailedPaymentMode,
     setSelectedChannel,
     setPaymentPhone,
     activeStoredState,
