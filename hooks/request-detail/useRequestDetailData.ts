@@ -1,4 +1,5 @@
 import { normalizeTripRequestVehicleType } from '../../features/request-detail/requestDetailModel';
+import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
@@ -41,11 +42,7 @@ export function useRequestDetailData() {
   const isCreateRouteAlias = id === 'index';
 
   const { data: currentUser } = useGetCurrentUserQuery();
-  const isDriverAccount = Boolean(
-    currentUser?.isDriver ||
-      currentUser?.role === 'driver' ||
-      currentUser?.role === 'both',
-  );
+  const isDriverAccount = hasDriverRole(currentUser);
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
 
   // État pour le polling interval dynamique

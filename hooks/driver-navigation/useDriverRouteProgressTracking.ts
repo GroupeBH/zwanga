@@ -10,7 +10,7 @@ import {
   isFreshLivePassengerLocation,
 } from '../../features/driver-navigation/navigationBooking';
 import { RouteCoordinate, DRIVER_DROPOFF_APPROACH_DISTANCE_KM } from '../../features/driver-navigation/navigationModel';
-import { DRIVER_PICKUP_ARRIVAL_DISTANCE_KM, PASSENGER_READY_DISTANCE_KM } from '@/constants/rideProgress';
+import { DRIVER_NEAR_PICKUP_DISTANCE_KM, DRIVER_PICKUP_ARRIVAL_DISTANCE_KM, PASSENGER_READY_DISTANCE_KM } from '@/constants/rideProgress';
 import { calculateDistance } from '@/utils/routeHelpers';
 import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import {
@@ -133,10 +133,11 @@ export function useDriverRouteProgressTracking({
       };
       const driverPickupDistanceKm = calculateDistance(driverCoordinate, pickupCoordinate);
 
-      if (driverPickupDistanceKm <= DRIVER_PICKUP_ARRIVAL_DISTANCE_KM) {
+      if (driverPickupDistanceKm <= DRIVER_NEAR_PICKUP_DISTANCE_KM) {
         notices.presentPickupNotice(
           {
-            type: 'driver_arrived_pickup',
+            type: driverPickupDistanceKm <= DRIVER_PICKUP_ARRIVAL_DISTANCE_KM
+              ? 'driver_arrived_pickup' : 'driver_near_pickup',
             bookingId: booking.id,
             tripId: data.tripId,
             passengerId: waypoint.passenger.id,

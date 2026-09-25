@@ -11,6 +11,7 @@ import React from 'react';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
 
 export default function PassengerNavigationScreen() {
   const model = usePassengerNavigationController();
@@ -214,6 +215,7 @@ export default function PassengerNavigationScreen() {
             <Text style={styles.arrivalModalText}>
               {model.presentation.pickupNoticeText}
             </Text>
+            <PickupVehicleDetails trip={model.data.trip ?? model.data.booking.trip} />
             <View style={styles.arrivalModalAddressRow}>
               <Ionicons name="location" size={18} color={Colors.primary} />
               <Text style={styles.arrivalModalAddress} numberOfLines={2}>

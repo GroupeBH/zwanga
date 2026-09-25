@@ -126,6 +126,8 @@ export const {
   useGetCurrentUserQuery,
   useLazyGetCurrentUserQuery,
   useUpdateUserMutation,
+  useRequestDriverOnboardingMutation,
+  useActivateDriverMutation,
   useDeleteAccountMutation,
   useGetUserByIdQuery,
   useGetPublicUserInfoQuery,

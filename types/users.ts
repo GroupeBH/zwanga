@@ -18,10 +18,13 @@ export interface User {
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
   isDriver?: boolean;
+  driverOnboardingRequestedAt?: string | null;
+  driverActivatedAt?: string | null;
   isPremium?: boolean;
   premiumBadge?: boolean;
   premiumBadgeEnabled?: boolean;
   createdAt: string; // ISO string date
+  updatedAt?: string;
   status?: string;
 }
 

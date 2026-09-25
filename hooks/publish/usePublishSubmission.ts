@@ -1,4 +1,5 @@
 import { PublicationSuccess, getLocationCoordinates, isUserDriver } from '../../features/publish/publishModel';
+import { isPublicationPhotoRequired, publicationPhotoDialog } from '@/features/publish/publicationPhotoPolicy';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -237,6 +238,10 @@ export function usePublishSubmission({
       // rendered as an in-screen overlay instead of a React Native Modal.
       setPublicationSuccess({ recurring: isRecurringTrip });
     } catch (error: any) {
+      if (isPublicationPhotoRequired(error)) {
+        showDialog(publicationPhotoDialog(router));
+        return;
+      }
       const normalizedDeparture = departureAddress.trim().toLowerCase();
       const normalizedArrival = arrivalAddress.trim().toLowerCase();
       const recoveredPublication = isRecurringTrip

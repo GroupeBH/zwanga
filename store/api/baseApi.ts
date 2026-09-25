@@ -87,6 +87,7 @@ export const baseApi = createApi({
     'Subscription',
     'SubscriptionPlans',
     'DocumentFundingRequest',
+    'ProServices',
     'Wallet',
     'DriverSettlement',
     'TripShareLink',

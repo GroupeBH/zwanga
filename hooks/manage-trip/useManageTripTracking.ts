@@ -101,7 +101,7 @@ export function useManageTripTracking({
       }
 
       payload.events
-        .filter((event) => event.type !== 'driver_near_pickup')
+        .slice()
         .sort(
           (first, second) =>
             MANAGE_AUTO_PROGRESS_PRIORITY[first.type] -
@@ -117,10 +117,13 @@ export function useManageTripTracking({
             const nextPriority = MANAGE_AUTO_PROGRESS_PRIORITY[event.type];
             const highestPriorityForBooking =
               highestManageAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
-            if (highestPriorityForBooking > nextPriority) {
+            const approachAfterReadiness = event.type === 'driver_near_pickup' &&
+              highestPriorityForBooking <= MANAGE_AUTO_PROGRESS_PRIORITY.passenger_ready_pickup &&
+              !presentedManageAutoProgressKeysRef.current.has(`${tripId}:driver_arrived_pickup:${event.bookingId}`);
+            if (highestPriorityForBooking > nextPriority && !approachAfterReadiness) {
               return;
             }
-            highestManageAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
+            highestManageAutoProgressPriorityRef.current.set(event.bookingId, Math.max(highestPriorityForBooking, nextPriority));
           }
 
           const booking = bookingsRef.current?.find((item) => item.id === event.bookingId);
@@ -147,7 +150,7 @@ export function useManageTripTracking({
             driver_near_pickup: {
               variant: 'info',
               icon: 'car-sport',
-              title: 'Conducteur proche',
+              title: 'Prise en charge à proximité',
               message: `Vous approchez du point de récupération de ${passengerName}.${distanceText}`,
             },
             driver_arrived_pickup: {

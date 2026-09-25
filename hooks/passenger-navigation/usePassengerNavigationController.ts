@@ -56,6 +56,8 @@ export function usePassengerNavigationController() {
   });
 
   const notices = usePassengerNavigationNotices({
+    isScreenActive: data.isScreenActive,
+    trip: data.trip,
     showNotice,
     isMountedRef: state.isMountedRef,
     hasPresentedArrivalModalRef: state.hasPresentedArrivalModalRef,
@@ -213,6 +215,7 @@ export function usePassengerNavigationController() {
   });
 
   const driverCamera = usePassengerDriverCameraTracking({
+    isScreenActive: data.isScreenActive,
     driverLocation: state.driverLocation,
     routeCoordinates: state.routeCoordinates,
     booking: data.booking,

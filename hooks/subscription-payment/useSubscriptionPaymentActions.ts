@@ -248,7 +248,7 @@ export function useSubscriptionPaymentActions({
           channel: selectedChannel,
           message: getPaymentStatusMessage(
             response.payment.message,
-            'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+            'Paiement en attente chez le prestataire. Nous continuons le suivi.',
           ),
           orderNumber: response.payment.orderNumber,
           paymentMethod: method,

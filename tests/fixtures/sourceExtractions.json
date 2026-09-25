@@ -234,9 +234,11 @@
       "updateReportStatus": "0c7364e19fb451957e87c6f1b066a0a496f35f9f11a57dc3098b0e6ab2afefa6"
     },
     "store/api/userApi.ts": {
-      "getProfileSummary": "852853c18418c1a5ea401f712ccf39aada485b0f5fb911e830fb0ac940fe3390",
-      "getCurrentUser": "b954675980a0b259ba2e4adccde987b1013e5599bf0c0c324874984b45ccbf95",
-      "updateUser": "04251da937958cb0fc94fe5afdad8fb0a8f1bab8a3fb9bbf2245e31f12135235",
+      "getProfileSummary": "d8ccd1b68f7e1e15d6fd3f2bb470f3a4b871e2b16b56f77949dd5a7b2728bd16",
+      "getCurrentUser": "ef49b20fb6dc5d64144a2956aa02cb8f2b3c8d6ce317474205e6881dc66375a2",
+      "updateUser": "17cf4874ce92a822d3c6f8bf939f121b5d83371494357feee49ed7ef7e792a7e",
+      "requestDriverOnboarding": "52770635580b8b643e2268f9706d13d29f388ba7c239f6afed49f1038912172f",
+      "activateDriver": "4c993e25751136fd9d234f4e999f313ca4461b26c09430487a3cd9a5275b155e",
       "deleteAccount": "8160786312d52735bfcf15c162f51916eec39a8d430822aedd97551738710686",
       "getUserById": "0dd2b49af2389970548294e121c6a58453000224ae9fbe3843638beede569fc6",
       "getPublicUserInfo": "44c654e732f032f70f847f93d4fc0eebf872baa5336216ae03ec6f9a5942aa3a",

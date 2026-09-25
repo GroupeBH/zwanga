@@ -8,6 +8,7 @@ import type {
   Vehicle,
 } from '../../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isDriverAccount } from '@/utils/accountRole';
 
 export type ServerUser = Record<string, any>;
 export const FAVORITE_LOCATION_NOTES_KEY = 'favorite_location_local_notes';
@@ -46,14 +47,17 @@ export const mapServerUser = (user: ServerUser): User => {
     profilePicture: user.profilePicture ?? null,
     rating: user.rating ?? 0,
     totalTrips: user.totalTrips ?? 0,
-    verified: Boolean(user.isEmailVerified || user.isPhoneVerified || user.isDriver),
+    verified: Boolean(user.isEmailVerified || user.isPhoneVerified),
     identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
     vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
-    isDriver: user.isDriver ?? false,
+    isDriver: isDriverAccount(user),
+    driverOnboardingRequestedAt: user.driverOnboardingRequestedAt ?? null,
+    driverActivatedAt: user.driverActivatedAt ?? null,
     isPremium: Boolean(user.isPremium),
     premiumBadge: Boolean(user.premiumBadge),
     premiumBadgeEnabled: Boolean(user.premiumBadgeEnabled ?? user.premiumBadge),
     createdAt: user.createdAt ?? new Date().toISOString(),
+    updatedAt: user.updatedAt,
   };
 };
 

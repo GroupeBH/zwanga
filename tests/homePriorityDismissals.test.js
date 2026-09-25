@@ -134,7 +134,8 @@ test('after hiding all known pending bookings, another driver trip becomes eligi
   const b = { ...trip('b', 600000), passengers: [{ bookingId: 'b1', bookingStatus: 'pending' }] };
   const { useHomeDriverActivity } = loader({ ...native, react: hooks.react,
     '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: [a, b] }), useGetTripByIdQuery: () => ({}) },
-    '@/store/api/bookingApi': { useGetTripBookingsQuery: (id, options) => { queries.push({ id, options }); return {}; } },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }),
+      useGetTripBookingsQuery: (id, options) => { queries.push({ id, options }); return {}; } },
   })('hooks/home/useHomeDriverActivity.ts');
   const props = { isDriver: true, isFocused: true, currentUser: { id: 'driver' } };
   const render = () => hooks.render(() => useHomeDriverActivity(props));

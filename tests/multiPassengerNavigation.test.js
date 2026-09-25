@@ -83,6 +83,27 @@ test('queued pickup is retained behind a bypass prompt, but removed if cancelled
   h.hooks.unmount();
 });
 
+test('driver proximity is deduplicated and queued per booking, including a multi-seat holder', async () => {
+  const h = notices();
+  h.props.visibleBookings[0] = booking('a', { numberOfSeats: 3 });
+  h.emit('a', 'driver_near_pickup'); h.emit('b', 'driver_near_pickup'); h.emit('a', 'driver_near_pickup');
+  assert.equal(h.shown.length, 1); assert.equal(h.props.pickupNotice.waypoint.booking.id, 'a');
+  await new Promise(resolve => setImmediate(resolve)); assert.match(h.spoken[0], /approchez.*Titulaire a/);
+  h.close(); assert.equal(h.props.pickupNotice.waypoint.booking.id, 'b');
+  h.close(); assert.equal(h.props.pickupNotice, null); assert.equal(h.shown.length, 2);
+  h.hooks.unmount();
+});
+
+test('driver gets approach after early passenger readiness, but never after already arriving', () => {
+  const h = notices();
+  h.emit('a', 'passenger_ready_pickup'); h.emit('a', 'driver_near_pickup');
+  assert.equal(h.props.pickupNotice.type, 'passenger_ready_pickup');
+  h.close(); assert.equal(h.props.pickupNotice.type, 'driver_near_pickup');
+  h.close(); h.emit('b'); h.emit('b', 'driver_near_pickup'); h.close();
+  assert.equal(h.props.pickupNotice, null);
+  h.hooks.unmount();
+});
+
 test('information notices queue instead of replacing other passengers, with bounded memory and cleanup', () => {
   const { createRideOverlayStore } = loader()('features/navigation/rideOverlayStore.ts');
   const store = createRideOverlayStore(); store.setScope('driver:trip', true);
@@ -132,25 +153,30 @@ const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node)
 const words = node => typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(words).join('') : node?.props ? words(node.props.children) : '';
 
 test('virtualized stop selection and reports target the selected booking, including groups with identical names', () => {
+  const hooks = hookHarness();
   const native = { FlatList: 'List', Text: 'Text', View: 'View', TouchableOpacity: 'Button', StyleSheet: { create: value => value } };
-  const { NavigationPassengersModal } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  const load = loader({ react: { ...React, ...hooks.react }, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' }, '../screen-styles/app/trip/navigate/detail/index': { styles: {} },
-  })('features/driver-navigation/NavigationPassengersModal.tsx');
+  });
+  const { NavigationPassengersModal } = load('features/driver-navigation/NavigationPassengersModal.tsx');
+  const { NavigationPassengerRow } = load('features/driver-navigation/NavigationPassengerRow.tsx');
   const stops = Array.from({ length: 100 }, (_, i) => ({ id: `${i}:pickup`, type: 'pickup', completed: false,
     address: `Départ ${i}`, passenger: { id: `holder-${i}`, name: 'Titulaire' }, booking: booking(String(i), { numberOfSeats: 3 }) }));
   const calls = [], ref = { current: false };
-  const tree = NavigationPassengersModal({ passengersPanelVisible: true, waypoints: stops, passengerStats: {}, insets: { bottom: 20 },
+  const tree = hooks.render(() => NavigationPassengersModal({ passengersPanelVisible: true, waypoints: stops, passengerStats: {}, insets: { bottom: 20 },
     currentWaypointIndex: 0, waypointModalVisibleRef: ref, setActiveWaypoint: point => calls.push(['selected', point.booking.id]),
     setPassengersPanelVisible: value => calls.push(['panel', value]), setWaypointModalVisible: value => calls.push(['waypoint', value]),
-    openReportForWaypoint: point => calls.push(['report', point.booking.id]) });
+    openReportForWaypoint: point => calls.push(['report', point.booking.id]) }));
   const list = all(tree).find(node => node.type === 'List');
   assert.equal(list.props.initialNumToRender, 8); assert.equal(list.props.removeClippedSubviews, false);
-  assert.equal(list.props.data.length, 100); assert.equal(list.props.keyExtractor(stops[2]), '2:pickup');
-  const row = list.props.renderItem({ item: stops[2], index: 2 });
-  assert.match(words(row), /3 place\(s\).*Départ 2/);
-  row.props.onPress(); assert.deepEqual(calls, [['selected', '2'], ['panel', false], ['waypoint', true]]);
-  all(row).filter(node => node.type === 'Button')[1].props.onPress({ stopPropagation() {} });
-  assert.deepEqual(calls.at(-1), ['report', '2']);
+  assert.equal(list.props.data.length, 100); assert.equal(list.props.keyExtractor(list.props.data[2]), '2');
+  const row = NavigationPassengerRow.type(list.props.renderItem({ item: list.props.data[2] }).props);
+  assert.match(words(row), /3 places.*Départ 2/);
+  all(row).filter(node => node.type === 'Button')[0].props.onPress();
+  assert.deepEqual(calls, [['selected', '2'], ['panel', false], ['waypoint', true]]);
+  all(row).filter(node => node.type === 'Button')[1].props.onPress();
+  assert.deepEqual(calls.slice(-2), [['panel', false], ['report', '2']]);
+  hooks.unmount();
 });
 
 test('boarding another booking cannot dismiss the current pickup prompt or its countdown', () => {

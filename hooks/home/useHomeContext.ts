@@ -6,7 +6,7 @@ import { selectAvailableTrips, selectLocationRadius } from '@/store/selectors';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { isDriverAccount } from '@/utils/accountRole';
 import {
   useWindowDimensions
 } from 'react-native';
@@ -37,10 +37,7 @@ export function useHomeContext() {
 
   const { data: currentUser } = useGetCurrentUserQuery();
 
-  const isDriver = useMemo(() => {
-    const role = currentUser?.role;
-    return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
-  }, [currentUser?.isDriver, currentUser?.role]);
+  const isDriver = isDriverAccount(currentUser);
   return {
     isDriver,
     isFocused,

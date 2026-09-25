@@ -6,6 +6,7 @@ import type { Booking } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
 interface Params {
+  isScreenActive: boolean;
   driverLocation: { latitude: number; longitude: number; } | null;
   routeCoordinates: { latitude: number; longitude: number; }[];
   booking: Booking | undefined;
@@ -17,6 +18,7 @@ interface Params {
 }
 
 export function usePassengerDriverCameraTracking({
+  isScreenActive,
   driverLocation,
   routeCoordinates,
   booking,
@@ -39,6 +41,8 @@ export function usePassengerDriverCameraTracking({
   useEffect(() => {
     if (
       !booking?.id ||
+      !isScreenActive ||
+      !['accepted', 'no_show'].includes(booking.status) ||
       !tripId ||
       !isTripOngoing ||
       booking.pickedUp ||
@@ -88,8 +92,10 @@ export function usePassengerDriverCameraTracking({
     booking?.passengerId,
     booking?.pickedUp,
     booking?.pickedUpConfirmedByPassenger,
+    booking?.status,
     displayedDriverLocation,
     isTripOngoing,
+    isScreenActive,
     passengerLocation,
     pickupCoordinate,
     presentPickupNotice,

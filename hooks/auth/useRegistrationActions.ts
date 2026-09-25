@@ -186,7 +186,6 @@ export function useRegistrationActions({
               lastName: legalLastName,
               gender: gender ?? undefined,
               role,
-              isDriver: requiresVehicle,
               vehicle: signupVehicle,
               ...referralSignupPayload,
             }).unwrap()
@@ -197,7 +196,6 @@ export function useRegistrationActions({
               lastName: legalLastName,
               gender: gender ?? undefined,
               role,
-              isDriver: requiresVehicle,
               vehicle: signupVehicle,
               ...referralSignupPayload,
             }).unwrap();
@@ -236,7 +234,6 @@ export function useRegistrationActions({
       formData.append('lastName', legalLastName);
       if (gender) formData.append('gender', gender);
       formData.append('role', role);
-      formData.append('isDriver', JSON.stringify(requiresVehicle));
       Object.entries(referralSignupPayload).forEach(([key, value]) => {
         if (value) formData.append(key, value);
       });

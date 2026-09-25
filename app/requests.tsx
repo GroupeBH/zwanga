@@ -1,4 +1,5 @@
 import { useRequestCards } from '../hooks/requests/useRequestCards';
+import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { styles } from '../features/screen-styles/app/requests/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { rankRequestsByProximity } from '@/features/trip-request/requestPriority';
@@ -21,11 +22,7 @@ export default function TripRequestsScreen() {
   const router = useRouter();
   const { data: currentUser } = useGetCurrentUserQuery();
   const driverCoordinate = useAppSelector(selectUserCoordinates);
-  const isDriverAccount = Boolean(
-    currentUser?.isDriver ||
-      currentUser?.role === 'driver' ||
-      currentUser?.role === 'both',
-  );
+  const isDriverAccount = hasDriverRole(currentUser);
   const [activeTab, setActiveTab] = useState<RequestTab>('available');
 
   // Query pour les demandes disponibles (pour les drivers)
@@ -237,4 +234,3 @@ export default function TripRequestsScreen() {
     </SafeAreaView>
   );
 }
-

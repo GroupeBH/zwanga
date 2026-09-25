@@ -172,7 +172,7 @@ export function useWalletTopUpMonitoring({
             getPaymentStatusMessage(
               response.payment.message,
               options.pendingMessage ||
-                'Paiement en attente chez FlexPay. Nous continuons la vérification.',
+                'Paiement en attente chez le prestataire. Nous continuons la vérification.',
             ),
           );
           return 'pending';

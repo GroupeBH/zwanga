@@ -3,11 +3,10 @@ import { Colors } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import {
   formatReferralTokens,
-  openExternalUrl,
-  ZWANGA_DOCUMENTS_PACK_URL
 } from '@/features/profile/profileModel';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useAppDispatch } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { getServicesEntryHref, selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
 import { performLogout } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -27,6 +26,7 @@ import { useProfileSubscriptionView } from './useProfileSubscriptionView';
 import { useProfileVehicles } from './useProfileVehicles';
 export function useProfileController() {
   const router = useRouter();
+  const usesServices = useAppSelector(selectUsesServicesTab);
 
   const insets = useSafeAreaInsets();
 
@@ -64,7 +64,7 @@ export function useProfileController() {
 
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
 
-  const [openingDocumentsPack, setOpeningDocumentsPack] = useState(false);
+  const openingDocumentsPack = false;
 
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } = useTutorialGuide('profile_screen');
 
@@ -94,19 +94,10 @@ export function useProfileController() {
     router.push('/subscriptions/payment' as any);
   };
 
-  const handleOpenDocumentsPack = async () => {
-    try {
-      setOpeningDocumentsPack(true);
-      await openExternalUrl(ZWANGA_DOCUMENTS_PACK_URL);
-    } catch {
-      showDialog({
-        variant: 'danger',
-        title: 'Redirection impossible',
-        message: `Impossible d'ouvrir le site pour le moment. Vous pouvez aller sur ${ZWANGA_DOCUMENTS_PACK_URL}.`,
-      });
-    } finally {
-      setOpeningDocumentsPack(false);
-    }
+  const handleOpenDocumentsPack = () => {
+    const href = getServicesEntryHref(usesServices);
+    if (usesServices) router.navigate(href as any);
+    else router.push(href as any);
   };
 
   const driverStatusItems = isDriver ? [

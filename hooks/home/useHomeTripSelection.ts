@@ -103,9 +103,7 @@ export function useHomeTripSelection({
     );
 
     if (ongoingBookingTripIds.size === 0) {
-      return refreshedPassengerTrip?.status === 'ongoing' && trackedTripInfo?.role === 'passenger'
-        ? refreshedPassengerTrip
-        : null;
+      return null;
     }
 
     if (refreshedPassengerTrip) {

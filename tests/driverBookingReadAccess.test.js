@@ -34,6 +34,7 @@ function environment() {
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ data: env.trip }),
       useGetMyActivityTripsQuery: () => ({ data: env.listedTrips }) },
     '@/store/api/bookingApi': {
+      useGetMyActivityBookingsQuery: () => ({ data: env.ownBookings }),
       useGetTripBookingsQuery: (_id, options) => query('driver', env.driverBookings, options),
       useGetMyBookingsQuery: (_id, options) => query('passenger', env.ownBookings, options),
     },

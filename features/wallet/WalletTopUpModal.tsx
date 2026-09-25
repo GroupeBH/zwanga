@@ -174,7 +174,7 @@ export function WalletTopUpModal({
             </Text>
           ) : null}
           {topUpOrderNumber ? (
-            <Text style={styles.topUpReferenceText}>Référence FlexPay {topUpOrderNumber}</Text>
+            <Text style={styles.topUpReferenceText}>Référence de paiement {topUpOrderNumber}</Text>
           ) : null}
         </View>
       ) : null}

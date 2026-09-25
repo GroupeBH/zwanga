@@ -10,6 +10,7 @@ import {
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
 import { sharedBookingsOptions, sharedRequestsOptions } from '@/features/activity/activityQueryOptions';
+import { findOngoingPassengerBooking, isActivePassengerBooking } from '@/features/activity/tripParticipation';
 import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
@@ -50,27 +51,20 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
 
     return myBookings.filter(
       (booking) =>
+        booking.passengerId === currentUser.id &&
         (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId,
     );
   }, [myBookings, currentUser?.id]);
 
   const activePassengerBooking = useMemo(
     () =>
-      activeBookings.find(
-        (booking) =>
-          booking.status === 'accepted' &&
-          !booking.droppedOff &&
-          booking.trip?.status === 'ongoing',
-      ) ??
-      activeBookings.find(
-        (booking) => booking.status === 'accepted' && !booking.droppedOff,
-      ) ??
+      findOngoingPassengerBooking(activeBookings, currentUser?.id) ??
+      activeBookings.find(booking => isActivePassengerBooking(booking, currentUser?.id)) ??
       null,
-    [activeBookings],
+    [activeBookings, currentUser?.id],
   );
 
   const passengerTripLookupId =
-    (trackedTripInfo?.role === 'passenger' ? trackedTripInfo.tripId : null) ??
     activePassengerBooking?.tripId ??
     '';
 

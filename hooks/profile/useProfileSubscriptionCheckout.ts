@@ -182,7 +182,7 @@ export function useProfileSubscriptionCheckout({
       setSubscriptionPaymentStage('preparing');
       setSubscriptionPaymentAutoCheckAttempt(0);
       setSubscriptionPaymentMessage(
-        'Préparation du paiement avec FlexPay. Patientez quelques secondes ; la référence sera gardée dès qu’elle sera disponible.',
+        'Préparation du paiement. Patientez quelques secondes ; la référence sera gardée dès qu’elle sera disponible.',
       );
       if (!isSubscriptionCardPayment) {
         setSubscriptionPhone(phone);
@@ -223,7 +223,7 @@ export function useProfileSubscriptionCheckout({
           channel: selectedSubscriptionPaymentChannel,
           message: getSubscriptionPaymentStatusMessage(
             response.payment.message,
-            'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+            'Paiement en attente chez le prestataire. Nous continuons le suivi.',
           ),
           orderNumber: response.payment.orderNumber,
           paymentMethod,
@@ -251,7 +251,7 @@ export function useProfileSubscriptionCheckout({
       if (!isSubscriptionCardPayment && response.payment.orderNumber) {
         const pendingMessage = getSubscriptionPaymentStatusMessage(
           response.payment.message,
-          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money ; Zwanga activera l’abonnement dès que FlexPay confirme.',
+          'Demande envoyée sur votre téléphone. Confirmez avec votre PIN Mobile Money ; Zwanga activera l’abonnement dès confirmation du paiement.',
         );
         setSubscriptionPaymentStage('phone_confirmation');
         setSubscriptionPaymentMessage(pendingMessage);

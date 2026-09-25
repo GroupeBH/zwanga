@@ -81,7 +81,7 @@ function screenApp() {
   const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false, active: true };
   const coords = { latitude: -4.325, longitude: 15.3222 };
   const state = {
-    auth: { user: { id: 'me', firstName: 'Alice', isDriver: true } },
+    auth: { user: { id: 'me', firstName: 'Alice', role: 'driver', isDriver: true } },
     trips: { items: [] },
     location: { get lastKnownLocation() { app.coordinateReads++; return { coords }; } },
   };
@@ -99,7 +99,7 @@ function screenApp() {
     '@/store/hooks': { useAppSelector: selector => selector(state) },
     '@/store/api/userApi': { useGetCurrentUserQuery: (args, options) => {
       queryCalls.push({ name: 'profile', args, options });
-      return { data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', isDriver: app.isDriver } };
+      return { data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', role: app.isDriver ? 'driver' : 'passenger', isDriver: app.isDriver } };
     } },
     '@/store/api/tripApi': {
       useGetTripsQuery: (args, options) => { queryCalls.push({ name: 'trips', args, options }); return { data: app.trips, isLoading: false, isFetching: false, refetch() {} }; },
@@ -111,12 +111,27 @@ function screenApp() {
   });
   const Screen = load('app/search.tsx').default;
   const Toolbar = load('components/search/SearchResultsToolbar.tsx').SearchResultsToolbar;
-  const render = () => hooks.render(Screen);
+  const render = (props) => hooks.render(() => Screen(props));
   const list = tree => nodes(tree).find(node => node.type === 'FlatList');
   const toolbar = tree => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === Toolbar);
   const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Demandes' : 'Trajets')).props.onPress();
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
+
+test('embedded search has a tab title without a back arrow and reserves the tab overlay without changing results', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  const standalone = app.render();
+  const embedded = app.render({ embedded: true, bottomOverlay: 92 });
+  assert.ok(nodes(standalone).some(node => node.props.name === 'arrow-back'));
+  assert.equal(nodes(embedded).some(node => node.props.name === 'arrow-back'), false);
+  assert.ok(nodes(embedded).some(node => node.type === 'Text' && text(node) === 'Recherche'));
+  assert.deepEqual(embedded.props.edges, ['top', 'left', 'right']);
+  assert.equal(app.list(embedded).props.contentContainerStyle[1].paddingBottom - app.list(standalone).props.contentContainerStyle[1].paddingBottom, 92);
+  assert.equal(app.list(embedded).props.data, app.list(standalone).props.data);
+  assert.equal(app.toolbar(embedded).props.onSortChange, app.toolbar(standalone).props.onSortChange);
+  app.hooks.unmount();
+});
 
 test('seat filter reaches four and preserves the same threshold for trips and requests', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

@@ -1,4 +1,5 @@
 import { useWalletController } from "../hooks/wallet/useWalletController";
+import { isDriverAccount } from '@/utils/accountRole';
 import { WalletTopUpModal } from "../features/wallet/WalletTopUpModal";
 import { WalletTransferModal } from "../features/wallet/WalletTransferModal";
 import {
@@ -172,7 +173,7 @@ export default function WalletScreen() {
             />
           </TouchableOpacity>
 
-          {user?.isDriver || user?.role === "driver" ? (
+          {isDriverAccount(user) ? (
             <TouchableOpacity
               style={styles.referralBanner}
               onPress={() => wallet.router.push("/driver-earnings")}

@@ -145,7 +145,7 @@ export function useHomeSheet({
   const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
 
   const sheetTitle = isHomeSheetLockedRetracted
-    ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+    ? ongoingDriverTrip
       ? 'Trajet conducteur en cours'
       : 'Trajet réservé en cours'
     : isRequestsSheetMode
@@ -153,7 +153,7 @@ export function useHomeSheet({
       : 'Trajets publiés';
 
   const sheetSubtitle = isHomeSheetLockedRetracted
-    ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+    ? ongoingDriverTrip
       ? visibleDriverPassengerMarkers.length > 0
         ? `${visibleDriverPassengerMarkers.length} passager${visibleDriverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
         : 'Votre véhicule reste visible en direct'

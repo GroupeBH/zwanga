@@ -20,6 +20,7 @@ import {
   useGetVehiclesQuery
 } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
+import { isDriverAccount } from '@/utils/accountRole';
 import { selectUser } from '@/store/selectors';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { screenReadOptions } from '@/features/performance/screenReadPolicy';
@@ -66,12 +67,8 @@ export function useProfileData() {
 
   const vehicleList: Vehicle[] = vehicles ?? EMPTY_VEHICLES;
 
-  const isDriver = useMemo(() => {
-    const role = currentUser?.role;
-    return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
-  }, [currentUser?.isDriver, currentUser?.role]);
-
-  const displaysDriverRole = currentUser?.role === 'driver' || currentUser?.role === 'both';
+  const isDriver = isDriverAccount(currentUser);
+  const displaysDriverRole = isDriver;
 
   const { data: subscriptionPlans = EMPTY_PLANS } = useGetSubscriptionPlansQuery(undefined, reads);
 

@@ -10,7 +10,8 @@ const request = (id, extra = {}) => ({ id, passengerId: 'passenger', status: 'pe
 function environment(mocks = {}, platform = 'ios') {
   const hooks = hookHarness();
   const load = loader({
-    react: hooks.react,
+    react: { ...require('react'), ...hooks.react },
+    '@/features/navigation/PickupVehicleDetails': { PickupVehicleDetails: 'VehicleDetails' },
     'react-native': { Platform: { OS: platform }, StyleSheet: { create: value => value } },
     'react-native-maps': { PROVIDER_GOOGLE: 'google' },
     ...mocks,
@@ -148,6 +149,8 @@ test('restoration locks the sheet and waits for the tracked trip without showing
   assert.equal(render().isHomeSheetLockedRetracted, true);
   assert.deepEqual(render().homeMapTrips, []);
   props.refreshedPassengerTrip = trip('active', { status: 'ongoing' });
+  assert.deepEqual(render().homeMapTrips, [], 'tracking alone is not proof of participation');
+  props.activeBookings = [{ id: 'mine', tripId: 'active', passengerId: 'me', status: 'accepted' }];
   assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['active']);
   app.hooks.unmount();
 });
@@ -218,6 +221,46 @@ test('live tracking ignores unrelated/stale locations, deduplicates progress, an
   assert.equal(app.dialogs.length, 1);
   assert.ok(app.calls.some(call => call[0] === 'unsubscribe-progress'));
   assert.ok(app.calls.some(call => call[0] === 'leave'));
+  app.hooks.unmount();
+});
+
+test('Home passenger pickup uses the refreshed trip vehicle without reconnecting the socket', async () => {
+  const app = trackingEnvironment();
+  app.props.ongoingDriverTrip = null;
+  app.props.activePassengerBooking = { id: 'mine', tripId: 'active', status: 'accepted',
+    numberOfSeats: 3, trip: trip('active', { vehicleId: 'vehicle', vehicle: undefined }) };
+  app.render(); await tick();
+  const vehicle = { id: 'vehicle', brand: 'Toyota', model: 'Yaris', color: 'rouge', licensePlate: '1234AB01' };
+  app.props.activeHomeTrip = trip('active', { status: 'ongoing', vehicleId: vehicle.id, vehicle });
+  app.render();
+  const payload = { tripId: 'active', events: [
+    { type: 'parties_nearby', tripId: 'active', bookingId: 'mine', distanceMeters: 5 },
+  ] };
+  app.events.progress(payload); app.events.progress(payload);
+  assert.equal(app.dialogs.length, 1, 'one alert for the booking holder despite three seats');
+  assert.equal(app.dialogs[0].content.props.trip, app.props.activeHomeTrip);
+  assert.equal(app.dialogs[0].content.props.trip.vehicle, vehicle);
+  assert.equal(app.calls.filter(call => call[0] === 'join').length, 1);
+  app.props.isFocused = false; app.render();
+  app.events.progress({ tripId: 'active', events: [
+    { type: 'driver_arrived_pickup', tripId: 'active', bookingId: 'mine' },
+  ] });
+  assert.equal(app.dialogs.length, 1, 'no new alert after leaving Home');
+  app.hooks.unmount();
+});
+
+test('Home driver receives one approach per booking after readiness but never after arrival or boarding', async () => {
+  const app = trackingEnvironment();
+  app.render(); await tick();
+  const emit = (type, bookingId = 'booking') => app.events.progress({ tripId: 'active', events: [
+    { type, bookingId, tripId: 'active', distanceMeters: 300 },
+  ] });
+  emit('passenger_ready_pickup'); emit('driver_near_pickup'); emit('driver_near_pickup');
+  assert.equal(app.dialogs.length, 2); assert.match(app.dialogs[1].message, /Vous approchez.*300 m/);
+  emit('driver_arrived_pickup', 'second'); emit('driver_near_pickup', 'second');
+  assert.equal(app.dialogs.length, 3);
+  emit('pickup_confirmed', 'third'); emit('driver_near_pickup', 'third');
+  assert.equal(app.dialogs.length, 4);
   app.hooks.unmount();
 });
 

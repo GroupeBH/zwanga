@@ -1,4 +1,5 @@
 import { useManageTripController } from '../../../hooks/manage-trip/useManageTripController';
+import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
 import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
 import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
 import { labelStatus, statusColor } from '../../../features/manage-trip/manageTripStatus';
@@ -14,6 +15,10 @@ import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ManageTripScreen() {
+  return <DriverTripAccessGuard><OwnerManageTripScreen /></DriverTripAccessGuard>;
+}
+
+function OwnerManageTripScreen() {
   const model = useManageTripController();
 
   if (!model.state.tripId) {
@@ -378,5 +383,4 @@ export default function ManageTripScreen() {
     </SafeAreaView>
   );
 }
-
 

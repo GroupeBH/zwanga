@@ -2,6 +2,7 @@ import { getTabBarMetrics } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
 import { selectUnreadMessagesCount } from '@/store/selectors';
+import { selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
 import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
@@ -14,6 +15,7 @@ type TabIconName = keyof typeof Ionicons.glyphMap;
 
 export default function TabLayout() {
   const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
+  const usesServices = useAppSelector(selectUsesServicesTab);
   const insets = useSafeAreaInsets();
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
 
@@ -58,6 +60,7 @@ export default function TabLayout() {
           tabBarActiveTintColor: Colors.primary,
           tabBarInactiveTintColor: Colors.gray[600],
           headerShown: false,
+          lazy: true,
           freezeOnBlur: Platform.OS !== 'android',
           tabBarStyle: [
             styles.tabBar,
@@ -86,13 +89,13 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="search"
+          name="discover"
           options={{
-            title: 'Recherche',
+            title: usesServices ? 'Services' : 'Recherche',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'search',
-                inactiveIcon: 'search-outline',
+                activeIcon: usesServices ? 'briefcase' : 'search',
+                inactiveIcon: usesServices ? 'briefcase-outline' : 'search-outline',
                 color,
                 focused,
                 size,

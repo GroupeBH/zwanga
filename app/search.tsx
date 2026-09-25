@@ -3,7 +3,7 @@ import { SearchRequestResultCard } from '../components/search/SearchRequestResul
 import { SearchResultCard } from '../components/search/SearchResultCard';
 import { styles } from '../features/screen-styles/app/search/index';
 import { SearchResultsToolbar } from '@/components/search/SearchResultsToolbar';
-import { Colors } from '@/constants/styles';
+import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback } from 'react';
 import { ActivityIndicator, FlatList, Image, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -21,7 +21,10 @@ function SearchResultSeparator() {
   return <View style={styles.resultSeparator} />;
 }
 
-export default function SearchScreen() {
+export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
+  embedded?: boolean;
+  bottomOverlay?: number;
+} = {}) {
   const {
     router, firstName, avatarUri, openingTripId,
     openingRequestId, handleOpenTrip, handleOpenTripRequest, searchResultData,
@@ -55,13 +58,13 @@ export default function SearchScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={embedded ? ['top', 'left', 'right'] : ['top']}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
+        {!embedded && <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
           <Ionicons name="arrow-back" size={24} color={Colors.primaryDark} />
-        </TouchableOpacity>
+        </TouchableOpacity>}
         <Text style={styles.headerTitle} numberOfLines={1}>
-          Bonjour, {firstName}
+          {embedded ? 'Recherche' : `Bonjour, ${firstName}`}
         </Text>
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.headerAvatar} resizeMode="cover" />
@@ -74,7 +77,8 @@ export default function SearchScreen() {
 
       <FlatList
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: Spacing.xxl + bottomOverlay }]}
+        scrollIndicatorInsets={{ bottom: bottomOverlay }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         data={searchResultData}
@@ -271,4 +275,3 @@ export default function SearchScreen() {
     </SafeAreaView>
   );
 }
-

@@ -10,8 +10,9 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { isDriverAccount } from '@/utils/accountRole';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -30,7 +31,6 @@ export default function EditProfileScreen() {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState<UserGender | null>(null);
-  const [wantsToBeDriver, setWantsToBeDriver] = useState(false);
   const [feedback, setFeedback] = useState<{ visible: boolean; success: boolean; message: string }>({
     visible: false,
     success: false,
@@ -43,23 +43,10 @@ export default function EditProfileScreen() {
       setLastName(user.lastName ?? '');
       setPhone(user.phone ?? '');
       setGender(user.gender ?? null);
-      // Utiliser role pour déterminer si l'utilisateur est conducteur
-      const isDriver = user?.role === 'driver' || user?.role === 'both';
-      setWantsToBeDriver(isDriver);
     }
   }, [user]);
 
-  // L'utilisateur peut devenir conducteur s'il n'est pas déjà driver ou both
-  const canBecomeDriver = useMemo(() => {
-    const role = user?.role;
-    return role !== 'driver' && role !== 'both';
-  }, [user?.role]);
-  
-  // L'utilisateur est actuellement conducteur si son role est driver ou both
-  const isCurrentlyDriver = useMemo(() => {
-    const role = user?.role;
-    return role === 'driver' || role === 'both';
-  }, [user?.role]);
+  const isCurrentlyDriver = isDriverAccount(user);
 
   const handleSave = async () => {
     const legalFirstName = normalizeLegalName(firstName);
@@ -81,15 +68,7 @@ export default function EditProfileScreen() {
       }
       formData.append('phone', phone.trim());
       if (gender) formData.append('gender', gender);
-      // Ne modifier le rôle que si l'utilisateur n'est pas déjà conducteur
-      // et qu'il souhaite devenir conducteur
-      if (canBecomeDriver && wantsToBeDriver) {
-        formData.append('role', 'driver');
-      } else if (canBecomeDriver && !wantsToBeDriver) {
-        // Si l'utilisateur ne veut plus être conducteur (mais n'est pas encore actif)
-        formData.append('role', 'passenger');
-      }
-      // Si l'utilisateur est déjà conducteur (role === 'driver' ou 'both'), on ne modifie pas le rôle
+      // Editing personal information never requests or changes a driver role.
       const updated = await updateUserMutation(formData).unwrap();
       dispatch(
         updateUserAction({
@@ -101,18 +80,14 @@ export default function EditProfileScreen() {
           gender: updated.gender,
           avatar: updated.profilePicture ?? updated.avatar,
           profilePicture: updated.profilePicture,
-          role: updated.role,
-          isDriver: updated.isDriver,
+          updatedAt: updated.updatedAt,
         }),
       );
       void refetch();
-      const successMessage = wantsToBeDriver && canBecomeDriver
-        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de vérifier votre identité pour devenir conducteur.'
-        : 'Profil mis à jour avec succès.';
       setFeedback({
         visible: true,
         success: true,
-        message: successMessage,
+        message: 'Profil mis à jour avec succès.',
       });
     } catch (error: any) {
       setFeedback({
@@ -224,22 +199,9 @@ export default function EditProfileScreen() {
               <Text style={styles.sectionSubtitle}>
                 {isCurrentlyDriver
                   ? 'Vous êtes conducteur. Vous pouvez proposer des trajets sur Zwanga.'
-                  : canBecomeDriver
-                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et vérifier votre identité.'
-                    : 'Vous êtes déjà conducteur.'}
+                  : 'Vérifiez votre identité puis ajoutez un véhicule dans le parcours conducteur. Modifier ce profil ne change pas votre statut.'}
               </Text>
             </View>
-            <Switch
-              value={isCurrentlyDriver || wantsToBeDriver}
-              onValueChange={(value) => {
-                if (!isCurrentlyDriver) {
-                  setWantsToBeDriver(value);
-                }
-              }}
-              disabled={isCurrentlyDriver}
-              thumbColor={isCurrentlyDriver || wantsToBeDriver ? Colors.primary : Colors.gray[300]}
-              trackColor={{ false: Colors.gray[200], true: Colors.primary + '50' }}
-            />
           </View>
 
           {isCurrentlyDriver && (
@@ -261,7 +223,7 @@ export default function EditProfileScreen() {
             </View>
           )}
 
-          {!isCurrentlyDriver && wantsToBeDriver && (
+          {!isCurrentlyDriver && (
             <View style={styles.driverCard}>
               <View style={styles.driverCardHeader}>
                 <Ionicons name="information-circle" size={20} color={Colors.warning} />
@@ -269,17 +231,17 @@ export default function EditProfileScreen() {
               </View>
               <View style={styles.stepsList}>
                 <View style={styles.stepItem}>
-                  <Ionicons name="car-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.stepText}>Ajouter un véhicule</Text>
-                </View>
-                <View style={styles.stepItem}>
                   <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
                   <Text style={styles.stepText}>Vérifier mon identité</Text>
+                </View>
+                <View style={styles.stepItem}>
+                  <Ionicons name="car-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.stepText}>Ajouter un véhicule</Text>
                 </View>
               </View>
               <TouchableOpacity
                 style={styles.driverButton}
-                onPress={() => router.push('/profile')}
+                onPress={() => router.push({ pathname: '/(tabs)/profile', params: { openDriverOnboarding: '1' } })}
               >
                 <Ionicons name="car" size={16} color={Colors.primary} />
                 <Text style={styles.driverButtonText}>Commencer maintenant</Text>
@@ -337,6 +299,3 @@ export default function EditProfileScreen() {
     </SafeAreaView>
   );
 }
-
-
-
