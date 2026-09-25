@@ -36,6 +36,13 @@ function fixture(t, platform = 'ios') {
     sample: () => task({ data: { locations: [{ timestamp: Date.now(), coords: { latitude: -4.3, longitude: 15.3, accuracy: 5 } }] } }) };
 }
 
+for (const field of ['droppedOffAt', 'droppedOffConfirmedAt']) test(`prearmed background task stops on ${field} without a boolean flag`, async t => {
+  const f = fixture(t);
+  await f.module.startPassengerBackgroundLocationTracking('booking', { tripId: 'trip', waitForActiveTrip: true });
+  f.booking({ status: 'accepted', [field]: '2026-09-25', trip: { status: 'ongoing' } });
+  await f.sample(); assert.equal(f.running(), false); assert.equal(f.sent.length, 0);
+});
+
 for (const platform of ['ios', 'android']) test(`${platform}: waiting GPS is balanced, and a sleeping passenger promotes to precise tracking without a stop`, async t => {
   const f = fixture(t, platform);
   await f.module.startPassengerBackgroundLocationTracking('booking', { tripId: 'trip', waitForActiveTrip: true });

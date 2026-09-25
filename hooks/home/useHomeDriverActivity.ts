@@ -124,6 +124,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
   );
   return {
     ongoingDriverTrip,
+    ongoingPassengerBooking,
     driverReservationHighlightTrip,
     driverReservationHighlightBookings,
     myDriverTrips,

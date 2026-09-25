@@ -11,7 +11,7 @@ function sheet(platform = 'ios', height = 844) {
   const hooks = hookHarness(); const calls = [];
   const activity = { active: true }; const backHandlers = new Set();
   const window = { width: 390, height }; const insets = { top: 47, bottom: 34, left: 0, right: 0 };
-  const native = { Platform: { OS: platform }, View: 'View', Text: 'Text', ScrollView: 'ScrollView', TextInput: 'Input',
+  const native = { Platform: { OS: platform }, View: 'View', Text: 'Text', ScrollView: 'ScrollView', FlatList: 'FlatList', TextInput: 'Input',
     KeyboardAvoidingView: 'KeyboardAvoidingView', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner',
     RefreshControl: 'RefreshControl', StyleSheet: { create: value => value, absoluteFillObject: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 } },
     useWindowDimensions: () => window, Keyboard: { dismiss: () => calls.push('dismiss') },
@@ -123,7 +123,7 @@ test('close button, backdrop and Android back dismiss the keyboard before closin
 
 test('typing in the transfer form preserves controlled values and cannot submit or initiate a top-up', () => {
   const h = sheet(); const updates = [];
-  const wallet = { activeModal: 'transfer', entries: [], topUpMethod: 'mobile_money', transferAmount: '', transferRecipient: '', transferNote: '',
+  const wallet = { activeModal: 'transfer', entries: [], ledgerCursor: { page: 1 }, topUpMethod: 'mobile_money', transferAmount: '', transferRecipient: '', transferNote: '',
     setTransferAmount: value => { wallet.transferAmount = value; updates.push('amount'); },
     setTransferRecipient: value => { wallet.transferRecipient = value; updates.push('recipient'); },
     setTransferNote: value => { wallet.transferNote = value; updates.push('note'); },
@@ -172,7 +172,7 @@ test('typing in the transfer form preserves controlled values and cannot submit 
 
 test('the withdrawal overlay is a screen-root sibling, outside the disabled background', () => {
   const h = sheet();
-  const wallet = { activeModal: 'withdrawal', entries: [], setActiveModal: value => { wallet.activeModal = value; } };
+  const wallet = { activeModal: 'withdrawal', entries: [], ledgerCursor: { page: 1 }, setActiveModal: value => { wallet.activeModal = value; } };
   const Screen = loader({ ...h.mocks,
     '../hooks/wallet/useWalletController': { useWalletController: () => wallet },
     '../features/wallet/WalletTopUpModal': { WalletTopUpModal: 'TopUp' },

@@ -48,7 +48,6 @@ export default function HomeScreen() {
       avatarUri={home.avatarUri}
       firstName={home.firstName}
       ongoingDriverTrip={home.ongoingDriverTrip}
-      trackedTripInfo={home.trackedTripInfo}
       ongoingBookedTrip={home.ongoingBookedTrip}
       unreadNotifications={home.unreadNotifications}
       featuredDriverReservation={home.featuredDriverReservation}

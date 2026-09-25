@@ -20,12 +20,13 @@ import React from "react";
 import {
   ActivityIndicator,
   RefreshControl,
-  ScrollView,
+  FlatList,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -84,7 +85,14 @@ export default function WalletScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView
+        <FlatList
+          data={wallet.entries}
+          keyExtractor={entry => entry.id}
+          renderItem={({ item }) => <View style={styles.ledgerPanel}>{wallet.renderLedgerEntry(item)}</View>}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={false}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -95,7 +103,7 @@ export default function WalletScreen() {
           }
           showsVerticalScrollIndicator={false}
           style={styles.scrollRoot}
-        >
+          ListHeaderComponent={<View style={styles.contentHeader}>
           <View style={styles.balancePanel}>
             <View style={styles.balanceTopRow}>
               <View style={styles.balanceIcon}>
@@ -306,10 +314,8 @@ export default function WalletScreen() {
             ) : null}
           </View>
 
-          <View style={styles.ledgerPanel}>
-            {wallet.entries.length > 0 ? (
-              wallet.entries.map(wallet.renderLedgerEntry)
-            ) : (
+          </View>}
+          ListEmptyComponent={
               <View style={styles.emptyLedger}>
                 <Ionicons
                   name="receipt-outline"
@@ -317,12 +323,22 @@ export default function WalletScreen() {
                   color={Colors.gray[400]}
                 />
                 <Text style={styles.emptyLedgerText}>
-                  Aucun mouvement pour le moment.
+                  {wallet.isLedgerFetching ? 'Chargement de l’historique…' : wallet.isLedgerError
+                    ? 'Historique indisponible pour le moment.' : 'Aucun mouvement pour le moment.'}
                 </Text>
               </View>
-            )}
-          </View>
-        </ScrollView>
+          }
+          ListFooterComponent={<>
+            {wallet.ledgerPage?.limited && <Text style={styles.balanceHint}>
+              Seules les opérations récentes sont disponibles pour le moment.
+            </Text>}
+            <HistoryPagination page={wallet.ledgerCursor.page} busy={wallet.isLedgerFetching}
+              hasNext={Boolean(wallet.ledgerPage?.nextCursor)} error={wallet.isLedgerError}
+              onPrevious={wallet.ledgerCursor.previous}
+              onNext={() => wallet.ledgerCursor.next(wallet.ledgerPage?.nextCursor)}
+              onRetry={() => { void wallet.refetchLedger(); }} />
+          </>}
+        />
       </View>
 
       <WalletWithdrawalModal

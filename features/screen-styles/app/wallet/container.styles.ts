@@ -48,6 +48,7 @@ export const styles = StyleSheet.create({
     padding: Spacing.xl,
     gap: Spacing.lg,
   },
+  contentHeader: { gap: Spacing.lg },
   balancePanel: {
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.white,

@@ -66,7 +66,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
       publish({ phase: 'paused', message });
     };
     // Bound even a read waiting on token refresh. Never abort a payment mutation.
-    const read = <T,>(request: { unwrap(): Promise<T>; abort?: () => void }): Promise<T> =>
+    const read = <T,>(request: { unwrap(): Promise<T>; abort?: () => void; unsubscribe?: () => void }): Promise<T> =>
       new Promise<T>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error('Payment status read timed out'));
@@ -78,7 +78,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
           request.abort?.();
         };
         void request.unwrap().then(resolve, reject).finally(() => clearTimeout(timeout));
-      }).finally(() => { cancelRead = undefined; });
+      }).finally(() => { request.unsubscribe?.(); cancelRead = undefined; });
 
     const check = async () => {
       if (cancelled || stopped || inFlight) return;

@@ -10,7 +10,7 @@ import {
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
 import { sharedBookingsOptions, sharedRequestsOptions } from '@/features/activity/activityQueryOptions';
-import { findOngoingPassengerBooking, isActivePassengerBooking } from '@/features/activity/tripParticipation';
+import { findOngoingPassengerBooking, hasPassengerFinishedRide, isActivePassengerBooking } from '@/features/activity/tripParticipation';
 import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
@@ -52,7 +52,8 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     return myBookings.filter(
       (booking) =>
         booking.passengerId === currentUser.id &&
-        (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId,
+        (booking.status === 'pending' || isActivePassengerBooking(booking, currentUser.id)) &&
+        !hasPassengerFinishedRide(booking) && booking.tripId,
     );
   }, [myBookings, currentUser?.id]);
 
@@ -90,13 +91,14 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
       myBookings
         .filter(
           (booking) =>
-            booking.status === 'completed' &&
-            booking.droppedOffConfirmedByPassenger === true &&
+            booking.passengerId === currentUser.id &&
+            hasPassengerFinishedRide(booking) &&
+            !bookedTripIds.has(booking.tripId) &&
             booking.tripId,
         )
         .map((booking) => booking.tripId),
     );
-  }, [myBookings, currentUser?.id]);
+  }, [myBookings, currentUser?.id, bookedTripIds]);
 
   const activeTripRequest = useMemo(() => {
     const statusPriority = {

@@ -1,16 +1,28 @@
 import type { Booking, Trip } from '@/types';
 
+/** Transport completion is independent of payment collection or the other passengers. */
+export function hasPassengerFinishedRide(booking?: Pick<Booking, 'status' | 'droppedOff' |
+  'droppedOffConfirmedByPassenger' | 'droppedOffAt' | 'droppedOffConfirmedAt'> | null): boolean {
+  return Boolean(booking && (booking.status === 'completed' || booking.droppedOff ||
+    booking.droppedOffConfirmedByPassenger || booking.droppedOffAt || booking.droppedOffConfirmedAt));
+}
+
 /** Account capability never grants ownership of a particular trip. */
 export function ownsTrip(trip: Pick<Trip, 'driverId' | 'driver'> | null | undefined, userId?: string | null) {
   return Boolean(userId && trip?.driverId === userId
     && (!trip.driver?.id || trip.driver.id === userId));
 }
 
-export function isActivePassengerBooking(booking: Booking, userId?: string | null) {
+export function isUnfinishedPassengerBooking(booking: Booking, userId?: string | null) {
   return Boolean(userId && booking.passengerId === userId && booking.tripId
-    && booking.status === 'accepted'
-    && !booking.droppedOff && !booking.droppedOffConfirmedByPassenger
-    && (!booking.trip || (booking.trip.id === booking.tripId && !ownsTrip(booking.trip, userId))));
+    && ['pending', 'accepted', 'no_show'].includes(booking.status)
+    && !hasPassengerFinishedRide(booking)
+    && (!booking.trip || (booking.trip.id === booking.tripId && !ownsTrip(booking.trip, userId)
+      && booking.trip.status !== 'completed' && booking.trip.status !== 'cancelled')));
+}
+
+export function isActivePassengerBooking(booking: Booking, userId?: string | null) {
+  return booking.status === 'accepted' && isUnfinishedPassengerBooking(booking, userId);
 }
 
 export function findOngoingPassengerBooking(bookings: readonly Booking[] | undefined, userId?: string | null) {

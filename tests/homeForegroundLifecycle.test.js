@@ -15,7 +15,11 @@ function controllerFixture() {
   const hookNames = ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity', 'useHomeTripSelection',
     'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, {
-    [name]: props => { received[name] = props; return {}; },
+    [name]: props => {
+      received[name] = props;
+      return name === 'useHomeDriverActivity'
+        ? { ongoingDriverTrip: { id: 'ongoing', driverId: user.id, status: 'ongoing' } } : {};
+    },
   }]));
   const load = loader({ ...mocks, react: hooks.react,
     'react-native': { Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 400, height: 800 }) },

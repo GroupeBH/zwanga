@@ -9,6 +9,71 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 25 septembre 2026 — Correctifs des six points de l'audit de fiabilité
+
+**Problèmes.** Boucle de vérification de recharge, double rôle GPS, arrêt natif
+concurrent d'un nouveau trajet, dépose reconnue de façon inégale, attente GPS
+initiale et historique des jetons non borné.
+
+**Solutions appliquées.** Tags RTK séparés du suivi de statut et abonnements de
+lecture libérés ; sélection commune du rôle et de la fin du transport ; file
+native conducteur avec générations ; abonnement GPS immédiat et cache initial
+borné ; pagination serveur/mobile et liste virtualisée dans le portefeuille.
+Le backend local est modifié sans changer l'ancien endpoint d'historique.
+
+**Conservé.** Suivi arrière-plan, multi-places, paiements dus après dépose,
+actualisation du solde et fonctionnement des modals. Aucun paiement réel,
+déploiement ni migration de base effectué. Déployer le backend avant la nouvelle
+app pour consulter tout l'historique ; repli récent borné pendant la transition.
+
+**Vérifications.** 56 tests mobile ciblés et 11 tests backend réussis, TypeScript
+des deux projets valide, ESLint ciblé et contrôles réseau/taille valides. Suite
+mobile complète : 1 007/1 009 réussis, avec deux échecs de références préexistants.
+Pas d'essai natif ni de garantie de disparition des crashs ou de la chauffe.
+Fichiers, scénarios testés et limites dans les
+[correctifs de l'audit](PERFORMANCE_RELIABILITY_FIXES_2026_09_25.md).
+
+## 25 septembre 2026 — Audit transversal de performance et de fiabilité
+
+**Périmètre.** Relecture des cycles GPS, requêtes/cache, paiements, écrans,
+modals, sockets et protections de build mobile ; contrôle ciblé du contrat de
+l'historique des jetons dans le backend local.
+
+**Résultat.** Trois priorités P1 : auto-invalidation des vérifications de recharge,
+double participation GPS et concurrence arrêt/démarrage du GPS conducteur.
+Trois P2 : dépose reconnue différemment par le suivi global, amorçage GPS non
+borné et historique des jetons non paginé. Les corrections sont proposées,
+**pas appliquées** dans cette intervention : seuls ce journal et le
+[rapport d'audit](PERFORMANCE_RELIABILITY_AUDIT_2026_09_25.md) sont ajoutés/modifiés.
+Les comportements applicatifs et modifications préexistantes sont conservés.
+
+**Vérification.** TypeScript, frontières réseau et contrôle de taille valides ;
+982/984 tests réussis, deux échecs préexistants de références d'extraction.
+Quatre simulations JavaScript documentées, sans paiement réel ni essai natif.
+Aucune conclusion de disparition des gels, crashs ou de la chauffe.
+
+## 25 septembre 2026 — Libération de l'accueil après la dépose
+
+**Problème.** Une ancienne information de suivi pouvait conserver l'accueil
+verrouillé et afficher un rôle conducteur erroné après la dépose. La liste
+d'activité pouvait aussi rester en retard sur le détail de la réservation.
+
+**Solution.** Statut, carte et panneau fondés sur la participation réelle,
+horodatages de dépose reconnus et propagation immédiate de la fin du transport
+confirmée vers les caches passager. Retour au profil GPS de proximité lorsque
+la participation se termine. Pas de nouvelle requête ni de polling ajouté.
+
+**Conservé.** Paiements restant à régler, montants, réservations de plusieurs
+places, autres passagers et trajets réellement actifs. Les réponses réseau
+tardives ne réactivent pas une réservation déjà déposée dans les caches.
+
+**Vérification.** 68 tests ciblés passent, TypeScript et `git diff --check`
+valides ; 941 sources mobiles restent sous la limite de 400 lignes. Suite
+complète : 982/984, avec les deux échecs déjà connus de `sourceExtractions.test.js`
+(styles de réservation et références API PIN). Aucun essai natif réalisé.
+Périmètre, fichiers, tests et limites dans
+[Accueil après la dépose](HOME_AFTER_DROPOFF.md).
+
 ## 25 septembre 2026 — Panneau des passagers plus compréhensible
 
 **Problème.** Le panneau mélangeait récupération et dépose dans deux lignes par

@@ -3,6 +3,7 @@ import { useWalletTopUpActions } from './useWalletTopUpActions';
 import { useWalletTopUpMonitoring } from './useWalletTopUpMonitoring';
 import { useWalletTopUpStorage } from './useWalletTopUpStorage';
 import { useWalletScreenScope } from './useWalletScreenScope';
+import { useHistoryCursor } from '@/hooks/useHistoryCursor';
 import { useIsFocused } from '@react-navigation/native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useWalletTransfer } from './useWalletTransfer';
@@ -19,7 +20,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import {
   useGetMyWalletQuery,
-  useGetWalletLedgerQuery,
+  useGetWalletLedgerPageQuery,
   useInitiateWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
   useTransferWalletPointsMutation,
@@ -46,6 +47,7 @@ export function useWalletController() {
   const isAppActive = useAppIsActive();
   const isScreenActive = isFocused && isAppActive;
   const captureScope = useWalletScreenScope(user?.id, isScreenActive);
+  const ledgerCursor = useHistoryCursor(user?.id ?? 'signed-out');
   const { showDialog } = useDialog();
   const [activeModal, setActiveModal] = useState<WalletAction | null>(null);
   const [topUpAmount, setTopUpAmount] = useState('50');
@@ -76,10 +78,11 @@ export function useWalletController() {
     refetchOnReconnect: false,
   });
   const {
-    data: ledger = [],
+    currentData: ledgerPage,
     isFetching: isLedgerFetching,
+    isError: isLedgerError,
     refetch: refetchLedger,
-  } = useGetWalletLedgerQuery(undefined, {
+  } = useGetWalletLedgerPageQuery({ before: ledgerCursor.before, limit: 25 }, {
     skip: !user?.id || !isScreenActive,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -95,8 +98,8 @@ export function useWalletController() {
     [user?.id, walletSummary?.account.userId],
   );
   const entries = useMemo<WalletLedgerEntry[]>(
-    () => (ledger.length > 0 ? ledger : walletSummary?.recentEntries ?? []),
-    [ledger, walletSummary?.recentEntries],
+    () => ledgerPage?.data ?? [],
+    [ledgerPage],
   );
   const isRefreshing = isWalletFetching || isLedgerFetching;
   const isTopUpPhoneRequired = topUpMethod === 'mobile_money';
@@ -123,8 +126,9 @@ export function useWalletController() {
           : Colors.primary;
 
   const refreshAll = useCallback(async () => {
-    await Promise.allSettled([refetchWallet(), refetchLedger()]);
-  }, [refetchLedger, refetchWallet]);
+    ledgerCursor.reset();
+    await Promise.allSettled([refetchWallet(), ...(ledgerCursor.before ? [] : [refetchLedger()])]);
+  }, [ledgerCursor.reset, ledgerCursor.before, refetchLedger, refetchWallet]);
 
   const { stopTopUpAutoCheck, clearStoredTopUp, persistStoredTopUp, readStoredTopUp, applyStoredTopUp } = useWalletTopUpStorage({
     pollingRunIdRef,
@@ -266,6 +270,10 @@ export function useWalletController() {
     topUpStatusTitle,
     isLedgerFetching,
     entries,
+    isLedgerError,
+    ledgerPage,
+    ledgerCursor,
+    refetchLedger,
     renderLedgerEntry,
     activeModal,
     topUpMethod,

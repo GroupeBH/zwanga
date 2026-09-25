@@ -13,7 +13,7 @@ function environment() {
     stopTopUpAutoCheck(){props.pollingRunIdRef.current++},clearStoredTopUp:async()=>events.push('clear'),
     refreshAll:async()=>events.push('refresh'),showDialog:d=>dialogs.push(d),
     checkWalletTopUpStatus:()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});
-      const request={unwrap:()=>promise,abort(){events.push('abort')},resolve,reject};requests.push(request);return request}};
+      const request={unwrap:()=>promise,abort(){events.push('abort')},unsubscribe(){request.released=true},resolve,reject};requests.push(request);return request}};
   for(const name of ['setTopUpOrderNumber','setTopUpPaymentUrl','setTopUpStage','setTopUpAutoCheckAttempt','setTopUpStatusMessage','setActiveModal','setIsAutoCheckingTopUp']) props[name]=value=>events.push([name,value]);
   return {h,props,requests,dialogs,events,setActive:value=>{active=value},setUser:value=>{user=value},
     render:()=>h.render(()=>useWalletTopUpMonitoring({...props,captureScope:useWalletScreenScope(user,active)}))};
@@ -31,6 +31,7 @@ test('simultaneous recovery and manual check use a single read; pending does not
   const e=environment(),api=e.render();const a=api.checkTopUpByOrderNumber('order'),b=api.checkTopUpByOrderNumber('order');
   assert.equal(e.requests.length,1);e.requests[0].resolve({payment:{status:'pending',method:'mobile_money'}});
   assert.deepEqual(await Promise.all([a,b]),['pending','pending']);assert(!e.events.includes('refresh'));e.h.unmount();
+  assert.equal(e.requests[0].released,true);
 });
 test('topup success displays immediately, even when balance refresh is slow',async()=>{
   const e=environment();e.props.refreshAll=()=>new Promise(()=>{});

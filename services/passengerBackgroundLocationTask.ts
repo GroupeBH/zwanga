@@ -18,6 +18,7 @@ import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
 
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation';
 export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
@@ -66,7 +67,7 @@ const getPassengerTrackingReadiness = async (
 
     const booking = bookingResult.data;
     const bookingStatus = booking.status?.toLowerCase();
-    if (booking.droppedOff || booking.droppedOffConfirmedByPassenger ||
+    if (hasPassengerFinishedRide(booking) ||
       ['rejected', 'cancelled', 'completed', 'expired'].includes(bookingStatus ?? '')) {
       return 'terminal';
     }

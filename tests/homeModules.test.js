@@ -142,14 +142,14 @@ test('trip selection prioritizes reservations, removes own/completed/expired tri
   app.hooks.unmount();
 });
 
-test('restoration locks the sheet and waits for the tracked trip without showing unrelated map trips', () => {
+test('a stale tracking hint cannot lock Home or hide the feed without an active participation', () => {
   const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
   const props = { ...selectionProps(), remoteTrips: [trip('other')], trackedTripInfo: { tripId: 'active', role: 'passenger' } };
   const render = () => app.hooks.render(() => useHomeTripSelection(props));
-  assert.equal(render().isHomeSheetLockedRetracted, true);
-  assert.deepEqual(render().homeMapTrips, []);
+  assert.equal(render().isHomeSheetLockedRetracted, false);
+  assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['other']);
   props.refreshedPassengerTrip = trip('active', { status: 'ongoing' });
-  assert.deepEqual(render().homeMapTrips, [], 'tracking alone is not proof of participation');
+  assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['other'], 'tracking alone is not proof of participation');
   props.activeBookings = [{ id: 'mine', tripId: 'active', passengerId: 'me', status: 'accepted' }];
   assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['active']);
   app.hooks.unmount();
