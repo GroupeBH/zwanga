@@ -9,6 +9,55 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 25 septembre 2026 — Correctifs du contre-audit de performance
+
+**Problèmes.** Attente GPS ponctuelle non bornée, lectures répétées de session et
+vérifications natives pendant le trajet, abonnements d'identité non libérés,
+polling des retraits même sans opération à suivre.
+
+**Solutions appliquées.** Acquisition GPS bornée (10 s pour la position fraîche,
+2 s par lecture en cache), déduplication des opérations natives encore en cours
+et abandon des consommateurs périmés. Cache de session passager de 30 s avec
+écritures/suppressions sérialisées, contrôle natif espacé et forcé à la reprise.
+Lectures RTK d'identité non abonnées et invalidations de succès centralisées.
+Polling des retraits conditionné à une opération non terminale ou une intention
+incertaine. Détail des fichiers, précautions et tests dans
+[PERFORMANCE_FOLLOWUP_FIXES_2026_09_25.md](PERFORMANCE_FOLLOWUP_FIXES_2026_09_25.md).
+
+**Préservation.** Suivi continu, précision GPS, automatisations du trajet,
+permissions, reprise après veille, réservation de plusieurs places, montants et
+idempotence des retraits inchangés. Une erreur temporaire du stockage n'est pas
+confondue avec une fin de trajet. Les attentes expirées ne retiennent pas leurs
+listeners et ne relancent pas plusieurs acquisitions natives simultanées.
+
+**Vérifications.** Suite JavaScript finale : **1 036 tests réussis, zéro échec**.
+`tsc --noEmit --incremental false` et ESLint ciblé sur les huit fichiers applicatifs
+modifiés réussis, sans erreur ni avertissement.
+Le mock de contact et les empreintes historiques devenus obsolètes sont actualisés
+sans retirer les assertions comportementales correspondantes. Frontière réseau,
+limite des 400 lignes (948 sources) et `git diff --check` réussis.
+
+**Limites.** Tests natifs simulés, aucun essai physique ni profilage de chauffe.
+Le timeout GPS libère l'interface ; Expo n'expose pas d'annulation de son appel
+ponctuel natif, qui reste partagé jusqu'à sa résolution. Aucun déploiement.
+
+## 25 septembre 2026 — Contre-audit de performance après les derniers changements
+
+**Demande.** Vérifier les risques résiduels après les correctifs de fiabilité et
+la simplification du portefeuille, sans modifier les fonctionnalités.
+
+**Intervention.** Audit statique, suite JavaScript complète et reproductions en
+mémoire. Documentation uniquement : aucun correctif applicatif ni déploiement.
+Trois points P2 (attente GPS ponctuelle, lectures GPS répétées, abonnements
+d'identité non libérés) et une optimisation P3 (polling des retraits) sont proposés
+dans [le contre-audit détaillé](PERFORMANCE_FOLLOWUP_2026_09_25.md).
+
+**Validation.** TypeScript, frontière réseau et limite de 400 lignes réussis
+(947 sources). Suite : 1 016 tests réussis sur 1 019 ; deux empreintes historiques
+et un mock de contact à revoir. Reproductions décrites avec leurs limites dans le
+rapport. Aucune mesure native de chauffe, mémoire ou crash ; aucun résultat de
+simulation ne garantit la stabilité sur appareil. Code applicatif conservé.
+
 ## 25 septembre 2026 — Écran des jetons plus concis
 
 **Problème.** Le solde et le retrait répétaient les mêmes explications ; les

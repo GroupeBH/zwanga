@@ -132,6 +132,9 @@ export function ActiveRideLocationCoordinator() {
       return;
     }
 
+    // Foreground resume forces a native health check, even with unchanged ride data.
+    if (!isAppActive) return;
+
     const startPromise = startPassengerBackgroundLocationTracking(passengerBookingId, {
       requestMissingPermissions: true,
       tripId: passengerTripId,
@@ -145,6 +148,7 @@ export function ActiveRideLocationCoordinator() {
     });
   }, [
     areBookingsLoaded,
+    isAppActive,
     isAuthenticated,
     passengerBookingId,
     passengerTripId,

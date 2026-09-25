@@ -6,7 +6,7 @@ const tick = () => new Promise(r => setImmediate(r));
 function fixture(t) {
   const h = hookHarness(), starts = [], stops = [], sent = [];
   let subscriber, removes = 0;
-  const state = { user: { id: 'me' }, trips: [{ id: 'own', driverId: 'me', status: 'ongoing' }],
+  const state = { active: true, user: { id: 'me' }, trips: [{ id: 'own', driverId: 'me', status: 'ongoing' }],
     bookings: [{ id: 'booking', tripId: 'other', passengerId: 'me', status: 'accepted',
       trip: { id: 'other', driverId: 'another', status: 'ongoing' } }], snapshot: undefined };
   const load = loader({ react: h.react,
@@ -16,7 +16,7 @@ function fixture(t) {
       useGetTripByIdQuery: () => ({ currentData: state.snapshot, data: { id: 'stale', status: 'completed' } }) },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: state.bookings, isSuccess: true }) },
     '@/hooks/useActivityTrackingSignal': { useActivityTrackingSignal: () => null },
-    '@/hooks/useAppIsActive': { useAppIsActive: () => true },
+    '@/hooks/useAppIsActive': { useAppIsActive: () => state.active },
     'expo-router': { usePathname: () => '/home' },
     'expo-location': { PermissionStatus: { GRANTED: 'granted' }, Accuracy: { High: 4 },
       getForegroundPermissionsAsync: async () => ({ status: 'granted' }) },
@@ -48,4 +48,16 @@ test('terminal trip detail stops tracking even when the activity booking is stil
   const f = fixture(t); f.state.trips = []; f.render(); await tick();
   f.state.snapshot = { id: 'other', status: 'completed' }; f.render(); await tick();
   assert.equal(f.removes(), 1); assert.equal(f.starts.length, 1);
+});
+
+test('foreground resume rechecks the unchanged passenger GPS session without stopping background tracking', async t => {
+  const f = fixture(t); f.state.trips = []; f.render(); await tick();
+  const stopsBefore = f.stops.length;
+  f.state.active = false; f.render(); await tick();
+  assert.equal(f.starts.length, 1);
+  assert.equal(f.stops.length, stopsBefore);
+  assert.equal(f.removes(), 1);
+  f.state.active = true; f.render(); await tick();
+  assert.deepEqual(f.starts, ['passenger:booking', 'passenger:booking']);
+  assert.equal(f.stops.length, stopsBefore);
 });

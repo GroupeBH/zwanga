@@ -84,9 +84,7 @@ function received(overrides = {}, tripOverrides = {}, busy = {}) {
   const item = { ...booking, ...overrides };
   const state = { trip: { ...trip, ...tripOverrides }, ...busy,
     router: { push: path => calls.push(['route', path]) },
-    setSelectedPassengerPhone: phone => calls.push(['phone', phone]),
-    setSelectedPassengerName: name => calls.push(['name', name]),
-    setContactModalVisible: visible => calls.push(['contact', visible]),
+    setContactBookingId: id => calls.push(['contact', id]),
   };
   const result = render(ManageTripBookings, { tracking: { visibleBookings: [item] }, state,
     actions: { handleOpenNavigation: () => calls.push(['navigation']) }, bookingsActions: {
@@ -115,7 +113,7 @@ test('received pending reservations keep accept/reject, one profile entry and mu
 test('received accepted reservations preserve contact and cancellation guards before boarding', () => {
   const result = received({ status: 'accepted' }, { status: 'ongoing' });
   result.button('Contacter').props.onPress(); result.button('Annuler').props.onPress();
-  assert.deepEqual(result.calls, [['phone', '000'], ['name', booking.passengerName], ['contact', true], ['cancel', booking.id]]);
+  assert.deepEqual(result.calls, [['contact', booking.id], ['cancel', booking.id]]);
   assert.ok(result.text.includes('À prendre en charge'));
   for (const flags of [{ pickedUp: true }, { pickedUpConfirmedByPassenger: true }]) {
     assert.equal(received({ status: 'accepted', ...flags }).button('Annuler'), undefined);

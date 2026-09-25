@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { subscribeRideLocation } from '@/services/rideLocationStream';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { requestCurrentLocation } from '@/services/currentLocationRequest';
 
 import { selectPermissionStatus, selectUserTrackedLocation } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -26,11 +27,14 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
   const watcherGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const permissionInFlightRef = useRef<Promise<Location.LocationPermissionResponse> | null>(null);
+  const manualRequestRef = useRef<{ controller: AbortController; promise: Promise<Location.LocationObject | null> } | null>(null);
   const automaticPermissionAttemptedRef = useRef(false);
   const isNearbyTracking = options.trackingProfile === 'nearby';
   const rideLocationKey = options.rideLocationKey;
 
   const stopWatching = useCallback(() => {
+    manualRequestRef.current?.controller.abort();
+    manualRequestRef.current = null;
     watcherGenerationRef.current += 1;
     watcherRef.current?.remove();
     watcherRef.current = null;
@@ -131,65 +135,46 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     }
   }, [dispatch, getPermission, startWatching]);
 
-  const getCurrentLocation = useCallback(async () => {
-    try {
-      const { status } = await getPermission(true);
-      if (!mountedRef.current) return null;
-      dispatch(setLocationPermission(status));
-      if (status !== Location.PermissionStatus.GRANTED) {
-        return null;
-      }
+  const getCurrentLocation = useCallback(() => {
+    if (manualRequestRef.current) return manualRequestRef.current.promise;
+    const controller = new AbortController();
+    const isCurrent = () => mountedRef.current && !controller.signal.aborted;
+    let activityListener: ReturnType<typeof AppState.addEventListener> | undefined;
+    const promise = (async () => {
+      try {
+        const { status } = await getPermission(true);
+        if (!isCurrent()) return null;
+        dispatch(setLocationPermission(status));
+        if (status !== Location.PermissionStatus.GRANTED) return null;
 
-      const enabled = await Location.hasServicesEnabledAsync();
-      if (!mountedRef.current) return null;
-      dispatch(setTrackingEnabled(enabled));
-      if (!enabled) {
-        return null;
-      }
+        const enabled = await Location.hasServicesEnabledAsync();
+        if (!isCurrent() || AppState.currentState !== 'active') return null;
+        dispatch(setTrackingEnabled(enabled));
+        if (!enabled) return null;
 
-      const preferredAccuracy = isNearbyTracking
-        ? Location.Accuracy.Balanced
-        : Location.Accuracy.High;
-      let location = await Location.getLastKnownPositionAsync({
-        maxAge: 2 * 60 * 1000,
-        requiredAccuracy: isNearbyTracking ? 250 : 100,
-      });
-
-      if (!mountedRef.current) return null;
-      if (!location) {
-        try {
-          location = await Location.getCurrentPositionAsync({
-            accuracy: preferredAccuracy,
-          });
-        } catch (currentLocationError) {
-          location = await Location.getLastKnownPositionAsync({
-            maxAge: 15 * 60 * 1000,
-            requiredAccuracy: 1000,
-          });
-
-          if (!location) {
-            throw currentLocationError;
-          }
-        }
-      }
-
-      if (!mountedRef.current) return null;
-      dispatch(
-        setLastKnownLocation({
-          coords: {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          },
+        activityListener = AppState.addEventListener('change', state => {
+          if (state === 'background') controller.abort();
+        });
+        const location = await requestCurrentLocation(isNearbyTracking, controller.signal);
+        if (!isCurrent() || !location) return null;
+        const coordinate = normalizeTripMapCoordinate(location.coords.latitude, location.coords.longitude);
+        if (!coordinate) return null;
+        dispatch(setLastKnownLocation({
+          coords: coordinate,
           timestamp: location.timestamp,
           accuracy: location.coords.accuracy,
-        }),
-      );
-
-      return location;
-    } catch (error) {
-      console.warn('Impossible de récupérer la position actuelle', error);
-      return null;
-    }
+        }));
+        return location;
+      } catch (error) {
+        console.warn('Impossible de récupérer la position actuelle', error);
+        return null;
+      } finally {
+        activityListener?.remove();
+        if (manualRequestRef.current?.controller === controller) manualRequestRef.current = null;
+      }
+    })();
+    manualRequestRef.current = { controller, promise };
+    return promise;
   }, [dispatch, getPermission, isNearbyTracking]);
 
   useEffect(() => {

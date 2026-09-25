@@ -6,21 +6,23 @@ function fixture(t, platform = 'ios') {
   t.mock.timers.enable({ apis: ['Date'], now: 100_000 });
   let stored = null, running = false, task, reads = 0, pauseRead, booking = { status: 'accepted', trip: { status: 'pending' } };
   const starts = [], sent = [], published = [];
+  const io = { storage: 0, availability: 0, native: 0 };
   const location = { Accuracy: { High: 4, Balanced: 3 }, ActivityType: { Other: 1, AutomotiveNavigation: 2 },
     PermissionStatus: { GRANTED: 'granted' },
     getForegroundPermissionsAsync: async () => ({ status: 'granted' }),
     getBackgroundPermissionsAsync: async () => ({ status: 'granted' }), hasServicesEnabledAsync: async () => true,
-    hasStartedLocationUpdatesAsync: async () => running,
+    hasStartedLocationUpdatesAsync: async () => { io.native++; return running; },
     startLocationUpdatesAsync: async (_name, options) => { starts.push(options); running = true; },
     stopLocationUpdatesAsync: async () => { running = false; },
   };
   const load = loader({
     '@react-native-async-storage/async-storage': { getItem: async () => {
+      io.storage++;
       const snapshot = stored, pause = pauseRead; pauseRead = null;
       if (pause) await pause(); return snapshot;
     }, setItem: async (_key, value) => { stored = value; }, removeItem: async () => { stored = null; } },
     'react-native': { Platform: { OS: platform } }, 'expo-location': location,
-    'expo-task-manager': { isAvailableAsync: async () => true, isTaskDefined: () => false, defineTask: (_key, fn) => { task = fn; } },
+    'expo-task-manager': { isAvailableAsync: async () => { io.availability++; return true; }, isTaskDefined: () => false, defineTask: (_key, fn) => { task = fn; } },
     './background/passengerTrackingReads': { getBookingSnapshot: async () => { reads++; return { data: booking }; }, getTripSnapshot: async () => ({}) },
     '@/services/tokenRefresh': { hasRecoverableSession: async () => true },
     './rideLocationStream': { publishNativeRideLocation: (...args) => published.push(args) },
@@ -30,7 +32,10 @@ function fixture(t, platform = 'ios') {
   });
   const module = load('services/passengerBackgroundLocationTask.ts');
   const profile = load('services/background/passengerGpsProfile.ts');
-  return { module, profile, starts, sent, published, reads: () => reads, session: () => stored && JSON.parse(stored),
+  return { module, profile, starts, sent, published, io, lifecycle: load('services/background/passengerTaskLifecycle.ts'),
+    replaceStored: value => { stored = value; },
+    loseNativeTask: () => { running = false; },
+    reads: () => reads, session: () => stored && JSON.parse(stored),
     pauseNextRead: value => { pauseRead = value; },
     booking: value => { booking = value; }, running: () => running,
     sample: () => task({ data: { locations: [{ timestamp: Date.now(), coords: { latitude: -4.3, longitude: 15.3, accuracy: 5 } }] } }) };
@@ -102,7 +107,72 @@ test('late permission completion cannot restart GPS after stop, and queue recove
   await f.profile.stopPassengerGpsProfile('booking');
   assert.equal(await f.profile.startPassengerGpsProfile(session, revision), false);
   f.pauseNextRead(async () => { throw new Error('read unavailable'); });
-  await f.profile.applyPassengerGpsProfile(session);
+  t.mock.timers.tick(30_000);
+  await assert.rejects(f.profile.applyPassengerGpsProfile(session), /read unavailable/);
   assert.equal(await f.module.startPassengerBackgroundLocationTracking('next'), true);
   assert.equal(f.session().bookingId, 'next');
+});
+
+test('100 ordinary active callbacks reuse storage and native state, without changing published samples', async t => {
+  const f = fixture(t);
+  await f.module.startPassengerBackgroundLocationTracking('booking');
+  const before = { ...f.io };
+  for (let i = 0; i < 100; i++) await f.sample();
+  assert.deepEqual(f.io, before);
+  assert.equal(f.published.length, 100);
+  assert.equal(f.starts.length, 1);
+  t.mock.timers.tick(30_000);
+  await f.sample();
+  assert.equal(f.io.storage, before.storage + 1);
+  assert.equal(f.io.native, before.native + 1);
+  assert.equal(f.io.availability, before.availability + 1);
+});
+
+test('native task loss is detected at the health-check interval and immediately at explicit resume', async t => {
+  const f = fixture(t);
+  await f.module.startPassengerBackgroundLocationTracking('booking');
+  f.loseNativeTask(); t.mock.timers.tick(30_000);
+  await f.profile.applyPassengerGpsProfile({ bookingId: 'booking', waitForActiveTrip: false });
+  assert.equal(f.running(), true);
+  assert.equal(f.starts.length, 2);
+  f.loseNativeTask();
+  await f.module.startPassengerBackgroundLocationTracking('booking');
+  assert.equal(f.running(), true);
+  assert.equal(f.starts.length, 3);
+});
+
+test('cache clearing and changes of booking remain immediate, not delayed until cache expiry', async t => {
+  const f = fixture(t);
+  await f.module.startPassengerBackgroundLocationTracking('first');
+  await f.module.stopPassengerBackgroundLocationTracking('first');
+  assert.equal(await f.lifecycle.getActiveTrackingSession(), null);
+  await f.module.startPassengerBackgroundLocationTracking('second');
+  await f.module.stopPassengerBackgroundLocationTracking('first');
+  assert.equal((await f.lifecycle.getActiveTrackingSession()).bookingId, 'second');
+  assert.equal(f.running(), true);
+});
+
+test('temporary storage error does not silently stop an active trip; the next callback recovers', async t => {
+  const f = fixture(t);
+  await f.module.startPassengerBackgroundLocationTracking('booking');
+  t.mock.timers.tick(30_000);
+  f.pauseNextRead(async () => { throw new Error('storage unavailable'); });
+  await f.sample();
+  assert.equal(f.running(), true);
+  await f.sample();
+  assert.equal(f.published.length, 1);
+  assert.equal(f.session().bookingId, 'booking');
+});
+
+test('cold reads restore legacy sessions, expired caches notice external clearing, and corrupt records stop GPS', async t => {
+  const f = fixture(t);
+  f.replaceStored('legacy-booking');
+  assert.equal((await f.lifecycle.getActiveTrackingSession()).bookingId, 'legacy-booking');
+  f.replaceStored(null); t.mock.timers.tick(30_000);
+  assert.equal(await f.lifecycle.getActiveTrackingSession(), null);
+  await f.module.startPassengerBackgroundLocationTracking('booking');
+  f.replaceStored('{corrupt'); t.mock.timers.tick(30_000);
+  await f.sample();
+  assert.equal(f.running(), false);
+  assert.equal(f.published.length, 0);
 });

@@ -6,7 +6,7 @@
     },
     "features/screen-styles/app/bookings/index.ts": {
       "keys": 70,
-      "sha256": "ec54b7981c8c6c663ff8a802d834e75f5600d907cbf8e1b50050cd33364e9a54"
+      "sha256": "b860a03ee998dd3255cf52481665216f3e59cb44e0f33f4f65d33844962945d5"
     },
     "features/screen-styles/app/chat/detail/index.ts": {
       "keys": 39,
@@ -30,7 +30,7 @@
     },
     "features/screen-styles/app/my-requests/index.ts": {
       "keys": 42,
-      "sha256": "1fb05bd12f132b4389d201bc6df7b04b192565ca258ccb1caeba1882fe8c9efe"
+      "sha256": "dfab64ae87a794db5ebfc67074151d70b07c90dbd915ac95736db173d83675c2"
     },
     "features/screen-styles/app/notifications/index.ts": {
       "keys": 49,
@@ -62,11 +62,11 @@
     },
     "features/screen-styles/app/requests/index.ts": {
       "keys": 67,
-      "sha256": "9f624e5a9645d6537d0e02b1cc9b056e9523f133becf60f079d3960649a6f1f8"
+      "sha256": "a7d1f5a1f44e7c8cc0efa6ef47a567ac4abcadefd7d7dea05a8761a22800fc63"
     },
     "features/screen-styles/app/search/index.ts": {
-      "keys": 89,
-      "sha256": "073cd77b57515f9e704f8a81d66aaeab04219de32036d097bc51de75c91f4385"
+      "keys": 44,
+      "sha256": "a4b44e2c9e1c0953c3ba61a59fabc710318dfebb6b328968782a99d81410d1c7"
     },
     "features/screen-styles/app/security/index.ts": {
       "keys": 71,
@@ -86,23 +86,23 @@
     },
     "features/screen-styles/app/tabs/trips/index.ts": {
       "keys": 146,
-      "sha256": "b2089ae8cd20f61208cd16b597513b84afb1bb3b0e8773bbfff32af1c5af41f6"
+      "sha256": "9c800f1334589648d26f0cda450a19c8e0739b570beb6a9bcd8f71c85a2e0eac"
     },
     "features/screen-styles/app/trip/detail/index.ts": {
-      "keys": 548,
-      "sha256": "a2b72265f86e43d6622eed077f396839cf66a8d4a8d0674b4303630614676ab7"
+      "keys": 539,
+      "sha256": "4036edb1a641072ad56810b096340dd8659f63bce40625cc3728b182503ad8e8"
     },
     "features/screen-styles/app/trip/manage/detail/index.ts": {
-      "keys": 130,
-      "sha256": "cd96df77649d6ad87ce3e386018f0cb5630d58fb170c98f4d927deb91e6b0098"
+      "keys": 111,
+      "sha256": "b434a3f9c9da6915e0d7a031190555503a8f4df89a0d4f315d9023f5acdb9535"
     },
     "features/screen-styles/app/trip/navigate/detail/index.ts": {
       "keys": 207,
       "sha256": "3f639372b2aee03a8c7584f282eacc2c46404ac299b63e1a943f24e1dd4a73b4"
     },
     "features/screen-styles/app/wallet/index.ts": {
-      "keys": 76,
-      "sha256": "056b7786deb7b9350c136fc0873319ff774da57f174bce6e96c967547db60d0e"
+      "keys": 77,
+      "sha256": "65c49bca99bfb45785e99bf5b7bc2afd865150fa8e55901be713cef14c751909"
     },
     "features/screen-styles/components/auth/styles/index.ts": {
       "keys": 162,
@@ -242,15 +242,14 @@
       "deleteAccount": "8160786312d52735bfcf15c162f51916eec39a8d430822aedd97551738710686",
       "getUserById": "0dd2b49af2389970548294e121c6a58453000224ae9fbe3843638beede569fc6",
       "getPublicUserInfo": "44c654e732f032f70f847f93d4fc0eebf872baa5336216ae03ec6f9a5942aa3a",
-      "uploadKyc": "14e7025732e56fabbc7c72059c2fb76fd1d4e7940dbedf34982663d1a3eb18d8",
+      "uploadKyc": "be53fdfe6215cf289ccb00b1b0a1a8c26be961ce51d0a49c2af7f453831329d3",
       "getKycStatus": "5dd86bba5de91ef64a5566f8ab1a84da8c02abf63250375ddcdcea26d7fd0306",
       "createDiditKycSession": "d35e21590ae5f111201d28287eafcb5683180b62b145c3c36d92fd1a4b3a33f8",
-      "syncDiditKycSession": "c7b539b14e26d12a3908f0bb3988fd2e28062f0f67f37e7dd386affc98b1511b",
+      "syncDiditKycSession": "392cd5c91ad2d9a5ef2b58f4b2b9c1b993dae256f6868ffd32284026b6f6a601",
       "updateFcmToken": "c16b433263f85bfea2280df22c8eb8adfc3ad2d8eb6ac656d6fd595fadb9084a",
       "sendPhoneVerificationOtp": "6f072f90ffdafbadd937b327e40aeb7edd26c43bcff4e4eb4af38f80aac5c127",
       "verifyPhoneOtp": "a49bef8199f97b08ccd038aaaf8ce998de904f4859cb54a0438423fd9e04a3ea",
-      "updatePin": "59706b5ffc9ec4e42372c974a2299e6f315bb2720df4d2182b4eac52d9392214",
-      "updatePinWithOtp": "aefc038f17bcf91a9c4ae6193a17ea7031050d280f3386be302c5551f8170494",
+      "updatePin": "d0d0ca605f4822f08aa94574dd6be6d84050db6623dcfaef4f6ba719361bc558",
       "getFavoriteLocations": "55ca5af8afc60552041c4a96c06159cc38948ea9bf5d84004f52fe46cb7204e6",
       "getDefaultFavoriteLocation": "79c9336add9fb983ed5eaae041e176fdf2b5d33000089a13dde5b427ddaf2bb4",
       "getFavoriteLocationById": "f1c93d9158bd85420c0f5f5adcfe43e2aabba22ef4bbd7923b244eac4caadddc",
