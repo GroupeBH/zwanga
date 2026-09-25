@@ -217,7 +217,7 @@ export function useWalletWithdrawal(
       title: activeIntent ? "Vérifier la même demande" : "Confirmer le retrait",
       message: activeIntent
         ? `Vérifier la demande de ${count} jetons vers ${destination}, sans lancer un second versement.`
-        : `${count} jetons achetés seront convertis en ${(Math.round(count * Number(summary?.withdrawal?.moneyPerToken ?? 0) * 100) / 100).toLocaleString("fr-FR")} ${summary?.withdrawal?.currency} et envoyés vers ${destination}. Votre KYC doit être validé. Les jetons de fidélité ne sont pas retirables.`,
+        : `${count} jetons → ${(Math.round(count * Number(summary?.withdrawal?.moneyPerToken ?? 0) * 100) / 100).toLocaleString("fr-FR")} ${summary?.withdrawal?.currency}\nMobile Money : ${destination}\nIdentité vérifiée requise. Jetons de fidélité non retirables.`,
       actions: [
         { label: "Annuler", variant: "ghost" },
         {

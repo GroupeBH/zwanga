@@ -9,6 +9,50 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 25 septembre 2026 — Écran des jetons plus concis
+
+**Problème.** Le solde et le retrait répétaient les mêmes explications ; les
+bannières et deux grandes cartes d'action repoussaient l'historique. Les règles
+sur la fidélité occupaient l'écran même sans opération à effectuer.
+
+**Solution appliquée.** Le guide frontend a orienté une hiérarchie sobre :
+solde, montant retirable et raccourcis « Recharger », « Partager », « Retirer ».
+Le détail du solde se déplie avec « Détails ». Les retraits sont repliés par
+défaut, avec le nombre de demandes à suivre ; leur consultation conserve les
+dix entrées déjà accessibles. Parrainage et revenus conducteur deviennent des
+liens compacts. Les erreurs, restrictions de retrait, demandes incertaines et
+suivi de recharge restent visibles. En-tête/espacements resserrés, actions
+nommées et cibles tactiles d'au moins 44 points, sans hauteur fixe des textes.
+
+**Formulaires.** Suppression de l'exemple redondant de conversion lors de la
+recharge, aide au partage raccourcie. Le retrait conserve avant confirmation le
+solde retirable, minimum, taux, numéro Mobile Money et condition d'identité
+vérifiée. « KYC » est remplacé par « identité vérifiée » dans ce parcours.
+Les montants et règles d'éligibilité n'ont pas été modifiés.
+
+**Fichiers.** `app/wallet.tsx`, nouveaux `features/wallet/WalletOverview.tsx`
+et `WalletOverview.styles.ts`, `WalletWithdrawalSection.tsx`,
+`WalletTopUpModal.tsx`, `WalletTransferModal.tsx`,
+`hooks/wallet/useWalletWithdrawal.ts` (texte de confirmation uniquement) et
+`features/screen-styles/app/wallet/container.styles.ts`.
+
+**Précautions.** Pas de nouvel appel réseau, timer, animation ni modal natif.
+Liste principale virtualisée et pagination conservées. Les détails locaux ont
+des clés distinctes par compte. Les overlays restent à la racine de l'écran,
+hors de la liste et du fond rendu inactif. Reprise d'un retrait incertain avec
+la même clé d'idempotence, blocages, destinataire et double confirmation inchangés.
+
+**Vérifications.** 40 tests JavaScript ciblés réussis (présentation compacte,
+formulaires/clavier, suivi des recharges, cache et retraits), TypeScript valide,
+contrôles réseau/taille valides : 947 sources, aucune au-delà de 400 lignes.
+`git diff --check` valide. Tests : `walletCompactOverview.test.js`,
+`walletSheetKeyboard.test.js`, `walletWithdrawal.test.js`,
+`walletTopUpLifecycle.test.js` et `walletQueryReliability.test.js`.
+Les deux échecs initiaux du banc de test clavier provenaient du nouveau module
+de présentation non simulé ; son mock a été ajouté, sans changer les assertions
+de protection du clavier. Pas de paiement réel ni de mesure de performance
+native. Rendu sur appareils iOS/Android et grandes polices restant à vérifier.
+
 ## 25 septembre 2026 — Contacter le titulaire avant d'accepter sa réservation
 
 **Problème.** Dans la gestion d'un trajet, le contact était réservé aux

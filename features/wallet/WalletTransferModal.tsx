@@ -9,7 +9,7 @@ import { WalletSheetModal } from './WalletSheetModal';
 type Props = { wallet: ReturnType<typeof useWalletController> };
 export function WalletTransferModal({ wallet }: Props) {
   return <WalletSheetModal icon="share-outline" onClose={() => wallet.setActiveModal(null)}
-    subtitle="Les jetons de fidélité sont transférés en premier et restent non retirables. Les jetons achetés restent retirables chez le destinataire."
+    subtitle="Choisissez un montant et un destinataire."
     title="Partager des jetons" visible={wallet.activeModal === 'transfer'}>
     <TextInput keyboardType="numeric" accessibilityLabel="Nombre de jetons à partager"
       onChangeText={wallet.setTransferAmount} placeholder="Nombre de jetons"
@@ -19,6 +19,7 @@ export function WalletTransferModal({ wallet }: Props) {
       placeholderTextColor={Colors.gray[400]} style={styles.input} value={wallet.transferRecipient} />
     <TextInput accessibilityLabel="Note optionnelle du partage" onChangeText={wallet.setTransferNote}
       placeholder="Note optionnelle" placeholderTextColor={Colors.gray[400]} style={styles.input} value={wallet.transferNote} />
+    <Text style={styles.helperText}>Fidélité partagée en premier, non retirable. Les jetons achetés restent retirables par le destinataire.</Text>
     <TouchableOpacity activeOpacity={0.85} disabled={wallet.isTransferring} onPress={wallet.handleTransfer}
       style={[styles.primaryButton, wallet.isTransferring && styles.disabled]}>
       {wallet.isTransferring ? <ActivityIndicator color={Colors.white} /> : <>

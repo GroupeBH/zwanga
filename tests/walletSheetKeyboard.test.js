@@ -20,6 +20,7 @@ function sheet(platform = 'ios', height = 844) {
       return { remove: () => backHandlers.delete(handler) };
     } } };
   const mocks = { react: { ...React, ...hooks.react }, 'react-native': native,
+    '../features/wallet/WalletOverview': { WalletOverview: 'Overview', WalletRelatedLinks: 'RelatedLinks' },
     'react-native-safe-area-context': { SafeAreaProvider: 'Provider', SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => insets },
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-router': { Stack: { Screen: 'StackScreen' } },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => activity.active } };
@@ -184,6 +185,9 @@ test('the withdrawal overlay is a screen-root sibling, outside the disabled back
     'expo-web-browser': { maybeCompleteAuthSession() {} },
   })('app/wallet.tsx').default;
   const screen = Screen();
+  const header = elements(screen).find(node => node.type === 'FlatList').props.ListHeaderComponent;
+  const headerKeys = elements(header).map(node => node.key).filter(Boolean);
+  assert.equal(new Set(headerKeys).size, headerKeys.length, 'balance and withdrawal disclosures need distinct reconciliation keys');
   const background = elements(screen).find(node => node.props?.accessibilityElementsHidden !== undefined);
   const overlay = elements(screen).find(node => node.type === 'WithdrawalModal');
   assert.equal(background.props.accessibilityElementsHidden, true);
