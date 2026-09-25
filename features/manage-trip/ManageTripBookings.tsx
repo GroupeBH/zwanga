@@ -99,6 +99,16 @@ export function ManageTripBookings({
             {booking.status === 'pending' && (
               <View style={styles.bookingFooter}>
                 <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: Colors.gray[100] }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Contacter ${booking.passengerName || 'le passager'} avant d’accepter`}
+                  disabled={state.isAccepting || state.isRejecting}
+                  onPress={() => state.setContactBookingId(booking.id)}
+                >
+                  <Ionicons name="call-outline" size={16} color={Colors.primary} />
+                  <Text style={[styles.actionText, { color: Colors.primary }]}>Contacter</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   style={[styles.actionButton, styles.rejectButton]}
                   accessibilityRole="button"
                   onPress={() => bookingsActions.openRejectModal(booking)}
@@ -126,11 +136,7 @@ export function ManageTripBookings({
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: Colors.gray[100] }]}
                   accessibilityRole="button"
-                  onPress={() => {
-                    state.setSelectedPassengerPhone(booking.passengerPhone || null);
-                    state.setSelectedPassengerName(booking.passengerName || null);
-                    state.setContactModalVisible(true);
-                  }}
+                  onPress={() => state.setContactBookingId(booking.id)}
                 >
                   <Ionicons name="chatbubble-ellipses" size={18} color={Colors.primary} />
                   <Text style={[styles.actionText, { color: Colors.primary }]}>Contacter</Text>

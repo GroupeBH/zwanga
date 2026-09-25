@@ -9,6 +9,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import type { Booking } from '@/types';
 
 interface DriverNavigationPassengersBarProps {
+  onContact: (passengerId: string) => void;
   foundation: ReturnType<typeof useDriverNavigationFoundation>;
   passengerPresentation: { passengerStats: { totalPassengers: number; pendingPickups: number; pendingDropoffs: number; completedPickups: number; completedDropoffs: number; inVehicle: number; passengers: { name: string; pickedUp: boolean; droppedOff: boolean; id: string; }[]; }; fitVehicleAndPassengers: () => void; };
   bookingActions: { handleRejectPendingBooking: (booking: Booking) => Promise<void>; handleAcceptPendingBooking: (booking: Booking) => Promise<void>; handleRejectPassengerInterruption: (booking: Booking) => void; handleConfirmPassengerInterruption: (booking: Booking) => void; };
@@ -18,6 +19,7 @@ export function DriverNavigationPassengersBar({
   foundation,
   passengerPresentation,
   bookingActions,
+  onContact,
 }: DriverNavigationPassengersBarProps) {
   const interruption = foundation.passengers.activePassengerInterruptionBooking;
   if (interruption) {
@@ -42,6 +44,7 @@ export function DriverNavigationPassengersBar({
       accepting={processing && foundation.data.isAcceptingBooking}
       rejecting={processing && foundation.data.isRejectingBooking}
       onAccept={bookingActions.handleAcceptPendingBooking}
+      onContact={onContact}
       onReject={bookingActions.handleRejectPendingBooking} />;
   }
   return (

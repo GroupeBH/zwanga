@@ -9,6 +9,53 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 25 septembre 2026 — Contacter le titulaire avant d'accepter sa réservation
+
+**Problème.** Dans la gestion d'un trajet, le contact était réservé aux
+réservations acceptées. En navigation, la liste de contacts excluait les
+réservations en attente : le conducteur ne pouvait pas joindre leur titulaire
+pour préciser la prise en charge avant de se décider.
+
+**Solution appliquée.** Ajout de « Contacter » sur les réservations en attente
+dans la gestion, et de « Contacter avant d’accepter » sur la carte prioritaire
+en navigation. Ces actions ouvrent la fiche de la personne choisie, avec
+« Appeler » et « WhatsApp », sans acceptation implicite. Le bouton général de
+contact en navigation inclut également les réservations en attente, avec un
+libellé explicite. La gestion réutilise le modal de contact existant et ses
+protections contre les doubles clics, erreurs natives et démontages.
+
+**Fichiers.** `features/manage-trip/ManageTripBookings.tsx`, nouveau
+`features/manage-trip/ManageTripContactModal.tsx`, `hooks/manage-trip/useManageTripState.ts`,
+`app/trip/manage/[id].tsx`, `features/navigation/navigationContacts.ts`,
+`hooks/navigation/useNavigationAssistance.ts`, ainsi que
+`features/driver-navigation/DriverPendingBookingPrompt.tsx`,
+`DriverNavigationPassengersBar.tsx` et `DriverNavigationTopPanel.tsx`.
+
+**Comportements conservés et précautions.** Accepter/refuser restent deux
+actions distinctes. Un seul titulaire est contacté pour une réservation de
+plusieurs places ; aucune sélection automatique d'un autre passager si la
+réservation disparaît ou est refusée. Seul le propriétaire du trajet peut
+consulter ces contacts, à partir des données déjà autorisées. La lecture backend
+`BookingsService.findAllByTrip` vérifie déjà le conducteur propriétaire et
+retourne le passager des réservations en attente : aucune modification backend
+ni nouvelle requête nécessaire. Un numéro manquant rend les actions indisponibles
+avec une explication. La fiche de gestion suit les données actuelles plutôt
+qu'une copie du numéro ; sa sélection est effacée au changement de compte,
+de trajet ou d'activité de l'écran. Aucun polling ni abonnement supplémentaire.
+Les actions de la carte de navigation restent hors du contenu défilant.
+
+**Vérifications.** 54 tests JavaScript ciblés réussis : contacts, droits,
+multi-places, sélection d'une réservation parmi plusieurs, numéro absent,
+réservation annulée/refusée, ouverture/fermeture du modal, câblage et dispositions
+des boutons, gestion de trajet et navigation. TypeScript sans émission valide,
+ESLint ciblé sans erreur, contrôles réseau/taille valides
+(945 sources, aucune au-delà de 400 lignes) et
+`git diff --check` valide. Tests principaux : `pendingBookingContact.test.js`,
+`navigationAssistance.test.js` et `driverPendingBookingLayout.test.js`.
+Appels et WhatsApp simulés dans les tests ; aucun contact réel effectué.
+Essais natifs iOS/Android, petits écrans/grandes polices et retour depuis
+l'application Téléphone/WhatsApp restant à valider sur appareil.
+
 ## 25 septembre 2026 — Correctifs des six points de l'audit de fiabilité
 
 **Problèmes.** Boucle de vérification de recharge, double rôle GPS, arrêt natif

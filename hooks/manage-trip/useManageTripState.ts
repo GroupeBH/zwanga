@@ -116,9 +116,8 @@ export function useManageTripState() {
   const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
-  const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
+  const [contactBookingId, setContactBookingId] = useState<string | null>(null);
+  useEffect(() => { setContactBookingId(null); }, [isScreenActive, tripId, user?.id]);
   const [refreshing, setRefreshing] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [editRouteModalVisible, setEditRouteModalVisible] = useState(false);
@@ -191,9 +190,10 @@ export function useManageTripState() {
     refreshing,
     isAccepting,
     processingBookingId,
-    setSelectedPassengerPhone,
-    setSelectedPassengerName,
-    setContactModalVisible,
+    contactBookingId,
+    setContactBookingId,
+    userId: user?.id,
+    isScreenActive,
     isCancellingBooking,
     insets,
     isStartingTrip,
@@ -205,8 +205,5 @@ export function useManageTripState() {
     editRouteError,
     rejectModalVisible,
     rejectError,
-    contactModalVisible,
-    selectedPassengerName,
-    selectedPassengerPhone,
   };
 }
