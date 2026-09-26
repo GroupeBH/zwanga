@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
+import { compactWalletStyles as compact } from './WalletOverview.styles';
 import {
   ActivityIndicator,
   Text,
@@ -14,92 +16,43 @@ import { Colors } from "@/constants/styles";
 import type { WalletSummary } from "@/types";
 
 export function WalletWithdrawalSection({
-  summary,
-  withdrawal,
-  onOpen,
+  summary, withdrawal,
 }: {
   summary?: WalletSummary;
   withdrawal: ReturnType<typeof useWalletWithdrawal>;
-  onOpen: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   if (!summary?.withdrawal) return null;
-  return (
-    <>
-      <View style={styles.balancePanel}>
-        <Text style={styles.sectionTitle}>Retirer mes jetons achetés</Text>
-        <Text style={styles.balanceLabel}>
-          {formatWalletAmount(summary.account.withdrawableBalance)} retirables
-        </Text>
-        <Text style={styles.balanceHint}>
-          Soit{" "}
-          {formatWalletAmount(
-            summary.withdrawal.availableMoney,
-            summary.withdrawal.currency,
-          )}{" "}
-          sur votre Mobile Money. Minimum : {summary.withdrawal.minimumTokens}{" "}
-          jeton. KYC validé requis.
-        </Text>
-        {!summary.withdrawal.enabled ? (
-          <Text style={styles.balanceHint}>
-            Le service de retrait est actuellement désactivé.
-          </Text>
-        ) : null}
-        {summary.withdrawal.blocked ? (
-          <Text style={styles.balanceHint}>
-            Votre portefeuille nécessite une vérification. Contactez le support.
-          </Text>
-        ) : null}
-        {withdrawal.storageError ? (
-          <Text style={styles.balanceHint}>
-            Impossible de restaurer votre demande en sécurité. Contactez le
-            support avant de réessayer.
-          </Text>
-        ) : null}
-        <TouchableOpacity
-          accessibilityRole="button"
-          disabled={!withdrawal.canSubmit}
-          onPress={onOpen}
-          style={[
-            styles.primaryButton,
-            !withdrawal.canSubmit && styles.disabled,
-          ]}
-        >
-          <Text style={styles.primaryButtonText}>
-            {withdrawal.activeIntent
-              ? "Vérifier ma demande"
-              : "Retirer en argent"}
-          </Text>
-        </TouchableOpacity>
-        {withdrawal.historyError ? (
-          <Text style={styles.balanceHint}>
-            Historique des retraits indisponible. Actualisez avant de refaire
-            une demande.
-          </Text>
-        ) : null}
-        {withdrawal.withdrawals.slice(0, 10).map((value) => (
-          <TouchableOpacity
-            key={value.id}
-            accessibilityRole="button"
-            disabled={withdrawal.busy}
-            onPress={() => withdrawal.checkStatus(value)}
-            style={styles.ledgerItem}
-          >
-            <View style={styles.ledgerTextBlock}>
-              <Text style={styles.ledgerTitle}>
-                {value.tokens} jetons →{" "}
-                {formatWalletAmount(value.amount, value.currency)}
-              </Text>
-              <Text style={styles.ledgerSubtitle}>{value.message}</Text>
-              <Text style={styles.ledgerSubtitle}>
-                {new Date(value.createdAt).toLocaleDateString("fr-FR")} ·
-                Vérifier le statut
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </>
-  );
+  const pendingCount = withdrawal.withdrawals.filter(value => ['pending', 'initiated', 'review'].includes(value.status)).length;
+  const notices = [
+    !summary.withdrawal.enabled && 'Retraits temporairement indisponibles.',
+    summary.withdrawal.blocked && 'Portefeuille à vérifier. Contactez l’assistance.',
+    withdrawal.storageError && 'Demande impossible à restaurer. Contactez l’assistance avant de réessayer.',
+    withdrawal.activeIntent && 'Un retrait reste à vérifier. Utilisez « Vérifier », sans créer une autre demande.',
+    withdrawal.historyError && 'Retraits indisponibles. Actualisez avant toute nouvelle demande.',
+  ].filter((value): value is string => Boolean(value));
+  if (!notices.length && !withdrawal.withdrawals.length) return null;
+  return <View style={compact.withdrawalSection}>
+    {notices.map(message => <Text key={message} style={compact.notice} accessibilityLiveRegion="polite">{message}</Text>)}
+    {withdrawal.withdrawals.length > 0 && <>
+      <TouchableOpacity style={compact.withdrawalToggle} onPress={() => setExpanded(value => !value)}
+        accessibilityRole="button" accessibilityLabel="Historique des retraits" accessibilityState={{ expanded }}>
+        <Ionicons name="cash-outline" size={18} color={Colors.gray[600]} />
+        <Text style={compact.withdrawalLabel}>Retraits{pendingCount > 0 ? ` · ${pendingCount} à suivre` : ''}</Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[600]} />
+      </TouchableOpacity>
+      {expanded && withdrawal.withdrawals.slice(0, 10).map(value => <TouchableOpacity key={value.id}
+        accessibilityRole="button" accessibilityLabel={`Vérifier le retrait de ${formatWalletAmount(value.amount, value.currency)}`}
+        disabled={withdrawal.busy} onPress={() => withdrawal.checkStatus(value)} style={styles.ledgerItem}>
+        <View style={styles.ledgerTextBlock}>
+          <Text style={styles.ledgerTitle}>{formatWalletAmount(value.amount, value.currency)}</Text>
+          <Text style={styles.ledgerSubtitle}>{value.message}</Text>
+          <Text style={styles.ledgerSubtitle}>{new Date(value.createdAt).toLocaleDateString('fr-FR')} · {formatWalletAmount(value.tokens)}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={Colors.gray[500]} />
+      </TouchableOpacity>)}
+    </>}
+  </View>;
 }
 
 // Keep the screen-local overlay OUTSIDE the scroll view / hidden accessibility tree.
@@ -121,8 +74,13 @@ export function WalletWithdrawalModal({
       onClose={onClose}
       icon="cash-outline"
       title="Retirer mes jetons"
-      subtitle="Seuls les jetons achetés, y compris ceux reçus par transfert, sont retirables. La fidélité reste utilisable pour payer."
+      subtitle="Versement sur votre Mobile Money."
     >
+      <Text style={styles.balanceLabel}>Retirable : {formatWalletAmount(summary.account.withdrawableBalance)}</Text>
+      <Text style={styles.balanceHint}>
+        Minimum : {formatWalletAmount(summary.withdrawal.minimumTokens)}. Identité vérifiée requise.
+      </Text>
+      <Text style={styles.balanceHint}>Seuls les jetons achetés, même reçus par partage, sont retirables.</Text>
       <TextInput
         accessibilityLabel="Nombre de jetons à retirer"
         placeholder="Nombre de jetons"

@@ -9,6 +9,585 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 25 septembre 2026 — Correctifs du contre-audit de performance
+
+**Problèmes.** Attente GPS ponctuelle non bornée, lectures répétées de session et
+vérifications natives pendant le trajet, abonnements d'identité non libérés,
+polling des retraits même sans opération à suivre.
+
+**Solutions appliquées.** Acquisition GPS bornée (10 s pour la position fraîche,
+2 s par lecture en cache), déduplication des opérations natives encore en cours
+et abandon des consommateurs périmés. Cache de session passager de 30 s avec
+écritures/suppressions sérialisées, contrôle natif espacé et forcé à la reprise.
+Lectures RTK d'identité non abonnées et invalidations de succès centralisées.
+Polling des retraits conditionné à une opération non terminale ou une intention
+incertaine. Détail des fichiers, précautions et tests dans
+[PERFORMANCE_FOLLOWUP_FIXES_2026_09_25.md](PERFORMANCE_FOLLOWUP_FIXES_2026_09_25.md).
+
+**Préservation.** Suivi continu, précision GPS, automatisations du trajet,
+permissions, reprise après veille, réservation de plusieurs places, montants et
+idempotence des retraits inchangés. Une erreur temporaire du stockage n'est pas
+confondue avec une fin de trajet. Les attentes expirées ne retiennent pas leurs
+listeners et ne relancent pas plusieurs acquisitions natives simultanées.
+
+**Vérifications.** Suite JavaScript finale : **1 036 tests réussis, zéro échec**.
+`tsc --noEmit --incremental false` et ESLint ciblé sur les huit fichiers applicatifs
+modifiés réussis, sans erreur ni avertissement.
+Le mock de contact et les empreintes historiques devenus obsolètes sont actualisés
+sans retirer les assertions comportementales correspondantes. Frontière réseau,
+limite des 400 lignes (948 sources) et `git diff --check` réussis.
+
+**Limites.** Tests natifs simulés, aucun essai physique ni profilage de chauffe.
+Le timeout GPS libère l'interface ; Expo n'expose pas d'annulation de son appel
+ponctuel natif, qui reste partagé jusqu'à sa résolution. Aucun déploiement.
+
+## 25 septembre 2026 — Contre-audit de performance après les derniers changements
+
+**Demande.** Vérifier les risques résiduels après les correctifs de fiabilité et
+la simplification du portefeuille, sans modifier les fonctionnalités.
+
+**Intervention.** Audit statique, suite JavaScript complète et reproductions en
+mémoire. Documentation uniquement : aucun correctif applicatif ni déploiement.
+Trois points P2 (attente GPS ponctuelle, lectures GPS répétées, abonnements
+d'identité non libérés) et une optimisation P3 (polling des retraits) sont proposés
+dans [le contre-audit détaillé](PERFORMANCE_FOLLOWUP_2026_09_25.md).
+
+**Validation.** TypeScript, frontière réseau et limite de 400 lignes réussis
+(947 sources). Suite : 1 016 tests réussis sur 1 019 ; deux empreintes historiques
+et un mock de contact à revoir. Reproductions décrites avec leurs limites dans le
+rapport. Aucune mesure native de chauffe, mémoire ou crash ; aucun résultat de
+simulation ne garantit la stabilité sur appareil. Code applicatif conservé.
+
+## 25 septembre 2026 — Écran des jetons plus concis
+
+**Problème.** Le solde et le retrait répétaient les mêmes explications ; les
+bannières et deux grandes cartes d'action repoussaient l'historique. Les règles
+sur la fidélité occupaient l'écran même sans opération à effectuer.
+
+**Solution appliquée.** Le guide frontend a orienté une hiérarchie sobre :
+solde, montant retirable et raccourcis « Recharger », « Partager », « Retirer ».
+Le détail du solde se déplie avec « Détails ». Les retraits sont repliés par
+défaut, avec le nombre de demandes à suivre ; leur consultation conserve les
+dix entrées déjà accessibles. Parrainage et revenus conducteur deviennent des
+liens compacts. Les erreurs, restrictions de retrait, demandes incertaines et
+suivi de recharge restent visibles. En-tête/espacements resserrés, actions
+nommées et cibles tactiles d'au moins 44 points, sans hauteur fixe des textes.
+
+**Formulaires.** Suppression de l'exemple redondant de conversion lors de la
+recharge, aide au partage raccourcie. Le retrait conserve avant confirmation le
+solde retirable, minimum, taux, numéro Mobile Money et condition d'identité
+vérifiée. « KYC » est remplacé par « identité vérifiée » dans ce parcours.
+Les montants et règles d'éligibilité n'ont pas été modifiés.
+
+**Fichiers.** `app/wallet.tsx`, nouveaux `features/wallet/WalletOverview.tsx`
+et `WalletOverview.styles.ts`, `WalletWithdrawalSection.tsx`,
+`WalletTopUpModal.tsx`, `WalletTransferModal.tsx`,
+`hooks/wallet/useWalletWithdrawal.ts` (texte de confirmation uniquement) et
+`features/screen-styles/app/wallet/container.styles.ts`.
+
+**Précautions.** Pas de nouvel appel réseau, timer, animation ni modal natif.
+Liste principale virtualisée et pagination conservées. Les détails locaux ont
+des clés distinctes par compte. Les overlays restent à la racine de l'écran,
+hors de la liste et du fond rendu inactif. Reprise d'un retrait incertain avec
+la même clé d'idempotence, blocages, destinataire et double confirmation inchangés.
+
+**Vérifications.** 40 tests JavaScript ciblés réussis (présentation compacte,
+formulaires/clavier, suivi des recharges, cache et retraits), TypeScript valide,
+contrôles réseau/taille valides : 947 sources, aucune au-delà de 400 lignes.
+`git diff --check` valide. Tests : `walletCompactOverview.test.js`,
+`walletSheetKeyboard.test.js`, `walletWithdrawal.test.js`,
+`walletTopUpLifecycle.test.js` et `walletQueryReliability.test.js`.
+Les deux échecs initiaux du banc de test clavier provenaient du nouveau module
+de présentation non simulé ; son mock a été ajouté, sans changer les assertions
+de protection du clavier. Pas de paiement réel ni de mesure de performance
+native. Rendu sur appareils iOS/Android et grandes polices restant à vérifier.
+
+## 25 septembre 2026 — Contacter le titulaire avant d'accepter sa réservation
+
+**Problème.** Dans la gestion d'un trajet, le contact était réservé aux
+réservations acceptées. En navigation, la liste de contacts excluait les
+réservations en attente : le conducteur ne pouvait pas joindre leur titulaire
+pour préciser la prise en charge avant de se décider.
+
+**Solution appliquée.** Ajout de « Contacter » sur les réservations en attente
+dans la gestion, et de « Contacter avant d’accepter » sur la carte prioritaire
+en navigation. Ces actions ouvrent la fiche de la personne choisie, avec
+« Appeler » et « WhatsApp », sans acceptation implicite. Le bouton général de
+contact en navigation inclut également les réservations en attente, avec un
+libellé explicite. La gestion réutilise le modal de contact existant et ses
+protections contre les doubles clics, erreurs natives et démontages.
+
+**Fichiers.** `features/manage-trip/ManageTripBookings.tsx`, nouveau
+`features/manage-trip/ManageTripContactModal.tsx`, `hooks/manage-trip/useManageTripState.ts`,
+`app/trip/manage/[id].tsx`, `features/navigation/navigationContacts.ts`,
+`hooks/navigation/useNavigationAssistance.ts`, ainsi que
+`features/driver-navigation/DriverPendingBookingPrompt.tsx`,
+`DriverNavigationPassengersBar.tsx` et `DriverNavigationTopPanel.tsx`.
+
+**Comportements conservés et précautions.** Accepter/refuser restent deux
+actions distinctes. Un seul titulaire est contacté pour une réservation de
+plusieurs places ; aucune sélection automatique d'un autre passager si la
+réservation disparaît ou est refusée. Seul le propriétaire du trajet peut
+consulter ces contacts, à partir des données déjà autorisées. La lecture backend
+`BookingsService.findAllByTrip` vérifie déjà le conducteur propriétaire et
+retourne le passager des réservations en attente : aucune modification backend
+ni nouvelle requête nécessaire. Un numéro manquant rend les actions indisponibles
+avec une explication. La fiche de gestion suit les données actuelles plutôt
+qu'une copie du numéro ; sa sélection est effacée au changement de compte,
+de trajet ou d'activité de l'écran. Aucun polling ni abonnement supplémentaire.
+Les actions de la carte de navigation restent hors du contenu défilant.
+
+**Vérifications.** 54 tests JavaScript ciblés réussis : contacts, droits,
+multi-places, sélection d'une réservation parmi plusieurs, numéro absent,
+réservation annulée/refusée, ouverture/fermeture du modal, câblage et dispositions
+des boutons, gestion de trajet et navigation. TypeScript sans émission valide,
+ESLint ciblé sans erreur, contrôles réseau/taille valides
+(945 sources, aucune au-delà de 400 lignes) et
+`git diff --check` valide. Tests principaux : `pendingBookingContact.test.js`,
+`navigationAssistance.test.js` et `driverPendingBookingLayout.test.js`.
+Appels et WhatsApp simulés dans les tests ; aucun contact réel effectué.
+Essais natifs iOS/Android, petits écrans/grandes polices et retour depuis
+l'application Téléphone/WhatsApp restant à valider sur appareil.
+
+## 25 septembre 2026 — Correctifs des six points de l'audit de fiabilité
+
+**Problèmes.** Boucle de vérification de recharge, double rôle GPS, arrêt natif
+concurrent d'un nouveau trajet, dépose reconnue de façon inégale, attente GPS
+initiale et historique des jetons non borné.
+
+**Solutions appliquées.** Tags RTK séparés du suivi de statut et abonnements de
+lecture libérés ; sélection commune du rôle et de la fin du transport ; file
+native conducteur avec générations ; abonnement GPS immédiat et cache initial
+borné ; pagination serveur/mobile et liste virtualisée dans le portefeuille.
+Le backend local est modifié sans changer l'ancien endpoint d'historique.
+
+**Conservé.** Suivi arrière-plan, multi-places, paiements dus après dépose,
+actualisation du solde et fonctionnement des modals. Aucun paiement réel,
+déploiement ni migration de base effectué. Déployer le backend avant la nouvelle
+app pour consulter tout l'historique ; repli récent borné pendant la transition.
+
+**Vérifications.** 56 tests mobile ciblés et 11 tests backend réussis, TypeScript
+des deux projets valide, ESLint ciblé et contrôles réseau/taille valides. Suite
+mobile complète : 1 007/1 009 réussis, avec deux échecs de références préexistants.
+Pas d'essai natif ni de garantie de disparition des crashs ou de la chauffe.
+Fichiers, scénarios testés et limites dans les
+[correctifs de l'audit](PERFORMANCE_RELIABILITY_FIXES_2026_09_25.md).
+
+## 25 septembre 2026 — Audit transversal de performance et de fiabilité
+
+**Périmètre.** Relecture des cycles GPS, requêtes/cache, paiements, écrans,
+modals, sockets et protections de build mobile ; contrôle ciblé du contrat de
+l'historique des jetons dans le backend local.
+
+**Résultat.** Trois priorités P1 : auto-invalidation des vérifications de recharge,
+double participation GPS et concurrence arrêt/démarrage du GPS conducteur.
+Trois P2 : dépose reconnue différemment par le suivi global, amorçage GPS non
+borné et historique des jetons non paginé. Les corrections sont proposées,
+**pas appliquées** dans cette intervention : seuls ce journal et le
+[rapport d'audit](PERFORMANCE_RELIABILITY_AUDIT_2026_09_25.md) sont ajoutés/modifiés.
+Les comportements applicatifs et modifications préexistantes sont conservés.
+
+**Vérification.** TypeScript, frontières réseau et contrôle de taille valides ;
+982/984 tests réussis, deux échecs préexistants de références d'extraction.
+Quatre simulations JavaScript documentées, sans paiement réel ni essai natif.
+Aucune conclusion de disparition des gels, crashs ou de la chauffe.
+
+## 25 septembre 2026 — Libération de l'accueil après la dépose
+
+**Problème.** Une ancienne information de suivi pouvait conserver l'accueil
+verrouillé et afficher un rôle conducteur erroné après la dépose. La liste
+d'activité pouvait aussi rester en retard sur le détail de la réservation.
+
+**Solution.** Statut, carte et panneau fondés sur la participation réelle,
+horodatages de dépose reconnus et propagation immédiate de la fin du transport
+confirmée vers les caches passager. Retour au profil GPS de proximité lorsque
+la participation se termine. Pas de nouvelle requête ni de polling ajouté.
+
+**Conservé.** Paiements restant à régler, montants, réservations de plusieurs
+places, autres passagers et trajets réellement actifs. Les réponses réseau
+tardives ne réactivent pas une réservation déjà déposée dans les caches.
+
+**Vérification.** 68 tests ciblés passent, TypeScript et `git diff --check`
+valides ; 941 sources mobiles restent sous la limite de 400 lignes. Suite
+complète : 982/984, avec les deux échecs déjà connus de `sourceExtractions.test.js`
+(styles de réservation et références API PIN). Aucun essai natif réalisé.
+Périmètre, fichiers, tests et limites dans
+[Accueil après la dépose](HOME_AFTER_DROPOFF.md).
+
+## 25 septembre 2026 — Panneau des passagers plus compréhensible
+
+**Problème.** Le panneau mélangeait récupération et dépose dans deux lignes par
+réservation, avec noms barrés, compteurs sans légendes et actions peu explicites.
+
+**Solution.** Une fiche par réservation, statuts écrits, prochaine étape mise en
+avant, compteurs légendés et actions nommées. Hauteur adaptée au contenu et liste
+toujours virtualisée. Le détail d'un point ne déclare plus une arrivée fictive.
+Le skill frontend a guidé la simplification visuelle et la hiérarchie du contenu.
+
+**Conservé.** Ciblage des réservations et groupes de places, suivi automatique,
+itinéraire, confirmations, priorités des modals et signalement existant. Aucun
+changement backend, nouveau polling ou nouvelle fenêtre native.
+
+**Vérification.** 24 tests ciblés passent, TypeScript et `git diff --check`
+valides ; 940 sources mobiles respectent la limite de 400 lignes. Pas d'essai
+sur appareil physique. Fichiers concernés et protocole natif dans
+[Panneau des passagers](NAVIGATION_PASSENGERS_UX.md).
+Suite complète : 970/972 ; les deux échecs préexistants de
+`sourceExtractions.test.js` (styles de réservation et API PIN) restent présents.
+
+## 25 septembre 2026 — Photo du conducteur et publications multiples
+
+**Problème.** Plusieurs publications étaient possibles sans photo de profil,
+et les alertes d'arrivée du conducteur n'affichaient pas son visage.
+
+**Solution.** Photo requise dès la deuxième publication publique, trace durable
+et contrôle transactionnel backend, protection des publications récurrentes,
+raccourci mobile vers l'ajout de photo sans effacer le formulaire. Bloc photo/nom
+du conducteur ajouté aux alertes de prise en charge, avec les détails du véhicule
+et sans nouvelle requête de profil ni polling.
+
+**Conservation et limites.** Première publication ponctuelle et acceptation
+privée des demandes conservées, ainsi que les contrôles d'identité, de propriété,
+de véhicule et de quota. Migration backend préparée mais non exécutée.
+Vérifications ciblées : 22/22 tests mobiles et 53/53 tests backend passent.
+TypeScript mobile/backend valide ; contrôle des 937 sources mobiles conforme
+à la limite de 400 lignes, et `git diff --check` valide. Aucun essai natif réalisé.
+Suite mobile complète : 964/966 ; les deux échecs préexistants de
+`sourceExtractions.test.js` (styles et références API PIN) restent inchangés.
+Fichiers, périmètre précis, migration et protocole de validation dans
+[Photo conducteur : publication et rendez-vous](DRIVER_PROFILE_PHOTO.md).
+
+## 25 septembre 2026 — Conducteur de compte, passager dans une réservation
+
+**Problème.** Une activité conducteur encore en cours prenait systématiquement
+le dessus sur une réservation active dans la bannière. L'écran de navigation
+conducteur ne vérifiait pas la propriété avant de monter ses contrôleurs.
+
+**Solution.** Rôle déterminé par la participation au trajet, priorité à la
+réservation active, garde d'accès avant montage des interfaces conducteur,
+redirection vers la navigation passager et cohérence du suivi de l'accueil.
+Le statut conducteur du compte et les contrôles de propriété backend sont conservés.
+
+**Vérifications.** TypeScript valide, 81 tests JavaScript ciblés passent. Suite
+complète : 958/960, avec deux échecs préexistants de références styles/PIN,
+non modifiées par ce correctif. Limites et protocole natif
+dans [Rôles de participation au trajet](TRIP_PARTICIPATION_ROLES.md).
+Aucune mutation de données de production ni validation sur appareil physique.
+
+## 24 septembre 2026 — Vérification et durcissement de PawaPay
+
+**Problèmes.** Compilation bloquée, arrondis CDF silencieux, bascule risquée après
+erreur réseau ambiguë, callbacks mal liés à leur transaction et réponses tardives
+pouvant écraser un état final.
+
+**Solutions.** Contrats HTTP contrôlés, montants exacts selon l’opérateur,
+vérification serveur obligatoire pour tous les paiements, mises à jour sous
+verrou court et reprise de finalisation métier. Remboursements PawaPay non activés.
+Libellés Mobile Money neutres, parcours carte FlexPay et règles cash/jetons conservés.
+
+**Vérifications et limites.** [Revue PawaPay](PAWAPAY_REVIEW.md) détaille fichiers,
+tests et conditions de déploiement. TypeScript backend et mobile valide : les
+erreurs PawaPay mentionnées ci-dessous sont corrigées. 278 tests backend et 61
+tests mobiles ciblés passent. Tests simulés ; pas
+de transaction réelle, migration appliquée, déploiement ou essai natif.
+
+## 24 septembre 2026 — Inscription passager et activation conducteur explicite
+
+**Problème confirmé.** Le booléen multipart `"false"` était converti en `true`.
+Plusieurs chemins serveur et mobile déduisaient aussi le rôle conducteur du
+drapeau ou d'un véhicule, sans parcours complet ni intention explicite.
+
+**Solution appliquée.** Conversion stricte, rôle serveur canonique, intention
+conducteur distincte et activation uniquement après identité approuvée et véhicule
+actif du propriétaire. Inscription, profil, callbacks d'identité, véhicules,
+publication et offres utilisent cette règle. Le mobile ne transmet plus deux
+choix contradictoires et synchronise les réponses confirmées dans Redux avec
+isolation des comptes. Migration additive préparée, non appliquée ; aucun compte
+historique n'est rétrogradé automatiquement, aucune donnée financière modifiée.
+
+**Documentation et validation.** Voir [Statut passager et activation conducteur](DRIVER_ACCOUNT_ROLES.md)
+pour les fichiers, garde-fous PostgreSQL, compatibilité, résultats des tests et
+ordre de déploiement. TypeScript mobile valide ; 948/950 tests mobile passent
+(deux empreintes historiques restent divergentes). Les tests backend ciblés
+passent, mais le build global reste bloqué par les erreurs de typage PawaPay hors
+périmètre. Aucune validation sur appareil physique ni déploiement n'est annoncé.
+
+## 24 septembre 2026 — Accès Services dans les onglets des conducteurs
+
+**Problème.** Services pro était accessible uniquement depuis le profil.
+Remplacer Recherche pour tout le monde aurait pénalisé les passagers ; réutiliser
+la route d’onglet `search` pour les services aurait rendu les liens `/search`
+ambigus avec l’écran de recherche autonome.
+
+**Solution appliquée.** Cinq onglets conservés : le deuxième affiche Services
+pour les comptes conducteurs/mixtes, Recherche pour les passagers. Le nom interne
+devient `discover`, tandis que `/search` reste exclusivement la recherche.
+Le catalogue est partagé avec `/services`, les formulaires et détails restent
+dans la pile principale. Le profil ouvre l’onglet pour un conducteur, l’écran
+autonome pour un passager. Les racines d’onglet n’affichent pas de flèche retour ;
+l’espace de la barre superposée iOS est réservé sans doubler celui d’Android.
+Après activation conducteur confirmée, le rôle Redux est synchronisé uniquement
+pour le même compte, sans changement optimiste ni écrasement du reste du profil.
+
+**Préservation.** Bouton Chercher de l’accueil, filtres de recherche, bannière
+de trajet en cours, demandes/devis et validation contractuelle inchangés.
+Les réglages natifs de gel/détachement sont conservés. Aucun nouveau polling,
+GPS, modal, dépendance ou appel réseau ; montage différé de l’onglet et lectures
+suspendues lorsqu’il est inactif. Le changement de rôle ne remonte pas toute la
+barre d’onglets. Les brouillons restent dans leurs écrans de formulaire.
+
+**Vérifications.** TypeScript mobile valide. 92 tests JavaScript ciblés réussis,
+dont 13 nouveaux cas concernant les accès, layouts et activation du compte. Garde-fous réseau et
+taille valides : 931 sources, aucune au-dessus de 400 lignes. La recette native
+iOS/Android, notamment retours, clavier et changement de compte, reste à faire ;
+aucune mesure de mémoire/CPU ou garantie d’absence de crash n’est annoncée.
+
+Fichiers, règles d’accès et recette : [Onglet Services selon le compte](ZWANGA_SERVICES.md#onglet-services-selon-le-compte--24-septembre-2026).
+
+## 24 septembre 2026 — Services pro mobile : catalogue et formulaire guidé
+
+**Problème.** Le catalogue donnait autant de place aux services futurs qu’aux
+demandes utilisables. Le formulaire affichait tous les champs et documents en
+une seule fois, sans récapitulatif ni validation précise par étape.
+
+**Solution appliquée.** Service ouvert mis en avant, dossiers remontés avant les
+services futurs, statuts lisibles et aperçu des réponses de l’équipe. Formulaire
+en trois étapes : besoin, coordonnées, vérification ; champs facultatifs repliés,
+sélection multiple accessible, récapitulatif modifiable et confirmation d’envoi.
+Action principale en pied d’écran, dans la zone sûre et le conteneur de gestion
+du clavier. Retour entre étapes sans effacer les champs. Aucun nouveau modal.
+
+**Conservation et précautions.** Transport RTK Query et contrat API inchangés,
+aucune modification backend, aucun financement activé. Clé et contenu identiques
+pour réessayer un envoi incertain, garde synchrone contre le double appui, pas
+de publication de résultat dans un formulaire démonté. Aucun nouveau polling,
+paquet, suivi GPS ou animation continue. Brouillon conservé uniquement tant que
+le formulaire reste monté, pas après fermeture complète de l’application.
+
+**Vérifications.** TypeScript mobile valide ; 15 nouveaux tests JavaScript
+réussis (parcours, validation, réponses tardives, non-duplication et interactions
+UI simulées). Avec les tests Services existants et profil : 36/36 ; tests des
+layouts de formulaires existants : 9/9. Garde-fous
+réseau et taille valides : 929 sources, aucune au-dessus de 400 lignes.
+Pas de test visuel natif ou sur appareil physique : zones sûres, clavier et
+grandes polices à recetter sur iOS/Android, sans garantie d’absence de crash.
+
+Fichiers concernés, parcours et recette : [Services pro — refonte UX mobile](ZWANGA_SERVICES.md#refonte-ux-mobile--24-septembre-2026).
+
+## 24 septembre 2026 — Zwanga Services : demandes, devis et validation obligatoire
+
+**Problème.** Demandes de documents web/mobile dispersées, confusion avec
+l’abonnement Pro, absence de suivi partagé des devis, avances et originaux.
+
+**Solution appliquée.** Catalogue extensible et parcours Services pro dans le
+profil ; nouvelles demandes web reliées au même backend ; back-office dédié ;
+dossiers, consentements, devis versionnés, écritures vérifiées et registre de
+garde/restitution séparés. Contrat validé obligatoire côté serveur : aucune
+condition activée par défaut. Les futurs services ouvrent seulement la
+collecte des besoins tant que leur métier n’est pas implémenté.
+
+**Conservation et validation.** Aucun changement aux paiements des trajets ou
+aux gains ; aucune retenue automatique. Anciens dossiers conservés. TypeScript
+valide sur les trois projets ; 31 tests backend, 3 tests mobile et 5 tests site
+ajoutés et réussis. Suite mobile globale : 914/916, deux échecs d’empreintes
+préexistants. Pas de migration exécutée ni de test sur appareil physique.
+
+Fichiers, règles, limites et déploiement : [Zwanga Services](ZWANGA_SERVICES.md).
+
+## 24 septembre 2026 — Véhicule identifiable hors navigation et rappel compact
+
+**Problème constaté.** Le modal de prise en charge sur l'accueil affichait un
+long paragraphe avec des informations véhicule absentes, alors que la navigation
+connaissait le véhicule. `BookingsService.findAllByPassenger` ne chargeait pas
+`trip.vehicle`. L'accueil utilisait uniquement le trajet imbriqué dans la
+réservation, sans réutiliser son détail déjà chargé. Enfin, `vehicleInfo` contient
+une description du trajet ou un texte générique : ce n'est pas une marque/modèle.
+
+**Solution effectivement appliquée.**
+
+- Backend, `zwanga-backend/src/bookings/bookings.service.ts` : ajout de la relation
+  `trip.vehicle` à la lecture existante des réservations du passager, avec ou sans
+  `scope=activity`. Aucun nouvel endpoint ni migration. Le filtrage par passager,
+  le traitement des interruptions et les aperçus d'itinéraire restent inchangés.
+- `hooks/home/useHomeTracking.ts`, `features/home/homeTrackingDialogs.ts` et
+  `features/navigation/pickupAwareness.ts` : réutilisation du détail actif déjà
+  chargé, puis du trajet de la réservation si nécessaire, avec contrôle de l'ID
+  du trajet et du véhicule pour ne pas reprendre un véhicule remplacé. Les données
+  fraîches sont accessibles au callback socket sans réabonnement. Aucun appel
+  supplémentaire pour ouvrir le modal et aucun recours au véhicule par défaut
+  du conducteur ou à la description du trajet pour inventer une identité.
+- `features/navigation/PickupVehicleDetails.tsx` et `pickupPassengerDialog.ts` :
+  bloc partagé avec marque/modèle, couleur et plaque contrastée, sans troncature
+  volontaire de la plaque. Une consigne courte remplace le paragraphe ; en absence
+  totale de données, une seule phrase invite à vérifier avec le conducteur.
+  La composition sobre choisie pour l'interface supprime les répétitions et,
+  grâce au fonctionnement existant de `DialogProvider`, le grand pictogramme
+  des alertes hors navigation. Aucun téléchargement de photo ni animation ajoutée.
+- `hooks/trip-detail/useTripDetailProgressNotices.ts`,
+  `hooks/passenger-navigation/usePassengerNavigationPresentation.ts` et
+  `app/booking/navigate/[id].tsx` : même présentation dans le détail et la
+  navigation passager. La voix et la notification locale conservent un rappel
+  textuel adapté, tandis que les modals séparent consigne et identité du véhicule.
+
+**Comportements conservés.** Seuils de proximité, actions de fermeture,
+compte à rebours de navigation, messages conducteur, confirmations d'embarquement,
+dépose et paiements inchangés. Déduplication par réservation, pas par place ;
+les événements d'un autre passager et ceux reçus après sortie de l'accueil
+restent ignorés. Réutilisation des modals et de leur coordination existante,
+sans nouveau modal natif, polling, abonnement GPS ou minuteur.
+
+**Vérifications réalisées.** Tests enrichis dans `tests/pickupVehicleNotices.test.js`,
+`tests/pickupProximity.test.js` et `tests/homeModules.test.js` : trajet incomplet,
+détail chargé ensuite sans reconnexion socket, véhicule manquant/remplacé,
+plaque lisible, bon rôle et réservation de plusieurs places. Suite ciblée avec
+multi-passagers et cycle de vie de navigation : **60/60**. Backend : **2/2** dans
+`src/bookings/pickup-vehicle-read.spec.ts` (dépôt/cache simulés, relations et
+filtres contrôlés, pas de base réelle). Suite mobile complète : **911/913**, avec
+les deux échecs préexistants de `tests/sourceExtractions.test.js` sur les
+empreintes des styles de réservation et de l'API utilisateur/PIN. TypeScript
+mobile et backend production validés. ESLint sans erreur : aucun avertissement
+dans le nouveau bloc et le branchement accueil ; 19 avertissements dans l'ensemble
+des sources modifiées du worktree, déjà présents avant cette intervention.
+Frontière réseau et `git diff --check` validés ; **915 sources mobiles**, aucune
+au-dessus de 400 lignes.
+
+**Limites et déploiement.** Modifications locales, non déployées. Déployer aussi
+le backend pour enrichir les réponses de réservations ; les listes non actives
+déjà en cache restent soumises à leur expiration habituelle, sans purge forcée.
+L'accueil actif contourne déjà ce cache. Les tests UI sont JavaScript avec les
+dépendances natives simulées ; aucun essai sur iPhone ou Android physique.
+Vérifier visuellement l'accueil et la navigation, notamment sur petit écran et
+en grande police. Aucune mesure nouvelle de chauffe, de mémoire ou de crashs.
+
+## 24 septembre 2026 — Rappel du véhicule dans les modals au point de récupération
+
+**Problème.** Le rappel du véhicule était déjà affiché pendant la navigation
+passager, mais les messages « Vous êtes au point » et « Le conducteur est là »
+de l'accueil et du détail du trajet ne le reprenaient pas encore.
+
+**Solution appliquée.** `features/home/homeTrackingDialogs.ts` et
+`hooks/trip-detail/useTripDetailProgressNotices.ts` ajoutent le rappel partagé
+`pickupVehicleReminder` aux messages passager `parties_nearby` et
+`driver_arrived_pickup` : marque/modèle, couleur, plaque et invitation à vérifier
+le véhicule avant de monter. L'accueil invite le passager à se signaler, sans
+affirmer que les deux personnes sont forcément présentes ensemble. Le rappel
+de la navigation passager, déjà fourni par `usePassengerNavigationPresentation`,
+est conservé et couvert par les nouveaux tests.
+
+**Comportements conservés.** Données du véhicule associé au trajet déjà chargées ;
+aucune substitution par le véhicule par défaut du conducteur. Les informations
+absentes restent explicitement non renseignées. Aucun nouvel appel réseau,
+polling, minuteur, modal supplémentaire ni changement des seuils de proximité.
+Les messages conducteur, l'embarquement, les paiements, la déduplication et
+l'identification par réservation plutôt que par place sont conservés.
+
+**Vérifications.** Six nouveaux tests dans `tests/pickupVehicleNotices.test.js` :
+accueil, navigation et détail, variantes iOS/Android simulées, informations absentes,
+bon véhicule, message conducteur inchangé, doublons et autre réservation.
+Suite ciblée avec proximité, accueil et multi-passagers : **44/44 tests réussis**.
+TypeScript sans émission validé. ESLint ciblé sans erreur (trois avertissements
+préexistants dans le hook du détail).
+Contrôles de frontière réseau, taille des sources et `git diff --check` validés :
+913 sources mobiles, aucune au-dessus de 400 lignes.
+
+**Limites.** Tests JavaScript avec dépendances natives simulées, pas d'essai sur
+téléphone physique. Vérifier la lisibilité des textes sur petit écran et avec
+une grande taille de police. Aucun changement backend ni déploiement dans cette
+intervention ; aucune garantie nouvelle contre les crashs ou la chauffe.
+
+## 24 septembre 2026 — Alerte de prise en charge dès 300 mètres
+
+**Problème.** Le seuil d'approche était de 200 mètres côté mobile et backend.
+La navigation conducteur ignorait l'événement d'approche et attendait l'arrivée
+au point de prise en charge. Le rappel passager ne précisait pas le véhicule.
+
+**Solution appliquée et fichiers.**
+
+- `constants/rideProgress.ts` et `zwanga-backend/src/bookings/bookings.service.ts` :
+  seuil d'approche porté à **300 mètres inclus**. Les positions et événements
+  existants sont réutilisés. Le serveur et le conducteur comparent la position
+  du conducteur au point de prise en charge ; le repli local passager utilise
+  sa position si disponible, sinon le point de rendez-vous. Ce sont des distances
+  géographiques approximatives, pas une distance routière restante.
+- `useDriverRouteProgressTracking.ts`, `useDriverTrackingSocket.ts` et
+  `useDriverPickupNoticeQueue.ts` dans `hooks/driver-navigation/`, avec les types,
+  priorités et `NavigationPickupNoticeModal.tsx` dans `features/driver-navigation/` :
+  prise en compte de l'approche, nom du passager, distance, modal existant et voix.
+- `features/navigation/pickupAwareness.ts` centralise le rappel de la marque,
+  du modèle, de la couleur et de la plaque du **véhicule associé au trajet**.
+  Une information manquante est indiquée comme telle ; aucun véhicule par défaut
+  du conducteur n'est substitué. Les hooks `usePassengerDriverCameraTracking`,
+  `usePassengerNavigationController`, `usePassengerNavigationNotices` et
+  `usePassengerNavigationPresentation` réutilisent ce texte dans le modal,
+  la notification locale existante et la voix.
+- `hooks/home/useHomeTracking.ts`, `features/home/homeTrackingDialogs.ts`,
+  `hooks/manage-trip/useManageTripTracking.ts` et
+  `hooks/trip-detail/useTripDetailProgressNotices.ts` relaient aussi l'approche
+  avec un texte adapté au rôle. Le passager signalé à l'avance ne consomme plus
+  l'alerte d'approche. Les priorités plus avancées restent mémorisées.
+
+**Précautions et comportements conservés.** Déduplication par réservation et
+type d'événement pendant la session d'écran ; file conducteur existante, sans
+multiplier les alertes par le nombre de places. Une arrivée déjà présentée bloque
+l'alerte d'approche tardive. La navigation passager ignore les autres réservations,
+les événements hors écran et les réservations embarquées/déposées ; une annonce
+vocale asynchrone devenue obsolète est ignorée. Aucun nouveau polling, abonnement
+GPS, appel de profil/véhicule, stockage persistant ou modal natif indépendant.
+Le seuil d'arrivée à la prise en charge (80 m), celui de présence (5 m), les règles
+d'embarquement serveur, de dépose et de paiement restent inchangés.
+
+**Vérifications.** Tests de comportement ajoutés dans `tests/pickupProximity.test.js`,
+`tests/multiPassengerNavigation.test.js` et `tests/homeModules.test.js` : limite
+300/301 m, distinction avec l'arrivée, véhicule associé/informations absentes,
+groupes de plusieurs places, déduplication, file multi-réservations, préparation
+avant approche et événements obsolètes. Dernière suite ciblée : **38/38** ; autre
+passage élargi navigation/reprise/accueil : **88/88**. Suite mobile complète exécutée :
+**900/902**, avec les deux échecs préexistants d'empreintes de
+`tests/sourceExtractions.test.js` (styles des réservations et API utilisateur/PIN).
+Backend : **57/57** dans `bookings.service.spec.ts`, notamment 250/300/301 m ;
+deux attentes existantes adaptées car leurs positions à environ 223 m génèrent
+désormais aussi l'événement d'approche, sans modifier leurs validations
+d'embarquement. TypeScript mobile et backend production validés. ESLint ciblé :
+aucune erreur, 19 avertissements dans les zones déjà concernées sur HEAD
+(20 avertissements sur ces fichiers avant modification). Frontière réseau et
+`git diff --check` validés ; 913 sources mobiles, aucune au-dessus de 400 lignes.
+
+**Limites et déploiement.** Changements locaux non déployés : mettre à jour aussi
+le backend pour aligner les événements serveur. Tests JavaScript avec dépendances
+natives simulées ; aucun essai sur iPhone/Android physique. Vérifier un passage
+350 → 300 → 80 m avec deux réservations, la lecture du véhicule et le retour de
+veille. Le déclenchement dépend des positions reçues et de leur précision ; il
+n'est pas garanti exactement au franchissement du seuil, ni lorsque l'application
+est fermée. La notification locale dépend des autorisations du téléphone.
+Aucune garantie nouvelle d'absence de crash ou de chauffe.
+
+## 24 septembre 2026 — Photo du demandeur sur l'accueil
+
+**Problème.** Les cartes de demandes dans la liste de l'accueil et la demande
+mise en avant n'affichaient pas la photo du passager, pourtant disponible dans
+`TripRequest.passengerAvatar` après le mapping de la réponse API.
+
+**Solution appliquée.** `components/home/TripRequestPreviewCard.tsx` et
+`components/home/HomeRequestHighlightCard.tsx` transmettent désormais la photo et
+le nom du demandeur au composant existant `CompactTripCard`. La demande mise en
+avant affiche aussi son nom. Réutilisation de `CompactCardAvatar` : image ronde
+de 32 × 32, initiales sous l'image pendant son chargement, avatar à initiales si
+l'URL est absente/vide. Un nom vide utilise « Passager Zwanga ».
+
+**Comportements conservés.** Largeur des cartes, composants mémorisés, liste
+virtualisée, budget par place, horaires, places et actions d'ouverture/swipe
+inchangés. Aucune requête de profil, aucun polling, timer ou état ajouté ; seule
+l'image référencée est chargée par le composant natif existant. Pas de modification
+des cartes de recherche, des priorités de classement ou du backend.
+
+**Vérifications.** Nouveau cas dans `tests/homeCompactCards.test.js` : photo,
+initiales, URL vide, nom manquant, changement de photo, dimensions, nom accessible
+et ouverture de la bonne demande. Suite ciblée accueil/cartes compactes : 109/109
+tests réussis. TypeScript sans émission et ESLint ciblé validés ; `git diff --check`
+validé ; 912 sources contrôlées, aucune au-dessus de 400 lignes. Tests JavaScript
+avec composants natifs simulés : aucun essai visuel sur appareil physique ni
+mesure de performance native effectué pour cette modification.
+
 ## 23 septembre 2026 — Correctifs de résilience après la dernière revue
 
 Les renouvellements de session sur réseau instable, réponses tardives après changement

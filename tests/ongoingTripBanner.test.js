@@ -59,6 +59,29 @@ test('the actual driver still opens driver navigation', () => {
   h.hooks.unmount();
 });
 
+test('an active passenger reservation wins over an old ongoing driver trip and stale tracking', () => {
+  const h = banner({
+    user: { id: 'passenger', role: 'driver', isDriver: true },
+    trips: [{ ...trip, id: 'old-owned-trip', driverId: 'passenger' }],
+    tracked: { tripId: 'old-owned-trip', role: 'driver' },
+  });
+  h.press();
+  assert.deepEqual(h.routes, ['/booking/navigate/reservation']);
+  assert.equal(h.starts[0].role, 'passenger');
+  assert.equal(h.starts[0].tripId, trip.id);
+  assert.equal(h.stops.length, 1);
+  h.data.bookings = [{ ...booking, droppedOff: true }];
+  h.press();
+  assert.equal(h.routes.at(-1), '/trip/navigate/old-owned-trip');
+  h.hooks.unmount();
+});
+
+test('a booking for another account or trip cannot grant passenger navigation', () => {
+  const h = banner({ bookings: [{ ...booking, tripId: 'different-trip' }] });
+  assert.equal(h.render(), null);
+  h.hooks.unmount();
+});
+
 test('finished, cancelled, dropped-off and other-account reservations do not produce a passenger banner', () => {
   for (const patch of [{ status: 'completed' }, { status: 'cancelled' }, { droppedOff: true },
     { droppedOffConfirmedByPassenger: true }, { passengerId: 'someone-else' }, { trip: { ...trip, status: 'completed' } }]) {

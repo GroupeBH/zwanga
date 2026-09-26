@@ -1,7 +1,7 @@
-import { stopRegisteredDriverBackgroundLocationTask } from './driverTaskLifecycle';
+import { stopDriverGpsProfile } from './driverGpsProfile';
 import { getRtkErrorStatus, shouldBackOffAfterBackgroundResponse } from './driverTrackingErrors';
 import * as Location from 'expo-location';
-import { clearActiveDriverBackgroundTripId, getActiveDriverBackgroundTripSession, updateActiveDriverBackgroundTripSession } from '@/services/driverBackgroundLocationSession';
+import { getActiveDriverBackgroundTripSession, updateActiveDriverBackgroundTripSession } from '@/services/driverBackgroundLocationSession';
 import { hasRecoverableSession, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { tripApi } from '@/store/api/tripApi';
@@ -143,8 +143,7 @@ export async function evaluateBackgroundTripEnd(
         tripId,
         distanceMeters: lastDistanceMeters,
       });
-      await clearActiveDriverBackgroundTripId(tripId);
-      await stopRegisteredDriverBackgroundLocationTask();
+      await stopDriverGpsProfile(tripId);
       return true;
     }
   }

@@ -113,7 +113,7 @@ test('the ongoing booked trip remains selected even with more than ten nearby up
   const active = trip('active', { status: 'ongoing', departureTime: '2020-01-01', departure: { lat: -4.6, lng: 15.6 } });
   const reserved = [...Array.from({ length: 12 }, (_, i) => trip(`reserved-${i}`)), active];
   const h = selection({ remoteTrips: [], bookedTripIds: new Set(ids(reserved)),
-    activeBookings: reserved.map(item => ({ id: `booking-${item.id}`, tripId: item.id, trip: item, status: 'accepted' })) });
+    activeBookings: reserved.map(item => ({ id: `booking-${item.id}`, passengerId: 'me', tripId: item.id, trip: item, status: 'accepted' })) });
   const result = h.render();
   assert.equal(result.ongoingBookedTrip, active);
   assert.equal(result.activeHomeTrip, active);

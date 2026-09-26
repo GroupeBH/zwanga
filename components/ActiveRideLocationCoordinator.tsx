@@ -6,13 +6,12 @@ import {
 } from '@/services/passengerBackgroundLocationTask';
 import {
   ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
-  PASSENGER_TRACKING_PREARM_PAST_GRACE_MS,
-  PASSENGER_TRACKING_PREARM_WINDOW_MS,
 } from '@/constants/rideProgress';
 import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetMyActivityTripsQuery as useGetMyTripsQuery, useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
-import { selectIsAuthenticated } from '@/store/selectors';
+import { selectIsAuthenticated, selectUser } from '@/store/selectors';
+import { selectRideTracking } from '@/features/activity/rideTrackingSelection';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef } from 'react';
@@ -20,30 +19,9 @@ import { sharedTripsOptions, sharedBookingsOptions } from '@/features/activity/a
 import { useActivityTrackingSignal } from '@/hooks/useActivityTrackingSignal';
 import { usePathname } from 'expo-router';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
-import { subscribeRideLocation } from '@/services/rideLocationStream';
+import { subscribeBootstrappedRideLocation } from '@/services/rideLocationBootstrap';
 
 const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
-
-const isIncompletePassengerBooking = (booking: {
-  status: string;
-  droppedOff?: boolean;
-  droppedOffConfirmedByPassenger?: boolean;
-}) =>
-  ['pending', 'accepted', 'no_show'].includes(booking.status) &&
-  !booking.droppedOff &&
-  !booking.droppedOffConfirmedByPassenger;
-
-const isInsidePassengerTrackingWindow = (departureTime?: string | null) => {
-  if (!departureTime) return false;
-  const departureTimestamp = new Date(departureTime).getTime();
-  if (!Number.isFinite(departureTimestamp)) return false;
-
-  const offsetFromNow = departureTimestamp - Date.now();
-  return (
-    offsetFromNow <= PASSENGER_TRACKING_PREARM_WINDOW_MS &&
-    offsetFromNow >= -PASSENGER_TRACKING_PREARM_PAST_GRACE_MS
-  );
-};
 
 /**
  * Keeps native background-location tasks aligned with the active rides returned by the backend.
@@ -54,10 +32,11 @@ export function ActiveRideLocationCoordinator() {
   const pathname = usePathname();
   const passengerNavigationVisible = pathname.startsWith('/booking/navigate/');
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const userId = useAppSelector(selectUser)?.id;
   const trackingBookingId = useActivityTrackingSignal();
   const activeDriverTripIdRef = useRef<string | null>(null);
   const activePassengerBookingIdRef = useRef<string | null>(null);
-  const passengerBackgroundStartPromiseRef = useRef<Promise<boolean> | null>(null);
+  const passengerStartRef = useRef<Promise<boolean> | null>(null);
   const passengerForegroundSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
   const {
@@ -75,42 +54,14 @@ export function ActiveRideLocationCoordinator() {
     skip: !isAuthenticated,
   });
 
-  const activeDriverTrip = useMemo(
-    () => myTrips.find((trip) => trip.status === 'ongoing') ?? null,
-    [myTrips],
+  const { driver: activeDriverTrip, passenger: activePassengerBooking } = useMemo(
+    () => selectRideTracking(userId, myTrips, myBookings, trackingBookingId),
+    [userId, myTrips, myBookings, trackingBookingId],
   );
-  const activePassengerBooking = useMemo(() => {
-    const incompleteBookings = myBookings.filter(isIncompletePassengerBooking);
-    const ongoingBooking = incompleteBookings.find(
-      (booking) =>
-        (booking.status === 'accepted' || booking.status === 'no_show') &&
-        booking.trip?.status === 'ongoing',
-    );
-    if (ongoingBooking) return ongoingBooking;
-    // Server signal changes when the time window opens even if the booking object did not.
-    const signalled = incompleteBookings.find(booking => booking.id === trackingBookingId);
-    if (signalled) return signalled;
-
-    // Pre-arm the native task while the app is still awake. It will wait for the backend trip
-    // status before sending positions, then continue even if iOS suspends the React Native app.
-    return (
-      incompleteBookings
-        .filter((booking) =>
-          isInsidePassengerTrackingWindow(booking.trip?.departureTime) ||
-          (!booking.trip && booking.status === 'accepted'),
-        )
-        .sort((first, second) => {
-          const firstDeparture = new Date(first.trip?.departureTime ?? 0).getTime();
-          const secondDeparture = new Date(second.trip?.departureTime ?? 0).getTime();
-          return Math.abs(firstDeparture - Date.now()) - Math.abs(secondDeparture - Date.now());
-        })[0] ?? null
-    );
-  }, [myBookings, trackingBookingId]);
 
   const driverTripId = activeDriverTrip?.id ?? null;
-  const passengerBookingId = activePassengerBooking?.id ?? null;
   const passengerTripId = activePassengerBooking?.tripId ?? null;
-  const { data: passengerTripSnapshot } = useGetTripByIdQuery(passengerTripId ?? '', {
+  const { currentData: passengerTripSnapshot } = useGetTripByIdQuery(passengerTripId ?? '', {
     skip: !isAuthenticated || !passengerTripId,
     pollingInterval: ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS,
     skipPollingIfUnfocused: true,
@@ -119,6 +70,8 @@ export function ActiveRideLocationCoordinator() {
   });
   const passengerTripStatus =
     passengerTripSnapshot?.status ?? activePassengerBooking?.trip?.status ?? null;
+  const passengerBookingId = ['completed', 'cancelled'].includes(passengerTripStatus ?? '')
+    ? null : activePassengerBooking?.id ?? null;
   const driverArrivalCoordinate = useMemo(() => {
     if (!activeDriverTrip?.arrival?.hasCoordinates) return null;
     return normalizeTripMapCoordinate(
@@ -138,7 +91,7 @@ export function ActiveRideLocationCoordinator() {
       void stopDriverBackgroundLocationTracking();
       return;
     }
-    if (!areTripsLoaded) return;
+    if (!areTripsLoaded && !passengerBookingId) return;
 
     if (!driverTripId) {
       void stopDriverBackgroundLocationTracking();
@@ -158,6 +111,7 @@ export function ActiveRideLocationCoordinator() {
     driverArrivalCoordinate,
     driverTripId,
     isAuthenticated,
+    passengerBookingId,
   ]);
 
   useEffect(() => {
@@ -166,24 +120,27 @@ export function ActiveRideLocationCoordinator() {
       : null;
 
     if (!isAuthenticated) {
-      passengerBackgroundStartPromiseRef.current = null;
+      passengerStartRef.current = null;
       void stopPassengerBackgroundLocationTracking();
       return;
     }
     if (!areBookingsLoaded) return;
 
     if (!passengerBookingId) {
-      passengerBackgroundStartPromiseRef.current = null;
+      passengerStartRef.current = null;
       void stopPassengerBackgroundLocationTracking();
       return;
     }
+
+    // Foreground resume forces a native health check, even with unchanged ride data.
+    if (!isAppActive) return;
 
     const startPromise = startPassengerBackgroundLocationTracking(passengerBookingId, {
       requestMissingPermissions: true,
       tripId: passengerTripId,
       waitForActiveTrip: passengerTripStatus !== 'ongoing',
     });
-    passengerBackgroundStartPromiseRef.current = startPromise;
+    passengerStartRef.current = startPromise;
     void startPromise.then(() => {
       if (activePassengerBookingIdRef.current !== passengerBookingId) {
         void stopPassengerBackgroundLocationTracking(passengerBookingId);
@@ -191,6 +148,7 @@ export function ActiveRideLocationCoordinator() {
     });
   }, [
     areBookingsLoaded,
+    isAppActive,
     isAuthenticated,
     passengerBookingId,
     passengerTripId,
@@ -219,27 +177,18 @@ export function ActiveRideLocationCoordinator() {
     };
 
     const startForegroundFallback = async () => {
-      await passengerBackgroundStartPromiseRef.current;
-      if (cancelled) return;
-
       let permission = await Location.getForegroundPermissionsAsync();
       if (permission.status !== Location.PermissionStatus.GRANTED) {
-        permission = await Location.requestForegroundPermissionsAsync();
+        // The background starter owns the permission dialog; never present a second one.
+        await passengerStartRef.current;
+        if (cancelled) return;
+        permission = await Location.getForegroundPermissionsAsync();
       }
       if (permission.status !== Location.PermissionStatus.GRANTED || cancelled) return;
 
-      try {
-        const currentLocation = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-        sendLocation(currentLocation);
-      } catch (error) {
-        console.warn('[ActiveRideLocation] Position passager initiale indisponible:', error);
-      }
-
       if (cancelled) return;
       try {
-        const subscription = subscribeRideLocation(
+        const subscription = subscribeBootstrappedRideLocation(
           `passenger:${passengerBookingId}`,
           {
             accuracy: Location.Accuracy.High,
@@ -260,7 +209,9 @@ export function ActiveRideLocationCoordinator() {
       }
     };
 
-    void startForegroundFallback();
+    void startForegroundFallback().catch(error => {
+      if (!cancelled) console.warn('[ActiveRideLocation] Localisation indisponible:', error);
+    });
     return () => {
       cancelled = true;
       passengerForegroundSubscriptionRef.current?.remove();

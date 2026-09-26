@@ -33,7 +33,8 @@ test('the greeting has no availability counter but retains ongoing-trip feedback
   buttons[0].props.onPress(); buttons[1].props.onPress();
   assert.deepEqual(calls, ['/profile', '/notifications']);
   assert.ok(text(HomeHeader.type({ ...props, ongoingDriverTrip: {} })).includes('Trajet conducteur en cours'));
-  assert.ok(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'passenger' } })).includes('Trajet réservé en cours'));
+  assert.ok(text(HomeHeader.type({ ...props, ongoingBookedTrip: {}, trackedTripInfo: { role: 'driver' } })).includes('Trajet réservé en cours'));
+  assert.equal(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'driver' } })).includes('en cours'), false);
 });
 
 test('expanded trips and requests wrap their content without fixed height or lost list virtualization', () => {

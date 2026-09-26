@@ -1,4 +1,5 @@
 import { useDriverNavigationController } from '../../../hooks/driver-navigation/useDriverNavigationController';
+import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
 import { DriverNavigationControls } from '../../../features/driver-navigation/DriverNavigationControls';
 import { DriverNavigationTopPanel } from '@/features/driver-navigation/DriverNavigationTopPanel';
 import { DriverNavigationMap } from '../../../features/driver-navigation/DriverNavigationMap';
@@ -21,6 +22,10 @@ import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 
 export default function NavigationScreen() {
+  return <DriverTripAccessGuard><DriverNavigationScreen /></DriverTripAccessGuard>;
+}
+
+function DriverNavigationScreen() {
   const model = useDriverNavigationController();
   const assistance = useNavigationAssistance({
     role: 'driver', trip: model.session.foundation.data.trip,

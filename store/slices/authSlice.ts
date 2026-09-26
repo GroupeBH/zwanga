@@ -4,6 +4,7 @@ import { clearTokens, getTokens, storeTokens } from '../../services/tokenStorage
 import { getTokenSessionVersion } from '../../services/tokenSession';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
+import { isDriverAccount } from '@/utils/accountRole';
 
 interface AuthState {
   initializationId?: string;
@@ -167,7 +168,7 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     setUser: (state, action: PayloadAction<any>) => {
-      state.user = action.payload;
+      state.user = action.payload ? { ...action.payload, isDriver: isDriverAccount(action.payload) } : null;
       // Ne mettre isAuthenticated = true que si on a des tokens
       // Cela évite les problèmes de timing où setUser est appelé avant setTokens
       state.isAuthenticated = !!(state.accessToken && state.refreshToken);
@@ -188,8 +189,11 @@ const authSlice = createSlice({
       applyTokenDataToState(state, action.payload);
     },
     updateUser: (state, action: PayloadAction<Partial<User>>) => {
-      if (state.user) {
+      if (state.user && (!action.payload.id || action.payload.id === state.user.id)) {
+        if (state.user.updatedAt && action.payload.updatedAt &&
+          Date.parse(state.user.updatedAt) > Date.parse(action.payload.updatedAt)) return;
         state.user = { ...state.user, ...action.payload };
+        state.user.isDriver = isDriverAccount(state.user);
       }
     },
     logout: (state) => {
@@ -315,7 +319,16 @@ function applyTokenDataToState(state: AuthState, accessToken: string) {
   const user = parseUserInfo(payload);
   console.log("user from token", user);
   if (user) {
-    state.user = user;
+    const current = state.user?.id === user.id ? state.user : null;
+    // Preserve a server-confirmed activation against an older token replayed by
+    // registration. A token issued after that activation remains authoritative.
+    const keepActivatedRole = current?.driverActivatedAt &&
+      user.iat * 1000 < new Date(current.driverActivatedAt).getTime();
+    const nextUser: User = { ...current, ...user,
+      ...(keepActivatedRole ? { role: current.role } : {}),
+    };
+    nextUser.isDriver = isDriverAccount(nextUser);
+    state.user = nextUser;
   }
   state.isAuthenticated = true;
   state.error = null;

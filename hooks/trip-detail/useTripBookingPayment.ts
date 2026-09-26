@@ -48,7 +48,7 @@ export function useTripBookingPayment({
         variant: 'warning',
         title: 'Numéro Mobile Money requis',
         message:
-          'Ajoutez un numéro congolais valide dans votre profil avant de lancer le paiement FlexPay.',
+          'Ajoutez un numéro congolais valide dans votre profil avant de lancer le paiement Mobile Money.',
       });
       return;
     }
@@ -73,7 +73,7 @@ export function useTripBookingPayment({
             : 'Paiement lance',
         message: getApiErrorMessage(
           { message: response.payment.message },
-          'Confirmez la demande FlexPay sur votre téléphone.',
+          'Confirmez la demande de paiement sur votre téléphone.',
         ),
       });
       refreshBookingLists();

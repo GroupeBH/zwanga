@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDialog } from '@/components/ui/DialogProvider';
 import type { SearchMode, SearchSortMode as SortMode } from '@/components/search/SearchResultsToolbar';
@@ -50,11 +51,7 @@ export function useSearchController() {
   const { data: profile } = useGetCurrentUserQuery(undefined, reads);
   // Keep ownership filtering while the profile refresh is slow or unavailable.
   const currentUser = profile ?? storedUser ?? undefined;
-  const isDriverAccount = Boolean(
-    currentUser?.isDriver ||
-      currentUser?.role === 'driver' ||
-      currentUser?.role === 'both',
-  );
+  const isDriverAccount = hasDriverRole(currentUser);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [draftDeparture, setDraftDeparture] = useState('');

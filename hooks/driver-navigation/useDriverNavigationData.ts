@@ -33,6 +33,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applyPassengerInterruptionResponse } from '@/store/api/booking/passengerInterruptionResponseCache';
 import { applyDriverBookingDecision, type DriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
 import type { Booking } from '@/types';
+import { ownsTrip } from '@/features/activity/tripParticipation';
 
 
 
@@ -53,11 +54,12 @@ export function useDriverNavigationData() {
     skipPollingIfUnfocused: true,
   });
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
-  const isTripOngoing = trip?.status === 'ongoing';
+  const isOwner = trip?.id === tripId && ownsTrip(trip, driverId);
+  const isTripOngoing = isOwner && trip?.status === 'ongoing';
   const { data: liveBookings, error: bookingsError, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
     tripId,
     {
-      skip: !tripId,
+      skip: !tripId || !isOwner,
       pollingInterval: isScreenActive && isTripOngoing ? 20_000 : 0,
       skipPollingIfUnfocused: true,
     },

@@ -135,6 +135,7 @@ export function useDriverTrackingSocket({
           }
 
           if (
+            event.type === 'driver_near_pickup' ||
             event.type === 'driver_arrived_pickup' ||
             event.type === 'parties_nearby' ||
             event.type === 'passenger_ready_pickup'

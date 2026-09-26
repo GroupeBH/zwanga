@@ -126,7 +126,7 @@ export const getPaymentDetailRows = (payment: PaymentHistoryItem) => {
     { label: 'Méthode', value: methodLabels[payment.method] ?? payment.method },
     { label: 'Prestataire', value: payment.provider },
     { label: 'Référence Zwanga', value: payment.reference },
-    { label: 'Commande FlexPay', value: formatValue(payment.orderNumber) },
+    { label: 'Référence prestataire', value: formatValue(payment.orderNumber) },
     { label: 'Référence opérateur', value: formatValue(payment.providerReference) },
     { label: 'Code statut', value: formatValue(payment.statusCode) },
     { label: 'Téléphone', value: formatValue(payment.phone) },

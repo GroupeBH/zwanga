@@ -1,6 +1,7 @@
 import { hasBookingDropoffCompleted, hasBookingPickupCompleted } from '@/features/driver-navigation/navigationBooking';
 import type { BookingAutoProgressEvent, PickupNotice, Waypoint } from '@/features/driver-navigation/navigationModel';
 import { PICKUP_NOTICE_PRIORITY } from '@/features/driver-navigation/pickupNoticePriority';
+import { pickupDistanceText } from '@/features/navigation/pickupAwareness';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { useCallback, useEffect, useRef } from 'react';
 import type { useDriverNavigationNotices } from './useDriverNavigationNotices';
@@ -27,7 +28,9 @@ export function useDriverPickupNoticeQueue(params: Params) {
     p.setPickupNoticeCountdown(null);
     p.setPickupNotice(notice);
     const name = notice.waypoint.passenger.name || 'Le passager';
-    const speech = notice.type === 'passenger_ready_pickup' ? `${name} s'est signalé au point de récupération.` :
+    const speech = notice.type === 'driver_near_pickup'
+      ? `Vous approchez du point de prise en charge de ${name}. ${pickupDistanceText(notice.distanceMeters)}` :
+      notice.type === 'passenger_ready_pickup' ? `${name} s'est signalé au point de récupération.` :
       notice.type === 'parties_nearby' ? `${name} est là et prêt à être embarqué.` : `Vous êtes arrivé au point de récupération de ${name}.`;
     void Speech.stop().then(() => {
       const current = latest.current;
@@ -38,17 +41,22 @@ export function useDriverPickupNoticeQueue(params: Params) {
   const presentPickupNotice = useCallback((event: BookingAutoProgressEvent, waypoint: Waypoint) => {
     const p = latest.current;
     if (!p.isScreenActive || !p.isMountedRef.current || event.bookingId !== waypoint.booking.id ||
-      !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)) return;
+      !['driver_near_pickup', 'driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)) return;
     const type = event.type as PickupNotice['type'];
     const notice: PickupNotice = { type, waypoint, distanceMeters: event.distanceMeters, detectedAt: event.detectedAt,
       expiresAt: event.expiresAt, pickupWaitSeconds: event.pickupWaitSeconds };
     if (waypoint.completed || !eligible(notice)) return;
     const key = `${type}:${event.bookingId}`;
     const priority = PICKUP_NOTICE_PRIORITY[type];
-    if (p.presentedPickupNoticeKeysRef.current.has(key) || (p.highestPickupNoticePriorityRef.current.get(event.bookingId!) ?? -1) >= priority) return;
+    const highest = p.highestPickupNoticePriorityRef.current.get(event.bookingId!) ?? -1;
+    if (p.presentedPickupNoticeKeysRef.current.has(key)) return;
+    // A passenger may signal readiness before the driver approaches. That must not consume the approach alert.
+    if (type === 'driver_near_pickup' ? p.presentedPickupNoticeKeysRef.current.has(`driver_arrived_pickup:${event.bookingId}`) : highest >= priority) return;
     p.presentedPickupNoticeKeysRef.current.add(key);
-    p.highestPickupNoticePriorityRef.current.set(event.bookingId!, priority);
-    if (!p.pickupBypassConfirmationRef.current && (!p.pickupNoticeRef.current || p.pickupNoticeRef.current.waypoint.booking.id === event.bookingId)) publish(notice);
+    p.highestPickupNoticePriorityRef.current.set(event.bookingId!, Math.max(highest, priority));
+    const current = p.pickupNoticeRef.current;
+    if (!p.pickupBypassConfirmationRef.current && (!current ||
+      (current.waypoint.booking.id === event.bookingId && priority > PICKUP_NOTICE_PRIORITY[current.type]))) publish(notice);
     else pending.current.set(event.bookingId!, notice);
   }, [eligible, publish]);
   useEffect(() => {

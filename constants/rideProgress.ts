@@ -1,6 +1,6 @@
 // Keep these awareness and sampling values aligned with the backend ride-progress contract.
 // Automatic boarding confirmation remains server-authoritative.
-export const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.2;
+export const DRIVER_NEAR_PICKUP_DISTANCE_KM = 0.3;
 export const DRIVER_PICKUP_ARRIVAL_DISTANCE_KM = 0.08;
 export const PASSENGER_READY_DISTANCE_KM = 0.005;
 

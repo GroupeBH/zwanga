@@ -17,6 +17,8 @@ import { normalizePayoutPhone } from "@/features/driver-earnings/payoutModel";
 import { getApiErrorMessage } from "@/utils/errorHelpers";
 import type { WalletSummary, WalletWithdrawal } from "@/types";
 
+const EMPTY_WITHDRAWALS: WalletWithdrawal[] = [];
+
 export function useWalletWithdrawal(
   summary: WalletSummary | undefined,
   isActive: boolean,
@@ -30,28 +32,40 @@ export function useWalletWithdrawal(
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const [storageError, setStorageError] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pendingHistory, setPendingHistory] = useState<{ userId?: string; pending: boolean }>({ pending: false });
+  const activeIntent = intent?.userId === userId ? intent : null;
   const inFlight = useRef(false);
   const current = useRef({ userId, isActive, mounted: true });
   current.current.userId = userId;
   current.current.isActive = isActive;
   useEffect(() => {
-    current.current.mounted = true;
+    const lifecycle = current.current;
+    lifecycle.mounted = true;
     return () => {
-      current.current.mounted = false;
+      lifecycle.mounted = false;
     };
   }, []);
   const [request] = useRequestWalletWithdrawalMutation();
   const [check] = useCheckWalletWithdrawalMutation();
-  const { data: withdrawals = [], isError: historyError } =
+  const { data: withdrawals = EMPTY_WITHDRAWALS, isError: historyError } =
     useGetWalletWithdrawalsQuery(undefined, {
       skip:
         !userId ||
         summary?.account.userId !== userId ||
         !summary?.withdrawal ||
         !isActive,
-      pollingInterval: 30000,
+      pollingInterval: isActive && (activeIntent || (pendingHistory.userId === userId && pendingHistory.pending)) ? 30000 : 0,
       refetchOnFocus: true,
+      refetchOnMountOrArgChange: true,
+      skipPollingIfUnfocused: true,
     });
+
+  useEffect(() => {
+    if (!isActive || summary?.account.userId !== userId) return;
+    const pending = withdrawals.some(value => !['succeeded', 'failed', 'cancelled'].includes(value.status));
+    setPendingHistory(previous => previous.userId === userId && previous.pending === pending
+      ? previous : { userId, pending });
+  }, [withdrawals, userId, isActive, summary?.account.userId]);
 
   useEffect(() => {
     let active = true;
@@ -107,7 +121,6 @@ export function useWalletWithdrawal(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [withdrawals, intent, userId]);
 
-  const activeIntent = intent?.userId === userId ? intent : null;
   const available = Number(summary?.account.withdrawableBalance ?? 0);
   const canSubmit = Boolean(
     isActive &&
@@ -217,7 +230,7 @@ export function useWalletWithdrawal(
       title: activeIntent ? "Vérifier la même demande" : "Confirmer le retrait",
       message: activeIntent
         ? `Vérifier la demande de ${count} jetons vers ${destination}, sans lancer un second versement.`
-        : `${count} jetons achetés seront convertis en ${(Math.round(count * Number(summary?.withdrawal?.moneyPerToken ?? 0) * 100) / 100).toLocaleString("fr-FR")} ${summary?.withdrawal?.currency} et envoyés vers ${destination}. Votre KYC doit être validé. Les jetons de fidélité ne sont pas retirables.`,
+        : `${count} jetons → ${(Math.round(count * Number(summary?.withdrawal?.moneyPerToken ?? 0) * 100) / 100).toLocaleString("fr-FR")} ${summary?.withdrawal?.currency}\nMobile Money : ${destination}\nIdentité vérifiée requise. Jetons de fidélité non retirables.`,
       actions: [
         { label: "Annuler", variant: "ghost" },
         {

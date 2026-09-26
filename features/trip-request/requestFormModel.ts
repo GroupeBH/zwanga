@@ -67,7 +67,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
         {
           id: 'electronic' as const,
           label: 'Paiement électronique',
-          description: 'Paiement securisé via FlexPay',
+          description: 'Paiement sécurisé sur votre téléphone',
           icon: 'card-outline' as const,
         },
       ]

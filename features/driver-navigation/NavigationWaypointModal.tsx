@@ -85,8 +85,8 @@ export function NavigationWaypointModal({
           {activeWaypoint && (
             <Text style={styles.waypointModalWaitingText}>
               {activeWaypoint.type === 'pickup'
-                ? `Vous êtes arrivé au point de récupération de ${activeWaypoint.passenger.name || 'ce passager'}.`
-                : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. La dépose se confirme automatiquement.`}
+                ? `Retrouvez ${activeWaypoint.passenger.name || 'ce passager'} au point de récupération indiqué. L’embarquement est suivi automatiquement.`
+                : `Voici le point de dépose prévu pour ${activeWaypoint.passenger.name || 'ce passager'}. La dépose est suivie automatiquement.`}
             </Text>
           )}
 

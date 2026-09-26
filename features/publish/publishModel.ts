@@ -108,7 +108,4 @@ export function buildRoutePreviewRegion(points: LatLng[]): Region {
   };
 }
 
-export function isUserDriver(user?: { role?: unknown; isDriver?: boolean | null } | null) {
-  const role = String(user?.role ?? '').toLowerCase();
-  return role === 'driver' || role === 'both' || role === 'conducteur' || role === 'chauffeur' || Boolean(user?.isDriver);
-}
+export { isDriverAccount as isUserDriver } from '@/utils/accountRole';

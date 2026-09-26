@@ -103,7 +103,7 @@ function app(patch = {}) {
       getApiErrorMessage: (_error, fallback) => fallback,
     },
     "@/store/api/walletApi": {
-      useGetWalletWithdrawalsQuery: () => ({ data: state.history }),
+      useGetWalletWithdrawalsQuery: (_arg, options) => { state.queryOptions = options; return { data: state.history }; },
       useRequestWalletWithdrawalMutation: () => [
         (body) => ({
           unwrap: async () => {
@@ -149,6 +149,25 @@ test("double confirmation submits once and pending is not displayed as success",
   assert.equal(f.disk.data.size, 0);
 });
 
+test('withdrawal history polls only non-terminal operations, with fresh reads on screen return', async () => {
+  const f = app(); f.render(); await flush(); f.render();
+  assert.equal(f.state.queryOptions.pollingInterval, 0);
+  assert.equal(f.state.queryOptions.skip, false);
+  assert.equal(f.state.queryOptions.refetchOnMountOrArgChange, true);
+  assert.equal(f.state.queryOptions.refetchOnFocus, true);
+  for (const status of ['pending', 'initiated', 'review', 'succeeded', 'failed', 'cancelled']) {
+    f.state.history = [{ id: 'withdrawal', status }]; f.render(); f.render();
+    assert.equal(f.state.queryOptions.pollingInterval, ['pending', 'initiated', 'review'].includes(status) ? 30000 : 0);
+  }
+  f.state.history = [{ status: 'pending' }]; f.render(); f.render();
+  f.state.active = false; f.render();
+  assert.equal(f.state.queryOptions.skip, true);
+  assert.equal(f.state.queryOptions.pollingInterval, 0);
+  f.state.active = true; f.render(); f.render();
+  assert.equal(f.state.queryOptions.pollingInterval, 30000);
+  f.hooks.unmount();
+});
+
 test("lost responses retain the intent and retry uses the same key even with a reduced balance", async () => {
   const f = app({ error: { status: "FETCH_ERROR" } });
   f.render();
@@ -161,6 +180,7 @@ test("lost responses retain the intent and retry uses the same key even with a r
   f.summary.account.withdrawableBalance = 20;
   value = f.render();
   assert.equal(value.canSubmit, true);
+  assert.equal(f.state.queryOptions.pollingInterval, 30000, 'uncertain intent is tracked even without server history');
   assert.equal(value.tokens, "40");
   value.setPhone("+243899999999");
   value = f.render();

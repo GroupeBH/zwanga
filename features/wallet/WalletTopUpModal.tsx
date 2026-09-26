@@ -59,8 +59,8 @@ export function WalletTopUpModal({
     <WalletSheetModal
       icon="flash-outline"
       onClose={() => setActiveModal(null)}
-      subtitle="Mobile Money ou carte. 1 jeton = 100 FC."
-      title="Acheter des jetons"
+      subtitle="Mobile Money ou carte bancaire."
+      title="Recharger des jetons"
       visible={activeModal === 'top_up'}
     >
       <View style={styles.methodRow}>
@@ -108,7 +108,7 @@ export function WalletTopUpModal({
         style={styles.input}
         value={topUpAmount}
       />
-      <Text style={styles.helperText}>1 jeton = 100 FC. Exemple : 50 jetons = 5 000 FC.</Text>
+      <Text style={styles.helperText}>1 jeton = 100 FC.</Text>
       {isTopUpPhoneRequired ? (
         <TextInput
           keyboardType="phone-pad"
@@ -174,7 +174,7 @@ export function WalletTopUpModal({
             </Text>
           ) : null}
           {topUpOrderNumber ? (
-            <Text style={styles.topUpReferenceText}>Référence FlexPay {topUpOrderNumber}</Text>
+            <Text style={styles.topUpReferenceText}>Référence de paiement {topUpOrderNumber}</Text>
           ) : null}
         </View>
       ) : null}

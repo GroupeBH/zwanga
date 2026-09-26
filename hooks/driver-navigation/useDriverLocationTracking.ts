@@ -3,10 +3,6 @@ import { useDriverNavigationRefs } from './useDriverNavigationRefs';
 import { useDriverNavigationData } from './useDriverNavigationData';
 import { useDriverNavigationMapState } from './useDriverNavigationMapState';
 import {
-  isFreshLocationObject,
-  normalizeDriverLocationObject,
-} from '../../features/driver-navigation/navigationBooking';
-import {
   DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS,
   FRESH_DRIVER_LOCATION_MAX_AGE_MS,
 } from '../../features/driver-navigation/navigationModel';
@@ -22,7 +18,7 @@ import {
   DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
 } from '@/utils/navigation/tripCompletion';
 import * as Location from 'expo-location';
-import { subscribeRideLocation } from '@/services/rideLocationStream';
+import { subscribeBootstrappedRideLocation } from '@/services/rideLocationBootstrap';
 import { useEffect } from 'react';
 
 interface Params {
@@ -126,60 +122,16 @@ export function useDriverLocationTracking({
           requestMissingPermissions: false,
         });
 
-        // Obtenir la position initiale (avec fallback)
-        let location: Location.LocationObject | null = null;
-        try {
-          location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
-        } catch {
-          location = await Location.getLastKnownPositionAsync({
-            maxAge: FRESH_DRIVER_LOCATION_MAX_AGE_MS,
-            requiredAccuracy: 100,
-          });
-        }
-        if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
-
-        const normalizedInitialLocation = normalizeDriverLocationObject(location);
-        if (isFreshLocationObject(normalizedInitialLocation)) {
-          const initialCoordinate = {
-            latitude: normalizedInitialLocation.coords.latitude,
-            longitude: normalizedInitialLocation.coords.longitude,
-          };
-          const initialTimestamp = Number(normalizedInitialLocation.timestamp);
-          mapState.lastAcceptedDriverCoordinateRef.current = initialCoordinate;
-          mapState.lastAcceptedDriverTimestampRef.current = Number.isFinite(initialTimestamp)
-            ? initialTimestamp
-            : Date.now();
-          refs.currentLocationRef.current = normalizedInitialLocation;
-          mapState.setCurrentLocation(normalizedInitialLocation);
-          mapState.driverPosition.setValue({
-            latitude: initialCoordinate.latitude,
-            longitude: initialCoordinate.longitude,
-            latitudeDelta: 0,
-            longitudeDelta: 0,
-          });
-          sendDriverLocationToTracking(normalizedInitialLocation);
-          if (!refs.hasFetchedInitialDriverRouteRef.current) {
-            refs.hasFetchedInitialDriverRouteRef.current = true;
-            void refs.fetchRouteRef.current?.({
-              originOverride: initialCoordinate,
-              fitToRoute: true,
-            });
-          }
-        } else {
-          console.warn('[Navigation] Position initiale indisponible, en attente du GPS');
-        }
-
       // Reuse native samples; a shared foreground watcher takes over if they stop.
-      const subscription = subscribeRideLocation(
+      const subscription = subscribeBootstrappedRideLocation(
         `driver:${data.tripId}`,
         {
           accuracy: Location.Accuracy.High, // Équilibre entre précision et batterie
           timeInterval: DRIVER_LOCATION_STATE_UPDATE_INTERVAL_MS, // Android only; UI throttles also cover iOS.
           distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
         },
-        createDriverLocationListener({ data, mapState, refs, sendDriverLocationToTracking, isCancelled: () => locationEffectCancelled })
+        createDriverLocationListener({ data, mapState, refs, sendDriverLocationToTracking, isCancelled: () => locationEffectCancelled }),
+        FRESH_DRIVER_LOCATION_MAX_AGE_MS,
       );
       if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) {
         subscription.remove();

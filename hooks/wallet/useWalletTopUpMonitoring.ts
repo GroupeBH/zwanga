@@ -54,6 +54,7 @@ export function useWalletTopUpMonitoring({
   useEffect(() => () => {
     pollingRunIdRef.current += 1;
     activeRead.current?.abort();
+    activeRead.current?.unsubscribe();
     activeRead.current = null;
     inFlight.current = null;
     // This is a read cancellation, never a payment cancellation.
@@ -144,10 +145,11 @@ export function useWalletTopUpMonitoring({
       const run = { orderNumber, current: isCurrent, promise: Promise.resolve<TopUpCheckOutcome>('error') };
       inFlight.current = run;
       run.promise = (async (): Promise<TopUpCheckOutcome> => {
+        let request: ReturnType<Params['checkWalletTopUpStatus']> | undefined;
         try {
           setTopUpOrderNumber(orderNumber);
           setTopUpStage('checking');
-          const request = checkWalletTopUpStatus(orderNumber);
+          request = checkWalletTopUpStatus(orderNumber);
           activeRead.current = request;
           const response = await request.unwrap();
           if (!isCurrent()) return 'error';
@@ -172,7 +174,7 @@ export function useWalletTopUpMonitoring({
             getPaymentStatusMessage(
               response.payment.message,
               options.pendingMessage ||
-                'Paiement en attente chez FlexPay. Nous continuons la vérification.',
+                'Paiement en attente chez le prestataire. Nous continuons la vérification.',
             ),
           );
           return 'pending';
@@ -194,6 +196,7 @@ export function useWalletTopUpMonitoring({
           });
           return 'error';
         } finally {
+          request?.unsubscribe();
           if (inFlight.current === run) {
             inFlight.current = null;
             activeRead.current = null;

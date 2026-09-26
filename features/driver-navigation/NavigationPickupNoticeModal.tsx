@@ -1,6 +1,7 @@
 import { PickupNotice, PickupBypassConfirmation, TripEndNotice } from './navigationModel';
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
+import { pickupDistanceText } from '@/features/navigation/pickupAwareness';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
@@ -70,11 +71,13 @@ export function NavigationPickupNoticeModal({
             />
           </View>
           <Text style={styles.waypointModalTitle}>
-            {pickupNotice?.type === 'passenger_ready_pickup'
-              ? "Le passager s'est signalé"
-              : pickupNotice?.type === 'parties_nearby'
-                ? 'Passager prêt à embarquer'
-                : 'Arrivé au point de récupération'}
+            {pickupNotice?.type === 'driver_near_pickup'
+              ? 'Prise en charge à proximité'
+              : pickupNotice?.type === 'passenger_ready_pickup'
+                ? "Le passager s'est signalé"
+                : pickupNotice?.type === 'parties_nearby'
+                  ? 'Passager prêt à embarquer'
+                  : 'Arrivé au point de récupération'}
           </Text>
           <Text style={styles.waypointModalPassenger}>
             {pickupNotice?.waypoint.passenger.name || 'Passager'}
@@ -86,11 +89,13 @@ export function NavigationPickupNoticeModal({
             </Text>
           </View>
           <Text style={styles.waypointModalWaitingText}>
-            {pickupNotice?.type === 'passenger_ready_pickup'
-              ? "Le passager indique qu'il est présent au point de récupération."
-              : pickupNotice?.type === 'parties_nearby'
-                ? `${pickupNotice?.waypoint.passenger.name || 'Le passager'} est là et prêt à être embarqué.`
-                : `Vous êtes arrivé au point de récupération de ${pickupNotice?.waypoint.passenger.name || 'ce passager'}. Le passager est notifié.`}
+            {pickupNotice?.type === 'driver_near_pickup'
+              ? `Vous approchez du point de prise en charge de ${pickupNotice.waypoint.passenger.name || 'ce passager'}. ${pickupDistanceText(pickupNotice.distanceMeters)}`
+              : pickupNotice?.type === 'passenger_ready_pickup'
+                ? "Le passager indique qu'il est présent au point de récupération."
+                : pickupNotice?.type === 'parties_nearby'
+                  ? `${pickupNotice?.waypoint.passenger.name || 'Le passager'} est là et prêt à être embarqué.`
+                  : `Vous êtes arrivé au point de récupération de ${pickupNotice?.waypoint.passenger.name || 'ce passager'}. Le passager est notifié.`}
           </Text>
           {pickupNotice?.type === 'driver_arrived_pickup' && pickupNoticeCountdown !== null && (
             <View style={styles.waypointGpsStatus}>

@@ -24,7 +24,6 @@ type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'insets'
     | 'router'
-    | 'trackedTripInfo'
   >
   & Pick<ReturnType<typeof useHomeSheet>,
     'avatarUri'
@@ -58,7 +57,6 @@ export const HomeHeader = React.memo(function HomeHeader({
   avatarUri,
   firstName,
   ongoingDriverTrip,
-  trackedTripInfo,
   ongoingBookedTrip,
   unreadNotifications,
   featuredDriverReservation,
@@ -75,9 +73,9 @@ export const HomeHeader = React.memo(function HomeHeader({
   dismissPriority,
   prioritiesEnabled,
 }: Props) {
-  const activeTripLabel = ongoingDriverTrip || trackedTripInfo?.role === 'driver'
+  const activeTripLabel = ongoingDriverTrip
     ? 'Trajet conducteur en cours'
-    : ongoingBookedTrip || trackedTripInfo?.role === 'passenger'
+    : ongoingBookedTrip
       ? 'Trajet réservé en cours' : null;
   return (<View style={[styles.topOverlay, { top: insets.top + Spacing.sm }]}>
     <View style={styles.headerCard}>

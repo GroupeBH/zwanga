@@ -11,8 +11,8 @@ export const styles = StyleSheet.create({
   },
   header: {
     minHeight: 68,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
@@ -21,9 +21,9 @@ export const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.gray[50],
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -45,9 +45,10 @@ export const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
   },
   content: {
-    padding: Spacing.xl,
-    gap: Spacing.lg,
+    padding: Spacing.lg,
+    gap: Spacing.md,
   },
+  contentHeader: { gap: Spacing.md },
   balancePanel: {
     borderRadius: BorderRadius.lg,
     backgroundColor: Colors.white,

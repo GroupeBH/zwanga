@@ -16,6 +16,7 @@ type Props = {
 export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlightCard({
   request, distanceMeters, onOpen, accessibilityActions, onAccessibilityAction,
 }: Props) {
+  const passengerName = request.passengerName?.trim() || 'Passager Zwanga';
   const distance = homeDistanceLabel(distanceMeters);
   const distanceDescription = formatRequestDistance(distanceMeters);
   const budget = Number(request.maxPricePerSeat);
@@ -31,6 +32,9 @@ export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlight
       arrival={placeName(request.arrival)}
       metadata={[homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax), homeSeatsLabel(request.numberOfSeats),
         request.vehicleType && getRegisteredVehicleTypeLabel(request.vehicleType)].filter(Boolean).join(' · ')}
+      secondary={passengerName}
+      avatarName={passengerName}
+      avatarUri={request.passengerAvatar}
       accessibilityActions={accessibilityActions}
       onAccessibilityAction={onAccessibilityAction}
       accessibilityLabel={`Voir la demande à accepter, de ${placeName(request.departure)} à ${placeName(request.arrival)}${distanceDescription ? `, ${distanceDescription}` : ''}`}

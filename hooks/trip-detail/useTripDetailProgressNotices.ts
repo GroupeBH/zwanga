@@ -7,6 +7,8 @@ import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback } from 'react';
 import type { Trip, User } from '@/types';
+import { isPickupAwarenessEvent } from '@/features/navigation/pickupAwareness';
+import { pickupPassengerDialog } from '@/features/navigation/pickupPassengerDialog';
 
 interface Params {
   tripBookings: Booking[] | undefined;
@@ -103,10 +105,6 @@ export function useTripDetailProgressNotices({
         return;
       }
 
-      if (event.type === 'driver_near_pickup' && !isPassengerEvent) {
-        return;
-      }
-
       if (event.type === 'passenger_ready_pickup' && !isTripDriver) {
         return;
       }
@@ -119,7 +117,10 @@ export function useTripDetailProgressNotices({
       const nextPriority = TRIP_DETAIL_AUTO_PROGRESS_PRIORITY[event.type];
       const highestPriorityForBooking =
         highestTripDetailAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
-      if (highestPriorityForBooking > nextPriority) {
+      const approachAfterReadiness = event.type === 'driver_near_pickup' &&
+        highestPriorityForBooking <= TRIP_DETAIL_AUTO_PROGRESS_PRIORITY.passenger_ready_pickup &&
+        !presentedTripDetailAutoProgressKeysRef.current.has(`${trip.id}:driver_arrived_pickup:${event.bookingId}`);
+      if (highestPriorityForBooking > nextPriority && !approachAfterReadiness) {
         return;
       }
 
@@ -145,8 +146,10 @@ export function useTripDetailProgressNotices({
         driver_near_pickup: {
           variant: 'info',
           icon: 'car-sport',
-          title: 'Le conducteur sera bient\u00f4t l\u00e0',
-          message: `Le conducteur sera bient\u00f4t au point de r\u00e9cup\u00e9ration.${distanceText}`,
+          title: isTripDriver ? 'Prise en charge à proximité' : 'Le conducteur sera bientôt là',
+          message: isTripDriver
+            ? `Vous approchez du point de prise en charge de ${passengerName}.${distanceText}`
+            : 'Préparez-vous à rejoindre le conducteur.',
         },
         driver_arrived_pickup: {
           variant: 'info',
@@ -154,7 +157,7 @@ export function useTripDetailProgressNotices({
           title: isTripDriver ? 'Point de r\u00e9cup\u00e9ration atteint' : 'Le conducteur est l\u00e0',
           message: isTripDriver
             ? `Vous \u00eates arriv\u00e9 au point de r\u00e9cup\u00e9ration de ${passengerName}.`
-            : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous pouvez vous signaler.',
+            : 'Rejoignez le conducteur au point de récupération.',
         },
         parties_nearby: {
           variant: 'info',
@@ -162,7 +165,7 @@ export function useTripDetailProgressNotices({
           title: isTripDriver ? 'Passager pr\u00eat \u00e0 embarquer' : 'Vous \u00eates au point',
           message: isTripDriver
             ? `${passengerName} est l\u00e0 et pr\u00eat \u00e0 \u00eatre embarqu\u00e9.`
-            : 'Vous \u00eates au point de r\u00e9cup\u00e9ration. Signalez-vous au conducteur si vous \u00eates pr\u00eat.',
+            : 'Signalez-vous au conducteur si vous êtes prêt.',
         },
         passenger_ready_pickup: {
           variant: 'success',
@@ -214,8 +217,9 @@ export function useTripDetailProgressNotices({
 
       const dialog = dialogByType[event.type];
       presentedTripDetailAutoProgressKeysRef.current.add(key);
-      highestTripDetailAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
-      showDialog(dialog);
+      highestTripDetailAutoProgressPriorityRef.current.set(event.bookingId, Math.max(highestPriorityForBooking, nextPriority));
+      showDialog(!isTripDriver && isPickupAwarenessEvent(event.type)
+        ? { ...dialog, ...pickupPassengerDialog(event.type, event.distanceMeters, trip) } : dialog);
     },
     [
       activeBooking?.id,

@@ -18,6 +18,7 @@ import {
 import { useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import { useAppSelector } from '@/store/hooks';
+import { isDriverAccount } from '@/utils/accountRole';
 import { selectUser } from '@/store/selectors';
 import type { SubscriptionPaymentMethod } from '@/types';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,11 +44,7 @@ export function useSubscriptionPaymentState() {
 
   const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
   const currentUser = profileSummary?.user ?? user;
-  const isDriver = Boolean(
-    currentUser?.role === 'driver' ||
-      currentUser?.role === 'both' ||
-      currentUser?.isDriver,
-  );
+  const isDriver = isDriverAccount(currentUser);
 
   const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
   const { data: premiumOverview, refetch: refetchPremiumOverview } =

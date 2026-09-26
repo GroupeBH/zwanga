@@ -19,10 +19,12 @@ import {
 import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User } from '../../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BaseEndpointBuilder } from '../types';
+import { syncAccountRole } from './syncAccountRole';
 
 export function buildGetProfileSummaryEndpoints(builder: BaseEndpointBuilder) {
   return {
 getProfileSummary: builder.query<ProfileSummary, void>({
+      onQueryStarted: syncAccountRole,
       query: () => '/users/me',
       providesTags: [currentUserTag],
       transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
@@ -30,6 +32,7 @@ getProfileSummary: builder.query<ProfileSummary, void>({
     }),
 // Récupérer l'utilisateur actuellement connecté
     getCurrentUser: builder.query<User, void>({
+      onQueryStarted: syncAccountRole,
       query: () => '/users/me',
       providesTags: [currentUserTag],
       transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
@@ -37,6 +40,7 @@ getProfileSummary: builder.query<ProfileSummary, void>({
     }),
 // Mettre à jour le profil de l'utilisateur connecté
     updateUser: builder.mutation<User, FormData>({
+      onQueryStarted: syncAccountRole,
       query: (formData: FormData) => ({
         url: '/users/me',
         method: 'PUT',
@@ -45,6 +49,18 @@ getProfileSummary: builder.query<ProfileSummary, void>({
       transformResponse: (response: ServerUser) => mapServerUser(response),
       invalidatesTags: (result) =>
         result ? [currentUserTag, { type: 'User' as const, id: result.id }] : [currentUserTag],
+    }),
+    requestDriverOnboarding: builder.mutation<User, void>({
+      query: () => ({ url: '/users/driver-onboarding', method: 'POST' }),
+      transformResponse: (response: ServerUser) => mapServerUser(response),
+      onQueryStarted: syncAccountRole,
+      invalidatesTags: [currentUserTag],
+    }),
+    activateDriver: builder.mutation<User, void>({
+      query: () => ({ url: '/users/driver-activation', method: 'POST' }),
+      transformResponse: (response: ServerUser) => mapServerUser(response),
+      onQueryStarted: syncAccountRole,
+      invalidatesTags: [currentUserTag],
     }),
 deleteAccount: builder.mutation<{ message: string }, void>({
       query: () => ({

@@ -2,6 +2,7 @@ import { styles } from '../features/screen-styles/components/OngoingTripBanner/i
 import { getFloatingBannerBottomOffset } from '@/constants/navigation';
 import { Colors } from '@/constants/styles';
 import { sharedTripsOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
+import { selectOngoingParticipation } from '@/features/activity/tripParticipation';
 import {
   getCurrentTripInfo,
   startOngoingTripTracking,
@@ -49,50 +50,10 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
   });
 
   // Trouver un trajet en cours
-  const ongoingTrip = useMemo(() => {
-    if (!user) return null;
-
-    // Chercher un trajet en cours comme conducteur
-    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing' && trip.driverId === user.id);
-    if (driverOngoingTrip) {
-      return {
-        trip: driverOngoingTrip,
-        role: 'driver' as const,
-        bookingId: null,
-      };
-    }
-
-    // Chercher un trajet en cours comme passager
-    const passengerOngoingBooking = myBookings?.find(
-      (booking) => {
-        if (booking.passengerId !== user.id) {
-          return false;
-        }
-        if (booking.status === 'completed') {
-          return false;
-        }
-        if (booking.status !== 'accepted') {
-          return false;
-        }
-        if (booking.trip?.status !== 'ongoing') {
-          return false;
-        }
-        if (booking.droppedOff === true || booking.droppedOffConfirmedByPassenger === true) {
-          return false;
-        }
-        return true;
-      }
-    );
-    if (passengerOngoingBooking?.trip) {
-      return {
-        trip: passengerOngoingBooking.trip,
-        role: 'passenger' as const,
-        bookingId: passengerOngoingBooking.id,
-      };
-    }
-
-    return null;
-  }, [myTrips, myBookings, user]);
+  const ongoingTrip = useMemo(
+    () => selectOngoingParticipation(user?.id, myTrips, myBookings),
+    [myTrips, myBookings, user?.id],
+  );
 
   // Ref pour suivre le trajet précédent
   const previousTripRef = useRef(getCurrentTripInfo());

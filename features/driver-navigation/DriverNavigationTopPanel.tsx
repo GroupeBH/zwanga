@@ -59,6 +59,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       <NavigationAssistanceButtons role="driver" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
     {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff || hasPendingBooking ? <DriverNavigationPassengersBar
+      onContact={assistance.openContact}
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
       : <ScrollView style={{ flexGrow: 0, maxHeight: Math.max(80, height * 0.3) }} contentContainerStyle={styles.details}
       showsVerticalScrollIndicator bounces={false}>
@@ -74,6 +75,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
         </TouchableOpacity>)}
       </View>}
       {(mapState.waypoints.length > 0 || passengers.activePendingBooking) && <DriverNavigationPassengersBar
+        onContact={assistance.openContact}
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
     </ScrollView>)}
   </View>;

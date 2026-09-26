@@ -18,6 +18,7 @@ import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
 
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation';
 export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
@@ -66,7 +67,7 @@ const getPassengerTrackingReadiness = async (
 
     const booking = bookingResult.data;
     const bookingStatus = booking.status?.toLowerCase();
-    if (booking.droppedOff || booking.droppedOffConfirmedByPassenger ||
+    if (hasPassengerFinishedRide(booking) ||
       ['rejected', 'cancelled', 'completed', 'expired'].includes(bookingStatus ?? '')) {
       return 'terminal';
     }
@@ -240,28 +241,32 @@ const definePassengerBackgroundLocationTask = () => {
           return;
         }
 
-        const session = await getActiveTrackingSession();
-        if (!session) {
-          await stopPassengerGpsIfIdle();
-          return;
-        }
+        try {
+          const session = await getActiveTrackingSession();
+          if (!session) {
+            await stopPassengerGpsIfIdle();
+            return;
+          }
 
-        const readiness = await getPassengerTrackingReadiness(session).catch((error) => {
-          console.warn('[PassengerBackgroundLocation] Mise à jour du suivi indisponible:', error);
-          return 'waiting' as const;
-        });
-        if (readiness === 'terminal') {
-          await stopTrackingSession(session.bookingId);
-          return;
-        }
-        if (readiness !== 'active') return;
+          const readiness = await getPassengerTrackingReadiness(session).catch((error) => {
+            console.warn('[PassengerBackgroundLocation] Mise à jour du suivi indisponible:', error);
+            return 'waiting' as const;
+          });
+          if (readiness === 'terminal') {
+            await stopTrackingSession(session.bookingId);
+            return;
+          }
+          if (readiness !== 'active') return;
 
-        const latestLocation = (data?.locations ?? [])
-          .filter((location) => typeof location?.timestamp === 'number')
-          .sort((a, b) => b.timestamp - a.timestamp)[0];
-        if (latestLocation) {
-          publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
-          await putPassengerLocation(session.bookingId, latestLocation);
+          const latestLocation = (data?.locations ?? [])
+            .filter((location) => typeof location?.timestamp === 'number')
+            .sort((a, b) => b.timestamp - a.timestamp)[0];
+          if (latestLocation) {
+            publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
+            await putPassengerLocation(session.bookingId, latestLocation);
+          }
+        } catch (taskError) {
+          console.warn('[PassengerBackgroundLocation] Tâche ignorée après une erreur :', taskError);
         }
       },
     );
@@ -318,7 +323,7 @@ export async function startPassengerBackgroundLocationTracking(
       return false;
     }
 
-    const previousSession = await getActiveTrackingSession();
+    const previousSession = await getActiveTrackingSession(true);
     const nextSession: PassengerTrackingSession = {
       bookingId,
       tripId: options.tripId?.trim() || null,

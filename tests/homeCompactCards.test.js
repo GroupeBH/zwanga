@@ -110,6 +110,38 @@ test('request cards show a departure window, requested vehicle and budget per se
   result.buttons[0].props.onPress(); assert.deepEqual(routes, ['r']);
 });
 
+test('Home request previews and highlights display the requester photo in the existing compact avatar', () => {
+  for (const Card of [TripRequestPreviewCard, HomeRequestHighlightCard]) {
+    const routes = [];
+    const props = { cardWidth: 280, distanceMeters: 1250, onOpen: id => routes.push(id),
+      request: { ...request, passengerName: 'Marie Test', passengerAvatar: '  https://example.test/passenger.jpg  ' } };
+    const result = render(Card, props);
+    const photo = result.elements.find(node => node.type === 'Image');
+    assert.equal(photo.props.source.uri, 'https://example.test/passenger.jpg');
+    assert.equal(photo.props.style.width, 32);
+    assert.equal(photo.props.style.height, 32);
+    assert.equal(photo.props.resizeMethod, 'resize');
+    assert.equal(photo.props.fadeDuration, 0);
+    assert.ok(result.text.includes('Marie Test'));
+    assert.ok(result.text.includes('MT'), 'initials remain underneath a loading/failed photo');
+    assert.equal(result.buttons.length, 1);
+    assert.ok(result.buttons[0].props.accessibilityHint.includes('Marie Test'));
+    result.buttons[0].props.onPress();
+    assert.deepEqual(routes, ['r']);
+
+    for (const passengerAvatar of [undefined, null, '', '  ']) {
+      const fallback = render(Card, { ...props, request: { ...props.request, passengerAvatar } });
+      assert.equal(fallback.elements.some(node => node.type === 'Image'), false);
+      assert.ok(fallback.text.includes('MT'));
+    }
+    const anonymous = render(Card, { ...props, request: { ...request, passengerName: '  ' } });
+    assert.ok(anonymous.text.includes('Passager Zwanga'));
+    assert.ok(anonymous.text.includes('PZ'));
+    const changed = render(Card, { ...props, request: { ...props.request, passengerAvatar: 'https://example.test/next.jpg' } });
+    assert.notEqual(changed.elements.find(node => node.type === 'Image').key, photo.key);
+  }
+});
+
 test('an absent request budget is not presented as free, and received offers remain visible', () => {
   const result = render(TripRequestPreviewCard, { request: { ...request, maxPricePerSeat: null,
     offers: [{ status: 'pending' }, { status: 'pending' }, { status: 'rejected' }] }, cardWidth: 280, onOpen() {} });

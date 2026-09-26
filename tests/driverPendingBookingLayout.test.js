@@ -15,7 +15,7 @@ const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon'
   './DriverInterruptionPrompt': { DriverInterruptionPrompt: 'Interruption' },
   './DriverPendingBookingPrompt': { DriverPendingBookingPrompt: 'Pending' },
 };
-const booking = { id: 'booking-a', tripId: 'trip', passengerName: 'Titulaire', numberOfSeats: 3, paymentMode: 'cash', status: 'pending' };
+const booking = { id: 'booking-a', tripId: 'trip', passengerId: 'passenger-a', passengerName: 'Titulaire', numberOfSeats: 3, paymentMode: 'cash', status: 'pending' };
 function model() {
   return { session: { foundation: {
     data: { insets: { top: 24, bottom: 24, left: 0, right: 0 }, isTripOngoing: true, tripId: 'trip', isScreenActive: true, bookings: [booking] },
@@ -33,9 +33,11 @@ test('pending booking takes priority over scrolling details without removing con
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const value = model();
-  const tree = DriverNavigationTopPanel({ model: value, assistance: {} });
+  const assistance = { openContact() {} };
+  const tree = DriverNavigationTopPanel({ model: value, assistance });
   assert.equal(all(tree).filter(n => n.type === 'Scroll').length, 0);
   assert.equal(all(tree).filter(n => n.type === 'Passengers').length, 1);
+  assert.equal(all(tree).find(n => n.type === 'Passengers').props.onContact, assistance.openContact);
   assert.equal(all(tree).filter(n => n.type === 'Recovery').length, 1);
   assert.equal(all(tree).filter(n => n.type === 'Assistance').length, 1);
   const frame = flat(tree.props.style);
@@ -46,12 +48,13 @@ test('pending card targets a single booking and yields to urgent dropoff', () =>
   const { DriverNavigationPassengersBar } = loader(mocks)('features/driver-navigation/DriverNavigationPassengersBar.tsx');
   const value = model(); const foundation = value.session.foundation;
   const accept = () => {}, reject = () => {};
-  const props = { foundation, passengerPresentation: {}, bookingActions: { handleAcceptPendingBooking: accept, handleRejectPendingBooking: reject } };
+  const props = { foundation, passengerPresentation: {}, onContact() {}, bookingActions: { handleAcceptPendingBooking: accept, handleRejectPendingBooking: reject } };
   let tree = DriverNavigationPassengersBar(props);
   assert.equal(tree.type, 'Pending');
   assert.equal(tree.props.booking, booking);
   assert.equal(tree.props.queuedCount, 2);
   assert.equal(tree.props.onAccept, accept); assert.equal(tree.props.onReject, reject);
+  assert.equal(tree.props.onContact, props.onContact);
   foundation.data.isAcceptingBooking = true; foundation.passengers.isProcessingPendingBooking = true;
   tree = DriverNavigationPassengersBar(props);
   assert.equal(tree.props.busy, true); assert.equal(tree.props.accepting, true);
@@ -63,21 +66,22 @@ test('pending booking buttons stay outside scrollable copy with flexible labels 
   const { DriverPendingBookingPrompt } = loader(mocks)('features/driver-navigation/DriverPendingBookingPrompt.tsx');
   const calls = [];
   const props = { booking, queuedCount: 2, pickupLabel: 'Départ lisible', dropoffLabel: 'Destination lisible',
-    busy: false, accepting: false, rejecting: false, onAccept: b => calls.push(['accept', b.id]), onReject: b => calls.push(['reject', b.id]) };
+    busy: false, accepting: false, rejecting: false, onAccept: b => calls.push(['accept', b.id]), onReject: b => calls.push(['reject', b.id]),
+    onContact: id => calls.push(['contact', id]) };
   const tree = DriverPendingBookingPrompt(props);
   assert.match(words(tree), /Nouvelle réservation.*\+2.*Titulaire.*3 places.*Cash.*Départ lisible.*Destination lisible/);
   const scroll = all(tree).find(n => n.type === 'Scroll');
   assert.ok(scroll, 'only long details may scroll on short screens');
   assert.equal(all(scroll).filter(n => n.type === 'Button').length, 0);
   const buttons = all(tree).filter(n => n.type === 'Button');
-  assert.equal(buttons.length, 2);
+  assert.equal(buttons.length, 3);
   for (const button of buttons) {
     assert.ok(flat(button.props.style).minHeight >= 44);
     assert.equal(flat(button.props.style).height, undefined);
     button.props.onPress();
   }
-  assert.deepEqual(calls, [['reject', booking.id], ['accept', booking.id]]);
-  const footer = all(tree).find(n => n.props?.children?.includes?.(buttons[0]));
+  assert.deepEqual(calls, [['contact', booking.passengerId], ['reject', booking.id], ['accept', booking.id]]);
+  const footer = all(tree).find(n => n.props?.children?.includes?.(buttons[1]));
   assert.equal(flat(footer.props.style).flexShrink, 0);
   assert.equal(flat(footer.props.style).flexWrap, 'wrap');
   const busyTree = DriverPendingBookingPrompt({ ...props, busy: true, accepting: true });

@@ -1,12 +1,16 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
 import {
-  useUpdateUserMutation
+  useActivateDriverMutation, useRequestDriverOnboardingMutation
 } from '@/store/api/userApi';
 import {
   getApiErrorMessage
 } from '@/utils/errorHelpers';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAppDispatch } from '@/store/hooks';
+import { updateUser as updateAuthUser } from '@/store/slices/authSlice';
+import { isDriverAccount } from '@/utils/accountRole';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 import { useCallback, useEffect, useRef } from 'react';
 import type { useProfileData } from './useProfileData';
 import type { useProfileVehicles } from './useProfileVehicles';
@@ -40,6 +44,7 @@ export function useProfileOnboarding({
   vehiclesLoading,
 }: Props) {
   const router = useRouter();
+  const dispatch = useAppDispatch();
 
   const { openDriverOnboarding } = useLocalSearchParams<{
     openDriverOnboarding?: string;
@@ -53,7 +58,16 @@ export function useProfileOnboarding({
 
   const kycLaunchInFlightRef = useRef(false);
 
-  const [updateUser, { isLoading: isUpdatingUser }] = useUpdateUserMutation();
+  const [activateDriver, { isLoading: isActivatingDriver }] = useActivateDriverMutation();
+  const [requestOnboarding, { isLoading: isRequestingOnboarding }] = useRequestDriverOnboardingMutation();
+  const isUpdatingUser = isActivatingDriver || isRequestingOnboarding;
+  const onboardingInFlight = useRef(false);
+  const mounted = useRef(true);
+  const presentation = useRef({ id: currentUser?.id, active: isScreenActive });
+  presentation.current = { id: currentUser?.id, active: isScreenActive };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const canPresent = useCallback((id?: string) => mounted.current && presentation.current.active &&
+    presentation.current.id === id && dispatch((_apply, getState) => getState().auth.user?.id === id), [dispatch]);
 
   const refreshKycAndProfile = useCallback(
     () => Promise.all([refetchKycStatus(), refetchProfile()]),
@@ -105,12 +119,25 @@ export function useProfileOnboarding({
   }, [isKycApproved, isKycPending, isKycBusy, kycLoading, router, showDialog, startDiditKyc]);
 
   const handleBecomeDriver = useCallback(async () => {
+    const session = getTokenSessionVersion();
     try {
-      const formData = new FormData();
-      // Mettre à jour le rôle vers "driver"
-      formData.append('role', 'driver');
+      const activatedUser = await activateDriver().unwrap();
+      if (session !== getTokenSessionVersion()) return;
+      // Update navigation only from the confirmed response, and never another account.
+      dispatch((apply, getState) => {
+        if (!activatedUser?.id || activatedUser.id !== currentUser?.id ||
+          activatedUser.id !== getState().auth.user?.id) return;
+        apply(updateAuthUser({ id: activatedUser.id, role: activatedUser.role,
+          driverOnboardingRequestedAt: activatedUser.driverOnboardingRequestedAt,
+          driverActivatedAt: activatedUser.driverActivatedAt, updatedAt: activatedUser.updatedAt }));
+      });
 
-      await updateUser(formData).unwrap();
+      if (!canPresent(currentUser?.id)) return;
+      if (!isDriverAccount(activatedUser)) {
+        showDialog({ variant: 'info', title: 'Activation en attente',
+          message: 'La vérification de votre identité et l’ajout d’un véhicule doivent être confirmés avant l’activation.' });
+        return;
+      }
 
       showDialog({
         variant: 'success',
@@ -130,6 +157,7 @@ export function useProfileOnboarding({
         ],
       });
     } catch (error: any) {
+      if (session !== getTokenSessionVersion() || !canPresent(currentUser?.id)) return;
       console.error("Erreur lors de l'activation du compte conducteur:", error);
       showDialog({
         variant: 'danger',
@@ -140,42 +168,24 @@ export function useProfileOnboarding({
         ),
       });
     }
-  }, [router, showDialog, updateUser]);
+  }, [activateDriver, canPresent, currentUser?.id, dispatch, router, showDialog]);
 
-  const handleStartDriverOnboarding = useCallback(() => {
-    if (vehiclesLoading || kycLoading || isUpdatingUser || isKycBusy) return;
-    const hasKyc = isKycApproved;
-
-    if (!hasVehicle && !hasKyc) {
-      showDialog({
-        variant: 'info',
-        title: 'Devenir conducteur',
-        message:
-          "Pour devenir conducteur, vous devez :\n\n1. Ajouter un véhicule\n2. Vérifier votre identité\n\nSouhaitez-vous commencer par ajouter un véhicule ?",
-        actions: [
-          { label: 'Plus tard', variant: 'ghost' },
-          {
-            label: 'Ajouter un véhicule',
-            variant: 'primary',
-            onPress: openCreateVehicleModal,
-          },
-        ],
-      });
-      return;
-    }
-
-    if (!hasVehicle) {
-      openCreateVehicleModal();
-      return;
-    }
-
-    if (!hasKyc) {
-      handleOpenKycModal();
-      return;
-    }
-
-    void handleBecomeDriver();
-  }, [handleBecomeDriver, handleOpenKycModal, hasVehicle, isKycApproved, isKycBusy, isUpdatingUser, kycLoading, vehiclesLoading, openCreateVehicleModal, showDialog]);
+  const handleStartDriverOnboarding = useCallback(async () => {
+    if (!currentUser?.id || vehiclesLoading || kycLoading || isUpdatingUser || isKycBusy || onboardingInFlight.current) return;
+    onboardingInFlight.current = true;
+    const session = getTokenSessionVersion();
+    try {
+      if (!currentUser.driverOnboardingRequestedAt) await requestOnboarding().unwrap();
+      if (session !== getTokenSessionVersion() || !canPresent(currentUser.id)) return;
+      if (!isKycApproved) await handleOpenKycModal();
+      else if (!hasVehicle) openCreateVehicleModal();
+      else await handleBecomeDriver();
+    } catch (error) {
+      if (session === getTokenSessionVersion() && canPresent(currentUser.id)) showDialog({ variant: 'danger', title: 'Demande non confirmée',
+        message: getApiErrorMessage(error, 'Impossible de démarrer le parcours conducteur. Veuillez réessayer.') });
+    } finally { onboardingInFlight.current = false; }
+  }, [canPresent, currentUser?.id, currentUser?.driverOnboardingRequestedAt, requestOnboarding, handleBecomeDriver,
+    handleOpenKycModal, hasVehicle, isKycApproved, isKycBusy, isUpdatingUser, kycLoading, vehiclesLoading, openCreateVehicleModal, showDialog]);
 
   useEffect(() => {
     if (

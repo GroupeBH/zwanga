@@ -1,4 +1,5 @@
 import type { selectUser } from '@/store/selectors';
+import { isDriverAccount } from '@/utils/accountRole';
 import type { Booking, Trip, TripPaymentMode } from '@/types';
 
 export const DRIVER_PAYMENT_NOTICE_REFRESH_MS = 60_000;
@@ -59,7 +60,7 @@ export function isBookingPaymentConfirmed(booking: Booking) {
 }
 
 export function isDriverUser(user: ReturnType<typeof selectUser>) {
-  return Boolean(user?.isDriver || user?.role === 'driver' || user?.role === 'both');
+  return isDriverAccount(user);
 }
 
 export function isTripEligibleForNotice(trip: Trip) {

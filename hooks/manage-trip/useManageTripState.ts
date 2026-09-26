@@ -2,6 +2,7 @@ import { FeedbackState } from '../../features/manage-trip/manageTripModel';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { ownsTrip } from '@/features/activity/tripParticipation';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import {
   useAcceptBookingMutation,
@@ -21,7 +22,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking } from '@/types';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
@@ -73,7 +74,7 @@ export function useManageTripState() {
     }
   }, [trip?.status]);
 
-  const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
+  const isOwner = trip?.id === tripId && ownsTrip(trip, user?.id);
   const { lastKnownLocation } = useUserLocation({
     autoRequest: Boolean(isScreenActive && isOwner && trip?.status === 'ongoing'),
     trackingProfile: 'navigation',
@@ -85,7 +86,7 @@ export function useManageTripState() {
     isFetching: bookingsFetching,
     refetch: refetchBookings,
   } = useGetTripBookingsQuery(tripId, { 
-    skip: !tripId,
+    skip: !tripId || !isOwner,
     // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
     pollingInterval: isScreenActive ? (trip?.status === 'upcoming' ? 60000 : 0) : 0,
     skipPollingIfUnfocused: true,
@@ -115,9 +116,8 @@ export function useManageTripState() {
   const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
-  const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
+  const [contactBookingId, setContactBookingId] = useState<string | null>(null);
+  useEffect(() => { setContactBookingId(null); }, [isScreenActive, tripId, user?.id]);
   const [refreshing, setRefreshing] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [editRouteModalVisible, setEditRouteModalVisible] = useState(false);
@@ -190,9 +190,10 @@ export function useManageTripState() {
     refreshing,
     isAccepting,
     processingBookingId,
-    setSelectedPassengerPhone,
-    setSelectedPassengerName,
-    setContactModalVisible,
+    contactBookingId,
+    setContactBookingId,
+    userId: user?.id,
+    isScreenActive,
     isCancellingBooking,
     insets,
     isStartingTrip,
@@ -204,8 +205,5 @@ export function useManageTripState() {
     editRouteError,
     rejectModalVisible,
     rejectError,
-    contactModalVisible,
-    selectedPassengerName,
-    selectedPassengerPhone,
   };
 }

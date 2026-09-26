@@ -88,7 +88,7 @@ export function useProfileSubscriptionView({
         {
           key: 'activation',
           title: 'Activation Zwanga',
-          description: "Nous activons l'abonnement dès que FlexPay confirme.",
+          description: "Nous activons l'abonnement dès que le paiement est confirmé.",
           icon: 'shield-checkmark-outline',
         },
       ]
@@ -117,7 +117,7 @@ export function useProfileSubscriptionView({
         {
           key: 'activation',
           title: 'Activation Zwanga',
-          description: "Nous activons l'abonnement dès que FlexPay confirme.",
+          description: "Nous activons l'abonnement dès que le paiement est confirmé.",
           icon: 'shield-checkmark-outline',
         },
       ];
@@ -169,7 +169,7 @@ export function useProfileSubscriptionView({
         icon: 'refresh-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          "Nous synchronisons l'abonnement depuis Zwanga. La référence FlexPay reste en mémoire sans relancer de vérification externe.",
+          "Nous synchronisons l'abonnement depuis Zwanga. La référence de paiement reste en mémoire sans relancer de vérification externe.",
         showActivity: true,
         title: 'Synchronisation abonnement',
       };
@@ -191,7 +191,7 @@ export function useProfileSubscriptionView({
         icon: 'lock-closed-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          'Création d’une référence sécurisée FlexPay. Cette étape est limitée pour ne pas bloquer l’app trop longtemps.',
+          'Création d’une référence de paiement sécurisée. Cette étape est limitée pour ne pas bloquer l’app trop longtemps.',
         showActivity: true,
         title: 'Préparation du paiement',
       };
@@ -202,9 +202,9 @@ export function useProfileSubscriptionView({
         icon: 'sync-outline' as keyof typeof Ionicons.glyphMap,
         message:
           subscriptionPaymentMessage ||
-          "Vérification du statut chez FlexPay. Si le paiement est confirmé, l'abonnement sera activé automatiquement.",
+          "Vérification auprès du prestataire. Si le paiement est confirmé, l'abonnement sera activé automatiquement.",
         showActivity: true,
-        title: 'Vérification FlexPay',
+        title: 'Vérification du paiement',
       };
     }
 

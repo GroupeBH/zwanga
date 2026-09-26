@@ -1,6 +1,7 @@
 import { DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS, getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import type { FeaturedDriverReservation } from '@/features/home/homeTypes';
 import { rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
+import { isActivePassengerBooking } from '@/features/activity/tripParticipation';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
@@ -17,7 +18,6 @@ type Props =
   & Pick<ReturnType<typeof useHomeContext>,
     'storedTrips'
     | 'currentUser'
-    | 'trackedTripInfo'
     | 'isDriver'
   >
   & Pick<ReturnType<typeof useHomePassengerActivity>,
@@ -40,7 +40,6 @@ export function useHomeTripSelection({
   completedBookingTripIds,
   bookedTripIds,
   refreshedPassengerTrip,
-  trackedTripInfo,
   ongoingDriverTrip,
   isDriver,
   driverReservationHighlightTrip,
@@ -94,29 +93,25 @@ export function useHomeTripSelection({
       activeBookings
         .filter(
           (booking) =>
-            booking.status === 'accepted' &&
-            booking.tripId &&
-            !booking.droppedOff &&
-            !booking.droppedOffConfirmedByPassenger,
+            isActivePassengerBooking(booking, currentUser?.id),
         )
         .map((booking) => booking.tripId),
     );
 
     if (ongoingBookingTripIds.size === 0) {
-      return refreshedPassengerTrip?.status === 'ongoing' && trackedTripInfo?.role === 'passenger'
-        ? refreshedPassengerTrip
-        : null;
+      return null;
     }
 
-    if (refreshedPassengerTrip) {
-      return refreshedPassengerTrip.status === 'ongoing' &&
-        ongoingBookingTripIds.has(refreshedPassengerTrip.id)
-        ? refreshedPassengerTrip
-        : null;
+    if (refreshedPassengerTrip && ongoingBookingTripIds.has(refreshedPassengerTrip.id)) {
+      return refreshedPassengerTrip.status === 'ongoing' ? refreshedPassengerTrip : null;
     }
 
-    return latestTrips.find((trip) => trip.status === 'ongoing' && ongoingBookingTripIds.has(trip.id)) ?? null;
-  }, [activeBookings, latestTrips, refreshedPassengerTrip, trackedTripInfo?.role]);
+    // Participation must not depend on the ten suggestions selected for the map.
+    return activeBookings.find(booking => ongoingBookingTripIds.has(booking.tripId)
+      && booking.trip?.status === 'ongoing')?.trip
+      ?? (remoteTrips ?? storedTrips ?? []).find(trip => trip.status === 'ongoing'
+        && ongoingBookingTripIds.has(trip.id)) ?? null;
+  }, [activeBookings, currentUser?.id, refreshedPassengerTrip, remoteTrips, storedTrips]);
 
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
 
@@ -169,14 +164,13 @@ export function useHomeTripSelection({
       .sort((a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime())[0] ?? null;
   }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips, hiddenHomePriorities]);
 
-  const isRestoringTrackedTrip = Boolean(trackedTripInfo?.tripId && !activeHomeTrip);
-
   const homeMapTrips = useMemo(
-    () => (activeHomeTrip ? [activeHomeTrip] : isRestoringTrackedTrip ? [] : latestTrips),
-    [activeHomeTrip, isRestoringTrackedTrip, latestTrips],
+    () => (activeHomeTrip ? [activeHomeTrip] : latestTrips),
+    [activeHomeTrip, latestTrips],
   );
 
-  const isHomeSheetLockedRetracted = Boolean(activeHomeTrip || isRestoringTrackedTrip);
+  // A notification hint can outlive the ride; it must never lock the Home interface.
+  const isHomeSheetLockedRetracted = Boolean(activeHomeTrip);
 
   const featuredDriverReservationStatus = featuredDriverReservation?.booking
     ? getBookingStatusMeta(featuredDriverReservation.booking.status)

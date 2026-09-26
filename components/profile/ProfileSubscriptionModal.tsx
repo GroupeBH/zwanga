@@ -266,7 +266,7 @@ export function ProfileSubscriptionModal({
                     />
                   </View>
                   <Text style={styles.subscriptionInputHint}>
-                    Format +243 suivi de 9 chiffres. FlexPay enverra une confirmation.
+                    Format +243 suivi de 9 chiffres. Confirmez le paiement sur votre téléphone.
                   </Text>
                 </Animated.View>
               ) : (

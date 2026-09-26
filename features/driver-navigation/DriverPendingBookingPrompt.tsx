@@ -16,6 +16,7 @@ interface Props {
   rejecting: boolean;
   onAccept: (booking: Booking) => Promise<void>;
   onReject: (booking: Booking) => Promise<void>;
+  onContact: (passengerId: string) => void;
 }
 
 /** Only the copy scrolls: accepting/refusing must never be below a clipped list. */
@@ -35,6 +36,12 @@ export function DriverPendingBookingPrompt(props: Props) {
         <Text style={styles.routeLabel} numberOfLines={2} accessibilityLabel={`Destination : ${props.dropoffLabel}`}>{props.dropoffLabel}</Text>
       </View>
     </ScrollView>
+    <TouchableOpacity style={[styles.contact, props.busy && styles.disabled]}
+      accessibilityRole="button" accessibilityLabel={`Contacter ${props.booking.passengerName || 'le passager'} avant d’accepter`}
+      disabled={props.busy} onPress={() => props.onContact(props.booking.passengerId)}>
+      <Ionicons name="call-outline" size={18} color={Colors.primaryDark} />
+      <Text style={[styles.buttonText, styles.contactText]}>Contacter avant d’accepter</Text>
+    </TouchableOpacity>
     <View style={styles.actions}>
       <TouchableOpacity style={[styles.button, styles.reject, props.busy && styles.disabled]}
         accessibilityRole="button" accessibilityLabel="Refuser la réservation"
@@ -68,6 +75,9 @@ const styles = StyleSheet.create({
   dropoffDot: { backgroundColor: Colors.success },
   routeLabel: { flex: 1, color: Colors.gray[800], fontSize: 13, lineHeight: 18 },
   actions: { flexShrink: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  contact: { flexShrink: 0, minHeight: 44, padding: 8, borderRadius: 12, backgroundColor: '#FFF4EC',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  contactText: { color: Colors.primaryDark },
   button: { flex: 1, minWidth: 110, minHeight: 44, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 10,
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
   buttonText: { fontSize: 14, fontWeight: '700', flexShrink: 1 },

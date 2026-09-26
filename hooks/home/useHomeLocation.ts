@@ -10,19 +10,18 @@ import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'isFocused'
-    | 'trackedTripInfo'
   >
   & Pick<ReturnType<typeof useHomeDriverActivity>,
     'ongoingDriverTrip'
+    | 'ongoingPassengerBooking'
   >;
-export function useHomeLocation({ isFocused, trackedTripInfo, ongoingDriverTrip }: Props) {
+export function useHomeLocation({ isFocused, ongoingPassengerBooking, ongoingDriverTrip }: Props) {
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: isFocused,
     rideLocationKey: ongoingDriverTrip ? `driver:${ongoingDriverTrip.id}`
-      : trackedTripInfo?.role === 'driver' ? `driver:${trackedTripInfo.tripId}`
-      : trackedTripInfo?.bookingId ? `passenger:${trackedTripInfo.bookingId}` : null,
+      : ongoingPassengerBooking ? `passenger:${ongoingPassengerBooking.id}` : null,
     trackingProfile:
-      trackedTripInfo || ongoingDriverTrip
+      ongoingPassengerBooking || ongoingDriverTrip
         ? 'navigation'
         : 'nearby',
   });

@@ -1,4 +1,5 @@
 import { useWalletController } from "../hooks/wallet/useWalletController";
+import { isDriverAccount } from '@/utils/accountRole';
 import { WalletTopUpModal } from "../features/wallet/WalletTopUpModal";
 import { WalletTransferModal } from "../features/wallet/WalletTransferModal";
 import {
@@ -9,7 +10,7 @@ import { useWalletWithdrawal } from "@/hooks/wallet/useWalletWithdrawal";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
 import { useAppSelector } from "@/store/hooks";
 import { selectUser } from "@/store/selectors";
-import { formatWalletAmount } from "../features/wallet/walletModel";
+import { WalletOverview, WalletRelatedLinks } from "../features/wallet/WalletOverview";
 import { styles } from "../features/screen-styles/app/wallet/index";
 import { Colors } from "@/constants/styles";
 import { Ionicons } from "@expo/vector-icons";
@@ -19,12 +20,13 @@ import React from "react";
 import {
   ActivityIndicator,
   RefreshControl,
-  ScrollView,
+  FlatList,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -57,18 +59,17 @@ export default function WalletScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             onPress={() => wallet.router.back()}
+            accessibilityRole="button" accessibilityLabel="Retour"
             style={styles.headerButton}
           >
             <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
           </TouchableOpacity>
           <View style={styles.headerText}>
             <Text style={styles.headerTitle}>Jetons Zwanga</Text>
-            <Text style={styles.headerSubtitle}>
-              Acheter, utiliser, partager et retirer
-            </Text>
           </View>
           <TouchableOpacity
             onPress={wallet.refreshAll}
+            accessibilityRole="button" accessibilityLabel="Actualiser les jetons"
             style={styles.headerButton}
           >
             {wallet.isRefreshing ? (
@@ -83,7 +84,14 @@ export default function WalletScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView
+        <FlatList
+          data={wallet.entries}
+          keyExtractor={entry => entry.id}
+          renderItem={({ item }) => <View style={styles.ledgerPanel}>{wallet.renderLedgerEntry(item)}</View>}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={false}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           refreshControl={
@@ -94,153 +102,9 @@ export default function WalletScreen() {
           }
           showsVerticalScrollIndicator={false}
           style={styles.scrollRoot}
-        >
-          <View style={styles.balancePanel}>
-            <View style={styles.balanceTopRow}>
-              <View style={styles.balanceIcon}>
-                <Ionicons
-                  name="wallet-outline"
-                  size={22}
-                  color={Colors.white}
-                />
-              </View>
-              <Text style={styles.balanceLabel}>Solde disponible</Text>
-            </View>
-            {wallet.isWalletLoading ? (
-              <ActivityIndicator
-                color={Colors.primary}
-                style={styles.balanceLoader}
-              />
-            ) : (
-              <Text style={styles.balanceValue}>
-                {formatWalletAmount(
-                  wallet.walletSummary?.account.balance ?? 0,
-                  wallet.currency,
-                )}
-              </Text>
-            )}
-            <Text style={styles.balanceHint}>
-              Les jetons achetés sont retirables en argent. Les jetons de
-              fidélité ne sont pas retirables : ils sont utilisés en premier
-              pour payer vos trajets et abonnements.
-            </Text>
-            {wallet.walletSummary?.withdrawal ? (
-              <>
-                <Text style={styles.balanceLabel}>
-                  Achetés, y compris reçus par transfert :{" "}
-                  {formatWalletAmount(
-                    wallet.walletSummary.account.withdrawableBalance,
-                  )}
-                </Text>
-                <Text style={styles.balanceHint}>
-                  Non retirables (fidélité, bonus et autres crédits non
-                  éligibles) :{" "}
-                  {formatWalletAmount(
-                    wallet.walletSummary.withdrawal.nonWithdrawableTokens,
-                  )}
-                </Text>
-                <Text style={styles.balanceHint}>
-                  Réservés pour des retraits en cours :{" "}
-                  {formatWalletAmount(
-                    wallet.walletSummary.account.reservedWithdrawalBalance,
-                  )}
-                </Text>
-              </>
-            ) : null}
-          </View>
-
-          <TouchableOpacity
-            style={styles.referralBanner}
-            onPress={() => wallet.router.push("/referrals")}
-          >
-            <View style={styles.referralBannerIcon}>
-              <Ionicons name="gift-outline" size={21} color={Colors.primary} />
-            </View>
-            <View style={styles.referralBannerText}>
-              <Text style={styles.referralBannerTitle}>
-                Jetons de parrainage
-              </Text>
-              <Text style={styles.referralBannerHint}>
-                Retirez vos récompenses de parrainage et les commissions de vos
-                filleuls.
-              </Text>
-            </View>
-            <Ionicons
-              name="chevron-forward"
-              size={20}
-              color={Colors.gray[400]}
-            />
-          </TouchableOpacity>
-
-          {user?.isDriver || user?.role === "driver" ? (
-            <TouchableOpacity
-              style={styles.referralBanner}
-              onPress={() => wallet.router.push("/driver-earnings")}
-            >
-              <Ionicons name="car-outline" size={22} color={Colors.primary} />
-              <View style={styles.referralBannerText}>
-                <Text style={styles.referralBannerTitle}>
-                  Mes revenus conducteur
-                </Text>
-                <Text style={styles.referralBannerHint}>
-                  Consultez les revenus de vos trajets et retirez le solde
-                  disponible.
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={Colors.gray[400]}
-              />
-            </TouchableOpacity>
-          ) : null}
-
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Recharger des jetons"
-              activeOpacity={0.85}
-              onPress={() => wallet.setActiveModal("top_up")}
-              style={styles.actionCard}
-            >
-              <View style={styles.actionCardIcon}>
-                <Ionicons
-                  name="add-circle-outline"
-                  size={22}
-                  color={Colors.white}
-                />
-              </View>
-              <Text style={styles.actionCardTitle}>Recharger</Text>
-              <Text style={styles.actionCardHint}>Acheter des jetons</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Partager des jetons"
-              activeOpacity={0.85}
-              onPress={() => wallet.setActiveModal("transfer")}
-              style={styles.actionCard}
-            >
-              <View
-                style={[styles.actionCardIcon, styles.actionCardIconSecondary]}
-              >
-                <Ionicons
-                  name="share-outline"
-                  size={20}
-                  color={Colors.primary}
-                />
-              </View>
-              <Text style={styles.actionCardTitle}>Partager</Text>
-              <Text style={styles.actionCardHint}>
-                Envoyer à un utilisateur
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <WalletWithdrawalSection
-            summary={wallet.walletSummary}
-            withdrawal={withdrawal}
-            onOpen={() => wallet.setActiveModal("withdrawal")}
-          />
+          ListHeaderComponent={<View style={styles.contentHeader}>
+          <WalletOverview key={`balance:${user?.id ?? 'signed-out'}`} wallet={wallet} withdrawal={withdrawal} />
+          <WalletWithdrawalSection key={`withdrawals:${user?.id ?? 'signed-out'}`} summary={wallet.walletSummary} withdrawal={withdrawal} />
 
           {wallet.topUpStatusMessage || wallet.topUpOrderNumber ? (
             <TouchableOpacity
@@ -298,6 +162,8 @@ export default function WalletScreen() {
             </TouchableOpacity>
           ) : null}
 
+          <WalletRelatedLinks wallet={wallet} isDriver={isDriverAccount(user)} />
+
           <View style={styles.historyHeader}>
             <Text style={styles.sectionTitle}>Historique</Text>
             {wallet.isLedgerFetching ? (
@@ -305,10 +171,8 @@ export default function WalletScreen() {
             ) : null}
           </View>
 
-          <View style={styles.ledgerPanel}>
-            {wallet.entries.length > 0 ? (
-              wallet.entries.map(wallet.renderLedgerEntry)
-            ) : (
+          </View>}
+          ListEmptyComponent={
               <View style={styles.emptyLedger}>
                 <Ionicons
                   name="receipt-outline"
@@ -316,12 +180,22 @@ export default function WalletScreen() {
                   color={Colors.gray[400]}
                 />
                 <Text style={styles.emptyLedgerText}>
-                  Aucun mouvement pour le moment.
+                  {wallet.isLedgerFetching ? 'Chargement de l’historique…' : wallet.isLedgerError
+                    ? 'Historique indisponible pour le moment.' : 'Aucun mouvement pour le moment.'}
                 </Text>
               </View>
-            )}
-          </View>
-        </ScrollView>
+          }
+          ListFooterComponent={<>
+            {wallet.ledgerPage?.limited && <Text style={styles.balanceHint}>
+              Seules les opérations récentes sont disponibles pour le moment.
+            </Text>}
+            <HistoryPagination page={wallet.ledgerCursor.page} busy={wallet.isLedgerFetching}
+              hasNext={Boolean(wallet.ledgerPage?.nextCursor)} error={wallet.isLedgerError}
+              onPrevious={wallet.ledgerCursor.previous}
+              onNext={() => wallet.ledgerCursor.next(wallet.ledgerPage?.nextCursor)}
+              onRetry={() => { void wallet.refetchLedger(); }} />
+          </>}
+        />
       </View>
 
       <WalletWithdrawalModal

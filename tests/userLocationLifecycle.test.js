@@ -195,3 +195,58 @@ test('manual position in publication/request forms keeps cached, fresh and offli
   assert.equal(cachedReads, 2);
   app.hooks.unmount();
 });
+
+test('manual GPS timeout releases the caller and retries share the still-pending native request', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = deferred(); let nativeReads = 0;
+  const app = fixture({ getCurrentPositionAsync: () => { nativeReads++; return pending.promise; } }, { autoRequest: false });
+  app.state.cached = null;
+  const api = app.render();
+  const first = api.getCurrentLocation();
+  assert.equal(api.getCurrentLocation(), first, 'double tap shares the entire request');
+  await tick(); t.mock.timers.tick(10_000); await tick();
+  assert.equal(await first, null);
+  const second = api.getCurrentLocation();
+  await tick(); t.mock.timers.tick(10_000); await tick();
+  assert.equal(await second, null);
+  assert.equal(nativeReads, 1);
+  pending.resolve(fix); await tick();
+  assert.equal(app.actions.some(action => action.type === 'location/setLastKnownLocation'), false);
+  app.hooks.unmount(); assert.equal(app.listeners.size, 0);
+});
+
+test('manual GPS timeout preserves the offline cached-position fallback', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let cachedReads = 0;
+  const app = fixture({ getCurrentPositionAsync: () => new Promise(() => {}),
+    getLastKnownPositionAsync: async () => ++cachedReads === 1 ? null : fix }, { autoRequest: false });
+  const request = app.render().getCurrentLocation(); await tick();
+  t.mock.timers.tick(10_000); await tick();
+  assert.equal(await request, fix);
+  app.hooks.unmount();
+});
+
+test('manual cached reads are also bounded if the native cache never answers', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = fixture({ getLastKnownPositionAsync: () => new Promise(() => {}) }, { autoRequest: false });
+  const request = app.render().getCurrentLocation(); await tick();
+  t.mock.timers.tick(2_000); await tick();
+  assert.equal(await request, fix);
+  app.hooks.unmount();
+});
+
+for (const leave of ['unmount', 'background', 'blur']) test(`manual lookup ignores late GPS after ${leave}`, async () => {
+  const pending = deferred();
+  const app = fixture({ getCurrentPositionAsync: () => pending.promise });
+  app.state.cached = null;
+  const api = app.render(); await tick();
+  const request = api.getCurrentLocation(); await tick();
+  if (leave === 'unmount') app.hooks.unmount();
+  else if (leave === 'background') app.setAppState('background');
+  else { app.props.autoRequest = false; app.render(); }
+  assert.equal(await request, null);
+  pending.resolve(fix); await tick();
+  assert.equal(app.actions.some(action => action.type === 'location/setLastKnownLocation'), false);
+  if (leave !== 'unmount') app.hooks.unmount();
+  assert.equal(app.listeners.size, 0);
+});

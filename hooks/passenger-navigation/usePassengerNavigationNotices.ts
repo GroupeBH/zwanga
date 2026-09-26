@@ -9,11 +9,14 @@ import { displayNotification } from '@/services/pushNotifications';
 import { stopPassengerBackgroundLocationTracking } from '@/services/passengerBackgroundLocationTask';
 import { useGetBookingByIdQuery } from '@/store/api/bookingApi';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
+import { passengerPickupMessage, pickupVehicleReminder } from '@/features/navigation/pickupAwareness';
 import * as Location from 'expo-location';
-import React, { useCallback } from 'react';
-import type { Booking } from '@/types';
+import React, { useCallback, useRef } from 'react';
+import type { Booking, Trip } from '@/types';
 
 interface Params {
+  isScreenActive: boolean;
+  trip: Trip | undefined;
   isMountedRef: React.RefObject<boolean>;
   hasPresentedArrivalModalRef: React.RefObject<boolean>;
   refetchBooking: ReturnType<typeof useGetBookingByIdQuery>['refetch'];
@@ -35,6 +38,8 @@ interface Params {
 }
 
 export function usePassengerNavigationNotices({
+  isScreenActive,
+  trip,
   isMountedRef,
   hasPresentedArrivalModalRef,
   refetchBooking,
@@ -54,6 +59,11 @@ export function usePassengerNavigationNotices({
   hasPresentedBoardedNoticeRef,
   hasPresentedDestinationApproachNoticeRef,
 }: Params) {
+  const pickupContext = useRef({ bookingId, isScreenActive, booking });
+  pickupContext.current = { bookingId, isScreenActive, booking };
+  const latestPickupEvent = useRef<BookingAutoProgressEvent | null>(null);
+  if (!isScreenActive) latestPickupEvent.current = null;
+  const vehicleReminder = pickupVehicleReminder(trip ?? booking?.trip);
   const presentArrivalModal = useCallback(() => {
     if (!isMountedRef.current || hasPresentedArrivalModalRef.current) return;
 
@@ -117,74 +127,46 @@ export function usePassengerNavigationNotices({
   }, [bookingId, navigateBackSafely, showDialog]);
 
   const presentPickupNotice = useCallback((event: BookingAutoProgressEvent) => {
-    if (
-      !isMountedRef.current ||
-      !event.bookingId ||
-      !['driver_near_pickup', 'driver_arrived_pickup', 'parties_nearby'].includes(event.type)
-    ) {
-      return;
-    }
-
-    if (
-      booking?.pickedUp ||
-      booking?.pickedUpConfirmedByPassenger ||
-      booking?.droppedOff ||
-      booking?.droppedOffConfirmedByPassenger
-    ) {
-      return;
-    }
+    const context = pickupContext.current;
+    const currentBooking = context.booking;
+    if (!isMountedRef.current || !context.isScreenActive || event.bookingId !== context.bookingId ||
+      !currentBooking || event.tripId !== currentBooking.tripId ||
+      !['accepted', 'no_show'].includes(currentBooking.status) ||
+      !['driver_near_pickup', 'driver_arrived_pickup', 'parties_nearby'].includes(event.type) ||
+      currentBooking.pickedUp || currentBooking.pickedUpConfirmedByPassenger ||
+      currentBooking.droppedOff || currentBooking.droppedOffConfirmedByPassenger) return;
 
     const key = `${event.type}:${event.bookingId}`;
-    if (presentedPickupNoticeKeysRef.current.has(key)) {
-      return;
-    }
-
+    if (presentedPickupNoticeKeysRef.current.has(key)) return;
     const nextType = event.type as PassengerPickupNoticeType;
     const nextPriority = PASSENGER_PICKUP_NOTICE_PRIORITY[nextType];
-    const highestPriorityForBooking =
-      highestPickupNoticePriorityRef.current.get(event.bookingId) ?? -1;
-    if (highestPriorityForBooking >= nextPriority) {
-      return;
-    }
+    const highest = highestPickupNoticePriorityRef.current.get(event.bookingId!) ?? -1;
+    // Readiness at the meeting point can precede the driver's approach.
+    if (nextType === 'driver_near_pickup'
+      ? presentedPickupNoticeKeysRef.current.has(`driver_arrived_pickup:${event.bookingId}`)
+      : highest >= nextPriority) return;
 
     presentedPickupNoticeKeysRef.current.add(key);
-    highestPickupNoticePriorityRef.current.set(event.bookingId, nextPriority);
-    if (event.type === 'driver_near_pickup' && !hasDisplayedDriverNearNotificationRef.current) {
+    highestPickupNoticePriorityRef.current.set(event.bookingId!, Math.max(highest, nextPriority));
+    const message = passengerPickupMessage(nextType, event.distanceMeters, vehicleReminder);
+    if (nextType === 'driver_near_pickup' && !hasDisplayedDriverNearNotificationRef.current) {
       hasDisplayedDriverNearNotificationRef.current = true;
-      void displayNotification(
-        'Conducteur bient\u00f4t l\u00e0',
-        'Le conducteur sera bient\u00f4t l\u00e0. Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.',
-        {
-          type: 'driver_near_pickup',
-          bookingId: event.bookingId,
-          tripId: event.tripId,
-        },
-      );
+      void displayNotification('Votre conducteur approche', message, {
+        type: nextType, bookingId: event.bookingId, tripId: event.tripId,
+      }).catch(() => { /* The in-app notice remains visible if notifications are unavailable. */ });
     }
-    setPickupNotice({
-      type: nextType,
-      distanceMeters: event.distanceMeters,
-      detectedAt: event.detectedAt,
-      expiresAt: event.expiresAt,
-      pickupWaitSeconds: event.pickupWaitSeconds,
-    });
-    const speech =
-      event.type === 'driver_near_pickup'
-        ? 'Le conducteur sera bient\u00f4t l\u00e0. Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.'
-        : event.type === 'parties_nearby'
-          ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. La prise en charge sera confirm\u00e9e automatiquement.'
-          : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. La prise en charge sera confirm\u00e9e automatiquement.';
-
-    void Speech.stop().finally(() => {
-      if (!isMountedRef.current) return;
-      Speech.speak(speech, { language: 'fr-FR', rate: 0.95 });
-    });
-  }, [
-    booking?.droppedOff,
-    booking?.droppedOffConfirmedByPassenger,
-    booking?.pickedUp,
-    booking?.pickedUpConfirmedByPassenger,
-  ]);
+    setPickupNotice({ type: nextType, distanceMeters: event.distanceMeters, detectedAt: event.detectedAt,
+      expiresAt: event.expiresAt, pickupWaitSeconds: event.pickupWaitSeconds });
+    latestPickupEvent.current = event;
+    void Speech.stop().then(() => {
+      const current = pickupContext.current;
+      if (latestPickupEvent.current !== event || !isMountedRef.current || !current.isScreenActive || current.bookingId !== event.bookingId ||
+        current.booking?.pickedUp || current.booking?.pickedUpConfirmedByPassenger ||
+        current.booking?.droppedOff || current.booking?.droppedOffConfirmedByPassenger) return;
+      Speech.speak(message, { language: 'fr-FR', rate: 0.95 });
+    }).catch(() => { /* Voice is optional. */ });
+  }, [isMountedRef, vehicleReminder, presentedPickupNoticeKeysRef, highestPickupNoticePriorityRef,
+    hasDisplayedDriverNearNotificationRef, setPickupNotice]);
 
   const presentBoardedNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedBoardedNoticeRef.current) {

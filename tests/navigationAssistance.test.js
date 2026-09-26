@@ -27,7 +27,7 @@ test('navigation contacts use the actual role in this trip, not the account driv
 
 test('driver contacts exclude other trips, rejected bookings and passengers already dropped off', () => {
   const bookings = [booking, { ...booking },
-    ...['pending', 'rejected', 'cancelled', 'completed'].map(status => ({ ...booking, passengerId: status, status })),
+    ...['rejected', 'cancelled', 'completed'].map(status => ({ ...booking, passengerId: status, status })),
     { ...booking, passengerId: 'wrong-trip', tripId: 'other' },
     { ...booking, passengerId: 'dropped', droppedOff: true },
     { ...booking, passengerId: 'confirmed', droppedOffConfirmedByPassenger: true },

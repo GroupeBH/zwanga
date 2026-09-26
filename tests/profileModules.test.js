@@ -52,8 +52,14 @@ test('vehicle matching remains case insensitive and includes all vehicle fields'
   assert.equal(vehicleMatchesFormData(vehicle, { ...vehicle, type: 'moto' }), false);
 });
 
-function onboardingApp(extra = {}, params = {}) {
+function onboardingApp(extra = {}, params = {}, activate) {
   const calls = [], dialogs = [], hooks = hookHarness();
+  const state = { auth: { user: { id: 'passenger', role: 'passenger' } } };
+  const dispatch = action => {
+    if (typeof action === 'function') return action(dispatch, () => state);
+    state.auth.user = { ...state.auth.user, ...action.payload };
+    state.auth.user.isDriver = state.auth.user.role === 'driver';
+  };
   const props = {
     currentUser: { id: 'passenger', role: 'passenger' },
     isScreenActive: true,
@@ -66,11 +72,56 @@ function onboardingApp(extra = {}, params = {}) {
     react: hooks.react,
     'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: dialog => dialogs.push(dialog) }) },
+    '@/store/hooks': { useAppDispatch: () => dispatch },
+    '@/store/slices/authSlice': { updateUser: payload => ({ type: 'auth/updateUser', payload }) },
     '@/hooks/useDiditKycFlow': { useDiditKycFlow: () => ({ startDiditKyc: async () => { calls.push('identity'); }, isStartingDiditKyc: false }) },
-    '@/store/api/userApi': { useUpdateUserMutation: () => [form => ({ unwrap: async () => { calls.push(['role', form.get('role')]); } }), { isLoading: false }] },
+    '@/store/api/userApi': {
+      useActivateDriverMutation: () => [() => ({ unwrap: async () => {
+        calls.push('activate'); return activate ? activate() : { id: 'passenger', role: 'driver' };
+      } }), { isLoading: false }],
+      useRequestDriverOnboardingMutation: () => [() => ({ unwrap: async () => {
+        calls.push('intent'); props.currentUser.driverOnboardingRequestedAt = '2026-09-24T10:00:00Z';
+        return props.currentUser;
+      } }), { isLoading: false }],
+    },
   })('hooks/profile/useProfileOnboarding.ts');
-  return { hooks, calls, dialogs, props, render: () => hooks.render(() => useProfileOnboarding(props)) };
+  return { hooks, calls, dialogs, props, state, render: () => hooks.render(() => useProfileOnboarding(props)) };
 }
+
+test('confirmed driver activation refreshes the tab role without changing other account fields', async () => {
+  let complete;
+  const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, () => new Promise(resolve => { complete = resolve; }));
+  app.state.auth.user.name = 'Existing display name';
+  app.render().handleStartDriverOnboarding();
+  await tick();
+  assert.equal(app.state.auth.user.role, 'passenger', 'no optimistic role change');
+  complete({ id: 'passenger', role: 'driver', isDriver: true, name: 'Not merged' });
+  await tick();
+  assert.equal(app.state.auth.user.role, 'driver');
+  assert.equal(app.state.auth.user.isDriver, true);
+  assert.equal(app.state.auth.user.name, 'Existing display name');
+  app.hooks.unmount();
+});
+
+test('driver activation never changes a signed-out or different account and rejection keeps the passenger role', async () => {
+  for (const nextUser of [null, { id: 'other', role: 'passenger' }]) {
+    let complete;
+    const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, () => new Promise(resolve => { complete = resolve; }));
+    app.render().handleStartDriverOnboarding();
+    await tick();
+    app.state.auth.user = nextUser;
+    complete({ id: 'passenger', role: 'driver', isDriver: true });
+    await tick();
+    assert.equal(app.state.auth.user, nextUser);
+    app.hooks.unmount();
+  }
+  const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, async () => { throw { status: 403 }; });
+  app.render().handleStartDriverOnboarding();
+  await tick();
+  assert.equal(app.state.auth.user.role, 'passenger');
+  assert.equal(app.dialogs[0].variant, 'danger');
+  app.hooks.unmount();
+});
 
 test('passenger identity verification neither asks for a vehicle nor changes account role', async () => {
   const app = onboardingApp();
@@ -82,25 +133,26 @@ test('passenger identity verification neither asks for a vehicle nor changes acc
 
 test('only explicit driver onboarding requires a vehicle; approved identity is reused', async () => {
   const app = onboardingApp({ isKycApproved: true });
-  app.render().handleStartDriverOnboarding();
-  assert.deepEqual(app.calls, ['vehicle']);
+  await app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['intent', 'vehicle']);
   app.props.hasVehicle = true;
   app.render().handleStartDriverOnboarding();
   await tick();
-  assert.deepEqual(app.calls, ['vehicle', ['role', 'driver']]);
+  assert.deepEqual(app.calls, ['intent', 'vehicle', 'activate']);
   app.hooks.unmount();
 });
 
-test('driver onboarding deep link waits for the profile to be active, then opens only once', () => {
+test('driver onboarding deep link waits for the profile to be active, then opens only once', async () => {
   const app = onboardingApp({ isScreenActive: false, isKycApproved: true }, { openDriverOnboarding: '1' });
   app.render(); app.render();
   assert.deepEqual(app.calls, []);
   app.props.isScreenActive = true;
   app.render(); app.render();
-  assert.deepEqual(app.calls, ['vehicle']);
+  await tick();
+  assert.deepEqual(app.calls, ['intent', 'vehicle']);
   app.props.isScreenActive = false; app.render();
   app.props.isScreenActive = true; app.render();
-  assert.deepEqual(app.calls, ['vehicle']);
+  assert.deepEqual(app.calls, ['intent', 'vehicle']);
   app.hooks.unmount();
 });
 

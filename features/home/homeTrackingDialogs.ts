@@ -1,8 +1,10 @@
 import type { HomeAutoProgressEvent } from '@/features/home/homeTypes';
-import type { Booking } from '@/types';
+import type { Booking, Trip } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
+import { isPickupAwarenessEvent, resolvePickupVehicleTrip } from '@/features/navigation/pickupAwareness';
+import { pickupPassengerDialog } from '@/features/navigation/pickupPassengerDialog';
 
-export function getHomeTrackingDialog(event: HomeAutoProgressEvent, booking: Booking | null, isHomeDriverTracking: boolean) {
+export function getHomeTrackingDialog(event: HomeAutoProgressEvent, booking: Booking | null, isHomeDriverTracking: boolean, activeTrip?: Trip | null) {
   const passengerName = booking?.passengerName || 'le passager';
   const roundedDistance =
     typeof event.distanceMeters === 'number' && Number.isFinite(event.distanceMeters)
@@ -26,8 +28,10 @@ export function getHomeTrackingDialog(event: HomeAutoProgressEvent, booking: Boo
     driver_near_pickup: {
       variant: 'info',
       icon: 'car-sport',
-      title: 'Le conducteur sera bientôt là',
-      message: `Le conducteur est proche du point de récupération.${distanceText}`,
+      title: isHomeDriverTracking ? 'Prise en charge à proximité' : 'Le conducteur sera bientôt là',
+      message: isHomeDriverTracking
+        ? `Vous approchez du point de prise en charge de ${passengerName}.${distanceText}`
+        : 'Préparez-vous à rejoindre le conducteur.',
     },
     driver_arrived_pickup: {
       variant: 'info',
@@ -35,7 +39,7 @@ export function getHomeTrackingDialog(event: HomeAutoProgressEvent, booking: Boo
       title: isHomeDriverTracking ? 'Point de récupération atteint' : 'Le conducteur est là',
       message: isHomeDriverTracking
         ? `Vous êtes arrivé au point de récupération de ${passengerName}. Le passager est notifié.`
-        : 'Le conducteur est arrivé au point de récupération que vous avez indiqué.',
+        : 'Rejoignez le conducteur au point de récupération.',
     },
     parties_nearby: {
       variant: 'success',
@@ -43,7 +47,7 @@ export function getHomeTrackingDialog(event: HomeAutoProgressEvent, booking: Boo
       title: isHomeDriverTracking ? 'Passager prêt à embarquer' : 'Vous êtes au point',
       message: isHomeDriverTracking
         ? `${passengerName} est là et prêt à être embarqué.`
-        : 'Vous et le conducteur êtes au point de récupération.',
+        : 'Signalez-vous au conducteur si vous êtes prêt.',
     },
     passenger_ready_pickup: {
       variant: 'success',
@@ -109,5 +113,9 @@ export function getHomeTrackingDialog(event: HomeAutoProgressEvent, booking: Boo
     },
   };
 
-  return dialogByType[event.type];
+  const dialog = dialogByType[event.type];
+  return !isHomeDriverTracking && isPickupAwarenessEvent(event.type)
+    ? { ...dialog, ...pickupPassengerDialog(event.type, event.distanceMeters,
+      resolvePickupVehicleTrip(event.tripId, activeTrip, booking?.trip)) }
+    : dialog;
 }

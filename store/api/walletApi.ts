@@ -10,6 +10,9 @@ import type {
 } from "../../types";
 import { baseApi } from "./baseApi";
 import type { BaseEndpointBuilder } from "./types";
+import type { HistoryArgs, HistoryPage } from './financeHistoryPage';
+
+export type WalletLedgerPage = HistoryPage<WalletLedgerEntry> & { limited?: boolean };
 
 type InitiateWalletTopUpPayload = {
   amount: number;
@@ -260,6 +263,23 @@ export const walletApi = baseApi.injectEndpoints({
         return entries.map(mapWalletLedgerEntry);
       },
     }),
+    getWalletLedgerPage: builder.query<WalletLedgerPage, HistoryArgs>({
+      keepUnusedDataFor: 0,
+      providesTags: [walletTag],
+      async queryFn(args, _api, _options, baseQuery) {
+        const result = await baseQuery({ url: '/wallet/ledger/page', params: { ...args, limit: args.limit ?? 25 } });
+        if (!result.error) {
+          const page = result.data as HistoryPage<RawWalletLedgerEntry>;
+          return { data: { ...page, data: page.data.map(mapWalletLedgerEntry) } };
+        }
+        if (args.before || ![404, 405].includes(Number(result.error.status))) return { error: result.error };
+        // Bounded rollout fallback. Never download the unbounded legacy ledger.
+        const summary = await baseQuery('/wallet/me');
+        if (summary.error) return { error: summary.error };
+        const entries = mapWalletSummary(summary.data as RawWalletSummary).recentEntries.slice(0, 30);
+        return { data: { data: entries, total: entries.length, nextCursor: null, limited: true } };
+      },
+    }),
     initiateWalletTopUp: builder.mutation<
       WalletPaymentResponse,
       InitiateWalletTopUpPayload
@@ -276,7 +296,9 @@ export const walletApi = baseApi.injectEndpoints({
     checkWalletTopUpStatus: builder.query<WalletPaymentResponse, string>({
       query: (orderNumber) =>
         `/wallet/topups/${encodeURIComponent(orderNumber)}/status`,
-      providesTags: [walletTag],
+      // A status read must not provide the balance tag it invalidates on success.
+      // Monitoring explicitly schedules reads; wallet refreshes must not restart them.
+      providesTags: [],
       transformResponse: (response: RawWalletPaymentResponse) =>
         mapWalletPaymentResponse(response),
       async onQueryStarted(_orderNumber, { queryFulfilled, dispatch }) {
@@ -309,6 +331,7 @@ export const walletApi = baseApi.injectEndpoints({
 export const {
   useGetMyWalletQuery,
   useGetWalletLedgerQuery,
+  useGetWalletLedgerPageQuery,
   useInitiateWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
   useTransferWalletPointsMutation,

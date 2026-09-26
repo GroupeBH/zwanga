@@ -111,7 +111,7 @@ export function useReferralActions({
       showDialog({
         variant: 'success',
         title: 'Retrait transmis',
-        message: `FlexPay traite ${formatNumber(withdrawal.amount)} ${withdrawal.currency} vers votre numéro Mobile Money.`,
+        message: `Le prestataire traite le versement de ${formatNumber(withdrawal.amount)} ${withdrawal.currency} vers votre numéro Mobile Money.`,
       });
     } catch (error) {
       showDialog({

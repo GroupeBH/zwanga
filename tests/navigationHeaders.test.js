@@ -221,6 +221,7 @@ test('driver can still access receipts through Options after hiding the banner, 
 test('driver navigation wires contacts to this trip and defers automatic notice modals during assistance', () => {
   const model = driverModel(); const received = [];
   const mocked = { ...defaults,
+    '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'DriverAccessGuard' },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
     '../../../hooks/driver-navigation/useDriverNavigationController': { useDriverNavigationController: () => model },
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true, panel: 'sos' }; } },
@@ -233,7 +234,11 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   const components = ['DriverNavigationControls', 'DriverNavigationMap', 'NavigationLocationDisclosure', 'NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationSecurityModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal'];
   components.forEach(name => { mocked[`../../../features/driver-navigation/${name}`] = { [name]: name }; });
   const screen = loader(mocked)('app/trip/navigate/[id].tsx').default;
-  const tree = screen(); assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
+  const guarded = screen();
+  assert.equal(guarded.type, 'DriverAccessGuard');
+  assert.equal(received.length, 0, 'driver controllers do not run before the access guard');
+  const tree = guarded.props.children.type();
+  assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.forceRecalculateRoute, model.forceRecalculateRoute);
   for (const type of ['NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal']) {
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);

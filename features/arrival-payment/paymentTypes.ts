@@ -53,7 +53,7 @@ export const PAYMENT_OPTIONS: PaymentOption[] = [
     id: 'electronic',
     icon: 'phone-portrait-outline',
     title: 'Mobile Money',
-    description: 'Paiement securisé via FlexPay',
+    description: 'Paiement sécurisé sur votre téléphone',
   },
   {
     id: 'points',
