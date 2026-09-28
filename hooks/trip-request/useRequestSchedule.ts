@@ -14,15 +14,16 @@ import {
 } from '@react-native-community/datetimepicker';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AppState,
   Keyboard,
   Platform
 } from 'react-native';
 import { useRequestDraft } from './useRequestDraft';
 
-type Props = Pick<ReturnType<typeof useRequestDraft>, 'timePreset' | 'departureDateMin' | 'flexibilityMinutes' | 'setTimePreset' | 'setDepartureDateMin' | 'setFlexibilityMinutes'>;
+type Props = Pick<ReturnType<typeof useRequestDraft>, 'timePreset' | 'departureDateMin' | 'flexibilityMinutes' | 'setTimePreset' | 'setDepartureDateMin' | 'setFlexibilityMinutes'> & {
+  isScreenActive: boolean;
+};
 
-export function useRequestSchedule({ timePreset, departureDateMin, flexibilityMinutes, setTimePreset, setDepartureDateMin, setFlexibilityMinutes }: Props) {
+export function useRequestSchedule({ isScreenActive, timePreset, departureDateMin, flexibilityMinutes, setTimePreset, setDepartureDateMin, setFlexibilityMinutes }: Props) {
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
 
   const departureDateMax = useMemo(
@@ -60,7 +61,7 @@ export function useRequestSchedule({ timePreset, departureDateMin, flexibilityMi
 
   useEffect(() => {
     const preset = timePreset;
-    if (preset === 'custom') {
+    if (preset === 'custom' || !isScreenActive) {
       return;
     }
 
@@ -72,28 +73,11 @@ export function useRequestSchedule({ timePreset, departureDateMin, flexibilityMi
 
     syncPresetWindow();
     const interval = setInterval(syncPresetWindow, TIME_PRESET_SYNC_INTERVAL_MS);
-    let previousAppState = AppState.currentState;
-    let backgroundedAt: number | null = null;
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState !== 'active') {
-        if (previousAppState === 'active') {
-          backgroundedAt = Date.now();
-        }
-      } else if (
-        previousAppState !== 'active' &&
-        backgroundedAt !== null &&
-        Date.now() - backgroundedAt >= 2_000
-      ) {
-        syncPresetWindow();
-      }
-      previousAppState = nextState;
-    });
 
     return () => {
       clearInterval(interval);
-      appStateSubscription.remove();
     };
-  }, [timePreset, setDepartureDateMin, setFlexibilityMinutes]);
+  }, [isScreenActive, timePreset, setDepartureDateMin, setFlexibilityMinutes]);
 
   const applyPreset = (preset: TimePreset) => {
     setTimePreset(preset);

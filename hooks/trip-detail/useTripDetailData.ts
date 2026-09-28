@@ -2,7 +2,7 @@ import { pointToLatLng } from '../../features/trip-detail/tripDetailModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
-import { useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityBookingsQuery, useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
@@ -40,7 +40,7 @@ export function useTripDetailData() {
     isLoading: tripLoading,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, {
-    skip: !tripId,
+    skip: !tripId || !isScreenActive,
     // Polling automatique basé sur le statut du trajet
     pollingInterval: !isScreenActive ? 0 : tripFromStore?.status === 'ongoing'
       ? 15000 // 15 secondes pour les trajets en cours
@@ -48,7 +48,7 @@ export function useTripDetailData() {
         ? 60000 // 60 secondes pour les trajets à venir
         : 0, // Pas de polling pour les trajets terminés/annulés
     skipPollingIfUnfocused: true,
-    refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
+    refetchOnFocus: false, // Le retour à l'écran recrée l'abonnement et relit le trajet.
     refetchOnMountOrArgChange: true, // Une notification peut annoncer un démarrage ou une interruption.
     refetchOnReconnect: false,
   });
@@ -63,26 +63,44 @@ export function useTripDetailData() {
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
-  const {
-    data: myBookings,
-    refetch: refetchMyBookings,
-  } = useGetMyBookingsQuery(undefined, {
-    // Polling pour les réservations si le trajet est actif
-    pollingInterval: !isScreenActive ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
-    skipPollingIfUnfocused: true,
+  const isLiveTrip = trip?.status === 'ongoing' || trip?.status === 'upcoming';
+  const needsPassengerBookings = Boolean(isScreenActive && trip && user?.id && !isTripDriver);
+  const passengerBookingsOptions = {
+    // Le coordinateur global rafraîchit scope=activity sur changement de révision.
+    pollingInterval: 0,
     refetchOnMountOrArgChange: true,
-    refetchOnFocus: true,
+    refetchOnFocus: false,
     refetchOnReconnect: false,
+  };
+  const {
+    data: activityBookings,
+    refetch: refetchActivityBookings,
+  } = useGetMyActivityBookingsQuery(undefined, {
+    ...passengerBookingsOptions,
+    skip: !needsPassengerBookings || !isLiveTrip,
   });
+  const {
+    data: historicalBookings,
+    refetch: refetchHistoricalBookings,
+  } = useGetMyBookingsQuery(undefined, {
+    ...passengerBookingsOptions,
+    skip: !needsPassengerBookings || isLiveTrip,
+  });
+  const myBookings = isLiveTrip ? activityBookings : historicalBookings;
+  const refetchMyBookings = useCallback(() => {
+    if (!needsPassengerBookings) return Promise.resolve();
+    return isLiveTrip ? refetchActivityBookings() : refetchHistoricalBookings();
+  }, [isLiveTrip, needsPassengerBookings, refetchActivityBookings, refetchHistoricalBookings]);
   const {
     data: driverTripBookings,
     refetch: refetchDriverTripBookings,
   } = useGetTripBookingsQuery(tripId, {
-    skip: !tripId || !isTripDriver,
+    skip: !tripId || !isTripDriver || !isScreenActive,
     // Polling pour les réservations du trajet
     pollingInterval: !isScreenActive ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: false,
     refetchOnReconnect: false,
   });
   // This endpoint is driver-only. Passenger details use their own reservations.

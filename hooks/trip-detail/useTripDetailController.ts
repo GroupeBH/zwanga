@@ -28,6 +28,7 @@ export function useTripDetailController() {
   const bookingState = useTripDetailBookingState({
     trip: data.trip,
     isFocused: data.isFocused,
+    isScreenActive: data.isScreenActive,
     tripId: data.tripId,
   });
 

@@ -9,6 +9,58 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 28 septembre 2026 — Réduction des lectures et timers hors écran
+
+**Périmètre et problème constaté.** Le détail d'un trajet lisait et sondait
+l'ensemble des réservations du passager, même pour un trajet actif, et gardait
+plusieurs abonnements de lecture lorsque l'écran était recouvert. La navigation
+conducteur redemandait les positions passager absentes toutes les 10 secondes
+sans ralentissement. Le créneau prédéfini du formulaire de demande se recalculait
+toutes les 30 secondes même lorsque ce formulaire restait monté hors écran.
+
+**Solution appliquée.** `hooks/trip-detail/useTripDetailData.ts` utilise
+`getMyActivityBookings` pour un trajet passager à venir/en cours, garde la liste
+historique pour un trajet terminé/annulé et ne lit pas les réservations passager
+sur le détail conducteur. Le flux d'activité ne crée plus de sondage propre :
+`AccountActivityCoordinator` rafraîchit déjà ce cache sur changement de révision.
+Les requêtes du trajet et des réservations se désabonnent hors écran, puis sont
+relues au retour. `hooks/trip-detail/useTripDetailBookingState.ts` suspend aussi
+les lectures d'identité et d'avis masquées ; les signatures du contrôleur et des
+actions de sécurité sont ajustées dans `useTripDetailController.ts` et
+`useTripDetailSafetyActions.ts`. Dans
+`hooks/driver-navigation/useDriverTrackingSocket.ts`, les demandes de positions
+manquantes suivent un délai de 10, 20, 40 puis 60 secondes maximum, réinitialisé
+après un nouveau point de passage, une déconnexion ou le retour de positions
+fraîches. `hooks/trip-request/useRequestTripController.ts` transmet l'état réel
+de visibilité à `useRequestSchedule.ts`, qui arrête son intervalle hors écran et
+recalcule immédiatement le créneau au retour.
+
+**Comportements conservés et précautions.** Les trajets terminés gardent accès
+aux anciennes réservations ; la lecture d'activité couvre les réservations
+inachevées et les changements récents selon le contrat backend local inspecté,
+sans modification de ce backend. Les rafraîchissements explicites, le suivi des
+réservations conducteur, les mutations, la position GPS métier et les événements
+WebSocket ne sont pas ralentis. Une position passager fraîche supprime toujours
+la demande de secours ; un nouveau passager rétablit la cadence courte. Le choix
+manuel d'une heure reste inchangé. Le gel natif des écrans n'est pas modifié.
+
+**Vérifications et limites.** `tests/tripDetailReadPolicy.test.js`,
+`tests/requestScheduleIdle.test.js` et `tests/driverTrackingPolling.test.js`
+contrôlent les lectures selon le rôle et l'état du trajet, la suspension hors
+écran, le retour du formulaire et dix minutes simulées sans GPS passager.
+Les 10 tests ciblés, les 19 tests de performance et les 43 tests de demande de
+trajet ont réussi, ainsi que 61 tests de navigation et 26 tests de coordination
+d'activité/récupération (dont un test ciblé répété). TypeScript, contrôle des
+frontières réseau, limite des
+400 lignes et `git diff --check` ont réussi ; ESLint ciblé : zéro erreur,
+8 avertissements préexistants dans `useTripDetailBookingState.ts`.
+Les tests JavaScript simulent les hooks et transports ; ils ne mesurent ni la
+charge SQL réelle, ni le nombre de requêtes en production, ni CPU, mémoire ou
+batterie sur téléphone. Vérifier en release Android/iOS un trajet long avec
+passager sans partage de position, veille/reprise, détail recouvert, et un
+historique de réservations important. Aucun essai physique ni déploiement n'a
+été effectué dans cette intervention.
+
 ## 28 septembre 2026 — Places proposées selon le véhicule lors de la publication
 
 **Périmètre et problème constaté.** Dans le formulaire de publication, le nombre
