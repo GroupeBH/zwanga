@@ -18,12 +18,14 @@ import type { Trip } from '@/types';
 interface Params {
   trip: Trip | undefined;
   isFocused: boolean;
+  isScreenActive: boolean;
   tripId: string;
 }
 
 export function useTripDetailBookingState({
   trip,
   isFocused,
+  isScreenActive,
   tripId,
 }: Params) {
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
@@ -74,12 +76,14 @@ export function useTripDetailBookingState({
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sosModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { refetch: refetchKycStatus } = useGetKycStatusQuery();
+  const { refetch: refetchKycStatus } = useGetKycStatusQuery(undefined, {
+    skip: !isScreenActive,
+  });
   const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
-    skip: !trip?.driverId,
+    skip: !isScreenActive || !trip?.driverId,
   });
   const { data: driverAverageData } = useGetAverageRatingQuery(trip?.driverId ?? '', {
-    skip: !trip?.driverId,
+    skip: !isScreenActive || !trip?.driverId,
   });
 
   const [refreshing, setRefreshing] = useState(false);

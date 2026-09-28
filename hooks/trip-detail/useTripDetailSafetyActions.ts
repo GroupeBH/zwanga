@@ -1,5 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import type { useTripDetailData } from './useTripDetailData';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import React from 'react';
 
@@ -12,7 +12,7 @@ interface Params {
   canAccessTripSecurity: boolean;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
-  refetchMyBookings: ReturnType<typeof useGetMyBookingsQuery>['refetch'];
+  refetchMyBookings: ReturnType<typeof useTripDetailData>['refetchMyBookings'];
   refetchTripBookings: () => unknown;
   securityModalTransitionRef: React.RefObject<boolean>;
   securityModalTimerRef: React.RefObject<NodeJS.Timeout | null>;

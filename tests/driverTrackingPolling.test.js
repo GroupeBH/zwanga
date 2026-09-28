@@ -51,6 +51,22 @@ test('driver requests missing passenger positions but does not poll over healthy
   assert.equal(env.requests(), 2, 'completed passenger waypoints do not keep polling alive');
 });
 
+test('missing passenger GPS backs off instead of requesting every ten seconds for a long ride', async t => {
+  const env = fixture(t);
+  env.render(); await flush();
+  for (let i = 0; i < 60; i++) {
+    t.mock.timers.tick(10_000); await flush();
+  }
+  assert.ok(env.requests() <= 14, `unexpected ${env.requests()} passenger-location requests in ten minutes`);
+  env.emit('a'); env.emit('b');
+  const healthyRequests = env.requests();
+  t.mock.timers.tick(10_000); await flush();
+  assert.equal(env.requests(), healthyRequests, 'healthy positions should not request a snapshot');
+  env.props.refs.waypointsRef.current = [{ booking: { id: 'new-passenger' } }];
+  t.mock.timers.tick(10_000); await flush();
+  assert.equal(env.requests(), healthyRequests + 1, 'a new passenger resets the backoff');
+});
+
 test('driver UI releases the socket room and timer in the background and rejoins on return', async t => {
   const env = fixture(t);
   env.render(); await flush();

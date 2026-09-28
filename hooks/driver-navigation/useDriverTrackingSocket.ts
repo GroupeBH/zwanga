@@ -37,16 +37,28 @@ export function useDriverTrackingSocket({
     let isCancelled = false;
     let requestPending = false;
     const freshPassengerPositions = new Map<string, number>();
+    let nextMissingPositionRequestAt = 0;
+    let missingPositionRetryDelayMs = 10_000;
+    let waypointIdsKey = '';
+    const resetMissingPositionBackoff = () => {
+      nextMissingPositionRequestAt = 0;
+      missingPositionRetryDelayMs = 10_000;
+    };
     const requestPassengerPositions = () => {
-      if (isCancelled || requestPending) return;
+      if (isCancelled || requestPending || Date.now() < nextMissingPositionRequestAt) return;
       requestPending = true;
+      nextMissingPositionRequestAt = Date.now() + missingPositionRetryDelayMs;
+      missingPositionRetryDelayMs = Math.min(missingPositionRetryDelayMs * 2, 60_000);
       void trackingSocket.requestPassengerLocations(data.tripId)
         .catch(() => undefined)
         .finally(() => { requestPending = false; });
     };
     mapState.setLivePassengerLocations({});
     const unsubscribeConnection = trackingSocket.subscribeToConnectionState((connected) => {
-      if (!connected) freshPassengerPositions.clear();
+      if (!connected) {
+        freshPassengerPositions.clear();
+        resetMissingPositionBackoff();
+      }
       if (!isCancelled && mapState.isMountedRef.current) mapState.setIsSocketConnected(connected);
     });
 
@@ -56,7 +68,7 @@ export function useDriverTrackingSocket({
       .then(() => {
         if (!mapState.isMountedRef.current || isCancelled) return;
         mapState.setIsSocketConnected(true);
-        requestPassengerPositions();
+        if (refs.waypointsRef.current.length > 0) requestPassengerPositions();
         if (__DEV__) {
           console.log('[Navigation] Connecté au suivi en temps réel');
         }
@@ -244,6 +256,11 @@ export function useDriverTrackingSocket({
 
     const passengerLocationsRefreshInterval = setInterval(() => {
       const bookingIds = new Set(refs.waypointsRef.current.map(waypoint => waypoint.booking.id));
+      const nextWaypointIdsKey = [...bookingIds].sort().join('|');
+      if (waypointIdsKey !== nextWaypointIdsKey) {
+        waypointIdsKey = nextWaypointIdsKey;
+        resetMissingPositionBackoff();
+      }
       for (const id of freshPassengerPositions.keys()) {
         if (!bookingIds.has(id)) freshPassengerPositions.delete(id);
       }
@@ -252,6 +269,7 @@ export function useDriverTrackingSocket({
         return timestamp === undefined || Date.now() - timestamp >= 15_000;
       });
       if (missingPosition) requestPassengerPositions();
+      else resetMissingPositionBackoff();
     }, 10000);
 
     return () => {

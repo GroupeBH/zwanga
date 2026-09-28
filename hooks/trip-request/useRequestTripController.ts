@@ -6,6 +6,7 @@ import { type AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { clampRequestPrice, LatLng, PickerTarget, RequestFormStep } from '@/features/trip-request/requestFormModel';
 import { useUserLocation } from '@/hooks/useUserLocation';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,9 +18,10 @@ import { useRequestSchedule } from './useRequestSchedule';
 import { useRequestSubmission } from './useRequestSubmission';
 
 export function useRequestTripController() {
+  const isScreenActive = useScreenIsActive();
   const draft = useRequestDraft();
 
-  const schedule = useRequestSchedule({ timePreset: draft.timePreset, departureDateMin: draft.departureDateMin, flexibilityMinutes: draft.flexibilityMinutes, setTimePreset: draft.setTimePreset, setDepartureDateMin: draft.setDepartureDateMin, setFlexibilityMinutes: draft.setFlexibilityMinutes });
+  const schedule = useRequestSchedule({ isScreenActive, timePreset: draft.timePreset, departureDateMin: draft.departureDateMin, flexibilityMinutes: draft.flexibilityMinutes, setTimePreset: draft.setTimePreset, setDepartureDateMin: draft.setDepartureDateMin, setFlexibilityMinutes: draft.setFlexibilityMinutes });
 
   const router = useRouter();
 
