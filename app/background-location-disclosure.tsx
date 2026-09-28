@@ -1,5 +1,6 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
+import { selectHasAuthenticatedSession } from '@/store/selectors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,7 +35,7 @@ const DISCLOSURE_POINTS = [
 export default function BackgroundLocationDisclosureScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const isAuthenticated = useAppSelector(selectHasAuthenticatedSession);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleContinue = async () => {

@@ -1,5 +1,6 @@
 import { useTripsController } from '../../hooks/trips/useTripsController';
 import { TripsEditModal } from '../../features/trips/TripsEditModal';
+import { TripsHeader } from '../../features/trips/TripsHeader';
 import { styles } from '../../features/screen-styles/app/tabs/trips/index';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
@@ -14,7 +15,6 @@ import {
   Platform,
   RefreshControl,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,96 +25,15 @@ export default function TripsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <Text style={styles.headerTitle}>Mes trajets</Text>
-          <TouchableOpacity
-            style={styles.headerPublishButton}
-            onPress={() => model.state.router.push('/publish')}
-            accessibilityLabel="Publier un trajet"
-          >
-            <Ionicons name="add" size={24} color={Colors.white} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Main Tabs */}
-        <View style={styles.mainTabsContainer}>
-          <TouchableOpacity
-            style={[styles.mainTab, model.state.mainTab === 'published' && styles.mainTabActive]}
-            onPress={() => {
-              model.state.setMainTab('published');
-              model.state.setSubTab('upcoming');
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.mainTabText, model.state.mainTab === 'published' && styles.mainTabTextActive]}
-            >
-              Publiés
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.mainTab, model.state.mainTab === 'bookings' && styles.mainTabActive]}
-            onPress={() => {
-              model.state.setMainTab('bookings');
-              model.state.setSubTab('upcoming');
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.mainTabText, model.state.mainTab === 'bookings' && styles.mainTabTextActive]}
-            >
-              Réservations
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Sub Tabs */}
-        <View style={styles.subTabsContainer}>
-          <TouchableOpacity
-            style={[styles.subTab, model.state.subTab === 'upcoming' && styles.subTabActive]}
-            onPress={() => model.state.setSubTab('upcoming')}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.subTabText, model.state.subTab === 'upcoming' && styles.subTabTextActive]}
-            >
-              À venir
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.subTab, model.state.subTab === 'completed' && styles.subTabActive]}
-            onPress={() => model.state.setSubTab('completed')}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.subTabText, model.state.subTab === 'completed' && styles.subTabTextActive]}
-            >
-              Historique
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={20} color={Colors.gray[500]} />
-          <TextInput
-            value={model.state.searchQuery}
-            onChangeText={model.state.setSearchQuery}
-            placeholder="Rechercher..."
-            maxLength={100}
-            placeholderTextColor={Colors.gray[400]}
-            style={styles.searchInput}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-          {model.state.searchQuery.length > 0 && Platform.OS !== 'ios' ? (
-            <TouchableOpacity style={styles.searchClearButton} onPress={() => model.state.setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
+      <TripsHeader
+        mainTab={model.state.mainTab}
+        subTab={model.state.subTab}
+        searchQuery={model.state.searchQuery}
+        onMainTabChange={model.state.setMainTab}
+        onSubTabChange={model.state.setSubTab}
+        onSearchChange={model.state.setSearchQuery}
+        onPublish={() => model.state.router.push('/publish')}
+      />
 
       {model.list.isError && (
         <View style={styles.errorBanner}>
@@ -258,16 +177,6 @@ export default function TripsScreen() {
           )
         }
       />
-
-      {/* FAB - Publier un trajet (seulement pour les trajets publiés) */}
-      {model.state.mainTab === 'published' && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => model.state.router.push('/publish')}
-        >
-          <Ionicons name="add" size={32} color={Colors.white} />
-        </TouchableOpacity>
-      )}
 
       <TripsEditModal
         editingTrip={model.state.editingTrip}

@@ -1,5 +1,6 @@
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
+import { selectHasAuthenticatedSession } from '@/store/selectors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
@@ -15,7 +16,7 @@ const BACKGROUND_DISCLOSURE_KEY = 'hasSeenBackgroundLocationDisclosure';
 
 export default function SplashScreen() {
   const router = useRouter();
-  const isAuthenticated = useAppSelector((state) => state.auth.isAuthenticated);
+  const isAuthenticated = useAppSelector(selectHasAuthenticatedSession);
 
   const logoScale = useSharedValue(0.9);
   const logoOpacity = useSharedValue(0);

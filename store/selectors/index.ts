@@ -1,10 +1,16 @@
 import { createSelector } from '@reduxjs/toolkit';
+import { hasRecoverableAuthSession } from '@/features/auth/sessionPolicy';
 import type { RootState } from '../index';
 
 // === AUTH SELECTORS ===
 export const selectAuth = (state: RootState) => state.auth;
 export const selectUser = (state: RootState) => state.auth?.user ?? null;
 export const selectIsAuthenticated = (state: RootState) => state.auth?.isAuthenticated ?? false;
+export const selectHasAuthenticatedSession = (state: RootState) =>
+  Boolean(state.auth?.isAuthenticated && hasRecoverableAuthSession(
+    state.auth.accessToken,
+    state.auth.refreshToken,
+  ));
 export const selectAuthToken = (state: RootState) => state.auth?.accessToken ?? null;
 export const selectAuthLoading = (state: RootState) => state.auth?.isLoading ?? false;
 export const selectIsLoading = (state: RootState) => state.auth?.isLoading ?? false; // Alias

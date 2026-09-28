@@ -5,7 +5,7 @@ import { proactiveTokenRefresh, validateAndRefreshTokens } from '@/services/toke
 import { getTokens } from '@/services/tokenStorage';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectAccessToken, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
+import { selectAccessToken, selectHasAuthenticatedSession, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
 import { performLogout, setTokens } from '@/store/slices/authSlice';
 import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
 import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
@@ -26,6 +26,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const rootNavigationState = useRootNavigationState();
   const dispatch = useAppDispatch();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const hasSession = useAppSelector(selectHasAuthenticatedSession);
   const isLoading = useAppSelector(selectIsLoading);
   const accessToken = useAppSelector(selectAccessToken);
   const refreshToken = useAppSelector(selectRefreshToken);
@@ -166,30 +167,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         : Infinity;
       const justAuthenticated = timeSinceLastAuth < 3000;
 
-      if (isAuthenticated && inAuthGroup) {
+      if (hasSession && inAuthGroup) {
         return;
       }
 
-      if (isAuthenticated && !accessToken && !refreshToken) {
-        if (justAuthenticated) {
-          if (__DEV__) {
-            console.log('[AuthGuard] Recent auth, waiting token propagation...');
-          }
-          return;
-        }
-        if (__DEV__) {
-          console.log('[AuthGuard] Authenticated but tokens missing in Redux');
-        }
-        return;
-      }
-
-      if (
-        !accessToken &&
-        !refreshToken &&
-        !isAuthenticated &&
-        !justAuthenticated &&
-        !isLoggingOut.current
-      ) {
+      if (!hasSession && !justAuthenticated && !isLoggingOut.current &&
+          !(refreshToken && isTokenExpired(refreshToken))) {
         if (!inAuthGroup && !isPublicRoute && !isRedirectingAfterLogout.current) {
           replaceRootRoute('auth-entry');
         }
@@ -229,6 +212,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     accessToken,
     refreshToken,
     isAuthenticated,
+    hasSession,
     isLoading,
     dispatch,
     replaceRootRoute,
@@ -249,7 +233,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       );
     }
 
-    if (isAuthenticated && accessToken && refreshToken) {
+    if (hasSession) {
       if (segments[0] === 'auth-entry') {
         if (__DEV__) {
           console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
@@ -267,7 +251,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (!isAuthenticated && !inAuthGroup && !isPublicRoute && !accessToken && !refreshToken) {
+    if (!hasSession && !inAuthGroup && !isPublicRoute) {
       if (__DEV__) {
         console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
       }
@@ -275,6 +259,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [
     isAuthenticated,
+    hasSession,
     isLoading,
     segments,
     inAuthGroup,
@@ -325,7 +310,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
 
     const registerPushToken = async () => {
-      if (!isAuthenticated) {
+      if (!hasSession) {
         lastFcmSyncAccessToken.current = null;
         lastSyncedFcmRegistration.current = null;
         fcmSyncInFlightRegistration.current = null;
@@ -346,7 +331,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     };
 
     interactionTask = InteractionManager.runAfterInteractions(() => {
-      if (isAuthenticated) {
+      if (hasSession) {
         unsubscribeTokenRefresh = subscribeToFcmRefresh(syncTokenWithBackend);
       }
       timeout = setTimeout(() => {
@@ -365,7 +350,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         clearTimeout(timeout);
       }
     };
-  }, [isAuthenticated, accessToken, updateFcmTokenMutation]);
+  }, [hasSession, accessToken, updateFcmTokenMutation]);
 
   if (isLoading) {
     return (
