@@ -1,6 +1,8 @@
 import { PublishStep } from './publishModel';
 import { styles } from '../screen-styles/app/publish/index';
 import { Colors, Spacing } from '@/constants/styles';
+import { MIN_CAR_PUBLISH_SEATS } from './publishSeatPolicy';
+import type { TripRequestVehicleType } from '@/types';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -11,6 +13,7 @@ interface PublishPricingStepProps {
   stepEntering: FadeInDown | undefined;
   setSeats: React.Dispatch<React.SetStateAction<string>>;
   seats: string;
+  vehicleType: TripRequestVehicleType | null | undefined;
   isFreeTrip: boolean;
   price: string;
   setPrice: React.Dispatch<React.SetStateAction<string>>;
@@ -28,6 +31,7 @@ export function PublishPricingStep({
   stepEntering,
   setSeats,
   seats,
+  vehicleType,
   isFreeTrip,
   price,
   setPrice,
@@ -40,6 +44,10 @@ export function PublishPricingStep({
   goToStep,
   handleNextStep,
 }: PublishPricingStepProps) {
+  const fixedMotorcycleSeats =
+    vehicleType === 'motorcycle_2_wheels' || vehicleType === 'motorcycle_3_wheels';
+  const canDecreaseSeats = !fixedMotorcycleSeats && Number(seats) > MIN_CAR_PUBLISH_SEATS;
+
   return (
     <Animated.View entering={stepEntering} style={styles.stepContainer}>
       <Text style={styles.sectionTitle}>Places et prix</Text>
@@ -47,20 +55,30 @@ export function PublishPricingStep({
       <View style={styles.row}>
         <View style={[styles.card, { flex: 1, marginRight: Spacing.sm }]}>
           <Text style={styles.cardLabel}>PLACES</Text>
-          <View style={styles.counterContainer}>
-            <TouchableOpacity
-              onPress={() => setSeats(Math.max(1, parseInt(seats || '1') - 1).toString())}
-              style={styles.counterBtn}
-            >
-              <Ionicons name="remove" size={20} color={Colors.gray[900]} />
-            </TouchableOpacity>
+          <View style={[styles.counterContainer, fixedMotorcycleSeats && styles.fixedCounterContainer]}>
+            {!fixedMotorcycleSeats && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Retirer une place"
+                accessibilityState={{ disabled: !canDecreaseSeats }}
+                disabled={!canDecreaseSeats}
+                onPress={() => setSeats((Number(seats) - 1).toString())}
+                style={[styles.counterBtn, !canDecreaseSeats && styles.counterBtnDisabled]}
+              >
+                <Ionicons name="remove" size={20} color={Colors.gray[900]} />
+              </TouchableOpacity>
+            )}
             <Text style={styles.counterValue}>{seats}</Text>
-            <TouchableOpacity
-              onPress={() => setSeats((parseInt(seats || '1') + 1).toString())}
-              style={styles.counterBtn}
-            >
-              <Ionicons name="add" size={20} color={Colors.gray[900]} />
-            </TouchableOpacity>
+            {!fixedMotorcycleSeats && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Ajouter une place"
+                onPress={() => setSeats((Number(seats) + 1).toString())}
+                style={styles.counterBtn}
+              >
+                <Ionicons name="add" size={20} color={Colors.gray[900]} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
         <View style={[styles.card, { flex: 1.5 }]}>
@@ -77,6 +95,11 @@ export function PublishPricingStep({
           </View>
         </View>
       </View>
+      {fixedMotorcycleSeats && (
+        <Text style={styles.seatsHelperText}>
+          Places définies automatiquement selon le véhicule sélectionné.
+        </Text>
+      )}
 
       <TouchableOpacity
         style={[styles.card, styles.freeTripCard]}

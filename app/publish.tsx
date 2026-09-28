@@ -169,6 +169,7 @@ export default function PublishScreen() {
             stepEntering={model.stepEntering}
             setSeats={model.form.setSeats}
             seats={model.form.seats}
+            vehicleType={model.selectedVehicleType}
             isFreeTrip={model.form.isFreeTrip}
             price={model.form.price}
             setPrice={model.form.setPrice}
@@ -337,5 +338,4 @@ export default function PublishScreen() {
     </FormScreen>
   );
 }
-
 

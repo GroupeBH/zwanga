@@ -9,6 +9,38 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 28 septembre 2026 — Places proposées selon le véhicule lors de la publication
+
+**Périmètre et problème constaté.** Dans le formulaire de publication, le nombre
+de places était initialisé à 4 indépendamment du véhicule. Après avoir choisi une
+moto à deux ou trois roues, un conducteur pouvait conserver ce nombre et devoir
+revenir à l'étape précédente pour le corriger.
+
+**Solution appliquée.** `features/publish/publishSeatPolicy.ts` définit 2 places
+pour une moto à deux roues, 3 pour une moto à trois roues et au moins 4 pour une
+voiture. `hooks/publish/usePublishController.ts` transmet le type du véhicule
+sélectionné à `hooks/publish/usePublishFormState.ts`, qui calcule aussitôt le
+nombre affiché, confirmé et envoyé à la publication. `app/publish.tsx` transmet
+également ce type à `features/publish/PublishPricingStep.tsx` : les boutons de
+réglage disparaissent pour les motos et la voiture ne peut pas descendre sous
+4 places. Les styles associés sont dans
+`features/screen-styles/app/publish/publishMapPreviewShade.styles.ts`.
+
+**Comportements conservés et précautions.** Une voiture peut toujours proposer
+plus de 4 places ; son choix supérieur est conservé si le conducteur change
+temporairement de type de véhicule puis revient à la voiture. Le prix, le trajet
+gratuit, la description et les autres étapes de publication restent inchangés.
+La même valeur calculée sert à l'écran de confirmation et aux publications
+simples ou récurrentes, sans attendre une mise à jour asynchrone du formulaire.
+
+**Vérifications et limites.** `tests/publishSeatSelection.test.js` couvre les
+capacités, les changements de véhicule et les commandes de l'étape tarifaire.
+Avec les tests voisins de places passager et de véhicules : **21 tests JavaScript
+réussis, zéro échec**. TypeScript (`tsc --noEmit --incremental false`), ESLint
+ciblé, limite des 400 lignes et `git diff --check` ont réussi. Ces contrôles
+sont simulés ou statiques ; aucun essai sur appareil physique ni publication
+réelle avec le backend n'a été effectué.
+
 ## 28 septembre 2026 — Barre d'onglets et en-tête « Mes trajets »
 
 **Périmètre et problème constaté.** Sur les captures Android fournies, les
