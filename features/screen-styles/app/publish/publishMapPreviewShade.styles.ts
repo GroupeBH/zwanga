@@ -234,6 +234,18 @@ export const styles = StyleSheet.create({
     borderRadius: BorderRadius.lg,
     padding: Spacing.xs,
   },
+  fixedCounterContainer: {
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  counterBtnDisabled: {
+    opacity: 0.35,
+  },
+  seatsHelperText: {
+    color: Colors.gray[500],
+    fontSize: 12,
+    marginBottom: Spacing.md,
+  },
   counterBtn: {
     width: 36,
     height: 36,

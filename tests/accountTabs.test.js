@@ -1,3 +1,4 @@
+/* global __dirname */
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -126,6 +127,10 @@ for (const platform of ["ios", "android"]) {
         role === "passenger" ? "search" : "briefcase",
       );
       const tabs = elements.find((node) => node.type === Tabs);
+      const tabBarStyle = Object.assign({}, ...tabs.props.screenOptions.tabBarStyle.filter(Boolean));
+      assert.equal(tabBarStyle.borderTopLeftRadius ?? 0, 0);
+      assert.equal(tabBarStyle.borderTopRightRadius ?? 0, 0);
+      assert.equal(tabBarStyle.backgroundColor, '#FFFFFF');
       assert.equal(tabs.props.screenOptions.lazy, true);
       assert.equal(tabs.props.detachInactiveScreens, platform !== "android");
       assert.equal(
@@ -272,8 +277,9 @@ test("public search stays unambiguous and the home search links are unchanged", 
     );
   }
   const layout = fs.readFileSync(
-    path.join(__dirname, "../app/_layout.tsx"),
+    path.join(__dirname, "../components/ProtectedAppStack.tsx"),
     "utf8",
   );
   assert.match(layout, /Stack.Screen name="search"/);
+  assert.match(layout, /Stack.Protected guard=\{hasSession\}/);
 });

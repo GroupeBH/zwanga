@@ -9,6 +9,114 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 28 septembre 2026 — Places proposées selon le véhicule lors de la publication
+
+**Périmètre et problème constaté.** Dans le formulaire de publication, le nombre
+de places était initialisé à 4 indépendamment du véhicule. Après avoir choisi une
+moto à deux ou trois roues, un conducteur pouvait conserver ce nombre et devoir
+revenir à l'étape précédente pour le corriger.
+
+**Solution appliquée.** `features/publish/publishSeatPolicy.ts` définit 2 places
+pour une moto à deux roues, 3 pour une moto à trois roues et au moins 4 pour une
+voiture. `hooks/publish/usePublishController.ts` transmet le type du véhicule
+sélectionné à `hooks/publish/usePublishFormState.ts`, qui calcule aussitôt le
+nombre affiché, confirmé et envoyé à la publication. `app/publish.tsx` transmet
+également ce type à `features/publish/PublishPricingStep.tsx` : les boutons de
+réglage disparaissent pour les motos et la voiture ne peut pas descendre sous
+4 places. Les styles associés sont dans
+`features/screen-styles/app/publish/publishMapPreviewShade.styles.ts`.
+
+**Comportements conservés et précautions.** Une voiture peut toujours proposer
+plus de 4 places ; son choix supérieur est conservé si le conducteur change
+temporairement de type de véhicule puis revient à la voiture. Le prix, le trajet
+gratuit, la description et les autres étapes de publication restent inchangés.
+La même valeur calculée sert à l'écran de confirmation et aux publications
+simples ou récurrentes, sans attendre une mise à jour asynchrone du formulaire.
+
+**Vérifications et limites.** `tests/publishSeatSelection.test.js` couvre les
+capacités, les changements de véhicule et les commandes de l'étape tarifaire.
+Avec les tests voisins de places passager et de véhicules : **21 tests JavaScript
+réussis, zéro échec**. TypeScript (`tsc --noEmit --incremental false`), ESLint
+ciblé, limite des 400 lignes et `git diff --check` ont réussi. Ces contrôles
+sont simulés ou statiques ; aucun essai sur appareil physique ni publication
+réelle avec le backend n'a été effectué.
+
+## 28 septembre 2026 — Barre d'onglets et en-tête « Mes trajets »
+
+**Périmètre et problème constaté.** Sur les captures Android fournies, les
+angles supérieurs arrondis de la barre d'onglets laissent apparaître l'arrière-plan
+aux deux extrémités, surtout sous la feuille de l'accueil. Dans « Mes trajets »,
+le titre, deux rangées de filtres, la recherche toujours visible et deux boutons
+de publication occupent beaucoup d'espace avant la liste ; le bouton flottant
+recouvre aussi des cartes.
+
+**Solution appliquée.** `app/(tabs)/_layout.tsx` donne à la barre d'onglets un
+fond blanc continu sans arrondi supérieur, sur Android et iOS, tout en conservant
+son placement iOS et ses marges de zone sûre. `features/trips/TripsHeader.tsx`
+regroupe l'en-tête : publication nommée dans la ligne du titre, choix
+« Publiés/Réservations » compact, filtre « À venir/Historique » et recherche
+ouvrable à la demande. Fermer la recherche efface aussi le filtre pour éviter une
+liste filtrée sans champ visible. `app/(tabs)/trips.tsx` utilise cet en-tête et
+retire le bouton flottant en double ; les styles sont ajustés dans
+`features/screen-styles/app/tabs/trips/container.styles.ts` et `index.ts`, et
+l'ancien `fab.styles.ts` devenu inutilisé est supprimé.
+
+**Comportements conservés et précautions.** La publication passe toujours par
+`/publish`, les catégories et filtres gardent leurs mêmes données et le changement
+de catégorie revient à « À venir ». Recherche, effacement, gestion des trajets
+réguliers, cartes, actions modifier/supprimer, pagination et rafraîchissement ne
+sont pas modifiés. Les cibles de l'en-tête restent d'au moins 44 points ; la
+recherche n'ajoute une rangée que lorsqu'elle est utilisée.
+
+**Vérifications et limites.** `tests/tripsHeaderLayout.test.js` couvre l'ouverture
+et la fermeture de la recherche, l'effacement du filtre caché, les actions et
+les tailles de cible. `tests/accountTabs.test.js` vérifie la barre continue sur
+Android et iOS et suit le nouvel emplacement des routes protégées. Avec les
+tests voisins d'accueil et de cartes : **23 tests JavaScript réussis, zéro échec**.
+TypeScript, limite des 400 lignes et `git diff --check` réussis. Ces vérifications
+sont statiques ou simulées en JavaScript ; aucune capture après correction ni
+vérification visuelle sur les téléphones concernés n'a été réalisée.
+
+## 28 septembre 2026 — Accès aux écrans privés après interruption de l'authentification
+
+**Périmètre et problème constaté.** Application mobile, restauration de session et
+navigation après connexion/inscription interrompue. L'état d'authentification
+pouvait être déclaré actif dès que deux chaînes de jetons existaient, même sans
+identifiant de compte exploitable. Le garde de navigation redirigeait après le
+rendu, ce qui pouvait laisser le profil, la publication ou la demande de trajet
+accessibles sans session utilisable.
+
+**Solution appliquée.** `features/auth/sessionPolicy.ts` définit une session
+récupérable par une identité lisible dans le jeton d'accès et un jeton de
+rafraîchissement daté et non expiré. `store/slices/authSlice.ts` rejette les
+nouveaux jetons invalides avant leur stockage, écarte les jetons stockés
+inutilisables au démarrage et accepte `userId` si le jeton n'utilise pas `sub`.
+`services/tokenRefresh.ts` refuse également une réponse de renouvellement
+inutilisable. `store/selectors/index.ts` expose la même règle aux écrans.
+`components/ProtectedAppStack.tsx` protège toutes les routes privées au niveau
+du navigateur ; `app/_layout.tsx` l'intègre. `components/AuthGuard.tsx`,
+`app/splash.tsx` et `app/background-location-disclosure.tsx` orientent vers
+l'entrée d'authentification lorsque cette session n'existe pas.
+
+**Comportements conservés et précautions.** Une session avec jeton d'accès
+expiré reste récupérable si son jeton de rafraîchissement est encore valide ;
+le renouvellement avant requête HTTP et la conservation du contexte hors ligne
+restent en place. Les écrans publics de bienvenue et d'authentification restent
+accessibles. Le nettoyage au démarrage utilise la version de session initiale
+pour ne pas effacer une connexion plus récente. Le test de couverture des routes
+signale tout nouvel écran privé oublié dans la protection.
+
+**Vérifications et limites.** `tests/authNavigationSession.test.js` couvre les
+jetons sans identité, expirés ou mal formés, le refus de les enregistrer, leur
+nettoyage au redémarrage et la présence des routes privées dans le garde.
+Avec les tests existants de cycle d'authentification et de requêtes : **12 tests
+JavaScript réussis, zéro échec**. TypeScript (`tsc --noEmit --incremental false`),
+ESLint ciblé, `check:network`, `check:source-size` (950 sources, aucune au-dessus
+de 400 lignes) et `git diff --check` réussis. Ces contrôles sont des tests
+JavaScript et des analyses statiques ; aucun essai sur appareil physique ni
+validation avec le backend réel n'a été effectué. La validation des jetons par
+signature et les autorisations des opérations restent du ressort du backend.
+
 ## 25 septembre 2026 — Correctifs du contre-audit de performance
 
 **Problèmes.** Attente GPS ponctuelle non bornée, lectures répétées de session et

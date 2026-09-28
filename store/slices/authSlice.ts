@@ -5,6 +5,7 @@ import { getTokenSessionVersion } from '../../services/tokenSession';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
 import { isDriverAccount } from '@/utils/accountRole';
+import { hasRecoverableAuthSession, hasUsableNewAuthSession } from '@/features/auth/sessionPolicy';
 
 interface AuthState {
   initializationId?: string;
@@ -82,6 +83,9 @@ export const saveTokensAndUpdateState = createAsyncThunk(
   'auth/saveTokensAndUpdateState',
   async (tokens: { accessToken: string; refreshToken: string }, { dispatch }) => {
     try {
+      if (!hasUsableNewAuthSession(tokens.accessToken, tokens.refreshToken)) {
+        throw new Error('Session reçue invalide ou expirée. Veuillez réessayer.');
+      }
       // 1. Sauvegarder d'abord dans SecureStore (séquentiellement)
       console.log('[saveTokensAndUpdateState] Sauvegarde des tokens dans SecureStore...');
       const writing = storeTokens(tokens.accessToken, tokens.refreshToken);
@@ -110,6 +114,7 @@ export const saveTokensAndUpdateState = createAsyncThunk(
 export const initializeAuth = createAsyncThunk(
   'auth/initialize',
   async () => {
+    const sessionVersion = getTokenSessionVersion();
     try {
       // Valider et rafraîchir les tokens si nécessaire
       const isAuthenticated = await validateAndRefreshTokens();
@@ -125,23 +130,14 @@ export const initializeAuth = createAsyncThunk(
       if (!accessToken || !refreshToken) {
         return null;
       }
+      if (!hasRecoverableAuthSession(accessToken, refreshToken)) {
+        await clearTokens(sessionVersion);
+        return null;
+      }
       
       // Décoder le payload du token
       const payload = decodeJWT(accessToken);
       console.log("payload at initializeAuth", payload);
-      
-      if (!payload) {
-        console.warn('[initializeAuth] Token JWT invalide - mais on garde les tokens pour éviter la déconnexion');
-        // NE PAS supprimer les tokens - ils pourraient être valides mais juste mal décodés
-        // L'utilisateur pourra toujours utiliser l'app, même si certaines infos ne sont pas disponibles
-        // Les tokens seront validés lors de la prochaine requête API
-        return {
-          accessToken,
-          refreshToken,
-          tokenPayload: null,
-          userInfo: null,
-        };
-      }
       
       console.log('[initializeAuth] Authentification initialisée avec succès');
       
@@ -175,6 +171,7 @@ const authSlice = createSlice({
       state.error = null;
     },
     setTokens: (state, action: PayloadAction<{ accessToken: string; refreshToken: string }>) => {
+      if (!hasRecoverableAuthSession(action.payload.accessToken, action.payload.refreshToken)) return;
       state.initializationId = undefined;
       state.logoutRequestId = undefined;
       state.isLoading = false;
@@ -185,6 +182,7 @@ const authSlice = createSlice({
       applyTokenDataToState(state, action.payload.accessToken);
     },
     setAccessToken: (state, action: PayloadAction<string>) => {
+      if (!hasRecoverableAuthSession(action.payload, state.refreshToken)) return;
       state.accessToken = action.payload;
       applyTokenDataToState(state, action.payload);
     },
@@ -304,7 +302,7 @@ function parseUserInfo(payload: any): any | null {
     return null;
   }
   return {
-    id: payload.sub,
+    id: payload.sub ?? payload.userId,
     phone: payload.phone,
     role: (payload.role as User['role']),
     status: payload.status,

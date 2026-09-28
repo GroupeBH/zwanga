@@ -59,6 +59,9 @@ export function usePublishController() {
 
   // Driver and Vehicle Management
   const vehicle = usePublishVehicleState();
+  const selectedVehicleType = vehicle.activeVehicles.find(
+    (item) => item.id === vehicle.selectedVehicleId,
+  )?.type;
 
   const vehicleEditor = usePublishVehicleEditor({
     setVehicleType: vehicle.setVehicleType,
@@ -73,7 +76,7 @@ export function usePublishController() {
   });
 
   // Données du formulaire
-  const form = usePublishFormState();
+  const form = usePublishFormState(selectedVehicleType);
   const route = usePublishRoutePreview({
     manualAddressTarget: form.manualAddressTarget,
     departureManualAddress: form.departureManualAddress,
@@ -334,6 +337,7 @@ export function usePublishController() {
     schedule,
     insets,
     vehicle,
+    selectedVehicleType,
     vehicleEditor,
     publicationSuccess,
     submission,

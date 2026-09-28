@@ -3,6 +3,7 @@ import { getStoreDispatch } from '../store/storeAccessor';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
 import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 import { getTokenSessionVersion } from './tokenSession';
+import { hasUsableNewAuthSession } from '../features/auth/sessionPolicy';
 
 const AUTH_REFRESH_ERROR_STATUSES = new Set([400, 401, 403]);
 const COOLDOWN_MS = 60_000;
@@ -39,7 +40,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
       let data: { accessToken: string; refreshToken: string };
       try { data = await request.unwrap(); } finally { request.reset(); }
       if (version !== getTokenSessionVersion()) return null;
-      if (!data?.accessToken || !data.refreshToken) return null;
+      if (!hasUsableNewAuthSession(data?.accessToken, data?.refreshToken)) return null;
       const saved = await storeTokens(data.accessToken, data.refreshToken, version);
       if (!saved || version !== getTokenSessionVersion()) return null;
       getStoreDispatch()({ type: 'auth/setTokens', payload: data });

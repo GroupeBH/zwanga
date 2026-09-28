@@ -1,11 +1,13 @@
 import { LatLng, RoutePointStatus } from '../../features/publish/publishModel';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
+import { getPublishSeats } from '@/features/publish/publishSeatPolicy';
+import type { TripRequestVehicleType } from '@/types';
 import { useState } from 'react';
 
 
 
-export function usePublishFormState() {
+export function usePublishFormState(selectedVehicleType: TripRequestVehicleType | null | undefined) {
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
   const [departurePointStatus, setDeparturePointStatus] = useState<RoutePointStatus>(null);
@@ -25,7 +27,8 @@ export function usePublishFormState() {
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
-  const [seats, setSeats] = useState('4');
+  const [requestedSeats, setSeats] = useState('4');
+  const seats = getPublishSeats(requestedSeats, selectedVehicleType);
   const [isFreeTrip, setIsFreeTrip] = useState(false);
   const [requiresPassengerKyc, setRequiresPassengerKyc] = useState(false);
   const [price, setPrice] = useState('');

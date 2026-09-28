@@ -64,7 +64,7 @@ export default function TabLayout() {
           freezeOnBlur: Platform.OS !== 'android',
           tabBarStyle: [
             styles.tabBar,
-            Platform.OS === 'ios' ? styles.tabBarIOS : styles.tabBarAndroid,
+            Platform.OS === 'ios' && styles.tabBarIOS,
             tabBarMetrics,
           ],
           tabBarLabelStyle: styles.tabBarLabel,
@@ -172,12 +172,6 @@ const styles = StyleSheet.create({
   },
   tabBarIOS: {
     position: 'absolute',
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
-  },
-  tabBarAndroid: {
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
   },
   tabBarLabel: {
     fontSize: FontSizes.xs,
