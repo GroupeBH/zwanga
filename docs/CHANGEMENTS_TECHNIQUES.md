@@ -9,6 +9,82 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 
+## 29 septembre 2026 — Revenus conducteur : cash informatif et états de retrait
+
+**Périmètre et problème constaté.** L'écran des revenus ne présentait pas le
+cash confirmé reçu des passagers séparément du solde retirable. Les termes
+« disponible au versement » et « déjà versé » ne rendaient pas suffisamment
+explicite la distinction entre gains retirables, retraits en cours et retraits
+effectués. Les écritures de gains portant le mode `cash` dans le backend local
+correspondent à une participation financée par Zwanga, et non aux espèces
+remises par le passager. À la demande explicite de l'utilisateur, cette
+participation reste retirable ; seul le cash passager est informatif.
+
+**Solution appliquée dans le mobile.**
+
+- `app/driver-earnings.tsx` conserve le solde retirable comme montant principal,
+  affiche « Retrait en cours » et « Déjà retiré », et explicite les sources
+  admissibles : paiements électroniques, jetons et participations Zwanga
+  créditées. Ces trois montants proviennent toujours du résumé serveur, jamais
+  des lignes de la page d'historique. Le bouton devient « Retirer mes gains ».
+- `features/driver-earnings/CashRevenueSummary.tsx` affiche le total des
+  réceptions cash confirmées dans une zone neutre, sans commande de retrait,
+  avec la mention « Non retirable ». Un champ absent sur un ancien serveur ou
+  invalide affiche une indisponibilité, pas un zéro supposé.
+- `features/driver-earnings/DriverEarningRow.tsx` identifie la participation
+  Zwanga comme un crédit financé hors espèces reçues. Les écritures annulées
+  ne portent plus le signe positif d'un gain crédité. Une écriture disponible
+  est appelée « Crédit net », sans prétendre qu'elle reste individuellement
+  retirable après un retrait du solde mutualisé.
+- `features/driver-earnings/PayoutHistory.tsx` distingue les retraits effectués
+  des opérations en cours ou échouées. Les styles sont dans
+  `features/screen-styles/app/driver-earnings/container.styles.ts` ; le champ
+  facultatif `cashReceivedAmount` est déclaré dans `types/earnings.ts`.
+- `store/api/booking/cashReceipt.endpoints.ts` invalide aussi le résumé des
+  revenus après confirmation réussie d'une réception cash.
+
+**Solution appliquée dans le backend local `zwanga-backend`.**
+`src/driver-settlements/driver-cash-summary.ts` calcule `cashReceivedAmount`
+par une seule agrégation sur les réservations, jointe à leurs trajets et
+filtrée par conducteur propriétaire, conducteur ayant confirmé la réception,
+mode cash, devise du résumé et date de réception renseignée. Seul
+`cashReceivedAmount` est additionné : ni le tarif brut, ni la subvention, ni le
+cash simplement attendu. `src/driver-settlements/driver-settlements.service.ts`
+expose ce total sur `GET /driver-settlements/me`, indépendamment des soldes.
+Aucun changement de schéma, de formule de retrait ou d'écriture comptable.
+Les modifications OTP déjà présentes dans ce dépôt n'ont pas été touchées.
+
+**Comportements conservés et précautions.** Les paiements électroniques et en
+jetons, la participation Zwanga, les commissions, le KYC, les réservations des
+montants en cours, l'idempotence et la reprise après réponse réseau incertaine
+gardent leur logique existante. La confirmation cash ne crée aucun crédit
+retirable ni transfert. La pagination, la liste virtualisée, la suspension des
+lectures hors écran et le choix du destinataire Mobile Money restent en place.
+La compétence d'interface a guidé la hiérarchie visuelle et les libellés ; les
+règles Postgres ont guidé l'agrégation côté serveur sans lecture par réservation.
+
+**Vérifications réalisées et limites.**
+
+- **47 tests JavaScript mobiles réussis** : `driverPayout.test.js`,
+  `driverPayoutDestination.test.js`, `driverEarningsPresentation.test.js`,
+  `cashReceipt.test.js`, `financeHistory.test.js`. Ils couvrent notamment le
+  cash seul avec solde retirable nul, le montant effectivement demandé sans
+  ajout du cash, les trois soldes sur une page vide, les libellés, les données
+  absentes, l'invalidation du cache et la reprise des retraits incertains.
+- **44 tests Jest backend réussis** : `driver-cash-summary.spec.ts`,
+  `driver-cash-subsidy.spec.ts`, `driver-settlements.service.spec.ts`,
+  `driver-payout-recovery.spec.ts` et `bookings/cash-receipts.spec.ts`.
+  Les dépôts sont simulés : ces tests contrôlent les filtres de la requête et
+  l'indépendance des soldes, pas une exécution PostgreSQL réelle.
+- TypeScript mobile et backend (`--noEmit --incremental false`), ESLint mobile
+  ciblé, contrôle des frontières réseau et limite des 400 lignes réussis.
+- Aucun essai physique Android/iOS, mesure SQL/EXPLAIN, virement réel ou
+  déploiement effectué. Déployer le backend pour disposer du total cash ;
+  l'application reste compatible avec l'ancien serveur, mais affiche ce total
+  comme indisponible. Les anciennes réceptions non confirmées ne sont pas
+  inventées ni rétrospectivement créditées. Valider sur appareil les comptes
+  cash seul, électroniques/jetons, participation Zwanga et retraits en cours.
+
 ## 28 septembre 2026 — Réduction des lectures et timers hors écran
 
 **Périmètre et problème constaté.** Le détail d'un trajet lisait et sondait

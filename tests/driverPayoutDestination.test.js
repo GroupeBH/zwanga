@@ -53,7 +53,8 @@ test('earnings main button and failed-payout retry both open the recipient form;
   const hooks = hookHarness(); const opens = [];
   const state = { canSubmit: true, busy: false, openPayoutForm: amount => opens.push(amount),
     payoutForm: { amount: 5000, phone: '+243991234567' }, setPayoutPhone() {}, confirmPayoutForm() {}, closePayoutForm() {} };
-  const summary = { payoutPhone: '0891234567', availableBalance: 9500, kycApproved: true, currency: 'CDF' };
+  const summary = { payoutPhone: '0891234567', availableBalance: 9500, pendingPayoutBalance: 1200,
+    paidBalance: 4000, cashReceivedAmount: 50000, kycApproved: true, currency: 'CDF' };
   const { default: Screen } = loader({
     react: { ...React, ...hooks.react }, 'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, 'expo-router': { useRouter: () => ({}) },
@@ -61,16 +62,26 @@ test('earnings main button and failed-payout retry both open the recipient form;
     '@/utils/reanimated': { default: { View: 'AnimatedView' }, FadeInDown: { delay: () => null } },
     '@/hooks/driver-earnings/useDriverPayout': { useDriverPayout: props => { assert.equal(props.isActive, true); return state; } },
     '@/features/driver-earnings/PayoutHistory': { PayoutHistory: 'History' },
+    '@/features/driver-earnings/CashRevenueSummary': { CashRevenueSummary: 'CashSummary' },
     '@/features/driver-earnings/PayoutDestinationModal': { PayoutDestinationModal: 'DestinationModal' },
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: () => ({ data: summary }),
       useGetDriverEarningsPageQuery: () => ({ currentData: { data: [], total: 0, nextCursor: null } }),
       useGetDriverPayoutsPageQuery: () => ({ currentData: { data: [], total: 0, nextCursor: null } }) },
   })('app/driver-earnings.tsx');
   const tree = hooks.render(Screen), nodes = elements(tree);
-  const receive = nodes.find(node => node.type === 'Button' && elements(node).some(child => child.props?.children === 'Recevoir mes gains'));
+  const receive = nodes.find(node => node.type === 'Button' && elements(node).some(child => child.props?.children === 'Retirer mes gains'));
   receive.props.onPress();
   nodes.find(node => node.type === 'History').props.onRetry(5000);
   assert.deepEqual(opens, [undefined, 5000]);
+  for (const label of ['SOLDE RETIRABLE', 'Retrait en cours', 'Déjà retiré']) {
+    assert.ok(nodes.some(node => node.props?.children === label));
+  }
+  for (const amount of [9500, 1200, 4000]) {
+    const formatted = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(amount) + ' CDF';
+    assert.ok(nodes.some(node => node.props?.children === formatted), `global summary amount ${amount} remains visible with an empty page`);
+  }
+  assert.equal(nodes.find(node => node.type === 'History').props.availableBalance, 9500);
+  assert.equal(nodes.find(node => node.type === 'CashSummary').props.amount, 50000);
   const modal = nodes.find(node => node.type === 'DestinationModal');
   assert.equal(modal.props.visible, true);
   assert.equal(modal.props.phone, '+243991234567');

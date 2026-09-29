@@ -47,6 +47,8 @@ export interface DriverSettlementSummary {
   availableBalance: number;
   pendingPayoutBalance: number;
   paidBalance: number;
+  /** Confirmed passenger cash receipts, informational only; absent on older servers. */
+  cashReceivedAmount?: number;
   currency: string;
   commissionRate: number;
   kycApproved: boolean;
