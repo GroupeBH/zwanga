@@ -27,7 +27,7 @@ getProfileSummary: builder.query<ProfileSummary, void>({
       onQueryStarted: syncAccountRole,
       query: () => '/users/me',
       providesTags: [currentUserTag],
-      transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
+      transformResponse: (response: { user: ServerUser; stats: ProfileStats; profileState?: unknown }) =>
         mapProfileSummary(response),
     }),
 // Récupérer l'utilisateur actuellement connecté

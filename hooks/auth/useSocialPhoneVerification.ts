@@ -1,4 +1,5 @@
 import { SocialAuthProvider, getAuthErrorMessage } from '../../features/auth/authModel';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import React from 'react';
 import { AuthStep } from '@/components/auth';
@@ -92,7 +93,7 @@ export function useSocialPhoneVerification({
     try {
       setIsSendingGoogleOtp(true);
       await sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' }).unwrap();
-      showDialog({ variant: 'success', title: 'Code renvoyé', message: 'Un nouveau code a été envoyé par SMS.' });
+      showDialog({ variant: 'success', title: 'Code renvoyé', message: otpDeliveryCopy.sent });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de renvoyer le code. Réessayez dans un instant.') });
     } finally {

@@ -32,14 +32,16 @@ test('every non-public app route is inside the session guard', () => {
     '@/store/hooks': { useAppSelector: (selector) => selector() },
     'expo-router': { Stack },
     'react-native': { Platform: { OS: 'android' } },
+    '@/hooks/navigation/useHomeRootNavigation': { useHomeRootNavigation: () => true },
   })('components/ProtectedAppStack.tsx');
   const tree = ProtectedAppStack();
   const children = Array.isArray(tree.props.children) ? tree.props.children : [tree.props.children];
-  const protectedGroup = children.find((child) => child.type === Stack.Protected);
+  const isPrivateGroup = child => child.type === Stack.Protected && child.props.children.some(screen => screen.props.name === '(tabs)');
+  const protectedGroup = children.find(isPrivateGroup);
   assert.equal(protectedGroup.props.guard, false);
   authenticated = true;
   const activeChildren = ProtectedAppStack().props.children;
-  assert.equal(activeChildren.find((child) => child.type === Stack.Protected).props.guard, true);
+  assert.equal(activeChildren.find(isPrivateGroup).props.guard, true);
   const protectedScreens = new Set(protectedGroup.props.children.map((child) => child.props.name));
   assert.ok(protectedScreens.has('(tabs)'));
   assert.ok(protectedScreens.has('publish'));

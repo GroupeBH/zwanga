@@ -127,6 +127,8 @@ for (const platform of ["ios", "android"]) {
         role === "passenger" ? "search" : "briefcase",
       );
       const tabs = elements.find((node) => node.type === Tabs);
+      assert.equal(tabs.props.initialRouteName, 'index');
+      assert.equal(tabs.props.backBehavior, 'initialRoute');
       const tabBarStyle = Object.assign({}, ...tabs.props.screenOptions.tabBarStyle.filter(Boolean));
       assert.equal(tabBarStyle.borderTopLeftRadius ?? 0, 0);
       assert.equal(tabBarStyle.borderTopRightRadius ?? 0, 0);

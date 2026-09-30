@@ -25,7 +25,15 @@ function getKnownBusinessErrorMessage(error: any): string | null {
   const message = getErrorMessageText(error).toLowerCase();
 
   if (message.includes('otp') || message.includes('one-time password')) {
-    return 'Le code de v\u00e9rification est invalide ou expir\u00e9.';
+    const status = getErrorStatus(error);
+    // Sending can fail before a code exists. Keep Didit throttling and service
+    // failures distinct from a rejected code, including invalid provider replies.
+    if (status === 429 || (typeof status === 'number' && status >= 500)) {
+      return getStatusErrorMessage(status, 'Le service de vérification est indisponible.');
+    }
+    if (/invalid|incorrect|expir/.test(message)) {
+      return 'Le code de v\u00e9rification est invalide ou expir\u00e9.';
+    }
   }
 
   if (message.includes('pin') && (message.includes('invalid') || message.includes('incorrect'))) {

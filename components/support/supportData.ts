@@ -30,7 +30,7 @@ export const LOCAL_FAQ_ENTRIES: SupportFaqEntry[] = [
     category: 'demarrage',
     question: 'Comment créer mon compte ?',
     answer:
-      'Entrez votre numéro de téléphone, confirmez le code SMS, puis complétez votre profil à votre rythme.',
+      'Entrez votre numéro de téléphone et suivez les étapes. Si un code est demandé, consultez WhatsApp : il est envoyé via Didit, avec un SMS possible en secours. Complétez ensuite votre profil.',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },

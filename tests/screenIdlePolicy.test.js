@@ -7,7 +7,7 @@ function profileFixture() {
   const hooks = hookHarness(), calls = [], dispatches = [];
   const state = { active: true, user: { id: 'driver', role: 'driver' } };
   const values = {
-    profile: { user: state.user, stats: { vehicles: 1 } }, vehicles: [{ id: 'car' }],
+    profile: { user: state.user, stats: { vehicles: 1 }, identity: { status: 'approved' } }, vehicles: [{ id: 'car' }],
     kyc: { status: 'approved' }, requests: [{ status: 'pending' }], offers: [],
     referrals: {}, plans: [], premium: { isPremium: false }, payments: [],
     settlements: { availableBalance: 2000 }, reviews: [], rating: {},
@@ -48,14 +48,14 @@ function profileFixture() {
   return { hooks, state, calls, values, dispatches, render: () => hooks.render(useProfileData) };
 }
 
-test('profile pauses ten display reads on blur/background but keeps payment dependencies alive', () => {
+test('profile pauses nine display reads on blur/background but keeps payment dependencies alive', () => {
   const app = profileFixture(), initial = app.render();
   assert.equal(initial.knownVehicleCount, 1);
   assert.equal(initial.tripRequestsCount, 1);
   app.state.active = false; app.calls.length = 0;
   const hidden = app.render();
   const displayReads = app.calls.filter(call => !['premium', 'payments'].includes(call.name));
-  assert.equal(displayReads.length, 10);
+  assert.equal(displayReads.length, 9);
   for (const { options } of displayReads) {
     assert.equal(options.skip, true);
     assert.equal(options.pollingInterval, 0);
@@ -67,6 +67,7 @@ test('profile pauses ten display reads on blur/background but keeps payment depe
   assert.equal(hidden.tripRequestsStats, initial.tripRequestsStats);
   assert.equal(hidden.currentUser, initial.currentUser);
   app.state.active = true; app.calls.length = 0; app.values.vehicles = [{ id: 'car' }, { id: 'moto' }];
+  app.values.profile = { ...app.values.profile, stats: { vehicles: 2 } };
   assert.equal(app.render().knownVehicleCount, 2);
   for (const { options } of app.calls.filter(call => !['premium', 'payments'].includes(call.name))) {
     assert.equal(options.skip, false);

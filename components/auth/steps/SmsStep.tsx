@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
+import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 
 interface SmsStepProps {
   mode: AuthMode;
@@ -92,14 +93,15 @@ export function SmsStep({
         </View>
         <Text style={styles.heroTitle}>Vérification</Text>
         <Text style={styles.heroSubtitle}>
-          Code de vérification (OTP) envoyé au{' '}
+          Numéro à vérifier :{' '}
           <Text style={{ fontWeight: 'bold', color: Colors.gray[900] }}>{phone}</Text>
         </Text>
       </View>
 
       <View style={styles.formSection}>
-        <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-        <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
+        <OtpDeliveryNotice />
+        <Text style={styles.inputLabel}>Code de vérification</Text>
+        <Text style={styles.inputLabelSmall}>Saisissez les 5 chiffres du code reçu</Text>
         <View style={styles.smsCodeContainer}>
           {smsCode.map((digit, index) => (
             <TextInput

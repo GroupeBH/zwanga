@@ -4,6 +4,8 @@ import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
+import { isSignupOtpVerificationEnabled } from '@/config/env';
+import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 
 interface GooglePhoneStepProps {
   profileName: string | null;
@@ -64,6 +66,8 @@ export function GooglePhoneStep({
             autoFocus={Platform.OS !== 'android'}
           />
         </View>
+
+        {isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
 
         <TouchableOpacity
           style={[

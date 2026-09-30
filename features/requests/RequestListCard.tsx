@@ -4,13 +4,14 @@ import { Colors } from '@/constants/styles';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { homePriceLabel, homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { placeName } from '@/features/home/homeModel';
+import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 import type { TripRequest } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
 const statuses: Record<string, { label: string; color: string }> = {
-  pending: { label: 'En attente', color: Colors.gray[700] },
+  pending: { label: 'En attente de conducteur', color: Colors.gray[700] },
   offers_received: { label: 'Offres reçues', color: Colors.info },
   driver_selected: { label: 'Conducteur sélectionné', color: Colors.success },
   cancelled: { label: 'Annulée', color: Colors.danger },
@@ -38,6 +39,7 @@ export const RequestListCard = React.memo(function RequestListCard({
   const vehicle = request.vehicleType && getRegisteredVehicleTypeLabel(request.vehicleType);
   const budget = Number(request.maxPricePerSeat);
   const hasBudget = Number.isFinite(budget) && budget > 0;
+  const canReviewForAcceptance = !own && canAccept && isRequestUnassigned(request) && isTripRequestWithinAcceptanceWindow(request);
   return (
     <View style={[styles.card, featured && styles.featured]}>
       <CompactTripCard
@@ -56,12 +58,12 @@ export const RequestListCard = React.memo(function RequestListCard({
         accessibilityLabel={own && request.tripId ? 'Suivre la course' : 'Ouvrir la demande'}
         onPress={() => onOpen(request.id)}
       />
-      {!own && canAccept && (
+      {canReviewForAcceptance && (
         <View style={styles.actions}>
           <TouchableOpacity style={[styles.action, styles.primary]} accessibilityRole="button"
             accessibilityLabel="Ouvrir la demande pour l’accepter" onPress={() => onOpen(request.id)}>
             <Ionicons name="checkmark-circle-outline" size={16} color={Colors.white} />
-            <Text style={[styles.actionText, styles.primaryText]}>Accepter</Text>
+            <Text style={[styles.actionText, styles.primaryText]}>Voir et accepter</Text>
           </TouchableOpacity>
         </View>
       )}

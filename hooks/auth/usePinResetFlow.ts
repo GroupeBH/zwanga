@@ -4,6 +4,7 @@ import {
   useVerifyPinResetOtpMutation,
 } from '@/store/api/authApi';
 import { useEffect, useRef } from 'react';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 
 export const PIN_RESET_OTP_LENGTH = 6;
 export const emptyPinResetOtp = () => Array<string>(PIN_RESET_OTP_LENGTH).fill('');
@@ -79,7 +80,7 @@ export function usePinResetFlow(phone: string, active: boolean) {
     const verified = proof.current;
     proof.current = null;
     if (!verified || Date.now() >= verified.expiresAt) {
-      throw new Error('La vérification a expiré. Demandez un nouveau code SMS.');
+      throw new Error(otpDeliveryCopy.verificationExpired);
     }
     busy.current = true;
     const current = generation.current;

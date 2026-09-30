@@ -1,4 +1,5 @@
 import { getAuthErrorMessage } from '../../features/auth/authModel';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { trackEvent } from '@/services/analytics';
@@ -98,7 +99,7 @@ export function usePhoneAuthActions({
       setIsSendingOtp(true);
       await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
       setStep('sms');
-      showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
+      showDialog({ variant: 'success', title: 'Code envoyé', message: otpDeliveryCopy.sent });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
@@ -206,7 +207,7 @@ export function usePhoneAuthActions({
     try {
       setIsSendingResetOtp(true);
       if (!await pinReset.requestOtp()) return;
-      showDialog({ variant: 'success', title: 'Demande envoyée', message: 'Si ce numéro correspond à un compte éligible, vous recevrez un code SMS.' });
+      showDialog({ variant: 'success', title: 'Demande envoyée', message: otpDeliveryCopy.pinResetRequested });
       focusAfterInteractions({ current: resetOtpInputRefs.current[0] });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
@@ -293,7 +294,7 @@ export function usePhoneAuthActions({
       setResetOtpCode(emptyPinResetOtp());
       setResetNewPin('');
       setResetNewPinConfirm('');
-      showDialog({ variant: 'danger', title: 'Réinitialisation non confirmée', message: getAuthErrorMessage(error, 'Demandez un nouveau code SMS pour réessayer. Si le PIN a déjà été changé, connectez-vous avec le nouveau PIN.') });
+      showDialog({ variant: 'danger', title: 'Réinitialisation non confirmée', message: getAuthErrorMessage(error, otpDeliveryCopy.resetNotConfirmed) });
     }
   };
 

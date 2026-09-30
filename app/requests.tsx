@@ -1,236 +1,128 @@
-import { useRequestCards } from '../hooks/requests/useRequestCards';
-import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
-import { styles } from '../features/screen-styles/app/requests/index';
-import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { rankRequestsByProximity } from '@/features/trip-request/requestPriority';
-import { useAppSelector } from '@/store/hooks';
-import { selectUserCoordinates } from '@/store/selectors';
+import { useRequestCards } from '@/hooks/requests/useRequestCards';
+import { useRequestsData } from '@/hooks/requests/useRequestsData';
+import { styles } from '@/features/screen-styles/app/requests';
+import { RequestsListState } from '@/features/requests/RequestsListState';
+import { filterRequestIndex, indexRequests, type RequestTab } from '@/features/requests/requestsListModel';
 import { Colors } from '@/constants/styles';
-import { useGetAvailableTripRequestsQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
-import { useGetCurrentUserQuery } from '@/store/api/userApi';
+import type { TripRequest } from '@/types';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Keyboard, RefreshControl, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type RequestTab = 'available' | 'my-requests';
+const tabs: { key: RequestTab; label: string }[] = [
+  { key: 'available', label: 'Disponibles' },
+  { key: 'my-requests', label: 'Mes demandes' },
+];
+const requestKey = (request: TripRequest) => request.id;
 
 export default function TripRequestsScreen() {
-  const isScreenActive = useScreenIsActive();
   const router = useRouter();
-  const { data: currentUser } = useGetCurrentUserQuery();
-  const driverCoordinate = useAppSelector(selectUserCoordinates);
-  const isDriverAccount = hasDriverRole(currentUser);
+  const listRef = useRef<FlatList<TripRequest>>(null);
   const [activeTab, setActiveTab] = useState<RequestTab>('available');
-
-  // Query pour les demandes disponibles (pour les drivers)
-  const {
-    data: availableRequests = [],
-    isLoading: isLoadingAvailable,
-    isFetching: isFetchingAvailable,
-    refetch: refetchAvailable,
-  } = useGetAvailableTripRequestsQuery(undefined, {
-    skip: activeTab !== 'available',
-    // Polling léger pour les demandes disponibles (conducteurs)
-    pollingInterval: isScreenActive ? (activeTab === 'available' ? 60_000 : 0) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
-  });
-
-  // Query pour mes demandes (pour les passagers)
-  const {
-    data: myRequests = [],
-    isLoading: isLoadingMyRequests,
-    isFetching: isFetchingMyRequests,
-    refetch: refetchMyRequests,
-  } = useGetMyTripRequestsQuery(undefined, {
-    skip: activeTab !== 'my-requests',
-    // Polling léger pour mes demandes (passagers)
-    pollingInterval: isScreenActive ? (activeTab === 'my-requests' ? 60_000 : 0) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
-  });
-
-  const filteredAvailableRequests = useMemo(
-    () => rankRequestsByProximity(
-      availableRequests.filter((request) => request.passengerId !== currentUser?.id),
-      driverCoordinate,
-    ),
-    [availableRequests, currentUser?.id, driverCoordinate]
-  );
-
-  const requestsCount = {
-    available: filteredAvailableRequests.length,
-    my: myRequests.length,
-  };
-
-  const activeTabMeta =
-    activeTab === 'available'
-      ? {
-          eyebrow: 'Demandes disponibles',
-          title: 'Demandes publiées par d’autres passagers',
-          description:
-            'Vous voyez ici uniquement les demandes créées par d’autres utilisateurs. Ouvrez-en une pour vérifier le trajet puis l’accepter.',
-          countLabel: `${requestsCount.available} disponible${requestsCount.available > 1 ? 's' : ''}`,
-        }
-      : {
-          eyebrow: 'Mes demandes',
-          title: 'Demandes que vous avez vous-même créées',
-          description:
-            'Retrouvez ici vos propres demandes, les réponses reçues et le suivi de votre prise en charge.',
-          countLabel: `${requestsCount.my} demande${requestsCount.my > 1 ? 's' : ''}`,
-        };
-
-  const handleRequestPress = useCallback((requestId: string) => {
-    router.push(getTripRequestDetailHref(requestId));
+  const [search, setSearch] = useState('');
+  const { requests, isDriver, isLoading, isFetching, isError, hasData, proximityAvailable, refresh } = useRequestsData(activeTab);
+  const index = useMemo(() => indexRequests(requests), [requests]);
+  const filteredRequests = useMemo(() => filterRequestIndex(index, search), [index, search]);
+  const searching = Boolean(search.trim());
+  const handleRequestPress = useCallback((id: string) => {
+    Keyboard.dismiss();
+    router.push(getTripRequestDetailHref(id));
   }, [router]);
-
-  // Rendre une carte de demande disponible (pour les drivers)
   const { renderAvailableRequestCard, renderMyRequestCard } = useRequestCards({
-    handleRequestPress,
-    isDriverAccount,
+    handleRequestPress, isDriverAccount: isDriver,
   });
-
-  const isLoading = activeTab === 'available' ? isLoadingAvailable : isLoadingMyRequests;
-  const isFetching = activeTab === 'available' ? isFetchingAvailable : isFetchingMyRequests;
-
-  const currentData = activeTab === 'available' ? filteredAvailableRequests : myRequests;
-  const refetch = activeTab === 'available' ? refetchAvailable : refetchMyRequests;
-
-  const renderContent = () => {
-    if (isLoading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>
-            {activeTab === 'available' ? 'Chargement des demandes...' : 'Chargement de vos demandes...'}
-          </Text>
-        </View>
-      );
-    }
-
-    if (currentData.length === 0) {
-      return (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
-          <Text style={styles.emptyTitle}>
-            {activeTab === 'available' ? 'Aucune demande disponible' : 'Aucune demande créée'}
-          </Text>
-          <Text style={styles.emptyText}>
-            {activeTab === 'available'
-              ? "Il n'y a pour le moment aucune demande publiée par d'autres passagers."
-              : "Vous n'avez pas encore publié de demande. Créez-en une pour recevoir des réponses de conducteurs."}
-          </Text>
-          {activeTab === 'my-requests' && (
-            <TouchableOpacity
-              style={styles.createRequestButton}
-                onPress={() => router.push(getTripRequestCreateHref())}
-            >
-              <Ionicons name="add-circle" size={20} color={Colors.white} />
-              <Text style={styles.createRequestButtonText}>Créer une demande</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      );
-    }
-
-    return (
-      <FlatList
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={5}
-        data={currentData}
-        keyExtractor={(item) => item.id}
-        renderItem={activeTab === 'available' ? renderAvailableRequestCard : renderMyRequestCard}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isFetching}
-            onRefresh={refetch}
-            colors={[Colors.primary]}
-            tintColor={Colors.primary}
-          />
-        }
-      />
-    );
+  const changeSearch = useCallback((value: string) => {
+    setSearch(value);
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, []);
+  const changeTab = (tab: RequestTab) => {
+    if (tab === activeTab) return;
+    Keyboard.dismiss();
+    changeSearch('');
+    setActiveTab(tab);
   };
+  const count = filteredRequests.length;
+  const listDescription = searching ? `${count} résultat${count > 1 ? 's' : ''}`
+    : `${count} demande${count > 1 ? 's' : ''}`;
+  const sortDescription = activeTab === 'my-requests' ? 'Réponses et prises en charge en premier'
+    : proximityAvailable ? 'Départs les plus proches en premier' : 'Départs les plus tôt en premier';
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour" activeOpacity={0.7}
+          onPress={() => router.back()} style={styles.headerButton}>
+          <Ionicons name="arrow-back" size={23} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Demandes de trajet</Text>
-        {activeTab === 'my-requests' && (
-          <TouchableOpacity
-            style={styles.createButton}
-                onPress={() => router.push(getTripRequestCreateHref())}
-          >
-            <Ionicons name="add-circle" size={24} color={Colors.primary} />
-          </TouchableOpacity>
-        )}
-        {activeTab === 'available' && <View style={styles.headerSpacer} />}
+        <Text accessibilityRole="header" style={styles.headerTitle}>Demandes de trajet</Text>
       </View>
 
-      {/* Onglets */}
-      <View style={styles.tabsContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'available' && styles.tabActive]}
-          onPress={() => setActiveTab('available')}
-        >
-          <Text style={[styles.tabCount, activeTab === 'available' && styles.tabCountActive]}>
-            {requestsCount.available}
-          </Text>
-          <Text style={[styles.tabText, activeTab === 'available' && styles.tabTextActive]}>
-            Disponibles
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'my-requests' && styles.tabActive]}
-          onPress={() => setActiveTab('my-requests')}
-        >
-          <Text style={[styles.tabCount, activeTab === 'my-requests' && styles.tabCountActive]}>
-            {requestsCount.my}
-          </Text>
-          <Text style={[styles.tabText, activeTab === 'my-requests' && styles.tabTextActive]}>
-            Mes demandes
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.contextCard}>
-        <View style={styles.contextCardHeader}>
-          <View style={styles.contextIconContainer}>
-            <Ionicons
-              name={activeTab === 'available' ? 'people-outline' : 'document-text-outline'}
-              size={20}
-              color={activeTab === 'available' ? Colors.info : Colors.primary}
-            />
-          </View>
-          <View style={styles.contextBadge}>
-            <Text style={styles.contextBadgeText}>{activeTabMeta.countLabel}</Text>
-          </View>
+      <View style={styles.toolbar}>
+        <View style={styles.tabsContainer} accessibilityRole="tablist">
+          {tabs.map(tab => <TouchableOpacity key={tab.key} accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === tab.key }} activeOpacity={0.75}
+            onPress={() => changeTab(tab.key)} style={[styles.tab, activeTab === tab.key && styles.tabActive]}>
+            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
+          </TouchableOpacity>)}
         </View>
-        <Text style={styles.contextEyebrow}>{activeTabMeta.eyebrow}</Text>
-        <Text style={styles.contextTitle}>{activeTabMeta.title}</Text>
-        <Text style={styles.contextDescription}>{activeTabMeta.description}</Text>
-        {activeTab === 'my-requests' && (
-          <TouchableOpacity
-            style={styles.contextPrimaryButton}
-            onPress={() => router.push(getTripRequestCreateHref())}
-          >
-            <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
-            <Text style={styles.contextPrimaryButtonText}>Créer une demande</Text>
-          </TouchableOpacity>
-        )}
+        <Text style={styles.contextText}>
+          {activeTab === 'my-requests' ? 'Vos trajets demandés et les réponses des conducteurs.'
+            : isDriver ? 'Des passagers à prendre en charge. Ouvrez une demande.' : 'Les demandes publiées par les autres passagers.'}
+        </Text>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={19} color={Colors.gray[500]} accessible={false} />
+          <TextInput accessibilityLabel="Rechercher par départ, arrivée ou nom"
+            placeholder="Départ, arrivée ou nom" placeholderTextColor={Colors.gray[500]}
+            value={search} onChangeText={changeSearch} autoCorrect={false} returnKeyType="search"
+            onSubmitEditing={() => Keyboard.dismiss()} style={styles.searchInput} />
+          {search.length > 0 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Effacer la recherche"
+            onPress={() => changeSearch('')} style={styles.clearButton}>
+            <Ionicons name="close-circle" size={20} color={Colors.gray[500]} />
+          </TouchableOpacity>}
+        </View>
       </View>
 
-      {renderContent()}
+      <FlatList ref={listRef} data={filteredRequests} keyExtractor={requestKey}
+        renderItem={activeTab === 'available' ? renderAvailableRequestCard : renderMyRequestCard}
+        initialNumToRender={6} maxToRenderPerBatch={6} windowSize={5}
+        style={styles.list} contentContainerStyle={[styles.listContent, !count && styles.emptyListContent]}
+        keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={Boolean(isFetching && !isLoading)} onRefresh={refresh}
+          colors={[Colors.primary]} tintColor={Colors.primary} />}
+        ListHeaderComponent={<>
+          {hasData && !isLoading && <View style={styles.resultsHeader}>
+            <View style={styles.resultsCopy}>
+              <Text style={styles.resultsCount}>{listDescription}</Text>
+              <Text style={styles.resultsHint}>{sortDescription}</Text>
+            </View>
+            {isFetching && <ActivityIndicator size="small" color={Colors.primary} accessibilityLabel="Actualisation des demandes" />}
+          </View>}
+          {isError && hasData && count > 0 && <View style={styles.errorNotice}>
+            <Text style={styles.errorText}>Actualisation impossible. Les dernières demandes chargées restent affichées.</Text>
+            <TouchableOpacity accessibilityRole="button" onPress={refresh} disabled={isFetching}
+              accessibilityState={{ disabled: isFetching }} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>Réessayer</Text>
+            </TouchableOpacity>
+          </View>}
+        </>}
+        ListEmptyComponent={<RequestsListState loading={Boolean(isLoading)}
+          error={Boolean(isError)} searching={searching} busy={Boolean(isFetching)} tab={activeTab}
+          onRetry={refresh} onClearSearch={() => changeSearch('')} />}
+      />
+
+      {activeTab === 'my-requests' && <View style={styles.footer}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Créer une nouvelle demande de trajet"
+          activeOpacity={0.8} style={styles.createButton} onPress={() => {
+            Keyboard.dismiss();
+            router.push(getTripRequestCreateHref());
+          }}>
+          <Ionicons name="add" size={22} color={Colors.white} />
+          <Text style={styles.createButtonText}>Nouvelle demande</Text>
+        </TouchableOpacity>
+      </View>}
     </SafeAreaView>
   );
 }

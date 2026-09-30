@@ -77,8 +77,18 @@ test('available requests retain passenger photo, offers and a separate driver-on
     assert.equal(result.nodes.find(node => node.type === 'Image').props.source.uri, request.passengerAvatar);
     assert.ok(result.text.includes('2 offres'));
     assert.equal(result.buttons.length, canAccept ? 2 : 1);
+    assert.equal(Boolean(result.button('Voir et accepter')), canAccept);
     result.buttons.forEach(button => button.props.onPress());
     assert.deepEqual(calls, canAccept ? [request.id, request.id] : [request.id]);
+  }
+});
+
+test('assigned, cancelled and expired requests never suggest acceptance, including stale cached deadlines', () => {
+  for (const update of [{ status: 'cancelled' }, { status: 'expired' }, { selectedDriverId: 'driver' },
+    { tripId: 'trip' }, { departureDateMax: '2000-01-01T00:00:00Z' }]) {
+    const result = render(RequestListCard, { request: { ...request, ...update }, canAccept: true, onOpen() {} });
+    assert.equal(result.button('Voir et accepter'), undefined);
+    assert.equal(result.buttons.length, 1, 'request details remain accessible');
   }
 });
 

@@ -22,10 +22,6 @@ import '@/services/notifeeForegroundService';
 configureFontScaling();
 initializeDiagnostics();
 
-export const unstable_settings = {
-  initialRouteName: 'splash',
-};
-
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isAndroid = Platform.OS === 'android';

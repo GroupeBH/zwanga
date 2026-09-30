@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 
 interface PinStepProps {
   mode: AuthMode;
@@ -133,9 +134,14 @@ export function PinStep({
           </TouchableOpacity>
 
           {onForgotPin && (
-            <TouchableOpacity style={styles.forgotPinButton} onPress={onForgotPin}>
-              <Text style={styles.forgotPinText}>{"J'ai oublié mon PIN"}</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.forgotPinButton} onPress={onForgotPin}>
+                <Text style={styles.forgotPinText}>{"J'ai oublié mon PIN"}</Text>
+              </TouchableOpacity>
+              <Text style={[styles.inputLabelSmall, { textAlign: 'center', color: Colors.gray[700] }]}>
+                {otpDeliveryCopy.forgotPinHint}
+              </Text>
+            </>
           )}
         </>
       ) : (

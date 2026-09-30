@@ -94,19 +94,26 @@ test('profile has a visible driver button and a separate passenger identity acti
   });
   const { ProfileDashboard } = loadUi('components/profile/ProfileDashboard.tsx');
   const { ProfileIdentitySection } = loadUi('components/profile/ProfileIdentitySection.tsx');
+  const { ProfileDriverJourney } = loadUi('components/profile/ProfileDriverJourney.tsx');
+  const { profileState } = require('./helpers/profileStateFixture.cjs');
   const tree = ProfileDashboard({
     driverStatusItems: [], driverTripsCount: 0, isDriver: false, isKycApproved: false, isKycPending: false,
     isKycRejected: false, isKycBusy: false, isPriorityCtaBusy: false, kycLoading: false, quickActionItems: [],
+    isIdentityStatusKnown: true,
+    profileState: profileState('start'),
+    handleStartDriverOnboarding: () => calls.push('driver'),
     handleOpenKycModal: () => calls.push('identity'),
     priorityCta: { label: 'Devenir conducteur', icon: 'car-outline', onPress: () => calls.push('driver') },
   });
-  const driver = nodes(tree).find(node => node.type === 'TouchableOpacity' && text(node) === 'Devenir conducteur');
+  const journey = ProfileDriverJourney(nodes(tree).find(node => node.type === ProfileDriverJourney).props);
+  assert.match(text(journey), /Devenir conducteur/);
+  const driver = nodes(journey).find(node => node.type === 'TouchableOpacity');
   assert.ok(driver);
   assert.equal(nodes(driver).find(node => node.type === 'Text').props.numberOfLines, undefined);
   driver.props.onPress();
   const identityProps = nodes(tree).find(node => node.type === ProfileIdentitySection).props;
   const identity = ProfileIdentitySection.type(identityProps);
-  assert.match(text(identity), /Aucun véhicule requis/);
+  assert.match(text(identity), /ne vous engage pas à devenir conducteur/);
   assert.match(text(identity), /Vérifier mon identité/);
   nodes(identity).find(node => node.type === 'TouchableOpacity').props.onPress();
   assert.deepEqual(calls, ['driver', 'identity']);

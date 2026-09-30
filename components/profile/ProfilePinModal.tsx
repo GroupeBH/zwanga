@@ -1,4 +1,6 @@
 import { FormModal as Modal } from '@/components/forms/FormLayout';
+import { OtpDeliveryNotice } from '@/components/auth/OtpDeliveryNotice';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { Colors, Spacing } from '@/constants/styles';
 import { styles } from '@/features/profile/ProfilePinModal.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
@@ -124,16 +126,20 @@ export function ProfilePinModal({
               <TouchableOpacity style={styles.pinModalForgotButton} onPress={handleForgotPin}>
                 <Text style={styles.pinModalForgotText}>{"J'ai oublié mon PIN"}</Text>
               </TouchableOpacity>
+              <Text style={[styles.inputLabelSmall, { color: Colors.gray[700] }]}>
+                {otpDeliveryCopy.forgotPinHint}
+              </Text>
             </>
           ) : pinStep === 'otp' ? (
             <>
               <Text style={styles.pinModalSubtitle}>
-                Un code de vérification a été envoyé au{' '}
+                Numéro à vérifier :{' '}
                 <Text style={{ fontWeight: 'bold' }}>{currentUser?.phone}</Text>
               </Text>
               <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-                <Text style={styles.inputLabelSmall}>6 chiffres reçus par SMS</Text>
+                <OtpDeliveryNotice />
+                <Text style={styles.inputLabel}>Code de vérification</Text>
+                <Text style={styles.inputLabelSmall}>Saisissez les 6 chiffres du code reçu</Text>
                 <View style={styles.smsCodeContainer}>
                   {otpCode.map((digit, index) => (
                     <TextInput

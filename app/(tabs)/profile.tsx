@@ -3,6 +3,7 @@ import { VehicleFormModal } from '@/components/VehicleFormModal';
 import { ProfileDashboard } from '@/components/profile/ProfileDashboard';
 import { ProfileDocumentsCard } from '@/components/profile/ProfileDocumentsCard';
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
+import { ProfileStatusNotice } from '@/components/profile/ProfileStatusNotice';
 import { ProfileMenu } from '@/components/profile/ProfileMenu';
 import { ProfilePinModal } from '@/components/profile/ProfilePinModal';
 import { ProfileProCard } from '@/components/profile/ProfileProCard';
@@ -34,7 +35,7 @@ export default function ProfileScreen() {
         <View
           accessibilityLiveRegion="polite"
           accessibilityRole="progressbar"
-          accessibilityLabel="Chargement du profil et des véhicules"
+          accessibilityLabel="Chargement du profil"
           style={styles.profileLoadingContainer}
         >
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -43,6 +44,13 @@ export default function ProfileScreen() {
             Récupération de vos informations.
           </Text>
         </View>
+      ) : !profile.isProfileStatusKnown ? (
+        <ProfileStatusNotice
+          hasSnapshot={false}
+          busy={profile.profileFetching || profile.refreshing}
+          onRetry={profile.handleRefresh}
+          onLogout={profile.handleLogout}
+        />
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -53,19 +61,33 @@ export default function ProfileScreen() {
             changeProfilePhoto={profile.changeProfilePhoto}
             currentUser={profile.currentUser}
             displaysDriverRole={profile.displaysDriverRole}
+            profileRoleLabel={profile.profileRoleLabel}
             isPremiumActive={profile.isPremiumActive}
+            isKycApproved={profile.isKycApproved}
             isUploading={profile.isUploading}
             router={profile.router}
             user={profile.user}
           />
 
+          {(profile.hasProfileLoadError || !profile.isProfileStatusAvailable) && (
+            <ProfileStatusNotice
+              hasSnapshot
+              needsUpdate={!profile.isProfileStatusAvailable}
+              busy={profile.profileFetching || profile.refreshing}
+              onRetry={profile.handleRefresh}
+            />
+          )}
+
           <View style={styles.mainActionsContainer}>
             <ProfileDashboard
               driverStatusItems={profile.driverStatusItems}
+              profileState={profile.profileState}
+              handleStartDriverOnboarding={profile.handleStartDriverOnboarding}
               driverTripsCount={profile.driverTripsCount}
               handleOpenKycModal={profile.handleOpenKycModal}
               isDriver={profile.isDriver}
               isKycApproved={profile.isKycApproved}
+              isIdentityStatusKnown={profile.isIdentityStatusKnown}
               isKycPending={profile.isKycPending}
               isKycBusy={profile.isKycBusy}
               kycLoading={profile.kycLoading}
@@ -108,7 +130,7 @@ export default function ProfileScreen() {
             setReviewsModalVisible={profile.setReviewsModalVisible}
           />
 
-          {(profile.isDriver || profile.hasVehicle) && <ProfileVehiclesSection
+          {(profile.hasVehicle || profile.isDriver) && <ProfileVehiclesSection
             deletingVehicle={profile.deletingVehicle}
             handleDeleteVehicle={profile.handleDeleteVehicle}
             openCreateVehicleModal={profile.openCreateVehicleModal}
@@ -245,7 +267,7 @@ export default function ProfileScreen() {
       <TutorialOverlay
         visible={profile.profileGuideVisible}
         title="Votre espace Zwanga"
-        message="Consultez vos statistiques, vos avis et votre vérification d’identité. Le bouton Devenir conducteur est distinct de la vérification du profil passager."
+        message="Consultez vos informations et vos avis. Pour devenir conducteur, suivez l’étape indiquée dans votre profil : identité, véhicule, puis activation."
         onDismiss={profile.handleDismissProfileGuide}
       />
     </SafeAreaView>

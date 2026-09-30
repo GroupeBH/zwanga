@@ -5,8 +5,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { ResetPinMode } from '../types';
+import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 
 interface ResetPinStepProps {
+  phone: string;
   resetPinStep: ResetPinMode;
   otpCode: string[];
   otpInputRefs: React.MutableRefObject<Array<TextInput | null>>;
@@ -25,6 +27,7 @@ interface ResetPinStepProps {
 }
 
 export function ResetPinStep({
+  phone,
   resetPinStep,
   otpCode,
   otpInputRefs,
@@ -102,7 +105,7 @@ export function ResetPinStep({
         <Text style={styles.heroTitle}>Réinitialiser votre mot de passe PIN</Text>
         <Text style={styles.heroSubtitle}>
           {resetPinStep === 'otp'
-            ? 'Un code de vérification sera envoyé à votre numéro de téléphone'
+            ? `Numéro à vérifier : ${phone}`
             : 'Créez un nouveau mot de passe PIN à 4 chiffres'}
         </Text>
       </View>
@@ -110,8 +113,9 @@ export function ResetPinStep({
       {resetPinStep === 'otp' ? (
         <>
           <View style={styles.formSection}>
-            <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-            <Text style={styles.inputLabelSmall}>6 chiffres reçus par SMS</Text>
+            <OtpDeliveryNotice />
+            <Text style={styles.inputLabel}>Code de vérification</Text>
+            <Text style={styles.inputLabelSmall}>Saisissez les 6 chiffres du code reçu</Text>
             <View style={styles.smsCodeContainer}>
               {otpCode.map((digit, index) => (
                 <TextInput

@@ -8,6 +8,429 @@ Documents complémentaires déjà présents :
 
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
+- [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
+
+## 29–30 septembre 2026 — Parcours conducteur piloté par le serveur
+
+**Périmètre et problème constaté.** Cette intervention complète et remplace
+l'approche de présentation décrite dans l'entrée suivante. Les informations
+étaient désormais cohérentes dans un même instantané, mais le mobile devait
+encore déduire l'étape conducteur. Le serveur ne renvoyait pas la prochaine
+action et `stats.vehicles` comptait aussi les véhicules inactifs. Le cumul des
+boutons de vérification, d'activation et de réessai restait ambigu ; un rôle
+conducteur existant n'indiquait pas nécessairement le droit actuel de publier.
+
+**Solution appliquée — backend local `zwanga-backend`.**
+
+- Nouveau `src/users/profile-state.ts` : `GET /users/me` ajoute `profileState`
+  version 1, lié au compte, avec identité, étape conducteur, prochaine action,
+  véhicules actifs appartenant au compte et éligibilité à publier. `user` et
+  `stats` restent compatibles. Les réponses sont calculées, sans écriture
+  d'activation à la consultation du profil.
+- `src/users/users.service.ts` et `users.controller.ts` exposent ce contrat.
+  L'ordre d'identité `createdAt DESC, id DESC` est partagé avec
+  `driver-activation.ts`, la lecture KYC et `didit-kyc.service.ts`. Un ancien
+  document mis à jour tardivement ne remplace plus le dernier document créé
+  dans ces lectures. Une session Didit non commencée reste à commencer.
+- Un passager doit demander explicitement le parcours. Une identité en cours
+  permet déjà d'ajouter un véhicule ; avec véhicule actif, l'action devient
+  une actualisation du statut, sans renvoyer de documents. Une identité
+  approuvée et un véhicule actif permettent de finaliser l'activation.
+  Les comptes restreints sont orientés vers le support. Les autorisations
+  effectives restent contrôlées par le backend à chaque opération.
+
+**Solution appliquée — app.**
+
+- `types/identity.ts`, `features/profile/profileStateContract.ts`,
+  `store/api/user/profileMapper.ts` et `getProfileSummary.endpoints.ts`
+  transportent et valident le contrat. Un contrat partiel, inconnu ou d'un
+  autre compte ne permet pas de démarrer le parcours. Le décodage des anciennes
+  réponses reste disponible pour l'affichage, pas pour inventer une étape.
+- `features/profile/profileStatusModel.ts`,
+  `hooks/profile/useProfileData.ts` et `useProfileController.ts` utilisent
+  l'étape du serveur. Un conducteur incomplet voit « Profil conducteur à
+  compléter », et non un badge laissant croire que tout est prêt à publier.
+  Une lecture de véhicules en retard ne bloque plus l'affichage du profil.
+- `features/profile/driverJourneyPresentation.ts` et
+  `components/profile/ProfileDriverJourney.tsx` affichent les prérequis et
+  une seule action principale. `ProfileDashboard.tsx` remplace les actions
+  concurrentes pendant le parcours. La vérification facultative du passager
+  reste indépendante et explique son utilité pour réserver 3 places ou plus.
+- `hooks/profile/useProfileOnboarding.ts` relit le profil avant chaque action
+  et après une demande/activation. L'action choisie est celle de la réponse
+  fraîche, pas du cache. Une erreur conservant des données en cache ne lance
+  ni Didit ni mutation. Verrou commun contre les doubles appuis ; contrôles
+  du compte, de la session et de la visibilité après les attentes. Une
+  activation déjà effectuée par la demande de parcours n'est pas rejouée.
+- `ProfileStatusNotice.tsx`, `ProfileHeader.tsx`,
+  `features/profile/ProfileHeader.styles.ts` et `app/(tabs)/profile.tsx`
+  conservent l'écran en réseau dégradé avec une indication discrète du dernier
+  statut connu. Les libellés longs peuvent revenir à la ligne ; la section
+  vide de véhicules n'ajoute plus un second bouton concurrent au parcours.
+
+**Comportements conservés et précautions.** Pas de promotion/démotion
+automatique lors d'un GET, pas de rôle déduit d'un véhicule ou d'un booléen
+local, pas de nouvelle vérification si l'identité est déjà approuvée/en cours.
+Les activations existantes après Didit ou ajout de véhicule restent en place.
+PIN/OTP, paiements, accès aux services et pause des neuf lectures d'affichage
+sur écran inactif sont conservés. Aucune migration, aucun polling ajouté,
+aucune modification massive de comptes. Le skill frontend a guidé la
+présentation « statut, prérequis, action unique » sans nouveau décor ni
+animation. Les consignes PostgreSQL ont guidé la lecture KYC ordonnée :
+aucun nouvel index ni gain SQL revendiqué sans mesure sur base réelle.
+
+**Vérifications réalisées.** 103 tests JavaScript réussis dans
+`profileServerStatus`, `profileServerStatusUI`, `profileModules`,
+`screenIdlePolicy`, `passengerSeats`, `identityQueryLifecycle`, `accountTabs`,
+`otpDelivery`, `pinReset` et `vehiclePlate`. Ils couvrent notamment les étapes
+serveur, le cache après une erreur 503 avec RTK Query réel, la reprise réseau,
+les contrats incomplets, les doubles appuis, le changement de compte, les
+réponses après fermeture et l'absence de boutons concurrents. Backend :
+63 tests Jest réussis dans `profile-state.spec.ts`, `driver-activation.spec.ts`,
+`didit-kyc.service.spec.ts` et `users.service.otp.spec.ts`, avec dépendances
+simulées. TypeScript mobile sans émission et TypeScript backend de production
+(`tsconfig.build.json`) réussis. Frontières réseau et limite des 400 lignes
+validées. ESLint ciblé mobile et sur les deux nouveaux fichiers TypeScript
+backend : aucune erreur ni avertissement. `git diff --check` réussi dans les
+deux dépôts. Le contrôle TypeScript global backend, incluant toutes les specs,
+signale 14 erreurs dans des tests non modifiés : activity/booking, keccel-otp,
+payments/pawapay, trip-request-privacy, legal-identity, user-gender et
+wallet/trip-loyalty. Ces erreurs hors périmètre ne sont pas corrigées par cette
+intervention ; le contrôle de production exclut les fichiers de tests.
+
+**Livraison et limites.** Déployer le backend **avant** le client utilisant
+`profileState`. Sans ce contrat, le mobile propose l'actualisation mais ne
+déduit pas une action conducteur. Aucun déploiement réalisé. Tests sur
+dépendances simulées : pas de requête de vérification ou d'OTP réelle, pas
+d'essai sur appareil physique ni de validation de rendu natif. À valider sur
+téléphone : petits écrans/grandes polices, première ouverture en réseau lent,
+coupure puis reprise, retour Didit approuvé/en cours/rejeté, ajout de véhicule
+pendant l'examen et activation effective. Le dernier statut connu hors ligne
+ne garantit pas l'absence de changement distant ; les actions relisent le
+serveur et restent soumises aux contrôles de l'API.
+
+## 29 septembre 2026 — Profil : cohérence du rôle et de l'identité en réseau dégradé
+
+**Périmètre et problème constaté.** Le profil mélangeait le rôle issu de
+`/users/me` (ou de l'utilisateur d'authentification local en repli), le
+statut d'identité d'une requête indépendante et le résultat de la liste
+des véhicules. Une réponse d'identité absente après un échec réseau était
+interprétée comme non approuvée. `needsDriverOnboarding` devenait alors vrai,
+et le contrôleur proposait « Devenir conducteur » même à un compte dont le
+badge conducteur était affiché. Le badge d'identité utilisait encore un
+autre booléen que la section de vérification.
+
+**Contrat serveur vérifié en lecture seule.** Dans le backend local,
+`UsersService.getProfileSummary` charge déjà le rôle, les documents d'identité
+et les statistiques de véhicules dans sa réponse `/users/me`.
+`driverRequirements` sélectionne le document d'identité le plus récent par
+`createdAt` puis `id` décroissants. L'activation reste décidée par le serveur,
+et le rôle conducteur d'anciens comptes peut être conservé même lorsqu'un
+prérequis manque : un rôle conducteur ne prouve donc pas à lui seul une
+identité approuvée. Aucune modification backend effectuée.
+
+**Solution appliquée.**
+
+- `store/api/user/profileIdentityMapper.ts` et
+  `store/api/user/profileMapper.ts` extraient le dernier statut d'identité
+  fourni par le serveur, selon l'ordre utilisé pour l'activation. Seuls
+  statut, fournisseur, état Didit et motif de rejet sont ajoutés au résumé,
+  sans copier les fichiers ou métadonnées du prestataire.
+  `types/identity.ts` distingue une identité absente confirmée (`null`) d'une
+  information manquante/invalide (`undefined`). Le booléen d'identité de
+  l'utilisateur mappé suit également ce dernier document, et non un ancien
+  document approuvé qui pourrait encore figurer dans l'historique.
+- `features/profile/profileStatusModel.ts` centralise les décisions à partir
+  d'une seule réponse `/users/me`, dont l'identifiant doit correspondre au
+  compte connecté. Ni un véhicule ni un ancien indicateur `isDriver` ne
+  remplacent le rôle serveur. Les données manquantes ne deviennent pas
+  automatiquement un statut passager, une identité refusée ou zéro véhicule.
+- `hooks/profile/useProfileData.ts` utilise ce modèle pour les badges,
+  prérequis et actions. La lecture indépendante de l'identité est supprimée
+  de l'affichage du profil. La liste détaillée des véhicules garde sa propre
+  requête et son état d'erreur, sans déterminer le rôle ni les prérequis.
+  Les lectures explicites de rafraîchissement de l'identité restent disponibles
+  pour les parcours existants. Le profil n'utilise plus l'utilisateur local
+  comme preuve d'un statut en l'absence de réponse serveur.
+- `components/profile/ProfileHeader.tsx`, `ProfileDashboard.tsx` et
+  `ProfileIdentitySection.tsx` partagent les mêmes indicateurs d'identité.
+  Un statut inconnu propose une actualisation, pas une nouvelle vérification.
+  `ProfileStatusNotice.tsx` et `app/(tabs)/profile.tsx` signalent l'échec de
+  l'actualisation. Sans profil serveur correspondant au compte, aucun badge
+  ni tableau de bord n'est affiché : réessai et déconnexion restent proposés.
+  Avec une réponse précédemment reçue, les dernières informations confirmées
+  sont conservées et explicitement signalées comme non actualisées.
+- `hooks/profile/useProfileController.ts` ne propose « Devenir conducteur »
+  qu'à un compte non conducteur dont le statut est disponible. Un conducteur
+  dont un prérequis manque réellement côté serveur voit l'action adaptée
+  (« Voir mon identité » ou « Ajouter un véhicule »), sans réactivation.
+  Les informations indisponibles orientent vers « Actualiser le profil ».
+- `hooks/profile/useProfileOnboarding.ts` protège également les callbacks
+  et liens directs : aucun lancement Didit, demande d'activation ou choix de
+  prérequis fondé sur une information inconnue/en erreur. Un conducteur
+  confirmé n'envoie pas une nouvelle demande de rôle. Si la demande de
+  parcours active déjà le compte côté serveur, une lecture du profil remplace
+  une seconde activation inutile.
+
+**Comportements conservés et précautions.** L'identité des passagers reste
+indépendante du statut conducteur. Les états approuvé, en cours, rejeté et
+session Didit non commencée restent distingués ; un refus réellement confirmé
+par le serveur n'est pas masqué. Le cache utilisé est la dernière réponse
+serveur du même compte, pas une déduction optimiste. Une panne ne révoque ni
+n'accorde un rôle et ne déconnecte pas automatiquement. Aucun polling ajouté.
+Les lectures d'affichage en pause passent de dix à neuf avec la suppression
+de la requête KYC du profil ; les dépendances de paiement restent actives
+selon leur politique existante. Ce comptage de requêtes n'est pas une mesure
+de consommation ou de performance sur appareil.
+
+**Vérifications réalisées.** 95 tests JavaScript ciblés réussis :
+`profileServerStatus.test.js`, `profileServerStatusUI.test.js`,
+`profileModules.test.js`, `screenIdlePolicy.test.js`, `passengerSeats.test.js`,
+`identityQueryLifecycle.test.js`, `accountTabs.test.js`, `otpDelivery.test.js`,
+`pinReset.test.js` et `vehiclePlate.test.js`. Les nouveaux tests couvrent le
+chargement lent, l'échec initial, la conservation du cache après erreur 503
+avec RTK Query réel, la reprise du réseau, le changement de compte, l'ordre
+des documents serveur, les états d'affichage et l'absence de mutations à
+partir d'un statut indisponible. TypeScript sans émission, frontières réseau,
+limite des 400 lignes et `git diff --check` réussis. ESLint ciblé : aucune
+erreur ; un avertissement préexistant (`showDialog` inutilisé dans le contrôleur).
+
+**Limites restantes.** Aucun essai physique ni rendu natif validé pour cette
+correction, aucun déploiement. Les erreurs réseau sont simulées en JavaScript.
+À vérifier sur téléphone : ouverture du profil en réseau lent, coupure après
+un premier chargement, reprise puis « Réessayer », et retour après Didit ou
+ajout de véhicule. Hors connexion, le dernier statut confirmé ne garantit
+pas qu'aucun changement distant plus récent n'a eu lieu ; le message de
+non-actualisation le précise et le serveur reste l'autorité des opérations.
+
+## 29 septembre 2026 — OTP : guider vers WhatsApp via Didit
+
+**Périmètre et problème constaté.** Analyse en lecture seule du commit backend
+`fe15208`, des services OTP, des parcours téléphone/PIN et de
+`docs/auth/otp-providers.md`. Le fournisseur Didit privilégie WhatsApp, avec
+possibilité de secours SMS documentée côté backend. L'application indiquait
+encore « chiffres reçus par SMS », y compris dans la récupération de PIN,
+les confirmations de renvoi et l'aide. Le convertisseur d'erreurs traitait
+tout message contenant « OTP » comme un code invalide : les limitations
+d'envoi et les indisponibilités du fournisseur devenaient trompeuses.
+
+**Contrat backend constaté.** Les endpoints téléphone et récupération PIN
+restent inchangés. Le téléphone utilise cinq chiffres, le PIN oublié six.
+La vérification Didit est liée au numéro, à la requête et à sa référence
+interne ; le fournisseur est conservé avec le challenge. Un renvoi Didit
+peut réutiliser le challenge sans prolonger sa validité initiale. Aucun
+repli automatique vers l'ancien fournisseur après un échec d'envoi.
+L'OTP d'inscription reste facultatif ; les réponses de demande de
+réinitialisation restent identiques pour les comptes inconnus ou inéligibles.
+L'API ne fournit pas à l'app le canal de livraison réellement utilisé.
+Cette lecture ne vérifie ni la configuration ni la livraison en production.
+
+**Solution appliquée dans l'application.**
+
+- `features/auth/otpDelivery.ts` centralise les textes WhatsApp/Didit, le
+  secours SMS et les confirmations conditionnelles de récupération du PIN.
+- `components/auth/OtpDeliveryNotice.tsx` affiche un repère compact
+  « WhatsApp via Didit », l'instruction de consulter WhatsApp puis revenir
+  saisir le code, et le secours SMS. Pas de carte supplémentaire, de texte
+  tronqué ou de hauteur fixe ; agrandissement de police conservé. Le skill
+  frontend a guidé cette hiérarchie courte, sans animation additionnelle.
+- `components/auth/steps/PhoneStep.tsx` et `GooglePhoneStep.tsx` présentent
+  le canal avant l'envoi uniquement si l'OTP d'inscription est activé.
+  `SmsStep.tsx`, `GoogleOtpStep.tsx` et `ResetPinStep.tsx` réutilisent le
+  repère lors de la saisie. `app/auth.tsx` transmet également le numéro à
+  vérifier à l'étape de récupération du PIN.
+- `components/auth/steps/PinStep.tsx` et
+  `components/profile/ProfilePinModal.tsx` expliquent le canal de récupération
+  près de « J'ai oublié mon PIN ». La modale réutilise le repère lors de
+  la saisie, sans annoncer une livraison réussie avant la réponse serveur.
+- `hooks/auth/usePhoneAuthActions.ts`, `useSocialPhoneVerification.ts`,
+  `usePinResetFlow.ts` et `hooks/profile/useProfilePin.ts` harmonisent les
+  confirmations d'envoi/renvoi et les instructions après expiration ou
+  réinitialisation non confirmée. Aucun nouveau code ni renouvellement de
+  validité n'est promis lors d'un renvoi.
+- `components/support/supportData.ts` corrige l'aide à l'inscription.
+  `utils/errorHelpers.ts` distingue les refus temporaires 429 et incidents
+  serveur 5xx des codes invalides/expirés, et conserve les messages métier
+  tels qu'une autre vérification déjà en cours.
+
+**Comportements conservés et précautions.** Aucun OTP nouvellement imposé à
+l'inscription, aucune modification backend, aucun appel réseau additionnel.
+Les contrats cinq/six chiffres, le PIN à quatre chiffres, le collage,
+les suggestions système `sms-otp`/`oneTimeCode` compatibles avec le secours
+SMS, les états occupés et les étapes de navigation restent inchangés.
+Le jeton de réinitialisation reste à usage unique et non persisté ; une
+réinitialisation ne connecte pas automatiquement l'utilisateur. La réponse
+conditionnelle ne divulgue pas l'existence d'un compte. Pas d'ouverture
+automatique de WhatsApp, de permission supplémentaire ou de supposition
+sur le nom exact de l'expéditeur WhatsApp.
+
+**Vérifications réalisées.** 74 tests JavaScript ciblés réussis dans
+`otpDelivery.test.js` (nouveau), `pinReset.test.js`, `profileModules.test.js`,
+`authNavigationSession.test.js`, `passengerSeats.test.js`,
+`tripRequestEditPricing.test.js` et `vehiclePlate.test.js`. Couverture des
+textes, du masquage lorsque l'OTP est désactivé, des cinq/six champs,
+du collage, du renvoi, des erreurs Didit et de la preuve de récupération.
+29 tests unitaires backend réussis dans `otp.service.spec.ts`,
+`didit-otp.service.spec.ts`, `users.service.otp.spec.ts` et `pin-reset.spec.ts`.
+TypeScript sans émission, contrôle des frontières réseau, limite des
+400 lignes et `git diff --check` réussis. ESLint ciblé : aucune erreur,
+neuf avertissements préexistants (types de tableaux, fonctions inutilisées,
+ordre des imports), non modifiés dans cette intervention.
+
+**Limites et pistes différées.** Les variantes Android/iOS sont simulées
+dans les tests JavaScript : aucun rendu natif de cette modification ni
+livraison réelle WhatsApp/SMS validés. Aucun OTP réel demandé, aucun
+déploiement réalisé. À essayer sur téléphone : petits écrans, grande police,
+aller-retour WhatsApp/app, collage du code, renvoi et récupération du PIN.
+Une information de canal effective renvoyée par l'API permettrait d'adapter
+plus finement les textes en cas de changement de fournisseur/configuration ;
+cette évolution de contrat n'est pas appliquée ici.
+
+## 29 septembre 2026 — Retour natif : accueil avant sortie, démarrage hors historique
+
+**Périmètre et problème constaté.** Le bouton Retour du téléphone pouvait
+remonter à l'écran de chargement. `app/_layout.tsx` déclarait `splash` comme
+route initiale statique, utilisée comme ancre des liens directs. Les écrans
+de démarrage restaient accessibles dans la pile et un simple `router.replace`
+ne supprimait pas leurs éventuelles entrées précédentes. Un détail ouvert
+directement ou remplaçant l'accueil pouvait aussi se retrouver sans accueil
+derrière lui. Le comportement des onglets au retour n'était pas explicite.
+
+**Solution appliquée.**
+
+- `app/_layout.tsx` ne définit plus `splash` comme ancre permanente.
+  `app/index.tsx` conserve son entrée de démarrage existante vers `/splash`.
+- `features/navigation/homeBackPolicy.ts` définit une correction idempotente
+  de l'historique racine natif pour une session authentifiée. Elle retire
+  les routes publiques antérieures lorsqu'un écran privé est actif, conserve
+  l'accueil au bas de la pile ou l'ajoute lorsqu'il manque. Une nouvelle
+  entrée dans les onglets établit une nouvelle base de retour ; les anciens
+  détails/formulaires situés avant cette entrée ne sont pas rejoués.
+  Les clés, paramètres et états imbriqués des écrans conservés restent intacts.
+- `hooks/navigation/useHomeRootNavigation.ts` applique cette correction via
+  `resetRoot` seulement si nécessaire et après disponibilité du navigateur.
+  Il relit l'état courant pour ne pas écraser une ouverture récente provenant
+  d'une notification. Le listener d'attente de disponibilité est nettoyé.
+- `components/ProtectedAppStack.tsx` sépare le groupe des écrans de démarrage
+  (`index`, splash, présentation initiale et information de localisation) du
+  groupe protégé par session. Après avoir quitté le démarrage, ces routes ne
+  sont plus accessibles pendant la durée de vie de cette pile native. La
+  connexion reste publique ; la déconnexion ne donne pas accès à l'accueil.
+- `app/(tabs)/_layout.tsx` fixe `initialRouteName="index"` et
+  `backBehavior="initialRoute"` : Retour depuis un autre onglet sélectionne
+  l'accueil, puis le Retour suivant est laissé au comportement système
+  lorsqu'aucun écran ou dialogue ne le consomme.
+
+**Comportements conservés et précautions.** Aucun gestionnaire global
+`BackHandler` et aucun appel à `exitApp` ajouté. Les retours des détails,
+confirmations de sortie des trajets actifs, protections des formulaires,
+clavier, dialogues et nettoyage de la conversation conservent leurs handlers.
+Les parcours de connexion/PIN ne sont pas redirigés par cette correction tant
+qu'ils sont actifs. Les routes privées restent derrière le contrôle de session.
+La correction par `resetRoot` et la fermeture du groupe de démarrage sont
+limitées au natif, sans réécriture de l'historique du navigateur web. Aucun
+timer d'inactivité ni affichage forcé du splash au retour du premier plan.
+Un démarrage à froid peut toujours présenter le chargement et vérifier les
+indicateurs de première ouverture. Aucun changement backend ou de jetons.
+
+**Vérifications réalisées et limites.** **58 tests JavaScript ciblés réussis**
+dans `homeBackNavigation.test.js`, `authNavigationSession.test.js`,
+`accountTabs.test.js`, `chatLifecycle.test.js`, `driverInterruptionExit.test.js`
+et `navigationLifecycle.test.js`. Les tests utilisent les implémentations
+`StackRouter`/`TabRouter` installées ainsi que des hooks simulés : ancre accueil,
+chaîne de retours, absence de réinitialisations répétées, conservation de l'écran
+actif, liens directs, préparation du navigateur, démarrage/déconnexion et
+gestionnaires métier. TypeScript (`--noEmit --incremental false`), ESLint ciblé,
+frontières réseau, limite des 400 lignes et `git diff --check` réussis.
+Les tests ne constituent pas un essai du bouton ou du geste natif.
+À vérifier sur Android : connexion, changement d'onglet, plusieurs détails,
+notification ouvrant un trajet, retour accueil puis sortie, réouverture et
+trajet actif avec confirmation. Vérifier aussi le geste de retour iOS.
+Aucun essai physique, déploiement ou mesure de performance effectué.
+
+**Références vérifiées.** Le comportement d'ancre a été confronté au code
+Expo Router installé et à la [documentation des paramètres du routeur](https://docs.expo.dev/router/advanced/router-settings/).
+La suppression des entrées d'un groupe devenu inaccessible s'appuie sur les
+[routes protégées Expo](https://docs.expo.dev/router/advanced/protected/).
+La correction cible uniquement la pile racine via
+[`resetRoot`](https://reactnavigation.org/docs/navigation-container/#resetroot),
+sans substituer un nouveau gestionnaire aux retours métier.
+
+## 29 septembre 2026 — Liste des demandes de trajet plus compacte et intuitive
+
+**Périmètre et problème constaté.** L'écran `app/requests.tsx` consacrait une
+grande partie de son espace à une carte explicative et répétait la création
+d'une demande dans l'en-tête, cette carte et l'état vide. Les compteurs des
+onglets pouvaient afficher zéro avant leur premier chargement. Il n'y avait
+pas de recherche locale ni d'état d'erreur distinct ; une liste vide ne gardait
+pas le geste de rafraîchissement. Cette intervention concerne la liste intitulée
+« Demandes de trajet », pas le formulaire de création ou l'écran de détail.
+
+**Solution appliquée.**
+
+- `app/requests.tsx` affiche un en-tête court, deux onglets compacts avec état
+  sélectionné accessible, une phrase d'orientation et une recherche par départ,
+  arrivée ou nom. Le nombre de résultats et l'ordre de tri apparaissent dans
+  la liste uniquement après chargement des données. L'onglet « Mes demandes »
+  possède une seule action « Nouvelle demande », hors de la zone défilante.
+- `features/requests/requestsListModel.ts` prépare un index textuel normalisé
+  lors des changements de données. La recherche ignore accents, casse et ordre
+  des mots sans géocodage ni appel réseau. Le changement d'onglet efface la
+  recherche et remet la liste en haut. Les demandes personnelles avec réponse
+  ou prise en charge non démarrée sont prioritaires, sans retirer l'historique.
+- `hooks/requests/useRequestsData.ts` isole les lectures de l'onglet actif,
+  suspend les abonnements et sondages lorsque l'écran est masqué et ne lit
+  les coordonnées que pour les demandes disponibles visibles. L'identité doit
+  être connue avant d'afficher cette liste afin d'en exclure les demandes du
+  propriétaire. Un profil absent ou incomplet propose une nouvelle tentative.
+- `features/requests/RequestsListState.tsx` distingue chargement, première
+  demande, liste disponible vide, recherche sans résultat et erreur réseau.
+  La `FlatList` reste montée pour permettre le rafraîchissement à vide. En cas
+  d'échec d'actualisation, les données déjà chargées restent consultables avec
+  un avertissement et une action « Réessayer ».
+- Les styles de `features/screen-styles/app/requests/container.styles.ts` et
+  `detailText.styles.ts` remplacent les anciennes grandes cartes explicatives
+  et leurs styles inutilisés. La compétence `frontend-skill` a guidé la
+  hiérarchie sobre, la réduction du texte et le maintien d'une action principale.
+  Les commandes ont une hauteur minimale de 44 points et peuvent grandir avec
+  leur texte. Aucun effet animé décoratif, image ou dépendance supplémentaire.
+- `features/requests/RequestListCard.tsx` précise « En attente de conducteur »
+  et « Voir et accepter ». Ce dernier bouton ouvre toujours le détail avant
+  confirmation et n'est pas proposé pour une demande attribuée, annulée ou
+  expirée selon les règles existantes. Ces libellés sont aussi visibles dans
+  les autres listes utilisant ce composant, dont `app/my-requests.tsx`.
+
+**Comportements conservés et précautions.** Les deux onglets restent accessibles
+et « Disponibles » reste l'onglet initial. Le classement par proximité utilise
+uniquement les coordonnées déjà connues ; sans position valide, il repose sur
+les heures de départ. Les photos, budgets par place, horaires, offres, historique,
+routes de navigation, contrôles de rôle et validations du détail sont conservés.
+Aucune modification du backend, des paiements, du formulaire de demande ou des
+délais d'expiration. Aucun tableau provenant du cache RTK Query n'est trié en
+place. La liste reste virtualisée, avec six éléments au rendu initial et par lot.
+
+**Vérifications réalisées et limites.**
+
+- **46 tests JavaScript ciblés réussis** : `requestsListData.test.js`,
+  `requestsScreen.test.js`, `personalListCards.test.js`,
+  `homeRequestPriority.test.js` et `tripRequestExpiration.test.js`.
+  Couverture : recherche/indexation, classement immuable, filtres propriétaire,
+  onglets, création unique, navigation, réception d'erreur avec cache, reprise
+  hors écran, actions de l'état vide, expiration et propriétés des styles.
+- TypeScript (`--noEmit --incremental false`), ESLint ciblé, frontières réseau,
+  limite des 400 lignes et `git diff --check` réussis.
+- La suite globale `sourceExtractions.test.js` donne cinq réussites et deux
+  échecs préexistants : empreintes des styles et de `confirmCashReceipt`.
+  Une comparaison en lecture seule des fichiers et références de `HEAD`
+  confirme les écarts antérieurs pour revenus conducteur, publication, onglet
+  des trajets et réception cash. Seule l'empreinte de l'écran demandes est
+  actualisée dans `tests/fixtures/sourceExtractions.json` ; elle est également
+  vérifiée séparément dans le test ciblé de cet écran.
+- Les tests utilisent des rendus et transports simulés, pas des appareils
+  physiques. Aucun gain CPU, mémoire ou batterie mesuré. Vérifier sur Android
+  et iOS le petit écran, la grande taille de police, le clavier ouvert, le
+  balayage de rafraîchissement à vide, le réseau coupé et le retour du détail.
+  Aucun déploiement réalisé.
 
 ## 29 septembre 2026 — Revenus conducteur : cash informatif et états de retrait
 
@@ -1766,6 +2189,33 @@ retour de veille, refus serveur et reprise du paiement par le passager. La
 réception sur le téléphone du passager conserve les notifications et la
 synchronisation existantes, non validées ici de bout en bout. Ces résultats ne
 garantissent pas l'absence de crash ou de blocage natif.
+
+## 2026-09-30 — Retrait d’un véhicule sans effacer l’historique
+
+**Périmètre et problème.** Le profil annonçait une suppression irréversible alors que
+`DELETE /vehicles/:id` désactive le véhicule. Les trajets en cours ou à venir
+peuvent empêcher cette désactivation. L’interface ne l’expliquait pas avant
+confirmation.
+
+**Solution appliquée.** Dans `hooks/profile/useProfileVehicles.ts`, la confirmation
+décrit le retrait du profil et la conservation de l’historique, et le retour de
+succès emploie « retiré ». `components/profile/ProfileVehiclesSection.tsx` montre
+une action « Retirer » avec une icône adaptée. La section reste visible au
+conducteur après le retrait de son dernier véhicule, avec le bouton d’ajout.
+Le test ciblé dans
+`tests/profileModules.test.js` vérifie cette confirmation et la réconciliation
+après délai réseau ambigu. Le backend refuse aussi la désactivation en présence
+de trajets à venir/en cours ou d’un modèle récurrent actif, y compris par
+`PUT /vehicles/:id` avec `isActive=false`. La réponse `DELETE /vehicles/:id`
+annonce `isActive=false` ; le typage mobile garde ce champ facultatif pendant
+le déploiement progressif du backend.
+
+**Comportements conservés et limites.** Le véhicule reste en base pour les anciens
+trajets et disparaît de la liste des véhicules actifs ; l’application n’anticipe
+pas la réussite avant la réponse du serveur. Les tests ciblés du profil mobile
+passent (28/28), ainsi que sa vérification TypeScript et son lint ciblé. Côté
+backend, les tests ciblés véhicules/trajets/récurrence passent (57/57) et la compilation
+réussit. Aucun essai sur appareil physique ni déploiement n’a été effectué.
 
 ## Format pour les prochaines entrées
 

@@ -1,4 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import {
   useUpdatePinMutation,
 } from '@/store/api/userApi';
@@ -88,7 +89,7 @@ export function useProfilePin({
       showDialog({
         variant: 'success',
         title: 'Demande envoyée',
-        message: 'Si ce numéro correspond à un compte éligible, vous recevrez un code SMS.',
+        message: otpDeliveryCopy.pinResetRequested,
       });
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -277,7 +278,7 @@ export function useProfilePin({
         variant: 'danger',
         title: 'Erreur',
         message: getApiErrorMessage(error, forgotPinMode
-          ? 'Demandez un nouveau code SMS pour réessayer. Si le PIN a déjà été changé, connectez-vous avec le nouveau PIN.'
+          ? otpDeliveryCopy.resetNotConfirmed
           : 'Impossible de modifier le PIN pour le moment.'),
       });
       // A reset proof may already be consumed, including after a timeout.

@@ -90,7 +90,7 @@ export default function AuthScreen() {
             />
           )}
 
-          {/* SMS Step */}
+          {/* Phone verification step */}
           {isSignupOtpVerificationEnabled && form.step === 'sms' && (
             <SmsStep
               mode={form.mode}
@@ -124,6 +124,7 @@ export default function AuthScreen() {
           {/* Reset PIN Step */}
           {form.step === 'resetPin' && (
             <ResetPinStep
+              phone={form.phone}
               resetPinStep={form.resetPinStep}
               otpCode={form.resetOtpCode}
               otpInputRefs={form.resetOtpInputRefs}
