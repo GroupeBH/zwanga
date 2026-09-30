@@ -413,7 +413,7 @@ test('profile forgotten PIN uses the reset proof and clears the local session', 
   await render().handleForgotPin();
   assert.deepEqual(calls[0], { name: 'send', payload: { phone: '0991234567' } });
   assert.match(app.dialogs.at(-1).message, /^Si ce numéro correspond à un compte éligible,.*WhatsApp.*Didit.*SMS/);
-  render().handleOtpInputChange('123456', 0);
+  render().setOtpCode('123456'.split(''));
   await render().handleVerifyOtpForPinChange();
   assert.equal(render().pinStep, 'newPin');
   assert.deepEqual(calls[1].payload, { phone: '0991234567', otp: '123456' });

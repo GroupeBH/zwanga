@@ -102,10 +102,10 @@ export function PhoneStep({
         <TouchableOpacity
           style={[
             styles.mainButton,
-            isPhoneValid && !isLoading ? styles.mainButtonActive : styles.mainButtonDisabled,
+            isPhoneValid && !isLoading && !isAnySocialLoading ? styles.mainButtonActive : styles.mainButtonDisabled,
           ]}
           onPress={onSubmit}
-          disabled={!isPhoneValid || isLoading}
+          disabled={!isPhoneValid || isLoading || isAnySocialLoading}
         >
           {isLoading ? (
             <ActivityIndicator color="white" />
@@ -124,13 +124,16 @@ export function PhoneStep({
         </View>
 
         <TouchableOpacity
-          style={[styles.googleButton, isAnySocialLoading && { opacity: 0.7 }]}
+          style={[styles.googleButton, (isAnySocialLoading || isLoading) && { opacity: 0.7 }]}
           onPress={onGoogleAuth}
-          disabled={isAnySocialLoading}
+          disabled={isAnySocialLoading || isLoading}
+          accessibilityRole="button"
+          accessibilityLabel={isGoogleLoading ? 'Connexion Google en cours' : mode === 'login' ? 'Continuer avec Google' : 'S’inscrire avec Google'}
+          accessibilityState={{ disabled: isAnySocialLoading || isLoading, busy: isGoogleLoading }}
           activeOpacity={0.8}
         >
           {isGoogleLoading ? (
-            <ActivityIndicator color="#4285F4" />
+            <><ActivityIndicator color="#4285F4" /><Text style={styles.googleButtonText}>Connexion en cours…</Text></>
           ) : (
             <>
               <Image 
@@ -154,7 +157,7 @@ export function PhoneStep({
             <TouchableOpacity
               style={[styles.appleFallbackButton, isGoogleLoading && { opacity: 0.7 }]}
               onPress={handleAppleAuthPress}
-              disabled={isAnySocialLoading}
+              disabled={isAnySocialLoading || isLoading}
               activeOpacity={0.8}
             >
               <Ionicons name="logo-apple" size={20} color="#000000" />

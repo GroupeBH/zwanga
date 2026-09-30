@@ -12,11 +12,7 @@ import {
   getApiErrorMessage
 } from '@/utils/errorHelpers';
 import { useRef, useState } from 'react';
-import {
-  NativeSyntheticEvent,
-  TextInput,
-  TextInputKeyPressEventData
-} from 'react-native';
+import { TextInput } from 'react-native';
 import type { useProfileData } from './useProfileData';
 
 type Props = Pick<ReturnType<typeof useProfileData>,
@@ -102,42 +98,6 @@ export function useProfilePin({
       });
     } finally {
       setIsSendingOtp(false);
-    }
-  };
-
-  const handleOtpInputChange = (value: string, index: number) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = [...otpCode];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      setOtpCode(updated);
-      if (cursor <= updated.length - 1) otpInputRefs.current[cursor]?.focus();
-      else otpInputRefs.current[updated.length - 1]?.blur();
-      return;
-    }
-    const nextCode = [...otpCode];
-    nextCode[index] = sanitized;
-    setOtpCode(nextCode);
-    if (sanitized && index < nextCode.length - 1) otpInputRefs.current[index + 1]?.focus();
-  };
-
-  const handleOtpKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      if (otpCode[index]) {
-        const updated = [...otpCode];
-        updated[index] = '';
-        setOtpCode(updated);
-      } else if (index > 0) {
-        otpInputRefs.current[index - 1]?.focus();
-        const updated = [...otpCode];
-        updated[index - 1] = '';
-        setOtpCode(updated);
-      }
     }
   };
 
@@ -299,8 +259,7 @@ export function useProfilePin({
     handleNewPinConfirmChange,
     handleOldPinChange,
     handleOpenPinModal,
-    handleOtpInputChange,
-    handleOtpKeyPress,
+    setOtpCode,
     handleUpdatePin,
     handleVerifyOldPin,
     handleVerifyOtpForPinChange,

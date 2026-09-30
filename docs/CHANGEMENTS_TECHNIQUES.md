@@ -10,6 +10,389 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 30 septembre 2026 — Corrections de l'audit de performance : GPS, Places et historiques
+
+Les quatre points de l'audit sont traités : abonnement GPS passager immédiat,
+acquisitions ponctuelles partagées dans le picker, annulation des lectures Places
+obsolètes sans couper les autres consommateurs, et caches de listes limités à six
+pages avec navigation dans les deux directions et relecture serveur bornée.
+Les non-lus déjà connus sont préservés lors de l'éviction des résumés.
+
+Le [rapport de corrections](PERFORMANCE_FIXES_2026_09_30.md) détaille les problèmes,
+fichiers, comportements conservés, tests JavaScript, mesures simulées et limites
+restantes. Il ne revendique pas de mesure de batterie, fluidité ou chauffe sur appareil.
+
+## 30 septembre 2026 — Connexion PIN et récupération lisibles au-dessus du clavier
+
+**Périmètre et problème.** La capture de récupération du PIN montre des actions
+basses masquées : illustration volumineuse, titre long, marges cumulées et boutons
+empilés consomment la hauteur disponible. L’étape PIN de connexion présentait le
+même risque. Le constat vient de la capture et du code, pas d’une reproduction native.
+
+**Solution appliquée.** La compétence frontend a guidé une présentation utilitaire,
+sans grande illustration, centrée sur les champs et les actions :
+
+- `components/auth/AuthCodeHeading.tsx` et `features/auth/authCode.styles.ts`
+  partagent un titre court, une petite icône masquée avec le clavier, des marges
+  réduites et des contrôles de hauteur minimale 44–52 points, extensibles en hauteur.
+- `components/auth/steps/PinStep.tsx` compacte uniquement la connexion : quatre
+  cases rapprochées, connexion et « PIN oublié ? » sur une rangée, aide de
+  récupération conservée. La présentation de création du PIN reste conservée.
+- `components/auth/steps/ResetPinStep.tsx` compacte la vérification OTP et le choix
+  du nouveau PIN. Vérifier/renvoyer partagent une rangée ; nouveau PIN/confirmation
+  sont côte à côte avec retour à la ligne si nécessaire et libellés accessibles.
+  Les champs restent masqués et sont bloqués pendant la réinitialisation.
+- `components/auth/OtpDeliveryNotice.tsx` propose une variante courte gardant
+  WhatsApp via Didit et le secours SMS. `components/auth/OtpCodeInput.tsx` place
+  « Coller le code » à côté du libellé dans cette variante ; les autres écrans
+  gardent leur présentation existante.
+- `hooks/auth/useAuthKeyboardLayout.ts`, `app/auth.tsx` et
+  `components/auth/AuthHeader.tsx` resserrent l’en-tête au clavier, suppriment
+  l’inset inférieur alors couvert par celui-ci et remettent le défilement en haut
+  au changement d’étape/visibilité du clavier, sans modifier le focus ni le remettre
+  en haut à chaque frappe. Les écouteurs sont retirés hors de ces étapes et au
+  démontage. Android utilise son `adjustResize` existant sans second évitement ;
+  iOS conserve un seul `KeyboardAvoidingView`. La récupération affiche un retour
+  à la connexion à la place des onglets connexion/inscription ; ce retour est
+  bloqué pendant les requêtes de récupération.
+
+**Précautions.** Aucun texte important tronqué, aucune désactivation du grossissement
+des caractères. Le défilement demeure possible pour une très faible hauteur, les
+grands caractères ou un message supplémentaire. Connexion automatique à quatre
+chiffres, chargement jusqu’à redirection, validations serveur, preuve OTP,
+collage/autoremplissage et renvoi conservés. Pas de vérification OTP automatique,
+de changement backend, de dépendance ajoutée ou de modification de configuration native.
+
+**Vérifications.** `tests/authKeyboardLayout.test.js` ajoute 17 tests JavaScript
+sur les transitions clavier, les insets Android/iOS, la navigation et les états
+occupés. `tests/otpCodeInput.test.js` et `tests/otpDelivery.test.js` couvrent aussi
+les variantes compactes ; les tests PIN/Google/chargement simulent le nouveau hook.
+`package.json` inclut ces contrôles de disposition dans `test:form-layout`.
+
+- 130 tests JavaScript réussis : disposition/auth clavier, zones sûres, OTP,
+  récupération PIN, profil, connexion automatique, Google et chargement.
+- TypeScript `tsc --noEmit --incremental false` et ESLint ciblé : réussis.
+- Frontière réseau valide ; 974 sources contrôlées, aucune au-dessus de 400 lignes ;
+  `git diff --check` réussi.
+- `scripts/preview-auth-keyboard.cjs` rend les vrais composants via React Native
+  Web avec données fictives, sous `.expo/auth-keyboard-preview` (ignoré par Git).
+  Mesures Chrome avec clavier **simulé** : aucun débordement vertical/horizontal
+  pour OTP, connexion PIN et nouveau PIN à 320×568, 360×640 et 390×844 pixels CSS,
+  avec respectivement 240, 320 et 346 pixels réservés au clavier, texte normal.
+  Le contrôle a révélé puis permis de corriger la largeur minimale intrinsèque
+  des champs du nouveau PIN. À 320 pixels avec texte simulé à 150 %, pas de
+  débordement horizontal ; le défilement de secours est nécessaire pour OTP/login.
+
+**Limites.** Tests JavaScript à I/O natives simulées et aperçu navigateur, sans
+essai Android/iOS physique ni déploiement. Vérifier sur les appareils concernés :
+claviers Gboard/Samsung/iOS, suggestions et collage, retour de WhatsApp, ouverture/
+fermeture du clavier, grands caractères et paysage. Les hauteurs et événements du
+clavier natif dépendent de l’OS ; l’absence de défilement ne peut être garantie
+sur toute combinaison d’écran, clavier et taille de caractères.
+
+## 30 septembre 2026 — Collage et répartition du code OTP dans les cases
+
+**Périmètre et problème.** L’utilisateur signale un code mal réparti, parfois
+réduit au dernier chiffre, après collage sur certains téléphones. L’inspection
+montre plusieurs gestionnaires différents : celui du profil insérait même un code
+complet à partir de la case active ; les champs déclaraient tous être des cibles
+d’autoremplissage ; les callbacks recopiaient l’état du dernier rendu et pouvaient
+déplacer le focus pendant un collage. La limite native de 5/6 caractères pouvait
+aussi tronquer les codes espacés avant leur nettoyage JavaScript. Ces risques
+sont constatés dans le code ; le symptôme natif exact n’a pas été reproduit ici
+sur les téléphones concernés.
+
+**Solution appliquée.** `components/auth/OtpCodeInput.tsx` et
+`features/auth/otpInput.ts` centralisent désormais l’entrée OTP : un code complet
+remplit toutes les cases depuis la première, quel que soit le champ utilisé ;
+les espaces/tirets sont retirés avant la répartition et les zéros initiaux restent
+présents. Un collage partiel commence à la case active. La saisie manuelle avance
+case par case, mais le collage/autoremplissage ne déplace plus le focus. Une
+référence synchronisée conserve les derniers chiffres entre deux rendus, afin
+que plusieurs événements natifs rapprochés ne réécrivent pas un ancien tableau.
+Une seule case annonce l’autoremplissage OTP ; le menu de collage natif reste
+disponible dans toutes les cases. La limite native passe à 64 caractères pour
+recevoir les séparateurs, tandis que la valeur affichée reste d’un chiffre par
+case et que la longueur du code reste limitée à celle du parcours.
+
+Le bouton « Coller le code » lit le presse-papiers uniquement après un appui
+explicite, via `expo-clipboard` déjà présent dans le projet. Il exige exactement
+le nombre de chiffres attendu après nettoyage, remplit les cases en une seule
+mise à jour et affiche une aide française si le contenu est incomplet ou si la
+lecture échoue. Aucune lecture automatique, aucun journal contenant le code ou
+le presse-papiers. Les doubles lectures sont bloquées ; une réponse tardive est
+ignorée après saisie, remise à zéro, renvoi du code ou démontage du composant.
+
+**Intégration et comportements conservés.** Le composant est utilisé dans
+`components/auth/steps/SmsStep.tsx`, `GoogleOtpStep.tsx`, `ResetPinStep.tsx` et
+`components/profile/ProfilePinModal.tsx`. `hooks/profile/useProfilePin.ts` expose
+le setter du code à `app/(tabs)/profile.tsx` ; les anciens handlers OTP du profil
+et les handlers inutilisés de `hooks/auth/usePhoneAuthActions.ts` sont retirés.
+Les présentations à 5 ou 6 cases, le collage natif, la saisie manuelle, la
+correction d’une case, les refs de focus initial et l’effacement restent disponibles.
+Les champs sont désactivés pendant la vérification ou le renvoi du code. Les
+instructions WhatsApp/Didit, les validations et renvois serveur, les preuves de
+réinitialisation et le PIN personnel à 4 chiffres restent inchangés. Aucun
+nouveau déclenchement automatique de vérification OTP ni changement backend.
+
+**Vérifications.** `tests/otpCodeInput.test.js` ajoute 12 tests couvrant toutes
+les cases pour les deux longueurs, saisies rapprochées, collage explicite,
+autoremplissage configuré pour Android/iOS, erreurs et réponses tardives.
+`tests/otpDelivery.test.js` exerce le composant partagé dans les écrans et
+`tests/profileModules.test.js` conserve le contrôle du parcours de récupération.
+`package.json` ajoute la commande `test:otp`.
+
+- `npm.cmd run test:otp` : **64 tests JavaScript réussis**.
+- Régression connexion automatique, Google et chargement jusqu’à redirection :
+  **38 tests réussis**, soit **102 tests réussis** au total sur ces deux suites.
+- TypeScript `tsc --noEmit --incremental false` : réussi.
+- ESLint des neuf sources touchées : réussi, sans erreur ni avertissement.
+- Frontière réseau valide ; 971 sources contrôlées, aucune au-dessus de 400 lignes ;
+  `git diff --check` réussi.
+
+**Limites.** Presse-papiers, clavier, SDK et rendu natif simulés en JavaScript ;
+aucun déploiement ni essai Android/iOS physique. À vérifier sur les téléphones
+concernés : collage depuis WhatsApp, suggestion OTP du clavier, collage dans une
+case déjà remplie, lecture du presse-papiers autorisée/refusée et correction
+manuelle. La prise en charge des suggestions dépend toujours du clavier et de l’OS.
+
+## 30 septembre 2026 — Choix d’un lieu en touchant la carte
+
+**Périmètre et demande.** Dans `LocationPickerModal`, choisir une position par
+un toucher sur la carte, en complément du glissement sous le repère central.
+Le toucher simple disposait déjà d’un callback, mais le toucher des lieux nommés
+Google Maps (`onPoiClick`) n’était pas relié et les indications ne présentaient
+que le glissement. Un arrêt de glissement encore en attente pouvait aussi entrer
+en concurrence avec le point touché.
+
+**Solution appliquée.** `components/location-picker/LocationPickerMap.tsx`
+centralise `onPress` et `onPoiClick` dans le même traitement : vérification de
+la disponibilité de la carte et de son instance, annulation de l’ancien arrêt
+de glissement, remise du repère au repos, puis transmission du point au sélecteur.
+Les callbacks intermédiaires de caméra sont ignorés pendant le recentrage ; un
+nouveau geste reste prioritaire. Le centre courant est suivi pendant le mouvement,
+pour permettre de toucher à nouveau l’ancien point sélectionné avant la fin du
+glissement. Les indications de la carte et de `components/LocationPickerModal.tsx`
+mentionnent désormais explicitement le toucher.
+
+**Comportements conservés.** Le traitement existant `choose(pointSelection(...),
+true)` reste responsable de la sélection immédiate, du recentrage et de la
+recherche différée de l’adresse. Glissement, recherche textuelle, favoris, GPS,
+limites géographiques RDC, projection sur le trajet et validation explicite
+« Utiliser ce lieu » sont conservés. Une adresse en attente ou indisponible ne
+bloque pas la confirmation des coordonnées. Aucun nouvel appel réseau direct.
+
+**Vérifications.** `tests/locationPickerMapPress.test.js` couvre les touches
+successives, le recentrage, la concurrence glissement/toucher, le retour au
+glissement, les lieux Google Maps et les événements tardifs après fermeture ou
+rechargement. `tests/locationPicker.test.js` vérifie aussi le câblage du modal,
+le GPS lent, les adresses obsolètes, la validation hors ligne et les restrictions.
+`package.json` inclut le nouveau fichier dans `test:location-picker`.
+
+- `npm.cmd run test:location-picker` : **26 tests JavaScript réussis**.
+- TypeScript sans émission et ESLint des deux composants : réussis, sans erreur.
+- Frontière réseau valide ; 969 sources contrôlées, aucune au-dessus de 400 lignes ;
+  `git diff --check` réussi.
+
+**Limites.** Événements natifs, animations et réseau simulés : aucun essai physique
+Android/iOS ni déploiement. Le callback distinct des lieux nommés est fourni par
+Google Maps (Android et fournisseur Google sur iOS), pas par Apple Maps ; le
+fournisseur iOS actuel reste inchangé. Le toucher standard est câblé sur les deux
+plateformes et son comportement natif reste à vérifier sur appareil.
+
+## 30 septembre 2026 — Chargement continu jusqu’à la sortie du formulaire d’authentification
+
+**Périmètre et problème.** Après une connexion ou une inscription acceptée, le
+chargement réseau pouvait s’arrêter avant la confirmation locale de session et
+la redirection. Le bouton redevenait disponible ; l’inscription passager sur
+l’étape profil ne disposait pas non plus de son propre indicateur de finalisation.
+
+**Solution appliquée.** `hooks/auth/usePinLogin.ts`, `useGoogleAuthActions.ts`
+et `useSocialAuthActions.ts` conservent leur chargement et leur verrou synchrone
+après une connexion réussie, jusqu’au démontage du formulaire. Les connexions
+Google/Apple attendent explicitement la confirmation de sauvegarde de session,
+via `useAuthController.ts`, afin de libérer le bouton avec une erreur si cette
+confirmation échoue. L’analytics Apple devient non bloquant, comme pour Google
+et le PIN. Aucun délai artificiel ne réactive le bouton après un succès.
+
+`hooks/auth/useRegistrationActions.ts` couvre maintenant toute la finalisation :
+lecture du parrainage, requête, sauvegarde de session, Didit pour les conducteurs,
+notification et demande de navigation. Un double appui est ignoré même avant le
+prochain rendu React. Le formulaire social n’est plus effacé avant son démontage,
+ce qui évite le retour visuel à une étape inactive pendant la transition.
+Après une création confirmée par l’API, une éventuelle nouvelle tentative reprend
+uniquement la finalisation locale, sans renvoyer la création de compte ; les
+champs d’identité restent figés et le bouton indique « Finaliser la connexion ».
+Une erreur de notification, d’analytics ou de consommation locale du parrainage
+ne transforme pas la création en échec. Si Didit lève une erreur, un message
+invite à reprendre la vérification depuis le profil, sans recréer le compte.
+
+`app/auth.tsx` relie cet état aux étapes profil/KYC et bloque le changement de
+mode et le retour de l’en-tête. `components/auth/steps/ProfileStep.tsx` et
+`KycStep.tsx` affichent un indicateur avec « Finalisation en cours… » et exposent
+l’état occupé aux outils d’accessibilité. `components/GenderSelector.tsx` accepte
+un état désactivé facultatif pour figer ce champ pendant la finalisation.
+
+**Comportements conservés.** Une erreur avant création laisse corriger et
+réessayer. La sélection Google/Apple au début d’une inscription et la transition
+vers une inscription demandée par le backend restent des étapes intermédiaires
+déverrouillées. PIN automatique, validation des noms/plaques, OTP, attribution
+transmise au serveur, parcours conducteur et règles de session restent conservés.
+Aucun contrat backend ni droit conducteur n’est modifié. Le comportement par
+défaut du sélecteur de sexe reste inchangé sur les autres écrans.
+
+**Vérifications.** `tests/authSubmissionLoading.test.js` ajoute 15 scénarios
+JavaScript de lenteur, double appui, succès en attente de navigation, échec local
+après création, Didit et services facultatifs, ainsi que le câblage des boutons.
+`pinAutoLogin.test.js` et `googleAuthFlow.test.js` vérifient le verrou conservé
+après succès. `vehiclePlate.test.js` utilise désormais un cycle de hooks et une
+instance distincte par inscription. Le contrôle élargi a révélé une ancienne
+fixture invalide dans `accountRole.test.js` : ses refresh tokens opaques étaient
+refusés par la politique de session existante. La fixture utilise maintenant des
+JWT synthétiques valides, sans modifier les assertions ni le code de production.
+
+- Suite ciblée/élargie : **97 tests réussis** (chargement, Google, PIN automatique,
+  réinitialisation PIN, OTP, gardes de navigation, cycle de session, rôles, plaques).
+- TypeScript `tsc --noEmit --incremental false` : réussi.
+- ESLint des neuf sources concernées : aucune erreur ; un avertissement
+  préexistant sur les dépendances de l’effet de disponibilité Apple du contrôleur.
+- Frontière réseau : valide ; taille des sources : 969 fichiers contrôlés,
+  aucun au-dessus de 400 lignes ; `git diff --check` : réussi.
+
+**Limites.** Tests JavaScript avec SDK natifs, stockage, réseau et navigation
+simulés ; aucun essai Android/iOS physique ni déploiement réalisé. La reprise
+locale reste en mémoire pour le formulaire courant : ce n’est pas une garantie
+d’idempotence serveur après fermeture de l’app ou perte d’une réponse réseau.
+À vérifier sur appareil : réseau lent, sortie effective du formulaire, demandes
+de permission et retour du SDK Didit.
+
+## 30 septembre 2026 — Connexion automatique à la saisie du PIN complet
+
+**Périmètre et demande.** Au login par téléphone, les quatre cases du PIN
+devaient être remplies puis validées avec un bouton. La connexion doit partir
+dès le quatrième chiffre, sans changer la création ou la réinitialisation du PIN.
+
+**Solution appliquée.** `hooks/auth/usePhoneAuthActions.ts` transmet directement
+le nouveau PIN nettoyé à la connexion quand l'utilisateur remplit quatre chiffres,
+uniquement en mode `login` et à l'étape `pin`. Cela couvre également le
+copier-coller et évite d'envoyer la valeur React précédente à trois chiffres.
+Le déclenchement dépend d'une saisie, pas d'un effet : aucun envoi simplement
+en affichant l'écran, en revenant dessus ou lors d'un rendu supplémentaire.
+
+Le nouveau `hooks/auth/usePinLogin.ts` centralise l'envoi automatique et le
+bouton manuel conservé. Un verrou synchrone empêche les appels concurrents
+jusqu'à la fin de la requête et de la confirmation locale de session ; un succès
+ne permet pas de renvoyer le login pendant la redirection. Sur erreur, le PIN
+est vidé et le champ est refocalisé via le mécanisme existant, sans boucle de
+réessai. Une nouvelle saisie complète permet une nouvelle tentative. Les retours
+tardifs sont contrôlés par montage, compte téléphonique, étape et génération de
+session avant les actions locales du hook. Une erreur d'analytics ne transforme
+pas une connexion confirmée en échec.
+
+`components/auth/steps/PinStep.tsx` explique le déclenchement automatique,
+affiche « Connexion en cours… » et bloque le champ, le bouton et la récupération
+du PIN pendant l'attente. `app/auth.tsx` conserve cet état pendant la sauvegarde
+de session et protège aussi le retour/changement de mode, y compris avant le
+prochain rendu. Le serveur demeure l'autorité pour accepter ou refuser le PIN.
+
+**Comportements conservés et précautions.** Le bouton manuel reste disponible.
+Le PIN reste numérique, masqué et limité à quatre chiffres. Aucun envoi automatique
+à l'inscription, lors de la confirmation d'un nouveau PIN ou de sa réinitialisation.
+Aucune relance automatique après PIN erroné ou panne réseau. Les endpoints et
+le mécanisme existant d'établissement de session ne sont pas modifiés ; quitter
+un écran n'est pas présenté comme une annulation d'une requête déjà envoyée.
+Les changements Google de l'intervention précédente sont conservés.
+
+**Vérifications réalisées.** 73 tests JavaScript réussis dans `pinAutoLogin`,
+`pinReset`, `otpDelivery`, `googleAuth`, `googleAuthFlow`,
+`authNavigationSession` et `vehiclePlate`. Les 11 nouveaux tests vérifient
+notamment la valeur réellement envoyée au quatrième chiffre, le collage,
+auto-envoi plus appui manuel, attente de sauvegarde, erreurs sans réessai,
+nouvelle saisie après refus, absence d'envoi sur simple rendu, inscription
+inchangée, réponses tardives et branchement du chargement dans l'écran.
+Les bancs de tests `otpDelivery.test.js` et `googleAuthFlow.test.js` sont adaptés
+au hook et au verrou supplémentaires. TypeScript sans émission réussi ; lint
+ciblé sans erreur, avec quatre avertissements préexistants sur des handlers
+OTP inutilisés dans `usePhoneAuthActions.ts`. Frontières réseau,
+limite des 400 lignes (969 sources) et `git diff --check` validés.
+
+**Limites.** SDK, backend et persistance simulés dans les tests JavaScript.
+Aucun déploiement ni essai physique : vérifier sur Android/iOS la frappe,
+le collage, le clavier après refus, la latence réseau et la redirection après
+une connexion réelle. Aucun PIN, jeton ou renseignement personnel réel ajouté
+à la documentation ou aux journaux par ce changement.
+
+## 30 septembre 2026 — Connexion Google : concurrence et erreurs natives en français
+
+**Périmètre et problème signalé.** Sur certains téléphones en production,
+le premier appui visible sur Google affiche une erreur « in progress » en
+anglais. Inspection réelle du code : le chargement du bouton commençait à
+la requête backend, pas à l'ouverture du SDK ; les handlers n'avaient pas de
+verrou synchrone ; le service réaffichait les messages natifs inconnus.
+Le SDK installé distingue la concurrence de son pont natif et les erreurs
+remontées par Google Play services. L'origine précise du premier appui sur
+les appareils concernés n'est pas reproduite : un état natif résiduel reste
+une hypothèse, pas un diagnostic confirmé d'un double appui utilisateur.
+
+**Solution effectivement appliquée.**
+
+- `services/googleAuth.ts` configure Google à la demande, une seule fois
+  par instance JavaScript. Les appels concurrents partagent la même promesse
+  d'ouverture/vérification native. Le verrou est libéré au règlement réel de
+  la promesse, jamais par un délai susceptible de lancer deux fenêtres. La
+  configuration avant `signIn`/`signInSilently` est garantie dans le service,
+  et l'effet répété au montage est retiré de `useAuthController.ts`.
+- `features/auth/googleAuthErrors.ts` traduit les erreurs natives en catégories
+  et messages français : concurrence, annulation, services indisponibles,
+  configuration, réseau et confirmation Google absente. Compatibilité avec
+  `IN_PROGRESS`, `ASYNC_OP_IN_PROGRESS`, `SIGN_IN_CURRENTLY_IN_PROGRESS`,
+  `12502` numérique/texte et variantes de message. Un message natif inconnu
+  n'est plus présenté tel quel. Les annulations Android/iOS restent distinctes.
+- Nouveau `hooks/auth/useGoogleAuthActions.ts`, intégré dans
+  `useSocialAuthActions.ts` : verrou dès l'appui jusqu'à la fin du SDK et de
+  la requête Zwanga, chargement immédiatement visible, contrôle de montage
+  et de génération de session avant l'envoi au backend. La connexion et
+  l'inscription Google, ainsi qu'Apple, partagent le verrou du contrôleur.
+  Une annulation ne montre pas d'alerte d'échec ; une concurrence native
+  affiche une information française avec consigne de réessai et alternative
+  par téléphone. Le journal ne contient que la catégorie, pas le texte natif,
+  le profil ou les jetons. Une erreur d'analytics n'annule plus un login réussi.
+- `app/auth.tsx`, `components/auth/steps/PhoneStep.tsx` et `AuthHeader.tsx`
+  relient l'attente native à « Connexion en cours… », désactivent les actions
+  concurrentes et exposent l'état occupé à l'accessibilité. Les callbacks
+  téléphone/changement de mode/retour consultent aussi le verrou avant même
+  le prochain rendu React.
+
+**Comportements conservés et précautions.** Pas de déconnexion Google forcée,
+de révocation, de purge des identifiants ou de relance automatique du SDK sur
+une erreur ambiguë. La connexion Zwanga n'est tentée qu'après un résultat
+Google valide. Le serveur reste l'autorité pour établir la session et décider
+si une première inscription doit être complétée. Le parcours téléphone/OTP,
+la finalisation d'inscription et Apple sont conservés. Aucun changement de
+version du SDK, d'identifiant OAuth, de backend ou de configuration native.
+
+**Vérifications réalisées.** 62 tests JavaScript réussis : `googleAuth.test.js`,
+`googleAuthFlow.test.js`, `otpDelivery.test.js`, `pinReset.test.js`,
+`authNavigationSession.test.js` et `vehiclePlate.test.js`. SDK/services simulés :
+première ouverture lente, appels concurrents avant rendu, attente backend,
+partage Google/Apple, refus natif dès le premier appel, annulation, code absent
+ou numérique, absence de token, reprise après échec, fermeture de l'écran,
+changement de session, passage à l'inscription et erreur d'analytics.
+TypeScript sans émission réussi ; ESLint ciblé sans erreur, avec un avertissement
+préexistant de dépendance de l'effet de disponibilité Apple dans
+`useAuthController.ts`. Frontières réseau validées, 968 sources sous la limite
+de 400 lignes et `git diff --check` réussi.
+
+**Sources et limites.** Vérification du code de la version installée du SDK et
+de sa [gestion officielle des erreurs](https://react-native-google-signin.github.io/docs/errors)
+ainsi que du [contrat de configuration](https://react-native-google-signin.github.io/docs/original).
+Aucun essai de connexion réelle, aucune validation native sur un téléphone
+affecté, aucun déploiement. À vérifier avec une build de production : premier
+appui à froid, reprise après arrière-plan, annulation, services Google Play
+anciens et réseau lent. Si le SDK reste occupé indépendamment de l'app, le
+message est traité mais sa disparition ne peut pas être annoncée. Le modèle
+du téléphone et le message original ont été demandés pour affiner ce cas.
+
 ## 29–30 septembre 2026 — Parcours conducteur piloté par le serveur
 
 **Périmètre et problème constaté.** Cette intervention complète et remplace

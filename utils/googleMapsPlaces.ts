@@ -3,11 +3,10 @@ import { DEFAULT_PROXIMITY, MAJOR_CITIES, MajorCityConfig, RDC_BBOX, GoogleMapsS
 import { store } from '@/store';
 import { googleMapsApi, type PlaceDetails } from '@/store/api/googleMapsApi';
 import { readableLocation } from '@/utils/readableLocation';
+import { sharedPlaceRead } from './places/sharedPlaceRead';
 export type { GoogleMapsSearchSuggestion } from './places/searchModel';
 
-/* =====================================================
-   CITY AND LOCATION HELPERS
-===================================================== */
+/* City and location helpers */
 
 const isInRdcBounds = (latitude: number | null, longitude: number | null) => {
   if (latitude === null || longitude === null) {
@@ -214,8 +213,9 @@ export async function searchGoogleMapsPlaces(
   query: string,
   proximity?: { longitude: number; latitude: number },
   limit: number = 5,
+  signal?: AbortSignal,
 ): Promise<GoogleMapsSearchSuggestion[]> {
-  if (!query?.trim()) return [];
+  if (!query?.trim() || signal?.aborted) return [];
 
   const trimmedQuery = query.trim().substring(0, 256);
   const validLimit = Math.min(Math.max(limit, 1), 10);
@@ -226,9 +226,10 @@ export async function searchGoogleMapsPlaces(
     detectedCityConfig?.center ??
     safeProximity ??
     DEFAULT_PROXIMITY;
+  const textSearchQuery = buildPreciseTextSearchQuery(trimmedQuery, detectedCityConfig, safeProximity ?? undefined);
 
   try {
-    const autocompletePromise = store.dispatch(
+    const autocompletePromise = sharedPlaceRead(JSON.stringify(['autocomplete', trimmedQuery, effectiveProximity]), () => store.dispatch(
       googleMapsApi.endpoints.placesAutocomplete.initiate(
         {
           input: trimmedQuery,
@@ -240,13 +241,13 @@ export async function searchGoogleMapsPlaces(
         },
         { subscribe: false },
       ),
-    );
+    ), signal);
 
     const textSearchPromise = shouldRunPreciseTextSearch(queryAnalysis)
-      ? store.dispatch(
+      ? sharedPlaceRead(JSON.stringify(['search', textSearchQuery, effectiveProximity]), () => store.dispatch(
           googleMapsApi.endpoints.placesSearch.initiate(
             {
-              query: buildPreciseTextSearchQuery(trimmedQuery, detectedCityConfig, safeProximity ?? undefined),
+              query: textSearchQuery,
               locationLat: effectiveProximity.latitude,
               locationLng: effectiveProximity.longitude,
               radius: 50000,
@@ -254,7 +255,7 @@ export async function searchGoogleMapsPlaces(
             },
             { subscribe: false },
           ),
-        )
+        ), signal)
       : Promise.resolve(null);
 
     const [autocompleteResult, textSearchResult] = await Promise.all([
@@ -326,20 +327,20 @@ export async function searchGoogleMapsPlaces(
       })
       .slice(0, validLimit);
   } catch (error) {
+    if (signal?.aborted) return [];
     console.warn('Places search error:', error);
     return [];
   }
 }
 
-/* Retrieve details */
-
 export async function getGoogleMapsPlaceDetails(
   placeId: string,
+  signal?: AbortSignal,
 ): Promise<GoogleMapsSearchSuggestion | null> {
-  if (!placeId) return null;
+  if (!placeId || signal?.aborted) return null;
 
   try {
-    const result = await store.dispatch(
+    const result = await sharedPlaceRead(JSON.stringify(['detail', placeId]), () => store.dispatch(
       googleMapsApi.endpoints.getPlaceDetails.initiate(
         {
           placeId,
@@ -347,7 +348,7 @@ export async function getGoogleMapsPlaceDetails(
         },
         { subscribe: false },
       ),
-    );
+    ), signal);
 
     if (result.error || !result.data) {
       console.warn('Place details error:', result.error);
@@ -355,7 +356,6 @@ export async function getGoogleMapsPlaceDetails(
     }
 
     const place = result.data;
-
     if (
       isNaN(place.lat) ||
       isNaN(place.lng) ||
@@ -376,7 +376,6 @@ export async function getGoogleMapsPlaceDetails(
       !['geocode', 'establishment', 'point_of_interest'].includes(type),
     );
     const label = readableLocation(place);
-
     return {
       id: placeId,
       name: label.title,
@@ -389,6 +388,7 @@ export async function getGoogleMapsPlaceDetails(
       context: {},
     };
   } catch (error) {
+    if (signal?.aborted) return null;
     console.warn('Place details error:', error);
     return null;
   }

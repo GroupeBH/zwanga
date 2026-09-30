@@ -1,6 +1,8 @@
 import type { Notification, NotificationsResponse, MarkNotificationsResponse } from '@/types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
+import { MAX_LIST_PAGES, NOTIFICATION_PAGE_SIZE } from './boundedListPages';
+import { applyConfirmedNotificationChange } from './notifications/confirmedChange';
 
 type ServerNotification = {
   id: string;
@@ -52,13 +54,16 @@ export const notificationApi = baseApi.injectEndpoints({
       keepUnusedDataFor: 30,
       infiniteQueryOptions: {
         initialPageParam: 0,
+        maxPages: MAX_LIST_PAGES,
+        refetchCachedPages: false,
+        getPreviousPageParam: (_page, _pages, offset) => offset > 0 ? Math.max(0, offset - NOTIFICATION_PAGE_SIZE) : undefined,
         getNextPageParam: (lastPage, _pages, offset) => {
           const nextOffset = offset + lastPage.notifications.length;
           return lastPage.notifications.length > 0 && nextOffset < lastPage.total
             ? nextOffset : undefined;
         },
       },
-      query: ({ pageParam }) => ({ url: '/notifications', params: { limit: 40, offset: pageParam } }),
+      query: ({ pageParam }) => ({ url: '/notifications', params: { limit: NOTIFICATION_PAGE_SIZE, offset: pageParam } }),
       transformResponse: (response: { notifications: ServerNotification[]; total: number; unreadCount: number }) => ({
         ...response,
         notifications: response.notifications.map(mapServerNotificationToClient),
@@ -98,6 +103,7 @@ export const notificationApi = baseApi.injectEndpoints({
 
     // Marquer des notifications comme lues
     markNotificationsAsRead: builder.mutation<MarkNotificationsResponse, MarkNotificationsAsReadPayload>({
+      onQueryStarted: (payload, { dispatch, queryFulfilled }) => applyConfirmedNotificationChange(dispatch, queryFulfilled, { ids: payload.notificationIds, read: true }),
       query: (payload) => ({
         url: '/notifications/mark-as-read',
         method: 'PUT',
@@ -108,6 +114,7 @@ export const notificationApi = baseApi.injectEndpoints({
 
     // Marquer toutes les notifications comme lues
     markAllNotificationsAsRead: builder.mutation<MarkNotificationsResponse, void>({
+      onQueryStarted: (_payload, { dispatch, queryFulfilled }) => applyConfirmedNotificationChange(dispatch, queryFulfilled, { read: true }),
       query: () => ({
         url: '/notifications/mark-all-as-read',
         method: 'PUT',
@@ -117,6 +124,7 @@ export const notificationApi = baseApi.injectEndpoints({
 
     // Marquer des notifications comme non lues
     markNotificationsAsUnread: builder.mutation<MarkNotificationsResponse, MarkNotificationsAsReadPayload>({
+      onQueryStarted: (payload, { dispatch, queryFulfilled }) => applyConfirmedNotificationChange(dispatch, queryFulfilled, { ids: payload.notificationIds, read: false }),
       query: (payload) => ({
         url: '/notifications/mark-as-unread',
         method: 'PUT',
@@ -127,6 +135,7 @@ export const notificationApi = baseApi.injectEndpoints({
 
     // Désactiver des notifications (les retirer de la liste affichée)
     disableNotifications: builder.mutation<MarkNotificationsResponse, MarkNotificationsAsReadPayload>({
+      onQueryStarted: (payload, { dispatch, queryFulfilled }) => applyConfirmedNotificationChange(dispatch, queryFulfilled, { ids: payload.notificationIds, remove: true }),
       query: (payload) => ({
         url: '/notifications/disable',
         method: 'PUT',

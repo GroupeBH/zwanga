@@ -5,13 +5,14 @@ import { Colors } from '@/constants/styles';
 import { useDeleteConversationMutation, useListConversationPagesInfiniteQuery } from '@/store/api/messageApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectConversations, selectUser } from '@/store/selectors';
-import { setConversations } from '@/store/slices/messagesSlice';
+import { setConversationWindow } from '@/store/slices/messagesSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Keyboard, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 
 export default function MessagesScreen() {
   const isScreenActive = useScreenIsActive();
@@ -21,7 +22,8 @@ export default function MessagesScreen() {
   const [search, setSearch] = useState('');
   const opening = useRef(false);
   useEffect(() => { opening.current = false; }, [isScreenActive]);
-  const { data, isLoading, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage, refetch } = useListConversationPagesInfiniteQuery(undefined, {
+  const { data, isLoading, isFetching, isFetchingNextPage, isFetchingPreviousPage, hasPreviousPage,
+    isError, fetchPreviousPage, hasNextPage, fetchNextPage, refetch } = useListConversationPagesInfiniteQuery(undefined, {
     skip: !isScreenActive,
     refetchOnMountOrArgChange: 30,
     refetchOnReconnect: true,
@@ -32,9 +34,12 @@ export default function MessagesScreen() {
 
   useEffect(() => {
     if (data) {
-      dispatch(setConversations(Array.from(new Map(data.pages.flatMap((page) => page.data).map((item) => [item.id, item])).values())));
+      dispatch(setConversationWindow({
+        conversations: Array.from(new Map(data.pages.flatMap((page) => page.data).map((item) => [item.id, item])).values()),
+        complete: !hasPreviousPage && !hasNextPage,
+      }));
     }
-  }, [data, dispatch]);
+  }, [data, dispatch, hasPreviousPage, hasNextPage]);
 
   const formatTimestamp = useCallback((rawValue: Date | string | number | null | undefined) => {
     if (!rawValue) {
@@ -209,7 +214,7 @@ export default function MessagesScreen() {
           <Ionicons name="search" size={20} color={Colors.gray[600]} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher une conversation"
+            placeholder="Rechercher dans les conversations affichées"
             placeholderTextColor={Colors.gray[500]}
             value={search}
             onChangeText={setSearch}
@@ -236,19 +241,26 @@ export default function MessagesScreen() {
         maxToRenderPerBatch={8}
         updateCellsBatchingPeriod={50}
         windowSize={7}
-        refreshing={isFetching && !isFetchingNextPage}
-        onRefresh={() => { if (isScreenActive) void refetch(); }}
-        onEndReached={() => { if (isScreenActive && hasNextPage && !isFetching) void fetchNextPage(); }}
+        refreshing={isFetching && !isFetchingNextPage && !isFetchingPreviousPage}
+        onRefresh={() => { if (isScreenActive && !isFetching) void refetch(); }}
+        onEndReached={() => { if (isScreenActive && !isError && !hasPreviousPage && hasNextPage && !isFetching) void fetchNextPage(); }}
         onEndReachedThreshold={0.35}
-        ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={Colors.primary} /> : null}
+        ListHeaderComponent={<HistoryPaginationFooter hasMore={hasPreviousPage} loading={isFetchingPreviousPage}
+          error={isError} disabled={isFetching || !isScreenActive} loaded={conversations.length}
+          showCount={false} label="Conversations plus récentes"
+          onLoad={() => { if (isScreenActive && hasPreviousPage && !isFetching) void (isError ? refetch() : fetchPreviousPage()); }} />}
+        ListFooterComponent={<HistoryPaginationFooter hasMore={hasNextPage} loading={isFetchingNextPage}
+          error={isError} disabled={isFetching || !isScreenActive} loaded={conversations.length}
+          label="Conversations plus anciennes"
+          onLoad={() => { if (isScreenActive && hasNextPage && !isFetching) void (isError ? refetch() : fetchNextPage()); }} />}
         removeClippedSubviews={Platform.OS === 'android'}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="chatbubbles-outline" size={48} color={Colors.gray[500]} />
             </View>
-            <Text style={styles.emptyTitle}>Aucun message</Text>
-            <Text style={styles.emptyText}>Vos conversations apparaîtront ici</Text>
+            <Text style={styles.emptyTitle}>{isError ? 'Chargement interrompu' : 'Aucun message'}</Text>
+            <Text style={styles.emptyText}>{isError ? 'Tirez vers le bas pour réessayer.' : 'Vos conversations apparaîtront ici'}</Text>
           </View>
         }
       />

@@ -1,17 +1,20 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, NativeSyntheticEvent, TextInputKeyPressEventData, Platform } from 'react-native';
+import { OtpCodeInput } from '../OtpCodeInput';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { ResetPinMode } from '../types';
 import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
+import { AuthCodeHeading } from '../AuthCodeHeading';
+import { authCodeStyles as codeStyles } from '@/features/auth/authCode.styles';
 
 interface ResetPinStepProps {
   phone: string;
   resetPinStep: ResetPinMode;
   otpCode: string[];
-  otpInputRefs: React.MutableRefObject<Array<TextInput | null>>;
+  otpInputRefs: React.MutableRefObject<(TextInput | null)[]>;
   newPin: string;
   newPinConfirm: string;
   pinInputRef: React.RefObject<TextInput | null>;
@@ -24,6 +27,7 @@ interface ResetPinStepProps {
   onResendOtp: () => void;
   isResending: boolean;
   isLoading: boolean;
+  keyboardVisible?: boolean;
 }
 
 export function ResetPinStep({
@@ -43,176 +47,118 @@ export function ResetPinStep({
   onResendOtp,
   isResending,
   isLoading,
+  keyboardVisible = false,
 }: ResetPinStepProps) {
   const isOtpComplete = otpCode.join('').length === 6;
   const isPinValid = newPin.length === 4 && newPinConfirm.length === 4;
-  const otpAutoComplete = Platform.OS === 'android' ? 'sms-otp' : 'one-time-code';
-
-  const handleOtpInputChange = (text: string, index: number) => {
-    const sanitized = text.replace(/\D/g, '');
-
-    if (!sanitized) {
-      const next = [...otpCode];
-      next[index] = '';
-      onOtpChange(next);
-      return;
-    }
-
-    if (sanitized.length >= otpCode.length) {
-      const full = sanitized.slice(0, otpCode.length).split('');
-      onOtpChange(full);
-      otpInputRefs.current[otpCode.length - 1]?.focus();
-      return;
-    }
-
-    if (sanitized.length > 1) {
-      const next = [...otpCode];
-      let cursor = index;
-      for (const digit of sanitized) {
-        if (cursor > otpCode.length - 1) break;
-        next[cursor] = digit;
-        cursor += 1;
-      }
-      onOtpChange(next);
-      const targetIndex = Math.min(cursor, otpCode.length - 1);
-      otpInputRefs.current[targetIndex]?.focus();
-      return;
-    }
-
-    const next = [...otpCode];
-    next[index] = sanitized.slice(0, 1);
-    onOtpChange(next);
-    if (index < otpCode.length - 1) {
-      otpInputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyPress = (
-    e: NativeSyntheticEvent<TextInputKeyPressEventData>,
-    index: number
-  ) => {
-    if (e.nativeEvent.key === 'Backspace' && !otpCode[index] && index > 0) {
-      otpInputRefs.current[index - 1]?.focus();
-    }
-  };
 
   return (
-    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
-      <View style={styles.heroSection}>
-        <View style={[styles.logoContainer, { backgroundColor: Colors.secondary + '20' }]}>
-          <Ionicons name="key" size={40} color={Colors.secondary} />
-        </View>
-        <Text style={styles.heroTitle}>Réinitialiser votre mot de passe PIN</Text>
-        <Text style={styles.heroSubtitle}>
-          {resetPinStep === 'otp'
-            ? `Numéro à vérifier : ${phone}`
-            : 'Créez un nouveau mot de passe PIN à 4 chiffres'}
-        </Text>
-      </View>
+    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp}
+      style={[styles.stepContainer, codeStyles.step, keyboardVisible && codeStyles.keyboardStep]}>
+      <AuthCodeHeading icon="key-outline" keyboardVisible={keyboardVisible}
+        title={resetPinStep === 'otp' ? 'Réinitialiser le PIN' : 'Choisir un nouveau PIN'}
+        subtitle={resetPinStep === 'otp' ? `Numéro à vérifier : ${phone}` : '4 chiffres, puis confirmez-les.'} />
 
       {resetPinStep === 'otp' ? (
         <>
-          <View style={styles.formSection}>
-            <OtpDeliveryNotice />
-            <Text style={styles.inputLabel}>Code de vérification</Text>
-            <Text style={styles.inputLabelSmall}>Saisissez les 6 chiffres du code reçu</Text>
-            <View style={styles.smsCodeContainer}>
-              {otpCode.map((digit, index) => (
-                <TextInput
-                  key={`reset-otp-${index}`}
-                  ref={(ref) => {
-                    otpInputRefs.current[index] = ref;
-                  }}
-                  style={[styles.smsInput, { width: '14%' }, digit ? styles.smsInputFilled : null]}
-                  keyboardType="number-pad"
-                  maxLength={otpCode.length}
-                  autoComplete={otpAutoComplete as any}
-                  textContentType="oneTimeCode"
-                  importantForAutofill="yes"
-                  selectTextOnFocus
-                  value={digit}
-                  onChangeText={(text) => handleOtpInputChange(text, index)}
-                  onKeyPress={(e) => handleOtpKeyPress(e, index)}
-                />
-              ))}
-            </View>
+          <OtpDeliveryNotice compact />
+          <View>
+            <OtpCodeInput code={otpCode} onChange={onOtpChange} inputRefs={otpInputRefs}
+              compact label="Code à 6 chiffres" disabled={isLoading || isResending}
+              containerStyle={codeStyles.codeRow}
+              inputStyle={[styles.smsInput, codeStyles.codeInput, keyboardVisible && codeStyles.keyboardCodeInput]}
+              filledStyle={styles.smsInputFilled} />
           </View>
-          <TouchableOpacity
-            style={[
-              styles.mainButton,
-              isOtpComplete ? styles.mainButtonActive : styles.mainButtonDisabled,
-            ]}
-            onPress={onVerifyOtp}
-            disabled={!isOtpComplete || isLoading || isResending}
-          >
-            {isLoading ? <ActivityIndicator color="white" /> : (
-              <>
-                <Text style={styles.mainButtonText}>Vérifier</Text>
-                <Ionicons name="arrow-forward" size={20} color="white" />
-              </>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.resendButton}
-            onPress={onResendOtp}
-            disabled={isResending || isLoading}
-          >
-            {isResending ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <Text style={styles.resendButtonText}>Renvoyer le code</Text>
-            )}
-          </TouchableOpacity>
+          <View style={codeStyles.actions}>
+            <TouchableOpacity
+              style={[
+                styles.mainButton,
+                codeStyles.action,
+                isOtpComplete ? styles.mainButtonActive : styles.mainButtonDisabled,
+              ]}
+              onPress={onVerifyOtp}
+              disabled={!isOtpComplete || isLoading || isResending}
+              accessibilityRole="button"
+              accessibilityLabel={isLoading ? 'Vérification en cours' : 'Vérifier le code'}
+              accessibilityState={{ disabled: !isOtpComplete || isLoading || isResending, busy: isLoading }}
+            >
+              {isLoading ? <ActivityIndicator color="white" /> : (
+                <Text style={[styles.mainButtonText, codeStyles.actionText]}>Vérifier</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[codeStyles.action, codeStyles.secondaryAction]}
+              onPress={onResendOtp}
+              disabled={isResending || isLoading}
+              accessibilityRole="button"
+              accessibilityLabel="Renvoyer le code"
+              accessibilityState={{ disabled: isResending || isLoading, busy: isResending }}
+            >
+              {isResending ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Text style={codeStyles.secondaryText}>Renvoyer</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </>
       ) : (
         <>
-          <View style={styles.formSection}>
-            <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
-              <TextInput
-                ref={pinInputRef}
-                style={styles.input}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                value={newPin}
-                onChangeText={onPinChange}
-                placeholder="Créez un nouveau PIN (4 chiffres)"
-                placeholderTextColor={Colors.gray[400]}
-              />
+          <View style={codeStyles.fields}>
+            <View style={codeStyles.field}>
+              <Text style={codeStyles.label}>Nouveau PIN</Text>
+              <View style={[styles.inputWrapper, codeStyles.inputWrapper]}>
+                <TextInput
+                  ref={pinInputRef}
+                  style={[styles.input, codeStyles.input]}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  secureTextEntry
+                  value={newPin}
+                  onChangeText={onPinChange}
+                  placeholder="4 chiffres"
+                  accessibilityLabel="Nouveau code PIN à 4 chiffres"
+                  editable={!isLoading}
+                  placeholderTextColor={Colors.gray[400]}
+                />
+              </View>
             </View>
-          </View>
-          <View style={styles.formSection}>
-            <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
-              <TextInput
-                ref={pinConfirmInputRef}
-                style={styles.input}
-                keyboardType="number-pad"
-                maxLength={4}
-                secureTextEntry
-                value={newPinConfirm}
-                onChangeText={onPinConfirmChange}
-                placeholder="Confirmez votre nouveau PIN (4 chiffres)"
-                placeholderTextColor={Colors.gray[400]}
-              />
+            <View style={codeStyles.field}>
+              <Text style={codeStyles.label}>Confirmer</Text>
+              <View style={[styles.inputWrapper, codeStyles.inputWrapper]}>
+                <TextInput
+                  ref={pinConfirmInputRef}
+                  style={[styles.input, codeStyles.input]}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                  secureTextEntry
+                  value={newPinConfirm}
+                  onChangeText={onPinConfirmChange}
+                  placeholder="4 chiffres"
+                  accessibilityLabel="Confirmation du code PIN à 4 chiffres"
+                  editable={!isLoading}
+                  placeholderTextColor={Colors.gray[400]}
+                />
+              </View>
             </View>
           </View>
           <TouchableOpacity
             style={[
               styles.mainButton,
+              codeStyles.fullWidthAction,
               isPinValid ? styles.mainButtonActive : styles.mainButtonDisabled,
             ]}
             onPress={onResetPin}
             disabled={!isPinValid || isLoading}
+            accessibilityRole="button"
+            accessibilityLabel={isLoading ? 'Réinitialisation en cours' : 'Réinitialiser le PIN'}
+            accessibilityState={{ disabled: !isPinValid || isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator color="white" />
             ) : (
               <>
-                <Text style={styles.mainButtonText}>Réinitialiser le PIN</Text>
+                <Text style={[styles.mainButtonText, codeStyles.actionText]}>Réinitialiser le PIN</Text>
                 <Ionicons name="checkmark-circle-outline" size={24} color="white" />
               </>
             )}

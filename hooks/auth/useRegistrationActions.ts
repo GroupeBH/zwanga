@@ -19,6 +19,7 @@ import { Platform } from 'react-native';
 import { AuthStep } from '@/components/auth';
 import type { Router } from 'expo-router';
 import type { StartDiditKycOptions, DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
+import type { AuthResponse } from '@/store/api/authApi';
 
 interface Params {
   firstName: string;
@@ -45,17 +46,6 @@ interface Params {
   startDiditKyc: ({ showResultDialog, skipLegalIdentityConfirmation, }?: StartDiditKycOptions) => Promise<DiditKycFlowOutcome | null>;
   googleProfileName: string | null;
   router: Router;
-  setGoogleIdToken: React.Dispatch<React.SetStateAction<string | null>>;
-  setGoogleProfileName: React.Dispatch<React.SetStateAction<string | null>>;
-  setGoogleFirstName: React.Dispatch<React.SetStateAction<string | null>>;
-  setGoogleLastName: React.Dispatch<React.SetStateAction<string | null>>;
-  setGoogleEmail: React.Dispatch<React.SetStateAction<string | null>>;
-  setGooglePhone: React.Dispatch<React.SetStateAction<string>>;
-  setGoogleOtp: React.Dispatch<React.SetStateAction<string[]>>;
-  setGoogleFlow: React.Dispatch<React.SetStateAction<"login" | "signup" | null>>;
-  setIsGooglePhoneVerified: React.Dispatch<React.SetStateAction<boolean>>;
-  setSocialProvider: React.Dispatch<React.SetStateAction<SocialAuthProvider | null>>;
-  setAppleNonce: React.Dispatch<React.SetStateAction<string | null>>;
   pin: string;
   email: string;
   profilePicture: string | null;
@@ -87,26 +77,24 @@ export function useRegistrationActions({
   startDiditKyc,
   googleProfileName,
   router,
-  setGoogleIdToken,
-  setGoogleProfileName,
-  setGoogleFirstName,
-  setGoogleLastName,
-  setGoogleEmail,
-  setGooglePhone,
-  setGoogleOtp,
-  setGoogleFlow,
-  setIsGooglePhoneVerified,
-  setSocialProvider,
-  setAppleNonce,
   pin,
   email,
   profilePicture,
   register,
 }: Params) {
+  const [isRegistrationPending, setIsRegistrationPending] = React.useState(false);
+  const [hasCreatedAccount, setHasCreatedAccount] = React.useState(false);
+  const inFlight = React.useRef(false);
+  const awaitingRedirect = React.useRef(false);
+  const mounted = React.useRef(true);
+  // If local finalization fails after account creation, retry it, never the POST.
+  const resumeFinalization = React.useRef<(() => Promise<void>) | null>(null);
+  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
   const triggerSignupSuccessNotification = async (userName?: string) => {
-    ensureAuthNotifeeLoaded();
-    if (!notifeeInstance) return;
     try {
+      ensureAuthNotifeeLoaded();
+      if (!notifeeInstance) return;
       await notifeeInstance.requestPermission();
       let channelId: string | undefined;
       if (Platform.OS === 'android' && androidImportanceEnum) {
@@ -118,14 +106,44 @@ export function useRegistrationActions({
         android: channelId ? { channelId, pressAction: { id: 'default' } } : undefined,
         ios: { sound: 'default' },
       });
-    } catch (e) {
-      console.warn('Notification error', e);
+    } catch {
+      console.warn('[Auth] Signup notification unavailable');
     }
+  };
+
+  const completeRegistration = async (result: AuthResponse, method: 'phone' | SocialAuthProvider, referralToken: string | undefined, userName: string) => {
+    if (mounted.current) setHasCreatedAccount(true);
+    resumeFinalization.current = async () => {
+      const saved = await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
+      if (!saved) throw new Error('La session n’a pas pu être confirmée.');
+      // Optional side effects must not turn a created account into a failed signup.
+      await consumePendingReferralAttribution(referralToken).catch(() => undefined);
+      if (role === 'driver' && mounted.current) {
+        try {
+          await startDiditKyc({ skipLegalIdentityConfirmation: true });
+        } catch {
+          showDialog({ variant: 'warning', title: 'Compte créé', message: 'Votre compte est créé. Vous pourrez reprendre la vérification d’identité depuis votre profil.' });
+        }
+      }
+      await triggerSignupSuccessNotification(userName);
+      void trackEvent('signup_completed', { method, role, is_driver: role === 'driver' }).catch(() => undefined);
+      if (mounted.current) router.replace('/(tabs)');
+      awaitingRedirect.current = true;
+      // Leave the form intact until unmount: clearing it here flashes an idle step.
+    };
+    await resumeFinalization.current();
   };
 
   // Final Registration
   const handleFinalRegister = async () => {
+    if (!mounted.current || inFlight.current) return;
+    inFlight.current = true;
+    setIsRegistrationPending(true);
     try {
+      if (resumeFinalization.current) {
+        await resumeFinalization.current();
+        return;
+      }
       const legalFirstName = normalizeLegalName(firstName);
       const legalLastName = normalizeLegalName(lastName);
       if (!hasCompleteLegalIdentity(legalFirstName, legalLastName)) {
@@ -199,31 +217,7 @@ export function useRegistrationActions({
               vehicle: signupVehicle,
               ...referralSignupPayload,
             }).unwrap();
-        await consumePendingReferralAttribution(pendingAttribution?.token);
-        await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
-        
-        if (requiresVehicle) {
-          await startDiditKyc({ skipLegalIdentityConfirmation: true });
-        }
-
-        await triggerSignupSuccessNotification(legalFirstName || googleProfileName || undefined);
-        await trackEvent('signup_completed', {
-          method: authMethod,
-          role,
-          is_driver: requiresVehicle,
-        });
-        router.replace('/(tabs)');
-        setGoogleIdToken(null);
-        setGoogleProfileName(null);
-        setGoogleFirstName(null);
-        setGoogleLastName(null);
-        setGoogleEmail(null);
-        setGooglePhone('');
-        setGoogleOtp(['', '', '', '', '']);
-        setGoogleFlow(null);
-        setIsGooglePhoneVerified(false);
-        setSocialProvider(null);
-        setAppleNonce(null);
+        await completeRegistration(result, authMethod, pendingAttribution?.token, legalFirstName || googleProfileName || '');
         return;
       }
       
@@ -252,26 +246,25 @@ export function useRegistrationActions({
       }
 
       const result = await register(formData).unwrap();
-      await consumePendingReferralAttribution(pendingAttribution?.token);
-      await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
-
-      if (requiresVehicle) {
-        await startDiditKyc({ skipLegalIdentityConfirmation: true });
-      }
-
-      await triggerSignupSuccessNotification(legalFirstName);
-      await trackEvent('signup_completed', {
-        method: 'phone',
-        role,
-        is_driver: requiresVehicle,
-      });
-      router.replace('/(tabs)');
+      await completeRegistration(result, 'phone', pendingAttribution?.token, legalFirstName);
     } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, "Impossible de terminer l'inscription pour le moment.") });
+      if (!mounted.current) return;
+      showDialog(resumeFinalization.current
+        ? { variant: 'warning', title: 'Connexion à finaliser', message: 'Votre compte est déjà créé. Réessayez pour finaliser la connexion, sans recréer de compte.' }
+        : { variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, "Impossible de terminer l'inscription pour le moment.") });
+    } finally {
+      if (!awaitingRedirect.current) {
+        inFlight.current = false;
+        if (mounted.current) setIsRegistrationPending(false);
+      }
     }
   };
 
   return {
     handleFinalRegister,
+    isRegistrationPending,
+    hasCreatedAccount,
+    isRegistrationInFlight: () => inFlight.current,
+    isRegistrationLocked: () => inFlight.current || resumeFinalization.current !== null,
   };
 }

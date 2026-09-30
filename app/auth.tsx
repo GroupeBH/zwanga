@@ -1,4 +1,6 @@
 import { useAuthController } from '../hooks/auth/useAuthController';
+import { useAuthKeyboardLayout } from '../hooks/auth/useAuthKeyboardLayout';
+import { authCodeStyles } from '@/features/auth/authCode.styles';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import React from 'react';
@@ -20,26 +22,38 @@ import {
 
 export default function AuthScreen() {
   const { form, navigation, canGoBack, progress, motivationalMessage, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration } = useAuthController();
+  const compactCodeStep = form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
+  const keyboard = useAuthKeyboardLayout(compactCodeStep, `${form.step}:${form.resetPinStep}`);
+  const resetPending = form.step === 'resetPin' && (phoneActions.isResettingPin || form.isSendingResetOtp);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={keyboard.keyboardVisible ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
       <AuthHeader
         mode={form.mode}
-        onModeChange={navigation.handleModeChange}
-        canGoBack={canGoBack}
-        onBack={navigation.handlePreviousStep}
+        onModeChange={(mode) => { if (!resetPending && !social.isSocialAuthInFlight() && !phoneActions.isPinLoginInFlight() && !registration.isRegistrationLocked()) navigation.handleModeChange(mode); }}
+        canGoBack={compactCodeStep || canGoBack}
+        compact={keyboard.keyboardVisible}
+        onBack={() => { if (!resetPending && !social.isSocialAuthInFlight() && !phoneActions.isPinLoginInFlight() && !registration.isRegistrationLocked()) navigation.handlePreviousStep(); }}
+        disabled={resetPending || social.isGoogleLoading || isAppleAuthLoading || phoneActions.isPinLoginPending || form.isLoggingIn || registration.isRegistrationPending || registration.hasCreatedAccount}
         progress={progress}
         motivationalMessage={motivationalMessage}
       />
 
       <KeyboardAvoidingView
+        // Android already resizes this activity (adjustResize); avoid a second inset.
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        enabled={Platform.OS === 'ios' || !compactCodeStep}
+        style={authCodeStyles.viewport}
+        keyboardVerticalOffset={compactCodeStep || Platform.OS === 'ios' ? 0 : 20}
       >
         <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollViewContent}
+          ref={keyboard.scrollRef}
+          style={[styles.scrollView, authCodeStyles.viewport]}
+          contentContainerStyle={[styles.scrollViewContent, compactCodeStep && authCodeStyles.content]}
+          automaticallyAdjustKeyboardInsets={false}
+          automaticallyAdjustContentInsets={false}
+          contentInsetAdjustmentBehavior="never"
+          bounces={!compactCodeStep}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -49,11 +63,11 @@ export default function AuthScreen() {
               mode={form.mode}
               phone={form.phone}
               onPhoneChange={form.setPhone}
-              onSubmit={phoneActions.handlePhoneSubmit}
+              onSubmit={() => { if (!social.isSocialAuthInFlight()) void phoneActions.handlePhoneSubmit(); }}
               onGoogleAuth={form.mode === 'login' ? social.handleGoogleLogin : social.handleGoogleSignupStart}
               onAppleAuth={form.mode === 'login' ? social.handleAppleLogin : social.handleAppleSignupStart}
               isLoading={form.isSendingOtpMutation}
-              isGoogleLoading={form.isGoogleMobileLoading || form.isSendingGoogleOtp || form.isVerifyingGoogleOtp}
+              isGoogleLoading={social.isGoogleLoading || form.isGoogleMobileLoading || form.isSendingGoogleOtp || form.isVerifyingGoogleOtp}
               isAppleLoading={isAppleAuthLoading}
               isAppleAvailable={form.isAppleAvailable}
               hasReferralAttribution={Boolean(form.referralAttribution || legacyReferralCode)}
@@ -108,6 +122,7 @@ export default function AuthScreen() {
           {/* PIN Step */}
           {form.step === 'pin' && (
             <PinStep
+              keyboardVisible={keyboard.keyboardVisible}
               mode={form.mode}
               pin={form.pin}
               pinConfirm={form.pinConfirm}
@@ -117,13 +132,14 @@ export default function AuthScreen() {
               onPinConfirmChange={phoneActions.handlePinConfirmChange}
               onSubmit={phoneActions.handlePinSubmit}
               onForgotPin={form.mode === 'login' ? phoneActions.handleForgotPin : undefined}
-              isLoading={form.isLoggingIn}
+              isLoading={form.isLoggingIn || phoneActions.isPinLoginPending}
             />
           )}
 
           {/* Reset PIN Step */}
           {form.step === 'resetPin' && (
             <ResetPinStep
+              keyboardVisible={keyboard.keyboardVisible}
               phone={form.phone}
               resetPinStep={form.resetPinStep}
               otpCode={form.resetOtpCode}
@@ -167,6 +183,8 @@ export default function AuthScreen() {
               onVehicleTypeChange={form.setVehicleType}
               onOpenVehicleModal={() => form.setVehicleModalVisible(true)}
               onContinue={profileActions.validateProfileAndContinue}
+              isLoading={registration.isRegistrationPending}
+              hasCreatedAccount={registration.hasCreatedAccount}
             />
           )}
 
@@ -175,7 +193,8 @@ export default function AuthScreen() {
             <KycStep
               onFinish={registration.handleFinalRegister}
               onEditIdentity={form.isAppleSignupFlow ? undefined : () => form.setStep('profile')}
-              isLoading={form.isRegistering || form.isStartingDiditKyc}
+              isLoading={registration.isRegistrationPending || form.isRegistering || form.isStartingDiditKyc}
+              hasCreatedAccount={registration.hasCreatedAccount}
               firstName={normalizeLegalName(form.firstName)}
               lastName={normalizeLegalName(form.lastName)}
             />

@@ -29,6 +29,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 
 const EMPTY_NOTIFICATIONS: Notification[] = [];
 
@@ -42,6 +43,10 @@ export default function NotificationsScreen() {
     isLoading,
     isFetching,
     isFetchingNextPage,
+    isFetchingPreviousPage,
+    hasPreviousPage,
+    fetchPreviousPage,
+    isError,
     hasNextPage: hasMoreNotifications,
     fetchNextPage,
     refetch,
@@ -105,12 +110,13 @@ export default function NotificationsScreen() {
       return;
     }
 
-    const deleteTitle = hasMoreNotifications
+    const isPartialHistory = hasMoreNotifications || hasPreviousPage;
+    const deleteTitle = isPartialHistory
       ? 'Supprimer les notifications affichées'
       : 'Supprimer toutes les notifications';
-    const deleteLabel = hasMoreNotifications ? 'Supprimer affichées' : 'Supprimer tout';
-    const deleteMessage = hasMoreNotifications
-      ? `Supprimer les ${notifications.length} notifications affichées ? Les plus anciennes resteront accessibles en bas de liste.`
+    const deleteLabel = isPartialHistory ? 'Supprimer affichées' : 'Supprimer tout';
+    const deleteMessage = isPartialHistory
+      ? `Supprimer les ${notifications.length} notifications affichées ? Les autres pages resteront accessibles.`
       : `Êtes-vous sûr de vouloir supprimer toutes les ${notifications.length} notification${notifications.length > 1 ? 's' : ''} ? Cette action est irréversible.`;
 
     showDialog({
@@ -129,7 +135,7 @@ export default function NotificationsScreen() {
               showDialog({
                 variant: 'success',
                 title: 'Notifications supprimées',
-                message: hasMoreNotifications
+                message: isPartialHistory
                   ? 'Les notifications affichées ont été supprimées avec succès.'
                   : 'Toutes les notifications ont été supprimées avec succès.',
               });
@@ -144,7 +150,7 @@ export default function NotificationsScreen() {
         },
       ],
     });
-  }, [disableNotifications, hasMoreNotifications, notifications, showDialog]);
+  }, [disableNotifications, hasMoreNotifications, hasPreviousPage, notifications, showDialog]);
 
   const renderNotificationData = (data: Record<string, any>) => {
     const dataEntries = Object.entries(data);
@@ -170,16 +176,16 @@ export default function NotificationsScreen() {
   };
 
   const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
+    if (isScreenActive && !isFetching) void refetch();
+  }, [isScreenActive, isFetching, refetch]);
 
   const handleLoadMore = useCallback(() => {
-    if (isFetching || !hasMoreNotifications) {
+    if (!isScreenActive || isFetching || !hasMoreNotifications) {
       return;
     }
 
-    void fetchNextPage();
-  }, [fetchNextPage, hasMoreNotifications, isFetching]);
+    void (isError ? refetch() : fetchNextPage());
+  }, [fetchNextPage, hasMoreNotifications, isFetching, isScreenActive, isError, refetch]);
 
   const keyExtractor = useCallback((notification: Notification) => notification.id, []);
 
@@ -200,30 +206,20 @@ export default function NotificationsScreen() {
         <View style={styles.emptyIcon}>
           <Ionicons name="notifications-off-outline" size={40} color={Colors.gray[500]} />
         </View>
-        <Text style={styles.emptyTitle}>Aucune notification</Text>
+        <Text style={styles.emptyTitle}>{isError ? 'Chargement interrompu' : 'Aucune notification'}</Text>
         <Text style={styles.emptyDescription}>
-          Nous vous préviendrons dès qu’il y aura quelque chose de nouveau.
+          {isError ? 'Appuyez sur actualiser pour réessayer.' : 'Nous vous préviendrons dès qu’il y aura quelque chose de nouveau.'}
         </Text>
       </View>
     ),
-    [],
+    [isError],
   );
 
   const renderListFooter = useCallback(() => {
-    if (!hasMoreNotifications) {
-      return null;
-    }
-
-    return (
-      <View style={styles.listFooter}>
-        {isFetching ? (
-          <ActivityIndicator size="small" color={Colors.primary} />
-        ) : (
-          <Text style={styles.listFooterText}>Charger plus</Text>
-        )}
-      </View>
-    );
-  }, [hasMoreNotifications, isFetching]);
+    return <HistoryPaginationFooter hasMore={hasMoreNotifications} loading={isFetchingNextPage}
+      disabled={isFetching || !isScreenActive} error={isError} loaded={notifications.length}
+      label="Notifications plus anciennes" onLoad={handleLoadMore} />;
+  }, [hasMoreNotifications, isFetchingNextPage, isFetching, isScreenActive, isError, notifications.length, handleLoadMore]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -275,20 +271,24 @@ export default function NotificationsScreen() {
           ]}
           refreshControl={
             <RefreshControl
-              refreshing={isFetching && !isFetchingNextPage}
+              refreshing={isFetching && !isFetchingNextPage && !isFetchingPreviousPage}
               onRefresh={handleRefresh}
               colors={[Colors.primary]}
               tintColor={Colors.primary}
             />
           }
           ListEmptyComponent={renderEmptyState}
+          ListHeaderComponent={<HistoryPaginationFooter hasMore={hasPreviousPage} loading={isFetchingPreviousPage}
+            disabled={isFetching || !isScreenActive} error={isError} loaded={notifications.length}
+            showCount={false} label="Notifications plus récentes"
+            onLoad={() => { if (isScreenActive && hasPreviousPage && !isFetching) void (isError ? refetch() : fetchPreviousPage()); }} />}
           ListFooterComponent={renderListFooter}
           initialNumToRender={8}
           maxToRenderPerBatch={8}
           updateCellsBatchingPeriod={60}
           windowSize={5}
           removeClippedSubviews={Platform.OS === 'android'}
-          onEndReached={handleLoadMore}
+          onEndReached={() => { if (!hasPreviousPage && !isError) handleLoadMore(); }}
           onEndReachedThreshold={0.35}
         />
       )}

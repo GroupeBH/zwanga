@@ -48,13 +48,14 @@ function boundedRead(request: PositionRead, ms: number, signal: AbortSignal) {
   });
 }
 
-export async function requestCurrentLocation(nearby: boolean, signal: AbortSignal) {
+export async function requestCurrentLocation(nearby: boolean, signal: AbortSignal,
+  options: { maxAge?: number; requiredAccuracy?: number; fallback?: boolean } = {}) {
   const cached = (maxAge: number, requiredAccuracy: number) => boundedRead(
     sharedRead(`cached:${maxAge}:${requiredAccuracy}`, () => Location.getLastKnownPositionAsync({ maxAge, requiredAccuracy })),
     CACHED_POSITION_TIMEOUT_MS, signal,
   );
   if (signal.aborted) return null;
-  const recent = await cached(2 * 60_000, nearby ? 250 : 100);
+  const recent = await cached(options.maxAge ?? 2 * 60_000, options.requiredAccuracy ?? (nearby ? 250 : 100));
   if (signal.aborted) return null;
   if (recent) return recent;
   const accuracy = nearby ? Location.Accuracy.Balanced : Location.Accuracy.High;
@@ -62,5 +63,6 @@ export async function requestCurrentLocation(nearby: boolean, signal: AbortSigna
     () => Location.getCurrentPositionAsync({ accuracy })), CURRENT_POSITION_TIMEOUT_MS, signal);
   if (signal.aborted) return null;
   if (fresh) return fresh;
+  if (options.fallback === false) return null;
   return cached(15 * 60_000, 1000);
 }

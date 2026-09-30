@@ -51,7 +51,7 @@ function PickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute 
       <View style={styles.header}>
         <View style={styles.heading}>
           <Text style={styles.title} numberOfLines={2}>{title}</Text>
-          {!picker.searchOpen && <Text style={styles.subtitle}>Recherchez un lieu ou ajustez le point.</Text>}
+          {!picker.searchOpen && <Text style={styles.subtitle}>Recherchez un lieu ou touchez la carte.</Text>}
         </View>
         <TouchableOpacity style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Fermer le choix du lieu" onPress={picker.close}>
           <Ionicons name="close" size={23} color={Colors.gray[800]} />

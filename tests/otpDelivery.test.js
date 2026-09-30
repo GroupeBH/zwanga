@@ -2,11 +2,18 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
+const { hookHarness } = require('./helpers/hookHarness.cjs');
 
 const noop = () => {};
 const animation = { springify: noop, duration: noop };
 function uiLoader(enabled = true, os = 'android') {
-  return loader({
+  const otpHooks = hookHarness();
+  const otpComponent = { OtpCodeInput: props => otpHooks.render(() => load('components/auth/OtpCodeInput.tsx').OtpCodeInput(props)) };
+  const load = loader({
+    react: { ...React, ...otpHooks.react },
+    '../OtpCodeInput': otpComponent,
+    '@/components/auth/OtpCodeInput': otpComponent,
+    'expo-clipboard': { getStringAsync: async () => '' },
     'react-native': {
       View: 'View', Text: 'Text', TextInput: 'TextInput', Image: 'Image',
       TouchableOpacity: 'TouchableOpacity', ActivityIndicator: 'ActivityIndicator',
@@ -19,6 +26,7 @@ function uiLoader(enabled = true, os = 'android') {
     '@/config/env': { isSignupOtpVerificationEnabled: enabled },
     '@/assets/images/google.png': 1,
   });
+  return load;
 }
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -63,6 +71,16 @@ test('before-send guidance appears only when signup really requests OTP, for pho
   }
 });
 
+test('compact delivery notice keeps WhatsApp/Didit and SMS, with scalable untruncated text', () => {
+  const { OtpDeliveryNotice } = uiLoader()('components/auth/OtpDeliveryNotice.tsx');
+  const tree = OtpDeliveryNotice({ compact: true });
+  assert.match(text(tree), /WhatsApp via Didit.*Consultez WhatsApp ou vos SMS/);
+  for (const node of nodes(tree).filter(node => node.type === 'Text')) {
+    assert.equal(node.props.numberOfLines, undefined);
+    assert.notEqual(node.props.allowFontScaling, false);
+  }
+});
+
 for (const os of ['android', 'ios']) {
   for (const name of ['SmsStep', 'GoogleOtpStep', 'ResetPinStep']) {
     test(`${name} (${os}) keeps digit count, paste, autofill and resend while guiding toward WhatsApp`, () => {
@@ -89,20 +107,21 @@ for (const os of ['android', 'ios']) {
       assert.doesNotMatch(text(tree), /chiffres reçus par SMS/);
       const inputs = nodes(tree).filter(node => node.type === 'TextInput');
       assert.equal(inputs.length, size);
-      assert.equal(buttons(tree)[0].props.disabled, true);
-      for (const input of inputs) {
-        assert.equal(input.props.maxLength, size);
-        assert.equal(input.props.autoComplete, os === 'android' ? 'sms-otp' : 'one-time-code');
+      const verifyButton = value => buttons(value).find(node => /Vérifier|Valider et continuer/.test(text(node)));
+      assert.equal(verifyButton(tree).props.disabled, true);
+      for (const [index, input] of inputs.entries()) {
+        assert.ok(input.props.maxLength >= size * 2);
+        assert.equal(input.props.autoComplete, index === 0 ? (os === 'android' ? 'sms-otp' : 'one-time-code') : 'off');
       }
       inputs[0].props.onChangeText('1 2-3x456');
       assert.equal(code.join(''), '123456'.slice(0, size));
-      assert.equal(focused, size - 1);
+      assert.equal(focused, null, 'bulk paste does not race the OS by changing focus');
       tree = render();
-      assert.equal(buttons(tree)[0].props.disabled, false);
+      assert.equal(verifyButton(tree).props.disabled, false);
       const resendButton = buttons(tree).find(node => /Renvoyer/.test(text(node)));
       resendButton.props.onPress();
       assert.equal(resends, 1);
-      assert.equal(buttons(render({ isResending: true }))[1].props.disabled, true);
+      assert.equal(buttons(render({ isResending: true })).find(node => node.props.onPress === resend).props.disabled, true);
     });
   }
 }
@@ -137,7 +156,9 @@ test('login explains forgotten-PIN delivery; normal PIN creation does not promis
 
 function authActions(enabled = true) {
   const calls = [], dialogs = [];
+  const hooks = hookHarness();
   const load = loader({
+    react: hooks.react,
     '@/config/env': { isSignupOtpVerificationEnabled: enabled },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/store/slices/authSlice': { saveTokensAndUpdateState: noop },
@@ -152,13 +173,12 @@ function authActions(enabled = true) {
     showDialog: value => dialogs.push(value),
     sendPhoneVerificationOtp: payload => ({ unwrap: async () => { calls.push(['send', payload]); } }),
   };
-  return { load, props, calls, dialogs };
+  return { load, props, calls, dialogs, renderPhone: () => hooks.render(() => load('hooks/auth/usePhoneAuthActions.ts').usePhoneAuthActions(props)) };
 }
 
 test('phone send and resend use WhatsApp guidance without promising a new code or renewed expiry', async () => {
   const app = authActions();
-  const { usePhoneAuthActions } = app.load('hooks/auth/usePhoneAuthActions.ts');
-  const actions = usePhoneAuthActions(app.props);
+  const actions = app.renderPhone();
   await actions.handlePhoneSubmit();
   await actions.handlePhoneSubmit();
   assert.deepEqual(app.calls.filter(call => call[0] === 'send'), Array(2).fill(['send', { phone: app.props.phone, context: 'registration' }]));
@@ -187,7 +207,7 @@ test('social resend guides to WhatsApp and preserves provider throttling errors'
 
 test('disabled signup OTP does not send a code or announce WhatsApp delivery', async () => {
   const app = authActions(false);
-  await app.load('hooks/auth/usePhoneAuthActions.ts').usePhoneAuthActions(app.props).handlePhoneSubmit();
+  await app.renderPhone().handlePhoneSubmit();
   await app.load('hooks/auth/useSocialPhoneVerification.ts').useSocialPhoneVerification(app.props).handleSendGoogleOtp();
   assert.equal(app.calls.filter(call => call[0] === 'send').length, 0);
   assert.equal(app.dialogs.length, 0);

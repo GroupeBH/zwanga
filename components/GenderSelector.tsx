@@ -8,6 +8,7 @@ type GenderSelectorProps = {
   onChange: (gender: UserGender) => void;
   label?: string;
   compact?: boolean;
+  disabled?: boolean;
   allowedGenders?: readonly UserGender[];
 };
 
@@ -23,6 +24,7 @@ export function GenderSelector({
   onChange,
   label = 'Sexe (facultatif)',
   compact = false,
+  disabled = false,
   allowedGenders,
 }: GenderSelectorProps) {
   const displayedOptions = allowedGenders
@@ -43,7 +45,8 @@ export function GenderSelector({
             <TouchableOpacity
               key={option.value}
               accessibilityRole="radio"
-              accessibilityState={{ checked: isSelected }}
+              accessibilityState={{ checked: isSelected, disabled }}
+              disabled={disabled}
               activeOpacity={0.8}
               onPress={() => onChange(option.value)}
               style={[

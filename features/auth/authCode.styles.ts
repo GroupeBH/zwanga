@@ -1,0 +1,38 @@
+import { StyleSheet } from 'react-native';
+import { Colors } from '@/constants/styles';
+
+/** PIN/login and recovery use the available viewport for fields, not illustration. */
+export const authCodeStyles = StyleSheet.create({
+  viewport: { flex: 1, minHeight: 0 },
+  content: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 8 },
+  step: { flex: 0, gap: 12, paddingTop: 8, paddingBottom: 4 },
+  keyboardStep: { gap: 6, paddingTop: 0, paddingBottom: 0 },
+  heading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headingIcon: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headingCopy: { flex: 1, minWidth: 0, gap: 4 },
+  title: { fontSize: 22, lineHeight: 28, fontWeight: '700', color: Colors.gray[900] },
+  subtitle: { fontSize: 14, lineHeight: 19, color: Colors.gray[700] },
+  keyboardHeadingCopy: { gap: 2 },
+  keyboardTitle: { fontSize: 20, lineHeight: 24 },
+  keyboardSubtitle: { fontSize: 13, lineHeight: 17 },
+  codeRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 4, marginVertical: 0 },
+  codeInput: { flex: 1, minWidth: 0, width: 'auto', height: 'auto', minHeight: 52, paddingVertical: 8, fontSize: 22, borderRadius: 12 },
+  keyboardCodeInput: { minHeight: 48, paddingVertical: 6 },
+  pinRow: { gap: 12, marginTop: 0, marginBottom: 0 },
+  pinBox: { width: 52, height: 'auto', minHeight: 52, paddingVertical: 6, borderRadius: 14 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 8 },
+  action: { flexGrow: 1, flexBasis: 120, minWidth: 120, minHeight: 48, height: 'auto', marginTop: 0, marginBottom: 0, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14 },
+  actionText: { flexShrink: 1, fontSize: 16, lineHeight: 21, textAlign: 'center' },
+  fullWidthAction: { minHeight: 48, height: 'auto', paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14 },
+  secondaryAction: { alignItems: 'center', justifyContent: 'center' },
+  secondaryText: { color: Colors.primaryDark, fontWeight: '600', fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  help: { fontSize: 13, lineHeight: 18, color: Colors.gray[700], textAlign: 'center', marginBottom: 0 },
+  fields: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  field: { flexGrow: 1, flexBasis: 120, minWidth: 120, gap: 4 },
+  label: { fontSize: 14, lineHeight: 18, fontWeight: '600', color: Colors.gray[800] },
+  inputWrapper: { minHeight: 48, height: 'auto', paddingHorizontal: 12, marginBottom: 0, borderRadius: 12 },
+  input: { minWidth: 0, height: 'auto', minHeight: 48, paddingVertical: 10, fontSize: 16 },
+  header: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 0 },
+  headerBrand: { fontSize: 20 },
+  backButton: { width: 44, height: 44 },
+});

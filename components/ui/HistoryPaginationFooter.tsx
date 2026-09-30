@@ -2,14 +2,14 @@ import React, { memo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/styles';
 
-type Props = { hasMore?: boolean; loading?: boolean; error?: boolean; loaded: number; onLoad: () => void };
-export const HistoryPaginationFooter = memo(function HistoryPaginationFooter({ hasMore, loading, error, loaded, onLoad }: Props) {
+type Props = { hasMore?: boolean; loading?: boolean; disabled?: boolean; error?: boolean; loaded: number; onLoad: () => void; label?: string; showCount?: boolean };
+export const HistoryPaginationFooter = memo(function HistoryPaginationFooter({ hasMore, loading, disabled, error, loaded, onLoad, label = 'Charger la suite', showCount = true }: Props) {
   if (!hasMore && !loading) return null;
   return <View style={styles.container}>
-    <Text style={styles.caption}>{loaded} élément{loaded > 1 ? 's' : ''} affiché{loaded > 1 ? 's' : ''}</Text>
-    <TouchableOpacity accessibilityRole="button" disabled={loading} onPress={onLoad} style={styles.button}>
+    {showCount && <Text style={styles.caption}>{loaded} élément{loaded > 1 ? 's' : ''} affiché{loaded > 1 ? 's' : ''}</Text>}
+    <TouchableOpacity accessibilityRole="button" disabled={loading || disabled} onPress={onLoad} style={styles.button}>
       {loading ? <ActivityIndicator color={Colors.primary} />
-        : <Text style={styles.label}>{error ? 'Réessayer de charger la suite' : 'Charger la suite'}</Text>}
+        : <Text style={styles.label}>{error ? `Réessayer · ${label}` : label}</Text>}
     </TouchableOpacity>
   </View>;
 });

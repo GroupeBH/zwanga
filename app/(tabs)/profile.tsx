@@ -195,8 +195,7 @@ export default function ProfileScreen() {
         handleNewPinChange={profile.handleNewPinChange}
         handleNewPinConfirmChange={profile.handleNewPinConfirmChange}
         handleOldPinChange={profile.handleOldPinChange}
-        handleOtpInputChange={profile.handleOtpInputChange}
-        handleOtpKeyPress={profile.handleOtpKeyPress}
+        setOtpCode={profile.setOtpCode}
         handleUpdatePin={profile.handleUpdatePin}
         handleVerifyOldPin={profile.handleVerifyOldPin}
         handleVerifyOtpForPinChange={profile.handleVerifyOtpForPinChange}

@@ -81,9 +81,11 @@ test('vehicle creation during publication enforces the same rule without changin
 });
 
 function signupFixture() {
+  const hooks = hookHarness();
   const calls = [], dialogs = [], steps = [];
   const mutation = method => payload => ({ unwrap: async () => { calls.push({ method, payload }); return { accessToken: 'test', refreshToken: 'test' }; } });
   const load = loader({
+    react: hooks.react,
     'react-native': { Platform: { OS: 'ios' } }, 'expo-image-picker': {},
     '../../features/auth/authModel': { ensureAuthNotifeeLoaded: noop, notifeeInstance: null, getAuthErrorMessage: (_error, message) => message },
     '@/services/analytics': { trackEvent: async () => {} },
@@ -96,11 +98,11 @@ function signupFixture() {
     setFirstName: noop, setLastName: noop, handleFinalRegister: () => calls.push('register-from-profile'),
     phone: '+243891234567', pin: '1234', googleIdToken: null, isGooglePhoneVerified: false,
     register: mutation('phone'), googleMobile: mutation('google'), appleMobile: mutation('apple'),
-    dispatch: () => ({ unwrap: async () => {} }), startDiditKyc: async () => {}, router: { replace: noop },
+    dispatch: () => ({ unwrap: async () => true }), startDiditKyc: async () => {}, router: { replace: noop },
   };
   for (const key of ['GoogleIdToken', 'GoogleProfileName', 'GoogleFirstName', 'GoogleLastName', 'GoogleEmail',
     'GooglePhone', 'GoogleOtp', 'GoogleFlow', 'IsGooglePhoneVerified', 'SocialProvider', 'AppleNonce']) props[`set${key}`] = noop;
-  return { calls, dialogs, steps, props, load };
+  return { calls, dialogs, steps, props, load, hooks };
 }
 
 test('signup profile rejects a malformed driver plate, while passengers still require no vehicle', () => {
@@ -120,17 +122,22 @@ for (const method of ['phone', 'google', 'apple']) {
     const f = signupFixture(); const { useRegistrationActions } = f.load('hooks/auth/useRegistrationActions.ts');
     if (method !== 'phone') Object.assign(f.props, { googleIdToken: 'test', isGooglePhoneVerified: true, socialProvider: method });
     f.props.vehiclePlate = 'ABC123';
-    await useRegistrationActions(f.props).handleFinalRegister();
+    await f.hooks.render(() => useRegistrationActions(f.props)).handleFinalRegister();
     assert.equal(f.calls.length, 0); assert.equal(f.dialogs.at(-1).message, VEHICLE_PLATE_FORMAT_MESSAGE);
     f.props.vehiclePlate = '0001 az 02';
-    await useRegistrationActions(f.props).handleFinalRegister();
+    await f.hooks.render(() => useRegistrationActions(f.props)).handleFinalRegister();
     assert.equal(f.calls.length, 1); assert.equal(f.calls[0].method, method);
     const payload = f.calls[0].payload;
     assert.equal(method === 'phone' ? payload.get('vehicle[licensePlate]') : payload.vehicle.licensePlate, '0001AZ02');
-    f.props.role = 'passenger'; f.props.vehiclePlate = ''; f.props.vehicleType = null;
-    await useRegistrationActions(f.props).handleFinalRegister();
-    const passengerPayload = f.calls[1].payload;
+    f.hooks.unmount();
+    const passenger = signupFixture();
+    Object.assign(passenger.props, { role: 'passenger', vehiclePlate: '', vehicleType: null,
+      googleIdToken: f.props.googleIdToken, isGooglePhoneVerified: f.props.isGooglePhoneVerified, socialProvider: f.props.socialProvider });
+    const passengerHook = passenger.load('hooks/auth/useRegistrationActions.ts').useRegistrationActions;
+    await passenger.hooks.render(() => passengerHook(passenger.props)).handleFinalRegister();
+    const passengerPayload = passenger.calls[0].payload;
     assert.equal(method === 'phone' ? passengerPayload.has('vehicle[licensePlate]') : Boolean(passengerPayload.vehicle), false);
+    passenger.hooks.unmount();
   });
 }
 
