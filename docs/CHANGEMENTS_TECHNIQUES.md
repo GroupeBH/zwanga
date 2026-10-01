@@ -10,6 +10,29 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 1er octobre 2026 — Version applicative 1.0.16 et préparation iOS
+
+**Périmètre et problème.** Préparation d'une nouvelle version, notamment iOS :
+Expo et les projets natifs versionnés doivent annoncer les mêmes versions.
+
+**Solution appliquée.** Version applicative `1.0.15` → `1.0.16` dans
+`app.config.js`, `package.json`, les deux métadonnées racines de `package-lock.json`,
+les configurations Debug/Release de `ios/zwanga.xcodeproj/project.pbxproj` et
+`android/app/build.gradle`. Build iOS local `121` → `122` et code Android
+`136` → `137`, synchronisés avec Expo. `ios/zwanga/Info.plist` conserve ses
+références `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` ; aucune duplication.
+
+**Comportements conservés.** Aucun changement fonctionnel, de dépendance ou de SDK
+Expo. Identifiants d'application et signature inchangés. `eas.json` conserve
+`appVersionSource: remote` et `production.autoIncrement: true` : le compteur
+distant reste autoritaire pour un build EAS et peut différer des valeurs locales.
+
+**Vérifications et limites.** `tests/appVersions.test.js` vérifie la cohérence
+Expo/package/lockfile, Xcode Debug/Release et plist, Android et la politique EAS,
+sans charger de fichier `.env` : **4 tests réussis** ; `git diff --check` réussi.
+Contrôles locaux uniquement : aucun build natif,
+changement de compteur distant ni envoi TestFlight/App Store réalisé.
+
 ## 30 septembre 2026 — Corrections de l'audit de performance : GPS, Places et historiques
 
 Les quatre points de l'audit sont traités : abonnement GPS passager immédiat,
