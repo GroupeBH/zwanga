@@ -4,7 +4,7 @@ import MapView, { Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-ma
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { cancelAnimation, useAnimatedStyle, useSharedValue, withTiming } from '@/utils/reanimated';
 import { Colors } from '@/constants/styles';
-import { pickerDisplayRoute, samePickerPoint, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
+import { getPickerCoordinate, pickerDisplayRoute, samePickerPoint, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
 
 type Props = {
   enabled: boolean; target: PickerCoordinate; route: PickerCoordinate[]; restrictToRoute: boolean;
@@ -112,8 +112,23 @@ export const LocationPickerMap = memo(function LocationPickerMap({ enabled, targ
       lift.value = withTiming(-10, { duration: 120 });
       onPanStart();
     }
+    lastCenter.current = region;
     if (idleTimer.current) clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => settle(region), 500);
+  };
+  const selectPoint = (point: PickerCoordinate) => {
+    if (!active.current || attemptRef.current !== attempt || !readyRef.current) return;
+    if (getPickerCoordinate(point.latitude, point.longitude)) {
+      // A tap wins over a pending drag/idle callback, including before React rerenders.
+      if (idleTimer.current) clearTimeout(idleTimer.current);
+      if (unlockTimer.current) clearTimeout(unlockTimer.current);
+      moving.current = false;
+      programmatic.current = true;
+      lift.value = withTiming(0, { duration: 140 });
+      unlockTimer.current = setTimeout(() => { programmatic.current = false; }, 700);
+    }
+    // The picker owns validation, route snapping and the asynchronous address lookup.
+    onPress(point);
   };
 
   return (
@@ -142,7 +157,8 @@ export const LocationPickerMap = memo(function LocationPickerMap({ enabled, targ
           onRegionChange={pan}
           onRegionChangeComplete={settle}
           onPanDrag={() => { programmatic.current = false; }}
-          onPress={event => { if (readyRef.current) onPress(event.nativeEvent.coordinate); }}
+          onPress={event => selectPoint(event.nativeEvent.coordinate)}
+          onPoiClick={event => selectPoint(event.nativeEvent.coordinate)}
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsCompass={false}
@@ -162,7 +178,7 @@ export const LocationPickerMap = memo(function LocationPickerMap({ enabled, targ
         <Text style={styles.loadingHint}>La recherche reste disponible.</Text>
       </View>}
       {ready && <>
-        <View pointerEvents="none" style={styles.hint}><Text style={styles.hintText}>{!tilesReady ? 'Chargement du fond de carte…' : restrictToRoute ? 'Choisissez un point sur le trajet' : 'Déplacez la carte sous le repère'}</Text></View>
+        <View pointerEvents="none" style={styles.hint}><Text style={styles.hintText}>{!tilesReady ? 'Chargement du fond de carte…' : restrictToRoute ? 'Touchez le trajet ou faites glisser la carte' : 'Touchez un point ou faites glisser la carte'}</Text></View>
         <View pointerEvents="none" style={styles.pinAnchor}>
           <View style={styles.shadow} />
           <Animated.View style={[styles.pin, pinStyle]}><Ionicons name="location" size={44} color={Colors.primary} /></Animated.View>

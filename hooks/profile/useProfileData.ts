@@ -13,14 +13,13 @@ import {
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
-  useGetKycStatusQuery,
   useGetProfileSummaryQuery
 } from '@/store/api/userApi';
 import {
   useGetVehiclesQuery
 } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
-import { isDriverAccount } from '@/utils/accountRole';
+import { getProfileStatus } from '@/features/profile/profileStatusModel';
 import { selectUser } from '@/store/selectors';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { screenReadOptions } from '@/features/performance/screenReadPolicy';
@@ -28,7 +27,6 @@ import { useProfileRefresh } from './useProfileRefresh';
 import type {
   Vehicle, TripRequest, DriverOfferWithTripRequest, SubscriptionPlanSummary
 } from '@/types';
-import { getEffectiveKycStatus } from '@/utils/kycStatus';
 import { useMemo, useState } from 'react';
 
 const EMPTY_VEHICLES: Vehicle[] = [];
@@ -44,11 +42,10 @@ export function useProfileData() {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: profileSummary, isLoading: profileLoading } = useGetProfileSummaryQuery(undefined, reads);
+  const { data: profileSummary, isLoading: profileLoading, isFetching: profileFetching,
+    isError: hasProfileLoadError } = useGetProfileSummaryQuery(undefined, reads);
 
   const { data: referralSummary } = useGetMyReferralSummaryQuery(undefined, reads);
-
-  const { data: kycStatus, isLoading: kycLoading } = useGetKycStatusQuery(undefined, reads);
 
   const {
     data: vehicles,
@@ -61,14 +58,14 @@ export function useProfileData() {
 
   const { data: myDriverOffers = EMPTY_OFFERS } = useGetMyDriverOffersQuery(undefined, reads);
 
-  const currentUser = profileSummary?.user ?? user;
-
-  const stats = profileSummary?.stats;
+  const status = getProfileStatus(profileSummary, user?.id);
+  const { currentUser, stats, isDriver, displaysDriverRole, kycStatus,
+    isKycApproved, isKycPending, isKycRejected, needsDriverOnboarding,
+    isProfileStatusKnown, isIdentityStatusKnown, profileVehicleCount, profileState, profileRoleLabel } = status;
+  const isProfileStatusAvailable = Boolean(profileState);
+  const kycLoading = !isIdentityStatusKnown && profileFetching;
 
   const vehicleList: Vehicle[] = vehicles ?? EMPTY_VEHICLES;
-
-  const isDriver = isDriverAccount(currentUser);
-  const displaysDriverRole = isDriver;
 
   const { data: subscriptionPlans = EMPTY_PLANS } = useGetSubscriptionPlansQuery(undefined, reads);
 
@@ -98,17 +95,7 @@ export function useProfileData() {
 
   const paymentHistoryLoaded = Boolean(paymentHistory);
 
-  const effectiveKycStatus = getEffectiveKycStatus(kycStatus);
-
-  const isKycApproved = effectiveKycStatus === 'approved';
-
-  const isKycPending = effectiveKycStatus === 'pending';
-
-  const isKycRejected = effectiveKycStatus === 'rejected';
-
   const hasLoadedVehicles = vehicles !== undefined;
-
-  const isVehicleInitialLoading = !hasLoadedVehicles && vehiclesLoading;
 
   const isVehicleDataUnavailable = !hasLoadedVehicles && vehiclesLoadError;
 
@@ -116,15 +103,13 @@ export function useProfileData() {
 
   const shouldShowVehicleLoadError = isVehicleDataUnavailable || isVehicleRetrying;
 
-  const isProfileDataLoading = profileLoading || (isDriver && isVehicleInitialLoading);
+  const isProfileDataLoading = !isProfileStatusKnown && (profileLoading || profileFetching);
 
-  const knownVehicleCount = hasLoadedVehicles ? vehicleList.length : stats?.vehicles;
+  // Status cards and onboarding use the same server snapshot as role/identity.
+  // The independent vehicle query is only for the detailed editable list.
+  const knownVehicleCount = profileVehicleCount;
 
   const hasVehicle = (knownVehicleCount ?? 0) > 0;
-
-  const hasNoVehicle = knownVehicleCount === 0;
-
-  const needsDriverOnboarding = !isDriver || hasNoVehicle || !isKycApproved;
 
   const userId = currentUser?.id ?? '';
 
@@ -220,6 +205,8 @@ export function useProfileData() {
   const driverBookingsCount = stats?.bookingsAsDriver ?? 0;
   return {
     currentUser,
+    profileState,
+    profileRoleLabel,
     displaysDriverRole,
     driverBookingsCount,
     driverSettlement,
@@ -227,12 +214,16 @@ export function useProfileData() {
     featuredReviews,
     handleRefresh,
     hasVehicle,
+    hasProfileLoadError,
     isDriver,
     isKycApproved,
     isKycPending,
     isKycRejected,
     isPremiumActive,
     isProfileDataLoading,
+    isProfileStatusKnown,
+    isIdentityStatusKnown,
+    isProfileStatusAvailable,
     isScreenActive,
     knownVehicleCount,
     kycLoading,
@@ -243,6 +234,7 @@ export function useProfileData() {
     pendingOffersCount,
     premiumOverview,
     premiumOverviewFetching,
+    profileFetching,
     proEndDateLabel,
     proPriceLabel,
     recentPendingSubscriptionOrderNumber,

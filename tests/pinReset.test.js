@@ -133,7 +133,7 @@ test('a delayed OTP response cannot restore a proof after cancellation', async (
   await assert.rejects(app.render().confirmPin('5678'));
 });
 
-test('opening a reset screen while its SMS request is pending still completes the request', async () => {
+test('opening a reset screen while its OTP request is pending still completes the request', async () => {
   let resolve;
   const app = resetEnvironment({ send: () => new Promise(done => { resolve = done; }) });
   app.props.active = false;
@@ -182,6 +182,7 @@ test('forgotten PIN from login goes through six-digit OTP then returns to PIN lo
   const app = phoneScreen();
   await app.render().handleForgotPin();
   assert.equal(app.props.step, 'resetPin');
+  assert.match(app.dialogs.at(-1).message, /^Si ce numéro correspond à un compte éligible,.*WhatsApp.*Didit.*SMS/);
   assert.equal(app.props.resetOtpCode.length, 6);
   app.props.resetOtpCode = '12345'.split('');
   await app.render().handleVerifyResetOtp();
@@ -210,4 +211,5 @@ test('an expired or rejected proof sends the login flow back to OTP and clears t
   assert.equal(app.props.resetNewPin, '');
   assert.equal(app.props.resetNewPinConfirm, '');
   assert.equal(app.dialogs.at(-1).variant, 'danger');
+  assert.match(app.dialogs.at(-1).message, /WhatsApp ou vos SMS/);
 });

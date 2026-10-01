@@ -85,9 +85,10 @@ test('a stale signup token cannot revert server-confirmed activation, but anothe
   const f = authFixture(), activatedAt = '2026-09-24T10:00:00Z';
   f.store.dispatch(f.setUser({ id: 'a', role: 'driver', driverActivatedAt: activatedAt }));
   const accessToken = token({ sub: 'a', role: 'passenger', iat: Date.parse(activatedAt) / 1000 - 1 });
-  f.store.dispatch(f.setTokens({ accessToken, refreshToken: 'refresh' }));
+  // The session policy requires a decodable, unexpired refresh JWT as well.
+  f.store.dispatch(f.setTokens({ accessToken, refreshToken: token({ sub: 'a' }) }));
   assert.equal(f.store.getState().user.role, 'driver');
-  f.store.dispatch(f.setTokens({ accessToken: token({ sub: 'b', role: 'passenger', iat: 0 }), refreshToken: 'next' }));
+  f.store.dispatch(f.setTokens({ accessToken: token({ sub: 'b', role: 'passenger', iat: 0 }), refreshToken: token({ sub: 'b' }) }));
   assert.equal(f.store.getState().user.role, 'passenger');
   assert.equal(f.store.getState().user.driverActivatedAt, undefined);
 });

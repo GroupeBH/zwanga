@@ -34,6 +34,22 @@ export interface ProfileStats {
 export interface ProfileSummary {
   user: User;
   stats: ProfileStats;
+  // undefined: missing/invalid server data; null: server confirmed no document.
+  identity?: Pick<KycDocument, 'status' | 'provider' | 'diditSessionStatus' | 'rejectionReason'> | null;
+  profileState?: ProfileState;
+}
+
+export interface ProfileState {
+  version: 1;
+  userId: string;
+  identity: { status: 'not_started' | KycStatus; rejectionReason: string | null };
+  driver: {
+    status: 'not_requested' | 'identity_required' | 'identity_pending' | 'vehicle_required' | 'ready_to_activate' | 'active' | 'restricted';
+    nextAction: 'start' | 'verify_identity' | 'add_vehicle' | 'wait' | 'activate' | 'none' | 'contact_support';
+    canPublish: boolean;
+    activeVehicleCount: number;
+    requested: boolean;
+  };
 }
 
 export interface Review {

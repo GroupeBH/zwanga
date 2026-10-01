@@ -8,12 +8,13 @@ type Props = {
   approved: boolean;
   pending: boolean;
   rejected: boolean;
+  known: boolean;
   busy: boolean;
   onPress: () => void;
 };
 
-export const ProfileIdentitySection = React.memo(function ProfileIdentitySection({ approved, pending, rejected, busy, onPress }: Props) {
-  const status = approved ? 'Identité vérifiée' : pending ? 'Vérification en cours' : rejected ? 'Vérification à reprendre' : 'Identité non vérifiée';
+export const ProfileIdentitySection = React.memo(function ProfileIdentitySection({ approved, pending, rejected, known, busy, onPress }: Props) {
+  const status = !known ? 'Statut d’identité indisponible' : approved ? 'Identité vérifiée' : pending ? 'Vérification en cours' : rejected ? 'Vérification à reprendre' : 'Identité non vérifiée';
   return (
     <View style={styles.identitySection}>
       <View style={styles.identityHeading}>
@@ -21,12 +22,12 @@ export const ProfileIdentitySection = React.memo(function ProfileIdentitySection
         <Text style={styles.identityTitle}>{status}</Text>
       </View>
       <Text style={styles.identityHint}>
-        Pour les passagers comme pour les conducteurs. Aucun véhicule requis pour vérifier votre identité.
+        Pour réserver 3 places ou plus en tant que passager. Cette vérification ne vous engage pas à devenir conducteur.
       </Text>
       <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={onPress} style={styles.identityAction} activeOpacity={0.8}>
         {busy ? <ActivityIndicator size="small" color={Colors.primary} /> : (
           <>
-            <Text style={styles.identityActionText}>{approved || pending ? 'Voir ma vérification' : 'Vérifier mon identité'}</Text>
+            <Text style={styles.identityActionText}>{!known ? 'Actualiser le statut' : approved || pending ? 'Voir ma vérification' : 'Vérifier mon identité'}</Text>
             <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
           </>
         )}

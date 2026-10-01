@@ -1,4 +1,7 @@
 import { FormModal as Modal } from '@/components/forms/FormLayout';
+import { OtpDeliveryNotice } from '@/components/auth/OtpDeliveryNotice';
+import { OtpCodeInput } from '@/components/auth/OtpCodeInput';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { Colors, Spacing } from '@/constants/styles';
 import { styles } from '@/features/profile/ProfilePinModal.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
@@ -22,8 +25,7 @@ type Props = Pick<ReturnType<typeof useProfileController>,
   | 'handleNewPinChange'
   | 'handleNewPinConfirmChange'
   | 'handleOldPinChange'
-  | 'handleOtpInputChange'
-  | 'handleOtpKeyPress'
+  | 'setOtpCode'
   | 'handleUpdatePin'
   | 'handleVerifyOldPin'
   | 'handleVerifyOtpForPinChange'
@@ -49,8 +51,7 @@ export function ProfilePinModal({
   handleNewPinChange,
   handleNewPinConfirmChange,
   handleOldPinChange,
-  handleOtpInputChange,
-  handleOtpKeyPress,
+  setOtpCode,
   handleUpdatePin,
   handleVerifyOldPin,
   handleVerifyOtpForPinChange,
@@ -124,34 +125,23 @@ export function ProfilePinModal({
               <TouchableOpacity style={styles.pinModalForgotButton} onPress={handleForgotPin}>
                 <Text style={styles.pinModalForgotText}>{"J'ai oublié mon PIN"}</Text>
               </TouchableOpacity>
+              <Text style={[styles.inputLabelSmall, { color: Colors.gray[700] }]}>
+                {otpDeliveryCopy.forgotPinHint}
+              </Text>
             </>
           ) : pinStep === 'otp' ? (
             <>
               <Text style={styles.pinModalSubtitle}>
-                Un code de vérification a été envoyé au{' '}
+                Numéro à vérifier :{' '}
                 <Text style={{ fontWeight: 'bold' }}>{currentUser?.phone}</Text>
               </Text>
               <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-                <Text style={styles.inputLabelSmall}>6 chiffres reçus par SMS</Text>
-                <View style={styles.smsCodeContainer}>
-                  {otpCode.map((digit, index) => (
-                    <TextInput
-                      key={`otp-${index}`}
-                      ref={(ref) => {
-                        otpInputRefs.current[index] = ref;
-                      }}
-                      style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
-                      keyboardType="number-pad"
-                      maxLength={otpCode.length}
-                      textContentType="oneTimeCode"
-                      autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
-                      value={digit}
-                      onChangeText={(text) => handleOtpInputChange(text, index)}
-                      onKeyPress={(e) => handleOtpKeyPress(e, index)}
-                    />
-                  ))}
-                </View>
+                <OtpDeliveryNotice />
+                <Text style={styles.inputLabel}>Code de vérification</Text>
+                <Text style={styles.inputLabelSmall}>Saisissez les 6 chiffres du code reçu</Text>
+                <OtpCodeInput code={otpCode} onChange={setOtpCode} inputRefs={otpInputRefs}
+                  disabled={isSendingOtp || isUpdatingPinWithOtp} containerStyle={styles.smsCodeContainer}
+                  inputStyle={styles.smsInput} filledStyle={styles.smsInputFilled} />
               </View>
               <TouchableOpacity
                 style={[

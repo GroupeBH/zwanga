@@ -1,15 +1,15 @@
 import { getAuthErrorMessage } from '../../features/auth/authModel';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
-import { trackEvent } from '@/services/analytics';
 import { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useLoginMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
-import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import React from 'react';
-import { NativeSyntheticEvent, TextInput, TextInputKeyPressEventData } from 'react-native';
+import { TextInput } from 'react-native';
 import { AuthMode, AuthStep } from '@/components/auth';
 import { emptyPinResetOtp, PIN_RESET_OTP_LENGTH, usePinResetFlow } from './usePinResetFlow';
+import { usePinLogin } from './usePinLogin';
 
 interface Params {
   step: AuthStep;
@@ -79,6 +79,8 @@ export function usePhoneAuthActions({
   resetNewPinConfirm,
 }: Params) {
   const pinReset = usePinResetFlow(phone, step === 'resetPin' && mode === 'login');
+  const pinLogin = usePinLogin({ active: mode === 'login' && step === 'pin', phone, login, dispatch,
+    setPin, showDialog, onRetry: () => focusAfterInteractions(pinInputRef) });
   const handlePhoneSubmit = async () => {
     const normalizedPhone = phone.trim();
     if (normalizedPhone.length < 10) {
@@ -98,7 +100,7 @@ export function usePhoneAuthActions({
       setIsSendingOtp(true);
       await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
       setStep('sms');
-      showDialog({ variant: 'success', title: 'Code envoyé', message: 'Un code de vérification a été envoyé.' });
+      showDialog({ variant: 'success', title: 'Code envoyé', message: otpDeliveryCopy.sent });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
@@ -107,40 +109,6 @@ export function usePhoneAuthActions({
   };
 
   // SMS Handlers
-  const handleSmsInputChange = (value: string, index: number) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = [...smsCode];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      setSmsCode(updated);
-      if (cursor <= updated.length - 1) smsInputRefs.current[cursor]?.focus();
-      return;
-    }
-    const nextCode = [...smsCode];
-    nextCode[index] = sanitized;
-    setSmsCode(nextCode);
-    if (sanitized && index < nextCode.length - 1) smsInputRefs.current[index + 1]?.focus();
-  };
-
-  const handleSmsKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      if (smsCode[index]) {
-        const updated = [...smsCode];
-        updated[index] = '';
-        setSmsCode(updated);
-      } else if (index > 0) {
-        smsInputRefs.current[index - 1]?.focus();
-        const updated = [...smsCode];
-        updated[index - 1] = '';
-        setSmsCode(updated);
-      }
-    }
-  };
 
   const handleSmsSubmit = async () => {
     const code = smsCode.join('');
@@ -162,24 +130,24 @@ export function usePhoneAuthActions({
   };
 
   // PIN Handlers
-  const handlePinChange = (value: string) => setPin(value.replace(/\D/g, '').slice(0, 4));
+  const handlePinChange = (value: string) => {
+    if (pinLogin.isInFlight()) return;
+    const nextPin = value.replace(/\D/g, '').slice(0, 4);
+    setPin(nextPin);
+    // Use the new input directly: the React state still contains the previous digit.
+    // Input-driven only, so rerenders or returning to this screen never retry login.
+    if (mode === 'login' && step === 'pin' && nextPin.length === 4) void pinLogin.submit(nextPin);
+  };
   const handlePinConfirmChange = (value: string) => setPinConfirm(value.replace(/\D/g, '').slice(0, 4));
 
   const handlePinSubmit = async () => {
+    if (pinLogin.isInFlight()) return;
     if (pin.length !== 4) {
       showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
       return;
     }
     if (mode === 'login') {
-      try {
-        const result = await login({ phone, pin }).unwrap();
-        await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
-        await trackEvent('login_success', { method: 'phone' });
-      } catch (error: any) {
-        showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'PIN incorrect.') });
-        setPin('');
-        pinInputRef.current?.focus();
-      }
+      await pinLogin.submit(pin);
     } else {
       if (pinConfirm.length !== 4) {
         showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
@@ -197,7 +165,7 @@ export function usePhoneAuthActions({
 
   // Reset PIN Handlers
   const handleForgotPin = async () => {
-    if (pinReset.isBusy) return;
+    if (pinReset.isBusy || pinLogin.isInFlight()) return;
     setStep('resetPin');
     setResetPinStep('otp');
     setResetOtpCode(emptyPinResetOtp());
@@ -206,7 +174,7 @@ export function usePhoneAuthActions({
     try {
       setIsSendingResetOtp(true);
       if (!await pinReset.requestOtp()) return;
-      showDialog({ variant: 'success', title: 'Demande envoyée', message: 'Si ce numéro correspond à un compte éligible, vous recevrez un code SMS.' });
+      showDialog({ variant: 'success', title: 'Demande envoyée', message: otpDeliveryCopy.pinResetRequested });
       focusAfterInteractions({ current: resetOtpInputRefs.current[0] });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
@@ -215,40 +183,6 @@ export function usePhoneAuthActions({
     }
   };
 
-  const handleResetOtpInputChange = (value: string, index: number) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = [...resetOtpCode];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      setResetOtpCode(updated);
-      if (cursor <= updated.length - 1) resetOtpInputRefs.current[cursor]?.focus();
-      return;
-    }
-    const nextCode = [...resetOtpCode];
-    nextCode[index] = sanitized;
-    setResetOtpCode(nextCode);
-    if (sanitized && index < nextCode.length - 1) resetOtpInputRefs.current[index + 1]?.focus();
-  };
-
-  const handleResetOtpKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      if (resetOtpCode[index]) {
-        const updated = [...resetOtpCode];
-        updated[index] = '';
-        setResetOtpCode(updated);
-      } else if (index > 0) {
-        resetOtpInputRefs.current[index - 1]?.focus();
-        const updated = [...resetOtpCode];
-        updated[index - 1] = '';
-        setResetOtpCode(updated);
-      }
-    }
-  };
 
   const handleVerifyResetOtp = async () => {
     const code = resetOtpCode.join('');
@@ -293,11 +227,13 @@ export function usePhoneAuthActions({
       setResetOtpCode(emptyPinResetOtp());
       setResetNewPin('');
       setResetNewPinConfirm('');
-      showDialog({ variant: 'danger', title: 'Réinitialisation non confirmée', message: getAuthErrorMessage(error, 'Demandez un nouveau code SMS pour réessayer. Si le PIN a déjà été changé, connectez-vous avec le nouveau PIN.') });
+      showDialog({ variant: 'danger', title: 'Réinitialisation non confirmée', message: getAuthErrorMessage(error, otpDeliveryCopy.resetNotConfirmed) });
     }
   };
 
   return {
+    isPinLoginPending: pinLogin.isPending,
+    isPinLoginInFlight: pinLogin.isInFlight,
     isResettingPin: pinReset.isBusy,
     handlePhoneSubmit,
     handleSmsSubmit,

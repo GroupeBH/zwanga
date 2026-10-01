@@ -12,6 +12,8 @@ test('cash receipt mutation uses RTK, checks the shown fare and invalidates rela
   assert.deepEqual(query.body, { amount: 2000, currency: 'CDF' });
   assert.deepEqual(endpoint.invalidatesTags(undefined), []);
   assert.ok(endpoint.invalidatesTags({ id: 'booking', tripId: 'trip' }).includes('AccountActivity'));
+  assert.ok(endpoint.invalidatesTags({ id: 'booking', tripId: 'trip' })
+    .some(tag => tag.type === 'DriverSettlement' && tag.id === 'ME'));
   const mapped = endpoint.transformResponse({ id: 'booking', cashReceivedAt: '2026-09-22T12:00:00Z',
     cashReceivedByDriverId: 'driver', cashReceivedAmount: '2000' });
   assert.equal(mapped.cashReceivedByDriverId, 'driver'); assert.equal(mapped.cashReceivedAmount, '2000');

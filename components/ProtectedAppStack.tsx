@@ -2,10 +2,12 @@ import { selectHasAuthenticatedSession } from '@/store/selectors';
 import { useAppSelector } from '@/store/hooks';
 import { Stack } from 'expo-router';
 import { Platform } from 'react-native';
+import { useHomeRootNavigation } from '@/hooks/navigation/useHomeRootNavigation';
 
 /** Keep private screens out of the navigator until a recoverable session exists. */
 export function ProtectedAppStack() {
   const hasSession = useAppSelector(selectHasAuthenticatedSession);
+  const allowStartup = useHomeRootNavigation(hasSession);
   const isAndroid = Platform.OS === 'android';
   const modalPresentation = isAndroid ? 'card' : 'modal';
 
@@ -17,11 +19,13 @@ export function ProtectedAppStack() {
         ...(isAndroid ? ({ animation: 'none' } as const) : {}),
       }}
     >
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="splash" options={{ headerShown: false }} />
+      <Stack.Protected guard={allowStartup}>
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="splash" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="background-location-disclosure" options={{ headerShown: false }} />
+      </Stack.Protected>
       <Stack.Screen name="auth-entry" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="background-location-disclosure" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
 
       <Stack.Protected guard={hasSession}>

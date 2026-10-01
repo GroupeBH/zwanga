@@ -61,8 +61,8 @@
       "sha256": "5c4be262129da3c61d563285edc9c2310feaff8df293e3d1c2b9079368a3385c"
     },
     "features/screen-styles/app/requests/index.ts": {
-      "keys": 67,
-      "sha256": "a7d1f5a1f44e7c8cc0efa6ef47a567ac4abcadefd7d7dea05a8761a22800fc63"
+      "keys": 32,
+      "sha256": "4e8f783d36ad4636dd13e65c9ea67664b54bb5fc5a88c2c9e8f2309cec376654"
     },
     "features/screen-styles/app/search/index.ts": {
       "keys": 44,

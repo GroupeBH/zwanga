@@ -7,9 +7,9 @@ import { useSocialAuthActions } from './useSocialAuthActions';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { isAppleSignInAvailable } from '@/services/appleAuth';
-import { configureGoogleSignIn } from '@/services/googleAuth';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
+import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'react';
 import { AuthMode, AuthStep, LOGIN_STEPS, SIGNUP_STEPS, getMotivationalMessage } from '@/components/auth';
@@ -63,10 +63,6 @@ export function useAuthController() {
   const motivationalMessage = getMotivationalMessage(form.step, form.mode);
 
   // ============ EFFECTS ============
-  useEffect(() => {
-    configureGoogleSignIn();
-  }, []);
-
   useEffect(() => {
     let isMounted = true;
 
@@ -141,6 +137,10 @@ export function useAuthController() {
   });
 
   const social = useSocialAuthActions({
+    confirmSession: async ({ accessToken, refreshToken }) => {
+      const saved = await dispatch(saveTokensAndUpdateState({ accessToken, refreshToken })).unwrap();
+      if (!saved) throw new Error('La connexion n’a pas pu être confirmée. Réessayez.');
+    },
     phone: form.phone,
     setMode: form.setMode,
     setStep: form.setStep,
@@ -254,17 +254,6 @@ export function useAuthController() {
     startDiditKyc: form.startDiditKyc,
     googleProfileName: form.googleProfileName,
     router,
-    setGoogleIdToken: form.setGoogleIdToken,
-    setGoogleProfileName: form.setGoogleProfileName,
-    setGoogleFirstName: form.setGoogleFirstName,
-    setGoogleLastName: form.setGoogleLastName,
-    setGoogleEmail: form.setGoogleEmail,
-    setGooglePhone: form.setGooglePhone,
-    setGoogleOtp: form.setGoogleOtp,
-    setGoogleFlow: form.setGoogleFlow,
-    setIsGooglePhoneVerified: form.setIsGooglePhoneVerified,
-    setSocialProvider: form.setSocialProvider,
-    setAppleNonce: form.setAppleNonce,
     pin: form.pin,
     email: form.email,
     profilePicture: form.profilePicture,

@@ -54,6 +54,27 @@ function fixture() {
 async function ready(f) { f.render(); await settle(); return f.render(); }
 function confirm(f, view) { view.handlePayout(); return f.dialogs.at(-1).actions.at(-1).onPress(); }
 
+test('passenger cash alone never enables a withdrawal or opens a recipient form', async () => {
+  const f = fixture();
+  f.props.summary = { ...summary, availableBalance: 0, cashReceivedAmount: 50000 };
+  const view = await ready(f);
+  assert.equal(view.canSubmit, false);
+  view.openPayoutForm();
+  assert.equal(f.render().payoutForm, null);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.storage.size, 0);
+  f.harness.unmount();
+});
+
+test('withdrawal uses only the server balance, without adding passenger cash or excluding Zwanga credits', async () => {
+  const f = fixture();
+  // Available balance includes net electronic/token payments and any funded Zwanga participation.
+  f.props.summary = { ...summary, cashReceivedAmount: 50000, paidBalance: 4000, pendingPayoutBalance: 1200 };
+  await confirm(f, await ready(f));
+  assert.equal(f.calls[0].amount, 9500);
+  f.harness.unmount();
+});
+
 test('payout recipient phone accepts local and international forms, rejects invalid forms', () => {
   const { normalizePayoutPhone } = fixture().load('features/driver-earnings/payoutModel.ts');
   for (const phone of ['0891234567', '243891234567', '+243891234567', '00243891234567', '+243 891 234 567']) assert.equal(normalizePayoutPhone(phone), '+243891234567');

@@ -55,6 +55,8 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        initialRouteName="index"
+        backBehavior="initialRoute"
         detachInactiveScreens={Platform.OS !== 'android'}
         screenOptions={{
           tabBarActiveTintColor: Colors.primary,

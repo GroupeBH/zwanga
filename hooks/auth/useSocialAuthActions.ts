@@ -8,15 +8,16 @@ import {
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import { signInWithApple, type AppleAuthResult } from '@/services/appleAuth';
-import { signInWithGoogle, type GoogleAuthResult } from '@/services/googleAuth';
+import { useGoogleAuthActions } from './useGoogleAuthActions';
 import { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useAppleMobileMutation, useGoogleMobileMutation } from '@/store/api/zwangaApi';
-import type { UserGender } from '@/types';
+import type { AuthResponse } from '@/store/api/authApi';
+import type { TripRequestVehicleType, UserGender } from '@/types';
 import React from 'react';
 import { AuthMode, AuthStep } from '@/components/auth';
-import type { TripRequestVehicleType } from '@/types';
 
-interface Params {
+export interface SocialAuthParams {
+  confirmSession: (tokens: AuthResponse) => Promise<void>;
   phone: string;
   setMode: React.Dispatch<React.SetStateAction<AuthMode>>;
   setStep: React.Dispatch<React.SetStateAction<AuthStep>>;
@@ -70,6 +71,7 @@ interface Params {
 }
 
 export function useSocialAuthActions({
+  confirmSession,
   phone,
   setMode,
   setStep,
@@ -120,7 +122,8 @@ export function useSocialAuthActions({
   googleOtp,
   setIsVerifyingGoogleOtp,
   verifyPhoneOtp,
-}: Params) {
+}: SocialAuthParams) {
+  const attemptInFlight = React.useRef(false);
   const continueSocialSignupFromLogin = (seed: SocialSignupSeed) => {
     const reusablePhone = phone.trim();
 
@@ -166,69 +169,17 @@ export function useSocialAuthActions({
     });
   };
 
-  // Google Handlers
-  const handleGoogleLogin = async () => {
-    let result: GoogleAuthResult | null = null;
-    try {
-      setGoogleFlow('login');
-      setSocialProvider('google');
-      result = await signInWithGoogle();
-      setGoogleIdToken(result.idToken);
-      setGoogleProfileName(result.name || result.email || 'Profil Google');
-      setGoogleFirstName(result.givenName || null);
-      setGoogleLastName(result.familyName || null);
-      setGoogleEmail(result.email || null);
-      await googleMobile({ idToken: result.idToken }).unwrap();
-      await trackEvent('login_success', { method: 'google' });
-    } catch (error: any) {
-      console.error('Google login error:', error);
-
-      if (result && isSocialSignupRequiredError(error, 'google')) {
-        continueSocialSignupFromLogin({
-          provider: 'google',
-          idToken: result.idToken,
-          profileName: result.name || result.email || 'Profil Google',
-          firstName: result.givenName,
-          lastName: result.familyName,
-          email: result.email,
-        });
-        return;
-      }
-
-      showDialog({
-        variant: 'danger',
-        title: 'Connexion Google',
-        message: getAuthErrorMessage(error, 'Connexion Google impossible'),
-      });
-      setGoogleFlow(null);
-      setSocialProvider(null);
-    }
-  };
-
-  const handleGoogleSignupStart = async () => {
-    try {
-      setGoogleFlow('signup');
-      setSocialProvider('google');
-      const result = await signInWithGoogle();
-      setGoogleIdToken(result.idToken);
-      setGoogleProfileName(result.name || result.email || 'Profil Google');
-      setGoogleFirstName(result.givenName || null);
-      setGoogleLastName(result.familyName || null);
-      setGoogleEmail(result.email || null);
-    } catch (error: any) {
-      console.error('Google signup error:', error);
-      showDialog({
-        variant: 'danger',
-        title: 'Inscription Google',
-        message: getAuthErrorMessage(error, 'Inscription Google impossible. Réessayez dans un instant.'),
-      });
-      setGoogleFlow(null);
-      setSocialProvider(null);
-    }
-  };
+  const google = useGoogleAuthActions({
+    attemptInFlight, onSignupRequired: continueSocialSignupFromLogin,
+    setGoogleFlow, setSocialProvider, setGoogleIdToken, setGoogleProfileName,
+    setGoogleFirstName, setGoogleLastName, setGoogleEmail, googleMobile, showDialog, confirmSession,
+  });
 
   const handleAppleLogin = async () => {
+    if (attemptInFlight.current) return;
+    attemptInFlight.current = true;
     let result: AppleAuthResult | null = null;
+    let awaitingRedirect = false;
     try {
       setIsAppleLoading(true);
       setGoogleFlow('login');
@@ -242,11 +193,13 @@ export function useSocialAuthActions({
       setGoogleLastName(result.lastName);
       setGoogleEmail(result.email);
       setAppleNonce(result.nonce);
-      await appleMobile({
+      const tokens = await appleMobile({
         idToken: result.identityToken,
         nonce: result.nonce,
       }).unwrap();
-      await trackEvent('login_success', { method: 'apple' });
+      await confirmSession(tokens);
+      awaitingRedirect = true;
+      void trackEvent('login_success', { method: 'apple' }).catch(() => undefined);
     } catch (error: any) {
       console.error('Apple login error:', error);
 
@@ -272,11 +225,16 @@ export function useSocialAuthActions({
       setGoogleFlow(null);
       setSocialProvider(null);
     } finally {
-      setIsAppleLoading(false);
+      if (!awaitingRedirect) {
+        attemptInFlight.current = false;
+        setIsAppleLoading(false);
+      }
     }
   };
 
   const handleAppleSignupStart = async () => {
+    if (attemptInFlight.current) return;
+    attemptInFlight.current = true;
     try {
       setIsAppleLoading(true);
       setGoogleFlow('signup');
@@ -303,6 +261,7 @@ export function useSocialAuthActions({
       setGoogleFlow(null);
       setSocialProvider(null);
     } finally {
+      attemptInFlight.current = false;
       setIsAppleLoading(false);
     }
   };
@@ -336,8 +295,8 @@ export function useSocialAuthActions({
   });
 
   return {
-    handleGoogleLogin,
-    handleGoogleSignupStart,
+    ...google,
+    isSocialAuthInFlight: () => attemptInFlight.current,
     handleAppleLogin,
     handleAppleSignupStart,
     handleSendGoogleOtp,

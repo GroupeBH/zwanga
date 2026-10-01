@@ -9,6 +9,8 @@ import type {
 } from '../../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isDriverAccount } from '@/utils/accountRole';
+import { mapProfileIdentity } from './profileIdentityMapper';
+import { readProfileState } from '@/features/profile/profileStateContract';
 
 export type ServerUser = Record<string, any>;
 export const FAVORITE_LOCATION_NOTES_KEY = 'favorite_location_local_notes';
@@ -48,7 +50,7 @@ export const mapServerUser = (user: ServerUser): User => {
     rating: user.rating ?? 0,
     totalTrips: user.totalTrips ?? 0,
     verified: Boolean(user.isEmailVerified || user.isPhoneVerified),
-    identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
+    identityVerified: mapProfileIdentity(user.kycDocuments, user.id)?.status === 'approved',
     vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
     isDriver: isDriverAccount(user),
     driverOnboardingRequestedAt: user.driverOnboardingRequestedAt ?? null,
@@ -61,9 +63,11 @@ export const mapServerUser = (user: ServerUser): User => {
   };
 };
 
-export const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats }): ProfileSummary => ({
+export const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats; profileState?: unknown }): ProfileSummary => ({
   user: mapServerUser(payload.user),
   stats: payload.stats,
+  identity: mapProfileIdentity(payload.user.kycDocuments, payload.user.id),
+  profileState: readProfileState(payload.profileState, payload.user.id),
 });
 
 export const loadFavoriteLocationNotes = async (): Promise<Record<string, string>> => {

@@ -13,6 +13,7 @@ export function buildCashReceiptEndpoints(builder: BaseEndpointBuilder) {
     }),
     transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
     invalidatesTags: (result) => result ? [bookingListTag, myTripsListTag, tripListTag, 'AccountActivity',
-      { type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId }] : [],
+      { type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId },
+      { type: 'DriverSettlement', id: 'ME' }] : [],
   }) };
 }

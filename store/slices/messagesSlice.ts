@@ -5,6 +5,7 @@ interface MessagesState {
   conversations: Conversation[];
   messages: Record<string, Message[]>;
   unreadCount: number;
+  knownUnreadCounts: Record<string, number>;
   isLoading: boolean;
   error: string | null;
 }
@@ -13,9 +14,19 @@ const initialState: MessagesState = {
   conversations: [],
   messages: {},
   unreadCount: 0,
+  knownUnreadCounts: {},
   isLoading: false,
   error: null,
 };
+
+// Keep only unread counters outside the visible window, never historical message bodies.
+function rememberUnread(state: MessagesState, id: string, count: number) {
+  const previous = state.knownUnreadCounts[id] ?? 0;
+  const next = Number.isFinite(count) ? Math.max(0, count) : 0;
+  if (next > 0) state.knownUnreadCounts[id] = next;
+  else delete state.knownUnreadCounts[id];
+  state.unreadCount += next - previous;
+}
 
 const messagesSlice = createSlice({
   name: 'messages',
@@ -24,7 +35,18 @@ const messagesSlice = createSlice({
     resetMessages: () => initialState,
     setConversations: (state, action: PayloadAction<Conversation[]>) => {
       state.conversations = action.payload;
-      state.unreadCount = action.payload.reduce((sum, conv) => sum + conv.unreadCount, 0);
+      state.knownUnreadCounts = {};
+      state.unreadCount = 0;
+      for (const row of action.payload) rememberUnread(state, row.id, row.unreadCount ?? 0);
+    },
+    setConversationWindow: (state, action: PayloadAction<{ conversations: Conversation[]; complete: boolean }>) => {
+      state.conversations = action.payload.conversations;
+      if (action.payload.complete) { state.knownUnreadCounts = {}; state.unreadCount = 0; }
+      for (const row of action.payload.conversations) rememberUnread(state, row.id, row.unreadCount ?? 0);
+    },
+    forgetConversation: (state, action: PayloadAction<string>) => {
+      state.conversations = state.conversations.filter(row => row.id !== action.payload);
+      rememberUnread(state, action.payload, 0);
     },
     upsertConversation: (state, action: PayloadAction<Conversation>) => {
       const index = state.conversations.findIndex((conv) => conv.id === action.payload.id);
@@ -33,7 +55,7 @@ const messagesSlice = createSlice({
       } else {
         state.conversations[index] = action.payload;
       }
-      state.unreadCount = state.conversations.reduce((sum, conv) => sum + (conv.unreadCount ?? 0), 0);
+      rememberUnread(state, action.payload.id, action.payload.unreadCount ?? 0);
     },
     setMessages: (
       state,
@@ -60,16 +82,16 @@ const messagesSlice = createSlice({
             ? conversation.unreadCount
             : (conversation.unreadCount ?? 0) + 1,
         };
+        rememberUnread(state, conversationId, state.conversations[convIndex].unreadCount ?? 0);
       }
-      state.unreadCount = state.conversations.reduce((sum, conv) => sum + (conv.unreadCount ?? 0), 0);
     },
     markConversationMessagesRead: (state, action: PayloadAction<string>) => {
       const conversationId = action.payload;
       const convIndex = state.conversations.findIndex((c) => c.id === conversationId);
       if (convIndex !== -1) {
-        state.unreadCount -= state.conversations[convIndex].unreadCount ?? 0;
         state.conversations[convIndex].unreadCount = 0;
       }
+      rememberUnread(state, conversationId, 0);
       if (state.messages[conversationId]) {
         state.messages[conversationId] = state.messages[conversationId].map((msg) => ({
           ...msg,
@@ -91,6 +113,8 @@ const messagesSlice = createSlice({
 export const {
   resetMessages,
   setConversations,
+  setConversationWindow,
+  forgetConversation,
   upsertConversation,
   setMessages,
   addMessage,

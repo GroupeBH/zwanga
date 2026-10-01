@@ -6,8 +6,9 @@ import {
   useGetDriverPayoutsPageQuery,
   useGetMyDriverSettlementQuery,
 } from '@/store/api/driverSettlementsApi';
-import type { DriverEarning } from '@/types';
-import { formatAmount, formatDate, maskPhone } from '@/features/driver-earnings/payoutModel';
+import { formatAmount, maskPhone } from '@/features/driver-earnings/payoutModel';
+import { CashRevenueSummary } from '@/features/driver-earnings/CashRevenueSummary';
+import { DriverEarningRow } from '@/features/driver-earnings/DriverEarningRow';
 import { PayoutHistory } from '@/features/driver-earnings/PayoutHistory';
 import { PayoutDestinationModal } from '@/features/driver-earnings/PayoutDestinationModal';
 import { useDriverPayout } from '@/hooks/driver-earnings/useDriverPayout';
@@ -20,9 +21,6 @@ import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const getPaymentModeLabel = (earning: DriverEarning) =>
-  earning.paymentMode === 'cash' ? 'Participation Zwanga (trajet en cash)' :
-    earning.paymentMode === 'points' ? 'Payé en jetons' : 'Paiement électronique';
 const pageInsets = { paddingHorizontal: Spacing.xl };
 
 export default function DriverEarningsScreen() {
@@ -98,7 +96,7 @@ export default function DriverEarningsScreen() {
         </TouchableOpacity>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Revenus conducteur</Text>
-          <Text style={styles.subtitle}>Courses créditées et versements Mobile Money</Text>
+          <Text style={styles.subtitle}>Gains, cash reçu et retraits Mobile Money</Text>
         </View>
         <TouchableOpacity
           accessibilityLabel="Actualiser les revenus"
@@ -116,15 +114,7 @@ export default function DriverEarningsScreen() {
       <FlatList
         data={earnings} keyExtractor={earning => earning.id}
         initialNumToRender={8} maxToRenderPerBatch={8} windowSize={5}
-        renderItem={({ item: earning }) => <View style={pageInsets}><View style={styles.earningRow}>
-          <View style={styles.earningIcon}><Ionicons name="car-outline" size={20} color={Colors.primary} /></View>
-          <View style={styles.rowCopy}>
-            <Text style={styles.rowTitle}>{getPaymentModeLabel(earning)}</Text>
-            <Text style={styles.rowMeta}>{formatDate(earning.availableAt ?? earning.createdAt)} · Brut{' '}
-              {formatAmount(earning.grossAmount, earning.currency)}</Text>
-          </View>
-          <Text style={styles.earningAmount}>+{formatAmount(earning.netAmount, earning.currency)}</Text>
-        </View></View>}
+        renderItem={({ item: earning }) => <View style={pageInsets}><DriverEarningRow earning={earning} /></View>}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />
@@ -132,14 +122,14 @@ export default function DriverEarningsScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={<>
         <Animated.View entering={FadeInDown.delay(60)} style={styles.balanceSection}>
-          <Text style={styles.eyebrow}>DISPONIBLE AU VERSEMENT</Text>
+          <Text style={styles.eyebrow}>SOLDE RETIRABLE</Text>
           {isLoading && !summary ? (
             <ActivityIndicator size="small" color={Colors.primary} style={styles.loader} />
           ) : (
-            <Text style={styles.balance}>{formatAmount(availableBalance, currency)}</Text>
+            <Text style={styles.balance}>{summary ? formatAmount(availableBalance, currency) : '—'}</Text>
           )}
           <Text style={styles.balanceHint}>
-            Montant net après la commission Zwanga de {commissionPercent} %. Une course apparaît ici seulement après son paiement confirmé.
+            Paiements électroniques et jetons, nets de commission ({commissionPercent} %), plus les participations Zwanga créditées. Le cash reçu des passagers n’est pas inclus.
           </Text>
 
           <TouchableOpacity
@@ -154,7 +144,7 @@ export default function DriverEarningsScreen() {
               <Ionicons name="phone-portrait-outline" size={19} color={Colors.white} />
             )}
             <Text style={styles.payoutButtonText}>
-              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier ma demande' : 'Recevoir mes gains'}
+              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier ma demande' : 'Retirer mes gains'}
             </Text>
           </TouchableOpacity>
           <Text style={styles.payoutDestination}>
@@ -171,18 +161,20 @@ export default function DriverEarningsScreen() {
 
           <View style={styles.balanceBreakdown}>
             <View style={styles.breakdownItem}>
-              <Text style={styles.breakdownLabel}>Versement en cours</Text>
+              <Text style={styles.breakdownLabel}>Retrait en cours</Text>
               <Text style={styles.breakdownValue}>
-                {formatAmount(summary?.pendingPayoutBalance, currency)}
+                {summary ? formatAmount(summary.pendingPayoutBalance, currency) : '—'}
               </Text>
             </View>
             <View style={styles.breakdownDivider} />
             <View style={styles.breakdownItem}>
-              <Text style={styles.breakdownLabel}>Déjà versé</Text>
-              <Text style={styles.breakdownValue}>{formatAmount(summary?.paidBalance, currency)}</Text>
+              <Text style={styles.breakdownLabel}>Déjà retiré</Text>
+              <Text style={styles.breakdownValue}>{summary ? formatAmount(summary.paidBalance, currency) : '—'}</Text>
             </View>
           </View>
         </Animated.View>
+
+        <CashRevenueSummary amount={summary?.cashReceivedAmount} currency={currency} />
 
         <PayoutHistory payouts={payouts} availableBalance={availableBalance} busy={isWithdrawing}
           canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={openPayoutForm} onCheck={checkPayout}
@@ -194,7 +186,7 @@ export default function DriverEarningsScreen() {
         <Animated.View entering={FadeInDown.delay(150)} style={styles.section}>
           <View style={styles.sectionHeading}>
             <View>
-              <Text style={styles.sectionTitle}>Courses créditées</Text>
+              <Text style={styles.sectionTitle}>Historique des gains</Text>
               <Text style={styles.sectionMeta}>{earningsPage?.total ?? '—'} opération(s)</Text>
             </View>
             <View style={styles.liveIndicator}>
@@ -216,7 +208,7 @@ export default function DriverEarningsScreen() {
               <Ionicons name="receipt-outline" size={28} color={Colors.gray[500]} />
               <Text style={styles.emptyTitle}>Aucune course créditée</Text>
               <Text style={styles.emptyText}>
-                Les gains apparaissent dès que le paiement de fin de trajet est confirmé.
+                Les paiements électroniques, jetons et participations Zwanga apparaissent ici après crédit. Le cash reçu est suivi séparément.
               </Text>
             </View>
           ) : <ActivityIndicator color={Colors.primary} />}

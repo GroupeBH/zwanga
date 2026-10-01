@@ -230,12 +230,12 @@ export function useProfileVehicles({
     (vehicle: Vehicle) => {
       showDialog({
         variant: 'warning',
-        title: 'Supprimer le véhicule',
-        message: `Êtes-vous sûr de vouloir supprimer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) ? Cette action est irréversible.`,
+        title: 'Retirer le véhicule',
+        message: `Retirer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) de votre profil ? Il ne pourra plus être choisi pour de nouveaux trajets, mais restera dans l'historique. Un trajet en cours ou à venir doit d'abord être terminé, modifié ou annulé.`,
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
-            label: 'Supprimer',
+            label: 'Retirer',
             variant: 'primary',
             onPress: async () => {
               try {
@@ -258,16 +258,16 @@ export function useProfileVehicles({
                 void Promise.allSettled([refetchVehicles(), refetchProfile()]);
                 showDialog({
                   variant: 'success',
-                  title: 'Véhicule supprimé',
-                  message: 'Le véhicule a été supprimé avec succès.',
+                  title: 'Véhicule retiré',
+                  message: 'Le véhicule n’est plus actif. Les anciens trajets restent dans votre historique.',
                 });
               } catch (error: any) {
-                const message = getApiErrorMessage(error, 'Impossible de supprimer le véhicule pour le moment.');
+                const message = getApiErrorMessage(error, 'Impossible de retirer le véhicule pour le moment.');
                 const isDriverError = isDriverRequiredError(error);
 
                 showDialog({
                   variant: 'danger',
-                  title: 'Erreur',
+                  title: 'Véhicule non retiré',
                   message,
                   actions: isDriverError
                     ? [{ label: 'Fermer', variant: 'ghost' }, createBecomeDriverAction(router)]

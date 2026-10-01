@@ -1,16 +1,18 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, NativeSyntheticEvent, TextInputKeyPressEventData, Platform } from 'react-native';
+import { OtpCodeInput } from '../OtpCodeInput';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
+import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 
 interface SmsStepProps {
   mode: AuthMode;
   phone: string;
   smsCode: string[];
-  smsInputRefs: React.MutableRefObject<Array<TextInput | null>>;
+  smsInputRefs: React.MutableRefObject<(TextInput | null)[]>;
   onSmsCodeChange: (code: string[]) => void;
   onSubmit: () => void;
   onResend: () => void;
@@ -30,59 +32,6 @@ export function SmsStep({
   isResending,
 }: SmsStepProps) {
   const isCodeComplete = smsCode.join('').length === 5;
-  const otpAutoComplete = Platform.OS === 'android' ? 'sms-otp' : 'one-time-code';
-
-  const handleSmsInputChange = (text: string, index: number) => {
-    const sanitized = text.replace(/\D/g, '');
-
-    // Backspace or clear
-    if (!sanitized) {
-      const next = [...smsCode];
-      next[index] = '';
-      onSmsCodeChange(next);
-      return;
-    }
-
-    // Full OTP autofill from keyboard suggestion/SMS parser.
-    if (sanitized.length >= smsCode.length) {
-      const full = sanitized.slice(0, smsCode.length).split('');
-      onSmsCodeChange(full);
-      smsInputRefs.current[smsCode.length - 1]?.focus();
-      return;
-    }
-
-    // Paste/autofill starting from current index.
-    if (sanitized.length > 1) {
-      const next = [...smsCode];
-      let cursor = index;
-      for (const digit of sanitized) {
-        if (cursor > smsCode.length - 1) break;
-        next[cursor] = digit;
-        cursor += 1;
-      }
-      onSmsCodeChange(next);
-      const targetIndex = Math.min(cursor, smsCode.length - 1);
-      smsInputRefs.current[targetIndex]?.focus();
-      return;
-    }
-
-    // Classic one-digit typing.
-    const next = [...smsCode];
-    next[index] = sanitized.slice(0, 1);
-    onSmsCodeChange(next);
-    if (index < smsCode.length - 1) {
-      smsInputRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleSmsKeyPress = (
-    e: NativeSyntheticEvent<TextInputKeyPressEventData>,
-    index: number
-  ) => {
-    if (e.nativeEvent.key === 'Backspace' && !smsCode[index] && index > 0) {
-      smsInputRefs.current[index - 1]?.focus();
-    }
-  };
 
   return (
     <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
@@ -92,34 +41,18 @@ export function SmsStep({
         </View>
         <Text style={styles.heroTitle}>Vérification</Text>
         <Text style={styles.heroSubtitle}>
-          Code de vérification (OTP) envoyé au{' '}
+          Numéro à vérifier :{' '}
           <Text style={{ fontWeight: 'bold', color: Colors.gray[900] }}>{phone}</Text>
         </Text>
       </View>
 
       <View style={styles.formSection}>
-        <Text style={styles.inputLabel}>Code de vérification (OTP)</Text>
-        <Text style={styles.inputLabelSmall}>5 chiffres reçus par SMS</Text>
-        <View style={styles.smsCodeContainer}>
-          {smsCode.map((digit, index) => (
-            <TextInput
-              key={`sms-${index}`}
-              ref={(ref) => {
-                smsInputRefs.current[index] = ref;
-              }}
-              style={[styles.smsInput, digit ? styles.smsInputFilled : null]}
-              keyboardType="number-pad"
-              maxLength={smsCode.length}
-              autoComplete={otpAutoComplete as any}
-              textContentType="oneTimeCode"
-              importantForAutofill="yes"
-              selectTextOnFocus
-              value={digit}
-              onChangeText={(text) => handleSmsInputChange(text, index)}
-              onKeyPress={(e) => handleSmsKeyPress(e, index)}
-            />
-          ))}
-        </View>
+        <OtpDeliveryNotice />
+        <Text style={styles.inputLabel}>Code de vérification</Text>
+        <Text style={styles.inputLabelSmall}>Saisissez les 5 chiffres du code reçu</Text>
+        <OtpCodeInput code={smsCode} onChange={onSmsCodeChange} inputRefs={smsInputRefs}
+          disabled={isVerifying || isResending} containerStyle={styles.smsCodeContainer}
+          inputStyle={styles.smsInput} filledStyle={styles.smsInputFilled} />
       </View>
 
       <TouchableOpacity

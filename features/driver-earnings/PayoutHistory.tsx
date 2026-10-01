@@ -9,8 +9,8 @@ import { historyStyles } from './PayoutHistory.styles';
 
 const STATUS: Record<DriverPayoutStatus, { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
   pending: { label: 'Confirmation en attente', icon: 'time-outline', color: Colors.warningDark },
-  initiated: { label: 'Versement en cours', icon: 'sync-outline', color: Colors.infoDark },
-  succeeded: { label: 'Versé', icon: 'checkmark-circle-outline', color: Colors.successDark },
+  initiated: { label: 'Retrait en cours', icon: 'sync-outline', color: Colors.infoDark },
+  succeeded: { label: 'Retiré', icon: 'checkmark-circle-outline', color: Colors.successDark },
   failed: { label: 'Échec — montant disponible', icon: 'alert-circle-outline', color: Colors.danger },
   cancelled: { label: 'Annulé — montant disponible', icon: 'close-circle-outline', color: Colors.gray[600] },
 };
@@ -31,7 +31,7 @@ export function PayoutHistory({ payouts, availableBalance, busy, canRetry, onRet
     <View style={styles.section}>
       <View style={styles.sectionHeading}>
         <View>
-          <Text style={styles.sectionTitle}>Versements récents</Text>
+          <Text style={styles.sectionTitle}>Retraits récents</Text>
           <Text style={styles.sectionMeta}>De Zwanga vers votre Mobile Money</Text>
         </View>
       </View>
