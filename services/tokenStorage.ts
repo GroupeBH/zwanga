@@ -41,7 +41,7 @@ let fcmTokenCache: string | null = null;
 let fcmCacheHydrated = false;
 let fcmHydrationPromise: Promise<string | null> | null = null;
 
-const readSecureItem = async (key: string, label: string): Promise<string | null> => {
+const readSecureItem = async (key: string, label: string, strict = false): Promise<string | null> => {
   try {
     return await SecureStore.getItemAsync(key);
   } catch (error: any) {
@@ -49,6 +49,7 @@ const readSecureItem = async (key: string, label: string): Promise<string | null
       return null;
     }
     console.error(`Erreur lors de la récupération de ${label}:`, error);
+    if (strict) throw new Error('Le stockage sécurisé est temporairement indisponible.');
     return null;
   }
 };
@@ -62,8 +63,8 @@ const hydrateTokensCache = async (): Promise<TokenPair> => {
     const version = getTokenSessionVersion();
     tokensHydrationPromise = (async () => {
       const [accessToken, refreshToken] = await Promise.all([
-        readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token'),
-        readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token'),
+        readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token', true),
+        readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token', true),
       ]);
 
       if (version === getTokenSessionVersion()) {
@@ -120,7 +121,7 @@ export async function storeAccessToken(token: string): Promise<void> {
  * Récupère le jeton d'accès depuis le stockage sécurisé
  */
 export async function getAccessToken(): Promise<string | null> {
-  const { accessToken } = await hydrateTokensCache();
+  const { accessToken } = await getTokens();
   return accessToken;
 }
 
@@ -147,7 +148,7 @@ export async function storeRefreshToken(token: string): Promise<void> {
  * Récupère le jeton d'actualisation depuis le stockage sécurisé
  */
 export async function getRefreshToken(): Promise<string | null> {
-  const { refreshToken } = await hydrateTokensCache();
+  const { refreshToken } = await getTokens();
   return refreshToken;
 }
 
@@ -180,11 +181,12 @@ export async function storeTokens(accessToken: string, refreshToken: string, exp
 /**
  * Récupère les deux jetons (accès et actualisation)
  */
-export async function getTokens(): Promise<TokenPair> {
+export async function getTokens(options?: { throwOnError?: boolean }): Promise<TokenPair> {
   try {
     return await hydrateTokensCache();
   } catch (error: any) {
     console.error('Erreur lors de la récupération des tokens:', error);
+    if (options?.throwOnError) throw error;
     return { accessToken: null, refreshToken: null };
   }
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
-import { useLazyCheckDriverPayoutStatusQuery, useRequestDriverPayoutMutation } from '@/store/api/driverSettlementsApi';
+import { useLazyCheckDriverPayoutStatusQuery, useRequestDriverPayoutMutation, useRefreshDriverPayoutMutation, useRequestDriverPayoutReviewMutation } from '@/store/api/driverSettlementsApi';
 import type { DriverPayout, DriverSettlementSummary } from '@/types';
 import {
   clearDriverPayoutIntent, prepareDriverPayoutIntent, readDriverPayoutIntent,
@@ -26,6 +26,8 @@ export function useDriverPayout({ summary, payouts, refresh, isActive = true }: 
   const { showDialog } = useDialog();
   const [requestPayout] = useRequestDriverPayoutMutation();
   const [checkPayoutStatus] = useLazyCheckDriverPayoutStatusQuery();
+  const [refreshPayout] = useRefreshDriverPayoutMutation();
+  const [requestReview] = useRequestDriverPayoutReviewMutation();
   const [intent, setIntent] = useState<DriverPayoutIntent | null>(null);
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const [storageError, setStorageError] = useState(false);
@@ -81,8 +83,8 @@ export function useDriverPayout({ summary, payouts, refresh, isActive = true }: 
     const pending = isPayoutPending(payout);
     const reference = payout.reference ?? payout.orderNumber ?? payout.id;
     showDialog({
-      variant: payout.status === 'succeeded' ? 'success' : pending ? 'info' : 'warning',
-      title: payout.status === 'succeeded' ? 'Gains versés' : pending ? 'Versement en cours' : 'Versement non effectué',
+      variant: payout.recoveryBlocked ? 'warning' : payout.status === 'succeeded' ? 'success' : pending ? 'info' : 'warning',
+      title: payout.recoveryBlocked ? 'Vérification du solde requise' : payout.status === 'succeeded' ? 'Gains versés' : payout.reviewStatus === 'requested' ? 'Vérification demandée' : pending ? 'Versement en cours' : 'Versement non effectué',
       message: `${formatAmount(payout.amount, payout.currency)} · ${maskPhone(payout.phone)}\n${getPayoutMessage(payout)}\nRéférence : ${reference}`,
     });
   };
@@ -195,19 +197,37 @@ export function useDriverPayout({ summary, payouts, refresh, isActive = true }: 
 
   const checkPayout = async (payout: DriverPayout) => {
     if (!userId || inFlight.current) return;
-    if (!payout.orderNumber) { present(payout); return; }
+    if (!payout.canCheckStatus && !payout.orderNumber) { present(payout); return; }
     inFlight.current = true;
     setBusy(true);
     try {
-      const checked = await checkPayoutStatus(payout.orderNumber, false).unwrap();
+      const checked = payout.canCheckStatus
+        ? await refreshPayout(payout.id).unwrap()
+        : await checkPayoutStatus(payout.orderNumber!, false).unwrap();
       if (mounted.current && account.current === userId) { present(checked); await refresh(); }
     } catch {
       if (mounted.current && account.current === userId) showDialog({ variant: 'info', title: 'Vérification indisponible', message: 'Impossible de confirmer le résultat pour le moment. Le versement n’a pas été relancé ; vérifiez à nouveau plus tard.' });
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   };
 
+  const requestPayoutReview = async (payout: DriverPayout) => {
+    if (!userId || inFlight.current || !payout.canRequestReview || !screenActive.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    try {
+      const updated = await requestReview({ id: payout.id, reason: 'Retrait de gains non reçu : demande de vérification du conducteur.' }).unwrap();
+      if (mounted.current && account.current === userId) {
+        present(updated);
+        await refresh();
+      }
+    } catch {
+      if (mounted.current && account.current === userId) showDialog({ variant: 'info', title: 'Demande à vérifier',
+        message: 'La réception du signalement n’a pas pu être confirmée. Actualisez vos retraits ou contactez l’assistance avec la référence. Aucun nouveau versement n’a été lancé.' });
+    } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
+  };
+
   return {
-    canSubmit, busy, handlePayout, checkPayout, storageError, hasUnconfirmedIntent: Boolean(activeIntent),
+    canSubmit, busy, handlePayout, checkPayout, requestPayoutReview, storageError, hasUnconfirmedIntent: Boolean(activeIntent),
     payoutForm: form?.userId === userId && isActive && !activeIntent ? form : null,
     openPayoutForm, setPayoutPhone, confirmPayoutForm, closePayoutForm,
   };

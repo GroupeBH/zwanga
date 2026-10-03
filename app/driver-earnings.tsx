@@ -84,7 +84,7 @@ export default function DriverEarningsScreen() {
       setRefreshing(false);
     }
   }, [refetchSummary, refetchEarnings, refetchPayouts]);
-  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, checkPayout, storageError, hasUnconfirmedIntent,
+  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, checkPayout, requestPayoutReview, storageError, hasUnconfirmedIntent,
     payoutForm, openPayoutForm, setPayoutPhone, confirmPayoutForm, closePayoutForm } =
     useDriverPayout({ summary, payouts, refresh, isActive: isScreenActive });
 
@@ -177,7 +177,7 @@ export default function DriverEarningsScreen() {
         <CashRevenueSummary amount={summary?.cashReceivedAmount} currency={currency} />
 
         <PayoutHistory payouts={payouts} availableBalance={availableBalance} busy={isWithdrawing}
-          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={openPayoutForm} onCheck={checkPayout}
+          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={openPayoutForm} onCheck={checkPayout} onReview={requestPayoutReview}
           onSupport={() => router.push('/support')} />
         <View style={pageInsets}><HistoryPagination page={payoutsCursor.page} hasNext={Boolean(payoutsPage?.nextCursor)}
           busy={payoutsFetching} error={payoutsError} onPrevious={payoutsCursor.previous}

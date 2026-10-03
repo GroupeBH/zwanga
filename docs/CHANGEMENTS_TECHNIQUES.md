@@ -10,6 +10,42 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 3 octobre 2026 — Vérification des retraits conducteur bloqués
+
+Un retrait `pending` ou `initiated` pouvait rester réservé sans action de résolution.
+L'historique des gains permet maintenant de **demander une vérification** et de
+rafraîchir un retrait par son ID interne, même sans numéro FlexPay. Les états
+« vérification demandée », délai anormal et incident de succès tardif sont
+expliqués distinctement. Aucun bouton ne prétend annuler lui-même un virement.
+
+Fichiers : `types/earnings.ts`, `store/api/driverSettlementsApi.ts`,
+`hooks/driver-earnings/useDriverPayout.ts`, `features/driver-earnings/PayoutHistory.tsx`,
+`features/driver-earnings/payoutModel.ts`, `app/driver-earnings.tsx` et tests associés.
+Les nouveaux boutons dépendent des capacités renvoyées par le backend ; le
+contrôle par ancien numéro de commande reste compatible avec l'ancien serveur.
+Idempotence, solde serveur, KYC, choix du destinataire et intention de retrait
+persistée sont conservés. Un signalement ne remet jamais les gains à disposition
+localement et ne lance aucun nouveau versement.
+
+Le [contrat backend et la procédure support](../../zwanga-backend/docs/finance/driver-payout-corrections.md)
+décrivent la migration et la résolution administrateur après confirmation FlexPay.
+**43 tests JavaScript réussis**, contrôle TypeScript mobile réussi. Aucun essai
+sur appareil physique ni déploiement ; l'incident de production reste à rapprocher.
+
+## 3 octobre 2026 — Retour à l’accueil connecté et onboarding raccourci
+
+Le démarrage privilégie maintenant la session restaurée pour ouvrir l’accueil,
+sans dépendre des anciens indicateurs de présentation. Une erreur temporaire du
+stockage sécurisé propose un réessai au lieu d’afficher une fausse déconnexion.
+La première utilisation regroupe introduction, information de localisation et
+choix connexion/inscription sur un seul écran, sans supprimer OTP/PIN ni KYC.
+
+Le [rapport détaillé](DEMARRAGE_SESSION_ONBOARDING_2026_10_03.md) décrit les causes,
+les fichiers, les précautions et les limites. **129 tests JavaScript réussis**,
+TypeScript et contrôles techniques validés ; ESLint sans erreur avec un avertissement
+préexistant. Aperçu navigateur inspecté à 320/360 px, essais physiques encore requis.
+Aucun backend, dépendance native ou déploiement modifié.
+
 ## 2 octobre 2026 — Places ajustables et messagerie dans les contacts du trajet
 
 Les valeurs par défaut de publication restent 2/3/4 selon le véhicule, mais les

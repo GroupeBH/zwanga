@@ -75,6 +75,14 @@ export const driverSettlementsApi = baseApi.injectEndpoints({
       }),
       providesTags: [settlementTag],
     }),
+    refreshDriverPayout: builder.mutation<DriverPayout, string>({
+      query: id => ({ url: `/driver-settlements/payouts/${encodeURIComponent(id)}/refresh`, method: 'POST', timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      invalidatesTags: [settlementTag],
+    }),
+    requestDriverPayoutReview: builder.mutation<DriverPayout, { id: string; reason: string }>({
+      query: ({ id, reason }) => ({ url: `/driver-settlements/payouts/${encodeURIComponent(id)}/review`, method: 'POST', body: { reason } }),
+      invalidatesTags: [settlementTag],
+    }),
   }),
 });
 
@@ -88,4 +96,6 @@ export const {
   useGetMyDriverPayoutsQuery,
   useRequestDriverPayoutMutation,
   useLazyCheckDriverPayoutStatusQuery,
+  useRefreshDriverPayoutMutation,
+  useRequestDriverPayoutReviewMutation,
 } = driverSettlementsApi;
