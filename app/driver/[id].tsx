@@ -1,7 +1,6 @@
 import { styles } from '../../features/screen-styles/app/driver/detail/index';
 import { Colors } from '@/constants/styles';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
-import { useGetAllTripsQuery } from '@/store/api/tripApi';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,17 +34,7 @@ export default function DriverDetailsScreen() {
     skip: !driverId,
   });
 
-  // Récupérer les trajets du driver pour calculer les statistiques
-  // Note: L'API peut ne pas supporter le filtre driverId, donc on récupère tous les trajets et on filtre côté client
-  // Pour une meilleure performance, on pourrait créer une API dédiée
-  const { data: allTrips, refetch: refetchTrips } = useGetAllTripsQuery(
-    {
-      skip: !driver?.id,
-    }
-  );
-
   const [refreshing, setRefreshing] = useState(false);
-  console.log("driver's trips:", allTrips?.length)
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -54,28 +43,17 @@ export default function DriverDetailsScreen() {
         refetchDriver(),
         refetchReviews(),
         refetchAvgRating(),
-        refetchTrips(),
       ]);
     } catch (error) {
       console.warn('Error refreshing driver data:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchDriver, refetchReviews, refetchAvgRating, refetchTrips]);
+  }, [refetchDriver, refetchReviews, refetchAvgRating]);
 
-  const driverTrips = useMemo(() => {
-    if (!allTrips) return [];
-    return allTrips.filter((trip) => trip.driverId === driverId);
-  }, [allTrips, driverId]);
-
-  const stats = useMemo(() => {
-    const totalTrips = driverTrips?.length;
-    const completedTrips = driverTrips?.filter((trip) => trip.status === 'completed').length;
-    return {
-      totalTrips,
-      completedTrips,
-    };
-  }, [driver?.totalTrips, driverTrips]);
+  // Aggregate server statistics preserve privacy without downloading everyone's trips.
+  const stats = { totalTrips: driver?.totalTrips ?? 0, completedTrips: driver?.completedTrips ?? '—' };
+  const driverVehicles = driver?.vehicles?.filter(vehicle => vehicle.isActive) ?? [];
 
   const reviewCount = reviews?.length ?? 0;
   const averageRating = useMemo(() => {
@@ -231,15 +209,9 @@ export default function DriverDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.vehiclesCard}>
             <Text style={styles.sectionTitle}>VÉHICULES</Text>
-            {driverTrips.length > 0 ? (
+            {driverVehicles.length > 0 ? (
               <View style={styles.vehiclesList}>
-                {Array.from(
-                  new Map(
-                    driverTrips
-                      .filter((trip) => trip?.vehicle?.isActive)
-                      .map((trip) => [trip.vehicle!.id, trip.vehicle!])
-                  ).values()
-                ).map((vehicle) => (
+                {driverVehicles.map((vehicle) => (
                   <View key={vehicle.id} style={styles.vehicleItem}>
                     <View style={styles.vehicleIcon}>
                       <Ionicons name="car" size={24} color={Colors.primary} />
@@ -260,11 +232,6 @@ export default function DriverDetailsScreen() {
                     )}
                   </View>
                 ))}
-                {driverTrips.filter((trip) => trip.vehicle).length === 0 && (
-                  <Text style={styles.emptyVehiclesText}>
-                    Aucun véhicule enregistré visible publiquement
-                  </Text>
-                )}
               </View>
             ) : (
               <Text style={styles.emptyVehiclesText}>

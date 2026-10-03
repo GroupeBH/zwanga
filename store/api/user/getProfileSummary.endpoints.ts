@@ -82,7 +82,10 @@ getUserById: builder.query<User, string>({
     getPublicUserInfo: builder.query<User, string>({
       query: (id: string) => `/users/${id}/public`,
       providesTags: (_result: User | undefined, _error: unknown, id: string) => [{ type: 'User', id }],
-      transformResponse: (response: ServerUser) => mapServerUser(response),
+      transformResponse: (response: ServerUser) => ({ ...mapServerUser(response),
+        totalTrips: response.stats?.tripsAsDriver ?? response.totalTrips ?? 0,
+        completedTrips: response.stats?.completedTripsAsDriver,
+      }),
     }),
 getKycStatus: builder.query<KycDocument | null, void>({
       query: () => '/users/kyc/status',

@@ -2,6 +2,7 @@ import type { Booking, Trip } from '@/types';
 
 export interface NavigationContact {
   id: string;
+  bookingId?: string;
   name: string;
   phone: string | null;
   detail: string;
@@ -39,6 +40,7 @@ export function getDriverBookingContact(trip: Trip | undefined, booking: Booking
     (!person.bookingId || person.bookingId === booking.id));
   return {
     id: booking.passengerId,
+    bookingId: booking.id,
     name: booking.passengerName || passenger?.name || 'Passager',
     phone: usablePhone(booking.passengerPhone) ?? usablePhone(passenger?.phone),
     detail: booking.status === 'pending' ? 'Réservation en attente · Pas encore acceptée' :
@@ -54,6 +56,7 @@ export function getNavigationContacts(context: NavigationContactContext): Naviga
   if (!trip || !isNavigationParticipant(context)) return [];
   if (role === 'passenger') return [{
     id: trip.driverId,
+    bookingId: context.booking?.id,
     name: trip.driverName || [trip.driver?.firstName, trip.driver?.lastName].filter(Boolean).join(' ') || 'Votre conducteur',
     phone: usablePhone(trip.driver?.phone),
     detail: 'Votre conducteur',

@@ -1,9 +1,9 @@
 import { LatLng, RoutePointStatus } from '../../features/publish/publishModel';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
-import { getPublishSeats } from '@/features/publish/publishSeatPolicy';
+import { getDefaultPublishSeats, getPublishSeats } from '@/features/publish/publishSeatPolicy';
 import type { TripRequestVehicleType } from '@/types';
-import { useState } from 'react';
+import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
 
 
 
@@ -27,8 +27,18 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
-  const [requestedSeats, setSeats] = useState('4');
-  const seats = getPublishSeats(requestedSeats, selectedVehicleType);
+  const [seatsByType, setSeatsByType] = useState<Partial<Record<TripRequestVehicleType, string>>>({});
+  const seatType = selectedVehicleType ?? 'car';
+  const resetSeats = useCallback(() => setSeatsByType({}), []);
+  const seats = getPublishSeats(seatsByType[seatType] ?? getDefaultPublishSeats(seatType), seatType);
+  // Remember an explicit adjustment per vehicle type, without leaking a car count into a motorcycle.
+  const setSeats: Dispatch<SetStateAction<string>> = useCallback((update) => {
+    setSeatsByType((previous) => {
+      const current = getPublishSeats(previous[seatType] ?? getDefaultPublishSeats(seatType), seatType);
+      const requested = typeof update === 'function' ? update(current) : update;
+      return { ...previous, [seatType]: getPublishSeats(requested, seatType) };
+    });
+  }, [seatType]);
   const [isFreeTrip, setIsFreeTrip] = useState(false);
   const [requiresPassengerKyc, setRequiresPassengerKyc] = useState(false);
   const [price, setPrice] = useState('');
@@ -49,6 +59,7 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
     setIosPickerMode,
     setIosPickerTarget,
     setSeats,
+    resetSeats,
     setIsFreeTrip,
     setPrice,
     setDescription,

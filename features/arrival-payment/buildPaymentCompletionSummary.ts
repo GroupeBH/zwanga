@@ -9,11 +9,13 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
   const payment = findBookingPaymentHistory(history, booking);
   const reward = findBookingRewardEntry(wallet, booking);
   // The mutation/status response is authoritative, not an older list refetch.
-  const mode = booking.paymentMode ?? options.mode;
-  if (!mode) return null;
+  const mode = booking.paymentMode ?? options.mode ?? null;
+  if (!mode && normalizeAmount(booking.paymentAmount) !== 0) return null;
   const cashReceived = mode === 'cash' && Boolean(booking.cashReceivedAt);
   const cashInstructions = mode === 'cash' && !cashReceived && booking.paymentStatus !== 'succeeded' && normalizeAmount(booking.paymentAmount) !== 0;
   return {
+    destination: booking.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' : booking.passengerDestination ?? booking.trip?.arrival?.address ?? booking.trip?.arrival?.name,
+    numberOfSeats: booking.numberOfSeats,
     bookingId: booking.id, beforeArrival: !hasPassengerArrived(booking), mode, channel: options.channel,
     amount: normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0,
     currency: booking.paymentCurrency ?? payment?.currency ?? 'CDF',

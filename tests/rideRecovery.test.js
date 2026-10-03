@@ -64,6 +64,47 @@ test('server receipt is not a final confirmation and subsequent reconciliation o
   assert.equal(h.published.at(-1).entries[0].state, 'confirmed');
 });
 
+test('an older provisional pickup reuses its receipt when the upgraded server says ready', async () => {
+  const h = harness({ read: async () => snapshot('ready') });
+  const box = h.create(), first = await box.enqueue(input);
+  await box.flush(); h.advance(60_000); await box.flush();
+  assert.equal(h.published.at(-1).entries[0].state, 'queued');
+  h.deps.send = async event => { h.sent.push(event); return snapshot('confirmed'); };
+  await box.flush();
+  assert.deepEqual(h.sent.map(event => event.eventId), [first.eventId, first.eventId]);
+  assert.equal(h.published.at(-1).entries[0].state, 'confirmed');
+});
+
+test('disputes are not promoted, but a ready arrival reuses its receipt', async () => {
+  for (const patch of [{ dropoff: { status: 'disputed' } }]) {
+    const h = harness({ read: async () => ({ ...snapshot('ready'), ...patch }) });
+    const box = h.create(); await box.enqueue(input); await box.flush(); h.advance(60_000); await box.flush();
+    assert.equal(h.published.at(-1).entries[0].state, 'received');
+    assert.equal(h.sent.length, 1);
+  }
+  const arrivalSnapshot = { ...snapshot('confirmed'), dropoff: { status: 'ready' } };
+  const h = harness({ read: async () => arrivalSnapshot });
+  h.deps.send = async event => { h.sent.push(event); return arrivalSnapshot; };
+  const box = h.create(); await box.enqueue({ ...input, stage: 'dropoff' }); await box.flush(); h.advance(60_000); await box.flush();
+  assert.equal(h.published.at(-1).entries[0].state, 'queued');
+  assert.equal(h.sent.length, 1);
+  const original = h.sent[0]; h.deps.send = async event => { h.sent.push(event); return { ...arrivalSnapshot, dropoff: { status: 'confirmed' } }; };
+  await box.flush(); assert.deepEqual(h.sent, [original, original]);
+  assert.equal(h.published.at(-1).entries[0].state, 'confirmed');
+});
+
+test('a ready driver receipt is reconciled with the same key, while a lone driver vote only polls', async () => {
+  for (const status of ['ready', 'awaiting_other']) {
+    const h = harness({ read: async () => ({ ...snapshot(status), actor: 'driver' }) });
+    const box = h.create(), first = await box.enqueue(input);
+    await box.flush(); h.advance(60_000); await box.flush();
+    assert.equal(h.published.at(-1).entries[0].state, status === 'ready' ? 'queued' : 'received');
+    h.deps.send = async event => { h.sent.push(event); return snapshot('confirmed'); };
+    await box.flush();
+    assert.deepEqual(h.sent.map(event => event.eventId), status === 'ready' ? [first.eventId, first.eventId] : [first.eventId]);
+  }
+});
+
 test('arrival waiting for pickup is retried, but conflicts are not blindly retried', () => {
   assert.equal(rideRetry({ status: 409, data: { code: 'RIDE_PICKUP_REQUIRED' } }, 0, 1).state, 'queued');
   assert.equal(rideRetry({ status: 409, data: { code: 'RIDE_STATE_CHANGED' } }, 0, 1).state, 'blocked');

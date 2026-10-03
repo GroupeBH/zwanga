@@ -2,6 +2,7 @@ import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
 import { DriverBookingRevenue } from '@/features/driver-payments/DriverBookingRevenue';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { useRideActionFeedback } from '@/hooks/navigation/useRideActionFeedback';
 import { rideOutbox } from '@/services/rideOutbox';
 import { useGetRideDeclarationsQuery } from '@/store/api/rideRecoveryApi';
 import { useAppSelector } from '@/store/hooks';
@@ -11,10 +12,9 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOutboxError } from './rideOutboxEngine';
-import { rideBookingStages, rideRecoveryTrigger } from './rideRecoveryPresentation';
+import { rideBookingStages, rideRecoveryTrigger, rideStageMessage } from './rideRecoveryPresentation';
 import {
   isNearRideStop,
-  rideEntryMessage,
   type RideDecision,
   type RideOutboxEntry,
   type RideSnapshot,
@@ -37,6 +37,7 @@ interface Props {
 
 export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, booking, bookings = EMPTY_BOOKINGS, actor, compact, fix, destination }: Props) {
   const active = useScreenIsActive();
+  const feedback = useRideActionFeedback();
   const online = useAppSelector(state => state.zwangaApi.config.online);
   const recovery = useAppSelector(state => state.rideRecovery);
   const userId = useAppSelector(state => state.auth.user?.id);
@@ -46,13 +47,15 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const [error, setError] = useState<string | null>(null);
   const [delayed, setDelayed] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [savedStageKey, setSavedStageKey] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const savedStageRef = useRef<string | null>(null);
   const mounted = useRef(true);
   const lifecycle = useMemo(() => ({ active, actor, tripId, userId }), [active, actor, tripId, userId]);
   const latestLifecycle = useRef(lifecycle);
   latestLifecycle.current = lifecycle;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setVisible(false); setChoice(null); setSelectedId(null); setError(null); }, [lifecycle]);
+  useEffect(() => { setVisible(false); setChoice(null); setSelectedId(null); setSavedStageKey(null); savedStageRef.current = null; setError(null); }, [lifecycle]);
   const entries = recovery.userId === userId ? recovery.entries : EMPTY_ENTRIES;
   const relevant = useMemo(() => (booking ? [booking] : bookings).filter(item => item.tripId === tripId &&
     (actor !== 'passenger' || item.passengerId === userId) && ['accepted', 'completed'].includes(item.status)), [actor, booking, bookings, tripId, userId]);
@@ -83,10 +86,12 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const hasPending = entries.some(entry => entry.tripId === tripId && entry.state !== 'confirmed') || snapshots.some(snapshot =>
     [snapshot.pickup, snapshot.dropoff].some(stage => stage.status === 'awaiting_other' || stage.status === 'disputed'));
 
-  const saveChoice = async () => {
-    if (!choice || savingRef.current || !active || latestLifecycle.current !== lifecycle || !mounted.current) return;
-    const stage = rowsRef.current.find(row => row.item.id === choice.bookingId)?.stages.find(value => value.stage === choice.stage);
-    if (!stage || stage.unavailable || (choice.decision === 'reject' && stage.other !== 'confirm')) {
+  const saveChoice = async (requested = choice) => {
+    if (!requested || savingRef.current || !active || latestLifecycle.current !== lifecycle || !mounted.current) return;
+    if (requested.decision === 'confirm' && savedStageRef.current === `${requested.bookingId}:${requested.stage}`) return;
+    const row = rowsRef.current.find(value => value.item.id === requested.bookingId);
+    const stage = row?.stages.find(value => value.stage === requested.stage);
+    if (!stage || stage.unavailable || (requested.decision === 'reject' && stage.other !== 'confirm')) {
       setChoice(null);
       setError('Cette étape a changé. Vérifiez les confirmations de ce passager avant de continuer.');
       return;
@@ -94,27 +99,66 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
     savingRef.current = true;
     setSaving(true);
     setError(null);
+    const target = { tripId, bookingId: requested.bookingId, stage: requested.stage, actor,
+      passengerName: row?.item.passengerName, numberOfSeats: row?.item.numberOfSeats };
     try {
       const freshFix = fix && Date.now() - fix.recordedAt <= 30_000 && Date.now() >= fix.recordedAt && (fix.accuracy ?? 0) <= 100 ? fix : null;
-      await rideOutbox.enqueue({ ...choice, tripId, ...(freshFix ? {
+      const receipt = await rideOutbox.enqueue({ ...requested, tripId, ...(freshFix ? {
         latitude: freshFix.latitude, longitude: freshFix.longitude, accuracy: freshFix.accuracy,
       } : {}) });
-      if (mounted.current && latestLifecycle.current === lifecycle) setChoice(null);
+      if (mounted.current && latestLifecycle.current === lifecycle) {
+        setChoice(null);
+        if (requested.decision === 'confirm') {
+          const key = `${requested.bookingId}:${requested.stage}`; savedStageRef.current = key; setSavedStageKey(key);
+          setVisible(false);
+          feedback.saved(target, receipt);
+        }
+      }
       // Sending is owned by the coordinator, not by a modal's lifetime.
     } catch (err) {
-      if (mounted.current && latestLifecycle.current === lifecycle) setError(err instanceof RideOutboxError ? err.message : 'Impossible d’enregistrer la confirmation sur ce téléphone. Réessayez avant de quitter cet écran.');
+      if (mounted.current && latestLifecycle.current === lifecycle) {
+        setError(err instanceof RideOutboxError ? err.message : 'Impossible d’enregistrer la confirmation sur ce téléphone. Réessayez avant de quitter cet écran.');
+        if (requested.decision === 'confirm') feedback.failed(target, err);
+      }
     } finally { savingRef.current = false; if (mounted.current) setSaving(false); }
   };
   const close = () => { if (!saving) { setVisible(false); setChoice(null); setError(null); } };
   const highlighted = delayed || hasPending || !online || isError;
+  const directRow = actor === 'passenger' ? bookingRows.find(row => row.item.id === booking?.id)
+    : bookingRows.length === 1 ? bookingRows[0] : undefined;
+  const directStage = directRow?.stages.find(stage => !stage.unavailable);
+  const directKey = directStage ? `${directRow!.item.id}:${directStage.stage}` : undefined;
+  const saved = Boolean(directKey && savedStageKey === directKey);
+  const pendingStage = directRow?.stages.find(stage => stage.status !== 'confirmed' && stage.entry?.state !== 'confirmed' &&
+    (stage.entry || stage.own === 'confirm'));
+  const inlineStage = pendingStage ?? directStage;
   return <>
-    <TouchableOpacity disabled={!active} onPress={() => { if (active) setVisible(true); }} style={[styles.trigger, compact && styles.compact, highlighted && styles.triggerHighlighted]}
-      accessibilityRole="button" accessibilityLabel={trigger.accessibilityLabel} accessibilityHint="Ouvre les étapes du trajet à vérifier avant de confirmer.">
-      <Ionicons name={trigger.icon} size={20} color={Colors.primaryDark} />
-      <Text style={styles.triggerLabel}>{trigger.label}</Text>
-      {!compact && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
+    <TouchableOpacity disabled={!active || saving || saved} onPress={() => {
+      if (!active || savingRef.current) return;
+      if (directStage && directRow) {
+        if (!saved && savedStageRef.current !== directKey) void saveChoice({ bookingId: directRow.item.id, stage: directStage.stage, decision: 'confirm' });
+      } else setVisible(true);
+    }} style={[styles.trigger, compact && styles.compact, (highlighted || directStage) && styles.triggerHighlighted]}
+      accessibilityRole="button" accessibilityLabel={trigger.accessibilityLabel}
+      accessibilityState={{ disabled: !active || saving || saved, busy: saving || pendingStage?.entry?.state === 'sending' }}
+      accessibilityHint={directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}. L’autre personne confirme de son côté.` : 'Consulte les confirmations du trajet.'}>
+      {saving ? <ActivityIndicator color={Colors.primaryDark} /> : <Ionicons name={trigger.icon} size={20} color={Colors.primaryDark} />}
+      <Text style={styles.triggerLabel}>{directStage ? saving ? 'Enregistrement…' : saved ? directStage.stage === 'pickup' ? 'Embarquement déclaré' : 'Arrivée déclarée' : directStage.label : trigger.label}</Text>
+      {!compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
     </TouchableOpacity>
-    {!compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Confirmez votre embarquement ou votre arrivée.'}</Text>}
+    {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
+      ? rideStageMessage(inlineStage, actor)
+      : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
+      : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme de son côté.`
+      : directStage?.stage === 'dropoff' ? 'Appuyez une fois à votre destination. Le conducteur confirme aussi l’arrivée.'
+      : 'Appuyez une fois à bord. Le conducteur confirme aussi l’embarquement ; la détection automatique reste active.'}</Text>
+      : !compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
+    {directRow && directStage && directRow.stages.some(stage => stage.other === 'confirm' && !stage.unavailable) &&
+      <TouchableOpacity disabled={!active || saving} accessibilityRole="button" style={styles.refresh}
+        onPress={() => { if (active && !savingRef.current) setVisible(true); }}>
+        <Text style={styles.rejectLabel}>Vérifier les confirmations</Text>
+      </TouchableOpacity>}
+    {!visible && (error || recovery.error) && <Text style={styles.error} accessibilityLiveRegion="polite">{error || recovery.error}</Text>}
     <FormModal visible={visible && active} transparent animationType="slide" onRequestClose={close} statusBarTranslucent>
       <View style={styles.overlay}>
         <SafeAreaView edges={['bottom']} style={styles.sheet}>
@@ -122,11 +166,11 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
             <View style={styles.heading}><Text style={styles.title}>Confirmer une étape</Text><Text style={styles.subtitle}>{actor === 'driver' ? 'Effectuez cette action uniquement à l’arrêt.' : 'Même lorsque la connexion est faible.'}</Text></View>
             <TouchableOpacity onPress={close} disabled={saving} style={styles.close} accessibilityRole="button" accessibilityLabel="Fermer les confirmations"><Ionicons name="close" size={25} color={Colors.gray[800]} /></TouchableOpacity>
           </View>
-          <FlatList data={bookingRows} keyExtractor={row => row.item.id} extraData={[selected?.id, choice, saving, active, visible]}
+          <FlatList data={bookingRows} keyExtractor={row => row.item.id} extraData={[selected?.id, choice, saving, active, visible, savedStageKey]}
             initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3} removeClippedSubviews={false}
             contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
             ListHeaderComponent={<>
-            <Text style={styles.explanation}>Le titulaire confirme pour toutes les places de sa réservation. Le conducteur confirme de son côté. Aucune confirmation locale ne vaut paiement.</Text>
+            <Text style={styles.explanation}>Le titulaire et le conducteur valident chacun l’embarquement et l’arrivée. Un appui enregistre votre réponse pour toutes les places de la réservation. La détection automatique reste active.</Text>
             {isError && <Text style={styles.notice}>Le serveur n’est pas joignable pour le moment. Les informations ci-dessous peuvent ne pas être à jour.</Text>}
             {relevant.length === 0 && <Text style={styles.explanation}>Aucune réservation à confirmer pour ce trajet.</Text>}
             </>}
@@ -141,14 +185,15 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
                   </View>
                   <Ionicons name={selected?.id === item.id ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.gray[600]} />
                 </TouchableOpacity>}
-                {selected?.id === item.id && stages.map(({ stage, entry, status, canArrive, unavailable, other, label }) => {
+                {selected?.id === item.id && stages.map(stageInfo => {
+                  const { stage, entry, status, canArrive, unavailable, other, label } = stageInfo;
                   return <View key={stage} style={styles.stage}>
                     <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{stage === 'pickup' ? 'Embarquement' : 'Arrivée'}</Text></View>
-                    <Text style={styles.status} accessibilityLiveRegion="polite">{rideEntryMessage(entry, status)}</Text>
+                    <Text style={styles.status} accessibilityLiveRegion="polite">{rideStageMessage(stageInfo, actor)}</Text>
                     {actor === 'driver' && stage === 'dropoff' && (status === 'confirmed' || entry?.state === 'confirmed') &&
                       <DriverBookingRevenue bookingId={item.id} active={active && visible} />}
                     {!unavailable && <View style={styles.actions}>
-                      <TouchableOpacity disabled={Boolean(choice) || saving || !active} style={styles.confirm} onPress={() => { if (!savingRef.current && !choice && active) setChoice({ bookingId: item.id, stage, decision: 'confirm' }); }} accessibilityRole="button"><Text style={styles.confirmLabel}>{label}</Text></TouchableOpacity>
+                      <TouchableOpacity disabled={Boolean(choice) || saving || !active || savedStageKey === `${item.id}:${stage}`} style={styles.confirm} onPress={() => { if (!choice) void saveChoice({ bookingId: item.id, stage, decision: 'confirm' }); }} accessibilityRole="button"><Text style={styles.confirmLabel}>{savedStageKey === `${item.id}:${stage}` ? 'Validation enregistrée' : label}</Text></TouchableOpacity>
                       {other === 'confirm' && <TouchableOpacity disabled={Boolean(choice) || saving || !active} style={styles.reject} onPress={() => { if (!savingRef.current && !choice && active) setChoice({ bookingId: item.id, stage, decision: 'reject' }); }} accessibilityRole="button"><Text style={styles.rejectLabel}>Ce n’est pas exact</Text></TouchableOpacity>}
                     </View>}
                     {stage === 'dropoff' && !canArrive && status !== 'confirmed' && <Text style={styles.hint}>Confirmez d’abord votre embarquement.</Text>}

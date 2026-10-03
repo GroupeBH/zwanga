@@ -10,7 +10,7 @@ import {
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel, StoredBookingPaymentState } from '../../features/arrival-payment/paymentTypes';
 import { DRC_PAYMENT_PHONE_REGEX } from '../../features/arrival-payment/paymentPolicy';
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { useInitiateBookingPaymentMutation, useUpdateBookingPaymentModeMutation } from '@/store/api/bookingApi';
 import { useGetMyWalletQuery, useInitiateWalletTopUpMutation } from '@/store/api/walletApi';
@@ -19,6 +19,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 
 interface Params {
+  acknowledgeCash?: (bookingId: string) => void;
   isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
   paymentAmount: number | null;
@@ -48,6 +49,7 @@ interface Params {
 }
 
 export function useArrivalPaymentSubmission({
+  acknowledgeCash,
   isSessionCurrent,
   arrivalBooking,
   paymentAmount,
@@ -75,6 +77,7 @@ export function useArrivalPaymentSubmission({
   handleCompletedBookingPayment,
 }: Params) {
   const submissionInFlight = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const submitPayment = useCallback(async () => {
     if (!isSessionCurrent() || !arrivalBooking || !selectedMode || paymentAmount === null || isBusy || hasPendingProviderPayment) return;
     if (!hasPassengerArrived(arrivalBooking) && selectedMode === 'cash') return;
@@ -95,7 +98,8 @@ export function useArrivalPaymentSubmission({
         // Continuing an existing cash booking is not a change of mode or a cash receipt.
         // In particular the server rejects changing a mode after the driver received cash.
         if (arrivalBooking.paymentMode === 'cash') {
-          await showCompletionSummary(arrivalBooking, { mode: 'cash' });
+          if (acknowledgeCash) acknowledgeCash(arrivalBooking.id);
+          else await showCompletionSummary(arrivalBooking, { mode: 'cash' });
           return;
         }
         const updatedBooking = await updatePaymentMode({
@@ -108,7 +112,9 @@ export function useArrivalPaymentSubmission({
           setPaymentError('Le passage au paiement cash n’a pas été confirmé. Actualisez la réservation avant de réessayer.');
           return;
         }
-        await showCompletionSummary(updatedBooking, { mode: 'cash' });
+        // If the server changed the displayed fare, show the authoritative amount before closing.
+        if (acknowledgeCash && normalizeAmount(updatedBooking.paymentAmount) === paymentAmount) acknowledgeCash(updatedBooking.id);
+        else await showCompletionSummary(updatedBooking, { mode: 'cash' });
         return;
       }
 
@@ -254,6 +260,7 @@ export function useArrivalPaymentSubmission({
         : "Le paiement n'a pas pu être effectué."));
     }
   }, [
+    acknowledgeCash,
     isSessionCurrent,
     setPaymentError,
     reportPaymentFailure,
@@ -284,11 +291,13 @@ export function useArrivalPaymentSubmission({
   const handlePayment = useCallback(async () => {
     if (submissionInFlight.current) return;
     submissionInFlight.current = true;
+    setIsSubmitting(true);
     try { await submitPayment(); }
-    finally { submissionInFlight.current = false; }
+    finally { submissionInFlight.current = false; setIsSubmitting(false); }
   }, [submitPayment]);
 
   return {
     handlePayment,
+    isSubmitting,
   };
 }

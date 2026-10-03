@@ -16,6 +16,8 @@ export const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
  * Gère la création, recherche, réservation et gestion des trajets
  */
 export type TripSearchParams = {
+  sort?: 'price' | 'date' | 'nearby';
+  limit?: number;
   keywords?: string;
   departureLocation?: string;
   arrivalLocation?: string;
@@ -30,6 +32,7 @@ export type TripSearchParams = {
 };
 
 export type TripSearchByPointsPayload = {
+  limit?: number;
   keywords?: string | null;
   departureCoordinates?: [number, number] | null;
   arrivalCoordinates?: [number, number] | null;

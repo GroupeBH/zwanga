@@ -5,7 +5,6 @@ import {
   useGetTripsQuery
 } from '@/store/api/tripApi';
 import { setTrips } from '@/store/slices/tripsSlice';
-import type { Trip } from '@/types';
 import { useCallback, useEffect, useMemo } from 'react';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
@@ -50,80 +49,35 @@ export function useHomeTripFeed({
     locationRadiusKm,
   ]);
 
-  const {
-    data: generalTrips,
-    isLoading: generalTripsLoading,
-    isError: generalTripsError,
-    refetch: refetchGeneralTrips,
-  } = useGetTripsQuery(
-    { minSeats: HOME_MIN_AVAILABLE_SEATS },
-    {
+  const nearby = useGetTripsByCoordinatesQuery(
+    nearbyTripsPayload ?? { departureCoordinates: [0, 0], minSeats: HOME_MIN_AVAILABLE_SEATS },
+    { skip: !isFocused || !nearbyTripsPayload,
       pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
-      skipPollingIfUnfocused: true,
-      refetchOnFocus: isFocused,
-      refetchOnReconnect: false,
-    },
+      skipPollingIfUnfocused: true, refetchOnFocus: isFocused, refetchOnReconnect: false },
   );
-
-  const {
-    data: nearbyTrips,
-    isLoading: nearbyTripsLoading,
-    isError: nearbyTripsError,
-    refetch: refetchNearbyTrips,
-  } = useGetTripsByCoordinatesQuery(
-    nearbyTripsPayload ?? {
-      departureCoordinates: [0, 0] as [number, number],
-      minSeats: HOME_MIN_AVAILABLE_SEATS,
-    },
-    {
-      skip: !isFocused || !nearbyTripsPayload,
-      pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
-      skipPollingIfUnfocused: true,
-      refetchOnFocus: isFocused,
-      refetchOnReconnect: false,
-    },
-  );
-
-  const remoteTrips = useMemo(() => {
-    if (!nearbyTripsPayload) {
-      return generalTrips;
-    }
-
-    if (!nearbyTrips?.length && !generalTrips) {
-      return undefined;
-    }
-
-    const tripsById = new Map<string, Trip>();
-
-    (nearbyTrips ?? []).forEach((trip) => {
-      tripsById.set(trip.id, trip);
-    });
-
-    (generalTrips ?? []).forEach((trip) => {
-      if (!tripsById.has(trip.id)) {
-        tripsById.set(trip.id, trip);
-      }
-    });
-
-    return Array.from(tripsById.values());
-  }, [nearbyTripsPayload, nearbyTrips, generalTrips]);
-
-  const tripsLoading = nearbyTripsPayload
-    ? (nearbyTripsLoading || generalTripsLoading) && !remoteTrips?.length && storedTrips.length === 0
-    : generalTripsLoading && !generalTrips && storedTrips.length === 0;
-
-  const tripsError = nearbyTripsPayload
-    ? nearbyTripsError && generalTripsError && !remoteTrips?.length && storedTrips.length === 0
-    : generalTripsError && !generalTrips && storedTrips.length === 0;
-
-  const refetchTrips = useCallback(() => {
+  const useGeneral = !nearbyTripsPayload || nearby.isError || nearby.currentData?.length === 0;
+  const general = useGetTripsQuery({ minSeats: HOME_MIN_AVAILABLE_SEATS, limit: 50 }, {
+    skip: !isFocused || !useGeneral,
+    pollingInterval: isFocused && useGeneral ? HOME_PASSIVE_LIST_POLL_MS : 0,
+    skipPollingIfUnfocused: true, refetchOnFocus: isFocused, refetchOnReconnect: false,
+  });
+  // Only fall back after the nearby response; never download both full feeds on mount.
+  const remoteTrips = useGeneral ? general.currentData : nearby.currentData;
+  const selected = useGeneral ? general : nearby;
+  const tripsLoading = selected.isFetching && !remoteTrips?.length && storedTrips.length === 0;
+  const tripsError = selected.isError && !remoteTrips?.length && storedTrips.length === 0;
+  const refetchNearby = nearby.refetch;
+  const refetchGeneral = general.refetch;
+  const generalUninitialized = general.isUninitialized;
+  const refetchTrips = useCallback(async () => {
     if (!isFocused) return;
     if (nearbyTripsPayload) {
-      void refetchNearbyTrips();
+      const result = await refetchNearby();
+      if ((result.isError || !result.data?.length) && !generalUninitialized) return refetchGeneral();
+      return result;
     }
-
-    return refetchGeneralTrips();
-  }, [isFocused, nearbyTripsPayload, refetchNearbyTrips, refetchGeneralTrips]);
+    if (!generalUninitialized) return refetchGeneral();
+  }, [isFocused, nearbyTripsPayload, refetchNearby, refetchGeneral, generalUninitialized]);
 
   useEffect(() => {
     if (remoteTrips) {

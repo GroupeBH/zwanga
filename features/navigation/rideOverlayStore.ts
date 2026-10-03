@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-export const RIDE_OVERLAY_PRIORITY = { information: 10, panel: 30, confirmation: 80, payment: 70, sos: 100 };
+export const RIDE_OVERLAY_PRIORITY = { information: 10, panel: 30, result: 75, confirmation: 80, payment: 70, sos: 100 };
 export type RideOverlayEntry = {
   id: string;
   scope: string;

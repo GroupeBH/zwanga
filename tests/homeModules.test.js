@@ -85,12 +85,12 @@ test('leaving Home or unmounting cancels a pending detail navigation', t => {
   }
 });
 
-test('trip feed keeps RTK Query reads, nearby precedence, polling guards and the existing Redux fallback', () => {
+test('trip feed keeps nearby precedence without a parallel general request, polling guards and Redux fallback', async () => {
   const calls = [], dispatches = [], refreshes = [];
   const nearby = trip('shared', { price: 1000 }), general = trip('shared', { price: 2000 });
   const query = (name, data) => (args, options) => {
     calls.push({ name, args, options });
-    return { data, isLoading: false, isError: false, refetch: () => refreshes.push(name) };
+    return { data, currentData: data, isFetching: false, isLoading: false, isError: false, refetch: async () => { refreshes.push(name); return { data }; } };
   };
   const app = environment({ '@/store/api/tripApi': {
     useGetTripsQuery: query('general', [general, trip('other')]),
@@ -100,13 +100,14 @@ test('trip feed keeps RTK Query reads, nearby precedence, polling guards and the
   const props = { isFocused: true, lastKnownLocation: { coords: { latitude: -4.32512345, longitude: 15.32212345 } }, locationRadiusKm: 5, storedTrips: [], dispatch: action => dispatches.push(action) };
   const render = () => app.hooks.render(() => useHomeTripFeed(props));
   let feed = render();
-  assert.deepEqual(feed.remoteTrips.map(trip => trip.id), ['shared', 'other']);
+  assert.deepEqual(feed.remoteTrips.map(trip => trip.id), ['shared']);
   assert.equal(feed.remoteTrips[0], nearby);
-  assert.deepEqual(calls[1].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1 });
-  assert.equal(calls[1].options.pollingInterval, 120000);
+  assert.deepEqual(calls[0].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1 });
+  assert.equal(calls[0].options.pollingInterval, 120000);
+  assert.equal(calls[1].options.skip, true);
   assert.equal(dispatches[0].type, 'trips/setTrips');
-  feed.refetchTrips();
-  assert.deepEqual(refreshes, ['nearby', 'general']);
+  await feed.refetchTrips();
+  assert.deepEqual(refreshes, ['nearby']);
   props.isFocused = false;
   render();
   assert.equal(calls.at(-1).options.pollingInterval, 0);
@@ -120,8 +121,8 @@ test('trip feed keeps RTK Query reads, nearby precedence, polling guards and the
 
 test('a cached feed remains visible when both network queries fail', () => {
   const app = environment({ '@/store/api/tripApi': {
-    useGetTripsQuery: () => ({ isLoading: false, isError: true }),
-    useGetTripsByCoordinatesQuery: () => ({ isLoading: false, isError: true }),
+    useGetTripsQuery: () => ({ isFetching: false, isLoading: false, isError: true }),
+    useGetTripsByCoordinatesQuery: () => ({ isFetching: false, isLoading: false, isError: true }),
   } });
   const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
   const result = app.hooks.render(() => useHomeTripFeed({ isFocused: true, lastKnownLocation: null, locationRadiusKm: 5, storedTrips: [trip('cached')], dispatch() {} }));

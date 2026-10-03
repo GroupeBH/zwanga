@@ -60,7 +60,7 @@ export function NavigationPickupBypassModal({
           <View style={[styles.waypointModalIcon, { backgroundColor: Colors.warning }]}>
             <Ionicons name="help-circle" size={32} color={Colors.white} />
           </View>
-          <Text style={styles.waypointModalTitle}>Embarquement a confirmer</Text>
+          <Text style={styles.waypointModalTitle}>Embarquement en attente</Text>
           <Text style={styles.waypointModalPassenger}>
             {pickupBypassConfirmation?.waypoint.passenger.name || 'Passager'}
           </Text>
@@ -73,7 +73,8 @@ export function NavigationPickupBypassModal({
           </View>
           <Text style={styles.waypointModalWaitingText}>
             Vous avez dépassé le point de prise en charge sans confirmation automatique.
-            Le passager est-il déjà à bord ?
+            {' '}Si le passager est à bord, confirmez ci-dessous. Il valide aussi avec « Je suis à bord » dans son application.
+            {' '}L’embarquement est validé après vos deux confirmations, ou par la détection automatique.
           </Text>
           <View style={[styles.waypointGpsStatus, styles.pickupBypassStatus]}>
             <Ionicons name="navigate-circle" size={18} color={Colors.warningDark} />
@@ -147,19 +148,17 @@ export function NavigationPickupBypassModal({
                 styles.pickupBypassConfirmButton,
               ]}
               onPress={() => void handleConfirmBypassedPickup()}
+              accessibilityRole="button"
+              accessibilityHint="Enregistre directement votre validation. Le passager confirme de son côté."
               disabled={
                 Boolean(pickupBypassAction) ||
-                isCancellingPickupBypassBooking
+                isCancellingPickupBypassBooking || isPausingTrip
               }
             >
-              {pickupBypassAction === 'confirm' ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                  <Text style={styles.waypointModalPrimaryButtonText}>Pris en charge</Text>
-                </>
-              )}
+              {pickupBypassAction === 'confirm' ? <ActivityIndicator size="small" color={Colors.white} /> : <>
+                <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
+                <Text style={styles.waypointModalPrimaryButtonText}>Confirmer l’embarquement</Text>
+              </>}
             </TouchableOpacity>
           </View>
         </View>

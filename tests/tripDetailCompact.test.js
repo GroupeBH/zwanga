@@ -63,11 +63,11 @@ test('driver photo, profile, vehicle details and contact keep their actions and 
     ['vehicle', true], 'message', ['contact', true]]);
 });
 
-test('busy messaging and missing phone stay disabled; free fares do not gain a per-seat hint', () => {
+test('busy messaging is disabled but contact stays accessible without a phone; free fares stay unchanged', () => {
   const result = render({ isOpeningConversation: true, driverPhone: null,
     trip: { ...trip, price: 0, requiresPassengerKyc: false }, tripPriceLabel: 'Gratuit' });
   assert.equal(result.buttons.find(button => button.props.accessibilityLabel === 'Envoyer un message au conducteur').props.disabled, true);
-  assert.equal(result.buttons.find(button => button.props.accessibilityLabel === 'Contacter le conducteur sur WhatsApp').props.disabled, true);
+  assert.notEqual(result.buttons.find(button => button.props.accessibilityLabel === 'Choisir comment contacter le conducteur').props.disabled, true);
   assert.equal(result.nodes.filter(node => node.type === 'Spinner').length, 1);
   assert.ok(result.texts.includes('Gratuit'));
   assert.equal(result.texts.some(value => value.includes('/ place') || value.includes('Identité vérifiée')), false);

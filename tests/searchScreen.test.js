@@ -79,6 +79,7 @@ function screenApp() {
   const hooks = hookHarness(), params = {}, queryCalls = [], routes = [];
   const router = { push: value => routes.push(value), back() {} };
   const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false, active: true };
+  let lastTrips, tripPages;
   const coords = { latitude: -4.325, longitude: 15.3222 };
   const state = {
     auth: { user: { id: 'me', firstName: 'Alice', role: 'driver', isDriver: true } },
@@ -102,7 +103,11 @@ function screenApp() {
       return { data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', role: app.isDriver ? 'driver' : 'passenger', isDriver: app.isDriver } };
     } },
     '@/store/api/tripApi': {
-      useGetTripsQuery: (args, options) => { queryCalls.push({ name: 'trips', args, options }); return { data: app.trips, isLoading: false, isFetching: false, refetch() {} }; },
+      useGetTripDiscoveryInfiniteQuery: (args, options) => {
+        queryCalls.push({ name: 'trips', args, options });
+        if (lastTrips !== app.trips) { lastTrips = app.trips; tripPages = { pages: [{ data: app.trips, nextCursor: null, previousCursor: null }] }; }
+        return { currentData: tripPages, isLoading: false, isFetching: false, refetch() {}, fetchNextPage() {}, fetchPreviousPage() {} };
+      },
       useSearchTripsByCoordinatesMutation: () => [() => { throw new Error('Unexpected coordinate request'); }, { isLoading: false }],
     },
     '@/store/api/tripRequestApi': {
@@ -148,6 +153,10 @@ test('seat filter reaches four and preserves the same threshold for trips and re
   }
   assert.equal(stepButton('Augmenter le nombre de places').props.disabled, true);
   assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['four']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.minSeats, 1);
+  t.mock.timers.tick(350);
+  tree = app.render();
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.minSeats, 4);
   app.switchMode(tree, 'requests');
   tree = app.render();
   assert.deepEqual(app.list(tree).props.data.map(item => item.request.id), ['four']);
@@ -178,7 +187,7 @@ test('the screen keeps one virtualized list and the compact toolbar in its heade
   assert.equal(list.props.maxToRenderPerBatch, 5);
   assert.equal(list.props.windowSize, 7);
   assert.equal(list.props.keyboardShouldPersistTaps, 'handled');
-  assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet trouvé');
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet affiché');
   assert.equal(list.props.data[0].trip.id, 'trip');
   app.hooks.unmount();
 });
@@ -191,12 +200,12 @@ test('signed-in users never see their own trips or count them, including while t
     app.profileUnavailable = profileUnavailable;
     const tree = app.render();
     assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['other']);
-    assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet trouvé');
+    assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet affiché');
   }
   app.trips = Object.freeze([{ ...trip('own'), driverId: 'me' }]);
   const tree = app.render();
   assert.equal(app.list(tree).props.data.length, 0);
-  assert.equal(app.toolbar(tree).props.resultsCountLabel, '0 trajet trouvé');
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '0 trajet affiché');
   app.hooks.unmount();
 });
 

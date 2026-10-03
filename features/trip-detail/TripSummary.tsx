@@ -51,7 +51,6 @@ export function TripSummary({
   tripVehicleMetaLabel,
   handleContactDriver,
   isOpeningConversation,
-  driverPhone,
   setContactModalVisible,
 }: TripSummaryProps) {
   return (
@@ -180,15 +179,14 @@ export function TripSummary({
           )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tripInlineActionButton, !driverPhone && styles.tripInlineActionButtonDisabled]}
-          disabled={!driverPhone}
+          style={styles.tripInlineActionButton}
           onPress={() => setContactModalVisible(true)}
           activeOpacity={0.86}
           accessibilityRole="button"
-          accessibilityLabel="Contacter le conducteur sur WhatsApp"
+          accessibilityLabel="Choisir comment contacter le conducteur"
         >
-          <Ionicons name="logo-whatsapp" size={17} color={driverPhone ? '#25D366' : Colors.gray[400]} />
-          <Text style={[styles.tripInlineActionText, driverPhone && styles.tripInlineWhatsappText]}>WhatsApp</Text>
+          <Ionicons name="chatbubbles-outline" size={17} color={Colors.primary} />
+          <Text style={styles.tripInlineActionText}>Contacter</Text>
         </TouchableOpacity>
       </View>
     </View>
