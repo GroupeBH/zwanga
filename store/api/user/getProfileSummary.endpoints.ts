@@ -85,6 +85,7 @@ getUserById: builder.query<User, string>({
       transformResponse: (response: ServerUser) => ({ ...mapServerUser(response),
         totalTrips: response.stats?.tripsAsDriver ?? response.totalTrips ?? 0,
         completedTrips: response.stats?.completedTripsAsDriver,
+        passengerBookingsCount: response.stats?.bookingsAsPassenger,
       }),
     }),
 getKycStatus: builder.query<KycDocument | null, void>({

@@ -200,6 +200,7 @@ test('auth screen binds native Google loading and guards navigation before the n
   const componentNames = ['AuthHeader', 'GoogleOtpStep', 'GooglePhoneStep', 'KycStep', 'PhoneStep', 'PinStep', 'ProfileStep', 'ResetPinStep', 'SmsStep', 'VehicleModal'];
   const social = { isGoogleLoading: true, isSocialAuthInFlight: () => busy };
   const Screen = loader({ ...uiMocks,
+    'expo-router': { Redirect: 'Redirect' },
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
     'react-native-safe-area-context': { SafeAreaView: 'View' },
     '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },

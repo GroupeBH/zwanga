@@ -2,10 +2,10 @@ import { pointToLatLng } from '../../features/trip-detail/tripDetailModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
-import { useGetMyActivityBookingsQuery, useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityBookingsQuery, useGetMyBookingsForTripQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
-import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
+import { selectTripById, selectUser } from '@/store/selectors';
 import { useIsFocused } from '@react-navigation/native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -57,7 +57,6 @@ export function useTripDetailData() {
   const trip = tripFromApi || tripFromStore;
 
   const user = useAppSelector(selectUser);
-  const conversations = useAppSelector(selectConversations);
   const { showDialog } = useDialog();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const driverPhone = trip?.driver?.phone ?? null;
@@ -82,7 +81,7 @@ export function useTripDetailData() {
   const {
     data: historicalBookings,
     refetch: refetchHistoricalBookings,
-  } = useGetMyBookingsQuery(undefined, {
+  } = useGetMyBookingsForTripQuery(tripId, {
     ...passengerBookingsOptions,
     skip: !needsPassengerBookings || isLiveTrip,
   });
@@ -175,7 +174,6 @@ export function useTripDetailData() {
     checkIdentity,
     requestDriverLocationPermission,
     router,
-    conversations,
     tripLoading,
     goHome,
     viewportHeight,

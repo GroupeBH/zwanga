@@ -261,6 +261,7 @@ test('booking recap cleans display strings without changing passenger inputs or 
 test('sharing from trip details uses readable titles and keeps the existing link request', async () => {
   const shared = [], calls = [];
   const env = environment({
+    '@/hooks/navigation/useTripContactMessaging': { useTripContactMessaging: () => ({ openMessage() {}, isOpeningConversation: false }) },
     '../../features/trip-detail/tripDetailModel': {},
     '@/utils/shareHelpers': { shareTrip: async (...args) => shared.push(args) },
     '@/services/analytics': {},

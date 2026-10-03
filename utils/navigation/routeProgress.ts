@@ -167,11 +167,13 @@ export function trimPolylineFromCurrentPosition(
   options: {
     maxDistanceToRouteMeters?: number;
     maxDestinationGapMeters?: number;
+    // Screen-owned immutable route analysis, never server/user input.
+    analysis?: { route: NavigationCoordinate[]; current: ClosestPolylinePoint | null; destination: ClosestPolylinePoint | null };
   } = {},
 ): RemainingRoute {
   const current = normalizeCoordinateObject(currentPosition);
   const destinationCoordinate = normalizeCoordinateObject(destination);
-  const route = normalizeCoordinateList(routeCoordinates);
+  const route = options.analysis?.route ?? normalizeCoordinateList(routeCoordinates);
   const maxDistanceToRouteMeters =
     options.maxDistanceToRouteMeters ?? ROUTE_DEVIATION_THRESHOLD_METERS * 2;
   const maxDestinationGapMeters =
@@ -190,10 +192,8 @@ export function trimPolylineFromCurrentPosition(
     };
   }
 
-  const closestToDestination = findClosestPointOnPolyline(
-    destinationCoordinate,
-    route,
-  );
+  const closestToDestination = options.analysis ? options.analysis.destination
+    : findClosestPointOnPolyline(destinationCoordinate, route);
   if (
     !closestToDestination ||
     closestToDestination.distanceMeters > maxDestinationGapMeters
@@ -208,7 +208,7 @@ export function trimPolylineFromCurrentPosition(
     };
   }
 
-  const closest = findClosestPointOnPolyline(current, route);
+  const closest = options.analysis ? options.analysis.current : findClosestPointOnPolyline(current, route);
   if (!closest || closest.distanceMeters > maxDistanceToRouteMeters) {
     const fallback = [current, destinationCoordinate];
     return {

@@ -21,6 +21,13 @@ import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 
 export function buildCreateBookingEndpoints(builder: BaseEndpointBuilder) {
   return {
+    getMyBookingsForTrip: builder.query<Booking[], string>({
+      query: tripId => `/bookings/my-bookings/trip/${encodeURIComponent(tripId)}`,
+      keepUnusedDataFor: 30,
+      transformResponse: (response: ServerBooking[]) => response.map(mapServerBookingToClient),
+      providesTags: (result, _error, tripId) => [bookingListTag, { type: 'Trip', id: tripId },
+        ...(result ?? []).map(({ id }) => ({ type: 'Booking' as const, id }))],
+    }),
     getMyActivityBookings: builder.query<Booking[], void>({
       query: () => ({ url: '/bookings/my-bookings', params: { scope: 'activity' } }),
       transformResponse: (response: ServerBooking[]) => response.map(mapServerBookingToClient),

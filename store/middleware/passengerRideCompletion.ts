@@ -6,7 +6,7 @@ import { bookingApi } from '../api/bookingApi';
 type CompletionState = { auth: { user: { id: string } | null } }
   & { [bookingApi.reducerPath]: ReturnType<typeof bookingApi.reducer> };
 
-const listEndpoints = new Set(['getMyActivityBookings', 'getMyBookings']);
+const listEndpoints = new Set(['getMyActivityBookings', 'getMyBookings', 'getMyBookingsForTrip']);
 const detailEndpoints = new Set([
   'getBookingById', 'confirmDropoffByPassenger', 'confirmDropoff', 'confirmPassengerTripInterruption',
 ]);
@@ -54,6 +54,8 @@ export function createPassengerRideCompletionMiddleware(): Middleware<
     // Retain confirmed progress if an older in-flight list/detail response arrives late.
     bookingApi.endpoints.getMyActivityBookings.select()(before).data?.forEach(remember);
     bookingApi.endpoints.getMyBookings.select()(before).data?.forEach(remember);
+    const cachedTripIds = bookingApi.util.selectCachedArgsForQuery(before, 'getMyBookingsForTrip');
+    for (const tripId of cachedTripIds) bookingApi.endpoints.getMyBookingsForTrip.select(tripId)(before).data?.forEach(remember);
     const cachedDetailIds = bookingApi.util.selectCachedArgsForQuery(before, 'getBookingById');
     for (const id of cachedDetailIds) {
       remember(bookingApi.endpoints.getBookingById.select(id)(before).data);
@@ -73,6 +75,9 @@ export function createPassengerRideCompletionMiddleware(): Middleware<
     };
     patchList('getMyActivityBookings');
     patchList('getMyBookings');
+    for (const tripId of cachedTripIds) {
+      store.dispatch(bookingApi.util.updateQueryData('getMyBookingsForTrip', tripId, bookings => bookings.forEach(merge)));
+    }
     for (const id of cachedDetailIds) {
       if (completed.has(id)) store.dispatch(bookingApi.util.updateQueryData('getBookingById', id, merge));
     }

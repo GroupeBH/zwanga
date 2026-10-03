@@ -15,6 +15,7 @@ export interface User {
   rating: number;
   totalTrips: number;
   completedTrips?: number;
+  passengerBookingsCount?: number;
   verified: boolean;
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;

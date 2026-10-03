@@ -5,7 +5,6 @@ import {
   useCreateBookingMutation,
   useInitiateBookingPaymentMutation,
 } from '@/store/api/bookingApi';
-import { useCreateConversationMutation, useLazyListConversationsQuery } from '@/store/api/messageApi';
 import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetKycStatusQuery } from '@/store/api/userApi';
@@ -32,9 +31,6 @@ export function useTripDetailBookingState({
   const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
     useInitiateBookingPaymentMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
-  const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
-  const [loadConversations, { isFetching: isLookingUpConversation }] = useLazyListConversationsQuery();
-  const isOpeningConversation = isCreatingConversation || isLookingUpConversation;
   const [createTripShareLink, { isLoading: isCreatingTripShareLink }] = useCreateTripShareLinkMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
@@ -154,8 +150,6 @@ export function useTripDetailBookingState({
     bookingStep,
     bookingSeats,
     setBookingSuccess,
-    loadConversations,
-    createConversation,
     isCreatingTripShareLink,
     createTripShareLink,
     initiateBookingPayment,
@@ -179,7 +173,6 @@ export function useTripDetailBookingState({
     setMapModalVisible,
     estimatedArrivalTime,
     setVehicleDetailModalVisible,
-    isOpeningConversation,
     setContactModalVisible,
     setSelectedImageUri,
     setImageModalVisible,

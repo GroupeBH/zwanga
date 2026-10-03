@@ -48,7 +48,8 @@ for (const platform of ['ios', 'android']) {
   test(`${platform}: passenger navigation keeps the vehicle reminder at the pickup point and on driver arrival`, () => {
     const hooks = hookHarness();
     const { usePassengerNavigationPresentation } = makeLoader(hooks, platform)('hooks/passenger-navigation/usePassengerNavigationPresentation.ts');
-    const props = { booking, trip, routeCoordinates: [], displayedDriverLocation: null, passengerLocation: null,
+    const props = { routeAnalysis: loader()('utils/navigation/passengerRouteAnalysis.ts').createPassengerRouteAnalysis(),
+      booking, trip, routeCoordinates: [], displayedDriverLocation: null, passengerLocation: null,
       pickupCoordinate: null, isPassengerOnboard: false, routeOriginCoordinate: null, activePassengerDestination: null,
       routeInfo: null, activeRouteSegment: 'route', setActiveRouteSegment() {} };
     for (const type of types) {

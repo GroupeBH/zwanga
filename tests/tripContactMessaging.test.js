@@ -12,7 +12,7 @@ function fixture(t, options = {}) {
   const calls = [];
   const state = { userId: 'passenger', active: true, version: 0, contacts: [person], conversations: [],
     list: async () => ({ data: [], meta: { page: 1, limit: 50, total: 0 } }),
-    create: async () => conversation, ...options };
+    create: async () => conversation, resolve: async () => conversation, ...options };
   const { useTripContactMessaging } = loader({ react: hooks.react,
     'react-native': { Platform: { OS: 'android' }, StyleSheet: { create: x => x } },
     'react-native-maps': { PROVIDER_GOOGLE: 'google' }, '@expo/vector-icons': { Ionicons: {} },
@@ -23,7 +23,7 @@ function fixture(t, options = {}) {
     'expo-router': { useRouter: () => ({ push: route => calls.push(['push', route]) }) },
     '@/store/api/messageApi': {
       useCreateConversationMutation: () => [payload => { calls.push(['create', payload]); return { unwrap: () => state.create(payload) }; }],
-      useLazyListConversationsQuery: () => [payload => { calls.push(['list', payload]); return { unwrap: () => state.list(payload) }; }],
+      useResolveDirectConversationMutation: () => [payload => { calls.push(['resolve', payload]); return { unwrap: () => state.resolve(payload) }; }],
     },
   })('hooks/navigation/useTripContactMessaging.ts');
   const render = () => hooks.render(() => useTripContactMessaging(state.contacts, () => calls.push(['close'])));
@@ -50,24 +50,25 @@ test('driver contact uses the selected passenger and booking, including pending 
   assert.deepEqual(h.calls[0], ['create', { participantIds: ['passenger'], bookingId: 'booking' }]);
 });
 
-test('a locally known direct conversation is reused without fetching the inbox', async t => {
+test('a locally known contact is resolved by the server without fetching the inbox', async t => {
   const direct = { ...person, bookingId: undefined };
   const h = fixture(t, { contacts: [direct], conversations: [conversation] });
   await h.render().openMessage(direct);
-  assert.deepEqual(h.calls.map(call => call[0]), ['close', 'push']);
+  assert.deepEqual(h.calls.map(call => call[0]), ['resolve', 'close', 'push']);
 });
 
-test('direct contacts search subsequent pages before creating and never send an automatic message', async t => {
+test('direct contacts resolve in one call regardless of inbox size and send no automatic message', async t => {
   const direct = { ...person, bookingId: undefined };
   const h = fixture(t, { contacts: [direct], list: async ({ page }) => ({
     data: page === 1 ? [{ id: 'unrelated', participants: [] }] : [conversation], meta: { page, limit: 50, total: 51 },
   }) });
   await h.render().openMessage(direct);
-  assert.deepEqual(h.calls.filter(call => call[0] === 'list').map(call => call[1].page), [1, 2]);
+  assert.deepEqual(h.calls.filter(call => call[0] === 'list'), []);
+  assert.deepEqual(h.calls.filter(call => call[0] === 'resolve'), [['resolve', 'driver']]);
   assert.equal(h.calls.some(call => call[0] === 'create'), false);
   const fresh = fixture(t, { contacts: [direct] });
   await fresh.render().openMessage(direct);
-  assert.deepEqual(fresh.calls.find(call => call[0] === 'create'), ['create', { participantIds: ['driver'] }]);
+  assert.deepEqual(fresh.calls.find(call => call[0] === 'resolve'), ['resolve', 'driver']);
 });
 
 test('same-frame repeated taps make only one request', async t => {
@@ -75,6 +76,21 @@ test('same-frame repeated taps make only one request', async t => {
   const action = h.render(); const first = action.openMessage(person); const second = action.openMessage(person);
   assert.equal(h.calls.length, 1); request.resolve(conversation); await Promise.all([first, second]);
   assert.equal(h.calls.filter(call => call[0] === 'push').length, 1);
+});
+
+test('loading remains visible until navigation and resets after a failure or blur', async t => {
+  const request = deferred(); const h = fixture(t, { create: () => request.promise });
+  assert.equal(h.render().isOpeningConversation, false);
+  const opening = h.render().openMessage(person);
+  assert.equal(h.render().isOpeningConversation, true);
+  request.resolve(conversation); await opening;
+  assert.equal(h.render().isOpeningConversation, true);
+  h.state.active = false;
+  h.render();
+  assert.equal(h.render().isOpeningConversation, false);
+  h.state.active = true; h.state.create = async () => { throw new Error('offline'); };
+  await assert.rejects(h.render().openMessage(person));
+  assert.equal(h.render().isOpeningConversation, false);
 });
 
 for (const interruption of ['close', 'unmount', 'blur', 'account', 'logout', 'contact']) {
@@ -94,10 +110,10 @@ for (const interruption of ['close', 'unmount', 'blur', 'account', 'logout', 'co
 
 test('closing during direct lookup prevents a subsequent create request', async t => {
   const request = deferred(); const direct = { ...person, bookingId: undefined };
-  const h = fixture(t, { contacts: [direct], list: () => request.promise });
+  const h = fixture(t, { contacts: [direct], resolve: () => request.promise });
   const action = h.render(); const opening = action.openMessage(direct); action.cancel();
   request.resolve({ data: [], meta: { page: 1, limit: 50, total: 0 } }); await opening;
-  assert.deepEqual(h.calls.map(call => call[0]), ['list']);
+  assert.deepEqual(h.calls.map(call => call[0]), ['resolve']);
 });
 
 test('errors release the lock, leave the sheet open and expose a French retry message', async t => {

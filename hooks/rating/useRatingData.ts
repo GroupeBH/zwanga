@@ -1,6 +1,7 @@
 import { TabType, RateTargetType } from '../../features/rating/ratingTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyBookingsForTripQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useCreateReviewMutation } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
@@ -11,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 
 export function useRatingData() {
+  const active = useScreenIsActive();
   const router = useRouter();
   const params = useLocalSearchParams();
   const user = useAppSelector(selectUser);
@@ -20,12 +22,12 @@ export function useRatingData() {
   const submitInFlightRef = useRef(false);
   const successReturnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasInitializedTargetRef = useRef(false);
-  const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
+  const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId || !active });
   const isTripDriver = Boolean(user?.id && trip?.driverId === user.id);
   const driverBookings = useGetTripBookingsQuery(tripId, {
-    skip: !tripId || !isTripDriver,
+    skip: !tripId || !isTripDriver || !active,
   });
-  const passengerBookings = useGetMyBookingsQuery(undefined, { skip: !tripId || !trip || !user?.id || isTripDriver });
+  const passengerBookings = useGetMyBookingsForTripQuery(tripId, { skip: !active || !tripId || !trip || !user?.id || isTripDriver });
   const tripBookings = useMemo(() => isTripDriver ? driverBookings.data
     : passengerBookings.data?.filter(booking => booking.tripId === tripId),
   [driverBookings.data, isTripDriver, passengerBookings.data, tripId]);

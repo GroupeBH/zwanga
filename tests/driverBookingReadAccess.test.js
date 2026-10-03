@@ -25,7 +25,7 @@ function environment() {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '@react-navigation/native': { useIsFocused: () => true },
     'expo-router': { useRouter: () => ({}), useLocalSearchParams: () => ({ id: 'trip' }) },
-    '@/hooks/useAppIsActive': { useAppIsActive: () => true },
+    '@/hooks/useAppIsActive': { useAppIsActive: () => true, useScreenIsActive: () => true },
     '@/hooks/useIdentityCheck': { useIdentityCheck: () => ({}) },
     '@/hooks/useUserLocation': { useUserLocation: () => ({}) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
@@ -34,9 +34,9 @@ function environment() {
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ data: env.trip }),
       useGetMyActivityTripsQuery: () => ({ data: env.listedTrips }) },
     '@/store/api/bookingApi': {
-      useGetMyActivityBookingsQuery: () => ({ data: env.ownBookings }),
+      useGetMyActivityBookingsQuery: () => ({ data: env.ownBookings, refetch: () => env.refreshes.push('passenger') }),
       useGetTripBookingsQuery: (_id, options) => query('driver', env.driverBookings, options),
-      useGetMyBookingsQuery: (_id, options) => query('passenger', env.ownBookings, options),
+      useGetMyBookingsForTripQuery: (_id, options) => query('passenger', env.ownBookings, options),
     },
     '@/store/api/reviewApi': { useCreateReviewMutation: () => [() => {}, {}] },
   };

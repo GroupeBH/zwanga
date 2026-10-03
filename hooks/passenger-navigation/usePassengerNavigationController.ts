@@ -275,6 +275,7 @@ export function usePassengerNavigationController() {
 
   // État du trajet pour le passager
   const presentation = usePassengerNavigationPresentation({
+    routeAnalysis: driverCamera.routeAnalysis,
     booking: data.booking,
     trip: data.trip,
     pickupNotice: state.pickupNotice,
