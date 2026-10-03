@@ -314,10 +314,9 @@ export default function TripDetailsScreen() {
       <TripContactModal
         contactModalVisible={model.bookingState.contactModalVisible}
         setContactModalVisible={model.bookingState.setContactModalVisible}
-        insets={model.data.insets}
         trip={model.data.trip}
         driverPhone={model.data.driverPhone}
-        showDialog={model.data.showDialog}
+        bookingId={model.activity.activeBooking?.id}
       />
 
       <TripEditModal

@@ -15,6 +15,7 @@ const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Ic
   './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
   './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'ReceiptsSheet' },
   '@/features/navigation/RideModal': { RideModal: 'Modal' },
+  '@/features/ride-recovery/RideActionResult': { RideActionResult: 'RideResult' },
   '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'AssistanceButtons' } };
 
 function driverModel() {
@@ -244,11 +245,13 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);
   }
   assert.equal(all(tree).find(node => node.type === 'AssistanceModals').props.role, 'driver');
+  const result = all(tree).find(node => node.type === 'RideResult');
+  assert.equal(result.props.actor, 'driver'); assert.equal(result.props.tripId, 'trip'); assert.equal(result.props.active, true);
 });
 
 test('passenger navigation wires its own booking, keeps contacts on expanded map and defers pickup notices', () => {
   const received = [];
-  const model = { data: { trip: { id: 't', departure: { address: 'Départ' } }, booking: { id: 'b', tripId: 't' }, insets, isScreenActive: true },
+  const model = { data: { tripId: 't', bookingId: 'b', trip: { id: 't', departure: { address: 'Départ' } }, booking: { id: 'b', tripId: 't' }, insets, isScreenActive: true },
     state: { isMapExpanded: true, mapTopOffset: 200, pickupNotice: {}, setPickupNotice() {} }, presentation: {}, context: {}, tripActions: {}, camera: {} };
   const mocked = { ...defaults,
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
@@ -267,4 +270,6 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
   assert.ok(all(tree).find(node => node.type === 'Header')); assert.equal(all(tree).find(node => node.type === 'InfoCard'), undefined);
   assert.equal(all(tree).find(node => node.type === 'Modal').props.visible, false);
   assert.equal(all(tree).find(node => node.type === 'AssistanceModals').props.role, 'passenger');
+  const result = all(tree).find(node => node.type === 'RideResult');
+  assert.equal(result.props.actor, 'passenger'); assert.equal(result.props.bookingId, 'b'); assert.equal(result.props.tripId, 't');
 });

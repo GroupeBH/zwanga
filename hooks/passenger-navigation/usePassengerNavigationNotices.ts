@@ -8,6 +8,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { displayNotification } from '@/services/pushNotifications';
 import { stopPassengerBackgroundLocationTracking } from '@/services/passengerBackgroundLocationTask';
 import { useGetBookingByIdQuery } from '@/store/api/bookingApi';
+import { useAppSelector } from '@/store/hooks';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { passengerPickupMessage, pickupVehicleReminder } from '@/features/navigation/pickupAwareness';
 import * as Location from 'expo-location';
@@ -59,6 +60,12 @@ export function usePassengerNavigationNotices({
   hasPresentedBoardedNoticeRef,
   hasPresentedDestinationApproachNoticeRef,
 }: Params) {
+  const manualPickup = useAppSelector(state => Boolean(booking?.passengerId && state.auth.user?.id === booking.passengerId &&
+    (['manual_dual_confirmation', 'manual_passenger_confirmation'].includes(booking.pickupDetectionMethod ?? '') || (state.rideRecovery.userId === booking.passengerId &&
+      state.rideRecovery.entries.some(entry => entry.bookingId === bookingId && entry.tripId === booking.tripId && entry.stage === 'pickup' &&
+        entry.decision === 'confirm' && !['blocked', 'disputed'].includes(entry.state))))));
+  const manualPickupRef = useRef(manualPickup);
+  manualPickupRef.current = manualPickup;
   const pickupContext = useRef({ bookingId, isScreenActive, booking });
   pickupContext.current = { bookingId, isScreenActive, booking };
   const latestPickupEvent = useRef<BookingAutoProgressEvent | null>(null);
@@ -177,6 +184,8 @@ export function usePassengerNavigationNotices({
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
 
+    // A direct passenger action already has inline feedback; do not add another modal.
+    if (manualPickupRef.current) return;
     showNotice({
       variant: 'success',
       icon: 'checkmark-circle',

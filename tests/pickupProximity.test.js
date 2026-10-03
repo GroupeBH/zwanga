@@ -24,9 +24,11 @@ test('pickup reminder uses the trip vehicle and explicitly handles missing infor
 
 function passengerNotices() {
   const hooks = hookHarness(), shown = [], pushed = [], spoken = [];
+  const store = { auth: { user: { id: booking.passengerId } }, rideRecovery: { userId: booking.passengerId, entries: [] } };
   const { usePassengerNavigationNotices } = loader({ ...nativeMocks, react: hooks.react,
     '@/services/pushNotifications': { displayNotification: async (...args) => pushed.push(args) },
     '@/services/passengerBackgroundLocationTask': { stopPassengerBackgroundLocationTracking() {} },
+    '@/store/hooks': { useAppSelector: selector => selector(store) },
     '@/utils/navigationSpeech': { NavigationSpeech: { stop: async () => {}, speak: text => spoken.push(text) } },
   })('hooks/passenger-navigation/usePassengerNavigationNotices.ts');
   const props = { bookingId: booking.id, booking, trip: { id: 'trip', vehicle }, isScreenActive: true,
@@ -36,7 +38,7 @@ function passengerNotices() {
   const render = () => hooks.render(() => usePassengerNavigationNotices(props));
   const emit = (patch = {}) => render().presentPickupNotice({ type: 'driver_near_pickup', bookingId: booking.id,
     tripId: 'trip', distanceMeters: 300, ...patch });
-  return { hooks, props, emit, render, shown, pushed, spoken };
+  return { hooks, props, emit, render, shown, pushed, spoken, store };
 }
 
 test('passenger gets one vehicle reminder for the booking holder, not one per seat or GPS update', async () => {
@@ -76,6 +78,25 @@ test('passenger ignores foreign, boarded, cancelled, dropped-off and background 
   h.props.isScreenActive = true; h.render();
   await flush(); assert.equal(h.spoken.length, 0, 'leaving the screen invalidates queued speech even after returning');
   h.hooks.unmount();
+});
+
+test('manual pickup acknowledgement is inline only; automatic boarding keeps its normal notice', async () => {
+  for (const mode of ['local', 'server', 'dual', 'automatic', 'foreign-entry', 'blocked-entry']) {
+    const h = passengerNotices(), notices = [];
+    h.props.hasPresentedBoardedNoticeRef = { current: false };
+    h.props.setPickupNoticeCountdown = () => {};
+    h.props.showNotice = notice => notices.push(notice);
+    if (mode === 'server') h.props.booking = { ...booking, pickupDetectionMethod: 'manual_passenger_confirmation' };
+    if (mode === 'dual') h.props.booking = { ...booking, pickupDetectionMethod: 'manual_dual_confirmation' };
+    if (mode === 'local' || mode.endsWith('entry')) h.store.rideRecovery.entries = [{
+      bookingId: mode === 'foreign-entry' ? 'another' : booking.id, tripId: booking.tripId,
+      stage: 'pickup', decision: 'confirm', state: mode === 'blocked-entry' ? 'blocked' : 'queued',
+    }];
+    h.render().presentBoardedNotice(); h.render().presentBoardedNotice(); await flush();
+    assert.equal(notices.length, ['local', 'server', 'dual'].includes(mode) ? 0 : 1, mode);
+    assert.equal(h.props.hasPresentedBoardedNoticeRef.current, true);
+    h.hooks.unmount();
+  }
 });
 
 test('local passenger threshold includes 300m, preserves 5m readiness and suspends notices when inactive', () => {

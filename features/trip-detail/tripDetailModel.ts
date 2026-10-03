@@ -2,7 +2,7 @@ import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
 import { Colors } from '@/constants/styles';
 import { type BookingAutoProgressPayload } from '@/services/trackingSocket';
-import type { BookingStatus, Conversation, GeoPoint, TripPaymentMode } from '@/types';
+import type { BookingStatus, GeoPoint, TripPaymentMode } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform, type ImageRequireSource } from 'react-native';
@@ -128,35 +128,7 @@ export const formatTripPaymentPhone = (value?: string | null) => {
   return `+243${digits}`;
 };
 
-export const getConversationSortTime = (conversation: Conversation) => {
-  const rawValue = conversation.lastMessageAt ?? conversation.updatedAt ?? conversation.createdAt;
-  const timestamp = rawValue ? new Date(rawValue).getTime() : 0;
-  return Number.isFinite(timestamp) ? timestamp : 0;
-};
-
-export const findDirectConversationWithUser = (
-  conversations: Conversation[] | undefined,
-  currentUserId: string,
-  otherUserId: string,
-) => {
-  const matches = (conversations ?? [])
-    .filter((conversation) => {
-      const participantIds = new Set(
-        conversation.participants
-          ?.map((participant) => participant.userId)
-          .filter(Boolean),
-      );
-
-      return (
-        participantIds.size === 2 &&
-        participantIds.has(currentUserId) &&
-        participantIds.has(otherUserId)
-      );
-    })
-    .sort((a, b) => getConversationSortTime(b) - getConversationSortTime(a));
-
-  return matches.find((conversation) => !conversation.bookingId) ?? matches[0] ?? null;
-};
+export { getConversationSortTime, findDirectConversationWithUser } from '@/utils/directConversation';
 
 export const isValidMapCoordinate = (coordinate?: { latitude: number; longitude: number } | null) =>
   Boolean(coordinate && normalizeTripMapCoordinate(coordinate.latitude, coordinate.longitude));

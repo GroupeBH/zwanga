@@ -11,6 +11,7 @@ import React from 'react';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
 
 export default function PassengerNavigationScreen() {
@@ -45,6 +46,7 @@ export default function PassengerNavigationScreen() {
 
   return (
     <RideOverlayScope scopeKey={`passenger:${model.data.bookingId}`} active={model.data.isScreenActive}>
+    <RideActionResult actor="passenger" tripId={model.data.tripId} bookingId={model.data.bookingId} active={model.data.isScreenActive} />
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       

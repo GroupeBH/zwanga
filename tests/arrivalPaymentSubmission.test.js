@@ -57,6 +57,34 @@ test('cash mode selection is unavailable before arrival and shows instructions a
   assert.equal(env.calls.summary, 1);
 });
 
+test('the unified cash sheet finishes in one tap without claiming collection or opening another summary', async t => {
+  const env = app(t, 'cash'), acknowledgements = [];
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true };
+  env.props.acknowledgeCash = id => acknowledgements.push(id);
+  await env.render().handlePayment();
+  assert.deepEqual(acknowledgements, ['booking']); assert.equal(env.calls.summary + env.calls.cash + env.calls.points, 0);
+  assert.equal(env.props.arrivalBooking.cashReceivedAt, undefined); assert.deepEqual(env.calls.patches, []);
+});
+
+test('cash switching closes only when the acknowledged fare matches what was shown', async t => {
+  const env = app(t, 'electronic'), acknowledgements = [];
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed' };
+  env.props.selectedMode = 'cash'; env.props.acknowledgeCash = id => acknowledgements.push(id);
+  env.props.updatePaymentMode = () => ({ unwrap: async () => ({ ...env.props.arrivalBooking, paymentMode: 'cash' }) });
+  await env.render().handlePayment(); assert.deepEqual(acknowledgements, ['booking']); assert.equal(env.calls.summary, 0);
+  acknowledgements.length = 0;
+  env.props.updatePaymentMode = () => ({ unwrap: async () => ({ ...env.props.arrivalBooking, paymentMode: 'cash', paymentAmount: 2000 }) });
+  await env.render().handlePayment(); assert.deepEqual(acknowledgements, []);
+  assert.equal(env.calls.summaries.at(-1).paymentAmount, 2000);
+});
+
+test('the visible busy state lasts for the whole submission, including the gap after the network mutation', async t => {
+  const env = app(t), first = env.render().handlePayment();
+  assert.equal(env.render().isSubmitting, true); await env.render().handlePayment();
+  assert.equal(env.calls.points, 1);
+  env.resolvePoints(); await first; assert.equal(env.render().isSubmitting, false);
+});
+
 test('cash already received by the driver opens the summary without a forbidden mode update', async t => {
   const env = app(t, 'cash');
   env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true,

@@ -48,6 +48,7 @@ for (const os of ['android', 'ios']) {
       const ref = { current: null };
       const components = ['AuthHeader', 'PinStep', 'ResetPinStep', 'VehicleModal'];
       const Screen = loader({ 'react-native': { ...native, Platform: { OS: os } },
+        'expo-router': { Redirect: 'Redirect' },
         'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, '@/config/env': {},
         '@/components/auth': { ...Object.fromEntries(components.map(name => [name, name])), authStyles: {} },
         '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: (active, stage) => {
@@ -89,6 +90,7 @@ test('the recovery back button cannot leave while OTP/PIN requests are pending',
   const calls = [];
   const phoneActions = { isResettingPin: true, isPinLoginInFlight: () => false };
   const Screen = loader({ 'react-native': { ...native, Platform: { OS: 'android' } },
+    'expo-router': { Redirect: 'Redirect' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, '@/config/env': {},
     '@/components/auth': { AuthHeader: 'Header', ResetPinStep: 'Reset', VehicleModal: 'Modal', authStyles: {} },
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ scrollRef: { current: null }, keyboardVisible: true }) },

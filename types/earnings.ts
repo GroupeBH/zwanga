@@ -39,6 +39,14 @@ export interface DriverPayout {
   failureReason?: string | null;
   reference?: string | null;
   requiresReview?: boolean;
+  isStale?: boolean;
+  canRequestReview?: boolean;
+  canCheckStatus?: boolean;
+  canRetry?: boolean;
+  reviewStatus?: 'none' | 'requested' | 'resolved' | 'blocked';
+  recoveryBlocked?: boolean;
+  reviewRequestedAt?: string | null;
+  reviewResolvedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

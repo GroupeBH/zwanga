@@ -19,6 +19,7 @@ import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 
 export default function NavigationScreen() {
@@ -66,6 +67,7 @@ function DriverNavigationScreen() {
 
   return (
     <RideOverlayScope scopeKey={`driver:${model.session.foundation.data.tripId}`} active={model.session.foundation.data.isScreenActive}>
+    <RideActionResult actor="driver" tripId={model.session.foundation.data.tripId} active={model.session.foundation.data.isScreenActive} />
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       

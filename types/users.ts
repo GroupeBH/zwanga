@@ -14,9 +14,11 @@ export interface User {
   lastName?: string;
   rating: number;
   totalTrips: number;
+  completedTrips?: number;
   verified: boolean;
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
+  vehicles?: Vehicle[];
   isDriver?: boolean;
   driverOnboardingRequestedAt?: string | null;
   driverActivatedAt?: string | null;

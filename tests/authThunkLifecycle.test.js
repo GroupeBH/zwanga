@@ -26,6 +26,7 @@ function fixture() {
 
 for (const outcome of [true, false]) test(`late initialization (${outcome}) cannot replace the current account`, async () => {
   const e = fixture(), work = e.store.dispatch(e.mod.initializeAuth());
+  await new Promise(resolve => setImmediate(resolve)); // Startup now reads SecureStore before validation.
   e.changeAccount(); e.pending.resolve(outcome); await work;
   assert.equal(e.store.getState().user.id, 'new');
   assert.equal(e.store.getState().isAuthenticated, true);

@@ -32,10 +32,12 @@ export type ElectronicPaymentChannel = {
 };
 
 export type PaymentCompletionSummary = {
+  destination?: string;
+  numberOfSeats?: number;
   cashInstructions?: boolean;
   bookingId: string;
   beforeArrival?: boolean;
-  mode: TripPaymentMode;
+  mode: TripPaymentMode | null;
   channel?: PaymentChannel;
   amount: number;
   currency: string;

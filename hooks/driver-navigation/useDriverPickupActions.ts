@@ -6,6 +6,7 @@ import {
 } from '../../features/driver-navigation/navigationModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { rideOutbox } from '@/services/rideOutbox';
+import { useRideActionFeedback } from '@/hooks/navigation/useRideActionFeedback';
 import { useCancelBookingMutation, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import type { Booking } from '@/types';
@@ -80,6 +81,7 @@ export function useDriverPickupActions({
   refetchTrip,
   reconcileBookingStatus,
 }: Params) {
+  const { saved: showSavedResult, failed: showFailedResult } = useRideActionFeedback();
   const refreshInBackground = useCallback(() => {
     void Promise.allSettled([Promise.resolve().then(() => refetchBookings()), Promise.resolve().then(() => refetchTrip())]);
   }, [refetchBookings, refetchTrip]);
@@ -155,25 +157,23 @@ export function useDriverPickupActions({
     const action = beginBookingAction(confirmation.waypoint.booking, 'pickup-confirm');
     if (!action) return;
     const passengerName = confirmation.waypoint.passenger.name || 'Le passager';
+    const target = { tripId, bookingId, stage: 'pickup' as const, actor: 'driver' as const,
+      passengerName, numberOfSeats: confirmation.waypoint.booking.numberOfSeats };
     setPickupBypassAction('confirm');
 
     try {
-      await rideOutbox.enqueue({ bookingId, tripId, stage: 'pickup', decision: 'confirm' });
+      const receipt = await rideOutbox.enqueue({ bookingId, tripId, stage: 'pickup', decision: 'confirm' });
       if (!action.isCurrent()) return;
       dismissPickupNoticeForBooking(bookingId);
       if (pickupBypassConfirmationRef.current === confirmation) dismissPickupBypassConfirmation();
+      showSavedResult(target, receipt);
       void speakNavigationMessage(
         `Votre confirmation pour ${passengerName} est enregistrée. En attente de validation.`,
         { force: true },
       );
     } catch (error: any) {
       if (!action.isCurrent()) return;
-      showDialog({
-        variant: 'danger',
-        icon: 'alert-circle',
-        title: 'Confirmation impossible',
-        message: getApiErrorMessage(error, "Impossible de confirmer la prise en charge pour le moment."),
-      });
+      showFailedResult(target, error);
     } finally {
       action.finish();
       if (action.isCurrent()) setPickupBypassAction(null);
@@ -186,7 +186,8 @@ export function useDriverPickupActions({
     pickupBypassAction,
     pickupBypassConfirmationRef,
     setPickupBypassAction,
-    showDialog,
+    showSavedResult,
+    showFailedResult,
     speakNavigationMessage,
   ]);
 

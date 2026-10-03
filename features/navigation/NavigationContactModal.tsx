@@ -1,5 +1,6 @@
 import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
+import { useTripContactMessaging } from '@/hooks/navigation/useTripContactMessaging';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
@@ -7,49 +8,68 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NavigationContact } from './navigationContacts';
 
-interface Props { contacts: NavigationContact[]; role: 'driver' | 'passenger'; onClose: () => void }
+interface Props { contacts: NavigationContact[]; role: 'driver' | 'passenger'; onClose: () => void; allowPhoneCall?: boolean }
 
-export function NavigationContactModal({ contacts, role, onClose }: Props) {
+export function NavigationContactModal({ contacts, role, onClose, allowPhoneCall = true }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const mounted = useRef(true);
+  const messaging = useTripContactMessaging(contacts, onClose);
+  const close = () => { messaging.cancel(); onClose(); };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const contact = async (person: NavigationContact, channel: 'phone' | 'whatsapp') => {
-    if (!person.phone || busyRef.current) return;
+  const contact = async (person: NavigationContact, channel: 'phone' | 'whatsapp' | 'message') => {
+    if (busyRef.current || (channel !== 'message' && !person.phone) ||
+      (channel === 'message' && (!messaging.canMessage || person.id === messaging.userId))) return;
     busyRef.current = true;
     setBusy(`${person.id}:${channel}`); setError(null);
     const fail = (message: string) => { if (mounted.current) setError(message); };
     try {
-      await (channel === 'phone' ? openPhoneCall : openWhatsApp)(person.phone, fail);
+      if (channel === 'message') await messaging.openMessage(person);
+      else await (channel === 'phone' ? openPhoneCall : openWhatsApp)(person.phone!, fail);
     } catch {
-      fail('Impossible d’ouvrir ce moyen de contact. Réessayez ou utilisez l’autre bouton.');
+      fail(channel === 'message' ? 'Impossible d’ouvrir la messagerie. Vérifiez votre connexion et réessayez.' :
+        'Impossible d’ouvrir ce moyen de contact. Réessayez ou utilisez l’autre bouton.');
     } finally {
       busyRef.current = false;
       if (mounted.current) setBusy(null);
     }
   };
-  return <FormModal visible transparent animationType="slide" statusBarTranslucent presentationStyle="overFullScreen" onRequestClose={onClose}>
+  return <FormModal inApp visible transparent animationType="slide" statusBarTranslucent presentationStyle="overFullScreen" onRequestClose={close}>
     <View style={styles.overlay}>
-      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Fermer les contacts" accessibilityRole="button" />
+      <TouchableOpacity style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Fermer les contacts" accessibilityRole="button" />
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <View style={styles.header}>
           <View style={styles.copy}>
             <Text style={styles.title}>{role === 'driver' ? 'Contacter un passager' : 'Contacter le conducteur'}</Text>
             <Text style={styles.hint}>{role === 'driver' ? 'Choisissez la personne à joindre. Utilisez ces actions uniquement à l’arrêt.' : 'Choisissez comment joindre votre conducteur.'}</Text>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.close} accessibilityRole="button" accessibilityLabel="Fermer les contacts">
+          <TouchableOpacity onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel="Fermer les contacts">
             <Ionicons name="close" size={24} color={Colors.gray[700]} />
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {contacts.length === 0 && <Text style={styles.hint}>Aucun passager à contacter pour le moment.</Text>}
+          {contacts.length === 0 && <Text style={styles.hint}>Aucun contact disponible pour ce trajet.</Text>}
           {contacts.map(person => <View key={person.id} style={styles.person}>
             <Text style={styles.name}>{person.name}</Text>
             <Text style={styles.hint}>{person.detail}</Text>
-            {!person.phone && <Text style={styles.hint}>Le numéro de téléphone n’est pas disponible.</Text>}
+            <TouchableOpacity onPress={() => void contact(person, 'message')}
+              disabled={busy !== null || !messaging.canMessage || person.id === messaging.userId}
+              accessibilityRole="button" accessibilityLabel={`Envoyer un message dans Zwanga à ${person.name}`}
+              accessibilityState={{ disabled: busy !== null || !messaging.canMessage || person.id === messaging.userId,
+                busy: busy === `${person.id}:message` }}
+              style={[styles.message, (busy !== null || !messaging.canMessage || person.id === messaging.userId) && styles.disabled]}>
+              {busy === `${person.id}:message` ? <ActivityIndicator color={Colors.white} /> :
+                <Ionicons name="chatbubble-ellipses-outline" size={22} color={Colors.white} />}
+              <View style={styles.copy}>
+                <Text style={styles.messageLabel}>{busy === `${person.id}:message` ? 'Ouverture…' : 'Message dans Zwanga'}</Text>
+                <Text style={styles.messageHint}>Échangez sans quitter l’application</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.white} />
+            </TouchableOpacity>
+            {!person.phone && <Text style={styles.hint}>Numéro indisponible : utilisez la messagerie Zwanga.</Text>}
             <View style={styles.actions}>
-              {(['phone', 'whatsapp'] as const).map(channel => <TouchableOpacity key={channel}
+              {(allowPhoneCall ? ['phone', 'whatsapp'] as const : ['whatsapp'] as const).map(channel => <TouchableOpacity key={channel}
                 onPress={() => void contact(person, channel)} disabled={!person.phone || busy !== null}
                 accessibilityRole="button" accessibilityLabel={`${channel === 'phone' ? 'Appeler' : 'Contacter sur WhatsApp'} ${person.name}`}
                 style={[styles.action, channel === 'whatsapp' && styles.whatsapp, (!person.phone || busy !== null) && styles.disabled]}>
@@ -60,7 +80,7 @@ export function NavigationContactModal({ contacts, role, onClose }: Props) {
             </View>
           </View>)}
           {error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
-          <Text style={styles.hint}>L’appel utilise le réseau téléphonique. WhatsApp nécessite une connexion Internet.</Text>
+          <Text style={styles.hint}>{allowPhoneCall ? 'L’appel utilise le réseau téléphonique. ' : ''}La messagerie Zwanga et WhatsApp nécessitent Internet.</Text>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -77,6 +97,9 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 28, gap: 16 },
   person: { paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] },
   name: { fontSize: 17, fontWeight: '700', color: Colors.gray[900] },
+  message: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, padding: 14, minHeight: 56, borderRadius: 14, backgroundColor: Colors.primaryDark },
+  messageLabel: { color: Colors.white, fontSize: 15, fontWeight: '700' },
+  messageHint: { color: Colors.white, fontSize: 12, marginTop: 3 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
   action: { flexGrow: 1, minHeight: 48, flexDirection: 'row', gap: 8, padding: 12, borderRadius: 14, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF4EC' },
   whatsapp: { backgroundColor: '#EAF8F0' }, actionLabel: { fontSize: 14, fontWeight: '700', color: Colors.gray[800] },

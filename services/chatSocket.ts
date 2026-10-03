@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '@/config/env';
-import { getValidAccessToken } from '@/services/tokenRefresh';
+import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import type { Message } from '@/types';
 import { io, Socket } from 'socket.io-client';
 
@@ -22,6 +22,7 @@ class ChatSocketClient {
         const baseUrl = API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');
         const socket = io(`${baseUrl}/chat`, { transports: ['websocket'], auth: { token }, autoConnect: false });
         this.socket = socket;
+        socket.on('session_expired', () => { void handle401Error(); });
         socket.on('connect', () => {
           this.rooms.forEach((_count, bookingId) => socket.emit('join_booking', { bookingId }));
         });

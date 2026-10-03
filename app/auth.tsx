@@ -4,6 +4,7 @@ import { authCodeStyles } from '@/features/auth/authCode.styles';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import React from 'react';
+import { Redirect } from 'expo-router';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -21,10 +22,11 @@ import {
 } from '@/components/auth';
 
 export default function AuthScreen() {
-  const { form, navigation, canGoBack, progress, motivationalMessage, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration } = useAuthController();
+  const { isAuthenticated, form, navigation, canGoBack, progress, motivationalMessage, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration } = useAuthController();
   const compactCodeStep = form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
   const keyboard = useAuthKeyboardLayout(compactCodeStep, `${form.step}:${form.resetPinStep}`);
   const resetPending = form.step === 'resetPin' && (phoneActions.isResettingPin || form.isSendingResetOtp);
+  if (isAuthenticated && form.step !== 'kyc') return <Redirect href="/(tabs)" />;
 
   return (
     <SafeAreaView style={styles.container} edges={keyboard.keyboardVisible ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>

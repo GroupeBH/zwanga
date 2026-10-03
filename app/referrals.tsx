@@ -1,5 +1,6 @@
 import { formatNumber, formatDate, rewardLabel } from '../features/referrals/referralModel';
 import { useReferralActions } from '../hooks/referrals/useReferralActions';
+import { ReferralQrAction } from '@/features/referrals/ReferralQrAction';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import {
@@ -144,6 +145,7 @@ export default function ReferralsScreen() {
                 <Ionicons name="people-outline" size={18} color={Colors.primary} />
               </TouchableOpacity>
             </View>
+            <ReferralQrAction summary={summary} refetchSummary={refetchSummary} />
           </View>
 
           <View style={styles.balancePanel}>

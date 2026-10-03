@@ -34,6 +34,9 @@ function describeRefusal(value?: string | null): string {
 }
 
 export function getPayoutMessage(payout: DriverPayout): string {
+  if (payout.recoveryBlocked) return 'Un versement a été confirmé après libération du montant. L’assistance doit vérifier votre solde avant un nouveau retrait.';
+  if (isPayoutPending(payout) && payout.reviewStatus === 'requested') return 'Votre demande de vérification est enregistrée. Le montant reste réservé jusqu’à confirmation du résultat. Aucun nouveau versement n’a été lancé.';
+  if (isPayoutPending(payout) && payout.isStale) return 'Ce retrait prend plus de temps que prévu. Demandez une vérification : après confirmation de non-paiement, vos gains seront à nouveau disponibles.';
   if (payout.status === 'succeeded') return 'Zwanga a versé vos gains sur votre compte Mobile Money.';
   if (payout.status === 'cancelled') return 'Versement annulé. Le montant est à nouveau disponible dans vos revenus.';
   if (isPayoutPending(payout)) return payout.requiresReview || !payout.orderNumber ? PAYOUT_REVIEW_MESSAGE : PAYOUT_PENDING_MESSAGE;

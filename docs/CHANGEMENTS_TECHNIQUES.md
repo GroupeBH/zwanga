@@ -10,6 +10,153 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 3 octobre 2026 — Vérification des retraits conducteur bloqués
+
+Un retrait `pending` ou `initiated` pouvait rester réservé sans action de résolution.
+L'historique des gains permet maintenant de **demander une vérification** et de
+rafraîchir un retrait par son ID interne, même sans numéro FlexPay. Les états
+« vérification demandée », délai anormal et incident de succès tardif sont
+expliqués distinctement. Aucun bouton ne prétend annuler lui-même un virement.
+
+Fichiers : `types/earnings.ts`, `store/api/driverSettlementsApi.ts`,
+`hooks/driver-earnings/useDriverPayout.ts`, `features/driver-earnings/PayoutHistory.tsx`,
+`features/driver-earnings/payoutModel.ts`, `app/driver-earnings.tsx` et tests associés.
+Les nouveaux boutons dépendent des capacités renvoyées par le backend ; le
+contrôle par ancien numéro de commande reste compatible avec l'ancien serveur.
+Idempotence, solde serveur, KYC, choix du destinataire et intention de retrait
+persistée sont conservés. Un signalement ne remet jamais les gains à disposition
+localement et ne lance aucun nouveau versement.
+
+Le [contrat backend et la procédure support](../../zwanga-backend/docs/finance/driver-payout-corrections.md)
+décrivent la migration et la résolution administrateur après confirmation FlexPay.
+**43 tests JavaScript réussis**, contrôle TypeScript mobile réussi. Aucun essai
+sur appareil physique ni déploiement ; l'incident de production reste à rapprocher.
+
+## 3 octobre 2026 — Retour à l’accueil connecté et onboarding raccourci
+
+Le démarrage privilégie maintenant la session restaurée pour ouvrir l’accueil,
+sans dépendre des anciens indicateurs de présentation. Une erreur temporaire du
+stockage sécurisé propose un réessai au lieu d’afficher une fausse déconnexion.
+La première utilisation regroupe introduction, information de localisation et
+choix connexion/inscription sur un seul écran, sans supprimer OTP/PIN ni KYC.
+
+Le [rapport détaillé](DEMARRAGE_SESSION_ONBOARDING_2026_10_03.md) décrit les causes,
+les fichiers, les précautions et les limites. **129 tests JavaScript réussis**,
+TypeScript et contrôles techniques validés ; ESLint sans erreur avec un avertissement
+préexistant. Aperçu navigateur inspecté à 320/360 px, essais physiques encore requis.
+Aucun backend, dépendance native ou déploiement modifié.
+
+## 2 octobre 2026 — Places ajustables et messagerie dans les contacts du trajet
+
+Les valeurs par défaut de publication restent 2/3/4 selon le véhicule, mais les
+boutons −/+ permettent désormais de les ajuster dès 1 place, dans les limites
+serveur des motos. Le modal de contact du trajet ajoute « Message dans Zwanga »,
+même sans téléphone, avec chargement, protection des doubles appuis et erreurs
+en français. WhatsApp et les appels déjà disponibles sont conservés.
+
+Le [rapport détaillé](PUBLICATION_PLACES_CONTACT_2026_10_02.md) décrit le contrat
+serveur consulté, les fichiers, les protections et les limites. **99 tests
+JavaScript réussis**, TypeScript, ESLint ciblé et contrôles techniques validés.
+Aperçu navigateur inspecté à 320/360 px ; essais natifs Android/iOS encore requis.
+Aucun changement du backend, de dépendance ou déploiement pour cette intervention.
+
+## 2 octobre 2026 — QR code du lien personnel de parrainage
+
+Ajout de « Mon QR code » dans l’espace Parrainage : génération locale depuis le
+`shareLink` fourni par le serveur, aperçu adaptatif, partage PNG et copie du lien.
+Aucun changement des règles d’attribution, commissions, retraits ou du backend.
+L’interface sobre et le QR noir sur fond blanc privilégient la lecture et le scan.
+
+Le [rapport de modification](PARRAINAGE_QR_2026_10_02.md) précise les fichiers,
+les protections contre les réponses tardives, les dépendances et les limites.
+**58 tests ciblés réussis**, TypeScript et ESLint ciblé validés ; QR générés puis
+décodés avec un lecteur indépendant, aperçu navigateur contrôlé à 320 et 360 px.
+Ces vérifications ne remplacent pas les essais de scan et de partage sur appareils.
+
+**Un nouveau build iOS/Android est nécessaire** pour intégrer les modules natifs SVG
+et de partage. Aucun build, envoi aux stores, changement de `.env` ou déploiement
+n’a été effectué. Détails et précautions dans le rapport lié.
+
+## 2 octobre 2026 — Corrections des neuf constats de sécurité et performance
+
+À la demande de l’utilisateur, les correctifs F01–F09 de l’audit sont maintenant
+appliqués dans l’application et le backend local : projections publiques sûres,
+protection des jetons, quotas Redis, cycle de vie des WebSockets, uploads vérifiés,
+isolation du chatbot, pagination et réduction des lectures serveur répétées.
+
+Le [rapport de corrections](CORRECTIONS_AUDIT_2026_10_02.md) précise les fichiers,
+les comportements conservés, les changements de contrat et les prérequis de livraison.
+Vérifications : **397 tests frontend et 289 tests backend réussis**, TypeScript
+application et production backend validés, ESLint frontend ciblé et contrôles
+réseau/taille validés. Des vérifications supplémentaires ciblées sont détaillées
+dans le rapport, sans additionner les tests rejoués.
+
+Aucun déploiement, changement de `.env`, accès aux données réelles ou révocation
+de sessions en production. Les proxys de confiance et Redis doivent être vérifiés
+avant livraison. Aucune mesure de chauffe, de batterie ou de latence native.
+Les travaux précédents sur embarquement, dépose et paiement sont conservés.
+
+## 2 octobre 2026 — Audit des performances et de la sécurité
+
+Audit ciblé de l’application et du backend local, sans modification fonctionnelle.
+Le [rapport d’audit](AUDIT_PERFORMANCE_SECURITE_2026_10_02.md) documente neuf constats
+priorisés, dont une fuite critique de champs d’authentification dans les réponses
+de messagerie, la confidentialité des trajets, les quotas et les coûts des lectures
+serveur. Les corrections sont proposées, **pas appliquées**.
+
+Seuls ce journal et le rapport sont modifiés pour cette intervention ; les travaux
+préexistants sont conservés. Vérifications : reproductions sur données fictives,
+98 tests frontend et 66 tests backend réussis, TypeScript frontend et contrôles
+réseau/taille validés. Aucun accès aux données réelles, à `.env` ou à la production,
+aucun test natif ou de charge ; pas de conclusion sur les crashs ou la chauffe.
+
+## 2 octobre 2026 — Modales de résultat pour l’embarquement et la dépose
+
+À la demande de l’utilisateur, chaque action manuelle peut désormais afficher
+une modale de résultat soignée et animée : succès serveur en vert, échec en rouge,
+enregistrement local ou attente de l’autre personne en orange. Elle apparaît
+**après l’action**, sans nouvelle validation préalable, et peut évoluer avec le
+statut serveur déjà disponible. Double accord, détection automatique et paiement
+restent inchangés ; le SOS conserve la priorité.
+
+Le [rapport de modification](RIDE_ACTION_RESULTS_2026_10_02.md) détaille les fichiers,
+les protections de compte/écran et les limites : **212 tests frontend réussis**,
+TypeScript et ESLint ciblé validés, aperçu navigateur inspecté, pas de validation
+sur téléphone physique ni de changement backend dans cette intervention.
+
+## 2 octobre 2026 — Double validation rétablie, actions directes et paiement unifié
+
+**Décision finale :** conducteur et titulaire confirment chacun l’embarquement
+et la dépose manuels, avec un appui par personne sans modale intermédiaire.
+Les états d’attente précisent qui doit encore confirmer ; détection automatique,
+file hors connexion, désaccords et protections serveur sont conservés.
+Le paiement utilise une feuille unique plus compacte, du choix du mode au reçu,
+sans demander de régler de nouveau un trajet payé ni assimiler cash à encaissement.
+
+Le [rapport final](RIDE_CONFIRMATION_PAYMENT_2026_10_02.md) documente les fichiers
+application/backend, la révision de la règle antérieure, les protections,
+**189 tests application et 139 tests backend réussis**, l’aperçu navigateur et
+les limites restantes. Aucun déploiement ni test sur appareil physique réalisé.
+
+## 2 octobre 2026 — Embarquement manuel du passager en un appui (règle remplacée)
+
+**Historique :** la règle « passager seul » de cette entrée a été remplacée à la
+demande de l’utilisateur par la double validation documentée ci-dessus. Les
+résultats suivants concernent uniquement cette intervention antérieure.
+
+Le bouton « Je suis à bord » enregistre directement la confirmation, sans feuille
+intermédiaire ni modale de succès. Le serveur accepte désormais la confirmation
+du seul titulaire de la réservation ; le conducteur ne peut plus la remplacer.
+La détection automatique, la confirmation d'arrivée et les règles de paiement
+restent conservées. Les états hors connexion distinguent enregistrement local
+et validation serveur.
+
+Le [rapport de modification](PASSENGER_PICKUP_2026_10_02.md) décrit les fichiers
+frontend/backend, les protections, la reprise des déclarations antérieures,
+les **132 tests frontend et 113 tests backend réussis**, et les limites de
+validation native. Le backend et l'application doivent être livrés ensemble ;
+aucun déploiement n'a été effectué.
+
 ## 1er octobre 2026 — Version applicative 1.0.16 et préparation iOS
 
 **Périmètre et problème.** Préparation d'une nouvelle version, notamment iOS :

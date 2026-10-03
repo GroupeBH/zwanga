@@ -10,27 +10,23 @@ import {
   formatMoney,
   formatPoints,
   getPaymentChannelLabel,
-  getPaymentModeLabel,
 } from '../features/arrival-payment/paymentModel';
 import { DRC_PAYMENT_PHONE_REGEX } from '../features/arrival-payment/paymentPolicy';
 import { styles } from '../features/screen-styles/components/PassengerArrivalPaymentCoordinator/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { PassengerInterruptionChoice } from '@/components/trip/PassengerInterruptionChoice';
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useMemo } from 'react';
+import { buildPaymentCompletionSummary } from '@/features/arrival-payment/buildPaymentCompletionSummary';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import { PendingPaymentReminder } from '@/features/arrival-payment/PendingPaymentReminder';
-import { Colors, Spacing } from '@/constants/styles';
+import { Spacing } from '@/constants/styles';
 import { openInterruptionChoice } from '@/store/slices/tripsSlice';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -44,6 +40,10 @@ export function PassengerArrivalPaymentCoordinator() {
 function ArrivalPaymentSession() {
   const state = useArrivalPaymentState();
   const interruptionChoice = state.interruptionChoice;
+  // Already paid/free bookings open their receipt immediately, not another confirmation step.
+  const receipt = useMemo(() => state.completionSummary ?? (state.arrivalBooking && state.paymentAlreadySucceeded
+    ? buildPaymentCompletionSummary(state.arrivalBooking, state.wallet, state.paymentHistory, {}) : null),
+  [state.completionSummary, state.arrivalBooking, state.paymentAlreadySucceeded, state.wallet, state.paymentHistory]);
 
   const completion = useArrivalPaymentCompletion({
     isSessionCurrent: state.isSessionCurrent,
@@ -75,6 +75,7 @@ function ArrivalPaymentSession() {
   const monitoring = useArrivalPaymentMonitoring({ state, provider, completion });
 
   const submission = useArrivalPaymentSubmission({
+    acknowledgeCash: state.acknowledgeBooking,
     isSessionCurrent: state.isSessionCurrent,
     arrivalBooking: state.arrivalBooking,
     paymentAmount: state.paymentAmount,
@@ -104,7 +105,7 @@ function ArrivalPaymentSession() {
   });
 
   const navigation = useArrivalPaymentNavigation({
-    completionSummary: state.completionSummary,
+    completionSummary: receipt,
     acknowledgeBooking: state.acknowledgeBooking,
     setCompletionSummary: state.setCompletionSummary,
     router: state.router,
@@ -128,7 +129,7 @@ function ArrivalPaymentSession() {
   const actionLabel = !state.selectedMode ? 'Choisir un mode de paiement' : state.paymentAlreadySucceeded
     ? state.isBeforeArrival ? 'Continuer le trajet' : 'Terminer'
     : state.selectedMode === 'cash'
-      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Continuer avec le paiement cash'
+      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Terminer · paiement en espèces'
       : state.selectedMode === 'points'
         ? state.missingPoints > 0
           ? `Ajouter ${formatMoney(state.moneyComplement, state.paymentCurrency)} et payer`
@@ -143,7 +144,7 @@ function ArrivalPaymentSession() {
   const isPaymentPhoneInvalid =
     needsMobileMoneyPhone && (!state.mobileMoneyPhone || !DRC_PAYMENT_PHONE_REGEX.test(state.mobileMoneyPhone));
   const isPayButtonDisabled =
-    state.isBusy ||
+    state.isBusy || submission.isSubmitting ||
     !state.selectedMode ||
     state.hasPendingProviderPayment ||
     state.paymentAmount === null ||
@@ -164,7 +165,7 @@ function ArrivalPaymentSession() {
       statusBarTranslucent
       presentationStyle="overFullScreen"
       onDismiss={navigation.handleModalDismiss}
-      onRequestClose={state.completionSummary ? navigation.handleDismissSummary : state.deferPayment}
+      onRequestClose={receipt ? navigation.handleDismissSummary : state.deferPayment}
     >
       <View style={styles.overlay}>
         <KeyboardAvoidingView
@@ -182,87 +183,10 @@ function ArrivalPaymentSession() {
                   state.dispatch(openInterruptionChoice(null));
                 }}
               />
-            ) : state.completionSummary ? (
-              <>
-                <ScrollView
-                  bounces={false}
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={styles.content}
-                >
-                  <View style={styles.header}>
-                    <View style={[styles.arrivalIcon, styles.summaryIcon]}>
-                      <Ionicons name="checkmark" size={30} color={Colors.white} />
-                    </View>
-                    <View style={styles.headerCopy}>
-                      <Text style={styles.eyebrow}>{state.completionSummary.cashInstructions ? 'PAIEMENT CASH' : 'PAIEMENT CONFIRMÉ'}</Text>
-                      <Text style={styles.title}>{state.completionSummary.beforeArrival ? 'Votre paiement est réglé' : 'Trajet terminé'}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.amountCard}>
-                    <Text style={styles.amountLabel}>{state.completionSummary.cashInstructions ? 'Montant à remettre au conducteur' : 'Montant réglé'}</Text>
-                    <Text style={styles.amountValue}>
-                      {formatMoney(state.completionSummary.amount, state.completionSummary.currency)}
-                    </Text>
-                    <Text style={styles.amountHint}>
-                      Moyen utilisé : {getPaymentModeLabel(state.completionSummary.mode, state.completionSummary.channel)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.summaryRows}>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Nouveau solde</Text>
-                      <Text style={styles.summaryValue}>
-                        {state.completionSummary.walletBalance === null
-                          ? 'Actualisation en cours'
-                          : formatPoints(state.completionSummary.walletBalance)}
-                      </Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Jetons gagnés</Text>
-                      <Text style={styles.summaryValue}>
-                        {state.completionSummary.earnedPointsKnown
-                          ? formatPoints(state.completionSummary.earnedPoints)
-                          : state.completionSummary.beforeArrival ? 'Calculés à l’arrivée' : 'Calcul en cours'}
-                      </Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Référence</Text>
-                      <Text style={styles.summaryValue} numberOfLines={1}>
-                        {state.completionSummary.paymentReference ?? 'A venir'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.successBox}>
-                    <Ionicons name="notifications-outline" size={22} color={Colors.successDark} />
-                    <View style={styles.successCopy}>
-                      <Text style={styles.successTitle}>{state.completionSummary.cashInstructions ? 'Règlement au conducteur' : 'Conducteur informé'}</Text>
-                      <Text style={styles.successText}>{state.completionSummary.driverNotice}</Text>
-                    </View>
-                  </View>
-                </ScrollView>
-
-                <View style={styles.summaryActions}>
-                  {state.completionSummary.invoiceUrl ? (
-                    <TouchableOpacity
-                      activeOpacity={0.88}
-                      onPress={navigation.handleOpenInvoice}
-                      style={[styles.payButton, styles.invoiceButton]}
-                    >
-                      <Ionicons name="receipt-outline" size={20} color={Colors.primary} />
-                      <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Voir la facture</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                  <TouchableOpacity activeOpacity={0.88} onPress={navigation.handleDismissSummary} style={styles.payButton}>
-                    <Ionicons name="checkmark" size={20} color={Colors.white} />
-                    <Text style={styles.payButtonText}>{state.completionSummary.beforeArrival ? 'Continuer le trajet' : 'Terminer'}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : state.arrivalBooking ? (
+            ) : state.arrivalBooking || receipt ? (
               <>
                 <ArrivalPaymentFields
+                  completionSummary={receipt}
                   arrivalBooking={state.arrivalBooking}
                   isBeforeArrival={state.isBeforeArrival}
                   destination={destination}
@@ -270,7 +194,7 @@ function ArrivalPaymentSession() {
                   paymentCurrency={state.paymentCurrency}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   arePointsRecommended={state.arePointsRecommended}
-                  isBusy={state.isBusy}
+                  isBusy={state.isBusy || submission.isSubmitting}
                   hasPendingProviderPayment={state.hasPendingProviderPayment}
                   setSelectedMode={state.setSelectedMode}
                   setPaymentError={state.setPaymentError}
@@ -296,23 +220,22 @@ function ArrivalPaymentSession() {
                 />
 
                 <ArrivalPaymentActions
-                  isBusy={state.isBusy}
+                  isBusy={state.isBusy || submission.isSubmitting}
+                  completionSummary={receipt}
+                  onDone={navigation.handleDismissSummary}
+                  onInvoice={navigation.handleOpenInvoice}
                   hasPendingProviderPayment={state.hasPendingProviderPayment}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   selectedMode={state.selectedMode}
                   actionLabel={actionLabel}
                   isPayButtonDisabled={isPayButtonDisabled}
                   verification={monitoring.verification}
-                  paymentError={state.canChangeFailedPaymentMode ? undefined : state.paymentError}
+                  paymentError={state.paymentError}
                   onPay={submission.handlePayment}
                   onRetry={monitoring.retryVerification}
-                  onClose={state.deferPayment}
+                  onClose={state.isBeforeArrival && !state.isBusy && !submission.isSubmitting && !state.hasPendingProviderPayment ? state.deferEarlyPayment : state.deferPayment}
+                  closeLabel={state.isBeforeArrival ? 'Payer à l’arrivée' : 'Fermer et reprendre plus tard'}
                 />
-                {state.isBeforeArrival && !state.paymentAlreadySucceeded && !state.isBusy && !state.hasPendingProviderPayment ? (
-                  <TouchableOpacity onPress={state.deferEarlyPayment} style={[styles.payButton, styles.invoiceButton]}>
-                    <Text style={[styles.payButtonText, styles.invoiceButtonText]}>Payer à l’arrivée</Text>
-                  </TouchableOpacity>
-                ) : null}
               </>
             ) : null}
           </View>

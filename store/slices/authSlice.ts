@@ -116,6 +116,10 @@ export const initializeAuth = createAsyncThunk(
   async () => {
     const sessionVersion = getTokenSessionVersion();
     try {
+      // A locked/unavailable keychain is not proof of logout. Keep the startup
+      // gate mounted on read errors, and never cache that failure as empty tokens.
+      await getTokens({ throwOnError: true });
+      if (sessionVersion !== getTokenSessionVersion()) return null;
       // Valider et rafraîchir les tokens si nécessaire
       const isAuthenticated = await validateAndRefreshTokens();
       
@@ -125,7 +129,8 @@ export const initializeAuth = createAsyncThunk(
       }
       
       // Récupérer les tokens (potentiellement rafraîchis)
-      const { accessToken, refreshToken } = await getTokens();
+      const { accessToken, refreshToken } = await getTokens({ throwOnError: true });
+      if (sessionVersion !== getTokenSessionVersion()) return null;
       
       if (!accessToken || !refreshToken) {
         return null;
@@ -137,7 +142,6 @@ export const initializeAuth = createAsyncThunk(
       
       // Décoder le payload du token
       const payload = decodeJWT(accessToken);
-      console.log("payload at initializeAuth", payload);
       
       console.log('[initializeAuth] Authentification initialisée avec succès');
       
@@ -152,9 +156,8 @@ export const initializeAuth = createAsyncThunk(
       // Cela pourrait être une erreur temporaire (réseau, etc.)
       console.error('[initializeAuth] Erreur lors de l\'initialisation de l\'auth:', error);
       console.warn('[initializeAuth] Erreur non critique - les tokens sont conservés dans SecureStore');
-      // Retourner null mais NE PAS supprimer les tokens
-      // L'utilisateur pourra toujours se reconnecter avec ses tokens existants
-      return null;
+      // Do not mount login before we know whether credentials exist.
+      throw new Error('Impossible de restaurer la session. Veuillez réessayer.');
     }
   }
 );

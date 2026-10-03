@@ -10,8 +10,9 @@ import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
 import { store } from '@/store';
 import { initializeAuth } from '@/store/slices/authSlice';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useAuthBootstrap } from '@/hooks/auth/useAuthBootstrap';
+import React from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
@@ -21,32 +22,26 @@ interface ReduxProviderProps {
   children: React.ReactNode;
 }
 
+const restoreSession = () => store.dispatch(initializeAuth()).unwrap();
+
 export function ReduxProvider({ children }: ReduxProviderProps) {
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // Initialiser l'authentification depuis SecureStore au demarrage
-    const initializeStore = async () => {
-      try {
-        // Initialiser l'auth (charge les tokens depuis SecureStore)
-        await store.dispatch(initializeAuth());
-      } catch (error) {
-        console.error("Erreur lors de l'initialisation du store:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeStore();
-  }, []);
+  const { status, retry } = useAuthBootstrap(restoreSession);
 
   return (
     <Provider store={store}>
       <View style={styles.appContainer}>
-        {isLoading ? (
+        {status !== 'ready' ? (
           // Ecran de chargement pendant la restauration du state
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.white} />
+            <Text style={styles.brand}>ZWANGA</Text>
+            {status === 'error' ? <>
+              <Text style={styles.error} accessibilityRole="alert">
+                Votre session n’a pas pu être restaurée. Déverrouillez votre téléphone, puis réessayez.
+              </Text>
+              <TouchableOpacity style={styles.retry} accessibilityRole="button" onPress={retry}>
+                <Text style={styles.retryText}>Réessayer</Text>
+              </TouchableOpacity>
+            </> : <ActivityIndicator size="large" color={Colors.white} accessibilityLabel="Restauration de votre session" />}
           </View>
         ) : (
           <View style={styles.appContent}>
@@ -81,7 +76,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
+    padding: 24,
+    gap: 24,
   },
+  brand: { fontSize: 30, fontWeight: '800', color: Colors.white },
+  error: { maxWidth: 360, fontSize: 16, lineHeight: 24, textAlign: 'center', color: Colors.white },
+  retry: { minHeight: 48, paddingHorizontal: 28, justifyContent: 'center', borderRadius: 14, backgroundColor: Colors.white },
+  retryText: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
   appContent: {
     flex: 1,
   },

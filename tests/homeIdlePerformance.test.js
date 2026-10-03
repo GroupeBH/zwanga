@@ -58,8 +58,8 @@ test('GPS jitter with unchanged rounded coordinates neither recreates the feed n
   const { useHomeTripFeed } = loader({ react: hooks.react,
     'react-native': { StyleSheet: { create: value => value } },
     '@/store/api/tripApi': {
-      useGetTripsQuery: () => ({ data: trips }),
-      useGetTripsByCoordinatesQuery: (payload, options) => { payloads.push({ payload, options }); return { data: trips }; },
+      useGetTripsQuery: () => ({ currentData: trips }),
+      useGetTripsByCoordinatesQuery: (payload, options) => { payloads.push({ payload, options }); return { currentData: trips }; },
     },
   })('hooks/home/useHomeTripFeed.ts');
   const props = { isFocused: true, storedTrips: [], locationRadiusKm: 5,

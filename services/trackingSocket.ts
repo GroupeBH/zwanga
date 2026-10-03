@@ -1,4 +1,9 @@
 import { DriverLocationPayload, PassengerLocationPayload, TrackingLocationMetadata, BookingAutoProgressPayload, LocationListener, PassengerLocationListener, BookingAutoProgressListener, ErrorListener } from './trackingSocket.types';
+import { API_BASE_URL } from '@/config/env';
+import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { io, Socket } from 'socket.io-client';
+import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
+import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
 export type { DriverLocationPayload } from './trackingSocket.types';
 export type { PassengerLocationPayload } from './trackingSocket.types';
 export type { TrackingLocationMetadata } from './trackingSocket.types';
@@ -6,12 +11,6 @@ export type { BoardingDetectionState } from './trackingSocket.types';
 export type { BoardingRejectionReason } from './trackingSocket.types';
 export type { BookingAutoProgressEvent } from './trackingSocket.types';
 export type { BookingAutoProgressPayload } from './trackingSocket.types';
-import { API_BASE_URL } from '@/config/env';
-import { getValidAccessToken } from '@/services/tokenRefresh';
-import { io, Socket } from 'socket.io-client';
-
-import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
-import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
 
 const SOCKET_CONNECT_TIMEOUT_MS = 8000;
 
@@ -148,6 +147,7 @@ class TrackingSocketClient {
         autoConnect: false,
       });
       this.socket = socket;
+      socket.on('session_expired', () => { void handle401Error(); });
 
       socket.on('connect', () => {
         this.notifyConnectionState(true);

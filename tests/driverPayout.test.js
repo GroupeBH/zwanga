@@ -12,6 +12,7 @@ function fixture() {
   const dialogs = [];
   const calls = [];
   const checks = [];
+  const reviews = [];
   let owner = 'driver-A';
   let uuid = 0;
   let rejectStorage = false;
@@ -37,12 +38,18 @@ function fixture() {
       useLazyCheckDriverPayoutStatusQuery: () => [(order, preferCache) => {
         checks.push({ order, preferCache }); return { unwrap: async () => statusResponse };
       }],
+      useRefreshDriverPayoutMutation: () => [id => {
+        checks.push({ id }); return { unwrap: async () => statusResponse };
+      }],
+      useRequestDriverPayoutReviewMutation: () => [body => {
+        reviews.push(body); return { unwrap: async () => ({ id: body.id, status: 'pending', reviewStatus: 'requested', amount: 9500 }) };
+      }],
     },
   });
   const { useDriverPayout } = load('hooks/driver-earnings/useDriverPayout.ts');
   const props = { summary, payouts: [], refresh: async () => {} };
   return {
-    storage, events, dialogs, calls, checks, props, harness, load,
+    storage, events, dialogs, calls, checks, reviews, props, harness, load,
     render: () => harness.render(() => useDriverPayout(props)),
     setOwner: value => { owner = value; },
     setResponder: value => { respond = value; },
@@ -53,6 +60,32 @@ function fixture() {
 
 async function ready(f) { f.render(); await settle(); return f.render(); }
 function confirm(f, view) { view.handlePayout(); return f.dialogs.at(-1).actions.at(-1).onPress(); }
+
+test('a blocked payout without provider order can be refreshed by internal ID without a transfer', async () => {
+  const f = fixture();
+  const view = await ready(f);
+  await view.checkPayout({ id: 'payout-A', status: 'pending', canCheckStatus: true });
+  assert.deepEqual(f.checks, [{ id: 'payout-A' }]);
+  assert.equal(f.calls.length, 0);
+});
+
+test('double-tap review requests only one investigation and never frees funds locally', async () => {
+  const f = fixture();
+  f.props.summary = { ...summary, availableBalance: 0 };
+  const view = await ready(f);
+  const payout = { id: 'payout-A', status: 'pending', canRequestReview: true };
+  await Promise.all([view.requestPayoutReview(payout), view.requestPayoutReview(payout)]);
+  assert.equal(f.reviews.length, 1);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.render().canSubmit, false);
+  assert.match(f.dialogs.at(-1).message, /demande de vérification est enregistrée/);
+});
+
+test('late success incidents and old pending payouts have explicit messages', () => {
+  const { getPayoutMessage } = fixture().load('features/driver-earnings/payoutModel.ts');
+  assert.match(getPayoutMessage({ status: 'succeeded', recoveryBlocked: true }), /vérifier votre solde/);
+  assert.match(getPayoutMessage({ status: 'initiated', isStale: true, orderNumber: 'ORDER' }), /plus de temps/);
+});
 
 test('passenger cash alone never enables a withdrawal or opens a recipient form', async () => {
   const f = fixture();

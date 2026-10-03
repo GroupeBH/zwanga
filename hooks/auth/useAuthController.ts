@@ -8,7 +8,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { isAppleSignInAvailable } from '@/services/appleAuth';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectIsAuthenticated } from '@/store/selectors';
+import { selectHasAuthenticatedSession } from '@/store/selectors';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect } from 'react';
@@ -20,7 +20,7 @@ export function useAuthController() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { showDialog } = useDialog();
-  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const isAuthenticated = useAppSelector(selectHasAuthenticatedSession);
   const {
     mode: initialModeParam,
     referralCode: initialReferralCode,
@@ -285,6 +285,7 @@ export function useAuthController() {
   const isAppleAuthLoading = form.isAppleLoading || form.isAppleMobileLoading;
 
   return {
+    isAuthenticated,
     form,
     navigation,
     canGoBack,

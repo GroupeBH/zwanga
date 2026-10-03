@@ -197,7 +197,7 @@ export function TripDetailActionsFooter({
                             </TouchableOpacity>
                           )}
 
-                        {activeBooking.status === 'accepted' && data.driverPhone &&
+                        {activeBooking.status === 'accepted' &&
                           !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
                           !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
                             <TouchableOpacity
@@ -205,8 +205,8 @@ export function TripDetailActionsFooter({
                               style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionCall]}
                               onPress={() => bookingState.setContactModalVisible(true)}
                             >
-                              <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
-                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>WhatsApp</Text>
+                              <Ionicons name="chatbubbles-outline" size={18} color={Colors.primary} />
+                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Contacter</Text>
                             </TouchableOpacity>
                           )}
 

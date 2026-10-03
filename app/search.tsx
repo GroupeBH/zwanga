@@ -33,6 +33,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
     sortMode, setSortMode, resultsCountLabel, isRefreshingResults,
     isLoadingResults, currentError, handleRetry, handleApplySearch,
     filteredTrips, filteredTripRequests, handleCreateTripRequest, isDriverAccount,
+    hasNextPage, hasPreviousPage, loadNextTrips, loadPreviousTrips,
   } = useSearchController();
   const renderSearchResult = useCallback(
     ({ item }: { item: SearchResultListItem }) => {
@@ -89,6 +90,18 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
             : getSafeTripRequestId(item.request) ?? `request-${item.request.createdAt}-${item.request.passengerId}`
         }
         ItemSeparatorComponent={SearchResultSeparator}
+        ListFooterComponent={searchMode === 'trips' && (hasNextPage || hasPreviousPage) ? (
+          <View style={{ gap: Spacing.md, paddingVertical: Spacing.lg }}>
+            {hasPreviousPage && <TouchableOpacity accessibilityRole="button" style={styles.retryButton}
+              disabled={isRefreshingResults} onPress={loadPreviousTrips}>
+              <Text style={styles.retryText}>Trajets précédents</Text>
+            </TouchableOpacity>}
+            {hasNextPage && <TouchableOpacity accessibilityRole="button" style={styles.retryButton}
+              disabled={isRefreshingResults} onPress={loadNextTrips}>
+              <Text style={styles.retryText}>{isRefreshingResults ? 'Chargement…' : 'Voir plus de trajets'}</Text>
+            </TouchableOpacity>}
+          </View>
+        ) : null}
         initialNumToRender={5}
         maxToRenderPerBatch={5}
         updateCellsBatchingPeriod={50}

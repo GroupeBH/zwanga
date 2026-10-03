@@ -190,6 +190,7 @@ test('screen uses finalization state for profile/KYC and locks header even after
   for (const step of ['profile', 'kyc']) {
     const calls = [], registration = { isRegistrationPending: true, hasCreatedAccount: true, isRegistrationLocked: () => true };
     const Screen = loader({ ...uiMocks, 'react-native-safe-area-context': { SafeAreaView: 'View' },
+      'expo-router': { Redirect: 'Redirect' },
       '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
       '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
       '../hooks/auth/useAuthController': { useAuthController: () => ({

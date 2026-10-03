@@ -1,4 +1,5 @@
 import { useAuthForegroundSession } from '../hooks/auth/useAuthForegroundSession';
+import { STARTUP_ROUTES } from '@/features/navigation/homeBackPolicy';
 import { Colors } from '@/constants/styles';
 import { clearStoredFcmToken, obtainFcmToken, subscribeToFcmRefresh } from '@/services/pushNotifications';
 import { proactiveTokenRefresh, validateAndRefreshTokens } from '@/services/tokenRefresh';
@@ -34,10 +35,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const inAuthGroup = segments[0] === 'auth';
   const currentSegment = segments[0];
   const isPublicRoute =
-    currentSegment === 'splash' ||
-    currentSegment === 'onboarding' ||
-    currentSegment === 'auth-entry' ||
-    currentSegment === 'background-location-disclosure';
+    !currentSegment ||
+    STARTUP_ROUTES.has(currentSegment) ||
+    currentSegment === 'auth-entry';
   const hasCheckedSecureStore = useRef(false);
   const isLoggingOut = useRef(false);
   const lastAuthTime = useRef<number | null>(null);
@@ -242,13 +242,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (inAuthGroup && segments[0] === 'auth' && segments.length === 1) {
-        if (__DEV__) {
-          console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
-        }
-        replaceRootRoute('(tabs)');
-        return;
-      }
+      // AuthScreen owns its redirect: an in-progress KYC step must remain usable.
     }
 
     if (!hasSession && !inAuthGroup && !isPublicRoute) {
