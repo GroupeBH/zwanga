@@ -1,29 +1,27 @@
-import { findDirectConversationWithUser } from '@/utils/directConversation';
 import type { NavigationContact } from '@/features/navigation/navigationContacts';
 import { getTokenSessionVersion } from '@/services/tokenSession';
-import { useCreateConversationMutation, useLazyListConversationsQuery } from '@/store/api/messageApi';
+import { useCreateConversationMutation, useResolveDirectConversationMutation } from '@/store/api/messageApi';
 import { useAppSelector } from '@/store/hooks';
-import { selectConversations } from '@/store/selectors';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 /** Only called by an explicit tap; no conversation queries on opening the sheet. */
 export function useTripContactMessaging(contacts: NavigationContact[], onClose: () => void) {
   const userId = useAppSelector(state => state.auth.user?.id);
-  const conversations = useAppSelector(selectConversations);
   const active = useIsFocused();
   const router = useRouter();
   const [createConversation] = useCreateConversationMutation();
-  const [loadConversations] = useLazyListConversationsQuery();
+  const [resolveDirect] = useResolveDirectConversationMutation();
   const contactKey = contacts.map(person => `${person.id}:${person.bookingId ?? ''}`).join('|');
   const scope = useMemo(() => ({ userId, active, contactKey }), [userId, active, contactKey]);
   const latest = useRef(scope);
   latest.current = scope;
   const mounted = useRef(false);
+  const [openingScope, setOpeningScope] = useState<typeof scope | null>(null);
   const sequence = useRef(0);
   const pending = useRef(false);
-  const cancel = useCallback(() => { sequence.current++; pending.current = false; }, []);
+  const cancel = useCallback(() => { sequence.current++; pending.current = false; if (mounted.current) setOpeningScope(null); }, []);
   useLayoutEffect(() => {
     mounted.current = true;
     cancel();
@@ -34,6 +32,7 @@ export function useTripContactMessaging(contacts: NavigationContact[], onClose: 
     if (!mounted.current || latest.current !== scope || !active || !userId || userId === person.id || pending.current ||
       !contacts.some(item => item.id === person.id && item.bookingId === person.bookingId)) return;
     pending.current = true;
+    setOpeningScope(scope);
     const request = ++sequence.current;
     const version = getTokenSessionVersion();
     const current = () => mounted.current && latest.current === scope && request === sequence.current &&
@@ -41,34 +40,23 @@ export function useTripContactMessaging(contacts: NavigationContact[], onClose: 
     let navigated = false;
     try {
       // The booking endpoint checks membership and reuses its existing conversation.
-      let conversation = person.bookingId ? undefined :
-        findDirectConversationWithUser(conversations, userId, person.id);
-      if (!person.bookingId && !conversation) {
-        let page = 1;
-        while (current()) {
-          const response = await loadConversations({ page, limit: 50 }).unwrap();
-          if (!current()) return;
-          conversation = findDirectConversationWithUser(response.data, userId, person.id);
-          if (!Number.isSafeInteger(response.meta.limit) || response.meta.limit < 1 ||
-            !Number.isSafeInteger(response.meta.total) || response.meta.total < 0) throw new Error('Invalid pagination');
-          if (conversation || !response.data.length || page * response.meta.limit >= response.meta.total) break;
-          page++;
-        }
-      }
-      if (!current()) return;
-      conversation ??= await createConversation({
-        participantIds: [person.id], ...(person.bookingId ? { bookingId: person.bookingId } : {}),
-      }).unwrap();
+      const conversation = person.bookingId
+        ? await createConversation({ participantIds: [person.id], bookingId: person.bookingId }).unwrap()
+        : await resolveDirect(person.id).unwrap();
       if (!current()) return;
       if (!conversation.id) throw new Error('Missing conversation');
       onClose();
       router.push({ pathname: '/chat/[id]', params: { id: conversation.id, title: person.name } });
       navigated = true;
+      return true;
     } catch {
       if (current()) throw new Error('Impossible d’ouvrir la messagerie. Vérifiez votre connexion et réessayez.');
     } finally {
-      if (!navigated && request === sequence.current) pending.current = false;
+      if (!navigated && request === sequence.current) {
+        pending.current = false;
+        if (mounted.current) setOpeningScope(null);
+      }
     }
   };
-  return { openMessage, cancel, canMessage: Boolean(active && userId), userId };
+  return { openMessage, cancel, isOpeningConversation: openingScope === scope, canMessage: Boolean(active && userId), userId };
 }

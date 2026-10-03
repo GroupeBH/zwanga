@@ -8,13 +8,14 @@ import {
 import { Colors } from '@/constants/styles';
 import { passengerPickupInstruction } from '@/features/navigation/pickupAwareness';
 import { calculateDistance } from '@/utils/routeHelpers';
-import { trimPolylineFromCurrentPosition } from '@/utils/navigation/routeProgress';
+import type { createPassengerRouteAnalysis } from '@/utils/navigation/passengerRouteAnalysis';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo } from 'react';
 import type { Trip, Booking } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
 interface Params {
+  routeAnalysis: ReturnType<typeof createPassengerRouteAnalysis>;
   booking: Booking | undefined;
   trip: Trip | undefined;
   pickupNotice: PassengerPickupNotice | null;
@@ -31,6 +32,7 @@ interface Params {
 }
 
 export function usePassengerNavigationPresentation({
+  routeAnalysis,
   booking,
   trip,
   pickupNotice,
@@ -97,12 +99,12 @@ export function usePassengerNavigationPresentation({
   const currentVehicleRoutePosition = displayedDriverLocation ?? routeOriginCoordinate;
   const remainingPassengerRoute = useMemo(
     () =>
-      trimPolylineFromCurrentPosition(
-        currentVehicleRoutePosition,
+      routeAnalysis.remaining(
         routeCoordinates,
+        currentVehicleRoutePosition,
         activePassengerDestination,
       ),
-    [activePassengerDestination, currentVehicleRoutePosition, routeCoordinates],
+    [routeAnalysis, activePassengerDestination, currentVehicleRoutePosition, routeCoordinates],
   );
   const displayedRouteCoordinates =
     remainingPassengerRoute.remainingCoordinates.length > 1

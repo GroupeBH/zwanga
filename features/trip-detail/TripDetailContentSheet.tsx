@@ -20,7 +20,7 @@ interface TripDetailContentSheetProps {
   access: ReturnType<typeof useTripDetailAccess>;
   bookingState: ReturnType<typeof useTripDetailBookingState>;
   activity: { activeBooking: Booking | null; bookingForTrip: Booking | null; canTrackTrip: boolean; refreshBookingLists: () => void; onRefresh: () => Promise<void>; driverReviewAverage: number; driverReviewCount: number; dismissTripGuide: () => void; };
-  contact: { handleShareTrip: () => Promise<void>; handleContactDriver: () => Promise<void>; };
+  contact: { handleShareTrip: () => Promise<void>; handleContactDriver: () => Promise<void>; isOpeningConversation: boolean; };
   safety: { openTripSecurityModal: () => void; openSosModal: () => void; closeSosModal: () => void; closeTripSecurityModal: () => void; };
 }
 
@@ -57,7 +57,7 @@ export function TripDetailContentSheet({
         tripVehicleLabel={presentation.tripVehicleLabel}
         tripVehicleMetaLabel={presentation.tripVehicleMetaLabel}
         handleContactDriver={contact.handleContactDriver}
-        isOpeningConversation={bookingState.isOpeningConversation}
+        isOpeningConversation={contact.isOpeningConversation}
         driverPhone={data.driverPhone}
         setContactModalVisible={bookingState.setContactModalVisible}
       />

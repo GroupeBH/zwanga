@@ -10,6 +10,40 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 3 octobre 2026 — Correction des cinq constats du scan de performance
+
+Les [corrections détaillées](CORRECTIONS_PERFORMANCE_2026_10_03.md) recensent les
+ajouts, suppressions de travail redondant, fichiers, comportements conservés et
+limites : résolution ciblée des conversations, réservations par trajet et agrégat
+public passager, parrainage paginé/virtualisé et suspendu hors écran,
+réconciliation des commissions mutualisée par lots, analyse géométrique passager
+réutilisée. Les écritures financières, droits d'accès, QR, GPS et validations
+d'embarquement/dépose sont conservés.
+
+**1 341 tests JavaScript mobiles et 52 tests backend ciblés réussis**, TypeScript
+mobile/backend et contrôles réseau/taille/diff validés. ESLint : aucune erreur,
+neuf avertissements préexistants. Les fixtures obsolètes repérées dans la suite
+complète sont réconciliées avec les contrats vérifiés, sans suppression de test.
+Micro-benchmark Node : 1 630 ms contre 380 ms sur données fictives, pas une mesure
+sur téléphone ni une promesse de réduction de chauffe/crashs. Aucun déploiement,
+migration ou dépendance ajoutée. **Backend à livrer avant le nouveau client** ;
+concurrence PostgreSQL réelle et essais physiques restent à réaliser.
+
+## 3 octobre 2026 — Nouveau scan de performance, sans correction fonctionnelle
+
+Le [rapport d'audit](AUDIT_PERFORMANCE_2026_10_03.md) relève quatre priorités
+réseau/serveur : recherche séquentielle d'une conversation, relecture complète
+des réservations pour des écrans ciblés, volume et activité de l'écran parrainage,
+réconciliation répétée des commissions. Une piste secondaire concerne les
+calculs géométriques du suivi passager sur les longues routes.
+
+**132 tests JavaScript réussis**, TypeScript et contrôles réseau/taille de sources
+validés. Une simulation de 1 000 conversations confirme 20 lectures successives
+avant création ; les mesures de géométrie sont des micro-benchmarks Node, pas des
+mesures sur téléphone. Seuls ce journal et le rapport sont modifiés : aucune
+fonctionnalité, migration, dépendance ou configuration changée. Les solutions
+restent proposées ; aucun essai physique, accès production ou gain natif affirmé.
+
 ## 3 octobre 2026 — Vérification des retraits conducteur bloqués
 
 Un retrait `pending` ou `initiated` pouvait rester réservé sans action de résolution.

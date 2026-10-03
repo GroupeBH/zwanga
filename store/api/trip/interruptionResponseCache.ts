@@ -39,4 +39,5 @@ export const applyDriverInterruptionResponse = (response: Trip, scope: Scope) =>
     // The global wait/stop sheet subscribes to this activity cache, not the detail.
     dispatch(bookingApi.util.updateQueryData('getMyActivityBookings', undefined, bookings => bookings.forEach(updateBooking)));
     dispatch(bookingApi.util.updateQueryData('getMyBookings', undefined, bookings => bookings.forEach(updateBooking)));
+    dispatch(bookingApi.util.updateQueryData('getMyBookingsForTrip', scope.tripId, bookings => bookings.forEach(updateBooking)));
   };

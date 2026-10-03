@@ -9,6 +9,8 @@ import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
 const referralTag = { type: 'Referral' as const, id: 'ME' };
+type Page<T> = { data: T[]; nextCursor: string | null };
+type PageArgs = { before?: string; limit?: number };
 
 interface AttachReferralAttributionPayload {
   referralToken: string;
@@ -27,6 +29,18 @@ interface AttachReferralAttributionResult {
 export const referralApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
+    getMyReferralPage: builder.query<Page<ReferredUserSummary>, PageArgs>({
+      query: params => ({ url: '/referrals/me/referrals/page', params }),
+      keepUnusedDataFor: 15, providesTags: [referralTag],
+    }),
+    getMyReferralRewardPage: builder.query<Page<ReferralReward>, PageArgs>({
+      query: params => ({ url: '/referrals/me/rewards/page', params }),
+      keepUnusedDataFor: 15, providesTags: [referralTag],
+    }),
+    getMyReferralWithdrawalPage: builder.query<Page<ReferralWithdrawal>, PageArgs>({
+      query: params => ({ url: '/referrals/me/withdrawals/page', params }),
+      keepUnusedDataFor: 15, providesTags: [referralTag],
+    }),
     validateReferralCode: builder.mutation<
       { valid: boolean; code: string; referrer: { firstName: string } },
       string
@@ -98,6 +112,9 @@ export const referralApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetMyReferralPageQuery,
+  useGetMyReferralRewardPageQuery,
+  useGetMyReferralWithdrawalPageQuery,
   useValidateReferralCodeMutation,
   useResolveReferralAttributionMutation,
   useAttachMyReferralAttributionMutation,

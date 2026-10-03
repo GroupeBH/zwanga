@@ -12,7 +12,7 @@ const paused = { ...trip, status: 'upcoming', interruptionRequest: { ...request,
   confirmations: [{ ...request.confirmations[0], status: 'confirmed' }] } };
 function harness() {
   const cache = { getTripById: trip, getBookingById: booking, getMyActivityBookings: [booking,
-    { ...booking, id: 'another-booking', passengerId: 'other' }], getMyBookings: [booking] };
+    { ...booking, id: 'another-booking', passengerId: 'other' }], getMyBookings: [booking], getMyBookingsForTrip: [booking] };
   let user = { id: 'holder' }; const actions = [];
   const api = { util: { updateQueryData: (endpoint, arg, recipe) => ({ endpoint, arg, recipe }) },
     endpoints: { getTripById: { select: () => () => ({ data: cache.getTripById }) } } };
@@ -27,6 +27,8 @@ test('confirmed pause updates detail and activity caches without completing or c
   assert.equal(h.cache.getBookingById.tripInterruptionRequest.status, 'confirmed');
   assert.equal(h.cache.getMyActivityBookings[0].trip.status, 'upcoming');
   assert.equal(h.cache.getMyBookings[0].tripInterruptionRequest.status, 'confirmed');
+  assert.equal(h.cache.getMyBookingsForTrip[0].tripInterruptionRequest.status, 'confirmed');
+  assert.equal(h.actions.find(action => action.endpoint === 'getMyBookingsForTrip').arg, 'trip');
   const { getPassengerInterruptionChoice } = loader()('features/trip/interruptionChoice.ts');
   assert.deepEqual(getPassengerInterruptionChoice(h.cache.getMyActivityBookings[0], 'holder'), scopeWithoutHolder());
   for (const field of ['status', 'numberOfSeats', 'pickedUp', 'droppedOff', 'paymentMode', 'paymentAmount']) {

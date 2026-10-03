@@ -14,6 +14,7 @@ function setup(t) {
     endpoints: b => ({
       getMyActivityBookings: b.query({ query: () => 'activity' }),
       getMyBookings: b.query({ query: () => 'mine' }),
+      getMyBookingsForTrip: b.query({ query: id => 'mine/trip/' + id }),
       getBookingById: b.query({ query: id => id }),
       confirmDropoffByPassenger: b.mutation({ query: id => id }),
       confirmPassengerTripInterruption: b.mutation({ query: id => id }),
@@ -82,6 +83,19 @@ test('cached completed detail reconciles an activity list first loaded later', a
   await e.put('getBookingById', { ...booking, status: 'completed' }, 'mine');
   await e.put('getMyActivityBookings', [booking]);
   assert.equal(e.read('getMyActivityBookings')[0].status, 'completed');
+});
+
+test('targeted trip bookings propagate completion and cannot restore a completed passenger', async t => {
+  const e = setup(t);
+  await e.put('getMyActivityBookings', [booking]);
+  await e.put('getMyBookingsForTrip', [{ ...booking, droppedOff: true }], 'trip');
+  assert.equal(e.read('getMyActivityBookings')[0].droppedOff, true);
+  await e.put('getMyBookingsForTrip', [{ ...booking, paymentStatus: 'succeeded' }], 'trip');
+  const row = e.read('getMyBookingsForTrip', 'trip')[0];
+  assert.equal(row.droppedOff, true);
+  assert.equal(row.paymentStatus, 'succeeded');
+  assert.equal(row.trip.status, 'ongoing');
+  assert.equal(e.requests(), 0);
 });
 
 test('foreign passenger, wrong trip and changed account cannot complete the current passenger ride', async t => {

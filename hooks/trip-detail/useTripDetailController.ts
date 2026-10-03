@@ -164,11 +164,7 @@ export function useTripDetailController() {
   const contact = useTripDetailContactActions({
     trip: data.trip,
     user: data.user,
-    conversations: data.conversations,
-    loadConversations: bookingState.loadConversations,
-    createConversation: bookingState.createConversation,
     activeBooking: activity.activeBooking,
-    router: data.router,
     showDialog: data.showDialog,
     isCreatingTripShareLink: bookingState.isCreatingTripShareLink,
     createTripShareLink: bookingState.createTripShareLink,

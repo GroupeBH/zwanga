@@ -25,7 +25,7 @@ test('trip detail reads active passenger bookings, history only when needed, and
     '@/hooks/useUserLocation': { useUserLocation: () => ({ lastKnownLocation: null, requestPermission() {}, stopWatching() {} }) },
     '@/store/api/bookingApi': {
       useGetMyActivityBookingsQuery: query('activity'),
-      useGetMyBookingsQuery: query('history'),
+      useGetMyBookingsForTripQuery: (tripId, options) => { assert.equal(tripId, 'trip'); return query('history')(tripId, options); },
       useGetTripBookingsQuery: query('driver'),
     },
     '@/store/api/tripApi': { useGetTripByIdQuery: (_, options) => {

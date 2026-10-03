@@ -198,6 +198,7 @@ test('auth screen keeps PIN loading and header locked through session persistenc
   const calls = [];
   const componentNames = ['AuthHeader', 'GoogleOtpStep', 'GooglePhoneStep', 'KycStep', 'PhoneStep', 'PinStep', 'ProfileStep', 'ResetPinStep', 'SmsStep', 'VehicleModal'];
   const Screen = loader({ ...uiMocks, 'react-native-safe-area-context': { SafeAreaView: 'View' },
+    'expo-router': { Redirect: 'Redirect' },
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
     '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
     '../hooks/auth/useAuthController': { useAuthController: () => ({

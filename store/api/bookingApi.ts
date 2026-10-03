@@ -52,6 +52,9 @@ export const bookingApi = baseApi.injectEndpoints({
               patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
             }),
           );
+          dispatch(bookingApi.util.updateQueryData('getMyBookingsForTrip', acceptedBooking.tripId, draft => {
+            patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
+          }));
           dispatch(
             bookingApi.util.updateQueryData('getBookingById', id, (draft) => {
               Object.assign(draft, mergeAcceptedBooking(draft, acceptedBooking, acceptedAt));
@@ -82,6 +85,7 @@ export const {
   useGetMyActivityBookingsQuery,
   useCreateBookingMutation,
   useGetMyBookingsQuery,
+  useGetMyBookingsForTripQuery,
   useGetTripBookingsQuery,
   useInitiateBookingPaymentMutation,
   useLazyCheckBookingPaymentStatusQuery,

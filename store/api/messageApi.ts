@@ -116,6 +116,10 @@ export const messageApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ['Conversation'],
     }),
+    resolveDirectConversation: builder.mutation<Conversation, string>({
+      query: userId => ({ url: '/conversations/direct', method: 'POST', body: { userId } }),
+      invalidatesTags: result => result ? ['Conversation'] : [],
+    }),
 
     markConversationAsRead: builder.mutation<{ message: string }, string>({
       query: (conversationId: string) => ({
@@ -214,6 +218,7 @@ export const {
   useGetConversationMessagesQuery,
   useSendConversationMessageMutation,
   useCreateConversationMutation,
+  useResolveDirectConversationMutation,
   useMarkConversationAsReadMutation,
   useAddParticipantsMutation,
   useRemoveParticipantMutation,
