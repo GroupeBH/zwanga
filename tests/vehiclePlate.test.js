@@ -7,13 +7,12 @@ const { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE
 const noop = () => {};
 const vehicle = { id: 'vehicle', type: 'car', brand: 'Toyota', model: 'Corolla', color: 'Bleu', licensePlate: '1234AB56' };
 
-test('plate format requires exactly four ASCII digits, two letters and two final digits', () => {
-  for (const plate of ['1234AB56', '0000AA00', '9999ZZ99', '1234ab56', ' 1234-AB-56 ', '1234 AB 56']) {
+test('plates accept motorcycle/car formats and variable lengths; only an empty normalized value is rejected', () => {
+  for (const plate of ['1234AB56', '0000AA00', '9999ZZ99', '1234ab56', ' 1234-AB-56 ', '1234 AB 56',
+    'MOTO-001', 'TRIKE-001', 'ABC123', '123AB456', '1234AB567', 'A1234AB56', '1234.AB56', '1', 'AB1234567890']) {
     assert.equal(isValidVehiclePlate(plate), true, plate);
-    assert.match(normalizeVehiclePlate(plate), /^[0-9]{4}[A-Z]{2}[0-9]{2}$/);
   }
-  for (const plate of ['', null, undefined, 'ABC123', '123AB456', '12345A67', '1234A567', '1234ABC5',
-    '1234AB5', '1234AB567', 'A1234AB56', '1234AB56X', '1234ÀB56', '１２３４AB56', '1234ß56', '1234💡56', '1234.AB56']) {
+  for (const plate of ['', null, undefined, '   ', '---', ' - - ']) {
     assert.equal(isValidVehiclePlate(plate), false, String(plate));
   }
 });
@@ -40,44 +39,46 @@ function profileFixture() {
 }
 
 for (const editing of [false, true]) {
-  test(`profile ${editing ? 'update' : 'create'} blocks invalid plates before RTK Query then sends the canonical format`, async () => {
+  test(`profile ${editing ? 'update' : 'create'} keeps a required plate but accepts motorcycle formats`, async () => {
     const f = profileFixture(); let form = f.render();
     if (editing) form.openEditVehicleModal({ ...vehicle, licensePlate: 'ABC123' });
     else {
       form.openCreateVehicleModal(); form.setVehicleType('car');
       form.handleVehicleBrandChange('Toyota'); form.handleVehicleModelChange('Corolla'); form.handleVehicleColorChange('Bleu');
     }
-    for (const plate of ['ABC123', '1234A56', '1234AB567']) {
+    for (const plate of ['', '   ', '---']) {
       f.render().handleVehiclePlateChange(plate); await f.render().handleSaveVehicle();
       assert.equal(f.calls.length, 0);
-      assert.equal(f.render().vehicleFormError, VEHICLE_PLATE_FORMAT_MESSAGE);
+      assert.ok(f.render().vehicleFormError);
       assert.equal(f.render().vehicleModalVisible, true);
     }
-    f.render().handleVehiclePlateChange('0001 az 02');
-    assert.equal(f.render().vehiclePlate, '0001AZ02');
+    f.render().setVehicleType('motorcycle_two_wheels');
+    f.render().handleVehiclePlateChange('moto-001');
+    assert.equal(f.render().vehiclePlate, 'MOTO001');
     await f.render().handleSaveVehicle();
     assert.equal(f.calls.length, 1);
     const call = f.calls[0]; assert.equal(call.kind, editing ? 'update' : 'create');
-    assert.equal((editing ? call.payload.data : call.payload).licensePlate, '0001AZ02');
+    assert.equal((editing ? call.payload.data : call.payload).licensePlate, 'MOTO001');
+    assert.equal((editing ? call.payload.data : call.payload).type, 'motorcycle_two_wheels');
     if (editing) assert.equal(call.payload.id, vehicle.id);
     f.hooks.unmount();
   });
 }
 
-test('vehicle creation during publication enforces the same rule without changing trip selection', async () => {
+test('vehicle creation during publication accepts a three-wheel motorcycle plate without changing trip selection', async () => {
   const calls = [], errors = [], selections = [];
   const { usePublishVehicleCreation } = loader({ 'react-native': { Keyboard: { dismiss: noop } } })('hooks/publish/usePublishVehicleCreation.ts');
-  const props = { vehicleType: 'car', vehicleBrand: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Bleu',
-    vehicleLicensePlate: 'ABC123', setVehicleFormError: error => errors.push(error),
+  const props = { vehicleType: 'motorcycle_three_wheels', vehicleBrand: 'TVS', vehicleModel: 'King', vehicleColor: 'Bleu',
+    vehicleLicensePlate: '---', setVehicleFormError: error => errors.push(error),
     createVehicle: payload => ({ unwrap: async () => { calls.push(payload); return vehicle; } }),
     setIsFinalizingVehicleCreation: noop, setCreatedVehicle: noop, setSelectedVehicleId: id => selections.push(id),
     setVehicleCreationMessage: noop, setShowVehicleForm: noop, resetVehicleForm: noop,
     refetchProfile: async () => ({}), refetchVehicles: async () => ({}) };
   await usePublishVehicleCreation(props).handleCreateVehicle();
   assert.equal(calls.length, 0); assert.equal(errors.at(-1), VEHICLE_PLATE_FORMAT_MESSAGE);
-  props.vehicleLicensePlate = '1234 ab 56';
+  props.vehicleLicensePlate = 'trike-001';
   await usePublishVehicleCreation(props).handleCreateVehicle();
-  assert.equal(calls[0].licensePlate, '1234AB56'); assert.deepEqual(selections, ['vehicle']);
+  assert.equal(calls[0].licensePlate, 'TRIKE001'); assert.deepEqual(selections, ['vehicle']);
 });
 
 function signupFixture() {
@@ -105,12 +106,12 @@ function signupFixture() {
   return { calls, dialogs, steps, props, load, hooks };
 }
 
-test('signup profile rejects a malformed driver plate, while passengers still require no vehicle', () => {
+test('signup profile rejects an empty normalized plate and accepts variable formats; passengers require no vehicle', () => {
   const f = signupFixture(); const { useSignupProfileActions } = f.load('hooks/auth/useSignupProfileActions.ts');
-  f.props.vehiclePlate = 'ABC123';
+  f.props.vehiclePlate = '---';
   useSignupProfileActions(f.props).validateProfileAndContinue();
   assert.deepEqual(f.steps, []); assert.equal(f.dialogs.at(-1).message, VEHICLE_PLATE_FORMAT_MESSAGE);
-  f.props.vehiclePlate = '1234ab56'; useSignupProfileActions(f.props).validateProfileAndContinue();
+  f.props.vehiclePlate = 'moto-001'; f.props.vehicleType = 'motorcycle_two_wheels'; useSignupProfileActions(f.props).validateProfileAndContinue();
   assert.deepEqual(f.steps, ['kyc']);
   f.props.role = 'passenger'; f.props.vehiclePlate = ''; f.props.vehicleType = null;
   useSignupProfileActions(f.props).validateProfileAndContinue();
@@ -121,14 +122,14 @@ for (const method of ['phone', 'google', 'apple']) {
   test(`${method} final registration revalidates and normalizes the plate before sending`, async () => {
     const f = signupFixture(); const { useRegistrationActions } = f.load('hooks/auth/useRegistrationActions.ts');
     if (method !== 'phone') Object.assign(f.props, { googleIdToken: 'test', isGooglePhoneVerified: true, socialProvider: method });
-    f.props.vehiclePlate = 'ABC123';
+    f.props.vehiclePlate = '---';
     await f.hooks.render(() => useRegistrationActions(f.props)).handleFinalRegister();
     assert.equal(f.calls.length, 0); assert.equal(f.dialogs.at(-1).message, VEHICLE_PLATE_FORMAT_MESSAGE);
-    f.props.vehiclePlate = '0001 az 02';
+    f.props.vehiclePlate = 'moto-12345'; f.props.vehicleType = 'motorcycle_two_wheels';
     await f.hooks.render(() => useRegistrationActions(f.props)).handleFinalRegister();
     assert.equal(f.calls.length, 1); assert.equal(f.calls[0].method, method);
     const payload = f.calls[0].payload;
-    assert.equal(method === 'phone' ? payload.get('vehicle[licensePlate]') : payload.vehicle.licensePlate, '0001AZ02');
+    assert.equal(method === 'phone' ? payload.get('vehicle[licensePlate]') : payload.vehicle.licensePlate, 'MOTO12345');
     f.hooks.unmount();
     const passenger = signupFixture();
     Object.assign(passenger.props, { role: 'passenger', vehiclePlate: '', vehicleType: null,
@@ -143,7 +144,7 @@ for (const method of ['phone', 'google', 'apple']) {
 
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements) : [node, ...elements(node.props?.children)];
 for (const auth of [false, true]) {
-  test(`${auth ? 'signup' : 'shared create/update'} field normalizes typing and disables validation for malformed plates`, () => {
+  test(`${auth ? 'signup' : 'shared create/update'} plate field has a label, no placeholder or format hint, and accepts variable lengths`, () => {
     const hooks = hookHarness(), changes = [];
     const load = loader({ react: { ...React, ...hooks.react }, '@expo/vector-icons': { Ionicons: 'Icon' },
       'react-native': { View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button', ScrollView: 'Scroll',
@@ -155,13 +156,18 @@ for (const auth of [false, true]) {
     const Component = auth ? load('components/auth/VehicleModal.tsx').VehicleModal : load('components/VehicleFormModal.tsx').VehicleFormModal;
     const props = { visible: true, vehicleType: 'car', onClose: noop, onSubmit: noop,
       onPlateChange: value => changes.push(value), onLicensePlateChange: value => changes.push(value) };
-    for (const plate of ['', 'ABC123', '1234AB567', '1234AB56']) {
+    for (const plate of ['', 'ABC123', 'MOTO001', 'TRIKE001', '1234AB567', '1234AB56']) {
       props.vehiclePlate = plate; props.licensePlate = plate;
       const tree = hooks.render(() => Component(props));
       const input = elements(tree).find(node => node.props?.accessibilityLabel === "Plaque d'immatriculation");
-      assert.ok(input.props.placeholder.includes('1234AB56')); assert.equal(input.props.autoCorrect, false);
+      assert.equal(input.props.placeholder, undefined); assert.equal(input.props.autoCorrect, false);
+      assert.ok(elements(tree).some(node => node.type === 'Text' && node.props.children === 'Immatriculation'));
+      assert.ok(!elements(tree).some(node => node.type?.name === 'VehiclePlateHint'));
+      const labels = elements(tree).filter(node => node.type === 'Text').map(node => node.props.children).join(' ');
+      assert.doesNotMatch(labels, /Aucun format imposé|Saisissez la plaque|4 chiffres|MOTO123/);
+      assert.equal(input.props.maxLength, undefined);
       const button = elements(tree).filter(node => node.type === 'Button').at(-1);
-      assert.equal(button.props.disabled, plate !== '1234AB56');
+      assert.equal(button.props.disabled, plate === '');
       input.props.onChangeText('1234 ab 56'); assert.equal(changes.at(-1), '1234AB56');
     }
     hooks.unmount();

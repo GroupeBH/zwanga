@@ -87,3 +87,28 @@ test('sub-metre coordinate serialization differences do not trigger a redundant 
   await pending;
   assert.equal(env.wasLocationDeliveredRecently('driver:trip', 4000, 'rest'), true);
 });
+
+for (const role of ['driver', 'passenger']) test(`${role}: a correlated ack confirms a server-corrected clock without REST fallback`, async t => {
+  const env = fixture(t);
+  const payload = { ...env.payload, ...(role === 'passenger' ? { bookingId: 'booking' } : {}) };
+  const pending = env.send(payload);
+  const key = role === 'driver' ? 'driver:trip' : 'passenger:booking';
+  env.socket.emit(`${role}_location`, { ...payload, updatedAt: new Date(90_000).toISOString() });
+  assert.equal(env.isLocationDeliveryPending(key), true, 'old echoes remain untrusted');
+  env.ack({ success: true, status: 'accepted', tripId: payload.tripId, bookingId: payload.bookingId, recordedAt: payload.recordedAt });
+  await pending;
+  assert.equal(env.wasLocationDeliveredRecently(key, 4000, 'rest'), true);
+  t.mock.timers.tick(3000);
+  assert.equal(env.socket.eventNames().length, 0);
+});
+
+test('mismatched acks do not confirm a sample; a superseded sample is not retransmitted', async t => {
+  const env = fixture(t), pending = env.send(env.payload);
+  for (const mismatch of [{ tripId: 'other' }, { bookingId: 'other' }, { recordedAt: 'old' }]) {
+    env.ack({ success: true, ...mismatch });
+    assert.equal(env.isLocationDeliveryPending('driver:trip'), true);
+  }
+  env.ack({ success: true, status: 'superseded', tripId: env.payload.tripId, recordedAt: env.payload.recordedAt });
+  await pending;
+  assert.equal(env.wasLocationDeliveredRecently('driver:trip', 4000, 'rest'), true);
+});

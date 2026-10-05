@@ -10,6 +10,145 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 5 octobre 2026 — Champ immatriculation sans exemple ni texte de format
+
+**Problème :** l'exemple « MOTO123 » suggérait un champ réservé aux motos alors
+que le formulaire accepte aussi les voitures ; le message sous le champ sur
+l'absence de contrainte était superflu.
+
+**Solution appliquée :** retrait du placeholder et du texte sous le champ dans
+`components/VehicleFormModal.tsx` (profil et publication) et
+`components/auth/VehicleModal.tsx` (inscription). Le libellé visible
+« Immatriculation » est conservé dans le formulaire partagé et ajouté au-dessus
+du champ d'inscription pour ne pas laisser un champ vide sans indication.
+Suppression du composant devenu inutilisé `components/forms/VehiclePlateHint.tsx`
+et de la constante d'exemple dans `utils/vehiclePlate.ts` ; leur version suivie
+reste récupérable dans l'historique Git.
+
+**Conservé :** libellé d'accessibilité, plaque obligatoire, formats variables,
+normalisation, erreurs métier et contrôles serveur. Aucun changement backend,
+de dépendance, des autres champs ou du comportement des boutons.
+
+**Vérifications :** 65 tests JavaScript ciblés réussis dans les suites plaques,
+formulaires/clavier et profil. `tests/vehiclePlate.test.js` vérifie désormais
+l'absence d'exemple et de texte de format ainsi que la présence du libellé, tout
+en conservant les tests de validation et d'envoi. TypeScript mobile, ESLint des
+trois sources modifiées et `git diff --check` réussis. Aucune référence applicative restante
+au composant ou à la constante supprimés. Pas d'essai visuel sur téléphone.
+
+## 5 octobre 2026 — Plaques de motos : retrait du format imposé
+
+**Problème :** la validation commune du client imposait quatre chiffres, deux
+lettres puis deux chiffres, et bloquait notamment la création de motos dont
+la plaque suivait un autre format. Le backend local n'impose pas ce motif :
+son DTO exige une chaîne non vide et son service contrôle notamment la présence
+et l'unicité de la plaque après normalisation.
+
+**Solution appliquée :** `utils/vehiclePlate.ts` accepte désormais toute plaque
+non vide après la normalisation existante, sans motif ni longueur fixes.
+`components/forms/VehiclePlateHint.tsx` indique qu'aucun format n'est imposé ;
+l'exemple est adapté. La correction commune s'applique à la création/modification
+depuis le profil, à la publication et à l'inscription conducteur, y compris
+par téléphone, Google et Apple, pour les motos à deux/trois roues et les voitures.
+
+**Conservé :** champ obligatoire, majuscules ASCII, retrait des espaces/tirets,
+absence de troncature et contrôles serveur, dont les doublons. Aucune modification
+du backend véhicules, de la base ou des autres champs du formulaire. Les contrôles
+serveur ont été vérifiés dans `src/vehicles/dto/vehicle.dto.ts` et
+`src/vehicles/vehicles.service.ts` du backend voisin.
+
+**Vérifications :** 11 tests de `tests/vehiclePlate.test.js` adaptés et réussis
+(formats variables, champs vides, normalisation, profil, publication,
+inscriptions et rendu des formulaires) ; 15 tests existants du service véhicules
+backend réussis, dont les motos à deux/trois roues. TypeScript mobile/backend
+et ESLint des deux sources modifiées validés. Tests automatisés avec dépendances
+simulées : pas d'essai sur téléphone ou de création de véhicule en production.
+
+## 5 octobre 2026 — Correctifs de l'audit performance et réseau
+
+Les [corrections détaillées](CORRECTIONS_PERFORMANCE_RESEAU_2026_10_05.md)
+documentent les cinq solutions appliquées, fichiers concernés, comportements
+conservés et limites : renouvellement après reconnexion contrôlé, acquittement
+GPS corrélé malgré une horloge corrigée, lectures d'affichage suspendues hors
+ligne et hors écran, carnet d'adresses paginé avec recherche différée et sans
+images inutilisées. Les mutations, règles financières et autorisations sont
+préservées. Aucun ajout de dépendance ni migration.
+
+**Vérifications :** 1 362 tests mobiles dans la suite complète réussis ;
+82 tests backend ciblés réussis. TypeScript mobile/backend,
+frontières réseau, taille des sources et contrôle de diff validés ; ESLint sans
+erreur, avec 15 avertissements existants dans les hooks audités. Ces résultats
+ne constituent pas une validation native ou une mesure de performances réelles.
+**Le backend doit être déployé pour activer le nouvel acquittement GPS.**
+Aucun déploiement effectué ; essais physiques Android/iOS restant à réaliser.
+
+## 4 octobre 2026 — Audit performance, réseau et lourdeurs
+
+Le [rapport d'audit](AUDIT_PERFORMANCE_RESEAU_2026_10_04.md) décrit cinq constats
+encore ouverts : attente de renouvellement après retour réseau, confirmation GPS
+avec horloge corrigée côté serveur, polling de lectures hors ligne, abonnements
+de certains écrans masqués et chargement intégral des contacts avec images inutilisées.
+Les corrections des audits précédents ne sont pas présentées comme encore manquantes.
+
+**Appliqué :** documentation uniquement, dans ce rapport et le présent journal.
+Les solutions proposées sont différées, pas implémentées par cet audit. Code
+applicatif/backend, configuration, flux métier, données et modifications
+préexistantes conservés. Aucun secret, `.env` ou donnée utilisateur réelle consulté.
+
+**Vérifications :** 1 343 tests JavaScript mobiles réussis, TypeScript mobile,
+contrôles réseau/taille et `git diff --check` validés ; 1 002 sources, aucune
+au-dessus de 400 lignes. Cinq simulations ciblées supplémentaires confirment les
+mécanismes, sans être ajoutées à la suite permanente. Le rapport distingue les
+délais du code des mesures et les propositions des corrections appliquées.
+Pas d'essai sur téléphone, mesure native, charge SQL/serveur ou déploiement.
+
+## 4 octobre 2026 — « Arrivée à destination » dans les trajets en cours
+
+**Problème :** boutons, statuts, récapitulatifs et messages de résultat utilisaient
+encore « dépose / déposé », tandis que d'autres écrans parlaient déjà d'arrivée.
+
+**Solution appliquée :** harmonisation en « arrivée à destination », avec
+« Confirmer l’arrivée à destination » côté conducteur et « Je suis arrivé à
+destination » côté passager. Les statuts et modaux de succès/échec, les libellés
+d'accessibilité, la liste des passagers et les récapitulatifs de gains utilisent
+ce vocabulaire. Les lieux sont nommés « Destination du passager ». Le suivi
+passager distingue « En route vers votre destination », « Confirmation de
+l’arrivée à destination en cours » et « Arrivée à destination confirmée », sans
+annoncer la fin du trajet global. Le titre du récapitulatif accepte deux lignes
+et les titres d'étape peuvent se replier pour accueillir les libellés plus longs.
+
+**Fichiers application :** dans `features/driver-navigation/`,
+`DriverDropoffReceipts.tsx`, `DriverDropoffReceiptsSheet.tsx`,
+`NavigationPassengersModal.tsx`, `NavigationWaypointModal.tsx`,
+`passengerPanelModel.ts` ; `features/driver-payments/DriverBookingRevenue.tsx` ;
+`features/passenger-navigation/PassengerNavigationInfoCard.tsx` ; dans
+`features/ride-recovery/`, `RideRecoveryControl.tsx`, `rideActionResultModel.ts`
+et `rideRecoveryPresentation.ts`. Tests existants adaptés et nouveau
+`tests/arrivalTerminology.test.js`.
+
+**Backend local :** seuls les textes de la notification GPS de fin de réservation,
+du refus de terminer un trajet avec arrivées non confirmées et du refus de
+confirmer le cash trop tôt sont harmonisés, dans `src/bookings/bookings.service.ts`,
+`src/trips/trips.service.ts` et `src/bookings/cash-receipts.service.ts`.
+Nouveau test `src/bookings/arrival-terminology.spec.ts`. Les modifications
+préexistantes du backend, notamment celles des notifications transactionnelles
+dans le service cash, sont préservées et ne font pas partie de cette intervention.
+
+**Conservé :** noms techniques `dropoff` / `droppedOff`, événements et contrats
+API, conditions serveur, deux validations, détection GPS, reprise hors connexion,
+actions de désaccord/interruption et règles de paiement. Aucun nouveau modal,
+appel réseau, migration ou dépendance. Les notifications déjà enregistrées ne
+sont pas réécrites ; les nouveaux messages serveur nécessitent leur déploiement.
+
+**Vérifications :** 93 tests JavaScript ciblés réussis dans les suites arrivée,
+reprise, résultats, panneau passagers, gains/cash, véhicule et interruption ;
+56 tests backend réussis (`arrival-terminology`, `cash-receipts`, `trips.service`).
+TypeScript mobile/backend, ESLint des sources mobiles modifiées, frontière réseau
+et `git diff --check` des fichiers concernés validés ; 1 002 sources mobiles,
+aucune au-dessus de 400 lignes. Recherche des anciens termes sans résultat dans
+les sources applicatives. Tests avec dépendances natives/réseau simulées : pas
+d'essai physique Android/iOS, de mesure native ou de déploiement effectué.
+
 ## 3 octobre 2026 — Correction des cinq constats du scan de performance
 
 Les [corrections détaillées](CORRECTIONS_PERFORMANCE_2026_10_03.md) recensent les

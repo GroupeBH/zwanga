@@ -11,6 +11,7 @@ function environment(mocks = {}, platform = 'ios') {
   const hooks = hookHarness();
   const load = loader({
     react: { ...require('react'), ...hooks.react },
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/features/navigation/PickupVehicleDetails': { PickupVehicleDetails: 'VehicleDetails' },
     'react-native': { Platform: { OS: platform }, StyleSheet: { create: value => value } },
     'react-native-maps': { PROVIDER_GOOGLE: 'google' },

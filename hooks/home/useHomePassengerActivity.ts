@@ -9,6 +9,7 @@ import {
   useGetMyTripRequestsQuery,
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { sharedBookingsOptions, sharedRequestsOptions } from '@/features/activity/activityQueryOptions';
 import { findOngoingPassengerBooking, hasPassengerFinishedRide, isActivePassengerBooking } from '@/features/activity/tripParticipation';
 import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
@@ -18,31 +19,31 @@ import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePrioriti
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'> & { driverCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo, driverCoordinate = null, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
+  const enabled = useDisplayReadsEnabled(isFocused);
   const { data: notificationsData } = useGetNotificationsQuery({ limit: 1 }, {
-    refetchOnMountOrArgChange: true,
+    ...displayReadOptions(enabled),
   });
 
-  const { data: myBookings, refetch: refetchMyBookings } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, refetch: rawRefetchMyBookings } = useGetMyBookingsQuery(undefined, {
     ...sharedBookingsOptions,
+    skip: !enabled,
   });
+  const refetchMyBookings = useDisplayRefetch(enabled, 'activity', rawRefetchMyBookings);
 
   const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS } = useGetMyTripRequestsQuery(undefined, {
     ...sharedRequestsOptions,
-    skip: !currentUser?.id,
+    skip: !enabled || !currentUser?.id,
   });
 
   const {
     data: availableTripRequests = EMPTY_HOME_TRIP_REQUESTS,
     isLoading: availableTripRequestsLoading,
     isError: availableTripRequestsError,
-    refetch: refetchAvailableTripRequests,
+    refetch: rawRefetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
-    skip: !isDriver,
-    pollingInterval: isFocused && isDriver ? HOME_ACTIVITY_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && isDriver, HOME_ACTIVITY_POLL_MS),
   });
+  const refetchAvailableTripRequests = useDisplayRefetch(enabled && isDriver, 'available', rawRefetchAvailableTripRequests);
 
   const activeBookings = useMemo(() => {
     if (!myBookings || !currentUser?.id) {
@@ -70,11 +71,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     '';
 
   const { data: refreshedPassengerTrip } = useGetTripByIdQuery(passengerTripLookupId, {
-    skip: !currentUser?.id || !passengerTripLookupId,
-    pollingInterval: isFocused ? HOME_ACTIVE_TRIP_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && Boolean(currentUser?.id && passengerTripLookupId), HOME_ACTIVE_TRIP_POLL_MS),
   });
 
   const bookedTripIds = useMemo(

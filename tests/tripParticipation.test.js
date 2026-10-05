@@ -97,6 +97,7 @@ test('home never starts driver polling for a passenger reservation, including st
   const data = { trips: [{ ...trip, id: 'old-owned', driverId: 'rider', driver: { id: 'rider' } }], bookings: [booking] };
   const load = loader({
     react: { ...React, ...hooks.react },
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     'react-native': { StyleSheet: { create: x => x } },
     '@/store/api/bookingApi': {
       useGetMyActivityBookingsQuery: () => ({ data: data.bookings }),

@@ -129,21 +129,21 @@ export function PassengerNavigationInfoCard({
           {booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
             <View style={styles.completedBadge}>
               <Ionicons name="navigate" size={24} color={Colors.primary} />
-              <Text style={styles.completedText}>Arrivée en cours au point de dépose</Text>
+              <Text style={styles.completedText}>En route vers votre destination</Text>
             </View>
           )}
 
           {booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
             <View style={styles.completedBadge}>
               <Ionicons name="hourglass" size={24} color={Colors.secondary} />
-              <Text style={styles.completedText}>Finalisation de l’arrivée</Text>
+              <Text style={styles.completedText}>Confirmation de l’arrivée à destination en cours</Text>
             </View>
           )}
 
           {booking.droppedOff && (
             <View style={styles.completedBadge}>
               <Ionicons name="checkmark-done" size={24} color={Colors.success} />
-              <Text style={styles.completedText}>Trajet terminé</Text>
+              <Text style={styles.completedText}>Arrivée à destination confirmée</Text>
             </View>
           )}
 

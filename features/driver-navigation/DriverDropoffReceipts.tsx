@@ -40,7 +40,7 @@ export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ booki
         accessibilityHint="Ouvre les gains et la confirmation du cash reçu. Glissez à gauche ou à droite pour masquer. Les gains restent dans les options.">
         <View style={styles.icon}><Ionicons name="checkmark-done" size={20} color={Colors.successDark} /></View>
         <View style={styles.identity}>
-          <Text style={styles.title} numberOfLines={1}>Déposes · {completed.length}</Text>
+          <Text style={styles.title} numberOfLines={2}>Arrivées à destination · {completed.length}</Text>
           <Text style={styles.name} numberOfLines={1}>{latest.passengerName || 'Passager'}</Text>
         </View>
         <View style={styles.amount}>

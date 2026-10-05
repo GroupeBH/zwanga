@@ -3,29 +3,32 @@ import { useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useCreateVehicleMutation, useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import type { TripRequestVehicleType, Vehicle } from '@/types';
 import { useEffect, useMemo, useState } from 'react';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 
 
 
 export function usePublishVehicleState() {
+  const enabled = useDisplayReadsEnabled(useScreenIsActive());
   const {
     data: profileSummary,
-    refetch: refetchProfile,
+    refetch: rawRefetchProfile,
     isLoading: isLoadingProfile,
     isFetching: isFetchingProfile,
-  } = useGetProfileSummaryQuery();
+  } = useGetProfileSummaryQuery(undefined, displayReadOptions(enabled));
+  const refetchProfile = useDisplayRefetch(enabled, 'profile', rawRefetchProfile);
   const user = profileSummary?.user;
   const isDriver = useMemo(() => isUserDriver(user), [user]);
   const [showDriverRequiredModal, setShowDriverRequiredModal] = useState(false);
 
   const {
     data: vehicles = [],
-    refetch: refetchVehicles,
+    refetch: rawRefetchVehicles,
     isLoading: isLoadingVehicles,
   } = useGetVehiclesQuery(undefined, {
-    refetchOnMountOrArgChange: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled),
   });
+  const refetchVehicles = useDisplayRefetch(enabled, 'vehicles', rawRefetchVehicles);
 
   const [createdVehicle, setCreatedVehicle] = useState<Vehicle | null>(null);
 

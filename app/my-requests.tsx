@@ -1,5 +1,6 @@
 import { styles } from '../features/screen-styles/app/my-requests/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { Colors } from '@/constants/styles';
 import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import type { TripRequest } from '@/types';
@@ -13,19 +14,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MyTripRequestsScreen() {
   const isScreenActive = useScreenIsActive();
+  const enabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const {
     data: tripRequests = [],
     isLoading,
     isFetching,
-    refetch,
+    refetch: rawRefetch,
   } = useGetMyTripRequestsQuery(undefined, {
-    // Polling léger pour mes demandes de trajet
-    pollingInterval: isScreenActive ? (60_000) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled, 60_000),
   });
+  const refetch = useDisplayRefetch(enabled, 'my-requests', rawRefetch);
 
   const handleRequestPress = useCallback((requestId: string) => {
     router.push(getTripRequestDetailHref(requestId));

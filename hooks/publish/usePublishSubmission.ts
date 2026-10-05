@@ -42,7 +42,7 @@ interface Params {
   isLoadingProfile: boolean;
   isFetchingProfile: boolean;
   user: User | undefined;
-  refetchProfile: ReturnType<typeof useGetProfileSummaryQuery>['refetch'];
+  refetchProfile: () => Promise<{ data?: ReturnType<typeof useGetProfileSummaryQuery>['data'] }>;
   setShowDriverRequiredModal: React.Dispatch<React.SetStateAction<boolean>>;
   selectedVehicleId: string | null;
   isPublishIdentityVerified: boolean;

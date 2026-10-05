@@ -59,6 +59,7 @@ test('passenger activity removes completed transport but preserves another reser
   let rows = [booking];
   const queries = [];
   const { useHomePassengerActivity } = loader({ react: hooks.react,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     'react-native': { StyleSheet: { create: s => s } },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: rows }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: (id, options) => { queries.push({ id, ...options }); return {}; } },

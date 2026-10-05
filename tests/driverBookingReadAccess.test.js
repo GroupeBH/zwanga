@@ -29,7 +29,7 @@ function environment() {
     '@/hooks/useIdentityCheck': { useIdentityCheck: () => ({}) },
     '@/hooks/useUserLocation': { useUserLocation: () => ({}) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
-    '@/store/hooks': { useAppSelector: selector => selector({}) },
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/store/selectors': { selectUser: () => env.user, selectConversations: () => [], selectTripById: () => () => undefined },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ data: env.trip }),
       useGetMyActivityTripsQuery: () => ({ data: env.listedTrips }) },

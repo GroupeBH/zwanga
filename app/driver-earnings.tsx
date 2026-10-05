@@ -1,5 +1,6 @@
 import { styles } from '../features/screen-styles/app/driver-earnings/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch, useDisplayReadData } from '@/hooks/useDisplayReads';
 import { Colors, Spacing } from '@/constants/styles';
 import {
   useGetDriverEarningsPageQuery,
@@ -25,6 +26,7 @@ const pageInsets = { paddingHorizontal: Spacing.xl };
 
 export default function DriverEarningsScreen() {
   const isScreenActive = useScreenIsActive();
+  const enabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const earningsCursor = useHistoryCursor('earnings');
@@ -33,41 +35,32 @@ export default function DriverEarningsScreen() {
     data: summary,
     isLoading: summaryLoading,
     isError: summaryError,
-    refetch: refetchSummary,
+    refetch: rawRefetchSummary,
   } = useGetMyDriverSettlementQuery(undefined, {
-    skip: !isScreenActive,
-    pollingInterval: isScreenActive ? (60_000) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled, 60_000),
   });
   const {
-    currentData: earningsPage,
+    currentData: liveEarningsPage,
     isLoading: earningsLoading,
     isError: earningsError,
     isFetching: earningsFetching,
-    refetch: refetchEarnings,
+    refetch: rawRefetchEarnings,
   } = useGetDriverEarningsPageQuery({ before: earningsCursor.before }, {
-    skip: !isScreenActive,
-    refetchOnMountOrArgChange: 30,
-    pollingInterval: isScreenActive && !earningsCursor.before ? 60_000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled, !earningsCursor.before ? 60_000 : 0),
   });
   const {
-    currentData: payoutsPage,
+    currentData: livePayoutsPage,
     isError: payoutsError,
     isFetching: payoutsFetching,
-    refetch: refetchPayouts,
+    refetch: rawRefetchPayouts,
   } = useGetDriverPayoutsPageQuery({ before: payoutsCursor.before, limit: 6 }, {
-    skip: !isScreenActive,
-    refetchOnMountOrArgChange: 30,
-    pollingInterval: isScreenActive && !payoutsCursor.before ? 60_000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled, !payoutsCursor.before ? 60_000 : 0),
   });
+  const earningsPage = useDisplayReadData(earningsCursor.before ?? '', liveEarningsPage);
+  const payoutsPage = useDisplayReadData(payoutsCursor.before ?? '', livePayoutsPage);
+  const refetchSummary = useDisplayRefetch(enabled, 'summary', rawRefetchSummary);
+  const refetchEarnings = useDisplayRefetch(enabled, earningsCursor.before ?? '', rawRefetchEarnings);
+  const refetchPayouts = useDisplayRefetch(enabled, payoutsCursor.before ?? '', rawRefetchPayouts);
 
   const earnings = earningsPage?.data ?? [];
   const payouts = payoutsPage?.data ?? [];

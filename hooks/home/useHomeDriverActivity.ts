@@ -6,6 +6,7 @@ import {
 } from '@/store/api/tripApi';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { sharedTripsOptions as sharedActivityQueryOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
 import { findOngoingPassengerBooking, ownsTrip } from '@/features/activity/tripParticipation';
 import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
@@ -13,15 +14,16 @@ import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePrioriti
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'> & { hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
+  const enabled = useDisplayReadsEnabled(isFocused);
   const { data: myBookings } = useGetMyActivityBookingsQuery(undefined, {
-    ...sharedBookingsOptions, skip: !currentUser?.id,
+    ...sharedBookingsOptions, skip: !enabled || !currentUser?.id,
   });
   const ongoingPassengerBooking = useMemo(
     () => findOngoingPassengerBooking(myBookings, currentUser?.id), [myBookings, currentUser?.id],
   );
   const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
     ...sharedActivityQueryOptions,
-    skip: !isDriver,
+    skip: !enabled || !isDriver,
   });
 
   const listedOngoingDriverTrip = useMemo(
@@ -37,11 +39,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
     (trackedTripInfo?.role === 'driver' ? trackedTripInfo.tripId : null) ?? listedOngoingDriverTrip?.id ?? '';
 
   const { data: refreshedDriverTrip } = useGetTripByIdQuery(driverTripLookupId, {
-    skip: !isDriver || !driverTripLookupId,
-    pollingInterval: isFocused ? HOME_ACTIVE_TRIP_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && isDriver && Boolean(driverTripLookupId), HOME_ACTIVE_TRIP_POLL_MS),
   });
 
   const ongoingDriverTrip = useMemo(() => {
@@ -55,14 +53,12 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
 
   const {
     data: ongoingDriverBookings = EMPTY_HOME_BOOKINGS,
-    refetch: refetchOngoingDriverBookings,
+    refetch: rawRefetchOngoingDriverBookings,
   } = useGetTripBookingsQuery(ongoingDriverTrip?.id ?? '', {
-    skip: !ongoingDriverTrip?.id,
-    pollingInterval: isFocused && ongoingDriverTrip ? HOME_ACTIVE_BOOKINGS_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && Boolean(ongoingDriverTrip?.id), HOME_ACTIVE_BOOKINGS_POLL_MS),
   });
+  const refetchOngoingDriverBookings = useDisplayRefetch(enabled && Boolean(ongoingDriverTrip?.id),
+    ongoingDriverTrip?.id ?? '', rawRefetchOngoingDriverBookings);
 
   const driverReservationHighlightTrip = useMemo(() => {
     if (!isDriver || !currentUser?.id || ongoingDriverTrip || ongoingPassengerBooking) {
@@ -115,11 +111,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
   const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS } = useGetTripBookingsQuery(
     driverReservationHighlightTrip?.id ?? '',
     {
-      skip: !isFocused || !driverReservationHighlightTrip?.id || Boolean(ongoingDriverTrip),
-      pollingInterval: isFocused && driverReservationHighlightTrip && !ongoingDriverTrip ? HOME_ACTIVITY_POLL_MS : 0,
-      skipPollingIfUnfocused: true,
-      refetchOnFocus: isFocused,
-      refetchOnReconnect: false,
+      ...displayReadOptions(enabled && Boolean(driverReservationHighlightTrip?.id) && !ongoingDriverTrip, HOME_ACTIVITY_POLL_MS),
     },
   );
   return {
