@@ -1,6 +1,7 @@
 import { normalizeTripRequestVehicleType } from '../../features/request-detail/requestDetailModel';
 import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch, useDisplayReadData } from '@/hooks/useDisplayReads';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useAssignedTripNavigation } from '@/hooks/useAssignedTripNavigation';
@@ -20,6 +21,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 export function useRequestDetailData() {
   const isScreenActive = useScreenIsActive();
+  const readsEnabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
@@ -41,29 +43,22 @@ export function useRequestDetailData() {
   const shouldOpenScheduleEditor = editScheduleParam === '1';
   const isCreateRouteAlias = id === 'index';
 
-  const { data: currentUser } = useGetCurrentUserQuery();
+  const { data: currentUser } = useGetCurrentUserQuery(undefined, displayReadOptions(readsEnabled));
   const isDriverAccount = hasDriverRole(currentUser);
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
 
   // État pour le polling interval dynamique
   const [pollingInterval, setPollingInterval] = useState(45_000);
 
-  const { currentData: tripRequest, isLoading, isFetching: isFetchingRequest, error, refetch, isError } = useGetTripRequestByIdQuery(id || '', {
-    skip: !id || isCreateRouteAlias,
-    pollingInterval: isScreenActive ? pollingInterval : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnMountOrArgChange: true,
-    refetchOnReconnect: false,
+  const { currentData: liveRequest, isLoading, isFetching: isFetchingRequest, error, refetch: rawRefetch, isError } = useGetTripRequestByIdQuery(id || '', {
+    ...displayReadOptions(readsEnabled && Boolean(id) && !isCreateRouteAlias, pollingInterval),
   });
-  const { currentData: assignedTrip, error: assignedTripError } = useGetTripByIdQuery(tripRequest?.tripId || '', {
-    skip: !tripRequest?.tripId,
-    pollingInterval: isScreenActive ? (tripRequest?.status === 'driver_selected' ? 30_000 : 0) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnMountOrArgChange: true,
-    refetchOnReconnect: false,
+  const tripRequest = useDisplayReadData(id ?? '', liveRequest);
+  const refetch = useDisplayRefetch(readsEnabled && Boolean(id) && !isCreateRouteAlias, id ?? '', rawRefetch);
+  const { currentData: liveAssignedTrip, error: assignedTripError } = useGetTripByIdQuery(tripRequest?.tripId || '', {
+    ...displayReadOptions(readsEnabled && Boolean(tripRequest?.tripId), tripRequest?.status === 'driver_selected' ? 30_000 : 0),
   });
+  const assignedTrip = useDisplayReadData(tripRequest?.tripId ?? '', liveAssignedTrip);
   const { passengerTripId, isOpeningAssignedTrip } = useAssignedTripNavigation({
     requestId: id,
     tripRequest,
@@ -98,7 +93,7 @@ export function useRequestDetailData() {
     }
   }, [error]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {
-    skip: !isDriverAccount,
+    ...displayReadOptions(readsEnabled && isDriverAccount),
   });
 
   // Filtrer pour n'afficher que les véhicules actifs

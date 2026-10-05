@@ -7,7 +7,6 @@ import { useTripStartTransition } from '@/hooks/navigation/useTripStartTransitio
 import { useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptTripRequestMutation,
-  useGetTripRequestByIdQuery,
   useStartTripFromRequestMutation,
 } from '@/store/api/tripRequestApi';
 import type { TripRequest, TripRequestVehicleType, Vehicle } from '@/types';
@@ -21,13 +20,14 @@ import {
 } from '@/utils/errorHelpers';
 import React from 'react';
 import type { Router } from 'expo-router';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 
 interface Params {
   tripRequest: TripRequest | undefined;
   id: string | undefined;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   startTripFromRequest: ReturnType<typeof useStartTripFromRequestMutation>[0];
-  refetch: ReturnType<typeof useGetTripRequestByIdQuery>['refetch'];
+  refetch: DisplayRefetch<TripRequest>;
   router: Router;
   directAcceptDepartureDate: Date | null;
   canAcceptRequest: boolean;

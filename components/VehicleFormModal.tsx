@@ -1,7 +1,6 @@
 import { styles } from '../features/screen-styles/components/VehicleFormModal/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
-import { VehiclePlateHint } from '@/components/forms/VehiclePlateHint';
-import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_EXAMPLE } from '@/utils/vehiclePlate';
+import { isValidVehiclePlate, normalizeVehiclePlate } from '@/utils/vehiclePlate';
 import { Colors, Spacing } from '@/constants/styles';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import type { TripRequestVehicleType } from '@/types';
@@ -275,8 +274,6 @@ export function VehicleFormModal({
                       ref={licensePlateInputRef}
                       accessibilityLabel="Plaque d'immatriculation"
                       style={[styles.input, keyboardVisible && styles.inputWithKeyboard]}
-                      placeholder={VEHICLE_PLATE_EXAMPLE}
-                      placeholderTextColor={Colors.gray[400]}
                       value={licensePlate}
                       onChangeText={(text) => onLicensePlateChange(normalizeVehiclePlate(text))}
                       onFocus={() => setKeyboardVisible(true)}
@@ -285,7 +282,6 @@ export function VehicleFormModal({
                       returnKeyType="done"
                       onSubmitEditing={Keyboard.dismiss}
                     />
-                    <VehiclePlateHint value={licensePlate} />
                   </View>
                 </View>
 

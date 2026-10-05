@@ -56,6 +56,7 @@ test('GPS jitter with unchanged rounded coordinates neither recreates the feed n
   const hooks = hookHarness(), dispatches = [], payloads = [];
   const trips = [{ id: 'trip', departureTime: new Date(Date.now() + 3600000).toISOString() }];
   const { useHomeTripFeed } = loader({ react: hooks.react,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     'react-native': { StyleSheet: { create: value => value } },
     '@/store/api/tripApi': {
       useGetTripsQuery: () => ({ currentData: trips }),

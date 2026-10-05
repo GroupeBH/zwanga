@@ -26,7 +26,7 @@ test('one row per booking chooses pickup then dropoff; grouped seats and identic
   assert.equal(rows.length, 2);
   assert.equal(rows[0].waypoint, points[1]);
   assert.equal(rows[0].isNext, true);
-  assert.deepEqual(passengerPanelLabels(rows[0]), { status: 'À bord', seats: '3 places', location: 'Point de dépose' });
+  assert.deepEqual(passengerPanelLabels(rows[0]), { status: 'À bord', seats: '3 places', location: 'Destination du passager' });
   assert.equal(rows[1].waypoint, points[2]);
   assert.equal(rows[1].status, 'waiting');
   assert.equal(rows[1].id, 'b');
@@ -62,7 +62,7 @@ test('rows explain statuses and reporting without nested touch targets, Auto pil
   const [item] = buildPassengerPanelItems(stops('a', 3, true), 1);
   const calls = [];
   const row = NavigationPassengerRow.type({ item, onSelect: w => calls.push(['detail', w.id]), onReport: w => calls.push(['report', w.id]) });
-  assert.match(words(row), /PROCHAIN ARRÊT.*Même nom.*À bord.*3 places.*Point de dépose.*Destination a/);
+  assert.match(words(row), /PROCHAIN ARRÊT.*Même nom.*À bord.*3 places.*Destination du passager.*Destination a/);
   assert.doesNotMatch(words(row), /Auto|SUIVANT|place\(s\)/);
   const buttons = all(row).filter(node => node.type === 'Button');
   assert.equal(buttons.length, 2);
@@ -75,7 +75,7 @@ test('rows explain statuses and reporting without nested touch targets, Auto pil
   assert.deepEqual(calls, [['detail', 'a:dropoff'], ['report', 'a:dropoff']]);
   const [done] = buildPassengerPanelItems(stops('a', 3, true, true), 2);
   const completed = NavigationPassengerRow.type({ item: done });
-  assert.match(words(completed), /Déposé/);
+  assert.match(words(completed), /Arrivée à destination confirmée/);
   assert.equal(all(completed).some(n => n.type === 'Button'), false);
   assert.equal(styles.name.textDecorationLine, undefined);
   assert.equal(styles.row.opacity, undefined);
@@ -99,7 +99,7 @@ test('panel explains seat counts, uses content height and preserves priority gat
   const tree = render();
   const list = all(tree).find(n => n.type === 'List');
   assert.match(words(list.props.ListHeaderComponent), /2\s+réservations.*4\s+places/);
-  assert.match(words(list.props.ListHeaderComponent), /À récupérer.*À bord.*Déposés/);
+  assert.match(words(list.props.ListHeaderComponent), /À récupérer.*À bord.*Arrivées à destination/);
   assert.equal(list.props.initialNumToRender, 8);
   assert.equal(list.props.removeClippedSubviews, false);
   assert.equal(styles.sheet.height, undefined, 'no forced 85% empty sheet');
@@ -125,5 +125,9 @@ test('opening a point detail does not claim the driver has already arrived', () 
     const tree = NavigationWaypointModal({ waypointModalVisible: true, activeWaypoint: waypoint, insets: { bottom: 0 } });
     assert.doesNotMatch(words(tree), /Vous êtes arrivé|Nous sommes arrivés/);
     assert.match(words(tree), /suivi[e]? automatiquement/);
+    if (waypoint.type === 'dropoff') {
+      assert.match(words(tree), /Arrivée à destination.*destination prévue.*L’arrivée à destination est suivie automatiquement/);
+      assert.doesNotMatch(words(tree), /dépos/i);
+    }
   }
 });

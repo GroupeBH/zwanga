@@ -68,6 +68,7 @@ test('Home ranks the complete eligible list by driver position before applying i
   const requests = [...far, request('nearest'), request('assigned', { selectedDriverId: 'other' })];
   const loadHook = loader({
     ...nativeMocks, react: hooks.react,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({}) },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },

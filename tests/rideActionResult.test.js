@@ -16,11 +16,12 @@ test('both stages and roles distinguish local save, server receipt, definitive s
     const r = { ...result, stage, actor, userId: actor }, e = { ...entry, stage, actorUserId: actor };
     for (const state of ['queued', 'sending', 'received']) {
       const content = rideActionResultContent(r, { ...e, state });
-      assert.equal(content.tone, 'pending'); assert.doesNotMatch(content.title, /Embarquement confirmé|Dépose confirmée/);
+      assert.equal(content.stageLabel, stage === 'pickup' ? 'Embarquement' : 'Arrivée à destination');
+      assert.equal(content.tone, 'pending'); assert.doesNotMatch(content.title, /Embarquement confirmé|Arrivée à destination confirmée/);
       if (state === 'received') assert.match(content.message, actor === 'driver' ? /du passager/ : /du conducteur/);
     }
     const confirmed = rideActionResultContent(r, { ...e, state: 'confirmed' });
-    assert.equal(confirmed.tone, 'success'); assert.equal(confirmed.title, stage === 'pickup' ? 'Embarquement confirmé' : 'Dépose confirmée');
+    assert.equal(confirmed.tone, 'success'); assert.equal(confirmed.title, stage === 'pickup' ? 'Embarquement confirmé' : 'Arrivée à destination confirmée');
     assert.doesNotMatch(confirmed.message, /paiement confirmé|payé|encaissé/i);
     for (const state of ['blocked', 'disputed']) assert.equal(rideActionResultContent(r, { ...e, state }).tone, 'danger');
     assert.equal(rideActionResultContent({ ...r, receipt: undefined, error: 'Écriture impossible.' }).title, 'Confirmation non enregistrée');

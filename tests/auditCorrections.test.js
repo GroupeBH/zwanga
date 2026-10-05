@@ -8,6 +8,7 @@ function homeFixture() {
   const nearest = { currentData: undefined, isError: false, isFetching: true, refetch: async () => ({ data: [] }) };
   const general = { currentData: undefined, isError: false, isFetching: false, isUninitialized: true, refetch: async () => ({ data: [] }) };
   const { useHomeTripFeed } = loader({ react: hooks.react,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/features/home/homeModel': { HOME_MIN_AVAILABLE_SEATS: 1, HOME_PASSIVE_LIST_POLL_MS: 60000,
       roundCoordinate: n => Number(n.toFixed(3)), hasUpcomingDeparture: () => true },
     '@/store/api/tripApi': {

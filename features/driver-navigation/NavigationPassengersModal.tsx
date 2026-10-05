@@ -74,14 +74,14 @@ export function NavigationPassengersModal({
                   {items.length} {items.length > 1 ? 'réservations' : 'réservation'} · {passengerStats.totalPassengers} {passengerStats.totalPassengers > 1 ? 'places' : 'place'}
                 </Text>
                 <View style={styles.summary}>
-                  {[['À récupérer', passengerStats.pendingPickups], ['À bord', passengerStats.inVehicle], ['Déposés', passengerStats.completedDropoffs]].map(([label, count]) => (
+                  {[['À récupérer', passengerStats.pendingPickups], ['À bord', passengerStats.inVehicle], ['Arrivées à destination', passengerStats.completedDropoffs]].map(([label, count]) => (
                     <View key={label} style={styles.summaryItem} accessible accessibilityLabel={`${count} ${label}`}>
                       <Text style={styles.summaryValue}>{count}</Text>
                       <Text style={styles.summaryLabel}>{label}</Text>
                     </View>
                   ))}
                 </View>
-                <Text style={styles.hint}>L’embarquement et la dépose sont suivis automatiquement.</Text>
+                <Text style={styles.hint}>L’embarquement et l’arrivée à destination sont suivis automatiquement.</Text>
               </View>
             }
             ListEmptyComponent={<Text style={styles.empty}>Aucun passager à afficher pour le moment.</Text>}

@@ -4,11 +4,13 @@ import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
 import { clearTokens, getTokens, storeTokens } from './tokenStorage';
 import { getTokenSessionVersion } from './tokenSession';
 import { hasUsableNewAuthSession } from '../features/auth/sessionPolicy';
+import { getNetworkRecoveryEpoch } from './networkRecovery';
 
 const AUTH_REFRESH_ERROR_STATUSES = new Set([400, 401, 403]);
 const COOLDOWN_MS = 60_000;
 let inFlight: { version: number; token: string; promise: Promise<string | null> } | null = null;
-let lastAttempt: { version: number; token: string; at: number } | null = null;
+let lastAttempt: { version: number; token: string; at: number; recoveryEpoch: number; transient: boolean } | null = null;
+let recoveryRetry: { version: number; at: number } | null = null;
 
 async function forceLocalLogout(version: number): Promise<void> {
   if (version !== getTokenSessionVersion()) return;
@@ -30,8 +32,14 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
   if (isTokenExpired(refreshToken)) { await forceLocalLogout(version); return null; }
   if (inFlight?.version === version && inFlight.token === refreshToken) return inFlight.promise;
   if (lastAttempt?.version === version && lastAttempt.token === refreshToken &&
-      Date.now() - lastAttempt.at < COOLDOWN_MS) return null;
-  lastAttempt = { version, token: refreshToken, at: Date.now() };
+      Date.now() - lastAttempt.at < COOLDOWN_MS) {
+    const recovered = lastAttempt.transient && getNetworkRecoveryEpoch() > lastAttempt.recoveryEpoch;
+    // First genuine recovery is immediate; rapid network flapping cannot hammer auth.
+    if (!recovered || (recoveryRetry?.version === version && Date.now() - recoveryRetry.at < 5_000)) return null;
+    recoveryRetry = { version, at: Date.now() };
+  }
+  const attempt = { version, token: refreshToken, at: Date.now(), recoveryEpoch: getNetworkRecoveryEpoch(), transient: false };
+  lastAttempt = attempt;
   const run = { version, token: refreshToken, promise: Promise.resolve<string | null>(null) };
   inFlight = run;
   run.promise = (async () => {
@@ -45,9 +53,12 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
       if (!saved || version !== getTokenSessionVersion()) return null;
       getStoreDispatch()({ type: 'auth/setTokens', payload: data });
       lastAttempt = null;
+      recoveryRetry = null;
       return data.accessToken;
     } catch (error: unknown) {
       const status = (error as { status?: unknown })?.status;
+      attempt.transient = status === 'FETCH_ERROR' || status === 'TIMEOUT_ERROR' ||
+        (typeof status === 'number' && status >= 500 && status < 600);
       if (typeof status === 'number' && AUTH_REFRESH_ERROR_STATUSES.has(status)) {
         await forceLocalLogout(version);
       }

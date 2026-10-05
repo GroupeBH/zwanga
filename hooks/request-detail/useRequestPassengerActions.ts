@@ -6,7 +6,6 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { getPassengerSeatValidation } from '@/utils/passengerSeats';
 import {
   useCancelTripRequestMutation,
-  useGetTripRequestByIdQuery,
   useUpdateTripRequestMutation,
 } from '@/store/api/tripRequestApi';
 import type { TripRequestVehicleType } from '@/types';
@@ -14,6 +13,7 @@ import { getApiErrorMessage, isPassengerKycRequiredError, isExtraSeatsIdentityEr
 import React from 'react';
 import { Platform } from 'react-native';
 import type { TripRequest } from '@/types';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 
 interface Params {
   isUpdating: boolean;
@@ -40,7 +40,7 @@ interface Params {
   editVehicleType: TripRequestVehicleType;
   editDescription: string;
   setShowEditForm: React.Dispatch<React.SetStateAction<boolean>>;
-  refetch: ReturnType<typeof useGetTripRequestByIdQuery>['refetch'];
+  refetch: DisplayRefetch<TripRequest>;
   tripRequest: TripRequest | undefined;
   cancelRequest: ReturnType<typeof useCancelTripRequestMutation>[0];
   goHome: () => void;

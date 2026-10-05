@@ -23,7 +23,7 @@ export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsShe
       <View style={[styles.dot, selectedId === item.id && styles.dotSelected]} />
       <View style={styles.identity}>
         <Text style={styles.name} numberOfLines={2}>{item.passengerName || 'Passager'}</Text>
-        <Text style={styles.status}>{item.cashReceivedAt ? 'Cash reçu confirmé' : 'Dépose confirmée'} · {item.numberOfSeats ?? 1} place(s)</Text>
+        <Text style={styles.status}>{item.cashReceivedAt ? 'Cash reçu confirmé' : 'Arrivée à destination confirmée'} · {item.numberOfSeats ?? 1} place(s)</Text>
       </View>
       <Ionicons name={selectedId === item.id ? 'chevron-down' : 'chevron-forward'} size={18} color={Colors.gray[500]} />
     </TouchableOpacity>

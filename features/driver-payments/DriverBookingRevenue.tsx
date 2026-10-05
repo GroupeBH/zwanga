@@ -56,7 +56,7 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
           : 'Aucun gain à encaisser pour cette réservation.'}</Text>
     </> : <Text style={styles.hint}>{isError
       ? 'Le gain de ce passager est indisponible pour le moment. Réessayez avec une connexion.'
-      : summary ? 'Le serveur n’a pas encore confirmé cette dépose. Aucun gain confirmé pour le moment.'
+      : summary ? 'Le serveur n’a pas encore confirmé l’arrivée à destination de ce passager. Aucun gain confirmé pour le moment.'
         : 'Vérification du gain de ce passager…'}</Text>}
     {isError && summary && <Text style={styles.hint}>Actualisation impossible. Les derniers montants connus sont affichés.</Text>}
     <TouchableOpacity style={styles.refresh} disabled={!active || isFetching} onPress={() => void refetch()}

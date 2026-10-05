@@ -60,6 +60,8 @@ test('loading, errors, stale passenger data and unconfirmed drops never become i
   assert.doesNotMatch(words(app.render()), /3.000|5.000/);
   app.data(summary({ dropoffConfirmed: false }));
   assert.match(words(app.render()), /pas encore confirmé/);
+  assert.match(words(app.render()), /l’arrivée à destination de ce passager/);
+  assert.doesNotMatch(words(app.render()), /dépose/i);
   assert.doesNotMatch(words(app.render()), /3.000|5.000/);
   app.data(summary({ totalExpectedAmount: 0, confirmedAmount: 0, cashToCollectAmount: 0 }));
   assert.match(words(app.render()), /0 CDF/);
@@ -94,6 +96,9 @@ test('compact navigation shows latest dropoff, opens details explicitly and clos
   assert.deepEqual(getConfirmedDropoffs(bookings, 't').map(value => value.id), ['two', 'one']);
   let active = true, tripId = 't';
   const render = () => hooks.render(() => DriverDropoffReceipts({ bookings, tripId, active }));
+  const title = all(render()).find(node => node.type === 'Text' && words(node).includes('Arrivées à destination'));
+  assert.ok(title);
+  assert.equal(title.props.numberOfLines, 2, 'the longer arrival label can wrap');
   assert.equal(all(render()).find(node => node.type === 'Revenue').props.bookingId, 'two');
   assert.equal(all(render()).find(node => node.type === 'Revenue').props.compact, true);
   assert.equal(all(render()).filter(node => node.type === 'Sheet').length, 0);
@@ -208,6 +213,8 @@ test('many passengers remain in one bounded virtualized sheet with a single expa
   const rows = () => bookings.flatMap((item, index) => all(list().props.renderItem({ item, index })));
   assert.equal(rows().filter(node => node.type === 'Revenue').length, 1);
   const second = list().props.renderItem({ item: bookings[1], index: 1 });
+  assert.match(words(second), /Arrivée à destination confirmée/);
+  assert.doesNotMatch(words(second), /dépos/i);
   all(second).find(node => node.type === 'Button').props.onPress();
   bookings = [{ id: 'new', passengerName: 'Nouveau passager' }, ...bookings];
   assert.equal(rows().find(node => node.type === 'Revenue').props.bookingId, 'b1', 'new arrivals must not replace an ongoing cash confirmation');

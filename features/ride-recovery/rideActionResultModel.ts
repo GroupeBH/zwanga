@@ -33,7 +33,7 @@ export function rideActionResultContent(result: RideActionResult, entry?: RideOu
     else if (stage[result.actor] === 'confirm' && ['queued', 'sending'].includes(receipt.state)) receipt = { ...receipt, state: 'received' };
   }
   const other = result.actor === 'driver' ? 'du passager' : 'du conducteur';
-  const stageLabel = result.stage === 'pickup' ? 'Embarquement' : 'Dépose';
+  const stageLabel = result.stage === 'pickup' ? 'Embarquement' : 'Arrivée à destination';
   if (result.error) return {
     tone: 'danger' as const, phase: 'error', stageLabel, icon: 'close' as const,
     title: 'Confirmation non enregistrée', message: result.error,
@@ -48,9 +48,9 @@ export function rideActionResultContent(result: RideActionResult, entry?: RideOu
   };
   if (receipt?.state === 'confirmed') return {
     tone: 'success' as const, phase: 'confirmed', stageLabel, icon: 'checkmark' as const,
-    title: result.stage === 'pickup' ? 'Embarquement confirmé' : 'Dépose confirmée',
+    title: result.stage === 'pickup' ? 'Embarquement confirmé' : 'Arrivée à destination confirmée',
     message: result.stage === 'pickup' ? 'La prise en charge est validée. Vous pouvez poursuivre le trajet.'
-      : 'L’arrivée de cette réservation est validée. Le règlement reste suivi séparément.',
+      : 'L’arrivée à destination est confirmée pour cette réservation. Le règlement reste suivi séparément.',
     status: 'Validé par le serveur', button: result.stage === 'pickup' ? 'Continuer le trajet' : 'Continuer',
   };
   if (snapshot?.bookingId === result.bookingId && snapshot.tripId === result.tripId && snapshot.actor === result.actor && snapshot[result.stage].status === 'ready') return {

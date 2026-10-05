@@ -1,5 +1,6 @@
 import { FeedbackState } from '../../features/manage-trip/manageTripModel';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch, useDisplayReadData } from '@/hooks/useDisplayReads';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { ownsTrip } from '@/features/activity/tripParticipation';
@@ -29,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export function useManageTripState() {
   const isScreenActive = useScreenIsActive();
+  const readsEnabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
@@ -43,18 +45,15 @@ export function useManageTripState() {
   const [pollingInterval, setPollingInterval] = useState<number>(0);
 
   const {
-    data: trip,
+    currentData: liveTrip,
     isLoading: tripLoading,
     isFetching: tripFetching,
-    refetch: refetchTrip,
+    refetch: rawRefetchTrip,
   } = useGetTripByIdQuery(tripId, { 
-    skip: !tripId,
-    pollingInterval: isScreenActive ? pollingInterval : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnMountOrArgChange: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(readsEnabled && Boolean(tripId), pollingInterval),
   });
+  const trip = useDisplayReadData(tripId, liveTrip);
+  const refetchTrip = useDisplayRefetch(readsEnabled && Boolean(tripId), tripId, rawRefetchTrip);
 
   // Mettre à jour l'intervalle de polling en fonction du statut du trajet
   // Note: polling réduit car la navigation gère le temps réel via WebSocket
@@ -81,18 +80,15 @@ export function useManageTripState() {
     rideLocationKey: isOwner && trip?.status === 'ongoing' ? `driver:${tripId}` : null,
   });
   const {
-    data: bookings,
+    currentData: liveBookings,
     isLoading: bookingsLoading,
     isFetching: bookingsFetching,
-    refetch: refetchBookings,
+    refetch: rawRefetchBookings,
   } = useGetTripBookingsQuery(tripId, { 
-    skip: !tripId || !isOwner,
-    // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
-    pollingInterval: isScreenActive ? (trip?.status === 'upcoming' ? 60000 : 0) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(readsEnabled && Boolean(tripId && isOwner), trip?.status === 'upcoming' ? 60000 : 0),
   });
+  const bookings = useDisplayReadData(tripId, liveBookings);
+  const refetchBookings = useDisplayRefetch(readsEnabled && Boolean(tripId && isOwner), tripId, rawRefetchBookings);
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();

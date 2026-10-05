@@ -93,6 +93,50 @@ test('parallel refresh calls share one RTK mutation', async () => {
   assert.equal(e.actions.filter(a=>a.type==='auth/setTokens').length,1);
 });
 
+test('a genuine reconnect releases transient cooldown, shares concurrent retries and limits flapping', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const e = environment(), network = e.load('services/networkRecovery.ts');
+  const token = jwt('a'); await e.storage.storeTokens(jwt('a', true), token);
+  network.observeNetworkConnection(false);
+  const first = e.api.refreshAccessToken(token); await flush();
+  e.requests[0].reject({ status: 'FETCH_ERROR' }); await first;
+  assert.equal(await e.api.refreshAccessToken(token), null);
+  network.observeNetworkConnection(true);
+  const second = e.api.refreshAccessToken(token), shared = e.api.refreshAccessToken(token); await flush();
+  assert.equal(e.requests.length, 2);
+  e.requests[1].reject({ status: 503 }); await Promise.all([second, shared]);
+  network.observeNetworkConnection(false); network.observeNetworkConnection(true);
+  assert.equal(await e.api.refreshAccessToken(token), null);
+  assert.equal(e.requests.length, 2);
+  t.mock.timers.tick(5000);
+  const retry = e.api.refreshAccessToken(token); await flush();
+  e.requests[2].resolve({ accessToken: token, refreshToken: token });
+  assert.equal(await retry, token);
+});
+
+test('reconnect during an in-flight failure is remembered, duplicate online events do not unlock cooldown', async () => {
+  const e = environment(), network = e.load('services/networkRecovery.ts');
+  const token = jwt('a'); await e.storage.storeTokens(jwt('a', true), token);
+  const first = e.api.refreshAccessToken(token); await flush();
+  network.observeNetworkConnection(false); network.observeNetworkConnection(true);
+  e.requests[0].reject({ status: 'TIMEOUT_ERROR' }); await first;
+  const second = e.api.refreshAccessToken(token); await flush();
+  assert.equal(e.requests.length, 2); e.requests[1].reject({ status: 'FETCH_ERROR' }); await second;
+  network.observeNetworkConnection(true);
+  assert.equal(await e.api.refreshAccessToken(token), null);
+  assert.equal(e.requests.length, 2);
+});
+
+for (const status of [401, 429]) test(`reconnect cannot bypass auth rejection / throttling ${status}`, async () => {
+  const e = environment(), network = e.load('services/networkRecovery.ts');
+  const token = jwt('a'); await e.storage.storeTokens(jwt('a', true), token);
+  const first = e.api.refreshAccessToken(token); await flush();
+  e.requests[0].reject({ status }); await first;
+  network.observeNetworkConnection(false); network.observeNetworkConnection(true);
+  assert.equal(await e.api.refreshAccessToken(token), null);
+  assert.equal(e.requests.length, 1);
+});
+
 test('a Redux-only logout invalidates a pending refresh', async () => {
   const e=environment(); const token=jwt('a'); await e.storage.storeTokens(jwt('a',true),token);
   const work=e.api.refreshAccessToken(token); await flush(); e.session.invalidateTokenSession();

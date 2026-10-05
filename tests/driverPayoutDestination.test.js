@@ -57,6 +57,7 @@ test('earnings main button and failed-payout retry both open the recipient form;
     paidBalance: 4000, cashReceivedAmount: 50000, kycApproved: true, currency: 'CDF' };
   const { default: Screen } = loader({
     react: { ...React, ...hooks.react }, 'react-native': native,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, 'expo-router': { useRouter: () => ({}) },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/utils/reanimated': { default: { View: 'AnimatedView' }, FadeInDown: { delay: () => null } },

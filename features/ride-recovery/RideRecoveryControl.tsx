@@ -143,14 +143,14 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       accessibilityState={{ disabled: !active || saving || saved, busy: saving || pendingStage?.entry?.state === 'sending' }}
       accessibilityHint={directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}. L’autre personne confirme de son côté.` : 'Consulte les confirmations du trajet.'}>
       {saving ? <ActivityIndicator color={Colors.primaryDark} /> : <Ionicons name={trigger.icon} size={20} color={Colors.primaryDark} />}
-      <Text style={styles.triggerLabel}>{directStage ? saving ? 'Enregistrement…' : saved ? directStage.stage === 'pickup' ? 'Embarquement déclaré' : 'Arrivée déclarée' : directStage.label : trigger.label}</Text>
+      <Text style={styles.triggerLabel}>{directStage ? saving ? 'Enregistrement…' : saved ? directStage.stage === 'pickup' ? 'Embarquement déclaré' : 'Arrivée à destination déclarée' : directStage.label : trigger.label}</Text>
       {!compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
     </TouchableOpacity>
     {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
       ? rideStageMessage(inlineStage, actor)
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
       : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme de son côté.`
-      : directStage?.stage === 'dropoff' ? 'Appuyez une fois à votre destination. Le conducteur confirme aussi l’arrivée.'
+      : directStage?.stage === 'dropoff' ? 'Appuyez une fois à destination. Le conducteur confirme aussi votre arrivée à destination ; la détection automatique reste active.'
       : 'Appuyez une fois à bord. Le conducteur confirme aussi l’embarquement ; la détection automatique reste active.'}</Text>
       : !compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
     {directRow && directStage && directRow.stages.some(stage => stage.other === 'confirm' && !stage.unavailable) &&
@@ -170,7 +170,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
             initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3} removeClippedSubviews={false}
             contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
             ListHeaderComponent={<>
-            <Text style={styles.explanation}>Le titulaire et le conducteur valident chacun l’embarquement et l’arrivée. Un appui enregistre votre réponse pour toutes les places de la réservation. La détection automatique reste active.</Text>
+            <Text style={styles.explanation}>Le titulaire et le conducteur valident chacun l’embarquement et l’arrivée à destination. Un appui enregistre votre réponse pour toutes les places de la réservation. La détection automatique reste active.</Text>
             {isError && <Text style={styles.notice}>Le serveur n’est pas joignable pour le moment. Les informations ci-dessous peuvent ne pas être à jour.</Text>}
             {relevant.length === 0 && <Text style={styles.explanation}>Aucune réservation à confirmer pour ce trajet.</Text>}
             </>}
@@ -188,7 +188,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
                 {selected?.id === item.id && stages.map(stageInfo => {
                   const { stage, entry, status, canArrive, unavailable, other, label } = stageInfo;
                   return <View key={stage} style={styles.stage}>
-                    <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{stage === 'pickup' ? 'Embarquement' : 'Arrivée'}</Text></View>
+                    <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{stage === 'pickup' ? 'Embarquement' : 'Arrivée à destination'}</Text></View>
                     <Text style={styles.status} accessibilityLiveRegion="polite">{rideStageMessage(stageInfo, actor)}</Text>
                     {actor === 'driver' && stage === 'dropoff' && (status === 'confirmed' || entry?.state === 'confirmed') &&
                       <DriverBookingRevenue bookingId={item.id} active={active && visible} />}
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   passenger: { fontSize: 17, fontWeight: '700', color: Colors.gray[900], marginBottom: 12 },
   passengerRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10 },
   stage: { paddingVertical: 12, gap: 8 }, stageHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  stageTitle: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
+  stageTitle: { fontSize: 16, fontWeight: '700', color: Colors.gray[900], flexShrink: 1 },
   status: { color: Colors.gray[600], fontSize: 13, lineHeight: 20 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
   confirm: { flexGrow: 1, minHeight: 48, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 14, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },

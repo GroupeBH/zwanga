@@ -133,6 +133,7 @@ test('after hiding all known pending bookings, another driver trip becomes eligi
   const a = { ...trip('a'), passengers: [{ bookingId: 'a1', bookingStatus: 'pending' }] };
   const b = { ...trip('b', 600000), passengers: [{ bookingId: 'b1', bookingStatus: 'pending' }] };
   const { useHomeDriverActivity } = loader({ ...native, react: hooks.react,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: [a, b] }), useGetTripByIdQuery: () => ({}) },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }),
       useGetTripBookingsQuery: (id, options) => { queries.push({ id, options }); return {}; } },
@@ -177,6 +178,7 @@ test('hiding the nearest request shows the next one without restarting its highl
 test('hiding a personal request affects only its priority, not the request feed or passenger bookings', () => {
   const hooks = hookHarness(), a = request('a'), b = request('b'), available = [request('available')];
   const { useHomePassengerActivity } = loader({ ...native, react: hooks.react,
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({}) },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },

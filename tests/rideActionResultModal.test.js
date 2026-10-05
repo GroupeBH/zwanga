@@ -24,7 +24,7 @@ test('one accessible result modal shows group context, scrollable copy and a fix
   const h = fixture(), tree = h.render();
   assert.equal(tree.type, 'Modal'); assert.equal(tree.props.inApp, true); assert.equal(tree.props.priority, 75);
   assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
-  assert.match(words(tree), /Dépose.*Confirmation enregistrée.*Votre réservation · 3 places/);
+  assert.match(words(tree), /Arrivée à destination.*Confirmation enregistrée.*Votre réservation · 3 places/);
   assert.equal(all(tree).find(node => node.type === 'Text' && node.props.accessibilityRole === 'header').props.children, 'Confirmation enregistrée');
   const scroll = all(tree).find(node => node.type === 'Scroll');
   const buttons = all(tree).filter(node => node.type === 'Button');
@@ -44,7 +44,7 @@ test('the same modal updates from sending to success or failure without a duplic
     const tree = h.render();
     assert.equal(tree.type, 'Modal'); assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
     assert.equal(all(tree).filter(node => node.type === 'Spinner').length, state === 'sending' ? 1 : 0);
-    if (state === 'confirmed') { assert.match(words(tree), /Dépose confirmée/); assert.doesNotMatch(words(tree), /Paiement confirmé|trajet payé/i); }
+    if (state === 'confirmed') { assert.match(words(tree), /Arrivée à destination confirmée/); assert.doesNotMatch(words(tree), /Paiement confirmé|trajet payé/i); }
     if (state === 'blocked') assert.match(words(tree), /Confirmation non validée.*Revenir au trajet/);
   }
   h.hooks.unmount();

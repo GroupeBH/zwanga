@@ -1,8 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
-import { VehiclePlateHint } from '@/components/forms/VehiclePlateHint';
-import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_EXAMPLE } from '@/utils/vehiclePlate';
+import { isValidVehiclePlate, normalizeVehiclePlate } from '@/utils/vehiclePlate';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from './styles';
@@ -83,20 +82,20 @@ export function VehicleModal({
               />
             </View>
 
-            <View style={styles.inputWrapper}>
-              <Ionicons name="card-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                accessibilityLabel="Plaque d'immatriculation"
-                placeholder={`Plaque (ex. ${VEHICLE_PLATE_EXAMPLE})`}
-                placeholderTextColor={Colors.gray[400]}
-                value={vehiclePlate}
-                onChangeText={(text) => onPlateChange(normalizeVehiclePlate(text))}
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
+            <View>
+              <Text style={styles.inputLabel}>Immatriculation</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="card-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  accessibilityLabel="Plaque d'immatriculation"
+                  value={vehiclePlate}
+                  onChangeText={(text) => onPlateChange(normalizeVehiclePlate(text))}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+              </View>
             </View>
-            <VehiclePlateHint value={vehiclePlate} />
 
             <TouchableOpacity
               style={[styles.mainButton, plateValid ? styles.mainButtonActive : styles.mainButtonDisabled]}
