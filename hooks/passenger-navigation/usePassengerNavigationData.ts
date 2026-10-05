@@ -31,6 +31,7 @@ export function usePassengerNavigationData() {
   const { showDialog } = useDialog();
   const dispatch = useAppDispatch();
   const passengerId = useAppSelector(state => state.auth.user?.id);
+  const isOnline = useAppSelector(state => state.zwangaApi.config.online);
   const insets = useSafeAreaInsets();
   const bookingId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
@@ -72,6 +73,7 @@ export function usePassengerNavigationData() {
   return {
     bookingId,
     isScreenActive,
+    isOnline,
     isTripOngoing,
     insets,
     router,

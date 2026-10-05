@@ -10,6 +10,7 @@ import { usePassengerNavigationState } from './usePassengerNavigationState';
 import { usePassengerTripDestinationNotice } from './usePassengerTripDestinationNotice';
 import { usePassengerNavigationPresentation } from './usePassengerNavigationPresentation';
 import { usePassengerNavigationRoute } from './usePassengerNavigationRoute';
+import { usePassengerPickupEstimate } from './usePassengerPickupEstimate';
 import { usePassengerNavigationCamera } from './usePassengerNavigationCamera';
 import { usePassengerNavigationNotices } from './usePassengerNavigationNotices';
 import { usePassengerNavigationCoordinates } from './usePassengerNavigationCoordinates';
@@ -130,6 +131,8 @@ export function usePassengerNavigationController() {
 
   // Fonction pour récupérer la route
   const route = usePassengerNavigationRoute({
+    isOnline: data.isOnline,
+    isScreenActive: data.isScreenActive,
     routeOriginCoordinate: context.routeOriginCoordinate,
     activePassengerDestination: context.activePassengerDestination,
     isMountedRef: state.isMountedRef,
@@ -291,7 +294,18 @@ export function usePassengerNavigationController() {
     setActiveRouteSegment: state.setActiveRouteSegment,
   });
 
+  const pickupEstimate = usePassengerPickupEstimate({
+    booking: data.booking, trip: data.trip, isScreenActive: data.isScreenActive,
+    online: data.isOnline && !data.offlineBooking && !data.offlineTrip,
+    hasDriverLocation: Boolean(state.driverLocation), locationTimestamp: state.lastUpdate?.getTime(),
+    routeInfo: state.routeInfo, routeSignature: context.passengerRouteSignature,
+    remainingDistanceMeters: presentation.remainingDistanceMeters,
+    isRouteUsable: presentation.isRemainingRouteUsable,
+    loading: state.isLoadingRoute, fetchRoute: route.fetchRoute,
+  });
+
   return {
+    pickupEstimate,
     data,
     state,
     camera,

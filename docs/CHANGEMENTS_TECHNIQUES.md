@@ -10,6 +10,83 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 5 octobre 2026 — Estimation d'arrivée du conducteur avant embarquement
+
+**Problème :** avant la prise en charge, le délai calculé vers le passager était
+présenté sous le libellé générique « Projection », sans distinguer explicitement
+l'arrivée du conducteur de l'arrivée à destination. Le passager devait également
+attendre le démarrage pour accéder au suivi depuis le détail du trajet accepté.
+
+**Solution appliquée :**
+
+- Bouton « Voir l’arrivée » sur le trajet accepté, à venir ou en cours, ouvrant
+  le suivi de sa réservation. Les demandes acceptées qui ont créé un trajet
+  et une réservation utilisent le même parcours, sans nouvelle résolution réseau.
+- Bandeau « Arrivée estimée du conducteur » dans l'en-tête du suivi, visible
+  aussi lorsque la carte est agrandie : par exemple « Environ 5 min » ou
+  « Moins d’une minute ». Il vise le point de prise en charge convenu, pas la
+  destination finale ou la position personnelle du passager en déplacement.
+- Estimation à partir de la durée routière retournée par l'API existante et
+  de la proportion de distance restant sur cet itinéraire. Ce n'est pas un
+  décompte diminuant indépendamment du mouvement du véhicule. Aucun « 0 min »
+  ni confirmation d'arrivée/embarquement n'est produit par ce calcul.
+- Affichage explicite lorsque le départ est en attente, le trajet en pause,
+  la connexion absente, la position manquante/périmée ou l'itinéraire indisponible.
+  Aucun délai numérique sans position récente et itinéraire routier exploitable.
+- Actualisation automatique des directions au maximum une fois par minute
+  via ce nouveau mécanisme, seulement sur écran actif, connecté, en attente de
+  prise en charge d'un trajet démarré et avec une position récente. Réutilisation
+  de la requête existante, de sa protection contre les appels concurrents et de
+  sa limite ordinaire de 30 secondes. L'actualisation manuelle existante reste
+  disponible ; aucun nouveau flux GPS, socket ou polling de position ajouté.
+- Expiration locale après deux minutes sans nouvelle position ou trois minutes
+  sans nouvelle route. Ce sont des seuils de prudence choisis, pas des mesures
+  de latence. Arrêt des minuteries hors écran, hors connexion ou après embarquement.
+- Routes identifiées par réservation, trajet, statut et étape ; réponses tardives
+  ignorées si le contexte change. Démarrer le trajet invalide aussi le contexte
+  précédent. Une route sans durée valable conserve un tracé de secours sans délai.
+
+**Fichiers :** nouveaux `features/passenger-navigation/pickupArrivalEstimate.ts`,
+`PassengerPickupEstimateBanner.tsx` et
+`hooks/passenger-navigation/usePassengerPickupEstimate.ts`.
+Dans `features/passenger-navigation/` : `PassengerNavigationHeader.tsx`,
+`PassengerNavigationInfoCard.tsx`, `navigationModel.ts` ; dans
+`hooks/passenger-navigation/` : `usePassengerNavigationController.ts`,
+`usePassengerNavigationData.ts`, `usePassengerNavigationPresentation.ts`,
+`usePassengerNavigationRoute.ts`, `usePassengerRouteContext.ts` ;
+`features/trip-detail/TripDetailActionsFooter.tsx`.
+Nouveaux tests `tests/passengerPickupEstimate.test.js` et
+`tests/passengerPickupRoute.test.js`.
+
+**Conservé :** accès conditionné à une réservation acceptée, confirmation serveur
+de l'embarquement et de l'arrivée à destination, carte, distance restante,
+contact/SOS, partage, annulation, reprise et paiements. Seule la durée générique
+redondante est retirée du panneau inférieur avant embarquement ; sa distance
+est nommée « Avant prise en charge ». Après embarquement, la présentation de
+l'itinéraire vers la destination est conservée. Aucun changement backend,
+de contrat API public, de migration, de permission native ou de dépendance.
+
+**Vérifications :** suite mobile complète exécutée avec 1 376 tests JavaScript
+réussis ; dernière vérification des deux nouvelles suites après ajustements :
+15 tests réussis, dont un test ajouté ensuite pour le panneau inférieur.
+Les tests couvrent les états d'attente, les réservations/demandes, l'identité de
+la route, les données périmées, le hors-ligne, les requêtes tardives, les limites
+de fréquence, la fin des minuteries et les composants rendus avec natives simulées.
+TypeScript mobile et ESLint ciblé validés, sans erreur ni avertissement après
+complétion de la dépendance d'effet `setActiveRouteSegment`. Frontière réseau
+et contrôle de taille validés : 1 008 sources, aucune au-dessus de 400 lignes.
+`git diff --check` validé.
+
+**Limites :** pas d'essai sur téléphone ou de requête Google Maps/serveur réel.
+Le délai devient disponible après démarrage et partage d'une position récente,
+pas dès l'acceptation si le conducteur n'est pas encore parti. C'est une
+approximation routière, pas une promesse d'heure d'arrivée : la durée transmise
+actuellement ne fournit pas un trafic temps réel garanti et ce calcul n'ajoute
+pas les temps d'attente ou les détours des autres passagers. Le bandeau rappelle
+la variabilité liée à la circulation et aux arrêts. Vérifier sur Android/iOS
+la lisibilité avec grandes polices, l'en-tête/carte, le retour réseau et les
+transitions départ → approche → embarquement avant livraison.
+
 ## 5 octobre 2026 — Champ immatriculation sans exemple ni texte de format
 
 **Problème :** l'exemple « MOTO123 » suggérait un champ réservé aux motos alors

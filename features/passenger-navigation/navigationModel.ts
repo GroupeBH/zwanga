@@ -11,6 +11,8 @@ export type BookingAutoProgressEvent = BookingAutoProgressPayload['events'][numb
 export type PassengerPickupNoticeType = 'driver_near_pickup' | 'driver_arrived_pickup' | 'parties_nearby';
 export type RouteSegmentFocus = 'route' | 'pickup';
 export type PassengerRouteInfo = {
+  routeSignature?: string;
+  fetchedAt?: number;
   distance: string;
   distanceMeters: number;
   duration: string;

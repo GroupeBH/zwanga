@@ -165,9 +165,11 @@ export function usePassengerNavigationPresentation({
     if (!hasPickupConnectorSegment && activeRouteSegment === 'pickup') {
       setActiveRouteSegment('route');
     }
-  }, [activeRouteSegment, hasPickupConnectorSegment]);
+  }, [activeRouteSegment, hasPickupConnectorSegment, setActiveRouteSegment]);
 
   return {
+    remainingDistanceMeters,
+    isRemainingRouteUsable: remainingPassengerRoute.isRouteUsable,
     displayedRouteCoordinates,
     canToggleRouteSegments,
     canCenterOnPassenger,

@@ -183,17 +183,21 @@ export function TripDetailActionsFooter({
                       )}
 
                       <View style={styles.bookingSecondaryActionsRow}>
-                        {/* Bouton Navigation - visible quand le trajet est en cours */}
-                        {activeBooking.status === 'accepted' && trip.status === 'ongoing' &&
+                        {/* Le passager peut consulter l'arrivée dès l'acceptation. */}
+                        {activeBooking.status === 'accepted' && ['upcoming', 'ongoing'].includes(trip.status) &&
                           !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
                           !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
                             <TouchableOpacity
                               activeOpacity={0.82}
                               style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionNavigation]}
                               onPress={() => data.router.push(`/booking/navigate/${activeBooking.id}`)}
+                              accessibilityRole="button"
+                              accessibilityLabel={!activeBooking.pickedUp ? 'Voir l’arrivée estimée du conducteur' : 'Suivre le trajet'}
                             >
                               <Ionicons name="navigate" size={18} color={Colors.white} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>Suivre</Text>
+                              <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>
+                                {!activeBooking.pickedUp ? 'Voir l’arrivée' : 'Suivre'}
+                              </Text>
                             </TouchableOpacity>
                           )}
 

@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/styles';
 import { NavigationAssistanceButtons } from '@/features/navigation/NavigationAssistanceButtons';
+import { PassengerPickupEstimateBanner } from './PassengerPickupEstimateBanner';
 import type { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import type { usePassengerNavigationController } from '@/hooks/passenger-navigation/usePassengerNavigationController';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,6 +45,7 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
       </View>
       <NavigationAssistanceButtons role="passenger" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
+    <PassengerPickupEstimateBanner estimate={model.pickupEstimate} />
   </View>;
 }
 
