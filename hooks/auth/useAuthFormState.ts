@@ -1,3 +1,4 @@
+import { getAuthDraftSnapshot, markAuthFlowOpened } from '@/services/authFlowDraft';
 import { SocialAuthProvider } from '../../features/auth/authModel';
 import { emptyPinResetOtp } from './usePinResetFlow';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
@@ -10,25 +11,29 @@ import {
 } from '@/store/api/zwangaApi';
 import type { UserGender } from '@/types';
 import { type PendingReferralAttribution } from '@/utils/referralAttribution';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 import { AuthMode, AuthStep, VehicleType } from '@/components/auth';
 
 interface Params {
   initialMode: AuthMode;
+  explicitMode?: AuthMode;
 }
 
 export function useAuthFormState({
-  initialMode,
+  initialMode, explicitMode,
 }: Params) {
-  const [mode, setMode] = useState<AuthMode>(initialMode);
-  const [step, setStep] = useState<AuthStep>('phone');
+  const candidate = getAuthDraftSnapshot();
+  const draft = useRef(candidate && (!explicitMode || explicitMode === candidate.mode) ? candidate : null).current;
+  useEffect(() => { markAuthFlowOpened(); }, []);
+  const [mode, setMode] = useState<AuthMode>(draft?.mode ?? initialMode);
+  const [step, setStep] = useState<AuthStep>(draft?.step ?? 'phone');
 
   // Form State
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(draft?.phone ?? '');
   const [smsCode, setSmsCode] = useState(['', '', '', '', '']);
-  const smsInputRefs = useRef<Array<TextInput | null>>([]);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const smsInputRefs = useRef<(TextInput | null)[]>([]);
+  const [, setIsSendingOtp] = useState(false);
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const pinInputRef = useRef<TextInput | null>(null);
@@ -39,7 +44,7 @@ export function useAuthFormState({
   const [resetOtpCode, setResetOtpCode] = useState(emptyPinResetOtp);
   const [resetNewPin, setResetNewPin] = useState('');
   const [resetNewPinConfirm, setResetNewPinConfirm] = useState('');
-  const resetOtpInputRefs = useRef<Array<TextInput | null>>([]);
+  const resetOtpInputRefs = useRef<(TextInput | null)[]>([]);
   const resetPinInputRef = useRef<TextInput | null>(null);
   const resetPinConfirmInputRef = useRef<TextInput | null>(null);
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,39 +52,39 @@ export function useAuthFormState({
   const [isSendingResetOtp, setIsSendingResetOtp] = useState(false);
 
   // Profile State
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [gender, setGender] = useState<UserGender | null>(null);
-  const [role, setRole] = useState<'driver' | 'passenger'>('passenger');
-  const [profilePicture, setProfilePicture] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState(draft?.firstName ?? '');
+  const [lastName, setLastName] = useState(draft?.lastName ?? '');
+  const [email, setEmail] = useState(draft?.email ?? '');
+  const [gender, setGender] = useState<UserGender | null>(draft?.gender ?? null);
+  const [role, setRole] = useState<'driver' | 'passenger'>(draft?.role ?? 'passenger');
+  const [profilePicture, setProfilePicture] = useState<string | null>(draft?.profilePicture ?? null);
   const [referralAttribution, setReferralAttribution] =
     useState<PendingReferralAttribution | null>(null);
 
   // Vehicle State
-  const [vehicleType, setVehicleType] = useState<VehicleType | null>(null);
-  const [vehicleBrand, setVehicleBrand] = useState('');
-  const [vehicleModel, setVehicleModel] = useState('');
-  const [vehicleColor, setVehicleColor] = useState('');
-  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [vehicleType, setVehicleType] = useState<VehicleType | null>(draft?.vehicleType ?? null);
+  const [vehicleBrand, setVehicleBrand] = useState(draft?.vehicleBrand ?? '');
+  const [vehicleModel, setVehicleModel] = useState(draft?.vehicleModel ?? '');
+  const [vehicleColor, setVehicleColor] = useState(draft?.vehicleColor ?? '');
+  const [vehiclePlate, setVehiclePlate] = useState(draft?.vehiclePlate ?? '');
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
 
   // Google flow states
-  const [googleIdToken, setGoogleIdToken] = useState<string | null>(null);
-  const [googleProfileName, setGoogleProfileName] = useState<string | null>(null);
-  const [googleFirstName, setGoogleFirstName] = useState<string | null>(null);
-  const [googleLastName, setGoogleLastName] = useState<string | null>(null);
-  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
-  const [googlePhone, setGooglePhone] = useState('');
+  const [googleIdToken, setGoogleIdToken] = useState<string | null>(draft?.googleIdToken ?? null);
+  const [googleProfileName, setGoogleProfileName] = useState<string | null>(draft?.googleProfileName ?? null);
+  const [googleFirstName, setGoogleFirstName] = useState<string | null>(draft?.googleFirstName ?? null);
+  const [googleLastName, setGoogleLastName] = useState<string | null>(draft?.googleLastName ?? null);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(draft?.googleEmail ?? null);
+  const [googlePhone, setGooglePhone] = useState(draft?.googlePhone ?? '');
   const [googleOtp, setGoogleOtp] = useState(['', '', '', '', '']);
-  const googleOtpRefs = useRef<Array<TextInput | null>>([]);
+  const googleOtpRefs = useRef<(TextInput | null)[]>([]);
   const [isSendingGoogleOtp, setIsSendingGoogleOtp] = useState(false);
   const [isVerifyingGoogleOtp, setIsVerifyingGoogleOtp] = useState(false);
-  const [googleFlow, setGoogleFlow] = useState<'login' | 'signup' | null>(null);
-  const [googleSignupStep, setGoogleSignupStep] = useState<'phone' | 'otp' | 'profile'>('phone');
-  const [isGooglePhoneVerified, setIsGooglePhoneVerified] = useState(false);
-  const [socialProvider, setSocialProvider] = useState<SocialAuthProvider | null>(null);
-  const [appleNonce, setAppleNonce] = useState<string | null>(null);
+  const [googleFlow, setGoogleFlow] = useState<'login' | 'signup' | null>(draft?.googleFlow ?? null);
+  const [googleSignupStep, setGoogleSignupStep] = useState<'phone' | 'otp' | 'profile'>(draft?.googleSignupStep ?? 'phone');
+  const [isGooglePhoneVerified, setIsGooglePhoneVerified] = useState(draft?.isGooglePhoneVerified ?? false);
+  const [socialProvider, setSocialProvider] = useState<SocialAuthProvider | null>(draft?.socialProvider ?? null);
+  const [appleNonce, setAppleNonce] = useState<string | null>(draft?.appleNonce ?? null);
   const [isAppleAvailable, setIsAppleAvailable] = useState(false);
   const [isAppleLoading, setIsAppleLoading] = useState(false);
   const isAppleSignupFlow =
@@ -102,6 +107,7 @@ export function useAuthFormState({
 
   return {
     mode,
+    isResumingProfile: Boolean(draft?.mode === 'signup' && draft.step === 'pin' && (draft.firstName || draft.lastName)),
     googleIdToken,
     isGooglePhoneVerified,
     role,

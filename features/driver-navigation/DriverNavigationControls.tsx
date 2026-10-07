@@ -56,7 +56,6 @@ export function DriverNavigationControls({
     );
   };
   const options: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; action: () => void; disabled?: boolean }[] = [
-    { label: 'Prévenir mes proches', icon: 'shield-checkmark', action: () => foundation.mapState.setSecurityModalVisible(true) },
     { label: 'Modifier le trajet', icon: 'create-outline', action: tripActions.handleEditTripFromNavigation },
     { label: 'Partager le trajet', icon: 'share-social-outline', action: () => void tripActions.handleShareTrip(), disabled: foundation.data.isCreatingTripShareLink },
     ...(foundation.passengers.passengerMapLocations.length > 0 ? [{ label: 'Voir les passagers', icon: 'people' as const, action: passengerPresentation.fitVehicleAndPassengers }] : []),

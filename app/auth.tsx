@@ -5,7 +5,7 @@ import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import React from 'react';
 import { Redirect } from 'expo-router';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AuthHeader,
@@ -22,7 +22,7 @@ import {
 } from '@/components/auth';
 
 export default function AuthScreen() {
-  const { isAuthenticated, form, navigation, canGoBack, progress, motivationalMessage, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration } = useAuthController();
+  const { isAuthenticated, draftPersistence, form, navigation, canGoBack, progress, motivationalMessage, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration } = useAuthController();
   const compactCodeStep = form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
   const keyboard = useAuthKeyboardLayout(compactCodeStep, `${form.step}:${form.resetPinStep}`);
   const resetPending = form.step === 'resetPin' && (phoneActions.isResettingPin || form.isSendingResetOtp);
@@ -30,6 +30,9 @@ export default function AuthScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={keyboard.keyboardVisible ? ['top', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}>
+      {draftPersistence.saveFailed && <Text accessibilityRole="alert" style={{ paddingHorizontal: 20, color: '#9a3412' }}>
+        La reprise automatique est indisponible pour le moment. Gardez Zwanga ouvert pour conserver cette étape.
+      </Text>}
       <AuthHeader
         mode={form.mode}
         onModeChange={(mode) => { if (!resetPending && !social.isSocialAuthInFlight() && !phoneActions.isPinLoginInFlight() && !registration.isRegistrationLocked()) navigation.handleModeChange(mode); }}
@@ -41,6 +44,9 @@ export default function AuthScreen() {
         motivationalMessage={motivationalMessage}
       />
 
+      {form.isResumingProfile && form.step === 'pin' && <Text style={{ paddingHorizontal: 20, paddingVertical: 8 }}>
+        Votre profil a été conservé. Par sécurité, saisissez de nouveau votre PIN pour poursuivre.
+      </Text>}
       <KeyboardAvoidingView
         // Android already resizes this activity (adjustResize); avoid a second inset.
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -180,6 +186,7 @@ export default function AuthScreen() {
               onFirstNameChange={form.setFirstName}
               onLastNameChange={form.setLastName}
               onSelectProfilePicture={profileActions.handleSelectProfilePicture}
+              isSelectingPhoto={profileActions.isSelectingProfilePhoto}
               onGenderChange={form.setGender}
               onRoleChange={form.setRole}
               onVehicleTypeChange={form.setVehicleType}

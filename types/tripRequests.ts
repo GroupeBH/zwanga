@@ -4,6 +4,7 @@ import type { Location } from './trips';
 export type TripRequestStatus = 'pending' | 'offers_received' | 'driver_selected' | 'cancelled' | 'expired';
 
 export interface TripRequest {
+  immediateDispatch?: boolean;
   id: string;
   passengerId: string;
   passengerName?: string;

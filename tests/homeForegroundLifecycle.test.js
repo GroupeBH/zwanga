@@ -105,6 +105,7 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
   const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet'];
   const load = loader({
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
+    '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
     '@/hooks/home/useHomeController': { useHomeController: () => home },
     '@/features/home/HomeScreen.styles': { styles: {} },
     'react-native': { View: 'View' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },

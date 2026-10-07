@@ -99,7 +99,7 @@ export default function SubscriptionPaymentScreen() {
               numberOfLines={payment.state.isTightHeight ? 1 : 2}
               style={[styles.planText, payment.state.isCompactHeight && styles.planTextCompact]}
             >
-              Publiez au-delà des 5 trajets inclus chaque jour. Après paiement : +{payment.state.subscriptionRewardTokens} jetons.
+              Pro pour 30 jours. Les commissions de 5 % restent dues. Bonus : +{payment.state.subscriptionRewardTokens} jetons, non utilisables pour les commissions cash.
             </Text>
           </LinearGradient>
 
@@ -323,5 +323,4 @@ export default function SubscriptionPaymentScreen() {
     </SafeAreaView>
   );
 }
-
 

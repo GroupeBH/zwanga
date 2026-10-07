@@ -6,7 +6,6 @@ import { DriverNavigationMap } from '../../../features/driver-navigation/DriverN
 import { NavigationLocationDisclosure } from '../../../features/driver-navigation/NavigationLocationDisclosure';
 import { NavigationPassengersModal } from '../../../features/driver-navigation/NavigationPassengersModal';
 import { NavigationPickupBypassModal } from '../../../features/driver-navigation/NavigationPickupBypassModal';
-import { NavigationSecurityModal } from '../../../features/driver-navigation/NavigationSecurityModal';
 import { NavigationWaypointModal } from '../../../features/driver-navigation/NavigationWaypointModal';
 import { NavigationPickupNoticeModal } from '../../../features/driver-navigation/NavigationPickupNoticeModal';
 import { NavigationTripEndModal } from '../../../features/driver-navigation/NavigationTripEndModal';
@@ -195,13 +194,6 @@ function DriverNavigationScreen() {
         resolveBackgroundDisclosure={model.session.foundation.resolveBackgroundDisclosure}
       />
 
-      <NavigationSecurityModal
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible && !assistance.isOpen}
-        backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        setSecurityModalVisible={model.session.foundation.mapState.setSecurityModalVisible}
-        insets={model.session.foundation.data.insets}
-        trip={model.session.foundation.data.trip}
-      />
 
       <NavigationTripEndModal
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}

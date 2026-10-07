@@ -2,10 +2,10 @@ import { FeedbackState, hasPassengerBoarded } from '../../features/manage-trip/m
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import { useAcceptBookingMutation, useCancelBookingMutation, useRejectBookingMutation } from '@/store/api/bookingApi';
-import type { Booking, BookingStatus } from '@/types';
+import type { Booking, BookingStatus, Trip } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import React from 'react';
-import type { Trip } from '@/types';
+import React, { useRef } from 'react';
+import { Keyboard } from 'react-native';
 
 interface Params {
   setFeedback: React.Dispatch<React.SetStateAction<FeedbackState>>;
@@ -46,6 +46,8 @@ export function useManageTripBookingActions({
   showDialog,
   cancelBooking,
 }: Params) {
+  const rejectLock = useRef(false);
+  const cancelLock = useRef(false);
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
     setFeedback({
       type,
@@ -54,18 +56,24 @@ export function useManageTripBookingActions({
   };
 
   const openRejectModal = (booking: Booking) => {
+    if (rejectLock.current || isRejecting) return;
     setTargetBooking(booking);
     setRejectReason('');
     setRejectError('');
     setRejectModalVisible(true);
   };
 
-  const closeRejectModal = () => {
-    if (isRejecting) return;
+  const resetRejectForm = () => {
+    Keyboard.dismiss();
     setRejectModalVisible(false);
     setTargetBooking(null);
     setRejectReason('');
     setRejectError('');
+  };
+
+  const closeRejectModal = () => {
+    if (rejectLock.current || isRejecting) return;
+    resetRejectForm();
   };
 
   const handleAcceptBooking = async (bookingId: string) => {
@@ -98,11 +106,12 @@ export function useManageTripBookingActions({
   };
 
   const handleRejectSubmit = async () => {
-    if (!targetBooking) return;
+    if (!targetBooking || rejectLock.current || isRejecting) return;
     if (!rejectReason.trim()) {
       setRejectError('Veuillez indiquer un motif de refus.');
       return;
     }
+    rejectLock.current = true;
     setProcessingBookingId(targetBooking.id);
     try {
       await rejectBooking({ id: targetBooking.id, reason: rejectReason.trim() }).unwrap();
@@ -112,15 +121,12 @@ export function useManageTripBookingActions({
         source_screen: 'trip_manage',
       });
       showFeedback('success', 'La réservation a été refusée.');
-      closeRejectModal();
+      resetRejectForm();
       refreshAll();
     } catch (error: any) {
       const rejectedBooking = await reconcileBookingStatus(error, targetBooking.id, ['rejected']);
       if (rejectedBooking) {
-        setRejectModalVisible(false);
-        setTargetBooking(null);
-        setRejectReason('');
-        setRejectError('');
+        resetRejectForm();
         showFeedback('success', 'La réservation a bien été refusée malgré la connexion lente.');
         void refreshAll();
         return;
@@ -129,12 +135,13 @@ export function useManageTripBookingActions({
         getApiErrorMessage(error, 'Impossible de refuser cette réservation.'),
       );
     } finally {
+      rejectLock.current = false;
       setProcessingBookingId(null);
     }
   };
 
   const handleCancelBookingBeforePickup = (booking: Booking) => {
-    if (!trip) return;
+    if (!trip || cancelLock.current) return;
 
     if (booking.status !== 'accepted' || hasPassengerBoarded(booking)) {
       showFeedback('error', 'Impossible d\'annuler cette réservation : le passager a déjà embarqué.');
@@ -153,6 +160,8 @@ export function useManageTripBookingActions({
           label: 'Oui, annuler',
           variant: 'primary',
           onPress: async () => {
+            if (cancelLock.current) return;
+            cancelLock.current = true;
             setProcessingBookingId(booking.id);
             try {
               await cancelBooking(booking.id).unwrap();
@@ -175,6 +184,7 @@ export function useManageTripBookingActions({
                 getApiErrorMessage(error, 'Impossible d\'annuler cette réservation.'),
               );
             } finally {
+              cancelLock.current = false;
               setProcessingBookingId(null);
             }
           },

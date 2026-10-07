@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'zwanga.pending-referral-attribution.v2';
+const UNRESOLVED_STORAGE_KEY = 'zwanga.unresolved-referral-attribution.v1';
 const CONSUMED_STORAGE_KEY = 'zwanga.consumed-referral-attributions.v1';
 const ATTRIBUTION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const CONSUMED_ATTRIBUTION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -80,19 +81,43 @@ const getConsumedAttributions = async (): Promise<ConsumedReferralAttribution[]>
   }
 };
 
-export const getPendingReferralAttribution = async () => {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+const readAttribution = async (key: string) => {
+  const raw = await AsyncStorage.getItem(key);
   if (!raw) return null;
   try {
     const pending = normalize(
       JSON.parse(raw) as PendingReferralAttribution,
     );
-    if (!pending) await AsyncStorage.removeItem(STORAGE_KEY);
+    if (!pending) await AsyncStorage.removeItem(key);
     return pending;
   } catch {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await AsyncStorage.removeItem(key);
     return null;
   }
+};
+
+export const getPendingReferralAttribution = () => readAttribution(STORAGE_KEY);
+
+// Keep unverified links separate: signup must never mistake them for a
+// server-validated attribution. Preserve the original capture date on retries.
+export const getUnresolvedReferralAttribution = () => readAttribution(UNRESOLVED_STORAGE_KEY);
+
+export const captureUnresolvedReferralAttribution = async (value: PendingReferralAttribution) => {
+  const existing = await getUnresolvedReferralAttribution();
+  if (existing) return existing;
+  const pending = normalize(value);
+  if (!pending) return null;
+  if (pending.isDeferred) {
+    const consumed = await getConsumedAttributions();
+    if (consumed.some(entry => entry.token === pending.token)) return null;
+  }
+  await AsyncStorage.setItem(UNRESOLVED_STORAGE_KEY, JSON.stringify(pending));
+  return pending;
+};
+
+export const clearUnresolvedReferralAttribution = async (token: string) => {
+  const pending = await getUnresolvedReferralAttribution();
+  if (pending?.token === token) await AsyncStorage.removeItem(UNRESOLVED_STORAGE_KEY);
 };
 
 export const captureFirstReferralAttribution = async (

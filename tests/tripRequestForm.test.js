@@ -199,7 +199,7 @@ test('leaving the address field before its debounce ends does not launch a reque
   assert.equal(requests, 0);
 });
 
-function submissionHarness({ create, list = () => Promise.resolve([]), verified = true }) {
+function submissionHarness({ create, list = () => Promise.resolve([]), verified = true, dispatchEnabled = false }) {
   const hooks = hookHarness();
   const dialogs = [], routes = [];
   const identityChecks = [];
@@ -217,6 +217,7 @@ function submissionHarness({ create, list = () => Promise.resolve([]), verified 
       isExtraSeatsIdentityError: (error) => error.data?.reason === 'extra_seats',
     },
     '@/utils/requestNavigation': { getTripRequestDetailHref: (id) => '/request/' + id },
+    '@/store/api/driverDispatchApi': { useDriverDispatchStatusQuery: () => ({ data: { enabled: dispatchEnabled } }) },
     '@/store/api/tripRequestApi': {
       useCreateTripRequestMutation: () => [(args) => ({ unwrap: () => create(args) }), { isLoading: false }],
       useLazyGetMyTripRequestsQuery: () => [() => ({ unwrap: list })],
@@ -349,6 +350,19 @@ test('a recommendation arriving during submission cannot change the confirmed sn
   await submitted;
   assert.equal(payload.maxPricePerSeat, 2000);
   app.hooks.unmount();
+});
+
+test('nearest-driver dispatch is opt-in from server and only applies to Maintenant', async () => {
+  for (const enabled of [false, true]) {
+    for (const timePreset of ['now', 'soon', 'custom']) {
+      let payload;
+      const app = submissionHarness({ dispatchEnabled: enabled, create: async value => { payload = value; return { id: 'created' }; } });
+      app.props.timePreset = timePreset;
+      await app.render().handleCreateRequest();
+      assert.equal(Boolean(payload.immediateDispatch), enabled && timePreset === 'now');
+      app.hooks.unmount();
+    }
+  }
 });
 
 test('ambiguous creation reconciles by reading requests, without replaying the POST', async () => {

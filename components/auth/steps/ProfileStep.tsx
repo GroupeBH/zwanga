@@ -12,6 +12,7 @@ const SIGNUP_GENDERS = ['male', 'female'] as const satisfies readonly UserGender
 
 interface ProfileStepProps {
   isLoading?: boolean;
+  isSelectingPhoto?: boolean;
   hasCreatedAccount?: boolean;
   firstName: string;
   lastName: string;
@@ -38,6 +39,7 @@ interface ProfileStepProps {
 
 export function ProfileStep({
   isLoading = false,
+  isSelectingPhoto = false,
   hasCreatedAccount = false,
   firstName,
   lastName,
@@ -73,8 +75,10 @@ export function ProfileStep({
           <Text style={styles.profileCompactEyebrow}>DERNIÈRE ÉTAPE</Text>
           <Text style={styles.profileCompactTitle}>Votre profil</Text>
         </View>
-        <TouchableOpacity style={styles.avatarUpload} onPress={onSelectProfilePicture} disabled={fieldsLocked}>
-          {profilePicture ? (
+        <TouchableOpacity style={styles.avatarUpload} onPress={onSelectProfilePicture} disabled={fieldsLocked || isSelectingPhoto}
+          accessibilityRole="button" accessibilityLabel="Choisir une photo de profil"
+          accessibilityState={{ disabled: fieldsLocked || isSelectingPhoto, busy: isSelectingPhoto }}>
+          {isSelectingPhoto ? <ActivityIndicator color={Colors.primary} /> : profilePicture ? (
             <Image source={{ uri: profilePicture }} style={styles.avatarImage} />
           ) : (
             <View style={styles.avatarPlaceholder}>
@@ -241,9 +245,9 @@ export function ProfileStep({
       <TouchableOpacity
         style={[styles.mainButton, styles.mainButtonActive, styles.profileContinueButton]}
         onPress={onContinue}
-        disabled={isLoading}
+        disabled={isLoading || isSelectingPhoto}
         accessibilityRole="button"
-        accessibilityState={{ disabled: isLoading, busy: isLoading }}
+        accessibilityState={{ disabled: isLoading || isSelectingPhoto, busy: isLoading || isSelectingPhoto }}
       >
         {isLoading && <ActivityIndicator color="white" />}
         <Text style={styles.mainButtonText}>

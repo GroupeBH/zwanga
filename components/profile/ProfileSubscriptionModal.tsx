@@ -126,13 +126,13 @@ export function ProfileSubscriptionModal({
             <View style={styles.subscriptionModalHeaderTextBlock}>
               <Text style={styles.subscriptionModalTitle}>Abonnement conducteur</Text>
               <Text style={styles.subscriptionModalSubtitle}>
-                Pour publier au-delà des 5 trajets inclus chaque jour.
+                Pour publier au-delà des 5 trajets inclus chaque jour. Les commissions de 5 % restent dues.
               </Text>
             </View>
 
             <View style={styles.subscriptionModalPricePill}>
               <Text style={styles.subscriptionModalPrice}>{proPriceLabel}</Text>
-              <Text style={styles.subscriptionModalPriceCaption}>par mois</Text>
+              <Text style={styles.subscriptionModalPriceCaption}>pour 30 jours</Text>
             </View>
           </View>
         </LinearGradient>

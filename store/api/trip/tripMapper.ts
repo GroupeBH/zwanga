@@ -70,6 +70,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
 
   return {
     id: trip.id,
+    acceptedPaymentModes: trip.acceptedPaymentModes,
     driverId: trip.driverId,
     driverName: formatFullName(trip.driver),
     driverAvatar: trip.driver?.profilePicture ?? undefined,
@@ -184,6 +185,7 @@ export const mapServerRecurringTripToClient = (
     totalSeats: Number(template.totalSeats ?? 0),
     pricePerSeat: Number(template.pricePerSeat ?? 0),
     isFree: template.isFree ?? Number(template.pricePerSeat) === 0,
+    acceptedPaymentModes: template.acceptedPaymentModes,
     description: template.description ?? null,
     status: mapRecurringTripStatus(template.status),
     vehicleId: template.vehicleId,

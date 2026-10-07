@@ -166,6 +166,8 @@ export default function PublishScreen() {
         {/* Étape 4: Places & Prix */}
         {model.step === 'pricing' && (
           <PublishPricingStep
+            acceptedPaymentModes={model.form.acceptedPaymentModes}
+            setAcceptedPaymentModes={model.form.setAcceptedPaymentModes}
             stepEntering={model.stepEntering}
             setSeats={model.form.setSeats}
             seats={model.form.seats}
@@ -178,15 +180,13 @@ export default function PublishScreen() {
             setRequiresPassengerKyc={model.form.setRequiresPassengerKyc}
             description={model.form.description}
             setDescription={model.form.setDescription}
-            insets={model.insets}
-            goToStep={model.navigation.goToStep}
-            handleNextStep={model.navigation.handleNextStep}
           />
         )}
 
         {/* Étape 5: Confirmation */}
         {model.step === 'confirm' && (
           <PublishConfirmationStep
+            acceptedPaymentModes={model.form.acceptedPaymentModes}
             stepEntering={model.stepEntering}
             publicationSuccess={model.publicationSuccess}
             routePreviewRegion={model.route.routePreviewRegion}
@@ -338,4 +338,3 @@ export default function PublishScreen() {
     </FormScreen>
   );
 }
-

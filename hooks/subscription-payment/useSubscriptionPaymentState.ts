@@ -93,7 +93,7 @@ export function useSubscriptionPaymentState() {
   const subscriptionPointsAmount = Number(
     proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
   );
-  const walletBalance = Number(walletSummary?.account.balance ?? 0);
+  const walletBalance = Math.max(0, Number(walletSummary?.account.balance ?? 0) - Number(walletSummary?.account.reservedCashCommissionBalance ?? 0));
   const pointsCurrency =
     proPlan?.tokensCurrency ||
     proPlan?.pointsCurrency ||
@@ -103,7 +103,7 @@ export function useSubscriptionPaymentState() {
     proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
     pointsCurrency,
   );
-  const walletBalanceLabel = formatPointsAmount(walletSummary?.account.balance ?? 0, pointsCurrency);
+  const walletBalanceLabel = formatPointsAmount(walletBalance, pointsCurrency);
   const subscriptionRewardTokens = Number(proPlan?.subscriptionRewardTokens ?? 25);
   const isPremiumActive = Boolean(
     premiumOverview?.isPremium ||

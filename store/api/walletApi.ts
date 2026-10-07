@@ -119,6 +119,7 @@ const mapWalletAccount = (value: unknown): WalletAccount => {
     ) as number | string,
     currency: String(account.currency ?? "PTS"),
     withdrawableBalance: Number(account.withdrawableBalance ?? 0),
+    reservedCashCommissionBalance: Number(account.reservedCashCommissionBalance ?? 0),
     reservedWithdrawalBalance: Number(account.reservedWithdrawalBalance ?? 0),
     withdrawalsBlocked: account.withdrawalsBlocked === true,
     createdAt: String(account.createdAt ?? account.created_at ?? ""),

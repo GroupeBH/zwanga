@@ -135,7 +135,7 @@ export function useArrivalPaymentState() {
 
   const paymentAmount = normalizeAmount(arrivalBooking?.paymentAmount);
   const paymentCurrency = arrivalBooking?.paymentCurrency ?? 'CDF';
-  const walletBalance = Math.max(0, normalizeAmount(wallet?.account.balance) ?? 0);
+  const walletBalance = Math.max(0, (normalizeAmount(wallet?.account.balance) ?? 0) - (normalizeAmount(wallet?.account.reservedCashCommissionBalance) ?? 0));
   const requiredPoints = paymentAmount === null
     ? null
     : roundMoney(paymentAmount / ZWANGA_POINT_VALUE_CDF);

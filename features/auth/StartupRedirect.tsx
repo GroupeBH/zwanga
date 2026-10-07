@@ -1,3 +1,4 @@
+import { shouldResumeAuthFlow } from '@/services/authFlowDraft';
 import { useAppSelector } from '@/store/hooks';
 import { selectHasAuthenticatedSession } from '@/store/selectors';
 import { Redirect } from 'expo-router';
@@ -6,5 +7,5 @@ import { Redirect } from 'expo-router';
 export default function StartupRedirect() {
   const hasSession = useAppSelector(selectHasAuthenticatedSession);
   // Optional presentation flags must never override an authenticated session.
-  return <Redirect href={hasSession ? '/(tabs)' : '/auth-entry'} />;
+  return <Redirect href={hasSession ? '/(tabs)' : shouldResumeAuthFlow() ? '/auth' : '/auth-entry'} />;
 }

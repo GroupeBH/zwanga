@@ -27,6 +27,7 @@ test('the greeting has no availability counter but retains ongoing-trip feedback
     availableTripsLabel: '7 trajets', latestTrips: Array(7).fill({}) };
   const tree = HomeHeader.type(props);
   assert.ok(text(tree).includes('Bonjour, Alex'));
+  assert.doesNotMatch(text(tree), /Demandes proches|Demandes près de moi|Ma disponibilité/);
   assert.equal(text(tree).includes('disponible'), false); assert.equal(text(tree).includes('7 trajets'), false);
   assert.ok(text(tree).includes('9+'));
   const buttons = nodes(tree).filter(node => node.type === 'Button');

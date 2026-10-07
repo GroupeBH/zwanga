@@ -73,6 +73,7 @@ export type ServerVehicle = {
 };
 
 export type ServerTrip = {
+  acceptedPaymentModes?: import('@/types').TripPaymentMode[];
   id: string;
   driverId: string;
   driver?: ServerUser | null;

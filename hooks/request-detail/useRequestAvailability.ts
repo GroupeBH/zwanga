@@ -123,6 +123,7 @@ export function useRequestAvailability({
   // Vérifier si la demande peut être modifiée
   const canEdit = useMemo(() => {
     if (!isOwner || !tripRequest) return false;
+    if (tripRequest.immediateDispatch) return false;
     // Ne peut pas modifier si une offre a été acceptée ou si un driver a été sélectionné
     if (tripRequest.status === 'driver_selected' || tripRequest.selectedDriverId) return false;
     // Ne peut modifier que si le statut est 'pending' ou 'offers_received'
@@ -158,6 +159,7 @@ export function useRequestAvailability({
   }, [tripRequest?.offers]);
 
   const canAcceptRequest = useMemo(() => {
+    if (tripRequest?.immediateDispatch) return false;
     if (!isDriverAccount || !isIdentityVerified || isOwner || hasExistingOffer) {
       return false;
     }
@@ -182,6 +184,7 @@ export function useRequestAvailability({
     isIdentityVerified,
     isOwner,
     tripRequest?.status,
+    tripRequest?.immediateDispatch,
   ]);
 
   const myOffer = useMemo(() => {

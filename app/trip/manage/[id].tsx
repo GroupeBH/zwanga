@@ -3,14 +3,14 @@ import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
 import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
 import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
 import { ManageTripContactModal } from '@/features/manage-trip/ManageTripContactModal';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { labelStatus, statusColor } from '../../../features/manage-trip/manageTripStatus';
 import { styles } from '../../../features/screen-styles/app/trip/manage/detail/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
-import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -91,6 +91,7 @@ function OwnerManageTripScreen() {
   }
 
   return (
+    <RideOverlayScope scopeKey={`manage:${model.state.tripId}`} active={model.state.isScreenActive}>
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity 
@@ -160,50 +161,6 @@ function OwnerManageTripScreen() {
         canCompleteTrip={model.canCompleteTrip}
       />
 
-      <Modal
-        animationType="slide"
-        transparent
-        visible={model.state.securityModalVisible}
-        onRequestClose={model.closeTripSecurityModal}
-      >
-        <View style={styles.securityModalOverlay}>
-          <TouchableOpacity
-            style={styles.securityModalBackdrop}
-            activeOpacity={1}
-            onPress={model.closeTripSecurityModal}
-          />
-          <View
-            style={[
-              styles.securityModalContent,
-              { paddingBottom: Math.max(model.state.insets.bottom, Spacing.md) + Spacing.md },
-            ]}
-          >
-            <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Sécurité du trajet</Text>
-              <TouchableOpacity
-                style={styles.securityModalCloseButton}
-                onPress={model.closeTripSecurityModal}
-              >
-                <Ionicons name="close" size={22} color={Colors.gray[700]} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.securityModalBody}
-              contentContainerStyle={styles.securityModalBodyContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <TripSecurityPanel
-                tripId={model.trip.id}
-                role="driver"
-                tripStatus={model.trip.status}
-                openSelectorByDefault={model.state.securityModalVisible}
-                compact
-              />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
 
       <Modal
@@ -272,7 +229,8 @@ function OwnerManageTripScreen() {
       </Modal>
 
 
-      <Modal animationType="slide" transparent visible={model.state.rejectModalVisible}>
+      <Modal animationType="slide" transparent visible={model.state.rejectModalVisible}
+        onRequestClose={model.bookingsActions.closeRejectModal}>
         <View style={styles.bookingModalOverlay}>
           <View style={[styles.bookingModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]}>
             <Text style={styles.bookingModalTitle}>Refuser la réservation</Text>
@@ -319,5 +277,6 @@ function OwnerManageTripScreen() {
 
       <ManageTripContactModal state={model.state} bookings={model.tracking.visibleBookings} />
     </SafeAreaView>
+    </RideOverlayScope>
   );
 }

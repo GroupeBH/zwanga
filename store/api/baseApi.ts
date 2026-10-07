@@ -59,6 +59,8 @@ export const baseApi = createApi({
   baseQuery: baseQueryWithReauth,
   keepUnusedDataFor: 180,
   tagTypes: [
+    'AppUpdate',
+    'DriverDispatch',
     'AccountActivity',
     'User',
     'Trip',

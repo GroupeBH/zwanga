@@ -12,6 +12,7 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const insets = { top: 47, bottom: 34, left: 0, right: 0 };
 const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/components/trip/TripShareAction': { TripShareAction: 'ShareAction' },
   './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
   './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'ReceiptsSheet' },
   '@/features/navigation/RideModal': { RideModal: 'Modal' },
@@ -96,6 +97,7 @@ test('passenger header contact/SOS stays available with the expanded map and use
   assert.equal(buttons.props.role, 'passenger'); assert.equal(buttons.props.onContact, assistance.openContacts);
   assert.equal(buttons.props.onSos, assistance.openSos);
   all(tree).filter(node => node.type === 'Button').forEach(button => button.props.onPress());
+  all(tree).find(node => node.type === 'ShareAction').props.onShare();
   assert.deepEqual(calls, ['back', 'share']);
 });
 
@@ -143,11 +145,12 @@ test('driver exposes icon-only rerouting directly and keeps my position in optio
   assert.equal(button('Ma position'), undefined);
   button('Demander une interruption du trajet').props.onPress();
   button('Activer le guidage vocal').props.onPress();
-  for (const [label, result] of [['Prévenir mes proches', 'security'], ['Modifier le trajet', 'edit'], ['Partager le trajet', 'share'], ['Voir les passagers', 'passengers']]) {
+  for (const [label, result] of [['Modifier le trajet', 'edit'], ['Partager le trajet', 'share'], ['Voir les passagers', 'passengers']]) {
     button('Options de navigation').props.onPress(); render(); button(label).props.onPress(); render();
     assert.equal(calls.at(-1), result); assert.equal(button(label), undefined);
   }
   assert.deepEqual(calls.slice(0, 2), ['pause', 'voice']);
+  assert.equal(button('Prévenir mes proches'), undefined);
   button(rerouteLabel).props.onPress(); render(); assert.equal(calls.at(-1), 'recalculate');
   button('Options de navigation').props.onPress(); render(); button('Ma position').props.onPress(); render();
   assert.deepEqual(calls.at(-1)[0], [{ latitude: -4.3, longitude: 15.2 }]);

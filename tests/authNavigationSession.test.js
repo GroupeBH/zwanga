@@ -47,7 +47,8 @@ test('every non-public app route is inside the session guard', () => {
   assert.ok(protectedScreens.has('publish'));
   assert.ok(protectedScreens.has('request-create'));
 
-  const publicRoutes = new Set(['index', 'splash', 'onboarding', 'background-location-disclosure', 'auth-entry', 'auth']);
+  const publicRoutes = new Set(['index', 'splash', 'onboarding', 'background-location-disclosure', 'auth-entry', 'auth', 'app-update']);
+  assert.ok(children.some(child => child.type === Stack.Screen && child.props.name === 'app-update'));
   const appRoot = path.resolve(__dirname, '../app');
   const routes = [];
   function visit(directory) {

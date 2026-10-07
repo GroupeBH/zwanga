@@ -1,3 +1,4 @@
+import { AppUpdatePrompt } from '@/components/AppUpdatePrompt';
 import { HomeHeader } from '@/components/home/HomeHeader';
 import { HomeLocationButton } from '@/components/home/HomeLocationButton';
 import { HomeMap } from '@/components/home/HomeMap';
@@ -86,5 +87,6 @@ export default function HomeScreen() {
       selectedTrip={home.selectedTrip}
       openTripDetail={home.openTripDetail}
     />
+    <AppUpdatePrompt enabled={home.isScreenActive && !home.ongoingDriverTrip && !home.ongoingBookedTrip && !home.highlightedDriverRequest && !home.featuredDriverReservation} />
   </SafeAreaView>;
 }

@@ -121,7 +121,7 @@ export function useWalletWithdrawal(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [withdrawals, intent, userId]);
 
-  const available = Number(summary?.account.withdrawableBalance ?? 0);
+  const available = Math.max(0, Number(summary?.account.withdrawableBalance ?? 0) - Number(summary?.account.reservedCashCommissionBalance ?? 0));
   const canSubmit = Boolean(
     isActive &&
     userId &&

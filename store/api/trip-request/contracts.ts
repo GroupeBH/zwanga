@@ -1,6 +1,7 @@
 import type { TripPaymentMode, TripRequestVehicleType } from '@/types';
 
 export type CreateTripRequestPayload = {
+  immediateDispatch?: boolean;
   departureLocation: string;
   departureReference?: string;
   departureCoordinates?: [number, number];

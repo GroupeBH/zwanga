@@ -6,6 +6,8 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollView: 'ScrollView',
   RefreshControl: 'RefreshControl', StyleSheet: { create: value => value } };
 const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/hooks/manage-trip/useManagedTripShare': { useManagedTripShare: () => async () => {} },
+  '@/components/trip/TripShareAction': { TripShareAction: 'ShareAction' },
   './ManageTripBookings': { ManageTripBookings: 'Bookings' },
   './ManageTripInterruptionNotice': { ManageTripInterruptionNotice: 'InterruptionNotice' },
 });
@@ -90,7 +92,7 @@ test('the summary has no layout feedback and accommodates wrapping and accessibl
   assert.equal(result.nodes.some(node => node.props.onLayout || node.props.allowFontScaling === false), false);
 });
 
-test('management retains refresh, passenger actions, interruption notice and safety entry points', () => {
+test('management retains refresh, passenger actions and interruption notice, replacing contacts with sharing', () => {
   const calls = [];
   const refreshAll = async () => calls.push('refresh');
   const state = { trip, refreshing: false, router: { push: path => calls.push(path) } };
@@ -104,5 +106,7 @@ test('management retains refresh, passenger actions, interruption notice and saf
   assert.equal(result.nodes.find(node => node.type === 'InterruptionNotice').props.trip, trip);
   assert.equal(result.nodes.find(node => node.type === 'ScrollView').props.refreshControl.props.onRefresh, refreshAll);
   result.buttons.forEach(button => button.props.onPress());
-  assert.deepEqual(calls, ['safety', '/security']);
+  assert.deepEqual(calls, []);
+  assert.equal(result.nodes.filter(node => node.type === 'ShareAction').length, 1);
+  assert.doesNotMatch(result.text, /notifier|contacts d'urgence/);
 });

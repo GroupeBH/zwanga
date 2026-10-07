@@ -5,6 +5,9 @@ import { clearStoredFcmToken, obtainFcmToken, subscribeToFcmRefresh } from '@/se
 import { proactiveTokenRefresh, validateAndRefreshTokens } from '@/services/tokenRefresh';
 import { getTokens } from '@/services/tokenStorage';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
+import { driverDispatchApi } from '@/store/api/driverDispatchApi';
+import { configureDriverNotifications } from '@/services/driverNotifications';
+import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAccessToken, selectHasAuthenticatedSession, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
 import { performLogout, setTokens } from '@/store/slices/authSlice';
@@ -37,7 +40,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isPublicRoute =
     !currentSegment ||
     STARTUP_ROUTES.has(currentSegment) ||
-    currentSegment === 'auth-entry';
+    currentSegment === 'auth-entry' || currentSegment === 'app-update';
   const hasCheckedSecureStore = useRef(false);
   const isLoggingOut = useRef(false);
   const lastAuthTime = useRef<number | null>(null);
@@ -288,6 +291,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       fcmSyncInFlightRegistration.current = registrationKey;
       try {
         await updateFcmTokenMutation({ fcmToken: token }).unwrap();
+        // Capability is tied to the current push token: old installations keep standard pushes.
+        try {
+          await configureDriverNotifications();
+          if (!(await registerBackgroundNotificationTask())) throw new Error('Réception en arrière-plan indisponible.');
+          await dispatch(driverDispatchApi.endpoints.registerDriverNotifications.initiate()).unwrap();
+        } catch { /* An older backend must not prevent login or ordinary push registration. */ }
         lastSyncedFcmRegistration.current = registrationKey;
         fcmSyncRetry.current = null;
       } catch (error) {

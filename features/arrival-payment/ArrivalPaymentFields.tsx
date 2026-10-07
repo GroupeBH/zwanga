@@ -15,6 +15,7 @@ import { Colors } from '@/constants/styles';
 import { ArrivalPaymentReceipt } from './ArrivalPaymentReceipt';
 import type { Booking, TripPaymentMode } from '@/types';
 import { getInterruptionDistanceLabel } from './interruptionSettlement';
+import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 
 interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking | null;
@@ -60,6 +61,9 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
   const scrollRef = useRef<ScrollView>(null);
   const modePickerY = useRef(0);
   const complete = Boolean(receipt || paymentAlreadySucceeded);
+  const { currentData: paymentOptions, isError: optionsError } = useBookingPaymentOptionsQuery(arrivalBooking?.id ?? '', {
+    skip: !arrivalBooking?.id || complete, refetchOnMountOrArgChange: true,
+  });
   const locked = isBusy || hasPendingProviderPayment;
   const beforeArrival = receipt?.beforeArrival ?? isBeforeArrival;
   const cash = receipt?.cashInstructions || (!complete && selectedMode === 'cash');
@@ -110,15 +114,19 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
         if (selectedMode === null || hasPaymentFailure) scrollRef.current?.scrollTo({ y: modePickerY.current, animated: false });
       }}>
         <Text style={styles.sectionTitle}>Moyen de paiement</Text>
+        {!paymentOptions && <Text style={styles.amountHint}>{optionsError ? 'Modes de paiement indisponibles. Rouvrez cet écran pour réessayer.' : 'Vérification des modes de paiement…'}</Text>}
+        {paymentOptions?.cashUnavailableReason && <Text style={styles.amountHint}>{paymentOptions.cashUnavailableReason}</Text>}
         {hasPaymentFailure && <Text style={styles.amountHint}>Vous pouvez réessayer ou choisir un autre moyen de paiement.</Text>}
         <View style={styles.options}>
           {PAYMENT_OPTIONS.filter(option => (!beforeArrival || option.id !== 'cash') &&
-            (option.id !== 'electronic' || ELECTRONIC_PAYMENTS_ENABLED)).map(option => {
+            (option.id !== 'electronic' || ELECTRONIC_PAYMENTS_ENABLED) &&
+            (!paymentOptions || paymentOptions.acceptedPaymentModes.includes(option.id) || arrivalBooking?.paymentMode === option.id)).map(option => {
             const selected = selectedMode === option.id;
+            const disabled = locked || !paymentOptions || !paymentOptions.availablePaymentModes.includes(option.id);
             return <TouchableOpacity key={option.id} accessibilityRole="radio" accessibilityLabel={option.title}
-              accessibilityState={{ checked: selected, disabled: locked }} activeOpacity={0.85} disabled={locked}
-              onPress={() => { if (locked) return; setSelectedMode(option.id); setPaymentError(''); setStatusMessage(''); }}
-              style={[styles.option, selected && styles.optionSelected]}>
+              accessibilityState={{ checked: selected, disabled }} activeOpacity={0.85} disabled={disabled}
+              onPress={() => { if (disabled) return; setSelectedMode(option.id); setPaymentError(''); setStatusMessage(''); }}
+              style={[styles.option, selected && styles.optionSelected, disabled && { opacity: 0.5 }]}>
               <Ionicons name={option.icon} size={20} color={selected ? Colors.primary : Colors.gray[600]} />
               <View style={styles.optionCopy}>
                 <Text style={[styles.optionTitle, selected && styles.optionTitleSelected]}>{option.title}</Text>

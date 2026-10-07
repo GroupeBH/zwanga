@@ -201,7 +201,7 @@ test('auth screen keeps PIN loading and header locked through session persistenc
     'expo-router': { Redirect: 'Redirect' },
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
     '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
-    '../hooks/auth/useAuthController': { useAuthController: () => ({
+    '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false },
       form: { mode: 'login', step: 'pin', isLoggingIn: false },
       navigation: { handleModeChange: () => calls.push('mode'), handlePreviousStep: () => calls.push('back') },
       social: { isGoogleLoading: false, isSocialAuthInFlight: () => false },

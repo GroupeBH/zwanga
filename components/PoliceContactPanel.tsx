@@ -2,17 +2,19 @@ import { POLICE_CONTACTS } from '@/constants/policeContacts';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 type PoliceContactPanelProps = {
   compact?: boolean;
+  title?: string;
   presentation?: 'full' | 'strip';
 };
 
 const normalizePhone = (phone: string) => phone.replace(/[^\d+]/g, '');
 
-export function PoliceContactPanel({ compact = false, presentation = 'full' }: PoliceContactPanelProps) {
+export function PoliceContactPanel({ compact = false, presentation = 'full', title = 'Urgence police' }: PoliceContactPanelProps) {
+  const callLock = useRef(false);
   const { showDialog } = useDialog();
   const [chooserVisible, setChooserVisible] = useState(false);
   const [callingPhone, setCallingPhone] = useState<string | null>(null);
@@ -20,7 +22,8 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
 
   const callPolice = async (phone: string) => {
     const url = `tel:${normalizePhone(phone)}`;
-    if (callingPhone) return;
+    if (callLock.current) return;
+    callLock.current = true;
 
     setCallingPhone(phone);
     setCallError(null);
@@ -38,6 +41,7 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
         });
       }
     } finally {
+      callLock.current = false;
       setCallingPhone(null);
     }
   };
@@ -51,6 +55,9 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
       <View style={styles.stripWrapper}>
         <TouchableOpacity
           style={[styles.strip, compact && styles.stripCompact]}
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          accessibilityState={{ expanded: chooserVisible }}
           onPress={openPoliceChooser}
           activeOpacity={0.88}
         >
@@ -58,9 +65,9 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
             <Ionicons name="call" size={17} color={Colors.danger} />
           </View>
           <View style={styles.stripText}>
-            <Text style={styles.stripTitle}>Urgence police</Text>
+            <Text style={styles.stripTitle}>{title}</Text>
             <Text style={styles.stripSubtitle} numberOfLines={1}>
-              4 numéros disponibles
+              {POLICE_CONTACTS.length} numéros disponibles
             </Text>
           </View>
           <View style={styles.stripAction}>
@@ -81,6 +88,8 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
               const isCalling = callingPhone === contact.phone;
               return (
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Appeler ${contact.label} : ${contact.phone}`}
                   key={contact.id}
                   style={styles.inlineCallButton}
                   onPress={() => void callPolice(contact.phone)}
@@ -122,6 +131,9 @@ export function PoliceContactPanel({ compact = false, presentation = 'full' }: P
       <View style={styles.grid}>
         {POLICE_CONTACTS.map((contact) => (
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`Appeler ${contact.label} : ${contact.phone}`}
+            disabled={Boolean(callingPhone)}
             key={contact.id}
             style={styles.callButton}
             onPress={() => void callPolice(contact.phone)}

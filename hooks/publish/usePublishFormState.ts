@@ -2,7 +2,7 @@ import { LatLng, RoutePointStatus } from '../../features/publish/publishModel';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { getDefaultPublishSeats, getPublishSeats } from '@/features/publish/publishSeatPolicy';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, TripPaymentMode } from '@/types';
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
 
 
@@ -40,6 +40,7 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
     });
   }, [seatType]);
   const [isFreeTrip, setIsFreeTrip] = useState(false);
+  const [acceptedPaymentModes, setAcceptedPaymentModes] = useState<TripPaymentMode[]>(['electronic', 'points']);
   const [requiresPassengerKyc, setRequiresPassengerKyc] = useState(false);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
@@ -50,6 +51,7 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
   const [isRouteLoading, setIsRouteLoading] = useState(false);
 
   return {
+    acceptedPaymentModes, setAcceptedPaymentModes,
     setDepartureLocation,
     setArrivalLocation,
     setDeparturePointStatus,

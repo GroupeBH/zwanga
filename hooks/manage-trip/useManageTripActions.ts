@@ -13,6 +13,7 @@ import type { Booking, Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import type { Router } from 'expo-router';
+import { useRef } from 'react';
 
 interface Params {
   trip: Trip | undefined;
@@ -46,6 +47,7 @@ export function useManageTripActions({
   goHome,
 }: Params) {
   const startTransition = useTripStartTransition(trip?.id, router);
+  const cancelLock = useRef(false);
   const handleStartTrip = async () => {
     if (!trip || !startTransition.isCurrent()) return;
     showDialog({
@@ -226,7 +228,7 @@ export function useManageTripActions({
   };
 
   const handleCancelTrip = () => {
-    if (!trip) return;
+    if (!trip || cancelLock.current) return;
     showDialog({
       variant: 'warning',
       title: 'Annuler le trajet',
@@ -237,6 +239,8 @@ export function useManageTripActions({
           label: 'Oui, annuler',
           variant: 'primary',
           onPress: async () => {
+            if (cancelLock.current) return;
+            cancelLock.current = true;
             try {
               await updateTripStatus({ id: trip.id, updates: { status: 'cancelled' } }).unwrap();
               void trackEvent('trip_cancelled', {
@@ -250,6 +254,8 @@ export function useManageTripActions({
                 'error',
                 getApiErrorMessage(error, "Impossible d'annuler ce trajet."),
               );
+            } finally {
+              cancelLock.current = false;
             }
           },
         },

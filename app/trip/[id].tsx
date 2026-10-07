@@ -9,7 +9,6 @@ import { TripEditModal } from '../../features/trip-detail/TripEditModal';
 import { TripBookingSuccessModal } from '../../features/trip-detail/TripBookingSuccessModal';
 import { TripMapModal } from '../../features/trip-detail/TripMapModal';
 import { TripBookingModal } from '../../features/trip-detail/TripBookingModal';
-import { TripRelativesModal } from '../../features/trip-detail/TripRelativesModal';
 import { TripSosModal } from '../../features/trip-detail/TripSosModal';
 import { TripVehicleDetailsModal } from '../../features/trip-detail/TripVehicleDetailsModal';
 import { styles } from '../../features/screen-styles/app/trip/detail/index';
@@ -80,18 +79,6 @@ export default function TripDetailsScreen() {
             Détails du trajet
           </Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={model.safety.openTripSecurityModal}
-              style={[styles.shareButton, !model.access.canAccessTripSecurity && styles.shareButtonDisabled]}
-              disabled={!model.access.canAccessTripSecurity}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={22}
-                color={model.access.canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
-              />
-            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => void model.contact.handleShareTrip()}
               style={[
@@ -204,14 +191,6 @@ export default function TripDetailsScreen() {
         insets={model.data.insets}
       />
 
-      <TripRelativesModal
-        securityModalVisible={model.bookingState.securityModalVisible}
-        closeTripSecurityModal={model.safety.closeTripSecurityModal}
-        insets={model.data.insets}
-        trip={model.data.trip}
-        tripSecurityRole={model.access.tripSecurityRole}
-        tripSecurityBookingId={model.access.tripSecurityBookingId}
-      />
 
       <TripBookingModal
         bookingModalVisible={model.bookingState.bookingModalVisible}
