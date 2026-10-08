@@ -7,6 +7,26 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const flush = async () => { await tick(); await tick(); };
 const invitation = (extra = {}) => ({ token: 'synthetic-referral-token', capturedAt: new Date().toISOString(), isDeferred: false, ...extra });
 
+test('an offline invitation for A never attaches to B and resumes when A returns', async () => {
+  const f = fixture({ online: false }); f.render(); await f.receive(invitation());
+  f.state.auth.user.id = 'account-b'; f.render(); await f.reconnect();
+  assert.equal(f.attachments.length, 0); assert.equal(f.resolutions.length, 0);
+  assert.ok(await f.storage.getUnresolvedReferralAttribution('account-a'));
+  f.state.auth.user.id = 'account-a'; f.render(); await flush();
+  assert.equal(f.attachments.length, 1); f.unmount();
+});
+
+test('a resolution started for A cannot attach to B after switching accounts', async () => {
+  const f = fixture(); let complete;
+  f.io.resolve = () => new Promise(resolve => { complete = resolve; });
+  f.render(); await flush(); await f.receive(invitation());
+  f.state.auth.user.id = 'account-b'; f.render();
+  complete({ referrer: { firstName: 'Test' } }); await flush();
+  assert.equal(f.attachments.length, 0);
+  assert.ok(await f.storage.getPendingReferralAttribution('account-a'));
+  assert.deepEqual(f.routes, []); f.unmount();
+});
+
 function fixture({ disk = new Map(), role = 'driver', authenticated = true, online = true, active = true } = {}) {
   const hooks = hookHarness(), dialogs = [], routes = [], resolutions = [], attachments = [];
   const state = { auth: { isAuthenticated: authenticated, user: authenticated ? { id: 'account-a', role } : null }, zwangaApi: { config: { online } } };
@@ -43,7 +63,11 @@ function fixture({ disk = new Map(), role = 'driver', authenticated = true, onli
       useAttachMyReferralAttributionMutation: () => [attach],
     },
   });
-  const storage = load('utils/referralAttribution.ts');
+  const rawStorage = load('utils/referralAttribution.ts');
+  const storage = { ...rawStorage,
+    getPendingReferralAttribution: (owner = state.auth.user?.id) => rawStorage.getPendingReferralAttribution(owner),
+    getUnresolvedReferralAttribution: (owner = state.auth.user?.id) => rawStorage.getUnresolvedReferralAttribution(owner),
+  };
   const Component = load('components/ReferralAttributionHandler.tsx').ReferralAttributionHandler;
   return {
     disk, io, state, dialogs, routes, resolutions, attachments, storage,

@@ -1,5 +1,5 @@
 export type DriverInvitation = {
-  kind: 'booking' | 'dispatch'; id: string; driverId: string; expiresAt?: string;
+  kind: 'booking' | 'dispatch'; id: string; driverId: string; expiresAt?: string; ringUntil?: string;
 };
 export type DriverDecision = 'accept' | 'decline';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -11,7 +11,9 @@ export function parseDriverInvitation(data: Record<string, unknown> | undefined)
   const id = kind === 'booking' ? data.bookingId : data.offerId;
   if (!kind || !isInvitationId(id)) return null;
   if (kind === 'dispatch' && (typeof data.expiresAt !== 'string' || !Number.isFinite(Date.parse(data.expiresAt)))) return null;
-  return { kind, id, driverId: data.driverId, ...(typeof data.expiresAt === 'string' ? { expiresAt: data.expiresAt } : {}) };
+  return { kind, id, driverId: data.driverId,
+    ...(typeof data.expiresAt === 'string' ? { expiresAt: data.expiresAt } : {}),
+    ...(typeof data.ringUntil === 'string' ? { ringUntil: data.ringUntil } : {}) };
 }
 
 export function notificationDecision(actionId: string | undefined): DriverDecision | null {
@@ -33,7 +35,7 @@ export function invitationHref(invitation: DriverInvitation) {
 export function readDriverPushData(payload: unknown, depth = 0): Record<string, unknown> | undefined {
   if (!payload || typeof payload !== 'object' || depth > 5) return undefined;
   const raw = payload as Record<string, unknown>;
-  if (raw.actionProtocol) return raw;
+  if (raw.actionProtocol || raw.ringAlert) return raw;
   const data = raw.data;
   if (data && typeof data === 'object') {
     const nested = data as Record<string, unknown>;

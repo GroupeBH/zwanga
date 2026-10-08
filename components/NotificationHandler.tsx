@@ -123,10 +123,12 @@ export function NotificationHandler() {
         const tripRevenueModalAlreadyOwnsForeground =
           (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data))) ||
           (type === 'driver_trip_revenue' && pathnameRef.current.startsWith('/trip/navigate/'));
+        const invitation = parseDriverInvitation(notification.request.content.data);
+        const incomingScreenOwnsSound = Boolean(invitation && invitation.driverId === currentUserRef.current?.id);
 
         return {
           shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
-          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground,
+          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground && !incomingScreenOwnsSound,
           shouldSetBadge: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowBanner: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowList: !tripRevenueModalAlreadyOwnsForeground,
@@ -217,6 +219,8 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
+      if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
+        (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
       if (parseDriverInvitation(data)) return;
       if (isTripInterruptionNotification(data)) {
@@ -239,6 +243,8 @@ export function NotificationHandler() {
       dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
+      if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
+        (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (isTripInterruptionNotification(data)) {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }

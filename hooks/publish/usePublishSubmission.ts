@@ -23,9 +23,12 @@ import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import React from 'react';
 import type { User } from '@/types';
 import type { Router } from 'expo-router';
+import type { DriverFinanceSummary } from '@/store/api/driverFinanceApi';
+import { estimateCashCommission } from '@/utils/cashCommission';
 
 interface Params {
   acceptedPaymentModes: TripPaymentMode[];
+  refreshDriverFinance: () => Promise<DriverFinanceSummary>;
   publishInFlightRef: React.RefObject<boolean>;
   isSubmittingTrip: boolean;
   hasDepartureAddress: boolean;
@@ -69,6 +72,7 @@ interface Params {
 
 export function usePublishSubmission({
   acceptedPaymentModes,
+  refreshDriverFinance,
   publishInFlightRef,
   isSubmittingTrip,
   hasDepartureAddress,
@@ -180,6 +184,25 @@ export function usePublishSubmission({
     const publicationStartedAt = Date.now();
 
     try {
+      if (acceptedPaymentModes?.length === 0) {
+        showDialog({ variant: 'warning', title: 'Paiement requis', message: 'Choisissez au moins un mode de paiement disponible.' });
+        return;
+      }
+      if (!isFreeTrip && acceptedPaymentModes?.includes('cash')) {
+        // Fresh preview before both single and recurring publications; final
+        // authority remains the backend because another operation can race it.
+        try {
+          const finance = await refreshDriverFinance();
+          if (!estimateCashCommission(finance, priceValue, seatsValue)?.allowed) {
+            showDialog({ variant: 'warning', title: 'Cash indisponible', message: 'La commission de ce trajet ne peut pas être couverte dans la limite cumulée de 25 jetons de dette. Rechargez ou retirez le cash des paiements acceptés.' });
+            return;
+          }
+        } catch {
+          // No publication was attempted: never run ambiguous-write recovery.
+          showDialog({ variant: 'warning', title: 'Vérification du cash indisponible', message: 'Réessayez la vérification ou choisissez un autre mode de paiement avant de publier.' });
+          return;
+        }
+      }
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
 

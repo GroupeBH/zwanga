@@ -1,5 +1,409 @@
 # Journal des changements techniques
 
+## 8 octobre 2026 — Profil de développement pour téléphones physiques
+
+- Demande : tester les notifications sonores avant une nouvelle bêta store. Le
+  profil `dev` existant cible le simulateur iOS et déclare un AAB Android.
+- Solution : ajout de `dev-device` dans `eas.json`, héritant du client de
+  développement et de la distribution interne de `dev`, avec APK Android,
+  iOS physique et environnement EAS de développement explicite. Aucun nouveau
+  module : `expo-dev-client` est déjà installé.
+- Conservé : profils `dev` et `production`, identifiants d'application, signatures,
+  numérotation et incréments automatiques de production. Pas de modification de
+  `.env`, de création de certificat ni de lancement de build distant.
+- Vérification : test de configuration ajouté à `tests/appVersions.test.js` ;
+  **9 tests de versions/configuration/assets natifs réussis**, ainsi que le
+  contrôle des différences. La recette figure dans le
+  [dossier des sonneries](SONNERIES_DEMANDES_2026_10_08.md#tester-en-développement-sur-téléphone).
+  La préparation du profil ne constitue pas un test natif.
+
+## 8 octobre 2026 — Sonnerie des invitations et arrêt à l'ouverture
+
+- Signalement : invitations de proximité reçues avec un son bref ou standard sur
+  les bêtas Android et iOS. Précision utilisateur : arrêter la sonnerie dès
+  l'ouverture de Zwanga, pas seulement après Accepter/Refuser.
+- Corrections mobiles : boucle Android avec arrêt natif sous 30 secondes et avant
+  l'expiration de l'offre, déduplication, arrêt à la reprise depuis l'icône ou la
+  notification, invitations silencieuses au premier plan. Sur iOS,
+  l'enregistrement de la capacité son/actions ne dépend plus du succès de la
+  tâche de fond Expo ; APNs conserve le son embarqué de 29 secondes.
+- Backend : échéance sonore `ringUntil` et validité de transport bornée pour les
+  invitations v2. L'arrêt sonore ne modifie pas le statut de la réservation.
+- Fichiers, précautions, limites et recette :
+  [complément au dossier des sonneries](SONNERIES_DEMANDES_2026_10_08.md#complément--sonnerie-en-arrière-plan-et-arrêt-à-louverture).
+- Vérifications : **67 tests JavaScript mobiles** ciblés et **94 tests backend**
+  du dossier notifications réussis, avec interfaces natives/transports simulés.
+  TypeScript mobile et backend de production réussis sans émission ; lint mobile
+  ciblé et contrôle des différences réussis. Pas de
+  déploiement, nouveau build, essai acoustique ni test d'arrêt sonore sur appareil
+  physique. La cause exacte sur les binaires bêta installés reste non confirmée.
+
+## 8 octobre 2026 — Sortie directe par l'icône de navigation conducteur
+
+- Problème : l'icône de fermeture en haut de la navigation conducteur ouvrait
+  encore une confirmation avant de quitter le guidage, ajoutant un clic inutile.
+- Solution : `hooks/driver-navigation/useDriverNavigationController.ts` expose
+  directement `navigateBackSafely` pour cette icône (et le retour de l'écran de
+  repli). Aucun changement de statut du trajet ni appel d'interruption ajouté.
+  La sortie existante conserve son nettoyage de l'interface, sa libération de
+  carte native et sa protection contre les clics répétés.
+- Précautions : le bouton Retour matériel Android conserve son comportement
+  précédent ; les confirmations d'interruption réelle du trajet restent intactes.
+  Aucun changement du parcours passager, du backend ou des dépendances natives.
+- Vérifications : test du contrôleur ajouté dans `tests/driverManualReroute.test.js`
+  (sortie directe pour les différents statuts, aucun modal, gestion Retour distincte).
+  Suites recalcul/navigation, interruptions, en-têtes et cycle de vie : **38 tests
+  JavaScript réussis**. TypeScript sans émission et contrôle des différences
+  réussis ; lint ciblé sans erreur ni avertissement. Pas d'essai sur
+  appareil physique iOS/Android, donc aucune conclusion nouvelle sur les crashs.
+  Recette : appuyer sur l'icône de fermeture pendant un trajet en cours, vérifier
+  le retour sans confirmation et la conservation du trajet en cours ; vérifier
+  séparément qu'une interruption réelle demande toujours confirmation.
+
+## 8 octobre 2026 — Demande disponible après tentative d'acceptation et accueil périmé
+
+- Constat réel sur le backend local : après la première réparation UUID de
+  publication, les dernières acceptations échouaient plus loin, à l'insertion
+  de la réservation. Trois trajets privés `upcoming`, sans réservation, étaient
+  associés à une demande encore `pending`, sans lien retour. Cela ne prouve pas
+  une acceptation ou un démarrage réussi : la carte doublée reflétait ici une
+  opération serveur incomplète, en plus du risque d'affichage périmé du cache.
+- Backend : migration additive `1780000058000-FixBookingRequestUuid.ts`,
+  enregistrée dans `src/database/migrations/index.ts`. Elle corrige les deux
+  comparaisons UUID/varchar de `zwanga_booking_cash_guard` : lecture de la demande
+  et transfert de la réserve dispatch vers la réservation. La fonction déployée
+  est conservée à ces deux conversions près ; transaction obligatoire, délais
+  bornés, corps inattendu refusé, réapplication sûre, pas de retour au SQL cassé.
+  Aucun changement de commission (5 %), plafond de dette (25 jetons), origine des
+  jetons débitables, montant ou solde.
+- L'outil local `src/database/repair-local-publication-uuid.ts` reconnaît maintenant
+  les deux réparations 57/58, vérifie chaque définition et refuse toute autre
+  migration en attente. **Migration 58 effectivement appliquée au backend local**,
+  puis relecture : aucune migration restante, trois conversions UUID présentes
+  dans les deux fonctions. Aucune donnée métier modifiée et aucune opération
+  en production ; les anciens trajets incomplets attendent l'accord de l'utilisateur.
+- Protection des nouvelles tentatives : `src/trips/cancel-empty-request-trip.ts`,
+  `src/trips/trips.service.ts` et `src/trip-requests/trip-requests.service.ts`.
+  En cas d'échec de création de réservation, annulation compensatoire limitée au
+  trajet privé provisoire de la demande et du conducteur concernés, encore
+  `upcoming` et sans aucune réservation. Verrou de ligne et nouvelle lecture
+  READ COMMITTED avant décision ; une réservation déjà enregistrée est préservée,
+  y compris après réponse HTTP ambiguë. Erreur initiale conservée si le nettoyage
+  échoue ; invalidation des caches serveur après compensation réussie.
+  Les trajets publics, d'autres conducteurs/demandes, démarrés ou réservés ne sont
+  pas annulés par ce mécanisme. Ce n'est pas une transaction globale couvrant tout
+  le parcours : les erreurs ultérieures à la création de réservation et les
+  indisponibilités empêchant la compensation nécessitent toujours réconciliation.
+- Mobile : `store/api/tripRequestApi.ts` retire la demande des disponibilités et
+  actualise les caches personnel/détail uniquement après confirmation serveur.
+  `store/api/tripApi.ts` actualise les trois caches du trajet après démarrage
+  confirmé, en conservant les informations financières de l'activité. Les
+  invalidations/refetch existants restent actifs ; aucun polling supplémentaire,
+  aucune disparition optimiste sur simple clic, aucune écriture d'une ancienne
+  session dans la nouvelle. `hooks/home/useHomeRequestHighlight.ts` cherche la
+  première demande réellement disponible, sans rester bloqué sur une entrée
+  acceptée, liée, expirée ou appartenant au conducteur en tête de liste.
+- Vérifications : **158 tests mobiles ciblés réussis**, dont six tests des vrais
+  endpoints RTK Query avec transport simulé (succès, échec, changement de session,
+  refetch lent) et un test supplémentaire du filtre Home. **43 tests unitaires
+  serveur réussis**, dont migration 58 et compensation sur les deux parcours.
+  **PostgreSQL 18 temporaire : 94 réussis, 3 ignorés** ; reproduction de 42883,
+  création/acceptation/fin de réservation cash après réparation, transfert sans
+  double réserve, compensation ciblée et réservation concurrente conservée.
+  Le premier essai a révélé un ancien plan PL/pgSQL dans la fixture après son
+  changement de type : recompilation de la fonction de test, sans modifier les
+  colonnes applicatives. Les clusters jetables ont été nettoyés par le harness.
+- Typage mobile et serveur de production sans émission vérifié ; lint des fichiers
+  mobiles touchés sans erreur ni avertissement et contrôle des différences réussi.
+  Les essais
+  JavaScript et PostgreSQL ne constituent pas un essai natif : aucun trajet réel
+  accepté/démarré à la place de l'utilisateur, aucun test physique iOS/Android.
+  Recharger le client et relancer le backend s'il ne surveille pas les sources ;
+  pas de nouvelle dépendance ni de modification native exigeant un nouveau build.
+  Vérifier ensuite : acceptation réussie → disparition de la demande disponible ;
+  démarrage réussi → trajet en cours ; échec réseau → aucune fausse confirmation.
+  Voir aussi `../zwanga-backend/docs/finance/CHANGELOG.md`.
+
+## 8 octobre 2026 — Acceptation d'une demande : comparaison UUID corrigée
+
+- Problème confirmé : `POST /trip-requests/:id/accept` échouait avec HTTP 500
+  pendant la création du trajet privé. Le trigger `zwanga_publication_cash_guard`
+  comparait `trip_requests.id` (UUID) à `trips.tripRequestId` (varchar), provoquant
+  l'erreur PostgreSQL 42883. Le trajet ne pouvait pas atteindre l'étape de démarrage.
+- Backend : nouvelle migration `1780000057000-FixPublicationRequestUuid.ts`,
+  référencée dans `src/database/migrations/index.ts`. Elle lit la fonction installée
+  et ajoute seulement `::uuid` à l'identifiant reçu ; elle conserve sa définition
+  restante et refuse une forme inattendue. Les anciennes migrations ne sont pas
+  réécrites ; une base neuve reçoit le correctif en fin de chaîne.
+- Précautions PostgreSQL : migration transactionnelle, délais bornés, conversion
+  du paramètre plutôt que de la colonne indexée ; aucun changement de type de
+  colonne, de taux (5 %), de plafond de dette (25 jetons), de réserve ou de solde.
+  Le rollback refuse de réintroduire la comparaison défectueuse.
+- Outil `src/database/repair-local-publication-uuid.ts` : diagnostic en lecture
+  seule par défaut ; application explicite uniquement en développement sur une
+  adresse locale. Refus de migrations supplémentaires en attente, verrou sur le
+  journal des migrations, vérification que la fonction ne change que par ce cast,
+  puis enregistrement atomique de la migration.
+- **Application effective :** après confirmation du backend local par l'utilisateur,
+  configuration locale/non-production vérifiée sans exposer ses valeurs. La migration
+  a été appliquée et enregistrée sur cette base. Relecture : aucune migration en
+  attente, ancienne comparaison absente, conversion UUID présente. Aucun trajet,
+  réservation, portefeuille ni compte modifié ; aucune opération en production.
+- Tests : `src/database/publication-request-uuid.spec.ts` — 3 tests unitaires
+  réussis. `test/publication-request-uuid-postgres.ts`, intégré à
+  `src/database/driver-finance-postgres.spec.ts` — reproduction réelle de 42883
+  puis création réussie après migration, invariance des soldes, réapplication,
+  plafond cash, paiement électronique, politique inactive et réserve dispatch
+  existante. Suite PostgreSQL 18 isolée : **88 réussis, 3 ignorés** ; compilation
+  TypeScript serveur de production sans émission réussie.
+- Limites distinguées : le premier lancement du cluster temporaire était bloqué
+  dans le bac à sable ; relance autorisée hors bac à sable, sans utiliser la base
+  applicative. La fixture a dû invalider son ancien plan PL/pgSQL après changement
+  de type de test. La base applicative ne subit aucun changement de type. Les
+  clusters temporaires de test ont été nettoyés par leur harness (données jetables).
+  Aucun trajet réel accepté/démarré à la place de l'utilisateur, ni test physique
+  iOS/Android ; l'utilisateur peut maintenant réessayer sur le backend local.
+- Aucun changement mobile ni nouveau build requis pour cette correction SQL.
+  Pour la production : livraison du backend contenant la migration et application
+  via la procédure habituelle, non exécutées ici. Voir aussi le journal backend
+  `../zwanga-backend/docs/finance/CHANGELOG.md`.
+
+## 8 octobre 2026 — Sonnerie longue après acceptation d'une demande
+
+- Problème : la confirmation reçue par le passager utilisait le son standard,
+  contrairement aux invitations ciblées au conducteur ; compatibilité sonore et
+  réservations étaient liées au drapeau d'allocation de proximité.
+- Backend : son dédié de 29 secondes pour `trip_request_accepted` sur installations
+  compatibles, canal Android prioritaire et interruption iOS `time-sensitive`.
+  Enregistrement de compatibilité indépendant du rôle/drapeau ; actions conducteur
+  réservées aux invitations. Les annonces générales gardent le son standard.
+- Mobile : évite qu'une confirmation distante soit rejouée en notification locale
+  standard. Conserve les actions conducteur, la navigation, le canal et les réglages
+  utilisateur existants. Aucune dépendance ni mutation métier ajoutée.
+- Vérifications : 41 tests mobiles ciblés, 86 tests backend notifications et
+  typage mobile/serveur de production réussis. Typage global des tests backend en
+  échec dans des fichiers non modifiés ; détails et deux avertissements lint
+  préexistants consignés dans le rapport. Aucun push réel ni test sonore physique.
+- Fichiers, précautions, compatibilité, commandes de build et recette :
+  [Sonneries des demandes](SONNERIES_DEMANDES_2026_10_08.md).
+  Aucun déploiement ni migration exécuté ; mise en service du backend et du client
+  nécessaire. Nouveau build natif indispensable si le binaire n'embarque pas le son.
+
+## 7 octobre 2026 — Correctifs après audit de stabilité production
+
+- Périmètre : parcours de réservation, aperçus d'itinéraires, événements socket
+  et contrôles de compilation natifs. Solution, fichiers et recette détaillés dans
+  [les correctifs de stabilité](CORRECTIFS_STABILITE_PRODUCTION_2026_10_07.md).
+- Appliqué : arbitrage commun des modaux de fiche trajet, suppression des délais
+  d'ouverture du sélecteur de réservation, protection de la navigation contre
+  les doubles appuis et hors focus, conservation de `onShow` pour activer la carte.
+  Validation/bornage des polylines et calcul des bornes sans grands tableaux
+  d'arguments ; filtrage des positions/messages socket et isolation des abonnés.
+- Compilation : contrôle de toutes les bibliothèques ELF et de leur alignement,
+  contrôle ZIP des APK ; ajout d'un contrôle des Pods/phase Crashlytics iOS après
+  installation dans EAS. Aucun nouveau paquet. Aucun fichier généré iOS inventé.
+- Conservé : fonctionnement métier de réservation, tarification/paiements,
+  cache réseau et abonnements partagés. Aucun backend, compte, déploiement,
+  migration ni opération financière modifié ; travaux préexistants conservés.
+- Vérifications finales : **1 520 tests JavaScript réussis** avec
+  `node --test --test-concurrency=4 tests/*.test.js` ; TypeScript sans émission et
+  ESLint sur les sources TypeScript touchées réussis. Frontière réseau, contrôle
+  des 1 042 sources (aucune au-dessus de 400 lignes), configuration Gradle
+  Crashlytics et `git diff --check` réussis.
+- Incidents de vérification distingués : un ancien message simulé incomplet a
+  été remis au format réel dans `performancePolicy.test.js`. Une exécution très
+  parallèle a aussi fait échouer l'assertion temporelle existante de
+  `displayReadRecovery.test.js` (polling à 20 ms) ; ce test, non modifié, réussit
+  isolément et dans la suite à concurrence limitée. Cela n'établit pas la cause
+  d'un incident réseau en production et sa sensibilité à la charge reste à noter.
+- Contrôles natifs statiques : l'APK debug local existant passe ELF/ZIP avec
+  `--abis=x86_64`. Le contrôle iOS détecte les Pods et la phase absents dans les
+  fichiers locaux non synchronisés ; `pod install` sur macOS/EAS puis contrôle
+  d'une archive release restent nécessaires. Aucun nouveau build ni essai physique
+  réalisé ; aucune disparition des crashs, chauffe ou lenteurs natives annoncée.
+
+## 7 octobre 2026 — Audit final performance et stabilité iOS/Android
+
+- Périmètre : revue des parcours mobiles et des risques de crash en production,
+  sans modification du fonctionnement ni déploiement.
+- Rapport ajouté : [Audit de stabilité production](AUDIT_STABILITE_PRODUCTION_2026_10_07.md).
+  Il distingue transitions de modaux à sécuriser, limites des itinéraires,
+  validation des événements socket et contrôles natifs release à compléter.
+- Vérifications : 1 507 tests JavaScript réussis, TypeScript et contrôleurs réseau,
+  taille des sources et configuration Gradle Crashlytics réussis. Probes synthétiques
+  sur les vrais modules et benchmarks géométriques Node détaillés dans le rapport.
+- Précautions : changements préexistants conservés ; aucun compte, backend ou
+  binaire store modifié. Les propositions ne sont pas des correctifs appliqués.
+  Aucun crash natif reproduit ni gain de chauffe/batterie revendiqué ; essais
+  physiques release et analyse de rapports de production restent nécessaires.
+
+## 7 octobre 2026 — Contrat financier compatible avec les versions stores
+
+- Problème : le build Android 145 / code iOS correspondant ignore les réserves cash, tandis que le code mobile actuel les déduit déjà du solde affiché. Projeter un solde disponible pour tous les clients ferait déduire les réserves deux fois dans la nouvelle app.
+- `store/api/baseApi.ts` annonce désormais `X-Zwanga-Finance-Contract: 2` sur ses requêtes, y compris après renouvellement de session. Le backend conserve alors le contrat moderne (soldes totaux et réserves explicites). Sans cet en-tête, il projette un solde disponible pour les anciennes applications, sans modifier les soldes enregistrés.
+- Aucun écran, endpoint, montant, mode de paiement ou mécanisme d'authentification supprimé. La nouvelle app fonctionne aussi avec l'ancien serveur, qui ignore cet en-tête. Aucune publication store/OTA effectuée.
+- Tests : `financeContractHeader.test.js` exécute le vrai module avec transport simulé et vérifie l'en-tête, l'authentification et la conservation des autres en-têtes ; 24 tests ciblés contrat/session réussis. Contrôle TypeScript mobile réussi. Aucun test de binaire store sur téléphone, aucune connexion réelle à un fournisseur financier.
+- Procédure de transition et limites : `../zwanga-backend/infra-aws/docs/CHANGELOG.md` et `../zwanga-backend/docs/finance/CHANGELOG.md` dans le dépôt backend. L'activation des règles est contrôlée par le serveur, jamais par cet en-tête client.
+
+## 7 octobre 2026 — Diagnostic de dette cash depuis l'émulateur
+
+**Demande :** vérifier pourquoi une dette cash reste affichée malgré un solde de
+jetons positif sur le compte déjà connecté. Aucun changement fonctionnel appliqué
+pendant ce diagnostic.
+
+**Contrôles réellement réalisés :** lecture de l'écran de publication Android
+par ADB, puis actualisation authentifiée des lectures existantes `getMyWallet` et
+`driverFinanceSummary` depuis le runtime de développement, sans extraire les tokens.
+Seuls des champs financiers ciblés ont été consultés ; aucune identité ni valeur
+de compte n'est consignée ici. Les deux réponses sont réussies, mais le serveur
+conserve `purchasedTokensOnly: true` et calcule la capacité cash sur les jetons
+retirables uniquement. Le rafraîchissement ne change pas cette réponse.
+
+**Constat :** l'émulateur utilise un backend du réseau local qui expose encore
+l'ancienne règle. Le code source local de `driver-finance.service.ts` contient
+la nouvelle règle, alors que sa version dans `dist` conserve l'ancien calcul et
+`purchasedTokensOnly: true`. L'écart ne provient donc pas uniquement du cache mobile.
+
+**Limites et suite :** le contenu de la table des migrations de la base utilisée
+n'a pas été inspecté. Il reste à identifier/vérifier cette base, compiler et
+redémarrer le backend correspondant, et vérifier l'application de la migration
+financière 1780000055000 avant une nouvelle recette. Ne pas présumer qu'un backend
+local utilise une base de test. Aucun débit, recharge, régularisation manuelle,
+migration, redémarrage serveur ou déploiement effectué. Le script de diagnostic
+temporaire et le dump UI temporaire de l'émulateur ont été supprimés.
+
+## 7 octobre 2026 — Portefeuille : suppression de la carte « Réserve cash »
+
+**Problème :** après ouverture du paiement des commissions à tous les jetons,
+la carte séparée répétait le solde et le bouton « Recharger », donnant l'impression
+d'un second portefeuille. Son état de lecture indisponible pouvait être confondu
+avec un manque de jetons.
+
+**Solution appliquée :**
+
+- `app/wallet.tsx` ne monte plus cette carte. Le composant devenu inutilisé
+  `features/driver-payments/DriverCommissionPanel.tsx` est supprimé.
+- `features/wallet/WalletOverview.tsx` et `WalletOverview.styles.ts` regroupent
+  l'information dans le bloc du solde : les jetons réservés restent dans « Détails »,
+  même si l'API ne propose pas les retraits. Une alerte sans carte ni bouton
+  supplémentaire indique une commission due, en jetons et FC si le serveur fournit
+  le montant ou la conversion. Aucun message d'alerte pour une dette nulle/inconnue.
+- `hooks/wallet/useWalletCashDebt.ts` remplace la lecture de l'ancien panneau,
+  uniquement pour le conducteur actif et connecté au réseau. Il utilise `currentData`
+  et ne présente pas de dette périmée pendant un chargement, une erreur ou un changement
+  de compte. L'absence d'alerte n'est pas présentée comme une autorisation de cash.
+- `hooks/wallet/useWalletController.tsx` intègre cette lecture à l'actualisation
+  existante du portefeuille. Le rafraîchissement financier est protégé contre les
+  callbacks tardifs après changement de compte ou sortie d'écran. Aucun polling ajouté.
+
+Le skill d'interface a guidé la suppression de la carte redondante et le maintien
+d'un seul ensemble d'actions, avec détails dépliables et sans nouveau modal,
+dépendance ou animation décorative.
+
+**Conservé :** recharge, partage, retrait, paiement Pro, liens vers les revenus et
+historique, protections des modaux et idempotence des paiements. Aucun changement
+backend : réserves réelles, prélèvement, taux de 5 %, dette et blocages restent
+contrôlés par le serveur. Les messages d'erreur ne déclenchent ni dette fictive ni
+invitation supplémentaire à recharger.
+
+**Vérifications :** 43 tests JavaScript ciblés réussis (`walletCashDebt`,
+`walletCompactOverview`, `walletSheetKeyboard`, `walletQueryReliability`,
+`walletWithdrawal`). Les anciens tests du panneau retiré sont remplacés par ceux
+de la lecture de dette et du solde compact. TypeScript, ESLint ciblé, contrôle de
+taille des sources et `git diff --check` validés.
+Suite JavaScript complète : **1 506/1 506 tests réussis**, aucun test ignoré
+(`node --test --test-reporter=tap --test-concurrency=4 tests/*.test.js`).
+
+**Limites :** pas d'essai sur appareil physique, de paiement réel ou de déploiement.
+Recette iOS/Android à réaliser : solde sans dette, dette puis régularisation,
+réseau indisponible, actualisation, détails avec réserve et saisie des trois modaux.
+Les migrations financières préparées précédemment restent à déployer séparément
+avec les précautions déjà documentées ; cette simplification ne les active pas.
+
+## 7 octobre 2026 — Commission cash payable avec tous les jetons
+
+La réserve et le prélèvement cash excluaient les bonus. Le backend prend désormais
+toutes les origines de jetons en compte, bonus d'abord, sans les rendre retirables.
+Commission **5 %**, plafond de dette **25 jetons**, blocage du nouveau cash en cas de
+dette et exception de fin de course déjà embarquée conservés. Les nouveaux crédits
+peuvent aussi régulariser le dû, sans exiger une recharge achetée.
+
+Migration en avant `1780000055000-CashCommissionAllTokenOrigins`, traçage de la part
+retirable débitée/remboursée, protection des réserves contre les autres débits,
+projections serveur et affichages/formulaire de retrait mobile adaptés. La démarche
+PostgreSQL a guidé le verrouillage cohérent et la préservation de l'historique.
+
+Fichiers, règles, tests, limites et précautions de déploiement dans
+[Commission cash et dette — toutes origines](CASH_COMMISSION_CREDIT.md#extension-à-toutes-les-origines--7-octobre-2026).
+Vérifications ciblées : **34 tests mobile**, **134 tests unitaires backend** et
+**73 tests PostgreSQL isolés** réussis (3 diagnostics historiques opt-in ignorés).
+Suite mobile complète : **1 504/1 504 réussis**, puis tests ciblés relancés après
+harmonisation finale des messages de régularisation.
+TypeScript mobile/backend applicatif, ESLint ciblé et contrôles de diff réussis.
+Aucune activation en production, paiement réel ou validation sur téléphone.
+
+## 7 octobre 2026 — Suivi passager compact et carte dégagée
+
+**Problème et périmètre :** sur le suivi d'une réservation passager, l'en-tête et
+le panneau inférieur superposés occupaient presque toute la carte. L'attente de
+position et le suivi étaient répétés dans plusieurs blocs ; la distance du trajet
+pouvait être interprétée comme la distance du conducteur avant embarquement.
+
+**Solution appliquée :**
+
+- `app/booking/navigate/[id].tsx`, `PassengerNavigationMap.tsx` et
+  `usePassengerNavigationCamera.ts` : en-tête, carte et panneau disposés dans le
+  flux normal, avec cadrage adapté à la surface de carte réellement disponible.
+  En-tête plafonné à 40 % de la hauteur de fenêtre, panneau à 36 % replié et 50 %
+  déplié ; défilement interne de secours pour les petits écrans et grandes polices.
+  Ces proportions sont des contraintes de mise en page, pas des mesures sur appareil.
+- `features/passenger-navigation/PassengerNavigationHeader.tsx` et
+  `PassengerPickupEstimateBanner.tsx` : intitulés courts, estimation compacte et
+  explication complète accessible au lecteur d'écran. « Connecté » distingue la
+  connexion socket de la fraîcheur GPS. Contact, SOS et partage restent accessibles.
+- `components/trip/TripShareAction.tsx` et
+  `features/navigation/NavigationAssistanceButtons.tsx` : variante en ligne,
+  optionnelle, sans modifier la présentation par défaut des autres écrans.
+- `features/passenger-navigation/PassengerNavigationInfoCard.tsx` : confirmation
+  principale conservée ; destination synthétique puis « Détails » pour afficher
+  l'itinéraire complet, l'heure de position et l'annulation. Suppression des blocs
+  redondants de suivi/attente/détection et de la distance du trajet avant embarquement.
+  Les statistiques restent disponibles pendant le trajet.
+- Nouveau `features/passenger-navigation/PassengerMapControls.tsx` : trois commandes
+  principales (agrandir, cadrer l'itinéraire, outils), puis position passager,
+  conducteur et actualisation dans les outils dépliables. Cibles principales de
+  44 points minimum et états d'accessibilité explicites.
+- `features/ride-recovery/RideRecoveryControl.tsx` : variante `condensed` réduisant
+  les espacements et l'aide générique, sans raccourcir les messages importants de
+  confirmation en attente, de désaccord ou de synchronisation.
+
+Le skill d'interface a guidé la priorité donnée à la carte, la réduction du texte
+répétitif et l'affichage des informations secondaires à la demande, sans nouvelle
+dépendance ni animation décorative.
+
+**Comportements conservés et précautions :** double confirmation conducteur/passager,
+détection automatique, reprise hors connexion, contrôles serveur, modaux de résultat,
+contact, SOS, partage, blocages pendant les requêtes et confirmation d'annulation.
+Les demandes d'interruption et l'avis de trajet en pause ne dépendent pas de
+l'ouverture des détails. Aucune requête, souscription GPS ou boucle réseau ajoutée ;
+aucune modification backend ou native.
+
+**Vérifications :** 56/56 tests JavaScript ciblés réussis (`passengerNavigationCompact`,
+`passengerPickupEstimate`, `passengerDriverInterruption`, `arrivalTerminology`,
+`navigationCamera`, `navigationHeaders`, `navigationAssistance`, `tripShareAction`).
+Les tests couvrent le dépliage, les actions préservées, les états occupés, les outils
+de carte et l'absence de distance trompeuse avant embarquement. Les 24 tests de
+`rideRecoveryUI` passent également, dont une nouvelle régression vérifiant les deux
+étapes en mode compact et le reçu local hors connexion. TypeScript (`tsc --noEmit`),
+ESLint ciblé, contrôle des tailles de sources et `git diff --check` réussis.
+Suite JavaScript complète : **1 502/1 502 réussis**, aucun échec ni test ignoré
+(`node --test --test-reporter=tap --test-concurrency=4 tests/*.test.js`).
+
+**Limites :** aucun essai visuel natif ou sur appareil physique effectué. À vérifier
+sur iOS et Android : petit écran, grandes polices, paysage, détails et carte agrandie,
+position absente, confirmations en attente, interruption et hors connexion. Les tests
+JavaScript ne mesurent ni les performances natives ni la surface de carte affichée.
+
 Ce journal commence le 22 septembre 2026. Chaque nouvelle modification doit
 décrire le problème, la solution appliquée, les fichiers concernés et la validation.
 Il ne prétend pas reconstituer les interventions antérieures non documentées.
@@ -9,6 +413,245 @@ Documents complémentaires déjà présents :
 - [Caméra de navigation et consommation GPS](NAVIGATION_CAMERA_AND_GPS.md)
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
+
+## 7 octobre 2026 — Notifications des transferts de jetons
+
+- Problème : les confirmations backend de transfert existaient, mais leur clic n'ouvrait pas le portefeuille et ne rafraîchissait pas son cache.
+- `utils/notificationNavigation.ts` : `wallet_transfer_in` et `wallet_transfer_out` ouvrent `/wallet`, y compris pour les payloads imbriquées. `components/NotificationHandler.tsx` invalide le cache `Wallet` à la réception au premier plan et à l'ouverture du push.
+- `tests/notificationNavigation.test.js` couvre les deux destinataires et la priorité du portefeuille sur un éventuel identifiant de trajet. Les autres routes, le bonus de bienvenue et les règles de transfert sont conservés.
+- Backend : messages corrélés par `transferId`, confirmation expéditeur/destinataire après commit, cron existant de bienvenue donnant priorité aux conducteurs déjà inscrits et éligibles, sans second bonus. [Détails et activation](../../zwanga-backend/docs/finance/CHANGELOG.md).
+- Vérification : **17 tests JavaScript de navigation réussis**, contrôle TypeScript mobile réussi ; aucun push réel, essai sur appareil ou déploiement store effectué. Les 117 tests backend ciblés, incluant les clusters PostgreSQL temporaires, valident les crédits et leur outbox avec transport push simulé.
+
+## 7 octobre 2026 — Commission cash à 5 % et tolérance de dette
+
+**Problème et périmètre :** la réserve devait couvrir entièrement la commission
+avant acceptation ; la publication ne prévisualisait qu’une place. Le taux reste
+bien **5 %**, conformément à la correction de l’utilisateur, et non 15 %.
+
+**Solution appliquée :** calcul pour toutes les places proposées, tolérance de
+25 jetons (2 500 FC), refus de tout nouveau cash dès qu’une dette existe,
+régularisation par les crédits de jetons achetés. Contrôles PostgreSQL sérialisés,
+réservation dès la sélection d’un conducteur par dispatch, transfert sans double
+réservation vers le booking, estimation et avertissement dans le mobile.
+La démarche PostgreSQL a guidé les verrous portefeuille/commission et l’absence
+d’appels réseau dans ces transactions.
+
+Fichiers, règles conservées, tests, limites et procédure de déploiement détaillés
+dans [Commission cash et dette](CASH_COMMISSION_CREDIT.md). Migration préparée
+dans le backend local ; aucune migration appliquée à une base applicative.
+
+## 7 octobre 2026 — Accès au paiement Pro depuis les jetons
+
+**Périmètre et problème :** l’écran « Jetons Zwanga » ne proposait pas d’accès
+direct au paiement de l’abonnement conducteur Pro.
+
+**Solution appliquée :** ajout du bouton « Payer l’abonnement Pro » sous les trois
+actions du solde, visible pour les comptes conducteurs. Il ouvre directement
+`/subscriptions/payment` avec `router.navigate`, sans détour par le profil et sans
+déclencher de mutation de paiement. Fichiers : `app/wallet.tsx`,
+`features/wallet/WalletOverview.tsx` et `WalletOverview.styles.ts`.
+Le skill d’interface a guidé un accès compact, une seule ligne de texte et une
+cible tactile d’au moins 48 points, sans ajouter de carte explicative ou de requête.
+
+**Comportements conservés :** recharge, partage et retrait inchangés ; aucun accès
+Pro ajouté au portefeuille passager. Le parcours de paiement existant conserve le
+choix du moyen de paiement, la confirmation explicite, les vérifications du solde
+et de l’abonnement, ainsi que la reprise d’une référence en cours. Aucun prix ou
+statut d’abonnement n’est inventé sur cet écran. Une lecture du portefeuille
+indisponible ne masque pas le raccourci : les contrôles restent dans le paiement.
+Aucune modification backend, dépendance ou configuration native.
+
+**Vérifications :** 25/25 tests JavaScript ciblés réussis
+(`walletCompactOverview`, `walletSheetKeyboard`, `walletQueryReliability`), dont
+deux nouveaux tests du raccourci, de sa visibilité et de l’absence de paiement au
+montage. TypeScript (`tsc --noEmit`), ESLint sur les fichiers applicatifs modifiés,
+contrôle des tailles de sources et `git diff --check` réussis. Pas de paiement réel ni d’essai
+sur appareil physique ; vérifier sur iOS/Android l’ouverture depuis les jetons,
+le retour au portefeuille et le comportement avec abonnement déjà actif.
+
+## 7 octobre 2026 — Confirmation du bonus de bienvenue
+
+Périmètre : notification du nouveau bonus backend de 50 jetons, réservé aux comptes actifs dont le dernier KYC est approuvé. Le crédit ne dépend pas d'une mise à jour mobile.
+
+- `utils/notificationNavigation.ts` : le message `wallet_loyalty_reward` portant `relatedEntityType=welcome_bonus` ouvre le portefeuille, pour une payload directe ou imbriquée. Les autres notifications de fidélité conservent leur navigation existante.
+- `components/NotificationHandler.tsx` : la réception au premier plan et l'ouverture du push invalident le cache `Wallet` pour recharger le solde et l'historique. Aucun rafraîchissement supplémentaire pour les autres événements.
+- L'historique portefeuille affiche déjà la description backend « Bonus de bienvenue : KYC et compte validés » et le montant crédité. Le type d'écriture existant est conservé pour les versions publiées. Les jetons offerts ne deviennent pas retirables ni utilisables comme réserve de commission cash achetée.
+- `tests/notificationNavigation.test.js` : test de la nouvelle destination et de la conservation du routage fidélité ordinaire. Documentation du crédit unique, du rattrapage des comptes existants et du déploiement : [journal financier backend](../../zwanga-backend/docs/finance/CHANGELOG.md).
+- Validation : **16 tests JavaScript de navigation réussis**, contrôle TypeScript mobile réussi. Aucun test sur appareil physique, aucun push réel, aucune publication store. Le raccourci au clic nécessite cette version mobile ; le crédit et le texte push restent utilisables par les anciennes versions.
+
+## 7 octobre 2026 — Correctifs de l’audit : sessions, parrainage, réseau et push
+
+**Périmètre et problème :** mise en œuvre des corrections du
+[rapport d’audit du 7 octobre](AUDIT_PERFORMANCE_SECURITE_FIABILITE_2026_10_07.md)
+dans le mobile et le backend local `zwanga-backend`. Les modifications backend
+préexistantes ont été conservées. Aucun déploiement ni accès à la base applicative.
+Les recommandations de sécurité ont guidé l’isolation entre comptes ; celles de
+PostgreSQL ont guidé les transactions courtes, les verrous et les index partiels.
+
+### Solutions effectivement appliquées
+
+- **A01 — Propriétaire du push :** `src/users/users.service.ts` du backend détache
+  les anciens propriétaires et leurs capacités conducteur/mises à jour avant de
+  rattacher le jeton au compte courant, dans une transaction sérialisée entre
+  instances par verrou consultatif PostgreSQL. Les identifiants push vides,
+  non textuels, non ASCII imprimables ou dépassant 1 024 caractères sont refusés.
+  `src/auth/auth.service.ts` efface aussi le push lors de la déconnexion serveur.
+  `src/notifications/notifications.service.ts` relit le destinataire juste avant
+  l’envoi, y compris pour les lots adressés à des comptes, avec concurrence limitée
+  à cinq et transport Expo/FCM adapté. Les lots génériques sans identifiant de
+  compte conservent leur ancien transport multicast.
+  `services/driverNotifications.ts` ignore sur Android une invitation appartenant
+  à un autre compte, une session terminée ou un refresh expiré ; un changement de
+  session pendant la préparation empêche l’affichage. Ce filtre JavaScript ne peut
+  pas retirer un push déjà livré nativement par APNs sur iOS.
+- **A02 — Erreurs de session :** ajout de `src/auth/session-error.ts`, utilisé par
+  le refresh et `src/auth/strategies/jwt.strategy.ts`. Les erreurs JWT restent des
+  refus 401 ; les erreurs HTTP métier restent inchangées ; une panne technique
+  devient une erreur temporaire 503, sans détail interne exposé au client.
+- **A03 — Activation des actions push :** extraction de l’effet d’`AuthGuard.tsx`
+  vers `hooks/auth/usePushRegistration.ts`. L’enregistrement du jeton et celui des
+  capacités interactives ont des états de réussite séparés. Un échec natif,
+  réseau ou une réponse `registered: false` reste réessayable. Les reprises sont
+  espacées d’une minute, uniquement au premier plan avec connexion ; retour au
+  premier plan/reconnexion et rotation de jeton sont pris en compte. Les mutations
+  de capacité sont libérées et les résultats d’une ancienne session ignorés.
+  `services/pushNotifications.ts` permet de vérifier les permissions sans les
+  redemander lors de chaque reprise. Ni connexion ni push ordinaire ne sont bloqués
+  par une capacité indisponible sur un ancien backend.
+- **A04 — Déconnexion durable :** `services/logoutIntent.ts` conserve une intention
+  locale sans jeton ni donnée personnelle avant le nettoyage SecureStore.
+  `services/tokenStorage.ts` refuse de restaurer l’ancien compte au redémarrage
+  tant que le nettoyage reste incomplet. Un refresh ne peut pas annuler cette
+  intention ; une nouvelle connexion complète le peut. Si ni l’intention ni les
+  suppressions ne peuvent être écrites, la fonction signale explicitement l’échec
+  au lieu de prétendre avoir réalisé une déconnexion durable.
+- **A05 — Parrainage :** `utils/referralAttribution.ts` sépare les invitations
+  anonymes et celles de chaque compte. `components/ReferralAttributionHandler.tsx`
+  capture le compte lors de l’ouverture du lien et ne rattache pas à B un lien
+  reçu par A hors ligne ou dont la résolution était encore en cours. Une invitation
+  anonyme peut être adoptée une fois après connexion. La date de capture, la
+  première invitation, la reprise réseau et la décision finale du serveur sont
+  conservées. Une consommation tardive ne supprime plus une invitation différente.
+  `hooks/auth/useRegistrationActions.ts` ne consomme rien en l’absence de jeton de
+  parrainage effectivement utilisé.
+- **A06 — Réservations :** le subscriber
+  `src/notifications/transactional-notifications.subscriber.ts` enregistre l’alerte
+  d’une nouvelle réservation en attente dans la même transaction que l’insertion,
+  avec clé d’événement unique. L’absence de jeton push ne fait plus perdre cette
+  alerte. Suppression de l’ancien envoi HTTP synchrone et de sa méthode dans
+  `src/bookings/bookings.service.ts`. Une réservation déjà acceptée et un trajet
+  issu d’une demande assignée ne créent pas une seconde invitation. Le message
+  push de réservation devient générique ; les détails restent dans le parcours
+  authentifié. Avant toute livraison/reprise, le serveur contrôle que la réservation
+  attend toujours une réponse et que le trajet appartient au destinataire et n’est
+  pas terminé/annulé.
+- **A07 — Lectures réseau :** `components/DriverPresenceCoordinator.tsx` suspend
+  les lectures profil/statut et le timer de présence hors ligne ou en arrière-plan.
+  L’effet dépend de l’identité/rôle stables, pas de tout l’objet profil.
+  `features/publish/PublishPaymentModes.tsx` ne garde plus sa lecture financière
+  active derrière le portefeuille ou hors ligne. Une vérification impossible
+  n’est pas présentée comme un manque de réserve. Les choix déjà cochés restent
+  retirables et la règle d’au moins un mode de paiement est conservée.
+- **A08 — Priorité :** le dispatcher réserve une voie indépendante aux invitations
+  conducteur, avec lot de dix, contrôle toutes les cinq secondes et priorité aux
+  propositions de proximité. La voie ordinaire conserve ses lots de 25 ; les deux
+  voies ne se réclament pas les mêmes lignes. Les envois ont lieu après libération
+  des verrous `SKIP LOCKED`. Les échecs urgents attendent au moins 15 secondes avant
+  reprise ; une prise en charge interrompue est récupérable après deux minutes.
+  Une offre expirée/traitée est désactivée au lieu d’être sonnée tardivement. Le
+  retry financier périodique exclut cette voie urgente. Ce mécanisme reste de type
+  « au moins une fois », pas une garantie de réception ou d’unicité APNs/FCM.
+- **Dépendance :** seul `shell-quote` passe de 1.10.0 à 1.12.0 dans
+  `package-lock.json`, par mise à jour compatible, sans script d’installation ni
+  nouvelle dépendance. Cette version inclut la correction décrite dans
+  [l’avis du mainteneur](https://github.com/ljharb/shell-quote/security/advisories/GHSA-pqg4-j6r4-53mv).
+  Aucun `npm audit fix --force` ni changement majeur Expo/React Native.
+
+### Migration ajoutée, non appliquée à la base applicative
+
+Backend : `src/database/migrations/1780000051000-HardenPushOwnershipAndPriority.ts`,
+enregistrée dans `src/database/migrations/index.ts`, avec les index correspondants
+sur les entités `User` et `Notification`.
+
+La migration retire les associations push historiquement ambiguës pour **tous**
+leurs détenteurs, sans choisir arbitrairement un compte, nettoie les capacités
+devenues inactives et crée un index unique partiel sur les jetons push non nuls.
+Elle ajoute aussi un index partiel de file urgente. Les comptes, réservations et
+transactions financières ne sont pas supprimés. Les appareils concernés doivent
+réenregistrer leur jeton en relançant l’app ; un rollback des index ne restaure pas
+les associations ambiguës. La durée des verrous sur les volumes de production n’a
+pas été mesurée : prévoir sauvegarde, essai en préproduction et fenêtre adaptée.
+
+### Vérifications et résultats
+
+- Mobile : **1 490/1 490 tests JavaScript réussis**, concurrence quatre, environ
+  138 secondes lors du dernier passage complet. Ajouts : persistance de déconnexion,
+  changement de compte pendant un parrainage, pauses réseau/écran, reprise des
+  capacités push et filtrage d’invitations Android. Les mocks existants ont été
+  adaptés aux nouveaux hooks, sans supprimer leurs assertions fonctionnelles.
+- Backend : **99/99 tests ciblés réussis** dans `session-error.spec.ts`,
+  `push-ownership.spec.ts`, `notifications.service.spec.ts`,
+  `transactional-notifications.subscriber.spec.ts` et `bookings.service.spec.ts`.
+- PostgreSQL 18 : **19/19 tests d’intégration réussis** dans
+  `transactional-notifications-postgres.spec.ts`, sur cluster neuf temporaire,
+  loopback, données fictives, sans configuration applicative. Ils couvrent aussi
+  transferts concurrents de jeton, contrainte unique, migration des doublons,
+  priorité devant une file ordinaire et suppression d’une invitation annulée.
+  Le cluster a été arrêté et ses seules données temporaires nettoyées par le test.
+  Les transports push sont simulés ; aucun push utilisateur envoyé.
+- TypeScript mobile et `tsc -p tsconfig.build.json --noEmit --incremental false`
+  backend : réussis. Le typage backend global incluant tous les anciens tests
+  reste en échec dans des fichiers hors correction (activity, keccel-otp, paiements,
+  confidentialité des demandes, identité et fidélité). Ce n’est pas un build
+  natif ni une validation exhaustive de tous les tests backend.
+- ESLint des sources mobiles modifiées : aucune erreur ; avertissement préexistant
+  sur l’import dynamique `require()` du repli Notifee conservé.
+- Frontière réseau valide ; **1 037 sources**, aucune au-dessus de 400 lignes.
+  `git diff --check` valide dans les deux dépôts.
+- Nouvel audit npm mobile : **62 signalements** (23 modérés, 39 élevés, zéro critique),
+  contre 63 auparavant ; ce total inclut des dépendances transitives d’outillage.
+  Les 62 restants ne sont ni corrigés ni déclarés inoffensifs par cette intervention.
+
+### Limites et suites différées
+
+**A01 reste partiellement ouvert :** une déconnexion hors ligne ne peut pas notifier
+le serveur immédiatement. Le nettoyage serveur et le transfert au prochain compte
+sont corrigés, mais aucune file de révocation différée indépendante de la session
+n’a été ajoutée. Il faudrait un justificatif limité à la révocation d’installation,
+lié à une génération d’enregistrement, plutôt que conserver un ancien bearer après
+déconnexion ou créer un endpoint public acceptant un simple jeton push. Une
+notification déjà remise au système peut encore être visible ; les données iOS
+affichées nativement ne sont pas filtrables par le contrôle Android ajouté ici.
+
+Les anciennes invitations de parrainage non scindées par compte ne permettent pas
+de reconstruire leur propriétaire historique ; elles restent traitées comme
+anonymes pour préserver les inscriptions existantes. Une panne simultanée de tous
+les stockages empêche toute garantie de persistance au-delà de la mort du processus.
+Les mises à niveau majeures restantes nécessitent leur propre lot de compatibilité.
+
+Pas d’essai physique iOS/Android, de mesure FPS/mémoire/chauffe ni de test APNs/FCM
+en veille. Les temps de file, les quotas provider et la réception réelle en moins
+de 30 secondes restent à mesurer. Le rollback réservation/outbox repose sur le
+subscriber transactionnel et est testé en unité ; les nouveaux essais PostgreSQL
+de file utilisent des événements insérés explicitement, pas un parcours HTTP de
+réservation complet.
+
+### Reproduction et mise en service
+
+Mobile : `node --test --test-concurrency=4 tests/*.test.js`,
+`node node_modules/typescript/bin/tsc --noEmit`, `npm.cmd run check:network` et
+`npm.cmd run check:source-size`. Aucune dépendance native ni capability n’est ajoutée
+ici. Recharger le JS d’un dev build existant compatible suffit pour ces essais ;
+Expo Go ne valide pas les alertes natives. Pour la livraison store, faire les builds
+habituels Android/iOS. Vérifier sur appareils réels les changements de compte,
+la déconnexion hors ligne, le redémarrage, les invitations en veille et le retour
+de réseau ; vérifier aussi que les demandes de permission ne se répètent pas.
+
+Backend, après validation en préproduction et sauvegarde : `npm.cmd run build`,
+puis `npm.cmd run migration:run:prod` sur **l’environnement explicitement choisi**,
+et déployer les instances corrigées. Ces commandes de déploiement n’ont pas été
+exécutées ici. Vérifier la migration 1780000051000, les métriques de file urgente
+et le réenregistrement des appareils dont les associations étaient ambiguës.
 
 ## 7 octobre 2026 — Audit performance, sécurité et fiabilité
 

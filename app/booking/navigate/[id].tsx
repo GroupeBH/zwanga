@@ -2,19 +2,21 @@ import { usePassengerNavigationController } from '../../../hooks/passenger-navig
 import { PassengerNavigationMap } from '../../../features/passenger-navigation/PassengerNavigationMap';
 import { PassengerNavigationInfoCard } from '../../../features/passenger-navigation/PassengerNavigationInfoCard';
 import { PassengerNavigationHeader } from '@/features/passenger-navigation/PassengerNavigationHeader';
+import { PassengerMapControls } from '@/features/passenger-navigation/PassengerMapControls';
 import { NavigationAssistanceModals } from '@/features/navigation/NavigationAssistanceModals';
 import { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import { styles } from '../../../features/screen-styles/app/booking/navigate/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StatusBar, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
 
 export default function PassengerNavigationScreen() {
+  const { height } = useWindowDimensions();
   const model = usePassengerNavigationController();
   const assistance = useNavigationAssistance({ role: 'passenger', trip: model.data.trip,
     booking: model.data.booking, isScreenActive: model.data.isScreenActive });
@@ -49,8 +51,12 @@ export default function PassengerNavigationScreen() {
     <RideActionResult actor="passenger" tripId={model.data.tripId} bookingId={model.data.bookingId} active={model.data.isScreenActive} />
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+      <ScrollView style={{ maxHeight: height * 0.4, flexGrow: 0 }} showsVerticalScrollIndicator>
+        <PassengerNavigationHeader model={model} assistance={assistance} />
+      </ScrollView>
       
       {/* Carte */}
+      <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       {model.state.isNavigationMapReady ? (
         <PassengerNavigationMap
           state={model.state}
@@ -63,14 +69,14 @@ export default function PassengerNavigationScreen() {
           presentation={model.presentation}
         />
       ) : (
-        <View style={[styles.map, styles.mapPlaceholder, { top: model.state.mapTopOffset }]}>
+        <View style={[styles.map, styles.mapPlaceholder]}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.mapPlaceholderText}>Préparation de la navigation...</Text>
         </View>
       )}
 
       {model.presentation.canToggleRouteSegments && (
-        <View style={[styles.segmentToggle, { top: model.state.mapTopOffset + 8, right: undefined, left: Math.max(model.data.insets.left, Spacing.md) }]}>
+        <View style={[styles.segmentToggle, { top: 8, right: undefined, left: Math.max(model.data.insets.left, Spacing.md) }]}>
           <TouchableOpacity
             style={[
               styles.segmentToggleButton,
@@ -112,71 +118,19 @@ export default function PassengerNavigationScreen() {
                 model.state.activeRouteSegment === 'pickup' && styles.segmentToggleTextActive,
               ]}
             >
-              Récup.
+              Prise en charge
             </Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Boutons flottants */}
-      <View style={[styles.floatingButtons, { top: model.state.mapTopOffset + 8, right: Math.max(model.data.insets.right, Spacing.md) }]}>
-        <TouchableOpacity
-          style={[styles.floatingButton, model.state.isMapExpanded && styles.floatingButtonActive]}
-          onPress={() => model.state.setIsMapExpanded((prev) => !prev)}
-          activeOpacity={0.8}
-        >
-          <Ionicons
-            name={model.state.isMapExpanded ? 'contract-outline' : 'expand-outline'}
-            size={22}
-            color={model.state.isMapExpanded ? Colors.primary : Colors.gray[700]}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.floatingButton} 
-          onPress={model.camera.fitToRoute}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="map-outline" size={22} color={Colors.gray[700]} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.floatingButton, !model.presentation.canCenterOnPassenger && styles.floatingButtonDisabled]}
-          onPress={model.camera.centerOnPassenger}
-          disabled={!model.presentation.canCenterOnPassenger}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="locate" size={22} color={model.presentation.canCenterOnPassenger ? Colors.primary : Colors.gray[400]} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.floatingButton, !model.state.driverLocation && styles.floatingButtonDisabled]}
-          onPress={model.camera.centerOnDriver}
-          disabled={!model.state.driverLocation}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="car-sport" size={22} color={model.state.driverLocation ? Colors.info : Colors.gray[400]} />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.floatingButton, model.state.isLoadingRoute && styles.floatingButtonLoading]}
-          onPress={() => {
-            model.state.routeFetchedRef.current = false;
-            model.state.lastRouteFetchRef.current = 0;
-            model.route.fetchRoute();
-          }}
-          disabled={model.state.isLoadingRoute}
-          activeOpacity={0.8}
-        >
-          {model.state.isLoadingRoute ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <Ionicons name="refresh-outline" size={22} color={Colors.primary} />
-          )}
-        </TouchableOpacity>
+      <PassengerMapControls model={model} />
       </View>
-
-      <PassengerNavigationHeader model={model} assistance={assistance} />
 
       {/* Info Card */}
       {!model.state.isMapExpanded && (
       <PassengerNavigationInfoCard
+        key={model.data.bookingId}
         data={model.data}
         state={model.state}
         presentation={model.presentation}

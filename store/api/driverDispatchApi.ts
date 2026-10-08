@@ -59,7 +59,7 @@ export const driverDispatchApi = baseApi.injectEndpoints({
     }),
     respondToDispatchOffer: builder.mutation<{ status: string; requestId: string }, { id: string; decision: 'accept' | 'decline' }>({
       query: ({ id, decision }) => ({ url: `/driver-dispatch/offers/${id}/respond`, method: 'PUT', body: { decision }, timeout: 10000 }),
-      invalidatesTags: ['DriverDispatch', 'TripRequest', 'MyTripRequests', 'MyDriverOffers', 'AccountActivity'],
+      invalidatesTags: ['DriverDispatch', 'TripRequest', 'MyTripRequests', 'MyDriverOffers', 'AccountActivity', 'Wallet'],
     }),
   }),
 });

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import React, { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { BackHandler, Keyboard, Platform, StyleSheet, View } from 'react-native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { createRideOverlayStore } from './rideOverlayStore';
@@ -20,6 +20,11 @@ function RideOverlayHost({ scope }: { scope: string }) {
   const entries = useSyncExternalStore(store?.subscribe ?? subscribeNothing, store?.getEntries ?? noEntries, noEntries);
   const foreground = useAppIsActive();
   const shown = foreground && active?.scope === scope ? active : null;
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  // Preserve Modal.onShow for lazy native content (especially the location picker).
+  // Fire after commit, only for the visible panel, not on every children update.
+  useEffect(() => { shownRef.current?.onShow?.(); }, [shown?.id]);
   useEffect(() => {
     if (!shown || Platform.OS !== 'android') return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {

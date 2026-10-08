@@ -32,13 +32,23 @@ function openArchive(filename) {
         size: directory.readUInt32LE(cursor + 24), offset: directory.readUInt32LE(cursor + 42) });
       cursor = end;
     }
-    return { entries, close: () => fs.closeSync(fd), content(entry) {
-      if (entry.size > 32 * 1024 * 1024 || entry.compressed > 32 * 1024 * 1024) throw new Error('Bibliothèque trop volumineuse pour ce contrôle.');
+    const dataOffset = entry => {
       const local = read(30, entry.offset);
       if (local.readUInt32LE(0) !== 0x04034b50) throw new Error('En-tête ZIP local invalide.');
-      const data = read(entry.compressed, entry.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28));
+      if (local.readUInt16LE(8) !== entry.method) throw new Error('Compression ZIP incohérente.');
+      return entry.offset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28);
+    };
+    return { entries, dataOffset, close: () => fs.closeSync(fd), content(entry) {
+      // One native library at a time, never the full AAB. ReactAndroid can exceed 32 MB.
+      const budget = 256 * 1024 * 1024;
+      if (entry.size > budget || entry.compressed > budget) throw new Error('Bibliothèque trop volumineuse pour ce contrôle.');
+      const data = read(entry.compressed, dataOffset(entry));
       if (entry.method === 0) return data;
-      if (entry.method === 8) return zlib.inflateRawSync(data, { maxOutputLength: 32 * 1024 * 1024 });
+      if (entry.method === 8) {
+        const decoded = zlib.inflateRawSync(data, { maxOutputLength: budget });
+        if (decoded.length !== entry.size) throw new Error('Taille ZIP incohérente.');
+        return decoded;
+      }
       throw new Error('Compression ZIP non prise en charge.');
     } };
   } catch (error) { fs.closeSync(fd); throw error; }

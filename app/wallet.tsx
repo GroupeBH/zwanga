@@ -1,5 +1,4 @@
 import { useWalletController } from "../hooks/wallet/useWalletController";
-import { DriverCommissionPanel } from '@/features/driver-payments/DriverCommissionPanel';
 import { isDriverAccount } from '@/utils/accountRole';
 import { WalletTopUpModal } from "../features/wallet/WalletTopUpModal";
 import { WalletTransferModal } from "../features/wallet/WalletTransferModal";
@@ -104,8 +103,7 @@ export default function WalletScreen() {
           showsVerticalScrollIndicator={false}
           style={styles.scrollRoot}
           ListHeaderComponent={<View style={styles.contentHeader}>
-          <WalletOverview key={`balance:${user?.id ?? 'signed-out'}`} wallet={wallet} withdrawal={withdrawal} />
-          {user && isDriverAccount(user) && <DriverCommissionPanel key={`cash-reserve:${user.id}`} userId={user.id} onRecharge={() => wallet.setActiveModal('top_up')} />}
+          <WalletOverview key={`balance:${user?.id ?? 'signed-out'}`} wallet={wallet} withdrawal={withdrawal} isDriver={isDriverAccount(user)} />
           <WalletWithdrawalSection key={`withdrawals:${user?.id ?? 'signed-out'}`} summary={wallet.walletSummary} withdrawal={withdrawal} />
 
           {wallet.topUpStatusMessage || wallet.topUpOrderNumber ? (

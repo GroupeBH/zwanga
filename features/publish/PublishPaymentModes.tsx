@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import type { TripPaymentMode } from '@/types';
@@ -6,19 +6,29 @@ import { Colors } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { useDriverFinanceSummaryQuery } from '@/store/api/driverFinanceApi';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
+import { estimateCashCommission } from '@/utils/cashCommission';
 
 export const paymentModeLabels: Record<TripPaymentMode, string> = { electronic: 'Paiement électronique', points: 'Jetons Zwanga', cash: 'Espèces (cash)' };
 const shortLabels: Record<TripPaymentMode, string> = { electronic: 'Électronique', points: 'Jetons', cash: 'Cash' };
 
-export function PublishPaymentModes({ value, onChange, price }: {
-  value: TripPaymentMode[]; onChange: React.Dispatch<React.SetStateAction<TripPaymentMode[]>>; price: number;
+export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {
+  value: TripPaymentMode[]; onChange: React.Dispatch<React.SetStateAction<TripPaymentMode[]>>; price: number; seats?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const user = useAppSelector(selectUser), router = useRouter();
-  const { currentData: finance, isFetching, isError, refetch } = useDriverFinanceSummaryQuery(user?.id ?? '', { skip: !user?.id, refetchOnMountOrArgChange: true });
-  const required = finance ? Math.round(Math.max(0, price) * 0.05 / finance.cash.moneyPerToken * 100) / 100 : Infinity;
-  const cashAvailable = Boolean(!isError && finance?.cash.enabled && finance.cash.availableTokens >= required);
-  const canRefresh = Boolean(user?.id && !isFetching);
+  const readsEnabled = useDisplayReadsEnabled(useScreenIsActive() && Boolean(user?.id));
+  const { currentData: finance, isFetching, isError, refetch } = useDriverFinanceSummaryQuery(user?.id ?? '', displayReadOptions(readsEnabled));
+  const estimate = estimateCashCommission(finance, price, seats);
+  const cashAvailable = Boolean(readsEnabled && !isFetching && !isError && estimate?.allowed);
+  const invalidCashChoice = readsEnabled && !isFetching && !isError && estimate !== null && !estimate.allowed;
+  useEffect(() => {
+    if (invalidCashChoice && value.includes('cash')) {
+      onChange(previous => previous.filter(mode => mode !== 'cash'));
+    }
+  }, [invalidCashChoice, value, onChange]);
+  const canRefresh = Boolean(readsEnabled && !isFetching);
   return <View style={s.panel}>
     <View style={s.heading}>
       <Text style={s.title}>Paiements acceptés</Text>
@@ -38,12 +48,12 @@ export function PublishPaymentModes({ value, onChange, price }: {
     </View>
     {!cashAvailable && <View>
       <Text style={s.copy} accessibilityLiveRegion="polite">
-        {isFetching ? 'Vérification du cash…' : isError || !finance
+        {isFetching ? 'Vérification du cash…' : !readsEnabled || isError || !finance
           ? 'Cash : vérification indisponible.'
-          : 'Cash : rechargez vos jetons pour l’activer.'}
+          : `Cash indisponible pour ce trajet : la commission doit rester dans la limite cumulée de ${finance.cash.debtLimitTokens ?? 25} jetons de dette. Rechargez ou choisissez un autre paiement.`}
       </Text>
       <View style={s.actions}>
-        {!isFetching && !isError && finance && <TouchableOpacity accessibilityRole="button" style={s.action}
+        {readsEnabled && !isFetching && !isError && finance && <TouchableOpacity accessibilityRole="button" style={s.action}
           onPress={() => router.push('/wallet')}><Text style={s.link}>Recharger</Text></TouchableOpacity>}
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualiser la disponibilité du cash"
           accessibilityState={{ disabled: !canRefresh }} disabled={!canRefresh}
@@ -52,7 +62,12 @@ export function PublishPaymentModes({ value, onChange, price }: {
         </TouchableOpacity>
       </View>
     </View>}
-    {cashAvailable && value.includes('cash') && <Text style={s.copy}>Cash : commission réservée sur vos jetons achetés.</Text>}
+    {cashAvailable && value.includes('cash') && estimate && <>
+      <Text style={s.copy}>Cash : {estimate.required.toLocaleString('fr-FR')} jetons de commission pour {seats} place(s).</Text>
+      {estimate.debt > 0 ? <Text style={s.copy} accessibilityLiveRegion="polite">
+        Dette totale estimée : {estimate.totalDebt.toLocaleString('fr-FR')} jetons, dans la limite de {finance?.cash.debtLimitTokens ?? 25} jetons. Les prochains jetons reçus régularisent le dû.
+      </Text> : <Text style={s.copy}>Cash : commission réservée sur vos jetons.</Text>}
+    </>}
     <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded }} style={s.detailsButton}
       onPress={() => setExpanded(current => !current)} activeOpacity={0.7}>
       <Text style={s.detailsLabel}>Frais et conditions</Text><Text style={s.detailsLabel} accessible={false}>{expanded ? '−' : '+'}</Text>
@@ -60,7 +75,8 @@ export function PublishPaymentModes({ value, onChange, price }: {
     {expanded && <View style={s.details}>
       <Text style={s.copy}>Le passager choisit parmi vos modes activés. Gardez au moins un mode.</Text>
       <Text style={s.copy}>Électronique et jetons : les 5 % sont retenus sur le paiement, sans débiter votre portefeuille.</Text>
-      <Text style={s.copy}>Cash : les 5 % sont réservés sur vos jetons achetés à l’acceptation. La réserve est revérifiée pour chaque réservation.</Text>
+      <Text style={s.copy}>Cash : les 5 % sont réservés sur vos jetons à l’acceptation, bonus inclus. La réserve est revérifiée pour chaque réservation.</Text>
+      {!!finance?.cash.debtLimitTokens && <Text style={s.copy}>Tolérance : {finance.cash.debtLimitTokens} jetons de dette cumulée maximum, tous trajets confondus. Chaque nouvelle commission doit respecter la marge restante.</Text>}
       {cashAvailable && <View style={s.actions}>
         <TouchableOpacity accessibilityRole="button" style={s.action} onPress={() => router.push('/wallet')}>
           <Text style={s.link}>Recharger les jetons</Text>

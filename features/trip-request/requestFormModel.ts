@@ -4,6 +4,7 @@ import {
 } from '@/constants/paymentFeatures';
 import type { FavoriteLocation, TripPaymentMode } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { boundedRoutePoints, routeBounds } from '@/utils/routes/safePolyline';
 import type { Ionicons } from '@expo/vector-icons';
 import { type Region } from 'react-native-maps';
 
@@ -234,20 +235,22 @@ export function getRenderableRouteCoordinates(
   origin: LatLng,
   destination: LatLng,
 ) {
-  if (coordinates.length < 2) {
+  const safeCoordinates = boundedRoutePoints(coordinates);
+  if (safeCoordinates.length < 2) {
     return [];
   }
 
   const isStraightFallback =
-    coordinates.length === 2 &&
-    areSameCoordinate(coordinates[0], origin) &&
-    areSameCoordinate(coordinates[1], destination);
+    safeCoordinates.length === 2 &&
+    areSameCoordinate(safeCoordinates[0], origin) &&
+    areSameCoordinate(safeCoordinates[1], destination);
 
-  return isStraightFallback ? [] : coordinates;
+  return isStraightFallback ? [] : safeCoordinates;
 }
 
 export function buildRoutePreviewRegion(points: LatLng[]): Region {
-  if (points.length === 0) {
+  const bounds = routeBounds(points);
+  if (!bounds) {
     return DEFAULT_REQUEST_REGION;
   }
 
@@ -260,12 +263,7 @@ export function buildRoutePreviewRegion(points: LatLng[]): Region {
     };
   }
 
-  const latitudes = points.map((point) => point.latitude);
-  const longitudes = points.map((point) => point.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
+  const { minLatitude, maxLatitude, minLongitude, maxLongitude } = bounds;
 
   return {
     latitude: (minLatitude + maxLatitude) / 2,

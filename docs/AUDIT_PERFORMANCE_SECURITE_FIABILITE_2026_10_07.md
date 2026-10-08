@@ -2,6 +2,11 @@
 
 ## Synthèse
 
+**Suivi :** les corrections locales ultérieures et leurs vérifications sont décrites
+dans le [journal technique](CHANGEMENTS_TECHNIQUES.md#7-octobre-2026--correctifs-de-laudit--sessions-parrainage-réseau-et-push).
+Ce rapport conserve l’état constaté avant correction ; les limites restantes,
+notamment la révocation push différée hors ligne, sont distinguées dans le journal.
+
 Huit points sont à corriger ou à améliorer dans le code local. Les priorités sont
 l’isolation des destinataires push, la distinction entre panne serveur et session
 invalide, et la reprise de l’activation des alertes conducteur. Les correctifs des

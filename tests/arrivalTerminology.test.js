@@ -3,12 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { loader } = require('./helpers/loadTypeScript.cjs');
+const { hookHarness } = require('./helpers/hookHarness.cjs');
 const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join(' ')
   : node?.props ? words(node.props.children) : '';
 
 test('passenger copy distinguishes travel, pending confirmation and confirmed arrival', () => {
+  const hooks = hookHarness();
   const { PassengerNavigationInfoCard } = loader({
-    'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
+    react: { ...require('react'), ...hooks.react },
+    'react-native': { ScrollView: 'ScrollView', useWindowDimensions: () => ({ height: 780 }), View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeInUp: { duration: () => ({ delay: () => null }) } },
     '../screen-styles/app/booking/navigate/detail/index': { styles: {} },
@@ -17,9 +20,9 @@ test('passenger copy distinguishes travel, pending confirmation and confirmed ar
   })('features/passenger-navigation/PassengerNavigationInfoCard.tsx');
   const booking = { id: 'booking', passengerOrigin: 'Départ', passengerDestination: 'Destination',
     pickedUp: true, pickedUpConfirmedByPassenger: true, droppedOff: false, droppedOffConfirmedByPassenger: false };
-  const render = patch => words(PassengerNavigationInfoCard({ data: {
+  const render = patch => words(hooks.render(() => PassengerNavigationInfoCard({ data: {
     booking: { ...booking, ...patch }, trip: { status: 'ongoing' }, insets: { bottom: 0 },
-  }, state: {}, presentation: {}, interruption: {}, tripActions: {} }));
+  }, state: {}, presentation: {}, interruption: {}, tripActions: {} })));
   assert.match(render({}), /En route vers votre destination/);
   assert.doesNotMatch(render({}), /Arrivée à destination confirmée|Trajet terminé/);
   const pending = render({ droppedOffConfirmedByPassenger: true });
@@ -28,6 +31,7 @@ test('passenger copy distinguishes travel, pending confirmation and confirmed ar
   const confirmed = render({ droppedOff: true, droppedOffConfirmedByPassenger: true });
   assert.match(confirmed, /Arrivée à destination confirmée/);
   assert.doesNotMatch(confirmed, /en cours|Trajet terminé|dépose/i);
+  hooks.unmount();
 });
 
 test('in-progress ride presentation no longer uses the old arrival terminology', () => {

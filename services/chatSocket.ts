@@ -2,6 +2,7 @@ import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import type { Message } from '@/types';
 import { io, Socket } from 'socket.io-client';
+import { deliverSocketEvent, isChatMessage } from './socketPayloads';
 
 type MessageListener = (message: Message) => void;
 
@@ -27,7 +28,7 @@ class ChatSocketClient {
           this.rooms.forEach((_count, bookingId) => socket.emit('join_booking', { bookingId }));
         });
         socket.on('new_message', (message: Message) => {
-          this.listeners.forEach((listener) => listener(message));
+          if (isChatMessage(message)) deliverSocketEvent(this.listeners, message);
         });
         socket.on('connect_error', (error: Error) => {
           if (__DEV__) console.warn('[ChatSocket]', error.message);

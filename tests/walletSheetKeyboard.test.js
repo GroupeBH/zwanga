@@ -130,7 +130,6 @@ test('typing in the transfer form preserves controlled values and cannot submit 
     setTransferNote: value => { wallet.transferNote = value; updates.push('note'); },
     handleTransfer: () => updates.push('transfer'), handleTopUp: () => updates.push('top-up'), setActiveModal: value => { wallet.activeModal = value; } };
   const load = loader({ ...h.mocks,
-    '@/features/driver-payments/DriverCommissionPanel': { DriverCommissionPanel: 'CommissionPanel' },
     '../hooks/wallet/useWalletController': { useWalletController: () => wallet },
     '../features/wallet/WalletTopUpModal': { WalletTopUpModal: 'TopUp' },
     '../features/wallet/WalletSheetModal': { WalletSheetModal: 'Sheet' },
@@ -176,7 +175,6 @@ test('the withdrawal overlay is a screen-root sibling, outside the disabled back
   const h = sheet();
   const wallet = { activeModal: 'withdrawal', entries: [], ledgerCursor: { page: 1 }, setActiveModal: value => { wallet.activeModal = value; } };
   const Screen = loader({ ...h.mocks,
-    '@/features/driver-payments/DriverCommissionPanel': { DriverCommissionPanel: 'CommissionPanel' },
     '../hooks/wallet/useWalletController': { useWalletController: () => wallet },
     '../features/wallet/WalletTopUpModal': { WalletTopUpModal: 'TopUp' },
     '../features/wallet/WalletSheetModal': { WalletSheetModal: 'Sheet' },

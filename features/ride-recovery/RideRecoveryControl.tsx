@@ -31,11 +31,12 @@ interface Props {
   bookings?: Booking[];
   actor: 'driver' | 'passenger';
   compact?: boolean;
+  condensed?: boolean;
   fix?: RecoveryFix | null;
   destination?: { latitude: number; longitude: number } | null;
 }
 
-export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, booking, bookings = EMPTY_BOOKINGS, actor, compact, fix, destination }: Props) {
+export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, booking, bookings = EMPTY_BOOKINGS, actor, compact, condensed, fix, destination }: Props) {
   const active = useScreenIsActive();
   const feedback = useRideActionFeedback();
   const online = useAppSelector(state => state.zwangaApi.config.online);
@@ -149,12 +150,15 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
     {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
       ? rideStageMessage(inlineStage, actor)
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
+      : condensed && actor === 'passenger' ? directStage?.stage === 'dropoff'
+        ? 'Confirmez une fois à destination. Le conducteur confirme aussi.'
+        : 'Confirmez une fois à bord. Le conducteur confirme aussi.'
       : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme de son côté.`
       : directStage?.stage === 'dropoff' ? 'Appuyez une fois à destination. Le conducteur confirme aussi votre arrivée à destination ; la détection automatique reste active.'
       : 'Appuyez une fois à bord. Le conducteur confirme aussi l’embarquement ; la détection automatique reste active.'}</Text>
       : !compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
     {directRow && directStage && directRow.stages.some(stage => stage.other === 'confirm' && !stage.unavailable) &&
-      <TouchableOpacity disabled={!active || saving} accessibilityRole="button" style={styles.refresh}
+      <TouchableOpacity disabled={!active || saving} accessibilityRole="button" style={[styles.refresh, condensed && styles.condensedRefresh]}
         onPress={() => { if (active && !savingRef.current) setVisible(true); }}>
         <Text style={styles.rejectLabel}>Vérifier les confirmations</Text>
       </TouchableOpacity>}
@@ -247,4 +251,5 @@ const styles = StyleSheet.create({
   review: { borderTopWidth: 1, borderTopColor: Colors.gray[200], padding: 18, gap: 8, backgroundColor: Colors.gray[50] },
   error: { color: Colors.dangerDark, paddingHorizontal: 20, paddingVertical: 10, fontSize: 13 },
   refresh: { alignItems: 'center', padding: 18, minHeight: 48, marginBottom: 8 },
+  condensedRefresh: { padding: 8, minHeight: 44, marginBottom: 0 },
 });

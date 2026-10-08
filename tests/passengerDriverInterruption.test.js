@@ -110,16 +110,19 @@ test('acknowledgement of an old request does not prevent responding to the next 
 const all = n => !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(all) : [n, ...all(n.props?.children)];
 const words = n => typeof n === 'string' ? n : Array.isArray(n) ? n.map(words).join('') : n?.props ? words(n.props.children) : '';
 test('the paused trip notice is reachable after confirmation, outside ongoing-only actions', () => {
+  const hooks = hookHarness();
   const { PassengerNavigationInfoCard } = loader({
-    'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
+    react: { ...require('react'), ...hooks.react },
+    'react-native': { ScrollView: 'ScrollView', useWindowDimensions: () => ({ height: 780 }), View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeInUp: { duration: () => ({ delay: () => null }) } },
     '../screen-styles/app/booking/navigate/detail/index': { styles: {} },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/components/trip/PausedPassengerRideNotice': { PausedPassengerRideNotice: 'PausedNotice' },
   })('features/passenger-navigation/PassengerNavigationInfoCard.tsx');
-  const tree = PassengerNavigationInfoCard({ data: { booking: { ...booking, passengerOrigin: 'Départ', passengerDestination: 'Arrivée' }, trip: confirmed, insets: { bottom: 24 } },
-    state: {}, presentation: {}, interruption: {}, tripActions: {} });
+  const tree = hooks.render(() => PassengerNavigationInfoCard({ data: { booking: { ...booking, passengerOrigin: 'Départ', passengerDestination: 'Arrivée' }, trip: confirmed, insets: { bottom: 24 } },
+    state: {}, presentation: {}, interruption: {}, tripActions: {} }));
   assert.equal(all(tree).filter(n => n.type === 'PausedNotice').length, 1);
   assert.doesNotMatch(words(tree), /pas encore démarré/);
+  hooks.unmount();
 });

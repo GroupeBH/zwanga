@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function TripDetailsScreen() {
   const model = useTripDetailController();
@@ -56,6 +57,7 @@ export default function TripDetailsScreen() {
   }
 
   return (
+    <RideOverlayScope scopeKey={`trip-detail:${model.data.tripId}`} active={model.data.isScreenActive}>
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View
@@ -362,5 +364,6 @@ export default function TripDetailsScreen() {
         }}
       />
     </SafeAreaView>
+    </RideOverlayScope>
   );
 }

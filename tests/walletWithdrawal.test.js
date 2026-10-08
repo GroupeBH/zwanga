@@ -134,6 +134,18 @@ function app(patch = {}) {
   return { render, state, summary, dialogs, posts, disk, hooks };
 }
 
+test('withdrawals keep reward-funded cash holds intact without blocking free purchased tokens', async () => {
+  const f = app(); f.summary.account.reservedCashCommissionBalance = 50;
+  f.render(); await flush();
+  f.render().setTokens('51'); f.render().confirm();
+  assert.equal(f.dialogs.at(-1).variant, 'warning');
+  f.render().setTokens('50'); f.render().confirm();
+  assert.equal(f.dialogs.at(-1).title, 'Confirmer le retrait');
+  await f.dialogs.at(-1).actions[1].onPress();
+  assert.equal(f.posts[0].tokens, 50);
+  f.hooks.unmount();
+});
+
 test("double confirmation submits once and pending is not displayed as success", async () => {
   const f = app();
   f.render();

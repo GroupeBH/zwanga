@@ -1,7 +1,8 @@
-import { LOCATION_PICKER_OPEN_DELAY_MS } from '../../features/trip-detail/tripDetailModel';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { getPassengerSeatValidation } from '@/utils/passengerSeats';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useIsFocused } from '@react-navigation/native';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { Keyboard } from 'react-native';
 import type { Router } from 'expo-router';
 
@@ -50,6 +51,14 @@ export function useTripBookingWizard({
   setBookingSuccess,
   router,
 }: Params) {
+  const focused = useIsFocused();
+  const foreground = useAppIsActive();
+  const leaving = useRef(false);
+  const active = useRef(focused && foreground);
+  active.current = focused && foreground;
+  useEffect(() => { if (focused) leaving.current = false; }, [focused]);
+  useEffect(() => () => { active.current = false; }, []);
+
   const closeBookingModal = () => {
     if (isBooking) {
       return;
@@ -62,23 +71,18 @@ export function useTripBookingWizard({
   };
 
   const openBookingLocationPicker = (target: 'origin' | 'destination') => {
+    if (!active.current || isBooking) return;
     Keyboard.dismiss();
     setBookingModalVisible(false);
-    setTimeout(() => {
-      if (target === 'origin') {
-        setShowOriginPicker(true);
-      } else {
-        setShowDestinationPicker(true);
-      }
-    }, LOCATION_PICKER_OPEN_DELAY_MS);
+    // Both panels share the route overlay: no UIKit dismissal timer is needed.
+    setShowOriginPicker(target === 'origin');
+    setShowDestinationPicker(target === 'destination');
   };
 
   const restoreBookingModalAfterLocationPicker = () => {
     setShowOriginPicker(false);
     setShowDestinationPicker(false);
-    setTimeout(() => {
-      setBookingModalVisible(true);
-    }, LOCATION_PICKER_OPEN_DELAY_MS);
+    if (active.current) setBookingModalVisible(true);
   };
 
   useEffect(() => {
@@ -97,6 +101,8 @@ export function useTripBookingWizard({
     shouldAutofillPassengerOrigin,
     passengerOrigin,
     defaultPassengerOriginSelection,
+    setPassengerOrigin,
+    setShouldAutofillPassengerOrigin,
   ]);
 
   const goToNextBookingStep = () => {
@@ -144,6 +150,8 @@ export function useTripBookingWizard({
   };
 
   const handleViewBookings = () => {
+    if (!active.current || isBooking || leaving.current) return;
+    leaving.current = true; // Ignore a second tap even if the closing panel rerenders.
     closeBookingSuccessModal();
     router.push('/bookings');
   };

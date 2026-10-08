@@ -20,6 +20,7 @@ const mocks = {
   '@/components/forms/FormLayout': { FormModal: 'FormModal' },
   '@/utils/reanimated': { default: { View: 'AnimatedView' }, FadeInDown: motion },
   '@/utils/errorHelpers': errors,
+  '@/features/driver-payments/CashCommissionNotice': { CashCommissionNotice: 'CashCommissionNotice' },
 };
 const location = { name: 'Gombe', lat: -4.3, lng: 15.3, address: 'Gombe', hasCoordinates: true };
 const request = {
@@ -158,6 +159,8 @@ test('acceptance modal keeps the vehicle actions, protected footer and disabled 
   const busy = elements(RequestAcceptModal({ ...params, isAcceptingTripRequest: true }));
   const submits = busy.filter(node => node.type === 'TouchableOpacity' && node.props.disabled);
   assert.ok(submits.length > 0);
+  assert.ok(elements(RequestAcceptModal({ ...params, cashAmount: 4000 })).some(node => node.type === 'CashCommissionNotice' && node.props.amount === 4000));
+  assert.ok(!elements(RequestAcceptModal({ ...params, cashAmount: 4000, showDirectAcceptModal: false })).some(node => node.type === 'CashCommissionNotice'));
 });
 
 test('native location disclosure still requires consent and Android back declines it', () => {

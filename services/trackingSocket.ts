@@ -4,6 +4,7 @@ import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
 import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
 import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
+import { isDriverLocation, isPassengerLocation, readPassengerLocations } from './socketPayloads';
 export type { DriverLocationPayload } from './trackingSocket.types';
 export type { PassengerLocationPayload } from './trackingSocket.types';
 export type { TrackingLocationMetadata } from './trackingSocket.types';
@@ -163,17 +164,17 @@ class TrackingSocketClient {
       });
 
       socket.on('driver_location', (payload: DriverLocationPayload) => {
-        this.notifyLocationListeners(payload);
+        if (isDriverLocation(payload)) this.notifyLocationListeners(payload);
       });
 
       socket.on('passenger_location', (payload: PassengerLocationPayload) => {
-        this.notifyPassengerLocationListeners(payload);
+        if (isPassengerLocation(payload)) this.notifyPassengerLocationListeners(payload);
       });
 
       socket.on(
         'passenger_locations',
         (payload: { locations?: PassengerLocationPayload[] } | PassengerLocationPayload[]) => {
-          const locations = Array.isArray(payload) ? payload : payload?.locations ?? [];
+          const locations = readPassengerLocations(payload);
           locations.forEach((location) => this.notifyPassengerLocationListeners(location));
         },
       );

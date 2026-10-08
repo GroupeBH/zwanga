@@ -16,6 +16,7 @@ import {
   captureFirstReferralAttribution,
   captureUnresolvedReferralAttribution,
   clearUnresolvedReferralAttribution,
+  clearPendingReferralAttribution,
   consumePendingReferralAttribution,
   getPendingReferralAttribution,
   getUnresolvedReferralAttribution,
@@ -63,13 +64,13 @@ export function ReferralAttributionHandler() {
 
   const attachPending = useCallback(async (pending: PendingReferralAttribution) => {
     const account = current.current.userId;
-    if (!current.current.isAuthenticated || !account) return;
+    if (!current.current.isAuthenticated || !account || pending.ownerAccountId !== account) return;
     try {
       const result = await attachMyReferralAttribution({
         referralToken: pending.token, referralProvider: pending.provider,
         referralReferringLink: pending.referringLink, referralCapturedAt: pending.capturedAt,
       }).unwrap();
-      await consumePendingReferralAttribution(pending.token);
+      await consumePendingReferralAttribution(pending.token, pending.ownerAccountId);
       lastRetryNoticeToken.current = null;
       void trackEvent('referral_attribution_attached', {
         newly_attached: result.newlyAttached, source: pending.isDeferred ? 'deferred' : 'direct',
@@ -87,7 +88,7 @@ export function ReferralAttributionHandler() {
         status: getReferralErrorStatus(error) ?? 'network', phase: 'authenticated_attachment',
       }).catch(() => undefined);
       if (isDefinitiveAuthenticatedAttributionError(error)) {
-        await consumePendingReferralAttribution(pending.token);
+        await consumePendingReferralAttribution(pending.token, pending.ownerAccountId);
         lastRetryNoticeToken.current = null;
         if (!mounted.current || current.current.userId !== account || !current.current.active) return;
         showDialog({
@@ -100,12 +101,25 @@ export function ReferralAttributionHandler() {
     }
   }, [attachMyReferralAttribution, notifyRetry, showDialog]);
 
-  const processReferral = useCallback(async (payload?: ChottuLinkReferralPayload) => {
+  const processReferral = useCallback(async (payload?: ChottuLinkReferralPayload, capturedOwner?: string | null) => {
     if (!mounted.current) return;
+    const owner = payload ? capturedOwner ?? null : current.current.isAuthenticated ? current.current.userId ?? null : null;
     let candidate: PendingReferralAttribution | null = null;
     try {
-      let selected = await getPendingReferralAttribution();
-      candidate = await getUnresolvedReferralAttribution();
+      let selected = await getPendingReferralAttribution(owner);
+      candidate = await getUnresolvedReferralAttribution(owner);
+      // Adopt an anonymous signup intent once; subsequent retries belong to that account.
+      if (owner && !selected && !candidate) {
+        const anonymous = await getPendingReferralAttribution();
+        const unresolved = await getUnresolvedReferralAttribution();
+        if (anonymous) {
+          selected = await captureFirstReferralAttribution({ ...anonymous, ownerAccountId: owner });
+          if (selected) await clearPendingReferralAttribution();
+        } else if (unresolved) {
+          candidate = await captureUnresolvedReferralAttribution({ ...unresolved, ownerAccountId: owner });
+        }
+        if (unresolved && (selected || candidate)) await clearUnresolvedReferralAttribution(unresolved.token);
+      }
       if (payload) {
         const first = selected ?? candidate;
         if (first && first.token !== payload.token && current.current.active) {
@@ -116,7 +130,7 @@ export function ReferralAttributionHandler() {
         }
         if (!first) {
           // Persist BEFORE any HTTP request, including public token resolution.
-          candidate = await captureUnresolvedReferralAttribution({ ...payload, provider: 'chottulink' });
+          candidate = await captureUnresolvedReferralAttribution({ ...payload, provider: 'chottulink', ownerAccountId: owner });
         }
       }
       if (!mounted.current) return;
@@ -137,11 +151,12 @@ export function ReferralAttributionHandler() {
       }
       // Promotion is durable before deletion. A restart between these writes
       // finds the validated record and safely finishes cleanup before attachment.
-      if (candidate && (selected || newlyResolved)) await clearUnresolvedReferralAttribution(candidate.token);
+      if (candidate && (selected || newlyResolved)) await clearUnresolvedReferralAttribution(candidate.token, owner);
       if (!selected || !mounted.current || !current.current.active || !current.current.online) return;
-      if (current.current.isAuthenticated) {
+      if (owner && current.current.userId !== owner) return;
+      if (current.current.isAuthenticated && owner) {
         await attachPending(selected);
-      } else if ((payload || newlyResolved) && current.current.pathname !== '/auth') {
+      } else if (!current.current.isAuthenticated && (payload || newlyResolved) && current.current.pathname !== '/auth') {
         router.replace({ pathname: '/auth', params: { mode: 'signup', referralToken: selected.token } });
       }
     } catch (error) {
@@ -149,7 +164,7 @@ export function ReferralAttributionHandler() {
         status: getReferralErrorStatus(error) ?? 'network', phase: 'link_resolution',
       }).catch(() => undefined);
       if (candidate && isDefinitiveAuthenticatedAttributionError(error)) {
-        await clearUnresolvedReferralAttribution(candidate.token);
+        await clearUnresolvedReferralAttribution(candidate.token, owner);
         lastRetryNoticeToken.current = null;
         if (mounted.current && current.current.active) showDialog({
           variant: 'warning', title: 'Invitation non appliquée',
@@ -171,7 +186,8 @@ export function ReferralAttributionHandler() {
   // Serialize native duplicates, connectivity changes and authentication changes.
   // A reconnect during an HTTP failure is queued, not lost behind a busy flag.
   const enqueue = useCallback((payload?: ChottuLinkReferralPayload) => {
-    const task = queue.current.then(() => processReferral(payload));
+    const capturedOwner = current.current.isAuthenticated ? current.current.userId : null;
+    const task = queue.current.then(() => processReferral(payload, capturedOwner));
     queue.current = task.catch(() => {
       // Storage errors cannot escape an event callback or promise chain.
       console.warn('[Referral] Traitement local de l’invitation indisponible.');
@@ -179,6 +195,7 @@ export function ReferralAttributionHandler() {
     return queue.current;
   }, [processReferral]);
 
+  useEffect(() => { lastProcessedEvent.current = null; lastRetryNoticeToken.current = null; }, [userId]);
   useEffect(() => subscribeToChottuLinkReferrals(payload => {
     const now = Date.now();
     if (isDuplicateReferralEvent(lastProcessedEvent.current, payload.token, now)) return;

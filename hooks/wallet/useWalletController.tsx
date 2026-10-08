@@ -7,6 +7,8 @@ import { useHistoryCursor } from '@/hooks/useHistoryCursor';
 import { useIsFocused } from '@react-navigation/native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useWalletTransfer } from './useWalletTransfer';
+import { useWalletCashDebt } from './useWalletCashDebt';
+import { isDriverAccount } from '@/utils/accountRole';
 import {
   LEDGER_META,
   formatWalletTokenAmount,
@@ -46,6 +48,7 @@ export function useWalletController() {
   const isFocused = useIsFocused();
   const isAppActive = useAppIsActive();
   const isScreenActive = isFocused && isAppActive;
+  const { cashDebt, isFetching: isCashDebtFetching, refresh: refreshCashDebt } = useWalletCashDebt(user?.id, isDriverAccount(user), isScreenActive);
   const captureScope = useWalletScreenScope(user?.id, isScreenActive);
   const ledgerCursor = useHistoryCursor(user?.id ?? 'signed-out');
   const { showDialog } = useDialog();
@@ -101,7 +104,7 @@ export function useWalletController() {
     () => ledgerPage?.data ?? [],
     [ledgerPage],
   );
-  const isRefreshing = isWalletFetching || isLedgerFetching;
+  const isRefreshing = isWalletFetching || isLedgerFetching || isCashDebtFetching;
   const isTopUpPhoneRequired = topUpMethod === 'mobile_money';
   const isTopUpBusy = isStartingTopUp || isCheckingTopUp || isAutoCheckingTopUp;
   const topUpStatusTitle =
@@ -125,10 +128,11 @@ export function useWalletController() {
           ? Colors.warningDark
           : Colors.primary;
 
+  const { reset: resetLedgerCursor, before: beforeLedgerCursor } = ledgerCursor;
   const refreshAll = useCallback(async () => {
-    ledgerCursor.reset();
-    await Promise.allSettled([refetchWallet(), ...(ledgerCursor.before ? [] : [refetchLedger()])]);
-  }, [ledgerCursor.reset, ledgerCursor.before, refetchLedger, refetchWallet]);
+    resetLedgerCursor();
+    await Promise.allSettled([refetchWallet(), refreshCashDebt(), ...(beforeLedgerCursor ? [] : [refetchLedger()])]);
+  }, [resetLedgerCursor, beforeLedgerCursor, refetchLedger, refetchWallet, refreshCashDebt]);
 
   const { stopTopUpAutoCheck, clearStoredTopUp, persistStoredTopUp, readStoredTopUp, applyStoredTopUp } = useWalletTopUpStorage({
     pollingRunIdRef,
@@ -260,6 +264,7 @@ export function useWalletController() {
     isWalletLoading,
     walletSummary,
     currency,
+    cashDebt,
     setActiveModal,
     topUpStatusMessage,
     topUpOrderNumber,

@@ -117,7 +117,7 @@ export function useRegistrationActions({
       const saved = await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
       if (!saved) throw new Error('La session n’a pas pu être confirmée.');
       // Optional side effects must not turn a created account into a failed signup.
-      await consumePendingReferralAttribution(referralToken).catch(() => undefined);
+      if (referralToken) await consumePendingReferralAttribution(referralToken).catch(() => undefined);
       if (role === 'driver' && mounted.current) {
         try {
           await startDiditKyc({ skipLegalIdentityConfirmation: true });

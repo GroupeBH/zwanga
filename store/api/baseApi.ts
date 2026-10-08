@@ -29,6 +29,9 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
     const execute = (accessToken: string | null) => {
       const request = typeof args === 'string' ? { url: args } : args;
       const headers = new Headers(request.headers as HeadersInit | undefined);
+      // Opt into total balances + explicit cash holds. Store builds without this
+      // header receive spendable balances from the backend compatibility layer.
+      headers.set('x-zwanga-finance-contract', '2');
       if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
       return fetchQuery({ ...request, headers }, api, extraOptions);
     };

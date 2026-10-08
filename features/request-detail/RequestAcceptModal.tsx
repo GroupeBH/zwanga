@@ -25,8 +25,10 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
+import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionNotice';
 
 interface RequestAcceptModalProps {
+  cashAmount?: number;
   showDirectAcceptModal: boolean;
   closeDirectAcceptModal: () => void;
   onDirectAcceptModalDismiss: () => void;
@@ -54,6 +56,7 @@ interface RequestAcceptModalProps {
 }
 
 export function RequestAcceptModal({
+  cashAmount,
   showDirectAcceptModal,
   closeDirectAcceptModal,
   onDirectAcceptModalDismiss,
@@ -124,6 +127,7 @@ export function RequestAcceptModal({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            {showDirectAcceptModal && cashAmount !== undefined && <CashCommissionNotice amount={cashAmount} />}
             <View style={styles.directAcceptSummaryCard}>
               <View style={styles.directAcceptSummaryRow}>
                 <Ionicons name="calendar-outline" size={17} color={Colors.primary} />

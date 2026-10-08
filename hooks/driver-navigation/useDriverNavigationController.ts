@@ -197,7 +197,7 @@ export function useDriverNavigationController() {
     navigateAfterRelease(() => session.foundation.data.router.replace(`/rate/${session.foundation.data.tripId}`));
   }, [dismissTripEndNotice, navigateAfterRelease, session.foundation.data.router, session.foundation.data.tripId]);
 
-  const handleExitNavigation = useDriverNavigationExitPrompt({
+  const handleBackNavigation = useDriverNavigationExitPrompt({
     status: session.foundation.data.trip?.status,
     interruptionPending: Boolean(session.foundation.passengers.activeDriverInterruptionRequest),
     navigateBackSafely: session.foundation.exitActions.navigateBackSafely,
@@ -259,7 +259,7 @@ export function useDriverNavigationController() {
     isFocused: session.foundation.data.isFocused,
     securityModalVisible: session.foundation.mapState.securityModalVisible,
     setSecurityModalVisible: session.foundation.mapState.setSecurityModalVisible,
-    handleExitNavigation,
+    handleExitNavigation: handleBackNavigation,
   });
 
   // Vérifier que le trip est chargé et a des coordonnées valides
@@ -274,7 +274,9 @@ export function useDriverNavigationController() {
     session,
     presentation,
     interruptionActions,
-    handleExitNavigation,
+    // The explicit close icon leaves directly; hardware Back keeps its existing prompt.
+    // Use the guarded exit so native map release and UI cleanup still run.
+    handleExitNavigation: session.foundation.exitActions.navigateBackSafely,
     passengerPresentation,
     bookingActions,
     routeFormatting,

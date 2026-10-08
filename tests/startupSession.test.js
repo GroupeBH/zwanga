@@ -15,6 +15,7 @@ function fixture(options = {}) {
   if (options.access) disk.set('zwanga_accessToken', options.access);
   if (options.refresh) disk.set('zwanga_refreshToken', options.refresh);
   const load = loader({
+    '@react-native-async-storage/async-storage': { getItem: async key => disk.get(key) ?? null, setItem: async (key, value) => { disk.set(key, value); }, removeItem: async key => { disk.delete(key); } },
     'expo-constants': { expoConfig: {} },
     'expo-secure-store': {
       getItemAsync: async key => { io.reads++; if (io.failReads) throw Error('Native keychain temporarily locked'); return disk.get(key) ?? null; },
@@ -146,6 +147,7 @@ for (const authenticated of [false, true]) {
       'react-native': { View: 'View', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x },
         AppState: { currentState: 'active' }, InteractionManager: { runAfterInteractions: () => ({ cancel() {} }) } },
       '../hooks/auth/useAuthForegroundSession': { useAuthForegroundSession() {} },
+      '@/hooks/auth/usePushRegistration': { usePushRegistration() {} },
       '@/store/hooks': { useAppSelector: selector => selector(state), useAppDispatch: () => () => ({ unwrap: async () => {} }) },
       '@/store/slices/authSlice': { performLogout() {}, setTokens() {} },
       '@/store/api/userApi': { useUpdateFcmTokenMutation: () => [() => ({ unwrap: async () => {} })] },

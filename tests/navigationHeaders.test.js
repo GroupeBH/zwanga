@@ -92,7 +92,7 @@ test('passenger header contact/SOS stays available with the expanded map and use
   const tree = PassengerNavigationHeader({ model, assistance });
   assert.equal(tree.props.onLayout, model.state.onHeaderLayout);
   assert.equal(flatStyle(tree.props.style).paddingTop, 55);
-  assert.match(words(tree), /En route.*En direct.*Votre conducteur.*Conducteur/);
+  assert.match(words(tree), /En route.*Connecté.*Votre conducteur.*Conducteur/);
   const buttons = all(tree).find(node => node.type === 'AssistanceButtons');
   assert.equal(buttons.props.role, 'passenger'); assert.equal(buttons.props.onContact, assistance.openContacts);
   assert.equal(buttons.props.onSos, assistance.openSos);

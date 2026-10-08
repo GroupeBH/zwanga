@@ -13,8 +13,8 @@ import { isAwaitingPassengerPickup } from './pickupArrivalEstimate';
 import { Colors } from '@/constants/styles';
 import { getTripInterruptionReasonLabel } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeInUp } from '@/utils/reanimated';
 
 interface PassengerNavigationInfoCardProps {
@@ -32,6 +32,8 @@ export function PassengerNavigationInfoCard({
   interruption,
   tripActions,
 }: PassengerNavigationInfoCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const { height } = useWindowDimensions();
   const trip = data.trip;
   if (!trip) return null;
   const booking = data.booking;
@@ -40,15 +42,26 @@ export function PassengerNavigationInfoCard({
   return (
     <Animated.View 
       entering={FadeInUp.duration(300).delay(100)} 
-      style={[styles.infoCard, { paddingBottom: data.insets.bottom + 16 }]}
+      style={[styles.infoCard, compact.panel, { maxHeight: height * (expanded ? 0.5 : 0.36) }]}
     >
+      <ScrollView showsVerticalScrollIndicator contentContainerStyle={{ paddingBottom: data.insets.bottom + 8 }}>
       {/* Projection du trajet (compact) */}
       {(data.offlineBooking || data.offlineTrip) && <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 8 }}>Dernières informations enregistrées. La carte et le suivi en direct nécessitent une connexion.</Text>}
-      {data.isTripOngoing && <RideRecoveryControl tripId={data.tripId} booking={booking} actor="passenger" fix={state.recoveryFix} destination={booking.passengerDestinationCoordinates} />}
-      <View style={styles.routeInfo}>
+      {data.isTripOngoing && <RideRecoveryControl condensed tripId={data.tripId} booking={booking} actor="passenger" fix={state.recoveryFix} destination={booking.passengerDestinationCoordinates} />}
+      <TouchableOpacity style={compact.summary} accessibilityRole="button" accessibilityLabel="Détails du trajet"
+        accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} activeOpacity={0.7}>
+        <Ionicons name="flag-outline" size={18} color={Colors.primaryDark} />
+        <View style={compact.destination}>
+          <Text style={compact.caption}>Destination</Text>
+          <Text style={compact.address} numberOfLines={expanded ? undefined : 1}>{booking.passengerDestination || trip.arrival.address}</Text>
+        </View>
+        <Text style={compact.link}>{expanded ? 'Réduire' : 'Détails'}</Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[600]} />
+      </TouchableOpacity>
+      {expanded && <View style={compact.route}>
         <View style={styles.routePoint}>
           <View style={[styles.routeDot, { backgroundColor: Colors.secondary }]} />
-          <Text style={styles.routeText} numberOfLines={1}>
+          <Text style={styles.routeText}>
             {booking.passengerOrigin || trip.departure.address}
           </Text>
           {!booking.pickedUp && <View style={styles.currentIndicator} />}
@@ -56,101 +69,55 @@ export function PassengerNavigationInfoCard({
         <View style={styles.routeLine} />
         <View style={styles.routePoint}>
           <View style={[styles.routeDot, { backgroundColor: Colors.primary }]} />
-          <Text style={styles.routeText} numberOfLines={1}>
+          <Text style={styles.routeText}>
             {booking.passengerDestination || trip.arrival.address}
           </Text>
           {booking.pickedUp && !booking.droppedOff && <View style={styles.currentIndicator} />}
         </View>
-      </View>
+      </View>}
+      {expanded && data.isTripOngoing && <Text style={compact.caption}>La détection automatique reste active.</Text>}
+      {booking.pickedUp && <Text style={compact.caption} accessibilityLiveRegion="polite">
+        {booking.droppedOff ? 'Arrivée à destination confirmée' : booking.droppedOffConfirmedByPassenger
+          ? 'Confirmation de l’arrivée à destination en cours' : 'En route vers votre destination'}
+      </Text>}
 
-      {(presentation.displayedRouteDistance || (!awaitingPickup && presentation.displayedRouteDuration)) && (
-        <View style={styles.routeStats}>
-          <View style={styles.routeStat}>
+      {!awaitingPickup && (presentation.displayedRouteDistance || presentation.displayedRouteDuration) && (
+        <View style={compact.stats}>
+          <View style={compact.stat}>
             <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
             <Text style={styles.routeStatValue}>{presentation.displayedRouteDistance ?? '-'}</Text>
-            <Text style={styles.routeStatLabel}>{awaitingPickup ? 'Avant prise en charge' : 'Restant'}</Text>
+            <Text style={styles.routeStatLabel}>restants</Text>
           </View>
-          {!awaitingPickup && <>
-            <View style={styles.routeStatDivider} />
-            <View style={styles.routeStat}>
+          {presentation.displayedRouteDuration && <>
+            <View style={compact.stat}>
               <Ionicons name="time-outline" size={18} color={Colors.secondary} />
               <Text style={styles.routeStatValue}>{presentation.displayedRouteDuration ?? '-'}</Text>
-              <Text style={styles.routeStatLabel}>Projection</Text>
+              <Text style={styles.routeStatLabel}>estimées</Text>
             </View>
           </>}
-          {state.isSocketConnected && (
-            <>
-              <View style={styles.routeStatDivider} />
-              <View style={styles.routeStat}>
-                <View style={styles.liveStatDot} />
-                <Text style={[styles.routeStatValue, { color: Colors.success }]}>En direct</Text>
-                <Text style={styles.routeStatLabel}>Tracking</Text>
-              </View>
-            </>
-          )}
         </View>
       )}
 
-      {state.isLoadingRoute && !presentation.displayedRouteDistance && (
+      {expanded && state.isLoadingRoute && !presentation.displayedRouteDistance && (
         <View style={styles.routeLoadingRow}>
           <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={styles.routeLoadingText}>Chargement de l&apos;itinéraire...</Text>
         </View>
       )}
 
-      <View style={styles.statusRow}>
+      {expanded && <View style={styles.statusRow}>
         {state.lastUpdate && (
           <Text style={styles.lastUpdateText}>
             Position mise à jour : {state.lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
           </Text>
         )}
-        {!state.driverLocation && presentation.tripStatus !== 'not_started' && (
-          <Text style={styles.waitingText}>En attente de la position du conducteur...</Text>
-        )}
-      </View>
+      </View>}
 
       {/* This choice must remain reachable after the server pauses the trip. */}
       <PausedPassengerRideNotice booking={booking} />
       {/* État automatique du trajet */}
       {trip.status === 'ongoing' && (
         <View style={styles.actionButtons}>
-          {!booking.pickedUp && (
-            <View style={styles.completedBadge}>
-              <Ionicons name="locate" size={24} color={Colors.primary} />
-              <Text style={styles.completedText}>
-                Détection automatique de la prise en charge
-              </Text>
-            </View>
-          )}
-
-          {booking.pickedUp && !booking.pickedUpConfirmedByPassenger && (
-            <View style={styles.completedBadge}>
-              <Ionicons name="sync" size={24} color={Colors.secondary} />
-              <Text style={styles.completedText}>Confirmation de la prise en charge</Text>
-            </View>
-          )}
-
-          {booking.pickedUp && booking.pickedUpConfirmedByPassenger && !booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-            <View style={styles.completedBadge}>
-              <Ionicons name="navigate" size={24} color={Colors.primary} />
-              <Text style={styles.completedText}>En route vers votre destination</Text>
-            </View>
-          )}
-
-          {booking.droppedOffConfirmedByPassenger && !booking.droppedOff && (
-            <View style={styles.completedBadge}>
-              <Ionicons name="hourglass" size={24} color={Colors.secondary} />
-              <Text style={styles.completedText}>Confirmation de l’arrivée à destination en cours</Text>
-            </View>
-          )}
-
-          {booking.droppedOff && (
-            <View style={styles.completedBadge}>
-              <Ionicons name="checkmark-done" size={24} color={Colors.success} />
-              <Text style={styles.completedText}>Arrivée à destination confirmée</Text>
-            </View>
-          )}
-
           {interruption.pendingPassengerInterruptionRequest && (
             <View style={styles.interruptionStatusCard}>
               <Ionicons name="hourglass-outline" size={22} color={Colors.warning} />
@@ -242,7 +209,7 @@ export function PassengerNavigationInfoCard({
             </View>
           )}
 
-          {presentation.canCancelPassengerTrip && (
+          {expanded && presentation.canCancelPassengerTrip && (
             <TouchableOpacity
               style={[
                 styles.actionButton,
@@ -274,6 +241,18 @@ export function PassengerNavigationInfoCard({
           </Text>
         </View>
       )}
+      </ScrollView>
     </Animated.View>
   );
 }
+
+const compact = StyleSheet.create({
+  panel: { position: 'relative', flexShrink: 0, padding: 12, paddingBottom: 0, shadowOpacity: 0.06, elevation: 0 },
+  summary: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingVertical: 8 },
+  destination: { flex: 1, minWidth: 0 }, caption: { fontSize: 11, color: Colors.gray[600] },
+  address: { fontSize: 14, fontWeight: '600', color: Colors.gray[900] },
+  link: { fontSize: 12, color: Colors.primaryDark, fontWeight: '600' },
+  route: { paddingVertical: 8 },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingVertical: 6 },
+  stat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+});

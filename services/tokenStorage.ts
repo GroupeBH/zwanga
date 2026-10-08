@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import { enqueueTokenWrite, getTokenSessionVersion, invalidateTokenSession } from './tokenSession';
+import { clearLogoutIntent, hasLogoutIntent, markLogoutIntent } from './logoutIntent';
 
 /**
  * Service de gestion des tokens JWT avec SecureStore
@@ -62,6 +63,15 @@ const hydrateTokensCache = async (): Promise<TokenPair> => {
   if (!tokensHydrationPromise) {
     const version = getTokenSessionVersion();
     tokensHydrationPromise = (async () => {
+      // A failed cleanup must never restore the former account after process death.
+      if (await hasLogoutIntent()) {
+        await enqueueTokenWrite(async () => {
+          if (version !== getTokenSessionVersion()) return;
+          const deleted = await deleteStoredTokens();
+          if (deleted) await clearLogoutIntent();
+        });
+        return { accessToken: null, refreshToken: null };
+      }
       const [accessToken, refreshToken] = await Promise.all([
         readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token', true),
         readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token', true),
@@ -163,6 +173,8 @@ export async function storeTokens(accessToken: string, refreshToken: string, exp
   }
   return enqueueTokenWrite(async () => {
     if (version !== getTokenSessionVersion()) return false;
+    // Only a complete new login may supersede a durable logout intent.
+    if (expectedVersion !== undefined && await hasLogoutIntent()) return false;
     // Await both native writes even if one fails, so a queued logout runs last.
     const writes = await Promise.allSettled([
       SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
@@ -171,6 +183,8 @@ export async function storeTokens(accessToken: string, refreshToken: string, exp
     const failed = writes.find(result => result.status === 'rejected');
     if (failed?.status === 'rejected') throw failed.reason;
 
+    if (version !== getTokenSessionVersion()) return false;
+    if (expectedVersion === undefined) await clearLogoutIntent();
     if (version !== getTokenSessionVersion()) return false;
     tokenCache = { accessToken, refreshToken };
     tokensCacheHydrated = true;
@@ -235,12 +249,19 @@ export async function clearTokens(expectedVersion?: number): Promise<boolean> {
   fcmTokenCache = null;
   fcmCacheHydrated = true;
   await enqueueTokenWrite(async () => {
-    await Promise.all([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY].map(async key => {
-      try { await SecureStore.deleteItemAsync(key); }
-      catch { console.warn('[TokenStorage] Nettoyage du stockage sécurisé indisponible.'); }
-    }));
+    let marked = false;
+    try { await markLogoutIntent(); marked = true; } catch { /* Still try native deletion. */ }
+    const deleted = await deleteStoredTokens();
+    if (!deleted && !marked) throw new Error('Déconnexion locale non sécurisée : stockage indisponible. Réessayez.');
+    if (deleted && marked) await clearLogoutIntent();
   });
   return version === getTokenSessionVersion();
+}
+
+async function deleteStoredTokens(): Promise<boolean> {
+  const results = await Promise.allSettled([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY]
+    .map(key => SecureStore.deleteItemAsync(key)));
+  return results.every(result => result.status === 'fulfilled');
 }
 
 /**

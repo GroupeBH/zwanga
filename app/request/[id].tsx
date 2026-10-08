@@ -247,6 +247,7 @@ export default function TripRequestDetailsScreen() {
 
         {model.tripRequest && (
           <RequestAcceptModal
+            cashAmount={model.tripRequest.paymentMode === 'cash' ? Number(model.tripRequest.maxPricePerSeat ?? 0) * model.tripRequest.numberOfSeats : undefined}
             showDirectAcceptModal={model.showDirectAcceptModal}
             closeDirectAcceptModal={model.closeDirectAcceptModal}
             onDirectAcceptModalDismiss={model.onDirectAcceptModalDismiss}

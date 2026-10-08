@@ -180,11 +180,13 @@ test('direct chat subscriptions share a socket and closing one cannot disconnect
   const second = chat.subscribeToMessages(message => received.push(message));
   await tick();
   assert.equal(sockets.length, 1);
-  sockets[0].fire('new_message', { id: 'a' });
+  const message = { id: 'a', conversationId: 'conversation', senderId: 'sender', content: 'test',
+    isRead: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  sockets[0].fire('new_message', message);
   assert.equal(received.length, 2);
   first();
   assert.equal(sockets[0].connected, true);
-  sockets[0].fire('new_message', { id: 'b' });
+  sockets[0].fire('new_message', { ...message, id: 'b' });
   assert.equal(received.length, 3);
   second();
   assert.equal(sockets[0].connected, false);

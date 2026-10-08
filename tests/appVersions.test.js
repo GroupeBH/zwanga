@@ -49,3 +49,19 @@ test('production keeps EAS remote build numbers and automatic increments', () =>
   assert.equal(eas.cli.appVersionSource, 'remote');
   assert.equal(eas.build.production.autoIncrement, true);
 });
+
+test('physical-device development inherits the dev client without changing simulator or production profiles', () => {
+  const { build } = json('eas.json');
+  const profile = build['dev-device'];
+  assert.equal(profile.extends, 'dev');
+  assert.equal(build[profile.extends].developmentClient, true);
+  assert.equal(build[profile.extends].distribution, 'internal');
+  assert.equal(profile.android.buildType, 'apk');
+  assert.equal(profile.ios.simulator, false);
+  assert.equal(profile.environment, 'development');
+  assert.equal(profile.env.EXPO_PUBLIC_ENV, 'development');
+  assert.equal(build.dev.ios.simulator, true);
+  assert.equal(build.production.distribution, 'store');
+  assert.equal(build.production.android.buildType, 'app-bundle');
+  assert.equal(build.production.ios.simulator, false);
+});

@@ -21,8 +21,10 @@ export function useHomeRequestHighlight({ enabled, userId, requests, driverCoord
   const appActive = useAppIsActive();
   const authenticatedUserId = useAppSelector(state => state.auth.user?.id);
   const [, forceUpdate] = useState(0);
-  const candidate = requests.find(request => !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)]) ?? null;
   const now = Date.now();
+  const candidate = requests.find(request => request.passengerId !== userId && isRequestUnassigned(request)
+    && isTripRequestWithinAcceptanceWindow(request, now)
+    && !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)]) ?? null;
   const canShow = enabled && appActive && Boolean(userId && userId === authenticatedUserId)
     && candidate !== null && candidate.passengerId !== userId
     && isRequestUnassigned(candidate) && isTripRequestWithinAcceptanceWindow(candidate, now);

@@ -15,14 +15,34 @@ function fixture() {
   });
   const { WalletOverview, WalletRelatedLinks } = load('features/wallet/WalletOverview.tsx');
   const { WalletWithdrawalSection, WalletWithdrawalModal } = load('features/wallet/WalletWithdrawalSection.tsx');
-  const wallet = { walletSummary: summary, currency: 'PTS', setActiveModal: value => calls.push(value), router: { push: path => calls.push(path) } };
+  const wallet = { walletSummary: summary, currency: 'PTS', setActiveModal: value => calls.push(value),
+    router: { push: path => calls.push(path), navigate: path => calls.push(['navigate', path]) } };
   const withdrawal = { canSubmit: true, busy: false, activeIntent: null, withdrawals: [],
     confirm: () => calls.push('confirm'), checkStatus: value => calls.push(['status', value.id]) };
-  const overview = () => hooks.render(() => WalletOverview({ wallet, withdrawal }));
+  const overview = (isDriver = false) => hooks.render(() => WalletOverview({ wallet, withdrawal, isDriver }));
   const history = () => hooks.render(() => WalletWithdrawalSection({ summary: wallet.walletSummary, withdrawal }));
   return { hooks, calls, wallet, withdrawal, overview, history, WalletWithdrawalModal, WalletRelatedLinks };
 }
 const button = (tree, label) => all(tree).find(n => n.type === 'Button' && n.props.accessibilityLabel === label);
+
+test('drivers can open Pro checkout directly from the balance without launching a payment or a wallet sheet', () => {
+  const f = fixture();
+  assert.equal(button(f.overview(false), 'Payer l’abonnement Pro'), undefined);
+  const tree = f.overview(true), pro = button(tree, 'Payer l’abonnement Pro');
+  assert.ok(pro); assert.ok(pro.props.style.minHeight >= 44);
+  assert.deepEqual(f.calls, [], 'mounting never creates a payment');
+  pro.props.onPress(); assert.deepEqual(f.calls, [['navigate', '/subscriptions/payment']]);
+  for (const label of ['Recharger', 'Partager', 'Retirer']) assert.ok(button(tree, `${label} des jetons`));
+  assert.equal(button(f.overview(false), 'Payer l’abonnement Pro'), undefined, 'role change removes the entry');
+  f.hooks.unmount();
+});
+
+test('Pro entry stays available with an empty or temporarily unavailable wallet; checkout owns payment checks', () => {
+  const f = fixture(); f.wallet.walletSummary = undefined; f.wallet.isWalletLoading = true;
+  const pro = button(f.overview(true), 'Payer l’abonnement Pro');
+  pro.props.onPress(); assert.deepEqual(f.calls, [['navigate', '/subscriptions/payment']]);
+  f.hooks.unmount();
+});
 
 test('wallet overview puts balance and three explicit actions first, hiding long explanations', () => {
   const f = fixture(); let tree = f.overview();
@@ -40,6 +60,45 @@ test('wallet overview puts balance and three explicit actions first, hiding long
     ['Retirables', '60 jetons'], ['Pour payer uniquement', '40 jetons'], ['Retraits en cours', '5 jetons'],
   ]);
   button(tree, 'Détails des jetons').props.onPress(); assert.doesNotMatch(words(f.overview()), /fidélité/);
+  f.hooks.unmount();
+});
+
+test('cash holds use bonuses first without subtracting them twice from withdrawable tokens', () => {
+  const f = fixture();
+  f.wallet.walletSummary = { ...summary, account: { ...summary.account, reservedCashCommissionBalance: 50 } };
+  button(f.overview(), 'Détails des jetons').props.onPress();
+  const rows = all(f.overview()).filter(n => n.props?.label && n.props?.value);
+  assert.equal(rows.find(n => n.props.label === 'Retirables').props.value, '50 jetons');
+  const modal = f.WalletWithdrawalModal({ summary: f.wallet.walletSummary, withdrawal: f.withdrawal, visible: true, onClose() {} });
+  assert.match(words(modal), /Retirable.*50 jetons/);
+  f.hooks.unmount();
+});
+
+test('driver debt is next to the balance without a reserve card or duplicate recharge action', () => {
+  const f = fixture();
+  assert.doesNotMatch(words(f.overview(true)), /Commission à régler|Réserve cash|Réserve indisponible/);
+  f.wallet.cashDebt = { tokens: 2, amount: 200 };
+  const tree = f.overview(true);
+  assert.match(words(tree), /Commission à régler.*2 jetons.*200 FC/);
+  assert.match(words(tree), /Tolérance cumulée.*25 jetons.*prochaine commission.*prochains jetons reçus/);
+  assert.doesNotMatch(words(tree), /Nouveaux paiements cash bloqués/);
+  assert.ok(all(tree).some(n => n.props.accessibilityLiveRegion === 'polite'));
+  assert.equal(all(tree).filter(n => n.type === 'Button' && words(n).includes('Recharger')).length, 1);
+  assert.doesNotMatch(words(f.overview(false)), /Commission à régler/);
+  f.wallet.cashDebt = undefined;
+  assert.doesNotMatch(words(f.overview(true)), /Commission à régler/);
+  f.hooks.unmount();
+});
+
+test('reserved cash tokens are disclosed even when withdrawal features are unavailable', () => {
+  const f = fixture(); f.wallet.walletSummary = { account: { ...summary.account, reservedCashCommissionBalance: 3 } };
+  assert.doesNotMatch(words(f.overview(true)), /Réservés aux commissions cash/);
+  button(f.overview(true), 'Détails des jetons').props.onPress();
+  const tree = f.overview(true), row = all(tree).find(n => n.props.label === 'Réservés aux commissions cash');
+  assert.equal(row.props.value, '3 jetons');
+  assert.match(words(tree), /commissions cash/);
+  button(tree, 'Détails des jetons').props.onPress();
+  assert.equal(all(f.overview(true)).find(n => n.props.label === 'Réservés aux commissions cash'), undefined);
   f.hooks.unmount();
 });
 
