@@ -1,4 +1,5 @@
 import { baseApi } from './baseApi';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 export interface DriverDispatchStatus {
   enabled: boolean;
@@ -47,8 +48,10 @@ export const driverDispatchApi = baseApi.injectEndpoints({
     }>({
       query: body => ({ url: '/driver-dispatch/position', method: 'PUT', body, timeout: 10000 }),
       async onQueryStarted(_body, { dispatch, queryFulfilled }) {
+        const sessionVersion = getTokenSessionVersion();
         try {
           const { data } = await queryFulfilled;
+          if (sessionVersion !== getTokenSessionVersion()) return;
           dispatch(driverDispatchApi.util.upsertQueryData('driverDispatchStatus', undefined, data));
         } catch { /* A failed update never extends the last server deadline. */ }
       },

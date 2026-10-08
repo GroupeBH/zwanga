@@ -2,6 +2,7 @@
 import './services/backgroundNotificationTask';
 import './services/driverBackgroundLocationTask';
 import './services/passengerBackgroundLocationTask';
+import './services/nearbyDriverLocation';
 import './services/notifeeBackgroundHandler';
 import './services/notifeeForegroundService';
 import 'expo-router/entry';

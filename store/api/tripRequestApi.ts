@@ -13,6 +13,7 @@ import {
   CreateDriverOfferPayload,
   AcceptDriverOfferPayload,
   AcceptTripRequestPayload,
+  TripRequestPassengerContact,
 } from './trip-request/contracts';
 
 import { mapServerTripRequestToClient, mapServerDriverOfferToClient, mapServerDriverOfferWithTripRequestToClient } from './trip-request/requestMapper';
@@ -111,6 +112,11 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: (id: string) => `/trip-requests/${id}`,
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       providesTags: (_result, _error, id: string) => [{ type: 'TripRequest', id }],
+    }),
+
+    // An explicit GET, kept out of list caches and reset immediately after reading.
+    getTripRequestPassengerContact: builder.mutation<TripRequestPassengerContact, string>({
+      query: (id) => ({ url: `/trip-requests/${id}/passenger-contact`, method: 'GET' }),
     }),
 
     // Mettre à jour une demande de trajet
@@ -313,6 +319,7 @@ export const {
   useGetMyTripRequestsQuery,
   useLazyGetMyTripRequestsQuery,
   useGetTripRequestByIdQuery,
+  useGetTripRequestPassengerContactMutation,
   useUpdateTripRequestMutation,
   useCancelTripRequestMutation,
   useReleaseOverdueDriverMutation,

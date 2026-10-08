@@ -4,7 +4,7 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function app(t, trackingProfile = 'navigation') {
+function app(t, trackingProfile = 'navigation', accountId = null) {
   t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 100_000 });
   const hooks = hookHarness(), actions = [], watches = [], listeners = new Set();
   const AppState = { currentState: 'active', addEventListener: (_, fn) => {
@@ -19,7 +19,8 @@ function app(t, trackingProfile = 'navigation') {
       const subscription = { options, callback, removed: 0, remove() { this.removed++; } };
       watches.push(subscription); return subscription;
     },
-  }, '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: () => null },
+  }, '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: selector => typeof selector === 'function'
+    ? selector({ auth: { user: accountId ? { id: accountId } : null } }) : null },
   '@/store/selectors': {}, '@/utils/throttledWarning': { warnThrottled() {} } });
   const { useUserLocation } = load('hooks/useUserLocation.ts');
   const props = { autoRequest: true, trackingProfile, rideLocationKey: 'driver:trip' };
@@ -51,6 +52,22 @@ test('Home/management reuse ongoing ride samples, throttle only Redux, and leave
   env.stream.publishNativeRideLocation('driver:trip', env.fix());
   assert.equal(rideSamples, 601);
   assert.equal(env.updates().length, 120, 'hidden screen does not consume positions');
+});
+
+test('idle Home reuses account-scoped nearby positions immediately with no second GPS subscription', async t => {
+  const env = app(t, 'nearby', 'driver'); env.props.rideLocationKey = null;
+  env.stream.publishNativeRideLocation('nearby:driver', env.fix());
+  env.render(); await flush();
+  assert.equal(env.watches.length, 0); assert.equal(env.updates().length, 1);
+  for (let i = 0; i < 60; i++) {
+    t.mock.timers.tick(60000); env.stream.publishNativeRideLocation('nearby:driver', env.fix());
+  }
+  assert.equal(env.watches.length, 0); assert.equal(env.updates().length, 61);
+  env.stream.publishNativeRideLocation('nearby:another-driver', env.fix());
+  assert.equal(env.updates().length, 61, 'another account never updates this map');
+  env.stream.invalidateNativeRideLocation('nearby:driver'); await flush();
+  assert.equal(env.watches.length, 1, 'native stop restores the foreground-only fallback');
+  env.props.autoRequest = false; env.render(); assert.equal(env.watches[0].removed, 1);
 });
 
 test('nearby iOS tracking caps UI dispatches without adding timers and rejects invalid coordinates', async t => {

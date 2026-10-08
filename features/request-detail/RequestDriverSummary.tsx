@@ -7,16 +7,17 @@ import {
 } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
-import type { TripRequestVehicleType } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
-import type { DriverOffer, Vehicle, TripRequest } from '@/types';
+import type { DriverOffer, Vehicle, TripRequest, TripRequestVehicleType } from '@/types';
 import type { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
+import { RequestPassengerContact } from './RequestPassengerContact';
+import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 
 interface RequestDriverSummaryProps {
   driverHero: { badge: string; title: string; subtitle: string; };
@@ -39,6 +40,7 @@ interface RequestDriverSummaryProps {
   isIdentityVerified: boolean;
   checkIdentity: ReturnType<typeof useIdentityCheck>['checkIdentity'];
   compatibleActiveVehicles: Vehicle[];
+  contactBlocked?: boolean;
 }
 
 export function RequestDriverSummary({
@@ -62,6 +64,7 @@ export function RequestDriverSummary({
   isIdentityVerified,
   checkIdentity,
   compatibleActiveVehicles,
+  contactBlocked = false,
 }: RequestDriverSummaryProps) {
   const routeLabels = useRouteLocationLabels(tripRequest);
   return (
@@ -162,6 +165,11 @@ export function RequestDriverSummary({
           </>
         ) : null}
       </View>
+
+      {isDriverAccount && isIdentityVerified && isRequestUnassigned(tripRequest) && isTripRequestWithinAcceptanceWindow(tripRequest) && (
+        <RequestPassengerContact key={tripRequest.id} requestId={tripRequest.id}
+          enabled={!contactBlocked && !isAcceptingTripRequest && !isStartingTrip} />
+      )}
 
       {canOpenAssignedTrip ? (
         <TouchableOpacity

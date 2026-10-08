@@ -16,6 +16,7 @@ function fixture(t, platform = 'ios') {
     stopLocationUpdatesAsync: async () => { running = false; },
   };
   const load = loader({
+    '../nearbyDriverLocation': { pauseNearbyDriverLocation: async () => {} },
     '@react-native-async-storage/async-storage': { getItem: async () => {
       io.storage++;
       const snapshot = stored, pause = pauseRead; pauseRead = null;

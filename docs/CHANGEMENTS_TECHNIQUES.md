@@ -1,5 +1,96 @@
 # Journal des changements techniques
 
+## 8 octobre 2026 — Modal de contact avant acceptation d'une demande
+
+- Problème : « Discuter du prix » ouvrait directement la messagerie, sans choix
+  d'appel ou de WhatsApp. Le bouton « Contacter le passager » ouvre maintenant
+  le modal de contact existant dans la demande et la proposition de proximité.
+- Après accord explicite sur le partage du numéro, ajout d'un accès backend
+  dédié, authentifié, limité en fréquence et réservé aux conducteurs éligibles
+  vérifiés. Demande ouverte uniquement ; proposition immédiate réservée à son
+  destinataire actif. Les numéros restent absents des listes et aperçus.
+- Lecture seulement au clic, données de contact éphémères, fermeture à
+  l'expiration/sortie/changement de compte. Pas d'acceptation, de message envoyé,
+  de modification du prix ni de prolongation automatique du délai.
+- Vérifications : 63 tests mobiles de contact/régression, 85 tests audit/UX et
+  42 tests backend ciblés réussis. TypeScript mobile, ESLint mobile ciblé,
+  TypeScript backend de production et contrôle de taille des sources réussis.
+  Le TypeScript backend incluant tous les tests signale des erreurs dans des
+  fichiers de test préexistants non modifiés. Aucun essai physique ni déploiement.
+  Suite mobile complète : 1 657 tests, 1 654 réussis ; seuls les trois écarts de
+  références déjà documentés de `sourceExtractions.test.js` persistent.
+- Fichiers, résultats complets, limites et commandes :
+  [Contact passager avant acceptation](CONTACT_PASSAGER_AVANT_ACCEPTATION_2026_10_08.md).
+
+## 8 octobre 2026 — Correctifs de l'audit et discussion avant acceptation
+
+- Périmètre : six points de l'audit performance/ergonomie et contact du passager
+  avant acceptation d'une demande. GPS de proximité partagé avec l'accueil,
+  contrôles natifs espacés, suppression des polls de listes redondants,
+  suspension hors ligne, reprise après erreur de permission, messages d'accès
+  précis, réglages allégés et bouton d'ajout de véhicule agrandi.
+- Ajout de « Discuter du prix » dans la demande et la proposition de proximité,
+  via la messagerie existante, après relecture autorisée de la demande. Aucun
+  numéro exposé, message automatique, acceptation ou changement de montant.
+  Expiration des propositions, contrôle serveur, sonneries, GPS des trajets et
+  possibilité de refuser la localisation conservés.
+- Fichiers, contrôles anti-régression, limites et essais physiques nécessaires :
+  [Correctifs performance, ergonomie et contact](AUDIT_PERFORMANCE_UX_CONTACT_2026_10_08.md).
+- Vérifications ciblées : `npm run test:audit-ux`, 69 tests JavaScript réussis.
+  Suite complète finale : 1 641 tests, 1 638 réussis et trois écarts de références
+  préexistants dans `sourceExtractions.test.js` (styles auth, `updateBookingStatus`,
+  `acceptTripRequest`), revérifiés identiques sur `HEAD`. Aucun autre échec.
+  `npx tsc --noEmit`, ESLint ciblé, `git diff --check` et contrôle de taille des
+  sources réussis. Aucun essai physique iOS/Android ou mesure de batterie.
+  Aucune nouvelle dépendance, migration ou intervention sur la production.
+
+## 8 octobre 2026 — Suivi conducteur en veille activé par défaut
+
+- Demande : éviter une activation supplémentaire dans le profil après l'ajout
+  du suivi de proximité. `services/nearbyDriverLocation.ts` applique désormais
+  le mode automatique en l'absence de préférence, uniquement avec autorisation
+  système d'arrière-plan et compte authentifié concordant. La permission du
+  téléphone n'est ni contournée ni demandée silencieusement.
+- Désactivation explicite conservée par compte après déconnexion/redémarrage ;
+  `store/index.ts` arrête la tâche et efface son propriétaire sans supprimer ce
+  choix. Protection des relances tardives pendant un logout ; le nouveau compte
+  peut reprendre automatiquement sans hériter du réglage d'un autre utilisateur.
+- `components/profile/NearbyDriverLocationPermission.tsx` et
+  `app/driver-availability.tsx` distinguent mode automatique, permission manquante
+  et désactivation volontaire. `components/DriverPresenceCoordinator.tsx`
+  suspend les lectures/navigation d'invitation pendant une déconnexion.
+- Conservés : cadence GPS économe, attente réseau progressive, précision/fraîcheur,
+  suspension pendant les trajets, sonneries/actions et contrôle serveur. Aucun
+  changement de backend, dépendance ou infrastructure de production.
+- Vérifications : `npm run test:nearby-drivers`, **87 tests JavaScript réussis**,
+  dont démarrage par défaut, refus de permission, persistance du refus, changement
+  de compte et courses entre arrêt/démarrage. TypeScript, ESLint ciblé et
+  `git diff --check` réussis. Pas d'essai physique ni de mesure de batterie ;
+  ne pas en déduire une garantie en veille. La suite globale n'a pas été relancée
+  pour cet ajustement ; ses trois références préexistantes en échec restent
+  signalées dans la section précédente de l'intervention.
+- Documentation courante et procédure appareils actualisées :
+  [Localisation des conducteurs pour les demandes proches](LOCALISATION_CONDUCTEURS_PROXIMITE_2026_10_08.md).
+
+## 8 octobre 2026 — Localisation économe des conducteurs pour les demandes proches
+
+- Ajout du suivi de proximité en veille, sur consentement explicite dans
+  Profil → Alertes conducteur, connecté à l'allocation/sonnerie longue existante.
+  Suppression du GET de statut avant chaque position ; envois espacés et
+  sérialisés, positions anciennes rejetées, attente progressive après erreur,
+  suspension pendant les trajets et arrêt à la déconnexion/changement de compte.
+- Backend, sélection des destinataires, actions Accepter/Refuser, réservations
+  publiées et arrêt du son à l'ouverture conservés. Aucune nouvelle dépendance,
+  migration ou modification de production.
+- Détails des fichiers, limites système, données, tests et procédure appareils :
+  [Localisation des conducteurs pour les demandes proches](LOCALISATION_CONDUCTEURS_PROXIMITE_2026_10_08.md).
+- Vérifications : 79 tests JavaScript ciblés, TypeScript et ESLint ciblé réussis.
+  Suite complète : trois comparaisons de références échouent dans
+  `sourceExtractions.test.js` ; mêmes écarts vérifiés sur le dernier commit,
+  donc antérieurs à cette intervention (détails dans le document lié).
+  Aucune validation physique ni mesure de batterie ; ne pas interpréter ces
+  résultats comme une garantie de sonnerie ou de fonctionnement en veille.
+
 ## 8 octobre 2026 — Blocage tactile iOS pendant la notation de fin de trajet
 
 - Signalement : l'application reste affichée mais aucun appui ne répond, jusqu'à

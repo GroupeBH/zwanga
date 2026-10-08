@@ -23,6 +23,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
   const dispatch = useAppDispatch();
   const permissionStatus = useAppSelector(selectPermissionStatus);
   const lastKnownLocation = useAppSelector(selectUserTrackedLocation);
+  const userId = useAppSelector(state => state.auth.user?.id);
   const watcherRef = useRef<Location.LocationSubscription | null>(null);
   const watcherGenerationRef = useRef(0);
   const mountedRef = useRef(true);
@@ -31,6 +32,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
   const automaticPermissionAttemptedRef = useRef(false);
   const isNearbyTracking = options.trackingProfile === 'nearby';
   const rideLocationKey = options.rideLocationKey;
+  const sharedLocationKey = rideLocationKey ?? (isNearbyTracking && userId ? `nearby:${userId}` : null);
 
   const stopWatching = useCallback(() => {
     manualRequestRef.current?.controller.abort();
@@ -103,8 +105,8 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
           accuracy: location.coords.accuracy,
         }));
       };
-      const subscription = rideLocationKey
-        ? subscribeRideLocation(rideLocationKey, watchOptions, onLocation)
+      const subscription = sharedLocationKey
+        ? subscribeRideLocation(sharedLocationKey, watchOptions, onLocation, rideLocationKey ? undefined : 120_000)
         : await Location.watchPositionAsync(watchOptions, onLocation);
 
       if (generation !== watcherGenerationRef.current) {
@@ -116,7 +118,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
     } catch (error) {
       console.warn('Impossible de suivre la position', error);
     }
-  }, [dispatch, isNearbyTracking, rideLocationKey]);
+  }, [dispatch, isNearbyTracking, rideLocationKey, sharedLocationKey]);
 
   const requestPermission = useCallback(async (allowPrompt = true) => {
     const generation = watcherGenerationRef.current;

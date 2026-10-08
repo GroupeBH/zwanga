@@ -36,7 +36,7 @@ test('own requests prioritize responses/pickups, retain cancelled history and ne
 
 function fixture() {
   const hooks = hookHarness(), calls = [], refreshes = [];
-  const state = { active: true, tab: 'available', coordinateReads: 0,
+  const state = { active: true, online: true, tab: 'available', coordinateReads: 0,
     coordinates: { latitude: -4.32, longitude: 15.3 } };
   const profile = { data: { id: 'driver', role: 'driver' }, isFetching: false, isLoading: false, isError: false };
   const available = { data: [request('far', { departure: { ...location, lat: -4.5 } }),
@@ -48,7 +48,7 @@ function fixture() {
   };
   const { useRequestsData } = loader({ react: hooks.react,
     '@/hooks/useAppIsActive': { useScreenIsActive: () => state.active },
-    '@/store/hooks': { useAppSelector: selector => selector() },
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: state.online } } }) },
     '@/store/selectors': { selectUserCoordinates: () => { state.coordinateReads++; return state.coordinates; } },
     '@/store/api/userApi': { useGetCurrentUserQuery: query('profile', profile) },
     '@/store/api/tripRequestApi': { useGetAvailableTripRequestsQuery: query('available', available),
@@ -111,4 +111,22 @@ test('empty, initial error and stale data remain distinct and refreshing never t
   view = f.render(); assert.equal(view.hasData, true); assert.equal(view.isError, false);
   view.refresh(); assert.deepEqual(f.refreshes, ['available']);
   f.hooks.unmount();
+});
+
+test('offline keeps cached requests visible and suppresses polling and manual refresh until reconnect', () => {
+  const f = fixture(); f.render(); f.state.online = false;
+  const view = f.render(); view.refresh();
+  assert.equal(view.requests.length, 2);
+  assert.equal(view.isLoading, false); assert.equal(view.isError, true);
+  for (const name of ['profile', 'available', 'own']) assert.equal(f.options(name).skip, true);
+  assert.equal(f.options('available').pollingInterval, 0); assert.deepEqual(f.refreshes, []);
+  f.state.online = true; f.render(); assert.equal(f.options('available').skip, false);
+  assert.equal(f.options('available').refetchOnFocus, false); f.hooks.unmount();
+});
+
+test('first opening offline reports unavailable data rather than spinning forever or showing a false empty list', () => {
+  const f = fixture(); f.state.online = false; f.profile.data = undefined;
+  f.profile.isUninitialized = true; f.available.data = undefined; f.available.isUninitialized = true;
+  const view = f.render(); assert.equal(view.isLoading, false); assert.equal(view.isFetching, false);
+  assert.equal(view.isError, true); assert.equal(view.hasData, false); f.hooks.unmount();
 });

@@ -166,6 +166,7 @@ export default function TripRequestDetailsScreen() {
             isIdentityVerified={model.isIdentityVerified}
             checkIdentity={model.checkIdentity}
             compatibleActiveVehicles={model.compatibleActiveVehicles}
+            contactBlocked={model.showDirectAcceptModal}
           />
         )}
 
