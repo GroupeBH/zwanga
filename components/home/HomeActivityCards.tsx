@@ -1,6 +1,7 @@
 import { formatPrice, placeName } from '@/features/home/homeModel';
 import { homeDepartureLabel, homePriceLabel, homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { homePriorityKeys } from '@/features/home/homePriorityDismissal';
+import { getDriverTripReservationCounts } from '@/features/home/homeDriverTripPriority';
 import React from 'react';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
@@ -42,6 +43,8 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
 }: Props) {
   const bookingKey = featuredDriverReservation ? homePriorityKeys.booking(featuredDriverReservation.booking) : '';
   const tripKey = featuredDriverUpcomingTrip ? homePriorityKeys.upcomingTrip(featuredDriverUpcomingTrip) : '';
+  const reservationCount = featuredDriverUpcomingTrip ? getDriverTripReservationCounts(featuredDriverUpcomingTrip).total : 0;
+  const reservationLabel = `${reservationCount} réservation${reservationCount > 1 ? 's' : ''}`;
   const nearbyKey = highlightedDriverRequest ? homePriorityKeys.nearbyRequest(highlightedDriverRequest) : '';
   const ownRequestKey = activeTripRequest ? homePriorityKeys.ownRequest(activeTripRequest) : '';
   const ownBudget = Number(activeTripRequest?.maxPricePerSeat);
@@ -74,14 +77,14 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
         <CompactTripCard
           {...dismissAccessibility(tripKey)}
           inlineRoute
-          priorityAppearance="upcoming"
-          label="Trajet bientôt"
+          priorityAppearance={reservationCount ? 'reservation' : 'upcoming'}
+          label={reservationCount ? reservationLabel : 'Trajet bientôt'}
           departure={placeName(featuredDriverUpcomingTrip.departure)}
           arrival={placeName(featuredDriverUpcomingTrip.arrival)}
           priceText={homePriceLabel(featuredDriverUpcomingTrip.price)}
           priceHint={featuredDriverUpcomingTrip.price > 0 ? '/ place' : undefined}
           metadata={`${homeDepartureLabel(featuredDriverUpcomingTrip.departureTime)} · ${featuredDriverUpcomingTripSeatsLabel}`}
-          accessibilityLabel="Ouvrir le trajet publié qui démarre bientôt"
+          accessibilityLabel={reservationCount ? `Ouvrir le trajet avec ${reservationLabel}` : 'Ouvrir le trajet publié qui démarre bientôt'}
           onPress={() => router.push(`/trip/manage/${featuredDriverUpcomingTrip.id}`)}
         />
       </SwipeableHomePriority>

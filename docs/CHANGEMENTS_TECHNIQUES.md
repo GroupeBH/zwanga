@@ -1,5 +1,184 @@
 # Journal des changements techniques
 
+## 8 octobre 2026 — Priorité aux trajets conducteur avec réservations sur l'accueil
+
+- Problème : la carte prioritaire concernait surtout les réservations en attente.
+  Après acceptation, un trajet publié pouvait disparaître de cette zone si son
+  départ était à plus de trois heures, malgré la présence de passagers confirmés.
+- Appliqué : classement commun dans `features/home/homeDriverTripPriority.ts`,
+  utilisé par `hooks/home/useHomeDriverActivity.ts` et
+  `hooks/home/useHomeTripSelection.ts`. Après l'éventuel trajet en cours, les
+  réservations à traiter passent avant les trajets avec réservations acceptées,
+  puis les départs sans réservation dans les trois heures. Dans chaque groupe,
+  le départ le plus proche passe en premier ; les égalités sont déterministes.
+  Un trajet réservé reste éligible tant que le serveur le déclare à venir et
+  non démarré, même si son horaire prévu est dépassé.
+- Source des comptes : `store/api/trip/activityTripMapper.ts` dérive un résumé
+  des réservations déjà renvoyées par l'API authentifiée, déclaré dans
+  `types/trips.ts`. Une réservation compte une fois, indépendamment des places
+  demandées ou de l'absence du profil passager. Les réservations annulées,
+  refusées, terminées, en absence signalée et les arrivées déjà confirmées
+  n'ajoutent aucune priorité. Aucun appel supplémentaire par trajet ni nouveau
+  minuteur. `store/api/booking/createBooking.endpoints.ts` invalide aussi le
+  cache des trajets personnels après une modification du statut de réservation,
+  afin de relire le nouvel état sans attendre le contrôle périodique.
+- Interface : `components/home/HomeActivityCards.tsx` réutilise la carte compacte
+  avec « 1 réservation » / « N réservations » pour le trajet réservé, avant les
+  demandes proches. Son appui ouvre toujours la gestion du trajet ; les
+  réservations à traiter conservent leur carte et leur action existantes.
+- Préservés : priorité absolue du trajet en cours (conducteur ou passager), carte
+  et suggestions publiques, GPS, arrêt des lectures hors écran, gestes de
+  masquage et isolation du compte. Masquer un trajet ne masque pas une nouvelle
+  réservation à traiter. Aucun changement backend, migration, dépendance ou
+  déploiement en production.
+- Vérifications : `npm run test:home` **127 tests JavaScript réussis** ;
+  `node --test tests/activityTrips.test.js tests/accountActivity.test.js tests/storeReview.test.js`
+  **21 tests réussis**. Tests ajoutés dans `tests/homeDriverReservations.test.js`,
+  `tests/homeActivityCards.test.js` et `tests/activityTrips.test.js` : passage
+  attente/acceptation, plusieurs trajets, annulation, démarrage, masquage,
+  propriété, données incomplètes, invalidation du cache et navigation inchangée.
+  TypeScript (`npx tsc --noEmit --incremental false`), ESLint ciblé et
+  `git diff --check` réussis ; contrôle de taille : 1 046 sources, aucune au-dessus
+  de 400 lignes. Ce sont des tests JavaScript avec entrées natives simulées,
+  pas une validation sur appareil physique ni un benchmark de performance.
+- Recette restante : sur iOS et Android, publier un trajet à plus de trois heures,
+  recevoir puis accepter une réservation et revenir à l'accueil ; vérifier la
+  carte, son compteur et son accès à la gestion. Refaire avec plusieurs trajets,
+  une annulation et un démarrage. Aucun essai sur téléphone dans ce tour ; ce
+  changement JavaScript seul ne nécessite pas de nouvelle dépendance native.
+
+## 8 octobre 2026 — Sonnerie de demande plus audible, périmètre de diffusion à confirmer
+
+- Demande : une alerte de nouvelle demande proche d'une sonnerie téléphonique,
+  plus longue et plus audible qu'un bip push. Inspection : la sonnerie embarquée
+  durait déjà 29 s ; les propositions ciblées/réservations utilisent le canal long,
+  mais les annonces générales `trip_request`, diffusées à tous les conducteurs
+  actifs éligibles au push, gardent le son standard. Le dernier push effectivement
+  reçu par l'utilisateur n'a pas été identifié dans ce tour.
+- Appliqué : gain du générateur `scripts/generate-driver-ring.cjs` relevé sans
+  saturation et régénération de `assets/sounds/driver_ring.wav` et
+  `android/app/src/main/res/raw/driver_ring.wav`. Niveau du signal augmenté de
+  **3,38 dB** ; crête mesurée de **−4,51 à −1,13 dBFS**, RMS de **−13,56 à
+  −10,18 dBFS**. Durée 29 s et taille 1 278 944 octets inchangées. Ce ne sont pas
+  des mesures de volume acoustique sur téléphone.
+- Préservés : ciblage, expiration serveur, bouclage/limite Android 30 s, actions,
+  mécanisme d'arrêt à l'ouverture, canal versionné existant, réglages utilisateur
+  et autres notifications. Aucun contournement du silencieux, CallKit/PushKit,
+  service supplémentaire, nouvelle dépendance ou changement backend/production.
+- Vérifications : **26 tests JavaScript réussis** (notifications conducteur,
+  réponses, assets natifs). Nouveau test de niveau sans saturation et répétition
+  sonore dans chaque cycle jusqu'à la fin ; copies WAV identiques. Aucun essai
+  acoustique natif ni build exécuté. Un nouveau build est requis pour le nouveau
+  son embarqué ; changer seulement le JavaScript ne suffit pas.
+- Différé : extension éventuelle du son long aux annonces générales. Une question
+  a été posée, car cela ferait sonner tous leurs destinataires et pas uniquement
+  le conducteur proche. Aucun changement de ce périmètre sans confirmation.
+- [Détails, limites système et commandes de build](SONNERIES_DEMANDES_2026_10_08.md#renforcement-du-signal-sonore-et-distinction-des-flux).
+
+## 8 octobre 2026 — Inscription avec un numéro étranger
+
+- Problème : l'interface suggérait uniquement un numéro congolais et exigeait
+  dix caractères. Côté OTP, certains numéros internationaux courts saisis avec
+  `+` ou `00` recevaient à tort un préfixe congolais supplémentaire.
+- Application : validation et messages partagés dans `features/auth/authPhone.ts`,
+  utilisés par `PhoneStep.tsx`, `GooglePhoneStep.tsx`, `usePhoneAuthActions.ts` et
+  `useSocialPhoneVerification.ts`. Aide compacte sur l'indicatif, saisie/collage
+  international et connexion des comptes étrangers courts ; style dans
+  `features/screen-styles/components/auth/styles/inputLabelSmall.styles.ts`.
+- Backend associé : `src/otp/otp-phone.util.ts` respecte désormais tout indicatif
+  explicite. `src/keccel-otp/keccel-otp.service.ts` réutilise ce traitement au lieu
+  d'une copie divergente. Envoi et validation gardent la même destination OTP.
+- Préservés : formats des comptes existants, stockage des identifiants, parcours
+  PIN/Google/Apple, drapeau d'activation OTP, expiration/consommation du code,
+  persistance du formulaire et règles des paiements Mobile Money. Aucune
+  dépendance, migration, configuration d'environnement ou production modifiée.
+- Vérifications : **100 tests JavaScript mobile réussis**, puis les 9 tests
+  internationaux rejoués après le dernier ajustement ; **120 tests backend
+  réussis**. TypeScript des deux projets et ESLint mobile ciblé réussis. Formatage
+  des tests backend, contrôle de taille des sources et diff ciblé sans erreur.
+  La suite `test:otp` inclut désormais `tests/authInternationalPhone.test.js`.
+- Limites et recette : contrôles syntaxiques, pas de garantie de couverture
+  opérateur ; aucun vrai OTP envoyé ni essai iOS/Android physique dans ce tour.
+  [Détails, fichiers de tests et procédure](INSCRIPTION_NUMEROS_INTERNATIONAUX.md).
+
+## 8 octobre 2026 — Activation effective des propositions de proximité en production
+
+- Après accord utilisateur, ajout du paramètre SSM `DRIVER_DISPATCH_ENABLED` et
+  de sa référence dans la nouvelle révision ECS **14**, déployée à partir de la
+  **13**. Seule cette référence change ; mêmes images API/sidecar, ressources,
+  accès IAM, réseau, pipeline et autres paramètres. Pas de nouveau build mobile.
+- Contrôle préalable dans l'image de production : tables/index requis présents,
+  migrations connues déjà appliquées, code de présence automatique et payload
+  sonore ciblé corrects. Session PostgreSQL en lecture seule, TLS vérifié et
+  délais bornés ; aucun push réel, migration ou changement de données métier.
+- Déploiement terminé : service stable, tâche et cible ALB saines, santé HTTPS
+  200. Second contrôle runtime positif avec activation chargée ; deux tâches
+  temporaires de contrôle arrêtées. Aucun résultat acoustique iPhone revendiqué.
+- Scripts ajoutés côté backend sous `infra-aws/scripts/` :
+  `check-driver-dispatch.cjs`, `invoke-driver-dispatch-preflight.ps1`,
+  `enable-driver-dispatch.ps1`. Procédure, coûts ponctuels, contrôles, limites et
+  retour arrière documentés dans `infra-aws/docs/CHANGELOG.md`, entrée 005.
+- Préservés : annonces générales standard, réservations publiées, paiements,
+  critères de proximité/éligibilité et demandes existantes. Recette physique à
+  réaliser avec une **nouvelle demande immédiate** et une position conducteur
+  récente. [Détails et limites](SONNERIES_DEMANDES_2026_10_08.md#activation-effectuée-en-production).
+- Syntaxes des scripts, contrôle documentaire infrastructure et contrôle des
+  différences réussis. Des erreurs du bonus de bienvenue, déjà présentes avant
+  déploiement, restent hors de ce correctif ; la santé du service ne garantit pas
+  l'absence de tout autre problème applicatif.
+
+## 8 octobre 2026 — Diagnostic de production : propositions de proximité désactivées
+
+- Signalement persistant après reconstruction TestFlight et redéploiement du
+  backend, avec un essai annoncé dans l'heure précédente. Diagnostic effectué en
+  lecture seule sur le backend AWS de production ; aucune activation distante.
+- Constat : la définition ECS active, révision 13, ne référence pas le paramètre
+  `DRIVER_DISPATCH_ENABLED`, ni en environnement explicite ni via SSM. La tâche
+  en cours utilise cette révision, sans surcharge de ce paramètre ni fichier
+  d'environnement externe. Le code conserve alors les propositions ciblées
+  désactivées. Les annonces générales utilisent volontairement le son standard.
+- Ce blocage explique l'indisponibilité du flux de proximité sur ce backend,
+  indépendamment de la présence du son dans le build. Il ne prouve pas le contenu
+  exact de la notification reçue sur l'iPhone et n'explique pas, à lui seul, un
+  éventuel défaut sonore des réservations publiées.
+- Documentation complétée dans le [dossier des sonneries](SONNERIES_DEMANDES_2026_10_08.md#diagnostic-de-production--activation-du-flux-de-proximité).
+  Activation, nouvelle définition ECS et recette réelle différées jusqu'à
+  autorisation utilisateur ; aucun changement applicatif, SQL, SSM ou ECS ici.
+
+## 8 octobre 2026 — Son iOS : contrôle du build TestFlight et sélection serveur
+
+- Signalement précisé : le son reste standard sur iPhone malgré un nouveau build
+  TestFlight utilisant le code actuel. L'hypothèse d'un ancien binaire ne suffit
+  donc pas à expliquer le problème.
+- Contrôle réel, en lecture seule : l'archive EAS de production **1.0.16 (134)**
+  contient `Payload/zwanga.app/driver_ring.wav`, identique à la source, en PCM
+  mono 16 bits / 22 050 Hz, durée **29 secondes**. Son profil embarqué indique
+  APNs production et Time Sensitive autorisé. Pas d'essai acoustique sur iPhone ;
+  le numéro effectivement installé et le déploiement backend restent à confirmer.
+- Correctif backend : `src/notifications/notifications.service.ts` demande le son
+  dédié pour une réservation ou une invitation de proximité activée même si la
+  capacité interactive v2 manque. Avant cette correction, ce cas demandait
+  explicitement le son standard malgré la présence du fichier dans le binaire.
+  Les actions et Time Sensitive restent conditionnés à la compatibilité client.
+- Préservés : annonces générales, messages, chemin Android, notification au
+  passager après acceptation, autorisations et décisions métier. Aucun build,
+  déploiement, certificat ou paramètre de production modifié pendant le diagnostic.
+- Vérifications : **95 tests backend de notifications réussis**, dont 15 tests de
+  transport/actions, TypeScript backend de production réussi et **9 tests mobiles**
+  de configuration/assets réussis. Documentation détaillée et limites :
+  [dossier des sonneries](SONNERIES_DEMANDES_2026_10_08.md#contrôle-du-build-testflight-et-correctif-de-sélection-du-son-ios).
+
+## 8 octobre 2026 — Cash : tolérance cumulée de 25 jetons et choix contrôlé à la publication
+
+- Demande : conserver les 25 jetons de tolérance et empêcher un nouveau choix cash qui dépasse le plafond. L'ancien flux bloquait dès la première dette, et un choix déjà coché pouvait rester affiché après un changement de prix/places.
+- `utils/cashCommission.ts` calcule la marge restante avec la dette totale, même si un ancien résumé surestime encore le crédit. `PublishPaymentModes.tsx` désactive et retire un cash devenu invalide sur données fraîches ; aucun paiement alternatif n'est activé silencieusement. Les données en erreur/en rafraîchissement ne permettent pas une nouvelle sélection.
+- `driverFinanceApi.ts`, `usePublishController.ts` et `usePublishSubmission.ts` : lecture fraîche avant publication simple ou récurrente, refus explicite si le plafond est dépassé ou si le contrôle réseau échoue, sans déclencher de publication ni de récupération ambiguë d'une écriture inexistante. Prix et places sont contrôlés ; le serveur revérifie à l'acceptation.
+- `CashCommissionNotice.tsx` et `WalletOverview.tsx` expliquent la tolérance cumulée au lieu de prétendre que toute dette bloque. Commission 5 %, paiements électroniques/jetons, origines des fonds, abonnement et poursuite des courses confirmées inchangés. Dette 20 + manque 5 : autorisé ; 20 + 5,01 : refusé ; dette 25 : commission nouvelle entièrement financée ; dette > 25 : nouveau cash refusé.
+- Backend associé : migration additive 60 et calculs API, sans activation du drapeau financier, sans changement CI/CD/Terraform ni accès AWS. Les anciens mobiles peuvent garder leur contrôle local plus strict ; les nouvelles explications nécessitent une mise à jour mobile.
+- Tests : **49 tests JavaScript ciblés réussis**, dont seuils, désélection, publication simple/récurrente, données fraîches, réseau indisponible et portefeuille. TypeScript mobile et compilation backend réussis. Pas d'essai sur appareil, build natif, paiement, push ou déploiement réel. Documentation métier actualisée : [commission cash](CASH_COMMISSION_CREDIT.md).
+- Backend final : **345 tests ciblés réussis** (8 ignorés) et **104 tests PostgreSQL isolés réussis** (3 ignorés), incluant acceptations concurrentes, annulation, remboursement partiel, idempotence et conservation des historiques. Limite de taille des 1 044 sources mobile respectée. Le contrôle à la publication reste une estimation, pas une réservation de fonds pour toutes les occurrences futures.
+- ESLint ciblé : aucune erreur, deux avertissements d'import dupliqué de `@/types` dans `usePublishSubmission.ts`. Diff sans erreur d'espacement ; les changements concurrents de notifications/sonneries et leur historique Git sont conservés.
+
 ## 8 octobre 2026 — Profil de développement pour téléphones physiques
 
 - Demande : tester les notifications sonores avant une nouvelle bêta store. Le

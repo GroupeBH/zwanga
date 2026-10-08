@@ -6,6 +6,7 @@ import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
+import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 
 interface GooglePhoneStepProps {
   profileName: string | null;
@@ -28,7 +29,7 @@ export function GooglePhoneStep({
   isLoading,
   submitLabel = 'Recevoir le code',
 }: GooglePhoneStepProps) {
-  const isPhoneValid = phone.length >= 10;
+  const isPhoneValid = isAuthPhoneValid(phone);
   const providerName = provider === 'apple' ? 'Apple' : 'Google';
   const providerIcon = provider === 'apple' ? 'logo-apple' : 'logo-google';
   const providerColor = provider === 'apple' ? '#111827' : '#4285F4';
@@ -58,14 +59,21 @@ export function GooglePhoneStep({
           <Ionicons name="call-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
-            placeholder="+243 000 000 000"
+            placeholder="Votre numéro de téléphone"
             placeholderTextColor={Colors.gray[400]}
             keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            autoCorrect={false}
+            accessibilityLabel="Numéro de téléphone"
+            accessibilityHint={authPhoneCopy.hint}
             value={phone}
             onChangeText={onPhoneChange}
             autoFocus={Platform.OS !== 'android'}
           />
         </View>
+
+        <Text style={styles.phoneHint}>{authPhoneCopy.hint}</Text>
 
         {isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
 

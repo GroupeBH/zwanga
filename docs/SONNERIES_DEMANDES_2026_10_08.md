@@ -62,9 +62,11 @@ acceptation serveur, pas un simple appui sur le téléphone du conducteur.
 
 La capacité v2 est déjà annoncée automatiquement par les clients compatibles,
 après configuration des catégories, du canal et de la tâche de fond. Pas d'étape
-d'adhésion ajoutée. Sans capacité enregistrée pour le token courant, le serveur
-conserve une notification standard, plutôt que demander un son inexistant sur un
-ancien binaire. Les migrations existantes du dispatch doivent déjà être installées.
+d'adhésion ajoutée. Initialement, sans capacité enregistrée pour le token courant,
+le serveur conservait une notification standard. Le complément iOS en fin de
+document remplace ce choix pour le son des invitations conducteur uniquement ;
+les contrôles de compatibilité des actions sont conservés. Les migrations
+existantes du dispatch doivent déjà être installées.
 
 Aucune dépendance, son, permission, écran, webhook ou connexion socket ajouté.
 Les réglages silencieux/volume/Focus et restrictions d'arrière-plan restent sous
@@ -309,3 +311,256 @@ ne remplace pas une recette release autonome avec processus arrêté.
 
 Références : [clients de développement Expo](https://docs.expo.dev/develop/development-builds/introduction/),
 [distribution interne et enregistrement iPhone](https://docs.expo.dev/build/internal-distribution/).
+
+## Contrôle du build TestFlight et correctif de sélection du son iOS
+
+### Constat du 8 octobre 2026
+
+L'utilisateur précise avoir reconstruit une version TestFlight avec le code
+actuel. TestFlight est un mode de test natif valable : un client de développement
+n'est pas une condition pour entendre le son personnalisé. Il faut distinguer
+le binaire installé du backend auquel il se connecte.
+
+Lecture des métadonnées EAS puis téléchargement de l'archive du dernier build
+iOS terminé, **1.0.16 (134)**, dans un dossier temporaire, sans publication :
+
+- `Info.plist` confirme la version et le numéro de build.
+- `driver_ring.wav` est présent à la racine `Payload/zwanga.app/`, pas seulement
+  référencé dans les sources Xcode. Son contenu est identique à l'asset source.
+- Lecture du WAV : PCM non compressé, mono, 22 050 Hz, 16 bits, **29 secondes**.
+- Le profil de provisioning embarqué déclare `aps-environment: production` et
+  `com.apple.developer.usernotifications.time-sensitive: true`.
+
+Ce contrôle écarte un fichier manquant dans cette archive précise. Il ne vérifie
+ni la version effectivement installée sur l'iPhone ni la lecture audio par iOS.
+Le profil a été lu, pas modifié ; aucune nouvelle signature effectuée. Aucun
+token, lien privé de téléchargement, certificat ou donnée personnelle conservé
+dans cette documentation.
+
+### Correctif serveur effectivement appliqué
+
+Dans `../zwanga-backend/src/notifications/notifications.service.ts`, le choix du
+son Expo/iOS des invitations conducteur ne dépend plus de la capacité interactive
+v2. `new_booking`, et `driver_dispatch_offer` lorsque le dispatch est activé,
+demandent `sound: driver_ring.wav`. Auparavant, l'absence d'enregistrement v2
+provoquait explicitement `sound: default`, même si le fichier était embarqué.
+C'est une cause possible confirmée dans le code, pas la cause prouvée du
+signalement TestFlight : le payload de production n'a pas été capturé.
+
+Le prédicat `isDriverRingInvitation` est partagé avec le choix des actions. Les
+catégories/boutons restent réservés aux clients compatibles et `time-sensitive`
+aux clients v2. Le son seul ne certifie donc pas que les actions ou le parcours
+interactif sont correctement enregistrés. Le délai de transport des invitations
+est borné à 30 secondes, ou à l'échéance de l'offre si elle est plus proche ; il
+ne remplace pas la date d'expiration métier. Un ancien binaire sans le fichier
+peut utiliser le repli sonore système, prévu par
+[Apple](https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/SchedulingandHandlingLocalNotifications.html).
+
+Les annonces générales `trip_request` et les messages restent standard. Aucun
+changement du transport Android, de la sélection du conducteur, des décisions
+Accepter/Refuser, de la notification passager après acceptation ou des contrôles
+serveur d'autorisation. Aucun contournement du mode silencieux/Focus ajouté. Le
+mobile n'est pas modifié dans cette étape ; le nettoyage sonore à l'ouverture
+reste celui déjà documenté, dont le résultat acoustique iOS reste à tester.
+
+### Vérifications et suite de la recette
+
+- `src/notifications/driver-action-notifications.spec.ts` couvre les capacités
+  v0/v1/v2, les réservations, les invitations ciblées, le drapeau de dispatch et
+  l'absence de changement des annonces générales : 15 tests réussis.
+- `npx.cmd jest --runInBand src/notifications` : **95 tests réussis**, 4 suites,
+  transports simulés uniquement, aucun push réel envoyé.
+- `npx.cmd tsc --noEmit --incremental false -p tsconfig.build.json` : réussi.
+- `node --test tests/appVersions.test.js tests/driverNotificationNativeAssets.test.js` :
+  **9 tests réussis**. Ces tests sont distincts du contrôle de l'archive EAS.
+- Pas de déploiement backend, build EAS, envoi push de production ni essai sur
+  téléphone effectué. Le backend réellement utilisé par TestFlight reste à
+  confirmer, ainsi que le contenu sonore du push qu'il émet.
+
+Pour le seul correctif de sélection du son serveur, une nouvelle compilation
+mobile n'est pas nécessaire si le build installé embarque déjà le bon fichier.
+Déployer le backend corrigé suivant sa procédure habituelle, ouvrir l'application
+connectée pour enregistrer les actions, puis verrouiller l'iPhone. Tester une
+nouvelle réservation et une invitation ciblée depuis un autre compte de test.
+Vérifier le son, les actions et l'arrêt à l'ouverture, puis un message normal.
+Si le son reste standard, contrôler les champs non sensibles `data.type`,
+`sound`, `categoryId` et `interruptionLevel` réellement envoyés, ainsi que les
+réglages iOS. Ne pas conclure au succès natif à partir des seuls tests serveur.
+
+## Diagnostic de production — Activation du flux de proximité
+
+### Mesures du 8 octobre 2026
+
+Après confirmation utilisateur du redéploiement backend et d'un essai iPhone dans
+l'heure précédente, contrôles AWS en lecture seule, sans afficher de secrets ni
+de contenu de notification utilisateur :
+
+- Service ECS de production actif, une tâche en cours, définition révision 13.
+  Un déploiement récent est effectivement visible. L'image utilise un tag mutable :
+  cette seule métadonnée ne prouve pas le commit exact du code exécuté.
+- `DRIVER_DISPATCH_ENABLED` absent de l'environnement et des références SSM de
+  cette définition. Aucune surcharge correspondante sur la tâche réellement
+  en cours, aucun fichier d'environnement externe ni commande de démarrage
+  de remplacement dans la définition examinée.
+- Le paramètre SSM recherché au chemin conventionnel n'a pas été obtenu ; ce
+  résultat seul ne distingue pas absence et défaut de droit. Le constat certain
+  est l'absence de référence à ce paramètre dans la définition active.
+- Dans le code et le Dockerfile du dépôt : le dispatch exige explicitement son
+  activation ; aucun fichier `.env` n'est embarqué. Le statut renvoyé au mobile
+  est donc désactivé en l'absence de configuration correspondante.
+- Les logs d'envoi recherchés ne fournissent pas le payload de l'essai. Le niveau
+  configuré ne journalise pas les envois informatifs ; l'absence de ligne ne
+  signifie pas absence de push. Aucun élargissement de la journalisation effectué.
+
+### Conséquence et limites du diagnostic
+
+`hooks/trip-request/useRequestSubmission.ts` n'active la recherche immédiate que
+si le serveur annonce le dispatch disponible. Sans activation, une demande suit
+le parcours général. Dans le backend, `notifyDriversAboutTripRequest` envoie alors
+`trip_request`, annonce standard distincte de `driver_dispatch_offer`, proposition
+ciblée avec délai et actions. Déployer le code sans configurer cette activation
+ne suffit donc pas à mettre en service le flux conducteur le plus proche.
+
+Ce blocage de configuration est établi pour le service AWS examiné. Le titre
+exact, le payload du push et le résultat acoustique de l'essai iPhone ne sont
+pas établis. Les réservations publiées `new_booking` ne dépendent pas du drapeau
+de dispatch pour leur son : ne pas leur attribuer automatiquement cette cause.
+
+### Suite proposée, non exécutée
+
+L'activation en production est une modification du comportement pour les
+utilisateurs réels. Elle attend l'autorisation de l'utilisateur. Avant activation,
+contrôler les migrations/prérequis du dispatch, puis faire référencer son
+paramètre par une nouvelle définition ECS et déployer celle-ci. Ajouter seulement
+un paramètre SSM ou relancer l'ancienne définition, qui ne le référence pas, ne
+suffit pas. Ne pas déclencher un `terraform apply` global sans examiner son plan.
+
+Après activation, vérifier le statut serveur puis utiliser deux comptes de test :
+position récente du conducteur, nouvelle demande immédiate compatible, téléphone
+verrouillé, proposition ciblée, son et actions. Refaire séparément une réservation
+d'un trajet publié et l'arrêt à l'ouverture. Les demandes générales déjà créées
+ne sont pas converties rétroactivement. Le build 134 contient déjà la sonnerie ;
+ce changement de configuration serveur ne nécessite pas de nouvelle compilation.
+
+Aucun changement de logique, dépendance, base de données, paramètre distant,
+certificat ou déploiement réalisé pendant cette étape ; documentation seulement.
+Pas de nouveau test natif ni d'envoi push réel exécuté. Les tests unitaires de
+l'étape précédente ne remplacent pas cette recette de production.
+
+## Activation effectuée en production
+
+Le 8 octobre 2026, après autorisation explicite de l'utilisateur, la proposition
+de la section précédente a été exécutée. Le paramètre d'activation a été créé
+dans SSM et référencé par la révision ECS **14**, copie de la **13**. Le déploiement
+a été lancé à **07:56, Africa/Kinshasa**, puis sa stabilité vérifiée.
+
+Contrôles réels :
+
+- Avant et après activation, tâche Fargate éphémère avec la même image que le
+  service ; une connexion PostgreSQL en lecture seule, TLS vérifié, délais bornés.
+  Tables/index et migrations vérifiés ; aucune migration exécutée.
+- Code compilé du serveur testé avec transport Expo simulé : invitations ciblées
+  et réservations demandent le WAV dédié, annonces générales restent standard.
+  Aucun envoi push réel dans ce contrôle.
+- Avant : paramètre d'activation absent. Après : activation effectivement chargée
+  par la nouvelle définition, contrôle terminé avec code 0. Les deux tâches
+  temporaires ont terminé ; aucune tâche de diagnostic permanente conservée.
+- Révision 14 stable, tâche `HEALTHY`, cible ALB saine, `/health` répond 200. Les
+  digests API et sidecar n'ont pas changé. Comparaison des définitions : ajout
+  d'une seule référence SSM, pas de changement IAM, réseau ou dimensionnement.
+- Dans l'échantillon consulté, pas d'erreur attribuée au dispatch ; des erreurs
+  du bonus de bienvenue existaient déjà sur l'ancienne tâche et subsistent.
+  Cette opération ne constitue pas un audit/correctif général du backend.
+
+Fichiers backend ajoutés : `infra-aws/scripts/check-driver-dispatch.cjs`,
+`invoke-driver-dispatch-preflight.ps1`, `enable-driver-dispatch.ps1`. Le journal
+`infra-aws/docs/CHANGELOG.md`, entrée INFRA-2026-10-08-005, détaille la procédure,
+les coûts Fargate ponctuels, les garde-fous, la découverte SSM par Terraform
+et le retour arrière. Syntaxes, contrôle documentaire et diff vérifiés.
+
+Aucun changement de logique mobile, de paiement ou des annonces générales ;
+aucune ancienne demande convertie en proposition ciblée. Pas de nouveau build
+TestFlight nécessaire pour cette activation. Rouvrir les apps passager et
+conducteur pour actualiser le statut et la position, verrouiller le téléphone
+conducteur puis créer une **nouvelle demande immédiate** compatible à proximité.
+Tester ensuite une réservation publiée séparément. La position doit rester
+récente ; le code garde les défauts de réponse 30 s, rayon 5 km, fraîcheur 5 min.
+Vérifier le son de 29 s iOS, les actions et l'arrêt à l'ouverture sur téléphone
+physique : le succès des contrôles serveur ne garantit pas le résultat acoustique.
+
+## Renforcement du signal sonore et distinction des flux
+
+### Constat et modification du 8 octobre 2026
+
+Nouvelle demande utilisateur : sonnerie prolongée et plus audible, proche d'un
+appel. Le fichier local mesuré dure déjà 29 secondes, mais le serveur conserve
+deux comportements distincts :
+
+- `driver_dispatch_offer` ciblé et `new_booking` : son dédié et, pour un client
+  compatible, actions et traitement prioritaire. Android : bouclage natif borné
+  à 30 secondes ou à l'expiration plus courte de la proposition.
+- `trip_request` : annonce générale à son standard. Dans
+  `TripRequestsService.notifyDriversAboutTripRequest` et le service de réouverture,
+  elle est envoyée aux conducteurs actifs avec token, hors auteur de la demande,
+  sans filtrage de proximité dans ces méthodes. L'étendre au son long ferait donc
+  sonner tous ces destinataires. Cette extension attend une confirmation ; le
+  ciblage du conducteur proche n'a pas été remplacé par une diffusion générale.
+
+Ces constats viennent du code local et des tests, pas d'une observation du dernier
+push sur le téléphone de l'utilisateur. Aucun payload réel de cet essai n'a été
+identifié et aucune résolution de son symptôme en production n'est revendiquée.
+
+Modification appliquée indépendamment du choix des destinataires : gain PCM du
+générateur relevé de 0,42 à 0,62, soit +3,38 dB. Les deux WAV embarqués ont été
+régénérés et sont identiques. La crête passe de −4,51 à −1,13 dBFS et le niveau
+RMS de −13,56 à −10,18 dBFS ; aucune saturation, même durée, mêmes cadences et
+taille de fichier. Cela renforce le signal audio, sans garantir un gain acoustique
+équivalent après le traitement audio propre à chaque téléphone.
+
+Pas de nouveau canal : son identité et les préférences existantes restent
+respectées. Pas de changement du payload, de la logique d'action, du délai métier,
+du mécanisme d'arrêt à l'ouverture ni de nouvelle dépendance. Aucun déploiement.
+
+### Limites et vérifications
+
+Les sons personnalisés iOS doivent durer strictement moins de 30 secondes ; le
+fichier reste à 29 secondes. Les réglages sonores et autorisations de l'utilisateur
+restent déterminants, et une importance élevée ne force pas un volume maximal.
+Références : [Apple — sons personnalisés](https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/SupportingNotificationsinYourApp.html),
+[Notifee — comportement sonore Android](https://notifee.app/react-native/docs/android/behaviour/).
+
+Commande exécutée :
+
+```powershell
+node scripts/generate-driver-ring.cjs
+node --test tests/driverNotifications.test.js tests/driverNotificationNativeAssets.test.js tests/driverNotificationResponse.test.js
+```
+
+Résultat : 26 tests JavaScript réussis, dont un nouveau contrôle de crête/RMS sans
+saturation et de répétition sur toute la durée. Pas de téléphone physique, de
+mesure acoustique, de vrai push ou de build natif dans ce tour.
+
+### Build et recette à effectuer
+
+Le fichier est une ressource native ; le mettre à jour nécessite un nouveau
+build installé, pas uniquement un rechargement Metro ou une mise à jour JS.
+Commandes proposées, non exécutées :
+
+```powershell
+# Builds de développement sur téléphones physiques
+npx.cmd eas-cli build --platform android --profile dev-device
+npx.cmd eas-cli build --platform ios --profile dev-device
+
+# Ou nouvelle bêta store utilisant le profil du projet
+npx.cmd eas-cli build --platform all --profile production
+```
+
+Avec deux comptes de test : ouvrir l'app conducteur pour enregistrer les canaux,
+la compatibilité et une position récente, puis verrouiller le téléphone et créer
+une nouvelle demande immédiate à proximité. Comparer à réglage système identique
+la sonnerie du nouveau build, sa limite et son arrêt à l'ouverture. Refaire avec
+acceptation/refus et avec une réservation publiée ; vérifier qu'un message normal
+reste standard. Ne pas utiliser une annonce générale pour conclure à l'échec du
+parcours ciblé. Vérifier les permissions et le son du canal sur Android, les sons
+de notifications et le mode silencieux/Concentration sur iOS. Aucune garantie
+d'alerte au volume maximum ni de sonnerie en mode silencieux n'est introduite.

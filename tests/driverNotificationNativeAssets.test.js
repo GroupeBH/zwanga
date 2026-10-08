@@ -29,6 +29,26 @@ test('the selective iOS bridge is idempotent and fails closed if the upstream de
   assert.throws(() => patch('changed upstream code'), /delegate changed/);
 });
 
+test('ringtone has stronger signal without clipping and repeats throughout its 29 seconds', () => {
+  const wav = fs.readFileSync(path.join(root, 'assets/sounds/driver_ring.wav'));
+  const count = wav.readUInt32LE(40) / 2;
+  const sampleRate = wav.readUInt32LE(24);
+  const cycles = [];
+  let peak = 0, squared = 0;
+  for (let i = 0; i < count; i++) {
+    const amplitude = Math.abs(wav.readInt16LE(44 + i * 2) / 32768);
+    const cycle = Math.floor(i / sampleRate / 2.4);
+    peak = Math.max(peak, amplitude);
+    squared += amplitude * amplitude;
+    cycles[cycle] = Math.max(cycles[cycle] ?? 0, amplitude);
+  }
+  assert.ok(peak > 0.85 && peak < 0.95, 'audible headroom, no PCM saturation');
+  const rms = Math.sqrt(squared / count);
+  assert.ok(rms > 0.29 && rms < 0.34, 'signal level includes the spaces between rings');
+  assert.equal(cycles.length, 13);
+  assert.ok(cycles.every(value => value > 0.85), 'not a short initial beep followed by silence');
+});
+
 test('the tracked iOS project bundles the sound and declares time-sensitive notifications', () => {
   const project = require('xcode').project(path.join(root, 'ios/zwanga.xcodeproj/project.pbxproj'));
   project.parseSync();

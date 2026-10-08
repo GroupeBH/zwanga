@@ -1,5 +1,6 @@
 import { getAuthErrorMessage } from '../../features/auth/authModel';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
+import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
@@ -83,8 +84,8 @@ export function usePhoneAuthActions({
     setPin, showDialog, onRetry: () => focusAfterInteractions(pinInputRef) });
   const handlePhoneSubmit = async () => {
     const normalizedPhone = phone.trim();
-    if (normalizedPhone.length < 10) {
-      showDialog({ variant: 'danger', title: 'Numéro invalide', message: 'Veuillez entrer un numéro valide' });
+    if (!isAuthPhoneValid(normalizedPhone)) {
+      showDialog({ variant: 'danger', title: 'Numéro invalide', message: authPhoneCopy.invalid });
       return;
     }
     setPhone(normalizedPhone);

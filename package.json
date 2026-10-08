@@ -30,7 +30,7 @@
     "benchmark:driver-route": "node ./scripts/benchmark-driver-route.cjs",
     "test:ride-recovery": "node --test ./tests/rideRecovery.test.js ./tests/rideRecoveryUI.test.js",
     "test:location-picker": "node --test ./tests/locationPicker.test.js ./tests/locationPickerMapPress.test.js",
-    "test:otp": "node --test ./tests/otpCodeInput.test.js ./tests/otpDelivery.test.js ./tests/pinReset.test.js ./tests/profileModules.test.js",
+    "test:otp": "node --test ./tests/otpCodeInput.test.js ./tests/otpDelivery.test.js ./tests/authInternationalPhone.test.js ./tests/pinReset.test.js ./tests/profileModules.test.js",
     "test:form-layout": "node --test ./tests/formSafeArea.test.js ./tests/authKeyboardLayout.test.js",
     "test:notifications": "node --test ./tests/notificationNavigation.test.js ./tests/assignedTripNavigation.test.js",
     "test:interruption": "node --test ./tests/interruptionChoice.test.js",
