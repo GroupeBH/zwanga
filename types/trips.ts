@@ -60,6 +60,8 @@ export interface Trip {
   totalSeats: number;
   status: TripStatus;
   passengers?: Passenger[];
+  /** Active bookings from the authenticated activity response, even without a passenger profile. */
+  reservationSummary?: { pendingBookingIds: string[]; acceptedCount: number };
   progress?: number;
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;

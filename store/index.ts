@@ -6,6 +6,7 @@ import { chatSocket } from '../services/chatSocket';
 import { trackingSocket } from '../services/trackingSocket';
 import { clearLocationDeliveries } from '../services/locationDelivery';
 import { invalidateTokenSession } from '../services/tokenSession';
+import { clearNearbyDriverLocation } from '../services/nearbyDriverLocation';
 import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
 import { mapboxApi } from './api/mapboxApi';
@@ -43,6 +44,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
   const typedAction = action as { type?: string; meta?: { requestId?: string } };
   if (typedAction.type === 'auth/logout' || typedAction.type === 'auth/performLogout/pending') {
     invalidateTokenSession();
+    void clearNearbyDriverLocation().catch(() => undefined);
   }
   const previousUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
     .auth?.user?.id;
@@ -59,6 +61,7 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
     Boolean(previousUserId && currentUserId && previousUserId !== currentUserId);
 
   if (logoutAction || accountChanged) {
+    if (accountChanged) void clearNearbyDriverLocation({ endSession: false }).catch(() => undefined);
     chatSocket.disconnect();
     trackingSocket.disconnect();
     clearLocationDeliveries();

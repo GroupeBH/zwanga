@@ -8,6 +8,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRatingLifecycle } from './useRatingLifecycle';
 
 
 
@@ -18,9 +19,9 @@ export function useRatingData() {
   const user = useAppSelector(selectUser);
   const tripId = typeof params.id === 'string' ? params.id : '';
   const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
-  const isMountedRef = useRef(true);
+  const ratingScopeKey = `rating:${user?.id ?? ''}:${tripId}`;
+  const { captureRatingSession, beginLeaving, successReturnTimeoutRef } = useRatingLifecycle(ratingScopeKey, active);
   const submitInFlightRef = useRef(false);
-  const successReturnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasInitializedTargetRef = useRef(false);
   const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId || !active });
   const isTripDriver = Boolean(user?.id && trip?.driverId === user.id);
@@ -60,24 +61,20 @@ export function useRatingData() {
   const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
 
   const goBackSafely = useCallback(() => {
+    if (!beginLeaving()) return;
     if (router.canGoBack()) {
       router.back();
       return;
     }
 
     router.replace('/(tabs)');
-  }, [router]);
+  }, [beginLeaving, router]);
 
   useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      submitInFlightRef.current = false;
-      if (successReturnTimeoutRef.current) {
-        clearTimeout(successReturnTimeoutRef.current);
-        successReturnTimeoutRef.current = null;
-      }
-    };
-  }, []);
+    submitInFlightRef.current = false;
+    hasInitializedTargetRef.current = false;
+    setSubmitSuccessMessage(null);
+  }, [ratingScopeKey]);
 
   // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
   const passengers = useMemo(() => {
@@ -207,6 +204,8 @@ export function useRatingData() {
   ];
 
   return {
+    active,
+    ratingScopeKey,
     selectedTags,
     setSelectedTags,
     submitInFlightRef,
@@ -221,7 +220,7 @@ export function useRatingData() {
     passengers,
     comment,
     createReview,
-    isMountedRef,
+    captureRatingSession,
     successReturnTimeoutRef,
     goBackSafely,
     reportReason,

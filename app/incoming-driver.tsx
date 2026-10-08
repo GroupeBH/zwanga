@@ -13,6 +13,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Colors } from '@/constants/styles';
 import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionNotice';
+import { RequestPassengerContact } from '@/features/request-detail/RequestPassengerContact';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -133,6 +134,8 @@ function IncomingDriverContent() {
           confirmed={done === 'accept'} />}
       </>}
       {!done && kind === 'dispatch' && authorized && <Text style={styles.countdown} accessibilityLiveRegion="polite">{remaining > 0 && offer.data?.actionable ? `${remaining} s pour répondre` : 'Cette proposition n’est plus disponible'}</Text>}
+      {!done && kind === 'dispatch' && authorized && offer.data && actionable &&
+        <RequestPassengerContact requestId={offer.data.requestId} enabled={!busy} validUntil={localDeadline} />}
       {failedRead && <TouchableOpacity style={styles.retry} onPress={() => { if (kind === 'dispatch') void offer.refetch(); else void booking.refetch(); }}>
         <Text style={styles.copy}>Impossible de vérifier la proposition. Touchez pour réessayer.</Text>
       </TouchableOpacity>}

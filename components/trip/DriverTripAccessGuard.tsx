@@ -9,6 +9,7 @@ import { useOfflineRideData } from '@/hooks/navigation/useOfflineRideData';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
 import { useAppSelector } from '@/store/hooks';
+import { tripAccessFeedback } from '@/features/navigation/tripAccessFeedback';
 
 /** Do not mount driver controllers (GPS, sockets, actions) until ownership is known. */
 export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
@@ -32,18 +33,18 @@ export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
   if (trip?.id === tripId && trip.status === 'ongoing' && booking) {
     return <Redirect href={`/booking/navigate/${booking.id}`} />;
   }
-  const loading = Boolean(userId && tripId && !trip && !error && (isLoading || isFetching));
+  const loading = Boolean(userId && tripId && !trip && (isLoading || isFetching));
+  const feedback = tripAccessFeedback(error, Boolean(trip));
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.content}>
         {loading && <ActivityIndicator size="large" color={Colors.primary} />}
-        <Text style={styles.title}>{loading ? 'Vérification du trajet…' : 'Navigation conducteur indisponible'}</Text>
-        {!loading && <Text style={styles.message}>{trip
-          ? 'Seul le conducteur qui a publié ce trajet peut le gérer. Votre compte conducteur ne change pas votre rôle de passager.'
-          : 'Impossible de vérifier l’accès à ce trajet. Réessayez ou revenez à l’accueil.'}</Text>}
-        {!loading && error && userId && tripId ? <TouchableOpacity accessibilityRole="button"
-          style={styles.button} onPress={() => { void refetch(); }}>
-          <Text style={styles.buttonText}>Réessayer</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.title}>{loading ? 'Vérification du trajet…' : feedback.title}</Text>
+        {!loading && <Text style={styles.message}>{feedback.message}</Text>}
+        {feedback.retry && userId && tripId ? <TouchableOpacity accessibilityRole="button"
+          accessibilityState={{ disabled: isFetching, busy: isFetching }} disabled={isFetching}
+          style={[styles.button, isFetching && styles.disabled]} onPress={() => { if (!isFetching) void refetch(); }}>
+          <Text style={styles.buttonText}>{isFetching ? 'Vérification…' : 'Réessayer'}</Text>
         </TouchableOpacity> : null}
         <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={() => router.replace('/(tabs)')}>
           <Text style={styles.buttonText}>Retour à l’accueil</Text>
@@ -60,4 +61,5 @@ const styles = StyleSheet.create({
   message: { fontSize: 16, textAlign: 'center', color: Colors.gray[600] },
   button: { padding: 14, borderRadius: 16, backgroundColor: Colors.primary },
   buttonText: { color: Colors.white, fontWeight: '600' },
+  disabled: { opacity: 0.6 },
 });

@@ -13,7 +13,7 @@ import { useDriverTripInterruptionActions } from './useDriverTripInterruptionAct
 import { useDriverNavigationExitPrompt } from './useDriverNavigationExitPrompt';
 import { useDriverBookingActions } from './useDriverBookingActions';
 import { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
-import { useCallback } from 'react';
+import { useDriverRatingTransition } from './useDriverRatingTransition';
 
 
 
@@ -186,16 +186,7 @@ export function useDriverNavigationController() {
     reconcileBookingStatus: session.foundation.data.reconcileBookingStatus,
   });
 
-  const { dismissTripEndNotice } = pickupActions;
-  const { navigateAfterRelease } = session.foundation.mapState;
-  const handleRatePassengersFromTripEnd = useCallback(() => {
-    if (!session.foundation.data.tripId) {
-      return;
-    }
-
-    dismissTripEndNotice();
-    navigateAfterRelease(() => session.foundation.data.router.replace(`/rate/${session.foundation.data.tripId}`));
-  }, [dismissTripEndNotice, navigateAfterRelease, session.foundation.data.router, session.foundation.data.tripId]);
+  const handleRatePassengersFromTripEnd = useDriverRatingTransition(session.foundation);
 
   const handleBackNavigation = useDriverNavigationExitPrompt({
     status: session.foundation.data.trip?.status,

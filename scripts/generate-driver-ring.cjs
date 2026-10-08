@@ -4,6 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const sampleRate = 22050;
 const seconds = 29; // Apple requires a custom notification sound strictly under 30 seconds.
+// +3.38 dB versus the original 0.42 gain; leave headroom below PCM clipping.
+// This strengthens the asset, not the user's notification volume or DND settings.
+const gain = 0.62;
 const count = sampleRate * seconds;
 const wav = Buffer.alloc(44 + count * 2);
 wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
@@ -15,7 +18,7 @@ for (let i = 0; i < count; i++) {
   const pulse = phase < 0.55 ? phase : phase >= 0.8 && phase < 1.35 ? phase - 0.8 : -1;
   const envelope = pulse < 0 ? 0 : Math.min(1, pulse / 0.02, (0.55 - pulse) / 0.06);
   const fade = Math.min(1, (seconds - t) / 0.1);
-  const value = (Math.sin(2 * Math.PI * 660 * t) + 0.45 * Math.sin(2 * Math.PI * 880 * t)) * 0.42 * envelope * fade;
+  const value = (Math.sin(2 * Math.PI * 660 * t) + 0.45 * Math.sin(2 * Math.PI * 880 * t)) * gain * envelope * fade;
   wav.writeInt16LE(Math.round(value * 32767), 44 + i * 2);
 }
 const target = path.resolve(__dirname, '../assets/sounds/driver_ring.wav');

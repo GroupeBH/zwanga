@@ -7,6 +7,7 @@ import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
+import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 
 interface PhoneStepProps {
   mode: AuthMode;
@@ -37,7 +38,7 @@ export function PhoneStep({
   hasReferralAttribution = false,
   referrerFirstName,
 }: PhoneStepProps) {
-  const isPhoneValid = phone.length >= 10;
+  const isPhoneValid = isAuthPhoneValid(phone);
   const showAppleAuth = Platform.OS === 'ios' && isAppleAvailable && onAppleAuth;
   const isAnySocialLoading = isGoogleLoading || isAppleLoading;
   const appleButtonLabel = mode === 'login' ? 'Continuer avec Apple' : 'S\'inscrire avec Apple';
@@ -89,13 +90,20 @@ export function PhoneStep({
           <Ionicons name="call-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
-            placeholder="+243 000 000 000"
+            placeholder="Votre numéro de téléphone"
             placeholderTextColor={Colors.gray[400]}
             keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            autoCorrect={false}
+            accessibilityLabel="Numéro de téléphone"
+            accessibilityHint={authPhoneCopy.hint}
             value={phone}
             onChangeText={onPhoneChange}
           />
         </View>
+
+        <Text style={styles.phoneHint}>{authPhoneCopy.hint}</Text>
 
         {mode === 'signup' && isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
 

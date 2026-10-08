@@ -15,7 +15,7 @@ export interface NavigationContactContext {
   userId?: string;
 }
 
-const usablePhone = (value?: string | null) => {
+export const usablePhone = (value?: string | null) => {
   const phone = value?.trim();
   const digits = phone?.replace(/\D/g, '') ?? '';
   return digits.length >= 6 && digits.length <= 15 ? phone! : null;

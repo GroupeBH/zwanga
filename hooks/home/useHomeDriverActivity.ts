@@ -1,10 +1,10 @@
-import { EMPTY_HOME_BOOKINGS, EMPTY_HOME_TRIPS, hasUpcomingDeparture, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS } from '@/features/home/homeModel';
+import { EMPTY_HOME_BOOKINGS, EMPTY_HOME_TRIPS, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS } from '@/features/home/homeModel';
 import { useGetTripBookingsQuery, useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
 import {
   useGetMyActivityTripsQuery as useGetMyTripsQuery,
   useGetTripByIdQuery
 } from '@/store/api/tripApi';
-import type { Trip } from '@/types';
+import { getDriverTripReservationCounts, rankDriverUpcomingTrips } from '@/features/home/homeDriverTripPriority';
 import { useMemo } from 'react';
 import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { sharedTripsOptions as sharedActivityQueryOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
@@ -65,47 +65,14 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
       return null;
     }
 
-    const getDepartureTime = (trip: Trip) => {
-      const timestamp = new Date(trip.departureTime).getTime();
-      return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
-    };
-
-    return [...myDriverTrips]
-      .filter(trip => {
-        const pending = trip.passengers?.filter(passenger => passenger.bookingStatus === 'pending') ?? [];
-        return !pending.length || pending.some(passenger => !passenger.bookingId ||
-          !hiddenHomePriorities[homePriorityKeys.booking({ id: passenger.bookingId })]);
-      })
-      .filter(
-        (trip) =>
-          ownsTrip(trip, currentUser.id) &&
-          (trip.status === 'upcoming' || trip.status === 'ongoing') &&
-          hasUpcomingDeparture(trip),
-      )
-      .sort((a, b) => {
-        const pendingPassengerCountA =
-          a.passengers?.filter((passenger) => passenger.bookingStatus === 'pending').length ?? 0;
-        const pendingPassengerCountB =
-          b.passengers?.filter((passenger) => passenger.bookingStatus === 'pending').length ?? 0;
-        const passengerCountA = a.passengers?.length ?? 0;
-        const passengerCountB = b.passengers?.length ?? 0;
-        const hasPassengersA = passengerCountA > 0;
-        const hasPassengersB = passengerCountB > 0;
-
-        if (pendingPassengerCountA !== pendingPassengerCountB) {
-          return pendingPassengerCountB - pendingPassengerCountA;
-        }
-
-        if (hasPassengersA !== hasPassengersB) {
-          return hasPassengersA ? -1 : 1;
-        }
-
-        if (passengerCountA !== passengerCountB) {
-          return passengerCountB - passengerCountA;
-        }
-
-        return getDepartureTime(a) - getDepartureTime(b);
-      })[0] ?? null;
+    const visibleTrips = myDriverTrips.filter(trip => {
+      const all = getDriverTripReservationCounts(trip);
+      const visible = getDriverTripReservationCounts(trip, hiddenHomePriorities);
+      if (visible.pending) return true; // A hidden trip must not hide a new booking action.
+      if (hiddenHomePriorities[homePriorityKeys.upcomingTrip(trip)]) return false;
+      return !all.pending || visible.accepted > 0;
+    });
+    return rankDriverUpcomingTrips(visibleTrips, currentUser.id, hiddenHomePriorities)[0] ?? null;
   }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip, ongoingPassengerBooking, hiddenHomePriorities]);
 
   const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS } = useGetTripBookingsQuery(

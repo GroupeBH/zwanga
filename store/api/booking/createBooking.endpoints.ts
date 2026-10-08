@@ -139,8 +139,8 @@ updateBookingStatus: builder.mutation<Booking, { id: string; status: BookingStat
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: (result) =>
         result
-          ? [{ type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId }, bookingListTag, tripListTag]
-          : [bookingListTag, tripListTag],
+          ? [{ type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId }, bookingListTag, tripListTag, myTripsListTag]
+          : [bookingListTag, tripListTag, myTripsListTag],
     }),
 cancelBooking: builder.mutation<void, string>({
       query: (id: string) => ({

@@ -8,9 +8,10 @@ import React from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function RateScreen() {
-  const { selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, isMountedRef, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
+  const { active, ratingScopeKey, selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, captureRatingSession, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
 
   const { getRatingText, toggleTag, handleSubmitRating, handleSubmitReport } = useRatingActions({
     selectedTags,
@@ -27,13 +28,14 @@ export default function RateScreen() {
     passengers,
     comment,
     createReview,
-    isMountedRef,
+    captureRatingSession,
     successReturnTimeoutRef,
     goBackSafely,
     reportReason,
   });
 
   return (
+    <RideOverlayScope scopeKey={ratingScopeKey} active={active}>
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
@@ -75,6 +77,8 @@ export default function RateScreen() {
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {/* Onglet Notation */}
         {activeTab === 'rate' && (
@@ -305,6 +309,7 @@ export default function RateScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+    </RideOverlayScope>
   );
 }
 

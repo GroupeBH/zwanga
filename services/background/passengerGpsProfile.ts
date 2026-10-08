@@ -5,6 +5,7 @@ import { ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS, ACTIVE_RIDE_BACKGROUND
 import { getActiveTrackingSession, saveTrackingSession, clearTrackingSession, hasStartedUpdates, stopRegisteredTask } from './passengerTaskLifecycle';
 import { PASSENGER_BACKGROUND_LOCATION_TASK } from './passengerTaskName';
 import type { PassengerTrackingSession } from './passengerTrackingTypes';
+import { pauseNearbyDriverLocation } from '../nearbyDriverLocation';
 
 let work: Promise<unknown> = Promise.resolve();
 let appliedProfile: string | null = null;
@@ -45,6 +46,8 @@ export function startPassengerGpsProfile(session: PassengerTrackingSession, revi
   return serialize(async () => {
     if (revision !== startRevision || requestedBooking !== session.bookingId) return false;
     await saveTrackingSession(session);
+    await pauseNearbyDriverLocation().catch(() => undefined);
+    if (revision !== startRevision || requestedBooking !== session.bookingId) return false;
     return applyCurrentProfile(session, true);
   });
 }

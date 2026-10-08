@@ -8,6 +8,7 @@ function fixture() {
     lastDriverCoordinate: { latitude: -4.3, longitude: 15.3 }, nearDestinationSinceMs: null,
     autoCompleteDistanceMeters: null, autoCompleteDwellMs: null });
   const load = loader({
+    '../nearbyDriverLocation': { pauseNearbyDriverLocation: async () => {} },
     '@react-native-async-storage/async-storage': {
       getItem: async () => { counts.reads++; return stored; },
       setItem: async (_key, value) => { counts.writes++; stored = value; },

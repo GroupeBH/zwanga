@@ -20,6 +20,7 @@ function fixture() {
     'react-native': { Platform: { OS: 'ios' } }, 'expo-location': location,
     'expo-task-manager': { isAvailableAsync: async () => true, isTaskDefined: () => true },
     '@/services/tokenRefresh': {}, '@/store': {}, '@/store/api/tripApi': {}, './rideLocationStream': {},
+    '../nearbyDriverLocation': { pauseNearbyDriverLocation: async () => { stops.push('discovery'); } },
   });
   return { module: load('services/driverBackgroundLocationTask.ts'), starts, stops, running: () => running,
     session: () => saved && JSON.parse(saved), delayStop: p => { stopWait = p; }, delayPermission: p => { permissionWait = p; } };
@@ -46,7 +47,8 @@ test('logout while permission awaits invalidates the late start', async () => {
 test('a scoped stale stop cannot clear or stop a newer session', async () => {
   const f = fixture(); await f.module.startDriverBackgroundLocationTracking('B');
   await f.module.stopDriverBackgroundLocationTracking('A');
-  assert.equal(f.running(), true); assert.equal(f.session().tripId, 'B'); assert.equal(f.stops.length, 0);
+  assert.equal(f.running(), true); assert.equal(f.session().tripId, 'B');
+  assert.deepEqual(f.stops, ['discovery']);
 });
 
 test('new trips never inherit another destination; restarting the same one preserves it', async () => {

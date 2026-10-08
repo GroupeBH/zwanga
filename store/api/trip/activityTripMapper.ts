@@ -5,6 +5,7 @@ import type { ServerBooking } from '../booking/serverTypes';
 import type { ServerTrip } from './serverTypes';
 import { mapServerTripToClient } from './tripMapper';
 import { driverReviewCompletion, type ReviewCompletion } from '@/features/store-review/reviewEligibility';
+import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation';
 
 // The authenticated driver's trip response already contains these bookings. Reuse it
 // instead of fetching every trip's bookings again from a global timer.
@@ -18,5 +19,10 @@ export function mapActivityTrip(response: ServerActivityTrip): ActivityTrip {
     const notice = buildPaymentNotice(booking, trip);
     return notice ? [notice] : [];
   });
-  return { ...trip, paymentNotices, reviewCompletion: driverReviewCompletion(trip, bookings) };
+  const activeReservations = bookings.filter(booking => !hasPassengerFinishedRide(booking));
+  const reservationSummary = response.bookings ? {
+    pendingBookingIds: activeReservations.filter(booking => booking.status === 'pending').map(booking => booking.id),
+    acceptedCount: activeReservations.filter(booking => booking.status === 'accepted').length,
+  } : undefined;
+  return { ...trip, reservationSummary, paymentNotices, reviewCompletion: driverReviewCompletion(trip, bookings) };
 }

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
+const { isUsableNearbyDriverPosition } = loader()('services/nearbyDriverLocationPolicy.ts');
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollView: 'ScrollView',
   ActivityIndicator: 'Spinner', StyleSheet: { create: value => value, hairlineWidth: 1 } };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' } };
@@ -54,7 +55,8 @@ test('profile entry explains its purpose, honors the server flag and skips reads
 });
 
 
-function coordinator({ authenticated = true, role = 'driver', permission = async () => ({ granted: true }),
+function coordinator({ authenticated = true, signingOut = false, role = 'driver', permission = async () => ({ granted: true }),
+  nativeRunning = false, activeRide = false, nativeError = false,
   position = async () => ({ timestamp: Date.now(), coords: { latitude: 1, longitude: 2, accuracy: 20 } }) } = {}) {
   const hooks = hookHarness(), calls = [], routes = [];
   let active = true, online = true;
@@ -68,7 +70,8 @@ function coordinator({ authenticated = true, role = 'driver', permission = async
     'expo-router': { useRouter: () => ({ navigate: path => routes.push(path) }) },
     'expo-location': { getForegroundPermissionsAsync: () => { calls.push('permission'); return permission(); } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => active },
-    '@/store/hooks': { useAppSelector: selector => selector({ auth: { isAuthenticated: authenticated }, zwangaApi: { config: { online } } }) },
+    '@/store/hooks': { useAppSelector: selector => selector({ auth: { isAuthenticated: authenticated,
+      logoutRequestId: signingOut ? 'logout-request' : undefined }, zwangaApi: { config: { online } } }) },
     '@/store/selectors': { selectIsAuthenticated: state => state.auth.isAuthenticated },
     '@/utils/accountRole': { isDriverAccount: value => value?.role === 'driver' },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },
@@ -77,6 +80,16 @@ function coordinator({ authenticated = true, role = 'driver', permission = async
       useRecordDriverPositionMutation: () => [renew],
     },
     '@/services/currentLocationRequest': { requestCurrentLocation: (...args) => { calls.push('gps'); return position(...args); } },
+    '@/services/nearbyDriverLocation': {
+      hasActiveRideLocationSession: async () => activeRide,
+      ensureNearbyDriverLocation: async () => { if (nativeError) throw new Error('native unavailable'); return nativeRunning; },
+      pauseNearbyDriverLocation: async () => {}, subscribeNearbyDriverLocation: () => () => {},
+    },
+    '@/services/nearbyDriverPositionDelivery': { sendNearbyDriverPosition: async (_id, location) => {
+      if (isUsableNearbyDriverPosition(location)) await renew({ latitude: location.coords.latitude,
+        longitude: location.coords.longitude, accuracy: location.coords.accuracy,
+        recordedAt: new Date(location.timestamp).toISOString() }).unwrap();
+    } },
   })('components/DriverPresenceCoordinator.tsx').DriverPresenceCoordinator;
   return { hooks, state, calls, routes, render: () => hooks.render(Screen),
     setOnline: value => { online = value; },
@@ -92,7 +105,7 @@ test('fresh authorized GPS is sent automatically, without a vehicle selection or
 });
 
 test('automatic discovery never runs for a passenger, logged-out session or disabled service', async () => {
-  for (const options of [{ role: 'passenger' }, { authenticated: false }, {}]) {
+  for (const options of [{ role: 'passenger' }, { authenticated: false }, { signingOut: true }, {}]) {
     const app = coordinator(options);
     if (!Object.keys(options).length) app.state.enabled = false;
     app.render(); await tick();
@@ -127,14 +140,28 @@ test('foreground GPS is aborted on background and cannot publish a delayed fix',
   app.hooks.unmount();
 });
 
-test('45-second refreshes are serialized, and stop when the app leaves the foreground', async t => {
+test('60-second foreground refreshes stop when the app leaves the foreground', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const app = coordinator(); app.render(); await tick();
-  t.mock.timers.tick(45000); await tick();
+  t.mock.timers.tick(60000); await tick();
   assert.equal(app.calls.filter(value => typeof value === 'object').length, 2);
   app.deactivate(); app.render();
   t.mock.timers.tick(90000); await tick();
   assert.equal(app.calls.filter(value => typeof value === 'object').length, 2);
+  app.hooks.unmount();
+});
+
+test('native discovery or an active ride never adds a foreground GPS reader', async () => {
+  for (const options of [{ nativeRunning: true }, { activeRide: true }]) {
+    const app = coordinator(options); app.render(); await tick();
+    assert.deepEqual(app.calls, []); app.hooks.unmount();
+  }
+});
+
+test('a failed native start preserves existing foreground discovery', async () => {
+  const app = coordinator({ nativeError: true }); app.render(); await tick();
+  assert.deepEqual(app.calls.slice(0, 2), ['permission', 'gps']);
+  assert.equal(app.calls.filter(value => typeof value === 'object').length, 1);
   app.hooks.unmount();
 });
 
@@ -150,8 +177,10 @@ test('presence does not poll offline and resumes once on reconnect', async t => 
 });
 
 test('settings explain automatic notifications and GPS freshness with no extra activation step', () => {
-  const calls = [];
-  const Screen = loader({ ...mocks,
+  const calls = [], hooks = hookHarness();
+  const Screen = loader({ ...mocks, react: hooks.react,
+    '@/store/hooks': { useAppSelector: select => select({ zwangaApi: { config: { online: true } } }) },
+    '@/components/profile/NearbyDriverLocationPermission': { NearbyDriverLocationPermission: 'LocationPermission' },
     'react-native': { ...native, Linking: { openSettings: async () => calls.push('settings') } },
     'expo-router': { useRouter: () => ({ back() {} }) },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
@@ -160,11 +189,16 @@ test('settings explain automatic notifications and GPS freshness with no extra a
       data: { enabled: true, automatic: true, positionFreshSeconds: 300 },
     }) },
   })('app/driver-availability.tsx').default;
-  const tree = Screen();
-  assert.match(text(tree), /Aucune disponibilité à activer/);
-  assert.match(text(tree), /5 minute/);
-  assert.match(text(tree), /position trop ancienne/);
+  let tree = hooks.render(Screen);
+  assert.match(text(tree), /automatiquement/);
+  assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
   assert.doesNotMatch(text(tree), /Places proposées|Avec quel véhicule|Me rendre disponible/);
   nodes(tree).find(node => node.type === 'Button' && /réglages du téléphone/.test(text(node))).props.onPress();
   assert.deepEqual(calls, ['settings']);
+  nodes(tree).find(node => node.type === 'Button' && /En savoir plus/.test(text(node))).props.onPress();
+  tree = hooks.render(Screen);
+  assert.match(text(tree), /Aucune disponibilité à activer/);
+  assert.match(text(tree), /5 minute/);
+  assert.match(text(tree), /position trop ancienne/);
+  hooks.unmount();
 });

@@ -5,6 +5,7 @@ import { clearActiveDriverBackgroundTripId, getActiveDriverBackgroundTripSession
   setActiveDriverBackgroundTripId, type ActiveDriverBackgroundTripSession } from '../driverBackgroundLocationSession';
 import { hasStartedDriverBackgroundLocationUpdates, stopRegisteredDriverBackgroundLocationTask } from './driverTaskLifecycle';
 import { DRIVER_BACKGROUND_LOCATION_TASK } from './driverTaskName';
+import { pauseNearbyDriverLocation } from '../nearbyDriverLocation';
 import { DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS, DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS } from '@/utils/navigation/tripCompletion';
 
 let work: Promise<unknown> = Promise.resolve();
@@ -40,6 +41,8 @@ export function startDriverGpsProfile(tripId: string, generation: number,
         nearDestinationSinceMs: previous?.nearDestinationSinceMs ?? null,
       });
       if (!stored || !isCurrent()) return false;
+      await pauseNearbyDriverLocation().catch(() => undefined);
+      if (!isCurrent()) return false;
       const running = await hasStartedDriverBackgroundLocationUpdates();
       if (!isCurrent()) return false;
       if (!running) await Location.startLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK, {

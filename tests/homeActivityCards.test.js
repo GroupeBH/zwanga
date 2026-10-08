@@ -60,6 +60,20 @@ test('without an upcoming trip, the highlighted request remains directly accessi
   assert.deepEqual(routes, ['/request/nearest']);
 });
 
+test('a booked unstarted trip shows its real reservation count before nearby requests and opens management', () => {
+  for (const acceptedCount of [1, 3]) {
+    const label = `${acceptedCount} réservation${acceptedCount > 1 ? 's' : ''}`;
+    const { buttons, elements, routes } = render({ featuredDriverUpcomingTrip: { ...upcoming,
+      reservationSummary: { pendingBookingIds: [], acceptedCount } } });
+    assert.equal(buttons[0].props.accessibilityLabel, `Ouvrir le trajet avec ${label}`);
+    assert.ok(elements.some(node => node.type === 'Text' && node.props.children === label));
+    assert.ok(elements.some(node => node.type === 'Icon' && node.props.name === 'ticket-outline'));
+    buttons[0].props.onPress();
+    assert.deepEqual(routes, ['/trip/manage/upcoming']);
+    assert.match(buttons[1].props.accessibilityLabel, /Voir la demande à accepter/);
+  }
+});
+
 test('removing an expired highlight neither hides nor duplicates the upcoming trip', () => {
   const { buttons } = render({ highlightedDriverRequest: null });
   assert.equal(buttons.length, 1);

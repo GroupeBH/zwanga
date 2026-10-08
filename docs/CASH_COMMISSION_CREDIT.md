@@ -1,4 +1,4 @@
-# Commission cash et tolérance de dette — 7 octobre 2026
+# Commission cash et tolérance de dette — mise à jour du 8 octobre 2026
 
 **Évolution d'interface du même jour :** la carte `DriverCommissionPanel` décrite
 dans l'historique ci-dessous a ensuite été retirée du portefeuille. Les fonds
@@ -21,25 +21,55 @@ de cette simplification ; les règles backend ci-dessous restent applicables.
   de capacité, sans débit ni réservation anticipée pour des passagers inexistants.
 - À l’acceptation, contrôle atomique de la commission du paiement du passager,
   réserves déjà engagées déduites. La part disponible est réservée ; le manque
-  peut atteindre 25 jetons. La dette est suivie séparément : le solde réel du
+  peut porter la dette cumulée du conducteur jusqu'à 25 jetons. La dette est suivie séparément : le solde réel du
   portefeuille ne devient pas négatif.
-- Dès qu’une dette, même inférieure à 25 jetons, existe, aucun nouveau cash n’est
-  accepté. Les moyens électroniques restent disponibles. Une recharge partielle
-  ne réactive pas le cash tant qu’il reste un dû.
+- Une dette inférieure à 25 laisse une marge de crédit égale à `25 - dette`.
+  La nouvelle part de commission non couverte doit tenir dans cette marge.
+  À 25, aucune nouvelle dette n'est permise : une nouvelle commission doit être
+  entièrement financée. Au-delà de 25, les nouveaux choix cash sont bloqués.
+  Une recharge partielle peut donc suffire à rendre du cash possible ; les
+  moyens électroniques restent disponibles.
 - Tout crédit de jetons couvre en priorité le dû : il complète la réserve d’une
   course confirmée ou règle la commission d’une course terminée. Annuler une
   course non effectuée libère sa réserve et son dû.
 - Exception explicitement validée : une course déjà embarquée peut terminer même
   si le tarif final entraîne une dette supérieure à 25 jetons. Cette dette est
-  intégralement enregistrée ; aucun nouveau cash avant régularisation.
+  intégralement enregistrée ; le nouveau cash exige de revenir dans le plafond
+  et de couvrir la prochaine commission avec les fonds et la marge restants.
 
 Exemple : 4 places à 10 000 FC représentent 2 000 FC de commission, donc 20 jetons.
-Avec 8 jetons disponibles, l’estimation affiche 12 jetons de manque. Les passagers
-étant acceptés séparément, le premier engagement créant une dette bloque les
-acceptations cash suivantes jusqu’à régularisation ; publier ne garantit donc
-pas que toutes les réservations ultérieures seront acceptables sans recharge.
+Avec 8 jetons disponibles et aucune dette antérieure, l'estimation affiche
+12 jetons de manque : autorisé. Avec déjà 14 jetons dus, les mêmes places
+produiraient 26 jetons de dette totale : cash refusé. La publication ne réserve
+pas les fonds ; d'autres engagements peuvent consommer la marge entre-temps.
 
 ## Backend local
+
+### Plafond cumulatif — 8 octobre 2026
+
+La migration additive `1780000060000-CumulativeCashDebtLimit` ajuste les
+fonctions installées sans réécrire les migrations ni l'historique financier.
+Le verrou du portefeuille sérialise les acceptations concurrentes ; la dette
+existante et le manque de chaque nouvelle commission partagent un seul plafond.
+Une annulation libère sa part, un crédit rembourse le dû avant de financer de
+nouvelles commissions. L'API renvoie `availableCreditTokens = max(0, 25 - dette)`
+pour un portefeuille non bloqué. Les notifications futures expliquent ce plafond.
+
+Le choix cash mobile est retiré s'il devient invalide après changement de prix,
+de places ou de finances, sans sélectionner un autre paiement. Une lecture
+fraîche précède toute publication cash simple/récurrente ; en cas d'échec, la
+publication attend une nouvelle tentative ou le retrait explicite du cash.
+Les tests ciblés du 8 octobre remplacent les assertions de blocage dès la
+première dette dans les tests initiaux décrits plus bas.
+
+La migration vérifie la publication même en mode financier préparé, mais
+**n'active pas `financial_rollout.enabled`**. Si ce drapeau reste faux, la
+réservation, la capture et la régularisation automatiques ne sont pas activées.
+Le CI/CD historique et l'infrastructure sont inchangés. Les anciens clients
+peuvent garder des contrôles locaux plus stricts jusqu'à leur mise à jour.
+
+Les sections suivantes décrivent l'implémentation initiale ; la présente règle
+cumulative remplace leurs anciennes mentions de blocage dès la première dette.
 
 ### Extension à toutes les origines — 7 octobre 2026
 
@@ -154,8 +184,8 @@ migration financière ; retour arrière par migration en avant après rapprochem
   compte prudente des arrondis par passager. Un ancien serveur qui ne fournit pas
   de capacité de crédit n’est pas présumé autoriser une dette.
 - `features/publish/PublishPaymentModes.tsx`, `PublishPricingStep.tsx` : calcul
-  pour toutes les places ; commission, manque estimé et blocage après dette
-  affichés sans changer automatiquement les moyens choisis.
+  pour toutes les places ; commission et dette cumulée estimées. Un cash devenu
+  invalide est retiré, sans ajouter automatiquement un autre moyen.
 - `features/driver-payments/CashCommissionNotice.tsx`,
   `features/request-detail/RequestAcceptModal.tsx`, `app/request/[id].tsx` et
   `app/incoming-driver.tsx` : explication avant acceptation cash, montant dû et

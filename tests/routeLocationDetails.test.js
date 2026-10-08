@@ -50,6 +50,7 @@ function environment(extra = {}) {
     './tripDetailModel': { USE_CUSTOM_MAP_MARKERS: false, USE_ANDROID_MAP_MARKER_IMAGES: false },
     './requestDetailModel': { TRIP_REQUEST_VEHICLE_LABELS: {}, TRIP_REQUEST_VEHICLE_ICONS: {}, formatCdfPrice: String },
     './CollapsibleRouteMap': { CollapsibleRouteMap: 'RouteMap' },
+    './RequestPassengerContact': { RequestPassengerContact: 'RequestContact' },
     '@/components/trip/RouteLocationDetails': { RouteLocationDetails: 'RouteDetails' },
     ...extra,
   });
@@ -218,6 +219,21 @@ for (const role of ['Driver', 'Passenger']) {
     assert.deepEqual(opened, ['linked-trip']);
   });
 }
+
+test('only an open request exposes pre-acceptance discussion; acceptance overlays disable it', () => {
+  const env = environment();
+  const Summary = env.load('features/request-detail/RequestDriverSummary.tsx').RequestDriverSummary;
+  const props = { tripRequest: { ...trip, id: 'request', status: 'pending', departureDateMax: '2099-01-01', passengerId: 'passenger' },
+    driverHero: {}, requestedVehicleType: 'car', compatibleActiveVehicles: [], isDriverAccount: true, isIdentityVerified: true };
+  const render = changes => nodes(env.hooks.render(() => Summary({ ...props, ...changes }))).find(node => node.type === 'RequestContact');
+  assert.equal(render({}).props.requestId, 'request'); assert.equal(render({}).props.enabled, true);
+  assert.equal(render({ contactBlocked: true }).props.enabled, false);
+  assert.equal(render({ isAcceptingTripRequest: true }).props.enabled, false);
+  assert.equal(render({ isDriverAccount: false }), undefined);
+  assert.equal(render({ tripRequest: { ...props.tripRequest, status: 'expired' } }), undefined);
+  assert.equal(render({ tripRequest: { ...props.tripRequest, selectedDriverId: 'driver' } }), undefined);
+  env.hooks.unmount();
+});
 
 test('map preview/fullscreen use readable marker text without changing coordinates or marker tracking', () => {
   const env = environment();

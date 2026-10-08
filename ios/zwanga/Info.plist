@@ -70,9 +70,9 @@
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>Zwanga utilise votre position pour la navigation GPS même en arrière-plan.</string>
+    <string>Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.</string>
     <key>NSLocationAlwaysUsageDescription</key>
-    <string>Zwanga a besoin de votre position en arrière-plan pour continuer la navigation.</string>
+    <string>Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Zwanga utilise votre position pour afficher les trajets à proximité et la navigation.</string>
     <key>NSMicrophoneUsageDescription</key>
