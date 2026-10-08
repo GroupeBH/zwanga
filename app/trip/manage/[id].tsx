@@ -1,5 +1,6 @@
 import { useManageTripController } from '../../../hooks/manage-trip/useManageTripController';
 import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
 import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
 import { ManageTripContactModal } from '@/features/manage-trip/ManageTripContactModal';
@@ -106,7 +107,7 @@ function OwnerManageTripScreen() {
           <View style={styles.headerBadge}>
             <View style={[styles.statusDot, { backgroundColor: statusColor(model.trip.status).color }]} />
             <Text style={[styles.headerSubtitle, { color: statusColor(model.trip.status).color }]}>
-              {labelStatus(model.trip.status)}
+              {isTripExpired(model.trip) ? 'Expiré' : labelStatus(model.trip.status)}
             </Text>
           </View>
         </View>

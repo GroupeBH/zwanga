@@ -11,6 +11,7 @@ import { TripMapModal } from '../../features/trip-detail/TripMapModal';
 import { TripBookingModal } from '../../features/trip-detail/TripBookingModal';
 import { TripSosModal } from '../../features/trip-detail/TripSosModal';
 import { TripVehicleDetailsModal } from '../../features/trip-detail/TripVehicleDetailsModal';
+import { TripUnavailableState } from '@/features/trip-detail/TripUnavailableState';
 import { styles } from '../../features/screen-styles/app/trip/detail/index';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
@@ -25,36 +26,10 @@ export default function TripDetailsScreen() {
   const model = useTripDetailController();
 
   // Early return AFTER all hooks to avoid hook order violation
-  if (model.data.tripLoading && !model.data.trip) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
-        <View style={styles.emptyStateContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.emptyStateTitle}>Chargement du trajet...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!model.data.trip && !model.data.tripLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
-        <View style={styles.emptyStateContainer}>
-          <View style={styles.emptyStateIcon}>
-            <Ionicons name="car-sport" size={32} color={Colors.primary} />
-          </View>
-          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
-          <Text style={styles.emptyStateText}>
-            Ce trajet n&apos;existe plus ou a été supprimé par son propriétaire.
-          </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={model.data.goHome}>
-            <Ionicons name="arrow-back" size={16} color={Colors.white} />
-            <Text style={styles.primaryButtonText}>Retour</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  if (!model.data.trip) return <TripUnavailableState feedback={model.data.tripFeedback}
+    loading={model.data.tripLoading} fetching={model.data.tripFetching}
+    onRetry={() => { if (model.data.tripId && model.data.isScreenActive && !model.data.tripFetching) void model.data.refetchTrip(); }}
+    onHome={model.data.goHome} />;
 
   return (
     <RideOverlayScope scopeKey={`trip-detail:${model.data.tripId}`} active={model.data.isScreenActive}>

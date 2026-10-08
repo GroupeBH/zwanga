@@ -19,13 +19,15 @@ const requestMapMarkerImages: Record<'departure' | 'arrival', ImageRequireSource
   arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
 };
 
-type Props = Pick<RequestTripController, 'arrivalAddress' | 'arrivalLocation' | 'departureAddress' | 'departureLocation' | 'isRouteLoading' | 'routeCoordinates' | 'routeDistanceLabel' | 'routePreviewRegion' | 'setRequestFormStep'>;
+type Props = Pick<RequestTripController, 'arrivalAddress' | 'arrivalLocation' | 'arrivalReference' | 'departureAddress' | 'departureLocation' | 'departureReference' | 'isRouteLoading' | 'routeCoordinates' | 'routeDistanceLabel' | 'routePreviewRegion' | 'setRequestFormStep'>;
 
 export const RequestRoutePreview = memo(function RequestRoutePreview({
   arrivalAddress,
   arrivalLocation,
+  arrivalReference,
   departureAddress,
   departureLocation,
+  departureReference,
   isRouteLoading,
   routeCoordinates,
   routeDistanceLabel,
@@ -86,12 +88,18 @@ export const RequestRoutePreview = memo(function RequestRoutePreview({
     <View style={styles.offerRouteCard}>
       <View style={styles.offerRouteRow}>
         <Ionicons name="navigate" size={16} color={Colors.success} />
-        <Text style={styles.offerRouteText} numberOfLines={1}>{departureAddress}</Text>
+        <View style={styles.offerRouteCopy}>
+          <Text style={styles.offerRouteText} numberOfLines={1}>{departureAddress}</Text>
+          {!!departureReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Repère : {departureReference.trim()}</Text>}
+        </View>
       </View>
       <View style={styles.offerRouteDivider} />
       <View style={styles.offerRouteRow}>
         <Ionicons name="flag" size={16} color={Colors.primary} />
-        <Text style={styles.offerRouteText} numberOfLines={1}>{arrivalAddress}</Text>
+        <View style={styles.offerRouteCopy}>
+          <Text style={styles.offerRouteText} numberOfLines={1}>{arrivalAddress}</Text>
+          {!!arrivalReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Repère : {arrivalReference.trim()}</Text>}
+        </View>
       </View>
     </View>
     <View pointerEvents="none" style={styles.routeStatusBadge}>

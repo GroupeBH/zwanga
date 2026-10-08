@@ -24,10 +24,12 @@ declare module '@react-native-community/datetimepicker' {
 
   export interface DateTimePickerAndroidProps extends Omit<BasePickerProps, 'mode' | 'display'> {
     mode?: 'date' | 'time';
+    onError?: (error: Error) => void;
   }
 
   export const DateTimePickerAndroid: {
     open: (options: DateTimePickerAndroidProps) => void;
+    dismiss: (mode: 'date' | 'time') => Promise<boolean>;
   };
 
   export default class DateTimePicker extends React.Component<BasePickerProps> {}

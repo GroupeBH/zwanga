@@ -133,6 +133,8 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     currentLocation: trip.currentLocation ?? null,
     lastLocationUpdateAt: trip.lastLocationUpdateAt ?? null,
     startedAt: trip.startedAt ?? null,
+    canReprogram: trip.canReprogram === true,
+    isExpired: trip.isExpired,
     completedAt: trip.completedAt ?? null,
     vehicleId: trip.vehicleId ?? null,
     description: trip.description ?? null,

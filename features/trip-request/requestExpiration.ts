@@ -2,7 +2,7 @@ import type { TripRequest } from '@/types';
 
 // Both grace periods start at departureDateMax, never createdAt or selectedAt.
 // These affect the request only, not its linked trip/bookings/payments.
-export const UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 30 * 1000;
+export const UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 3 * 60 * 60 * 1000;
 export const ACCEPTED_TRIP_REQUEST_EXPIRATION_MS = 2 * 60 * 60 * 1000;
 
 type ExpirableRequest = Pick<TripRequest, 'status' | 'departureDateMax'> &
@@ -11,6 +11,10 @@ type ExpirableRequest = Pick<TripRequest, 'status' | 'departureDateMax'> &
 export function isRequestUnassigned(request: ExpirableRequest) {
   return (request.status === 'pending' || request.status === 'offers_received')
     && !hasAcceptedDriver(request);
+}
+
+export function canEditTripRequest(request: ExpirableRequest) {
+  return ['pending', 'offers_received', 'expired'].includes(request.status) && !hasAcceptedDriver(request);
 }
 
 export function hasAcceptedDriver(request: ExpirableRequest) {

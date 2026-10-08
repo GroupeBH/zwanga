@@ -220,7 +220,7 @@ export function useManageTripActions({
   };
 
   const handleOpenTripEdit = () => {
-    if (!trip || (trip.status !== 'upcoming' && trip.status !== 'ongoing')) {
+    if (!trip || (!trip.canReprogram && trip.status !== 'upcoming' && trip.status !== 'ongoing')) {
       return;
     }
 

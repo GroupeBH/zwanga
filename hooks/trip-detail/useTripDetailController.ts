@@ -229,7 +229,9 @@ export function useTripDetailController() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = data.trip
+  const config = data.tripExpired
+    ? { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Expiré' }
+    : data.trip
     ? statusConfig[data.trip.status as keyof typeof statusConfig] ?? statusConfig.upcoming
     : statusConfig.upcoming;
 

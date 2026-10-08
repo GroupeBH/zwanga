@@ -19,6 +19,8 @@ test('drafts preserve defaults, remain serializable and are isolated per form', 
   assert.equal(first.hasSpecifiedNumberOfSeats, false);
   assert.equal(first.requestPaymentMode, 'cash');
   assert.equal(first.maxPricePerSeat, '');
+  assert.equal(first.timePreset, 'custom');
+  assert.equal(first.hasChosenDepartureTime, false);
   let state = slice.default(undefined, slice.initializeRequestDraft({ id: 'a', draft: first }));
   state = slice.default(state, slice.initializeRequestDraft({ id: 'b', draft: first }));
   state = slice.default(state, slice.changeRequestDraft({ id: 'a', change: { field: 'maxPricePerSeat', value: '2500' } }));
@@ -52,10 +54,14 @@ test('draft hook applies consecutive functional updates to current Redux state a
   draft.setNumberOfSeats((value) => value + 1);
   const date = new Date('2030-09-11T12:30:00Z');
   draft.setDepartureDateMin(date);
+  draft.setDepartureReference('Devant la pharmacie');
+  draft.setArrivalReference('Portail bleu');
   const updated = hooks.render(useRequestDraft);
   assert.equal(updated.numberOfSeats, 3);
   assert.equal(updated.setNumberOfSeats, draft.setNumberOfSeats);
   assert.equal(updated.departureDateMin.getTime(), date.getTime());
+  assert.equal(updated.departureReference, 'Devant la pharmacie');
+  assert.equal(updated.arrivalReference, 'Portail bleu');
   assert.equal(store.getState().requestDrafts.byId['draft-a'].departureDateMinMs, date.getTime());
   assert.equal(findNonSerializableValue(store.getState()), false);
   hooks.unmount();
@@ -226,6 +232,7 @@ function submissionHarness({ create, list = () => Promise.resolve([]), verified 
   const min = new Date(Date.now() + 300_000), max = new Date(min.getTime() + 2_400_000);
   const props = {
     ...slice.createRequestDraft(min.getTime(), 40),
+    hasChosenDepartureTime: true,
     departureAddress: 'Gombe', arrivalAddress: 'Limete', hasDepartureAddress: true, hasArrivalAddress: true,
     canSubmitRequestDetails: true, budgetValue: 2500, hasEditedBudget: true,
     selectedVehicleOptionUnavailable: false,
@@ -244,6 +251,34 @@ test('verified passengers can request more than three seats; backend receives th
   await app.render().handleCreateRequest();
   assert.equal(payload.numberOfSeats, 5);
   assert.deepEqual(app.identityChecks, []);
+  app.hooks.unmount();
+});
+
+test('request creation sends each trimmed landmark separately from addresses and map coordinates', async () => {
+  let payload;
+  const app = submissionHarness({ create: async args => { payload = args; return { id: 'created' }; } });
+  app.props.departureReference = '  Devant la pharmacie  ';
+  app.props.arrivalReference = '  Portail bleu  ';
+  app.props.departureLocation = { latitude: -4.32, longitude: 15.3 };
+  app.props.arrivalLocation = { latitude: -4.35, longitude: 15.35 };
+  await app.render().handleCreateRequest();
+  assert.equal(payload.departureReference, 'Devant la pharmacie');
+  assert.equal(payload.arrivalReference, 'Portail bleu');
+  assert.equal(payload.departureLocation, 'Gombe');
+  assert.equal(payload.arrivalLocation, 'Limete');
+  assert.deepEqual(payload.departureCoordinates, [15.3, -4.32]);
+  assert.deepEqual(payload.arrivalCoordinates, [15.35, -4.35]);
+  app.hooks.unmount();
+});
+
+test('landmarks remain optional, including whitespace-only values', async () => {
+  let payload;
+  const app = submissionHarness({ create: async args => { payload = args; return { id: 'created' }; } });
+  app.props.departureReference = '   '; app.props.arrivalReference = '';
+  await app.render().handleCreateRequest();
+  assert.equal(payload.departureReference, undefined);
+  assert.equal(payload.arrivalReference, undefined);
+  assert.equal(app.dialogs.length, 0);
   app.hooks.unmount();
 });
 
@@ -350,6 +385,33 @@ test('a recommendation arriving during submission cannot change the confirmed sn
   await submitted;
   assert.equal(payload.maxPricePerSeat, 2000);
   app.hooks.unmount();
+});
+
+test('an unchosen departure is rejected even when the form is otherwise complete', async () => {
+  let calls = 0;
+  const app = submissionHarness({ create: async () => { calls++; return { id: 'created' }; } });
+  app.props.hasChosenDepartureTime = false;
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 0); assert.match(app.dialogs[0].message, /date et votre heure/);
+  app.hooks.unmount();
+});
+
+test('planned dates are sent unchanged; expired, invalid and empty windows never reach the server', async () => {
+  let payload, calls = 0;
+  const app = submissionHarness({ create: async value => { calls++; payload = value; return { id: 'created' }; } });
+  const date = new Date(Date.now() + 3 * 86400000); date.setHours(18, 15, 0, 0);
+  const max = new Date(date.getTime() + 30 * 60000);
+  app.props.timePreset = 'custom'; app.props.getCurrentDepartureWindow = () => ({ min: date, max, flex: 30 });
+  await app.render().handleCreateRequest();
+  assert.equal(payload.departureDateMin, date.toISOString()); assert.equal(payload.departureDateMax, max.toISOString());
+  app.hooks.unmount();
+  for (const [min, end] of [[new Date(NaN), max], [date, new Date(NaN)], [date, date], [max, date], [new Date(Date.now() - 1000), max]]) {
+    const f = submissionHarness({ create: async () => { calls++; return { id: 'created' }; } });
+    f.props.getCurrentDepartureWindow = () => ({ min, max: end, flex: 30 });
+    await f.render().handleCreateRequest(); assert.match(f.dialogs[0].message, /heure de départ à venir/);
+    f.hooks.unmount();
+  }
+  assert.equal(calls, 1);
 });
 
 test('nearest-driver dispatch is opt-in from server and only applies to Maintenant', async () => {

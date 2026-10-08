@@ -54,9 +54,11 @@ export default function RequestTripScreen() {
               arrivalAddress={form.arrivalAddress}
               arrivalManualAddress={form.arrivalManualAddress}
               arrivalManualGeocodeStatus={form.arrivalManualGeocodeStatus}
+              arrivalReference={form.arrivalReference}
               departureAddress={form.departureAddress}
               departureManualAddress={form.departureManualAddress}
               departureManualGeocodeStatus={form.departureManualGeocodeStatus}
+              departureReference={form.departureReference}
               departureTouchedRef={form.departureTouchedRef}
               favoriteSuggestions={form.favoriteSuggestions}
               hasArrivalAddress={form.hasArrivalAddress}
@@ -66,8 +68,10 @@ export default function RequestTripScreen() {
               selectedVehicleType={form.selectedVehicleType}
               setArrivalLocation={form.setArrivalLocation}
               setArrivalManualAddress={form.setArrivalManualAddress}
+              setArrivalReference={form.setArrivalReference}
               setDepartureLocation={form.setDepartureLocation}
               setDepartureManualAddress={form.setDepartureManualAddress}
+              setDepartureReference={form.setDepartureReference}
               setSelectedVehicleType={form.setSelectedVehicleType}
               setShowQuickLandmarks={form.setShowQuickLandmarks}
               showQuickLandmarks={form.showQuickLandmarks}
@@ -80,8 +84,10 @@ export default function RequestTripScreen() {
               <RequestRoutePreview
                 arrivalAddress={form.arrivalAddress}
                 arrivalLocation={form.arrivalLocation}
+                arrivalReference={form.arrivalReference}
                 departureAddress={form.departureAddress}
                 departureLocation={form.departureLocation}
+                departureReference={form.departureReference}
                 isRouteLoading={form.isRouteLoading}
                 routeCoordinates={form.routeCoordinates}
                 routeDistanceLabel={form.routeDistanceLabel}
@@ -91,12 +97,11 @@ export default function RequestTripScreen() {
 
               <View style={styles.offerSheet}>
                 <RequestScheduleFields
-                  applyPreset={form.applyPreset}
                   departureDateMin={form.departureDateMin}
-                  departureTimeRangeLabel={form.departureTimeRangeLabel}
+                  hasChosenDepartureTime={form.hasChosenDepartureTime}
+                  pickerError={form.pickerError}
                   flexibilityMinutes={form.flexibilityMinutes}
                   openCustomPicker={form.openCustomPicker}
-                  selectedTimePreset={form.selectedTimePreset}
                   setFlexibilityMinutes={form.setFlexibilityMinutes}
                   timePreset={form.timePreset}
                   timeSummary={form.timeSummary}
@@ -151,7 +156,7 @@ export default function RequestTripScreen() {
           ) : null}
           <TouchableOpacity
             style={[styles.offerSubmitButton, form.primaryButtonDisabled && styles.mainButtonDisabled]}
-            onPress={form.handleCreateRequest}
+            onPress={form.handlePrimaryAction}
             disabled={form.primaryButtonDisabled}
             activeOpacity={0.9}
           >
@@ -159,7 +164,7 @@ export default function RequestTripScreen() {
               <ActivityIndicator color={Colors.white} />
             ) : (
               <>
-                <Text style={styles.offerSubmitText}>Chercher un chauffeur</Text>
+                <Text style={styles.offerSubmitText}>{form.primaryLabel}</Text>
                 <Ionicons name="arrow-forward" size={20} color={Colors.white} />
               </>
             )}
@@ -202,11 +207,12 @@ export default function RequestTripScreen() {
       />
 
       <RequestDatePickerModal
-        departureDateMin={form.departureDateMin}
+        iosPickerValue={form.iosPickerValue}
         handleIosPickerChange={form.handleIosPickerChange}
         insets={form.insets}
         iosPickerMode={form.iosPickerMode}
-        setIosPickerMode={form.setIosPickerMode}
+        closeDatePicker={form.closeDatePicker}
+        confirmIosPicker={form.confirmIosPicker}
       />
     </FormScreen>
   );

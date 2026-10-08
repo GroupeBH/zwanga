@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 export function useRequestDetailFormState() {
   const [showEditForm, setShowEditForm] = useState(false);
+  const [editExpectedUpdatedAt, setEditExpectedUpdatedAt] = useState<string | undefined>();
   const [editDepartureLocation, setEditDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [editArrivalLocation, setEditArrivalLocation] = useState<MapLocationSelection | null>(null);
   const [editDepartureManualAddress, setEditDepartureManualAddress] = useState('');
@@ -98,6 +99,8 @@ export function useRequestDetailFormState() {
     setEditArrivalReference,
     setEditNumberOfSeats,
     setEditDescription,
+    editExpectedUpdatedAt,
+    setEditExpectedUpdatedAt,
     overdueScheduleEditorOpenedRef,
     editPickerRestorePendingRef,
     editPickerTransitionTimerRef,

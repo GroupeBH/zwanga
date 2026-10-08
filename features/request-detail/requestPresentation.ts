@@ -87,7 +87,9 @@ export function buildRequestDetailPresentation({
         title: tripRequest.status === 'expired' ? 'Votre demande a expiré' : 'Votre demande est annulée',
         subtitle: tripRequest.tripId
           ? "Cette demande n'est plus active. Le trajet associé reste consultable."
-          : "Cette demande n'est plus disponible. Vous pouvez créer une nouvelle demande.",
+          : tripRequest.status === 'expired' && !tripRequest.selectedDriverId && !tripRequest.offers?.some(offer => offer.status === 'accepted')
+            ? 'Vous pouvez reprogrammer cette demande en choisissant un nouveau créneau futur.'
+            : "Cette demande n'est plus disponible. Vous pouvez créer une nouvelle demande.",
       };
     }
     if (tripRequest.tripId) {
@@ -115,7 +117,7 @@ export function buildRequestDetailPresentation({
     }
     return {
       title: 'Nous cherchons un conducteur',
-      subtitle: "Sans conducteur confirmé, votre demande expire 30 secondes après l'heure limite de départ souhaitée.",
+      subtitle: "Sans conducteur confirmé, votre demande expire 3 heures après l'heure limite de départ souhaitée.",
     };
   })();
   const ownerHeroHintMessage =

@@ -100,6 +100,8 @@ export type ServerTrip = {
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
   startedAt?: string | null;
+  canReprogram?: boolean;
+  isExpired?: boolean;
   completedAt?: string | null;
   driverSafetyEmergencyContactIds?: string[];
   tripRequestId?: string | null;

@@ -102,7 +102,7 @@ export function useTripDetailEditor({
   return {
     editRoute,
     editor,
-    edit,
+    edit: { ...edit, isSavingTrip: edit.isSavingTrip || editSubmission.isSubmitting },
     editLabels,
     editSchedule,
     editSubmission,

@@ -12,6 +12,7 @@ export interface RequestDraft {
   departureReference: string;
   arrivalReference: string;
   timePreset: TimePreset;
+  hasChosenDepartureTime: boolean;
   departureDateMinMs: number;
   flexibilityMinutes: number;
   numberOfSeats: number;
@@ -34,7 +35,7 @@ export function createRequestDraft(departureDateMinMs: number, flexibilityMinute
   return {
     departureLocation: null, arrivalLocation: null,
     departureManualAddress: '', arrivalManualAddress: '', departureReference: '', arrivalReference: '',
-    timePreset: 'now', departureDateMinMs, flexibilityMinutes,
+    timePreset: 'custom', hasChosenDepartureTime: false, departureDateMinMs, flexibilityMinutes,
     numberOfSeats: 1, hasSpecifiedNumberOfSeats: false, selectedVehicleType: 'car',
     maxPricePerSeat: '', hasEditedBudget: false, requestPaymentMode: 'cash', description: '',
   };
