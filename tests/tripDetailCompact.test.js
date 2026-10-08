@@ -48,7 +48,7 @@ test('trip detail shows each place once, with both full timestamps, address cont
   assert.equal(texts.filter(value => value === trip.arrival.name).length, 1);
   assert.equal(texts.some(value => value.includes(' vers ')), false);
   for (const value of ['18/09/2026 18:30', '18/09/2026 18:59', 'Route de Matadi, Kinshasa',
-    'Repère : Portail principal', '2 places', '9.5 km', '4000 FC / place', 'Identité vérifiée requise pour réserver']) {
+    'Référence : Portail principal', '2 places', '9.5 km', '4000 FC / place', 'Identité vérifiée requise pour réserver']) {
     assert.ok(texts.includes(value), value);
   }
   assert.ok(nodes.some(node => node.props.accessibilityLabel?.includes('Arrivée estimée : 18/09/2026 18:59')));

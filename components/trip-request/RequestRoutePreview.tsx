@@ -90,7 +90,7 @@ export const RequestRoutePreview = memo(function RequestRoutePreview({
         <Ionicons name="navigate" size={16} color={Colors.success} />
         <View style={styles.offerRouteCopy}>
           <Text style={styles.offerRouteText} numberOfLines={1}>{departureAddress}</Text>
-          {!!departureReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Repère : {departureReference.trim()}</Text>}
+          {!!departureReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Référence : {departureReference.trim()}</Text>}
         </View>
       </View>
       <View style={styles.offerRouteDivider} />
@@ -98,7 +98,7 @@ export const RequestRoutePreview = memo(function RequestRoutePreview({
         <Ionicons name="flag" size={16} color={Colors.primary} />
         <View style={styles.offerRouteCopy}>
           <Text style={styles.offerRouteText} numberOfLines={1}>{arrivalAddress}</Text>
-          {!!arrivalReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Repère : {arrivalReference.trim()}</Text>}
+          {!!arrivalReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Référence : {arrivalReference.trim()}</Text>}
         </View>
       </View>
     </View>

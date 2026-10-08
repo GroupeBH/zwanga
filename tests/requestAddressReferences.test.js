@@ -34,18 +34,19 @@ test('departure and arrival have separate, labelled optional inputs in both map 
       departureManualAddress: '', departureTouchedRef: { current: false },
       setDepartureReference: value => changes.push(['departure', value]), setArrivalReference: value => changes.push(['arrival', value]),
     });
-    const inputs = nodes(tree).filter(n => n.type === 'Input' && n.props.accessibilityLabel?.startsWith('Repère'));
+    const inputs = nodes(tree).filter(n => n.type === 'Input' && n.props.accessibilityLabel?.startsWith('Référence'));
     assert.equal(inputs.length, 2);
     assert.equal(inputs[0].props.value, 'Pharmacie'); assert.equal(inputs[1].props.value, 'Portail bleu');
     for (const input of inputs) {
-      assert.match(input.props.accessibilityLabel, /facultatif/);
+      assert.match(input.props.accessibilityLabel, /facultative/);
       assert.equal(input.props.maxLength, 200);
       assert.ok(input.props.style.minHeight >= 44);
     }
     inputs[0].props.onChangeText('Entrée principale'); inputs[1].props.onChangeText('Devant le marché');
     assert.deepEqual(changes, [['departure', 'Entrée principale'], ['arrival', 'Devant le marché']]);
-    assert.match(words(tree), /Repère au départ · facultatif/);
-    assert.match(words(tree), /Repère à l’arrivée · facultatif/);
+    assert.match(words(tree), /Référence au départ · facultative/);
+    assert.match(words(tree), /Référence à l’arrivée · facultative/);
+    assert.doesNotMatch(words(tree), /Repère/);
   }
 });
 
@@ -54,10 +55,38 @@ test('route preview includes nonempty landmarks without replacing addresses or a
   const props = { departureAddress: 'Départ test', arrivalAddress: 'Arrivée test', departureReference: '  Pharmacie  ',
     arrivalReference: 'Portail bleu', routeCoordinates: [], setRequestFormStep() {} };
   const preview = RequestRoutePreview.type(props);
-  assert.match(words(preview), /Départ testRepère : Pharmacie/);
-  assert.match(words(preview), /Arrivée testRepère : Portail bleu/);
+  assert.match(words(preview), /Départ testRéférence : Pharmacie/);
+  assert.match(words(preview), /Arrivée testRéférence : Portail bleu/);
   assert.equal(nodes(preview).filter(n => n.type === 'Map').length, 1);
-  assert.doesNotMatch(words(RequestRoutePreview.type({ ...props, departureReference: '  ', arrivalReference: '' })), /Repère/);
+  assert.doesNotMatch(words(RequestRoutePreview.type({ ...props, departureReference: '  ', arrivalReference: '' })), /Référence/);
+});
+
+test('publication uses reference labels for both optional fields without changing their values or callbacks', () => {
+  const { PublishRouteFields } = loader({
+    'react-native': { View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button', StyleSheet: { create: value => value } },
+    '@expo/vector-icons': { Ionicons: 'Icon' },
+    '../screen-styles/app/publish/index': { styles: {} },
+    '@/components/address/ManualAddressStatus': { ManualAddressStatus: 'Status' },
+  })('features/publish/PublishRouteFields.tsx');
+  const changes = [];
+  const props = { departureReference: '', arrivalReference: '', renderGpsStatus: () => null,
+    setShowDepartureReference: value => changes.push(['openDeparture', value]),
+    setShowArrivalReference: value => changes.push(['openArrival', value]),
+    setDepartureReference: value => changes.push(['departure', value]),
+    setArrivalReference: value => changes.push(['arrival', value]) };
+  const closed = PublishRouteFields(props);
+  const add = nodes(closed).filter(n => n.type === 'Button' && words(n) === 'Ajouter une référence');
+  assert.equal(add.length, 2);
+  add.forEach(button => button.props.onPress());
+  const opened = PublishRouteFields({ ...props, shouldShowDepartureReference: true, shouldShowArrivalReference: true,
+    departureReference: 'Entrée principale', arrivalReference: 'Portail bleu' });
+  assert.match(words(opened), /Référence de départ.*Référence d’arrivée/);
+  assert.doesNotMatch(words(opened), /Repère/);
+  const inputs = nodes(opened).filter(n => n.type === 'Input');
+  assert.deepEqual(inputs.map(n => n.props.accessibilityLabel), ['Référence de départ, facultative', 'Référence d’arrivée, facultative']);
+  assert.deepEqual(inputs.map(n => n.props.value), ['Entrée principale', 'Portail bleu']);
+  inputs[0].props.onChangeText('Pharmacie'); inputs[1].props.onChangeText('Station');
+  assert.deepEqual(changes, [['openDeparture', true], ['openArrival', true], ['departure', 'Pharmacie'], ['arrival', 'Station']]);
 });
 
 test('controller exposes landmarks, preserves them across steps and swaps them with their addresses', () => {

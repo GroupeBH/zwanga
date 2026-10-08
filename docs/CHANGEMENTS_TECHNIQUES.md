@@ -1,5 +1,86 @@
 # Journal des changements techniques
 
+## 8 octobre 2026 — Navigation conducteur plus compacte
+
+- Constat : en navigation, partage, confirmations, statistiques des passagers,
+  prochain arrêt, gains et sélection d’itinéraire s’empilaient au-dessus de la
+  carte. Les commandes verticales et les instructions à hauteur non bornée
+  pouvaient occuper la même zone. Il s’agit d’un constat de structure du code,
+  pas d’une mesure de surface visible sur appareil.
+- Solution appliquée, guidée par `frontend-skill` : conserver la carte comme
+  espace principal et donner la priorité à l’arrêt en cours. En-tête resserré,
+  partage/contact/SOS sur une ligne quand la largeur le permet, nom et adresse du
+  prochain passager regroupés avec l’accès à la liste complète. Le badge redondant
+  « Suivi actif » est retiré. Toucher l’arrêt ouvre son détail, sans le valider.
+- Les confirmations restent directement accessibles sous les détails bornés,
+  avec une explication plus courte. Leur composant garde la même position React
+  lorsqu’une nouvelle réservation arrive, afin de ne pas perdre son état local.
+  Une réservation unique garde son action directe ; plusieurs réservations
+  gardent la sélection du titulaire dans le panneau existant. Le conducteur ne
+  confirme jamais à la place du passager.
+- Gains et sélection de section d’itinéraire sont accessibles dans « Options »
+  pendant la navigation ; le récapitulatif de gains reste affichable à la fin.
+  Le partage reste direct. Interruption, son, options et recalcul sont alignés
+  horizontalement et restent au même emplacement lors du traitement d’une
+  réservation. Le menu conserve ses limites tactiles et se ferme au changement
+  de trajet ou d’activité de l’écran.
+- Nouveau composant `DriverNavigationGuidance.tsx` : instruction actuelle et
+  suivante plus compactes, texte intégral défilable en cas de besoin. Le calcul
+  partagé `driverNavigationLayout.ts` réserve séparément instructions, commandes
+  et panneau supérieur, en tenant compte des marges système. Les demandes urgentes
+  et les nouvelles réservations restent prioritaires, avec leurs boutons hors du
+  texte défilable. Les anciens styles d’instructions inutilisés sont supprimés.
+- Fichiers : `app/trip/navigate/[id].tsx`, `features/driver-navigation/`
+  (`DriverNavigationTopPanel.tsx`, `DriverNavigationPassengersBar.tsx`,
+  `DriverNavigationControls.tsx`, les deux nouveaux fichiers précités et
+  `driverPendingBookingLayout.ts`), `features/ride-recovery/RideRecoveryControl.tsx`,
+  `features/screen-styles/app/trip/navigate/detail/container.styles.ts`,
+  `tests/driverNavigationCompact.test.js`, `tests/navigationHeaders.test.js`,
+  `tests/driverPendingBookingLayout.test.js`, `tests/rideRecoveryUI.test.js`, `package.json`.
+- Conservé : double validation, file hors connexion, protections contre les doubles
+  appuis, priorités d’interruption, paiement et confirmation du cash, contacts,
+  SOS, sortie directe, GPS, sockets et calcul d’itinéraire. Aucun endpoint,
+  minuteur, dépendance, migration ou changement natif ajouté. Les gains ne sont
+  plus montés automatiquement au-dessus de la carte en cours de route ; aucun
+  gain de mémoire, de fluidité ou de batterie n’a été mesuré.
+- Vérifications : `npm run test:driver-navigation-ui` **83 tests réussis**,
+  `npm run test:navigation` **63 tests réussis**, TypeScript `tsc --noEmit` réussi,
+  ESLint ciblé sans avertissement, `git diff --check` réussi. Les nouveaux tests
+  couvrent les bornes de mise en page, les gestes distincts détail/liste, le menu,
+  les confirmations stables, les contenus longs et l’absence de réservation.
+- Limites : tests JavaScript avec composants natifs simulés, pas de validation
+  visuelle/native sur iOS ou Android. Les petits écrans et polices agrandies
+  peuvent nécessiter un défilement des détails. À contrôler sur appareils :
+  lisibilité du prochain arrêt, visibilité du véhicule, instructions longues,
+  un et plusieurs passagers, nouvelle réservation pendant une confirmation,
+  interruption, gains et retour d’arrière-plan. Aucun crash ou échauffement
+  n’est annoncé corrigé par cette refonte.
+
+## 8 octobre 2026 — « Référence » dans les adresses
+
+- Demande : remplacer le mot « repère » par « référence » dans la publication
+  et la création de demandes de trajet.
+- Appliqué : libellés de départ/arrivée, boutons « Ajouter une référence »,
+  « Références rapides », récapitulatif de demande et libellés d’accessibilité.
+  Les composants partagés de recherche d’adresse et de détail de trajet adoptent
+  également ce vocabulaire pour ne pas le changer au cours du parcours.
+- Fichiers : `features/publish/PublishRouteFields.tsx`,
+  `features/publish/PublishRouteStep.tsx`, `components/trip-request/RequestRouteStep.tsx`,
+  `components/trip-request/RequestRoutePreview.tsx`, `components/LocationPickerModal.tsx`,
+  `components/AddressEntryModeSelector.tsx`, `components/trip/RouteLocationDetails.tsx`,
+  `tests/requestAddressReferences.test.js`, `tests/tripDetailCompact.test.js`.
+  L’import de type situé en fin de `PublishRouteFields.tsx` est replacé en tête.
+- Conservé : champs facultatifs, contenu saisi, brouillons, inversion des adresses,
+  coordonnées, propriétés `departureReference`/`arrivalReference` et payloads.
+  Aucun changement de contrat API ou de base de données ; les données historiques
+  ne sont pas réécrites.
+- Vérifications : `npm run test:trip-request` **74 tests réussis**, dont un test
+  ajouté pour les champs de publication et leurs callbacks. Les suites
+  `tripDetailCompact`, `routeLocationDetails`, `locationPicker` et
+  `locationPickerMapPress` totalisent **45 tests réussis**. TypeScript réussi ;
+  recherche des anciens libellés dans les composants et formulaires sans résultat.
+  Tests de composants simulés, pas d’essai VoiceOver/TalkBack sur appareil.
+
 ## 8 octobre 2026 — Repères de départ et d’arrivée dans la création d’une demande
 
 - Problème : le brouillon et le payload comportaient déjà `departureReference` et

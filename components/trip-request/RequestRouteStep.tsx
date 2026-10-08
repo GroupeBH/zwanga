@@ -96,14 +96,14 @@ export function RequestRouteStep({
           </View>
         ) : null}
         <View style={styles.routeManualWrap}>
-          <Text style={styles.routeReferenceLabel}>Repère au départ · facultatif</Text>
+          <Text style={styles.routeReferenceLabel}>Référence au départ · facultative</Text>
           <TextInput
             style={styles.rideReferenceInput}
             value={departureReference}
             onChangeText={setDepartureReference}
             placeholder="Ex. Devant la pharmacie"
             placeholderTextColor={Colors.gray[500]}
-            accessibilityLabel="Repère au départ, facultatif"
+            accessibilityLabel="Référence au départ, facultative"
             autoCapitalize="sentences"
             returnKeyType="done"
             maxLength={200}
@@ -149,14 +149,14 @@ export function RequestRouteStep({
           </View>
         ) : null}
         <View style={styles.routeManualWrap}>
-          <Text style={styles.routeReferenceLabel}>Repère à l’arrivée · facultatif</Text>
+          <Text style={styles.routeReferenceLabel}>Référence à l’arrivée · facultative</Text>
           <TextInput
             style={styles.rideReferenceInput}
             value={arrivalReference}
             onChangeText={setArrivalReference}
             placeholder="Ex. Portail bleu, entrée principale"
             placeholderTextColor={Colors.gray[500]}
-            accessibilityLabel="Repère à l’arrivée, facultatif"
+            accessibilityLabel="Référence à l’arrivée, facultative"
             autoCapitalize="sentences"
             returnKeyType="done"
             maxLength={200}

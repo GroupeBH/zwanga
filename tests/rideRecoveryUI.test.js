@@ -83,11 +83,12 @@ test('condensed passenger controls retain both confirmations and the offline rec
   }
 });
 
-test('driver confirms either stage in one tap without acting for the passenger', async () => {
+test('condensed driver controls confirm either stage without acting for the passenger', async () => {
   for (const stage of ['pickup', 'dropoff']) {
     const h = setup(); h.state.auth.user.id = 'driver'; h.state.rideRecovery.userId = 'driver';
-    h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: stage === 'dropoff' }], actor: 'driver', compact: true });
+    h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: stage === 'dropoff' }], actor: 'driver', condensed: true });
     h.render(); h.render();
+    assert.match(words(h.tree()), /Test · 1 place\(s\). Le passager confirme aussi/);
     assert.equal(words(h.trigger()), stage === 'pickup' ? 'Confirmer l’embarquement' : 'Confirmer l’arrivée à destination');
     const press = h.trigger().props.onPress; press(); press();
     await new Promise(resolve => setImmediate(resolve)); h.render(); press();

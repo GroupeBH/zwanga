@@ -41,7 +41,8 @@ test('pending booking takes priority over scrolling details without removing con
   assert.equal(all(tree).filter(n => n.type === 'Recovery').length, 1);
   assert.equal(all(tree).filter(n => n.type === 'Assistance').length, 1);
   const frame = flat(tree.props.style);
-  assert.ok(frame.top + frame.maxHeight + 12 <= 640 - 180 - 48, 'reserve a separate row for map commands');
+  const layout = loader()('features/driver-navigation/driverNavigationLayout.ts').getDriverNavigationLayout(640, 24, 24);
+  assert.ok(frame.top + frame.maxHeight + 12 <= 640 - layout.controlsBottom - 48, 'reserve a separate row for map commands');
 });
 
 test('pending card targets a single booking and yields to urgent dropoff', () => {
@@ -112,6 +113,6 @@ test('map controls use one row for pending booking and preserve their actions an
   assert.ok(frame.minHeight >= popupStyle.maxHeight + popupStyle.bottom);
   assert.ok(frame.width >= popupStyle.width + popupStyle.right);
   foundation.passengers.activePendingBooking = null;
-  assert.notEqual(flat(render().props.style).flexDirection, 'row', 'restore standard controls after processing the queue');
+  assert.equal(flat(render().props.style).flexDirection, 'row', 'controls stay in place after processing the queue');
   hooks.unmount();
 });

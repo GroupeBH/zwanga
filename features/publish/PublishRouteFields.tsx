@@ -1,4 +1,5 @@
 import { RoutePointStatus } from './publishModel';
+import type { ManualGeocodeStatus } from '@/utils/manualAddressGeocode';
 import { styles } from '../screen-styles/app/publish/index';
 import { ManualAddressStatus } from '@/components/address/ManualAddressStatus';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -161,7 +162,7 @@ export function PublishRouteFields({
           {shouldShowDepartureReference ? (
             <View style={styles.referenceField}>
               <View style={styles.referenceHeader}>
-                <Text style={styles.referenceLabel}>Repère de départ</Text>
+                <Text style={styles.referenceLabel}>Référence de départ</Text>
                 {!departureReference.trim() && (
                   <TouchableOpacity onPress={() => setShowDepartureReference(false)}>
                     <Ionicons name="close" size={16} color={Colors.gray[500]} />
@@ -171,6 +172,7 @@ export function PublishRouteFields({
               <TextInput
                 style={styles.referenceInput}
                 value={departureReference}
+                accessibilityLabel="Référence de départ, facultative"
                 onChangeText={setDepartureReference}
                 placeholder="Ex: station, portail bleu"
                 placeholderTextColor={Colors.gray[400]}
@@ -182,7 +184,7 @@ export function PublishRouteFields({
               onPress={() => setShowDepartureReference(true)}
             >
               <Ionicons name="add" size={15} color={Colors.gray[600]} />
-              <Text style={styles.referenceAddText}>Ajouter un repère</Text>
+              <Text style={styles.referenceAddText}>Ajouter une référence</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -272,7 +274,7 @@ export function PublishRouteFields({
           {shouldShowArrivalReference ? (
             <View style={styles.referenceField}>
               <View style={styles.referenceHeader}>
-                <Text style={styles.referenceLabel}>Repère d’arrivée</Text>
+                <Text style={styles.referenceLabel}>Référence d’arrivée</Text>
                 {!arrivalReference.trim() && (
                   <TouchableOpacity onPress={() => setShowArrivalReference(false)}>
                     <Ionicons name="close" size={16} color={Colors.gray[500]} />
@@ -282,6 +284,7 @@ export function PublishRouteFields({
               <TextInput
                 style={styles.referenceInput}
                 value={arrivalReference}
+                accessibilityLabel="Référence d’arrivée, facultative"
                 onChangeText={setArrivalReference}
                 placeholder="Ex: entrée principale"
                 placeholderTextColor={Colors.gray[400]}
@@ -293,7 +296,7 @@ export function PublishRouteFields({
               onPress={() => setShowArrivalReference(true)}
             >
               <Ionicons name="add" size={15} color={Colors.gray[600]} />
-              <Text style={styles.referenceAddText}>Ajouter un repère</Text>
+              <Text style={styles.referenceAddText}>Ajouter une référence</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -301,4 +304,3 @@ export function PublishRouteFields({
     </View>
   );
 }
-import type { ManualGeocodeStatus } from '@/utils/manualAddressGeocode';

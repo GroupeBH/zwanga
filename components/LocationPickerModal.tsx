@@ -61,8 +61,8 @@ function PickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute 
       <View style={[styles.search, picker.searchOpen && styles.searchFocused]}>
         <Ionicons name="search-outline" size={20} color={Colors.gray[600]} />
         <TextInput
-          style={styles.input} value={picker.query} placeholder="Adresse, quartier, repère…" placeholderTextColor={Colors.gray[600]}
-          accessibilityLabel="Rechercher une adresse, un quartier ou un repère"
+          style={styles.input} value={picker.query} placeholder="Adresse, quartier, référence…" placeholderTextColor={Colors.gray[600]}
+          accessibilityLabel="Rechercher une adresse, un quartier ou une référence"
           onChangeText={picker.setQuery} onFocus={() => { setFavoritesOpen(false); picker.openSearch(); }}
           onSubmitEditing={() => { if (picker.query.trim().length >= 3) void picker.resolvePlace(picker.query.trim()); }}
           returnKeyType="search" autoCorrect={false} autoComplete="off" maxLength={256}
