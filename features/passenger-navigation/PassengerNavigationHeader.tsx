@@ -14,8 +14,8 @@ interface Props {
 }
 export function PassengerNavigationHeader({ model, assistance }: Props) {
   const { data, state, presentation, tripActions } = model;
-  const title = presentation.tripStatus === 'waiting_pickup' ? 'En attente de récupération' :
-    presentation.tripStatus === 'pickup_confirmation_needed' ? 'Récupération détectée' :
+  const title = presentation.tripStatus === 'waiting_pickup' ? 'Votre prise en charge' :
+    presentation.tripStatus === 'pickup_confirmation_needed' ? 'Confirmez l’embarquement' :
     presentation.tripStatus === 'in_transit' ? 'En route' :
     presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivée détectée' :
     presentation.tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet';
@@ -30,7 +30,7 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
       </TouchableOpacity>
       <View style={styles.heading}>
         <Text style={styles.title}>{title}</Text>
-        {state.isSocketConnected && !data.offlineBooking && !data.offlineTrip && <Text style={styles.live}>En direct</Text>}
+        {state.isSocketConnected && !data.offlineBooking && !data.offlineTrip && <Text style={styles.live}>Connecté</Text>}
         {(data.offlineBooking || data.offlineTrip) && <Text style={styles.subtitle}>Hors connexion</Text>}
       </View>
     </View>
@@ -39,16 +39,17 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
         <Text style={styles.subtitle}>Votre conducteur</Text>
         <Text style={styles.name} numberOfLines={1}>{data.trip?.driverName || 'Conducteur'}</Text>
       </View>
-      <NavigationAssistanceButtons role="passenger" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
+      <NavigationAssistanceButtons inline role="passenger" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
-    <TripShareAction compact onShare={tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />
-    <PassengerPickupEstimateBanner estimate={model.pickupEstimate} />
+    <View style={styles.row}>
+      <View style={styles.driver}><PassengerPickupEstimateBanner compact estimate={model.pickupEstimate} /></View>
+      <TripShareAction compact inline onShare={tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />
+    </View>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  header: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20, backgroundColor: Colors.white,
-    borderBottomLeftRadius: 24, borderBottomRightRadius: 24, paddingBottom: 12, gap: 10 },
+  header: { backgroundColor: Colors.white, paddingBottom: 10, gap: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.gray[50], alignItems: 'center', justifyContent: 'center' },
   heading: { flex: 1, minWidth: 0, alignItems: 'center' },

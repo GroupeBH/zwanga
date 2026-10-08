@@ -8,6 +8,23 @@ const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificatio
 
 const requestHref = id => ({ pathname: '/request-details/[id]', params: { id } });
 
+test('sent and received token transfers open the wallet, including nested pushes', () => {
+  for (const type of ['wallet_transfer_in', 'wallet_transfer_out']) {
+    const payload = { type, transferId: 'transfer', amount: 10 };
+    assert.equal(getNotificationHref(payload), '/wallet');
+    assert.equal(getNotificationHref({ data: payload }), '/wallet');
+    assert.equal(getNotificationHref({ ...payload, tripId: 'unrelated' }), '/wallet');
+  }
+});
+
+test('welcome bonus confirmation opens the wallet for flat and nested push payloads', () => {
+  const payload = { type: 'wallet_loyalty_reward', relatedEntityType: 'welcome_bonus', amount: 50 };
+  assert.equal(getNotificationHref(payload), '/wallet');
+  assert.equal(getNotificationHref({ data: payload }), '/wallet');
+  assert.equal(getNotificationHref({ ...payload, tripId: 'unrelated' }), '/wallet');
+  assert.equal(getNotificationHref({ type: 'wallet_loyalty_reward', tripId: 'trip' }), '/trip/trip');
+});
+
 test('cash commission and trial alerts open the wallet even when a booking identifier is present', () => {
   for (const type of ['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started']) {
     assert.equal(getNotificationHref({ type, bookingId: 'booking', tripId: 'trip' }), '/wallet');

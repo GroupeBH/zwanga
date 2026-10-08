@@ -3,8 +3,8 @@ import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
-import { invitationHref, notificationDecision, parseDriverInvitation, parseDriverResponseResult } from '@/features/notifications/driverInvitation';
-import { configureDriverNotifications, displayDriverInvitation } from '@/services/driverNotifications';
+import { invitationHref, notificationDecision, parseDriverInvitation, parseDriverResponseResult, readDriverPushData } from '@/features/notifications/driverInvitation';
+import { configureDriverNotifications, displayDriverInvitation, silenceDriverInvitations } from '@/services/driverNotifications';
 import { respondToDriverNotification } from '@/services/driverNotificationResponse';
 import { takePendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 
@@ -41,11 +41,14 @@ export function useDriverNotifications(userId: string | undefined) {
       }
     };
     void configureDriverNotifications().catch(() => {});
+    const silenceOnOpen = () => { void silenceDriverInvitations(userId).catch(() => {}); };
+    if (AppState.currentState === 'active') silenceOnOpen();
+    const appState = AppState.addEventListener('change', state => { if (state === 'active') silenceOnOpen(); });
     const pendingOpen = takePendingDriverOpen(userId);
     if (pendingOpen) void open(pendingOpen, 'default', true).catch(() => {});
     const foreground = Notifications.addNotificationReceivedListener(notification => {
-      const data = notification.request.content.data;
-      if (!parseDriverInvitation(data)) return;
+      const data = readDriverPushData(notification);
+      if (!data || !parseDriverInvitation(data)) return;
       void displayDriverInvitation(data).catch(() => {});
       void open(data).catch(() => {});
     });
@@ -66,6 +69,6 @@ export function useDriverNotifications(userId: string | undefined) {
     if (Platform.OS === 'android') void notifee.getInitialNotification().then(event => {
       if (event) return open(event.notification.data, event.pressAction.id, true, true);
     }).catch(() => {});
-    return () => { disposed = true; foreground.remove(); response.remove(); native(); };
+    return () => { disposed = true; appState.remove(); foreground.remove(); response.remove(); native(); };
   }, [router, userId]);
 }

@@ -57,7 +57,7 @@ test('profile entry explains its purpose, honors the server flag and skips reads
 function coordinator({ authenticated = true, role = 'driver', permission = async () => ({ granted: true }),
   position = async () => ({ timestamp: Date.now(), coords: { latitude: 1, longitude: 2, accuracy: 20 } }) } = {}) {
   const hooks = hookHarness(), calls = [], routes = [];
-  let active = true;
+  let active = true, online = true;
   const user = { id: 'driver', role };
   const state = { enabled: true, automatic: true, pendingOfferId: null };
   const appState = { currentState: 'active' };
@@ -68,8 +68,8 @@ function coordinator({ authenticated = true, role = 'driver', permission = async
     'expo-router': { useRouter: () => ({ navigate: path => routes.push(path) }) },
     'expo-location': { getForegroundPermissionsAsync: () => { calls.push('permission'); return permission(); } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => active },
-    '@/store/hooks': { useAppSelector: () => authenticated },
-    '@/store/selectors': { selectIsAuthenticated() {} },
+    '@/store/hooks': { useAppSelector: selector => selector({ auth: { isAuthenticated: authenticated }, zwangaApi: { config: { online } } }) },
+    '@/store/selectors': { selectIsAuthenticated: state => state.auth.isAuthenticated },
     '@/utils/accountRole': { isDriverAccount: value => value?.role === 'driver' },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },
     '@/store/api/driverDispatchApi': {
@@ -79,6 +79,7 @@ function coordinator({ authenticated = true, role = 'driver', permission = async
     '@/services/currentLocationRequest': { requestCurrentLocation: (...args) => { calls.push('gps'); return position(...args); } },
   })('components/DriverPresenceCoordinator.tsx').DriverPresenceCoordinator;
   return { hooks, state, calls, routes, render: () => hooks.render(Screen),
+    setOnline: value => { online = value; },
     deactivate: () => { active = false; appState.currentState = 'background'; } };
 }
 
@@ -134,6 +135,17 @@ test('45-second refreshes are serialized, and stop when the app leaves the foreg
   app.deactivate(); app.render();
   t.mock.timers.tick(90000); await tick();
   assert.equal(app.calls.filter(value => typeof value === 'object').length, 2);
+  app.hooks.unmount();
+});
+
+test('presence does not poll offline and resumes once on reconnect', async t => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const app = coordinator(); app.setOnline(false); app.render(); await tick();
+  t.mock.timers.tick(135000); await tick(); assert.equal(app.calls.length, 0);
+  app.setOnline(true); app.render(); await tick();
+  assert.equal(app.calls.filter(value => typeof value === 'object').length, 1);
+  app.setOnline(false); app.render(); t.mock.timers.tick(135000); await tick();
+  assert.equal(app.calls.filter(value => typeof value === 'object').length, 1);
   app.hooks.unmount();
 });
 

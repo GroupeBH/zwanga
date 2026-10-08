@@ -10,10 +10,11 @@ import { compactWalletStyles as styles } from './WalletOverview.styles';
 type Props = {
   wallet: ReturnType<typeof useWalletController>;
   withdrawal: ReturnType<typeof useWalletWithdrawal>;
+  isDriver?: boolean;
 };
 
 /** Presentation only: no payment, extra query or native overlay when expanding details. */
-export function WalletOverview({ wallet, withdrawal }: Props) {
+export function WalletOverview({ wallet, withdrawal, isDriver = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const summary = wallet.walletSummary;
   const actions = [
@@ -37,16 +38,20 @@ export function WalletOverview({ wallet, withdrawal }: Props) {
     {summary?.withdrawal && <Text style={styles.caption}>
       Retirable : {formatWalletAmount(summary.withdrawal.availableMoney, summary.withdrawal.currency)}
     </Text>}
+    {isDriver && wallet.cashDebt && <View style={styles.cashDebt} accessibilityLiveRegion="polite">
+      <Text style={styles.cashDebtTitle}>Commission à régler : {formatWalletAmount(wallet.cashDebt.tokens)}{wallet.cashDebt.amount !== undefined ? ` (${formatWalletAmount(wallet.cashDebt.amount, 'FC')})` : ''}</Text>
+      <Text style={styles.cashDebtText}>Tolérance cumulée : 25 jetons. Le cash reste possible si la prochaine commission ne fait pas dépasser ce plafond. Les prochains jetons reçus couvrent ce dû.</Text>
+    </View>}
     {expanded && <View style={styles.breakdown}>
+      {summary && Number(summary.account.reservedCashCommissionBalance) > 0 &&
+        <BalanceLine label="Réservés aux commissions cash" value={formatWalletAmount(summary.account.reservedCashCommissionBalance)} />}
       {summary?.withdrawal && <>
-        <BalanceLine label="Retirables" value={formatWalletAmount(Math.max(0, Number(summary.account.withdrawableBalance) - Number(summary.account.reservedCashCommissionBalance ?? 0)))} />
-        {Number(summary.account.reservedCashCommissionBalance) > 0 &&
-          <BalanceLine label="Réservés aux commissions cash" value={formatWalletAmount(summary.account.reservedCashCommissionBalance)} />}
+        <BalanceLine label="Retirables" value={formatWalletAmount(Math.max(0, Math.min(Number(summary.account.withdrawableBalance), Number(summary.account.balance) - Number(summary.account.reservedCashCommissionBalance ?? 0))))} />
         <BalanceLine label="Pour payer uniquement" value={formatWalletAmount(summary.withdrawal.nonWithdrawableTokens)} />
         {Number(summary.account.reservedWithdrawalBalance) > 0 &&
           <BalanceLine label="Retraits en cours" value={formatWalletAmount(summary.account.reservedWithdrawalBalance)} />}
       </>}
-      <Text style={styles.caption}>Les jetons paient vos trajets et abonnements. La fidélité est utilisée en premier, sans retrait possible.</Text>
+      <Text style={styles.caption}>Les jetons paient vos trajets{isDriver ? ', commissions cash' : ''} et abonnements. La fidélité est utilisée en premier, sans retrait possible.</Text>
       <Text style={styles.caption}>Les jetons achetés, même reçus par partage, sont retirables.</Text>
     </View>}
     <View style={styles.actions}>
@@ -61,6 +66,14 @@ export function WalletOverview({ wallet, withdrawal }: Props) {
         <Text style={styles.actionLabel}>{action.label}</Text>
       </TouchableOpacity>)}
     </View>
+    {isDriver && <TouchableOpacity style={styles.proAction} activeOpacity={0.8}
+      accessibilityRole="button" accessibilityLabel="Payer l’abonnement Pro"
+      accessibilityHint="Ouvre le choix du moyen de paiement, sans débit automatique."
+      onPress={() => wallet.router.navigate('/subscriptions/payment')}>
+      <Ionicons name="shield-checkmark-outline" size={20} color={Colors.primaryDark} />
+      <Text style={styles.proActionLabel}>Payer l’abonnement Pro</Text>
+      <Ionicons name="chevron-forward" size={18} color={Colors.primaryDark} />
+    </TouchableOpacity>}
   </View>;
 }
 

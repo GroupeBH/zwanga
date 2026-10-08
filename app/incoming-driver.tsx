@@ -12,6 +12,7 @@ import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Colors } from '@/constants/styles';
+import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionNotice';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -50,9 +51,10 @@ function IncomingDriverContent() {
   const remaining = Math.max(0, Math.ceil((localDeadline - now) / 1000));
   const driverId = kind === 'dispatch' ? offer.data?.driverId : booking.data?.trip?.driverId;
   const invitation = useMemo<DriverInvitation | null>(() => kind && id && driverId ? { kind, id, driverId } : null, [kind, id, driverId]);
-  useEffect(() => () => {
-    if (invitation) void dismissDriverInvitation(invitation).catch(() => {});
-  }, [invitation]);
+  useEffect(() => {
+    if (!active || !invitation) return;
+    return () => { void dismissDriverInvitation(invitation).catch(() => {}); };
+  }, [active, invitation]);
   const loading = kind === 'dispatch' ? offer.isFetching : booking.isFetching;
   const authorized = Boolean(user?.id && driverId === user.id);
   const actionable = authorized && !loading && (kind === 'dispatch'
@@ -100,7 +102,8 @@ function IncomingDriverContent() {
     <View style={styles.top}>
       <Text style={styles.eyebrow}>{kind === 'dispatch' ? 'PROPOSITION À PROXIMITÉ' : 'NOUVELLE RÉSERVATION'}</Text>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer la proposition" disabled={busy} style={styles.close}
-        onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}>
+        onPress={() => { if (invitation) void dismissDriverInvitation(invitation).catch(() => {});
+          if (router.canGoBack()) router.back(); else router.replace('/(tabs)'); }}>
         <Ionicons name="close" size={26} color={Colors.gray[700]} />
       </TouchableOpacity>
     </View>
@@ -125,6 +128,9 @@ function IncomingDriverContent() {
           <Text style={styles.copy}>{details.paymentMode === 'cash' ? 'Cash à l’arrivée' : details.paymentMode === 'tokens' ? 'Jetons Zwanga' : 'Paiement électronique'}</Text>
         </View>
         {kind === 'booking' && booking.data?.trip?.departureTime && <Text style={styles.copy}>Départ : {new Date(booking.data.trip.departureTime).toLocaleString('fr-FR')}</Text>}
+        {details.paymentMode === 'cash' && done !== 'decline' && <CashCommissionNotice
+          amount={kind === 'booking' ? Number(booking.data?.paymentAmount ?? Number(details.pricePerSeat) * details.seats) : Number(details.pricePerSeat) * details.seats}
+          confirmed={done === 'accept'} />}
       </>}
       {!done && kind === 'dispatch' && authorized && <Text style={styles.countdown} accessibilityLiveRegion="polite">{remaining > 0 && offer.data?.actionable ? `${remaining} s pour répondre` : 'Cette proposition n’est plus disponible'}</Text>}
       {failedRead && <TouchableOpacity style={styles.retry} onPress={() => { if (kind === 'dispatch') void offer.refetch(); else void booking.refetch(); }}>

@@ -2,10 +2,11 @@ import { baseApi } from './baseApi';
 import type { TripPaymentMode } from '@/types';
 
 export interface DriverFinanceSummary {
-  commissionRate: number; proPrice: number; currency: string; durationDays: number;
+  commissionRate: number; cashCommissionRate?: number; proPrice: number; currency: string; durationDays: number;
   pro: { isActive: boolean; endDate: string | null };
   trial: { startDate: string; endDate: string } | null;
   cash: { enabled: boolean; availableTokens: number; reservedTokens: number; debtTokens: number;
+    debtLimitTokens?: number; availableCreditTokens?: number; debtAmount?: number;
     moneyPerToken: number; coverageAmount: number; blocked: boolean; purchasedTokensOnly: boolean };
 }
 export interface TripPaymentOptions {
@@ -15,7 +16,7 @@ export interface TripPaymentOptions {
 export const driverFinanceApi = baseApi.injectEndpoints({
   endpoints: builder => ({
     driverFinanceSummary: builder.query<DriverFinanceSummary, string>({
-      query: () => '/driver-finance/me', providesTags: ['Wallet', 'Subscription', 'Booking'], keepUnusedDataFor: 0,
+      query: () => '/driver-finance/me', providesTags: ['Wallet', 'Subscription', 'Booking', 'MyDriverOffers'], keepUnusedDataFor: 0,
     }),
     tripPaymentOptions: builder.query<TripPaymentOptions, { tripId: string; numberOfSeats: number }>({
       query: ({ tripId, numberOfSeats }) => ({ url: `/driver-finance/trips/${tripId}/payment-options`, params: { numberOfSeats } }),
@@ -26,4 +27,4 @@ export const driverFinanceApi = baseApi.injectEndpoints({
     }),
   }),
 });
-export const { useDriverFinanceSummaryQuery, useTripPaymentOptionsQuery, useLazyTripPaymentOptionsQuery, useBookingPaymentOptionsQuery } = driverFinanceApi;
+export const { useDriverFinanceSummaryQuery, useLazyDriverFinanceSummaryQuery, useTripPaymentOptionsQuery, useLazyTripPaymentOptionsQuery, useBookingPaymentOptionsQuery } = driverFinanceApi;

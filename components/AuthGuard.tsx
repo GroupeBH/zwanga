@@ -1,23 +1,18 @@
 import { useAuthForegroundSession } from '../hooks/auth/useAuthForegroundSession';
 import { STARTUP_ROUTES } from '@/features/navigation/homeBackPolicy';
 import { Colors } from '@/constants/styles';
-import { clearStoredFcmToken, obtainFcmToken, subscribeToFcmRefresh } from '@/services/pushNotifications';
+import { usePushRegistration } from '@/hooks/auth/usePushRegistration';
 import { proactiveTokenRefresh, validateAndRefreshTokens } from '@/services/tokenRefresh';
 import { getTokens } from '@/services/tokenStorage';
-import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
-import { driverDispatchApi } from '@/store/api/driverDispatchApi';
-import { configureDriverNotifications } from '@/services/driverNotifications';
-import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectAccessToken, selectHasAuthenticatedSession, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
 import { performLogout, setTokens } from '@/store/slices/authSlice';
-import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
+import { isTokenExpired } from '@/utils/jwt';
 import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, AppState, InteractionManager, StyleSheet, View } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 
-const FCM_SYNC_RETRY_DELAY_MS = 60_000;
 
 /**
  * Route guard:
@@ -34,7 +29,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isLoading = useAppSelector(selectIsLoading);
   const accessToken = useAppSelector(selectAccessToken);
   const refreshToken = useAppSelector(selectRefreshToken);
-  const [updateFcmTokenMutation] = useUpdateFcmTokenMutation();
   const inAuthGroup = segments[0] === 'auth';
   const currentSegment = segments[0];
   const isPublicRoute =
@@ -45,10 +39,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isLoggingOut = useRef(false);
   const lastAuthTime = useRef<number | null>(null);
   const isRedirectingAfterLogout = useRef(false);
-  const lastFcmSyncAccessToken = useRef<string | null>(null);
-  const lastSyncedFcmRegistration = useRef<string | null>(null);
-  const fcmSyncInFlightRegistration = useRef<string | null>(null);
-  const fcmSyncRetry = useRef<{ key: string; notBefore: number } | null>(null);
   const latestAuthState = useRef({ isAuthenticated, accessToken, refreshToken });
   const lastAppState = useRef<AppStateStatus>(AppState.currentState);
   const appBackgroundedAt = useRef<number | null>(null);
@@ -266,94 +256,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     refreshToken,
   ]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    let interactionTask: { cancel: () => void } | null = null;
-    let unsubscribeTokenRefresh: (() => void) | null = null;
-
-    const syncTokenWithBackend = async (token: string | null) => {
-      const userId = accessToken ? getUserIdFromToken(accessToken) : null;
-      if (!token || !userId) {
-        return;
-      }
-
-      const registrationKey = `${userId}:${token}`;
-      const retry = fcmSyncRetry.current;
-      if (
-        lastSyncedFcmRegistration.current === registrationKey ||
-        fcmSyncInFlightRegistration.current === registrationKey ||
-        (retry?.key === registrationKey && Date.now() < retry.notBefore)
-      ) {
-        return;
-      }
-
-      fcmSyncInFlightRegistration.current = registrationKey;
-      try {
-        await updateFcmTokenMutation({ fcmToken: token }).unwrap();
-        // Capability is tied to the current push token: old installations keep standard pushes.
-        try {
-          await configureDriverNotifications();
-          if (!(await registerBackgroundNotificationTask())) throw new Error('Réception en arrière-plan indisponible.');
-          await dispatch(driverDispatchApi.endpoints.registerDriverNotifications.initiate()).unwrap();
-        } catch { /* An older backend must not prevent login or ordinary push registration. */ }
-        lastSyncedFcmRegistration.current = registrationKey;
-        fcmSyncRetry.current = null;
-      } catch (error) {
-        fcmSyncRetry.current = {
-          key: registrationKey,
-          notBefore: Date.now() + FCM_SYNC_RETRY_DELAY_MS,
-        };
-        console.warn('Unable to send FCM token to backend:', error);
-      } finally {
-        if (fcmSyncInFlightRegistration.current === registrationKey) {
-          fcmSyncInFlightRegistration.current = null;
-        }
-      }
-    };
-
-    const registerPushToken = async () => {
-      if (!hasSession) {
-        lastFcmSyncAccessToken.current = null;
-        lastSyncedFcmRegistration.current = null;
-        fcmSyncInFlightRegistration.current = null;
-        fcmSyncRetry.current = null;
-        await clearStoredFcmToken();
-        return;
-      }
-
-      if (!accessToken || lastFcmSyncAccessToken.current === accessToken) {
-        return;
-      }
-
-      const token = await obtainFcmToken();
-      if (!cancelled) {
-        await syncTokenWithBackend(token);
-        lastFcmSyncAccessToken.current = accessToken;
-      }
-    };
-
-    interactionTask = InteractionManager.runAfterInteractions(() => {
-      if (hasSession) {
-        unsubscribeTokenRefresh = subscribeToFcmRefresh(syncTokenWithBackend);
-      }
-      timeout = setTimeout(() => {
-        if (cancelled || AppState.currentState !== 'active') {
-          return;
-        }
-        registerPushToken();
-      }, 1200);
-    });
-
-    return () => {
-      cancelled = true;
-      interactionTask?.cancel();
-      unsubscribeTokenRefresh?.();
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-    };
-  }, [hasSession, accessToken, updateFcmTokenMutation]);
+  usePushRegistration(hasSession, accessToken);
 
   if (isLoading) {
     return (

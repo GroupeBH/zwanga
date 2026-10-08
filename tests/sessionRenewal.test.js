@@ -8,6 +8,7 @@ const jwt = (user, expired = false) => `x.${Buffer.from(JSON.stringify({sub:user
 function environment(options = {}) {
   const disk = new Map(), actions = [], requests = [];
   const load = loader({
+    '@react-native-async-storage/async-storage': { getItem: async key => disk.get(key) ?? null, setItem: async (key, value) => { disk.set(key, value); }, removeItem: async key => { disk.delete(key); } },
     'expo-constants': { expoConfig: {} },
     'expo-secure-store': {
       getItemAsync: async key => disk.get(key) ?? null,

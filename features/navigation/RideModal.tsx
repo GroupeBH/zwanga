@@ -55,6 +55,7 @@ export function RideModal({ priority = RIDE_OVERLAY_PRIORITY.panel, inApp = fals
   useLayoutEffect(() => {
     if (overlay && requested) {
       store?.put({ id, scope: scope?.key ?? 'global', priority, children: props.children,
+        onShow: () => callbacks.current.onShow?.({} as NativeSyntheticEvent<any>),
         onRequestClose: () => callbacks.current.onRequestClose?.({} as NativeSyntheticEvent<any>) });
     } else store?.remove(id);
     if (!overlay && requested) {

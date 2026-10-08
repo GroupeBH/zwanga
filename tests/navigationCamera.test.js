@@ -90,7 +90,8 @@ test('passenger initial framing retries when data/command is unavailable, then n
   let camera = render();
   assert.equal(props.hasFitInitialMapRef.current, true);
   assert.equal(env.calls.length, 1);
-  assert.ok(env.calls[0][2].edgePadding.top <= 24, 'header must not be counted twice');
+  assert.ok(env.calls[0][2].edgePadding.top <= 48, 'only the map toolbar is inset, not the header');
+  assert.ok(env.calls[0][2].edgePadding.bottom <= 64, 'the details panel is outside the map');
   for (let i = 0; i < 1000; i++) { props.passengerLocation = { ...pickup }; camera = render(); }
   assert.equal(env.calls.length, 1);
   camera.fitToRoute({ nativeEvent: {} });

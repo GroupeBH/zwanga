@@ -15,6 +15,19 @@
         "simulator": true
       }
     },
+    "dev-device": {
+      "extends": "dev",
+      "environment": "development",
+      "env": {
+        "EXPO_PUBLIC_ENV": "development"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
     "production": {
       "distribution": "store",
       "environment": "production",

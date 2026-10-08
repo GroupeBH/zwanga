@@ -15,10 +15,6 @@ import {
   AcceptTripRequestPayload,
 } from './trip-request/contracts';
 
-export type { RecommendTripRequestPricePayload } from './trip-request/contracts';
-export type { TripRequestPriceRecommendation } from './trip-request/contracts';
-export type { TripRequestVehiclePriceOption } from './trip-request/contracts';
-export type { TripRequestVehicleOptions } from './trip-request/contracts';
 import { mapServerTripRequestToClient, mapServerDriverOfferToClient, mapServerDriverOfferWithTripRequestToClient } from './trip-request/requestMapper';
 import { ServerTripRequest, ServerDriverOffer, ServerDriverOfferWithTripRequest } from './trip-request/serverTypes';
 import type { DriverOffer, DriverOfferWithTripRequest, Trip, TripRequest } from '@/types';
@@ -28,6 +24,12 @@ import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
 
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
+import { getTokenSessionVersion } from '@/services/tokenSession';
+
+export type { RecommendTripRequestPricePayload } from './trip-request/contracts';
+export type { TripRequestPriceRecommendation } from './trip-request/contracts';
+export type { TripRequestVehiclePriceOption } from './trip-request/contracts';
+export type { TripRequestVehicleOptions } from './trip-request/contracts';
 
 export const tripRequestApi = baseApi.injectEndpoints({
   overrideExisting: true,
@@ -273,6 +275,21 @@ export const tripRequestApi = baseApi.injectEndpoints({
         trip: mapServerTripToClient(response.trip),
         tripRequest: mapServerTripRequestToClient(response.tripRequest),
       }),
+      async onQueryStarted({ tripRequestId }, { dispatch, queryFulfilled }) {
+        const session = getTokenSessionVersion();
+        try {
+          const { data } = await queryFulfilled;
+          if (session !== getTokenSessionVersion()) return;
+          // Confirmed server result, never an optimistic disappearance on tap.
+          dispatch(tripRequestApi.util.updateQueryData('getAvailableTripRequests', undefined,
+            requests => requests.filter(request => request.id !== tripRequestId)));
+          dispatch(tripRequestApi.util.updateQueryData('getTripRequestById', tripRequestId, () => data.tripRequest));
+          dispatch(tripRequestApi.util.updateQueryData('getMyTripRequests', undefined, requests => {
+            const index = requests.findIndex(request => request.id === tripRequestId);
+            if (index >= 0) requests[index] = data.tripRequest;
+          }));
+        } catch { /* Failed or ambiguous acceptance remains subject to server reconciliation. */ }
+      },
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
         { type: 'TripRequest', id: tripRequestId },
         tripRequestListTag,

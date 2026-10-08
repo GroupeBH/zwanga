@@ -9,16 +9,28 @@ const words = tree => nodes(tree).filter(n => n.type === 'Text').flatMap(n => n.
 
 function paymentFixture() {
   const hooks = hookHarness(), paths = [];
+  const activity = { active: true, online: true, queryOptions: null };
+  const state = { auth: { user: { id: 'test-driver' } }, zwangaApi: { config: { get online() { return activity.online; } } } };
   let refreshes = 0;
-  const response = { currentData: { cash: { enabled: true, moneyPerToken: 100, availableTokens: 5 } }, isFetching: false, isError: false, refetch: () => { refreshes++; } };
+  const response = { currentData: { cash: { enabled: true, moneyPerToken: 100, availableTokens: 5, debtTokens: 0 } }, isFetching: false, isError: false, refetch: () => { refreshes++; } };
   const props = { value: ['electronic', 'points'], price: 10000, onChange: update => { props.value = update(props.value); } };
   const Component = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
     'expo-router': { useRouter: () => ({ push: path => paths.push(path) }) },
-    '@/store/hooks': { useAppSelector: () => ({ id: 'test-driver' }) }, '@/store/selectors': {},
-    '@/store/api/driverFinanceApi': { useDriverFinanceSummaryQuery: () => response },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => activity.active },
+    '@/store/hooks': { useAppSelector: selector => selector(state) }, '@/store/selectors': { selectUser: state => state.auth.user },
+    '@/store/api/driverFinanceApi': { useDriverFinanceSummaryQuery: (_id, options) => { activity.queryOptions = options; return response; } },
   })('features/publish/PublishPaymentModes.tsx').PublishPaymentModes;
-  return { props, response, paths, refreshes: () => refreshes, render: () => hooks.render(() => Component(props)) };
+  return { props, response, paths, activity, refreshes: () => refreshes, render: () => hooks.render(() => Component(props)) };
 }
+
+test('cash finance reads stop offscreen/offline without misreporting an insufficient reserve', () => {
+  const f = paymentFixture(); f.render(); assert.equal(f.activity.queryOptions.skip, false);
+  f.activity.active = false; f.render(); assert.equal(f.activity.queryOptions.skip, true);
+  f.activity.active = true; f.activity.online = false;
+  const tree = f.render(); assert.equal(f.activity.queryOptions.skip, true);
+  assert.match(words(tree), /vérification indisponible/); assert.doesNotMatch(words(tree), /rechargez/);
+  f.activity.online = true; f.render(); assert.equal(f.activity.queryOptions.skip, false);
+});
 
 test('compact payment choices keep the commission visible and reveal full terms on demand', () => {
   const f = paymentFixture(); let tree = f.render();
@@ -31,14 +43,14 @@ test('compact payment choices keep the commission visible and reveal full terms 
   assert.ok(disclosure.props.style.minHeight >= 44);
   disclosure.props.onPress(); tree = f.render();
   assert.match(words(tree), /sans débiter votre portefeuille/);
-  assert.match(words(tree), /réservés sur vos jetons achetés à l’acceptation/);
+  assert.match(words(tree), /réservés sur vos jetons à l’acceptation, bonus inclus/);
   nodes(tree).find(n => n.props.accessibilityState?.expanded === true).props.onPress();
   assert.doesNotMatch(words(f.render()), /sans débiter/);
 });
 
 test('cash failure, loading and insufficient reserve are distinct; wallet and refresh stay available', () => {
   const f = paymentFixture(); f.response.currentData.cash.availableTokens = 0;
-  let tree = f.render(); assert.match(words(tree), /rechargez/);
+  let tree = f.render(); assert.match(words(tree), /Rechargez/);
   nodes(tree).find(n => n.type === 'Button' && words(n) === 'Recharger').props.onPress();
   assert.deepEqual(f.paths, ['/wallet']);
   nodes(tree).find(n => n.props.accessibilityLabel === 'Actualiser la disponibilité du cash').props.onPress();
@@ -57,7 +69,7 @@ test('cash selection still uses the entered price and can be removed if eligibil
   f.props.price = 20000; assert.equal(cash().props.disabled, true);
   f.props.price = 10000; cash().props.onPress();
   assert.ok(f.props.value.includes('cash'));
-  assert.match(words(f.render()), /commission réservée sur vos jetons achetés/);
+  assert.match(words(f.render()), /commission réservée sur vos jetons/);
   f.response.isError = true;
   assert.equal(cash().props.disabled, false, 'a selected choice remains removable');
   cash().props.onPress(); assert.ok(!f.props.value.includes('cash'));
@@ -73,6 +85,7 @@ test('places and price precede payment; free-trip switch retains its pricing beh
   let tree = Component(props), list = nodes(tree);
   assert.ok(list.findIndex(n => n.type === 'Seats') < list.findIndex(n => n.type === 'Payments'));
   assert.ok(list.findIndex(n => n.type === 'Input') < list.findIndex(n => n.type === 'Payments'));
+  assert.equal(list.find(n => n.type === 'Payments').props.seats, 4);
   assert.equal(list.find(n => n.type === 'Input').props.style.minWidth, 0, 'price shrinks inside narrow rows');
   const toggle = list.find(n => n.type === 'Switch'); toggle.props.onValueChange(true);
   assert.equal(props.price, ''); list = nodes(Component(props));

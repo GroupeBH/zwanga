@@ -196,3 +196,27 @@ test('hiding a personal request affects only its priority, not the request feed 
   assert.equal(a.status, 'pending');
   hooks.unmount();
 });
+
+test('Home skips accepted, linked, expired and own requests even ahead of an available request', () => {
+  const hooks = hookHarness();
+  const store = configureStore({ reducer: { homeRequestHighlights: highlights.default,
+    auth: () => ({ user: { id: 'driver' } }) } });
+  const { useHomeRequestHighlight } = loader({ ...native, react: hooks.react,
+    '@/hooks/useAppIsActive': { useAppIsActive: () => true },
+    '@/store/hooks': { useAppDispatch: () => store.dispatch, useAppSelector: selector => selector(store.getState()) },
+  })('hooks/home/useHomeRequestHighlight.ts');
+  const available = request('available');
+  const requests = [
+    { ...request('selected'), status: 'driver_selected' },
+    { ...request('linked'), tripId: 'ongoing-trip' },
+    { ...request('driver'), selectedDriverId: 'driver' },
+    { ...request('offer'), offers: [{ status: 'accepted' }] },
+    { ...request('expired'), departureDateMax: later(-3600000) },
+    { ...request('own'), passengerId: 'driver' },
+    available,
+  ];
+  const render = () => hooks.render(() => useHomeRequestHighlight({ enabled: true, userId: 'driver', requests, driverCoordinate: null }));
+  render();
+  assert.equal(render().highlightedDriverRequest, available);
+  hooks.unmount();
+});

@@ -11,8 +11,9 @@ const native = { Text: 'Text', View: 'View', TouchableOpacity: 'Button', ScrollV
 test('publishing lets the driver choose nonempty modes and disables unfunded cash', () => {
   const hooks = hookHarness(); let value = ['points'], funds = 0;
   const { PublishPaymentModes } = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     'expo-router': { useRouter: () => ({ push() {} }) }, '@/store/hooks': { useAppSelector: () => ({ id: 'driver' }) }, '@/store/selectors': {},
-    '@/store/api/driverFinanceApi': { useDriverFinanceSummaryQuery: () => ({ currentData: { cash: { enabled: funds > 0, moneyPerToken: 100, availableTokens: funds } } }) },
+    '@/store/api/driverFinanceApi': { useDriverFinanceSummaryQuery: () => ({ currentData: { cash: { enabled: funds > 0, moneyPerToken: 100, availableTokens: funds, debtTokens: 0 } } }) },
   })('features/publish/PublishPaymentModes.tsx');
   const render = () => hooks.render(() => PublishPaymentModes({ value, onChange: fn => { value = fn(value); }, price: 10000 }));
   const boxes = () => nodes(render()).filter(n => n.props?.accessibilityRole === 'checkbox');

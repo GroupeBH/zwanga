@@ -9,6 +9,7 @@ import { useDriverDispatchStatusQuery, useRecordDriverPositionMutation } from '@
 import { isDriverAccount } from '@/utils/accountRole';
 import { requestCurrentLocation } from '@/services/currentLocationRequest';
 import { AppState } from 'react-native';
+import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 
 /** Automatic discovery from fresh, already-authorized GPS. No idle background GPS service. */
 export function DriverPresenceCoordinator() {
@@ -16,9 +17,12 @@ export function DriverPresenceCoordinator() {
   const shownOffer = useRef<string | null>(null);
   const authenticated = useAppSelector(selectIsAuthenticated);
   const active = useAppIsActive();
-  const { data: user } = useGetCurrentUserQuery(undefined, { skip: !authenticated });
+  const readsEnabled = useDisplayReadsEnabled(active && authenticated);
+  const { data: user } = useGetCurrentUserQuery(undefined, displayReadOptions(readsEnabled));
+  const driver = isDriverAccount(user);
+  const userId = user?.id;
   const { data: state, refetch } = useDriverDispatchStatusQuery(undefined, {
-    skip: !authenticated || !isDriverAccount(user) || !active, refetchOnMountOrArgChange: true,
+    ...displayReadOptions(readsEnabled && driver),
   });
   const [renew] = useRecordDriverPositionMutation();
   const automatic = state?.enabled && state.automatic;
@@ -29,7 +33,7 @@ export function DriverPresenceCoordinator() {
     router.navigate({ pathname: '/incoming-driver', params: { kind: 'dispatch', id, driverId: user.id } });
   }, [active, authenticated, router, state?.pendingOfferId, user?.id]);
   useEffect(() => {
-    if (!active || !authenticated || !automatic || !isDriverAccount(user)) return;
+    if (!readsEnabled || !automatic || !driver) return;
     const controller = new AbortController();
     let busy = false;
     const refresh = async () => {
@@ -51,6 +55,6 @@ export function DriverPresenceCoordinator() {
     void refresh();
     const timer = setInterval(() => { void refresh(); }, 45000);
     return () => { clearInterval(timer); controller.abort(); };
-  }, [active, authenticated, automatic, refetch, renew, user]);
+  }, [readsEnabled, automatic, refetch, renew, driver, userId]);
   return null;
 }

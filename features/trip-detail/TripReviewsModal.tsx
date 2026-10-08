@@ -3,10 +3,10 @@ import { Colors } from '@/constants/styles';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import type { Trip } from '@/types';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import type { Review, Trip } from '@/types';
 import type { EdgeInsets } from 'react-native-safe-area-context';
-import type { Review } from '@/types';
 
 interface TripReviewsModalProps {
   reviewsModalVisible: boolean;

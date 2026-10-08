@@ -20,7 +20,7 @@ interface Params {
 
 export function usePassengerNavigationCamera({
   passengerLocation, displayedDriverLocation, pickupCoordinate, dropoffCoordinate,
-  runMapCommand, mapLayoutRef, booking, routeCoordinates, isMapExpanded,
+  runMapCommand, mapLayoutRef, booking, routeCoordinates,
   isNativeMapReady, hasFitInitialMapRef,
 }: Params) {
   const mapRegion = useMemo(() => getNavigationCameraRegion([
@@ -31,13 +31,13 @@ export function usePassengerNavigationCamera({
     let fitted = false;
     const accepted = runMapCommand(map => {
       fitted = fitNavigationCamera(map, points, mapLayoutRef.current, {
-        // The map is already laid out below the header: do NOT add its height again.
-        edgePadding: { top: 24, right: 40, bottom: isMapExpanded ? 120 : 300, left: 40 },
+        // Header and details are outside the map viewport, not overlays.
+        edgePadding: { top: 48, right: 32, bottom: 64, left: 32 },
         animated,
       });
     });
     return accepted && fitted;
-  }, [runMapCommand, mapLayoutRef, isMapExpanded]);
+  }, [runMapCommand, mapLayoutRef]);
 
   const centerOnDriver = useCallback(() => focusCoordinates([displayedDriverLocation]),
     [focusCoordinates, displayedDriverLocation]);

@@ -85,13 +85,13 @@ test('result payload opens its details only on tap, never on delivery or as an a
   const result = { type: 'driver_action_result', ...invitation };
   const load = loader({ react: hooks.react,
     'expo-router': { useRouter: () => ({ navigate: path => routes.push(path) }) },
-    'react-native': { AppState: { currentState: 'active' }, Platform: { OS: 'android' } },
+    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' } },
     'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),
       addNotificationResponseReceivedListener: () => ({ remove() {} }), getLastNotificationResponseAsync: async () => null },
     '@notifee/react-native': { __esModule: true, default: {
       onForegroundEvent: callback => { native = callback; return () => {}; }, getInitialNotification: async () => null,
     }, EventType: { DELIVERED: 3, PRESS: 1, ACTION_PRESS: 2 } },
-    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async () => {} },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async () => {}, silenceDriverInvitations: async () => {} },
     '@/services/driverNotificationResponse': { respondToDriverNotification: async (...args) => actions.push(args) },
   });
   const useNotifications = load('hooks/notifications/useDriverNotifications.ts').useDriverNotifications;
@@ -118,4 +118,31 @@ test('cold-start iOS body taps survive profile hydration, once and only for thei
   assert.equal(pending.takePendingDriverOpen(driverId), undefined);
   pending.rememberPendingDriverOpen({ type: 'message', driverId });
   assert.equal(pending.takePendingDriverOpen(driverId), undefined);
+});
+
+test('cold start and every foreground return silence invitations without sending a decision', async () => {
+  const hooks = hookHarness(), silenced = [], mutations = [], routes = [];
+  let onState; let removed = false;
+  const router = { navigate: path => routes.push(path) };
+  const load = loader({ react: hooks.react,
+    'expo-router': { useRouter: () => router },
+    'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active',
+      addEventListener: (_event, handler) => { onState = handler; return { remove: () => { removed = true; } }; } } },
+    'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),
+      addNotificationResponseReceivedListener: () => ({ remove() {} }), getLastNotificationResponseAsync: async () => null },
+    '@notifee/react-native': { __esModule: true, default: { onForegroundEvent: () => () => {} }, EventType: {} },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async () => {},
+      silenceDriverInvitations: async userId => silenced.push(userId) },
+    '@/services/driverNotificationResponse': { respondToDriverNotification: async value => mutations.push(value) },
+  });
+  const useNotifications = load('hooks/notifications/useDriverNotifications.ts').useDriverNotifications;
+  hooks.render(() => useNotifications(driverId)); await tick();
+  assert.deepEqual(silenced, [driverId]);
+  onState('background'); onState('inactive'); await tick();
+  assert.equal(silenced.length, 1);
+  onState('active'); await tick();
+  assert.deepEqual(silenced, [driverId, driverId]);
+  assert.deepEqual(mutations, []);
+  assert.deepEqual(routes, []);
+  hooks.unmount(); assert.equal(removed, true);
 });

@@ -92,7 +92,7 @@ test('freshness expiry is local, and automatic route refresh stops offline, afte
 });
 
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner',
-  StyleSheet: { create: x => x } };
+  ScrollView: 'ScrollView', useWindowDimensions: () => ({ width: 360, height: 780 }), StyleSheet: { create: x => x } };
 const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(elements) : [node, ...elements(node.props?.children)];
 const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join(' ') : node?.props ? words(node.props.children) : '';
 test('arrival banner is visible in the header even on expanded maps, wraps text and leaves contact/SOS intact', () => {
@@ -106,7 +106,9 @@ test('arrival banner is visible in the header even on expanded maps, wraps text 
   const header = PassengerNavigationHeader({ model, assistance });
   const node = elements(header).find(item => item.type?.name === 'PassengerPickupEstimateBanner');
   const banner = node.type(node.props);
-  assert.match(words(banner), /Arrivée estimée du conducteur.*Environ 5 min.*prise en charge/);
+  assert.match(words(banner), /Arrivée estimée du conducteur.*Environ 5 min/);
+  assert.match(banner.props.accessibilityLabel, /prise en charge/);
+  assert.doesNotMatch(words(banner), /prise en charge/);
   for (const text of elements(banner).filter(item => item.type === 'Text')) {
     assert.equal(text.props.numberOfLines, undefined); assert.notEqual(text.props.allowFontScaling, false);
   }
@@ -133,8 +135,9 @@ test('the accepted-trip action opens the same passenger screen for upcoming, ong
   }
 });
 
-test('the pickup panel keeps distance, recovery and live status without a duplicate or stale duration', () => {
-  const { PassengerNavigationInfoCard } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+test('compact pickup panel keeps recovery without duplicate live state or misleading route distance', () => {
+  const hooks = hookHarness();
+  const { PassengerNavigationInfoCard } = loader({ react: { ...require('react'), ...hooks.react }, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeInUp: { duration: () => ({ delay: () => null }) } },
     '../screen-styles/app/booking/navigate/detail/index': { styles: {} },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
@@ -143,12 +146,13 @@ test('the pickup panel keeps distance, recovery and live status without a duplic
   const props = { data: { booking: { ...booking, passengerOrigin: 'Départ', passengerDestination: 'Destination' },
     trip, isTripOngoing: true, insets: { bottom: 0 } }, state: { isSocketConnected: true },
     presentation: { displayedRouteDistance: '1,2 km', displayedRouteDuration: '5 min' }, interruption: {}, tripActions: {} };
-  const tree = PassengerNavigationInfoCard(props);
-  assert.match(words(tree), /1,2 km.*Avant prise en charge.*En direct/);
-  assert.doesNotMatch(words(tree), /5 min|Projection/);
+  const render = () => hooks.render(() => PassengerNavigationInfoCard(props));
+  const tree = render();
+  assert.doesNotMatch(words(tree), /1,2 km|Avant prise en charge|En direct|5 min|Projection/);
   assert.ok(elements(tree).some(node => node.type === 'Recovery'));
   props.data.booking = { ...props.data.booking, pickedUp: true, pickedUpConfirmedByPassenger: true };
-  const onboard = words(PassengerNavigationInfoCard(props));
-  assert.match(onboard, /1,2 km.*Restant.*5 min.*Projection/);
+  const onboard = words(render());
+  assert.match(onboard, /1,2 km.*restants.*5 min.*estimées/);
   assert.doesNotMatch(onboard, /Avant prise en charge/);
+  hooks.unmount();
 });

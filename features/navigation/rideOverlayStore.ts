@@ -7,6 +7,7 @@ export type RideOverlayEntry = {
   priority: number;
   children: ReactNode;
   onRequestClose?: () => void;
+  onShow?: () => void;
 };
 export type RideNotice = { title: string; message?: string; expiresAt: number };
 

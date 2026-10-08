@@ -3,11 +3,10 @@ import { styles } from '../screen-styles/app/trip/detail/index';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
-import type { TripPaymentMode } from '@/types';
+import type { Trip, TripPaymentMode } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
-import type { Trip } from '@/types';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface TripBookingModalProps {
@@ -78,7 +77,7 @@ export function TripBookingModal({
   handleConfirmBooking,
 }: TripBookingModalProps) {
   return (
-    <FormModal animationType="fade" transparent visible={bookingModalVisible}>
+    <FormModal animationType="fade" transparent visible={bookingModalVisible} onRequestClose={closeBookingModal}>
       <View style={styles.bookingModalOverlay}>
         <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
           {/* Step Indicator */}

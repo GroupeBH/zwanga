@@ -61,6 +61,44 @@ test('outside navigation existing native dismissal callbacks are preserved', () 
   assert.equal(closed, 1); env.hooks.unmount();
 });
 
+test('overlay host delivers onShow only to the visible panel, including resume, without a render loop', () => {
+  const hooks = hookHarness();
+  let foreground = true, shown = 0;
+  const react = { ...hooks.react, createContext: value => ({ value }), useContext: context => context.value,
+    useSyncExternalStore: (_subscribe, snapshot) => snapshot() };
+  const load = loader({ react, 'react-native': { Platform: { OS: 'ios' }, View: 'View',
+    StyleSheet: { create: value => value, absoluteFillObject: {} }, Keyboard: { dismiss() {} } },
+    '@/hooks/useAppIsActive': { useAppIsActive: () => foreground },
+    './RideNoticeBanner': { RideNoticeBanner: 'Notice' },
+  });
+  const { RideOverlayProvider } = load('features/navigation/RideOverlayProvider.tsx');
+  const { RideOverlayContext } = load('features/navigation/rideOverlayContext.ts');
+  const provider = hooks.render(() => RideOverlayProvider({ children: null }));
+  const store = provider.props.value;
+  RideOverlayContext.value = store;
+  const host = provider.props.children.at(-1);
+  const hostHooks = hookHarness();
+  Object.assign(react, hostHooks.react);
+  const render = () => hostHooks.render(() => host.type(host.props));
+  store.put({ id: 'picker', scope: 'global', priority: 30, children: null, onShow: () => shown++ });
+  render(); render(); assert.equal(shown, 1);
+  store.put({ id: 'sos', scope: 'global', priority: 100, children: null });
+  render(); assert.equal(shown, 1);
+  store.remove('sos'); render(); assert.equal(shown, 2);
+  foreground = false; render(); assert.equal(shown, 2);
+  foreground = true; render(); assert.equal(shown, 3);
+  hostHooks.unmount(); hooks.unmount();
+});
+
+test('RideModal forwards the latest onShow callback to the overlay instead of invoking a native modal', () => {
+  const env = modalFixture(); let shown = 0;
+  env.scope.value = { key: 'trip:one', active: true }; env.store.setScope('trip:one', true);
+  assert.equal(env.render({ visible: true, onShow: () => shown++, children: 'picker' }), null);
+  assert.equal(shown, 0);
+  env.store.getActive().onShow(); assert.equal(shown, 1);
+  env.hooks.unmount();
+});
+
 test('iOS manage-trip scope keeps the reason form and global cancellation confirmation out of UIKit', () => {
   const form = modalFixture(), dialog = modalFixture();
   form.store.setScope('manage:test-trip', true);

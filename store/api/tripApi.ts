@@ -4,6 +4,7 @@ import { buildTripDiscovery } from './trip/discovery';
 import { buildConfirmDriverTripInterruptionEndpoints } from './trip/confirmDriverTripInterruption.endpoints';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 export type { TripSearchParams } from './trip/contracts';
 export type { TripSearchByPointsPayload } from './trip/contracts';
@@ -28,6 +29,25 @@ export const tripApi = baseApi.injectEndpoints({
     ...buildConfirmDriverTripInterruptionEndpoints(builder),
   }),
 });
+
+tripApi.enhanceEndpoints({ endpoints: { startTrip: {
+  async onQueryStarted(id, { dispatch, queryFulfilled }) {
+    const session = getTokenSessionVersion();
+    try {
+      const { data: trip } = await queryFulfilled;
+      if (session !== getTokenSessionVersion()) return;
+      dispatch(tripApi.util.updateQueryData('getTripById', id, () => trip));
+      dispatch(tripApi.util.updateQueryData('getMyTrips', undefined, trips => {
+        const index = trips.findIndex(item => item.id === id);
+        if (index >= 0) trips[index] = trip;
+      }));
+      dispatch(tripApi.util.updateQueryData('getMyActivityTrips', undefined, trips => {
+        const current = trips.find(item => item.id === id);
+        if (current) Object.assign(current, trip);
+      }));
+    } catch { /* Do not mark a ride as started before server confirmation. */ }
+  },
+} } });
 
 export const {
   useGetTripDiscoveryInfiniteQuery,

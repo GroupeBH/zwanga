@@ -49,7 +49,7 @@ export function PublishPricingStep({
           onValueChange={next => { setIsFreeTrip(next); if (next) setPrice(''); }} />
       </View>
     </View>
-    {!isFreeTrip && <PublishPaymentModes value={acceptedPaymentModes} onChange={setAcceptedPaymentModes} price={Number(price) || 0} />}
+    {!isFreeTrip && <PublishPaymentModes value={acceptedPaymentModes} onChange={setAcceptedPaymentModes} price={Number(price) || 0} seats={Number(seats)} />}
     <PublishPassengerOptions requiresPassengerKyc={requiresPassengerKyc} setRequiresPassengerKyc={setRequiresPassengerKyc}
       description={description} setDescription={setDescription} />
   </Animated.View>;
