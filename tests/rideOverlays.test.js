@@ -61,6 +61,23 @@ test('outside navigation existing native dismissal callbacks are preserved', () 
   assert.equal(closed, 1); env.hooks.unmount();
 });
 
+test('iOS manage-trip scope keeps the reason form and global cancellation confirmation out of UIKit', () => {
+  const form = modalFixture(), dialog = modalFixture();
+  form.store.setScope('manage:test-trip', true);
+  form.scope.value = { key: 'manage:test-trip', active: true };
+  assert.equal(form.render({ visible: true, children: 'reason' }), null);
+  assert.equal(form.store.getActive().scope, 'manage:test-trip');
+  // The shared confirmation provider is global, but also observes the active route scope.
+  dialog.store.setScope('manage:test-trip', true);
+  assert.equal(dialog.render({ visible: true, children: 'confirm cancellation', priority: 80 }), null);
+  assert.equal(dialog.store.getActive().scope, 'global');
+  form.scope.value = { key: 'manage:test-trip', active: false };
+  form.render({ visible: true, children: 'reason' });
+  assert.equal(form.store.getActive(), null);
+  form.hooks.unmount(); dialog.hooks.unmount();
+  assert.equal(dialog.store.getEntries().length, 0);
+});
+
 test('normal native dismissal cancels the fallback unmount', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const env = modalFixture(); let dismissed = 0;

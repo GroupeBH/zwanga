@@ -54,7 +54,7 @@ for (const os of ['android', 'ios']) {
         '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: (active, stage) => {
           enabled = active; key = stage; return { scrollRef: ref, keyboardVisible: active && keyboardVisible };
         } },
-        '../hooks/auth/useAuthController': { useAuthController: () => ({ form, canGoBack: false,
+        '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false }, form, canGoBack: false,
           social: {}, phoneActions: {}, registration: {}, profileActions: {}, navigation: {} }) },
       })('app/auth.tsx').default;
       const compact = form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
@@ -94,7 +94,7 @@ test('the recovery back button cannot leave while OTP/PIN requests are pending',
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, '@/config/env': {},
     '@/components/auth': { AuthHeader: 'Header', ResetPinStep: 'Reset', VehicleModal: 'Modal', authStyles: {} },
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ scrollRef: { current: null }, keyboardVisible: true }) },
-    '../hooks/auth/useAuthController': { useAuthController: () => ({ form: { mode: 'login', step: 'resetPin' }, phoneActions,
+    '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false }, form: { mode: 'login', step: 'resetPin' }, phoneActions,
       navigation: { handlePreviousStep: () => calls.push('back'), handleModeChange: () => calls.push('mode') },
       social: { isSocialAuthInFlight: () => false }, registration: { isRegistrationLocked: () => false }, profileActions: {} }) },
   })('app/auth.tsx').default;

@@ -1,3 +1,4 @@
+import { useAuthDraftPersistence } from './useAuthDraftPersistence';
 import { useSignupProfileActions } from './useSignupProfileActions';
 import { useAuthFormNavigation } from './useAuthFormNavigation';
 import { useAuthFormState } from './useAuthFormState';
@@ -41,7 +42,10 @@ export function useAuthController() {
   // ============ STATE ============
   const form = useAuthFormState({
     initialMode,
+    explicitMode: initialModeParam === 'login' || initialModeParam === 'signup' ? initialModeParam : undefined,
   });
+
+  const draftPersistence = useAuthDraftPersistence(form, isAuthenticated);
 
   // ============ COMPUTED VALUES ============
   const getStepSequence = () => {
@@ -62,6 +66,7 @@ export function useAuthController() {
   const progress = Math.round(((currentStepIndex + 1) / stepSequence.length) * 100);
   const motivationalMessage = getMotivationalMessage(form.step, form.mode);
 
+  const setIsAppleAvailable = form.setIsAppleAvailable;
   // ============ EFFECTS ============
   useEffect(() => {
     let isMounted = true;
@@ -69,19 +74,19 @@ export function useAuthController() {
     isAppleSignInAvailable()
       .then((available) => {
         if (isMounted) {
-          form.setIsAppleAvailable(available);
+          setIsAppleAvailable(available);
         }
       })
       .catch(() => {
         if (isMounted) {
-          form.setIsAppleAvailable(false);
+          setIsAppleAvailable(false);
         }
       });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [setIsAppleAvailable]);
 
   const navigation = useAuthFormNavigation({
     focusInteractionRef: form.focusInteractionRef,
@@ -262,6 +267,7 @@ export function useAuthController() {
 
   // Profile Handlers
   const profileActions = useSignupProfileActions({
+    photoEnabled: form.step === 'profile' && form.mode === 'signup' && !registration.isRegistrationPending && !registration.hasCreatedAccount,
     showDialog,
     setProfilePicture: form.setProfilePicture,
     firstName: form.firstName,
@@ -286,6 +292,7 @@ export function useAuthController() {
 
   return {
     isAuthenticated,
+    draftPersistence,
     form,
     navigation,
     canGoBack,

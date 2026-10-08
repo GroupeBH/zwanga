@@ -1,4 +1,6 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
+import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
+import { parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -14,7 +16,7 @@ import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
 import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { InteractionManager, Linking } from 'react-native';
+import { InteractionManager, Linking, Platform } from 'react-native';
 
 export function NotificationHandler() {
   const dispatch = useAppDispatch();
@@ -34,6 +36,7 @@ export function NotificationHandler() {
   });
   const [releaseOverdueDriver] = useReleaseOverdueDriverMutation();
   const currentUserRef = useRef(currentUser);
+  useDriverNotifications(isAuthenticated ? currentUser?.id : undefined);
   const myTripRequestsRef = useRef(myTripRequests);
   const pathnameRef = useRef(pathname);
   const shownOverdueRequestsRef = useRef(new Set<string>());
@@ -118,8 +121,8 @@ export function NotificationHandler() {
       handleNotification: async (notification) => {
         const type = notification.request.content.data?.type;
         const tripRevenueModalAlreadyOwnsForeground =
-          type === 'driver_trip_revenue' &&
-          pathnameRef.current.startsWith('/trip/navigate/');
+          (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data))) ||
+          (type === 'driver_trip_revenue' && pathnameRef.current.startsWith('/trip/navigate/'));
 
         return {
           shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
@@ -214,6 +217,8 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
+      if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
+      if (parseDriverInvitation(data)) return;
       if (isTripInterruptionNotification(data)) {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
@@ -237,6 +242,7 @@ export function NotificationHandler() {
       if (isTripInterruptionNotification(data)) {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
+      if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
       if (data.type === 'trip_request_driver_overdue') {
         void handlePassengerOverdueNotification(data, content.body);
       } else {

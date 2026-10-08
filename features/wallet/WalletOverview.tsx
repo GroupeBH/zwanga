@@ -33,13 +33,15 @@ export function WalletOverview({ wallet, withdrawal }: Props) {
       </TouchableOpacity>
     </View>
     {wallet.isWalletLoading ? <ActivityIndicator style={styles.loader} color={Colors.primary} /> :
-      <Text style={styles.balance}>{formatWalletAmount(summary?.account.balance ?? 0, wallet.currency)}</Text>}
+      <Text style={styles.balance}>{formatWalletAmount(Math.max(0, Number(summary?.account.balance ?? 0) - Number(summary?.account.reservedCashCommissionBalance ?? 0)), wallet.currency)}</Text>}
     {summary?.withdrawal && <Text style={styles.caption}>
       Retirable : {formatWalletAmount(summary.withdrawal.availableMoney, summary.withdrawal.currency)}
     </Text>}
     {expanded && <View style={styles.breakdown}>
       {summary?.withdrawal && <>
-        <BalanceLine label="Retirables" value={formatWalletAmount(summary.account.withdrawableBalance)} />
+        <BalanceLine label="Retirables" value={formatWalletAmount(Math.max(0, Number(summary.account.withdrawableBalance) - Number(summary.account.reservedCashCommissionBalance ?? 0)))} />
+        {Number(summary.account.reservedCashCommissionBalance) > 0 &&
+          <BalanceLine label="Réservés aux commissions cash" value={formatWalletAmount(summary.account.reservedCashCommissionBalance)} />}
         <BalanceLine label="Pour payer uniquement" value={formatWalletAmount(summary.withdrawal.nonWithdrawableTokens)} />
         {Number(summary.account.reservedWithdrawalBalance) > 0 &&
           <BalanceLine label="Retraits en cours" value={formatWalletAmount(summary.account.reservedWithdrawalBalance)} />}

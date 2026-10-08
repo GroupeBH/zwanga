@@ -193,7 +193,7 @@ test('screen uses finalization state for profile/KYC and locks header even after
       'expo-router': { Redirect: 'Redirect' },
       '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
       '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
-      '../hooks/auth/useAuthController': { useAuthController: () => ({
+      '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false },
         form: { mode: 'signup', step, role: 'driver', firstName: 'Test', lastName: 'Example', isRegistering: false, isStartingDiditKyc: false },
         navigation: { handleModeChange: () => calls.push('mode'), handlePreviousStep: () => calls.push('back') },
         social: { isGoogleLoading: false, isSocialAuthInFlight: () => false },

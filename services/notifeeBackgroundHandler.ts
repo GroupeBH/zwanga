@@ -7,6 +7,9 @@
 import { Linking } from 'react-native';
 import { ONGOING_TRIP_NOTIFICATION_ID } from './ongoingTripNotification';
 import { getNotificationHref } from '@/utils/notificationNavigation';
+import { notificationDecision, parseDriverInvitation } from '@/features/notifications/driverInvitation';
+import { respondToDriverNotification } from './driverNotificationResponse';
+import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 
 // Types Notifee
 type NotifeeModule = typeof import('@notifee/react-native');
@@ -49,16 +52,33 @@ try {
  * Ce handler est appelé même quand l'app est complètement fermée
  */
 if (notifee && EventTypeEnum) {
+  // Register before Expo Router: an iOS cold-start action must not wait for profile hydration.
+  notifee.onForegroundEvent?.(({ type, detail }) => {
+    const data = detail.notification?.data;
+    if (type === EventTypeEnum!.PRESS) rememberPendingDriverOpen(data);
+    const invitation = parseDriverInvitation(data);
+    if (invitation && type === EventTypeEnum!.ACTION_PRESS && notificationDecision(detail.pressAction?.id))
+      void respondToDriverNotification(invitation, detail.pressAction?.id).catch(() => {});
+  });
   notifee.onBackgroundEvent(async ({ type, detail }) => {
-    console.log('[NotifeeBackgroundHandler] Background event:', type, detail);
+    console.log('[NotifeeBackgroundHandler] Background event:', type);
 
     const { notification, pressAction } = detail;
 
     // Gérer les pressions sur les notifications
     if (type === EventTypeEnum!.PRESS || type === EventTypeEnum!.ACTION_PRESS) {
       const data = notification?.data || {};
+      const invitation = parseDriverInvitation(data);
+      if (invitation) {
+        if (type === EventTypeEnum!.ACTION_PRESS && notificationDecision(pressAction?.id)) {
+          await respondToDriverNotification(invitation, pressAction?.id);
+          return;
+        }
+        await openAppDeepLink(`zwanga://incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}&actionEvent=${Date.now()}`);
+        return;
+      }
       
-      console.log('[NotifeeBackgroundHandler] Notification pressée en background:', data);
+      console.log('[NotifeeBackgroundHandler] Notification pressée en background');
 
       // Pour les notifications de trajet en cours
       if (data.type === 'ongoing_trip' || notification?.id === ONGOING_TRIP_NOTIFICATION_ID) {

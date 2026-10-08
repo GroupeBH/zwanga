@@ -44,6 +44,7 @@ export type TripSearchByPointsPayload = {
 };
 
 export type CreateTripPayload = {
+  acceptedPaymentModes?: import('@/types').TripPaymentMode[];
   departureLocation: string;
   departureReference?: string;
   departureCoordinates?: [number, number];
@@ -61,6 +62,7 @@ export type CreateTripPayload = {
 };
 
 export type CreateRecurringTripPayload = {
+  acceptedPaymentModes?: import('@/types').TripPaymentMode[];
   departureLocation: string;
   departureReference?: string;
   departureCoordinates?: [number, number];

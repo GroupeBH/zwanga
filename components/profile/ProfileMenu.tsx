@@ -1,6 +1,7 @@
 import { Colors } from '@/constants/styles';
 import { styles } from '@/features/profile/ProfileMenu.styles';
 import { ProfileStoreReviewButton } from './ProfileStoreReviewButton';
+import { ProfileDriverAvailabilityEntry } from './ProfileDriverAvailabilityEntry';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -13,14 +14,17 @@ import {
 type Props = Pick<ReturnType<typeof useProfileController>,
   | 'menuItems'
   | 'router'
+  | 'isDriver'
 >;
 
 export function ProfileMenu({
   menuItems,
   router,
+  isDriver,
 }: Props) {
   return (<View style={styles.menuContainer}>
     <View style={styles.menuCard}>
+      {isDriver && <ProfileDriverAvailabilityEntry />}
       {menuItems.map((item, index) => (
         <TouchableOpacity
           key={index}

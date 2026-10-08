@@ -10,6 +10,7 @@ import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface PublishConfirmationStepProps {
+  acceptedPaymentModes: import('@/types').TripPaymentMode[];
   stepEntering: FadeInDown | undefined;
   publicationSuccess: PublicationSuccess;
   routePreviewRegion: Region;
@@ -39,6 +40,7 @@ interface PublishConfirmationStepProps {
 }
 
 export function PublishConfirmationStep({
+  acceptedPaymentModes,
   stepEntering,
   publicationSuccess,
   routePreviewRegion,
@@ -68,6 +70,7 @@ export function PublishConfirmationStep({
 }: PublishConfirmationStepProps) {
   return (
     <Animated.View entering={stepEntering} style={styles.stepContainer}>
+      {!isFreeTrip && <Text style={styles.stepSubtitle}>Paiements acceptés : {acceptedPaymentModes.map(mode => ({ cash: 'Cash', electronic: 'Électronique', points: 'Jetons' })[mode]).join(' · ')}</Text>}
       <View style={[styles.iconContainer, styles.confirmIntro]}>
         <View style={[styles.iconCircle, styles.iconCircleGreen, styles.confirmIntroIcon]}>
           <Ionicons name="checkmark" size={24} color={Colors.success} />

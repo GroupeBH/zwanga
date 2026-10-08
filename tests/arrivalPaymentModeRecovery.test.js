@@ -133,6 +133,7 @@ test('a decline reveals selectable mode cards directly, with no new button, paym
   const native = { ScrollView: 'Scroll', View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button',
     ActivityIndicator: 'Spinner', Keyboard: { dismiss() {} }, StyleSheet: { create: value => value } };
   const { ArrivalPaymentFields } = loader({ react: { ...React, ...hooks.react },
+    '@/store/api/driverFinanceApi': { useBookingPaymentOptionsQuery: () => ({ currentData: { acceptedPaymentModes: ['cash','points','electronic'], availablePaymentModes: ['cash','points','electronic'] } }) },
     'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     'expo-linking': { createURL: () => 'zwanga://booking/payment' },
   })('features/arrival-payment/ArrivalPaymentFields.tsx');

@@ -70,6 +70,7 @@ module.exports = {
       buildNumber: "122",
       supportsTablet: true,
       usesAppleSignIn: true,
+      entitlements: { 'com.apple.developer.usernotifications.time-sensitive': true },
       ...(HAS_CHOTTULINK
         ? {
             associatedDomains: [`applinks:${CHOTTULINK_DOMAIN}`],
@@ -224,6 +225,7 @@ module.exports = {
           "icon": "./assets/images/zwanga.png",
           "color": "#ffffff",
           "defaultChannel": "default",
+          "sounds": ["./assets/sounds/driver_ring.wav"],
           "enableBackgroundRemoteNotifications": true
         }
       ],

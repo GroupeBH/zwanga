@@ -1,7 +1,9 @@
+import { AppUpdateCoordinator } from './AppUpdateCoordinator';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { RideOutboxCoordinator } from '@/components/RideOutboxCoordinator';
 import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
 import { AccountActivityCoordinator } from '@/components/AccountActivityCoordinator';
+import { DriverPresenceCoordinator } from '@/components/DriverPresenceCoordinator';
 import { StoreReviewCoordinator } from '@/components/StoreReviewCoordinator';
 import { DriverPaymentNoticeCoordinator } from '@/components/DriverPaymentNoticeCoordinator';
 import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
@@ -9,9 +11,11 @@ import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
 import { store } from '@/store';
+import { clearAuthFlowDraft, restoreAuthFlowDraft } from '@/services/authFlowDraft';
+import { selectHasAuthenticatedSession } from '@/store/selectors';
 import { initializeAuth } from '@/store/slices/authSlice';
 import { useAuthBootstrap } from '@/hooks/auth/useAuthBootstrap';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
@@ -22,9 +26,25 @@ interface ReduxProviderProps {
   children: React.ReactNode;
 }
 
-const restoreSession = () => store.dispatch(initializeAuth()).unwrap();
+const restoreSession = async () => {
+  await store.dispatch(initializeAuth()).unwrap();
+  if (selectHasAuthenticatedSession(store.getState())) {
+    // An optional draft must never block a valid session from reaching Home.
+    await clearAuthFlowDraft().catch(() => {});
+  } else {
+    await restoreAuthFlowDraft();
+  }
+};
 
 export function ReduxProvider({ children }: ReduxProviderProps) {
+  useEffect(() => {
+    let previous = selectHasAuthenticatedSession(store.getState());
+    return store.subscribe(() => {
+      const authenticated = selectHasAuthenticatedSession(store.getState());
+      if (authenticated && !previous) void clearAuthFlowDraft().catch(() => {});
+      previous = authenticated;
+    });
+  }, []);
   const { status, retry } = useAuthBootstrap(restoreSession);
 
   return (
@@ -48,6 +68,8 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
             <DialogProvider>
               <ReferralAttributionHandler />
               <AccountActivityCoordinator />
+              <DriverPresenceCoordinator />
+              <AppUpdateCoordinator />
               <ActiveRideLocationCoordinator />
               <RideOutboxCoordinator />
               <NotificationHandler />

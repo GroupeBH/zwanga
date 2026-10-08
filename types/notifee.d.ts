@@ -136,6 +136,7 @@ declare module '@notifee/react-native' {
   ) => Promise<void>;
 
   interface NotifeeModule {
+    getInitialNotification(): Promise<{ notification: Notification; pressAction: AndroidPressAction } | null>;
     requestPermission(): Promise<any>;
     createChannel(channel: AndroidChannel): Promise<string>;
     displayNotification(options: DisplayNotificationOptions): Promise<string>;

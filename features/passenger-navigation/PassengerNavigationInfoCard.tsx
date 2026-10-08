@@ -9,6 +9,7 @@ import {
 import { styles } from '../screen-styles/app/booking/navigate/detail/index';
 import { RideRecoveryControl } from '@/features/ride-recovery/RideRecoveryControl';
 import { PausedPassengerRideNotice } from '@/components/trip/PausedPassengerRideNotice';
+import { isAwaitingPassengerPickup } from './pickupArrivalEstimate';
 import { Colors } from '@/constants/styles';
 import { getTripInterruptionReasonLabel } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,7 @@ export function PassengerNavigationInfoCard({
   if (!trip) return null;
   const booking = data.booking;
   if (!booking) return null;
+  const awaitingPickup = isAwaitingPassengerPickup(booking, trip);
   return (
     <Animated.View 
       entering={FadeInUp.duration(300).delay(100)} 
@@ -61,19 +63,21 @@ export function PassengerNavigationInfoCard({
         </View>
       </View>
 
-      {(presentation.displayedRouteDistance || presentation.displayedRouteDuration) && (
+      {(presentation.displayedRouteDistance || (!awaitingPickup && presentation.displayedRouteDuration)) && (
         <View style={styles.routeStats}>
           <View style={styles.routeStat}>
             <Ionicons name="navigate-outline" size={18} color={Colors.primary} />
             <Text style={styles.routeStatValue}>{presentation.displayedRouteDistance ?? '-'}</Text>
-            <Text style={styles.routeStatLabel}>Restant</Text>
+            <Text style={styles.routeStatLabel}>{awaitingPickup ? 'Avant prise en charge' : 'Restant'}</Text>
           </View>
-          <View style={styles.routeStatDivider} />
-          <View style={styles.routeStat}>
-            <Ionicons name="time-outline" size={18} color={Colors.secondary} />
-            <Text style={styles.routeStatValue}>{presentation.displayedRouteDuration ?? '-'}</Text>
-            <Text style={styles.routeStatLabel}>Projection</Text>
-          </View>
+          {!awaitingPickup && <>
+            <View style={styles.routeStatDivider} />
+            <View style={styles.routeStat}>
+              <Ionicons name="time-outline" size={18} color={Colors.secondary} />
+              <Text style={styles.routeStatValue}>{presentation.displayedRouteDuration ?? '-'}</Text>
+              <Text style={styles.routeStatLabel}>Projection</Text>
+            </View>
+          </>}
           {state.isSocketConnected && (
             <>
               <View style={styles.routeStatDivider} />

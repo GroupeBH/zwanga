@@ -27,9 +27,12 @@ export function ProtectedAppStack() {
       </Stack.Protected>
       <Stack.Screen name="auth-entry" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="app-update" options={{ headerShown: false }} />
 
       <Stack.Protected guard={hasSession}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="incoming-driver" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="driver-availability" />
         <Stack.Screen name="booking/navigate/[id]" />
         <Stack.Screen name="booking/payment" />
         <Stack.Screen name="bookings" />

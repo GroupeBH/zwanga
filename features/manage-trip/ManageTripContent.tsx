@@ -1,3 +1,5 @@
+import { TripShareAction } from '@/components/trip/TripShareAction';
+import { useManagedTripShare } from '@/hooks/manage-trip/useManagedTripShare';
 import { ManageTripBookings } from './ManageTripBookings';
 import { ManageTripInterruptionNotice } from './ManageTripInterruptionNotice';
 import { ManageTripSummary } from './ManageTripSummary';
@@ -5,9 +7,8 @@ import { useManageTripState } from '../../hooks/manage-trip/useManageTripState';
 import { styles } from '../screen-styles/app/trip/manage/detail/index';
 import { Colors } from '@/constants/styles';
 import type { Booking } from '@/types';
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 
 interface ManageTripContentProps {
   state: ReturnType<typeof useManageTripState>;
@@ -26,8 +27,8 @@ export function ManageTripContent({
   tracking,
   actions,
   bookingsActions,
-  openTripSecurityModal,
 }: ManageTripContentProps) {
+  const share = useManagedTripShare(state.trip);
   const trip = state.trip;
   if (!trip) return null;
   return (
@@ -54,37 +55,7 @@ export function ManageTripContent({
         bookingsActions={bookingsActions}
       />
 
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Sécurité du trajet</Text>
-            <Text style={styles.sectionSubtitle}>
-              Choisissez clairement les proches à notifier pour ce trajet.
-            </Text>
-          </View>
-          <View style={styles.sectionIconBadge}>
-            <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primary} />
-          </View>
-        </View>
-        <TouchableOpacity
-          style={styles.securityQuickButton}
-          onPress={openTripSecurityModal}
-          activeOpacity={0.9}
-        >
-          <Ionicons name="people" size={18} color={Colors.white} />
-          <Text style={styles.securityQuickButtonText}>Choisir qui notifier</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.securitySecondaryButton}
-          onPress={() => state.router.push('/security')}
-          activeOpacity={0.9}
-        >
-          <Ionicons name="settings-outline" size={16} color={Colors.primary} />
-          <Text style={styles.securitySecondaryButtonText}>
-            {"Ajouter ou gérer mes contacts d'urgence"}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <TripShareAction onShare={share} />
     </ScrollView>
   );
 }

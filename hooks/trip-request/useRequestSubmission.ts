@@ -14,6 +14,7 @@ import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { useRequestDraft } from './useRequestDraft';
+import { useDriverDispatchStatusQuery } from '@/store/api/driverDispatchApi';
 import type { useRequestSchedule } from './useRequestSchedule';
 
 type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
@@ -52,6 +53,7 @@ export function useRequestSubmission({
   const { showDialog } = useDialog();
   const { isIdentityVerified, checkIdentity, refreshKycStatus } = useIdentityCheck();
   const createRequestInFlightRef = useRef(false);
+  const { data: dispatchStatus } = useDriverDispatchStatusQuery();
 
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
 
@@ -184,6 +186,7 @@ export function useRequestSubmission({
         arrivalCoordinates,
         departureDateMin: departureWindow.min.toISOString(),
         departureDateMax: departureWindow.max.toISOString(),
+        ...(timePreset === 'now' && dispatchStatus?.enabled ? { immediateDispatch: true } : {}),
         ...(hasSpecifiedNumberOfSeats ? { numberOfSeats } : {}),
         vehicleType: selectedVehicleType,
         maxPricePerSeat: confirmedPricePerSeat,

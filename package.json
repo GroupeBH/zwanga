@@ -1,10 +1,10 @@
 {
   "name": "zwanga-app",
-  "main": "expo-router/entry",
+  "main": "index.ts",
   "version": "1.0.16",
   "scripts": {
     "start": "expo start",
-    "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js",
+    "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs",
     "eas-build-pre-install": "node ./scripts/validate-referral-config.js && node ./scripts/validate-android-crashlytics.js",
     "eas-build-on-success": "node ./scripts/validate-android-native.cjs --eas",
     "check:android-native": "node ./scripts/validate-android-native.cjs",
@@ -13,7 +13,7 @@
     "validate:referrals": "node ./scripts/validate-referral-config.js",
     "check:network": "node ./scripts/check-network-boundaries.js",
     "check:source-size": "node ./scripts/check-source-size.cjs",
-    "test:referrals": "node --test ./tests/referralAttributionPolicy.test.js ./tests/referralQr.test.js ./tests/referralQrShare.test.js ./tests/referralQrModal.test.js",
+    "test:referrals": "node --test ./tests/referralAttributionPolicy.test.js ./tests/referralPersistence.test.js ./tests/referralQr.test.js ./tests/referralQrShare.test.js ./tests/referralQrModal.test.js",
     "test:performance": "node --test ./tests/performancePolicy.test.js ./tests/performanceGpsPlaces.test.js ./tests/boundedInboxPages.test.js ./tests/boundedInboxScreens.test.js",
     "test:activity": "node --test ./tests/accountActivity.test.js",
     "test:trip-request": "node --test ./tests/tripRequestForm.test.js ./tests/tripRequestEditPricing.test.js ./tests/tripRequestExpiration.test.js ./tests/passengerSeats.test.js",

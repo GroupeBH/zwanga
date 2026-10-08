@@ -1,3 +1,4 @@
+/* global Buffer */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { configureStore } = require('@reduxjs/toolkit');
@@ -149,6 +150,9 @@ for (const authenticated of [false, true]) {
       '@/store/slices/authSlice': { performLogout() {}, setTokens() {} },
       '@/store/api/userApi': { useUpdateFcmTokenMutation: () => [() => ({ unwrap: async () => {} })] },
       '@/services/pushNotifications': { clearStoredFcmToken: async () => {}, obtainFcmToken: async () => null, subscribeToFcmRefresh: () => () => {} },
+      '@/services/driverNotifications': { configureDriverNotifications: async () => {} },
+      '@/services/backgroundNotificationTask': { registerBackgroundNotificationTask: async () => true },
+      '@/store/api/driverDispatchApi': { driverDispatchApi: { endpoints: { registerDriverNotifications: { initiate: () => ({}) } } } },
       '@/services/tokenRefresh': { validateAndRefreshTokens: async () => false, proactiveTokenRefresh: async () => false },
       '@/services/tokenStorage': { getTokens: async () => ({ accessToken: null, refreshToken: null }) },
       'expo-router': { useSegments: () => authenticated ? ['auth'] : [],

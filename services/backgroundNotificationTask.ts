@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { handleIncomingNotification } from './pushNotifications';
+import { parseDriverInvitation, readDriverPushData } from '@/features/notifications/driverInvitation';
+import { displayDriverInvitation } from './driverNotifications';
 
 /**
  * Nom de la tâche de fond pour les notifications push
@@ -42,6 +44,12 @@ if (TaskManager) {
 
     if (!data) {
       console.warn('Aucune donnée reçue dans la tâche de notification');
+      return;
+    }
+
+    const driverData = readDriverPushData(data);
+    if (driverData && parseDriverInvitation(driverData)) {
+      await displayDriverInvitation(driverData);
       return;
     }
 

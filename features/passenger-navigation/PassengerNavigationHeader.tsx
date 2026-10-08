@@ -1,10 +1,12 @@
+import { TripShareAction } from '@/components/trip/TripShareAction';
 import { Colors } from '@/constants/styles';
 import { NavigationAssistanceButtons } from '@/features/navigation/NavigationAssistanceButtons';
+import { PassengerPickupEstimateBanner } from './PassengerPickupEstimateBanner';
 import type { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import type { usePassengerNavigationController } from '@/hooks/passenger-navigation/usePassengerNavigationController';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface Props {
   model: ReturnType<typeof usePassengerNavigationController>;
@@ -31,11 +33,6 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
         {state.isSocketConnected && !data.offlineBooking && !data.offlineTrip && <Text style={styles.live}>En direct</Text>}
         {(data.offlineBooking || data.offlineTrip) && <Text style={styles.subtitle}>Hors connexion</Text>}
       </View>
-      <TouchableOpacity style={styles.iconButton} onPress={() => void tripActions.handleShareTrip()}
-        disabled={data.isCreatingTripShareLink} accessibilityRole="button" accessibilityLabel="Partager le trajet">
-        {data.isCreatingTripShareLink ? <ActivityIndicator size="small" color={Colors.primary} /> :
-          <Ionicons name="share-social-outline" size={23} color={Colors.primary} />}
-      </TouchableOpacity>
     </View>
     <View style={styles.row}>
       <View style={styles.driver}>
@@ -44,6 +41,8 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
       </View>
       <NavigationAssistanceButtons role="passenger" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
+    <TripShareAction compact onShare={tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />
+    <PassengerPickupEstimateBanner estimate={model.pickupEstimate} />
   </View>;
 }
 

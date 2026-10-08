@@ -39,6 +39,7 @@ export interface Location {
 }
 
 export interface Trip {
+  acceptedPaymentModes?: import('./common').TripPaymentMode[];
   id: string;
   driverId: string;
   driverName: string;
@@ -77,6 +78,7 @@ export interface Trip {
 }
 
 export interface RecurringTripTemplate {
+  acceptedPaymentModes?: TripPaymentMode[];
   id: string;
   driverId: string;
   departure: Location;

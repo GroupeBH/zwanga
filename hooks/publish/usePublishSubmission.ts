@@ -11,7 +11,7 @@ import {
   useLazyGetMyTripsQuery,
 } from '@/store/api/tripApi';
 import { useGetProfileSummaryQuery } from '@/store/api/userApi';
-import type { Vehicle } from '@/types';
+import type { Vehicle, TripPaymentMode } from '@/types';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
@@ -25,6 +25,7 @@ import type { User } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
+  acceptedPaymentModes: TripPaymentMode[];
   publishInFlightRef: React.RefObject<boolean>;
   isSubmittingTrip: boolean;
   hasDepartureAddress: boolean;
@@ -67,6 +68,7 @@ interface Params {
 }
 
 export function usePublishSubmission({
+  acceptedPaymentModes,
   publishInFlightRef,
   isSubmittingTrip,
   hasDepartureAddress,
@@ -183,6 +185,7 @@ export function usePublishSubmission({
 
       if (isRecurringTrip) {
         await createRecurringTrip({
+          acceptedPaymentModes,
           departureLocation: departureAddress,
           departureReference: departureReference.trim() || undefined,
           departureCoordinates,
@@ -209,6 +212,7 @@ export function usePublishSubmission({
         });
       } else {
         await createTrip({
+          acceptedPaymentModes,
           departureLocation: departureAddress,
           departureReference: departureReference.trim() || undefined,
           departureCoordinates,

@@ -69,7 +69,7 @@ test('a restored session never renders the auth form, except an already active K
     'expo-router': { Redirect: 'Redirect' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/config/env': {}, '@/components/auth': { AuthHeader: 'Header', KycStep: 'KYC', VehicleModal: 'Modal', authStyles: {} },
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: {} }) },
-    '../hooks/auth/useAuthController': { useAuthController: () => model },
+    '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false }, ...model }) },
   })('app/auth.tsx').default;
   assert.equal(Screen().type, 'Redirect'); assert.equal(Screen().props.href, '/(tabs)');
   model.form.step = 'kyc'; model.form.mode = 'signup'; model.form.role = 'driver';

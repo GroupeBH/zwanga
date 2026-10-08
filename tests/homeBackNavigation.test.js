@@ -157,5 +157,5 @@ test('ProtectedAppStack has independent startup/session guards and always retain
   session = false;
   assert.deepEqual(getGroups().map(group => group.props.guard), [false, false]);
   const publicScreens = ProtectedAppStack().props.children.filter(child => child.type === 'Screen');
-  assert.deepEqual(publicScreens.map(child => child.props.name), ['auth-entry', 'auth']);
+  assert.deepEqual(publicScreens.map(child => child.props.name), ['auth-entry', 'auth', 'app-update']);
 });

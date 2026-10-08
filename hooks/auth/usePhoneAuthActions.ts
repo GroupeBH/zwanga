@@ -124,7 +124,7 @@ export function usePhoneAuthActions({
         variant: 'danger',
         title: 'Code invalide',
         message: getAuthErrorMessage(error, 'Code OTP invalide ou expiré.'),
-        actions: [{ label: 'Réessayer', variant: 'primary', onPress: () => { setStep('phone'); setSmsCode(['', '', '', '', '']); } }],
+        actions: [{ label: 'Réessayer', variant: 'primary', onPress: () => { setSmsCode(['', '', '', '', '']); } }],
       });
     }
   };

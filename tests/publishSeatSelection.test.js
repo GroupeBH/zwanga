@@ -61,6 +61,7 @@ const native = {
   StyleSheet: { create: value => value },
 };
 const uiLoader = loader({
+  './PublishPaymentModes': { PublishPaymentModes: 'PaymentModes' },
   'react-native': native,
   '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/utils/reanimated': { default: { View: 'Animated.View' } },

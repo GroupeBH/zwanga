@@ -256,6 +256,7 @@ export function usePublishController() {
     formatTimeOnlyValue: presentation.formatTimeOnlyValue,
     description: form.description,
     requiresPassengerKyc: form.requiresPassengerKyc,
+    acceptedPaymentModes: form.acceptedPaymentModes,
     createTrip,
     setPublicationSuccess,
     getMyRecurringTrips,

@@ -124,6 +124,8 @@ export function usePassengerRouteContext({
   ]);
   const passengerRouteSignature = [
     booking?.id ?? 'booking',
+    tripId,
+    trip?.status ?? 'unknown',
     hasPassengerPickedUp ? 'picked' : 'pickup',
     hasPassengerDroppedOff ? 'dropped' : 'active',
     activePassengerDestination?.latitude.toFixed(6) ?? 'no-lat',

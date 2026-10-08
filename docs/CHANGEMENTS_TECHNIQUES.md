@@ -10,6 +10,557 @@ Documents complémentaires déjà présents :
 - [Réduction du travail des écrans inactifs](SCREEN_IDLE_PERFORMANCE.md)
 - [Contrat backend du profil et du parcours conducteur](../../zwanga-backend/docs/auth/profile-state.md)
 
+## 7 octobre 2026 — Audit performance, sécurité et fiabilité
+
+**Périmètre et problème :** nouvelle revue de l’application mobile et lecture ciblée
+du backend local, notamment sessions, reprise réseau, parrainage et alertes conducteur.
+Les changements préexistants et les corrections des audits antérieurs sont conservés.
+
+**Travail effectué :** ajout du
+[rapport d’audit](AUDIT_PERFORMANCE_SECURITE_FIABILITE_2026_10_07.md), avec huit
+constats priorisés, fichiers et preuves, corrections proposées et limites. La revue
+sécurité a guidé la vérification des frontières entre comptes et de l’invalidation
+de session. Les règles de rédaction ont servi à séparer constats, reproductions et
+recommandations. Aucun correctif fonctionnel, backend, dépendance ou migration
+appliqué : seuls ce rapport et cette entrée sont ajoutés.
+
+**Vérifications :** 1 478/1 478 tests JavaScript réussis avec concurrence limitée à
+quatre ; TypeScript et contrôles de frontière réseau/taille des sources réussis.
+Six scénarios supplémentaires reproduits en mémoire avec entrées fictives et
+transports/dépôts simulés. L’audit npm retourne 63 signalements de paquets à trier,
+dont de l’outillage transitif : ce n’est pas un décompte de failles exploitables
+dans l’app. Aucune mise à niveau automatique. Pas de test physique iOS/Android,
+de mesure de chauffe/FPS/mémoire native ni d’accès aux données de production.
+Pas de lecture de `.env`, de secrets ou de données personnelles.
+
+## 7 octobre 2026 — Réserve cash, modes de paiement et abonnement Pro
+
+**Périmètre :** accompagner la nouvelle règle backend de commission de 5 %, Pro à
+5 000 FC pour trente jours et essai de trente jours calendaires. Il faut distinguer
+une recharge de commissions de l’achat Pro et ne pas proposer de dépenser des jetons
+déjà réservés à une course cash.
+
+**Solution appliquée :**
+
+- `store/api/driverFinanceApi.ts` ajoute les lectures RTK Query des finances du
+  conducteur et des modes disponibles par trajet/réservation. Le cache du résumé est
+  séparé par compte ; les soldes du conducteur ne sont pas exposés au passager.
+- `features/publish/PublishPaymentModes.tsx`, les hooks de publication et les étapes
+  tarif/confirmation transmettent les modes acceptés, y compris pour les trajets
+  récurrents. Un choix non vide est conservé. Le cash est proposé après vérification
+  de la réserve ; les deux modes non cash sont proposés par défaut. L’affichage
+  précise les 5 %, la réservation à l’acceptation et le besoin de recharge.
+- Les détails du trajet montrent les modes déclarés. `TripBookingSteps` filtre les
+  choix et `useTripBookingSubmission` revérifie la disponibilité avant envoi, avec
+  verrou synchrone contre les doubles appuis. La vérification serveur à l’acceptation
+  reste déterminante : un devis n’est pas une réservation de jetons.
+- `ArrivalPaymentFields` utilise les modes autorisés par le backend, garde le choix
+  accepté et désactive le cash non finançable. Aucun changement silencieux de mode,
+  aucune relance de paiement prestataire et aucun nouveau modal natif.
+- `DriverCommissionPanel` dans le portefeuille distingue jetons achetés disponibles,
+  jetons réservés, capacité cash et dette éventuelle. L’historique nomme les débits et
+  régularisations de commission. Les soldes utilisables pour payer Pro, un trajet ou
+  effectuer un retrait excluent la réserve cash ; le mapping portefeuille conserve
+  le nouveau champ, même lorsqu’il arrive comme chaîne décimale.
+- Les écrans Pro précisent trente jours et l’absence d’exonération de commission.
+  Les bonus d’abonnement existants restent des jetons non utilisables pour le cash.
+  Les notifications de commission, recharge nécessaire et essai ouvrent le portefeuille.
+
+**Préservé et limites :** montants/dates des paiements déjà initiés, reprise des
+paiements, retraits existants, contrôles KYC, fidélité et gestes des formulaires.
+Pas de désactivation globale du compte faute de réserve. Le plafond indépendant de
+100 000 FC reste à arbitrer et n’est pas présenté comme une règle active. Le choix
+des modes est ajouté à la publication ; l’éditeur mobile d’un trajet existant n’a
+pas de nouveau sélecteur (l’API de modification l’accepte). La disponibilité d’une
+simple proposition de dispatch n’immobilise pas de jetons. Pas de déploiement ni
+de nouvelle dépendance native.
+
+**Validation réelle :** 1 468/1 468 tests JavaScript réussis, dont les nouveaux tests
+de choix cash, arrivée, mapping de réserve, cache des comptes et navigation des
+notifications. Les fixtures des écrans existants simulent les nouveaux appels API.
+TypeScript mobile réussi ; contrôle de 1 034 sources, aucune au-delà de 400 lignes ;
+frontière réseau valide. Aucun test sur appareil physique ou paiement réel.
+
+**Déploiement :** backend et migration financière obligatoires avant cette version
+mobile ; une simple modification des variables AWS ne suffit pas. Contrat, calculs,
+compatibilité et recette : [journal financier backend](../../zwanga-backend/docs/finance/CHANGELOG.md).
+
+## 7 octobre 2026 — Publication et réserve cash : moins de texte, essentiels visibles
+
+**Périmètre et problème :** l’étape « Détails » de publication plaçait un long bloc
+de paiement avant les places et le prix ; le portefeuille affichait toutes les
+explications cash/Pro avant l’historique. Deux captures utilisateur montraient une
+forte occupation verticale et trop de défilement.
+
+**Solutions appliquées :**
+
+- `features/publish/PublishPricingStep.tsx` : places, prix par place et gratuité
+  regroupés en tête. Suppression du titre redondant, des grandes cartes séparées,
+  de la phrase d’information générique et de la navigation interne déjà masquée
+  par les styles. `app/publish.tsx` conserve seul les boutons fixes Retour/Continuer.
+- `PublishSeatSelector.tsx` : aide courte pour la capacité des motos, moins
+  d’espace, boutons +/− conservés. Le champ prix rétrécit dans son conteneur sans
+  déborder horizontalement, défaut identifié puis corrigé au rendu web.
+- `PublishPaymentModes.tsx` : trois choix compacts, commission visible, conditions
+  détaillées dépliables, recharge/actualisation conservées. Distinction entre
+  réserve insuffisante, chargement et erreur réseau ; aucun message de recharge
+  ne présente une panne de vérification comme une insuffisance de solde.
+- `PublishPassengerOptions.tsx` : contrôle d’identité toujours accessible ; note
+  facultative dépliable sans perte du texte. Une note existante s’ouvre au montage.
+- `features/driver-payments/DriverCommissionPanel.tsx` : réserve cash, état serveur
+  et recharge visibles ; couverture et informations Pro dans « Détails ». Jetons
+  réservés non nuls et dette éventuelle restent visibles même repliés. Les conditions
+  détaillées utilisent les valeurs de commission/prix/durée déjà retournées par
+  l’API ; une date Pro absente n’est plus présentée comme une date invalide.
+  `app/wallet.tsx` réinitialise le dépliage lors d’un changement de compte.
+
+**Préservé et précautions :** aucun nouveau modal, paquet, endpoint, changement
+de commission ou de calcul de réserve. Au moins un paiement reste sélectionné,
+le cash non financé reste désactivé (mais retirable de la sélection), les limites
+de places, la gratuité, l’identité et les payloads de publication ne changent pas.
+Une erreur de réserve masque les anciens montants ; reprise réseau et pause des
+lectures hors écran conservées. Le défilement reste disponible pour petits écrans,
+clavier, textes agrandis et panneaux dépliés ; aucune promesse de « zéro scroll »
+sur toutes les tailles.
+
+**Vérifications :** 32 tests ciblés réussis, dont dix nouveaux cas dans
+`tests/publishPricingLayout.test.js` et `tests/driverCommissionPanel.test.js`.
+TypeScript et ESLint ciblés sans erreur ; frontière réseau et limite de taille
+validées (1 035 sources, aucune au-delà de 400 lignes).
+La première suite complète après les deux retouches donne 1 477/1 478 : échec
+du test préexistant « display policy pauses offline/covered reads… » dans
+`displayReadRecovery.test.js`. Sa relance isolée donne 3/3 réussis. Une sensibilité
+aux temporisations sous charge est une hypothèse, pas une cause démontrée ; ni ce
+test ni sa logique de réseau n’ont été modifiés dans cette intervention.
+La relance complète avec `node --test --test-concurrency=4` termine ensuite à
+**1 478/1 478 tests réussis** (101,8 s). `git diff --check` ciblé est également valide.
+
+**Rendu visuel réel des composants via React Native Web, pas essais natifs :**
+`scripts/preview-publish-pricing.cjs` et `scripts/preview-driver-commission.cjs`
+génèrent des aperçus locaux avec données fictives sous `.expo/`. Captures Chrome
+inspectées à 320, 360 et 411 pixels : aucun débordement horizontal après correction.
+Publication repliée : aucun défilement vertical dans les scénarios 360×800 (cash
+disponible) et 411×884 (réserve vide), 253 px restants sur 320×568. Réserve cash
+seule, marges comprises : 230/255/299 px selon les états vide/disponible/dette.
+Ces mesures ne valent ni comparaison chiffrée à l’ancienne UI ni validation native.
+Recette iOS/Android restante : petites tailles et grandes polices, clavier numérique,
+note multiligne, ouvrir/replier les détails, recharge et retour au formulaire.
+
+## 7 octobre 2026 — Persistance des invitations de parrainage avant validation réseau
+
+**Problème reproduit en JavaScript :** une erreur réseau lors de la première
+résolution du jeton empêchait toute sauvegarde ; le retour en ligne ne reprenait
+pas cette invitation. Cela concerne conducteurs et passagers. Le lien avec le
+signalement précis en production n'est pas confirmé par des traces de production.
+
+**Solution appliquée :** `utils/referralAttribution.ts` ajoute une attente durable
+séparée des invitations déjà validées. `components/ReferralAttributionHandler.tsx`
+enregistre avant l'appel réseau, promeut uniquement après validation serveur et
+reprend au retour d'Internet, au premier plan, au démarrage et après authentification.
+La file sérialise les traitements concurrents ; un échec d'analytics n'interrompt
+plus l'attribution. Les erreurs de stockage ne sont pas présentées comme une
+sauvegarde réussie. Aucun polling, nouvelle dépendance ou changement backend.
+
+**Préservé :** jeton/date de capture d'origine, durée locale de trente jours,
+priorité à la première invitation, protection des attributions différées déjà
+consommées, session active et formulaire d'inscription en cours, validation
+serveur et règles de gains. Les refus métier restent définitifs. Aucune donnée
+de production modifiée ; les invitations anciennement perdues ne sont pas réparées.
+
+**Tests et documentation :** `tests/referralPersistence.test.js` couvre la panne
+initiale, la reconnexion, le redémarrage simulé, les deux rôles, le passage invité
+→ connecté, les doublons, la concurrence, l'expiration et les erreurs serveur/
+stockage/analytics. Il est ajouté à `test:referrals` dans `package.json`.
+Vérifications : suite mobile complète **1 463/1 463 tests JavaScript réussis**,
+dont **23 nouveaux tests de persistance** ; TypeScript sans erreur ; ESLint ciblé
+sans erreur ni avertissement ; contrôle de taille (1 031 sources, aucune au-delà
+de 400 lignes) et contrôle de frontière réseau réussis. Tests avec entrées
+synthétiques, stockage et réseau simulés ; aucune mesure sur appareil physique.
+Recette et limites : [Attribution mobile du parrainage](finance/REFERRAL_ATTRIBUTION_MOBILE.md).
+Pas de test sur téléphone physique ni déploiement effectué : ne pas déduire des
+tests JavaScript une validation native de ChottuLink ou une correction déjà en production.
+
+## 7 octobre 2026 — Annulation conducteur et formulaire de motif sur iOS
+
+**Signalement :** plantage sur iPhone lorsque le conducteur appuie sur l’annulation
+d’une réservation ou d’un trajet, associé au modal de motif. Dans le code inspecté,
+les annulations ouvrent une confirmation et le refus d’une réservation ouvre un
+formulaire de motif. Les trois parcours ont été couverts sans modifier leur rôle.
+
+**Constat vérifié dans le code :** « Gestion du trajet » n’avait pas de scope
+d’affichage partagé. Ses formulaires `FormModal` et confirmations `DialogProvider`
+pouvaient donc demander des présentations natives distinctes, contrairement à
+la navigation déjà protégée. Le formulaire de motif n’avait pas de callback
+`onRequestClose`. Les mutations d’annulation/refus n’avaient pas de verrou
+synchrone contre deux appuis avant le prochain rendu.
+Le conflit de présentation iOS est un **risque identifié**, pas une cause native
+confirmée : aucun rapport de crash ni reproduction sur iPhone n’a été obtenu.
+
+**Correctifs appliqués :**
+
+- Scope `RideOverlayScope` propre à l’écran de gestion et lié à son activité :
+  le motif, les confirmations et les autres panneaux de cette page utilisent le
+  système de superposition React Native existant. Un seul panneau est interactif ;
+  le changement d’écran désactive les panneaux de ce scope. Pas de nouvelle
+  présentation UIKit pour ces modals lorsque le scope est actif.
+- Fermeture explicite du formulaire via Retour/échappement, fermeture du clavier
+  et nettoyage du motif après fermeture ou succès confirmé par le serveur.
+- Verrous synchrones sur refus, annulation de réservation et annulation de trajet.
+  Le passager ciblé et le motif ne sont pas réinitialisés pendant l’envoi du refus.
+  Une erreur réseau conserve le motif, affiche l’erreur et autorise une nouvelle
+  tentative ; un succès ferme le formulaire même si l’état de chargement change.
+- Suppression d’un import inutilisé et regroupement des imports de types dans les
+  fichiers concernés, sans changement de dépendance.
+
+**Fichiers :** `app/trip/manage/[id].tsx`,
+`hooks/manage-trip/useManageTripBookingActions.ts`,
+`hooks/manage-trip/useManageTripActions.ts`,
+`tests/manageTripCancellation.test.js`, `tests/rideOverlays.test.js`.
+
+**Comportements conservés :** aucune annulation sans confirmation ; motif toujours
+obligatoire pour un refus ; protection contre l’annulation d’un passager embarqué ;
+appels API, contrôles serveur et notifications existants inchangés. Réconciliation
+des refus/réservations déjà traités par le serveur sur connexion lente conservée.
+Le retour à l’accueil après annulation de trajet n’intervient qu’après succès.
+Les modals natifs des autres écrans, le démarrage et la navigation restent inchangés.
+Pas de migration backend, de nouveau paquet ni de modification de configuration native.
+
+**Vérifications :** suite JavaScript complète **1 440 tests réussis, 0 échec**,
+dont 33 tests ciblés (annulation/refus, superpositions et transition de démarrage).
+TypeScript sans émission réussi ; ESLint ciblé sans erreur ni avertissement ;
+frontière réseau valide ; 1 031 sources contrôlées, aucune au-dessus de 400 lignes.
+`git diff --check` sans erreur d’espacement sur les fichiers concernés.
+
+**Recette native restante :** sur iPhone physique, ouvrir/fermer plusieurs fois
+l’annulation d’une réservation et d’un trajet, vérifier Retour sans envoi, saisir
+un motif puis confirmer, tester un double appui et une connexion coupée pendant
+l’envoi. Tester aussi une alerte concurrente, le passage arrière-plan/premier plan
+et le retour à l’accueil sans surface invisible bloquante. Refaire les scénarios
+sur Android. Utiliser des comptes/trajets de test ; vérifier les résultats serveur.
+Distribuer le JavaScript corrigé par le circuit habituel compatible ou un nouveau
+build/TestFlight. Aucun test physique n’a été effectué ici et la disparition du
+crash iOS ne peut pas encore être affirmée.
+
+## 7 octobre 2026 — Modal utilisateur pour les mises à jour
+
+**Problème :** confusion entre le back-office web de publication et l’application
+mobile. Le besoin utilisateur est une alerte et une action simple vers la mise à jour.
+
+**Appliqué :** remplacement du bandeau `AppUpdateBanner` par
+`components/AppUpdatePrompt.tsx`, modal « Mise à jour disponible » avec nouveautés,
+« Mettre à jour » et « Plus tard ». Ouverture directe du store du téléphone,
+report 24 h, protection anti-double appui, erreur inline et nouvelle tentative.
+Utilisation du système de superposition JS existant à priorité information :
+pas de nouveau modal natif iOS, de nouveau paquet ou de suppression de la carte.
+Le guide d’interface a orienté la présentation sobre et les actions séparées du
+contenu défilable. L’ancienne prop `updateNotice` de `HomeHeader` est retirée.
+
+**Préservé :** push et ciblage backend inchangés ; aucun écran administrateur mobile ;
+back-office web séparé conservé. Report et protections trajet/alertes prioritaires
+conservés. Le bouton ouvre le store, il ne promet pas une installation terminée.
+Google Play In-App Updates (installation native intégrée Android) reste différé.
+
+**Fichiers et recette :** `app/(tabs)/index.tsx`,
+`components/home/HomeHeader.tsx`, `tests/appUpdates.test.js`,
+`tests/homeForegroundLifecycle.test.js` et
+[guide actualisé](APP_UPDATE_ANNOUNCEMENTS.md).
+
+**Vérifications :** suite mobile complète **1 431 tests réussis, 0 échec**,
+dont 19 tests ciblés et 10 tests du système de superposition ; TypeScript sans émission, ESLint ciblé,
+frontière réseau et contrôle de taille des sources réussis. Essais physiques et
+livraison réelle des push non effectués ; aucune affirmation de disparition des
+crashs natifs.
+
+## 7 octobre 2026 — Partage sécurité, SOS et annonces de mises à jour
+
+**Problème :** formulation de sécurité trop technique et absence de parcours dédié
+pour informer les utilisateurs d’une nouvelle version disponible.
+
+**Appliqué :** texte simple de partage aux proches, SOS police inline avec choix
+explicite du numéro et verrou anti-double appui. Bandeau de mise à jour reportable,
+écran vers le store, comparaison de la version native installée et ciblage push
+iOS/Android. Backend avec migration, endpoints administrateur, file d’envoi bornée,
+déduplication et revalidation des annonces. Administration avec formulaire de
+confirmation de disponibilité, historique et retrait.
+
+**Préservé :** garde des écrans privés, SOS/partage existants, alertes prioritaires
+conducteur et transports push existants. Aucun nouveau paquet, aucun push réel,
+aucune migration sur la base applicative ni déploiement.
+
+**Limites :** disponibilité confirmée manuellement dans l’administration, pas de
+détection automatique des stores. Les anciens binaires sans métadonnées ne sont
+pas ciblés à l’aveugle. Validation native iOS/Android et recette visuelle admin
+restent à faire ; aucune affirmation de disparition des crashs.
+
+**Fichiers, tests, activation et recette :**
+[Sécurité et annonces de mise à jour](APP_UPDATE_ANNOUNCEMENTS.md).
+**Vérifications :** suite mobile complète **1 429 tests réussis, 0 échec** ;
+backend ciblé **33 tests réussis**, dont 6 sur PostgreSQL temporaire isolé.
+TypeScript mobile/backend/admin réussi ; ESLint mobile ciblé sans erreur ;
+1 031 sources sous la limite de 400 lignes et frontière réseau valide.
+Deux fixtures de navigation ont été adaptées à la nouvelle route publique ;
+les tests des gardes de session restent actifs.
+
+## 6 octobre 2026 — Reprise OTP/WhatsApp et photo de profil
+
+**Problème constaté :** l’état local de l’inscription/OTP n’était pas restauré après
+recréation de l’application. L’inscription utilisait une caméra externe, différente
+du parcours du profil. Le retour au lancement a été signalé ; aucune cause de crash
+natif n’a été reproduite sur appareil pendant cette intervention.
+
+**Appliqué :** brouillon temporaire SecureStore (30 min), chargé avant la navigation
+pour reprendre l’OTP/le numéro ; priorité conservée à la session connectée. Aucun
+OTP, PIN ou jeton de réinitialisation sauvegardé. Après destruction du processus,
+les champs du profil sont conservés mais le PIN doit être ressaisi. Contexte social
+temporaire chiffré et soumis à son expiration ; pas de session créée par le brouillon.
+Caméra intégrée et sélection/aperçu/confirmation partagés entre inscription et profil,
+verrous anti-double action, garde des réponses tardives et préservation des champs
+édités lors d’un rafraîchissement de photo. Retrait de la caméra externe/du recadrage
+natif de ces parcours ; galerie et contrôles serveur existants conservés.
+
+**Fichiers, comportements, précautions, commandes et recette :**
+[Reprise de l’authentification et photo de profil](AUTH_FLOW_RECOVERY.md).
+Ce document distingue les correctifs appliqués des pistes socket/webhook non ajoutées.
+Aucune nouvelle dépendance, modification backend, migration ou déploiement.
+
+**Vérifications réalisées :** suite JavaScript complète **1 420 tests réussis, 0 échec** ;
+TypeScript `--noEmit` réussi ; ESLint ciblé sur les fichiers modifiés de cette correction,
+**0 erreur, 0 avertissement** ; frontière réseau valide ; **1 023 sources contrôlées,
+aucune au-dessus de 400 lignes** ; `git diff --check` sans erreur d’espacement.
+Les fixtures des tests de formulaire ont été adaptées au nouveau retour du contrôleur.
+Tests natifs Android/iOS, reprise après destruction réelle du processus, présentation
+des modals et permissions caméra **restent à réaliser sur appareils physiques**.
+Pas de mesure native de mémoire/chauffe ni d’affirmation de disparition des crashs.
+
+## 6 octobre 2026 — Alertes conducteur automatiques, sonnerie dédiée et partage sans proches
+
+**Problème :** la disponibilité manuelle ajoutait une étape avant de recevoir les demandes.
+Les notifications n’avaient pas la sonnerie souhaitée et leurs boutons ouvraient encore
+l’app pour répondre. Le parcours de sécurité/ajout des proches est signalé comme provoquant
+un crash iOS ; la cause native n’a pas été reproduite ni établie ici.
+
+**Solution appliquée :**
+
+- Recherche du conducteur éligible le plus proche des demandes immédiates « Maintenant »,
+  automatiquement à partir d’un GPS déjà autorisé. Suppression du choix préalable de
+  disponibilité/véhicule ; l’entrée du profil devient « Alertes conducteur », informative.
+  Le serveur choisit un véhicule actif compatible, affiché dans l’alerte et le détail.
+- Position envoyée au premier plan toutes les 45 s, précision ≤250 m, âge ≤30 s.
+  Validité serveur de 300 s par défaut, avec marge suffisante pour répondre et rejet
+  des mises à jour obsolètes. **Pas de nouveau suivi GPS permanent hors trajet** : au-delà
+  de cette fenêtre sans mise à jour, pas de proposition de proximité. Les réservations
+  des trajets publiés sont indépendantes de cette fraîcheur.
+- Sonnerie originale WAV de 29 s, nouveau canal Android haute importance/vibration,
+  catégorie iOS v2/time-sensitive ; capacités versionnées liées au token push existant.
+  Actions natives Accepter/Refuser exécutées via endpoints authentifiés, sans écran
+  supplémentaire, verrou anti-double réponse, résultat silencieux et absence de file
+  d’acceptations différées en cas d’erreur réseau. L’iPhone peut demander le déverrouillage.
+- Enregistrement des handlers avant Expo Router. Pont Notifee/Expo iOS ciblé et idempotent
+  au postinstall, sans nouvelle dépendance ; conservation en mémoire d’une destination
+  de lecture uniquement si l’app n’a pas encore restauré le profil au moment du tap.
+  Son embarqué Android et déclaré dans le projet Xcode versionné ; entitlement natif
+  iOS ajouté aussi, car une configuration Expo seule ne régénère pas ces projets.
+- Retrait des modals de sécurité/ajout des proches des routes détail/gestion/navigation.
+  Bouton libellé « Partager mon trajet » réutilisant le lien public et le partage natif,
+  protégé des doubles appuis. Route historique de sécurité devenue informative.
+- Désactivation centrale des quatre chemins backend d’envoi automatique aux proches,
+  y compris si des préférences avaient été enregistrées. Contacts conservés, non supprimés.
+
+**Fichiers, contrats, paramètres, commandes et recette détaillée :**
+[Alertes conducteur automatiques et partage](DRIVER_DISPATCH_NOTIFICATIONS.md).
+Ce guide remplace les consignes manuelles du 5 octobre ; l’historique ci-dessous est conservé.
+Les correctifs backend concernent le dépôt voisin `zwanga-backend`, modifié avec autorisation.
+Les deux modules mobiles de configuration manuelle devenus inutiles ont été supprimés ;
+ils sont remplaçables par l’écran informatif actuel. Aucun contact ni donnée utilisateur effacé.
+
+**Conservé / précautions :** contrôles serveur de rôle/identité, véhicule, places, propriété,
+expiration, attribution exclusive et réponses idempotentes. Les demandes planifiées gardent
+leur parcours. Les réservations publiées ne sont ni réattribuées ni annulées après 30 s.
+Paiements/jetons, messages internes, OTP, embarquement/arrivée et SOS restent distincts.
+Transactions PostgreSQL courtes sans réseau sous verrou ; aucune nouvelle migration pour
+cette révision (la migration de dispatch du 5 octobre reste un prérequis). Aucun déploiement,
+modification de base applicative, permission de localisation supplémentaire ou nouvelle dépendance.
+Le skill frontend a guidé le partage libellé et la suppression de la configuration superflue ;
+le skill PostgreSQL a guidé les transactions et la sélection bornée des candidats.
+
+**Vérifications réalisées :**
+
+- Suite mobile complète : **1 402 tests JavaScript réussis**, puis **19 tests ciblés réussis**
+  incluant le dernier ajout de navigation à froid (natif simulé). Commandes :
+  `node --test tests/*.test.js` ; `node --test tests/driverNotificationResponse.test.js tests/ongoingTripBanner.test.js tests/driverNotificationNativeAssets.test.js`.
+- Backend : **111 tests réussis** sur réservations, demandes, notifications/transports,
+  refus tardifs et désactivation des messages proches ; **9 tests dispatch réussis**,
+  dont **8 sur un vrai PostgreSQL 18/PostGIS jetable**. Nouvelle position automatique,
+  multi-véhicules compatibles, coordonnées périmées, concurrence, destinataire et échéances.
+  Première tentative bloquée au lancement dans l’environnement restreint ; une relance
+  parallèle a dépassé le délai `initdb`. La relance isolée autorisée a réussi.
+  Le cluster de test réussi a été arrêté/supprimé ; aucune base de l’application touchée.
+  Le répertoire jetable laissé par `initdb` interrompu a également été vérifié sans serveur
+  actif puis supprimé ; il ne contenait que des données de test régénérables.
+- TypeScript mobile/backend sans émission : succès. ESLint ciblé des modules ajoutés,
+  contrôles de frontières RTK Query et de taille source (aucun module >400 lignes) : succès.
+  Deux avertissements ESLint préexistants restent dans le handler Notifee dynamique
+  (`require` conditionnel et variable de `catch` inutilisée), sans erreur bloquante.
+- PCM WAV lu : 29 s ; asset Android identique. Projet Xcode parsé avec succès, présence
+  de la ressource et de l’entitlement vérifiée. Patch iOS idempotent rejoué ; ceci n’est
+  **pas** une compilation Objective-C ni une validation du son sur appareil.
+- Les premières suites ont détecté des fixtures qui attendaient l’ancien bouton proches
+  et des mocks natifs absents ; adaptées aux nouveaux points d’entrée, assertions de
+  navigation/SOS/partage conservées. `git diff --check` : succès.
+
+**À valider / limites :** nouveau build natif iOS/Android obligatoire et déploiement backend
+avant essai. Aucune compilation native, livraison aux stores ni recette physique faite ici.
+OS, permissions, silencieux, mode économie et arrêt forcé peuvent limiter son/livraison.
+Arrêt d’une sonnerie iOS déjà commencée à tester. Aucune garantie de disparition du crash,
+de chauffe réduite ou de gain batterie. Ni VoIP/CallKit, ni plein écran forcé Android.
+
+## 5 octobre 2026 — Réglage des demandes proches déplacé dans le profil
+
+**Problème :** le bandeau « Demandes proches · Ma disponibilité » sur la carte et le
+titre « À vous de choisir » n’expliquaient pas le rôle de ce parcours. Ils ajoutaient
+une action de configuration à l’accueil et pouvaient être confondus avec les réservations.
+
+**Solution appliquée :**
+
+- Retrait du bandeau de l’accueil. Entrée **Profil → Demandes près de moi**, dans le
+  menu du profil, réservée aux conducteurs confirmés par le profil serveur et au service activé.
+  Sous-titre explicite : « Choisir quand recevoir les demandes de passagers ».
+- Écran de réglage compact : statut de réception, véhicules en lignes sélectionnables,
+  places ajustables, bouton « Recevoir les demandes » / « Arrêter de recevoir » maintenu
+  hors du contenu défilant, dans la zone sûre. Pas de grand titre promotionnel.
+- Explications du ciblage de proximité, du délai fourni par le serveur, de la nécessité
+  d’une position récente et de la réactivation après acceptation. Mention explicite :
+  ce réglage ne change pas les notifications des réservations des trajets publiés.
+- Présélection du seul véhicule actif ou du dernier véhicule encore actif renvoyé par
+  le serveur ; aucun premier véhicule arbitraire lorsqu’un choix reste nécessaire.
+  Ouvrir cet écran n’active ni la disponibilité ni une demande GPS.
+- Chargement, erreur réseau, service désactivé et absence de véhicule distingués,
+  avec reprise adaptée ; aucune disponibilité affirmée après une erreur de lecture.
+  Verrou synchrone contre deux activations simultanées et abandon après fermeture
+  pendant la demande de permission. Lecture et actualisation d’échéance arrêtées hors écran.
+- L’expiration visuelle suit toujours l’échéance serveur ; une minuterie unique remplace
+  le rafraîchissement du composant chaque seconde. Ce n’est pas une mesure de gain batterie.
+
+**Fichiers :** `components/home/HomeHeader.tsx`, déplacement de
+`components/home/DriverAvailabilityEntry.tsx` vers
+`components/profile/ProfileDriverAvailabilityEntry.tsx`, `components/profile/ProfileMenu.tsx`,
+`app/(tabs)/profile.tsx`, `app/driver-availability.tsx`, nouveaux
+`hooks/driver-dispatch/useDriverAvailability.ts` et
+`features/driver-dispatch/DriverAvailability.styles.ts`, `tests/driverAvailability.test.js`,
+`tests/homeCompactLayout.test.js`. Guide [mis à jour](DRIVER_DISPATCH_NOTIFICATIONS.md).
+
+**Conservé :** route `/driver-availability` et accès à la proposition en attente,
+activation volontaire, limites de places, refus GPS, source de vérité serveur,
+actions Accepter/Refuser, attribution, échéances et GPS existants. Aucun changement
+backend, contrat réseau, permission native ou dépendance. Le skill frontend a guidé
+le retrait du bandeau, la hiérarchie compacte et les libellés utilitaires.
+
+**Vérifications :** TypeScript sans émission, ESLint des modules modifiés et des tests,
+contrôle de frontière réseau RTK Query, `git diff --check` : succès. Première suite
+ciblée : 54 tests réussis ; suite élargie finale : 195 tests JavaScript réussis
+(profil, accueil, disponibilité, notifications et navigation), avec doublures natives.
+Commande finale : `node --test tests/driverAvailability.test.js tests/home*.test.js tests/profile*.test.js tests/driverNotifications.test.js tests/notificationNavigation.test.js tests/assignedTripNavigation.test.js`.
+Pas de validation visuelle sur téléphone
+physique, de mesure batterie ni de nouveau build. La sonnerie dédiée de 30 secondes
+reste hors de cette correction d’interface et n’est toujours pas implémentée.
+
+## 5 octobre 2026 — Réponses Notifee et propositions conducteur de proximité
+
+**Problème :** les notifications ne distinguaient pas les actions Accepter/Refuser et
+les demandes étaient diffusées sans présence conducteur fraîche ni attribution exclusive.
+
+**Solution appliquée :** première étape mobile + backend, avec disponibilité volontaire,
+véhicule/places, bail GPS, sélection géographique séquentielle, délai serveur configurable
+(30 secondes par défaut), réponses transactionnelles et écran de résultat. Les réservations
+publiées gardent leur conducteur et leur échéance habituelle. Activation serveur désactivée
+par défaut ; anciennes installations et autres notifications conservent leur parcours.
+
+Le guide PostgreSQL a conduit à utiliser des transactions courtes sans appels réseau,
+des unicités partielles, des index géographiques et des traitements bornés.
+
+**Détails, fichiers, précautions, résultats et commandes :**
+[Réponses conducteur et propositions de proximité](DRIVER_DISPATCH_NOTIFICATIONS.md).
+TypeScript, contrôles réseau et tests ciblés passés, dont 5 essais sur PostgreSQL/PostGIS
+jetable. Aucune migration sur la base applicative ni validation sur téléphone physique.
+Son dédié/boucle audio et mode appel verrouillé non livrés dans cette étape.
+
+## 5 octobre 2026 — Estimation d'arrivée du conducteur avant embarquement
+
+**Problème :** avant la prise en charge, le délai calculé vers le passager était
+présenté sous le libellé générique « Projection », sans distinguer explicitement
+l'arrivée du conducteur de l'arrivée à destination. Le passager devait également
+attendre le démarrage pour accéder au suivi depuis le détail du trajet accepté.
+
+**Solution appliquée :**
+
+- Bouton « Voir l’arrivée » sur le trajet accepté, à venir ou en cours, ouvrant
+  le suivi de sa réservation. Les demandes acceptées qui ont créé un trajet
+  et une réservation utilisent le même parcours, sans nouvelle résolution réseau.
+- Bandeau « Arrivée estimée du conducteur » dans l'en-tête du suivi, visible
+  aussi lorsque la carte est agrandie : par exemple « Environ 5 min » ou
+  « Moins d’une minute ». Il vise le point de prise en charge convenu, pas la
+  destination finale ou la position personnelle du passager en déplacement.
+- Estimation à partir de la durée routière retournée par l'API existante et
+  de la proportion de distance restant sur cet itinéraire. Ce n'est pas un
+  décompte diminuant indépendamment du mouvement du véhicule. Aucun « 0 min »
+  ni confirmation d'arrivée/embarquement n'est produit par ce calcul.
+- Affichage explicite lorsque le départ est en attente, le trajet en pause,
+  la connexion absente, la position manquante/périmée ou l'itinéraire indisponible.
+  Aucun délai numérique sans position récente et itinéraire routier exploitable.
+- Actualisation automatique des directions au maximum une fois par minute
+  via ce nouveau mécanisme, seulement sur écran actif, connecté, en attente de
+  prise en charge d'un trajet démarré et avec une position récente. Réutilisation
+  de la requête existante, de sa protection contre les appels concurrents et de
+  sa limite ordinaire de 30 secondes. L'actualisation manuelle existante reste
+  disponible ; aucun nouveau flux GPS, socket ou polling de position ajouté.
+- Expiration locale après deux minutes sans nouvelle position ou trois minutes
+  sans nouvelle route. Ce sont des seuils de prudence choisis, pas des mesures
+  de latence. Arrêt des minuteries hors écran, hors connexion ou après embarquement.
+- Routes identifiées par réservation, trajet, statut et étape ; réponses tardives
+  ignorées si le contexte change. Démarrer le trajet invalide aussi le contexte
+  précédent. Une route sans durée valable conserve un tracé de secours sans délai.
+
+**Fichiers :** nouveaux `features/passenger-navigation/pickupArrivalEstimate.ts`,
+`PassengerPickupEstimateBanner.tsx` et
+`hooks/passenger-navigation/usePassengerPickupEstimate.ts`.
+Dans `features/passenger-navigation/` : `PassengerNavigationHeader.tsx`,
+`PassengerNavigationInfoCard.tsx`, `navigationModel.ts` ; dans
+`hooks/passenger-navigation/` : `usePassengerNavigationController.ts`,
+`usePassengerNavigationData.ts`, `usePassengerNavigationPresentation.ts`,
+`usePassengerNavigationRoute.ts`, `usePassengerRouteContext.ts` ;
+`features/trip-detail/TripDetailActionsFooter.tsx`.
+Nouveaux tests `tests/passengerPickupEstimate.test.js` et
+`tests/passengerPickupRoute.test.js`.
+
+**Conservé :** accès conditionné à une réservation acceptée, confirmation serveur
+de l'embarquement et de l'arrivée à destination, carte, distance restante,
+contact/SOS, partage, annulation, reprise et paiements. Seule la durée générique
+redondante est retirée du panneau inférieur avant embarquement ; sa distance
+est nommée « Avant prise en charge ». Après embarquement, la présentation de
+l'itinéraire vers la destination est conservée. Aucun changement backend,
+de contrat API public, de migration, de permission native ou de dépendance.
+
+**Vérifications :** suite mobile complète exécutée avec 1 376 tests JavaScript
+réussis ; dernière vérification des deux nouvelles suites après ajustements :
+15 tests réussis, dont un test ajouté ensuite pour le panneau inférieur.
+Les tests couvrent les états d'attente, les réservations/demandes, l'identité de
+la route, les données périmées, le hors-ligne, les requêtes tardives, les limites
+de fréquence, la fin des minuteries et les composants rendus avec natives simulées.
+TypeScript mobile et ESLint ciblé validés, sans erreur ni avertissement après
+complétion de la dépendance d'effet `setActiveRouteSegment`. Frontière réseau
+et contrôle de taille validés : 1 008 sources, aucune au-dessus de 400 lignes.
+`git diff --check` validé.
+
+**Limites :** pas d'essai sur téléphone ou de requête Google Maps/serveur réel.
+Le délai devient disponible après démarrage et partage d'une position récente,
+pas dès l'acceptation si le conducteur n'est pas encore parti. C'est une
+approximation routière, pas une promesse d'heure d'arrivée : la durée transmise
+actuellement ne fournit pas un trafic temps réel garanti et ce calcul n'ajoute
+pas les temps d'attente ou les détours des autres passagers. Le bandeau rappelle
+la variabilité liée à la circulation et aux arrêts. Vérifier sur Android/iOS
+la lisibilité avec grandes polices, l'en-tête/carte, le retour réseau et les
+transitions départ → approche → embarquement avant livraison.
+
 ## 5 octobre 2026 — Champ immatriculation sans exemple ni texte de format
 
 **Problème :** l'exemple « MOTO123 » suggérait un champ réservé aux motos alors

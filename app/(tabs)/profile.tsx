@@ -144,6 +144,7 @@ export default function ProfileScreen() {
           />}
 
           <ProfileMenu
+            isDriver={profile.isDriver}
             menuItems={profile.menuItems}
             router={profile.router}
           />

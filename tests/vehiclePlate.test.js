@@ -88,6 +88,9 @@ function signupFixture() {
   const load = loader({
     react: hooks.react,
     'react-native': { Platform: { OS: 'ios' } }, 'expo-image-picker': {},
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => false },
+    '@/features/profile/profilePhotoRecovery': { claimPendingProfileImageUri: async () => null },
+    '@/hooks/profile/useProfilePhotoSelection': { useProfilePhotoSelection: () => ({ choosePhoto: async () => null, isSelecting: false }) },
     '../../features/auth/authModel': { ensureAuthNotifeeLoaded: noop, notifeeInstance: null, getAuthErrorMessage: (_error, message) => message },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/store/slices/authSlice': { saveTokensAndUpdateState: noop },

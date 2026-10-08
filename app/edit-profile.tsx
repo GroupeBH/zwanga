@@ -10,7 +10,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { isDriverAccount } from '@/utils/accountRole';
 import Animated, { FadeInDown } from '@/utils/reanimated';
@@ -37,13 +37,17 @@ export default function EditProfileScreen() {
     message: '',
   });
 
+  const previousProfile = useRef<typeof user>(undefined);
   useEffect(() => {
-    if (user) {
-      setFirstName(user.firstName ?? '');
-      setLastName(user.lastName ?? '');
-      setPhone(user.phone ?? '');
-      setGender(user.gender ?? null);
-    }
+    if (!user) return;
+    const previous = previousProfile.current;
+    const sameAccount = previous?.id === user.id;
+    // A photo refetch must not erase personal fields currently being edited.
+    setFirstName(current => sameAccount && current !== (previous?.firstName ?? '') ? current : user.firstName ?? '');
+    setLastName(current => sameAccount && current !== (previous?.lastName ?? '') ? current : user.lastName ?? '');
+    setPhone(current => sameAccount && current !== (previous?.phone ?? '') ? current : user.phone ?? '');
+    setGender(current => sameAccount && current !== (previous?.gender ?? null) ? current : user.gender ?? null);
+    previousProfile.current = user;
   }, [user]);
 
   const isCurrentlyDriver = isDriverAccount(user);
@@ -99,8 +103,7 @@ export default function EditProfileScreen() {
   };
 
   const handleChangePhoto = async () => {
-    await changeProfilePhoto();
-    void refetch();
+    if (await changeProfilePhoto()) void refetch();
   };
 
   return (

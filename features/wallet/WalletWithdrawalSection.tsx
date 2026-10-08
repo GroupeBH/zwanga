@@ -76,7 +76,7 @@ export function WalletWithdrawalModal({
       title="Retirer mes jetons"
       subtitle="Versement sur votre Mobile Money."
     >
-      <Text style={styles.balanceLabel}>Retirable : {formatWalletAmount(summary.account.withdrawableBalance)}</Text>
+      <Text style={styles.balanceLabel}>Retirable : {formatWalletAmount(Math.max(0, Number(summary.account.withdrawableBalance) - Number(summary.account.reservedCashCommissionBalance ?? 0)))}</Text>
       <Text style={styles.balanceHint}>
         Minimum : {formatWalletAmount(summary.withdrawal.minimumTokens)}. Identité vérifiée requise.
       </Text>

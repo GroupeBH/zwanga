@@ -244,6 +244,7 @@ test('map preview/fullscreen use readable marker text without changing coordinat
 
 test('booking recap cleans display strings without changing passenger inputs or total price', () => {
   const env = environment({
+    '@/store/api/driverFinanceApi': { useTripPaymentOptionsQuery: () => ({ currentData: { acceptedPaymentModes: ['cash','points','electronic'], availablePaymentModes: ['cash','points','electronic'] } }) },
     '@/components/PassengerSeatNotice': { PassengerSeatNotice: 'SeatNotice' },
     './tripDetailModel': { getTripPaymentModeLabel: () => 'Paiement cash', TRIP_PAYMENT_MODE_OPTIONS: [] },
   });

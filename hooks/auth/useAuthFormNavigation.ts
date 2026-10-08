@@ -1,5 +1,6 @@
+import { getAuthDraftSnapshot } from '@/services/authFlowDraft';
 import { SocialAuthProvider } from '../../features/auth/authModel';
-import type { UserGender } from '@/types';
+import type { UserGender, TripRequestVehicleType } from '@/types';
 import { getPendingReferralAttribution, type PendingReferralAttribution } from '@/utils/referralAttribution';
 import React, { useCallback, useEffect } from 'react';
 import { InteractionManager, Platform, TextInput } from 'react-native';
@@ -118,7 +119,7 @@ export function useAuthFormNavigation({
       clearTimeout(focusTimeoutRef.current);
       focusTimeoutRef.current = null;
     }
-  }, []);
+  }, [focusInteractionRef, focusTimeoutRef]);
 
   const focusAfterInteractions = useCallback(
     (
@@ -133,7 +134,7 @@ export function useAuthFormNavigation({
         }, delay);
       });
     },
-    [cancelPendingFocus],
+    [cancelPendingFocus, focusInteractionRef, focusTimeoutRef],
   );
 
   useEffect(() => cancelPendingFocus, [cancelPendingFocus]);
@@ -143,12 +144,12 @@ export function useAuthFormNavigation({
     void getPendingReferralAttribution().then((pending) => {
       if (!active) return;
       setReferralAttribution(pending);
-      if (pending) setMode('signup');
+      if (pending && !getAuthDraftSnapshot()) setMode('signup');
     });
     return () => {
       active = false;
     };
-  }, [initialReferralToken]);
+  }, [initialReferralToken, setMode, setReferralAttribution]);
 
   useEffect(() => {
     if (step === 'sms') {
@@ -159,14 +160,14 @@ export function useAuthFormNavigation({
       focusAfterInteractions(pinInputRef, 500);
       return cancelPendingFocus;
     }
-  }, [cancelPendingFocus, focusAfterInteractions, step]);
+  }, [cancelPendingFocus, focusAfterInteractions, step, pinInputRef, smsInputRefs]);
 
   useEffect(() => {
     if (googleSignupStep === 'otp' && googleIdToken) {
       focusAfterInteractions({ current: googleOtpRefs.current[0] }, 500);
       return cancelPendingFocus;
     }
-  }, [cancelPendingFocus, focusAfterInteractions, googleSignupStep, googleIdToken]);
+  }, [cancelPendingFocus, focusAfterInteractions, googleSignupStep, googleIdToken, googleOtpRefs]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -244,4 +245,3 @@ export function useAuthFormNavigation({
     handlePreviousStep,
   };
 }
-import type { TripRequestVehicleType } from '@/types';

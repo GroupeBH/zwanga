@@ -7,6 +7,10 @@ import type {
 import type { WalletLedgerEntry } from './wallet';
 
 export interface SubscriptionPlanSummary {
+  durationDays?: number;
+  trialDays?: number;
+  commissionRate?: number;
+  cashCommissionRequiresPurchasedTokens?: boolean;
   plan: SubscriptionPlan;
   amount: number | string;
   currency: string;

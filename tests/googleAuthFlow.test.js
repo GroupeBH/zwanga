@@ -204,7 +204,7 @@ test('auth screen binds native Google loading and guards navigation before the n
     '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
     'react-native-safe-area-context': { SafeAreaView: 'View' },
     '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
-    '../hooks/auth/useAuthController': { useAuthController: () => ({
+    '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false },
       form: { mode: 'login', step: 'phone' }, navigation: { handleModeChange: () => calls.push('mode'), handlePreviousStep: () => calls.push('back') },
       showPhoneStep: true, phoneActions: { handlePhoneSubmit: () => calls.push('phone'), isPinLoginInFlight: () => false }, social,
       profileActions: {}, registration: { isRegistrationLocked: () => false },

@@ -95,8 +95,9 @@ export function RequestPassengerSummary({
           />
         </View>
         <View style={styles.ownerHeroLeadCopy}>
-          <Text style={styles.ownerHeroTitle} numberOfLines={2}>{ownerHero.title}</Text>
-          <Text style={styles.ownerHeroSubtitle} numberOfLines={2}>{ownerHero.subtitle}</Text>
+          <Text style={styles.ownerHeroTitle} numberOfLines={2}>{tripRequest.immediateDispatch && tripRequest.status === 'pending' ? 'Recherche à proximité' : ownerHero.title}</Text>
+          <Text style={styles.ownerHeroSubtitle} numberOfLines={3}>{tripRequest.immediateDispatch && tripRequest.status === 'pending'
+            ? 'Nous sollicitons les conducteurs disponibles les plus proches, un à la fois. Vous serez informé dès qu’un conducteur accepte.' : ownerHero.subtitle}</Text>
         </View>
       </View>
 

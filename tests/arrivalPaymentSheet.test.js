@@ -9,6 +9,9 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'Scroll', TextInput: 'I
   ActivityIndicator: 'Spinner', KeyboardAvoidingView: 'Keyboard', Platform: { OS: 'ios' },
   Keyboard: { dismiss() {} }, StyleSheet: { create: value => value, hairlineWidth: 1 } };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-linking': { createURL: () => 'zwanga://payment' } };
+mocks['@/store/api/driverFinanceApi'] = { useBookingPaymentOptionsQuery: () => ({ currentData: {
+  acceptedPaymentModes: ['cash', 'electronic', 'points'], availablePaymentModes: ['cash', 'electronic', 'points'], cashUnavailableReason: null,
+} }) };
 const booking = { id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'completed', droppedOff: true,
   numberOfSeats: 3, paymentAmount: 3000, paymentCurrency: 'CDF', paymentMode: 'electronic', paymentStatus: 'pending', passengerDestination: 'Destination de test' };
 const noop = () => {};

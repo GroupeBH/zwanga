@@ -1,15 +1,15 @@
-import { PublishStep } from './publishModel';
-import { styles } from '../screen-styles/app/publish/index';
-import { Colors, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
 import { PublishSeatSelector } from './PublishSeatSelector';
-import type { TripRequestVehicleType } from '@/types';
+import { PublishPaymentModes } from './PublishPaymentModes';
+import { PublishPassengerOptions } from './PublishPassengerOptions';
+import type { TripPaymentMode, TripRequestVehicleType } from '@/types';
 import Animated, { FadeInDown } from '@/utils/reanimated';
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Text, TextInput, TouchableOpacity, View } from 'react-native';
-import type { EdgeInsets } from 'react-native-safe-area-context';
+import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 interface PublishPricingStepProps {
+  acceptedPaymentModes: TripPaymentMode[];
+  setAcceptedPaymentModes: React.Dispatch<React.SetStateAction<TripPaymentMode[]>>;
   stepEntering: FadeInDown | undefined;
   setSeats: React.Dispatch<React.SetStateAction<string>>;
   seats: string;
@@ -22,137 +22,48 @@ interface PublishPricingStepProps {
   setRequiresPassengerKyc: React.Dispatch<React.SetStateAction<boolean>>;
   description: string;
   setDescription: React.Dispatch<React.SetStateAction<string>>;
-  insets: EdgeInsets;
-  goToStep: (nextStep: PublishStep) => void;
-  handleNextStep: () => void;
 }
 
 export function PublishPricingStep({
-  stepEntering,
-  setSeats,
-  seats,
-  vehicleType,
-  isFreeTrip,
-  price,
-  setPrice,
-  setIsFreeTrip,
-  requiresPassengerKyc,
-  setRequiresPassengerKyc,
-  description,
-  setDescription,
-  insets,
-  goToStep,
-  handleNextStep,
+  acceptedPaymentModes, setAcceptedPaymentModes, stepEntering,
+  setSeats, seats, vehicleType, isFreeTrip, price, setPrice, setIsFreeTrip,
+  requiresPassengerKyc, setRequiresPassengerKyc, description, setDescription,
 }: PublishPricingStepProps) {
-  return (
-    <Animated.View entering={stepEntering} style={styles.stepContainer}>
-      <Text style={styles.sectionTitle}>Places et prix</Text>
-
-      <View style={styles.card}>
-        <PublishSeatSelector seats={seats} setSeats={setSeats} vehicleType={vehicleType} />
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>PRIX PAR PLACE (FC)</Text>
-        <View style={styles.priceInputContainer}>
-          <TextInput
-            style={styles.priceInput}
-            placeholder={isFreeTrip ? 'Gratuit' : 'Ex: 2000'}
-            keyboardType="number-pad"
-            value={price}
-            onChangeText={setPrice}
-            editable={!isFreeTrip}
-          />
+  return <Animated.View entering={stepEntering} style={s.container}>
+    <View style={s.essentials}>
+      <PublishSeatSelector seats={seats} setSeats={setSeats} vehicleType={vehicleType} />
+      <View style={s.divider} />
+      <View style={s.priceRow}>
+        <Text style={s.title}>Prix par place</Text>
+        <View style={s.priceField}>
+          <TextInput accessibilityLabel="Prix par place en francs congolais" style={s.priceInput}
+            placeholder={isFreeTrip ? 'Gratuit' : '2 000'} placeholderTextColor={Colors.gray[500]}
+            keyboardType="number-pad" value={price} onChangeText={setPrice} editable={!isFreeTrip} />
+          {!isFreeTrip && <Text style={s.currency}>FC</Text>}
         </View>
       </View>
-
-      <TouchableOpacity
-        style={[styles.card, styles.freeTripCard]}
-        onPress={() => {
-          setIsFreeTrip(!isFreeTrip);
-          if (!isFreeTrip) {
-            setPrice('');
-          }
-        }}
-        activeOpacity={0.8}
-      >
-        <View style={styles.freeTripContent}>
-          <Text style={styles.freeTripTitle}>
-            Trajet gratuit
-          </Text>
-          <Text style={styles.freeTripSubtitle}>
-            Proposer ce trajet gratuitement aux passagers
-          </Text>
-        </View>
-        <View style={[styles.toggleSwitch, isFreeTrip && styles.toggleSwitchActive]}>
-          <View style={[styles.toggleThumb, isFreeTrip && styles.toggleThumbActive]} />
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[
-          styles.card,
-          styles.passengerKycRequirementCard,
-          requiresPassengerKyc && styles.passengerKycRequirementCardActive,
-        ]}
-        onPress={() => setRequiresPassengerKyc((current) => !current)}
-        activeOpacity={0.84}
-      >
-        <View style={styles.passengerKycRequirementContent}>
-          <View
-            style={[
-              styles.passengerKycRequirementIcon,
-              requiresPassengerKyc && styles.passengerKycRequirementIconActive,
-            ]}
-          >
-            <Ionicons
-              name="shield-checkmark-outline"
-              size={20}
-              color={requiresPassengerKyc ? Colors.white : Colors.primary}
-            />
-          </View>
-          <View style={styles.passengerKycRequirementCopy}>
-            <Text style={styles.freeTripTitle}>Passagers vérifiés uniquement</Text>
-            <Text style={styles.freeTripSubtitle}>
-              L’identité des passagers devra être vérifiée avant de réserver ou d’embarquer.
-            </Text>
-          </View>
-        </View>
-        <View style={[styles.toggleSwitch, requiresPassengerKyc && styles.toggleSwitchActive]}>
-          <View style={[styles.toggleThumb, requiresPassengerKyc && styles.toggleThumbActive]} />
-        </View>
-      </TouchableOpacity>
-
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>DESCRIPTION (OPTIONNEL)</Text>
-        <TextInput
-          style={styles.textAreaCard}
-          placeholder="Ajoutez des informations supplémentaires (ex: bagages acceptés, point de rendez-vous, etc.)"
-          placeholderTextColor={Colors.gray[400]}
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          numberOfLines={4}
-        />
+      <View style={s.freeRow}>
+        <Text style={s.label}>Trajet gratuit</Text>
+        <Switch accessibilityLabel="Trajet gratuit" value={isFreeTrip}
+          trackColor={{ false: Colors.gray[300], true: Colors.primary }}
+          onValueChange={next => { setIsFreeTrip(next); if (next) setPrice(''); }} />
       </View>
-
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
-        <Text style={styles.infoText}>
-          Les passagers verront ces informations avant de réserver leur place.
-        </Text>
-      </View>
-
-      <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonSecondary]}
-          onPress={() => goToStep('vehicle')}
-        >
-          <Text style={styles.buttonSecondaryText}>Retour</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]} onPress={handleNextStep}>
-          <Text style={styles.buttonText}>Continuer</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
+    </View>
+    {!isFreeTrip && <PublishPaymentModes value={acceptedPaymentModes} onChange={setAcceptedPaymentModes} price={Number(price) || 0} />}
+    <PublishPassengerOptions requiresPassengerKyc={requiresPassengerKyc} setRequiresPassengerKyc={setRequiresPassengerKyc}
+      description={description} setDescription={setDescription} />
+  </Animated.View>;
 }
+const s = StyleSheet.create({
+  container: { gap: 4 },
+  essentials: { backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 8 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.gray[200], marginVertical: 2 },
+  priceRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  title: { color: Colors.gray[900], fontSize: 16, fontWeight: '700', flexShrink: 1 },
+  priceField: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.gray[50], borderRadius: 10,
+    paddingHorizontal: 10, flex: 1, minWidth: 130 },
+  priceInput: { flex: 1, width: 0, minWidth: 0, minHeight: 48, fontSize: 22, fontWeight: '700', color: Colors.gray[900], textAlign: 'right', paddingVertical: 8 },
+  currency: { color: Colors.gray[600], fontSize: 13, marginLeft: 6 },
+  freeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44, gap: 8 },
+  label: { flex: 1, color: Colors.gray[700], fontSize: 14 },
+});

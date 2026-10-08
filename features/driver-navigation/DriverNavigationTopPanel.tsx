@@ -1,3 +1,4 @@
+import { TripShareAction } from '@/components/trip/TripShareAction';
 import { Colors } from '@/constants/styles';
 import { NavigationAssistanceButtons } from '@/features/navigation/NavigationAssistanceButtons';
 import { RideRecoveryControl } from '@/features/ride-recovery/RideRecoveryControl';
@@ -49,6 +50,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
         </View>
       </View>
     </View>
+    {!hasPendingBooking && !hasUrgentDropoff && <TripShareAction compact onShare={model.tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />}
     <View style={styles.actions}>
       {data.isTripOngoing && !hasUrgentDropoff && <View style={styles.confirmation}>
         <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"

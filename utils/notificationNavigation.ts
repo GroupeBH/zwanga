@@ -76,10 +76,16 @@ export const getTripUrl = (
   return `/trip/${tripId}`;
 };
 
+import { invitationHref, parseDriverInvitation } from '@/features/notifications/driverInvitation';
+
 /** Single routing policy shared by push notifications and the notification inbox. */
 export function getNotificationHref(input: NotificationData, currentUser?: User): Href | null {
   const data = normalizeData(input);
   const type = getType(data);
+  if (type === 'app_update') return '/app-update';
+  if (['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started'].includes(type)) return '/wallet';
+  const invitation = parseDriverInvitation({ ...data, actionProtocol: 'driver-v1' });
+  if (invitation && (!currentUser || currentUser.id === invitation.driverId)) return invitationHref(invitation);
   const tripId = getId(data.tripId, data.trip_id, data.trip?.id);
   const requestId = extractTripRequestId(data);
   const bookingId = getId(data.bookingId, data.booking?.id);

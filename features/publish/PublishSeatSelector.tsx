@@ -18,7 +18,7 @@ export function PublishSeatSelector({ seats, setSeats, vehicleType }: {
   return <View style={styles.row}>
     <View style={styles.copy}>
       <Text style={styles.title}>Places proposées</Text>
-      <Text style={styles.hint}>{maximum ? `De 1 à ${maximum} places pour ce véhicule` : 'Ajustez selon les places disponibles'}</Text>
+      {maximum && <Text style={styles.hint}>{maximum} maximum</Text>}
     </View>
     <View style={styles.counter}>
       {[-1, 0, 1].map(delta => {
@@ -37,8 +37,8 @@ export function PublishSeatSelector({ seats, setSeats, vehicleType }: {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12 },
-  copy: { flex: 1, minWidth: 130 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  copy: { flex: 1, minWidth: 96 },
   title: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
   hint: { fontSize: 12, lineHeight: 18, color: Colors.gray[600], marginTop: 4 },
   counter: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },

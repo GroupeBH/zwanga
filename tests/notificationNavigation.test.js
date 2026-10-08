@@ -8,6 +8,12 @@ const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificatio
 
 const requestHref = id => ({ pathname: '/request-details/[id]', params: { id } });
 
+test('cash commission and trial alerts open the wallet even when a booking identifier is present', () => {
+  for (const type of ['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started']) {
+    assert.equal(getNotificationHref({ type, bookingId: 'booking', tripId: 'trip' }), '/wallet');
+  }
+});
+
 test('manual confirmation notices open the recipient navigation, not the original request', () => {
   assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'passenger', bookingId: 'booking', tripId: 'trip', requestId: 'request' }), '/booking/navigate/booking');
   assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'driver', bookingId: 'booking', tripId: 'trip' }), '/trip/navigate/trip');

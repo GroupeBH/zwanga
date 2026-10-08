@@ -27,6 +27,7 @@ export interface WalletAccount {
   balance: number | string;
   withdrawableBalance?: number | string;
   reservedWithdrawalBalance?: number | string;
+  reservedCashCommissionBalance?: number | string;
   withdrawalsBlocked?: boolean;
   currency: string;
   createdAt: string;
@@ -45,7 +46,10 @@ export type WalletLedgerEntryType =
   | "transfer_in"
   | "admin_adjustment"
   | "withdrawal"
-  | "withdrawal_refund";
+  | "withdrawal_refund"
+  | "cash_commission"
+  | "cash_commission_refund";
+// Cash commissions use the same immutable wallet history as other movements.
 
 export interface WalletLedgerEntry {
   id: string;
