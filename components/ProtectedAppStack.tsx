@@ -47,7 +47,7 @@ export function ProtectedAppStack() {
         <Stack.Screen name="passenger/[id]" />
         <Stack.Screen name="payment-history" />
         <Stack.Screen name="publish" options={{ presentation: 'card' }} />
-        <Stack.Screen name="rate/[id]" options={{ presentation: modalPresentation }} />
+        <Stack.Screen name="rate/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="recurring-trips" />
         <Stack.Screen name="referrals" />
         <Stack.Screen name="report" />

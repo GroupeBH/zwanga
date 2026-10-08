@@ -31,14 +31,14 @@ test('repeated foreground cycles retain no stale panels, notices or native block
   }
 });
 
-function modalFixture(os = 'ios') {
+function modalFixture(os = 'ios', sharedStore) {
   const hooks = hookHarness('modal');
   const react = { ...hooks.react, createContext: value => ({ value }), useContext: context => context.value,
     useSyncExternalStore: (_subscribe, snapshot) => snapshot() };
   const load = loader({ react, 'react-native': { Platform: { OS: os }, Modal: 'NativeModal' } });
   const { RideOverlayContext, RideOverlayScopeContext } = load('features/navigation/rideOverlayContext.ts');
   const { RideModal } = load('features/navigation/RideModal.tsx');
-  const store = createRideOverlayStore(); RideOverlayContext.value = store;
+  const store = sharedStore ?? createRideOverlayStore(); RideOverlayContext.value = store;
   return { store, hooks, scope: RideOverlayScopeContext, render: props => hooks.render(() => RideModal(props)) };
 }
 
@@ -114,6 +114,24 @@ test('iOS manage-trip scope keeps the reason form and global cancellation confir
   assert.equal(form.store.getActive(), null);
   form.hooks.unmount(); dialog.hooks.unmount();
   assert.equal(dialog.store.getEntries().length, 0);
+});
+
+test('iOS trip end to rating and repeated error dismissal never leave a native or invisible input blocker', () => {
+  const store = createRideOverlayStore(), end = modalFixture('ios', store), dialog = modalFixture('ios', store);
+  store.setScope('driver:trip', true); end.scope.value = { key: 'driver:trip', active: true };
+  assert.equal(end.render({ visible: true, children: 'trip-ended' }), null);
+  end.render({ visible: false }); store.setScope('driver:trip', false);
+  store.setScope('rating:driver:trip', true);
+  for (let i = 0; i < 100; i++) {
+    assert.equal(dialog.render({ visible: true, children: 'review-error', priority: 80 }), null,
+      'rating dialogs use the in-app host, never another UIKit modal');
+    assert.equal(store.getActive().children, 'review-error');
+    dialog.render({ visible: false });
+    assert.equal(store.getActive(), null, 'the rating screen regains its touch input');
+    assert.equal(store.getEntries().length, 0);
+  }
+  end.hooks.unmount(); dialog.hooks.unmount(); store.setScope('rating:driver:trip', false);
+  assert.equal(store.isBusy(), false);
 });
 
 test('normal native dismissal cancels the fallback unmount', t => {

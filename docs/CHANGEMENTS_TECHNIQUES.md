@@ -1,5 +1,61 @@
 # Journal des changements techniques
 
+## 8 octobre 2026 — Blocage tactile iOS pendant la notation de fin de trajet
+
+- Signalement : l'application reste affichée mais aucun appui ne répond, jusqu'à
+  fermeture forcée. Ce n'est pas un crash natif démontré. L'inspection a constaté
+  une présentation `modal` iOS de l'écran de notation et des dialogues globaux
+  susceptibles de s'afficher pendant la transition depuis la fin de trajet.
+  Une reproduction JavaScript a également confirmé qu'une réponse de notation
+  reçue après perte du focus déclenchait encore la fermeture du clavier et un
+  retour automatique après 650 ms. Le lien exact entre ces risques et le gel
+  observé sur l'iPhone reste à valider sur appareil.
+- Appliqué : `components/ProtectedAppStack.tsx` présente désormais `rate/[id]`
+  en `card` sur iOS comme sur Android. `app/rate/[id].tsx` utilise un
+  `RideOverlayScope` lié au compte/trajet et au premier plan ; ses dialogues
+  passent par l'hôte existant dans l'app, sans nouvelle présentation modale
+  UIKit. Le défilement conserve les appuis sur les boutons avec le clavier ouvert.
+  [Référence des modes de présentation](https://reactnavigation.org/docs/native-stack-navigator/#presentation)
+  : ce choix réduit les présentations imbriquées, sans prouver à lui seul la
+  résolution du blocage natif signalé.
+- Transition conducteur : `hooks/driver-navigation/useDriverRatingTransition.ts`,
+  appelé par `useDriverNavigationController.ts`, réutilise le nettoyage des
+  panneaux, des animations de marqueur et des requêtes de navigation avant la
+  libération de la carte et le changement d'écran. Verrou contre les doubles
+  appuis, refus hors écran, et réutilisation de la récupération existante si le
+  changement d'écran n'aboutit pas. Aucune mutation d'état métier du trajet.
+- Cycle de notation : `hooks/rating/useRatingLifecycle.ts`, `useRatingData.ts`
+  et `useRatingActions.ts` distinguent une réponse enregistrable pour le même
+  compte/trajet d'une réponse autorisée à agir sur l'interface. Perte de focus,
+  arrière-plan, fermeture explicite, changement de contexte ou démontage
+  invalident les anciens retours différés et dialogues. Une réussite reçue en
+  arrière-plan reste affichable au retour, sans nouvel envoi de la note.
+- Préservés : cibles conducteur/passager, étoiles, commentaire et tags,
+  validation serveur via le même endpoint, retour après réussite si l'écran
+  est resté actif, retour manuel, liens profonds, contrôles de propriété et
+  paiements. Les mécanismes globaux de paiement et de notation App Store ne sont
+  pas modifiés. Aucune dépendance, modification backend ou publication effectuée.
+- Vérifications : **67 tests JavaScript réussis** sur notation, droits de
+  lecture, navigation, superpositions, retour accueil et coordination de la
+  notation App Store. Ajouts : `tests/ratingLifecycle.test.js`,
+  `tests/ratingPresentation.test.js` et cas de transition/100 ouvertures-fermetures
+  dans `tests/rideOverlays.test.js`. TypeScript sans émission et ESLint ciblé
+  réussis ; contrôle de taille : 1 048 sources, aucune au-dessus de 400 lignes ;
+  `git diff --check` sans erreur. Ces tests simulent les API natives ; ils ne
+  constituent pas un essai iPhone ni une preuve d'absence de blocage en production.
+- Commande de régression ajoutée dans `package.json` : `npm run test:rating`
+  (**44 tests réussis**, sous-ensemble rejoué après ajout de la commande).
+  Recette physique restante : terminer un trajet avec passager, ouvrir « Noter »,
+  choisir le passager et les étoiles, envoyer avec/sans commentaire puis revenir
+  à l'accueil. Refaire avec clavier, double appui, réseau lent/erreur API, passage
+  en arrière-plan avant réponse et paiement reçu au même moment. Vérifier aussi
+  Android et l'ouverture depuis la gestion du trajet. Le code est JavaScript :
+  il faut qu'il soit inclus dans la version installée ou une mise à jour compatible ;
+  le TestFlight déjà installé n'est pas modifié par ces fichiers locaux.
+  Pour produire un nouveau binaire iOS avec le profil existant :
+  `npx eas-cli build --platform ios --profile production`. Cette commande n'a
+  pas été exécutée ; la soumission à TestFlight reste une étape séparée.
+
 ## 8 octobre 2026 — Priorité aux trajets conducteur avec réservations sur l'accueil
 
 - Problème : la carte prioritaire concernait surtout les réservations en attente.

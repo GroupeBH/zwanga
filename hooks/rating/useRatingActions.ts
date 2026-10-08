@@ -5,6 +5,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React from 'react';
 import { Keyboard } from 'react-native';
 import type { Trip } from '@/types';
+import type { useRatingLifecycle } from './useRatingLifecycle';
 
 interface Params {
   selectedTags: string[];
@@ -21,7 +22,7 @@ interface Params {
   passengers: { id: string; name: string; seats: number; }[];
   comment: string;
   createReview: ReturnType<typeof useCreateReviewMutation>[0];
-  isMountedRef: React.RefObject<boolean>;
+  captureRatingSession: ReturnType<typeof useRatingLifecycle>['captureRatingSession'];
   successReturnTimeoutRef: React.RefObject<NodeJS.Timeout | null>;
   goBackSafely: () => void;
   reportReason: string;
@@ -42,7 +43,7 @@ export function useRatingActions({
   passengers,
   comment,
   createReview,
-  isMountedRef,
+  captureRatingSession,
   successReturnTimeoutRef,
   goBackSafely,
   reportReason,
@@ -56,7 +57,8 @@ export function useRatingActions({
   };
 
   const handleSubmitRating = async () => {
-    if (submitInFlightRef.current || isSubmittingReview) {
+    const session = captureRatingSession();
+    if (!session.canPresent() || submitInFlightRef.current || isSubmittingReview) {
       return;
     }
 
@@ -130,23 +132,21 @@ export function useRatingActions({
         ...(reviewComment ? { comment: reviewComment } : {}),
       }).unwrap();
 
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      Keyboard.dismiss();
+      if (!session.canUpdate()) return;
+      // Keep a successful result on returning to this screen without replaying the POST.
       setSubmitSuccessMessage('Évaluation envoyée. Merci pour votre retour.');
+      if (!session.canPresent()) return;
+      Keyboard.dismiss();
       successReturnTimeoutRef.current = setTimeout(() => {
         successReturnTimeoutRef.current = null;
-        if (isMountedRef.current) {
+        if (session.canPresent()) {
           goBackSafely();
         }
       }, 650);
     } catch (error: any) {
+      if (!session.canUpdate()) return;
       submitInFlightRef.current = false;
-      if (!isMountedRef.current) {
-        return;
-      }
+      if (!session.canPresent()) return;
 
       showDialog({
         variant: 'danger',
@@ -157,6 +157,8 @@ export function useRatingActions({
   };
 
   const handleSubmitReport = () => {
+    const session = captureRatingSession();
+    if (!session.canPresent()) return;
     if (!reportReason) {
       showDialog({
         variant: 'warning',
@@ -171,7 +173,9 @@ export function useRatingActions({
       title: 'Signalement envoyé',
       message:
         'Nous examinerons votre signalement. Merci pour votre contribution à la sécurité de la communauté.',
-      actions: [{ label: 'Fermer', variant: 'primary', onPress: goBackSafely }],
+      actions: [{ label: 'Fermer', variant: 'primary', onPress: () => {
+        if (session.canPresent()) goBackSafely();
+      } }],
     });
   };
 
