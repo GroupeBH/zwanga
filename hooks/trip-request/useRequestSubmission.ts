@@ -17,7 +17,7 @@ import { useRequestDraft } from './useRequestDraft';
 import { useDriverDispatchStatusQuery } from '@/store/api/driverDispatchApi';
 import type { useRequestSchedule } from './useRequestSchedule';
 
-type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
+type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'hasChosenDepartureTime' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
   departureAddress: string; arrivalAddress: string; hasDepartureAddress: boolean; hasArrivalAddress: boolean;
   canSubmitRequestDetails: boolean; budgetValue: number; selectedVehicleOptionUnavailable: boolean;
   getCurrentDepartureWindow: ReturnType<typeof useRequestSchedule>['getCurrentDepartureWindow'];
@@ -29,6 +29,7 @@ export function useRequestSubmission({
   arrivalLocation,
   departureLocation,
   timePreset,
+  hasChosenDepartureTime,
   setDepartureDateMin,
   setFlexibilityMinutes,
   description,
@@ -101,9 +102,14 @@ export function useRequestSubmission({
       });
       return false;
     }
+    if (!hasChosenDepartureTime) {
+      showDialog({ title: 'Départ souhaité', message: 'Choisissez votre date et votre heure de départ.', variant: 'warning' });
+      return false;
+    }
     if (
+      !Number.isFinite(departureWindow.min.getTime()) || !Number.isFinite(departureWindow.max.getTime()) ||
       departureWindow.min.getTime() >= departureWindow.max.getTime() ||
-      departureWindow.min.getTime() < Date.now() - 60000
+      departureWindow.min.getTime() <= Date.now()
     ) {
       showDialog({
         title: 'Heure invalide',

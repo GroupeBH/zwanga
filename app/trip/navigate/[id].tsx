@@ -9,7 +9,7 @@ import { NavigationPickupBypassModal } from '../../../features/driver-navigation
 import { NavigationWaypointModal } from '../../../features/driver-navigation/NavigationWaypointModal';
 import { NavigationPickupNoticeModal } from '../../../features/driver-navigation/NavigationPickupNoticeModal';
 import { NavigationTripEndModal } from '../../../features/driver-navigation/NavigationTripEndModal';
-import { cleanHtmlInstructions } from '../../../features/driver-navigation/navigationPresentation';
+import { DriverNavigationGuidance } from '@/features/driver-navigation/DriverNavigationGuidance';
 import { KINSHASA_FALLBACK_MAP_COORDINATE } from '../../../features/driver-navigation/navigationModel';
 import { styles } from '../../../features/screen-styles/app/trip/navigate/detail/index';
 import { NavigationAssistanceModals } from '@/features/navigation/NavigationAssistanceModals';
@@ -136,46 +136,14 @@ function DriverNavigationScreen() {
 
       <DriverNavigationTopPanel model={model} assistance={assistance} />
 
-      {/* Instructions de navigation */}
-      {model.session.foundation.data.isTripOngoing && !model.session.foundation.mapState.isLoadingRoute && currentStep && (
-        <View style={styles.instructionCard}>
-          <View style={styles.instructionHeader}>
-            <View style={styles.maneuverIcon}>
-              <Ionicons 
-                name={model.routeFormatting.getManeuverIcon(currentStep.maneuver) as any}
-                size={36} 
-                color={Colors.white} 
-              />
-            </View>
-            <View style={styles.instructionInfo}>
-              <Text style={styles.instructionText}>
-                {cleanHtmlInstructions(currentStep.html_instructions)}
-              </Text>
-              <Text style={styles.instructionDistance}>{currentStep.distance.text}</Text>
-            </View>
-          </View>
-
-          {/* Prochaine instruction */}
-          {model.session.foundation.mapState.currentStepIndex < model.session.foundation.mapState.steps.length - 1 && (
-            <View style={styles.nextInstruction}>
-              <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-              <Text style={styles.nextInstructionText}>
-                Ensuite : {cleanHtmlInstructions(model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex + 1].html_instructions)}
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Loading route indicator */}
-      {model.session.foundation.data.isTripOngoing && model.session.foundation.mapState.isLoadingRoute && (
-        <View style={styles.loadingRouteCard}>
-          <ActivityIndicator size="small" color={Colors.primary} />
-          <Text style={styles.loadingRouteText}>
-            {model.session.foundation.mapState.isReroutingRoute ? "Recalcul de l'itinéraire..." : "Calcul de l'itinéraire..."}
-          </Text>
-        </View>
-      )}
+      {model.session.foundation.data.isTripOngoing && <DriverNavigationGuidance
+        step={currentStep}
+        nextStep={model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex + 1]}
+        loading={model.session.foundation.mapState.isLoadingRoute}
+        rerouting={model.session.foundation.mapState.isReroutingRoute}
+        insets={model.session.foundation.data.insets}
+        getManeuverIcon={model.routeFormatting.getManeuverIcon}
+      />}
 
       {/* Boutons d'action flottants */}
       {model.session.foundation.data.isTripOngoing && (
@@ -185,6 +153,7 @@ function DriverNavigationScreen() {
         voice={model.voice}
         passengerPresentation={model.passengerPresentation}
         forceRecalculateRoute={model.forceRecalculateRoute}
+        canToggleRouteSections={model.presentation.canToggleRouteSections}
       />
       )}
 

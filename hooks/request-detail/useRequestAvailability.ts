@@ -1,4 +1,5 @@
 import { getRouteCoordinates } from '@/utils/routeApi';
+import { canEditTripRequest } from '@/features/trip-request/requestExpiration';
 import React, { useEffect, useMemo } from 'react';
 import type { Trip, Vehicle, User, TripRequest } from '@/types';
 
@@ -123,11 +124,7 @@ export function useRequestAvailability({
   // Vérifier si la demande peut être modifiée
   const canEdit = useMemo(() => {
     if (!isOwner || !tripRequest) return false;
-    if (tripRequest.immediateDispatch) return false;
-    // Ne peut pas modifier si une offre a été acceptée ou si un driver a été sélectionné
-    if (tripRequest.status === 'driver_selected' || tripRequest.selectedDriverId) return false;
-    // Ne peut modifier que si le statut est 'pending' ou 'offers_received'
-    return tripRequest.status === 'pending' || tripRequest.status === 'offers_received';
+    return canEditTripRequest(tripRequest);
   }, [isOwner, tripRequest]);
 
   const canCancel = useMemo(() => {

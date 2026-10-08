@@ -150,6 +150,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
     {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
       ? rideStageMessage(inlineStage, actor)
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
+      : condensed && actor === 'driver' ? `${directRow?.item.passengerName || 'Passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme aussi.`
       : condensed && actor === 'passenger' ? directStage?.stage === 'dropoff'
         ? 'Confirmez une fois à destination. Le conducteur confirme aussi.'
         : 'Confirmez une fois à bord. Le conducteur confirme aussi.'

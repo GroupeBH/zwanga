@@ -9,7 +9,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, useW
 import type { RouteStep, Waypoint } from './navigationModel';
 import { getConfirmedDropoffs } from './driverDropoffReceiptsModel';
 import { DriverDropoffReceiptsSheet } from './DriverDropoffReceiptsSheet';
-import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
+import { getDriverNavigationLayout } from './driverNavigationLayout';
 
 interface DriverNavigationControlsProps {
   foundation: ReturnType<typeof useDriverNavigationFoundation>;
@@ -17,6 +17,7 @@ interface DriverNavigationControlsProps {
   voice: { speakNavigationMessage: (message: string, options?: { force?: boolean; }) => Promise<void>; buildInstructionSpeech: (step: RouteStep, intro?: string) => string; buildWaypointSpeech: (waypoint: Waypoint) => string; toggleVoiceGuidance: () => void; };
   passengerPresentation: { passengerStats: { totalPassengers: number; pendingPickups: number; pendingDropoffs: number; completedPickups: number; completedDropoffs: number; inVehicle: number; passengers: { name: string; pickedUp: boolean; droppedOff: boolean; id: string; }[]; }; fitVehicleAndPassengers: () => void; };
   forceRecalculateRoute: () => void;
+  canToggleRouteSections?: boolean;
 }
 
 export function DriverNavigationControls({
@@ -25,6 +26,7 @@ export function DriverNavigationControls({
   voice,
   passengerPresentation,
   forceRecalculateRoute,
+  canToggleRouteSections = false,
 }: DriverNavigationControlsProps) {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const { bookings, tripId, isScreenActive } = foundation.data;
@@ -34,12 +36,10 @@ export function DriverNavigationControls({
   useEffect(closeReceipts, [isScreenActive, tripId, closeReceipts]);
   const receiptsVisible = isScreenActive && receiptsTrip === tripId && completed.length > 0;
   const { width, height } = useWindowDimensions();
-  const pendingBookingVisible = foundation.data.isTripOngoing && Boolean(foundation.passengers.activePendingBooking)
-    && !foundation.passengers.activePassengerInterruptionBooking;
-  const pendingLayout = getDriverPendingBookingLayout(height, foundation.data.insets.top, foundation.data.insets.bottom);
+  const layout = getDriverNavigationLayout(height, foundation.data.insets.top, foundation.data.insets.bottom);
   const menuWidth = Math.min(240, width - foundation.data.insets.left - foundation.data.insets.right - 96);
   const menuMaxHeight = height * 0.35;
-  useEffect(() => { if (!foundation.data.isScreenActive) setOptionsVisible(false); }, [foundation.data.isScreenActive]);
+  useEffect(() => { setOptionsVisible(false); }, [isScreenActive, tripId]);
   const recenterOnMyPosition = () => {
     if (!foundation.data.isScreenActive) return;
     const location = normalizeDriverLocationObject(foundation.refs.currentLocationRef.current)
@@ -55,32 +55,35 @@ export function DriverNavigationControls({
       },
     );
   };
-  const options: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; action: () => void; disabled?: boolean }[] = [
+  const options: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; action: () => void; disabled?: boolean; selected?: boolean }[] = [
     { label: 'Modifier le trajet', icon: 'create-outline', action: tripActions.handleEditTripFromNavigation },
     { label: 'Partager le trajet', icon: 'share-social-outline', action: () => void tripActions.handleShareTrip(), disabled: foundation.data.isCreatingTripShareLink },
     ...(foundation.passengers.passengerMapLocations.length > 0 ? [{ label: 'Voir les passagers', icon: 'people' as const, action: passengerPresentation.fitVehicleAndPassengers }] : []),
     ...(completed.length > 0 ? [{ label: 'Gains des passagers', icon: 'receipt-outline' as const,
       action: () => { if (isScreenActive) setReceiptsTrip(tripId); }, disabled: !isScreenActive }] : []),
     { label: 'Ma position', icon: 'locate', action: recenterOnMyPosition },
+    ...(canToggleRouteSections ? (['next', 'remaining'] as const).map(section => ({
+      label: section === 'next' ? 'Prochain arrêt' : 'Reste du trajet', icon: 'map-outline' as const,
+      selected: foundation.mapState.routeSectionFocus === section,
+      action: () => foundation.mapState.setRouteSectionFocus(section),
+    })) : []),
   ];
   return (
     <View pointerEvents="box-none" style={[styles.floatingButtons, {
       right: Math.max(foundation.data.insets.right, 16), alignItems: 'flex-end', justifyContent: 'flex-end',
       // Keep the popup within its parent's touch bounds, especially on Android.
-      width: optionsVisible ? menuWidth + 58 : 48, minHeight: optionsVisible ? menuMaxHeight : undefined,
-    }, pendingBookingVisible && {
-      flexDirection: 'row', gap: 8, bottom: pendingLayout.controlsBottom,
-      width: optionsVisible ? Math.max(menuWidth, pendingLayout.controlsWidth) : pendingLayout.controlsWidth,
-      minHeight: optionsVisible ? menuMaxHeight + pendingLayout.menuBottom : undefined,
+      flexDirection: 'row', gap: 8, bottom: layout.controlsBottom, zIndex: 45,
+      width: optionsVisible ? Math.max(menuWidth, layout.controlsWidth) : layout.controlsWidth,
+      minHeight: optionsVisible ? menuMaxHeight + layout.menuBottom : undefined,
     }]}>
-      {optionsVisible && <View style={[menuStyles.menu, { width: menuWidth, maxHeight: menuMaxHeight },
-        pendingBookingVisible && { right: 0, bottom: pendingLayout.menuBottom }]}>
+      {optionsVisible && <View style={[menuStyles.menu, { width: menuWidth, maxHeight: menuMaxHeight, bottom: layout.menuBottom }]}>
         <ScrollView bounces={false} contentContainerStyle={menuStyles.content}>
           {options.map(option => <TouchableOpacity key={option.label} style={[menuStyles.option, option.disabled && styles.floatingButtonDisabled]}
             disabled={option.disabled} onPress={() => { setOptionsVisible(false); option.action(); }}
-            accessibilityRole="button" accessibilityLabel={option.label}>
+            accessibilityRole="button" accessibilityLabel={option.label} accessibilityState={{ selected: option.selected, disabled: option.disabled }}>
             <Ionicons name={option.icon} size={21} color={Colors.primary} />
             <Text style={menuStyles.label}>{option.label}</Text>
+            {option.selected && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
           </TouchableOpacity>)}
         </ScrollView>
       </View>}
@@ -159,7 +162,7 @@ export function DriverNavigationControls({
 }
 
 const menuStyles = StyleSheet.create({
-  menu: { position: 'absolute', right: 58, bottom: 0, backgroundColor: Colors.white, borderRadius: 18,
+  menu: { position: 'absolute', right: 0, backgroundColor: Colors.white, borderRadius: 18,
     borderWidth: 1, borderColor: Colors.gray[200], overflow: 'hidden', elevation: 4 },
   content: { padding: 6 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, minHeight: 48 },

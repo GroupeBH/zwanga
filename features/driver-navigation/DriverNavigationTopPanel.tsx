@@ -10,6 +10,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, Vi
 import { DriverNavigationPassengersBar } from './DriverNavigationPassengersBar';
 import { DriverDropoffReceipts } from './DriverDropoffReceipts';
 import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
+import { getDriverNavigationLayout } from './driverNavigationLayout';
 
 const EMPTY_BOOKINGS: NonNullable<Props['model']['session']['foundation']['data']['bookings']> = [];
 
@@ -26,9 +27,16 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const hasUrgentDropoff = Boolean(passengers.activePassengerInterruptionBooking);
   const hasPendingBooking = data.isTripOngoing && !hasUrgentDropoff && Boolean(passengers.activePendingBooking);
   const pendingLayout = getDriverPendingBookingLayout(height, data.insets.top, data.insets.bottom);
+  const layout = getDriverNavigationLayout(height, data.insets.top, data.insets.bottom);
+  const recovery = data.isTripOngoing && !hasUrgentDropoff && Boolean(data.bookings?.length) ? <View style={styles.confirmation}>
+    <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
+      condensed
+      fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
+      destination={data.tripArrivalCoordinate} />
+  </View> : null;
   return <View pointerEvents="box-none" style={[styles.panel, {
     top: data.insets.top + 8, left: Math.max(data.insets.left, 12), right: Math.max(data.insets.right, 12),
-    maxHeight: hasPendingBooking ? pendingLayout.panelMaxHeight : undefined,
+    maxHeight: hasPendingBooking || hasUrgentDropoff ? pendingLayout.panelMaxHeight : layout.panelMaxHeight,
   }]}>
     <View style={styles.header}>
       <TouchableOpacity style={styles.back} onPress={model.handleExitNavigation} hitSlop={8}
@@ -50,36 +58,21 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
         </View>
       </View>
     </View>
-    {!hasPendingBooking && !hasUrgentDropoff && <TripShareAction compact onShare={model.tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />}
     <View style={styles.actions}>
-      {data.isTripOngoing && !hasUrgentDropoff && <View style={styles.confirmation}>
-        <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
-          compact={hasPendingBooking || undefined}
-          fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
-          destination={data.tripArrivalCoordinate} />
-      </View>}
-      <NavigationAssistanceButtons role="driver" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
+      {!hasPendingBooking && !hasUrgentDropoff && <TripShareAction compact inline onShare={model.tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />}
+      <NavigationAssistanceButtons inline role="driver" onContact={assistance.openContacts} onSos={assistance.openSos} disabled={!assistance.enabled} />
     </View>
     {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff || hasPendingBooking ? <DriverNavigationPassengersBar
       onContact={assistance.openContact}
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
-      : <ScrollView style={{ flexGrow: 0, maxHeight: Math.max(80, height * 0.3) }} contentContainerStyle={styles.details}
+      : <ScrollView style={styles.scroll} contentContainerStyle={styles.details}
       showsVerticalScrollIndicator bounces={false}>
-      <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive} />
-      {model.presentation.canToggleRouteSections && <View style={styles.segments}>
-        {(['next', 'remaining'] as const).map(section => <TouchableOpacity key={section}
-          style={[styles.segment, mapState.routeSectionFocus === section && styles.segmentActive]}
-          onPress={() => mapState.setRouteSectionFocus(section)} accessibilityRole="button"
-          accessibilityState={{ selected: mapState.routeSectionFocus === section }}>
-          <Text style={[styles.segmentText, mapState.routeSectionFocus === section && styles.segmentTextActive]}>
-            {section === 'next' ? 'Prochain arrêt' : 'Reste du trajet'}
-          </Text>
-        </TouchableOpacity>)}
-      </View>}
+      {data.trip?.status === 'completed' && <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive} />}
       {(mapState.waypoints.length > 0 || passengers.activePendingBooking) && <DriverNavigationPassengersBar
         onContact={assistance.openContact}
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
     </ScrollView>)}
+    {recovery}
   </View>;
 }
 
@@ -87,21 +80,17 @@ const styles = StyleSheet.create({
   panel: { position: 'absolute', gap: 8, zIndex: 40 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   back: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: '#26363D' },
-  info: { flex: 1, minWidth: 0, backgroundColor: '#26363D', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 12, gap: 8 },
-  summary: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  duration: { color: Colors.white, fontSize: 24, fontWeight: '800', flexShrink: 1 },
+  info: { flex: 1, minWidth: 0, backgroundColor: '#26363D', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, gap: 4 },
+  summary: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  duration: { color: Colors.white, fontSize: 20, fontWeight: '800', flexShrink: 1 },
   connection: { borderRadius: 12, backgroundColor: '#435159', paddingHorizontal: 8, paddingVertical: 5, flexShrink: 1 },
   connected: { backgroundColor: '#234F44' },
   connectionText: { color: Colors.white, fontSize: 11, fontWeight: '700' },
   connectedText: { color: '#8EE8BA' },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4 },
-  metric: { color: '#E3EAED', fontSize: 14, fontWeight: '600', flexShrink: 1 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'flex-end', gap: 8 },
-  confirmation: { flex: 1, minWidth: 130, backgroundColor: Colors.white, borderRadius: 18, padding: 8 },
-  details: { gap: 8, paddingBottom: 4 },
-  segments: { flexDirection: 'row', gap: 4, borderRadius: 16, padding: 4, backgroundColor: Colors.white },
-  segment: { flex: 1, minHeight: 44, padding: 8, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  segmentActive: { backgroundColor: Colors.primary },
-  segmentText: { color: Colors.gray[700], fontWeight: '600', fontSize: 12, textAlign: 'center' },
-  segmentTextActive: { color: Colors.white },
+  metric: { color: '#E3EAED', fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  confirmation: { flexShrink: 0, minWidth: 130, backgroundColor: Colors.white, borderRadius: 16, padding: 8 },
+  scroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
+  details: { gap: 6, paddingBottom: 2 },
 });

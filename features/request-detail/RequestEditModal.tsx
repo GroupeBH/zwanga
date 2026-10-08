@@ -135,6 +135,7 @@ export function RequestEditModal({
           </View>
 
           {/* Contenu Scrollable */}
+          <Text style={[styles.editModalSubtitle, { marginHorizontal: 20, marginBottom: 12 }]}>Les anciennes offres en attente seront retirées. Une demande expirée exige un nouveau créneau futur. Une recherche immédiate reprogrammée devient une demande classique.</Text>
           <RequestEditFields
             editAddressInputMode={editAddressInputMode}
             setEditAddressInputMode={setEditAddressInputMode}

@@ -66,6 +66,9 @@ export interface Trip {
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
   startedAt?: string | null;
+  canReprogram?: boolean;
+  /** Explicit server distinction between an expired departure and a completed ride. */
+  isExpired?: boolean;
   completedAt?: string | null; // ISO string date - Date de complétion du trajet
   vehicleId?: string | null; // ID du véhicule associé
   description?: string | null; // Description du trajet

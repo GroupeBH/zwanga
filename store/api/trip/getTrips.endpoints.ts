@@ -147,6 +147,11 @@ resumeRecurringTrip: builder.mutation<RecurringTripTemplate, string>({
       ],
     }),
 // Mettre à jour un trajet existant
+    reprogramTrip: builder.mutation<Trip, { id: string; updates: UpdateTripRequest }>({
+      query: ({ id, updates }) => ({ url: `/trips/${id}/reprogram`, method: 'POST', body: updates, timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: [tripListTag, myTripsListTag],
+    }),
     updateTrip: builder.mutation<Trip, { id: string; updates: UpdateTripRequest }>({
       query: ({ id, updates }: { id: string; updates: UpdateTripRequest }) => ({
         url: `/trips/${id}`,

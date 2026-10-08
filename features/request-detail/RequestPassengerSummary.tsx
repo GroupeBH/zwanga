@@ -233,7 +233,7 @@ export function RequestPassengerSummary({
               onPress={handleOpenEditForm}
             >
               <Ionicons name="create-outline" size={16} color={Colors.primary} />
-              <Text style={styles.ownerHeroGhostButtonText}>Modifier</Text>
+              <Text style={styles.ownerHeroGhostButtonText}>{tripRequest.status === 'expired' ? 'Reprogrammer' : 'Modifier'}</Text>
             </Pressable>
           )}
           {canCancel && (

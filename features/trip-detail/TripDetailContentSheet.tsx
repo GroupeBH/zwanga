@@ -63,6 +63,14 @@ export function TripDetailContentSheet({
         setContactModalVisible={bookingState.setContactModalVisible}
       />
 
+    {data.isTripDriver && data.tripExpired && <View style={styles.section}>
+      <Text style={styles.trackingSubtitle}>
+        {data.trip?.canReprogram
+          ? 'Modifiez la date pour republier ce trajet. Les anciennes réservations restent dans l’historique.'
+          : 'Ce départ a expiré. Les détails de votre trajet restent consultables.'}
+      </Text>
+    </View>}
+
     {!!data.trip?.acceptedPaymentModes?.length && Number(data.trip.price) > 0 && <View style={styles.section}>
       <Text style={styles.sectionTitle}>PAIEMENTS ACCEPTÉS</Text>
       <Text>{data.trip.acceptedPaymentModes.map(mode => ({ cash: 'Cash', electronic: 'Électronique', points: 'Jetons' })[mode]).join(' · ')}</Text>

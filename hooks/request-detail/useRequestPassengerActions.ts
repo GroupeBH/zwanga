@@ -16,6 +16,7 @@ import type { TripRequest } from '@/types';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 
 interface Params {
+  editExpectedUpdatedAt: string | undefined;
   isUpdating: boolean;
   isEditVehicleOptionsLoading: boolean;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
@@ -47,6 +48,7 @@ interface Params {
 }
 
 export function useRequestPassengerActions({
+  editExpectedUpdatedAt,
   isUpdating,
   isEditVehicleOptionsLoading,
   showDialog,
@@ -107,7 +109,8 @@ export function useRequestPassengerActions({
       });
       return;
     }
-    if (updatedDepartureDateMin.getTime() <= Date.now()) {
+    if (updatedDepartureDateMin.getTime() <= Date.now() && (tripRequest?.status === 'expired' ||
+        updatedDepartureDateMin.getTime() !== new Date(tripRequest?.departureDateMin ?? '').getTime())) {
       showDialog({
         title: 'Heure pass\u00e9e',
         message: 'Choisissez une heure de d\u00e9part dans le futur.',
@@ -166,12 +169,13 @@ export function useRequestPassengerActions({
       await updateTripRequest({
         id,
         payload: {
+          expectedUpdatedAt: editExpectedUpdatedAt,
           departureLocation: editDepartureAddress,
-          departureReference: editDepartureReference.trim() || undefined,
+          departureReference: editDepartureReference.trim(),
           departureCoordinates:
             editAddressInputMode === 'map' ? getLocationCoordinates(editDepartureLocation) : undefined,
           arrivalLocation: editArrivalAddress,
-          arrivalReference: editArrivalReference.trim() || undefined,
+          arrivalReference: editArrivalReference.trim(),
           arrivalCoordinates:
             editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
           departureDateMin: updatedDepartureDateMin.toISOString(),
@@ -179,7 +183,7 @@ export function useRequestPassengerActions({
           numberOfSeats: parsedEditNumberOfSeats,
           vehicleType: editVehicleType,
           maxPricePerSeat: parsedEditBudget,
-          description: editDescription.trim() || undefined,
+          description: editDescription.trim(),
         },
       }).unwrap();
 
@@ -188,8 +192,8 @@ export function useRequestPassengerActions({
 
       setTimeout(() => {
         showDialog({
-          title: 'Demande modifiée',
-          message: `Votre demande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}.`,
+          title: tripRequest?.status === 'expired' ? 'Demande reprogrammée' : 'Demande modifiée',
+          message: `Votre demande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}. Les anciennes offres en attente ont été retirées.`,
           variant: 'success',
         });
       }, Platform.OS === 'ios' ? 350 : 0);

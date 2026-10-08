@@ -24,10 +24,11 @@ export const TIME_PRESETS: {
 }[] = [
     { id: 'now', label: 'Maintenant', caption: 'Départ rapide', icon: 'flash' },
     { id: 'soon', label: 'Dans 30 min', caption: 'Encore un peu', icon: 'time' },
-    { id: 'custom', label: 'Je choisis', caption: 'Date et heure', icon: 'create-outline' },
   ];
 
-export const FLEX_OPTIONS = [0, 30, 60, 120];
+// The backend requires a non-empty departure window; do not offer an invalid "Exact" option.
+export const FLEX_OPTIONS = [15, 30, 60, 120];
+export const DEFAULT_REQUEST_FLEXIBILITY_MINUTES = 30;
 
 export const MIN_REQUEST_SEATS = 1;
 
@@ -114,6 +115,15 @@ export function applyTimePart(date: Date, current: Date) {
 
 export function formatDateLabel(date: Date) {
   return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+export function formatRequestDayLabel(date: Date, now = new Date()) {
+  if (date.toDateString() === now.toDateString()) return 'Aujourd’hui';
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) return 'Demain';
+  return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}) });
 }
 
 export function formatTimeLabel(date: Date) {

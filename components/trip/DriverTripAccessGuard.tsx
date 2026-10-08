@@ -10,6 +10,7 @@ import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
 import { useAppSelector } from '@/store/hooks';
 import { tripAccessFeedback } from '@/features/navigation/tripAccessFeedback';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 
 /** Do not mount driver controllers (GPS, sockets, actions) until ownership is known. */
 export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
@@ -24,9 +25,10 @@ export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
     ownsTrip(liveTrip, userId) && liveTrip?.status === 'ongoing');
   const isOwner = trip?.id === tripId && ownsTrip(trip, userId);
   const { data: bookings } = useGetMyActivityBookingsQuery(undefined, {
-    ...sharedBookingsOptions, skip: !userId || !trip || isOwner,
+    ...sharedBookingsOptions, skip: !userId || !trip || isOwner || isTripExpired(trip),
   });
   if (isOwner) return <React.Fragment key={`${userId}:${tripId}`}>{children}</React.Fragment>;
+  if (trip?.id === tripId && isTripExpired(trip)) return <Redirect href={`/trip/${tripId}`} />;
 
   const booking = bookings?.find(candidate => candidate.tripId === tripId
     && isActivePassengerBooking(candidate, userId));

@@ -1,5 +1,304 @@
 # Journal des changements techniques
 
+## 8 octobre 2026 — Navigation conducteur plus compacte
+
+- Constat : en navigation, partage, confirmations, statistiques des passagers,
+  prochain arrêt, gains et sélection d’itinéraire s’empilaient au-dessus de la
+  carte. Les commandes verticales et les instructions à hauteur non bornée
+  pouvaient occuper la même zone. Il s’agit d’un constat de structure du code,
+  pas d’une mesure de surface visible sur appareil.
+- Solution appliquée, guidée par `frontend-skill` : conserver la carte comme
+  espace principal et donner la priorité à l’arrêt en cours. En-tête resserré,
+  partage/contact/SOS sur une ligne quand la largeur le permet, nom et adresse du
+  prochain passager regroupés avec l’accès à la liste complète. Le badge redondant
+  « Suivi actif » est retiré. Toucher l’arrêt ouvre son détail, sans le valider.
+- Les confirmations restent directement accessibles sous les détails bornés,
+  avec une explication plus courte. Leur composant garde la même position React
+  lorsqu’une nouvelle réservation arrive, afin de ne pas perdre son état local.
+  Une réservation unique garde son action directe ; plusieurs réservations
+  gardent la sélection du titulaire dans le panneau existant. Le conducteur ne
+  confirme jamais à la place du passager.
+- Gains et sélection de section d’itinéraire sont accessibles dans « Options »
+  pendant la navigation ; le récapitulatif de gains reste affichable à la fin.
+  Le partage reste direct. Interruption, son, options et recalcul sont alignés
+  horizontalement et restent au même emplacement lors du traitement d’une
+  réservation. Le menu conserve ses limites tactiles et se ferme au changement
+  de trajet ou d’activité de l’écran.
+- Nouveau composant `DriverNavigationGuidance.tsx` : instruction actuelle et
+  suivante plus compactes, texte intégral défilable en cas de besoin. Le calcul
+  partagé `driverNavigationLayout.ts` réserve séparément instructions, commandes
+  et panneau supérieur, en tenant compte des marges système. Les demandes urgentes
+  et les nouvelles réservations restent prioritaires, avec leurs boutons hors du
+  texte défilable. Les anciens styles d’instructions inutilisés sont supprimés.
+- Fichiers : `app/trip/navigate/[id].tsx`, `features/driver-navigation/`
+  (`DriverNavigationTopPanel.tsx`, `DriverNavigationPassengersBar.tsx`,
+  `DriverNavigationControls.tsx`, les deux nouveaux fichiers précités et
+  `driverPendingBookingLayout.ts`), `features/ride-recovery/RideRecoveryControl.tsx`,
+  `features/screen-styles/app/trip/navigate/detail/container.styles.ts`,
+  `tests/driverNavigationCompact.test.js`, `tests/navigationHeaders.test.js`,
+  `tests/driverPendingBookingLayout.test.js`, `tests/rideRecoveryUI.test.js`, `package.json`.
+- Conservé : double validation, file hors connexion, protections contre les doubles
+  appuis, priorités d’interruption, paiement et confirmation du cash, contacts,
+  SOS, sortie directe, GPS, sockets et calcul d’itinéraire. Aucun endpoint,
+  minuteur, dépendance, migration ou changement natif ajouté. Les gains ne sont
+  plus montés automatiquement au-dessus de la carte en cours de route ; aucun
+  gain de mémoire, de fluidité ou de batterie n’a été mesuré.
+- Vérifications : `npm run test:driver-navigation-ui` **83 tests réussis**,
+  `npm run test:navigation` **63 tests réussis**, TypeScript `tsc --noEmit` réussi,
+  ESLint ciblé sans avertissement, `git diff --check` réussi. Les nouveaux tests
+  couvrent les bornes de mise en page, les gestes distincts détail/liste, le menu,
+  les confirmations stables, les contenus longs et l’absence de réservation.
+- Limites : tests JavaScript avec composants natifs simulés, pas de validation
+  visuelle/native sur iOS ou Android. Les petits écrans et polices agrandies
+  peuvent nécessiter un défilement des détails. À contrôler sur appareils :
+  lisibilité du prochain arrêt, visibilité du véhicule, instructions longues,
+  un et plusieurs passagers, nouvelle réservation pendant une confirmation,
+  interruption, gains et retour d’arrière-plan. Aucun crash ou échauffement
+  n’est annoncé corrigé par cette refonte.
+
+## 8 octobre 2026 — « Référence » dans les adresses
+
+- Demande : remplacer le mot « repère » par « référence » dans la publication
+  et la création de demandes de trajet.
+- Appliqué : libellés de départ/arrivée, boutons « Ajouter une référence »,
+  « Références rapides », récapitulatif de demande et libellés d’accessibilité.
+  Les composants partagés de recherche d’adresse et de détail de trajet adoptent
+  également ce vocabulaire pour ne pas le changer au cours du parcours.
+- Fichiers : `features/publish/PublishRouteFields.tsx`,
+  `features/publish/PublishRouteStep.tsx`, `components/trip-request/RequestRouteStep.tsx`,
+  `components/trip-request/RequestRoutePreview.tsx`, `components/LocationPickerModal.tsx`,
+  `components/AddressEntryModeSelector.tsx`, `components/trip/RouteLocationDetails.tsx`,
+  `tests/requestAddressReferences.test.js`, `tests/tripDetailCompact.test.js`.
+  L’import de type situé en fin de `PublishRouteFields.tsx` est replacé en tête.
+- Conservé : champs facultatifs, contenu saisi, brouillons, inversion des adresses,
+  coordonnées, propriétés `departureReference`/`arrivalReference` et payloads.
+  Aucun changement de contrat API ou de base de données ; les données historiques
+  ne sont pas réécrites.
+- Vérifications : `npm run test:trip-request` **74 tests réussis**, dont un test
+  ajouté pour les champs de publication et leurs callbacks. Les suites
+  `tripDetailCompact`, `routeLocationDetails`, `locationPicker` et
+  `locationPickerMapPress` totalisent **45 tests réussis**. TypeScript réussi ;
+  recherche des anciens libellés dans les composants et formulaires sans résultat.
+  Tests de composants simulés, pas d’essai VoiceOver/TalkBack sur appareil.
+
+## 8 octobre 2026 — Repères de départ et d’arrivée dans la création d’une demande
+
+- Problème : le brouillon et le payload comportaient déjà `departureReference` et
+  `arrivalReference`, mais le contrôleur ne les exposait pas et le formulaire de
+  création ne proposait aucun champ pour les saisir.
+- Solution appliquée : deux champs facultatifs sous les adresses, « Repère au
+  départ » et « Repère à l’arrivée », en mode carte comme en saisie manuelle.
+  Exemples courts, libellés persistants, hauteur tactile minimale de 44 unités et
+  saisie limitée à 200 caractères par champ. Le guide `frontend-skill` a orienté
+  cette présentation compacte, sans nouvelle carte décorative ni étape/modal.
+  Le récapitulatif affiche les repères non vides sous leurs adresses, sur une ligne
+  pour ne pas envahir la carte. Le détail de la demande utilise déjà le bloc
+  partagé affichant les repères avec retour à la ligne.
+- Fichiers : `components/trip-request/RequestRouteStep.tsx`,
+  `components/trip-request/RequestRoutePreview.tsx`,
+  `hooks/trip-request/useRequestTripController.ts`, `app/request/index.tsx`,
+  `features/trip-request/requestStyles.ts`, `tests/requestAddressReferences.test.js`,
+  `tests/tripRequestForm.test.js`, `package.json`.
+- Comportements conservés : les valeurs restent dans le brouillon pendant les
+  changements d’étape ; l’inversion départ/arrivée inverse aussi les repères.
+  Ils ne remplacent ni les adresses ni les coordonnées GPS. Le traitement existant
+  supprime les espaces périphériques et n’envoie pas de repère vide. Leur absence
+  ne bloque pas la création. Les conditions d’envoi, horaires, prix, places,
+  consentements et protection contre double envoi restent inchangés.
+- Backend inspecté en lecture seule : DTO, entité et service de demandes prennent
+  déjà en charge ces chaînes facultatives. Aucun changement serveur, migration,
+  nouvelle dépendance ou nouvel endpoint. La recommandation tarifaire existante
+  continue à recevoir les repères, avec son délai de regroupement de saisie de
+  250 ms ; pas de nouveau traitement GPS ni de calcul sur la carte ajouté.
+- Vérifications : `npm run test:trip-request` **73 tests réussis**, incluant les
+  trois nouveaux tests d’interface/contrôleur et les deux tests du payload ;
+  `node --test tests/requestAddressReferences.test.js tests/tripRequestForm.test.js
+  tests/routeLocationDetails.test.js tests/requestDetailModules.test.js`
+  **47 tests réussis** (recouvrement avec la première suite, pas 120 tests distincts).
+  TypeScript `tsc --noEmit` réussi, ESLint ciblé sans avertissement et
+  `git diff --check` sans erreur. Contrôle de taille : 1 058 sources, aucune
+  au-dessus de 400 lignes.
+- Limites : tests JavaScript avec composants natifs simulés, pas d’essai physique
+  iOS/Android ni de mesure de performance native. À vérifier sur appareil : clavier,
+  longues indications, sélection sur carte, inversion et retour à l’étape précédente.
+  Pas de build natif supplémentaire requis pour ce changement seul.
+
+## 8 octobre 2026 — Allègement du choix de départ
+
+- Demande : retirer la rangée encerclée « Maintenant / Dans 30 min » dans l'écran
+  « Demander un trajet ». Suppression de cette rangée et de son espace dans
+  `components/trip-request/RequestScheduleFields.tsx`, ainsi que de la prop
+  `applyPreset` devenue inutile dans `app/request/index.tsx`.
+- Les champs Date/Heure, le résumé du créneau, la validation explicite de l'heure,
+  « Je peux attendre », le budget et la soumission restent inchangés. Les anciens
+  états de brouillon et leurs règles horaires restent pris en charge.
+- Le test du composant dans `tests/requestScheduleChoice.test.js` vérifie l'absence
+  des deux raccourcis et conserve les contrôles des sélecteurs et de la marge.
+  Vérifications : 40 tests Node du planning/formulaire réussis, TypeScript sans
+  émission réussi et diff sans erreur d'espacement. Pas d'essai visuel sur appareil,
+  de backend ou de déploiement concerné.
+
+
+## 8 octobre 2026 — Consultation d’un trajet expiré selon son propriétaire
+
+- Problème constaté dans le code : le détail affichait « Trajet introuvable » pour
+  toute absence de données, y compris une erreur réseau. Une expiration n’avait
+  pas d’écran dédié. Le serveur archive les départs jamais démarrés sous le statut
+  `completed`, également utilisé pour les courses réellement terminées : ce seul
+  statut ne permettait donc pas de les distinguer. Pas de reproduction du compte
+  utilisateur ni de diagnostic d’un HTTP 404 en production pendant cette intervention.
+- Mobile : `tripDetailAvailability.ts` distingue expiration, suppression confirmée
+  (404), refus d’accès, chargement et indisponibilité temporaire. Le détail réseau
+  prime sur la liste locale et doit correspondre à l’identifiant demandé. Un refus
+  serveur ne permet pas de continuer à afficher un ancien détail en cache.
+  `useTripDetailData.ts`, `TripUnavailableState.tsx` et `app/trip/[id].tsx` affichent
+  « Ce trajet a expiré » au non-propriétaire ; aucun formulaire de réservation ni
+  lecture des réservations n’est ouvert dans cet état. Une panne propose Réessayer
+  sans annoncer une suppression. Les trajets réellement supprimés restent introuvables.
+- Propriétaire : les détails restent visibles, avec le libellé Expiré et le bouton
+  Modifier. La reprogrammation déjà présente est conservée : pour un trajet éligible,
+  elle publie un nouveau départ sans rouvrir les anciennes réservations. L’éditeur
+  propose une date future pour un départ expiré et refuse une nouvelle date passée
+  ou invalide avant l’envoi. Les contrôles serveur d’éligibilité restent inchangés,
+  notamment l’interdiction de reprogrammer un trajet avec des réservations actives.
+- Fichiers de présentation/parcours : `TripDetailActionsFooter.tsx`,
+  `TripDetailContentSheet.tsx`, `useTripDetailController.ts`,
+  `useTripDetailEditorLifecycle.ts`, `useTripDetailEditSubmission.ts`,
+  `TripListCards.tsx`, `app/trip/manage/[id].tsx`, `DriverTripAccessGuard.tsx`.
+  Un non-propriétaire ouvrant un lien de gestion expiré est dirigé vers le message
+  d’expiration ; il ne monte pas le contrôleur conducteur.
+- Backend local, dans le dépôt voisin `zwanga-backend` : `trip-read-policy.ts`
+  expose `isExpired` sans exposer les coordonnées en direct, numéros ou réservations
+  d’autres personnes. `trips.service.ts` complète la lecture d’autorisation existante
+  avec `departureDate` et `startedAt`. Ces valeurs et le statut courant priment sur
+  le cache : une course réellement démarrée puis terminée n’est pas présentée comme
+  expirée. `types/trips.ts`, `store/api/trip/serverTypes.ts` et `tripMapper.ts`
+  transmettent l’indicateur sans transformer tous les statuts completed en expirés.
+- Performance/précautions : suivant le guide PostgreSQL, ajout de deux colonnes à
+  une lecture existante par identifiant, sans nouvelle requête, index ni migration.
+  Pas de minuterie ajoutée ; rafraîchissements périodiques suspendus pour les départs
+  expirés reconnus. Conservés : droits conducteur/passager, trajets privés, navigation
+  active, paiements, modifications des trajets en cours et historique. Les travaux
+  déjà présents sur les créneaux et la reprogrammation n’ont pas été remplacés.
+- Vérifications JavaScript : **65 tests réussis** avec `node --test
+  tests/tripExpiryAccess.test.js tests/tripParticipation.test.js
+  tests/auditUsabilityFixes.test.js tests/tripDetailReadPolicy.test.js
+  tests/tripDetailCompact.test.js tests/tripDetailPerformance.test.js
+  tests/tripListCards.test.js tests/driverBookingReadAccess.test.js
+  tests/manageTripSummary.test.js tests/manageTripCancellation.test.js
+  tests/assignedTripNavigation.test.js`. Ces tests couvrent aussi les dates invalides,
+  le changement d’identifiant, l’édition par le propriétaire et la conservation des
+  anciennes réservations lors de la reprogrammation.
+- Vérification complémentaire de `tests/tripReprogram.test.js`, ajouté en parallèle :
+  **4 tests réussis** (publication, modification ordinaire, double clic et échec réseau).
+- Backend : **32 tests réussis** avec Jest sur `trip-read-policy.spec.ts` et
+  `trip-reprogram.spec.ts` ; compilation `tsc --noEmit --incremental false
+  --project tsconfig.build.json` réussie. Aucun test n’a modifié une base de données.
+- Contrôles mobile : `tsc --noEmit` réussi ; ESLint sans avertissement sur les
+  fichiers TypeScript touchés ; `check:source-size` contrôle 1 058 sources, aucune
+  au-dessus de 400 lignes ; `git diff --check` sans erreur de whitespace. Les
+  deux références stables manquantes dans les dépendances de l’effet d’ouverture
+  de l’éditeur ont été ajoutées lors de ce contrôle. Suites globales non exécutées.
+- Livraison/limites : backend corrigé à livrer avant l’app pour identifier les
+  expirations déjà archivées. Aucune migration, dépendance ou configuration native
+  ajoutée ; aucun déploiement réalisé. Pas d’essai iOS/Android physique ni de mesure
+  de latence native. À tester : clic sur un même trajet expiré depuis les comptes
+  propriétaire/non-propriétaire, modification avec une date future, consultation
+  d’une course réellement terminée, coupure réseau puis Réessayer.
+
+## 8 octobre 2026 — Modifier et reprogrammer demandes et trajets expirés
+
+- Périmètre : détail demande, édition, cache d'expiration, détail/gestion trajet et API.
+  Les demandes sans conducteur confirmé expirent trois heures après la fin du
+  créneau (au lieu de trente secondes). Deux heures conservées pour les demandes
+  acceptées ; les invitations dispatch et la fin de recherche GPS sont inchangées.
+- Le propriétaire peut modifier une demande non assignée, même immédiate, ou
+  reprogrammer une demande expirée avec un créneau futur. Les offres en attente
+  sont invalidées par le backend. Une demande annulée, liée à un trajet ou à un
+  conducteur/offre accepté n'est pas réouverte. Une recherche immédiate expirée
+  ou reportée hors de son horizon devient classique ; explication dans le formulaire.
+- `requestExpiration.ts`, `useRequestAvailability`, `useRequestEditInitialization`,
+  `useRequestPassengerActions` et le formulaire partagé portent ces règles.
+  `expectedUpdatedAt` est figé à l'ouverture du formulaire et transmis à l'API :
+  un rafraîchissement en arrière-plan ne permet pas d'écraser une modification
+  concurrente. Les références et descriptions vidées sont bien transmises.
+- Le serveur expose `canReprogram` pour un trajet public expiré jamais démarré,
+  sans réservation active ni embarquement. Le mapper/types et les boutons du
+  détail/gestion suivent ce champ (absent sur un ancien backend = action masquée).
+  Le formulaire prérempli utilise une date future et le nombre total de places.
+  `POST /trips/:id/reprogram` crée un **nouveau trajet** et la navigation ouvre son
+  nouvel ID ; aucune réservation ni paiement de l'ancien n'est transféré.
+  L'édition ordinaire conserve `PUT /trips/:id`. Protection des doubles clics et
+  indicateur d'enregistrement commun aux deux opérations.
+- Tests réellement exécutés : TypeScript `tsc --noEmit --incremental false`,
+  tests Node du cache/politique d'expiration (12). Tests de reprogrammation avec
+  API/navigation simulées dans `tests/tripReprogram.test.js`. Aucun essai Android/iOS
+  physique, push réel, paiement, publication store ou appel à AWS. Le détail des
+  garanties backend et les validations figurent dans
+  `zwanga-backend/docs/finance/trip-request-response-expiration.md`.
+- Livraison : backend d'abord, puis app. Les anciennes versions des stores qui
+  expirent localement après trente secondes ne bénéficient pas du nouvel affichage
+  ni des nouveaux boutons avant leur mise à jour. Après une réponse réseau incertaine
+  à la publication, vérifier « Mes trajets » avant de réessayer (pas d'idempotence
+  persistante sur cet endpoint de création).
+
+
+## 8 octobre 2026 — Choix explicite du départ dans une demande de trajet
+
+- Périmètre : création d'une demande, horaires et sélecteurs Android/iOS. Le
+  formulaire sélectionnait « Maintenant » automatiquement et cachait Date/Heure
+  derrière « Choisir ». Ces deux champs sont désormais directement visibles sous
+  « Départ souhaité ». La date initiale est affichée ; l'heure doit être validée
+  explicitement. « Maintenant » et « Dans 30 min » restent des raccourcis volontaires.
+- Le bouton principal ouvre le choix de l'heure tant qu'elle n'est pas choisie,
+  puis propose l'envoi de la demande. Date et heure personnalisées sont conservées
+  à l'envoi, sans conversion silencieuse en départ immédiat. Le brouillon stocke
+  un indicateur sérialisable `hasChosenDepartureTime`, effacé avec le formulaire
+  ou la session selon le fonctionnement existant.
+- Le guide `frontend-skill` a orienté la présentation vers deux champs lisibles,
+  des zones tactiles d'au moins 44 unités, des textes courts et une marge repliée
+  sous « Je peux attendre ». Pas de nouvelle étape. La marge vaut 30 minutes par
+  défaut et propose 15/30/60/120 minutes ; « Exact » est retiré car il produisait
+  une fenêtre vide déjà refusée par le backend. Le résumé indique aussi le jour
+  de fin lorsque la plage franchit minuit.
+- iOS : réutilisation du modal `inApp`, boutons Annuler/Valider, modifications
+  temporaires avant validation. Android : annulation native ignorée même si elle
+  renvoie une date, protection contre les doubles ouvertures et reprise après
+  erreur. Les callbacks périmés après fermeture/sortie ne modifient plus le choix.
+  `types/external.d.ts` est complété avec `dismiss`/`onError`, vérifiés dans la
+  bibliothèque déjà installée ; aucune nouvelle dépendance.
+- Validation avant requête : heure non choisie, dates non finies, fenêtre vide
+  et départ déjà passé refusés. La tolérance client d'une minute dans le passé
+  est supprimée pour suivre la validation serveur existante. Aucun minuteur de
+  recalage pour un horaire personnalisé ; ceux des raccourcis restent suspendus
+  hors écran. Aucun appel réseau ajouté pour choisir la date ou l'heure.
+- Conservés : adresses/carte, prix, places, vérification d'identité, paiements,
+  protection contre double envoi, récupération après réponse réseau ambiguë,
+  notifications et activation serveur de proximité pour « Maintenant » explicite.
+  Backend examiné en lecture seule ; pas de migration ni de déploiement.
+- Fichiers : `app/request/index.tsx`,
+  `components/trip-request/RequestScheduleFields.tsx`, `RequestDatePickerModal.tsx`,
+  `hooks/trip-request/useRequestDraft.ts`, `useRequestSchedule.ts`,
+  `useRequestSubmission.ts`, `useRequestTripController.ts`,
+  `features/trip-request/requestFormModel.ts`, `store/slices/requestDraftsSlice.ts`,
+  `types/external.d.ts`, `package.json`, `tests/requestScheduleChoice.test.js`
+  et `tests/tripRequestForm.test.js`.
+- Vérifications : **79 tests JavaScript ciblés réussis** avec
+  `node --test tests/requestScheduleChoice.test.js tests/requestScheduleIdle.test.js tests/tripRequestForm.test.js tests/tripRequestEditPricing.test.js tests/passengerSeats.test.js tests/formSafeArea.test.js tests/rideOverlays.test.js`.
+  TypeScript (`npx tsc --noEmit`), ESLint ciblé et `git diff --check` réussis.
+  Contrôle de taille : 1 056 sources, aucune au-dessus de 400 lignes.
+- Limite distincte : `npm run test:trip-request` inclut aussi les tests
+  d'expiration ; neuf échouent parce qu'une modification parallèle, non réalisée
+  ici, passe `UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS` de 30 secondes à 3 heures.
+  `features/trip-request/requestExpiration.ts` et ses tests ont été laissés
+  intacts par cette intervention. La suite globale n'a pas été relancée.
+- À vérifier sur iPhone et Android physiques : date future, heure du jour,
+  passage à minuit, annulation/validation sans déplacer la roue, grande taille
+  de texte, fermeture et retour dans l'app. Aucun essai natif ni gain mesuré de
+  performance n'est annoncé. Le correctif est JS/TS uniquement : un dev build
+  compatible peut le charger avec `npx expo start --dev-client`, sans nouveau
+  build natif requis pour ce changement seul.
+
 ## 8 octobre 2026 — Modal de contact avant acceptation d'une demande
 
 - Problème : « Discuter du prix » ouvrait directement la messagerie, sans choix

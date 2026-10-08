@@ -65,6 +65,7 @@ export const {
   useCreateTripMutation,
   useCreateRecurringTripMutation,
   useUpdateTripMutation,
+  useReprogramTripMutation,
   useDeleteTripMutation,
   useBookTripMutation,
   useSearchTripsByCoordinatesMutation,

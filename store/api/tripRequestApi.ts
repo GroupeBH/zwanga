@@ -120,8 +120,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
     }),
 
     // Mettre à jour une demande de trajet
-    updateTripRequest: builder.mutation<TripRequest, { id: string; payload: Partial<CreateTripRequestPayload> }>({
-      query: ({ id, payload }: { id: string; payload: Partial<CreateTripRequestPayload> }) => ({
+    updateTripRequest: builder.mutation<TripRequest, { id: string; payload: Partial<CreateTripRequestPayload> & { expectedUpdatedAt?: string } }>({
+      query: ({ id, payload }) => ({
         url: `/trip-requests/${id}`,
         method: 'PUT',
         body: payload,

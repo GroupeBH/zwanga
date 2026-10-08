@@ -3,6 +3,7 @@ import { Colors } from '@/constants/styles';
 import { homeDepartureLabel, homePriceLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { getPlaceName, getVehicleName } from '@/features/search/searchModel';
 import type { Booking, Trip } from '@/types';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
@@ -20,13 +21,7 @@ export function canManagePublishedTrip(trip: Trip) {
 }
 
 export function getTripStatusBadge(trip: Trip): TripStatusBadge {
-  const departureTime = trip.departureTime ? new Date(trip.departureTime).getTime() : Number.NaN;
-  const isExpired =
-    trip.status !== 'ongoing' &&
-    Number.isFinite(departureTime) &&
-    departureTime < Date.now();
-
-  if (isExpired && trip.status !== 'completed') {
+  if (isTripExpired(trip)) {
     return { bgColor: Colors.gray[200], textColor: Colors.gray[600], label: 'Expiré' };
   }
 

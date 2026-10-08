@@ -135,6 +135,7 @@ export function useRequestDetailController() {
   });
 
   const editor = useRequestEditInitialization({
+    setEditExpectedUpdatedAt: form.setEditExpectedUpdatedAt,
     setEditVehicleType: form.setEditVehicleType,
     resetEditBudget: validation.resetEditBudget,
     tripRequest: data.tripRequest,
@@ -161,6 +162,7 @@ export function useRequestDetailController() {
   });
 
   const passengerActions = useRequestPassengerActions({
+    editExpectedUpdatedAt: form.editExpectedUpdatedAt,
     isUpdating: data.isUpdating,
     isEditVehicleOptionsLoading: validation.isEditVehicleOptionsLoading,
     showDialog: data.showDialog,

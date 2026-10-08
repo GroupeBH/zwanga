@@ -12,7 +12,7 @@ function Stop({ label, stop, arrival = false, dark, compact, time }: {
   label: string; stop: RouteStopLabel; arrival?: boolean; dark: boolean; compact?: boolean; time?: string;
 }) {
   const timeLabel = time ? `${arrival ? 'Arrivée estimée' : 'Départ'} : ${time}` : '';
-  const accessibilityLabel = [label, stop.title, stop.context, stop.reference && `Repère : ${stop.reference}`, timeLabel].filter(Boolean).join('. ');
+  const accessibilityLabel = [label, stop.title, stop.context, stop.reference && `Référence : ${stop.reference}`, timeLabel].filter(Boolean).join('. ');
   return (
     <View style={[styles.stop, compact && styles.compactStop]} accessible accessibilityLabel={accessibilityLabel}>
       <View style={[styles.dot, arrival && styles.arrivalDot]} />
@@ -23,7 +23,7 @@ function Stop({ label, stop, arrival = false, dark, compact, time }: {
         </View>
         <Text style={[styles.title, dark && styles.darkTitle]}>{stop.title}</Text>
         {!!stop.context && <Text style={[styles.context, dark && styles.darkContext]}>{stop.context}</Text>}
-        {!!stop.reference && <Text style={[styles.reference, dark && styles.darkReference]}>Repère : {stop.reference}</Text>}
+        {!!stop.reference && <Text style={[styles.reference, dark && styles.darkReference]}>Référence : {stop.reference}</Text>}
       </View>
     </View>
   );

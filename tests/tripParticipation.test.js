@@ -64,6 +64,16 @@ test('only the owner mounts the driver controller; switching accounts immediatel
   h.hooks.unmount();
 });
 
+test('a non-owner opening expired management is redirected to the expiry detail, not a driver error', () => {
+  const h = guard({ currentData: { ...trip, status: 'completed', isExpired: true } });
+  assert.equal(h.render().type, 'Redirect');
+  assert.equal(h.render().props.href, '/trip/trip');
+  assert.equal(h.calls.at(-1).skip, true);
+  h.state.userId = 'owner';
+  assert.equal(h.render().props.children, h.child);
+  h.hooks.unmount();
+});
+
 test('loading, stale route data, denied responses and missing login cannot mount driver controllers', () => {
   for (const patch of [
     { currentData: undefined, isLoading: true },

@@ -1,4 +1,5 @@
 import { pointToLatLng } from '../../features/trip-detail/tripDetailModel';
+import { isTripExpired, resolveTripDetailAvailability } from '@/features/trip-detail/tripDetailAvailability';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -32,17 +33,20 @@ export function useTripDetailData() {
   const openEditParamKey = `${tripId}:${openEditParamValue ?? ''}`;
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
+  const user = useAppSelector(selectUser);
 
   // Récupérer le trajet depuis l'API si pas dans le store
   // Polling intelligent basé sur le statut du trajet
   const {
     data: tripFromApi,
-    isLoading: tripLoading,
+    isLoading,
+    isFetching: tripFetching,
+    error: tripError,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, {
     skip: !tripId || !isScreenActive,
     // Polling automatique basé sur le statut du trajet
-    pollingInterval: !isScreenActive ? 0 : tripFromStore?.status === 'ongoing'
+    pollingInterval: !isScreenActive || isTripExpired(tripFromStore) ? 0 : tripFromStore?.status === 'ongoing'
       ? 15000 // 15 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
         ? 60000 // 60 secondes pour les trajets à venir
@@ -54,9 +58,12 @@ export function useTripDetailData() {
   });
 
   // Utiliser le trajet de l'API en priorité, sinon celui du store
-  const trip = tripFromApi || tripFromStore;
-
-  const user = useAppSelector(selectUser);
+  const candidate = tripFromApi?.id === tripId ? tripFromApi : tripFromStore?.id === tripId ? tripFromStore : undefined;
+  const availability = resolveTripDetailAvailability({
+    trip: candidate, userId: user?.id, error: tripError,
+    loading: Boolean(tripId && (isLoading || tripFetching)),
+  });
+  const trip = availability.trip;
   const { showDialog } = useDialog();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const driverPhone = trip?.driver?.phone ?? null;
@@ -96,7 +103,7 @@ export function useTripDetailData() {
   } = useGetTripBookingsQuery(tripId, {
     skip: !tripId || !isTripDriver || !isScreenActive,
     // Polling pour les réservations du trajet
-    pollingInterval: !isScreenActive ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    pollingInterval: !isScreenActive || availability.expired ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: false,
@@ -174,7 +181,10 @@ export function useTripDetailData() {
     checkIdentity,
     requestDriverLocationPermission,
     router,
-    tripLoading,
+    tripLoading: availability.loading,
+    tripFetching: Boolean(tripFetching),
+    tripFeedback: availability.feedback,
+    tripExpired: availability.expired,
     goHome,
     viewportHeight,
     driverPhone,

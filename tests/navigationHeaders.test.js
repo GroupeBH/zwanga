@@ -30,7 +30,8 @@ function driverModel() {
   };
   return { session: { foundation }, presentation: { hasValidTripCoordinates: true, canToggleRouteSections: true,
     displayedDurationText: '37 min', displayedDistanceText: '12,6 km', displayedEtaText: '06:50' },
-    passengerPresentation: {}, bookingActions: {}, tripActions: {}, interruptionActions: {}, pickupActions: {}, voice: {}, handleExitNavigation() {}, forceRecalculateRoute() {} };
+    passengerPresentation: {}, bookingActions: {}, tripActions: {}, interruptionActions: {}, pickupActions: {}, voice: {},
+    routeFormatting: { getManeuverIcon: () => 'navigate' }, handleExitNavigation() {}, forceRecalculateRoute() {} };
 }
 
 test('driver header reserves safe-area space and puts confirmation outside the duration/distance block', () => {
@@ -48,6 +49,7 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   const recovery = all(tree).find(node => node.type === 'Recovery');
   assert.equal(recovery.props.bookings, model.session.foundation.data.bookings);
   assert.equal(recovery.props.actor, 'driver'); assert.equal(recovery.props.compact, undefined);
+  assert.equal(recovery.props.condensed, true);
   assert.equal(recovery.props.fix.recordedAt, 123); assert.equal(recovery.props.fix.accuracy, 10);
   const confirmation = all(tree).find(node => node.props?.children === recovery);
   const confirmationStyle = flatStyle(confirmation.props.style);
@@ -59,24 +61,27 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(buttons.props.role, 'driver'); assert.equal(buttons.props.onSos, assistance.openSos);
   assert.equal(buttons.props.onContact, assistance.openContacts);
   const scroll = all(tree).find(node => node.type === 'ScrollView');
-  const receipts = all(scroll).find(node => node.type === 'DropoffReceipts');
+  assert.equal(all(scroll).find(node => node.type === 'Recovery'), undefined, 'keep confirmations outside the bounded details');
+  assert.equal(all(tree).find(node => node.type === 'DropoffReceipts'), undefined, 'in-progress gains stay in Options');
+  assert.equal(scroll.props.style.flexGrow, 0); assert.equal(scroll.props.style.flexShrink, 1);
+  assert.ok(flatStyle(tree.props.style).maxHeight <= 300, 'the ordinary top panel leaves map space');
+  model.session.foundation.data.trip.status = 'completed';
+  model.session.foundation.data.isTripOngoing = false;
+  const receipts = all(DriverNavigationTopPanel({ model, assistance })).find(node => node.type === 'DropoffReceipts');
   assert.equal(receipts.props.bookings, model.session.foundation.data.bookings);
   assert.equal(receipts.props.active, true);
-  assert.equal(scroll.props.style.flexGrow, 0); assert.ok(scroll.props.style.maxHeight <= 210);
   model.session.foundation.data.offlineTrip = true;
   assert.match(words(DriverNavigationTopPanel({ model, assistance })), /Hors connexion/);
 });
 
-test('driver route selection and passenger actions keep their handlers in the new flowing header', () => {
+test('driver header retains passenger actions without permanent route selection buttons', () => {
   const load = loader({ ...defaults, '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' } });
   const { DriverNavigationTopPanel } = load('features/driver-navigation/DriverNavigationTopPanel.tsx');
-  const model = driverModel(); const selected = [];
-  model.session.foundation.mapState.setRouteSectionFocus = section => selected.push(section);
+  const model = driverModel();
   model.session.foundation.mapState.waypoints = [{ id: 'waypoint' }];
   const tree = DriverNavigationTopPanel({ model, assistance });
-  all(tree).filter(node => node.type === 'Button' && ['Prochain arrêt', 'Reste du trajet'].includes(words(node))).forEach(button => button.props.onPress());
-  assert.deepEqual(selected, ['next', 'remaining']);
+  assert.equal(all(tree).filter(node => node.type === 'Button' && ['Prochain arrêt', 'Reste du trajet'].includes(words(node))).length, 0);
   const passengers = all(tree).find(node => node.type === 'Passengers');
   assert.equal(passengers.props.foundation, model.session.foundation); assert.equal(passengers.props.bookingActions, model.bookingActions);
   const { styles } = load('features/screen-styles/app/trip/navigate/detail/passengerLocationMarker.styles.ts');
@@ -230,6 +235,7 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
     '../../../hooks/driver-navigation/useDriverNavigationController': { useDriverNavigationController: () => model },
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true, panel: 'sos' }; } },
     '@/features/driver-navigation/DriverNavigationTopPanel': { DriverNavigationTopPanel: 'TopPanel' },
+    '@/features/driver-navigation/DriverNavigationGuidance': { DriverNavigationGuidance: 'Guidance' },
     '@/features/navigation/NavigationAssistanceModals': { NavigationAssistanceModals: 'AssistanceModals' },
     '../../../features/screen-styles/app/trip/navigate/detail/index': { styles: {} },
     '../../../features/driver-navigation/navigationModel': { KINSHASA_FALLBACK_MAP_COORDINATE: { latitude: -4.3, longitude: 15.2 } },
@@ -244,6 +250,8 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   const tree = guarded.props.children.type();
   assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.forceRecalculateRoute, model.forceRecalculateRoute);
+  assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.canToggleRouteSections, true);
+  assert.equal(all(tree).find(node => node.type === 'Guidance').props.getManeuverIcon, model.routeFormatting.getManeuverIcon);
   for (const type of ['NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal']) {
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);
   }

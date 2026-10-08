@@ -21,7 +21,10 @@ export function useRequestTripController() {
   const isScreenActive = useScreenIsActive();
   const draft = useRequestDraft();
 
-  const schedule = useRequestSchedule({ isScreenActive, timePreset: draft.timePreset, departureDateMin: draft.departureDateMin, flexibilityMinutes: draft.flexibilityMinutes, setTimePreset: draft.setTimePreset, setDepartureDateMin: draft.setDepartureDateMin, setFlexibilityMinutes: draft.setFlexibilityMinutes });
+  const schedule = useRequestSchedule({ isScreenActive, timePreset: draft.timePreset, departureDateMin: draft.departureDateMin,
+    flexibilityMinutes: draft.flexibilityMinutes, hasChosenDepartureTime: draft.hasChosenDepartureTime,
+    setHasChosenDepartureTime: draft.setHasChosenDepartureTime, setTimePreset: draft.setTimePreset,
+    setDepartureDateMin: draft.setDepartureDateMin, setFlexibilityMinutes: draft.setFlexibilityMinutes });
 
   const router = useRouter();
 
@@ -136,7 +139,8 @@ export function useRequestTripController() {
         : !hasArrivalAddress
           ? 'Indiquer la destination'
           : 'Voir les options'
-      : 'Envoyer la demande';
+      : !draft.hasChosenDepartureTime ? 'Choisir l’heure de départ'
+        : draft.timePreset === 'now' ? 'Chercher un chauffeur' : 'Envoyer la demande';
 
   const updateBudget = (value: number) => {
     draft.setHasEditedBudget(true);
@@ -199,6 +203,7 @@ export function useRequestTripController() {
     arrivalLocation: draft.arrivalLocation,
     departureLocation: draft.departureLocation,
     timePreset: draft.timePreset,
+    hasChosenDepartureTime: draft.hasChosenDepartureTime,
     setDepartureDateMin: draft.setDepartureDateMin,
     setFlexibilityMinutes: draft.setFlexibilityMinutes,
     description: draft.description,
@@ -237,6 +242,7 @@ export function useRequestTripController() {
       });
       return;
     }
+    if (!draft.hasChosenDepartureTime) { schedule.openCustomPicker('time'); return; }
     await handleCreateRequest();
   };
 
@@ -260,6 +266,7 @@ export function useRequestTripController() {
     arrivalLocation: draft.arrivalLocation,
     arrivalManualAddress: draft.arrivalManualAddress,
     arrivalManualGeocodeStatus,
+    arrivalReference: draft.arrivalReference,
     budgetHintLabel,
     budgetLabel,
     budgetValue,
@@ -269,7 +276,7 @@ export function useRequestTripController() {
     departureLocation: draft.departureLocation,
     departureManualAddress: draft.departureManualAddress,
     departureManualGeocodeStatus,
-    departureTimeRangeLabel: schedule.departureTimeRangeLabel,
+    departureReference: draft.departureReference,
     departureTouchedRef,
     description: draft.description,
     favoriteSuggestions,
@@ -278,12 +285,16 @@ export function useRequestTripController() {
     goToRequestSuccessDetail,
     handleCreateRequest,
     handleIosPickerChange: schedule.handleIosPickerChange,
+    confirmIosPicker: schedule.confirmIosPicker,
+    closeDatePicker: schedule.closeDatePicker,
     handlePrimaryAction,
     hasArrivalAddress,
     hasDepartureAddress,
+    hasChosenDepartureTime: draft.hasChosenDepartureTime,
     hasSpecifiedNumberOfSeats: draft.hasSpecifiedNumberOfSeats,
     insets,
     iosPickerMode: schedule.iosPickerMode,
+    iosPickerValue: schedule.iosPickerValue,
     isCreating,
     isPriceLoading,
     isRequestSuccessVisible,
@@ -294,6 +305,7 @@ export function useRequestTripController() {
     openCustomPicker: schedule.openCustomPicker,
     openPickerFor,
     primaryButtonDisabled,
+    pickerError: schedule.pickerError,
     primaryIconName,
     primaryLabel,
     quickPlaceResolvingKey,
@@ -306,19 +318,19 @@ export function useRequestTripController() {
     routeDistanceLabel,
     routePreviewRegion,
     router,
-    selectedTimePreset: schedule.selectedTimePreset,
     selectedVehicleType: draft.selectedVehicleType,
     setActivePicker,
     setAddressInputMode,
     setAddressSectionStep,
     setArrivalLocation: draft.setArrivalLocation,
     setArrivalManualAddress: draft.setArrivalManualAddress,
+    setArrivalReference: draft.setArrivalReference,
     setDepartureLocation: draft.setDepartureLocation,
     setDepartureManualAddress: draft.setDepartureManualAddress,
+    setDepartureReference: draft.setDepartureReference,
     setDescription: draft.setDescription,
     setFlexibilityMinutes: draft.setFlexibilityMinutes,
     setHasSpecifiedNumberOfSeats: draft.setHasSpecifiedNumberOfSeats,
-    setIosPickerMode: schedule.setIosPickerMode,
     setNumberOfSeats: draft.setNumberOfSeats,
     setRequestFormStep,
     setRequestPaymentMode: draft.setRequestPaymentMode,

@@ -123,7 +123,8 @@ export function TripEditModal({
               <Ionicons name="create" size={20} color={Colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.editModalTitle}>Modifier le trajet</Text>
+              <Text style={styles.editModalTitle}>{trip?.canReprogram ? 'Reprogrammer le trajet' : 'Modifier le trajet'}</Text>
+              {trip?.canReprogram && <Text style={styles.editModalSubtitle}>Une nouvelle publication sera créée. Aucune ancienne réservation ne sera reprise.</Text>}
               {trip && (
                 <Text style={styles.editModalSubtitle} numberOfLines={1}>
                   {getRouteTitle(routeLabels)}

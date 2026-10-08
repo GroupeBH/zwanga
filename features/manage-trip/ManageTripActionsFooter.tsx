@@ -22,7 +22,13 @@ export function ManageTripActionsFooter({
   const interruptionPending = isPendingTripInterruption(trip.interruptionRequest?.status);
   return (
     <View style={[styles.stickyFooter, { paddingBottom: Math.max(state.insets.bottom, 16) + 16 }]}>
-      {trip.status === 'upcoming' && (
+      {trip.canReprogram && (
+        <TouchableOpacity style={[styles.primaryButton, styles.footerFullWidthButton]} onPress={actions.handleOpenTripEdit}>
+          <Ionicons name="calendar-outline" size={20} color={Colors.white} />
+          <Text style={styles.primaryButtonText}>Reprogrammer</Text>
+        </TouchableOpacity>
+      )}
+      {trip.status === 'upcoming' && !trip.canReprogram && (
         <>
           <View style={styles.upcomingActionsRow}>
             <TouchableOpacity
@@ -117,7 +123,7 @@ export function ManageTripActionsFooter({
         </View>
       )}
 
-      {trip.status === 'completed' && (
+      {trip.status === 'completed' && !trip.canReprogram && (
         <TouchableOpacity
           style={[styles.primaryButton, styles.footerFullWidthButton, { backgroundColor: Colors.secondary }]}
           onPress={() => state.router.push(`/rate/${trip.id}`)}
