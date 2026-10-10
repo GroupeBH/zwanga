@@ -34,7 +34,7 @@ export function useRequestPassengerContact(requestId: string, enabled: boolean, 
     const expire = () => {
       const remaining = selection.expiresAt - Date.now();
       if (remaining > 0) { timer = setTimeout(expire, Math.min(remaining, 2_147_483_647)); return; }
-      close(); setError('Cette demande n’est plus disponible pour un contact avant acceptation.');
+      close(); setError('Cette commande n’est plus disponible pour un contact avant acceptation.');
     };
     expire();
     return () => clearTimeout(timer);
@@ -55,7 +55,7 @@ export function useRequestPassengerContact(requestId: string, enabled: boolean, 
       if (!current()) return;
       const selected = getRequestContactSelection(response, requestId, user?.id, startedAt, validUntil);
       if (!selected) {
-        setError('Cette demande n’est plus disponible pour un contact avant acceptation.'); return;
+        setError('Cette commande n’est plus disponible pour un contact avant acceptation.'); return;
       }
       setSelection({ scope, ...selected });
       opened = true;

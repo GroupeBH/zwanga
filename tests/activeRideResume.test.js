@@ -72,6 +72,24 @@ test('completed, cancelled, dropped-off, unaccepted and foreign bookings cannot 
   }), null);
 });
 
+test('a completed cache candidate does not consume entry before a fresh ongoing trip arrives', async t => {
+  const app = fixture(t, { readTrip: async id => trip({ id, status: id === 'trip' ? 'completed' : 'ongoing' }) });
+  app.render(); await flush(); app.render(); await flush();
+  assert.deepEqual(app.calls, []);
+  app.options.trips = { data: [trip({ id: 'new' })], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 };
+  app.render(); await flush(); assert.deepEqual(app.calls, ['/trip/navigate/new']);
+});
+
+test('discovery arriving during verification is considered and rejected candidates never loop', async t => {
+  const pending = deferred(); let oldReads = 0;
+  const app = fixture(t, { readTrip: async id => { if (id === 'trip') { oldReads++; return pending.promise; } return trip({ id }); } });
+  app.render();
+  app.options.trips = { data: [trip(), trip({ id: 'new' })], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 };
+  app.render(); pending.resolve(trip({ status: 'completed' })); await flush();
+  app.render(); await flush(); assert.deepEqual(app.calls, ['/trip/navigate/new']);
+  assert.equal(oldReads, 1);
+});
+
 for (const change of ['background', 'logout', 'account', 'unmount', 'path']) test(`late verification after ${change} cannot redirect`, async t => {
   const request = deferred(), app = fixture(t, { readTrip: () => request.promise });
   app.render();
@@ -104,8 +122,88 @@ test('a modal opening during verification delays navigation until its dismissal 
   assert.deepEqual(app.calls, ['/trip/navigate/trip']);
 });
 
-test('auth, payment, chat, SOS, forms, notification actions and existing guidance retain control', async t => {
-  for (const path of ['/auth', '/auth-entry', '/booking/payment', '/chat/thread', '/rate/booking', '/security',
+test('startup and login transitions defer rather than cancel driver and passenger recovery', async t => {
+  for (const path of ['', '/index', '/splash', '/onboarding', '/background-location-disclosure', '/auth-entry', '/auth']) {
+    for (const passenger of [false, true]) {
+      const app = fixture(t, { path, userId: passenger ? 'passenger' : 'driver',
+        bookings: { data: passenger ? [booking()] : [], isSuccess: true } });
+      app.render(); await flush(); assert.deepEqual(app.reads, [], path);
+      app.options.path = '/'; app.render(); await flush();
+      assert.deepEqual(app.calls, [passenger ? '/booking/navigate/booking' : '/trip/navigate/trip'], path);
+    }
+  }
+});
+
+test('foreground entry from discovery, notifications and settings prioritizes the active ride', async t => {
+  for (const path of ['/search', '/notifications', '/settings', '/favorite-locations', '/profile', '/trips']) {
+    const app = fixture(t, { path }); app.render(); await flush();
+    assert.deepEqual(app.calls, ['/trip/navigate/trip'], path);
+  }
+});
+
+const activity = (overrides = {}) => ({ isSuccess: true, fulfilledTimeStamp: Date.now() + 1000,
+  data: { userId: 'driver', hasLiveActivity: true, passengerTrackingBookingId: null,
+    trips: { count: 1 }, bookings: { count: 0 }, ...overrides } });
+
+test('pre-summary empty lists do not finish recovery before live activity reconciliation', async t => {
+  const app = fixture(t, { activity: activity(),
+    trips: { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() + 100 },
+    bookings: { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() + 100 } });
+  app.render(); await flush(); assert.deepEqual(app.reads, []);
+  app.options.trips = { data: [trip()], isSuccess: true, fulfilledTimeStamp: Date.now() + 2000 };
+  app.render(); await flush(); assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+});
+
+test('a fresh empty summary ends recovery without loading lists or hijacking a later ride', async t => {
+  const app = fixture(t, { activity: activity({ hasLiveActivity: false }), trips: { isSuccess: false }, bookings: { isSuccess: false } });
+  app.render();
+  app.options.trips = { data: [trip()], isSuccess: true }; app.options.activity = activity();
+  app.render(); await flush(); assert.deepEqual(app.reads, []);
+});
+
+test('failed, stale or foreign summaries cannot suppress a verified ongoing ride', async t => {
+  for (const invalid of [
+    { ...activity({ hasLiveActivity: false }), fulfilledTimeStamp: 1 },
+    { ...activity({ hasLiveActivity: false }), isSuccess: false },
+    { ...activity({ hasLiveActivity: false }), isFetching: true },
+    activity({ hasLiveActivity: false, userId: 'another' }),
+  ]) {
+    const app = fixture(t, { activity: invalid }); app.render(); await flush();
+    assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+  }
+});
+
+test('a fresh summary reporting passenger participation waits for that booking before choosing an older driver trip', async t => {
+  const app = fixture(t, { activity: activity({ passengerTrackingBookingId: 'booking' }) });
+  app.render(); await flush(); assert.deepEqual(app.reads, []);
+  app.options.bookings = { data: [booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) })], isSuccess: true };
+  app.options.readBooking = async () => booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) });
+  app.render(); await flush(); assert.deepEqual(app.calls, ['/booking/navigate/booking']);
+});
+
+test('a passenger booking discovered during verification takes precedence over an old driver trip', async t => {
+  const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise });
+  app.render();
+  app.options.activity = activity({ passengerTrackingBookingId: 'booking' });
+  app.render(); pending.resolve(trip()); await flush(); assert.deepEqual(app.calls, []);
+  app.options.bookings = { data: [booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) })], isSuccess: true };
+  app.options.readBooking = async () => booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) });
+  app.render(); await flush(); assert.deepEqual(app.calls, ['/booking/navigate/booking']);
+});
+
+test('an unchanged shared summary can retry a failed verification once per refresh, without additional polls', async t => {
+  let reads = 0;
+  const app = fixture(t, { activity: activity(), readTrip: async () => { reads++; throw Error('network'); } });
+  app.render(); await flush();
+  for (let i = 0; i < 50; i++) { app.render(); await flush(); }
+  assert.equal(reads, 1);
+  app.options.activity = { ...app.options.activity, fulfilledTimeStamp: Date.now() + 2000 };
+  app.options.readTrip = async () => { reads++; return trip(); };
+  app.render(); await flush(); assert.equal(reads, 2); assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+});
+
+test('payment, chat, SOS, forms, notification actions and existing guidance retain control', async t => {
+  for (const path of ['/booking/payment', '/chat/thread', '/rate/booking', '/security',
     '/publish', '/request/index', '/incoming-driver', '/trip/navigate/trip', '/booking/navigate/booking']) {
     const app = fixture(t, { path }); app.render(); await flush(); assert.deepEqual(app.reads, [], path);
     app.options.path = '/'; app.render(); await flush(); assert.deepEqual(app.calls, [], path);

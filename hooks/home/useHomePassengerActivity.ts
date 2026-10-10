@@ -98,6 +98,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
   }, [myBookings, currentUser?.id, bookedTripIds]);
 
   const activeTripRequest = useMemo(() => {
+    if (!currentUser?.id) return null;
     const statusPriority = {
       driver_selected: 0,
       offers_received: 1,
@@ -117,6 +118,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
       [...myTripRequests]
         .filter(
           (request) =>
+            request.passengerId === currentUser.id &&
             (request.status === 'pending' ||
               request.status === 'offers_received' ||
               request.status === 'driver_selected') &&
@@ -146,7 +148,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
           return updatedB - updatedA;
         })[0] ?? null
     );
-  }, [myTripRequests, hiddenHomePriorities]);
+  }, [myTripRequests, hiddenHomePriorities, currentUser?.id]);
 
   const activeTripRequestPendingOffers = useMemo(
     () => activeTripRequest?.offers?.filter((offer) => offer.status === 'pending').length ?? 0,

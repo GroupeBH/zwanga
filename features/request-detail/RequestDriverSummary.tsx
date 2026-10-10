@@ -95,7 +95,7 @@ export function RequestDriverSummary({
           </View>
         )}
         <View style={styles.driverHeroPassengerInfo}>
-          <Text style={styles.driverHeroPassengerLabel}>Demande de</Text>
+          <Text style={styles.driverHeroPassengerLabel}>Commande de</Text>
           <Text style={styles.driverHeroPassengerName}>{tripRequest.passengerName}</Text>
         </View>
         <View style={styles.driverHeroRoleBadge}>
@@ -205,7 +205,7 @@ export function RequestDriverSummary({
           ) : (
             <>
               <Ionicons name="checkmark-circle-outline" size={18} color={Colors.white} />
-              <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
+              <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la commande</Text>
             </>
           )}
         </TouchableOpacity>
@@ -225,7 +225,7 @@ export function RequestDriverSummary({
           <Text style={styles.ownerHeroHintText}>
             {compatibleActiveVehicles.length === 0
               ? 'Aucun de vos véhicules actifs ne correspond au type demandé pour cette course.'
-              : 'Cette demande ne peut plus être acceptée. Actualisez l’écran pour obtenir son dernier statut.'}
+              : 'Cette commande ne peut plus être acceptée. Actualisez l’écran pour obtenir son dernier statut.'}
           </Text>
         </View>
       )}

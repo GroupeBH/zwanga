@@ -62,7 +62,7 @@ export function useOverdueRequestNotification({
           title: 'Changement de conducteur impossible',
           message: getApiErrorMessage(
             error,
-            'Impossible de rendre la demande disponible pour le moment. Réessayez dans un instant.',
+            'Impossible de rendre la commande disponible pour le moment. Réessayez dans un instant.',
           ),
           variant: 'danger',
           icon: 'alert-circle',
@@ -91,7 +91,7 @@ export function useOverdueRequestNotification({
         title: 'Prise en charge en retard',
         message:
           fallbackBody ||
-          "L'heure maximale souhaitée est dépassée et le conducteur ne vous a pas encore pris en charge. Vous pouvez attendre ou choisir un autre conducteur. Nous vous conseillons aussi d'ajuster la date et l'heure de la demande.",
+          "L'heure maximale souhaitée est dépassée et le conducteur ne vous a pas encore pris en charge. Vous pouvez attendre ou choisir un autre conducteur. Nous vous conseillons aussi d'ajuster la date et l'heure de la commande.",
         variant: 'warning',
         icon: 'time-outline',
         dismissible: false,
@@ -133,7 +133,7 @@ export function useOverdueRequestNotification({
         typeof data.recipientUserId === 'string' ? data.recipientUserId.trim() : '';
 
       // Le token FCM ne prouve ni l'identité du compte ouvert ni la propriété
-      // de la demande. Un ancien token peut encore recevoir un push après un
+      // de la commande. Un ancien token peut encore recevoir un push après un
       // changement de compte : dans ce cas, ne jamais ouvrir la modale.
       if (!requestId || !accountId || (recipientUserId && recipientUserId !== accountId)) {
         return true;
@@ -144,7 +144,7 @@ export function useOverdueRequestNotification({
         accountRequests = await refetchMyTripRequests().unwrap();
       } catch (error) {
         console.warn(
-          '[NotificationHandler] Impossible de confirmer la demande en retard:',
+          '[NotificationHandler] Impossible de confirmer la commande en retard:',
           error,
         );
         return true;

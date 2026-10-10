@@ -54,7 +54,7 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
     } catch {
       // Never save an offline decision to replay later. A timeout may have reached the server.
       if (sessionVersion !== getTokenSessionVersion()) return;
-      message = 'Votre réponse n’est pas confirmée. Ouvrez la demande pour vérifier son état ou réessayer.';
+      message = 'Votre réponse n’est pas confirmée. Ouvrez la commande pour vérifier son état ou réessayer.';
     }
     try {
       if (Platform.OS === 'android') await notifee.createChannel({ id: RESULT_CHANNEL, name: 'Réponses aux trajets', importance: AndroidImportance.LOW });

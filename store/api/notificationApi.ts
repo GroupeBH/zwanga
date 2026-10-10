@@ -3,6 +3,7 @@ import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { MAX_LIST_PAGES, NOTIFICATION_PAGE_SIZE } from './boundedListPages';
 import { applyConfirmedNotificationChange } from './notifications/confirmedChange';
+import { orderNotificationText } from '@/features/notifications/requestVisibility';
 
 type ServerNotification = {
   id: string;
@@ -25,8 +26,8 @@ const mapServerNotificationToClient = (notification: ServerNotification): Notifi
     id: notification.id,
     userId: notification.userId,
     fcmToken: notification.fcmToken,
-    title: notification.title,
-    body: notification.body,
+    title: orderNotificationText(notification.title, notification.data),
+    body: orderNotificationText(notification.body, notification.data),
     data: notification.data,
     status: notification.status as Notification['status'],
     errorMessage: notification.errorMessage,

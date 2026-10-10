@@ -7,42 +7,13 @@ export const styles = StyleSheet.create({
   sheetLoadingState: {
     marginHorizontal: Spacing.md,
     marginBottom: Spacing.sm,
-    minHeight: 148,
-    borderRadius: BorderRadius.xl,
-    padding: Spacing.md,
-    backgroundColor: '#FFFDFC',
-    borderWidth: 1,
-    borderColor: HOME_COLORS.line,
-    gap: Spacing.md,
+    gap: Spacing.sm,
     overflow: 'hidden',
-  },
-  sheetLoadingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sheetLoadingIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.primary + '14',
-    marginRight: Spacing.sm,
-  },
-  sheetLoadingCopy: {
-    flex: 1,
-    minWidth: 0,
   },
   sheetLoadingTitle: {
     color: HOME_COLORS.ink,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
-  },
-  sheetLoadingText: {
-    marginTop: 2,
-    color: Colors.gray[600],
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.medium,
   },
   sheetLoadingPreview: {
     position: 'relative',

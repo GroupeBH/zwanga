@@ -185,7 +185,7 @@ export default function ProfileScreen() {
 
       <ProfileReviewsModal
         insets={profile.insets}
-        reviews={profile.reviews}
+        userId={profile.currentUser?.id}
         reviewsModalVisible={profile.reviewsModalVisible}
         setReviewsModalVisible={profile.setReviewsModalVisible}
       />

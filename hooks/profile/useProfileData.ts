@@ -6,7 +6,7 @@ import {
 import { useGetMyDriverSettlementQuery } from '@/store/api/driverSettlementsApi';
 import { useGetPendingSubscriptionPaymentsQuery } from '@/store/api/paymentApi';
 import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetAverageRatingQuery, useGetReviewPageQuery } from '@/store/api/reviewApi';
 import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery
@@ -113,7 +113,7 @@ export function useProfileData() {
 
   const userId = currentUser?.id ?? '';
 
-  const { data: reviews } = useGetReviewsQuery(userId, {
+  const { data: reviewsPage } = useGetReviewPageQuery({ userId, limit: 3 }, {
     ...reads,
     skip: reads.skip || !userId,
   });
@@ -123,18 +123,10 @@ export function useProfileData() {
     skip: reads.skip || !userId,
   });
 
-  const reviewCount = reviews?.length ?? 0;
-
-  const reviewAverage = useMemo(() => {
-    if (avgRatingData?.averageRating !== undefined) {
-      return avgRatingData.averageRating;
-    }
-    if (!reviews || reviews.length === 0) {
-      return currentUser?.rating ?? 0;
-    }
-    const total = reviews.reduce((sum, review) => sum + review.rating, 0);
-    return total / reviews.length;
-  }, [avgRatingData?.averageRating, reviews, currentUser?.rating]);
+  const reviews = reviewsPage?.data;
+  const reviewCount = reviewsPage?.total;
+  // A partial page cannot be used to calculate the user's global average.
+  const reviewAverage = avgRatingData?.averageRating ?? currentUser?.rating ?? 0;
 
   const featuredReviews = useMemo(() => (reviews ?? []).slice(0, 3), [reviews]);
 

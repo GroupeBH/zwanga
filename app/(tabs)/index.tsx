@@ -40,6 +40,7 @@ export default function HomeScreen() {
       isCenteringOnUser={home.isCenteringOnUser}
     />
     <HomeHeader
+      isDriver={home.isDriver}
       dismissPriority={home.dismissPriority}
       prioritiesEnabled={home.isScreenActive}
       highlightedDriverRequest={home.highlightedDriverRequest}
@@ -62,6 +63,7 @@ export default function HomeScreen() {
       openTripRequestDetail={home.openTripRequestDetail}
     />
     <HomeTripsSheet
+      hasTripLocation={home.hasTripLocation}
       sheetBottomOffset={home.sheetBottomOffset}
       sheetHeight={home.sheetHeight}
       onSheetLayout={home.onSheetLayout}
@@ -69,7 +71,6 @@ export default function HomeScreen() {
       toggleTripsSheet={home.toggleTripsSheet}
       isHomeSheetLockedRetracted={home.isHomeSheetLockedRetracted}
       sheetTitle={home.sheetTitle}
-      sheetSubtitle={home.sheetSubtitle}
       openSheetIndex={home.openSheetIndex}
       isDriver={home.isDriver}
       isScreenActive={home.isScreenActive}

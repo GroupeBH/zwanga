@@ -1,11 +1,13 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { useStore } from 'react-redux';
 import type { RootState } from '@/store';
-import { usePathname, useRootNavigationState, useRouter } from 'expo-router';
+import { usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
 import { tripApi } from '@/store/api/tripApi';
 import { bookingApi } from '@/store/api/bookingApi';
+import { accountActivityApi } from '@/store/api/accountActivityApi';
+import { STARTUP_ROUTES } from '@/features/navigation/homeBackPolicy';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useActiveRideResume } from '@/hooks/navigation/useActiveRideResume';
 import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
@@ -23,6 +25,7 @@ export function ActiveRideResumeCoordinator() {
   const online = useAppSelector(state => state.zwangaApi.config.online);
   const active = useAppIsActive();
   const path = usePathname();
+  const segments = useSegments();
   const navigation = useRootNavigationState();
   const router = useRouter();
   const { store: overlays } = useRideOverlay();
@@ -30,6 +33,7 @@ export function ActiveRideResumeCoordinator() {
   // Observe the shared discovery cache; do not add list subscriptions or a polling loop.
   const trips = tripApi.endpoints.getMyActivityTrips.useQueryState(undefined);
   const bookings = bookingApi.endpoints.getMyActivityBookings.useQueryState(undefined);
+  const activity = accountActivityApi.endpoints.getAccountActivity.useQueryState(userId ?? '');
   const readTrip = useCallback(async (id: string) => {
     const version = getTokenSessionVersion();
     const pending = dispatch(tripApi.util.getRunningQueryThunk('getTripById', id));
@@ -49,7 +53,10 @@ export function ActiveRideResumeCoordinator() {
     return dispatch(bookingApi.endpoints.getBookingById.initiate(id, { subscribe: false, forceRefetch: true })).unwrap();
   }, [dispatch, reduxStore, userId]);
   useActiveRideResume({ userId: authenticated ? userId : undefined, active, online, path,
-    ready: Boolean(navigation?.key), overlayBusy, trips, bookings, readTrip, readBooking,
+    // '/' can still be the startup Redirect. Let it finish before replacing the route,
+    // otherwise its own Home redirect can overwrite a successful ride resume.
+    ready: Boolean(navigation?.key && segments[0] && !STARTUP_ROUTES.has(segments[0])),
+    overlayBusy, trips, bookings, activity, readTrip, readBooking,
     replace: router.replace });
   return null;
 }

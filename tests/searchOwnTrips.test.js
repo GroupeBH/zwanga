@@ -55,6 +55,14 @@ test('memoization, seat/route filters and sorting still work after ownership exc
   app.hooks.unmount();
 });
 
+test('a hidden request snapshot is discarded immediately when the server role becomes passenger', () => {
+  const app = setup({ searchMode: 'requests', availableTripRequests: [{ id: 'order', passengerId: 'other', status: 'pending', numberOfSeats: 1, departure: { name: 'A' }, arrival: { name: 'B' } }] });
+  assert.equal(app.render().filteredTripRequests.length, 1);
+  app.params.isScreenActive = false; app.params.isDriverAccount = false;
+  assert.deepEqual(app.render().filteredTripRequests, []);
+  app.hooks.unmount();
+});
+
 test('hidden search keeps its snapshot without reading new routes, but clears it across accounts', () => {
   const app = setup({ remoteTrips: trips });
   const before = app.render();

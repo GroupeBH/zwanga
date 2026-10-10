@@ -27,7 +27,7 @@ export function ProfileReviewsSection({
         <View>
           <Text style={styles.reviewsTitle}>Vos avis reçus</Text>
           <Text style={styles.reviewsSubtitle}>
-            {reviewCount} avis · note moyenne {reviewAverage.toFixed(1)}
+            {reviewCount === undefined ? 'Avis non chargés' : `${reviewCount} avis · note moyenne ${reviewAverage.toFixed(1)}`}
           </Text>
         </View>
         <TouchableOpacity

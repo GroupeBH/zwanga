@@ -63,6 +63,20 @@ test('wallet overview puts balance and three explicit actions first, hiding long
   f.hooks.unmount();
 });
 
+test('unavailable wallet does not fabricate a zero; a real zero and stale balance stay distinct', () => {
+  const f = fixture();
+  f.wallet.walletSummary = undefined; f.wallet.isWalletError = true; f.wallet.isWalletLoading = false;
+  assert.match(words(f.overview()), /Solde indisponible/);
+  assert.doesNotMatch(words(f.overview()), /0 jetons/);
+  f.wallet.walletSummary = summary;
+  assert.match(words(f.overview()), /100 jetons.*Dernier solde connu/);
+  f.wallet.isWalletError = false;
+  f.wallet.walletSummary = { ...summary, account: { ...summary.account, balance: 0 } };
+  assert.match(words(f.overview()), /0 jetons/);
+  assert.doesNotMatch(words(f.overview()), /indisponible/);
+  f.hooks.unmount();
+});
+
 test('cash holds use bonuses first without subtracting them twice from withdrawable tokens', () => {
   const f = fixture();
   f.wallet.walletSummary = { ...summary, account: { ...summary.account, reservedCashCommissionBalance: 50 } };

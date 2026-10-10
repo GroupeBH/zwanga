@@ -8,24 +8,41 @@ import { Colors } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
 import { useCancelBookingMutation } from '@/store/api/bookingApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import { openWhatsApp } from '@/utils/phoneHelpers';
+import { NavigationContactModal } from '@/features/navigation/NavigationContactModal';
+import { getNavigationContacts } from '@/features/navigation/navigationContacts';
+import { useAppSelector } from '@/store/hooks';
+import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from '@/utils/reanimated';
+import React, { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function BookingsScreen() {
   const router = useRouter();
+  const leavingRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    leavingRef.current = false;
+    return () => { leavingRef.current = true; };
+  }, []));
+  const handleBack = useCallback(() => {
+    // Router actions are queued: a second tap must not pop the previous screen too.
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [router]);
   const { showDialog } = useDialog();
   const [activeTab, setActiveTab] = useState<BookingTab>('active');
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [selectedDriverPhone, setSelectedDriverPhone] = useState<string | null>(null);
-  const [selectedDriverName, setSelectedDriverName] = useState<string | null>(null);
+  const [contactBookingId, setContactBookingId] = useState<string | null>(null);
+  const userId = useAppSelector(state => state.auth.user?.id);
+  const onContact = useCallback((booking: Booking) => setContactBookingId(booking.id), []);
 
   const feed = useBookingsFeed(activeTab);
   const { activeBookings, displayBookings, isLoading, isFetching, isError, refetch } = feed;
+  const contactBooking = activeBookings.find(booking => booking.id === contactBookingId && booking.status === 'accepted');
+  const contacts = getNavigationContacts({ role: 'passenger', userId, booking: contactBooking, trip: contactBooking?.trip });
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
 
   const emptyText =
@@ -67,9 +84,7 @@ export default function BookingsScreen() {
   const { renderBookingListItem } = useBookingCards({
     activeTab,
     router,
-    setSelectedDriverPhone,
-    setSelectedDriverName,
-    setContactModalVisible,
+    onContact,
     handleCancel,
     isCancelling,
   });
@@ -78,12 +93,12 @@ export default function BookingsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Retour">
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Mes réservations</Text>
-            <Text style={styles.headerSubtitle}>Suivez vos demandes en temps réel</Text>
+            <Text style={styles.headerSubtitle}>Suivez vos réservations en temps réel</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.headerIcon} onPress={() => refetch()}>
@@ -140,7 +155,7 @@ export default function BookingsScreen() {
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.loaderText}>Chargement de vos réservations…</Text>
           </View>
-        ) : (
+        ) : isError ? null : (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons
@@ -162,69 +177,8 @@ export default function BookingsScreen() {
         )}
       />
 
-      {/* Contact Modal */}
-      <Modal
-        visible={contactModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setContactModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.contactModalOverlay}
-          activeOpacity={1}
-          onPress={() => setContactModalVisible(false)}
-        >
-          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
-            <View style={styles.contactModalHeader}>
-              <View style={styles.contactModalIconWrapper}>
-                <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
-                </View>
-              </View>
-              <Text style={styles.contactModalTitle}>
-                Contacter {selectedDriverName || 'le conducteur'}
-              </Text>
-              <Text style={styles.contactModalSubtitle}>
-                Contact via WhatsApp uniquement
-              </Text>
-            </View>
-
-            <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
-                onPress={async () => {
-                  setContactModalVisible(false);
-                  if (selectedDriverPhone) {
-                    await openWhatsApp(selectedDriverPhone, (errorMsg) => {
-                      showDialog({
-                        variant: 'danger',
-                        title: 'Erreur',
-                        message: errorMsg,
-                      });
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un message WhatsApp</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.contactModalCancelButton}
-              onPress={() => setContactModalVisible(false)}
-            >
-              <Text style={styles.contactModalCancelText}>Annuler</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
+      {contactBookingId && <NavigationContactModal contacts={contacts} role="passenger"
+        onClose={() => setContactBookingId(null)} />}
     </SafeAreaView>
   );
 }

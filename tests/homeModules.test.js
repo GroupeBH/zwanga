@@ -23,8 +23,8 @@ function environment(mocks = {}, platform = 'ios') {
 test('request expiry still allows accepted drivers but hides expired, cancelled and invalid requests', () => {
   const { isTripRequestWithinAcceptanceWindow: accepts } = environment().load('features/home/homeModel.ts');
   const now = Date.now();
-  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 29999).toISOString() }), now), true);
-  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 30000).toISOString() }), now), false);
+  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 3 * 3600000 + 1).toISOString() }), now), true);
+  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 3 * 3600000).toISOString() }), now), false);
   assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: new Date(now - 2 * 3600000 + 1).toISOString() }), now), true);
   assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: new Date(now - 2 * 3600000).toISOString() }), now), false);
   assert.equal(accepts(request('a', { departureDateMax: 'invalid' }), now), false);
@@ -103,7 +103,7 @@ test('trip feed keeps nearby precedence without a parallel general request, poll
   let feed = render();
   assert.deepEqual(feed.remoteTrips.map(trip => trip.id), ['shared']);
   assert.equal(feed.remoteTrips[0], nearby);
-  assert.deepEqual(calls[0].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1 });
+  assert.deepEqual(calls[0].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1, limit: 50 });
   assert.equal(calls[0].options.pollingInterval, 120000);
   assert.equal(calls[1].options.skip, true);
   assert.equal(dispatches[0].type, 'trips/setTrips');
@@ -116,7 +116,7 @@ test('trip feed keeps nearby precedence without a parallel general request, poll
   props.lastKnownLocation = null;
   feed = render();
   assert.equal(calls.at(-1).options.skip, true);
-  assert.equal(feed.remoteTrips[0], general);
+  assert.equal(feed.remoteTrips[0], nearby);
   app.hooks.unmount();
 });
 
@@ -126,13 +126,47 @@ test('a cached feed remains visible when both network queries fail', () => {
     useGetTripsByCoordinatesQuery: () => ({ isFetching: false, isLoading: false, isError: true }),
   } });
   const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
-  const result = app.hooks.render(() => useHomeTripFeed({ isFocused: true, lastKnownLocation: null, locationRadiusKm: 5, storedTrips: [trip('cached')], dispatch() {} }));
+  const result = app.hooks.render(() => useHomeTripFeed({ isFocused: true, lastKnownLocation: { coords: { latitude: -4.325, longitude: 15.3222 } }, storedTrips: [trip('cached')], dispatch() {} }));
   assert.equal(result.tripsError, false);
   assert.equal(result.showInitialHomeLoader, false);
   app.hooks.unmount();
 });
 
-const selectionProps = () => ({ remoteTrips: [], storedTrips: [], activeBookings: [], currentUser: { id: 'me' }, completedBookingTripIds: new Set(), bookedTripIds: new Set(), refreshedPassengerTrip: undefined, trackedTripInfo: null, ongoingDriverTrip: null, isDriver: false, driverReservationHighlightTrip: null, driverReservationHighlightBookings: [], myDriverTrips: [] });
+test('empty nearby results never widen Home discovery, and fallback keeps the five-kilometre scope', async () => {
+  const calls = [], refreshes = [];
+  const nearby = { currentData: [], isError: false, isFetching: false, isUninitialized: false,
+    refetch: async () => { refreshes.push('nearby'); return { data: [] }; } };
+  const general = { currentData: [], isFetching: false, isUninitialized: false,
+    refetch: async () => { refreshes.push('general'); return { data: [] }; } };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsByCoordinatesQuery: (args, options) => { calls.push({ name: 'nearby', args, options }); return nearby; },
+    useGetTripsQuery: (args, options) => { calls.push({ name: 'general', args, options }); return general; },
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const props = { isFocused: true, storedTrips: [], dispatch() {}, locationRadiusKm: 50,
+    lastKnownLocation: { coords: { latitude: -4.325, longitude: 15.3222 } } };
+  const draw = () => app.hooks.render(() => useHomeTripFeed(props));
+  draw();
+  assert.equal(calls[0].args.departureRadiusKm, 5, 'a broad search preference must not broaden Home');
+  assert.equal(calls.at(-1).options.skip, true);
+  await draw().refetchTrips();
+  assert.deepEqual(refreshes, ['nearby']);
+  nearby.isError = true; draw();
+  assert.equal(calls.at(-1).options.skip, false);
+  assert.equal(calls.at(-1).args.departureRadiusKm, 5);
+  assert.deepEqual(calls.at(-1).args.departureCoordinates, [15.3222, -4.325]);
+  props.isFocused = false; draw();
+  assert.equal(calls.at(-1).options.skip, true);
+  props.isFocused = true; props.lastKnownLocation = null; draw();
+  assert.equal(calls.at(-1).options.skip, true);
+  assert.equal(calls.at(-2).options.skip, true);
+  assert.equal(draw().tripsLoading, false);
+  props.lastKnownLocation = { coords: { latitude: 0, longitude: 0 } }; draw();
+  assert.equal(calls.at(-2).options.skip, true);
+  app.hooks.unmount();
+});
+
+const selectionProps = () => ({ remoteTrips: [], storedTrips: [], activeBookings: [], currentUser: { id: 'me' }, completedBookingTripIds: new Set(), bookedTripIds: new Set(), refreshedPassengerTrip: undefined, trackedTripInfo: null, ongoingDriverTrip: null, isDriver: false, driverReservationHighlightTrip: null, driverReservationHighlightBookings: [], myDriverTrips: [], liveUserCoordinate: departure.coordinates });
 test('trip selection prioritizes reservations, removes own/completed/expired trips, and caps the list', () => {
   const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
   const booked = trip('booked', { departureTime: new Date(Date.now() + 2 * 86400000).toISOString() });
@@ -165,7 +199,7 @@ test('passenger activity excludes own, linked and expired requests and preserves
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [], refetch() {} }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
-      useGetMyTripRequestsQuery: () => ({ data: [request('own')] }),
+      useGetMyTripRequestsQuery: () => ({ data: [request('foreign-cache'), request('own', { passengerId: 'me' })] }),
       useGetAvailableTripRequestsQuery: (_args, options) => { calls.push(options); return { data: requests }; },
     },
   });
@@ -173,8 +207,10 @@ test('passenger activity excludes own, linked and expired requests and preserves
   const props = { isFocused: true, currentUser: { id: 'me' }, isDriver: true, trackedTripInfo: null };
   const render = () => app.hooks.render(() => useHomePassengerActivity(props));
   assert.deepEqual(render().availableDriverRequests.map(request => request.id), ['available']);
+  assert.equal(render().activeTripRequest.id, 'own');
   props.isDriver = false;
   assert.deepEqual(render().availableDriverRequests, []);
+  assert.equal(render().activeTripRequest.id, 'own');
   assert.equal(calls.at(-1).skip, true);
   props.isFocused = false;
   render();
@@ -407,7 +443,6 @@ test('sheet switches between trips/requests, keeps stable actions and retracts d
   const render = () => app.hooks.render(() => useHomeSheet(props));
   const toggle = render().toggleTripsSheet;
   assert.equal(render().toggleTripsSheet, toggle);
-  toggle();
   assert.equal(render().effectiveTripsSheetOpen, true);
   render().setHomeSheetMode('requests');
   render().openSheetIndex(); render().refetchSheetContent();

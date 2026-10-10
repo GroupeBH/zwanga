@@ -45,7 +45,7 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
       if (mounted.current) setBusy(null);
     }
   };
-  return <FormModal inApp visible transparent animationType="slide" statusBarTranslucent presentationStyle="overFullScreen" onRequestClose={close}>
+  return <FormModal inApp visible={active} transparent animationType="slide" statusBarTranslucent presentationStyle="overFullScreen" onRequestClose={close}>
     <View style={styles.overlay}>
       <TouchableOpacity style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Fermer les contacts" accessibilityRole="button" />
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>

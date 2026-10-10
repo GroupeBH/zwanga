@@ -3,6 +3,7 @@ import { useWalletTopUpActions } from './useWalletTopUpActions';
 import { useWalletTopUpMonitoring } from './useWalletTopUpMonitoring';
 import { useWalletTopUpStorage } from './useWalletTopUpStorage';
 import { useWalletScreenScope } from './useWalletScreenScope';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { useHistoryCursor } from '@/hooks/useHistoryCursor';
 import { useIsFocused } from '@react-navigation/native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
@@ -48,6 +49,7 @@ export function useWalletController() {
   const isFocused = useIsFocused();
   const isAppActive = useAppIsActive();
   const isScreenActive = isFocused && isAppActive;
+  const readsEnabled = useDisplayReadsEnabled(isScreenActive && Boolean(user?.id));
   const { cashDebt, isFetching: isCashDebtFetching, refresh: refreshCashDebt } = useWalletCashDebt(user?.id, isDriverAccount(user), isScreenActive);
   const captureScope = useWalletScreenScope(user?.id, isScreenActive);
   const ledgerCursor = useHistoryCursor(user?.id ?? 'signed-out');
@@ -74,22 +76,17 @@ export function useWalletController() {
     data: walletSummary,
     isLoading: isWalletLoading,
     isFetching: isWalletFetching,
-    refetch: refetchWallet,
-  } = useGetMyWalletQuery(undefined, {
-    skip: !user?.id || !isScreenActive,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
-  });
+    isError: isWalletError,
+    refetch: readWallet,
+  } = useGetMyWalletQuery(undefined, displayReadOptions(readsEnabled));
+  const refetchWallet = useDisplayRefetch(readsEnabled, user?.id ?? '', readWallet);
   const {
     currentData: ledgerPage,
     isFetching: isLedgerFetching,
     isError: isLedgerError,
-    refetch: refetchLedger,
-  } = useGetWalletLedgerPageQuery({ before: ledgerCursor.before, limit: 25 }, {
-    skip: !user?.id || !isScreenActive,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
-  });
+    refetch: readLedger,
+  } = useGetWalletLedgerPageQuery({ before: ledgerCursor.before, limit: 25 }, displayReadOptions(readsEnabled));
+  const refetchLedger = useDisplayRefetch(readsEnabled, `${user?.id}:${ledgerCursor.before}`, readLedger);
   const [initiateWalletTopUp, { isLoading: isStartingTopUp }] = useInitiateWalletTopUpMutation();
   const [checkWalletTopUpStatus, { isFetching: isCheckingTopUp }] =
     useLazyCheckWalletTopUpStatusQuery();
@@ -262,6 +259,8 @@ export function useWalletController() {
     refreshAll,
     isRefreshing,
     isWalletLoading,
+    isWalletError,
+    canRefresh: readsEnabled,
     walletSummary,
     currency,
     cashDebt,

@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { handleIncomingNotification } from './pushNotifications';
 import { parseDriverInvitation, readDriverPushData } from '@/features/notifications/driverInvitation';
 import { displayDriverInvitation } from './driverNotifications';
-import { isRemoteRequestAcceptanceAlert } from '@/features/notifications/rideSound';
+import { isRemoteRequestAcceptanceAlert, isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
 
 /**
  * Nom de la tâche de fond pour les notifications push
@@ -51,7 +51,7 @@ if (TaskManager) {
     const driverData = readDriverPushData(data);
     // The remote alert owns its sound on both platforms. Do not replace it with
     // a second local notification on the default channel when this task wakes up.
-    if (isRemoteRequestAcceptanceAlert(driverData)) return;
+    if (isRemoteRequestAcceptanceAlert(driverData) || isRemoteNearbyRequestAlert(driverData)) return;
     if (driverData && parseDriverInvitation(driverData)) {
       await displayDriverInvitation(driverData);
       return;

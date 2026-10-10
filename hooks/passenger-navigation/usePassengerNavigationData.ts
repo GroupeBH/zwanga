@@ -41,7 +41,8 @@ export function usePassengerNavigationData() {
   // Récupérer la réservation et le trajet
   const { data: liveBooking, error: bookingError, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, {
     skip: !bookingId,
-    pollingInterval: isScreenActive ? 60_000 : 0,
+    pollingInterval: isScreenActive && isOnline ? 60_000 : 0,
+    refetchOnReconnect: isScreenActive,
     skipPollingIfUnfocused: true,
   });
   const { data: booking, offline: offlineBooking } = useOfflineRideData(`booking:${bookingId}`, liveBooking, bookingError, liveBooking?.status === 'accepted');
@@ -49,12 +50,13 @@ export function usePassengerNavigationData() {
   const tripId = booking?.tripId || '';
   const { data: liveTrip, error: tripError, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
-    pollingInterval: isScreenActive ? 30_000 : 0,
+    pollingInterval: isScreenActive && isOnline ? 30_000 : 0,
+    refetchOnReconnect: isScreenActive,
     skipPollingIfUnfocused: true,
   });
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isTripOngoing = trip?.status === 'ongoing';
-  const driverLocationSnapshot = useDriverLocationFallback(tripId, isScreenActive && isTripOngoing);
+  const driverLocationSnapshot = useDriverLocationFallback(tripId, isScreenActive && isOnline && isTripOngoing);
   const commitDriverInterruptionResponse = useCallback((response: Trip, requestId: string) => {
     if (passengerId) dispatch(applyDriverInterruptionResponse(response, { tripId, bookingId, passengerId, requestId }));
   }, [bookingId, dispatch, passengerId, tripId]);

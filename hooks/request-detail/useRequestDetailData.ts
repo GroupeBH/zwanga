@@ -53,7 +53,9 @@ export function useRequestDetailData() {
   const { currentData: liveRequest, isLoading, isFetching: isFetchingRequest, error, refetch: rawRefetch, isError } = useGetTripRequestByIdQuery(id || '', {
     ...displayReadOptions(readsEnabled && Boolean(id) && !isCreateRouteAlias, pollingInterval),
   });
-  const tripRequest = useDisplayReadData(id ?? '', liveRequest);
+  const cachedRequest = useDisplayReadData(id ?? '', liveRequest);
+  const tripRequest = currentUser?.id && (isDriverAccount || cachedRequest?.passengerId === currentUser.id)
+    ? cachedRequest : undefined;
   const refetch = useDisplayRefetch(readsEnabled && Boolean(id) && !isCreateRouteAlias, id ?? '', rawRefetch);
   const { currentData: liveAssignedTrip, error: assignedTripError } = useGetTripByIdQuery(tripRequest?.tripId || '', {
     ...displayReadOptions(readsEnabled && Boolean(tripRequest?.tripId), tripRequest?.status === 'driver_selected' ? 30_000 : 0),
@@ -76,10 +78,10 @@ export function useRequestDetailData() {
     }
   }, [isCreateRouteAlias, router]);
 
-  // Mettre à jour le polling interval en fonction du statut de la demande
+  // Mettre à jour le polling interval en fonction du statut de la commande
   React.useEffect(() => {
     if (tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received') {
-      setPollingInterval(30000); // 30 secondes pour les demandes actives
+      setPollingInterval(30000); // 30 secondes pour les commandes actives
     } else if (tripRequest?.status === 'driver_selected') {
       setPollingInterval(15000); // Suivre rapidement le démarrage pour masquer l'annulation
     } else {
@@ -89,7 +91,7 @@ export function useRequestDetailData() {
 
   useEffect(() => {
     if (__DEV__ && error) {
-      console.warn('[TripRequestDetails] Chargement de la demande impossible:', error);
+      console.warn('[TripRequestDetails] Chargement de la commande impossible:', error);
     }
   }, [error]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {

@@ -110,7 +110,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           priceText={hasOwnBudget ? formatPrice(ownBudget) : undefined}
           priceHint={hasOwnBudget ? 'max / place' : undefined}
           metadata={`${homeRequestDepartureLabel(activeTripRequest.departureDateMin, activeTripRequest.departureDateMax)} · ${homeSeatsLabel(activeTripRequest.numberOfSeats)}`}
-          accessibilityLabel="Ouvrir ma demande de trajet"
+          accessibilityLabel="Ouvrir ma commande de trajet"
           onPress={() => openTripRequestDetail(activeTripRequest.id)}
         />
       </SwipeableHomePriority>

@@ -33,8 +33,16 @@ export function WalletOverview({ wallet, withdrawal, isDriver = false }: Props) 
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.gray[600]} />
       </TouchableOpacity>
     </View>
-    {wallet.isWalletLoading ? <ActivityIndicator style={styles.loader} color={Colors.primary} /> :
-      <Text style={styles.balance}>{formatWalletAmount(Math.max(0, Number(summary?.account.balance ?? 0) - Number(summary?.account.reservedCashCommissionBalance ?? 0)), wallet.currency)}</Text>}
+    {wallet.isWalletLoading && !summary ? <ActivityIndicator style={styles.loader} color={Colors.primary} /> :
+      summary ? <Text style={styles.balance}>{formatWalletAmount(Math.max(0, Number(summary.account.balance) - Number(summary.account.reservedCashCommissionBalance ?? 0)), wallet.currency)}</Text> :
+        <Text style={styles.caption} accessibilityRole="alert">Solde indisponible</Text>}
+    {(wallet.isWalletError || (!summary && !wallet.isWalletLoading)) && <View>
+      <Text style={styles.caption}>{summary ? 'Dernier solde connu. Actualisation indisponible.' : 'Vérifiez votre connexion pour consulter vos jetons.'}</Text>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Réessayer le chargement du solde"
+        disabled={!wallet.canRefresh || wallet.isRefreshing} style={styles.detailsToggle} onPress={wallet.refreshAll}>
+        <Text style={styles.detailsLabel}>Réessayer</Text>
+      </TouchableOpacity>
+    </View>}
     {summary?.withdrawal && <Text style={styles.caption}>
       Retirable : {formatWalletAmount(summary.withdrawal.availableMoney, summary.withdrawal.currency)}
     </Text>}

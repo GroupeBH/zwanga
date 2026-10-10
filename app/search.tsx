@@ -187,7 +187,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
           </View>
         </View>
 
-        <View style={styles.searchModeSegment}>
+        {isDriverAccount && <View style={styles.searchModeSegment}>
           <TouchableOpacity
             style={[styles.searchModeButton, searchMode === 'trips' && styles.searchModeButtonActive]}
             onPress={() => setSearchMode('trips')}
@@ -213,10 +213,10 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
               color={searchMode === 'requests' ? Colors.white : Colors.gray[700]}
             />
             <Text style={[styles.searchModeButtonText, searchMode === 'requests' && styles.searchModeButtonTextActive]}>
-              Demandes
+              Commandes
             </Text>
           </TouchableOpacity>
-        </View>
+        </View>}
 
         <SearchResultsToolbar
           searchMode={searchMode}
@@ -230,11 +230,11 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
           <View style={styles.loaderCard}>
             <ActivityIndicator color={Colors.primary} size="large" />
             <Text style={styles.loaderTitle}>
-              {searchMode === 'requests' ? 'Recherche des demandes' : 'Recherche des trajets'}
+              {searchMode === 'requests' ? 'Recherche des commandes' : 'Recherche des trajets'}
             </Text>
             <Text style={styles.loaderText}>
               {searchMode === 'requests'
-                ? 'On charge les demandes publiées par les passagers.'
+                ? 'On charge les commandes publiées par les passagers.'
                 : 'On prépare les meilleures offres disponibles.'}
             </Text>
           </View>
@@ -272,12 +272,12 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
               <Ionicons name="paper-plane-outline" size={30} color={Colors.primary} />
             </View>
             <Text style={styles.emptyTitle}>
-              {isDriverAccount ? 'Aucune demande trouvée' : 'Mode conducteur requis'}
+              {isDriverAccount ? 'Aucune commande trouvée' : 'Mode conducteur requis'}
             </Text>
             <Text style={styles.emptyText}>
               {isDriverAccount
-                ? 'Aucune demande disponible ne correspond à cette recherche pour le moment.'
-                : 'Les demandes disponibles sont visibles par les comptes conducteur.'}
+                ? 'Aucune commande disponible ne correspond à cette recherche pour le moment.'
+                : 'Les commandes disponibles sont visibles par les comptes conducteur.'}
             </Text>
           </View>
         )}

@@ -192,8 +192,8 @@ export function useRequestPassengerActions({
 
       setTimeout(() => {
         showDialog({
-          title: tripRequest?.status === 'expired' ? 'Demande reprogrammée' : 'Demande modifiée',
-          message: `Votre demande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}. Les anciennes offres en attente ont été retirées.`,
+          title: tripRequest?.status === 'expired' ? 'Commande reprogrammée' : 'Commande modifiée',
+          message: `Votre commande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}. Les anciennes offres en attente ont été retirées.`,
           variant: 'success',
         });
       }, Platform.OS === 'ios' ? 350 : 0);
@@ -204,7 +204,7 @@ export function useRequestPassengerActions({
       }
       showDialog({
         title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de modifier la demande.'),
+        message: getApiErrorMessage(error, 'Impossible de modifier la commande.'),
         variant: 'danger',
       });
     }
@@ -214,11 +214,11 @@ export function useRequestPassengerActions({
     if (!id) return;
 
     showDialog({
-      title: 'Annuler la demande',
+      title: 'Annuler la commande',
       message:
         tripRequest?.status === 'driver_selected'
-          ? 'Un conducteur a déjà accepté cette demande. Voulez-vous vraiment annuler la demande, la réservation et le trajet associé ?'
-          : 'Êtes-vous sûr de vouloir annuler cette demande ?',
+          ? 'Un conducteur a déjà accepté cette commande. Voulez-vous vraiment annuler la commande, la réservation et le trajet associé ?'
+          : 'Êtes-vous sûr de vouloir annuler cette commande ?',
       variant: 'danger',
       actions: [
         { label: 'Non', variant: 'secondary' },
@@ -229,15 +229,15 @@ export function useRequestPassengerActions({
             try {
               await cancelRequest(id).unwrap();
               showDialog({
-                title: 'Demande annulée',
-                message: 'Votre demande a été annulée avec succès',
+                title: 'Commande annulée',
+                message: 'Votre commande a été annulée avec succès',
                 variant: 'success',
                 actions: [{ label: 'OK', onPress: goHome }],
               });
             } catch (error: any) {
               showDialog({
                 title: 'Erreur',
-                message: getApiErrorMessage(error, 'Impossible d\'annuler la demande.'),
+                message: getApiErrorMessage(error, 'Impossible d\'annuler la commande.'),
                 variant: 'danger',
               });
             }

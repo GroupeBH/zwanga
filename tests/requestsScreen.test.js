@@ -24,7 +24,8 @@ function fixture() {
     'expo-router': { useRouter: () => router }, '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/hooks/requests/useRequestsData': { useRequestsData: tab => {
-      tabs.push(tab); return { ...data, requests: tab === 'available' ? data.available : data.own, refresh: () => calls.push('refresh') };
+      const activeTab = data.isDriver ? tab : 'my-requests';
+      tabs.push(tab); return { ...data, activeTab, requests: activeTab === 'available' ? data.available : data.own, refresh: () => calls.push('refresh') };
     } },
   });
   const { default: Screen } = load('app/requests.tsx');
@@ -35,7 +36,7 @@ const list = tree => elements(tree).find(node => node.type === 'List');
 test('compact accessible tabs replace the context card and never show unqueried zero counters', () => {
   const f = fixture(); f.data.hasData = false; f.data.isLoading = true; f.data.available = [];
   const tree = f.render(), tabs = elements(tree).filter(node => node.props?.accessibilityRole === 'tab');
-  assert.deepEqual(tabs.map(text), ['Disponibles', 'Mes demandes']);
+  assert.deepEqual(tabs.map(text), ['Disponibles', 'Mes commandes']);
   assert.deepEqual(tabs.map(node => node.props.accessibilityState.selected), [true, false]);
   assert.equal(elements(tree).some(node => node.props?.children === '0 demande'), false);
   assert.equal(elements(tree).some(node => node.props?.children === 'Demandes publiées par d’autres passagers'), false);
@@ -53,7 +54,7 @@ test('search filters locally, resets scroll and clears when switching tabs; crea
   tree = f.render(); assert.deepEqual(list(tree).props.data.map(item => item.id), ['second']);
   assert.deepEqual(offsets[0], { offset: 0, animated: false });
   assert.ok(elements(tree).some(node => node.props?.children === '1 résultat'));
-  button(tree, 'Mes demandes').props.onPress(); tree = f.render();
+  button(tree, 'Mes commandes').props.onPress(); tree = f.render();
   assert.equal(elements(tree).find(node => node.type === 'Input').props.value, '');
   assert.deepEqual(list(tree).props.data.map(item => item.id), ['mine']);
   const create = elements(tree).filter(node => node.type === 'Button' && text(node) === 'Commander un trajet');
@@ -63,12 +64,22 @@ test('search filters locally, resets scroll and clears when switching tabs; crea
   f.hooks.unmount();
 });
 
+test('a passenger’s list shows only personal commands without tabs or other passengers’ orders', () => {
+  const f = fixture(); f.data.isDriver = false;
+  const tree = f.render();
+  assert.equal(elements(tree).some(node => node.props?.accessibilityRole === 'tab'), false);
+  assert.match(text(tree), /Mes commandes/);
+  assert.deepEqual(list(tree).props.data.map(item => item.id), ['mine']);
+  f.hooks.unmount();
+});
+
 test('opening a list item retains the request details route and role-only acceptance entry', () => {
   const f = fixture();
   for (const driver of [false, true]) {
     f.data.isDriver = driver;
     const tree = f.render(), row = list(tree).props.renderItem({ item: item('request-id') });
-    assert.equal(row.props.canAccept, driver);
+    assert.equal(Boolean(row.props.canAccept), driver);
+    assert.equal(Boolean(row.props.own), !driver);
     row.props.onOpen('request-id');
   }
   assert.deepEqual(f.calls, Array(2).fill({ pathname: '/request-details/[id]', params: { id: 'request-id' } }));
@@ -82,7 +93,7 @@ test('empty/error lists keep pull-to-refresh and cached results show an explicit
   list(tree).props.refreshControl.props.onRefresh(); assert.deepEqual(f.calls, ['refresh']);
   f.data.available = [item('cached')]; f.data.hasData = true; tree = f.render();
   assert.equal(list(tree).props.data.length, 1);
-  assert.match(text(list(tree).props.ListHeaderComponent), /dernières demandes chargées restent affichées/);
+  assert.match(text(list(tree).props.ListHeaderComponent), /dernières commandes chargées restent affichées/);
   button(tree, 'Réessayer').props.onPress(); assert.deepEqual(f.calls, ['refresh', 'refresh']);
   f.hooks.unmount();
 });

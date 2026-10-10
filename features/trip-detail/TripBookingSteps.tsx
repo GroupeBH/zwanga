@@ -267,7 +267,7 @@ export function TripBookingSteps({
       <>
         <Text style={styles.bookingModalTitle}>Prévisualisation</Text>
         <Text style={styles.bookingModalDescription}>
-          Vérifiez les informations avant d&apos;envoyer votre demande au conducteur.
+          Vérifiez les informations avant d&apos;envoyer votre réservation au conducteur.
         </Text>
 
         <View style={styles.bookingPreviewHero}>

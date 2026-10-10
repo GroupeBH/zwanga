@@ -176,7 +176,7 @@ test('hiding the nearest request shows the next one without restarting its highl
 });
 
 test('hiding a personal request affects only its priority, not the request feed or passenger bookings', () => {
-  const hooks = hookHarness(), a = request('a'), b = request('b'), available = [request('available')];
+  const hooks = hookHarness(), a = { ...request('a'), passengerId: 'driver' }, b = { ...request('b'), passengerId: 'driver' }, available = [request('available')];
   const { useHomePassengerActivity } = loader({ ...native, react: hooks.react,
     '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({}) },
@@ -211,7 +211,7 @@ test('Home skips accepted, linked, expired and own requests even ahead of an ava
     { ...request('linked'), tripId: 'ongoing-trip' },
     { ...request('driver'), selectedDriverId: 'driver' },
     { ...request('offer'), offers: [{ status: 'accepted' }] },
-    { ...request('expired'), departureDateMax: later(-3600000) },
+    { ...request('expired'), departureDateMax: later(-3 * 3600000) },
     { ...request('own'), passengerId: 'driver' },
     available,
   ];

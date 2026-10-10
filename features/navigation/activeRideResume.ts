@@ -1,10 +1,17 @@
 import type { Booking, Trip } from '@/types';
 import { isActivePassengerBooking, ownsTrip, selectOngoingParticipation } from '@/features/activity/tripParticipation';
 
+/** Startup/auth screens own their transition; they must not cancel ride recovery. */
+export function isRideResumeEntryTransition(path: string) {
+  return ['', '/index', '/auth', '/auth-entry', '/splash', '/onboarding', '/background-location-disclosure'].includes(path)
+    || path.startsWith('/auth/');
+}
+
 /** Do not steal a payment, chat, edit form, emergency screen or explicit notification action. */
 export function canResumeRideFromPath(path: string) {
   if (path === '/request/index') return false;
-  return ['/', '/(tabs)', '/trips', '/messages', '/profile', '/discover', '/bookings', '/requests', '/my-requests'].includes(path) ||
+  return ['/', '/(tabs)', '/trips', '/messages', '/profile', '/discover', '/bookings', '/requests', '/my-requests',
+    '/search', '/notifications', '/settings', '/favorite-locations'].includes(path) ||
     /^\/(trip\/(manage\/)?|request-details\/|request\/)[^/]+$/.test(path);
 }
 export const isRideNavigationPath = (path: string) => /^\/(trip|booking)\/navigate\/[^/]+$/.test(path);

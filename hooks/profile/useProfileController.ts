@@ -175,7 +175,7 @@ export function useProfileController() {
     },
     {
       icon: 'document-text-outline' as keyof typeof Ionicons.glyphMap,
-      label: 'Demandes',
+      label: 'Mes commandes',
       meta: `${tripRequestsStats.activeRequests} actives`,
       badge: tripRequestsCount > 0 ? tripRequestsCount : undefined,
       onPress: () => router.push('/my-requests'),
@@ -220,7 +220,7 @@ export function useProfileController() {
       ? [
         {
           icon: 'list-outline',
-          label: 'Demandes disponibles',
+          label: 'Commandes disponibles',
           route: '/requests',
           badge: pendingOffersCount > 0 ? pendingOffersCount : undefined,
           badgeColor: Colors.info,

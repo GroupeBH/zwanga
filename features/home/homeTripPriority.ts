@@ -3,6 +3,8 @@ import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import { getTripLocationCoordinate, normalizeTripMapCoordinate, type MapCoordinate } from '@/utils/tripCoordinates';
 
 export const HOME_DEPARTURE_DISTANCE_BAND_METERS = 500;
+export const HOME_SUGGESTION_RADIUS_KM = 5;
+export const HOME_SUGGESTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Rank departures locally, without a routing request or mutating the RTK Query cache. */
 export function rankHomeTripsByProximity(
@@ -10,6 +12,7 @@ export function rankHomeTripsByProximity(
   origin: MapCoordinate | null | undefined,
   bookedTripIds: ReadonlySet<string>,
   now = Date.now(),
+  nearbySuggestionsOnly = false,
 ) {
   const coordinate = origin ? normalizeTripMapCoordinate(origin.latitude, origin.longitude) : null;
   const today = new Date(now);
@@ -29,7 +32,11 @@ export function rankHomeTripsByProximity(
       departureTime,
       today: departureTime >= todayStart && departureTime < tomorrowStart,
     };
-  }).sort((left, right) => {
+  }).filter(item => !nearbySuggestionsOnly || item.booked || (
+    item.trip.status === 'upcoming' && item.trip.availableSeats > 0 &&
+    item.departureTime >= now && item.departureTime <= now + HOME_SUGGESTION_WINDOW_MS &&
+    item.distance !== null && item.distance < HOME_SUGGESTION_RADIUS_KM * 1000
+  )).sort((left, right) => {
     // Existing reservations remain easy to find, ahead of new suggestions.
     if (left.booked !== right.booked) return left.booked ? -1 : 1;
     if (left.booked && right.booked && (left.trip.status === 'ongoing') !== (right.trip.status === 'ongoing')) {

@@ -46,7 +46,7 @@ function service(platform = 'android', account = driverId) {
   const cancelled = [], presented = [];
   const appState = { currentState: 'background' };
   const native = { createChannel: async value => channels.push(value), displayNotification: async value => displays.push(value),
-    cancelNotification: async id => cancelled.push(id), getDisplayedNotifications: async () => displays.map(notification => ({ notification })) };
+    cancelNotification: async id => cancelled.push(id), getDisplayedNotifications: async () => displays.map(notification => ({ id: notification.id, notification })) };
   const loaded = loader({
     './tokenStorage': { getTokens: async () => ({ refreshToken: account ? `x.${Buffer.from(JSON.stringify({ sub: account, exp: Date.now()/1000+3600 })).toString('base64url')}.x` : null }) },
     '@react-native-async-storage/async-storage': { getItem: async key => storage.get(key), setItem: async (key, value) => storage.set(key, value), removeItem: async key => storage.delete(key) },
@@ -134,6 +134,23 @@ test('opening the app while native display is pending immediately cancels it aft
   f.native.displayNotification = async value => { f.displays.push(value); f.appState.currentState = 'active'; };
   await f.loaded.displayDriverInvitation(data);
   assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`]);
+});
+
+test('opening silences scheduled nearby alerts on either platform without touching other recipients or accepting', async () => {
+  const nearby = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', driverId, tripRequestId: id };
+  for (const platform of ['android', 'ios']) {
+    const f = service(platform);
+    const cards = [{ id: 'nearby', data: nearby }, { id: 'chat', data: { type: 'message' } },
+      { id: 'foreign', data: { ...nearby, driverId: '00000000-0000-4000-8000-000000000099' } }];
+    if (platform === 'android') f.displays.push(...cards);
+    else f.presented.push(...cards.map(card => ({ request: { identifier: card.id, content: { data: card.data } } })));
+    await f.loaded.silenceDriverInvitations(driverId);
+    assert.deepEqual(f.cancelled, [], 'background receipt is not automatically silenced');
+    f.appState.currentState = 'active';
+    await f.loaded.silenceDriverInvitations(driverId);
+    assert.deepEqual(f.cancelled, ['nearby']);
+    assert.equal(f.storage.size, 0, 'no accept/decline intent is created');
+  }
 });
 
 test('a failed native display may retry and a shorter server deadline is never extended', async () => {

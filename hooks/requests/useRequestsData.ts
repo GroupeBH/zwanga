@@ -12,7 +12,7 @@ import { EMPTY_REQUESTS, rankOwnRequests, type RequestTab } from '@/features/req
 
 const noCoordinates = () => null;
 
-export function useRequestsData(activeTab: RequestTab) {
+export function useRequestsData(requestedTab: RequestTab) {
   const isActive = useScreenIsActive();
   const readsEnabled = useDisplayReadsEnabled(isActive);
   const profile = useGetCurrentUserQuery(undefined, {
@@ -20,10 +20,12 @@ export function useRequestsData(activeTab: RequestTab) {
     refetchOnFocus: false, refetchOnReconnect: false,
   });
   const user = profile.data;
+  const isDriver = isDriverAccount(user);
+  const activeTab: RequestTab = isDriver ? requestedTab : 'my-requests';
   const coordinates = useAppSelector(isActive && activeTab === 'available' ? selectUserCoordinates : noCoordinates);
-  const needsProfile = activeTab === 'available' && !user?.id;
-  const availableEnabled = readsEnabled && activeTab === 'available' && !needsProfile;
-  const ownEnabled = readsEnabled && activeTab === 'my-requests';
+  const needsProfile = !user?.id;
+  const availableEnabled = readsEnabled && isDriver && activeTab === 'available' && !needsProfile;
+  const ownEnabled = readsEnabled && activeTab === 'my-requests' && !needsProfile;
   const available = useGetAvailableTripRequestsQuery(undefined, {
     skip: !availableEnabled, pollingInterval: availableEnabled ? 60_000 : 0,
     refetchOnMountOrArgChange: 30, skipPollingIfUnfocused: true,
@@ -39,7 +41,7 @@ export function useRequestsData(activeTab: RequestTab) {
   const records = needsProfile ? EMPTY_REQUESTS : query.data ?? EMPTY_REQUESTS;
   const requests = useMemo(() => activeTab === 'available'
     ? rankRequestsByProximity(records.filter(request => request.passengerId !== user?.id), coordinates)
-    : rankOwnRequests(records), [activeTab, records, user?.id, coordinates]);
+    : rankOwnRequests(records.filter(request => request.passengerId === user?.id)), [activeTab, records, user?.id, coordinates]);
   const refresh = useCallback(() => {
     if (!readsEnabled) return;
     if (needsProfile) {
@@ -49,7 +51,8 @@ export function useRequestsData(activeTab: RequestTab) {
 
   return {
     requests,
-    isDriver: isDriverAccount(user),
+    activeTab,
+    isDriver,
     isLoading: readsEnabled && (needsProfile ? profilePending : query.isLoading || query.isUninitialized),
     isFetching: readsEnabled && (needsProfile ? profile.isFetching : query.isFetching),
     isError: (isActive && !readsEnabled) || (needsProfile ? profile.isError || !profilePending : query.isError),

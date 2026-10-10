@@ -118,8 +118,8 @@ export function useRequestDriverActions({
     if (!canAcceptRequest || hasTripRequestExpired(tripRequest)) {
       setShowDirectAcceptModal(false);
       showDialog({
-        title: 'Demande indisponible',
-        message: "Cette demande n'est plus disponible. Consultez les autres demandes de trajet.",
+        title: 'Commande indisponible',
+        message: "Cette commande n'est plus disponible. Consultez les autres commandes de trajet.",
         variant: 'info',
       });
       return;
@@ -128,7 +128,7 @@ export function useRequestDriverActions({
       setShowDirectAcceptModal(false);
       showDialog({
         title: 'Véhicule non disponible',
-        message: `Cette demande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
+        message: `Cette commande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
         variant: 'warning',
         actions: [{ label: 'Fermer', variant: 'ghost' }],
       });
@@ -188,11 +188,11 @@ export function useRequestDriverActions({
           if (!transition.isCurrent()) return;
           const startErrorMessage = getApiErrorMessage(
             startError,
-            'La demande est accept\u00E9e, mais le trajet n\u2019a pas pu d\u00E9marrer tout de suite.',
+            'La commande est accept\u00E9e, mais le trajet n\u2019a pas pu d\u00E9marrer tout de suite.',
           );
 
           showDialog({
-            title: 'Demande accept\u00E9e',
+            title: 'Commande accept\u00E9e',
             message: `${startErrorMessage} Vous pouvez ouvrir le trajet pour le lancer depuis son \u00E9cran de gestion.`,
             variant: 'warning',
             actions: [
@@ -223,7 +223,7 @@ export function useRequestDriverActions({
       setShowDirectAcceptModal(false);
       const resolvedMessage = getApiErrorMessage(
         error,
-        'Impossible d\u2019accepter cette demande pour le moment.',
+        'Impossible d\u2019accepter cette commande pour le moment.',
       );
       const isQuotaError = isDailyPublicationLimitError(error);
       const isDriverError = isDriverRequiredError(error);
@@ -264,7 +264,7 @@ export function useRequestDriverActions({
     if (compatibleActiveVehicles.length === 0) {
       showDialog({
         title: 'Véhicule non disponible',
-        message: `Cette demande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
+        message: `Cette commande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
         variant: 'warning',
         actions: [{ label: 'Fermer', variant: 'ghost' }],
       });

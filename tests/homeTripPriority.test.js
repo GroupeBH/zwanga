@@ -7,7 +7,7 @@ const origin = { latitude: -4.325, longitude: 15.3222 };
 const later = delay => new Date(Date.now() + delay).toISOString();
 const trip = (id, extra = {}) => ({
   id, driverId: 'driver', status: 'upcoming', departureTime: later(3600000),
-  departure: { lat: -4.325, lng: 15.3223 }, arrival: { lat: -4.45, lng: 15.45 }, ...extra,
+  departure: { lat: -4.325, lng: 15.3223 }, arrival: { lat: -4.45, lng: 15.45 }, availableSeats: 3, ...extra,
 });
 const native = { 'react-native': { StyleSheet: { create: value => value } } };
 const { rankHomeTripsByProximity: rank } = loader(native)('features/home/homeTripPriority.ts');
@@ -69,6 +69,38 @@ test('existing reservations stay first, with an active reservation ahead of upco
   assert.deepEqual(ids(rank([trip('near'), reserved, active], origin, new Set(['active', 'reserved']))), ['active', 'reserved', 'near']);
 });
 
+test('Home suggestions enforce 5 km and the next 24 hours before ranking, but retain reservations', () => {
+  const now = Date.parse('2026-10-10T12:00:00Z');
+  const at = delay => new Date(now + delay).toISOString();
+  const inWindow = (id, extra = {}) => trip(id, { departureTime: at(3600000), ...extra });
+  const records = Object.freeze([
+    inWindow('near-future', { departureTime: at(24 * 3600000 + 1) }),
+    inWindow('far', { departure: { lat: origin.latitude + 0.046, lng: origin.longitude } }),
+    inWindow('just-inside', { departure: { lat: origin.latitude + 0.044, lng: origin.longitude } }),
+    inWindow('last-hour', { departureTime: at(24 * 3600000) }),
+    inWindow('near-soon', { departureTime: at(600000) }),
+    inWindow('past', { departureTime: at(-1) }),
+    inWindow('full', { availableSeats: 0 }),
+    inWindow('invalid-date', { departureTime: 'invalid' }),
+    inWindow('unknown-departure', { departure: null }),
+    inWindow('started', { status: 'ongoing' }),
+    inWindow('cancelled', { status: 'cancelled' }),
+    inWindow('reserved', { departureTime: at(48 * 3600000), departure: { lat: -4.5, lng: 15.5 }, availableSeats: 0 }),
+  ]);
+  assert.deepEqual(ids(rank(records, origin, new Set(['reserved']), now, true)),
+    ['reserved', 'near-soon', 'last-hour', 'just-inside']);
+  assert.equal(records.length, 12, 'the shared discovery cache is not mutated');
+  // Ranking outside this Home-only filter remains available for broader discovery.
+  assert.equal(rank(records, origin, noBookings, now).length, 12);
+});
+
+test('without a valid position Home never advertises distant trips as nearby and still retains bookings', () => {
+  const records = [trip('unknown-distance'), trip('booked')];
+  for (const position of [null, undefined, { latitude: 0, longitude: 0 }, { latitude: NaN, longitude: 15 }]) {
+    assert.deepEqual(ids(rank(records, position, new Set(['booked']), Date.now(), true)), ['booked']);
+  }
+});
+
 function selection(initial = {}, mocks = {}) {
   const hooks = hookHarness();
   const props = {
@@ -84,7 +116,7 @@ function selection(initial = {}, mocks = {}) {
 }
 
 test('Home ranks all eligible fetched trips before retaining ten results for the sheet and map', () => {
-  const farTrips = Array.from({ length: 15 }, (_, i) => trip(`far-${i}`, { departure: { lat: -4.5, lng: 15.5 } }));
+  const farTrips = Array.from({ length: 15 }, (_, i) => trip(`far-${i}`, { departure: { lat: -4.34, lng: 15.34 } }));
   const h = selection({ remoteTrips: Object.freeze([...farTrips, trip('closest'),
     trip('own', { driverId: 'me' }), trip('expired', { departureTime: '2020-01-01' }), trip('done')]), completedBookingTripIds: new Set(['done']) });
   const result = h.render();
@@ -92,6 +124,40 @@ test('Home ranks all eligible fetched trips before retaining ten results for the
   assert.equal(result.latestTrips.length, 10);
   assert.equal(result.latestTrips.some(item => ['own', 'expired', 'done'].includes(item.id)), false);
   assert.equal(result.homeMapTrips, result.latestTrips);
+  h.hooks.unmount();
+});
+
+test('distant, later, terminal and missing-location trips stay out of Home even when supplied by a fallback cache', () => {
+  const far = trip('far', { departure: { lat: -4.5, lng: 15.5 } });
+  const booked = trip('reserved', { departureTime: later(48 * 3600000), departure: far.departure });
+  const h = selection({ remoteTrips: undefined, storedTrips: [far, trip('later', { departureTime: later(48 * 3600000) }),
+    trip('cancelled', { status: 'cancelled' }), trip('completed', { status: 'completed' }), trip('near')],
+    bookedTripIds: new Set(['reserved']), activeBookings: [{ id: 'booking', passengerId: 'me', status: 'accepted', trip: booked, tripId: booked.id }] });
+  assert.deepEqual(ids(h.render().latestTrips), ['reserved', 'near']);
+  h.props.liveUserCoordinate = null;
+  assert.deepEqual(ids(h.render().latestTrips), ['reserved']);
+  assert.equal(h.render().hasTripLocation, false);
+  h.props.liveUserCoordinate = origin;
+  assert.equal(h.render().hasTripLocation, true);
+  assert.deepEqual(ids(h.render().latestTrips), ['reserved', 'near']);
+  h.hooks.unmount();
+});
+
+test('existing feed refreshes and foreground entry re-evaluate the time window without new timers', t => {
+  let now = Date.parse('2026-10-10T12:00:00Z');
+  t.mock.method(Date, 'now', () => now);
+  const h = selection({ isScreenActive: true, discoveryUpdatedAt: now,
+    remoteTrips: [trip('soon', { departureTime: later(30000) }), trip('next-day', { departureTime: later(24 * 3600000 + 30000) })] });
+  const first = h.render().latestTrips;
+  assert.deepEqual(ids(first), ['soon']);
+  for (let i = 0; i < 100; i++) assert.equal(h.render().latestTrips, first);
+  now += 60000;
+  h.props.discoveryUpdatedAt = now;
+  assert.deepEqual(ids(h.render().latestTrips), ['next-day']);
+  h.props.isScreenActive = false; h.render();
+  now += 24 * 3600000;
+  h.props.isScreenActive = true;
+  assert.deepEqual(ids(h.render().latestTrips), []);
   h.hooks.unmount();
 });
 

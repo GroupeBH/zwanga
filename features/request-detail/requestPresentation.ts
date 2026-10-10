@@ -80,16 +80,16 @@ export function buildRequestDetailPresentation({
           : tripRequest.status === 'pending'
             ? 0
             : -1;
-  const heroSteps = ['Demande', 'Réponses', 'Conducteur', 'Départ'];
+  const heroSteps = ['Commande', 'Réponses', 'Conducteur', 'Départ'];
   const ownerHero = (() => {
     if (isRequestClosed) {
       return {
-        title: tripRequest.status === 'expired' ? 'Votre demande a expiré' : 'Votre demande est annulée',
+        title: tripRequest.status === 'expired' ? 'Votre commande a expiré' : 'Votre commande est annulée',
         subtitle: tripRequest.tripId
-          ? "Cette demande n'est plus active. Le trajet associé reste consultable."
+          ? "Cette commande n'est plus active. Le trajet associé reste consultable."
           : tripRequest.status === 'expired' && !tripRequest.selectedDriverId && !tripRequest.offers?.some(offer => offer.status === 'accepted')
-            ? 'Vous pouvez reprogrammer cette demande en choisissant un nouveau créneau futur.'
-            : "Cette demande n'est plus disponible. Vous pouvez créer une nouvelle demande.",
+            ? 'Vous pouvez reprogrammer cette commande en choisissant un nouveau créneau futur.'
+            : "Cette commande n'est plus disponible. Vous pouvez créer une nouvelle commande.",
       };
     }
     if (tripRequest.tripId) {
@@ -103,7 +103,7 @@ export function buildRequestDetailPresentation({
         title: tripRequest.selectedDriverName
           ? `${tripRequest.selectedDriverName} prépare votre prise en charge`
           : 'Votre conducteur a été confirmé',
-        subtitle: "Cette demande reste active jusqu'à 2 heures après l'heure limite de départ souhaitée.",
+        subtitle: "Cette commande reste active jusqu'à 2 heures après l'heure limite de départ souhaitée.",
       };
     }
     if (tripRequest.status === 'offers_received' || pendingOffersCount > 0) {
@@ -117,12 +117,12 @@ export function buildRequestDetailPresentation({
     }
     return {
       title: 'Nous cherchons un conducteur',
-      subtitle: "Sans conducteur confirmé, votre demande expire 3 heures après l'heure limite de départ souhaitée.",
+      subtitle: "Sans conducteur confirmé, votre commande expire 3 heures après l'heure limite de départ souhaitée.",
     };
   })();
   const ownerHeroHintMessage =
     isRequestClosed
-      ? "Cette demande n'est plus disponible pour les conducteurs."
+      ? "Cette commande n'est plus disponible pour les conducteurs."
       : pendingOffersCount > 0
         ? 'Les réponses arrivent. Le conducteur retenu apparaîtra ici.'
         : "Vous serez alerté dès qu'un conducteur se manifeste.";
@@ -130,8 +130,8 @@ export function buildRequestDetailPresentation({
     if (isRequestClosed) {
       return {
         badge: statusConfig.label,
-        title: tripRequest.status === 'expired' ? 'Cette demande a expiré' : 'Cette demande est annulée',
-        subtitle: "Elle n'est plus disponible. Consultez les autres demandes depuis l'accueil ou la recherche.",
+        title: tripRequest.status === 'expired' ? 'Cette commande a expiré' : 'Cette commande est annulée',
+        subtitle: "Elle n'est plus disponible. Consultez les autres commandes depuis l'accueil ou la recherche.",
       };
     }
     if (canOpenAssignedTrip) {
@@ -144,7 +144,7 @@ export function buildRequestDetailPresentation({
     if (canStartAssignedTrip) {
       return {
         badge: 'Confirmé',
-        title: 'Cette demande est pour vous',
+        title: 'Cette commande est pour vous',
         subtitle: 'Le passager est déjà réservé. Vous pouvez démarrer le trajet dès maintenant.',
       };
     }
@@ -166,21 +166,21 @@ export function buildRequestDetailPresentation({
       return {
         badge: 'Clôturé',
         title: 'Votre ancienne réponse n\'a pas été retenue',
-        subtitle: 'Vous pouvez consulter d\'autres demandes disponibles depuis l\'accueil ou la liste des demandes.',
+        subtitle: 'Vous pouvez consulter d\'autres commandes disponibles depuis l\'accueil ou la liste des commandes.',
       };
     }
     if (!isDriverAccount) {
       return {
         badge: 'Profil',
         title: 'Activez votre profil conducteur',
-        subtitle: 'Cette demande est ouverte, mais votre compte doit devenir conducteur pour l\'accepter.',
+        subtitle: 'Cette commande est ouverte, mais votre compte doit devenir conducteur pour l\'accepter.',
       };
     }
     if (!isIdentityVerified) {
       return {
         badge: 'Identité',
         title: 'Vérifiez votre identité pour accepter',
-        subtitle: 'Une vérification rapide est nécessaire avant d\'accepter cette demande.',
+        subtitle: 'Une vérification rapide est nécessaire avant d\'accepter cette commande.',
       };
     }
     if (compatibleActiveVehicles.length === 0) {
@@ -192,8 +192,8 @@ export function buildRequestDetailPresentation({
     }
     return {
       badge: statusConfig.label,
-      title: 'Cette demande n’est pas disponible',
-      subtitle: 'Actualisez l’écran ou consultez une autre demande de trajet.',
+      title: 'Cette commande n’est pas disponible',
+      subtitle: 'Actualisez l’écran ou consultez une autre commande de trajet.',
     };
   })();
 

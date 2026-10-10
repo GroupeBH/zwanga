@@ -10,7 +10,7 @@ const { BookingListCard } = load('features/bookings/BookingListCard.tsx');
 const { RequestListCard } = load('features/requests/RequestListCard.tsx');
 const trip = Object.freeze({ id: 'trip', departure: { name: 'Avenue Matadi' }, arrival: { name: 'Gombe' },
   departureTime: '2099-09-18T11:00:00Z', status: 'upcoming', price: 2500,
-  driverName: 'Alex', driverAvatar: 'https://example.test/driver.jpg', driver: { phone: '000' } });
+  driverId: 'driver', driverName: 'Alex', driverAvatar: 'https://example.test/driver.jpg', driver: { phone: '000' } });
 const booking = Object.freeze({ id: 'booking', tripId: trip.id, trip, status: 'accepted', numberOfSeats: 2 });
 const request = Object.freeze({ id: 'request', departure: trip.departure, arrival: trip.arrival,
   departureDateMin: trip.departureTime, departureDateMax: '2099-09-18T11:30:00Z',
@@ -41,9 +41,7 @@ function reservation(overrides = {}, options = {}) {
   const calls = [];
   const result = render(BookingListCard, { booking: { ...booking, ...overrides }, activeTab: 'active',
     router: { push: path => calls.push(['route', path]) }, handleCancel: id => calls.push(['cancel', id]),
-    setSelectedDriverPhone: phone => calls.push(['phone', phone]),
-    setSelectedDriverName: name => calls.push(['name', name]),
-    setContactModalVisible: value => calls.push(['modal', value]), ...options });
+    onContact: booking => calls.push(['contact', booking.id]), ...options });
   return { ...result, calls };
 }
 
@@ -108,8 +106,8 @@ test('reservations retain the original detail route, total estimate, personal de
   }
   assert.equal(result.nodes.find(node => node.type === 'Image').props.source.uri, trip.driverAvatar);
   result.buttons[0].props.onPress();
-  result.button('WhatsApp').props.onPress(); result.button('Annuler').props.onPress();
-  assert.deepEqual(result.calls, [['route', '/trip/trip'], ['phone', '000'], ['name', 'Alex'], ['modal', true], ['cancel', booking.id]]);
+  result.button('Contacter').props.onPress(); result.button('Annuler').props.onPress();
+  assert.deepEqual(result.calls, [['route', '/trip/trip'], ['contact', booking.id], ['cancel', booking.id]]);
   assert.equal(result.button('Suivre le trajet'), undefined);
 });
 
@@ -120,10 +118,16 @@ test('ongoing reservations still open passenger navigation even after the depart
   assert.deepEqual(result.calls, [['route', '/booking/navigate/booking']]);
 });
 
+test('an accepted reservation can open contact for in-app messaging without a driver phone', () => {
+  const result = reservation({ trip: { ...trip, driver: { ...trip.driver, phone: null } } });
+  result.button('Contacter').props.onPress();
+  assert.deepEqual(result.calls, [['contact', booking.id]]);
+});
+
 test('expiry, history and synchronization retain their contact/cancel guards', () => {
   for (const flags of [{ pickedUp: true }, { droppedOffConfirmedByPassenger: true }]) {
     const result = reservation(flags);
-    assert.equal(result.button('WhatsApp'), undefined);
+    assert.equal(result.button('Contacter'), undefined);
     assert.equal(result.button('Annuler'), undefined);
     assert.match(result.text, /Synchronisation|Finalisation/);
   }

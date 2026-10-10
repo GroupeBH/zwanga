@@ -128,7 +128,7 @@ function profileFixture() {
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: query('settlements') },
     '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans'), useGetPremiumOverviewQuery: query('premium') },
-    '@/store/api/reviewApi': { useGetReviewsQuery: query('reviews'), useGetAverageRatingQuery: query('rating') },
+    '@/store/api/reviewApi': { useGetReviewPageQuery: query('reviews'), useGetAverageRatingQuery: query('rating') },
     '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests'), useGetMyDriverOffersQuery: query('offers') },
   })('hooks/profile/useProfileData.ts');
   return { hooks, state, values, calls, refreshes, render: () => hooks.render(useProfileData) };

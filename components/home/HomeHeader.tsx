@@ -24,6 +24,7 @@ type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'insets'
     | 'router'
+    | 'isDriver'
   >
   & Pick<ReturnType<typeof useHomeSheet>,
     'avatarUri'
@@ -54,6 +55,7 @@ type Props =
 export const HomeHeader = React.memo(function HomeHeader({
   insets,
   router,
+  isDriver,
   avatarUri,
   firstName,
   ongoingDriverTrip,
@@ -125,31 +127,42 @@ export const HomeHeader = React.memo(function HomeHeader({
     </View>
 
     <View style={styles.actionDock}>
+      <Text style={styles.actionHeading} accessibilityRole="header">Que voulez-vous faire ?</Text>
+      <View style={styles.primaryActions}>
+        <TouchableOpacity
+          activeOpacity={0.88}
+          style={[styles.actionButton, styles.actionSearchButton]}
+          accessibilityRole="button"
+          accessibilityLabel={isDriver ? 'Je cherche un client' : 'Je cherche un trajet'}
+          accessibilityHint={isDriver ? 'Voir les commandes des passagers à prendre en charge.' : 'Voir les trajets publiés et réserver une place.'}
+          onPress={() => { if (isDriver) router.push('/requests'); else router.push('/search'); }}
+        >
+          <Ionicons name="search" size={20} color={Colors.white} accessible={false} />
+          <Text style={[styles.actionButtonText, styles.actionSearchText]}>{isDriver ? 'Je cherche un client' : 'Je cherche un trajet'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.88}
+          style={[styles.actionButton, styles.actionPublishButton]}
+          accessibilityRole="button"
+          accessibilityLabel="Je propose un trajet"
+          accessibilityHint="Publier votre trajet pour prendre des passagers."
+          onPress={() => router.push('/publish')}
+        >
+          <Ionicons name="car-outline" size={20} color={Colors.primaryDark} accessible={false} />
+          <Text style={styles.actionButtonText}>Je propose un trajet</Text>
+        </TouchableOpacity>
+      </View>
       <TouchableOpacity
         activeOpacity={0.88}
-        style={[styles.actionButton, styles.actionPublishButton]}
-        onPress={() => router.push('/publish')}
-      >
-        <Ionicons name="add-circle-outline" size={18} color={Colors.white} />
-        <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Publier</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.88}
-        style={[styles.actionButton, styles.actionRequestButton]}
+        style={styles.actionRequestButton}
         accessibilityRole="button"
-        accessibilityLabel="Commander un trajet"
+        accessibilityLabel="Je commande un trajet"
+        accessibilityHint="Indiquer votre départ et votre destination pour trouver un conducteur."
         onPress={() => router.push(getTripRequestCreateHref())}
       >
-        <Ionicons name="paper-plane-outline" size={16} color={Colors.white} />
-        <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Commander</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.88}
-        style={styles.actionSearchButton}
-        onPress={() => router.push('/search')}
-      >
-        <Ionicons name="search" size={17} color={Colors.white} />
-        <Text style={styles.actionSearchText} numberOfLines={1}>Chercher</Text>
+        <Ionicons name="paper-plane-outline" size={18} color={Colors.primaryDark} accessible={false} />
+        <Text style={styles.actionRequestText}>Je commande un trajet</Text>
+        <Ionicons name="chevron-forward" size={16} color={Colors.primaryDark} accessible={false} />
       </TouchableOpacity>
     </View>
 

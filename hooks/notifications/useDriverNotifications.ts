@@ -7,15 +7,20 @@ import { invitationHref, notificationDecision, parseDriverInvitation, parseDrive
 import { configureDriverNotifications, displayDriverInvitation, silenceDriverInvitations } from '@/services/driverNotifications';
 import { respondToDriverNotification } from '@/services/driverNotificationResponse';
 import { takePendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
+import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 
-export function useDriverNotifications(userId: string | undefined) {
+export function useDriverNotifications(userId: string | undefined, driverAccount: boolean) {
   const router = useRouter();
   const seen = useRef(new Set<string>());
   useEffect(() => {
     seen.current.clear();
     if (!userId || Platform.OS === 'web') return;
     let disposed = false;
+    const allowed = (data: Record<string, unknown> | undefined) => canShowRequestNotification(data, {
+      id: userId, role: driverAccount ? 'driver' : 'passenger',
+    });
     const open = async (raw: Record<string, unknown> | undefined, action?: string, pressed = false, initial = false) => {
+      if (!allowed(raw)) return;
       if (pressed && !initial) takePendingDriverOpen(userId);
       const result = parseDriverResponseResult(raw);
       if (result) {
@@ -48,7 +53,7 @@ export function useDriverNotifications(userId: string | undefined) {
     if (pendingOpen) void open(pendingOpen, 'default', true).catch(() => {});
     const foreground = Notifications.addNotificationReceivedListener(notification => {
       const data = readDriverPushData(notification);
-      if (!data || !parseDriverInvitation(data)) return;
+      if (!data || !allowed(data) || parseDriverInvitation(data)?.driverId !== userId) return;
       void displayDriverInvitation(data).catch(() => {});
       void open(data).catch(() => {});
     });
@@ -70,5 +75,5 @@ export function useDriverNotifications(userId: string | undefined) {
       if (event) return open(event.notification.data, event.pressAction.id, true, true);
     }).catch(() => {});
     return () => { disposed = true; appState.remove(); foreground.remove(); response.remove(); native(); };
-  }, [router, userId]);
+  }, [router, userId, driverAccount]);
 }

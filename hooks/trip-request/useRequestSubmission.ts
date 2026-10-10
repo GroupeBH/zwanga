@@ -1,6 +1,7 @@
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { MUTATION_RECONCILIATION_DELAYS_MS } from '@/constants/network';
+import { recoverRequest, type RequestAttempt } from '@/features/trip-request/recoverRequest';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 import { getLocationCoordinates, RequestFormStep } from '@/features/trip-request/requestFormModel';
 import { trackEvent } from '@/services/analytics';
 import {
@@ -12,9 +13,8 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { getPassengerSeatValidation, getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRequestDraft } from './useRequestDraft';
-import { useDriverDispatchStatusQuery } from '@/store/api/driverDispatchApi';
 import type { useRequestSchedule } from './useRequestSchedule';
 
 type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'hasChosenDepartureTime' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
@@ -54,7 +54,15 @@ export function useRequestSubmission({
   const { showDialog } = useDialog();
   const { isIdentityVerified, checkIdentity, refreshKycStatus } = useIdentityCheck();
   const createRequestInFlightRef = useRef(false);
-  const { data: dispatchStatus } = useDriverDispatchStatusQuery();
+  const pendingAttempt = useRef<RequestAttempt | null>(null);
+  const confirmed = useRef(false);
+  const leaving = useRef(false);
+  const lifetime = useRef({ mounted: true, version: getTokenSessionVersion() });
+  useEffect(() => {
+    lifetime.current.mounted = true;
+    return () => { lifetime.current.mounted = false; };
+  }, []);
+  const current = () => lifetime.current.mounted && !leaving.current && lifetime.current.version === getTokenSessionVersion();
 
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
 
@@ -67,6 +75,18 @@ export function useRequestSubmission({
   const [requestSentWithoutDetail, setRequestSentWithoutDetail] = useState(false);
 
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+  const verifyPendingRequest = async () => {
+    const attempt = pendingAttempt.current;
+    if (!attempt || !current()) return;
+    setRequestSentWithoutDetail(false);
+    setSubmissionRecoveryMessage('Vérification de l’envoi…');
+    const id = await recoverRequest(attempt, () => getMyTripRequests(undefined, false).unwrap(), current);
+    if (!current()) return;
+    setSubmissionRecoveryMessage(null);
+    if (id) { confirmed.current = true; pendingAttempt.current = null; setCreatedRequestId(id); }
+    else setRequestSentWithoutDetail(true);
+  };
 
   const validate = (departureWindow = getCurrentDepartureWindow()) => {
     if (!hasDepartureAddress) {
@@ -122,7 +142,12 @@ export function useRequestSubmission({
   };
 
   const handleCreateRequest = async () => {
-    if (createRequestInFlightRef.current || isCreating) return;
+    if (!current() || createRequestInFlightRef.current || isCreating || confirmed.current) return;
+    if (pendingAttempt.current) {
+      createRequestInFlightRef.current = true;
+      try { await verifyPendingRequest(); } finally { createRequestInFlightRef.current = false; }
+      return;
+    }
     setSubmissionError(null);
     setCreatedRequestId(null);
     setSubmissionRecoveryMessage(null);
@@ -149,7 +174,7 @@ export function useRequestSubmission({
     if (!Number.isFinite(confirmedPricePerSeat) || confirmedPricePerSeat <= 0) {
       showDialog({
         title: 'Budget invalide',
-        message: "Indiquez le montant que vous avez prévu pour la course avant d'envoyer la demande.",
+        message: "Indiquez le montant que vous avez prévu pour la course avant d'envoyer la commande.",
         variant: 'warning',
       });
       return;
@@ -165,15 +190,21 @@ export function useRequestSubmission({
     if (!canSubmitRequestDetails) {
       showDialog({
         title: 'Budget requis',
-        message: "Le tarif automatique n'est pas disponible pour le moment. Fixez votre budget maximum par place, puis envoyez la demande.",
+        message: "Le tarif automatique n'est pas disponible pour le moment. Fixez votre budget maximum par place, puis envoyez la commande.",
         variant: 'warning',
       });
       return;
     }
     createRequestInFlightRef.current = true;
     const submissionStartedAt = Date.now();
+    pendingAttempt.current = { startedAt: submissionStartedAt,
+      departure: departureAddress.trim().toLowerCase(), arrival: arrivalAddress.trim().toLowerCase(),
+      departureDateMin: departureWindow.min.toISOString(), departureDateMax: departureWindow.max.toISOString(),
+      seats: hasSpecifiedNumberOfSeats ? numberOfSeats : 1, price: confirmedPricePerSeat, vehicleType: selectedVehicleType };
 
     const showRequestSuccess = (requestId: string) => {
+      confirmed.current = true;
+      pendingAttempt.current = null;
       setSubmissionRecoveryMessage(null);
       setRequestSentWithoutDetail(false);
       setCreatedRequestId(requestId);
@@ -192,7 +223,9 @@ export function useRequestSubmission({
         arrivalCoordinates,
         departureDateMin: departureWindow.min.toISOString(),
         departureDateMax: departureWindow.max.toISOString(),
-        ...(timePreset === 'now' && dispatchStatus?.enabled ? { immediateDispatch: true } : {}),
+        // Send the passenger's intent, not a possibly missing/stale feature-status read.
+        // The server owns activation; scheduled orders retain their normal acceptance flow.
+        immediateDispatch: timePreset === 'now',
         ...(hasSpecifiedNumberOfSeats ? { numberOfSeats } : {}),
         vehicleType: selectedVehicleType,
         maxPricePerSeat: confirmedPricePerSeat,
@@ -208,60 +241,24 @@ export function useRequestSubmission({
         has_description: Boolean(description.trim()),
         flexibility_minutes: departureWindow.flex,
       });
-      showRequestSuccess(String(createdRequest.id));
+      if (!current()) return;
+      if (createdRequest?.id) showRequestSuccess(String(createdRequest.id));
+      else await verifyPendingRequest();
     } catch (error: any) {
+      if (!current()) return;
       if (isPassengerKycRequiredError(error)) {
+        pendingAttempt.current = null;
         refreshKycStatus();
         checkIdentity(isExtraSeatsIdentityError(error) ? 'extra_seats' : 'request', { force: true });
         setSubmissionError(getApiErrorMessage(error, 'Vérifiez votre identité avant de continuer.'));
       } else if (isAmbiguousTransportError(error)) {
-        setCreatedRequestId(null);
-        setRequestSentWithoutDetail(false);
-        setSubmissionRecoveryMessage(
-          'Demande envoyée. Récupération du détail en cours…',
-        );
-
-        let recoveredRequestId: string | null = null;
-        for (const delayMs of MUTATION_RECONCILIATION_DELAYS_MS) {
-          if (recoveredRequestId) break;
-          if (delayMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
-          }
-          try {
-            const requests = await getMyTripRequests(undefined, false).unwrap();
-            const normalizedDeparture = departureAddress.trim().toLowerCase();
-            const normalizedArrival = arrivalAddress.trim().toLowerCase();
-            const matchingRequest = [...requests]
-              .filter((request) => {
-                const createdAt = new Date(request.createdAt).getTime();
-                return (
-                  Number.isFinite(createdAt) &&
-                  createdAt >= submissionStartedAt - 10_000 &&
-                  request.departure.name.trim().toLowerCase() === normalizedDeparture &&
-                  request.arrival.name.trim().toLowerCase() === normalizedArrival
-                );
-              })
-              .sort(
-                (left, right) =>
-                  new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
-              )[0];
-            recoveredRequestId = matchingRequest?.id ? String(matchingRequest.id) : null;
-          } catch {
-            // Retry: the POST may be committed before the list endpoint catches up.
-          }
-        }
-
-        if (recoveredRequestId) {
-          showRequestSuccess(recoveredRequestId);
-        } else {
-          setSubmissionRecoveryMessage(null);
-          setRequestSentWithoutDetail(true);
-        }
+        await verifyPendingRequest();
       } else {
+        pendingAttempt.current = null;
         setSubmissionError(
           getApiErrorMessage(
             error,
-            'Impossible de créer la demande pour le moment. Vérifiez les informations puis réessayez.',
+            'Impossible de créer la commande pour le moment. Vérifiez les informations puis réessayez.',
           ),
         );
       }
@@ -279,25 +276,29 @@ export function useRequestSubmission({
   );
 
   const requestSuccessDetailLabel = createdRequestId
-    ? 'Voir la demande'
-    : 'Voir mes demandes';
+    ? 'Voir la commande'
+    : 'Vérifier à nouveau';
 
   const requestSuccessText = isResolvingSentRequest
-    ? 'Votre demande est envoyée. Nous retrouvons son détail avant de vous proposer la suite.'
+    ? 'Nous vérifions si votre commande a bien été enregistrée.'
     : createdRequestId
-      ? 'Votre demande est prête. Vous pouvez suivre les réponses des conducteurs ou revenir à l’accueil.'
-      : 'Votre demande a été envoyée, mais le détail n’a pas pu être ouvert automatiquement. Retrouvez-la dans vos demandes.';
+      ? 'Votre commande est prête. Vous pouvez suivre les réponses des conducteurs ou revenir à l’accueil.'
+      : 'La connexion a été interrompue. Vérifiez l’envoi ou consultez vos commandes avant de recommencer.';
 
   const goToRequestSuccessDetail = () => {
+    if (!current()) return;
     if (createdRequestId) {
+      leaving.current = true;
       router.replace(getTripRequestDetailHref(createdRequestId));
       return;
     }
-    router.replace('/my-requests');
+    void handleCreateRequest();
   };
 
   const goHomeAfterRequestSuccess = () => {
-    router.replace('/(tabs)');
+    if (!current() || createRequestInFlightRef.current) return;
+    leaving.current = true;
+    router.replace(createdRequestId ? '/(tabs)' : '/my-requests');
   };
   return {
     createdRequestId,

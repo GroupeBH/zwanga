@@ -119,9 +119,34 @@ function screenApp() {
   const render = (props) => hooks.render(() => Screen(props));
   const list = tree => nodes(tree).find(node => node.type === 'FlatList');
   const toolbar = tree => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === Toolbar);
-  const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Demandes' : 'Trajets')).props.onPress();
+  const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Commandes' : 'Trajets')).props.onPress();
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
+
+test('passenger search exposes only published trips and never subscribes to the available orders feed', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.isDriver = false;
+  const tree = app.render();
+  assert.equal(nodes(tree).some(node => node.type === 'TouchableOpacity' && text(node) === 'Commandes'), false);
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  assert.equal(app.coordinateReads, 0);
+  app.profileUnavailable = true;
+  assert.equal(nodes(app.render()).some(node => node.type === 'TouchableOpacity' && text(node) === 'Commandes'), false,
+    'a legacy stored driver identity must not grant access without a server profile');
+  app.hooks.unmount();
+});
+
+test('losing the driver role immediately removes a selected commands tab and cached driver results', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.switchMode(app.render(), 'requests');
+  assert.equal(app.list(app.render()).props.data[0].request.id, 'request');
+  app.isDriver = false;
+  const tree = app.render();
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  app.hooks.unmount();
+});
 
 test('empty trip search offers Commander ce trajet without changing the request creation route', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });

@@ -21,7 +21,7 @@ export default function VerificationScreen() {
     const normalizedSource = Array.isArray(source) ? source[0] : source;
     const isExtraSeatsVerification = normalizedSource === 'extra_seats';
     const isPassengerVerification = normalizedSource === 'book' || normalizedSource === 'request' || isExtraSeatsVerification;
-    const passengerActionLabel = normalizedSource === 'request' ? 'demande de trajet' : 'réservation';
+    const passengerActionLabel = normalizedSource === 'request' ? 'commande de trajet' : 'réservation';
     const heroTitle = 'Vérifier mon identité';
     const heroSubtitle = isExtraSeatsVerification
         ? 'Pour réserver 3 places ou plus, vérifiez votre identité. Vous restez passager : aucun véhicule à ajouter.'

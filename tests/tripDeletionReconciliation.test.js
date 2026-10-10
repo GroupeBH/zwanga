@@ -14,6 +14,8 @@ function fixture(serverResult) {
       const value = await loadSnapshot(); return value && isApplied(value) ? value : null;
     } },
   })('hooks/trips/useTripsManagementActions.ts');
+  // The module's Redux hook is injected above; this fixture does not render React.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const actions = useTripsManagementActions({ deleteTarget: { id: 'trip' },
     deleteTripMutation: () => ({ unwrap: async () => { throw { status: 'FETCH_ERROR' }; } }),
     showFeedback: (...args) => feedback.push(args), closeDeleteModal: () => closed++,

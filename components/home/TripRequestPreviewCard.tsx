@@ -25,7 +25,7 @@ export const TripRequestPreviewCard = React.memo(function TripRequestPreviewCard
       avatarName={passengerName}
       avatarUri={request.passengerAvatar}
       badge={pendingOffers > 0 ? `${pendingOffers} offre${pendingOffers > 1 ? 's' : ''}` : undefined}
-      accessibilityLabel={`Voir la demande de ${placeName(request.departure)} à ${placeName(request.arrival)}`}
+      accessibilityLabel={`Voir la commande de ${placeName(request.departure)} à ${placeName(request.arrival)}`}
       onPress={() => onOpen(request.id)}
     />
   );

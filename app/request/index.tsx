@@ -174,6 +174,7 @@ export default function RequestTripScreen() {
       </KeyboardAvoidingView>
 
       <RequestSuccessModal
+        createdRequestId={form.createdRequestId}
         goHomeAfterRequestSuccess={form.goHomeAfterRequestSuccess}
         goToRequestSuccessDetail={form.goToRequestSuccessDetail}
         insets={form.insets}

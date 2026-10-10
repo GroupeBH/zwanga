@@ -44,7 +44,7 @@ function AcceptedContactPrompt({ intent }: { intent: AcceptedRequestContactInten
   if ((fresh && request.currentData && !person) || (tripReady && !tripAllowed)) return null;
   return <ContactModalContent active contacts={person && tripReady && tripAllowed ? [person] : []}
     role="driver" onClose={close} title="Contactez votre passager"
-    hint="Demande acceptée ! Confirmez ensemble le lieu de prise en charge. À utiliser à l’arrêt."
+    hint="Commande acceptée ! Confirmez ensemble le lieu de prise en charge. À utiliser à l’arrêt."
     closeLabel="Plus tard" loading={!error && (!fresh || !tripReady)}
     loadError={error ? 'Contact indisponible pour le moment. Vérifiez votre connexion.' : undefined}
     onRetry={() => { void request.refetch(); if (tripId) void trip.refetch(); }} />;

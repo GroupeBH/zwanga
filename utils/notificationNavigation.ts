@@ -2,6 +2,7 @@ import type { Href, Router } from 'expo-router';
 import type { User } from '@/types';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { invitationHref, parseDriverInvitation } from '@/features/notifications/driverInvitation';
+import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 
 type NotificationData = Record<string, any>;
 
@@ -80,6 +81,7 @@ export const getTripUrl = (
 /** Single routing policy shared by push notifications and the notification inbox. */
 export function getNotificationHref(input: NotificationData, currentUser?: User): Href | null {
   const data = normalizeData(input);
+  if (currentUser && !canShowRequestNotification(data, currentUser)) return null;
   const type = getType(data);
   if (type === 'app_update') return '/app-update';
   if (type === 'wallet_transfer_in' || type === 'wallet_transfer_out') return '/wallet';
