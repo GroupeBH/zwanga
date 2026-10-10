@@ -104,6 +104,23 @@ test('iOS also navigates when the modal was dismissed before the start response 
   assert.deepEqual(app.routes, ['/trip/navigate/trip']);
 });
 
+for (const platform of ['ios', 'android']) {
+  test(`${platform}: accept without start opens management after dismissal, with no duplicate success dialog`, async t => {
+    const app = fixture(t, 'request', platform);
+    app.props.showDirectAcceptModal = true;
+    await app.render().handleDirectAcceptTripRequest(false);
+    assert.deepEqual(app.routes, []);
+    const view = app.render();
+    if (platform === 'ios') {
+      assert.deepEqual(app.routes, []); view.onDirectAcceptModalDismiss(); view.onDirectAcceptModalDismiss();
+    }
+    assert.deepEqual(app.routes, ['/trip/manage/trip']);
+    assert.deepEqual(app.calls.map(call => call[0]), ['accept']);
+    assert.equal(app.dialogs.length, 0); assert.equal(app.cached().status, 'upcoming');
+    assert.equal(app.state.reads, 0);
+  });
+}
+
 for (const kind of ['request', 'manage']) {
   test(`${kind}: confirming start goes directly to guidance and duplicate confirmation does not repeat the mutation`, async t => {
     const app = fixture(t, kind), pending = deferred();

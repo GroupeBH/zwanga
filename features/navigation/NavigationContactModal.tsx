@@ -1,6 +1,7 @@
 import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
-import { useTripContactMessaging } from '@/hooks/navigation/useTripContactMessaging';
+import { useContactMessaging } from '@/hooks/navigation/useTripContactMessaging';
+import { useIsFocused } from '@react-navigation/native';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
@@ -10,12 +11,21 @@ import type { NavigationContact } from './navigationContacts';
 
 interface Props { contacts: NavigationContact[]; role: 'driver' | 'passenger'; onClose: () => void; allowPhoneCall?: boolean }
 
-export function NavigationContactModal({ contacts, role, onClose, allowPhoneCall = true }: Props) {
+export function NavigationContactModal(props: Props) {
+  const active = useIsFocused();
+  return <ContactModalContent {...props} active={active} />;
+}
+
+export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = true, active, title, hint, closeLabel,
+  loading = false, loadError, onRetry }: Props & {
+  active: boolean; title?: string; hint?: string; closeLabel?: string;
+  loading?: boolean; loadError?: string; onRetry?: () => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
   const mounted = useRef(true);
-  const messaging = useTripContactMessaging(contacts, onClose);
+  const messaging = useContactMessaging(contacts, onClose, active);
   const close = () => { messaging.cancel(); onClose(); };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const contact = async (person: NavigationContact, channel: 'phone' | 'whatsapp' | 'message') => {
@@ -41,15 +51,22 @@ export function NavigationContactModal({ contacts, role, onClose, allowPhoneCall
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <View style={styles.header}>
           <View style={styles.copy}>
-            <Text style={styles.title}>{role === 'driver' ? 'Contacter un passager' : 'Contacter le conducteur'}</Text>
-            <Text style={styles.hint}>{role === 'driver' ? 'Choisissez la personne à joindre. Utilisez ces actions uniquement à l’arrêt.' : 'Choisissez comment joindre votre conducteur.'}</Text>
+            <Text style={styles.title}>{title ?? (role === 'driver' ? 'Contacter un passager' : 'Contacter le conducteur')}</Text>
+            <Text style={styles.hint}>{hint ?? (role === 'driver' ? 'Choisissez la personne à joindre. Utilisez ces actions uniquement à l’arrêt.' : 'Choisissez comment joindre votre conducteur.')}</Text>
           </View>
           <TouchableOpacity onPress={close} style={styles.close} accessibilityRole="button" accessibilityLabel="Fermer les contacts">
             <Ionicons name="close" size={24} color={Colors.gray[700]} />
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {contacts.length === 0 && <Text style={styles.hint}>Aucun contact disponible pour ce trajet.</Text>}
+          {loading && <ActivityIndicator color={Colors.primary} accessibilityLabel="Chargement du contact" />}
+          {loadError && <>
+            <Text style={styles.error} accessibilityRole="alert">{loadError}</Text>
+            <TouchableOpacity onPress={onRetry} style={styles.action} accessibilityRole="button">
+              <Text style={styles.actionLabel}>Réessayer</Text>
+            </TouchableOpacity>
+          </>}
+          {!loading && !loadError && contacts.length === 0 && <Text style={styles.hint}>Aucun contact disponible pour ce trajet.</Text>}
           {contacts.map(person => <View key={person.id} style={styles.person}>
             <Text style={styles.name}>{person.name}</Text>
             <Text style={styles.hint}>{person.detail}</Text>
@@ -81,6 +98,9 @@ export function NavigationContactModal({ contacts, role, onClose, allowPhoneCall
           </View>)}
           {error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
           <Text style={styles.hint}>{allowPhoneCall ? 'L’appel utilise le réseau téléphonique. ' : ''}La messagerie Zwanga et WhatsApp nécessitent Internet.</Text>
+          {closeLabel && <TouchableOpacity onPress={close} style={styles.action} accessibilityRole="button">
+            <Text style={styles.actionLabel}>{closeLabel}</Text>
+          </TouchableOpacity>}
         </ScrollView>
       </SafeAreaView>
     </View>

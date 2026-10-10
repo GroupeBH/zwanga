@@ -56,7 +56,7 @@ test('request acceptance still uses the selected vehicle and confirmed price is 
   const useRequestDriverActions = driverActionsHook();
   const params = {
     tripRequest: request, id: request.id, showDialog: value => dialogs.push(value),
-    router: { push: value => routes.push(value) }, refetch: noop,
+    router: { push: value => routes.push(value), replace: value => routes.push(value) }, refetch: noop,
     directAcceptDepartureDate: new Date(request.departureDateMin), canAcceptRequest: true,
     setShowDirectAcceptModal: noop, compatibleActiveVehicles: [vehicle('first'), vehicle('second')],
     requestedVehicleType: 'car', directAcceptVehicle: vehicle('second'),
@@ -70,7 +70,7 @@ test('request acceptance still uses the selected vehicle and confirmed price is 
   assert.deepEqual(calls, [{ tripRequestId: 'request', payload: {
     vehicleId: 'second', departureDate: '2099-01-01T10:00:00.000Z', requiresPassengerKyc: true,
   } }]);
-  dialogs.at(-1).actions[0].onPress();
+  assert.deepEqual(dialogs, [], 'the shared contact invitation replaces the old success dialog');
   assert.deepEqual(routes, ['/trip/manage/created']);
   calls.length = 0;
   await useRequestDriverActions({ ...params, directAcceptVehicle: null }).handleDirectAcceptTripRequest(false);

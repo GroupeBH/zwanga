@@ -95,10 +95,11 @@ for (const role of ['driver', 'passenger']) {
 
 function contactModal(phones = {}) {
   const hooks = hookHarness(); const calls = [];
-  const { NavigationContactModal } = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+  const { NavigationContactModal, ContactModalContent } = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+    '@react-navigation/native': { useIsFocused: () => true },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    '@/hooks/navigation/useTripContactMessaging': { useTripContactMessaging: () => ({ canMessage: true, userId: 'driver',
+    '@/hooks/navigation/useTripContactMessaging': { useContactMessaging: () => ({ canMessage: true, userId: 'driver',
       cancel: () => calls.push(['cancel']), openMessage: async person => { calls.push(['message', person.id]); await phones.message?.(person); } }) },
     '@/utils/phoneHelpers': { openPhoneCall: async (...args) => { calls.push(['phone', args[0]]); await phones.phone?.(...args); },
       openWhatsApp: async (...args) => { calls.push(['whatsapp', args[0]]); await phones.whatsapp?.(...args); } },
@@ -108,7 +109,11 @@ function contactModal(phones = {}) {
     { id: 'two', name: 'Bob', phone: '0999000222', detail: 'À prendre en charge' },
     { id: 'three', name: 'Charles', phone: null, detail: 'À prendre en charge' },
   ], onClose() {} };
-  let tree; const render = () => { tree = hooks.render(() => NavigationContactModal(props)); return tree; };
+  let tree; const render = () => {
+    const wrapper = NavigationContactModal(props);
+    assert.equal(wrapper.type, ContactModalContent);
+    tree = hooks.render(() => ContactModalContent(wrapper.props)); return tree;
+  };
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   render(); return { calls, hooks, props, render, button, tree: () => tree };
 }

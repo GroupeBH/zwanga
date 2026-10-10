@@ -1,3 +1,4 @@
+/* global __dirname */
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
@@ -55,7 +56,8 @@ test('search filters locally, resets scroll and clears when switching tabs; crea
   button(tree, 'Mes demandes').props.onPress(); tree = f.render();
   assert.equal(elements(tree).find(node => node.type === 'Input').props.value, '');
   assert.deepEqual(list(tree).props.data.map(item => item.id), ['mine']);
-  const create = elements(tree).filter(node => node.type === 'Button' && text(node) === 'Nouvelle demande');
+  const create = elements(tree).filter(node => node.type === 'Button' && text(node) === 'Commander un trajet');
+  assert.equal(create[0]?.props.accessibilityLabel, 'Commander un trajet');
   assert.equal(create.length, 1); create[0].props.onPress();
   assert.deepEqual(f.calls, [{ pathname: '/request-create' }]);
   f.hooks.unmount();

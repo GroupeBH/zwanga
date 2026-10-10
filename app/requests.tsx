@@ -114,13 +114,13 @@ export default function TripRequestsScreen() {
       />
 
       {activeTab === 'my-requests' && <View style={styles.footer}>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Créer une nouvelle demande de trajet"
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Commander un trajet"
           activeOpacity={0.8} style={styles.createButton} onPress={() => {
             Keyboard.dismiss();
             router.push(getTripRequestCreateHref());
           }}>
           <Ionicons name="add" size={22} color={Colors.white} />
-          <Text style={styles.createButtonText}>Nouvelle demande</Text>
+          <Text style={styles.createButtonText}>Commander un trajet</Text>
         </TouchableOpacity>
       </View>}
     </SafeAreaView>

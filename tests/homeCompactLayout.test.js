@@ -38,6 +38,22 @@ test('the greeting has no availability counter but retains ongoing-trip feedback
   assert.equal(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'driver' } })).includes('en cours'), false);
 });
 
+test('Commander opens the existing request form and keeps publishing and search actions unchanged', () => {
+  const calls = [];
+  const tree = HomeHeader.type({ insets: { top: 20 }, firstName: 'Alex', unreadNotifications: 0,
+    router: { push: route => calls.push(route) } });
+  const buttons = nodes(tree).filter(node => node.type === 'Button');
+  const command = buttons.find(node => node.props.accessibilityLabel === 'Commander un trajet');
+  assert.ok(command);
+  assert.equal(text(command), 'Commander');
+  assert.equal(command.props.accessibilityRole, 'button');
+  assert.doesNotMatch(text(tree), /Demander/);
+  command.props.onPress();
+  buttons.find(node => text(node) === 'Publier').props.onPress();
+  buttons.find(node => text(node) === 'Chercher').props.onPress();
+  assert.deepEqual(calls, [{ pathname: '/request-create' }, '/publish', '/search']);
+});
+
 test('expanded trips and requests wrap their content without fixed height or lost list virtualization', () => {
   for (const requests of [true, false]) {
     const onLayout = () => {};

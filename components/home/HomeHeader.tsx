@@ -136,10 +136,12 @@ export const HomeHeader = React.memo(function HomeHeader({
       <TouchableOpacity
         activeOpacity={0.88}
         style={[styles.actionButton, styles.actionRequestButton]}
+        accessibilityRole="button"
+        accessibilityLabel="Commander un trajet"
         onPress={() => router.push(getTripRequestCreateHref())}
       >
         <Ionicons name="paper-plane-outline" size={16} color={Colors.white} />
-        <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Demander</Text>
+        <Text style={[styles.actionButtonText, styles.actionButtonTextStrong]} numberOfLines={1}>Commander</Text>
       </TouchableOpacity>
       <TouchableOpacity
         activeOpacity={0.88}

@@ -123,6 +123,20 @@ function screenApp() {
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
 
+test('empty trip search offers Commander ce trajet without changing the request creation route', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  app.trips = [];
+  const header = app.list(app.render()).props.ListHeaderComponent;
+  assert.match(text(header), /Commandez ce trajet/);
+  assert.doesNotMatch(text(header), /Demander ce trajet|Demandez ce trajet/);
+  const command = nodes(header).find(node => node.type === 'TouchableOpacity' && text(node) === 'Commander ce trajet');
+  assert.ok(command);
+  command.props.onPress();
+  assert.deepEqual(app.routes, [{ pathname: '/request-create', params: { seats: '1' } }]);
+  app.hooks.unmount();
+});
+
 test('embedded search has a tab title without a back arrow and reserves the tab overlay without changing results', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = screenApp();

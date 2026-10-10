@@ -32,7 +32,7 @@ export default function RequestTripScreen() {
         <TouchableOpacity onPress={() => form.router.back()} style={styles.headerButton}>
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Demander un trajet</Text>
+        <Text style={styles.headerTitle}>Commander un trajet</Text>
         <View style={styles.headerSpacer} />
       </View>
 

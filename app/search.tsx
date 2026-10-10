@@ -257,11 +257,11 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>
-              Demandez ce trajet et les conducteurs disponibles pourront vous proposer une course.
+              Commandez ce trajet et les conducteurs disponibles pourront vous proposer une course.
             </Text>
             <TouchableOpacity style={styles.emptyActionButton} onPress={handleCreateTripRequest} activeOpacity={0.86}>
               <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
-              <Text style={styles.emptyActionText}>Demander ce trajet</Text>
+              <Text style={styles.emptyActionText}>Commander ce trajet</Text>
             </TouchableOpacity>
           </View>
         )}

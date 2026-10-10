@@ -216,27 +216,8 @@ export function useRequestDriverActions({
         return;
       }
 
-      if (!transition.isCurrent()) return;
-      showDialog({
-        title: 'Demande accept\u00E9e',
-        message: 'Le trajet a \u00E9t\u00E9 cr\u00E9\u00E9 imm\u00E9diatement et le passager a d\u00E9j\u00E0 \u00E9t\u00E9 r\u00E9serv\u00E9. Vous pouvez maintenant ouvrir le trajet quand vous \u00EAtes pr\u00EAt.',
-        variant: 'success',
-        actions: [
-          {
-            label: 'Ouvrir le trajet',
-            variant: 'primary',
-            onPress: () => {
-              refetch();
-              router.push(`/trip/manage/${result.trip.id}`);
-            },
-          },
-          {
-            label: 'Plus tard',
-            variant: 'ghost',
-            onPress: () => refetch(),
-          },
-        ],
-      });
+      // The shared contact invitation replaces the redundant success dialog.
+      transition.openManagement(result.trip);
     } catch (error: any) {
       if (!transition.isCurrent()) return;
       setShowDirectAcceptModal(false);

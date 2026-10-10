@@ -20,6 +20,7 @@ import { mapServerTripRequestToClient, mapServerDriverOfferToClient, mapServerDr
 import { ServerTripRequest, ServerDriverOffer, ServerDriverOfferWithTripRequest } from './trip-request/serverTypes';
 import type { DriverOffer, DriverOfferWithTripRequest, Trip, TripRequest } from '@/types';
 import { baseApi } from './baseApi';
+import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 import type { ServerTrip } from './tripApi';
 import { mapServerTripToClient } from './tripApi';
 import type { BaseEndpointBuilder } from './types';
@@ -287,6 +288,9 @@ export const tripRequestApi = baseApi.injectEndpoints({
           const { data } = await queryFulfilled;
           if (session !== getTokenSessionVersion()) return;
           // Confirmed server result, never an optimistic disappearance on tap.
+          if (data.tripRequest.selectedDriverId) dispatch(inviteAcceptedRequestContact({
+            userId: data.tripRequest.selectedDriverId, requestId: tripRequestId,
+          }));
           dispatch(tripRequestApi.util.updateQueryData('getAvailableTripRequests', undefined,
             requests => requests.filter(request => request.id !== tripRequestId)));
           dispatch(tripRequestApi.util.updateQueryData('getTripRequestById', tripRequestId, () => data.tripRequest));

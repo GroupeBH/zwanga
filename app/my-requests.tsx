@@ -97,6 +97,8 @@ export default function MyTripRequestsScreen() {
         <Text style={styles.headerTitle}>Mes demandes</Text>
         <TouchableOpacity
           style={styles.createButton}
+          accessibilityRole="button"
+          accessibilityLabel="Commander un trajet"
               onPress={() => router.push(getTripRequestCreateHref())}
         >
           <Ionicons name="add-circle" size={24} color={Colors.primary} />
@@ -108,14 +110,14 @@ export default function MyTripRequestsScreen() {
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
           <Text style={styles.emptyTitle}>Aucune demande</Text>
           <Text style={styles.emptyText}>
-            Vous n&apos;avez pas encore créé de demande de trajet. Créez-en une pour que les conducteurs vous proposent leurs services.
+            Vous n&apos;avez pas encore commandé de trajet. Commandez-en un pour recevoir les propositions des conducteurs.
           </Text>
           <TouchableOpacity
             style={styles.createRequestButton}
               onPress={() => router.push(getTripRequestCreateHref())}
           >
             <Ionicons name="add-circle" size={20} color={Colors.white} />
-            <Text style={styles.createRequestButtonText}>Créer une demande</Text>
+            <Text style={styles.createRequestButtonText}>Commander un trajet</Text>
           </TouchableOpacity>
         </View>
       ) : (

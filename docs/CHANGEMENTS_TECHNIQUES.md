@@ -1,5 +1,148 @@
 # Journal des changements techniques
 
+## 10 octobre 2026 — Contact après acceptation et reprise d’un trajet en cours
+
+- Périmètre : application mobile, acceptation d’une commande de trajet par le
+  conducteur, puis ouverture/retour au premier plan. L’acceptation ne proposait
+  pas systématiquement de contacter le passager et une session restaurée
+  revenait à l’accueil même lorsqu’un trajet était démarré.
+- Contact appliqué : après confirmation serveur, affichage de « Contactez votre
+  passager », avec appel, WhatsApp, messagerie Zwanga et « Plus tard ». Aucune
+  communication n’est déclenchée automatiquement. Les coordonnées sont relues
+  auprès du serveur et ne sont utilisables que pour la demande attribuée au
+  conducteur connecté. Un numéro absent laisse la messagerie disponible ; une
+  erreur réseau offre « Réessayer ». Une demande réattribuée/annulée ou un
+  trajet terminé ne donne pas accès au contact via cette invitation.
+  Fichiers : `components/AcceptedRequestContactCoordinator.tsx`,
+  `features/request-detail/acceptedRequestContact.ts`,
+  `features/navigation/NavigationContactModal.tsx`,
+  `hooks/navigation/useTripContactMessaging.ts`, `types/tripRequests.ts`,
+  `store/api/trip-request/requestMapper.ts`.
+- Déclenchement : `store/api/tripRequestApi.ts` et
+  `store/api/driverDispatchApi.ts` enregistrent uniquement les acceptations
+  confirmées dans `store/slices/rideEntrySlice.ts`, réinitialisé à la déconnexion
+  et au changement de compte par `store/index.ts`. Les intentions sont bornées,
+  dédupliquées et ne contiennent pas de téléphone. Les actions de notification
+  sont couvertes par `services/driverNotificationResponse.ts` ; ouvrir une
+  notification déjà acceptée permet de reconstruire l’invitation après lecture
+  serveur dans `app/incoming-driver.tsx`. Ce dernier quitte son écran natif
+  avant le contact et déduplique les redirections.
+- Transitions : accepter sans démarrer ouvre la gestion du trajet après
+  fermeture du formulaire, sans l’ancien dialogue de succès supplémentaire.
+  Accepter et démarrer conserve l’ouverture de la navigation après confirmation
+  serveur. `hooks/request-detail/useRequestDriverActions.ts` et
+  `hooks/navigation/useTripStartTransition.ts` conservent l’attente du véritable
+  `onDismiss` iOS et les protections contre les doubles appuis/réponses tardives.
+  Le contact réutilise le système de superposition interne, sans ajouter de
+  présentation UIKit concurrente ; les paiements et SOS gardent leur priorité.
+- Reprise appliquée : `components/ActiveRideResumeCoordinator.tsx`,
+  `hooks/navigation/useActiveRideResume.ts` et
+  `features/navigation/activeRideResume.ts` observent les caches d’activité déjà
+  alimentés par les coordinateurs existants. Une lecture authentifiée du détail
+  confirme ensuite le statut `ongoing` et la participation : navigation du
+  conducteur propriétaire, ou navigation de la réservation du passager accepté
+  qui n’est pas encore arrivé. Le rôle global « conducteur » ne transforme pas
+  une réservation passager en trajet conducteur. Montage des deux coordinateurs
+  dans `components/ReduxProvider.tsx`.
+- Prévention des régressions : aucune nouvelle boucle de polling ni collecte
+  GPS, aucun nouveau module natif, aucune modification de paiement, commission,
+  acceptation/démarrage serveur ou permission de contact backend. Les réponses
+  tardives après déconnexion, changement de compte, arrière-plan ou navigation
+  volontaire sont ignorées. Une reprise au maximum par entrée au premier plan :
+  quitter volontairement la navigation ne provoque pas de retour en boucle.
+  Les formulaires, conversations, paiements, notation, sécurité et actions de
+  notification explicites ne sont pas interrompus. Sans vérification réseau
+  réussie, l’écran actuel est conservé plutôt que de rouvrir un ancien trajet.
+- Vérifications : **139 tests JavaScript ciblés réussis** avec
+  `node --test tests/activeRideResume.test.js tests/acceptedRequestContact.test.js
+  tests/tripStartNavigation.test.js tests/tripContactMessaging.test.js
+  tests/requestPassengerContact.test.js tests/accountActivity.test.js
+  tests/rideOverlays.test.js tests/driverNotificationResponse.test.js
+  tests/navigationAssistance.test.js tests/requestDetailModules.test.js` ;
+  `tsc --noEmit` et ESLint ciblé réussis, sans avertissement. Tests ajoutés pour
+  les deux rôles, lecture serveur, absence de boucle, double acceptation,
+  annulation/réattribution, réseau dégradé, choix du canal et transitions iOS
+  simulées. Les tests de contact existants sont adaptés à la séparation entre
+  formulaire partagé et contexte de navigation local/global.
+- Limites : la suite complète n’est pas annoncée comme verte. Le passage global
+  (`node --test --test-concurrency=4 tests/*.test.js`) a exécuté 1 742 tests :
+  1 730 réussis et 12 échecs. Six de ces échecs portaient sur les mocks du
+  formulaire de contact et l’ancien dialogue de succès ; ils sont corrigés et
+  repassent dans les 139 tests ciblés ci-dessus. La suite entière n’a pas été
+  relancée après cette adaptation. Les six autres concernent
+  notamment des attentes d’expiration anciennes dans `tests/homeModules.test.js`
+  et `tests/homePriorityDismissals.test.js` (30 secondes/1 heure attendues,
+  règle actuelle de 3 heures) et quatre tests d’empreintes dans
+  `tests/sourceExtractions.test.js`. L’empreinte `acceptTripRequest` du snapshot
+  divergeait déjà de `HEAD` avant ce lot ; l’invitation de contact ajoute aussi
+  maintenant une modification intentionnelle, couverte par les tests de
+  comportement ciblés. Ces règles et fixtures hors
+  périmètre n’ont pas été réécrites pour masquer les échecs. Les intentions de
+  contact sont transitoires, non une file de décisions hors ligne : après arrêt
+  complet du processus, la reconstruction passe par la notification acceptée.
+  La reprise de trajet, elle, se reconstruit depuis l’activité serveur sans
+  dépendre d’une intention locale conservée.
+- Validation native restante : sur iPhone et Android, essayer acceptation seule,
+  acceptation + démarrage, retour après appel/WhatsApp, ouverture à froid et
+  retour du passager après démarrage distant, retour du conducteur, sortie
+  volontaire vers l’accueil, course terminée entre deux ouvertures et réseau
+  coupé. Aucun essai physique ni déploiement réalisé pour ce lot ; les mocks
+  JavaScript ne prouvent pas l’absence de gel/crash natif. Le dev build existant
+  peut charger ces changements avec `npx expo start --dev-client`.
+
+## 9 octobre 2026 — « Commander un trajet » dans les actions passager
+
+- Demande : remplacer « Demander un trajet » par une formulation plus directe
+  dans l’application mobile.
+- Appliqué : « Commander » sur l’accueil, « Commander un trajet » dans le titre
+  du formulaire et les accès depuis les listes, « Commander ce trajet » après
+  une recherche sans résultat, « Commander le trajet » pour envoyer le formulaire
+  une fois l’horaire choisi. Texte d’aide de recherche/état vide et libellés
+  d’accessibilité alignés. Fichiers : `components/home/HomeHeader.tsx`,
+  `app/request/index.tsx`, `app/search.tsx`, `app/my-requests.tsx`,
+  `app/requests.tsx`, `hooks/trip-request/useRequestTripController.ts`.
+- Conservé : routes et préremplissage, sélection explicite de l’horaire,
+  différence entre départ immédiat et planifié, véhicules, prix, envoi et
+  protection contre les doubles appuis. Les statuts et confirmations restent
+  « demande envoyée/en attente » : commander ne signifie pas qu’un conducteur
+  a déjà accepté. Aucun changement backend, API, paiement, notification ou natif.
+- Vérifications : 45 tests ciblés accueil/recherche/listes/horaire réussis ;
+  `npm run test:trip-request`, 74 tests réussis (avec recouvrement de la suite
+  précédente) ; TypeScript sans émission réussi. Tests mis à jour dans
+  `tests/homeCompactLayout.test.js`, `tests/searchScreen.test.js`,
+  `tests/requestsScreen.test.js`, `tests/requestScheduleChoice.test.js`.
+  ESLint ciblé et `git diff --check` réussis. La déclaration ESLint de la variable
+  Node `__dirname` du test de listes a aussi été explicitée, sans effet à l’exécution.
+- Limites : tests JavaScript avec composants natifs simulés ; aucun essai visuel
+  sur téléphone. Mise en page conservée, rendu du libellé plus long à contrôler
+  sur petits écrans et avec les polices système agrandies.
+
+## 9 octobre 2026 — Réutilisation des compilations Android EAS
+
+- Constat : le journal de build fourni montre une annulation à 45 min, dont
+  43 min 01 s dans Gradle. Les sources React Native/Hermes sont compilées pour
+  quatre ABI afin d’inclure le correctif de dessin Android. Le dépassement de
+  délai est probable, mais le motif final n’est pas explicitement fourni.
+- Appliqué : cache C/C++ EAS et persistance du cache de tâches Gradle pour
+  `production.android`, image de build adaptée au SDK 54, activation du cache
+  Gradle et suppression de la recompression PNG facultative. Le plugin maintient
+  les mêmes réglages après prebuild. Fichiers : `eas.json`,
+  `android/gradle.properties`, `plugins/withPatchedReactAndroid.js`,
+  `tests/androidBuildPerformance.test.js` et `package.json`.
+- Conservé : quatre ABI, Hermes, correctif natif issu des sources, validations
+  des bibliothèques/16 Ko, signatures, parcours applicatifs, profils iOS et
+  développement. Aucun changement d’offre ou de classe de machine, aucune
+  nouvelle dépendance et aucun build cloud lancé.
+- Vérifications : **9 tests JavaScript réussis**, ESLint ciblé sans avertissement,
+  schéma EAS des trois profils valide, `git diff --check` réussi. Le dry-run
+  Gradle n’a pas abouti : téléchargement du wrapper bloqué par le réseau de
+  l’environnement, avant toute exécution du graphe natif.
+- Limites : aucun gain chronométré ni essai sur appareil physique ; le premier
+  build sans cache peut encore dépasser la limite. La taille des ressources PNG
+  peut augmenter. Les caches ne garantissent pas la réussite d’un build annulé.
+  Procédure de mesure, précautions et pistes différées dans
+  [Compilation Android : optimisations](BUILD_ANDROID_PERFORMANCE.md).
+
 ## 8 octobre 2026 — Navigation conducteur plus compacte
 
 - Constat : en navigation, partage, confirmations, statistiques des passagers,
