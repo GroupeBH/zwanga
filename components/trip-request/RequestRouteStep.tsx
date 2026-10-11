@@ -52,8 +52,9 @@ export function RequestRouteStep({
 }: Props) {
   return (<Animated.View entering={FadeIn} style={styles.routeSetup}>
     <View style={styles.routeSetupHeader}>
-      <Text style={styles.routeSetupTitle}>Votre trajet</Text>
-      <TouchableOpacity style={styles.routeSetupSwap} onPress={swapRoutePoints} activeOpacity={0.85}>
+      <Text style={styles.routeSetupTitle}>Où allez-vous ?</Text>
+      <TouchableOpacity style={styles.routeSetupSwap} onPress={swapRoutePoints} activeOpacity={0.85}
+        accessibilityRole="button" accessibilityLabel="Inverser le départ et la destination">
         <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
       </TouchableOpacity>
     </View>
@@ -242,10 +243,7 @@ export function RequestRouteStep({
 
     <View style={styles.routeVehicleChoice}>
       <View style={styles.routeVehicleChoiceHeader}>
-        <Text style={styles.routeVehicleChoiceTitle}>Type de véhicule</Text>
-        <Text style={styles.routeVehicleChoiceSubtitle}>
-          Choisissez le véhicule souhaité pour ce trajet
-        </Text>
+        <Text style={styles.routeVehicleChoiceTitle}>Quel véhicule ?</Text>
       </View>
       <View style={styles.routeVehicleChoiceRow}>
         {REGISTERED_VEHICLE_TYPE_OPTIONS.map((option) => {

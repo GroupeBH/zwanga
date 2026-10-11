@@ -414,24 +414,24 @@ test('planned dates are sent unchanged; expired, invalid and empty windows never
   assert.equal(calls, 1);
 });
 
-test('nearest-driver dispatch is opt-in from server and only applies to Maintenant', async () => {
-  for (const enabled of [false, true]) {
+test('departure intent is sent independently of a slow or stale dispatch-status query', async () => {
+  for (const enabled of [undefined, false, true]) {
     for (const timePreset of ['now', 'soon', 'custom']) {
       let payload;
       const app = submissionHarness({ dispatchEnabled: enabled, create: async value => { payload = value; return { id: 'created' }; } });
       app.props.timePreset = timePreset;
       await app.render().handleCreateRequest();
-      assert.equal(Boolean(payload.immediateDispatch), enabled && timePreset === 'now');
+      assert.equal(payload.immediateDispatch, timePreset === 'now');
       app.hooks.unmount();
     }
   }
 });
 
 test('ambiguous creation reconciles by reading requests, without replaying the POST', async () => {
-  let creates = 0, reads = 0;
+  let creates = 0, reads = 0, payload;
   const app = submissionHarness({
-    create: async () => { creates++; throw { status: 'TIMEOUT_ERROR' }; },
-    list: async () => { reads++; return [{ id: 'recovered', createdAt: new Date().toISOString(), departure: { name: 'Gombe' }, arrival: { name: 'Limete' } }]; },
+    create: async value => { payload = value; creates++; throw { status: 'TIMEOUT_ERROR' }; },
+    list: async () => { reads++; return [{ ...payload, numberOfSeats: payload.numberOfSeats ?? 1, id: 'recovered', createdAt: new Date().toISOString(), departure: { name: 'Gombe' }, arrival: { name: 'Limete' } }]; },
   });
   await app.render().handleCreateRequest();
   assert.equal(creates, 1);
@@ -439,4 +439,27 @@ test('ambiguous creation reconciles by reading requests, without replaying the P
   assert.equal(app.render().createdRequestId, 'recovered');
   assert.deepEqual(app.routes, []);
   app.hooks.unmount();
+});
+
+test('an unconfirmed request never claims success and repeated checks do not replay the POST', async () => {
+  let posts = 0, reads = 0;
+  const app = submissionHarness({ create: async () => { posts++; throw { status: 'TIMEOUT_ERROR' }; },
+    list: async () => { reads++; return []; } });
+  await app.render().handleCreateRequest();
+  assert.equal(app.render().createdRequestId, null);
+  assert.doesNotMatch(app.render().requestSuccessText, /a été envoyée|est envoyée|est prête/);
+  assert.equal(app.render().requestSuccessDetailLabel, 'Vérifier à nouveau');
+  await app.render().handleCreateRequest();
+  assert.equal(posts, 1); assert.equal(reads, 4);
+  app.render().goHomeAfterRequestSuccess();
+  assert.deepEqual(app.routes, ['/my-requests']);
+  app.hooks.unmount();
+});
+
+test('a late server response after leaving the form does not announce success or restart verification', async () => {
+  const pending = deferred(); let reads = 0;
+  const app = submissionHarness({ create: () => pending.promise, list: async () => { reads++; return []; } });
+  const submitted = app.render().handleCreateRequest(); app.hooks.unmount();
+  pending.reject({ status: 'TIMEOUT_ERROR' }); await submitted;
+  assert.equal(reads, 0); assert.deepEqual(app.routes, []);
 });

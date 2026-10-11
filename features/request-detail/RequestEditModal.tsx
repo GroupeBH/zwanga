@@ -122,7 +122,7 @@ export function RequestEditModal({
             <View style={styles.editModalHeaderContent}>
               <Ionicons name="create-outline" size={24} color={Colors.primary} />
               <View>
-                <Text style={styles.editModalTitle}>Modifier la demande</Text>
+                <Text style={styles.editModalTitle}>Modifier la commande</Text>
                 <Text style={styles.editModalSubtitle}>Ajustez les détails avant de republier</Text>
               </View>
             </View>
@@ -135,7 +135,7 @@ export function RequestEditModal({
           </View>
 
           {/* Contenu Scrollable */}
-          <Text style={[styles.editModalSubtitle, { marginHorizontal: 20, marginBottom: 12 }]}>Les anciennes offres en attente seront retirées. Une demande expirée exige un nouveau créneau futur. Une recherche immédiate reprogrammée devient une demande classique.</Text>
+          <Text style={[styles.editModalSubtitle, { marginHorizontal: 20, marginBottom: 12 }]}>Les anciennes offres en attente seront retirées. Une commande expirée exige un nouveau créneau futur. Une recherche immédiate reprogrammée devient une commande classique.</Text>
           <RequestEditFields
             editAddressInputMode={editAddressInputMode}
             setEditAddressInputMode={setEditAddressInputMode}

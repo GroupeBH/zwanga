@@ -63,7 +63,7 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
       if (!background.granted) background = await Location.requestBackgroundPermissionsAsync();
       if (!current()) return;
       if (!background.granted) {
-        setMessage('Choisissez « Toujours autoriser » dans les réglages. Les demandes restent accessibles dans l’app.');
+        setMessage('Choisissez « Toujours autoriser » dans les réglages. Les commandes restent accessibles dans l’app.');
         return;
       }
       await setNearbyDriverLocationEnabled(userId, true, version);
@@ -85,7 +85,7 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
   const disabled = busy || !loaded || (!available && !canDisable);
   return <View style={styles.section}>
     <Text style={styles.title}>Recevoir aussi en veille</Text>
-    <Text style={styles.copy}>Activé par défaut avec votre autorisation : Zwanga utilise votre position même en arrière-plan pour recevoir les demandes proches.</Text>
+    <Text style={styles.copy}>Activé par défaut avec votre autorisation : Zwanga utilise votre position même en arrière-plan pour recevoir les commandes proches.</Text>
     <Text accessibilityLiveRegion="polite" style={styles.status}>{loadError ? 'Impossible de vérifier les autorisations.' : !loaded ? 'Vérification des autorisations…' : !enabled
       ? 'Désactivé dans Zwanga. Votre choix reste mémorisé.' : permission
         ? 'Suivi automatique autorisé, sans activation supplémentaire.'

@@ -37,8 +37,16 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
       const request = invitation.kind === 'dispatch'
         ? store.dispatch(driverDispatchApi.endpoints.respondToDispatchOffer.initiate({ id: invitation.id, decision }))
         : store.dispatch(driverDispatchApi.endpoints.respondToBookingInvitation.initiate({ id: invitation.id, accept: decision === 'accept' }));
-      try { await request.unwrap(); } finally { request.reset(); }
+      let result: unknown;
+      try { result = await request.unwrap(); } finally { request.reset(); }
       if (sessionVersion !== getTokenSessionVersion()) return;
+      // Headless actions may run before Redux auth hydration; use the verified token owner.
+      if (invitation.kind === 'dispatch' && decision === 'accept' && result && typeof result === 'object' &&
+        'status' in result && result.status === 'accepted' && 'requestId' in result && typeof result.requestId === 'string') {
+        const { inviteAcceptedRequestContact } = await import('@/store/slices/rideEntrySlice');
+        if (sessionVersion !== getTokenSessionVersion()) return;
+        store.dispatch(inviteAcceptedRequestContact({ userId, requestId: result.requestId }));
+      }
       success = true;
       message = decision === 'accept' ? 'Vous avez accepté. Consultez les détails pour la prise en charge.' : 'Votre refus a été enregistré.';
       completed.add(key);
@@ -46,7 +54,7 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
     } catch {
       // Never save an offline decision to replay later. A timeout may have reached the server.
       if (sessionVersion !== getTokenSessionVersion()) return;
-      message = 'Votre réponse n’est pas confirmée. Ouvrez la demande pour vérifier son état ou réessayer.';
+      message = 'Votre réponse n’est pas confirmée. Ouvrez la commande pour vérifier son état ou réessayer.';
     }
     try {
       if (Platform.OS === 'android') await notifee.createChannel({ id: RESULT_CHANNEL, name: 'Réponses aux trajets', importance: AndroidImportance.LOW });

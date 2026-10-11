@@ -3,6 +3,8 @@ import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { Colors } from '@/constants/styles';
 import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import { useAppSelector } from '@/store/hooks';
+import { selectUser } from '@/store/selectors';
 import type { TripRequest } from '@/types';
 import { RequestListCard } from '@/features/requests/RequestListCard';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
@@ -14,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function MyTripRequestsScreen() {
   const isScreenActive = useScreenIsActive();
+  const userId = useAppSelector(selectUser)?.id;
   const enabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const {
@@ -40,7 +43,8 @@ export default function MyTripRequestsScreen() {
   };
 
   const sortedTripRequests = useMemo(() => {
-    return [...tripRequests].sort((a, b) => {
+    if (!userId) return [];
+    return tripRequests.filter(request => request.passengerId === userId).sort((a, b) => {
       const priorityA = getRequestPriority(a);
       const priorityB = getRequestPriority(b);
 
@@ -52,7 +56,7 @@ export default function MyTripRequestsScreen() {
       const updatedB = new Date(b.updatedAt || b.createdAt).getTime();
       return updatedB - updatedA;
     });
-  }, [tripRequests]);
+  }, [tripRequests, userId]);
 
   const featuredRequestId = useMemo(() => {
     return (
@@ -77,12 +81,12 @@ export default function MyTripRequestsScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Mes demandes</Text>
+          <Text style={styles.headerTitle}>Mes commandes</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>Chargement de vos demandes...</Text>
+          <Text style={styles.loadingText}>Chargement de vos commandes...</Text>
         </View>
       </SafeAreaView>
     );
@@ -94,9 +98,11 @@ export default function MyTripRequestsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Mes demandes</Text>
+        <Text style={styles.headerTitle}>Mes commandes</Text>
         <TouchableOpacity
           style={styles.createButton}
+          accessibilityRole="button"
+          accessibilityLabel="Commander un trajet"
               onPress={() => router.push(getTripRequestCreateHref())}
         >
           <Ionicons name="add-circle" size={24} color={Colors.primary} />
@@ -106,16 +112,16 @@ export default function MyTripRequestsScreen() {
       {sortedTripRequests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
-          <Text style={styles.emptyTitle}>Aucune demande</Text>
+          <Text style={styles.emptyTitle}>Aucune commande</Text>
           <Text style={styles.emptyText}>
-            Vous n&apos;avez pas encore créé de demande de trajet. Créez-en une pour que les conducteurs vous proposent leurs services.
+            Vous n&apos;avez pas encore commandé de trajet. Commandez-en un pour recevoir les propositions des conducteurs.
           </Text>
           <TouchableOpacity
             style={styles.createRequestButton}
               onPress={() => router.push(getTripRequestCreateHref())}
           >
             <Ionicons name="add-circle" size={20} color={Colors.white} />
-            <Text style={styles.createRequestButtonText}>Créer une demande</Text>
+            <Text style={styles.createRequestButtonText}>Commander un trajet</Text>
           </TouchableOpacity>
         </View>
       ) : (

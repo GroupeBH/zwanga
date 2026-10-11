@@ -10,6 +10,7 @@ import {
   useMarkNotificationsAsReadMutation,
 } from '@/store/api/notificationApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
+import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import type { Notification } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
@@ -59,14 +60,17 @@ export default function NotificationsScreen() {
   const [markNotificationsAsRead] = useMarkNotificationsAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [disableNotifications] = useDisableNotificationsMutation();
-  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [selected, setSelectedNotification] = useState<Notification | null>(null);
+  const selectedNotification = selected && canShowRequestNotification(selected.data, currentUser) ? selected : null;
 
   const notifications = useMemo(() => notificationsData
-    ? Array.from(new Map(notificationsData.pages.flatMap((page) => page.notifications).map((item) => [item.id, item])).values())
-    : EMPTY_NOTIFICATIONS, [notificationsData]);
+    ? Array.from(new Map(notificationsData.pages.flatMap((page) => page.notifications)
+      .filter(item => canShowRequestNotification(item.data, currentUser)).map((item) => [item.id, item])).values())
+    : EMPTY_NOTIFICATIONS, [notificationsData, currentUser]);
   const unreadCount = notificationsData?.pages[0]?.unreadCount ?? 0;
 
   const handleSelectNotification = useCallback(async (notification: Notification) => {
+    if (!canShowRequestNotification(notification.data, currentUser)) return;
     const data = notification.data || {};
     if (getNotificationHref(data, currentUser)) {
       handleNotificationNavigation(data, router, currentUser);

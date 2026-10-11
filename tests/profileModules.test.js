@@ -290,7 +290,7 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: query('settlements') },
     '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans', []), useGetPremiumOverviewQuery: query('premium') },
-    '@/store/api/reviewApi': { useGetReviewsQuery: query('reviews', []), useGetAverageRatingQuery: query('rating', {}) },
+    '@/store/api/reviewApi': { useGetReviewPageQuery: query('reviews', { data: [], total: 0 }), useGetAverageRatingQuery: query('rating', {}) },
     '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests', []), useGetMyDriverOffersQuery: query('offers', []) },
   });
   const { useProfileData } = app.load('hooks/profile/useProfileData.ts');

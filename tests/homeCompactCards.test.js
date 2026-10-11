@@ -196,13 +196,12 @@ test('sheets take less space without changing locked or safe-area behavior', () 
     const props = { isDriver, currentUser: {}, width: 390, height: 844, insets: { bottom: 34 },
       latestTrips: [], availableDriverRequests: [], visibleDriverPassengerMarkers: [], router: { push() {} } };
     const draw = () => hooks.render(() => useHomeSheet(props));
-    assert.equal(draw().sheetHeight, 68);
-    draw().toggleTripsSheet();
     const expanded = draw();
-    assert.equal(expanded.sheetHeight, isDriver ? 298 : 250);
+    assert.equal(expanded.effectiveTripsSheetOpen, true);
+    assert.equal(expanded.sheetHeight, 250);
     assert.equal(expanded.sheetBottomOffset, 96);
     props.width = 320; props.height = 568;
-    assert.equal(draw().sheetHeight, isDriver ? 294 : 246);
+    assert.equal(draw().sheetHeight, 246);
     props.isHomeSheetLockedRetracted = true;
     assert.equal(draw().sheetHeight, 68);
     hooks.unmount();

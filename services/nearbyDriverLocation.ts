@@ -149,8 +149,8 @@ export function ensureNearbyDriverLocation(userId: string) {
         activityType: Location.ActivityType.Other,
         showsBackgroundLocationIndicator: true,
         foregroundService: Platform.OS === 'android' ? {
-          notificationTitle: 'Demandes proches de vous',
-          notificationBody: 'Position actualisée pour recevoir les demandes. Réglages dans Profil → Alertes conducteur.',
+          notificationTitle: 'Commandes proches de vous',
+          notificationBody: 'Position actualisée pour recevoir les commandes. Réglages dans Profil → Alertes conducteur.',
           notificationColor: '#FF6B35', killServiceOnDestroy: true,
         } : undefined,
       });

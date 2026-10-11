@@ -89,6 +89,7 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
   }, [arrival, baseTrips, currentUser?.id, departure, desiredSeats, searchMode, sortMode, isScreenActive]);
 
   const filteredTripRequests = useMemo(() => {
+    if (!isDriverAccount) return EMPTY_SEARCH_REQUESTS;
     if (!isScreenActive) return previous.current.userId === currentUser?.id
       ? previous.current.filteredTripRequests : EMPTY_SEARCH_REQUESTS;
     if (searchMode !== 'requests' || !isDriverAccount) {

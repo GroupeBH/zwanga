@@ -207,8 +207,9 @@ test('primary action opens time selection first, then submits planned or immedia
   assert.equal(render().primaryLabel, 'Choisir l’heure de départ');
   await render().handlePrimaryAction(); assert.deepEqual(calls, ['time']);
   draft.hasChosenDepartureTime = true;
-  assert.equal(render().primaryLabel, 'Envoyer la demande');
+  assert.equal(render().primaryLabel, 'Commander le trajet');
   await render().handlePrimaryAction(); assert.deepEqual(calls, ['time', 'submit']);
-  draft.timePreset = 'now'; assert.equal(render().primaryLabel, 'Chercher un chauffeur');
+  draft.timePreset = 'now'; assert.equal(render().primaryLabel, 'Commander le trajet');
+  await render().handlePrimaryAction(); assert.deepEqual(calls, ['time', 'submit', 'submit']);
   hooks.unmount();
 });

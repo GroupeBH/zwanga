@@ -55,6 +55,17 @@ test('published booking refusal uses its dedicated endpoint; receipt/body tap ne
   assert.deepEqual(view.mutations, [{ kind: 'booking', body: { id, accept: false } }]);
 });
 
+test('confirmed headless dispatch acceptance queues contact for the verified token owner without opening a screen', async () => {
+  const view = app({ perform: async () => ({ status: 'accepted', requestId: 'request' }) });
+  await view.respond(invitation, 'driver-accept');
+  assert.equal(view.mutations.length, 2);
+  const queued = view.mutations[1];
+  assert.equal(queued.type, 'rideEntry/inviteAcceptedRequestContact');
+  assert.equal(queued.payload.userId, driverId); assert.equal(queued.payload.requestId, 'request');
+  assert.equal(view.displays[0].title, 'Réponse enregistrée');
+  await view.respond(invitation, 'driver-accept'); assert.equal(view.mutations.length, 2);
+});
+
 test('server conflict or network failure is not presented as success or queued for replay', async () => {
   const view = app({ perform: async () => { throw { status: 409 }; } });
   await view.respond(invitation, 'driver-accept');

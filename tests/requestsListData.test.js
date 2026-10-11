@@ -41,7 +41,7 @@ function fixture() {
   const profile = { data: { id: 'driver', role: 'driver' }, isFetching: false, isLoading: false, isError: false };
   const available = { data: [request('far', { departure: { ...location, lat: -4.5 } }),
     request('self', { passengerId: 'driver' }), request('near')], isFetching: false, isError: false, isLoading: false };
-  const own = { data: [request('mine')], isFetching: false, isError: false, isLoading: false };
+  const own = { data: [request('mine', { passengerId: 'driver' })], isFetching: false, isError: false, isLoading: false };
   const query = (name, value) => (_arg, options) => {
     calls.push({ name, options });
     return { isUninitialized: false, ...value, refetch: () => refreshes.push(name) };
@@ -67,6 +67,21 @@ test('public requests exclude self and retain distance ranking without modifying
   assert.equal(f.options('available').pollingInterval, 60000); assert.equal(f.options('own').skip, true);
   f.profile.data.role = 'passenger'; assert.equal(f.render().isDriver, false);
   f.state.coordinates = null; assert.equal(f.render().proximityAvailable, false);
+  f.hooks.unmount();
+});
+
+test('passengers opening the available route only read their own commands, even with legacy driver flag', () => {
+  const f = fixture(); f.profile.data.role = 'passenger'; f.profile.data.isDriver = true;
+  f.own.data.push(request('someone-else'));
+  const view = f.render();
+  assert.equal(view.activeTab, 'my-requests');
+  assert.deepEqual(view.requests.map(item => item.id), ['mine']);
+  assert.equal(f.options('available').skip, true);
+  assert.equal(f.options('available').pollingInterval, 0);
+  assert.equal(f.options('own').skip, false);
+  assert.equal(f.state.coordinateReads, 0);
+  f.state.online = false;
+  assert.deepEqual(f.render().requests.map(item => item.id), ['mine']);
   f.hooks.unmount();
 });
 

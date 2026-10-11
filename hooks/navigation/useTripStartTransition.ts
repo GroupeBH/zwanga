@@ -12,7 +12,7 @@ export function useTripStartTransition(screenKey: string | undefined, router: Ro
   const dispatch = useAppDispatch();
   const session = useMemo(() => ({
     screenKey, mounted: true, active: true, busy: false, navigated: false,
-    modalPresented: false, pendingTrip: null as Trip | null,
+    modalPresented: false, pendingTrip: null as Trip | null, destination: 'navigate' as 'navigate' | 'manage',
   }), [screenKey]);
   session.active = active;
   if (modalVisible) session.modalPresented = true;
@@ -37,10 +37,17 @@ export function useTripStartTransition(screenKey: string | undefined, router: Ro
     dispatch(tripApi.util.upsertQueryEntries([{ endpointName: 'getTripById', arg: trip.id, value: trip }]));
     session.pendingTrip = null;
     session.navigated = true;
-    router.replace(`/trip/navigate/${trip.id}`);
+    router.replace(`/trip/${session.destination}/${trip.id}`);
   }, [dispatch, isCurrent, router, session]);
   const openNavigation = useCallback((trip: Trip) => {
     if (!isCurrent()) return;
+    session.destination = 'navigate';
+    session.pendingTrip = trip;
+    flush();
+  }, [flush, isCurrent, session]);
+  const openManagement = useCallback((trip: Trip) => {
+    if (!isCurrent()) return;
+    session.destination = 'manage';
     session.pendingTrip = trip;
     flush();
   }, [flush, isCurrent, session]);
@@ -55,5 +62,5 @@ export function useTripStartTransition(screenKey: string | undefined, router: Ro
     if (!modalVisible && Platform.OS !== 'ios') onModalDismiss();
   }, [modalVisible, onModalDismiss]);
 
-  return { begin, finish, isCurrent, openNavigation, onModalDismiss };
+  return { begin, finish, isCurrent, openNavigation, openManagement, onModalDismiss };
 }

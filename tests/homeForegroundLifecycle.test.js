@@ -101,7 +101,7 @@ function nodes(element) {
 }
 
 test('slow, empty, failed and refreshing trip queries keep the same map position in the Home render tree', () => {
-  const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false };
+  const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true };
   const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet'];
   const load = loader({
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
@@ -120,5 +120,6 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     assert.equal(rendered.filter(node => node.type === 'HomeMap').length, 1);
     assert.equal(rendered.some(node => node.type === 'HomeTripsLoadingScreen'), false);
     assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.sheetLoading, home.sheetLoading);
+    assert.equal(rendered.find(node => node.type === 'HomeHeader').props.isDriver, home.isDriver);
   }
 });

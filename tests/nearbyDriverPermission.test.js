@@ -77,7 +77,7 @@ test('already granted OS permission shows default automatic mode without another
 test('denied permission leaves foreground discovery available without saving consent', async () => {
   const f = fixture(); f.deny(); f.render(); await tick();
   nodes(f.render()).find(node => node.type === 'Button').props.onPress(); await tick();
-  assert.deepEqual(f.calls, ['permission']); assert.match(words(f.render()), /demandes restent accessibles/);
+  assert.deepEqual(f.calls, ['permission']); assert.match(words(f.render()), /commandes restent accessibles/);
   f.hooks.unmount();
 });
 

@@ -162,7 +162,7 @@ export const HomeMap = React.memo(function HomeMap({
               coordinate={coordinate}
               anchor={TRIP_REQUEST_MARKER_ANCHOR}
               image={getTripRequestMarkerImage(request.passengerGender)}
-              title={request.passengerName || 'Demande de trajet'}
+              title={request.passengerName || 'Commande de trajet'}
               description={`${placeName(request.departure)} → ${placeName(request.arrival)}`}
               onPress={() => openTripRequestDetail(request.id)}
               tappable

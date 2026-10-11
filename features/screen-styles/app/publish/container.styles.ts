@@ -15,8 +15,8 @@ export const styles = StyleSheet.create({
   },
   closeButton: {
     marginRight: Spacing.lg,
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',

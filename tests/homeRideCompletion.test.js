@@ -28,8 +28,9 @@ test('Home immediately unlocks after dropoff, independent of stale tracking and 
   const { useHomeTripSelection } = loader({ react: hooks.react,
     'react-native': { StyleSheet: { create: s => s } },
   })('hooks/home/useHomeTripSelection.ts');
-  const nearby = { ...trip, id: 'nearby', status: 'upcoming', departureTime: new Date(Date.now() + 3600000).toISOString() };
+  const nearby = { ...trip, id: 'nearby', status: 'upcoming', availableSeats: 3, departureTime: new Date(Date.now() + 3600000).toISOString() };
   const props = { currentUser: { id: 'rider' }, remoteTrips: [nearby], storedTrips: [],
+    liveUserCoordinate: { latitude: -4.3, longitude: 15.3 },
     activeBookings: [booking], completedBookingTripIds: new Set(), bookedTripIds: new Set(['active']),
     trackedTripInfo: { role: 'driver', tripId: 'active' }, ongoingDriverTrip: null, isDriver: true,
     driverReservationHighlightTrip: null, driverReservationHighlightBookings: [], myDriverTrips: [],

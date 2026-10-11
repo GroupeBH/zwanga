@@ -13,7 +13,7 @@ export function ProfileDriverAvailabilityEntry() {
   const { data } = useDriverDispatchStatusQuery(undefined, { skip: !active, refetchOnMountOrArgChange: true });
   if (!data?.enabled) return null;
   return <TouchableOpacity accessibilityRole="button" accessibilityLabel="Alertes conducteur"
-    accessibilityHint="Comprendre les notifications automatiques de réservations et de demandes proches."
+    accessibilityHint="Comprendre les notifications automatiques de réservations et de commandes proches."
     onPress={() => router.push('/driver-availability')}
     style={[menuStyles.menuItem, menuStyles.menuItemBorder]}>
     <View style={menuStyles.menuIcon}>
@@ -21,7 +21,7 @@ export function ProfileDriverAvailabilityEntry() {
     </View>
     <View style={styles.copy}>
       <Text style={[menuStyles.menuText, styles.title]}>Alertes conducteur</Text>
-      <Text style={styles.description}>Réservations et demandes proches, automatiquement</Text>
+      <Text style={styles.description}>Réservations et commandes proches, automatiquement</Text>
     </View>
     <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
   </TouchableOpacity>;

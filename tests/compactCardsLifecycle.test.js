@@ -27,7 +27,6 @@ for (const platform of ['ios', 'android']) {
       latestTrips: [], availableDriverRequests: [], visibleDriverPassengerMarkers: [], router: { push() {} } };
     const draw = () => hooks.render(() => useHomeSheet(props));
     const layout = height => ({ nativeEvent: { layout: { height } } });
-    draw().toggleTripsSheet();
     let state = draw();
     for (let cycle = 0; cycle < 100; cycle++) {
       const old = state.onSheetLayout;
@@ -124,7 +123,7 @@ test('reservation list callbacks remain stable during refreshes and still use th
   const { useBookingCards } = load('hooks/bookings/useBookingCards.tsx');
   const calls = [], noop = () => {};
   const params = { activeTab: 'active', router: {}, isCancelling: false,
-    setSelectedDriverPhone: noop, setSelectedDriverName: noop, setContactModalVisible: noop, handleCancel: id => calls.push(id) };
+    onContact: noop, handleCancel: id => calls.push(id) };
   const draw = () => hooks.render(() => useBookingCards({ ...params }));
   const initial = draw();
   for (let i = 0; i < 1000; i++) {
@@ -149,6 +148,7 @@ test('booking feed refresh keeps its identity while query result wrappers change
   const history = { refetch: () => calls.push('history') };
   const { useBookingsFeed } = loader({ react: hooks.react,
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/hooks/useDisplayReads': { useDisplayReadsEnabled: active => active },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ ...activity }),
       useGetMyBookingHistoryInfiniteQuery: () => ({ ...history }) },
   })('hooks/bookings/useBookingsFeed.ts');

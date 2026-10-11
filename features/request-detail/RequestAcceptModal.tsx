@@ -107,7 +107,7 @@ export function RequestAcceptModal({
                 <Ionicons name="checkmark-circle-outline" size={20} color={Colors.primary} />
               </View>
               <View style={styles.directAcceptModalTitleCopy}>
-                <Text style={styles.editModalTitle}>Accepter la demande</Text>
+                <Text style={styles.editModalTitle}>Accepter la commande</Text>
                 <Text style={styles.editModalSubtitle}>Choisissez le véhicule utilisé</Text>
               </View>
             </View>

@@ -43,6 +43,7 @@ export function useDriverNavigationData() {
   const { showDialog } = useDialog();
   const dispatch = useAppDispatch();
   const driverId = useAppSelector(state => state.auth.user?.id);
+  const isOnline = useAppSelector(state => state.zwangaApi.config.online);
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
@@ -60,7 +61,8 @@ export function useDriverNavigationData() {
     tripId,
     {
       skip: !tripId || !isOwner,
-      pollingInterval: isScreenActive && isTripOngoing ? 20_000 : 0,
+      pollingInterval: isScreenActive && isTripOngoing && isOnline ? 20_000 : 0,
+      refetchOnReconnect: isScreenActive,
       skipPollingIfUnfocused: true,
     },
   );

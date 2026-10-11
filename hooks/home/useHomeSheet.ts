@@ -7,9 +7,7 @@ import {
 } from 'react-native';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
-import type { useHomePassengerMarkers } from '@/hooks/home/useHomePassengerMarkers';
 import type { useHomeTripFeed } from '@/hooks/home/useHomeTripFeed';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 type Props =
@@ -20,7 +18,6 @@ type Props =
     | 'width'
     | 'insets'
     | 'height'
-    | 'trackedTripInfo'
     | 'router'
   >
   & Pick<ReturnType<typeof useHomeTripSelection>,
@@ -33,12 +30,6 @@ type Props =
     | 'availableTripRequestsLoading'
     | 'availableTripRequestsError'
     | 'refetchAvailableTripRequests'
-  >
-  & Pick<ReturnType<typeof useHomeDriverActivity>,
-    'ongoingDriverTrip'
-  >
-  & Pick<ReturnType<typeof useHomePassengerMarkers>,
-    'visibleDriverPassengerMarkers'
   >
   & Pick<ReturnType<typeof useHomeTripFeed>,
     'tripsLoading'
@@ -56,9 +47,6 @@ export function useHomeSheet({
   height,
   latestTrips,
   availableDriverRequests,
-  ongoingDriverTrip,
-  trackedTripInfo,
-  visibleDriverPassengerMarkers,
   availableTripRequestsLoading,
   tripsLoading,
   availableTripRequestsError,
@@ -67,7 +55,7 @@ export function useHomeSheet({
   refetchTrips,
   router,
 }: Props) {
-  const [tripsSheetOpen, setTripsSheetOpen] = useState(false);
+  const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
 
   const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>('trips');
 
@@ -82,7 +70,7 @@ export function useHomeSheet({
       return;
     }
 
-    setTripsSheetOpen(false);
+    // Temporarily retract during a ride without losing the user's open/closed choice.
     setHomeSheetMode('trips');
   }, [isHomeSheetLockedRetracted]);
 
@@ -98,9 +86,7 @@ export function useHomeSheet({
 
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
 
-  const openSheetHeight = isDriver
-    ? Math.min(Math.max(height * 0.30, isCompactScreen ? 294 : 298), 306)
-    : Math.min(Math.max(height * 0.26, isCompactScreen ? 246 : 250), 258);
+  const openSheetHeight = Math.min(Math.max(height * 0.26, isCompactScreen ? 246 : 250), 258);
 
   const retractedSheetHeight = 68;
 
@@ -138,37 +124,17 @@ export function useHomeSheet({
 
   const tripCardWidth = Math.min(width - 40, 354);
 
-  const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
-
-  const availableRequestsLabel = `${availableDriverRequests.length} demande${availableDriverRequests.length > 1 ? 's' : ''}`;
-
   const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
 
   const sheetTitle = isHomeSheetLockedRetracted
-    ? ongoingDriverTrip
-      ? 'Trajet conducteur en cours'
-      : 'Trajet réservé en cours'
+    ? 'Trajet en cours'
     : isRequestsSheetMode
-      ? 'Demandes de trajet'
-      : 'Trajets publiés';
+      ? 'Clients'
+      : 'Trajets';
 
-  const sheetSubtitle = isHomeSheetLockedRetracted
-    ? ongoingDriverTrip
-      ? visibleDriverPassengerMarkers.length > 0
-        ? `${visibleDriverPassengerMarkers.length} passager${visibleDriverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
-        : 'Votre véhicule reste visible en direct'
-      : 'Votre position et le véhicule restent visibles'
-    : isRequestsSheetMode
-      ? availableDriverRequests.length > 0
-        ? `${availableRequestsLabel} à traiter`
-        : 'Aucune demande pour le moment'
-      : latestTrips.length > 0
-        ? `${availableTripsLabel} à parcourir`
-        : 'Aucune offre pour le moment';
+  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading && latestTrips.length === 0;
 
-  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading;
-
-  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
+  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError && latestTrips.length === 0;
 
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
 
@@ -199,7 +165,6 @@ export function useHomeSheet({
   return {
     avatarUri,
     firstName,
-    availableTripsLabel,
     unreadNotifications,
     sheetBottomOffset,
     sheetHeight,
@@ -207,7 +172,6 @@ export function useHomeSheet({
     effectiveTripsSheetOpen,
     toggleTripsSheet,
     sheetTitle,
-    sheetSubtitle,
     openSheetIndex,
     isRequestsSheetMode,
     setHomeSheetMode,

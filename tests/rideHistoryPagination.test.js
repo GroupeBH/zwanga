@@ -42,9 +42,10 @@ test('history feeds separate activity from pages and suspend pagination/polling 
   const hooks = hookHarness(), reads = [];
   let active = true, more = 0;
   const activity = { data: [{ id: 'ongoing', status: 'accepted', trip: { status: 'ongoing', departureTime: '2020-01-01' } }], refetch() {} };
-  const history = { currentData: { pages: [{ data: [{ id: 'old' }] }] }, hasNextPage: true, fetchNextPage() { more++; }, refetch() {} };
+  const history = { data: { pages: [{ data: [{ id: 'old' }] }] }, hasNextPage: true, fetchNextPage() { more++; }, refetch() {} };
   const { useBookingsFeed } = loader({ react: hooks.react,
     '@/hooks/useAppIsActive': { useScreenIsActive: () => active },
+    '@/hooks/useDisplayReads': { useDisplayReadsEnabled: enabled => enabled },
     '@/store/api/bookingApi': {
       useGetMyActivityBookingsQuery: (_arg, options) => { reads.push(['activity', options]); return activity; },
       useGetMyBookingHistoryInfiniteQuery: (_arg, options) => { reads.push(['history', options]); return history; },

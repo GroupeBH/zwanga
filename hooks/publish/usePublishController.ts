@@ -288,7 +288,7 @@ export function usePublishController() {
     }
     if (step === 'confirm') {
       if (!identity.isPublishIdentityVerified) return 'Identité à vérifier';
-      return form.isRecurringTrip ? 'Publier les trajets' : 'Publier';
+      return form.isRecurringTrip ? 'Publier mes trajets' : 'Publier mon trajet';
     }
     return 'Continuer';
   })();

@@ -54,7 +54,7 @@ export const tripRequestStatusMeta: Record<
   TripRequest['status'],
   { label: string; color: string; bg: string; icon: keyof typeof Ionicons.glyphMap }
 > = {
-  pending: { label: 'Nouvelle demande', color: Colors.warning, bg: Colors.warning + '16', icon: 'radio-outline' },
+  pending: { label: 'Nouvelle commande', color: Colors.warning, bg: Colors.warning + '16', icon: 'radio-outline' },
   offers_received: { label: 'Offres en cours', color: Colors.info, bg: Colors.info + '16', icon: 'sparkles-outline' },
   driver_selected: { label: 'Attribuée', color: Colors.success, bg: Colors.success + '16', icon: 'checkmark-circle-outline' },
   cancelled: { label: 'Annulée', color: Colors.danger, bg: Colors.danger + '16', icon: 'close-circle-outline' },

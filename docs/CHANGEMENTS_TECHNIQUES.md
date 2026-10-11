@@ -1,5 +1,889 @@
 # Journal des changements techniques
 
+## 11 octobre 2026 — Suggestions de repli et parcours de recherche, publication et commande simplifiés
+
+Périmètre : accueil, recherche de trajets/clients, liste des commandes, publication
+et création de commande dans l’application. Le filtre strict 5 km / 24 h pouvait
+laisser l’accueil vide malgré des départs un peu plus loin ou plus tard. Certains
+écrans répétaient les explications et réservaient beaucoup de hauteur au suivi
+d’étapes ou à une carte non indispensable pour remplir le formulaire.
+
+### Solutions effectivement appliquées
+
+- `features/home/homeTripPriority.ts` conserve la priorité **moins de 5 km dans
+  les prochaines 24 h**, puis sélectionne le premier palier non vide : **moins
+  de 10 km / 48 h**, sinon **moins de 25 km / 7 jours**. Il ne complète pas une
+  liste proche avec des départs lointains. Ces deux paliers de repli sont un
+  choix d’implémentation communiqué à l’utilisateur. Les distances restent à
+  vol d’oiseau depuis la position disponible, pas des distances routières.
+- `hooks/home/useHomeTripFeed.ts` et `useHomeController.ts` déclenchent une seule
+  lecture élargie conditionnelle, via l’endpoint existant, après la réponse
+  proche sans suggestion éligible ou son échec. Chaque requête demande au plus
+  50 candidats ; le snapshot fusionné est borné à 100. La sélection locale
+  applique les paliers temporels et conserve au plus dix cartes. Les trajets
+  propres, complets, expirés et participations terminées ne bloquent pas
+  l’élargissement ; les réservations personnelles non plus. Les doublons sont
+  arbitrés selon le timestamp de la réponse réussie la plus récente. Une nouvelle
+  suggestion proche suspend de nouveau la lecture large.
+- Pas de nouveau timer, service GPS ou dépendance. Les calculs de flux sont
+  mémorisés ; l’élargissement réutilise la cadence existante, uniquement à
+  l’écran et en ligne. Sans position exploitable, aucune découverte géographique
+  n’est lancée. `useHomeTripSelection.ts`, `useHomeSheet.ts`,
+  `components/home/HomeTripsSheet.tsx`, `features/home/HomeTripsSheet.styles.ts`
+  et `app/(tabs)/index.tsx` signalent le périmètre élargi sans répéter l’information
+  dans chaque carte. Un échec réseau ne vaut pas une réponse vide ; les
+  réservations disponibles ne disparaissent pas pendant la recherche de repli.
+- `app/search.tsx`, `app/requests.tsx`,
+  `components/search/SearchResultsToolbar.tsx`,
+  `hooks/search/useSearchController.ts` et
+  `features/screen-styles/app/search/container.styles.ts` : titres explicites
+  « Trouver un trajet » / « Trouver un client », onglets « Trajets / Clients »
+  réservés aux conducteurs, « place(s) » au lieu de « PERS. », compteurs et
+  explications raccourcis. Le tri des commandes « Prix le plus élevé » décrit
+  le classement décroissant existant du prix maximum par place. Suppression
+  des phrases de chargement redondantes, hauteur minimale de cet état réduite
+  de 220 à 96 points, boutons d’effacement agrandis à 44 points et sélection des
+  onglets annoncée aux lecteurs d’écran.
+- `app/publish.tsx`, `features/publish/PublishStepIndicator.tsx`,
+  `PublishRouteStep.tsx`, `PublishVehicleStep.tsx`,
+  `hooks/publish/usePublishController.ts` et les styles `container.styles.ts` /
+  `vehicleCardActive.styles.ts` de publication : « Proposer un trajet », un seul
+  indicateur compact « n sur 5 » et cinq segments remplaçant les grosses pastilles
+  et leurs cinq légendes. Les anciens styles de cet indicateur sont supprimés.
+  Libellés « Départ et arrivée », « Avec quel véhicule ? », action finale
+  « Publier mon trajet » ou « Publier mes trajets ». Retrait des indications
+  redondantes de sélection, sans modifier la sélection effective du véhicule.
+- `app/request/index.tsx`, `components/trip-request/RequestRouteStep.tsx`,
+  `RequestRoutePreview.tsx`, `RequestBudgetFields.tsx`,
+  `hooks/trip-request/useRequestTripController.ts`,
+  `features/trip-request/requestFormModel.ts` et `requestStyles.ts` : deux étapes
+  explicites, « Où allez-vous ? », bouton « Continuer », résumé départ/arrivée
+  avec « Modifier ». La carte est désormais montée uniquement à l’action
+  « Voir la carte » et démontée en la masquant ; ses marqueurs, son tracé et ses
+  réglages restent disponibles. Les adresses et références restent visibles
+  sans ouvrir la carte. Suppression du dégagement inférieur de 116 points
+  devenu superflu avec le pied d’action dans le flux, réduction des espacements
+  et des choix de paiement, suppression de leurs phrases répétitives (les aides
+  d’accessibilité restent fournies). Le total peut revenir à la ligne plutôt
+  qu’être tronqué ; compteurs et paiements ont des libellés/états accessibles.
+  Les styles d’anciens éléments superposés de l’aperçu ont été retirés.
+- Le skill frontend a guidé une hiérarchie sobre, des actions explicites et
+  l’affichage des détails à la demande, en conservant la charte existante.
+
+### Comportements conservés et prévention des régressions
+
+- Les réservations personnelles et la navigation en cours gardent leur priorité
+  indépendamment des limites des suggestions. « Voir tout » garde la recherche
+  large. Les passagers n’accèdent toujours pas aux commandes d’autres passagers.
+- Cinq étapes de publication et deux étapes de commande conservées ; aucune
+  validation contournée. Dates choisies explicitement, références, lieux favoris,
+  géocodage, places/capacité/identité, prix confirmé par place, total, commissions,
+  choix de paiement, récurrence, brouillons et protection des doubles soumissions
+  restent dans les flux existants. Aucun contrat HTTP ni code backend modifié.
+- Les listes restent virtualisées et les recherches gardent leurs temporisations.
+  Les champs peuvent défiler si la taille d’écran ou de police le nécessite ;
+  il ne s’agit pas de supprimer le défilement à tout prix.
+
+### Vérifications et limites
+
+- 326 tests JavaScript ciblés réussis (accueil, recherche, commandes, publication,
+  formulaires, compteurs, cycle de vie, lectures réseau, références et extractions
+  de sources). Nouveaux cas : trois paliers, bornes horaires/distances, réservations
+  n’empêchant pas le repli, contrôles de déclenchement/suspension, données stables,
+  erreurs/chargements sans faux état vide, données élargies plus récentes,
+  indicateur cinq étapes, carte facultative et contrôles de formulaire.
+- Les attentes textuelles existantes ont été adaptées aux nouveaux libellés,
+  sans supprimer les tests de permissions ou de navigation. Le baseline de styles
+  `tests/fixtures/sourceExtractions.json` est actualisé uniquement pour recherche
+  et publication, dont les modifications sont intentionnelles.
+- TypeScript sans émission et ESLint des sources modifiées : réussis.
+  Contrôles de frontière réseau, taille des sources (1 068 fichiers, aucun au-delà
+  de 400 lignes) et `git diff --check` : réussis.
+- Pas d’essai sur appareil physique iOS/Android, pas de mesure native de mémoire,
+  fluidité ou chauffe. Le non-montage initial de la carte est vérifié en JavaScript,
+  pas par un profilage natif. À vérifier sur appareil : petits écrans et grandes
+  polices, clavier, ouverture/fermeture de la carte, publication récurrente,
+  commande avec plusieurs places, retour hors ligne et reprise réseau.
+- La découverte reste limitée aux candidats renvoyés par les endpoints existants ;
+  les fenêtres horaires sont filtrées localement. Aucun catalogue exhaustif n’est
+  garanti au-delà de ces pages. S’il n’existe aucun départ dans le dernier palier,
+  un état vide honnête avec « Voir tout » subsiste. Aucun déploiement effectué.
+
+## 10 octobre 2026 — Accueil conducteur et liste de départs proches
+
+Périmètre : accueil mobile. Le conducteur voyait la même invitation à chercher
+un trajet que le passager ; la liste inférieure était fermée au départ et
+répétait titre, compteur, description et sélecteur. Le tri par proximité existait,
+mais ne limitait ni la distance ni l’échéance des suggestions. L’utilisateur a
+choisi explicitement **moins de 5 km et les prochaines 24 heures**.
+
+### Solutions appliquées
+
+- `components/home/HomeHeader.tsx` et `app/(tabs)/index.tsx` utilisent le rôle
+  déjà issu du profil serveur : « Je cherche un client » ouvre `/requests`,
+  onglet des commandes disponibles. Un passager, ou un rôle non encore connu,
+  conserve « Je cherche un trajet » vers `/search`. Publication et commande
+  personnelle restent accessibles par les mêmes actions.
+- `hooks/home/useHomeSheet.ts` ouvre la liste par défaut. Le choix manuel de
+  la masquer reste valable pendant l’utilisation. Un trajet en cours la replie
+  temporairement ; sa fin restaure le choix précédent sans bloquer l’accueil.
+- `components/home/HomeTripsSheet.tsx` et
+  `features/home/HomeTripsSheet.styles.ts` remplacent le titre et les onglets
+  superposés du conducteur par une seule barre « Trajets / Clients », avec
+  « Voir tout » et le bouton de réduction. Un passager conserve seulement
+  « Trajets », sans accès aux commandes des autres. Suppression des sous-titres
+  et badges de compteur redondants, raccourcissement des états vides/erreurs,
+  boutons d’au moins 44 points. La barre peut passer à la ligne ; même replié,
+  le panneau utilise une hauteur minimale plutôt qu’une hauteur bloquée.
+- `components/home/HomeSheetLoadingState.tsx` et son fichier de styles gardent
+  l’aperçu de chargement mais remplacent les deux phrases et l’icône décorative
+  par « Chargement… ». La boucle native reste arrêtée hors premier plan.
+- Le skill frontend a guidé cette hiérarchie plus sobre. Les cartes conservent
+  parcours, horaire, prix par place, places, véhicule et identité ; aucune donnée
+  essentielle n’a été supprimée du détail. La liste horizontale reste virtualisée.
+- `features/home/homeTripPriority.ts` et
+  `hooks/home/useHomeTripSelection.ts` filtrent les nouvelles suggestions avant
+  de retenir au maximum dix cartes : trajet non démarré, place libre, horaire
+  entre maintenant et +24 h, départ à moins de 5 km de la position disponible.
+  La distance est géographique à vol d’oiseau, pas une durée routière. Le tri
+  conserve les zones de proximité de 500 m ; dans une même zone, le départ le
+  plus tôt passe en premier, puis la distance exacte départage les horaires égaux.
+- Les réservations personnelles échappent au plafond distance/+24 h, mais les
+  trajets terminés/annulés et les participations terminées restent exclus. La
+  navigation en cours ne dépend pas du classement des dix suggestions. Sans
+  position exploitable, seules les réservations peuvent subsister dans la liste :
+  le message invite à activer la localisation, et « Voir tout » garde la recherche
+  élargie accessible. La carte de suggestions utilise la même sélection.
+- `hooks/home/useHomeTripFeed.ts` borne aussi la requête proche à 5 km et
+  50 candidats. Une réponse vide ne déclenche plus de téléchargement général.
+  Si cette requête échoue, le repli existant conserve les coordonnées et le rayon
+  de 5 km. Sans position valide, ces lectures restent suspendues. Le cache passe
+  lui aussi par le filtre local ; des résultats lointains déjà stockés ne
+  contournent donc pas les limites.
+- Les timestamps des rafraîchissements existants et le retour au premier plan
+  réévaluent la fenêtre horaire, même si les données sont identiques. Aucun
+  nouveau timer, abonnement réseau, dépendance, migration ou changement backend.
+  Le filtrage temporel de 24 h est local ; aucune garantie de catalogue exhaustif
+  au-delà des candidats renvoyés par le serveur n’est ajoutée.
+
+### Vérifications et limites
+
+- **223 tests JavaScript réussis**, aucun échec ni test ignoré : accueil complet,
+  recherche compacte, cycle de vie des cartes, onglets, listes de commandes,
+  recherche et reprise de navigation conducteur/passager. Les fixtures du test
+  de fin de trajet ont été complétées avec une position et des places disponibles
+  pour correspondre à la nouvelle règle ; les assertions de sortie du trajet
+  restent conservées. Après l’ajustement final des coordonnées normalisées et du
+  périmètre de rafraîchissement de secours, les **41 tests concernés** ont été
+  relancés avec succès, ainsi que TypeScript et le lint du fichier concerné.
+- Tests adaptés/ajoutés dans `tests/homeCompactLayout.test.js`,
+  `homeCompactCards.test.js`, `compactCardsLifecycle.test.js`,
+  `homeModules.test.js`, `homeTripPriority.test.js`, `homeRideCompletion.test.js`
+  et `homeForegroundLifecycle.test.js` : rôles/destinations, ouverture initiale,
+  repli volontaire, sortie d’un trajet, seuils temps/distance, absence de GPS,
+  cache hors ligne, réservations, absence de recherche générale après résultat
+  vide et invalidation temporelle sans boucle réseau supplémentaire.
+- TypeScript sans émission : réussite. ESLint ciblé : réussite sans
+  erreur ni avertissement. Contrôles réseau et taille : réussite, **1 068 sources**,
+  aucune au-dessus de 400 lignes. `git diff --check` ciblé : réussite.
+- Pas de mesure de performance ni de rendu sur appareil physique iOS/Android.
+  Le renouvellement de la sélection suit les actualisations existantes, pas un
+  décompte à la seconde. À vérifier sur petits écrans/grandes polices, avec GPS
+  refusé puis autorisé, connexion lente, réservations éloignées et trajet en cours.
+  Aucun déploiement effectué ; la recherche générale et les notifications de
+  commandes ne reçoivent pas les nouveaux plafonds propres à l’accueil.
+
+## 10 octobre 2026 — Actions de l’accueil formulées comme des intentions
+
+Périmètre : en-tête de l’accueil mobile. Les verbes isolés « Publier »,
+« Commander » et « Chercher » ne précisaient pas suffisamment leur objet pour
+un nouvel utilisateur.
+
+### Solution appliquée et comportements conservés
+
+- `components/home/HomeHeader.tsx` affiche « Que voulez-vous faire ? », puis
+  deux choix principaux : « Je cherche un trajet » (recherche existante) et
+  « Je propose un trajet » (publication existante). « Je commande un trajet »
+  reste accessible juste en dessous et ouvre le même formulaire de commande.
+  Aucun parcours n’a été supprimé ni remplacé par un modal intermédiaire.
+- `features/home/HomeHeader.styles.ts` organise les deux choix côte à côte,
+  avec retour à la ligne si nécessaire, et un accès secondaire à la commande.
+  Les textes ne sont plus limités à une ligne et conservent le grossissement
+  système ; les zones tactiles restent d’au moins 44 points. La surface claire
+  et les icônes existantes distinguent les actions de la carte en arrière-plan.
+- Le skill frontend a guidé la hiérarchie : deux intentions principales, une
+  option secondaire et des formulations courtes, sans animation décorative.
+  Ce bloc est plus haut que l’ancienne rangée de trois mots ; aucun gain de
+  surface visible de la carte n’est revendiqué.
+- Profil, notifications, priorités de trajets/réservations et commandes,
+  autorisations de publication, carte et logique réseau sont inchangés. Le
+  composant reste mémoïsé ; aucun état, requête, minuteur ou dépendance ajouté.
+- `tests/homeCompactLayout.test.js` vérifie les textes, leur ordre, les trois
+  destinations, les indications aux lecteurs d’écran, la hauteur minimale des
+  boutons et l’absence de troncature ou réduction forcée des libellés.
+
+### Vérifications et limites
+
+- Contrôle de taille : **1 068 sources**, aucune au-dessus de 400 lignes.
+- Tests JavaScript de l’accueil, de la recherche compacte et des onglets :
+  **144 réussis**, aucun échec ni test ignoré. TypeScript sans émission et
+  ESLint sur les deux sources modifiées : réussite sans erreur ni avertissement.
+  `git diff --check` sur les quatre fichiers de ce changement : réussite.
+- Aucun essai visuel sur appareil physique ni test utilisateur à Kinshasa.
+  Le retour à la ligne est testé comme propriété de rendu React, pas comme
+  mesure native de texte. À vérifier sur petits écrans et grandes polices,
+  notamment lorsque les cartes prioritaires et la liste basse sont visibles.
+  Aucun déploiement, changement backend ou configuration native.
+
+## 10 octobre 2026 — Reprise prioritaire de la navigation d’un trajet en cours
+
+Périmètre : application mobile, ouverture après fermeture et retour au premier
+plan. La reprise automatique existait, mais le passage par le lancement ou
+l’authentification pouvait la désactiver avant l’arrivée sur l’accueil. Une
+redirection concurrente vers l’accueil pouvait aussi remplacer celle vers la
+navigation. Certains écrans de retour, dont la recherche, n’étaient pas éligibles.
+
+### Solutions effectivement appliquées
+
+- `features/navigation/activeRideResume.ts` distingue les transitions de lancement
+  et d’authentification des écrans où une redirection interromprait une action.
+  La recherche, les notifications, les paramètres et les adresses favorites
+  permettent désormais aussi la reprise du trajet à l’entrée dans l’application.
+- `components/ActiveRideResumeCoordinator.tsx` attend la sortie des routes de
+  lancement avant de reprendre la navigation et observe le résumé d’activité
+  partagé, sans ajouter d’abonnement aux listes ni de boucle réseau.
+- `hooks/navigation/useActiveRideResume.ts` conserve la reprise pendant les
+  transitions d’authentification. Un résumé serveur récent sans activité en cours
+  clôt la recherche pour cette entrée. Des listes vides plus anciennes qu’un
+  résumé signalant une activité ne la clôturent plus prématurément. Une erreur
+  réseau de vérification peut être retentée au prochain rafraîchissement partagé,
+  sans nouvelle requête à chaque rendu.
+- La réservation passager signalée par le serveur a priorité sur un ancien
+  trajet conducteur encore marqué en cours, même si les listes arrivent dans un
+  ordre différent. La participation et le statut sont revérifiés avant la
+  redirection, y compris lorsqu’ils changent pendant une requête.
+- `tests/activeRideResume.test.js` complète les scénarios du hook ; le nouveau
+  `tests/activeRideResumeCoordinator.test.js` teste le coordinateur et son hook
+  ensemble, avec les dépendances natives et réseau simulées.
+
+### Comportements conservés et précautions
+
+- La destination dépend de la participation réelle : navigation conducteur pour
+  son trajet en cours, navigation passager pour sa réservation acceptée sur un
+  trajet en cours, même si ce passager possède aussi un compte conducteur.
+- Une lecture serveur authentifiée confirme toujours l’accès et le statut ;
+  le cache ne suffit pas à autoriser la navigation. Les trajets terminés ou
+  annulés et les réservations terminées, annulées ou non acceptées sont exclus.
+- Une seule reprise réussie par compte et passage au premier plan : quitter
+  volontairement la navigation reste possible sans être immédiatement renvoyé.
+  Les paiements, conversations, SOS, formulaires et actions explicites de
+  notification gardent la priorité. Un modal en cours diffère la reprise.
+- Une réponse arrivée après une déconnexion, un changement de compte, une sortie
+  de l’application ou une navigation volontaire ne déclenche pas de redirection.
+  Hors ligne, la reprise attend de pouvoir vérifier le trajet auprès du serveur.
+- Aucun changement backend, migration, dépendance, minuteur de polling ou
+  configuration native. Aucun déploiement réalisé.
+
+### Vérifications et limites
+
+- Tests JavaScript ciblés : **70 réussis, aucun échec ni test ignoré** dans
+  `activeRideResumeCoordinator`, `activeRideResume`, `accountActivity`,
+  `startupSession`, `homeBackNavigation` et `acceptedRequestContact`.
+- TypeScript sans émission et ESLint sur les trois sources modifiées : réussite,
+  sans erreur ni avertissement ESLint. Frontières réseau et taille des sources :
+  réussite, **1 068 sources**, aucune au-dessus de 400 lignes. `git diff --check` :
+  réussite, avec seulement les avertissements de conversion de fins de ligne de
+  fichiers déjà modifiés hors de ce périmètre. La suite complète du projet n’a
+  pas été relancée pour ce changement.
+- Pas d’essai sur appareil physique iOS/Android ni de mesure de latence. L’accueil
+  peut apparaître brièvement pendant la vérification serveur ; cette modification
+  ne garantit pas une navigation instantanée hors ligne.
+- À valider sur appareils : fermeture/réouverture et retour du verrouillage avec
+  un trajet conducteur puis une réservation passager en cours ; entrée depuis
+  la recherche/les notifications ; retour volontaire à l’accueil ; trajet terminé
+  ou annulé ; reconnexion réseau ; paiement ou modal déjà ouvert.
+
+## 10 octobre 2026 — Commandes visibles et notifiées selon le rôle
+
+Périmètre : mobile et backend voisin `zwanga-backend`. Un passager doit découvrir
+les trajets publiés et consulter seulement ses propres commandes. Il ne doit pas
+recevoir d’alerte proposant les commandes des autres passagers. Les notifications
+de suivi de ses propres commandes restent actives. Aucun déploiement ni push réel
+n’a été effectué pour cette modification.
+
+### Problèmes constatés et solutions appliquées
+
+- Le serveur restreignait déjà l’accès aux commandes des autres utilisateurs aux
+  conducteurs, mais l’interface proposait encore le mode « Demandes » aux passagers.
+  `app/search.tsx`, `hooks/search/useSearchController.ts` et `useSearchResults.ts`
+  affichent uniquement les trajets pour un passager. Le mode conducteur exige un
+  profil serveur ; l’identité stockée reste utilisable pour exclure ses propres
+  trajets, pas pour autoriser la découverte des commandes. Les résultats conducteur
+  en cache sont masqués dès le changement de rôle, même si l’écran est hors focus.
+- `app/requests.tsx` et `hooks/requests/useRequestsData.ts` ramènent les passagers
+  sur « Mes commandes », sans onglet disponible, sans lecture de la liste publique
+  ni suivi GPS pour son tri. `app/my-requests.tsx`,
+  `hooks/home/useHomePassengerActivity.ts` et
+  `hooks/request-detail/useRequestDetailData.ts` contrôlent aussi le propriétaire
+  avant d’afficher des données déjà en cache.
+- Les nouveaux libellés utilisent « commande(s) » : accueil/carte/aperçus
+  (`components/home/*`, `features/home/homeModel.ts`, `hooks/home/useHomeSheet.ts`),
+  recherche (`app/search.tsx`, `components/search/SearchRequestResultCard.tsx`,
+  `hooks/search/*`), listes (`app/requests.tsx`, `app/my-requests.tsx`,
+  `features/requests/*`), détail/édition/acceptation (`app/request/[id].tsx`,
+  `features/request-detail/*`, `hooks/request-detail/*`), soumission
+  (`hooks/trip-request/useRequestSubmission.ts`), profil/disponibilité
+  (`hooks/profile/useProfileController.ts`, `app/driver-availability.tsx`,
+  `components/profile/ProfileDriverAvailabilityEntry.tsx`,
+  `components/profile/NearbyDriverLocationPermission.tsx`), vérification
+  (`app/verification.tsx`), contact après acceptation
+  (`components/AcceptedRequestContactCoordinator.tsx`) et suivi/alertes
+  (`hooks/notifications/useOverdueRequestNotification.ts`,
+  `services/nearbyDriverLocation.ts`, `driverNotifications.ts`,
+  `driverNotificationResponse.ts`). Les réservations de trajets publiés restent
+  nommées « réservations » dans `app/bookings.tsx` et
+  `features/trip-detail/TripBookingSteps.tsx` / `TripBookingSuccessModal.tsx`.
+- Le backend filtre aussi au moment de l’envoi :
+  `src/notifications/driver-request-policy.ts` et `notifications.service.ts`
+  réutilisent la lecture du destinataire pour vérifier son rôle et son activité.
+  Les alertes `trip_request`, `new_trip_request` (ancien format),
+  `trip_request_nearby` et `driver_dispatch_offer` sont supprimées de l’envoi si
+  le destinataire n’est plus un conducteur actif, y compris lors d’une reprise
+  d’envoi. Un envoi de ces alertes par tokens sans destinataires identifiés est
+  refusé. Le filtrage est aussi appliqué en SQL avant pagination et comptage de
+  la boîte de réception : pas de pages ou badges gonflés par ces anciennes alertes.
+  Aucune nouvelle migration, table, dépendance ou variable de configuration.
+- Côté mobile, `features/notifications/requestVisibility.ts`,
+  `app/notifications.tsx`, `components/NotificationHandler.tsx`,
+  `hooks/notifications/useDriverNotifications.ts` et
+  `utils/notificationNavigation.ts` masquent les alertes conducteur à un passager
+  et empêchent leur ouverture automatique en premier plan. Le mécanisme qui
+  arrête la sonnerie à l’ouverture reste actif pour les deux rôles.
+  `store/api/notificationApi.ts` traduit aussi les anciens libellés de commandes
+  dans l’historique, sans toucher aux demandes de retrait ou d’assistance.
+- Les nouveaux textes serveur sont adaptés dans
+  `src/trip-requests/trip-requests.service.ts`, `trip-request-recovery.service.ts`,
+  `request-edit-policy.ts`, `trip-requests.controller.ts`,
+  `dispatch/dispatch.service.ts` et
+  `src/notifications/daily-engagement-notification.service.ts`.
+
+### Comportements conservés et vérifications
+
+- Types de notification, routes, identifiants, DTO, autorisations de contact,
+  acceptation/refus, paiement et logique de sonnerie sont conservés. Les événements
+  d’acceptation, remise en disponibilité, expiration et retard d’une commande
+  personnelle ne sont pas bloqués. Un conducteur conserve la découverte des
+  commandes et peut aussi consulter ses propres commandes comme passager.
+- Tests ciblés mobiles : **126 réussis** après adaptation des anciennes assertions
+  de libellés et des fixtures de rôle/propriétaire. Scénarios supplémentaires :
+  compte passager avec ancien indicateur conducteur, cache hors ligne, changement
+  de rôle sur un écran masqué, recherche et accès direct à la liste personnelle.
+- Premiers tests backend : **58 réussis**, notamment blocage à l’envoi/reprise,
+  destinataire absent/inactif, conservation des notifications personnelles et
+  règles d’accès serveur existantes.
+- PostgreSQL 18/PostGIS réel : **17 tests réussis** dans un cluster temporaire
+  local isolé. Le nouveau test valide la boîte de réception, son total, ses non-lus
+  et les changements de rôle/statut. Aucune base applicative n’a été consultée.
+- Validation mobile finale : **1 776 tests réussis dans 220 fichiers**, sans
+  échec ni test ignoré. Les premières exécutions ont permis d’adapter les
+  assertions de libellés et les fixtures à la vérification du propriétaire/rôle,
+  sans retirer ces contrôles du code.
+- TypeScript mobile et backend : réussite. Contrôles de frontières réseau et
+  taille : réussite, **1 068 sources**, aucune au-dessus de 400 lignes. ESLint
+  sur les sources mobiles modifiées : **0 erreur, 14 avertissements** dans les
+  imports/hooks existants, non corrigés dans ce changement de périmètre.
+- Suite backend étendue `src/notifications` et `src/trip-requests` : **18 suites
+  réussies, 266 tests réussis**. Les 16 tests PostgreSQL sont ignorés dans ce
+  lancement sans cluster ; ils ont bien été exécutés séparément dans les 17 tests
+  PostgreSQL/politique mentionnés plus haut. Les quatre échecs de la première
+  exécution étendue concernaient les anciens messages attendus ; les assertions
+  ont été adaptées à « commande » puis la suite entière a été relancée.
+  `git diff --check` mobile et backend : réussite.
+- Limites : pas d’essai sur appareil physique iOS/Android ni de mesure de latence
+  ou de consommation. Le skill Postgres a guidé la réutilisation de la lecture du
+  profil à l’envoi et le filtrage indexable en amont de la pagination ; ce n’est
+  pas une mesure de gain de performance. Les notifications déjà livrées par l’OS
+  avant déploiement ne peuvent pas être rappelées par ce filtrage. Il faudra
+  déployer le backend et distribuer le code mobile pour appliquer ces règles.
+- Essai natif restant : créer une commande depuis un compte passager A ; vérifier
+  qu’un autre passager B ne la voit ni sur l’accueil, ni sur la recherche/liste,
+  ni dans ses notifications, app ouverte puis fermée. Vérifier l’alerte chez un
+  conducteur éligible, son acceptation et la notification de suivi chez A. Tester
+  aussi le retour réseau et un ancien lien de notification après changement de
+  rôle. Aucun résultat natif n’est déduit des tests JavaScript ou PostgreSQL.
+
+## 10 octobre 2026 — Sonnerie ciblée pour les commandes immédiates et programmées
+
+Périmètre : application mobile et backend voisin `zwanga-backend`. L’utilisateur
+a confirmé que l’alerte prolongée concerne **les deux** types de départ. Il s’agit
+d’une notification particulière, pas d’un appel téléphonique. La préférence
+« arrêter à l’ouverture de Zwanga » est conservée. Aucun déploiement, vrai push,
+changement de configuration ou d’infrastructure de production dans ce tour.
+
+### Problèmes constatés dans le code
+
+- L’intention de départ immédiat dépendait de la réponse asynchrone au statut du
+  dispatch. Une réponse absente ou périmée pouvait omettre `immediateDispatch` et
+  envoyer la commande sur le parcours d’annonce générale au son standard.
+- Une commande programmée utilisait cette annonce générale, sans alerte sonore
+  ciblée au conducteur proche. Réutiliser l’acceptation exclusive immédiate aurait
+  changé son fonctionnement et aurait pu bloquer un conducteur jusqu’au départ.
+- Le transport Expo des invitations conducteur v2 ne précisait pas le canal
+  Android, contrairement au transport FCM natif et aux confirmations passager.
+  Ce repli pouvait donc sélectionner le canal par défaut.
+
+### Solutions appliquées et fichiers
+
+- `hooks/trip-request/useRequestSubmission.ts` transmet toujours le choix de
+  départ immédiat, sans requête de statut préalable. Le backend reste responsable
+  de l’activation dans `src/trip-requests/trip-requests.service.ts` ; lorsque la
+  répartition de proximité est désactivée, la création et son repli historique
+  restent possibles. Les dates immédiates hors fenêtre restent refusées. Le DTO
+  `src/trip-requests/dto/trip-request.dto.ts` précise cette responsabilité.
+- Avec la répartition activée, les commandes programmées déclenchent
+  `notifyScheduledRequest` dans `src/trip-requests/dispatch/dispatch.service.ts`.
+  Le nouveau `src/trip-requests/dispatch/scheduled-request-alert.ts` recherche
+  jusqu’à vingt candidats par distance dans le rayon configuré, sur position
+  récente, avec véhicule actif compatible et assez de places. Il écarte le
+  passager, les conducteurs occupés, les propositions exclusives en attente,
+  les comptes non autorisés et les installations sans capacité sonore v2 liée
+  à leur token actuel. Une notification est enregistrée pour le premier candidat
+  admissible, avec une clé unique par commande. Aucun conducteur, véhicule ou
+  trajet n’est attribué automatiquement ; aucun état de disponibilité n’est changé.
+- `src/notifications/notifications.service.ts` traite `trip_request_nearby` comme
+  une alerte prioritaire : canal Android existant `booking-ring-v2`, son embarqué
+  `driver_ring`/`driver_ring.wav`, priorité haute et niveau iOS `time-sensitive`
+  pour les clients compatibles. Le repli Expo des invitations v2 précise aussi
+  le canal Android. Les alertes programmées sont des notifications distantes
+  ordinaires à son dédié, pas des invitations exclusives data-only. Un appui ouvre
+  le détail de la commande ; elles n’ajoutent pas de boutons système Accepter/Refuser.
+- La file urgente existante prend aussi les alertes programmées, sans attendre
+  la file ordinaire. Avant l’envoi, la commande doit être encore disponible,
+  sans conducteur sélectionné ni trajet associé. L’alerte a une échéance de
+  soixante secondes ; le TTL transport est plafonné à trente secondes et à son
+  échéance restante. Les réessais existants de la file urgente respectent ce
+  contrôle. Ces délais ne font pas expirer la commande elle-même et ne garantissent
+  ni livraison à temps ni arrêt système du son à une milliseconde précise.
+- Migration additive `src/database/migrations/1780000066000-IndexNearbyRequestAlerts.ts`,
+  enregistrée dans `src/database/migrations/index.ts` et alignée avec
+  `src/notifications/entities/notification.entity.ts` : remplacement de l’index
+  partiel de la file urgente pour inclure ce type. Construction du nouvel index
+  avant retrait de l’ancien, dans une transaction avec attente de verrou bornée
+  à cinq secondes et requêtes à trente secondes ; retour arrière disponible.
+  Une grosse base peut nécessiter une fenêtre de maintenance ou une stratégie
+  concurrente à préparer séparément. Aucun index de production n’a été modifié.
+- `features/notifications/rideSound.ts`, `services/backgroundNotificationTask.ts`
+  et `components/NotificationHandler.tsx` reconnaissent le nouveau type sans
+  le transformer en décision : pas de deuxième notification locale au son par
+  défaut ; bannière sans son quand le conducteur est déjà dans l’application.
+  `services/driverNotifications.ts` retire aussi les alertes programmées de ce
+  compte à l’ouverture, avec identifiant et tag Android lorsqu’ils sont disponibles,
+  sans accepter/refuser et sans retirer les messages ou alertes d’un autre compte.
+
+Le skill `supabase-postgres-best-practices` a guidé les recherches bornées utilisant
+l’index géographique existant, l’index partiel de notification et les transactions
+sans HTTP sous verrou. Aucun benchmark de charge ni gain chiffré n’est revendiqué.
+Aucun service Supabase, nouvelle dépendance, fichier sonore ou permission native
+n’a été ajouté. Le son existant dure vingt-neuf secondes, sous la limite Apple
+de trente secondes ([documentation Apple](https://developer.apple.com/documentation/usernotifications/unnotificationsound)).
+
+### Comportements conservés et limites
+
+- Invitations immédiates et réservations publiées : acceptation/refus sécurisés,
+  vérification du destinataire, idempotence, échéances et réattribution existantes
+  conservées. Ouvrir l’app ou toucher la notification ne vaut pas acceptation.
+  Paiements, commissions, tarifs, KYC, GPS et consentements ne sont pas modifiés.
+- Les notifications de messagerie et la confirmation au passager après acceptation
+  gardent leurs comportements. Pas de CallKit, PushKit, plein écran imposé ou
+  contournement du volume, du silencieux ou des préférences système.
+- La sélection utilise la **position actuelle récente**, pas une prédiction de
+  localisation au jour du départ. La recherche est bornée à vingt candidats ;
+  une installation compatible, un token valide, les autorisations système et la
+  fonction de proximité activée restent nécessaires. Sans candidat admissible,
+  la commande programmée reste consultable mais aucune sonnerie n’est envoyée.
+  Aucun nouveau mécanisme de réattribution différée n’est ajouté pour ces commandes.
+- La création est enregistrée avant la préparation de l’alerte programmée : si
+  cette préparation échoue, elle est journalisée sans annoncer un faux échec de
+  création. La file réessaie les notifications déjà enregistrées, mais ne recrée
+  pas automatiquement une alerte qui n’a pas pu être mise en file.
+
+### Vérifications réalisées
+
+- **Mobile : 219 fichiers, 1 768 tests JavaScript réussis**, avec
+  `node --test --test-force-exit --test-concurrency=4`. Les nouveaux tests couvrent
+  le choix immédiat indépendant du statut, le décodage, l’absence de double son,
+  la navigation sans décision, la mise en sourdine au premier plan et à l’ouverture.
+  Fichiers : `tests/tripRequestForm.test.js`, `tests/requestAcceptanceSound.test.js`,
+  `tests/driverNotifications.test.js` ; suites existantes des actions et ressources
+  natives également exécutées. `--test-force-exit` évite l’attente des timers des
+  caches de test ; il ne prouve pas l’absence de ressources actives sur appareil.
+- **Backend : sept suites, 138 tests réussis**, dont sélection et déduplication
+  sur PostgreSQL 18/PostGIS réel dans un cluster temporaire isolé, ainsi que
+  migration/retour arrière de l’index. Aucune connexion à la base de l’application.
+  Suites concernées : `src/notifications/*spec.ts`,
+  `src/trip-requests/trip-request-alert-routing.spec.ts`,
+  `src/trip-requests/dispatch/scheduled-request-alert.spec.ts` et
+  `src/trip-requests/dispatch/dispatch-postgres.spec.ts`. Une première exécution
+  simultanée avec les autres vérifications a dépassé les cinq secondes de
+  préparation d’un ancien test (`TRUNCATE` du cluster jetable) : 137 réussis,
+  un échec de délai. Relance isolée avec `--runInBand --no-cache --testTimeout=15000` :
+  138 réussis. Ce résultat ne constitue pas une mesure des latences de production.
+- TypeScript `--noEmit` réussi dans les deux dépôts. ESLint ciblé : zéro erreur,
+  trois avertissements préexistants. Contrôles réseau et taille : valides,
+  1 067 sources mobiles, aucune au-dessus de 400 lignes. `git diff --check` valide
+  dans les deux dépôts (avertissements de normalisation LF/CRLF uniquement).
+- Aucun build natif, push réel, mesure acoustique ou essai sur appareil physique.
+  La sonnerie effective, sa durée et son interruption restent à vérifier sur iOS
+  et Android verrouillés ; les tests JavaScript ne peuvent pas les garantir.
+
+### Déploiement et recette restant à effectuer
+
+Déployer le backend corrigé avant le nouveau client, appliquer ses migrations
+sur l’environnement choisi et vérifier l’activation de la proximité sans publier
+les valeurs de configuration. Commandes proposées, **non exécutées** :
+
+```powershell
+# Depuis zwanga-backend, sur l’environnement explicitement choisi
+npm.cmd run build
+npm.cmd run migration:run:prod
+
+# Depuis zwanga : builds destinés à de vrais téléphones
+npx.cmd eas-cli build --profile dev-device --platform android
+npx.cmd eas-cli build --profile dev-device --platform ios
+npx.cmd expo start --dev-client
+# Distribution ultérieure dans les stores
+npx.cmd eas-cli build --profile production --platform all
+```
+
+Le fichier sonore et les permissions natives sont inchangés dans ce tour ; un
+binaire contenant déjà ces ressources n’a pas besoin de les recréer. Il faut
+toutefois distribuer les changements JavaScript et backend ensemble. Un ancien
+binaire sans le son embarqué nécessite un nouveau build natif ; Expo Go ne suffit pas.
+
+Recette avec des comptes de test : enregistrer une position récente et les
+notifications de deux conducteurs vérifiés ; verrouiller leurs téléphones ;
+commander à proximité, d’abord maintenant puis pour demain. Vérifier que seul le
+conducteur admissible le plus proche reçoit l’alerte prévue, que le tap ouvre le
+bon parcours et que l’ouverture par l’icône coupe l’alerte sans accepter. Tester
+un véhicule incompatible, une position périmée et une commande déjà traitée ;
+vérifier aussi une réservation publiée et un message normal. Répéter en arrière-plan,
+au premier plan et après fermeture ordinaire sur iOS et Android, avec notifications
+et sons autorisés. Un arrêt forcé Android et les restrictions constructeur/système
+peuvent empêcher les tâches en arrière-plan ; ils ne sont pas contournés.
+
+## 10 octobre 2026 — Correctifs de l’audit performance, fiabilité et UX/UI
+
+Périmètre : application Expo/React Native et pagination des avis dans le backend
+NestJS du dépôt voisin `zwanga-backend`. Aucun déploiement ni changement
+d’environnement ou d’infrastructure n’a été effectué. Les modifications déjà
+présentes, notamment le retour sécurisé des réservations et les travaux
+d’infrastructure du backend, sont conservées.
+
+### Solutions effectivement appliquées
+
+1. **Envoi d’une commande avec réponse incertaine.** Un timeout ne signifie plus
+   « commande envoyée ». `hooks/trip-request/useRequestSubmission.ts` et le nouveau
+   `features/trip-request/recoverRequest.ts` relisent les commandes avec tentatives
+   bornées. Une seule correspondance récente, avec les mêmes adresses, fenêtre de
+   départ, places, prix et véhicule, permet de confirmer l’enregistrement. En cas
+   d’incertitude, « Vérifier à nouveau » ne rejoue pas le POST ; l’utilisateur peut
+   aussi consulter ses commandes. Les doubles appuis et réponses après démontage,
+   sortie ou changement de session sont ignorés. Le composant
+   `components/trip-request/RequestSuccessModal.tsx` et `app/request/index.tsx`
+   distinguent explicitement vérification, absence de confirmation et succès.
+   Les validations de date, places, identité et prix sont conservées.
+2. **Solde non chargé distinct d’un solde nul.**
+   `features/wallet/WalletOverview.tsx` affiche « Solde indisponible » et une
+   possibilité de réessayer quand aucune donnée n’est disponible. Un solde déjà
+   chargé reste visible avec un avertissement en cas d’échec d’actualisation ; un
+   zéro confirmé reste un zéro. `hooks/wallet/useWalletController.tsx` suspend les
+   lectures d’affichage hors ligne/hors écran, utilise les protections partagées
+   pour les rafraîchissements et reprend à la reconnexion. Les règles de solde,
+   dette, commission, retrait, abonnement et suivi de recharge sont inchangées.
+3. **Reprise d’un trajet après rejet d’un cache périmé.**
+   `hooks/navigation/useActiveRideResume.ts` ne consomme plus la reprise lorsqu’un
+   candidat en cache est refusé par la vérification serveur. Il peut vérifier un
+   autre candidat, y compris lorsque la découverte termine pendant la première
+   vérification. Les candidats refusés sont écartés pour cette entrée dans l’app.
+   Au plus une redirection réussie par entrée/compte ; les contrôles de participant,
+   session, parcours courant, priorité des modals et réseau sont conservés, sans
+   ajouter de polling.
+4. **Présentation coordonnée des modals.** Le résultat de commande, les avis du
+   profil et le détail d’historique de paiement utilisent `RideModal` en mode
+   `inApp` au lieu d’une présentation native indépendante
+   (`components/trip-request/RequestSuccessModal.tsx`,
+   `components/profile/ProfileReviewsModal.tsx`, `app/payment-history.tsx`).
+   Le contact des réservations utilise le composant partagé. Les avis et le contact
+   ne restent pas affichés lorsque leur écran perd le focus. Cette réduction des
+   présentations UIKit concurrentes traite un risque identifié dans le code ; elle
+   ne constitue pas une preuve de disparition des blocages sur iPhone.
+5. **Lectures réseau redondantes.** `hooks/bookings/useBookingsFeed.ts` supprime le
+   polling supplémentaire de la liste active : sa fraîcheur repose sur la découverte
+   d’activité et les invalidations déjà partagées. Les pages d’historique chargées
+   restent consultables hors ligne ; pagination et rafraîchissement manuel sont
+   suspendus lorsque les lectures sont désactivées. Les polls périodiques des
+   réservations/trajets et le repli HTTP de position conducteur sont suspendus hors
+   ligne dans `hooks/driver-navigation/useDriverNavigationData.ts` et
+   `hooks/passenger-navigation/usePassengerNavigationData.ts`. La reconnexion ne
+   relance ces lectures que sur l’écran actif. Les lectures initiales nécessaires
+   au repli existant `useOfflineRideData`, les mutations, sockets, GPS et files de
+   confirmation sont conservés : il ne s’agit pas d’interdire tout HTTP hors ligne.
+6. **Avis réellement paginés.** `store/api/reviewApi.ts`,
+   `hooks/profile/useProfileData.ts`, `components/profile/ProfileReviewsSection.tsx`,
+   `components/profile/ProfileReviewsModal.tsx` et `app/(tabs)/profile.tsx` chargent
+   trois avis pour l’aperçu, puis vingt par page dans une `FlatList` virtualisée.
+   Le total et la moyenne restent ceux du serveur, jamais ceux d’une page partielle.
+   Les pages sont isolées par compte/curseur ; erreurs, chargement et absence réelle
+   d’avis sont distingués, avec navigation précédente/suivante et réessai.
+   Dans le backend : nouvel endpoint additif `GET /ratings/user/:userId/page`,
+   validation UUID/curseur/taille (maximum 50), limitation de fréquence, projection
+   explicite des seuls champs de présentation de l’auteur, et réutilisation de la
+   pagination par curseur `(createdAt, id)` avec précision microseconde.
+   Fichiers : `src/ratings/ratings.controller.ts`, `src/ratings/ratings.service.ts`,
+   `src/ratings/entities/rating.entity.ts`,
+   `src/database/migrations/1780000065000-IndexRatingPages.ts` et registre
+   `src/database/migrations/index.ts`. L’index composé et le curseur suivent les
+   recommandations du skill `supabase-postgres-best-practices` ; aucun service
+   Supabase ni nouvelle dépendance n’est ajouté. L’ancien endpoint non paginé est
+   conservé pour les anciennes applications et les autres consommateurs existants.
+7. **Contact complet depuis les réservations.** `app/bookings.tsx`,
+   `features/bookings/BookingListCard.tsx`, `hooks/bookings/useBookingCards.tsx` et
+   `features/navigation/NavigationContactModal.tsx` proposent « Contacter », avec
+   appel, WhatsApp et messagerie Zwanga. Un téléphone absent n’interdit plus la
+   messagerie. Les coordonnées proviennent de la réservation autorisée, avec
+   vérification de participation ; aucune communication n’est automatique.
+   Annulation, notation, suivi, restrictions d’expiration/synchronisation et retour
+   sécurisé restent conservés. Un échec de chargement n’affiche plus une fausse
+   liste vide invitant à réserver de nouveau.
+8. **Thème cohérent avec les écrans clairs existants.** `app/_layout.tsx` utilise
+   `DefaultTheme` et une barre de statut sombre. Le choix automatique d’un thème
+   de navigation sombre alors que les écrans restent clairs est supprimé. Aucun
+   thème sombre complet ni changement de configuration native n’est introduit.
+9. **Tests et garde-fous remis en cohérence.** Les deux attentes d’expiration
+   obsolètes suivent désormais la règle existante de trois heures, sans modifier
+   cette règle (`tests/homeModules.test.js`, `tests/homePriorityDismissals.test.js`).
+   Sept entrées de `tests/fixtures/sourceExtractions.json` sont actualisées après
+   lecture des changements antérieurs et exécution des tests comportementaux
+   associés : disposition navigation/authentification, reprogrammation, statut de
+   réservation, contact et acceptation/modification de commande. Les assertions
+   d’intégrité ne sont pas supprimées. Les mocks des tests concernés sont adaptés
+   aux nouveaux contrats de pagination/contact/réseau. `eslint.config.js` déclare
+   `Buffer` et `__dirname` en lecture seule uniquement pour les tests Node ; une
+   exception localisée et commentée concerne la fixture à hooks injectés de
+   `tests/tripDeletionReconciliation.test.js`, sans désactiver les règles React de
+   l’application.
+
+### Vérifications et limites
+
+- Nouveaux scénarios dans `tests/auditReliabilityFixes.test.js` ; scénarios renforcés
+  dans `tests/activeRideResume.test.js`, `tests/tripRequestForm.test.js`,
+  `tests/walletCompactOverview.test.js` et `tests/personalListCards.test.js`.
+  Ils exécutent les modules TypeScript avec I/O et rendu natif simulés : cela ne
+  remplace pas des essais sur appareil réel.
+- Suite mobile complète : **219 fichiers, 1 765 tests réussis, 0 échec, aucun
+  ignoré**. Exécution Node avec `--test --test-force-exit --test-concurrency=4`
+  sur tous les `tests/*.test.js`. `--test-force-exit` termine les workers après les
+  assertions, sans attendre les temporisations résiduelles des fixtures RTK : ce
+  résultat n’est donc pas une validation d’absence de handles/timers résiduels.
+  Les deux fixtures réseau incompatibles révélées par la première passe ont été
+  adaptées, puis la suite entière réexécutée avec succès.
+  ESLint sur les sources applicatives, tests et configuration : **0 erreur,
+  242 avertissements sur 1 291 fichiers**. Les avertissements restent à traiter ;
+  aucune suppression globale des règles applicatives n’a été faite.
+- TypeScript mobile `tsc --noEmit` et backend
+  `tsc --noEmit --incremental false -p tsconfig.build.json` : réussis.
+  Tests backend ciblés `ratings-page.spec.ts` et `history-page.spec.ts` :
+  **2 suites, 9 tests réussis**, avec repository simulé, sans base PostgreSQL.
+  Contrôles de taille : **1 067 sources, aucune au-dessus de 400 lignes**.
+  Frontière HTTP/RTK Query et `git diff --check` : réussis.
+- **Migration préparée, non exécutée.** Déployer le backend paginé avant le mobile.
+  Dans l’environnement backend voulu, examiner `npm run migration:show`, puis
+  exécuter `npm run migration:run` selon la procédure de déploiement. Ce dernier
+  applique toutes les migrations en attente, pas seulement cet index. La création
+  transactionnelle de l’index est bornée par des timeouts de verrouillage (5 s) et
+  d’exécution (30 s) ; elle peut bloquer brièvement les écritures et doit être
+  planifiée. Pour une table volumineuse, prévoir une migration concurrente dédiée.
+  Pas d’application de migration, d’EXPLAIN ou de mesure de latence PostgreSQL ici.
+- La vérification d’un envoi incertain reste en mémoire pendant la vie du formulaire.
+  Elle ne fournit pas d’idempotence durable après fermeture forcée ; une clé
+  d’idempotence serveur avec persistance client reste une amélioration distincte.
+  Aucun renvoi automatique du POST n’est ajouté.
+- Pas de build natif ni d’essai sur iPhone/Android physique. À tester : ouverture et
+  fermeture des modals puis navigation, contact sans téléphone, mode avion avec et
+  sans cache, reprise réseau, commande avec timeout, retour dans l’app avec ancien
+  trajet en cache, pagination de nombreux avis et lisibilité en mode système sombre.
+  Aucun gain mesuré de chauffe, mémoire native ou absence de crash n’est annoncé.
+
+## 10 octobre 2026 — Retour sécurisé depuis « Mes réservations »
+
+- Problème : le bouton de retour dans `app/bookings.tsx` appelait directement
+  `router.back()`. Sans écran précédent, l’action `GO_BACK` est refusée par le
+  navigateur. Plusieurs appuis rapides pouvaient également mettre plusieurs
+  retours en attente avant la première transition.
+- Appliqué : vérification de `router.canGoBack()` au moment de l’appui ; retour
+  normal si un historique existe, sinon remplacement de l’écran par l’accueil
+  `/(tabs)`. Verrou synchrone contre les doubles appuis, conservé lors des
+  re-rendus et réinitialisé lorsqu’on revient réellement sur cet écran.
+  Un ancien gestionnaire ne peut plus quitter un autre écran après perte de
+  focus/démontage. Ajout du libellé d’accessibilité « Retour ».
+- Conservé : onglets Actives/Historique, pagination, rafraîchissement,
+  consultation et annulation des réservations, contact du conducteur et
+  politique globale de retour à l’accueil. Aucune nouvelle requête réseau,
+  temporisation, dépendance ou modification backend.
+- Vérifications : **35 tests JavaScript réussis** avec
+  `node --test tests/bookingsBackNavigation.test.js tests/homeBackNavigation.test.js
+  tests/activeRideResume.test.js`, dont huit nouveaux tests exécutant l’écran
+  avec navigation simulée (historique présent/absent, évolution avant l’appui,
+  appuis répétés, nouvelle visite et callbacks après sortie).
+  ESLint ciblé, `tsc --noEmit` et `git diff --check` réussis.
+- Limites : pas d’essai natif physique réalisé. Vérifier sur iPhone et Android
+  le retour depuis un accès normal et une ouverture directe, ainsi qu’un double
+  appui rapide. Le message fourni suffit à identifier l’action sans destination,
+  mais ne permet pas de distinguer à lui seul une entrée directe d’un double appui.
+
+## 10 octobre 2026 — Contact après acceptation et reprise d’un trajet en cours
+
+- Périmètre : application mobile, acceptation d’une commande de trajet par le
+  conducteur, puis ouverture/retour au premier plan. L’acceptation ne proposait
+  pas systématiquement de contacter le passager et une session restaurée
+  revenait à l’accueil même lorsqu’un trajet était démarré.
+- Contact appliqué : après confirmation serveur, affichage de « Contactez votre
+  passager », avec appel, WhatsApp, messagerie Zwanga et « Plus tard ». Aucune
+  communication n’est déclenchée automatiquement. Les coordonnées sont relues
+  auprès du serveur et ne sont utilisables que pour la demande attribuée au
+  conducteur connecté. Un numéro absent laisse la messagerie disponible ; une
+  erreur réseau offre « Réessayer ». Une demande réattribuée/annulée ou un
+  trajet terminé ne donne pas accès au contact via cette invitation.
+  Fichiers : `components/AcceptedRequestContactCoordinator.tsx`,
+  `features/request-detail/acceptedRequestContact.ts`,
+  `features/navigation/NavigationContactModal.tsx`,
+  `hooks/navigation/useTripContactMessaging.ts`, `types/tripRequests.ts`,
+  `store/api/trip-request/requestMapper.ts`.
+- Déclenchement : `store/api/tripRequestApi.ts` et
+  `store/api/driverDispatchApi.ts` enregistrent uniquement les acceptations
+  confirmées dans `store/slices/rideEntrySlice.ts`, réinitialisé à la déconnexion
+  et au changement de compte par `store/index.ts`. Les intentions sont bornées,
+  dédupliquées et ne contiennent pas de téléphone. Les actions de notification
+  sont couvertes par `services/driverNotificationResponse.ts` ; ouvrir une
+  notification déjà acceptée permet de reconstruire l’invitation après lecture
+  serveur dans `app/incoming-driver.tsx`. Ce dernier quitte son écran natif
+  avant le contact et déduplique les redirections.
+- Transitions : accepter sans démarrer ouvre la gestion du trajet après
+  fermeture du formulaire, sans l’ancien dialogue de succès supplémentaire.
+  Accepter et démarrer conserve l’ouverture de la navigation après confirmation
+  serveur. `hooks/request-detail/useRequestDriverActions.ts` et
+  `hooks/navigation/useTripStartTransition.ts` conservent l’attente du véritable
+  `onDismiss` iOS et les protections contre les doubles appuis/réponses tardives.
+  Le contact réutilise le système de superposition interne, sans ajouter de
+  présentation UIKit concurrente ; les paiements et SOS gardent leur priorité.
+- Reprise appliquée : `components/ActiveRideResumeCoordinator.tsx`,
+  `hooks/navigation/useActiveRideResume.ts` et
+  `features/navigation/activeRideResume.ts` observent les caches d’activité déjà
+  alimentés par les coordinateurs existants. Une lecture authentifiée du détail
+  confirme ensuite le statut `ongoing` et la participation : navigation du
+  conducteur propriétaire, ou navigation de la réservation du passager accepté
+  qui n’est pas encore arrivé. Le rôle global « conducteur » ne transforme pas
+  une réservation passager en trajet conducteur. Montage des deux coordinateurs
+  dans `components/ReduxProvider.tsx`.
+- Prévention des régressions : aucune nouvelle boucle de polling ni collecte
+  GPS, aucun nouveau module natif, aucune modification de paiement, commission,
+  acceptation/démarrage serveur ou permission de contact backend. Les réponses
+  tardives après déconnexion, changement de compte, arrière-plan ou navigation
+  volontaire sont ignorées. Une reprise au maximum par entrée au premier plan :
+  quitter volontairement la navigation ne provoque pas de retour en boucle.
+  Les formulaires, conversations, paiements, notation, sécurité et actions de
+  notification explicites ne sont pas interrompus. Sans vérification réseau
+  réussie, l’écran actuel est conservé plutôt que de rouvrir un ancien trajet.
+- Vérifications : **139 tests JavaScript ciblés réussis** avec
+  `node --test tests/activeRideResume.test.js tests/acceptedRequestContact.test.js
+  tests/tripStartNavigation.test.js tests/tripContactMessaging.test.js
+  tests/requestPassengerContact.test.js tests/accountActivity.test.js
+  tests/rideOverlays.test.js tests/driverNotificationResponse.test.js
+  tests/navigationAssistance.test.js tests/requestDetailModules.test.js` ;
+  `tsc --noEmit` et ESLint ciblé réussis, sans avertissement. Tests ajoutés pour
+  les deux rôles, lecture serveur, absence de boucle, double acceptation,
+  annulation/réattribution, réseau dégradé, choix du canal et transitions iOS
+  simulées. Les tests de contact existants sont adaptés à la séparation entre
+  formulaire partagé et contexte de navigation local/global.
+- Limites : la suite complète n’est pas annoncée comme verte. Le passage global
+  (`node --test --test-concurrency=4 tests/*.test.js`) a exécuté 1 742 tests :
+  1 730 réussis et 12 échecs. Six de ces échecs portaient sur les mocks du
+  formulaire de contact et l’ancien dialogue de succès ; ils sont corrigés et
+  repassent dans les 139 tests ciblés ci-dessus. La suite entière n’a pas été
+  relancée après cette adaptation. Les six autres concernent
+  notamment des attentes d’expiration anciennes dans `tests/homeModules.test.js`
+  et `tests/homePriorityDismissals.test.js` (30 secondes/1 heure attendues,
+  règle actuelle de 3 heures) et quatre tests d’empreintes dans
+  `tests/sourceExtractions.test.js`. L’empreinte `acceptTripRequest` du snapshot
+  divergeait déjà de `HEAD` avant ce lot ; l’invitation de contact ajoute aussi
+  maintenant une modification intentionnelle, couverte par les tests de
+  comportement ciblés. Ces règles et fixtures hors
+  périmètre n’ont pas été réécrites pour masquer les échecs. Les intentions de
+  contact sont transitoires, non une file de décisions hors ligne : après arrêt
+  complet du processus, la reconstruction passe par la notification acceptée.
+  La reprise de trajet, elle, se reconstruit depuis l’activité serveur sans
+  dépendre d’une intention locale conservée.
+- Validation native restante : sur iPhone et Android, essayer acceptation seule,
+  acceptation + démarrage, retour après appel/WhatsApp, ouverture à froid et
+  retour du passager après démarrage distant, retour du conducteur, sortie
+  volontaire vers l’accueil, course terminée entre deux ouvertures et réseau
+  coupé. Aucun essai physique ni déploiement réalisé pour ce lot ; les mocks
+  JavaScript ne prouvent pas l’absence de gel/crash natif. Le dev build existant
+  peut charger ces changements avec `npx expo start --dev-client`.
+
+## 9 octobre 2026 — « Commander un trajet » dans les actions passager
+
+- Demande : remplacer « Demander un trajet » par une formulation plus directe
+  dans l’application mobile.
+- Appliqué : « Commander » sur l’accueil, « Commander un trajet » dans le titre
+  du formulaire et les accès depuis les listes, « Commander ce trajet » après
+  une recherche sans résultat, « Commander le trajet » pour envoyer le formulaire
+  une fois l’horaire choisi. Texte d’aide de recherche/état vide et libellés
+  d’accessibilité alignés. Fichiers : `components/home/HomeHeader.tsx`,
+  `app/request/index.tsx`, `app/search.tsx`, `app/my-requests.tsx`,
+  `app/requests.tsx`, `hooks/trip-request/useRequestTripController.ts`.
+- Conservé : routes et préremplissage, sélection explicite de l’horaire,
+  différence entre départ immédiat et planifié, véhicules, prix, envoi et
+  protection contre les doubles appuis. Les statuts et confirmations restent
+  « demande envoyée/en attente » : commander ne signifie pas qu’un conducteur
+  a déjà accepté. Aucun changement backend, API, paiement, notification ou natif.
+- Vérifications : 45 tests ciblés accueil/recherche/listes/horaire réussis ;
+  `npm run test:trip-request`, 74 tests réussis (avec recouvrement de la suite
+  précédente) ; TypeScript sans émission réussi. Tests mis à jour dans
+  `tests/homeCompactLayout.test.js`, `tests/searchScreen.test.js`,
+  `tests/requestsScreen.test.js`, `tests/requestScheduleChoice.test.js`.
+  ESLint ciblé et `git diff --check` réussis. La déclaration ESLint de la variable
+  Node `__dirname` du test de listes a aussi été explicitée, sans effet à l’exécution.
+- Limites : tests JavaScript avec composants natifs simulés ; aucun essai visuel
+  sur téléphone. Mise en page conservée, rendu du libellé plus long à contrôler
+  sur petits écrans et avec les polices système agrandies.
+
+## 9 octobre 2026 — Réutilisation des compilations Android EAS
+
+- Constat : le journal de build fourni montre une annulation à 45 min, dont
+  43 min 01 s dans Gradle. Les sources React Native/Hermes sont compilées pour
+  quatre ABI afin d’inclure le correctif de dessin Android. Le dépassement de
+  délai est probable, mais le motif final n’est pas explicitement fourni.
+- Appliqué : cache C/C++ EAS et persistance du cache de tâches Gradle pour
+  `production.android`, image de build adaptée au SDK 54, activation du cache
+  Gradle et suppression de la recompression PNG facultative. Le plugin maintient
+  les mêmes réglages après prebuild. Fichiers : `eas.json`,
+  `android/gradle.properties`, `plugins/withPatchedReactAndroid.js`,
+  `tests/androidBuildPerformance.test.js` et `package.json`.
+- Conservé : quatre ABI, Hermes, correctif natif issu des sources, validations
+  des bibliothèques/16 Ko, signatures, parcours applicatifs, profils iOS et
+  développement. Aucun changement d’offre ou de classe de machine, aucune
+  nouvelle dépendance et aucun build cloud lancé.
+- Vérifications : **9 tests JavaScript réussis**, ESLint ciblé sans avertissement,
+  schéma EAS des trois profils valide, `git diff --check` réussi. Le dry-run
+  Gradle n’a pas abouti : téléchargement du wrapper bloqué par le réseau de
+  l’environnement, avant toute exécution du graphe natif.
+- Limites : aucun gain chronométré ni essai sur appareil physique ; le premier
+  build sans cache peut encore dépasser la limite. La taille des ressources PNG
+  peut augmenter. Les caches ne garantissent pas la réussite d’un build annulé.
+  Procédure de mesure, précautions et pistes différées dans
+  [Compilation Android : optimisations](BUILD_ANDROID_PERFORMANCE.md).
+
 ## 8 octobre 2026 — Navigation conducteur plus compacte
 
 - Constat : en navigation, partage, confirmations, statistiques des passagers,

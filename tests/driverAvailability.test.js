@@ -46,7 +46,7 @@ test('profile entry explains its purpose, honors the server flag and skips reads
   })('components/profile/ProfileDriverAvailabilityEntry.tsx');
   const tree = ProfileDriverAvailabilityEntry();
   assert.match(text(tree), /Alertes conducteur/);
-  assert.match(text(tree), /Réservations et demandes proches, automatiquement/);
+  assert.match(text(tree), /Réservations et commandes proches, automatiquement/);
   tree.props.onPress();
   assert.deepEqual(calls, ['/driver-availability']);
   assert.equal(options.skip, false);

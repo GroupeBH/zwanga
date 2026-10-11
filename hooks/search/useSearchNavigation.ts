@@ -88,8 +88,8 @@ export function useSearchNavigation({ router, showDialog }: Params) {
     if (!requestId) {
       showDialog({
         variant: 'warning',
-        title: 'Demande indisponible',
-        message: "Cette demande n'a pas pu être ouverte. Actualisez la recherche puis réessayez.",
+        title: 'Commande indisponible',
+        message: "Cette commande n'a pas pu être ouverte. Actualisez la recherche puis réessayez.",
       });
       return;
     }
@@ -107,13 +107,13 @@ export function useSearchNavigation({ router, showDialog }: Params) {
       try {
         router.push(getTripRequestDetailHref(requestId));
       } catch (error) {
-        console.warn('[Search] Impossible d’ouvrir la demande:', error);
+        console.warn('[Search] Impossible d’ouvrir la commande:', error);
         openingRequestIdRef.current = null;
         setOpeningRequestId(null);
         showDialog({
           variant: 'danger',
           title: 'Ouverture impossible',
-          message: "Cette demande n'a pas pu être ouverte. Actualisez la recherche puis réessayez.",
+          message: "Cette commande n'a pas pu être ouverte. Actualisez la recherche puis réessayez.",
         });
       }
     };

@@ -54,7 +54,7 @@ test('request filters preserve labels, selection and actions; trips retain their
   const changes = [];
   const render = searchMode => SearchResultsToolbar.type({ searchMode, sortMode: 'nearby', resultsCountLabel: '1 résultat', isRefreshingResults: false, onSortChange: value => changes.push(value) });
   const requestButtons = nodes(render('requests')).filter(node => node.type === 'TouchableOpacity');
-  assert.deepEqual(requestButtons.map(text), ['Plus proches', 'Meilleur budget', 'Plus tôt']);
+  assert.deepEqual(requestButtons.map(text), ['Plus proches', 'Prix le plus élevé', 'Plus tôt']);
   assert.deepEqual(requestButtons.map(button => button.props.accessibilityState.selected), [true, false, false]);
   requestButtons.forEach(button => button.props.onPress());
   assert.deepEqual(changes, ['nearby', 'cheap', 'early']);
@@ -119,9 +119,48 @@ function screenApp() {
   const render = (props) => hooks.render(() => Screen(props));
   const list = tree => nodes(tree).find(node => node.type === 'FlatList');
   const toolbar = tree => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === Toolbar);
-  const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Demandes' : 'Trajets')).props.onPress();
+  const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Clients' : 'Trajets')).props.onPress();
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
+
+test('passenger search exposes only published trips and never subscribes to the available orders feed', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.isDriver = false;
+  const tree = app.render();
+  assert.equal(nodes(tree).some(node => node.type === 'TouchableOpacity' && text(node) === 'Clients'), false);
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  assert.equal(app.coordinateReads, 0);
+  app.profileUnavailable = true;
+  assert.equal(nodes(app.render()).some(node => node.type === 'TouchableOpacity' && text(node) === 'Clients'), false,
+    'a legacy stored driver identity must not grant access without a server profile');
+  app.hooks.unmount();
+});
+
+test('losing the driver role immediately removes a selected commands tab and cached driver results', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.switchMode(app.render(), 'requests');
+  assert.equal(app.list(app.render()).props.data[0].request.id, 'request');
+  app.isDriver = false;
+  const tree = app.render();
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  app.hooks.unmount();
+});
+
+test('empty trip search offers Commander ce trajet without changing the request creation route', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  app.trips = [];
+  const header = app.list(app.render()).props.ListHeaderComponent;
+  assert.match(text(header), /Commandez votre trajet/);
+  assert.doesNotMatch(text(header), /Demander ce trajet|Demandez ce trajet/);
+  const command = nodes(header).find(node => node.type === 'TouchableOpacity' && text(node) === 'Commander ce trajet');
+  assert.ok(command);
+  command.props.onPress();
+  assert.deepEqual(app.routes, [{ pathname: '/request-create', params: { seats: '1' } }]);
+  app.hooks.unmount();
+});
 
 test('embedded search has a tab title without a back arrow and reserves the tab overlay without changing results', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -130,7 +169,7 @@ test('embedded search has a tab title without a back arrow and reserves the tab 
   const embedded = app.render({ embedded: true, bottomOverlay: 92 });
   assert.ok(nodes(standalone).some(node => node.props.name === 'arrow-back'));
   assert.equal(nodes(embedded).some(node => node.props.name === 'arrow-back'), false);
-  assert.ok(nodes(embedded).some(node => node.type === 'Text' && text(node) === 'Recherche'));
+  assert.ok(nodes(embedded).some(node => node.type === 'Text' && text(node) === 'Trouver un trajet'));
   assert.deepEqual(embedded.props.edges, ['top', 'left', 'right']);
   assert.equal(app.list(embedded).props.contentContainerStyle[1].paddingBottom - app.list(standalone).props.contentContainerStyle[1].paddingBottom, 92);
   assert.equal(app.list(embedded).props.data, app.list(standalone).props.data);
@@ -187,7 +226,7 @@ test('the screen keeps one virtualized list and the compact toolbar in its heade
   assert.equal(list.props.maxToRenderPerBatch, 5);
   assert.equal(list.props.windowSize, 7);
   assert.equal(list.props.keyboardShouldPersistTaps, 'handled');
-  assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet affiché');
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet');
   assert.equal(list.props.data[0].trip.id, 'trip');
   app.hooks.unmount();
 });
@@ -200,12 +239,12 @@ test('signed-in users never see their own trips or count them, including while t
     app.profileUnavailable = profileUnavailable;
     const tree = app.render();
     assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['other']);
-    assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet affiché');
+    assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet');
   }
   app.trips = Object.freeze([{ ...trip('own'), driverId: 'me' }]);
   const tree = app.render();
   assert.equal(app.list(tree).props.data.length, 0);
-  assert.equal(app.toolbar(tree).props.resultsCountLabel, '0 trajet affiché');
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '0 trajet');
   app.hooks.unmount();
 });
 

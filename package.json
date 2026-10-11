@@ -12,6 +12,7 @@
     "check:android-native": "node ./scripts/validate-android-native.cjs",
     "check:android-crashlytics": "node ./scripts/validate-android-crashlytics.js",
     "test:android-crashlytics": "node --test ./tests/androidCrashlytics.test.js",
+    "test:android-build": "node --test ./tests/androidBuildPerformance.test.js ./tests/androidNativeArtifact.test.js",
     "validate:referrals": "node ./scripts/validate-referral-config.js",
     "check:network": "node ./scripts/check-network-boundaries.js",
     "check:source-size": "node ./scripts/check-source-size.cjs",

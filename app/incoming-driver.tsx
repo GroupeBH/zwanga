@@ -14,6 +14,8 @@ import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Colors } from '@/constants/styles';
 import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionNotice';
 import { RequestPassengerContact } from '@/features/request-detail/RequestPassengerContact';
+import { useAppDispatch } from '@/store/hooks';
+import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -23,6 +25,7 @@ export default function IncomingDriverScreen() {
 function IncomingDriverContent() {
   const params = useLocalSearchParams<{ id?: string; kind?: string; driverId?: string; actionEvent?: string }>();
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const active = useScreenIsActive();
   const { data: user } = useGetCurrentUserQuery();
   const id = isInvitationId(params.id) ? params.id : '';
@@ -38,9 +41,17 @@ function IncomingDriverContent() {
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
   const inFlight = useRef(false);
+  const navigatedAfterAcceptance = useRef(false);
+  const openAcceptedRequest = useCallback((requestId: string) => {
+    if (navigatedAfterAcceptance.current) return;
+    navigatedAfterAcceptance.current = true;
+    router.replace(getTripRequestDetailHref(requestId));
+  }, [router]);
   const consumed = useRef(false);
   useEffect(() => { consumed.current = false; }, [id, params.actionEvent]);
   const mounted = useRef(true);
+  const current = useRef({ active, userId: user?.id });
+  current.current = { active, userId: user?.id };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!active) return;
@@ -74,7 +85,13 @@ function IncomingDriverContent() {
     inFlight.current = true; setBusy(true); setError('');
     void dismissDriverInvitation(invitation).catch(() => {});
     try {
-      if (invitation.kind === 'dispatch') await respond({ id, decision }).unwrap();
+      if (invitation.kind === 'dispatch') {
+        const result = await respond({ id, decision }).unwrap();
+        if (mounted.current && current.current.active && current.current.userId === invitation.driverId &&
+          decision === 'accept' && result.status === 'accepted') {
+          openAcceptedRequest(result.requestId);
+        }
+      }
       else await respondBooking({ id, accept: decision === 'accept' }).unwrap();
       if (mounted.current) setDone(decision);
       void dismissDriverInvitation(invitation).catch(() => {});
@@ -83,7 +100,15 @@ function IncomingDriverContent() {
       // Reconcile an ambiguous result; never queue a later automatic acceptance.
       if (kind === 'dispatch') void refetchOffer(); else void refetchBooking();
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
-  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking]);
+  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest]);
+
+  // Also recover a confirmed native-notification acceptance after a cold start.
+  useEffect(() => {
+    if (!active || !authorized || kind !== 'dispatch' || offer.isFetching || offer.isError ||
+      offer.currentData?.status !== 'accepted' || offer.currentData.driverId !== user?.id) return;
+    dispatch(inviteAcceptedRequestContact({ userId: user.id, requestId: offer.currentData.requestId }));
+    openAcceptedRequest(offer.currentData.requestId);
+  }, [active, authorized, dispatch, kind, offer.currentData, offer.isError, offer.isFetching, openAcceptedRequest, user?.id]);
 
   useEffect(() => {
     if (!active || !invitation || !user?.id || !authorized || loading || consumed.current) return;

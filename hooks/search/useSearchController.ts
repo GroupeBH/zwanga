@@ -50,14 +50,20 @@ export function useSearchController() {
   const { data: profile } = useGetCurrentUserQuery(undefined, reads);
   // Keep ownership filtering while the profile refresh is slow or unavailable.
   const currentUser = profile ?? storedUser ?? undefined;
-  const isDriverAccount = hasDriverRole(currentUser);
+  // A stored identity can filter own trips, but cannot grant driver discovery.
+  const isDriverAccount = hasDriverRole(profile);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [draftDeparture, setDraftDeparture] = useState('');
   const [draftArrival, setDraftArrival] = useState('');
   const [desiredSeats, setDesiredSeats] = useState(MIN_SEARCH_SEATS);
   const [querySeats, setQuerySeats] = useState(MIN_SEARCH_SEATS);
-  const [searchMode, setSearchMode] = useState<SearchMode>('trips');
+  const [requestedSearchMode, setRequestedSearchMode] = useState<SearchMode>('trips');
+  // Role changes must hide cached driver results in the same render, even off-screen.
+  const searchMode: SearchMode = isDriverAccount ? requestedSearchMode : 'trips';
+  const setSearchMode = useCallback((mode: SearchMode) => {
+    setRequestedSearchMode(isDriverAccount ? mode : 'trips');
+  }, [isDriverAccount]);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
   const clearAdvancedSearch = useCallback(() => setLastAdvancedPayload(null), []);
@@ -199,7 +205,7 @@ export function useSearchController() {
 
   const requestSearchError =
     requestsError && searchMode === 'requests'
-      ? 'Impossible de charger les demandes disponibles pour le moment. Réessayez dans un instant.'
+      ? 'Impossible de charger les commandes disponibles pour le moment. Réessayez dans un instant.'
       : null;
   const currentError = searchMode === 'trips' ? advancedError : requestSearchError;
   const isLoadingResults =
@@ -304,8 +310,8 @@ export function useSearchController() {
   const resultsCount = searchMode === 'requests' ? filteredTripRequests.length : filteredTrips.length;
   const resultsCountLabel =
     searchMode === 'requests'
-      ? `${resultsCount} demande${resultsCount > 1 ? 's' : ''} trouvée${resultsCount > 1 ? 's' : ''}`
-      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''} affiché${resultsCount > 1 ? 's' : ''}`;
+      ? `${resultsCount} commande${resultsCount > 1 ? 's' : ''}`
+      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''}`;
 
   return {
     router, firstName, avatarUri, openingTripId,

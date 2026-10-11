@@ -8,8 +8,13 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 /** Only called by an explicit tap; no conversation queries on opening the sheet. */
 export function useTripContactMessaging(contacts: NavigationContact[], onClose: () => void) {
-  const userId = useAppSelector(state => state.auth.user?.id);
   const active = useIsFocused();
+  return useContactMessaging(contacts, onClose, active);
+}
+
+/** Also usable by a global prompt, which has no screen-level navigation context. */
+export function useContactMessaging(contacts: NavigationContact[], onClose: () => void, active: boolean) {
+  const userId = useAppSelector(state => state.auth.user?.id);
   const router = useRouter();
   const [createConversation] = useCreateConversationMutation();
   const [resolveDirect] = useResolveDirectConversationMutation();

@@ -1,5 +1,7 @@
 import { baseApi } from './baseApi';
 import { getTokenSessionVersion } from '@/services/tokenSession';
+import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
+import type { RootState } from '@/store';
 
 export interface DriverDispatchStatus {
   enabled: boolean;
@@ -62,6 +64,17 @@ export const driverDispatchApi = baseApi.injectEndpoints({
     }),
     respondToDispatchOffer: builder.mutation<{ status: string; requestId: string }, { id: string; decision: 'accept' | 'decline' }>({
       query: ({ id, decision }) => ({ url: `/driver-dispatch/offers/${id}/respond`, method: 'PUT', body: { decision }, timeout: 10000 }),
+      async onQueryStarted({ decision }, { dispatch, getState, queryFulfilled }) {
+        const version = getTokenSessionVersion();
+        const userId = (getState() as unknown as RootState).auth.user?.id;
+        try {
+          const { data } = await queryFulfilled;
+          if (decision === 'accept' && data.status === 'accepted' && userId && version === getTokenSessionVersion() &&
+            (getState() as unknown as RootState).auth.user?.id === userId) {
+            dispatch(inviteAcceptedRequestContact({ userId, requestId: data.requestId }));
+          }
+        } catch { /* Never prompt after a refused or ambiguous response. */ }
+      },
       invalidatesTags: ['DriverDispatch', 'TripRequest', 'MyTripRequests', 'MyDriverOffers', 'AccountActivity', 'Wallet'],
     }),
   }),

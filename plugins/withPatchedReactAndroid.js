@@ -1,4 +1,4 @@
-const { withAppBuildGradle, withSettingsGradle } = require('@expo/config-plugins');
+const { withAppBuildGradle, withSettingsGradle, withGradleProperties } = require('@expo/config-plugins');
 
 const marker = '// ZWANGA_PATCHED_REACT_ANDROID';
 const sourceBuild = `${marker}
@@ -50,7 +50,29 @@ function applyArtifactCheck(contents) {
   return contents.includes(artifactMarker) ? contents : `${contents.trimEnd()}\n\n${artifactCheck}`;
 }
 
-module.exports = config => withAppBuildGradle(withSettingsGradle(config, next => {
+// Keep the committed native project and regenerated prebuilds on the same settings.
+// Do not change ABIs, the source-build guard, JVM memory or release verification.
+function applyBuildPerformanceProperties(properties) {
+  const values = {
+    'org.gradle.caching': 'true',
+    'android.enablePngCrunchInReleaseBuilds': 'false',
+  };
+  const remaining = new Set(Object.keys(values));
+  const result = [];
+  for (const property of properties) {
+    if (property.type !== 'property' || !Object.hasOwn(values, property.key)) {
+      result.push(property);
+    } else if (remaining.delete(property.key)) {
+      result.push({ ...property, value: values[property.key] });
+    }
+  }
+  for (const key of remaining) {
+    result.push({ type: 'property', key, value: values[key] });
+  }
+  return result;
+}
+
+const withPatchedReactAndroid = config => withAppBuildGradle(withSettingsGradle(config, next => {
   if (next.modResults.language !== 'groovy') throw new Error('Review the ReactAndroid source-build plugin for Kotlin settings.');
   next.modResults.contents = applySourceBuild(next.modResults.contents);
   return next;
@@ -59,5 +81,10 @@ module.exports = config => withAppBuildGradle(withSettingsGradle(config, next =>
   next.modResults.contents = applyArtifactCheck(next.modResults.contents);
   return next;
 });
+module.exports = config => withGradleProperties(withPatchedReactAndroid(config), next => {
+  next.modResults = applyBuildPerformanceProperties(next.modResults);
+  return next;
+});
 module.exports.applySourceBuild = applySourceBuild;
 module.exports.applyArtifactCheck = applyArtifactCheck;
+module.exports.applyBuildPerformanceProperties = applyBuildPerformanceProperties;

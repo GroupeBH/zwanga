@@ -8,6 +8,7 @@ import { getTokenSessionVersion } from './tokenSession';
 import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
 import { notificationDecision, parseDriverInvitation, type DriverDecision, type DriverInvitation } from '@/features/notifications/driverInvitation';
 import { driverRingDeadline } from '@/features/notifications/driverRinging';
+import { isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
 
 export const DRIVER_CHANNEL = 'booking-ring-v2';
 const actionKey = (invitation: DriverInvitation) => `driver-action-v1:${invitation.kind}:${invitation.id}`;
@@ -39,7 +40,7 @@ export async function configureDriverNotifications() {
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: false, isAuthenticationRequired: true } },
   ]);
   if (Platform.OS === 'android') await notifee.createChannel({ id: DRIVER_CHANNEL,
-    name: 'Réservations et demandes acceptées', importance: AndroidImportance.HIGH,
+    name: 'Réservations et commandes acceptées', importance: AndroidImportance.HIGH,
     sound: 'driver_ring', vibration: true, vibrationPattern: [400, 300, 700, 300, 700, 300],
     visibility: AndroidVisibility.PRIVATE });
 }
@@ -66,7 +67,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     const safeData = Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
     const body = typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800) : 'Une proposition vous attend. Accepter ou refuser ?';
     await notifee.displayNotification({ id: invitationNotificationId(invitation),
-      title: invitation.kind === 'booking' ? 'Nouvelle réservation' : 'Demande à proximité',
+      title: invitation.kind === 'booking' ? 'Nouvelle réservation' : 'Commande à proximité',
       body, data: safeData,
       android: { channelId: DRIVER_CHANNEL, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, pressAction: { id: 'default', launchActivity: 'default' },
@@ -139,4 +140,13 @@ export async function silenceDriverInvitations(userId: string): Promise<void> {
     if (invitation?.driverId === userId) invitations.set(invitationNotificationId(invitation), invitation);
   }
   await Promise.all([...invitations.values()].map(invitation => dismissDriverInvitation(invitation).catch(() => {})));
+  // Scheduled alerts are remote notifications, not exclusive dispatch invitations.
+  // Remove only the current recipient's cards; opening still does not accept them.
+  if (version !== getTokenSessionVersion()) return;
+  await Promise.all([
+    ...native.filter(item => typeof item.id === 'string' && isRemoteNearbyRequestAlert(item.notification.data) && item.notification.data?.driverId === userId)
+      .map(item => notifee.cancelNotification(item.id, item.notification.android?.tag).catch(() => {})),
+    ...remote.filter(item => isRemoteNearbyRequestAlert(item.request.content.data) && item.request.content.data.driverId === userId)
+      .map(item => Notifications.dismissNotificationAsync(item.request.identifier).catch(() => {})),
+  ]);
 }

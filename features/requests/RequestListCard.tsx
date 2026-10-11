@@ -55,13 +55,13 @@ export const RequestListCard = React.memo(function RequestListCard({
         avatarName={name}
         avatarUri={own ? request.selectedDriverAvatar : request.passengerAvatar}
         badge={offersCount > 0 ? `${offersCount} offre${offersCount > 1 ? 's' : ''}` : undefined}
-        accessibilityLabel={own && request.tripId ? 'Suivre la course' : 'Ouvrir la demande'}
+        accessibilityLabel={own && request.tripId ? 'Suivre la course' : 'Ouvrir la commande'}
         onPress={() => onOpen(request.id)}
       />
       {canReviewForAcceptance && (
         <View style={styles.actions}>
           <TouchableOpacity style={[styles.action, styles.primary]} accessibilityRole="button"
-            accessibilityLabel="Ouvrir la demande pour l’accepter" onPress={() => onOpen(request.id)}>
+            accessibilityLabel="Ouvrir la commande pour l’accepter" onPress={() => onOpen(request.id)}>
             <Ionicons name="checkmark-circle-outline" size={16} color={Colors.white} />
             <Text style={[styles.actionText, styles.primaryText]}>Voir et accepter</Text>
           </TouchableOpacity>

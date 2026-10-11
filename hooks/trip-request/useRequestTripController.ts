@@ -138,9 +138,9 @@ export function useRequestTripController() {
         ? 'Définir le départ'
         : !hasArrivalAddress
           ? 'Indiquer la destination'
-          : 'Voir les options'
+          : 'Continuer'
       : !draft.hasChosenDepartureTime ? 'Choisir l’heure de départ'
-        : draft.timePreset === 'now' ? 'Chercher un chauffeur' : 'Envoyer la demande';
+        : 'Commander le trajet';
 
   const updateBudget = (value: number) => {
     draft.setHasEditedBudget(true);

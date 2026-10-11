@@ -169,7 +169,7 @@ export function RequestPassengerSummary({
           <View style={styles.ownerPassengerKycNoticeCopy}>
             <Text style={styles.ownerPassengerKycNoticeTitle}>Identité vérifiée requise</Text>
             <Text style={styles.ownerPassengerKycNoticeText}>
-              Ce conducteur demande une vérification d&apos;identité approuvée avant la prise en charge.
+              Ce conducteur commande une vérification d&apos;identité approuvée avant la prise en charge.
             </Text>
           </View>
         </View>
@@ -177,9 +177,9 @@ export function RequestPassengerSummary({
 
       <View style={styles.ownerProgressPanel}>
         <View style={styles.ownerProgressHeader}>
-          <Text style={styles.ownerProgressTitle}>Suivi de la demande</Text>
+          <Text style={styles.ownerProgressTitle}>Suivi de la commande</Text>
           <Text style={styles.ownerProgressCount}>
-            {heroStepIndex >= 0 ? `Étape ${heroStepIndex + 1} sur 4` : 'Demande clôturée'}
+            {heroStepIndex >= 0 ? `Étape ${heroStepIndex + 1} sur 4` : 'Commande clôturée'}
           </Text>
         </View>
         <View style={styles.ownerHeroSteps}>

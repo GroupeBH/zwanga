@@ -1,5 +1,3 @@
-import { Colors } from '@/constants/styles';
-import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
@@ -40,15 +38,7 @@ export function HomeSheetLoadingState({ active = true }: { active?: boolean }) {
 
   return (
     <View style={styles.sheetLoadingState}>
-      <View style={styles.sheetLoadingHeader}>
-        <View style={styles.sheetLoadingIcon}>
-          <Ionicons name="car-sport-outline" size={20} color={Colors.primary} />
-        </View>
-        <View style={styles.sheetLoadingCopy}>
-          <Text style={styles.sheetLoadingTitle}>Recherche des meilleurs départs</Text>
-          <Text style={styles.sheetLoadingText}>On actualise les trajets disponibles.</Text>
-        </View>
-      </View>
+      <Text style={styles.sheetLoadingTitle}>Chargement…</Text>
       <View style={styles.sheetLoadingPreview}>
         <Animated.View
           pointerEvents="none"

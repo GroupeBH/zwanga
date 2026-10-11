@@ -134,13 +134,16 @@ test('the request contact action mounts the existing driver contact modal, not a
 
 test('shared contact modal exposes call, WhatsApp and Zwanga and launches only the chosen channel', async t => {
   const hooks = hookHarness(), calls = [], person = { id: 'passenger', name: 'Passager test', phone: '+243999000111', detail: '' };
-  const { NavigationContactModal } = loader({ react: hooks.react, 'react-native': native,
+  const { NavigationContactModal, ContactModalContent } = loader({ react: hooks.react, 'react-native': native,
+    '@react-navigation/native': { useIsFocused: () => true },
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@/components/forms/FormLayout': { FormModal: 'FormModal' },
     '@/utils/phoneHelpers': { openPhoneCall: async phone => calls.push(['phone', phone]), openWhatsApp: async phone => calls.push(['whatsapp', phone]) },
-    '@/hooks/navigation/useTripContactMessaging': { useTripContactMessaging: () => ({ canMessage: true, userId: 'driver', cancel() {}, openMessage: async p => calls.push(['message', p.id]) }) },
+    '@/hooks/navigation/useTripContactMessaging': { useContactMessaging: () => ({ canMessage: true, userId: 'driver', cancel() {}, openMessage: async p => calls.push(['message', p.id]) }) },
   })('features/navigation/NavigationContactModal.tsx');
-  const render = () => hooks.render(() => NavigationContactModal({ contacts: [person], role: 'driver', onClose() {} }));
+  const wrapper = NavigationContactModal({ contacts: [person], role: 'driver', onClose() {} });
+  assert.equal(wrapper.type, ContactModalContent); assert.equal(wrapper.props.active, true);
+  const render = () => hooks.render(() => ContactModalContent(wrapper.props));
   t.after(() => hooks.unmount());
   assert.equal(render().props.inApp, true, 'keeps the existing in-app overlay (no stacked iOS native modal)');
   assert.deepEqual(calls, []);

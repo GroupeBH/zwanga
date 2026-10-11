@@ -27,9 +27,9 @@ export const SearchRequestResultCard = React.memo(function SearchRequestResultCa
       priceHint={hasBudget ? 'max / place' : undefined}
       metadataPrefix={homeSeatsLabel(request.numberOfSeats)}
       metadata={getTripRequestVehicleName(request)}
-      secondary={`Demande de ${request.passengerName || 'Passager Zwanga'}`}
+      secondary={`Commande de ${request.passengerName || 'Passager Zwanga'}`}
       badge={offersCount > 0 ? `${offersCount} offre${offersCount > 1 ? 's' : ''}` : undefined}
-      accessibilityLabel={`Voir la demande de ${getPlaceName(request.departure)} à ${getPlaceName(request.arrival)}`}
+      accessibilityLabel={`Voir la commande de ${getPlaceName(request.departure)} à ${getPlaceName(request.arrival)}`}
       onPress={() => onPress(request)}
     />
   );

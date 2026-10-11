@@ -2,7 +2,7 @@ import { Colors } from '@/constants/styles';
 import { REQUEST_MAP_MARKER_ANCHOR } from '@/features/trip-request/requestFormModel';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
 import { Ionicons } from '@expo/vector-icons';
-import React, { memo } from 'react';
+import React, { memo, useState } from 'react';
 import {
   ActivityIndicator,
   type ImageRequireSource,
@@ -34,93 +34,52 @@ export const RequestRoutePreview = memo(function RequestRoutePreview({
   routePreviewRegion,
   setRequestFormStep
 }: Props) {
-  return (<View style={styles.offerMap}>
-    <MapView
-      style={styles.mapPreviewMap}
-      provider={PROVIDER_GOOGLE}
-      region={routePreviewRegion}
-      scrollEnabled={false}
-      zoomEnabled={false}
-      rotateEnabled={false}
-      pitchEnabled={false}
-      toolbarEnabled={false}
-    >
-      {departureLocation ? (
-        <Marker
-          coordinate={{
-            latitude: departureLocation.latitude,
-            longitude: departureLocation.longitude,
-          }}
-          anchor={REQUEST_MAP_MARKER_ANCHOR}
-          image={requestMapMarkerImages.departure}
-          title="Départ"
-          tracksViewChanges={false}
-        />
-      ) : null}
-      {arrivalLocation ? (
-        <Marker
-          coordinate={{
-            latitude: arrivalLocation.latitude,
-            longitude: arrivalLocation.longitude,
-          }}
-          anchor={REQUEST_MAP_MARKER_ANCHOR}
-          image={requestMapMarkerImages.arrival}
-          title="Destination"
-          tracksViewChanges={false}
-        />
-      ) : null}
-      {routeCoordinates.length > 1 ? (
-        <Polyline
-          coordinates={routeCoordinates}
-          strokeColor={Colors.primaryDark}
-          strokeWidth={5}
-        />
-      ) : null}
-    </MapView>
-    <View pointerEvents="none" style={styles.offerMapShade} />
-    <TouchableOpacity
-      style={styles.offerMapBack}
-      onPress={() => setRequestFormStep('route')}
-      activeOpacity={0.85}
-    >
-      <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
-    </TouchableOpacity>
-    <View style={styles.offerRouteCard}>
-      <View style={styles.offerRouteRow}>
-        <Ionicons name="navigate" size={16} color={Colors.success} />
-        <View style={styles.offerRouteCopy}>
-          <Text style={styles.offerRouteText} numberOfLines={1}>{departureAddress}</Text>
-          {!!departureReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Référence : {departureReference.trim()}</Text>}
-        </View>
-      </View>
-      <View style={styles.offerRouteDivider} />
-      <View style={styles.offerRouteRow}>
-        <Ionicons name="flag" size={16} color={Colors.primary} />
-        <View style={styles.offerRouteCopy}>
-          <Text style={styles.offerRouteText} numberOfLines={1}>{arrivalAddress}</Text>
-          {!!arrivalReference.trim() && <Text style={styles.offerRouteReference} numberOfLines={1}>Référence : {arrivalReference.trim()}</Text>}
-        </View>
+  const [showMap, setShowMap] = useState(false);
+  return (<View style={styles.routeSummary}>
+    <View style={styles.routeSummaryHeader}>
+      <Text style={styles.routeSummaryTitle}>Votre trajet</Text>
+      <TouchableOpacity onPress={() => setRequestFormStep('route')} style={styles.routeSummaryAction}
+        accessibilityRole="button" accessibilityLabel="Modifier le départ et la destination">
+        <Text style={styles.routeSummaryActionText}>Modifier</Text>
+      </TouchableOpacity>
+    </View>
+    <View style={styles.offerRouteRow}>
+      <Ionicons name="navigate" size={16} color={Colors.success} />
+      <View style={styles.offerRouteCopy}>
+        <Text style={styles.offerRouteText} numberOfLines={2}>{departureAddress}</Text>
+        {!!departureReference.trim() && <Text style={styles.offerRouteReference}>Référence : {departureReference.trim()}</Text>}
       </View>
     </View>
-    <View pointerEvents="none" style={styles.routeStatusBadge}>
-      {isRouteLoading ? (
-        <ActivityIndicator color={Colors.primary} size="small" />
-      ) : (
-        <Ionicons
-          name={routeCoordinates.length > 1 ? 'git-branch' : 'map-outline'}
-          size={15}
-          color={Colors.primary}
-        />
-      )}
-      <Text style={styles.routeStatusText}>
-        {isRouteLoading
-          ? 'Calcul itinéraire'
-          : routeDistanceLabel
-            ? routeDistanceLabel
-            : routeCoordinates.length > 1
-              ? 'Itinéraire prêt'
-              : 'Zone estimée'}
-      </Text>
+    <View style={styles.offerRouteDivider} />
+    <View style={styles.offerRouteRow}>
+      <Ionicons name="flag" size={16} color={Colors.primary} />
+      <View style={styles.offerRouteCopy}>
+        <Text style={styles.offerRouteText} numberOfLines={2}>{arrivalAddress}</Text>
+        {!!arrivalReference.trim() && <Text style={styles.offerRouteReference}>Référence : {arrivalReference.trim()}</Text>}
+      </View>
     </View>
+    <View style={styles.routeSummaryFooter}>
+      <View style={styles.routeSummaryDistance}>
+        {isRouteLoading && <ActivityIndicator color={Colors.primary} size="small" />}
+        <Text style={styles.routeStatusText}>
+          {isRouteLoading ? 'Calcul du trajet…' : routeDistanceLabel || 'Distance à confirmer'}
+        </Text>
+      </View>
+      <TouchableOpacity onPress={() => setShowMap(value => !value)} style={styles.routeSummaryAction}
+        accessibilityRole="button" accessibilityState={{ expanded: showMap }}>
+        <Text style={styles.routeSummaryActionText}>{showMap ? 'Masquer la carte' : 'Voir la carte'}</Text>
+        <Ionicons name={showMap ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.primaryDark} />
+      </TouchableOpacity>
+    </View>
+    {showMap && <View style={styles.offerMap}>
+      <MapView style={styles.mapPreviewMap} provider={PROVIDER_GOOGLE} region={routePreviewRegion}
+        scrollEnabled={false} zoomEnabled={false} rotateEnabled={false} pitchEnabled={false} toolbarEnabled={false}>
+        {departureLocation && <Marker coordinate={{ latitude: departureLocation.latitude, longitude: departureLocation.longitude }}
+          anchor={REQUEST_MAP_MARKER_ANCHOR} image={requestMapMarkerImages.departure} title="Départ" tracksViewChanges={false} />}
+        {arrivalLocation && <Marker coordinate={{ latitude: arrivalLocation.latitude, longitude: arrivalLocation.longitude }}
+          anchor={REQUEST_MAP_MARKER_ANCHOR} image={requestMapMarkerImages.arrival} title="Destination" tracksViewChanges={false} />}
+        {routeCoordinates.length > 1 && <Polyline coordinates={routeCoordinates} strokeColor={Colors.primaryDark} strokeWidth={5} />}
+      </MapView>
+    </View>}
   </View>);
 });

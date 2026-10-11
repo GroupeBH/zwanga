@@ -286,7 +286,7 @@ export function RequestEditFields({
         </View>
         <Text style={styles.editVehicleSubtitle}>
           {isEditVehicleOptionsLoading
-            ? 'Recalcul du prix pour votre demande…'
+            ? 'Recalcul du prix pour votre commande…'
             : isEditBudgetValid && parsedEditBudget !== undefined && Number.isSafeInteger(parsedEditNumberOfSeats) && parsedEditNumberOfSeats > 0
               ? `Total : ${formatCdfPrice(parsedEditBudget * parsedEditNumberOfSeats)} pour ${parsedEditNumberOfSeats} place${parsedEditNumberOfSeats > 1 ? 's' : ''}. Ce prix sera enregistré à la confirmation.`
               : 'Indiquez un budget par place avant de confirmer.'}

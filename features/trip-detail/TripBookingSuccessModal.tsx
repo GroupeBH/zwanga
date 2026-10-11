@@ -26,7 +26,7 @@ export function TripBookingSuccessModal({
           <View style={styles.feedbackModalIcon}>
             <Ionicons name="checkmark-circle" size={32} color={Colors.white} />
           </View>
-          <Text style={styles.feedbackModalTitle}>Demande envoyée</Text>
+          <Text style={styles.feedbackModalTitle}>Réservation envoyée</Text>
           <Text style={styles.feedbackModalText}>
             Votre réservation de {bookingSuccess.seats} place
             {bookingSuccess.seats > 1 ? 's' : ''} est en attente de confirmation du conducteur.

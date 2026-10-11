@@ -1,6 +1,9 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
 import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
 import { parseDriverInvitation } from '@/features/notifications/driverInvitation';
+import { isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
+import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
+import { isDriverAccount } from '@/utils/accountRole';
 import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -36,7 +39,7 @@ export function NotificationHandler() {
   });
   const [releaseOverdueDriver] = useReleaseOverdueDriverMutation();
   const currentUserRef = useRef(currentUser);
-  useDriverNotifications(isAuthenticated ? currentUser?.id : undefined);
+  useDriverNotifications(isAuthenticated ? currentUser?.id : undefined, isDriverAccount(currentUser));
   const myTripRequestsRef = useRef(myTripRequests);
   const pathnameRef = useRef(pathname);
   const shownOverdueRequestsRef = useRef(new Set<string>());
@@ -121,10 +124,13 @@ export function NotificationHandler() {
       handleNotification: async (notification) => {
         const type = notification.request.content.data?.type;
         const tripRevenueModalAlreadyOwnsForeground =
+          !canShowRequestNotification(notification.request.content.data, currentUserRef.current) ||
           (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data))) ||
           (type === 'driver_trip_revenue' && pathnameRef.current.startsWith('/trip/navigate/'));
         const invitation = parseDriverInvitation(notification.request.content.data);
-        const incomingScreenOwnsSound = Boolean(invitation && invitation.driverId === currentUserRef.current?.id);
+        const incomingScreenOwnsSound = Boolean(invitation && invitation.driverId === currentUserRef.current?.id) ||
+          (isRemoteNearbyRequestAlert(notification.request.content.data) &&
+            notification.request.content.data.driverId === currentUserRef.current?.id);
 
         return {
           shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
@@ -219,6 +225,7 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
+      if (!canShowRequestNotification(data, currentUserRef.current)) return;
       if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
         (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));

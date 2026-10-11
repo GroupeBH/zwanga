@@ -25,7 +25,7 @@ export default function TripRequestDetailsScreen() {
           <TouchableOpacity onPress={model.goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Détails de la demande</Text>
+          <Text style={styles.headerTitle}>Détails de la commande</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.loadingContainer}>
@@ -39,7 +39,7 @@ export default function TripRequestDetailsScreen() {
   if (model.isError || model.error) {
     const errorMessage = getApiErrorMessage(
       model.error,
-      'Impossible de charger la demande pour le moment. Réessayez dans un instant.',
+      'Impossible de charger la commande pour le moment. Réessayez dans un instant.',
     );
     return (
       <SafeAreaView style={styles.container}>
@@ -47,7 +47,7 @@ export default function TripRequestDetailsScreen() {
           <TouchableOpacity onPress={model.goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Détails de la demande</Text>
+          <Text style={styles.headerTitle}>Détails de la commande</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.emptyContainer}>
@@ -79,14 +79,14 @@ export default function TripRequestDetailsScreen() {
           <TouchableOpacity onPress={model.goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Détails de la demande</Text>
+          <Text style={styles.headerTitle}>Détails de la commande</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
-          <Text style={styles.emptyTitle}>Demande introuvable</Text>
+          <Text style={styles.emptyTitle}>Commande introuvable</Text>
           <Text style={styles.emptyText}>
-            La demande de trajet que vous recherchez n&apos;existe pas ou n&apos;est plus disponible.
+            La commande de trajet que vous recherchez n&apos;existe pas ou n&apos;est plus disponible.
           </Text>
         </View>
       </SafeAreaView>
@@ -112,7 +112,7 @@ export default function TripRequestDetailsScreen() {
         <TouchableOpacity onPress={model.goHome} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{model.isOwner ? 'Votre demande' : 'Demande de trajet'}</Text>
+        <Text style={styles.headerTitle}>{model.isOwner ? 'Votre commande' : 'Commande de trajet'}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -177,7 +177,7 @@ export default function TripRequestDetailsScreen() {
             <View style={styles.detailRow}>
               <Ionicons name="radio-outline" size={20} color={Colors.gray[600]} />
               <View style={styles.detailInfo}>
-                <Text style={styles.detailLabel}>Demande publiée</Text>
+                <Text style={styles.detailLabel}>Commande publiée</Text>
                 <Text style={styles.detailValue}>
                   {formatDateWithRelativeLabel(presentation.request.createdAt, false)}
                 </Text>
@@ -276,7 +276,7 @@ export default function TripRequestDetailsScreen() {
           />
         )}
 
-        {/* Modal de modification de la demande */}
+        {/* Modal de modification de la commande */}
         {model.showEditForm && model.tripRequest && (
             <RequestEditModal
               showEditForm={model.showEditForm}

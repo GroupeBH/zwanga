@@ -25,7 +25,7 @@ export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlight
     <CompactTripCard
       inlineRoute
       priorityAppearance="request"
-      label={distance ? `Demande · ${distance}` : 'Demande à accepter'}
+      label={distance ? `Commande · ${distance}` : 'Commande à accepter'}
       priceText={hasBudget ? formatPrice(budget) : undefined}
       priceHint={hasBudget ? 'max / place' : undefined}
       departure={placeName(request.departure)}
@@ -37,7 +37,7 @@ export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlight
       avatarUri={request.passengerAvatar}
       accessibilityActions={accessibilityActions}
       onAccessibilityAction={onAccessibilityAction}
-      accessibilityLabel={`Voir la demande à accepter, de ${placeName(request.departure)} à ${placeName(request.arrival)}${distanceDescription ? `, ${distanceDescription}` : ''}`}
+      accessibilityLabel={`Voir la commande à accepter, de ${placeName(request.departure)} à ${placeName(request.arrival)}${distanceDescription ? `, ${distanceDescription}` : ''}`}
       onPress={() => onOpen(request.id)}
     />
   );

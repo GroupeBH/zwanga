@@ -48,7 +48,7 @@ test('the upcoming trip remains visible before the nearby request and both keep 
   const { buttons, routes } = render();
   assert.equal(buttons.length, 2);
   assert.equal(buttons[0].props.accessibilityLabel, 'Ouvrir le trajet publié qui démarre bientôt');
-  assert.match(buttons[1].props.accessibilityLabel, /Voir la demande à accepter/);
+  assert.match(buttons[1].props.accessibilityLabel, /Voir la commande à accepter/);
   buttons.forEach(button => button.props.onPress());
   assert.deepEqual(routes, ['/trip/manage/upcoming', '/request/nearest']);
 });
@@ -70,7 +70,7 @@ test('a booked unstarted trip shows its real reservation count before nearby req
     assert.ok(elements.some(node => node.type === 'Icon' && node.props.name === 'ticket-outline'));
     buttons[0].props.onPress();
     assert.deepEqual(routes, ['/trip/manage/upcoming']);
-    assert.match(buttons[1].props.accessibilityLabel, /Voir la demande à accepter/);
+    assert.match(buttons[1].props.accessibilityLabel, /Voir la commande à accepter/);
   }
 });
 

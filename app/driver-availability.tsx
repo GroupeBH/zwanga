@@ -22,13 +22,13 @@ export default function DriverAvailabilityScreen() {
     </TouchableOpacity>
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.title}>Alertes conducteur</Text>
-      <Text style={styles.copy}>Vos réservations et les demandes proches vous sont proposées automatiquement.</Text>
+      <Text style={styles.copy}>Vos réservations et les commandes proches vous sont proposées automatiquement.</Text>
       {isLoading ? <ActivityIndicator color={Colors.primary} /> : isError
         ? <TouchableOpacity accessibilityRole="button" disabled={!enabled || isFetching}
           onPress={() => { if (enabled && !isFetching) void refetch(); }}>
           <Text style={styles.copy}>{isFetching ? 'Vérification…' : 'Service indisponible · Réessayer'}</Text>
         </TouchableOpacity>
-        : <Text style={styles.hint}>{available ? 'Demandes proches : service disponible' : 'Demandes proches : service indisponible'}</Text>}
+        : <Text style={styles.hint}>{available ? 'Commandes proches : service disponible' : 'Commandes proches : service indisponible'}</Text>}
       <NearbyDriverLocationPermission available={available} />
       <Text style={styles.label}>Son des notifications</Text>
       <Text style={styles.copy}>Une sonnerie jusqu’à 30 secondes, arrêtée à l’ouverture de Zwanga.</Text>
@@ -41,7 +41,7 @@ export default function DriverAvailabilityScreen() {
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[600]} />
       </TouchableOpacity>
       {expanded && <>
-        <Text style={styles.copy}>Aucune disponibilité à activer. Les demandes sont proposées au conducteur éligible le plus proche avec un véhicule adapté. Acceptez ou refusez depuis la notification.</Text>
+        <Text style={styles.copy}>Aucune disponibilité à activer. Les commandes sont proposées au conducteur éligible le plus proche avec un véhicule adapté. Acceptez ou refusez depuis la notification.</Text>
         <Text style={styles.copy}>Une position trop ancienne n’est plus utilisée : elle reste valable au maximum {Math.round((data?.positionFreshSeconds ?? 300) / 60)} minute(s). Un arrêt forcé de l’app peut interrompre la localisation.</Text>
         <Text style={styles.copy}>Le mode silencieux, « Ne pas déranger » et les restrictions du téléphone peuvent limiter les alertes.</Text>
       </>}

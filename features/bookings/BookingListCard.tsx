@@ -13,16 +13,13 @@ import { type BookingTab, STATUS_CONFIG } from './bookingsModel';
 export interface BookingCardActions {
   activeTab: BookingTab;
   router: Router;
-  setSelectedDriverPhone: React.Dispatch<React.SetStateAction<string | null>>;
-  setSelectedDriverName: React.Dispatch<React.SetStateAction<string | null>>;
-  setContactModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  onContact: (booking: Booking) => void;
   handleCancel: (bookingId: string) => void;
   isCancelling: boolean;
 }
 
 export const BookingListCard = React.memo(function BookingListCard({
-  booking, activeTab, router, setSelectedDriverPhone, setSelectedDriverName,
-  setContactModalVisible, handleCancel, isCancelling,
+  booking, activeTab, router, onContact, handleCancel, isCancelling,
 }: BookingCardActions & { booking: Booking }) {
   const trip = booking.trip;
   // Preserve the existing expiry and action rules; no fare or booking mutation here.
@@ -36,7 +33,7 @@ export const BookingListCard = React.memo(function BookingListCard({
   const pickupSync = booking.pickedUp && !booking.pickedUpConfirmedByPassenger;
   const arrivalSync = booking.droppedOffConfirmedByPassenger && !booking.droppedOff;
   const canFollow = accepted && trip?.status === 'ongoing';
-  const canContact = accepted && trip?.driver?.phone && !pickupSync && !arrivalSync;
+  const canContact = accepted && trip?.driverId && !pickupSync && !arrivalSync;
   const canCancel = active && (booking.status === 'pending' || booking.status === 'accepted')
     && !pickupSync && !arrivalSync;
   const canRate = booking.status === 'completed' && booking.droppedOffConfirmedByPassenger && trip?.id;
@@ -82,13 +79,9 @@ export const BookingListCard = React.memo(function BookingListCard({
             </TouchableOpacity>
           )}
           {canContact && (
-            <TouchableOpacity style={styles.action} accessibilityRole="button" onPress={() => {
-              setSelectedDriverPhone(trip!.driver!.phone!);
-              setSelectedDriverName(trip!.driverName);
-              setContactModalVisible(true);
-            }}>
-              <Ionicons name="logo-whatsapp" size={16} color={Colors.success} />
-              <Text style={[styles.actionText, styles.contact]}>WhatsApp</Text>
+            <TouchableOpacity style={styles.action} accessibilityRole="button" onPress={() => onContact(booking)}>
+              <Ionicons name="chatbubbles-outline" size={16} color={Colors.success} />
+              <Text style={[styles.actionText, styles.contact]}>Contacter</Text>
             </TouchableOpacity>
           )}
           {canCancel && (

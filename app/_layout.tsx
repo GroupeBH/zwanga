@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutAnimationConfig } from '@/utils/reanimated';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -11,7 +11,6 @@ import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { ProtectedAppStack } from '@/components/ProtectedAppStack';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 // Importer les handlers de fond pour qu'ils soient enregistres au demarrage
 import '@/services/backgroundNotificationTask';
 import '@/services/driverBackgroundLocationTask';
@@ -23,16 +22,15 @@ configureFontScaling();
 initializeDiagnostics();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   const isAndroid = Platform.OS === 'android';
 
   const appTree = (
     <ReduxProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={DefaultTheme}>
         <View style={styles.appRoot}>
           <AnalyticsTracker />
           <ProtectedAppStack />
-          <StatusBar style="auto" />
+          <StatusBar style="dark" />
         </View>
       </ThemeProvider>
     </ReduxProvider>

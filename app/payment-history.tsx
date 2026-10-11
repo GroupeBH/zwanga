@@ -22,7 +22,8 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 const rowBackground = { backgroundColor: Colors.white };
 const pageInsets = { paddingHorizontal: Spacing.xl };
@@ -252,6 +253,7 @@ export default function PaymentHistoryScreen() {
 
       {selectedPayment ? (
         <Modal
+          inApp
           visible={Boolean(selectedPayment)}
           animationType="slide"
           transparent

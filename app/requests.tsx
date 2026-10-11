@@ -14,16 +14,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const tabs: { key: RequestTab; label: string }[] = [
   { key: 'available', label: 'Disponibles' },
-  { key: 'my-requests', label: 'Mes demandes' },
+  { key: 'my-requests', label: 'Mes commandes' },
 ];
 const requestKey = (request: TripRequest) => request.id;
 
 export default function TripRequestsScreen() {
   const router = useRouter();
   const listRef = useRef<FlatList<TripRequest>>(null);
-  const [activeTab, setActiveTab] = useState<RequestTab>('available');
+  const [requestedTab, setActiveTab] = useState<RequestTab>('available');
   const [search, setSearch] = useState('');
-  const { requests, isDriver, isLoading, isFetching, isError, hasData, proximityAvailable, refresh } = useRequestsData(activeTab);
+  const { activeTab, requests, isDriver, isLoading, isFetching, isError, hasData, proximityAvailable, refresh } = useRequestsData(requestedTab);
   const index = useMemo(() => indexRequests(requests), [requests]);
   const filteredRequests = useMemo(() => filterRequestIndex(index, search), [index, search]);
   const searching = Boolean(search.trim());
@@ -46,9 +46,9 @@ export default function TripRequestsScreen() {
   };
   const count = filteredRequests.length;
   const listDescription = searching ? `${count} résultat${count > 1 ? 's' : ''}`
-    : `${count} demande${count > 1 ? 's' : ''}`;
-  const sortDescription = activeTab === 'my-requests' ? 'Réponses et prises en charge en premier'
-    : proximityAvailable ? 'Départs les plus proches en premier' : 'Départs les plus tôt en premier';
+    : `${count} commande${count > 1 ? 's' : ''}`;
+  const sortDescription = activeTab === 'my-requests' ? 'Réponses en premier'
+    : proximityAvailable ? 'Plus proches en premier' : 'Plus tôt en premier';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -57,21 +57,17 @@ export default function TripRequestsScreen() {
           onPress={() => router.back()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={23} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text accessibilityRole="header" style={styles.headerTitle}>Demandes de trajet</Text>
+        <Text accessibilityRole="header" style={styles.headerTitle}>{isDriver && activeTab === 'available' ? 'Trouver un client' : 'Mes commandes'}</Text>
       </View>
 
       <View style={styles.toolbar}>
-        <View style={styles.tabsContainer} accessibilityRole="tablist">
+        {isDriver && <View style={styles.tabsContainer} accessibilityRole="tablist">
           {tabs.map(tab => <TouchableOpacity key={tab.key} accessibilityRole="tab"
             accessibilityState={{ selected: activeTab === tab.key }} activeOpacity={0.75}
             onPress={() => changeTab(tab.key)} style={[styles.tab, activeTab === tab.key && styles.tabActive]}>
             <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
           </TouchableOpacity>)}
-        </View>
-        <Text style={styles.contextText}>
-          {activeTab === 'my-requests' ? 'Vos trajets demandés et les réponses des conducteurs.'
-            : isDriver ? 'Des passagers à prendre en charge. Ouvrez une demande.' : 'Les demandes publiées par les autres passagers.'}
-        </Text>
+        </View>}
         <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={19} color={Colors.gray[500]} accessible={false} />
           <TextInput accessibilityLabel="Rechercher par départ, arrivée ou nom"
@@ -98,10 +94,10 @@ export default function TripRequestsScreen() {
               <Text style={styles.resultsCount}>{listDescription}</Text>
               <Text style={styles.resultsHint}>{sortDescription}</Text>
             </View>
-            {isFetching && <ActivityIndicator size="small" color={Colors.primary} accessibilityLabel="Actualisation des demandes" />}
+            {isFetching && <ActivityIndicator size="small" color={Colors.primary} accessibilityLabel="Actualisation des commandes" />}
           </View>}
           {isError && hasData && count > 0 && <View style={styles.errorNotice}>
-            <Text style={styles.errorText}>Actualisation impossible. Les dernières demandes chargées restent affichées.</Text>
+            <Text style={styles.errorText}>Actualisation impossible. Les dernières commandes chargées restent affichées.</Text>
             <TouchableOpacity accessibilityRole="button" onPress={refresh} disabled={isFetching}
               accessibilityState={{ disabled: isFetching }} style={styles.secondaryButton}>
               <Text style={styles.secondaryButtonText}>Réessayer</Text>
@@ -114,13 +110,13 @@ export default function TripRequestsScreen() {
       />
 
       {activeTab === 'my-requests' && <View style={styles.footer}>
-        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Créer une nouvelle demande de trajet"
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Commander un trajet"
           activeOpacity={0.8} style={styles.createButton} onPress={() => {
             Keyboard.dismiss();
             router.push(getTripRequestCreateHref());
           }}>
           <Ionicons name="add" size={22} color={Colors.white} />
-          <Text style={styles.createButtonText}>Nouvelle demande</Text>
+          <Text style={styles.createButtonText}>Commander un trajet</Text>
         </TouchableOpacity>
       </View>}
     </SafeAreaView>

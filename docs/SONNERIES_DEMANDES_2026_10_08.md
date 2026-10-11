@@ -1,5 +1,21 @@
 # Sonneries des demandes — 8 octobre 2026
 
+## Complément du 10 octobre 2026
+
+L’alerte ciblée couvre désormais aussi les commandes programmées lorsque la
+répartition de proximité est activée. Elles utilisent `trip_request_nearby`,
+ouvrent leur détail et ne réservent pas automatiquement le conducteur. Le choix
+« maintenant » ne dépend plus d’une réponse asynchrone au statut du dispatch.
+Le repli Expo précise aussi le canal Android v2. Les constats du 8 octobre
+ci-dessous sont historiques, notamment la diffusion générale des commandes
+programmées et les observations de production : aucune nouvelle vérification
+de production n’a été réalisée pour ce complément.
+
+Voir le [journal technique](CHANGEMENTS_TECHNIQUES.md#10-octobre-2026--sonnerie-ciblée-pour-les-commandes-immédiates-et-programmées)
+pour les fichiers modifiés, la migration d’index, les 1 768 tests mobiles et
+138 tests backend réussis, ainsi que les commandes et la recette sur téléphones
+physiques restant à effectuer.
+
 ## Constat et périmètre
 
 La sonnerie PCM `driver_ring.wav` de 29 secondes était déjà embarquée dans les
