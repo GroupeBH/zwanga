@@ -59,16 +59,23 @@ test('without a matching server profile the screen renders neither badges nor on
     'ProfileReviewsSection', 'ProfileSubscriptionModal', 'ProfileVehiclesSection'];
   const childMocks = Object.fromEntries(childNames.map(name => [`@/components/profile/${name}`, { [name]: name }]));
   const Screen = loader({ ...mocks, ...childMocks,
+    '@react-navigation/native': { useIsFocused: () => true },
+    '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'Scope' },
     'react-native-safe-area-context': { SafeAreaView: 'View' },
     '@/components/TutorialOverlay': { TutorialOverlay: 'Tutorial' },
     '@/components/VehicleFormModal': { VehicleFormModal: 'VehicleModal' },
     '@/hooks/profile/useProfileController': { useProfileController: () => profile },
   })('app/(tabs)/profile.tsx').default;
-  const tree = nodes(Screen());
+  const render = () => {
+    const scope = Screen();
+    assert.equal(scope.type, 'Scope'); assert.equal(scope.props.active, true);
+    return scope.props.children.type(scope.props.children.props);
+  };
+  const tree = nodes(render());
   assert.ok(tree.some(node => node.type === 'ProfileStatusNotice' && node.props.hasSnapshot === false));
   assert.ok(!tree.some(node => ['ProfileHeader', 'ProfileDashboard', 'ProfileProCard'].includes(node.type)));
   profile.isProfileDataLoading = true;
-  const loading = nodes(Screen());
+  const loading = nodes(render());
   assert.ok(loading.some(node => node.type === 'Spinner'));
   assert.ok(!loading.some(node => node.type === 'ProfileHeader'));
 });

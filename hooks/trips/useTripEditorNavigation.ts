@@ -119,12 +119,13 @@ export function useTripEditorNavigation({
   const openEditRoutePicker = (target: 'departure' | 'arrival') => {
     Keyboard.dismiss();
     setEditModalSuspended(true);
-    setTimeout(() => setEditRoutePickerTarget(target), 320);
+    // Both panels use the screen overlay: replacement is atomic, not a UIKit transition.
+    setEditRoutePickerTarget(target);
   };
 
   const restoreEditModalAfterPicker = () => {
     setEditRoutePickerTarget(null);
-    setTimeout(() => setEditModalSuspended(false), 320);
+    setEditModalSuspended(false);
   };
 
   const handleContinueEditTrip = () => {

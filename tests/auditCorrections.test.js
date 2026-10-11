@@ -26,13 +26,24 @@ test('home waits for nearby results before requesting a general fallback', () =>
   const app = homeFixture(); app.render();
   assert.equal(app.reads.nearby.options.skip, false);
   assert.equal(app.reads.general.options.skip, true);
-  app.nearest.currentData = [{ id: 'nearby' }];
+  const nearbyTrip = { id: 'nearby', status: 'upcoming', availableSeats: 1,
+    departureTime: new Date(Date.now() + 60 * 60_000).toISOString(),
+    departure: { lat: -4.3, lng: 15.3, hasCoordinates: true } };
+  app.nearest.currentData = [nearbyTrip];
   app.nearest.isFetching = false;
-  assert.deepEqual(app.render().remoteTrips, [{ id: 'nearby' }]);
+  assert.deepEqual(app.render().remoteTrips, [nearbyTrip]);
   assert.equal(app.reads.general.options.skip, true);
   app.nearest.currentData = [];
   app.general.currentData = [{ id: 'fallback' }];
   assert.deepEqual(app.render().remoteTrips, [{ id: 'fallback' }]);
+  assert.equal(app.reads.general.options.skip, false);
+});
+
+test('home requests fallback when nearby records are incomplete or unavailable', () => {
+  const app = homeFixture();
+  app.nearest.currentData = [{ id: 'invalid' }];
+  app.nearest.isFetching = false;
+  app.render();
   assert.equal(app.reads.general.options.skip, false);
 });
 

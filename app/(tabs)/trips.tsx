@@ -11,7 +11,6 @@ import React from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Platform,
   RefreshControl,
   Text,
@@ -19,8 +18,18 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 
 export default function TripsScreen() {
+  const focused = useIsFocused();
+  return <RideOverlayScope scopeKey="my-trips" active={focused}>
+    <TripsContent />
+  </RideOverlayScope>;
+}
+
+function TripsContent() {
   const model = useTripsController();
 
   return (
@@ -237,7 +246,7 @@ export default function TripsScreen() {
         }}
       />
 
-      <Modal transparent animationType="fade" visible={Boolean(model.state.deleteTarget)}>
+      <Modal transparent animationType="fade" visible={Boolean(model.state.deleteTarget)} onRequestClose={model.closeDeleteModal}>
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmCard}>
             <View style={styles.confirmIcon}>

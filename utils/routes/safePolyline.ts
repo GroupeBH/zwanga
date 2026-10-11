@@ -24,7 +24,11 @@ export function boundedRoutePoints(value: unknown, limit = MAX_PREVIEW_ROUTE_POI
 }
 
 /** Google polyline precision 5. Strict integer/continuation checks avoid partial routes. */
-export function decodeSafePolyline(encoded: unknown): RoutePoint[] {
+export function decodeSafePolyline(
+  encoded: unknown,
+  limit = MAX_PREVIEW_ROUTE_POINTS,
+  normalizePoint: (point: RoutePoint) => RoutePoint | null = point => point,
+): RoutePoint[] {
   if (typeof encoded !== 'string' || encoded.length > MAX_ENCODED_ROUTE_LENGTH) return [];
   let index = 0;
   const readDelta = (): number | null => {
@@ -48,9 +52,11 @@ export function decodeSafePolyline(encoded: unknown): RoutePoint[] {
     longitude += lngDelta;
     const point = { latitude: latitude / 1e5, longitude: longitude / 1e5 };
     if (!isValidRoutePoint(point)) return [];
-    points.push(point);
+    const normalized = normalizePoint(point);
+    if (!isValidRoutePoint(normalized)) return [];
+    points.push(normalized);
   }
-  return boundedRoutePoints(points);
+  return boundedRoutePoints(points, limit);
 }
 
 /** No argument spreading: even a large caller-owned array cannot overflow the stack. */

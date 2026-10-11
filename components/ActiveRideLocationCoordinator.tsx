@@ -35,6 +35,7 @@ export function ActiveRideLocationCoordinator() {
   const userId = useAppSelector(selectUser)?.id;
   const trackingBookingId = useActivityTrackingSignal();
   const activeDriverTripIdRef = useRef<string | null>(null);
+  const driverPermissionAttemptRef = useRef<string | null>(null);
   const activePassengerBookingIdRef = useRef<string | null>(null);
   const passengerStartRef = useRef<Promise<boolean> | null>(null);
   const passengerForegroundSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
@@ -88,19 +89,28 @@ export function ActiveRideLocationCoordinator() {
     activeDriverTripIdRef.current = isAuthenticated ? driverTripId : null;
 
     if (!isAuthenticated) {
+      driverPermissionAttemptRef.current = null;
       void stopDriverBackgroundLocationTracking();
       return;
     }
     if (!areTripsLoaded && !passengerBookingId) return;
 
     if (!driverTripId) {
+      driverPermissionAttemptRef.current = null;
       void stopDriverBackgroundLocationTracking();
-      return;
     }
+  }, [areTripsLoaded, driverTripId, isAuthenticated, passengerBookingId]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !areTripsLoaded || !driverTripId) return;
+    // Recheck native registration once per foreground return. Never stop a live
+    // background service on blur, or reopen permission dialogs on every resume.
+    if (!isAppActive) return;
+    const requestMissingPermissions = driverPermissionAttemptRef.current !== driverTripId;
+    driverPermissionAttemptRef.current = driverTripId;
     void startDriverBackgroundLocationTracking(driverTripId, {
       arrivalCoordinate: driverArrivalCoordinate,
-      requestMissingPermissions: true,
+      requestMissingPermissions,
     }).then(() => {
       if (activeDriverTripIdRef.current !== driverTripId) {
         void stopDriverBackgroundLocationTracking(driverTripId);
@@ -110,6 +120,7 @@ export function ActiveRideLocationCoordinator() {
     areTripsLoaded,
     driverArrivalCoordinate,
     driverTripId,
+    isAppActive,
     isAuthenticated,
     passengerBookingId,
   ]);

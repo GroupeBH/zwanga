@@ -26,8 +26,17 @@ import {
   View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function ProfileScreen() {
+  const focused = useIsFocused();
+  return <RideOverlayScope scopeKey="profile" active={focused}>
+    <ProfileContent />
+  </RideOverlayScope>;
+}
+
+function ProfileContent() {
   const profile = useProfileController();
   return ((
     <SafeAreaView style={styles.container} edges={['top']}>

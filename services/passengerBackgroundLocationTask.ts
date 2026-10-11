@@ -1,4 +1,5 @@
 import { getBookingSnapshot, getTripSnapshot } from './background/passengerTrackingReads';
+import { latestLocation as selectLatestLocation } from './background/latestLocation';
 import { FETCH_TIMEOUT_MS, LOCATION_FAILURE_BACKOFF_MS, BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS } from './background/passengerTrackingPolicy';
 import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
 import { applyPassengerGpsProfile, stopPassengerGpsProfile, startPassengerGpsProfile,
@@ -258,9 +259,7 @@ const definePassengerBackgroundLocationTask = () => {
           }
           if (readiness !== 'active') return;
 
-          const latestLocation = (data?.locations ?? [])
-            .filter((location) => typeof location?.timestamp === 'number')
-            .sort((a, b) => b.timestamp - a.timestamp)[0];
+          const latestLocation = selectLatestLocation(data?.locations);
           if (latestLocation) {
             publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
             await putPassengerLocation(session.bookingId, latestLocation);
