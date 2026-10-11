@@ -31,8 +31,8 @@ test('repeated foreground cycles retain no stale panels, notices or native block
   }
 });
 
-function modalFixture(os = 'ios', sharedStore) {
-  const hooks = hookHarness('modal');
+function modalFixture(os = 'ios', sharedStore, id = 'modal') {
+  const hooks = hookHarness(id);
   const react = { ...hooks.react, createContext: value => ({ value }), useContext: context => context.value,
     useSyncExternalStore: (_subscribe, snapshot) => snapshot() };
   const load = loader({ react, 'react-native': { Platform: { OS: os }, Modal: 'NativeModal' } });
@@ -41,6 +41,21 @@ function modalFixture(os = 'ios', sharedStore) {
   const store = sharedStore ?? createRideOverlayStore(); RideOverlayContext.value = store;
   return { store, hooks, scope: RideOverlayScopeContext, render: props => hooks.render(() => RideModal(props)) };
 }
+
+for (const scopeKey of ['profile', 'my-trips']) test(`iOS ${scopeKey}: form plus global feedback never stack UIKit modals`, () => {
+  const store = createRideOverlayStore(); store.setScope(scopeKey, true);
+  const form = modalFixture('ios', store, 'form'), feedback = modalFixture('ios', store, 'feedback');
+  form.scope.value = { key: scopeKey, active: true };
+  assert.equal(form.render({ visible: true, children: 'form', priority: 30 }), null);
+  assert.equal(feedback.render({ visible: true, children: 'error', priority: 80 }), null);
+  assert.equal(store.getEntries().length, 2); assert.equal(store.getActive().id, 'feedback');
+  feedback.render({ visible: false, priority: 80 });
+  assert.equal(store.getActive().id, 'form');
+  form.scope.value = { key: scopeKey, active: false }; store.setScope(scopeKey, false);
+  form.render({ visible: true, children: 'form', priority: 30 });
+  assert.equal(store.getActive(), null); assert.equal(store.getEntries().length, 0);
+  form.hooks.unmount(); feedback.hooks.unmount();
+});
 
 for (const os of ['ios', 'android']) test(`${os}: navigation panels never present a native modal and logical dismissal fires once`, () => {
   const env = modalFixture(os); let closed = 0;

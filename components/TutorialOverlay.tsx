@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { Colors, Spacing, BorderRadius, FontSizes, FontWeights } from '@/constants/styles';
 
 interface TutorialOverlayProps {

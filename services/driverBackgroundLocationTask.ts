@@ -1,4 +1,5 @@
 import { evaluateBackgroundTripEnd } from './background/driverTripCompletion';
+import { latestLocation as selectLatestLocation } from './background/latestLocation';
 import { isDriverBackgroundLocationAvailable } from './background/driverTaskLifecycle';
 import { reserveDriverGpsStart, startDriverGpsProfile, stopDriverGpsProfile, stopDriverGpsIfIdle } from './background/driverGpsProfile';
 import { DRIVER_BACKGROUND_LOCATION_TASK } from './background/driverTaskName';
@@ -173,9 +174,7 @@ const defineDriverBackgroundLocationTask = () => {
         }
 
         const locations = data?.locations ?? [];
-        const latestLocation = locations
-          .filter((location) => typeof location?.timestamp === 'number')
-          .sort((a, b) => b.timestamp - a.timestamp)[0];
+        const latestLocation = selectLatestLocation(locations);
 
         if (!latestLocation) {
           return;

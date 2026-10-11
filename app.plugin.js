@@ -133,6 +133,7 @@ module.exports = (config) => {
   config = withAndroidLargeScreenCompatibility(config);
   config = withModernEdgeToEdgeGradleProperties(config);
   config = withIOSUserScriptSandboxingDisabled(config);
+  config = require('./plugins/withIosCrashlytics')(config);
   config = withReactNativeMapsFix(config);
   return config;
 };

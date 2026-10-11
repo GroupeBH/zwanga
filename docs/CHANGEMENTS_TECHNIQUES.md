@@ -1,5 +1,172 @@
 # Journal des changements techniques
 
+## 11 octobre 2026 — Correctifs de fiabilité : GPS Android, fenêtres iOS et récupération
+
+Périmètre : application mobile, suivi natif Expo Android, affichage des formulaires,
+itinéraires et intégration Crashlytics iOS. Aucun changement backend, de base de
+données ou d’infrastructure de production ; aucune installation sur l’émulateur.
+
+### Problèmes constatés et solutions appliquées
+
+- **Accumulation GPS Android** : l’audit précédent a trouvé des rapports
+  `OutOfMemoryError` dans le build de développement de l’émulateur, dont plusieurs
+  dans les traitements natifs Expo Location/TaskManager. Cela ne constitue pas
+  une reproduction en production ni une preuve exclusive de la cause mémoire.
+  `scripts/patch-expo-location-batches.cjs` applique un correctif natif reproductible
+  au postinstall : tampon différé Location limité à 64 positions ; lots des tâches
+  GPS Zwanga limités à 64 positions lors de leur création, fusion et extraction ;
+  reconstruction des extras sans recopier tout l’ancien lot. Les derniers
+  échantillons et leur ordre de livraison sont conservés. Le dédoublonnage devient
+  propre à chaque consommateur et les lots de doublons sont libérés.
+  Les autres tâches TaskManager, notamment les notifications, ne sont pas tronquées.
+- **Le correctif doit entrer dans le binaire** : `package.json` impose la compilation
+  des sources de `expo-location`, `expo-task-manager` et de la dépendance nécessaire
+  `unimodules-app-loader`. Sans cela, les AAR précompilés Expo ignorent les modifications.
+  Aucun nouveau package installé. Les autres modules conservent leur mode de build.
+  Le postinstall applique le patch ; le contrôle EAS post-install vérifie sa présence.
+  Un changement incompatible des sources attendues fait échouer le patch explicitement.
+  `.gitignore` exclut le cache local `android/.kotlin/` produit par la compilation.
+- **Sélection GPS JavaScript** : `services/background/latestLocation.ts` remplace
+  les copies/tris pour sélectionner la dernière position en un parcours, sans
+  mutation du lot, dans `services/driverBackgroundLocationTask.ts` et
+  `services/passengerBackgroundLocationTask.ts`. Les horodatages non finis sont ignorés.
+- **Reprise du suivi conducteur** : `components/ActiveRideLocationCoordinator.tsx`
+  revérifie le démarrage natif au retour au premier plan, même sans changement du
+  trajet. Une tentative par retour, sans nouvelle boucle ni répétition des demandes
+  de permission pour le même trajet. Le passage en arrière-plan n’arrête pas le
+  suivi actif ; déconnexion et fin de trajet gardent leur arrêt explicite.
+- **Fenêtres iOS** : `app/(tabs)/profile.tsx` et `app/(tabs)/trips.tsx` hébergent leurs
+  formulaires dans des `RideOverlayScope` liés au focus. La suppression d’un trajet
+  et `components/TutorialOverlay.tsx` utilisent aussi `RideModal`. Le formulaire
+  et le dialogue de résultat passent par la même gestion d’affichage, sans empiler
+  deux contrôleurs UIKit. Dans `hooks/trips/useTripEditorNavigation.ts`, les deux
+  délais arbitraires de 320 ms sont supprimés : le remplacement formulaire/carte
+  est synchrone dans ce périmètre, sans réouverture différée après fermeture.
+- **Itinéraires** : `hooks/driver-navigation/useDriverRouteFormatting.ts` et
+  `features/passenger-navigation/navigationModel.ts` réutilisent
+  `utils/routes/safePolyline.ts`. Rejet des encodages tronqués, caractères invalides,
+  données dépassant 100 000 caractères ou 10 000 points décodés ; plafonds d’affichage
+  de 200 points conducteur et 180/250 points passager iOS/Android. Conservation
+  des extrémités, de la validation régionale et de la correction des axes inversés.
+  La validation porte sur tous les points avant réduction, pas seulement les points affichés.
+- **Récupération après erreur** : `components/AppErrorBoundary.tsx` n’appelle plus
+  `DevSettings.reload()` en release, où cette méthode ne faisait rien. Le bouton
+  « Relancer l’interface » remonte l’arbre React ; le rechargement développeur reste
+  réservé au développement. Ce n’est pas un redémarrage du processus natif et aucune
+  donnée persistée n’est effacée.
+- **Crashlytics iOS** : ajout de la phase `[RNFB] Crashlytics Configuration` au projet
+  `ios/zwanga.xcodeproj/project.pbxproj`, avec script officiel et entrées dSYM/plist.
+  `plugins/withIosCrashlytics.js`, référencé dans `app.plugin.js`, la conserve lors
+  d’un prebuild et évite une duplication avec l’autolinking CocoaPods. `ios/Podfile`
+  inclut RNFBCrashlytics dans les réglages des bridges Firebase existants. Le lock
+  CocoaPods n’est pas fabriqué manuellement : son installation reste à faire sur macOS.
+
+### Comportements conservés et précautions
+
+- Fréquence GPS, précision, détection d’embarquement/arrivée, permissions et session
+  serveur inchangées. Les lots de plus de 64 positions abandonnent les plus anciens
+  échantillons : ce suivi n’est pas un archivage exhaustif de parcours. Vérifier en
+  essai prolongé les reprises après veille et les fins de trajet automatiques.
+- Paiements, soldes, commissions, réservations et accès conducteur/passager non modifiés.
+  Les formulaires suspendus conservent leur contenu ; les écrans hors focus ne gardent
+  pas de couche interactive au-dessus du nouvel écran.
+- Ancien test de l’accueil corrigé dans `tests/auditCorrections.test.js` avec un vrai
+  trajet éligible simulé, sans affaiblir les filtres ; ajout du cas de données incomplètes.
+  `tests/profileServerStatusUI.test.js` traverse le nouveau périmètre d’affichage tout
+  en conservant ses assertions sur la source de vérité serveur.
+
+### Vérifications réalisées
+
+- Suite complète Node : **1 821 tests réussis, zéro échec, zéro test ignoré**
+  (environ 201 secondes lors du dernier passage).
+- Ajouts ciblés dans `tests/auditNativeReliability20261011.test.js`,
+  `tests/nativeLocationBatchPatch.test.js`, `tests/activeRideCoordinatorReliability.test.js`,
+  `tests/rideOverlays.test.js` et `tests/iosCrashlytics.test.js`.
+- Le test Java compile les helpers réellement patchés avec un substitut de Bundle :
+  10 000 fusions successives, lot massif, conservation des identifiants, plafond et
+  absence de mutation de l’ancien lot. Ce n’est pas un essai Android Parcel/JobScheduler.
+- Compilation native réelle réussie : Gradle `:expo-location:compileDebugKotlin`
+  et `:expo-task-manager:compileDebugJavaWithJavac`, avec leur dépendance app-loader.
+  Cela vérifie Java/Kotlin Android, pas un APK release complet ni son comportement en veille.
+- TypeScript `--noEmit` : réussi. ESLint : **zéro erreur, 243 avertissements** déjà
+  présents, non corrigés automatiquement pour éviter des changements de hooks non évalués.
+- Frontières réseau : réussi. Taille des sources : 1 069 contrôlées, aucune au-dessus
+  de 400 lignes. `git diff --check` : réussi. Configuration Crashlytics Android : valide.
+- Projet Xcode analysé par le parseur, phase attachée à la cible et génération idempotente
+  testées. Le validateur iOS signale encore les **Pods absents du lock local** ; la phase
+  de symboles n’est plus signalée manquante. Aucun build iOS exécuté sous Windows.
+
+### Installation et limites restantes
+
+- **Nouveau build natif requis** pour les protections GPS et Crashlytics. Un simple
+  rechargement Metro ou une mise à jour JavaScript ne les applique pas aux binaires installés.
+- Sur macOS, depuis la racine : `npx pod-install`, puis `npm run check:ios-crashlytics`.
+  Conserver le `ios/Podfile.lock` réellement résolu, puis reconstruire iOS.
+- Refaire des essais physiques Android/iOS : trajet prolongé, verrouillage, réseau
+  intermittent, reprises répétées, arrêt du suivi après déconnexion/fin de trajet ;
+  formulaire PIN avec erreur/succès et modification de trajet avec carte, clavier et retour.
+  Vérifier la réception d’un crash symboliqué sur une archive de test dédiée.
+- Aucun gel iOS, aucune baisse de chauffe ni disparition des crashs en production
+  ne sont déclarés validés. La cause exhaustive de la mémoire élevée nécessite
+  toujours un profilage release et une comparaison avant/après sur appareils physiques.
+
+## 11 octobre 2026 — Accueil : autres trajets disponibles même sans départ proche
+
+Périmètre : découverte des trajets sur l’accueil. Le précédent repli restait
+limité à 25 km et sept jours, et aucune découverte ne partait sans position
+exploitable. Des trajets publiés pouvaient donc être exclus malgré une liste
+vide. Cette entrée remplace ces limites décrites dans l’entrée suivante.
+
+### Solution effectivement appliquée
+
+- `hooks/home/useHomeTripFeed.ts` conserve la recherche proche en premier. Si
+  elle échoue ou ne contient aucune nouvelle suggestion éligible à moins de
+  5 km dans les prochaines 24 h, le flux général existant est interrogé sans
+  coordonnées, rayon ni limite de date future, avec des places disponibles et
+  un tri par date. Sans GPS exploitable, ce flux général est utilisé directement.
+  Une nouvelle suggestion proche suspend de nouveau cette lecture générale.
+- `features/home/homeTripPriority.ts` conserve les préférences 5 km / 24 h,
+  10 km / 48 h, puis 25 km / sept jours. Un dernier palier accepte maintenant
+  les autres départs futurs disponibles, y compris sans coordonnées de départ,
+  et les classe d’abord par date. Une date invalide, un départ passé, un trajet
+  complet ou un statut non disponible ne devient pas une suggestion de repli.
+- `hooks/home/useHomeTripSelection.ts` affiche « Autres trajets disponibles »
+  pour ce dernier palier, sans annoncer une proximité non vérifiée.
+  `components/home/HomeTripsSheet.tsx` et `app/(tabs)/index.tsx` retirent la
+  dépendance du message vide au GPS : activer la localisation n’est plus requis
+  pour consulter ces suggestions. Le message réellement vide renvoie vers
+  « Voir tout ».
+
+### Comportements conservés et précautions
+
+- Premier palier non vide uniquement, dix cartes maximum, réservations
+  personnelles prioritaires et navigation en cours inchangée. Les trajets
+  propres et participations terminées restent exclus des nouvelles suggestions.
+  Les permissions de visibilité des commandes des autres passagers ne changent pas.
+- Chaque requête demande au plus 50 candidats ; le snapshot reste borné à 100.
+  Pas de nouveau timer, dépendance, service GPS ou changement backend. Les
+  lectures gardent leur cadence existante et les garde-fous écran actif / réseau.
+  Les données en cache restent utilisables en cas d’échec ; les réponses les plus
+  récentes arbitrent les doublons et le cache RTK Query n’est pas modifié par le tri.
+
+### Vérifications réalisées et limites
+
+- 156 tests JavaScript ciblés réussis, zéro échec : suites `home*.test.js`,
+  `compactCardsLifecycle.test.js` et `performanceReadScheduling.test.js`.
+  `tests/homeTripPriority.test.js` couvre notamment les départs au-delà de 25 km
+  ou de sept jours, sans GPS, les dates invalides, le retour des départs proches,
+  la priorité des réservations et la limite de dix cartes.
+  `tests/homeModules.test.js` vérifie la requête générale sans filtre géographique,
+  son activation sans GPS, les chargements/erreurs, la fusion et le rafraîchissement.
+- TypeScript `--noEmit`, ESLint sur les cinq sources modifiées, frontière réseau
+  et contrôle de taille réussis : 1 068 sources contrôlées, aucune au-delà de
+  400 lignes. Contrôle des espaces du diff réussi.
+- Vérifications locales JavaScript et statiques, pas d’essai natif Android/iOS
+  ni de validation des données de production. Un serveur sans départ disponible,
+  ou une panne sans cache exploitable, peut toujours produire un état vide/erreur.
+  La lecture bornée des 50 premiers candidats du flux général ne garantit pas
+  une exploration exhaustive de toutes les pages du catalogue.
+
 ## 11 octobre 2026 — Suggestions de repli et parcours de recherche, publication et commande simplifiés
 
 Périmètre : accueil, recherche de trajets/clients, liste des commandes, publication
