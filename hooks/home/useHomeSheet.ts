@@ -132,9 +132,9 @@ export function useHomeSheet({
       ? 'Clients'
       : 'Trajets';
 
-  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading;
+  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading && latestTrips.length === 0;
 
-  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
+  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError && latestTrips.length === 0;
 
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
 

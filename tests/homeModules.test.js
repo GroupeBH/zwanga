@@ -116,7 +116,7 @@ test('trip feed keeps nearby precedence without a parallel general request, poll
   props.lastKnownLocation = null;
   feed = render();
   assert.equal(calls.at(-1).options.skip, true);
-  assert.equal(feed.remoteTrips[0], nearby);
+  assert.equal(feed.remoteTrips[0], general, 'without GPS only the general snapshot is used');
   app.hooks.unmount();
 });
 
@@ -132,7 +132,7 @@ test('a cached feed remains visible when both network queries fail', () => {
   app.hooks.unmount();
 });
 
-test('empty nearby results never widen Home discovery, and fallback keeps the five-kilometre scope', async () => {
+test('empty nearby results load a bounded general feed without geographic or date restrictions', async () => {
   const calls = [], refreshes = [];
   const nearby = { currentData: [], isError: false, isFetching: false, isUninitialized: false,
     refetch: async () => { refreshes.push('nearby'); return { data: [] }; } };
@@ -148,25 +148,76 @@ test('empty nearby results never widen Home discovery, and fallback keeps the fi
   const draw = () => app.hooks.render(() => useHomeTripFeed(props));
   draw();
   assert.equal(calls[0].args.departureRadiusKm, 5, 'a broad search preference must not broaden Home');
-  assert.equal(calls.at(-1).options.skip, true);
+  assert.equal(calls.at(-1).options.skip, false);
   await draw().refetchTrips();
-  assert.deepEqual(refreshes, ['nearby']);
+  assert.deepEqual(refreshes, ['nearby', 'general']);
   nearby.isError = true; draw();
   assert.equal(calls.at(-1).options.skip, false);
-  assert.equal(calls.at(-1).args.departureRadiusKm, 5);
-  assert.deepEqual(calls.at(-1).args.departureCoordinates, [15.3222, -4.325]);
+  assert.deepEqual(calls.at(-1).args, { minSeats: 1, limit: 50, sort: 'date' });
   props.isFocused = false; draw();
   assert.equal(calls.at(-1).options.skip, true);
   props.isFocused = true; props.lastKnownLocation = null; draw();
-  assert.equal(calls.at(-1).options.skip, true);
+  assert.equal(calls.at(-1).options.skip, false, 'GPS is not required to browse published departures');
   assert.equal(calls.at(-2).options.skip, true);
   assert.equal(draw().tripsLoading, false);
   props.lastKnownLocation = { coords: { latitude: 0, longitude: 0 } }; draw();
   assert.equal(calls.at(-2).options.skip, true);
+  assert.equal(calls.at(-1).options.skip, false);
+  refreshes.length = 0;
+  await draw().refetchTrips();
+  assert.deepEqual(refreshes, ['general']);
   app.hooks.unmount();
 });
 
 const selectionProps = () => ({ remoteTrips: [], storedTrips: [], activeBookings: [], currentUser: { id: 'me' }, completedBookingTripIds: new Set(), bookedTripIds: new Set(), refreshedPassengerTrip: undefined, trackedTripInfo: null, ongoingDriverTrip: null, isDriver: false, driverReservationHighlightTrip: null, driverReservationHighlightBookings: [], myDriverTrips: [], liveUserCoordinate: departure.coordinates });
+
+test('wider Home reads wait for nearby completion, ignore unavailable suggestions and stop when a close ride appears', () => {
+  const calls = [], dispatches = [];
+  const nearby = { currentData: undefined, isFetching: true, isError: false, fulfilledTimeStamp: 1 };
+  const wide = { currentData: [trip('wider', { departure: { lat: -4.4, lng: 15.3222 } })], isFetching: false };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsByCoordinatesQuery: (args, options) => { calls.push({ name: 'nearby', args, options }); return nearby; },
+    useGetTripsQuery: (args, options) => { calls.push({ name: 'wide', args, options }); return wide; },
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const props = { isFocused: true, currentUser: { id: 'me' }, storedTrips: [],
+    bookedTripIds: new Set(['reserved']), completedBookingTripIds: new Set(['done']),
+    lastKnownLocation: { coords: departure.coordinates }, dispatch: action => dispatches.push(action) };
+  const draw = () => app.hooks.render(() => useHomeTripFeed(props));
+  assert.equal(draw().remoteTrips, undefined);
+  assert.equal(calls.at(-1).options.skip, true, 'cached wide data cannot trigger parallel discovery on entry');
+  nearby.isFetching = false;
+  nearby.currentData = [trip('mine', { driverId: 'me' }), trip('reserved'), trip('done'), trip('full', { availableSeats: 0 }),
+    trip('late', { departureTime: new Date(Date.now() + 3 * 86400000).toISOString() })];
+  assert.equal(draw().remoteTrips[0].id, 'wider');
+  assert.equal(calls.at(-1).options.skip, false);
+  const count = dispatches.length;
+  for (let i = 0; i < 100; i++) draw();
+  assert.equal(dispatches.length, count, 'stable feeds do not dispatch on every render');
+  nearby.currentData = [trip('new-nearby')];
+  assert.deepEqual(draw().remoteTrips.map(item => item.id), ['new-nearby']);
+  assert.equal(calls.at(-1).options.skip, true);
+  assert.equal(calls.at(-1).options.pollingInterval, 0);
+  nearby.currentData = [];
+  wide.currentData = undefined;
+  wide.isError = true;
+  props.storedTrips = [trip('cached')];
+  const beforeFailure = dispatches.length;
+  assert.equal(draw().remoteTrips, undefined, 'an unavailable wider feed does not erase the stored snapshot');
+  assert.equal(dispatches.length, beforeFailure);
+  props.storedTrips = [];
+  assert.equal(draw().tripsError, true);
+  nearby.currentData = [trip('mine', { driverId: 'me' })];
+  assert.equal(draw().tripsError, true, 'irrelevant server records must not disguise a failed wider search as an empty result');
+  wide.isFetching = true; wide.isError = false;
+  assert.equal(draw().tripsLoading, true, 'show loading while wider discovery is pending, not a false empty list');
+  nearby.currentData = [trip('shared')]; nearby.isError = true;
+  wide.currentData = [trip('shared', { status: 'cancelled' })]; wide.isFetching = false; wide.fulfilledTimeStamp = 2;
+  assert.equal(draw().remoteTrips[0].status, 'cancelled', 'a stale narrow response cannot resurrect a cancelled departure');
+  nearby.fulfilledTimeStamp = 3; nearby.isError = false;
+  assert.equal(draw().remoteTrips[0].status, 'upcoming', 'a successful newer nearby response becomes authoritative again');
+  app.hooks.unmount();
+});
 test('trip selection prioritizes reservations, removes own/completed/expired trips, and caps the list', () => {
   const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
   const booked = trip('booked', { departureTime: new Date(Date.now() + 2 * 86400000).toISOString() });

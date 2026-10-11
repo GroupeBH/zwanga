@@ -4,7 +4,9 @@ const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
+const hooks = hookHarness();
 const load = loader({
+  react: { ...React, ...hooks.react },
   'react-native': { View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button', ScrollView: 'Scroll',
     ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
   '@expo/vector-icons': { Ionicons: 'Icon' },
@@ -54,11 +56,23 @@ test('route preview includes nonempty landmarks without replacing addresses or a
   const { RequestRoutePreview } = load('components/trip-request/RequestRoutePreview.tsx');
   const props = { departureAddress: 'Départ test', arrivalAddress: 'Arrivée test', departureReference: '  Pharmacie  ',
     arrivalReference: 'Portail bleu', routeCoordinates: [], setRequestFormStep() {} };
-  const preview = RequestRoutePreview.type(props);
+  const draw = () => hooks.render(() => RequestRoutePreview.type(props));
+  const preview = draw();
   assert.match(words(preview), /Départ testRéférence : Pharmacie/);
   assert.match(words(preview), /Arrivée testRéférence : Portail bleu/);
-  assert.equal(nodes(preview).filter(n => n.type === 'Map').length, 1);
-  assert.doesNotMatch(words(RequestRoutePreview.type({ ...props, departureReference: '  ', arrivalReference: '' })), /Référence/);
+  assert.equal(nodes(preview).filter(n => n.type === 'Map').length, 0, 'the native map is not mounted until requested');
+  nodes(preview).find(n => n.type === 'Button' && words(n) === 'Voir la carte').props.onPress();
+  const expanded = draw();
+  assert.equal(nodes(expanded).filter(n => n.type === 'Map').length, 1);
+  nodes(expanded).find(n => n.type === 'Button' && words(n) === 'Masquer la carte').props.onPress();
+  assert.equal(nodes(draw()).filter(n => n.type === 'Map').length, 0);
+  let step;
+  props.setRequestFormStep = value => { step = value; };
+  nodes(draw()).find(n => n.props.accessibilityLabel === 'Modifier le départ et la destination').props.onPress();
+  assert.equal(step, 'route');
+  props.departureReference = '  '; props.arrivalReference = '';
+  assert.doesNotMatch(words(draw()), /Référence/);
+  hooks.unmount();
 });
 
 test('publication uses reference labels for both optional fields without changing their values or callbacks', () => {

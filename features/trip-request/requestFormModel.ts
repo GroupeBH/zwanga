@@ -68,7 +68,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
       ? [
         {
           id: 'electronic' as const,
-          label: 'Paiement électronique',
+          label: 'Électronique',
           description: 'Paiement sécurisé sur votre téléphone',
           icon: 'card-outline' as const,
         },
@@ -76,7 +76,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
       : []),
     {
       id: 'cash',
-      label: "Paiement cash",
+      label: 'Espèces (cash)',
       description: 'Réglez directement auprès du conducteur',
       icon: 'cash-outline',
     },

@@ -36,16 +36,9 @@ export function PublishVehicleStep({
 }: PublishVehicleStepProps) {
   return (
     <Animated.View entering={stepEntering} style={styles.stepContainer}>
-      <Text style={styles.sectionTitle}>Votre véhicule</Text>
+      <Text style={styles.sectionTitle}>Avec quel véhicule ?</Text>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>Sélectionnez un véhicule *</Text>
-
-        {activeVehicles.length > 0 && selectedVehicleId && (
-          <Text style={styles.vehicleDefaultHint}>
-            Un véhicule actif est déjà sélectionné par défaut.
-          </Text>
-        )}
         {vehicleCreationMessage ? (
           <View style={styles.vehicleSuccessBanner} accessibilityRole="alert">
             <View style={styles.vehicleSuccessIcon}>

@@ -47,8 +47,8 @@ export default function TripRequestsScreen() {
   const count = filteredRequests.length;
   const listDescription = searching ? `${count} résultat${count > 1 ? 's' : ''}`
     : `${count} commande${count > 1 ? 's' : ''}`;
-  const sortDescription = activeTab === 'my-requests' ? 'Réponses et prises en charge en premier'
-    : proximityAvailable ? 'Départs les plus proches en premier' : 'Départs les plus tôt en premier';
+  const sortDescription = activeTab === 'my-requests' ? 'Réponses en premier'
+    : proximityAvailable ? 'Plus proches en premier' : 'Plus tôt en premier';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -57,7 +57,7 @@ export default function TripRequestsScreen() {
           onPress={() => router.back()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={23} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text accessibilityRole="header" style={styles.headerTitle}>{isDriver ? 'Commandes de trajet' : 'Mes commandes'}</Text>
+        <Text accessibilityRole="header" style={styles.headerTitle}>{isDriver && activeTab === 'available' ? 'Trouver un client' : 'Mes commandes'}</Text>
       </View>
 
       <View style={styles.toolbar}>
@@ -68,10 +68,6 @@ export default function TripRequestsScreen() {
             <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
           </TouchableOpacity>)}
         </View>}
-        <Text style={styles.contextText}>
-          {activeTab === 'my-requests' ? 'Vos commandes et les réponses des conducteurs.'
-            : 'Des passagers à prendre en charge. Ouvrez une commande.'}
-        </Text>
         <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={19} color={Colors.gray[500]} accessible={false} />
           <TextInput accessibilityLabel="Rechercher par départ, arrivée ou nom"

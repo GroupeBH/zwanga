@@ -1,6 +1,6 @@
 import { getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import type { FeaturedDriverReservation } from '@/features/home/homeTypes';
-import { rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
+import { getHomeTripSuggestionTier, HOME_GENERAL_SUGGESTION_TIER, rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
 import { isActivePassengerBooking, ownsTrip } from '@/features/activity/tripParticipation';
 import { rankDriverUpcomingTrips } from '@/features/home/homeDriverTripPriority';
 import { normalizeTripMapCoordinate, type MapCoordinate } from '@/utils/tripCoordinates';
@@ -128,6 +128,12 @@ export function useHomeTripSelection({
   }, [activeBookings, currentUser?.id, refreshedPassengerTrip, remoteTrips, storedTrips]);
 
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
+  const suggestion = latestTrips.find(trip => !bookedTripIds.has(trip.id));
+  const suggestionTier = suggestion ? getHomeTripSuggestionTier(suggestion, coordinate) : -1;
+  const suggestionScopeLabel = suggestionTier === HOME_GENERAL_SUGGESTION_TIER ? 'Autres trajets disponibles'
+    : suggestionTier > 0
+      ? suggestionTier === 1 ? 'Autres départs · moins de 10 km, sous 48 h' : 'Autres départs · moins de 25 km, sous 7 jours'
+      : null;
 
   const featuredDriverReservation = useMemo<FeaturedDriverReservation | null>(() => {
     if (!isDriver || activeHomeTrip || !driverReservationHighlightTrip
@@ -192,6 +198,7 @@ export function useHomeTripSelection({
     : '';
   return {
     hasTripLocation,
+    suggestionScopeLabel,
     activeHomeTrip,
     homeMapTrips,
     isHomeSheetLockedRetracted,

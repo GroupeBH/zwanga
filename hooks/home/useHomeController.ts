@@ -21,8 +21,8 @@ export function useHomeController() {
   const foregroundContext = { ...context, isFocused: context.isScreenActive };
   const driverActivity = useHomeDriverActivity({ ...foregroundContext, ...priorities });
   const location = useHomeLocation({ ...context, ...driverActivity });
-  const tripFeed = useHomeTripFeed({ ...location, ...foregroundContext });
   const passengerActivity = useHomePassengerActivity({ ...foregroundContext, ...priorities, driverCoordinate: location.liveUserCoordinate });
+  const tripFeed = useHomeTripFeed({ ...location, ...foregroundContext, ...passengerActivity });
   const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, ...priorities, liveUserCoordinate: location.liveUserCoordinate });
   const requestHighlight = useHomeRequestHighlight({
     enabled: context.isScreenActive && context.isDriver && !tripSelection.isHomeSheetLockedRetracted

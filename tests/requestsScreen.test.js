@@ -100,7 +100,7 @@ test('empty/error lists keep pull-to-refresh and cached results show an explicit
 
 test('proximity hint falls back to departure order without requesting GPS permission', () => {
   const f = fixture(); f.data.proximityAvailable = false;
-  assert.match(text(list(f.render()).props.ListHeaderComponent), /les plus tôt/);
+  assert.match(text(list(f.render()).props.ListHeaderComponent), /Plus tôt en premier/);
   f.hooks.unmount();
 });
 

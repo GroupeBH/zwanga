@@ -39,7 +39,7 @@ type Props =
   & Pick<ReturnType<typeof useHomeTripSelection>,
     'isHomeSheetLockedRetracted'
     | 'latestTrips'
-    | 'hasTripLocation'
+    | 'suggestionScopeLabel'
   >
   & Pick<ReturnType<typeof useHomeContext>,
     'isDriver'
@@ -77,7 +77,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   tripCardWidth,
   openTripRequestDetail,
   latestTrips,
-  hasTripLocation,
+  suggestionScopeLabel,
   bookedTripIds,
   selectedTrip,
   openTripDetail,
@@ -170,7 +170,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
       <View style={styles.emptyCard}>
         <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_COLORS.navy} accessible={false} />
         <Text style={styles.emptyText}>{showRequests ? 'Pas de commande pour le moment.'
-          : hasTripLocation ? 'Aucun départ proche dans les 24 h.' : 'Activez votre localisation pour voir les trajets proches.'}</Text>
+          : 'Aucun trajet disponible pour le moment. Essayez « Voir tout ».'}</Text>
       </View>
     )}
 
@@ -195,6 +195,9 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
       />
     )}
 
+    {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !showRequests && suggestionScopeLabel && (
+      <Text style={styles.scopeLabel}>{suggestionScopeLabel}</Text>
+    )}
     {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !showRequests && latestTrips.length > 0 && (
       <FlatList
         horizontal

@@ -125,6 +125,28 @@ test('one compact toolbar replaces the duplicated driver title, subtitle, badge 
   assert.equal(passenger.some(node => node.type === 'List'), false, 'stale driver records stay hidden');
 });
 
+test('wider departures have an honest scope hint only in the expanded trips list', () => {
+  const props = { isDriver: true, effectiveTripsSheetOpen: true, latestTrips: [{ id: 'trip' }], availableDriverRequests: [],
+    suggestionScopeLabel: 'Autres départs · moins de 10 km, sous 48 h' };
+  assert.match(text(HomeTripsSheet.type(props)), /10 km.*48 h/);
+  assert.doesNotMatch(text(HomeTripsSheet.type({ ...props, isRequestsSheetMode: true })), /10 km/);
+  assert.doesNotMatch(text(HomeTripsSheet.type({ ...props, effectiveTripsSheetOpen: false })), /10 km/);
+});
+
+test('loading or failed discovery never hides personal reservations supplied separately', () => {
+  const hooks = hookHarness();
+  const { useHomeSheet } = loader({ react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
+  const props = { isDriver: false, width: 390, height: 844, insets: { bottom: 34 },
+    latestTrips: [{ id: 'reserved' }], availableDriverRequests: [], tripsLoading: true, tripsError: false };
+  const draw = () => hooks.render(() => useHomeSheet(props));
+  assert.equal(draw().sheetLoading, false);
+  props.tripsLoading = false; props.tripsError = true;
+  assert.equal(draw().sheetError, false);
+  props.latestTrips = [];
+  assert.equal(draw().sheetError, true);
+  hooks.unmount();
+});
+
 test('the list starts open, preserves voluntary collapse and restores the choice after a ride', () => {
   for (const isDriver of [true, false]) {
     const hooks = hookHarness();

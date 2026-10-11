@@ -5,6 +5,7 @@ import {
   StyleSheet
 } from 'react-native';
 export const styles = StyleSheet.create({
+  scopeLabel: { paddingHorizontal: Spacing.md, paddingBottom: 6, color: Colors.gray[600], fontSize: 12 },
   tripsSheet: {
     position: 'absolute',
     left: 0,

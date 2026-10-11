@@ -138,7 +138,7 @@ export function useRequestTripController() {
         ? 'Définir le départ'
         : !hasArrivalAddress
           ? 'Indiquer la destination'
-          : 'Voir les options'
+          : 'Continuer'
       : !draft.hasChosenDepartureTime ? 'Choisir l’heure de départ'
         : 'Commander le trajet';
 

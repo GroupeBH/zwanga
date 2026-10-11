@@ -93,10 +93,7 @@ export function PublishRouteStep({
       <View style={styles.publishRouteSheet}>
         <View style={styles.rideSheetHeader}>
           <View style={styles.routeSheetHeaderCopy}>
-            <Text style={styles.sectionTitle}>Votre itinéraire</Text>
-            <Text style={styles.routeSheetSubtitle} numberOfLines={1}>
-              Choisissez le départ et la destination sur la carte
-            </Text>
+            <Text style={styles.sectionTitle}>Départ et arrivée</Text>
           </View>
         </View>
 

@@ -310,8 +310,8 @@ export function useSearchController() {
   const resultsCount = searchMode === 'requests' ? filteredTripRequests.length : filteredTrips.length;
   const resultsCountLabel =
     searchMode === 'requests'
-      ? `${resultsCount} commande${resultsCount > 1 ? 's' : ''} trouvée${resultsCount > 1 ? 's' : ''}`
-      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''} affiché${resultsCount > 1 ? 's' : ''}`;
+      ? `${resultsCount} commande${resultsCount > 1 ? 's' : ''}`
+      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''}`;
 
   return {
     router, firstName, avatarUri, openingTripId,

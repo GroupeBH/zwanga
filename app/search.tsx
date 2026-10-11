@@ -64,8 +64,8 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
         {!embedded && <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
           <Ionicons name="arrow-back" size={24} color={Colors.primaryDark} />
         </TouchableOpacity>}
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {embedded ? 'Recherche' : `Bonjour, ${firstName}`}
+        <Text style={styles.headerTitle} accessibilityRole="header">
+          {searchMode === 'requests' ? 'Trouver un client' : 'Trouver un trajet'}
         </Text>
         {avatarUri ? (
           <Image source={{ uri: avatarUri }} style={styles.headerAvatar} resizeMode="cover" />
@@ -119,6 +119,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
                 onChangeText={setDraftDeparture}
                 onSubmitEditing={handleApplySearch}
                 placeholder="Point de départ"
+                accessibilityLabel="Lieu de départ"
                 placeholderTextColor={Colors.gray[500]}
                 returnKeyType="next"
                 autoCorrect={false}
@@ -127,6 +128,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
                 <TouchableOpacity
                   style={styles.clearRouteButton}
                   onPress={() => setDraftDeparture('')}
+                  accessibilityRole="button" accessibilityLabel="Effacer le départ"
                   activeOpacity={0.7}
                 >
                   <Ionicons name="close-circle" size={18} color={Colors.gray[400]} />
@@ -142,6 +144,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
                 onChangeText={setDraftArrival}
                 onSubmitEditing={handleApplySearch}
                 placeholder="Destination"
+                accessibilityLabel="Destination"
                 placeholderTextColor={Colors.gray[500]}
                 returnKeyType="search"
                 autoCorrect={false}
@@ -150,6 +153,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
                 <TouchableOpacity
                   style={styles.clearRouteButton}
                   onPress={() => setDraftArrival('')}
+                  accessibilityRole="button" accessibilityLabel="Effacer la destination"
                   activeOpacity={0.7}
                 >
                   <Ionicons name="close-circle" size={18} color={Colors.gray[400]} />
@@ -160,7 +164,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
           <View style={styles.passengerBlock}>
             <View style={styles.passengerCountBlock}>
               <Text style={styles.passengerCount}>{desiredSeats}</Text>
-              <Text style={styles.passengerLabel}>PERS.</Text>
+              <Text style={styles.passengerLabel}>{desiredSeats > 1 ? 'places' : 'place'}</Text>
             </View>
             <View style={styles.passengerStepper}>
               <TouchableOpacity
@@ -187,10 +191,11 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
           </View>
         </View>
 
-        {isDriverAccount && <View style={styles.searchModeSegment}>
+        {isDriverAccount && <View style={styles.searchModeSegment} accessibilityRole="tablist">
           <TouchableOpacity
             style={[styles.searchModeButton, searchMode === 'trips' && styles.searchModeButtonActive]}
             onPress={() => setSearchMode('trips')}
+            accessibilityRole="tab" accessibilityState={{ selected: searchMode === 'trips' }}
             activeOpacity={0.82}
           >
             <Ionicons
@@ -205,6 +210,8 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
           <TouchableOpacity
             style={[styles.searchModeButton, searchMode === 'requests' && styles.searchModeButtonActive]}
             onPress={() => setSearchMode('requests')}
+            accessibilityRole="tab" accessibilityLabel="Clients : commandes des passagers"
+            accessibilityState={{ selected: searchMode === 'requests' }}
             activeOpacity={0.82}
           >
             <Ionicons
@@ -213,7 +220,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
               color={searchMode === 'requests' ? Colors.white : Colors.gray[700]}
             />
             <Text style={[styles.searchModeButtonText, searchMode === 'requests' && styles.searchModeButtonTextActive]}>
-              Commandes
+              Clients
             </Text>
           </TouchableOpacity>
         </View>}
@@ -228,15 +235,8 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
 
         {isLoadingResults && (
           <View style={styles.loaderCard}>
-            <ActivityIndicator color={Colors.primary} size="large" />
-            <Text style={styles.loaderTitle}>
-              {searchMode === 'requests' ? 'Recherche des commandes' : 'Recherche des trajets'}
-            </Text>
-            <Text style={styles.loaderText}>
-              {searchMode === 'requests'
-                ? 'On charge les commandes publiées par les passagers.'
-                : 'On prépare les meilleures offres disponibles.'}
-            </Text>
+            <ActivityIndicator color={Colors.primary} size="small" />
+            <Text style={styles.loaderTitle}>Recherche en cours…</Text>
           </View>
         )}
 
@@ -257,7 +257,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
             </View>
             <Text style={styles.emptyTitle}>Aucun trajet trouvé</Text>
             <Text style={styles.emptyText}>
-              Commandez ce trajet et les conducteurs disponibles pourront vous proposer une course.
+              Commandez votre trajet pour trouver un conducteur.
             </Text>
             <TouchableOpacity style={styles.emptyActionButton} onPress={handleCreateTripRequest} activeOpacity={0.86}>
               <Ionicons name="paper-plane-outline" size={18} color={Colors.white} />
@@ -276,7 +276,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
             </Text>
             <Text style={styles.emptyText}>
               {isDriverAccount
-                ? 'Aucune commande disponible ne correspond à cette recherche pour le moment.'
+                ? 'Essayez un autre départ ou une autre destination.'
                 : 'Les commandes disponibles sont visibles par les comptes conducteur.'}
             </Text>
           </View>

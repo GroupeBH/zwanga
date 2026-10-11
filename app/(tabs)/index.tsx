@@ -63,7 +63,7 @@ export default function HomeScreen() {
       openTripRequestDetail={home.openTripRequestDetail}
     />
     <HomeTripsSheet
-      hasTripLocation={home.hasTripLocation}
+      suggestionScopeLabel={home.suggestionScopeLabel}
       sheetBottomOffset={home.sheetBottomOffset}
       sheetHeight={home.sheetHeight}
       onSheetLayout={home.onSheetLayout}

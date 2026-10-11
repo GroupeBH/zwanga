@@ -29,12 +29,16 @@ export default function RequestTripScreen() {
   return (
     <FormScreen style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => form.router.back()} style={styles.headerButton}>
+        <TouchableOpacity onPress={() => form.router.back()} style={styles.headerButton}
+          accessibilityRole="button" accessibilityLabel="Retour">
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Commander un trajet</Text>
         <View style={styles.headerSpacer} />
       </View>
+      <Text style={styles.stepCaption} accessibilityLiveRegion="polite">
+        {form.requestFormStep === 'route' ? '1 sur 2 · Départ et arrivée' : '2 sur 2 · Heure et prix'}
+      </Text>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <ScrollView

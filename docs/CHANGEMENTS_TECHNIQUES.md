@@ -1,5 +1,114 @@
 # Journal des changements techniques
 
+## 11 octobre 2026 — Suggestions de repli et parcours de recherche, publication et commande simplifiés
+
+Périmètre : accueil, recherche de trajets/clients, liste des commandes, publication
+et création de commande dans l’application. Le filtre strict 5 km / 24 h pouvait
+laisser l’accueil vide malgré des départs un peu plus loin ou plus tard. Certains
+écrans répétaient les explications et réservaient beaucoup de hauteur au suivi
+d’étapes ou à une carte non indispensable pour remplir le formulaire.
+
+### Solutions effectivement appliquées
+
+- `features/home/homeTripPriority.ts` conserve la priorité **moins de 5 km dans
+  les prochaines 24 h**, puis sélectionne le premier palier non vide : **moins
+  de 10 km / 48 h**, sinon **moins de 25 km / 7 jours**. Il ne complète pas une
+  liste proche avec des départs lointains. Ces deux paliers de repli sont un
+  choix d’implémentation communiqué à l’utilisateur. Les distances restent à
+  vol d’oiseau depuis la position disponible, pas des distances routières.
+- `hooks/home/useHomeTripFeed.ts` et `useHomeController.ts` déclenchent une seule
+  lecture élargie conditionnelle, via l’endpoint existant, après la réponse
+  proche sans suggestion éligible ou son échec. Chaque requête demande au plus
+  50 candidats ; le snapshot fusionné est borné à 100. La sélection locale
+  applique les paliers temporels et conserve au plus dix cartes. Les trajets
+  propres, complets, expirés et participations terminées ne bloquent pas
+  l’élargissement ; les réservations personnelles non plus. Les doublons sont
+  arbitrés selon le timestamp de la réponse réussie la plus récente. Une nouvelle
+  suggestion proche suspend de nouveau la lecture large.
+- Pas de nouveau timer, service GPS ou dépendance. Les calculs de flux sont
+  mémorisés ; l’élargissement réutilise la cadence existante, uniquement à
+  l’écran et en ligne. Sans position exploitable, aucune découverte géographique
+  n’est lancée. `useHomeTripSelection.ts`, `useHomeSheet.ts`,
+  `components/home/HomeTripsSheet.tsx`, `features/home/HomeTripsSheet.styles.ts`
+  et `app/(tabs)/index.tsx` signalent le périmètre élargi sans répéter l’information
+  dans chaque carte. Un échec réseau ne vaut pas une réponse vide ; les
+  réservations disponibles ne disparaissent pas pendant la recherche de repli.
+- `app/search.tsx`, `app/requests.tsx`,
+  `components/search/SearchResultsToolbar.tsx`,
+  `hooks/search/useSearchController.ts` et
+  `features/screen-styles/app/search/container.styles.ts` : titres explicites
+  « Trouver un trajet » / « Trouver un client », onglets « Trajets / Clients »
+  réservés aux conducteurs, « place(s) » au lieu de « PERS. », compteurs et
+  explications raccourcis. Le tri des commandes « Prix le plus élevé » décrit
+  le classement décroissant existant du prix maximum par place. Suppression
+  des phrases de chargement redondantes, hauteur minimale de cet état réduite
+  de 220 à 96 points, boutons d’effacement agrandis à 44 points et sélection des
+  onglets annoncée aux lecteurs d’écran.
+- `app/publish.tsx`, `features/publish/PublishStepIndicator.tsx`,
+  `PublishRouteStep.tsx`, `PublishVehicleStep.tsx`,
+  `hooks/publish/usePublishController.ts` et les styles `container.styles.ts` /
+  `vehicleCardActive.styles.ts` de publication : « Proposer un trajet », un seul
+  indicateur compact « n sur 5 » et cinq segments remplaçant les grosses pastilles
+  et leurs cinq légendes. Les anciens styles de cet indicateur sont supprimés.
+  Libellés « Départ et arrivée », « Avec quel véhicule ? », action finale
+  « Publier mon trajet » ou « Publier mes trajets ». Retrait des indications
+  redondantes de sélection, sans modifier la sélection effective du véhicule.
+- `app/request/index.tsx`, `components/trip-request/RequestRouteStep.tsx`,
+  `RequestRoutePreview.tsx`, `RequestBudgetFields.tsx`,
+  `hooks/trip-request/useRequestTripController.ts`,
+  `features/trip-request/requestFormModel.ts` et `requestStyles.ts` : deux étapes
+  explicites, « Où allez-vous ? », bouton « Continuer », résumé départ/arrivée
+  avec « Modifier ». La carte est désormais montée uniquement à l’action
+  « Voir la carte » et démontée en la masquant ; ses marqueurs, son tracé et ses
+  réglages restent disponibles. Les adresses et références restent visibles
+  sans ouvrir la carte. Suppression du dégagement inférieur de 116 points
+  devenu superflu avec le pied d’action dans le flux, réduction des espacements
+  et des choix de paiement, suppression de leurs phrases répétitives (les aides
+  d’accessibilité restent fournies). Le total peut revenir à la ligne plutôt
+  qu’être tronqué ; compteurs et paiements ont des libellés/états accessibles.
+  Les styles d’anciens éléments superposés de l’aperçu ont été retirés.
+- Le skill frontend a guidé une hiérarchie sobre, des actions explicites et
+  l’affichage des détails à la demande, en conservant la charte existante.
+
+### Comportements conservés et prévention des régressions
+
+- Les réservations personnelles et la navigation en cours gardent leur priorité
+  indépendamment des limites des suggestions. « Voir tout » garde la recherche
+  large. Les passagers n’accèdent toujours pas aux commandes d’autres passagers.
+- Cinq étapes de publication et deux étapes de commande conservées ; aucune
+  validation contournée. Dates choisies explicitement, références, lieux favoris,
+  géocodage, places/capacité/identité, prix confirmé par place, total, commissions,
+  choix de paiement, récurrence, brouillons et protection des doubles soumissions
+  restent dans les flux existants. Aucun contrat HTTP ni code backend modifié.
+- Les listes restent virtualisées et les recherches gardent leurs temporisations.
+  Les champs peuvent défiler si la taille d’écran ou de police le nécessite ;
+  il ne s’agit pas de supprimer le défilement à tout prix.
+
+### Vérifications et limites
+
+- 326 tests JavaScript ciblés réussis (accueil, recherche, commandes, publication,
+  formulaires, compteurs, cycle de vie, lectures réseau, références et extractions
+  de sources). Nouveaux cas : trois paliers, bornes horaires/distances, réservations
+  n’empêchant pas le repli, contrôles de déclenchement/suspension, données stables,
+  erreurs/chargements sans faux état vide, données élargies plus récentes,
+  indicateur cinq étapes, carte facultative et contrôles de formulaire.
+- Les attentes textuelles existantes ont été adaptées aux nouveaux libellés,
+  sans supprimer les tests de permissions ou de navigation. Le baseline de styles
+  `tests/fixtures/sourceExtractions.json` est actualisé uniquement pour recherche
+  et publication, dont les modifications sont intentionnelles.
+- TypeScript sans émission et ESLint des sources modifiées : réussis.
+  Contrôles de frontière réseau, taille des sources (1 068 fichiers, aucun au-delà
+  de 400 lignes) et `git diff --check` : réussis.
+- Pas d’essai sur appareil physique iOS/Android, pas de mesure native de mémoire,
+  fluidité ou chauffe. Le non-montage initial de la carte est vérifié en JavaScript,
+  pas par un profilage natif. À vérifier sur appareil : petits écrans et grandes
+  polices, clavier, ouverture/fermeture de la carte, publication récurrente,
+  commande avec plusieurs places, retour hors ligne et reprise réseau.
+- La découverte reste limitée aux candidats renvoyés par les endpoints existants ;
+  les fenêtres horaires sont filtrées localement. Aucun catalogue exhaustif n’est
+  garanti au-delà de ces pages. S’il n’existe aucun départ dans le dernier palier,
+  un état vide honnête avec « Voir tout » subsiste. Aucun déploiement effectué.
+
 ## 10 octobre 2026 — Accueil conducteur et liste de départs proches
 
 Périmètre : accueil mobile. Le conducteur voyait la même invitation à chercher

@@ -133,8 +133,8 @@ export const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   clearRouteButton: {
-    width: 30,
-    height: 30,
+    width: 44,
+    height: 44,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
@@ -182,7 +182,7 @@ export const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   loaderCard: {
-    minHeight: 220,
+    minHeight: 96,
     borderRadius: BorderRadius.xl,
     backgroundColor: Colors.white,
     borderWidth: 1,
@@ -233,7 +233,7 @@ export const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderWidth: 1,
     borderColor: SEARCH_COLORS.border,
-    padding: Spacing.xxl,
+    padding: Spacing.lg,
     alignItems: 'center',
     gap: Spacing.sm,
   },
