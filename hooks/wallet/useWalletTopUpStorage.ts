@@ -4,6 +4,7 @@ import type { SubscriptionPaymentMethod } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback } from 'react';
 import type { User } from '@/types';
+import { clearWalletTopUpIntent } from '@/services/walletTopUpIntent';
 
 interface Params {
   pollingRunIdRef: React.RefObject<number>;
@@ -39,15 +40,17 @@ export function useWalletTopUpStorage({
     if (mountedRef.current) setIsAutoCheckingTopUp(false);
   }, []);
 
-  const clearStoredTopUp = useCallback(async () => {
+  const clearStoredTopUp = useCallback(async (paymentReference: string | null) => {
     if (!storageKey) return;
 
     try {
       await AsyncStorage.removeItem(storageKey);
+      const userId = user?.id ?? walletSummary?.account.userId;
+      if (userId) await clearWalletTopUpIntent(userId, undefined, paymentReference);
     } catch (error) {
       console.warn('[WalletTopUp] Impossible de supprimer la référence locale:', error);
     }
-  }, [storageKey]);
+  }, [storageKey, user?.id, walletSummary?.account.userId]);
 
   const persistStoredTopUp = useCallback(
     async (payment: Omit<StoredWalletTopUp, 'createdAt' | 'userId'>) => {

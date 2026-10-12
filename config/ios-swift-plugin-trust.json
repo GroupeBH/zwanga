@@ -1,0 +1,7 @@
+{
+  "packageIdentity": "smithy-swift",
+  "repositoryURL": "https://github.com/smithy-lang/smithy-swift",
+  "version": "0.238.0",
+  "fingerprint": "baac48e6589bbf4622f338ef9e9fc4f83cdd39a5",
+  "targetName": "SmithyCodeGeneratorPlugin"
+}

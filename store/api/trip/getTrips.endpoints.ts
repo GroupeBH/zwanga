@@ -27,8 +27,9 @@ export function buildGetTripsEndpoints(builder: BaseEndpointBuilder) {
     }),
 // Rechercher des trajets avec filtres
     getTrips: builder.query<Trip[], TripSearchParams>({
-      query: (params: TripSearchParams) => ({
+      query: ({ discovery, ...params }: TripSearchParams) => ({
         url: '/trips',
+        ...(discovery ? { timeout: 8_000 } : {}),
         params: cleanObject(params),
       }),
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
@@ -77,8 +78,9 @@ searchTripsByCoordinates: builder.mutation<Trip[], TripSearchByPointsPayload>({
       transformResponse: (response: ServerTrip[]) => response.map(mapServerTripToClient),
     }),
 getTripsByCoordinates: builder.query<Trip[], TripSearchByPointsPayload>({
-      query: (body: TripSearchByPointsPayload) => ({
+      query: ({ discovery, ...body }: TripSearchByPointsPayload) => ({
         url: '/trips/search/coordinates',
+        ...(discovery ? { timeout: 8_000 } : {}),
         method: 'POST',
         body: cleanObject(body),
       }),

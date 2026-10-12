@@ -1,5 +1,200 @@
 # Journal des changements techniques
 
+## 12 octobre 2026 — Correctifs de fiabilité, disponibilité et accueil après audit
+
+### Périmètre et autorisation
+
+- Mise en place des sept correctifs de l'audit : recharges, ordonnanceur de notifications,
+  sondes de santé, accueil hors ligne, délai du repli de recherche, configuration API et
+  contrôles de livraison. Code mobile et dépôt voisin `../zwanga-backend`.
+- Aucun déploiement, build EAS payant, changement AWS, paiement réel ou écriture en base
+  effectué. Les modifications iOS Smithy déjà présentes dans le worktree sont conservées.
+
+### Solutions appliquées et comportements conservés
+
+1. **Recharges rejouées sans second lancement de paiement.**
+   `services/walletTopUpIntent.ts` enregistre une clé UUID avant le POST, sous verrou local,
+   par compte et par contexte (portefeuille ou complément d'une réservation). Une réponse
+   perdue réutilise cette clé, y compris après redémarrage. Une intention illisible ou une
+   erreur de stockage bloque le POST ; une opération incertaine n'est pas supprimée pour
+   permettre une nouvelle tentative avec un autre montant. Sa suppression exige la même
+   référence serveur : une ancienne confirmation ne peut pas effacer une nouvelle intention.
+   Les hooks `hooks/wallet/useWalletTopUp{Actions,Storage,Monitoring}.ts`,
+   `useWalletController.tsx` et `hooks/arrival-payment/useArrivalPayment{Submission,Monitoring}.ts`
+   intègrent cette reprise et gardent les gardes de session/écran. Le bouton reste occupé
+   pendant la préparation locale ; un échec réseau après envoi indique une recharge à vérifier.
+   `store/api/walletApi.ts` utilise le délai de mutation critique existant de 60 s, contre 20 s.
+
+   Côté backend : `src/wallet/dto/wallet.dto.ts`, `wallet.service.ts`,
+   `src/payments/payments.service.ts` et `topup-payment-claim.ts` utilisent une référence
+   déterministe, liée au compte et à la clé, de 25 caractères alphanumériques maximum.
+   L'index unique `PaymentTransaction.reference` déjà déclaré dans le schéma arbitre
+   les requêtes concurrentes avant l'appel prestataire. Une collision renvoie l'opération
+   existante après contrôle du compte, du montant, du canal, de la devise et du numéro.
+   Aucun verrou de base n'est maintenu pendant un appel prestataire. La consultation du
+   statut accepte aussi la référence interne, toujours filtrée par propriétaire, tant que
+   le numéro prestataire manque. Aucun nouveau débit n'est déclenché par cette lecture.
+   Clé facultative côté DTO pour conserver les anciennes applications ; celles-ci ne
+   bénéficient pas de la nouvelle déduplication avant réception d'une référence.
+   Les règles de commission, crédit des jetons, preuves prestataire et versements restent
+   inchangées. Aucune nouvelle dépendance ni migration ajoutée. Le guide PostgreSQL a
+   orienté la réutilisation de l'unicité existante et l'absence de transaction longue.
+
+2. **Notifications urgentes non bloquées par un seul envoi lent.**
+   `../zwanga-backend/src/notifications/notifications.service.ts` dimensionne les lots selon
+   les workers disponibles (cinq envois simultanés, deux éléments par worker, dix au maximum)
+   pour conserver le débit de traitement sans attente collective. Le verrou de réservation du lot
+   est libéré avant les appels externes : le prochain passage, toutes les cinq secondes,
+   peut utiliser les places libérées même si un ancien envoi attend encore. La file ordinaire
+   utilise cinq workers qui prennent le prochain élément disponible, sans barrière par lots.
+   Les transactions courtes, `skip_locked`, reprises de claims, contrôles d'expiration et
+   de destinataire restent en place. Un avertissement mesure les envois dépassant 10 s.
+   Aucun timeout artificiel ne relance un envoi HTTP encore actif. Sons, permissions,
+   destinataires et actions Accepter/Refuser ne sont pas modifiés.
+
+3. **Vitalité du processus distincte de la disponibilité métier.**
+   Backend : `src/health/health.controller.ts`, `src/main.ts`, `Dockerfile`,
+   `infra-aws/ecs.tf`. Nouvelle sonde `/health/live` sans DB ni Redis, y compris sans
+   throttling Redis ; elle ne renvoie que l'état du processus et son uptime.
+   Le conteneur utilise cette sonde. ALB conserve `/health`, ses contrôles PostgreSQL,
+   Redis et de contrat financier, ainsi que ses limites de débit. Les vérifications au
+   démarrage restent inchangées. Détails, ordre de déploiement et retour arrière dans
+   `../zwanga-backend/infra-aws/docs/CHANGELOG.md`, entrée `INFRA-2026-10-12-001`.
+
+4. **Accueil hors ligne explicite.** `hooks/home/useHomeContext.ts`, `useHomeSheet.ts`,
+   `components/home/HomeTripsSheet.tsx`, `app/(tabs)/index.tsx` : sans cache, le message
+   explique l'absence de connexion plutôt qu'un marché vide. Avec cache, les cartes restent
+   visibles et signalées comme derniers résultats enregistrés ; un rafraîchissement échoué
+   ne masque plus les clients déjà affichés. Pas de polling supplémentaire ni de démontage
+   de la carte. L'information réseau reste celle des listeners existants, pas une garantie
+   que le serveur est joignable.
+
+5. **Repli de recherche plus rapide sur l'accueil.** `hooks/home/useHomeTripFeed.ts`,
+   `store/api/trip/contracts.ts`, `getTrips.endpoints.ts` : budget HTTP de 8 s par recherche
+   Home (proximité puis recherche élargie), contre 20 s chacune. Le drapeau `discovery` est
+   uniquement local et retiré des paramètres/body envoyés au serveur. Le classement proche,
+   le repli élargi, le nombre de résultats, les caches et la recherche séquentielle sont
+   conservés. Aucun changement des délais des mutations ni de la recherche manuelle.
+   Il s'agit d'un budget de transport, pas d'une mesure de latence globale sur appareil.
+
+6. **Configuration de livraison explicite.** `scripts/validate-api-config.cjs`,
+   `app.config.js`, `config/env.ts`, `store/api/baseApi.ts`, `package.json` : validation
+   de l'URL pour production/staging et le profil EAS production ; rejet des URL absentes,
+   non HTTPS, de l'ancien hôte de repli, locales usuelles, avec identifiants ou mauvais
+   chemin API. Les erreurs n'affichent pas les valeurs. Suppression du repli Render en
+   release ; l'API commune renvoie une erreur explicite si la configuration manque.
+   Le développement conserve HTTP local. Ne pas confondre ce contrôle de format avec
+   une sonde de disponibilité ou un contrôle DNS exhaustif.
+
+7. **Barrière de tests avant les builds du workflow.** `package.json` ajoute `test:all`
+   (quatre processus maximum) et `check:release` (TypeScript, frontière réseau, taille des
+   modules, tests). `.eas/workflows/create-production-builds.yml` impose un job de validation
+   avant les deux builds, suivant la [syntaxe EAS officielle](https://docs.expo.dev/eas/workflows/syntax/).
+   Le hook pré-installation contrôle l'URL même pour un build direct. Un build direct hors
+   workflow ne lance pas automatiquement la suite complète : lancer `npm run check:release`.
+   Les cinq tests initialement en échec ont été corrigés sans enlever leurs assertions
+   métier : textes identité/SMS actualisés, réservation avec propriétaire, doublures des
+   composants natifs. Des doublures explicites du stockage et de l'UUID accompagnent les
+   nouveaux tests ; seuls les deux snapshots d'endpoints modifiés ont été actualisés.
+
+### Vérifications et limites
+
+- `npm run check:release` : passe finale réussie, **1 892 tests Node / 1 892**, aucun
+  échec, TypeScript mobile, frontière réseau et 1 080 modules de moins de 401 lignes.
+  Durée de la suite Node : environ 113 s sous Node 24.11.0 / Windows ; ce n'est pas une
+  mesure de performance de l'application. Les tests d'initiation vérifient aussi que le
+  POST attend la persistance et qu'une réponse perdue réutilise la clé.
+- Backend : 391 tests Jest réussis dans 26 suites paiements/portefeuille/notifications/santé.
+  `tsc --noEmit --incremental false -p tsconfig.build.json` vérifie le code de production.
+  Compilation de production réussie ; les 26 tests de notifications ont également été
+  rejoués avec succès après le dernier ajustement conservant le débit des lots.
+  Le contrôle TypeScript sans ce projet, incluant toutes les anciennes fixtures backend,
+  signale encore des erreurs de typage dans des tests non modifiés ; il ne faut pas le
+  présenter comme réussi. Les tests Jest utilisent leurs doubles et ne valident pas une DB réelle.
+- Régressions ajoutées : concurrence et reprise de recharge, panne de disque, changement
+  de compte, référence tardive, déduplication jusqu'au service prestataire mocké, notification
+  lente et reprise après erreur de claim, liveness traversant le vrai garde sans Redis,
+  accueil hors ligne avec/sans cache, budget de découverte et configuration de livraison.
+- Terraform indisponible dans le PATH : ni `terraform fmt -check` ni `terraform validate`
+  ni plan/apply réalisés. Aucune mesure de disponibilité, de consommation, de chauffe ou
+  de crash natif avant/après ; aucun test physique Android/iOS ni build cloud exécuté.
+- À déployer **backend d'abord**, puis mobile. Vérifier l'index unique de référence sur la
+  base cible avant livraison ; le schéma déclaré est inspecté, pas la base de production.
+  Si un processus s'arrête après la réservation d'une référence mais avant l'appel prestataire,
+  l'opération reste prudemment en attente : rapprochement/support nécessaire, pas de nouveau
+  débit automatique. Une désinstallation/effacement des données locales ne conserve pas la clé.
+- Après déploiement contrôlé : tester réseau lent/coupé, fermeture pendant une recharge,
+  retour après paiement, notifications concurrentes sur appareils verrouillés, et les deux
+  sondes pendant une panne simulée dans un environnement isolé. Respect du mode silencieux,
+  du volume et des restrictions OS inchangé ; aucune garantie de sonnerie ou d'absence de crash
+  ne découle des tests JavaScript.
+
+
+## 12 octobre 2026 — Autorisation ciblée du plugin Smithy pour les builds iOS EAS
+
+- **Constat / périmètre** : le journal EAS fourni montre un échec de
+  `xcodebuild archive` (code 65) à l’étape de validation de
+  `SmithyCodeGeneratorPlugin`, fourni par la dépendance AWS `smithy-swift`
+  résolue en `0.238.0`. Le bundle JavaScript et l’installation des Pods avaient
+  réussi. L’avertissement Ruby et les premières tentatives lentes de lecture
+  des paramètres Xcode ne sont pas l’erreur terminale de ce journal.
+- **Solution appliquée** : `config/ios-swift-plugin-trust.json` définit le
+  paquet, sa version, le nom du plugin et l’empreinte Git autorisée
+  `baac48e6589bbf4622f338ef9e9fc4f83cdd39a5`. Cette empreinte a été vérifiée
+  par lecture du tag public `0.238.0` avec `git ls-remote` ; cela ne constitue
+  pas un audit complet du code du fournisseur. `plugins/withAwsLiveness.js`
+  et `ios/zwanga.xcodeproj/project.pbxproj` fixent cette version de la dépendance
+  déjà transitive d’AWS, sans produit supplémentaire lié à l’application.
+  Le verrouillage est conservé lors d’une régénération Expo du projet iOS.
+- **Préparation du serveur de build** :
+  `scripts/configure-ios-swift-plugin-trust.cjs`, ajouté à la fin du hook
+  `eas-build-post-install` dans `package.json`, autorise seulement ce nom de
+  plugin pour cette empreinte dans le registre SwiftPM du serveur EAS.
+  Il utilise le registre macOS `Library/org.swift.swiftpm/security/plugins.json`
+  et respecte un éventuel registre historique `.swiftpm/security` existant.
+  Les autorisations déjà présentes sont conservées ; un registre invalide
+  interrompt le hook sans écrasement. Une seconde exécution ne rajoute pas
+  de doublon. Le script ne modifie aucun réglage hors d’un build iOS EAS cloud
+  sur macOS, notamment pas lors d’un build EAS local ni sous Windows/Android.
+- **Précautions / comportements conservés** : pas de désactivation globale
+  de la validation des plugins ou macros Swift, pas de contournement du sandbox
+  ni de la signature iOS. Les contrôles existants Expo Location et Crashlytics
+  restent exécutés avant ce hook. Aucun changement du fonctionnement mobile,
+  du backend, des dépendances npm ou des versions Amplify déjà fixées.
+  Aucun changement du profil Android ni de l’auto-incrément du numéro de build
+  de production. Une future mise à jour Smithy nécessitera une vérification et
+  une mise à jour explicite de la version et de son empreinte ; aucun plugin
+  inconnu n’est approuvé automatiquement. Le reste du graphe Swift conserve
+  sa résolution actuelle ; aucun `Package.resolved` n’a été fabriqué.
+- **Vérifications réalisées** : **18 tests Node réussis** via
+  `npm.cmd run test:ios-build` (`iosSwiftPluginTrust.test.js`, `awsKyc.test.js`,
+  `iosCrashlytics.test.js`) et **15 tests Node Android réussis**
+  (`androidBuildPerformance.test.js`, `androidCrashlytics.test.js`,
+  `androidNativeArtifact.test.js`). Les nouveaux tests utilisent un système
+  de fichiers simulé pour les registres de confiance et le lecteur Xcode pour
+  vérifier le projet natif réel et la régénération en mémoire. Sont couverts
+  l’idempotence, les exclusions de plateformes, la préservation des autres
+  autorisations et le refus des registres invalides. Vérification de syntaxe
+  Node, exécution réelle sans effet sous Windows, ESLint ciblé et
+  `git diff --check` réussis. L’invocation initiale `npm` était bloquée par la
+  politique PowerShell ; `npm.cmd` a permis les tests sans changer cette politique.
+- **Limites / validation restante** : aucun build EAS, archivage Xcode,
+  déploiement ou essai sur appareil physique lancé ici. Ces tests JavaScript
+  ne prouvent pas encore la réussite de l’archive iOS. Relancer depuis le projet
+  `npx.cmd eas-cli build --platform ios --profile production` (sous Windows),
+  ou inclure ces fichiers dans le commit utilisé par le workflow EAS habituel.
+  Vérifier le message `[ios-swift-plugin-trust]` dans le hook post-install,
+  puis la réussite de l’archive. Une fois le build installé, vérifier le
+  démarrage et les parcours utilisant les composants AWS natifs lorsqu’ils
+  sont activés. Sur un Mac en build local, l’approbation habituelle dans Xcode
+  reste nécessaire. Aucune disparition de crash ou amélioration de performance
+  native n’est revendiquée pour ce correctif.
+- **Références** : plugin attendu confirmé par le
+  [projet AWS SDK Swift](https://github.com/awslabs/aws-sdk-swift/discussions/2188),
+  format du registre et empreinte de révision décrits sur les
+  [forums Swift](https://forums.swift.org/t/how-do-i-get-xcode-to-programmatically-trust-a-specific-build-tool-plugin-for-ci/61331),
+  ordre des étapes du [hook EAS post-install](https://docs.expo.dev/build-reference/npm-hooks/).
+
 ## 12 octobre 2026 — Paiement du trajet courant et notation après la course
 
 - **Constat / périmètre** : un montant incorrect est signalé également sur les

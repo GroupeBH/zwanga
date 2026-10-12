@@ -35,8 +35,9 @@ type Props =
     'tripsLoading'
     | 'tripsError'
     | 'refetchTrips'
-  > & Pick<ReturnType<typeof useHomeDiscoveryMode>, 'isRequestsSheetMode'>;
+  > & Pick<ReturnType<typeof useHomeDiscoveryMode>, 'isRequestsSheetMode'> & { isOnline?: boolean };
 export function useHomeSheet({
+  isOnline = true,
   isDriver,
   isRequestsSheetMode: requestsSelected = isDriver,
   isScreenActive = true,
@@ -116,9 +117,9 @@ export function useHomeSheet({
       ? 'Clients'
       : 'Trajets';
 
-  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading && latestTrips.length === 0;
+  const sheetLoading = isOnline && (isRequestsSheetMode ? availableTripRequestsLoading && availableDriverRequests.length === 0 : tripsLoading && latestTrips.length === 0);
 
-  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError && latestTrips.length === 0;
+  const sheetError = isOnline && (isRequestsSheetMode ? availableTripRequestsError && availableDriverRequests.length === 0 : tripsError && latestTrips.length === 0);
 
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
 
@@ -160,6 +161,7 @@ export function useHomeSheet({
     isRequestsSheetMode,
     sheetLoading,
     sheetError,
+    sheetOffline: !isOnline,
     refetchSheetContent,
     sheetEmpty,
     tripCardWidth,

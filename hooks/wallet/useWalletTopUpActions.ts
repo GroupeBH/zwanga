@@ -20,10 +20,14 @@ import type { SubscriptionPaymentMethod, WalletPaymentResponse } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import * as WebBrowser from 'expo-web-browser';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { prepareWalletTopUpIntent, readWalletTopUpIntent, rememberWalletTopUpReference } from '@/services/walletTopUpIntent';
 import { Keyboard } from 'react-native';
 
 interface Params {
+  userId: string | undefined;
+  setTopUpAmount: React.Dispatch<React.SetStateAction<string>>;
+  setTopUpMethod: React.Dispatch<React.SetStateAction<SubscriptionPaymentMethod>>;
   captureScope: () => () => boolean;
   setTopUpStage: React.Dispatch<React.SetStateAction<TopUpStage>>;
   setTopUpStatusMessage: React.Dispatch<React.SetStateAction<string | null>>;
@@ -49,6 +53,7 @@ interface Params {
 }
 
 export function useWalletTopUpActions({
+  userId, setTopUpAmount, setTopUpMethod,
   captureScope,
   setTopUpStage,
   setTopUpStatusMessage,
@@ -72,6 +77,23 @@ export function useWalletTopUpActions({
   handleFailedTopUp,
   refreshAll,
 }: Params) {
+  const submitting = useRef(false);
+  useEffect(() => {
+    if (!userId || topUpOrderNumber) return;
+    let cancelled = false;
+    const isCurrent = captureScope();
+    void readWalletTopUpIntent(userId).then(intent => {
+      if (!intent || cancelled || !isCurrent() || submitting.current) return;
+      setTopUpAmount(String(intent.amount));
+      setTopUpMethod(intent.method);
+      if (intent.phone) setTopUpPhone(intent.phone);
+      setTopUpStage('waiting_long');
+      setTopUpStatusMessage('Recharge en attente. Appuyez sur Recharger pour reprendre la même opération sans nouveau débit.');
+    }).catch(() => {
+      if (!cancelled && isCurrent()) setTopUpStatusMessage('Recharge en attente illisible. Contactez le support avant de réessayer.');
+    });
+    return () => { cancelled = true; };
+  }, [userId, topUpOrderNumber, captureScope, setTopUpAmount, setTopUpMethod, setTopUpPhone, setTopUpStage, setTopUpStatusMessage]);
   const openTopUpCardPaymentUrl = useCallback(
     async (
       paymentUrl: string,
@@ -137,7 +159,7 @@ export function useWalletTopUpActions({
 
   const handleTopUp = async () => {
     const isCurrent = captureScope();
-    if (!isCurrent()) return;
+    if (!isCurrent() || submitting.current || !userId) return;
     Keyboard.dismiss();
 
     if (topUpOrderNumber) {
@@ -162,11 +184,11 @@ export function useWalletTopUpActions({
     }
 
     const amount = parsePositiveAmount(topUpAmount);
-    if (!amount) {
+    if (!amount || amount < 1) {
       showDialog({
         variant: 'warning',
         title: 'Nombre de jetons invalide',
-        message: 'Entrez un nombre de jetons supérieur à 0.',
+        message: 'La recharge minimum est de 1 jeton.',
       });
       return;
     }
@@ -182,6 +204,8 @@ export function useWalletTopUpActions({
       return;
     }
 
+    submitting.current = true;
+    let submitted = false;
     try {
       stopTopUpAutoCheck();
       setTopUpStage('preparing');
@@ -189,7 +213,11 @@ export function useWalletTopUpActions({
       setTopUpAutoCheckAttempt(0);
 
       const cardRedirectUrls = topUpMethod === 'card' ? createWalletCardPaymentRedirectUrls() : null;
+      const intent = await prepareWalletTopUpIntent({ userId, amount, method: topUpMethod, phone: formattedPhone });
+      if (!isCurrent()) return;
+      submitted = true;
       const response = await initiateWalletTopUp({
+        idempotencyKey: intent.idempotencyKey,
         amount,
         method: topUpMethod,
         phone: formattedPhone,
@@ -201,6 +229,8 @@ export function useWalletTopUpActions({
             }
           : {}),
       }).unwrap();
+
+      await rememberWalletTopUpReference(intent, response.payment.reference);
 
       if (response.payment.orderNumber) {
         await persistStoredTopUp({
@@ -258,12 +288,17 @@ export function useWalletTopUpActions({
       }
     } catch (error) {
       if (!isCurrent()) return;
-      setTopUpStage('failed');
+      setTopUpStage(submitted ? 'waiting_long' : 'failed');
+      if (submitted) setTopUpStatusMessage('Confirmation indisponible. Réessayez pour reprendre la même recharge, sans créer un nouveau paiement.');
       showDialog({
-        variant: 'danger',
-        title: 'Recharge impossible',
-        message: getApiErrorMessage(error, 'Impossible de lancer la recharge pour le moment.'),
+        variant: submitted ? 'warning' : 'danger',
+        title: submitted ? 'Recharge à vérifier' : 'Recharge impossible',
+        message: submitted
+          ? 'La recharge peut être en cours. Réessayez avec les mêmes informations pour retrouver son statut. Ne lancez pas un autre paiement.'
+          : getApiErrorMessage(error, 'Impossible de lancer la recharge pour le moment.'),
       });
+    } finally {
+      submitting.current = false;
     }
   };
 

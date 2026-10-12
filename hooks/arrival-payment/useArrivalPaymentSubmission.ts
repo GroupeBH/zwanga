@@ -17,6 +17,7 @@ import { useGetMyWalletQuery, useInitiateWalletTopUpMutation } from '@/store/api
 import type { Booking, BookingPaymentResponse, TripPaymentMode } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
+import { prepareWalletTopUpIntent, clearWalletTopUpIntent, rememberWalletTopUpReference } from '@/services/walletTopUpIntent';
 
 interface Params {
   submissionBookingIdRef?: React.RefObject<string | null>;
@@ -139,12 +140,21 @@ export function useArrivalPaymentSubmission({
         setStatusMessage(
           `Recharge de ${formatPoints(missingPoints)} pour compléter le paiement...`,
         );
+        const intent = await prepareWalletTopUpIntent({ userId: arrivalBooking.passengerId,
+          scope: arrivalBooking.id, amount: missingPoints, method: 'mobile_money', phone });
+        if (!isSessionCurrent()) return;
         const response = await initiateWalletTopUp({
+          idempotencyKey: intent.idempotencyKey,
           amount: missingPoints,
           method: 'mobile_money',
           phone,
         }).unwrap();
 
+        await rememberWalletTopUpReference(intent, response.payment.reference);
+
+        if (['succeeded', 'failed', 'cancelled'].includes(response.payment.status ?? '')) {
+          await clearWalletTopUpIntent(arrivalBooking.passengerId, arrivalBooking.id, response.payment.reference);
+        }
         if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
           if (isSessionCurrent()) {
             setStatusMessage('');

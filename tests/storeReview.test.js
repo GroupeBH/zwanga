@@ -157,6 +157,7 @@ test('Expo store metadata is preserved without reading .env; the native button d
       if (name === 'dotenv') return { config() {} };
       if (name === 'fs') return { existsSync: () => false };
       if (name === 'path') return path;
+      if (name === './scripts/validate-api-config.cjs') return require('../scripts/validate-api-config.cjs');
       throw Error('Unexpected dependency: ' + name);
     } };
   vm.runInNewContext(source, sandbox); const expo = sandbox.module.exports.expo;

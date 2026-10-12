@@ -10,7 +10,7 @@ function app(t, mode = 'points') {
   const gate = new Promise(resolve => { resolvePoints = resolve; });
   const props = {
     isSessionCurrent: () => true,
-    arrivalBooking: { id: 'booking', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000 },
+    arrivalBooking: { id: 'booking', passengerId: 'passenger', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000 },
     selectedMode: mode, selectedChannel: 'mpesa', paymentAmount: 5000, paymentCurrency: 'CDF',
     isBusy: false, hasPendingProviderPayment: false, paymentAlreadySucceeded: false,
     requiredPoints: 50, missingPoints: 0, isWalletFetching: false, moneyComplement: 0,
@@ -24,6 +24,7 @@ function app(t, mode = 'points') {
     handleCompletedBookingPayment: async () => false,
   };
   const { useArrivalPaymentSubmission } = loader({
+    ...require('./helpers/walletTopUpNativeMocks.cjs')(),
     react: hooks.react,
     'expo-linking': { createURL: () => 'zwanga://booking/payment' },
     '@/constants/paymentFeatures': { ELECTRONIC_PAYMENTS_ENABLED: true },

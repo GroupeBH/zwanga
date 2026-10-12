@@ -1,11 +1,19 @@
 name: Create Production Builds
 
 jobs:
+  validate:
+    name: TypeScript and regression tests
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - run: npm run check:release
   build_android:
+    needs: [validate]
     type: build # This job type creates a production build for Android
     params:
       platform: android
   build_ios:
+    needs: [validate]
     type: build # This job type creates a production build for iOS
     params:
       platform: ios

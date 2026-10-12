@@ -17,7 +17,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 interface Params {
   captureScope: () => () => boolean;
   stopTopUpAutoCheck: () => void;
-  clearStoredTopUp: () => Promise<void>;
+  clearStoredTopUp: (paymentReference: string | null) => Promise<void>;
   setTopUpOrderNumber: React.Dispatch<React.SetStateAction<string | null>>;
   setTopUpPaymentUrl: React.Dispatch<React.SetStateAction<string | null>>;
   setTopUpStage: React.Dispatch<React.SetStateAction<TopUpStage>>;
@@ -68,7 +68,7 @@ export function useWalletTopUpMonitoring({
       const isCurrent = captureScope();
       if (!isCurrent()) return false;
       stopTopUpAutoCheck();
-      await clearStoredTopUp();
+      await clearStoredTopUp(response.payment.reference);
       if (!isCurrent()) return false;
       setTopUpOrderNumber(null);
       setTopUpPaymentUrl(null);
@@ -103,7 +103,7 @@ export function useWalletTopUpMonitoring({
       const isCurrent = captureScope();
       if (!isCurrent()) return false;
       stopTopUpAutoCheck();
-      await clearStoredTopUp();
+      await clearStoredTopUp(response.payment.reference);
       if (!isCurrent()) return false;
       setTopUpOrderNumber(null);
       setTopUpPaymentUrl(null);

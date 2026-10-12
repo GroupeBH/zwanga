@@ -135,13 +135,13 @@
   },
   "endpoints": {
     "store/api/tripApi.ts": {
-      "getTrips": "4a1fb3117db14f20783c6f470cb3500a76c3d5c6b17fd67b2593dcbbdcc5b2ad",
+      "getTrips": "dcd49ab5b6498a0a5948d7ccaad7404bfe725f304154a219d5192adc7b94d4c1",
       "getAllTrips": "da14591bee14313537229643279bc5d38711303aae294147a56bbe00bc14bf1b",
       "getMyTrips": "a2bd082e088a0d3f0d1ca26f6a65de978dd20e511a8bd9c0a0152d364fd74ba3",
       "getMyActivityTrips": "8e1aac383d53ddadbacccbbca7d6cac6cc277c8fe14e442427cfa311e8127af8",
       "getMyRecurringTrips": "031aa9160a0a8b333d6938f3df04e2258034efbea9e8e4d6ca93f75cc4701de0",
       "searchTripsByCoordinates": "56a72403d9e53eb702bd593a921b6e7faf1e57734775864775262b3dc9c4b912",
-      "getTripsByCoordinates": "f682a7d2e263a469d8151bc2401d33a4c1803bb10d9980e58630f48d6a3e7713",
+      "getTripsByCoordinates": "c442cdea401ebdaf733c2b139aa3a472822be21cedef1fc6ba21c391e9942b0a",
       "getTripById": "ce937b64f7523982e0f2572a85a867346b73ef252c63878cb3951866b53a410e",
       "createTrip": "5e51c8b92d941e1cc5387e511f388ca7430060aaf4961fef9a8cf6c67d406185",
       "createRecurringTrip": "9836d828549b324373217a71e29364c9387b8e44ca35b46f149b59b2cd8f40bd",

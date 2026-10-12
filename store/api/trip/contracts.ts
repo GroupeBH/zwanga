@@ -16,6 +16,8 @@ export const bookingListTag = { type: 'Booking' as const, id: 'LIST' };
  * Gère la création, recherche, réservation et gestion des trajets
  */
 export type TripSearchParams = {
+  /** Client-only latency budget for Home discovery. Never sent to the server. */
+  discovery?: true;
   sort?: 'price' | 'date' | 'nearby';
   limit?: number;
   keywords?: string;
@@ -32,6 +34,7 @@ export type TripSearchParams = {
 };
 
 export type TripSearchByPointsPayload = {
+  discovery?: true;
   limit?: number;
   keywords?: string | null;
   departureCoordinates?: [number, number] | null;

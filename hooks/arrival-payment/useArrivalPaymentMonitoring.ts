@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { clearWalletTopUpIntent } from '@/services/walletTopUpIntent';
 import { isPaymentChannel, normalizePaymentPhone, getPaymentFailureMessage } from '@/features/arrival-payment/paymentModel';
 import { ARRIVAL_PAYMENT_CHECK_TIMEOUT_MS, ARRIVAL_PAYMENT_MONITOR_WINDOW_MS, ARRIVAL_PAYMENT_STATUS_REFRESH_MS } from '@/features/arrival-payment/paymentPolicy';
 import type { useArrivalPaymentState } from './useArrivalPaymentState';
@@ -96,6 +97,9 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
           finished = true;
         } else if (walletOrder) {
           const response = await read(latest.current.state.checkWalletTopUpStatus(walletOrder));
+          if (['succeeded', 'failed', 'cancelled'].includes(response.payment.status ?? '')) {
+            await clearWalletTopUpIntent(booking.passengerId, bookingId, response.payment.reference);
+          }
           if (cancelled) return;
           if (response.payment.status === 'succeeded') {
             latest.current.state.setStatusMessage('Recharge confirmée. Paiement de la course en cours…');

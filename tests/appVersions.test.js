@@ -13,6 +13,7 @@ const context = { module: { exports: {} }, process: { env: {}, cwd: () => root }
   if (name === 'dotenv') return { config() {} };
   if (name === 'fs') return { existsSync: () => false };
   if (name === 'path') return path;
+  if (name === './scripts/validate-api-config.cjs') return require('../scripts/validate-api-config.cjs');
   throw new Error(`Unexpected config dependency: ${name}`);
 } };
 vm.runInNewContext(read('app.config.js'), context, { filename: 'app.config.js' });

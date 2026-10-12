@@ -28,6 +28,7 @@ function environment(kind = 'wallet') {
       env.summaries++; return true;
     } };
   const { useArrivalPaymentMonitoring } = loader({ react: hooks.react,
+    ...require('./helpers/walletTopUpNativeMocks.cjs')(),
     'expo-linking': { createURL: () => 'zwanga://booking/payment' },
   })('hooks/arrival-payment/useArrivalPaymentMonitoring.ts');
   return Object.assign(env, { hooks, provider, render: () => hooks.render(() => useArrivalPaymentMonitoring({ state, provider, completion })) });

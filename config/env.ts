@@ -16,7 +16,8 @@ interface EnvConfig {
   chottuLinkDomain: string;
 }
 
-const DEFAULT_API_URL = 'https://zwanga-api.onrender.com/api/v1';
+// Release builds require an explicit URL; never silently route payments to an old host.
+const DEFAULT_API_URL = __DEV__ ? 'http://localhost:5200/api/v1' : '';
 
 /**
  * Récupère la configuration depuis les variables d'environnement

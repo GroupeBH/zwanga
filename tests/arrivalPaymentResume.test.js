@@ -37,7 +37,7 @@ test('payment status polling survives cache rerenders, cancels reads in backgrou
       return { unwrap: () => task.promise, abort: () => { aborted++; } }; },
   };
   let completion = { handleCompletedBookingPayment: async response => { completions.push(response); return true; } };
-  const { useArrivalPaymentMonitoring } = loader({ react: hooks.react, 'expo-linking': linking })('hooks/arrival-payment/useArrivalPaymentMonitoring.ts');
+  const { useArrivalPaymentMonitoring } = loader({ ...require('./helpers/walletTopUpNativeMocks.cjs')(), react: hooks.react, 'expo-linking': linking })('hooks/arrival-payment/useArrivalPaymentMonitoring.ts');
   const render = () => hooks.render(() => useArrivalPaymentMonitoring({ state, completion, provider: {} }));
   render();
   for (let i = 0; i < 200; i++) {
@@ -204,7 +204,7 @@ test('resuming a server-confirmed points payment clears old references without c
     setIsCheckingPayment() {}, setStatusMessage() {}, setPaymentError() {},
     checkWalletTopUpStatus: () => assert.fail('no extra provider status read needed'),
   };
-  const { useArrivalPaymentMonitoring } = loader({ react: hooks.react, 'expo-linking': linking })('hooks/arrival-payment/useArrivalPaymentMonitoring.ts');
+  const { useArrivalPaymentMonitoring } = loader({ ...require('./helpers/walletTopUpNativeMocks.cjs')(), react: hooks.react, 'expo-linking': linking })('hooks/arrival-payment/useArrivalPaymentMonitoring.ts');
   hooks.render(() => useArrivalPaymentMonitoring({ state, provider: { settleWithPoints: () => assert.fail('already paid') },
     completion: { showCompletionSummary: async () => { summaries++; } } }));
   await flush(); assert.equal(summaries, 1); assert.equal(patches, 1); hooks.unmount();

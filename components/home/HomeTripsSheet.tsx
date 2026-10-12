@@ -31,6 +31,7 @@ type Props =
     | 'openSheetIndex'
     | 'sheetLoading'
     | 'sheetError'
+    | 'sheetOffline'
     | 'refetchSheetContent'
     | 'sheetEmpty'
     | 'tripCardWidth'
@@ -71,6 +72,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   availableDriverRequests,
   sheetLoading,
   sheetError,
+  sheetOffline = false,
   refetchSheetContent,
   sheetEmpty,
   tripCardWidth,
@@ -166,7 +168,14 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
       </View>
     )}
 
-    {effectiveTripsSheetOpen && !sheetLoading && !sheetError && sheetEmpty && (
+    {effectiveTripsSheetOpen && sheetOffline && (
+      <View style={sheetEmpty ? styles.emptyCard : undefined} accessibilityLiveRegion="polite">
+        <Text style={styles.sheetStateText}>{sheetEmpty
+          ? 'Vous êtes hors ligne. Les résultats apparaîtront au retour de la connexion.'
+          : 'Hors ligne · Derniers résultats enregistrés'}</Text>
+      </View>
+    )}
+    {effectiveTripsSheetOpen && !sheetOffline && !sheetLoading && !sheetError && sheetEmpty && (
       <View style={styles.emptyCard}>
         <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_COLORS.navy} accessible={false} />
         <Text style={styles.emptyText}>{showRequests ? 'Pas de client pour le moment.'

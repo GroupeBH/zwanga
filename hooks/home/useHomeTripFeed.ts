@@ -52,6 +52,7 @@ export function useHomeTripFeed({
     }
 
     return {
+      discovery: true,
       departureCoordinates: [
         coordinate.longitude,
         coordinate.latitude,
@@ -83,7 +84,7 @@ export function useHomeTripFeed({
   // A general feed must have no geographic/date restriction, including when GPS
   // is unavailable. Local tiers still prefer nearby departures among its candidates.
   const useGeneral = !nearbyTripsPayload || nearby.isError || (nearby.currentData !== undefined && !hasNearbySuggestion);
-  const general = useGetTripsQuery({ minSeats: HOME_MIN_AVAILABLE_SEATS, limit: 50, sort: 'date' }, {
+  const general = useGetTripsQuery({ minSeats: HOME_MIN_AVAILABLE_SEATS, limit: 50, sort: 'date', discovery: true }, {
     ...displayReadOptions(enabled && useGeneral, HOME_PASSIVE_LIST_POLL_MS),
   });
   // Only fall back after the nearby response; never download both full feeds on mount.

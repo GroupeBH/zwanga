@@ -79,6 +79,7 @@ export default function HomeScreen() {
       availableDriverRequests={home.availableDriverRequests}
       sheetLoading={home.sheetLoading}
       sheetError={home.sheetError}
+      sheetOffline={home.sheetOffline}
       refetchSheetContent={home.refetchSheetContent}
       sheetEmpty={home.sheetEmpty}
       tripCardWidth={home.tripCardWidth}
