@@ -19,6 +19,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 
 interface Params {
+  submissionBookingIdRef?: React.RefObject<string | null>;
   acknowledgeCash?: (bookingId: string) => void;
   isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
@@ -49,6 +50,7 @@ interface Params {
 }
 
 export function useArrivalPaymentSubmission({
+  submissionBookingIdRef,
   acknowledgeCash,
   isSessionCurrent,
   arrivalBooking,
@@ -291,10 +293,15 @@ export function useArrivalPaymentSubmission({
   const handlePayment = useCallback(async () => {
     if (submissionInFlight.current) return;
     submissionInFlight.current = true;
+    if (submissionBookingIdRef) submissionBookingIdRef.current = arrivalBooking?.id ?? null;
     setIsSubmitting(true);
     try { await submitPayment(); }
-    finally { submissionInFlight.current = false; setIsSubmitting(false); }
-  }, [submitPayment]);
+    finally {
+      submissionInFlight.current = false;
+      if (submissionBookingIdRef) submissionBookingIdRef.current = null;
+      setIsSubmitting(false);
+    }
+  }, [arrivalBooking?.id, submissionBookingIdRef, submitPayment]);
 
   return {
     handlePayment,

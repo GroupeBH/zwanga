@@ -10,8 +10,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 const bookingKey = (booking: Booking) => booking.id;
 
 /** One expanded receipt, virtualized names; no independent poller or native modal. */
-export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsSheet({ bookings, active, onClose }: {
+export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsSheet({ bookings, active, onClose, onRatePassenger }: {
   bookings: Booking[]; active: boolean; onClose: () => void;
+  onRatePassenger?: (passengerId: string) => void;
 }) {
   const [selection, setSelection] = useState(bookings[0]?.id);
   // A new dropoff must not interrupt a cash confirmation already open for another passenger.
@@ -31,8 +32,13 @@ export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsShe
       {item.numberOfSeats > 1 && <Text style={styles.status}>Montants pour l’ensemble des {item.numberOfSeats} places réservées.</Text>}
       <DriverBookingRevenue bookingId={item.id} active={active} cashReceived={Boolean(item.cashReceivedAt)} />
       <ConfirmCashReceipt booking={item} />
+      {item.status === 'completed' && onRatePassenger && <TouchableOpacity style={styles.rate}
+        accessibilityRole="button" disabled={!active} onPress={() => { if (active) { onClose(); onRatePassenger(item.passengerId); } }}>
+        <Ionicons name="star-outline" size={20} color={Colors.primary} />
+        <Text style={styles.rateText}>Noter ce passager</Text>
+      </TouchableOpacity>}
     </View>}
-  </View>, [active, selectedId]);
+  </View>, [active, selectedId, onClose, onRatePassenger]);
   return <View style={styles.overlay}>
     <SafeAreaView edges={['bottom']} style={styles.sheet}>
       <View style={styles.header}>
@@ -52,6 +58,8 @@ export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsShe
 });
 
 const styles = StyleSheet.create({
+  rate: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8 },
+  rateText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10, 20, 30, 0.4)' },
   sheet: { height: '80%', width: '100%', maxWidth: 640, alignSelf: 'center', backgroundColor: Colors.white,
     borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },

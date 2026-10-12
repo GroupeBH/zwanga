@@ -79,10 +79,14 @@ test('cash switching closes only when the acknowledged fare matches what was sho
 });
 
 test('the visible busy state lasts for the whole submission, including the gap after the network mutation', async t => {
-  const env = app(t), first = env.render().handlePayment();
+  const env = app(t);
+  env.props.submissionBookingIdRef = { current: null };
+  const first = env.render().handlePayment();
+  assert.equal(env.props.submissionBookingIdRef.current, 'booking');
   assert.equal(env.render().isSubmitting, true); await env.render().handlePayment();
   assert.equal(env.calls.points, 1);
   env.resolvePoints(); await first; assert.equal(env.render().isSubmitting, false);
+  assert.equal(env.props.submissionBookingIdRef.current, null);
 });
 
 test('cash already received by the driver opens the summary without a forbidden mode update', async t => {

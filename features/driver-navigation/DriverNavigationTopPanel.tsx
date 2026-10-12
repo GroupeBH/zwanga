@@ -68,7 +68,10 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
       : <ScrollView style={styles.scroll} contentContainerStyle={styles.details}
       showsVerticalScrollIndicator bounces={false}>
-      {data.trip?.status === 'completed' && <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive} />}
+      {data.trip?.status === 'completed' &&
+        <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive}
+          onRatePassenger={model.handleRatePassengersFromTripEnd} />
+      }
       {(mapState.waypoints.length > 0 || passengers.activePendingBooking) && <DriverNavigationPassengersBar
         onContact={assistance.openContact}
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}

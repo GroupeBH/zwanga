@@ -75,6 +75,7 @@ function ArrivalPaymentSession() {
   const monitoring = useArrivalPaymentMonitoring({ state, provider, completion });
 
   const submission = useArrivalPaymentSubmission({
+    submissionBookingIdRef: state.submissionBookingIdRef,
     acknowledgeCash: state.acknowledgeBooking,
     isSessionCurrent: state.isSessionCurrent,
     arrivalBooking: state.arrivalBooking,
@@ -105,6 +106,8 @@ function ArrivalPaymentSession() {
   });
 
   const navigation = useArrivalPaymentNavigation({
+    isAppActive: state.isAppActive,
+    isSessionCurrent: state.isSessionCurrent,
     completionSummary: receipt,
     acknowledgeBooking: state.acknowledgeBooking,
     setCompletionSummary: state.setCompletionSummary,
@@ -227,6 +230,7 @@ function ArrivalPaymentSession() {
                   completionSummary={receipt}
                   onDone={navigation.handleDismissSummary}
                   onInvoice={navigation.handleOpenInvoice}
+                  onRateDriver={navigation.handleRateDriver}
                   hasPendingProviderPayment={state.hasPendingProviderPayment}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   selectedMode={state.selectedMode}

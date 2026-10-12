@@ -15,6 +15,7 @@ import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoi
 import { usePaymentPersistence } from './usePaymentPersistence';
 import { useBookingPaymentMode } from './useBookingPaymentMode';
 import { useArrivalPaymentRefresh } from './useArrivalPaymentRefresh';
+import { selectPaymentBooking } from '@/features/arrival-payment/selectPaymentBooking';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -60,7 +61,15 @@ export function useArrivalPaymentState() {
   const [isClosingForInvoice, setIsClosingForInvoice] = useState(false);
   const [resolvedInterruption, setResolvedInterruption] = useState<string | null>(null);
   const activeBookingIdRef = useRef<string | null>(null);
+  const submissionBookingIdRef = useRef<string | null>(null);
   const pendingInvoicePaymentIdRef = useRef<string | null | undefined>(undefined);
+
+  const [updatePaymentMode, { isLoading: isUpdatingPaymentMode }] = useUpdateBookingPaymentModeMutation();
+  const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] = useInitiateBookingPaymentMutation();
+  const [checkBookingPaymentStatus] = useLazyCheckBookingPaymentStatusQuery();
+  const [initiateWalletTopUp, { isLoading: isInitiatingWalletTopUp }] = useInitiateWalletTopUpMutation();
+  const [checkWalletTopUpStatus] = useLazyCheckWalletTopUpStatusQuery();
+  const isBusy = isUpdatingPaymentMode || isInitiatingBookingPayment || isInitiatingWalletTopUp || isCheckingPayment;
 
   const {
     data: activityBookings = EMPTY_BOOKINGS,
@@ -86,8 +95,10 @@ export function useArrivalPaymentState() {
   [bookings, declarations, isAuthenticated, isStoredStateLoaded, storedState, user?.id]);
   // Do not replace an in-flight payment with another booking. Otherwise prefer the
   // reservation the passenger has just confirmed over an older payment reminder.
-  const arrivalBooking = activeBookingIdRef.current === arrivedBooking?.id && deferredBookingId !== arrivedBooking?.id
-    ? arrivedBooking : declaredBooking ?? arrivedBooking ?? earlyBooking;
+  const arrivalBooking = selectPaymentBooking({ bookings, arrived: arrivedBooking, declared: declaredBooking,
+    early: earlyBooking, pinnedId: submissionBookingIdRef.current ?? activeBookingIdRef.current,
+    deferredId: deferredBookingId, stored: storedState,
+    busy: isBusy || Boolean(completionSummary) || Boolean(submissionBookingIdRef.current) });
   // Wait only for authoritative server arrival, not a second (driver) declaration.
   // A durable offline tap may open the sheet, but must not enable payment on its own.
   const waitingForArrivalConfirmation = Boolean(declaredBooking && arrivalBooking?.id === declaredBooking.id && !hasPassengerArrived(declaredBooking));
@@ -131,21 +142,6 @@ export function useArrivalPaymentState() {
     refetchOnFocus: true,
     refetchOnReconnect: false,
   });
-
-  const [updatePaymentMode, { isLoading: isUpdatingPaymentMode }] =
-    useUpdateBookingPaymentModeMutation();
-  const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
-    useInitiateBookingPaymentMutation();
-  const [checkBookingPaymentStatus] = useLazyCheckBookingPaymentStatusQuery();
-  const [initiateWalletTopUp, { isLoading: isInitiatingWalletTopUp }] =
-    useInitiateWalletTopUpMutation();
-  const [checkWalletTopUpStatus] = useLazyCheckWalletTopUpStatusQuery();
-
-  const isBusy =
-    isUpdatingPaymentMode ||
-    isInitiatingBookingPayment ||
-    isInitiatingWalletTopUp ||
-    isCheckingPayment;
 
   const paymentAmount = waitingForArrivalConfirmation ? null : normalizeAmount(arrivalBooking?.paymentAmount);
   const paymentCurrency = arrivalBooking?.paymentCurrency ?? 'CDF';
@@ -228,6 +224,7 @@ export function useArrivalPaymentState() {
     isBeforeArrival,
     deferEarlyPayment,
     activeBookingIdRef,
+    submissionBookingIdRef,
     storedState,
     setSelectedMode,
     reportPaymentFailure,

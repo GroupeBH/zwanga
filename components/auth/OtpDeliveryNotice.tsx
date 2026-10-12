@@ -7,21 +7,20 @@ import { StyleSheet, Text, View } from 'react-native';
 export function OtpDeliveryNotice({ beforeSend = false, compact = false }: { beforeSend?: boolean; compact?: boolean }) {
   if (compact) return (
     <View style={styles.compactNotice}>
-      <Ionicons name="logo-whatsapp" size={18} color={Colors.gray[800]} accessible={false} />
+      <Ionicons name="chatbubble-outline" size={18} color={Colors.gray[800]} accessible={false} />
       <Text style={styles.compactBody}>
-        <Text style={styles.compactTitle}>{otpDeliveryCopy.title}.</Text>{' '}Consultez WhatsApp ou vos SMS.
+        {beforeSend ? otpDeliveryCopy.beforeSend : otpDeliveryCopy.enterCode}
       </Text>
     </View>
   );
   return (
     <View style={styles.notice}>
-      <Ionicons name="logo-whatsapp" size={22} color={Colors.gray[800]} accessible={false} />
+      <Ionicons name="chatbubble-outline" size={22} color={Colors.gray[800]} accessible={false} />
       <View style={styles.content}>
         <Text style={styles.title}>{otpDeliveryCopy.title}</Text>
         <Text style={styles.body}>
           {beforeSend ? otpDeliveryCopy.beforeSend : otpDeliveryCopy.enterCode}
         </Text>
-        <Text style={styles.fallback}>{otpDeliveryCopy.fallback}</Text>
       </View>
     </View>
   );
@@ -30,7 +29,6 @@ export function OtpDeliveryNotice({ beforeSend = false, compact = false }: { bef
 const styles = StyleSheet.create({
   compactNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   compactBody: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 18, color: Colors.gray[700] },
-  compactTitle: { fontWeight: '600', color: Colors.gray[900] },
   notice: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -40,5 +38,4 @@ const styles = StyleSheet.create({
   content: { flex: 1, minWidth: 0, gap: Spacing.xs },
   title: { fontSize: FontSizes.base, fontWeight: '600', color: Colors.gray[900] },
   body: { fontSize: FontSizes.sm, lineHeight: 20, color: Colors.gray[800] },
-  fallback: { fontSize: FontSizes.sm, lineHeight: 20, color: Colors.gray[700] },
 });

@@ -80,29 +80,29 @@ function authFixture(phone, { social = false, otpEnabled = true, mode = 'signup'
 }
 
 for (const social of [false, true]) {
-  test(`${social ? 'social' : 'phone'} signup keeps the exact entered identifier through OTP and profile`, async () => {
+  test(`${social ? 'social' : 'phone'} signup keeps the exact entered identifier without OTP`, async () => {
     for (const input of ['  +352260000  ', '+32 2 000 00 00', '00352260000', '0900000000']) {
       const app = authFixture(input, { social });
       await app.submit();
       const phone = input.trim();
-      assert.deepEqual(app.requests, [{ phone, context: 'registration' }]);
+      assert.deepEqual(app.requests, []);
       if (social) {
-        assert.equal(app.state.googleSignupStep, 'otp');
+        assert.equal(app.state.googleSignupStep, 'profile');
         await app.render().handleResendGoogleOtp();
-        assert.deepEqual(app.requests[1], { phone, context: 'registration' });
+        assert.deepEqual(app.requests, []);
         await app.render().handleVerifyGoogleOtpAndContinue();
         assert.equal(app.state.isGooglePhoneVerified, true);
       } else {
-        assert.equal(app.state.step, 'sms');
+        assert.equal(app.state.step, 'pin');
         await app.render().handleSmsSubmit();
       }
-      assert.deepEqual(app.verifications, [{ phone, otp: '12345' }]);
+      assert.deepEqual(app.verifications, []);
       assert.equal(app.state.phone, phone);
       assert.equal(app.state.step, social ? 'profile' : 'pin');
     }
   });
 
-  test(`${social ? 'social' : 'phone'} signup respects the existing OTP feature flag`, async () => {
+  test(`${social ? 'social' : 'phone'} signup also works with the obsolete OTP flag disabled`, async () => {
     const app = authFixture('+352260000', { social, otpEnabled: false });
     await app.submit();
     assert.equal(app.state.step, social ? 'profile' : 'pin');

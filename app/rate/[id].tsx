@@ -11,9 +11,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function RateScreen() {
-  const { active, ratingScopeKey, selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, captureRatingSession, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
+  const { active, ratingScopeKey, selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, captureRatingSession, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason, onRatingSaved, ratingProgressMessage } = useRatingData();
 
   const { getRatingText, toggleTag, handleSubmitRating, handleSubmitReport } = useRatingActions({
+    onRatingSaved,
     selectedTags,
     setSelectedTags,
     submitInFlightRef,
@@ -47,7 +48,7 @@ export default function RateScreen() {
             {isTripDriver 
               ? 'Évaluer un passager' 
               : isTripPassenger 
-              ? 'Évaluer les intervenants'
+              ? 'Noter le conducteur'
               : 'Votre avis'}
           </Text>
         </View>
@@ -96,7 +97,11 @@ export default function RateScreen() {
               bookingsLoading={bookingsLoading}
               bookingsError={bookingsError}
               refetchBookings={refetchBookings}
+              disabled={isSubmittingReview || Boolean(submitSuccessMessage)}
             />
+
+            {ratingProgressMessage && !submitSuccessMessage && <Text accessibilityLiveRegion="polite"
+              style={styles.successMessageText}>{ratingProgressMessage}</Text>}
 
             {/* Étoiles */}
             <View style={styles.ratingContainer}>

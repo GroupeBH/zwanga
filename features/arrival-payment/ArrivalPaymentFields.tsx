@@ -16,6 +16,7 @@ import { ArrivalPaymentReceipt } from './ArrivalPaymentReceipt';
 import type { Booking, TripPaymentMode } from '@/types';
 import { getInterruptionDistanceLabel } from './interruptionSettlement';
 import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
+import { getBookingFareBreakdown } from './paymentFare';
 
 interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking | null;
@@ -72,6 +73,8 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
   const seats = receipt?.numberOfSeats ?? arrivalBooking?.numberOfSeats ?? 1;
   const amount = receipt?.amount ?? paymentAmount;
   const currency = receipt?.currency ?? paymentCurrency;
+  // A receipt owns its fare snapshot; a later list refresh must not change it.
+  const fareBreakdown = receipt ? receipt.fareBreakdown : getBookingFareBreakdown(arrivalBooking, amount);
   const distanceLabel = arrivalBooking ? getInterruptionDistanceLabel(arrivalBooking) : null;
   useEffect(() => {
     if ((selectedMode === null || hasPaymentFailure) && !complete) {
@@ -98,7 +101,19 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       <Text style={styles.destination}>{receipt?.destination ?? destination}</Text>
     </View>
     <View style={styles.amountCard}>
-      <Text style={styles.amountLabel}>{seats > 1 ? `Total pour ${seats} places` : 'Montant du trajet'}</Text>
+      {fareBreakdown && <View>
+        <View style={styles.breakdownRow}>
+          <Text style={styles.breakdownLabel}>{seats > 1 ? `Prix pour ${seats} places` : 'Prix du trajet'}</Text>
+          <Text style={styles.breakdownValue}>{formatMoney(fareBreakdown.grossAmount, currency)}</Text>
+        </View>
+        <View style={styles.breakdownRow}>
+          <Text style={styles.breakdownLabel}>Offert par Zwanga · 1er trajet</Text>
+          <Text style={styles.breakdownValue}>−{formatMoney(fareBreakdown.subsidyAmount, currency)}</Text>
+        </View>
+      </View>}
+      <Text style={styles.amountLabel}>{fareBreakdown
+        ? complete && !cash ? 'Votre part payée' : 'Votre part à payer'
+        : seats > 1 ? `Total pour ${seats} places` : 'Montant du trajet'}</Text>
       <Text style={styles.amountValue}>{amount === null ? 'Calcul en cours…' : formatMoney(amount, currency)}</Text>
       <Text style={styles.amountHint}>
         {waitingForArrivalConfirmation ? 'Votre arrivée est enregistrée sur ce téléphone. Le paiement sera disponible dès sa synchronisation avec le serveur, sans attendre le conducteur.'
@@ -152,7 +167,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
           <Text style={styles.breakdownValue}>{isWalletFetching ? 'Actualisation…' : formatPoints(walletBalance)}</Text>
         </View>
         <View style={styles.breakdownRow}>
-          <Text style={styles.breakdownLabel}>Jetons utilisés</Text>
+          <Text style={styles.breakdownLabel}>Jetons à utiliser</Text>
           <Text style={styles.breakdownValue}>{formatPoints(pointsUsed)} · {formatMoney(amountCoveredByPoints, currency)}</Text>
         </View>
         <View style={styles.breakdownRow}>

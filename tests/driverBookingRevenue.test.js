@@ -234,3 +234,25 @@ test('RTK booking summary is a scoped read invalidated by settlement and booking
   assert.deepEqual(endpoint.providesTags(undefined, undefined, 'b'), [{ type: 'DriverSettlement', id: 'ME' }, { type: 'Booking', id: 'b' }]);
   assert.equal(endpoint.keepUnusedDataFor, 60);
 });
+
+test('a completed passenger can be rated directly from the receipt without confirming payment', () => {
+  const hooks = hookHarness(), events = [];
+  const { DriverDropoffReceiptsSheet } = loader({ react: { ...React, ...hooks.react, memo: component => component },
+    'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+    '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'Revenue' },
+    '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
+  })('features/driver-navigation/DriverDropoffReceiptsSheet.tsx');
+  const booking = { id: 'b', passengerId: 'passenger', status: 'completed' };
+  const props = { bookings: [booking], active: true, onClose: () => events.push('close'),
+    onRatePassenger: id => events.push(id) };
+  const button = () => {
+    const tree = hooks.render(() => DriverDropoffReceiptsSheet(props));
+    const list = all(tree).find(node => node.type === 'List');
+    return all(list.props.renderItem({ item: booking, index: 0 })).find(node => node.type === 'Button' && words(node).includes('Noter ce passager'));
+  };
+  button().props.onPress(); assert.deepEqual(events, ['close', 'passenger']);
+  props.active = false; button().props.onPress(); assert.deepEqual(events, ['close', 'passenger']);
+  booking.status = 'accepted'; assert.equal(button(), undefined);
+  hooks.unmount();
+});

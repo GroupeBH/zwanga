@@ -12,14 +12,14 @@ function fixture(t, os = 'ios') {
     react: hooks.react,
     'react-native': { Platform: { OS: os }, Keyboard: { dismiss: () => events.push('keyboard') } },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => state.active },
-    'expo-router': { useLocalSearchParams: () => ({ id: state.tripId }), useRouter: () => router },
+    'expo-router': { useLocalSearchParams: () => ({ id: state.tripId, passengerId: state.passengerIdParam }), useRouter: () => router },
     '@/store/hooks': { useAppSelector: selector => selector({ auth: { user: { id: state.userId } } }) },
     '@/store/selectors': { selectUser: value => value.auth.user },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ data: {
       id: state.tripId, driverId: state.userId, status: 'completed', passengers: [],
     } }) },
     '@/store/api/bookingApi': {
-      useGetTripBookingsQuery: () => ({ data: [{ id: 'booking', tripId: state.tripId, passengerId: 'passenger',
+      useGetTripBookingsQuery: () => ({ data: state.bookings ?? [{ id: 'booking', tripId: state.tripId, passengerId: 'passenger',
         status: 'completed', numberOfSeats: 2, passengerName: 'Passager test' }] }),
       useGetMyBookingsForTripQuery: () => ({}),
     },
@@ -130,4 +130,28 @@ test('a report dialog action from before blur cannot close a newly focused scree
   const action = env.dialogs[0].actions[0].onPress;
   env.state.active = false; env.render(); env.state.active = true; env.render();
   action(); assert.deepEqual(env.events, []);
+});
+
+test('a driver rates successive passengers without leaving the screen or carrying over the previous stars/comment', async t => {
+  const env = fixture(t);
+  env.state.passengerIdParam = 'passenger';
+  env.state.bookings = ['passenger', 'second', 'third'].map(passengerId => ({
+    id: `booking-${passengerId}`, passengerId, tripId: 'trip', status: 'completed', numberOfSeats: 1,
+  }));
+  env.render().setSelectedPassenger('second');
+  assert.equal(env.render().selectedPassenger, 'second', 'deep-link target must not override a manual choice');
+  env.render().setComment('Commentaire'); env.render().setSelectedTags(['friendly']);
+  let task = env.render().handleSubmitRating();
+  env.pending[0].resolve({}); await task; t.mock.timers.tick(1000);
+  let state = env.render();
+  assert.equal(state.selectedPassenger, 'passenger'); assert.equal(state.rating, 0);
+  assert.equal(state.comment, ''); assert.deepEqual(state.selectedTags, []);
+  assert.deepEqual(state.passengers.map(p => p.id), ['passenger', 'third']);
+  assert.match(state.ratingProgressMessage, /suivant/); assert.deepEqual(env.events, ['keyboard']);
+  state.setRating(4); task = env.render().handleSubmitRating(); env.pending[1].resolve({}); await task;
+  assert.equal(env.render().selectedPassenger, 'third'); env.render().setRating(5);
+  task = env.render().handleSubmitRating(); env.pending[2].resolve({}); await task;
+  t.mock.timers.tick(650);
+  assert.deepEqual(env.calls.map(call => call.ratedUserId), ['second', 'passenger', 'third']);
+  assert.equal(env.events.filter(event => event === 'back').length, 1); assert.deepEqual(env.dialogs, []);
 });

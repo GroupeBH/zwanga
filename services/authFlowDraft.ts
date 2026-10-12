@@ -41,6 +41,13 @@ export function selectAuthDraftState(input: unknown): DraftState {
     isGooglePhoneVerified: source.isGooglePhoneVerified === true,
     socialProvider: source.socialProvider === 'apple' || source.socialProvider === 'google' ? source.socialProvider : null,
   } as DraftState;
+  // Migrate obsolete signup OTP steps without discarding the user's profile.
+  if (result.step === 'sms') result.step = 'pin';
+  if (result.googleSignupStep === 'otp') {
+    result.googleSignupStep = 'phone';
+    result.step = 'phone';
+    result.isGooglePhoneVerified = false;
+  }
   // A reset proof only lives in memory. A recreated process must verify the OTP again.
   // Likewise, a regular signup must ask for its PIN again before submitting retained profile data.
   if (['profile', 'kyc'].includes(result.step) && !result.googleIdToken) result.step = 'pin';

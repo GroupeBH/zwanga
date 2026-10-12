@@ -4,8 +4,6 @@ import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
-import { isSignupOtpVerificationEnabled } from '@/config/env';
-import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 
 interface GooglePhoneStepProps {
@@ -27,7 +25,7 @@ export function GooglePhoneStep({
   onSubmit,
   onCancel,
   isLoading,
-  submitLabel = 'Recevoir le code',
+  submitLabel = 'Continuer',
 }: GooglePhoneStepProps) {
   const isPhoneValid = isAuthPhoneValid(phone);
   const providerName = provider === 'apple' ? 'Apple' : 'Google';
@@ -75,7 +73,6 @@ export function GooglePhoneStep({
 
         <Text style={styles.phoneHint}>{authPhoneCopy.hint}</Text>
 
-        {isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
 
         <TouchableOpacity
           style={[

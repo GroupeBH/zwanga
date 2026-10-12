@@ -12,10 +12,11 @@ import { getConfirmedDropoffs, getDropoffReceiptsKey } from './driverDropoffRece
 
 export { getConfirmedDropoffs } from './driverDropoffReceiptsModel';
 
-export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ bookings, tripId, active }: {
+export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ bookings, tripId, active, onRatePassenger }: {
   bookings: Booking[];
   tripId: string;
   active: boolean;
+  onRatePassenger?: (passengerId: string) => void;
 }) {
   const completed = useMemo(() => getConfirmedDropoffs(bookings, tripId), [bookings, tripId]);
   const receiptKey = useMemo(() => getDropoffReceiptsKey(completed, tripId), [completed, tripId]);
@@ -50,7 +51,7 @@ export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ booki
       </TouchableOpacity>
     </SwipeableHomePriority>
     <RideModal inApp visible={visible} transparent animationType="none" onRequestClose={close}>
-      {visible && <DriverDropoffReceiptsSheet bookings={completed} active={active} onClose={close} />}
+      {visible && <DriverDropoffReceiptsSheet bookings={completed} active={active} onClose={close} onRatePassenger={onRatePassenger} />}
     </RideModal>
   </>;
 });

@@ -5,8 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
-import { isSignupOtpVerificationEnabled } from '@/config/env';
-import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 
 interface PhoneStepProps {
@@ -105,7 +103,6 @@ export function PhoneStep({
 
         <Text style={styles.phoneHint}>{authPhoneCopy.hint}</Text>
 
-        {mode === 'signup' && isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
 
         <TouchableOpacity
           style={[

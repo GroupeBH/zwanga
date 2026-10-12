@@ -21,7 +21,7 @@ export function useAuthDraftPersistence(form: ReturnType<typeof useAuthFormState
     };
     void save();
     const subscription = AppState.addEventListener('change', state => {
-      // The draft is already queued before leaving for WhatsApp; retry a failed write on return.
+      // The draft is already queued before leaving for SMS; retry a failed write on return.
       if (state === 'active') void save();
       else void flushAuthFlowDraft();
     });

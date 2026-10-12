@@ -6,7 +6,6 @@ import { useRegistrationActions } from './useRegistrationActions';
 import { usePhoneAuthActions } from './usePhoneAuthActions';
 import { useSocialAuthActions } from './useSocialAuthActions';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { isAppleSignInAvailable } from '@/services/appleAuth';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectHasAuthenticatedSession } from '@/store/selectors';
@@ -50,10 +49,8 @@ export function useAuthController() {
   // ============ COMPUTED VALUES ============
   const getStepSequence = () => {
     if (form.mode === 'login') return LOGIN_STEPS;
-    const signupSteps: AuthStep[] = isSignupOtpVerificationEnabled ? SIGNUP_STEPS : ['phone', 'pin', 'profile'];
-    const driverSignupSteps: AuthStep[] = isSignupOtpVerificationEnabled
-      ? ['phone', 'sms', 'pin', 'profile', 'kyc']
-      : ['phone', 'pin', 'profile', 'kyc'];
+    const signupSteps = SIGNUP_STEPS;
+    const driverSignupSteps: AuthStep[] = [...SIGNUP_STEPS, 'kyc'];
     if (form.googleIdToken && form.isGooglePhoneVerified) {
       return form.role === 'driver' ? ['profile', 'kyc'] : ['profile'];
     }

@@ -47,7 +47,7 @@ function getEnvConfig(): EnvConfig {
   
   // IMPORTANT: En production (build Play Store/App Store), __DEV__ sera toujours false
   // Si __DEV__ est false et que l'env détecté est 'development', c'est une erreur de configuration
-  // On force donc 'production' pour garantir que l'OTP sera toujours requis
+  // On force donc 'production' pour conserver la configuration de production.
   if (!__DEV__ && env === 'development') {
     console.warn('[env.ts] Warning: __DEV__ is false but env is "development". Forcing to "production".');
     env = 'production';
@@ -65,11 +65,8 @@ function getEnvConfig(): EnvConfig {
     });
   }
 
-  const rawEnableSignupOtp =
-    extra.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
-    process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
-    'false';
-  const enableSignupOtp = String(rawEnableSignupOtp).toLowerCase() === 'true';
+  // OTP is reserved for forgotten PIN recovery. Ignore obsolete build flags.
+  const enableSignupOtp = false;
   const chottuLinkEnabled =
     String(extra.EXPO_PUBLIC_CHOTTULINK_ENABLED ?? 'false').toLowerCase() ===
     'true';
@@ -103,8 +100,7 @@ export const isDevelopment = envConfig.env === 'development';
 export const isProduction = envConfig.env === 'production';
 
 /**
- * Active/desactive la verification OTP pendant l'inscription.
- * false => bypass OTP pour l'inscription classique et Google.
+ * Compatibility export: signup no longer uses OTP, regardless of build flags.
  */
 export const isSignupOtpVerificationEnabled = envConfig.enableSignupOtp;
 export const chottuLinkReferralConfig = {

@@ -47,11 +47,13 @@ test('rating replaces driver navigation once, after cleanup and native map relea
       events.push('release'); navigate = action; recover = onRecovered; return allowed;
     } } };
   const { useDriverRatingTransition } = loader({ react: hooks.react })('hooks/driver-navigation/useDriverRatingTransition.ts');
-  const press = () => hooks.render(() => useDriverRatingTransition(foundation))();
+  const press = passengerId => hooks.render(() => useDriverRatingTransition(foundation))(passengerId);
   press(); press(); assert.deepEqual(events, ['cleanup', 'release']);
   navigate(); assert.equal(events.at(-1), '/rate/trip');
   recover(); allowed = false; press(); assert.equal(foundation.refs.isExitingRef.current, false);
   allowed = true; press(); assert.equal(foundation.refs.isExitingRef.current, true);
+  recover(); press('passenger'); navigate();
+  assert.deepEqual(events.at(-1), { pathname: '/rate/[id]', params: { id: 'trip', passengerId: 'passenger' } });
   recover(); foundation.data.isScreenActive = false;
   const count = events.length; press(); assert.equal(events.length, count);
   foundation.data.isScreenActive = true; foundation.data.tripId = ''; press(); assert.equal(events.length, count);

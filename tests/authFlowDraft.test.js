@@ -24,7 +24,7 @@ function fixture(disk = new Map(), extraMocks = {}) {
   return { load, io, disk, service: load('services/authFlowDraft.ts') };
 }
 
-test('a fresh JS process restores the phone OTP step, never PIN, OTP digits or reset proof', async () => {
+test('a fresh JS process migrates an obsolete signup OTP to PIN without persisting PIN, digits or reset proof', async () => {
   const e = fixture();
   await e.service.saveAuthFlowDraft({ ...seed, smsCode: ['9', '8', '7', '6', '5'], pin: '1234',
     pinConfirm: '1234', resetOtpCode: ['1'], resetNewPin: '4321', resetToken: 'secret-reset-proof', accessToken: 'session-access' });
@@ -35,7 +35,7 @@ test('a fresh JS process restores the phone OTP step, never PIN, OTP digits or r
   const reboot = fixture(e.disk);
   assert.equal(reboot.service.getAuthDraftSnapshot(), null);
   const result = await reboot.service.restoreAuthFlowDraft();
-  assert.equal(result.step, 'sms'); assert.equal(result.phone, seed.phone); assert.equal(result.mode, 'signup');
+  assert.equal(result.step, 'pin'); assert.equal(result.phone, seed.phone); assert.equal(result.mode, 'signup');
 });
 
 test('retained profile/vehicle data resumes regular signup at PIN; a reset resumes only its OTP step', async () => {
@@ -51,16 +51,27 @@ test('retained profile/vehicle data resumes regular signup at PIN; a reset resum
   assert.equal(reset.step, 'resetPin'); assert.equal(Object.hasOwn(reset, 'resetPinStep'), false);
 });
 
-test('social OTP resumes its bounded encrypted provider context without persisting the OTP', async () => {
+test('drafts written by an older release migrate the retired SMS step when read from disk', async () => {
+  const e = fixture(); await e.service.saveAuthFlowDraft(seed);
+  const [key, value] = [...e.disk][0];
+  const oldDraft = JSON.parse(value); oldDraft.state.step = 'sms';
+  e.disk.set(key, JSON.stringify(oldDraft));
+  const restored = await fixture(e.disk).service.restoreAuthFlowDraft();
+  assert.equal(restored.step, 'pin'); assert.equal(restored.phone, seed.phone);
+});
+
+test('obsolete social OTP resumes at phone entry with its bounded encrypted provider context', async () => {
   const token = `x.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 600 })).toString('base64url')}.x`;
   for (const provider of ['google', 'apple']) {
     const e = fixture();
     await e.service.saveAuthFlowDraft({ ...seed, phone: '', step: 'phone', googlePhone: seed.phone,
-      googleIdToken: token, googleFlow: 'signup', googleSignupStep: 'otp', socialProvider: provider, appleNonce: 'test-nonce', googleOtp: ['1'] });
+      googleIdToken: token, googleFlow: 'signup', googleSignupStep: 'otp', isGooglePhoneVerified: true,
+      socialProvider: provider, appleNonce: 'test-nonce', googleOtp: ['1'] });
     const state = await fixture(e.disk).service.restoreAuthFlowDraft();
-    assert.equal(state.googleSignupStep, 'otp'); assert.equal(state.socialProvider, provider);
+    assert.equal(state.googleSignupStep, 'phone'); assert.equal(state.socialProvider, provider);
     assert.equal(state.googleIdToken, token); assert.equal(Object.hasOwn(state, 'googleOtp'), false);
     assert.equal(state.isGooglePhoneVerified, false);
+    assert.equal(state.step, 'phone');
   }
 });
 
@@ -96,7 +107,7 @@ test('temporarily locked storage retains a recoverable draft and can retry', asy
   const reboot = fixture(e.disk); reboot.io.failRead = true;
   await assert.rejects(reboot.service.restoreAuthFlowDraft(), /locked/);
   assert.equal(reboot.io.deletes, 0); assert.equal(reboot.disk.size, 1);
-  reboot.io.failRead = false; assert.equal((await reboot.service.restoreAuthFlowDraft()).step, 'sms');
+  reboot.io.failRead = false; assert.equal((await reboot.service.restoreAuthFlowDraft()).step, 'pin');
 });
 
 test('startup and welcome resume OTP, but an authenticated session always opens Home', async () => {
@@ -151,7 +162,7 @@ test('the real form hydrates synchronously with blank code/PIN inputs and makes 
   await e.service.saveAuthFlowDraft(seed);
   const { useAuthFormState } = e.load('hooks/auth/useAuthFormState.ts');
   const form = hooks.render(() => useAuthFormState({ initialMode: 'login' }));
-  assert.equal(form.step, 'sms'); assert.equal(form.phone, seed.phone); assert.equal(form.mode, 'signup');
+  assert.equal(form.step, 'pin'); assert.equal(form.phone, seed.phone); assert.equal(form.mode, 'signup');
   assert.deepEqual(form.smsCode, Array(5).fill('')); assert.equal(form.pin, ''); assert.equal(requests, 0);
   form.setSmsCode(['1', '', '', '', '']);
   assert.equal(hooks.render(() => useAuthFormState({ initialMode: 'login' })).smsCode[0], '1', 'rerenders do not rehydrate/reset live inputs');

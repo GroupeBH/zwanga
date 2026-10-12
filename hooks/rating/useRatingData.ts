@@ -9,6 +9,7 @@ import { selectUser } from '@/store/selectors';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRatingLifecycle } from './useRatingLifecycle';
+import { getPassengersToRate } from '@/features/rating/ratingEligibility';
 
 
 
@@ -54,6 +55,8 @@ export function useRatingData() {
   const [reportReason, setReportReason] = useState('');
   const [submitSuccessMessage, setSubmitSuccessMessage] = useState<string | null>(null);
   const [selectedPassenger, setSelectedPassenger] = useState<string | null>(passengerIdParam);
+  const [ratedPassengerIds, setRatedPassengerIds] = useState<string[]>([]);
+  const [ratingProgressMessage, setRatingProgressMessage] = useState<string | null>(null);
   const [rateTargetType, setRateTargetType] = useState<RateTargetType>(
     isTripDriver ? 'passenger' : passengerIdParam ? 'passenger' : 'driver'
   );
@@ -74,60 +77,13 @@ export function useRatingData() {
     submitInFlightRef.current = false;
     hasInitializedTargetRef.current = false;
     setSubmitSuccessMessage(null);
+    setRatedPassengerIds([]);
+    setRatingProgressMessage(null);
   }, [ratingScopeKey]);
 
-  // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
-  const passengers = useMemo(() => {
-    const result: { id: string; name: string; seats: number }[] = [];
-    
-    // Pour le conducteur, utiliser les bookings en priorité (source la plus fiable)
-    // Si on a des bookings, les utiliser
-    if (tripBookings && tripBookings.length > 0) {
-      tripBookings
-        .filter((booking) => {
-          const isAccepted = booking.status === 'completed' || booking.status === 'accepted';
-          // Si l'utilisateur est un passager, exclure son propre booking
-          if (isTripPassenger && booking.passengerId === user?.id) return false;
-          // S'assurer que l'ID du passager est présent
-          if (!booking.passengerId) return false;
-          return isAccepted;
-        })
-        .forEach((booking) => {
-          // Éviter les doublons
-          if (!result.find(p => p.id === booking.passengerId)) {
-            result.push({
-              id: booking.passengerId,
-              name: booking.passengerName ?? 'Passager',
-              seats: booking.numberOfSeats,
-            });
-          }
-        });
-    }
-    
-    // Fallback : utiliser les passagers du trip si disponibles
-    // Pour le conducteur, utiliser ce fallback si les bookings ne sont pas encore chargés ou sont vides
-    if (trip?.passengers && trip.passengers.length > 0) {
-      trip.passengers
-        .filter((passenger) => {
-          // Si l'utilisateur est un passager, exclure son propre profil
-          if (isTripPassenger && passenger.id === user?.id) return false;
-          // S'assurer que l'ID est présent
-          if (!passenger.id) return false;
-          // Éviter les doublons avec les bookings déjà ajoutés
-          if (result.find(p => p.id === passenger.id)) return false;
-          return true;
-        })
-        .forEach((passenger) => {
-          result.push({
-            id: passenger.id,
-            name: passenger.name,
-            seats: 1, // On ne connaît pas le nombre de places depuis trip.passengers
-          });
-        });
-    }
-    
-    return result;
-  }, [tripBookings, trip?.passengers, isTripPassenger, user?.id]);
+  const passengers = useMemo(() => isTripDriver
+    ? getPassengersToRate(tripBookings, tripId).filter(passenger => !ratedPassengerIds.includes(passenger.id)) : [],
+  [isTripDriver, tripBookings, tripId, ratedPassengerIds]);
 
   useEffect(() => {
     if (hasInitializedTargetRef.current || !trip || !user?.id) {
@@ -135,40 +91,35 @@ export function useRatingData() {
     }
 
     hasInitializedTargetRef.current = true;
-    if (passengerIdParam) {
-      setRateTargetType('passenger');
-      setSelectedPassenger(passengerIdParam);
-      return;
-    }
-
     if (trip.driverId === user.id) {
       setRateTargetType('passenger');
+      setSelectedPassenger(passengers.find(passenger => passenger.id === passengerIdParam)?.id ?? passengers[0]?.id ?? null);
       return;
     }
 
     setRateTargetType('driver');
     setSelectedPassenger(null);
-  }, [passengerIdParam, trip, user?.id]);
+  }, [passengerIdParam, passengers, trip, user?.id]);
 
-  // Pré-sélectionner le passager si un passengerId est fourni dans l'URL
+  // Complete a late initial selection without overriding a driver's explicit choice.
   useEffect(() => {
-    if (passengerIdParam && passengers.length > 0) {
-      const passengerExists = passengers.some(p => p.id === passengerIdParam);
-      if (passengerExists && selectedPassenger !== passengerIdParam) {
-        setSelectedPassenger(passengerIdParam);
-        setRateTargetType('passenger');
-      }
+    if (isTripDriver && !selectedPassenger && passengers.length > 0) {
+      setSelectedPassenger(passengers.find(passenger => passenger.id === passengerIdParam)?.id ?? passengers[0].id);
     }
-  }, [passengerIdParam, passengers, selectedPassenger]);
+  }, [isTripDriver, passengerIdParam, passengers, selectedPassenger]);
 
-  // Debug: Afficher les passagers récupérés (uniquement en développement)
-  useEffect(() => {
-    if (__DEV__ && isTripDriver) {
-      console.log('Passagers récupérés pour notation:', passengers.map(p => ({ id: p.id, name: p.name })));
-      console.log('Bookings disponibles:', tripBookings?.length ?? 0);
-      console.log('Trip passengers disponibles:', trip?.passengers?.length ?? 0);
-    }
-  }, [passengers, tripBookings, trip?.passengers, isTripDriver]);
+  const onRatingSaved = useCallback((ratedId: string) => {
+    if (!isTripDriver) return false;
+    setRatedPassengerIds(ids => ids.includes(ratedId) ? ids : [...ids, ratedId]);
+    const next = passengers.find(passenger => passenger.id !== ratedId);
+    if (!next) return false;
+    setSelectedPassenger(next.id);
+    setRating(0); setComment(''); setSelectedTags([]);
+    setSubmitSuccessMessage(null);
+    setRatingProgressMessage('Note enregistrée. Vous pouvez noter le passager suivant.');
+    submitInFlightRef.current = false;
+    return true;
+  }, [isTripDriver, passengers]);
 
   // Tags différents selon si on évalue un conducteur ou un passager
   const rateTags = useMemo(() => {
@@ -204,6 +155,8 @@ export function useRatingData() {
   ];
 
   return {
+    onRatingSaved,
+    ratingProgressMessage,
     active,
     ratingScopeKey,
     selectedTags,
