@@ -55,13 +55,19 @@ export function rideActionResultContent(result: RideActionResult, entry?: RideOu
   };
   if (snapshot?.bookingId === result.bookingId && snapshot.tripId === result.tripId && snapshot.actor === result.actor && snapshot[result.stage].status === 'ready') return {
     tone: 'pending' as const, phase: 'ready', stageLabel, icon: 'time-outline' as const,
-    title: 'Validation en cours', message: 'Les deux confirmations sont reçues. Le serveur termine la validation de cette étape.',
-    status: 'Les deux réponses sont reçues', button: 'Compris',
+    title: 'Validation en cours', message: result.stage === 'dropoff'
+      ? 'L’arrivée du passager est reçue. Le serveur termine la validation pour permettre le paiement.'
+      : 'Les deux confirmations sont reçues. Le serveur termine la validation de cette étape.',
+    status: result.stage === 'dropoff' ? 'Arrivée reçue par le serveur' : 'Les deux réponses sont reçues', button: 'Compris',
   };
   if (receipt?.state === 'received') return {
     tone: 'pending' as const, phase: 'received', stageLabel, icon: 'time-outline' as const,
     title: 'Votre confirmation est reçue',
-    message: `En attente de la validation ${other}. L’étape est confirmée après vos deux validations ou par la détection automatique.`,
+    message: result.stage === 'dropoff'
+      ? result.actor === 'passenger'
+        ? 'Le serveur prépare le paiement. Vous n’avez pas besoin d’attendre la confirmation du conducteur.'
+        : 'En attente de la confirmation d’arrivée du passager ou de la détection automatique.'
+      : `En attente de la validation ${other}. L’étape est confirmée après vos deux validations ou par la détection automatique.`,
     status: 'Réponse reçue par le serveur', button: 'Compris',
   };
   return {

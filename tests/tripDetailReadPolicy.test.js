@@ -48,6 +48,19 @@ test('trip detail reads active passenger bookings, history only when needed, and
 
   let result = render();
   assert.deepEqual(result.myBookings, data.activity);
+  assert.equal(result.driverPhone, null);
+  data.activity = [{ id: 'active', tripId: 'trip', passengerId: 'passenger', status: 'pending',
+    trip: { id: 'trip', driverId: 'driver', driver: { id: 'driver', phone: '+243999000111' } } }];
+  assert.equal(render().driverPhone, '+243999000111', 'own pending booking supplies the missing detail phone');
+  data.activity = [{ ...data.activity[0], trip: { ...data.activity[0].trip, driverId: 'different-driver' } }];
+  assert.equal(render().driverPhone, null, 'never use a phone from a different trip driver');
+  data.activity = [{ ...data.activity[0], trip: { ...data.activity[0].trip, driverId: 'driver' } }];
+  assert.equal(render().driverPhone, '+243999000111');
+  data.activity = [{ ...data.activity[0], status: 'cancelled' }];
+  trip = { ...trip, driver: { id: 'driver', phone: '+243999000111' } };
+  assert.equal(render().driverPhone, null, 'an old detail phone cannot revive a cancelled booking');
+  data.activity = [{ ...data.activity[0], status: 'pending', passengerId: 'other-passenger' }];
+  assert.equal(render().driverPhone, null, 'another account booking cannot authorize contact');
   assert.equal(calls.activity.at(-1).skip, false);
   assert.equal(calls.activity.at(-1).pollingInterval, 0);
   assert.equal(calls.history.at(-1).skip, true);

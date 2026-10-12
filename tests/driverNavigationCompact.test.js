@@ -113,6 +113,7 @@ test('a new reservation does not move/remount the ongoing confirmation control',
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
+    '@/features/ride-recovery/RideActionResult': { RideActionResult: 'Result' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
     '@/components/trip/TripShareAction': { TripShareAction: 'Share' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');

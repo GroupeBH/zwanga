@@ -67,13 +67,16 @@ test('one passenger tap saves pickup directly, then reports its result without a
   h.hooks.unmount();
 });
 
-test('condensed passenger controls retain both confirmations and the offline receipt', async () => {
+test('condensed passenger controls explain dual boarding and independent arrival, retaining the offline receipt', async () => {
   for (const stage of ['pickup', 'dropoff']) {
     const h = setup();
     h.props({ tripId: 'trip', booking: { ...h.booking, pickedUp: stage === 'dropoff' }, actor: 'passenger', condensed: true });
     h.render();
-    assert.match(words(h.tree()), stage === 'pickup' ? /Confirmez une fois à bord/ : /Confirmez une fois à destination/);
-    assert.match(words(h.tree()), /Le conducteur confirme aussi/);
+    assert.match(words(h.tree()), stage === 'pickup' ? /Confirmez une fois à bord.*Le conducteur confirme aussi/ : /Confirmez votre arrivée pour passer au paiement/);
+    if (stage === 'dropoff') {
+      assert.doesNotMatch(words(h.tree()), /Le conducteur confirme aussi/);
+      assert.match(h.trigger().props.accessibilityHint, /sans attendre le conducteur/);
+    }
     h.trigger().props.onPress();
     await new Promise(resolve => setImmediate(resolve)); h.render();
     assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage, decision: 'confirm' }]);
@@ -176,6 +179,15 @@ test('waiting copy identifies the other actor and never calls a queued vote serv
     assert.doesNotMatch(inline, /Votre validation est reçue/);
     h.hooks.unmount();
   }
+});
+
+test('passenger arrival awaits only server processing, never another driver vote', () => {
+  const { rideStageMessage } = loader()('features/ride-recovery/rideRecoveryPresentation.ts');
+  const stage = { stage: 'dropoff', status: 'awaiting_other', own: 'confirm' };
+  assert.match(rideStageMessage(stage, 'passenger'), /serveur prépare le paiement/);
+  assert.match(rideStageMessage({ ...stage, own: undefined, entry: { state: 'received' } }, 'passenger'), /serveur prépare le paiement/);
+  assert.match(rideStageMessage({ ...stage, own: undefined, entry: { state: 'queued' } }, 'passenger'), /Enregistré sur ce téléphone/);
+  assert.match(rideStageMessage(stage, 'driver'), /En attente du passager/);
 });
 
 test('the optional status link preserves disagreement without adding a step to positive confirmation', async () => {

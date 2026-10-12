@@ -41,7 +41,7 @@ export default function BookingsScreen() {
 
   const feed = useBookingsFeed(activeTab);
   const { activeBookings, displayBookings, isLoading, isFetching, isError, refetch } = feed;
-  const contactBooking = activeBookings.find(booking => booking.id === contactBookingId && booking.status === 'accepted');
+  const contactBooking = activeBookings.find(booking => booking.id === contactBookingId);
   const contacts = getNavigationContacts({ role: 'passenger', userId, booking: contactBooking, trip: contactBooking?.trip });
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
 

@@ -1,7 +1,7 @@
 {
   "name": "zwanga-app",
   "main": "index.ts",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "scripts": {
     "start": "expo start",
     "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs && node ./scripts/patch-expo-location-batches.cjs",

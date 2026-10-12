@@ -190,13 +190,16 @@ test('boarding another booking cannot dismiss the current pickup prompt or its c
     pickupNotice: pickup, pickupNoticeRef: { current: pickup }, pickupBypassConfirmation: null, pickupBypassConfirmationRef: { current: null },
     presentedPickupNoticeKeysRef: { current: new Set() }, highestPickupNoticePriorityRef: { current: new Map() },
     presentedPassengerBoardedKeysRef: { current: new Set() },
+    presentedPassengerDestinationKeysRef: { current: new Set() },
     setPickupNotice: value => { props.pickupNotice = value; }, setPickupNoticeCountdown: value => countdown.push(value),
     showDialog: value => notices.push(value) };
   const actions = hooks.render(() => useDriverNavigationNotices(props));
   actions.presentPassengerBoardedNotice({ bookingId: 'b', type: 'pickup_confirmed' });
-  assert.equal(props.pickupNotice, pickup); assert.deepEqual(countdown, []); assert.equal(notices.length, 1);
-  actions.presentPassengerBoardedNotice({ bookingId: 'b', type: 'pickup_confirmed' }); assert.equal(notices.length, 1);
+  assert.equal(props.pickupNotice, pickup); assert.deepEqual(countdown, []); assert.equal(notices.length, 0);
+  actions.presentPassengerBoardedNotice({ bookingId: 'b', type: 'pickup_confirmed' }); assert.equal(notices.length, 0);
   actions.presentPassengerBoardedNotice({ bookingId: 'a', type: 'pickup_confirmed' });
   assert.equal(props.pickupNoticeRef.current, null); assert.deepEqual(countdown, [null]);
+  actions.presentPassengerDestinationNotice({ bookingId: 'b', type: 'dropoff_confirmed' });
+  assert.equal(notices.length, 0, 'no extra result modal after boarding or arrival');
   props.isMountedRef.current = false; hooks.unmount();
 });

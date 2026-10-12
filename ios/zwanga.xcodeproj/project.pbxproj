@@ -16,6 +16,10 @@
 		DD4A06C4D51348D48FBC95E2 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C70D196B9E2444779C211F77 /* GoogleService-Info.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F9B4AE5DBF4BE0D026610204 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 33BA0D74F81AE26A68B898D7 /* PrivacyInfo.xcprivacy */; };
+		3B0B4B9690304A1F958747B5 /* ZwangaAwsLiveness.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A8905DCA2D420DAE893340 /* ZwangaAwsLiveness.swift */; };
+		E11907F4A6D34738BE2B351B /* ZwangaAwsLivenessBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = AE2792839FA049E485D4016C /* ZwangaAwsLivenessBridge.m */; };
+		E18BA47514C1402CB13C6B1F = {isa = PBXBuildFile; productRef = 1BE7374B11D94936915A81FA /* FaceLiveness */; };
+		6463B328812548799AF43AD8 = {isa = PBXBuildFile; productRef = EC661D705DF143B7BFF57FA7 /* AWSPluginsCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +38,8 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = zwanga/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* zwanga-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "zwanga-Bridging-Header.h"; path = "zwanga/zwanga-Bridging-Header.h"; sourceTree = "<group>"; };
+		D0A8905DCA2D420DAE893340 /* ZwangaAwsLiveness.swift */ = {isa = PBXFileReference; name = "ZwangaAwsLiveness.swift"; path = "zwanga/ZwangaAwsLiveness.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; includeInIndex = 0; };
+		AE2792839FA049E485D4016C /* ZwangaAwsLivenessBridge.m */ = {isa = PBXFileReference; name = "ZwangaAwsLivenessBridge.m"; path = "zwanga/ZwangaAwsLivenessBridge.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -42,6 +48,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				240549D0579B619C121FFE90 /* Pods_zwanga.framework in Frameworks */,
+				E18BA47514C1402CB13C6B1F /* FaceLiveness in Frameworks */,
+				6463B328812548799AF43AD8 /* AWSPluginsCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -97,6 +105,8 @@
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				8909DE74F400763946BE1416 /* Pods */,
 				2BEDDD2A900B8A30D4AD29E8 /* ExpoModulesProviders */,
+				D0A8905DCA2D420DAE893340 /* ZwangaAwsLiveness.swift */,
+				AE2792839FA049E485D4016C /* ZwangaAwsLivenessBridge.m */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -163,6 +173,10 @@
 			productName = zwanga;
 			productReference = 13B07F961A680F5B00A75B9A /* zwanga.app */;
 			productType = "com.apple.product-type.application";
+			packageProductDependencies = (
+				1BE7374B11D94936915A81FA /* FaceLiveness */,
+				EC661D705DF143B7BFF57FA7 /* AWSPluginsCore */,
+			);
 		};
 /* End PBXNativeTarget section */
 
@@ -195,6 +209,10 @@
 			targets = (
 				13B07F861A680F5B00A75B9A /* zwanga */,
 			);
+			packageReferences = (
+				DB4E2B174B534CFD8190619B /* amplify-ui-swift-liveness */,
+				AD7D6BF3856B4D158C3965B5 /* amplify-swift */,
+			);
 		};
 /* End PBXProject section */
 
@@ -218,13 +236,15 @@
 		F38D0A942F761AB01D714C22 /* [CP-User] [RNFB] Crashlytics Configuration */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+			);
 			inputPaths = (
 				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
 				"$(BUILT_PRODUCTS_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "[CP-User] [RNFB] Crashlytics Configuration";
-			outputPaths = ();
+			outputPaths = (
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "bash \"${SRCROOT}/../node_modules/@react-native-firebase/crashlytics/ios_config.sh\"";
@@ -420,6 +440,8 @@
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				5C768DDC01D013F109501C26 /* ExpoModulesProvider.swift in Sources */,
+				3B0B4B9690304A1F958747B5 /* ZwangaAwsLiveness.swift in Sources */,
+				E11907F4A6D34738BE2B351B /* ZwangaAwsLivenessBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,7 +455,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = zwanga/zwanga.entitlements;
-				CURRENT_PROJECT_VERSION = 122;
+				CURRENT_PROJECT_VERSION = 123;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -445,7 +467,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.16;
+				MARKETING_VERSION = 1.0.17;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -472,14 +494,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = zwanga/zwanga.entitlements;
-				CURRENT_PROJECT_VERSION = 122;
+				CURRENT_PROJECT_VERSION = 123;
 				INFOPLIST_FILE = zwanga/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.16;
+				MARKETING_VERSION = 1.0.17;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -673,6 +695,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		DB4E2B174B534CFD8190619B = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aws-amplify/amplify-ui-swift-liveness";
+			requirement = {
+				kind = exactVersion;
+				version = 1.5.0;
+			};
+		};
+		AD7D6BF3856B4D158C3965B5 = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aws-amplify/amplify-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 2.60.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		1BE7374B11D94936915A81FA = {
+			isa = XCSwiftPackageProductDependency;
+			package = DB4E2B174B534CFD8190619B;
+			productName = FaceLiveness;
+		};
+		EC661D705DF143B7BFF57FA7 = {
+			isa = XCSwiftPackageProductDependency;
+			package = AD7D6BF3856B4D158C3965B5;
+			productName = AWSPluginsCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;
 }

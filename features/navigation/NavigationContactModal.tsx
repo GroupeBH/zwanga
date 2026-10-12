@@ -9,14 +9,14 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NavigationContact } from './navigationContacts';
 
-interface Props { contacts: NavigationContact[]; role: 'driver' | 'passenger'; onClose: () => void; allowPhoneCall?: boolean }
+interface Props { contacts: NavigationContact[]; role: 'driver' | 'passenger'; onClose: () => void; allowPhoneCall?: boolean; phoneUnavailableHint?: string }
 
 export function NavigationContactModal(props: Props) {
   const active = useIsFocused();
   return <ContactModalContent {...props} active={active} />;
 }
 
-export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = true, active, title, hint, closeLabel,
+export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = true, phoneUnavailableHint, active, title, hint, closeLabel,
   loading = false, loadError, onRetry }: Props & {
   active: boolean; title?: string; hint?: string; closeLabel?: string;
   loading?: boolean; loadError?: string; onRetry?: () => void;
@@ -84,7 +84,7 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
               </View>
               <Ionicons name="chevron-forward" size={18} color={Colors.white} />
             </TouchableOpacity>
-            {!person.phone && <Text style={styles.hint}>Numéro indisponible : utilisez la messagerie Zwanga.</Text>}
+            {!person.phone && <Text style={styles.hint}>{phoneUnavailableHint ?? 'Numéro indisponible : utilisez la messagerie Zwanga.'}</Text>}
             <View style={styles.actions}>
               {(allowPhoneCall ? ['phone', 'whatsapp'] as const : ['whatsapp'] as const).map(channel => <TouchableOpacity key={channel}
                 onPress={() => void contact(person, channel)} disabled={!person.phone || busy !== null}

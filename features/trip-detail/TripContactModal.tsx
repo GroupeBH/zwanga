@@ -19,6 +19,7 @@ export function TripContactModal({
 }: TripContactModalProps) {
   if (!contactModalVisible || !trip?.driverId) return null;
   return <NavigationContactModal role="passenger" allowPhoneCall={false}
+    phoneUnavailableHint={!bookingId ? 'Réservez une place pour contacter le conducteur sur WhatsApp.' : undefined}
     onClose={() => setContactModalVisible(false)}
     contacts={[{ id: trip.driverId, name: trip.driverName || 'Votre conducteur',
       phone: driverPhone, bookingId, detail: 'Votre conducteur' }]} />;

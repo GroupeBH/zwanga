@@ -1,5 +1,453 @@
 # Journal des changements techniques
 
+## 12 octobre 2026 — Paiement après confirmation d’arrivée du passager, sans attendre le conducteur
+
+- **Problème / périmètre** : la feuille de paiement s’ouvrait déjà après
+  l’enregistrement local de l’arrivée, mais le backend exigeait encore les deux
+  déclarations manuelles pour terminer la réservation. Le passager attendait donc
+  le conducteur pour payer, contrairement au parcours d’arrivée automatique.
+- **Solution backend appliquée** (dépôt voisin `../zwanga-backend`) :
+  `src/ride-declarations/ride-declaration.model.ts` et
+  `ride-declaration.policy.ts` distinguent désormais l’embarquement (deux
+  confirmations) de l’arrivée (confirmation du titulaire suffisante).
+  `ride-declarations.service.ts` termine la réservation dans la transaction
+  existante, avec `manual_passenger_confirmation` si le conducteur n’a pas
+  confirmé. Aucun vote conducteur n’est inventé. Le statut terminé et les
+  indicateurs d’arrivée rendent immédiatement accessibles les règles de paiement
+  existantes, sans attendre le traitement périodique des effets annexes.
+  Les descriptions des deux routes historiques ont été alignées dans
+  `src/bookings/bookings.controller.ts`; elles utilisent toujours le même service
+  de déclarations sécurisé. Une ancienne déclaration passager encore en attente
+  peut être réconciliée avec son identifiant et son horodatage d’origine.
+- **Application / messages** : `features/ride-recovery/RideRecoveryControl.tsx`,
+  `rideRecoveryPresentation.ts`, `rideActionResultModel.ts` et
+  `rideRecoveryModel.ts` n’annoncent plus une attente du conducteur pour l’arrivée
+  du passager. `features/arrival-payment/ArrivalPaymentActions.tsx`,
+  `ArrivalPaymentFields.tsx` et `components/PassengerArrivalPaymentCoordinator.tsx`
+  précisent que l’éventuelle attente est celle de la synchronisation serveur.
+  Les commentaires de `hooks/arrival-payment/useArrivalPaymentState.ts` et
+  `features/ride-recovery/rideOutboxEngine.ts` explicitent cette distinction.
+  La feuille de paiement unique, sans nouveau modal de succès, est conservée.
+- **Garanties conservées** : seul le titulaire peut déclarer son arrivée; une
+  déclaration conducteur seule reste insuffisante. Embarquement déjà validé,
+  trajet actif, réservation acceptée, absence de litige et validité des dates
+  restent requis. Un nouvel événement conducteur ne peut pas rendre récente une
+  ancienne preuve passager expirée. Doubles clics et rejeux ne réappliquent pas
+  la transition. Le guide `supabase-postgres-best-practices` a orienté la
+  conservation de la transaction courte, de l’ordre de verrouillage trajet puis
+  réservation et des effets externes hors transaction. Aucun schéma ni migration
+  supplémentaire, aucune dépendance ni nouvelle boucle de polling.
+- **Paiement / réseau** : enregistrer l’arrivée hors ligne ouvre la feuille mais
+  n’autorise aucun débit avant retour du serveur. Le montant reste celui du
+  serveur; arrivée confirmée ne signifie jamais paiement réussi. Les parcours
+  cash, électronique, jetons, gratuité, paiement déjà réglé et reprise d’une
+  transaction existante restent inchangés. Les litiges et l’interruption anticipée
+  ne sont pas contournés par ce changement.
+- **Vérifications réalisées** : **170 tests Node réussis** sur les 18 suites
+  ciblant déclarations/reprise, paiement, navigation et overlays; **123 tests Jest
+  backend réussis** dans `ride-declaration.policy.spec.ts`,
+  `ride-declarations.service.spec.ts`, `bookings.service.spec.ts` et
+  `near-arrival-payment.spec.ts`. Les tests ajoutés vérifient l’arrivée passager
+  seule, l’absence de vote conducteur, l’accès immédiat au paiement sans GPS ni
+  exécution du worker, le rejeu sans transition supplémentaire, les dates
+  anciennes, les états interdits, les litiges, le refus d’un autre compte et la
+  réutilisation d’une transaction électronique en attente. Les tests mobiles
+  adaptés sont `tests/declaredArrivalPayment.test.js`, `rideRecoveryUI.test.js`,
+  `rideActionResult.test.js` et `arrivalPaymentSheet.test.js` : déblocage après
+  réponse serveur, cache actualisé, trois modes de paiement et texte cohérent.
+  TypeScript mobile (`tsc --noEmit --incremental false`), TypeScript du code
+  backend (`tsc --noEmit --incremental false -p tsconfig.build.json`), ESLint
+  ciblé mobile et `git diff --check` des deux dépôts réussis. Le contrôle TypeScript global
+  backend incluant toutes les spécifications échoue dans des tests hors de ce
+  correctif (notamment activité, administration, migrations, OTP, notifications,
+  paiements, commandes, KYC et portefeuille); aucun diagnostic dans les fichiers
+  de déclarations ou de paiement modifiés ici. Ces tests non concernés ne sont
+  pas modifiés pour masquer les erreurs.
+- **Limites / livraison** : tests JavaScript/TypeScript avec dépendances simulées,
+  pas d’essai de paiement réel, de concurrence PostgreSQL réelle ni d’essai
+  physique iOS/Android. Aucun déploiement réalisé. Déployer le backend corrigé
+  avant les nouveaux textes mobiles; distribuer ensuite les modifications JS
+  par le circuit habituel. Vérifier sur deux appareils un embarquement validé,
+  puis l’arrivée confirmée uniquement par le passager : paiement accessible,
+  conducteur sans action obligatoire. Refaire le parcours hors ligne puis à la
+  reconnexion, ainsi qu’avec une transaction déjà en cours ou déjà réglée.
+
+## 12 octobre 2026 — Accueil à deux onglets pour les conducteurs, priorité aux clients
+
+- **Demande / périmètre mobile** : la restriction complète aux clients de
+  l’intervention précédente est remplacée par un accès aux deux catégories :
+  **Clients par défaut pour un conducteur**, **Trajets pour un passager**. Les
+  passagers ne peuvent toujours pas consulter les commandes des autres comptes.
+- **Sélection appliquée** : nouveau `hooks/home/useHomeDiscoveryMode.ts`, type
+  `HomeSheetMode` dans `features/home/homeTypes.ts`, raccordés par
+  `hooks/home/useHomeController.ts`. Une seule sélection pilote carte, liste,
+  lectures et actions. Elle est isolée par compte et rôle, remise au défaut sur
+  leur changement ou au nouveau montage de l’accueil, mais conservée sur les
+  rafraîchissements et les brefs passages en arrière-plan. Un ancien callback
+  d’un autre compte/rôle ne peut pas modifier le choix courant.
+- **Interface appliquée** : `components/home/HomeTripsSheet.tsx`,
+  `features/home/HomeTripsSheet.styles.ts`, `app/(tabs)/index.tsx` et
+  `hooks/home/useHomeSheet.ts` réintroduisent deux onglets compacts, dans l’ordre
+  « Clients », « Trajets », uniquement pour les conducteurs hors trajet actif.
+  « Voir tout », chargement, erreur, état vide et actualisation suivent l’onglet.
+  Les listes ont des clés distinctes pour ne pas réutiliser leur défilement entre
+  catégories. Le guide `frontend-skill` a orienté le choix vers un sélecteur dans
+  l’en-tête existant, sans bandeau ni animation supplémentaire : cibles tactiles
+  d’au moins 44 points, libellés courts, état sélectionné accessible et adaptation
+  aux grandes polices. Les couleurs des trois actions principales sont conservées.
+- **Carte et lectures** : `hooks/home/useHomeTripSelection.ts` et
+  `hooks/home/useHomeMap.ts` affichent les marqueurs de la catégorie sélectionnée,
+  sans mélange ni remontage du composant carte. `hooks/home/useHomeTripFeed.ts`
+  active les lectures publiques pour un conducteur seulement dans « Trajets » ;
+  retour à « Clients » suspend ces lectures et leur polling, sans effacer le cache.
+  Les gardes des anciens callbacks, du réseau et de l’arrière-plan restent actifs.
+  Le flux clients reste disponible pour les priorités conducteur existantes.
+- **Comportements conservés / précautions** : suivi personnel prioritaire sur la
+  découverte, y compris lorsqu’un conducteur est lui-même passager ; réservations
+  et trajets personnels prioritaires ; recherches proches puis repli vers des
+  trajets plus éloignés ; filtrage des commandes indisponibles ; virtualisation,
+  limites de marqueurs et régulation de la caméra. Aucun changement backend,
+  d’autorisation, de notification, de paiement ou de dépendance.
+- **Vérifications réalisées** : ajout de `tests/homeDiscoveryMode.test.js`,
+  adaptation de `tests/{homeModules,homeCompactLayout,homeForegroundLifecycle,
+  homeTripPriority}.test.js`. **175 tests JavaScript ciblés réussis** : accueil,
+  comptes, correctifs précédents et cycles de vie des composants ; TypeScript
+  (`tsc --noEmit --incremental false`) réussi ; ESLint ciblé sans erreur ni
+  avertissement ; `git diff --check` réussi. Tests des défauts selon le rôle,
+  changements d’onglet et de compte, callbacks obsolètes, cache et absence de GPS,
+  synchronisation carte/liste, trajets personnels et destinations des boutons.
+- **Limites** : tests avec mocks, sans validation visuelle native ni mesure de
+  performance sur appareil. Aucun build ou déploiement effectué. À vérifier sur
+  iOS/Android : bascule Clients/Trajets, grandes polices, petits écrans, sélection
+  d’un marqueur, connexion lente et retour d’un trajet en cours.
+
+## 12 octobre 2026 — Carte conducteur centrée sur les clients et couleurs d’accueil
+
+- **Problème / périmètre mobile** : malgré le filtrage de la liste basse,
+  la carte de l’accueil conducteur affichait encore les trajets publics d’autres
+  conducteurs. Le titre « Commandes de passagers » était trop long ; les couleurs
+  verte et bleue des actions devaient être modernisées.
+- **Filtrage appliqué** : `hooks/home/useHomeTripSelection.ts` ne sélectionne plus
+  de trajets de découverte pour un conducteur, y compris depuis le cache ou lors
+  d’un changement de rôle. La carte utilise ainsi les commandes disponibles de
+  passagers et leur position, sans ancien véhicule sélectionné comme cible de
+  caméra. Aucun repli vers les trajets publics quand les clients sont absents.
+  Les contrôles existants des commandes propres, acceptées, liées et expirées
+  restent inchangés.
+- **Lectures évitées** : `hooks/home/useHomeTripFeed.ts` suspend les deux requêtes
+  de découverte publique et leur polling sur l’accueil conducteur. Les résultats,
+  erreurs et chargements résiduels de ces requêtes ne sont pas présentés et
+  n’écrasent pas le cache partagé. Pas de nouveau timer, endpoint, dépendance ni
+  changement backend. Il s’agit d’une suppression vérifiée des abonnements de
+  découverte de cet écran, pas d’une mesure de consommation réseau en production.
+- **UI appliquée** : `hooks/home/useHomeSheet.ts` affiche **Clients** ;
+  `components/home/HomeTripsSheet.tsx` aligne les libellés d’accessibilité et
+  l’état vide (« Pas de client pour le moment. »). Les destinations des actions
+  restent identiques. Dans `features/home/HomeHeader.styles.ts`, la recherche
+  passe au vert émeraude `#047857`, la publication au bleu `#2563EB` ; l’orange
+  de commande reste inchangé. Le guide `frontend-skill` a conduit à conserver
+  la composition compacte et les retours au toucher existants, sans ajouter
+  d’ornements ni d’animation. Contraste calculé des libellés au moins 4,5:1,
+  tailles tactiles et adaptation aux grandes polices conservées.
+- **Précautions / comportements conservés** : la carte garde le suivi du trajet
+  personnel en cours et ses passagers ; un compte conducteur voyageant comme
+  passager garde sa réservation active. Les cartes personnelles prioritaires,
+  les actualisations d’activité et les recherches des passagers, dont le repli
+  vers des départs plus éloignés, restent fonctionnels. La carte native n’est pas
+  remontée pour ce filtrage ; ses limites de marqueurs et de mouvements caméra
+  ne changent pas.
+- **Vérifications réalisées** : extensions de `tests/homeModules.test.js`,
+  `tests/homeCompactLayout.test.js`, `tests/homeRideCompletion.test.js` et
+  `tests/homeForegroundLifecycle.test.js`. Couverture du changement immédiat de
+  rôle, des caches, de l’absence de GPS/clients, des requêtes ignorées et anciens
+  callbacks, du centrage sur une commande, des trajets personnels et de leur fin.
+  **156 tests JavaScript ciblés accueil/cycles de vie réussis** ; TypeScript
+  (`tsc --noEmit --incremental false`) réussi ; ESLint ciblé sans erreur ni
+  avertissement ; `git diff --check` réussi. Un ancien test attendait encore des
+  voitures publiques après la fin de course d’un compte conducteur : il vérifie
+  désormais le résultat propre à chacun des deux rôles.
+- **Limites restantes** : vérifications JavaScript avec mocks, pas de mesure
+  native ou de validation visuelle sur appareils physiques. Aucun build ni
+  déploiement effectué. À vérifier sur iOS/Android : couleurs et grandes polices,
+  appui sur un client, absence de véhicules publics pour un conducteur, suivi
+  personnel et retour à la liste Clients après la course.
+
+## 12 octobre 2026 — Accueil conducteur ciblé et validation du trajet sans modal de résultat
+
+- **Problème / périmètre mobile** : la liste basse de l’accueil proposait aux
+  conducteurs les trajets publiés par d’autres conducteurs. Les résultats
+  d’embarquement et d’arrivée ajoutaient des fenêtres à fermer et pouvaient passer
+  devant le paiement du passager. Aucun changement de backend, de commission ou
+  de règle d’autorisation n’est effectué dans cette intervention.
+- **Accueil appliqué** : `hooks/home/useHomeSheet.ts`,
+  `components/home/HomeTripsSheet.tsx`, `app/(tabs)/index.tsx` et
+  `features/home/{homeTypes.ts,HomeTripsSheet.styles.ts}` dérivent la liste du rôle
+  courant, sans onglet ni état persistant de sélection : **commandes de passagers
+  pour les conducteurs, trajets pour les passagers**. « Voir tout », les erreurs et
+  l’actualisation suivent ce même rôle. Pas de repli vers les trajets d’autres
+  conducteurs lorsque les commandes sont vides. Les cartes personnelles
+  prioritaires, la carte, les filtres des commandes disponibles et le comportement
+  rétracté pendant une course restent inchangés.
+- **Style appliqué** : `components/home/HomeHeader.tsx` et
+  `features/home/HomeHeader.styles.ts` utilisent le vert pour chercher, le bleu
+  pour proposer et un fond orange clair avec texte foncé pour commander. Le guide
+  `frontend-skill` a orienté la simplification vers une seule fonction par zone,
+  sans nouveau bandeau ni animation décorative. Libellés, destinations des boutons,
+  retours au toucher, agrandissement des polices et cibles d’au moins 44 points
+  conservés ; contraste calculé des trois libellés supérieur ou égal à 4,5:1.
+- **Résultats de validation appliqués** : suppression de
+  `features/ride-recovery/RideActionResultModal.tsx` et
+  `rideActionResultStyles.ts`, remplacés par `RideActionResultNotice.tsx`.
+  `RideActionResult.tsx` conserve les contrôles de compte, trajet, réservation et
+  cycle de vie, mais ne présente plus de modal. Les confirmations normales restent
+  indiquées par les commandes/états existants ; les erreurs sont lisibles dans
+  l’écran, dans une zone défilable bornée et fermable. Les hôtes sont placés dans
+  `app/booking/navigate/[id].tsx` et
+  `features/driver-navigation/DriverNavigationTopPanel.tsx` ; l’ancien hôte hors
+  panneau est retiré de `app/trip/navigate/[id].tsx`. La priorité d’overlay
+  `result` est supprimée de `features/navigation/rideOverlayStore.ts`.
+- **Notifications de progression** :
+  `hooks/driver-navigation/useDriverNavigationNotices.ts` et
+  `hooks/passenger-navigation/usePassengerNavigationNotices.ts` n’ajoutent plus de
+  fenêtre de succès après embarquement / arrivée. Les annonces vocales automatiques
+  et le nettoyage des alertes de rendez-vous sont conservés.
+  `usePassengerTripDestinationNotice.ts` ne superpose plus un message de fin de
+  trajet à la déclaration d’arrivée / au paiement du passager. Les confirmations
+  des deux participants, désaccords, annulations, interruptions et SOS ne sont pas
+  supprimés ; aucun appui ne confirme à la place de l’autre participant.
+- **Paiement appliqué** : nouveau sélecteur
+  `features/arrival-payment/declaredArrivalPayment.ts`, utilisé par
+  `hooks/arrival-payment/useArrivalPaymentState.ts`. Une arrivée du passager
+  sauvegardée dans la file locale existante ouvre le **même panneau de paiement**,
+  sans passer par un résultat à acquitter. Seules ses réservations acceptées ou
+  terminées, du bon trajet, avec une déclaration récente non bloquée/non contestée
+  et non déjà acquittée sont retenues. Une sauvegarde locale ne fabrique ni
+  arrivée serveur ni tarif : avant confirmation serveur, le montant reste en
+  attente, les actions financières et les lectures portefeuille/modes/historique
+  sont suspendues. La fermeture et « Actualiser la confirmation » restent
+  accessibles. `components/PassengerArrivalPaymentCoordinator.tsx`,
+  `features/arrival-payment/{ArrivalPaymentFields.tsx,ArrivalPaymentActions.tsx}` et
+  `hooks/arrival-payment/useArrivalPaymentMonitoring.ts` gèrent cet état dans le
+  panneau existant. Aucun nouveau GPS, timer, polling ou endpoint n’est ajouté.
+  Les paiements déjà effectués/gratuits, les références de paiement en cours, la
+  protection contre le double débit et la reprise différée restent conservés.
+- **Vérifications et limites** : tests JavaScript ciblant accueil, cycles de vie,
+  confirmations hors connexion, comptes distincts, réservations multiples,
+  overlays, paiement et reprise réseau ; tests de l’ancien modal remplacés par
+  `tests/rideActionResultNotice.test.js`, ajout de
+  `tests/declaredArrivalPayment.test.js`, adaptation des suites concernées.
+  **320 tests JavaScript réussis**, TypeScript (`tsc --noEmit --incremental false`)
+  réussi, ESLint ciblé sans erreur ni avertissement et `git diff --check` réussi.
+  Ce sont des tests de
+  logique/composants avec mocks, pas une validation native. Aucun déploiement,
+  build natif ni essai physique iOS/Android réalisé ; vérifier sur appareils les
+  grandes polices, les deux ordres de validation conducteur/passager, le mode
+  avion puis reconnexion, le paiement cash/jetons/électronique et l’absence
+  d’obstruction de la carte ou du SOS. Les anciens composants supprimés restent
+  récupérables dans Git.
+
+## 12 octobre 2026 — WhatsApp conducteur dès la réservation en attente
+
+- **Problème et règle confirmée** : le détail d’un trajet affichait WhatsApp
+  désactivé avec « Numéro indisponible », car la projection serveur ne transmettait
+  le numéro qu’après acceptation. La liste des réservations masquait également
+  « Contacter » pour le statut `pending`. La règle demandée est un contact **après
+  création de sa propre réservation**, sans attendre l’acceptation, et non un accès
+  aux numéros pour tous les visiteurs d’un trajet.
+- **Backend appliqué** (`zwanga-backend/src/trips/trip-read-policy.ts`) : le détail
+  authentifié ajoute seulement le téléphone du conducteur à sa projection publique
+  lorsque le demandeur possède une réservation en attente et que le trajet est
+  en cours ou à venir non expiré. Autorisation fondée sur les réservations relues
+  par `findOneForViewer`, pas celles du cache partagé. La réponse de découverte
+  reste sans numéro ; ni position GPS, ni plaque, ni données des autres passagers
+  ne sont ajoutées pour cette réservation en attente. Le parcours déjà accepté
+  conserve ses droits existants. Aucune migration ni requête SQL supplémentaire.
+- **Application appliquée** : `features/navigation/navigationContacts.ts` centralise
+  le contact passager, contrôle le propriétaire et le trajet de la réservation,
+  et refuse les réservations annulées/refusées/expirées/terminées. Pour une réservation
+  en attente, un trajet terminé, annulé ou expiré ne donne pas de contact.
+  `hooks/trip-detail/useTripDetailData.ts` réutilise aussi le téléphone du conducteur
+  déjà fourni par l’API des réservations personnelles, si le détail n’est pas encore
+  rafraîchi ; vérification du trajet, du conducteur et du titulaire, aucun recours
+  au profil public. Un ancien téléphone du détail seul ne suffit pas après annulation.
+- **Accès et messages** : `features/bookings/BookingListCard.tsx` et `app/bookings.tsx`
+  ouvrent le modal pour les réservations en attente comme acceptées. Avant réservation,
+  `features/trip-detail/TripContactModal.tsx` et
+  `features/navigation/NavigationContactModal.tsx` expliquent de réserver une place
+  pour contacter sur WhatsApp. La messagerie Zwanga reste accessible sans téléphone.
+- **Conservé / performance** : pas de nouvel endpoint, de polling, de dépendance,
+  de modal natif ou de lancement automatique de WhatsApp. Le numéro est réutilisé
+  uniquement depuis les données autorisées existantes ; le serveur reste responsable
+  de l’accès. L’invalidation du détail après création de réservation existe déjà et
+  reste en place. Acceptation, paiement, annulation et boutons de suivi ne sont pas
+  déclenchés par « Contacter ». Les changements KYC/sonnerie/version présents sont
+  conservés, sans modification dans ce correctif.
+- **Vérifications réelles** : 86 tests JavaScript ciblés réussis (contacts, messagerie,
+  réservations, détail, actions WhatsApp et stabilité des listes), 26 tests Jest
+  réussis dans `zwanga-backend/src/trips/trip-read-policy.spec.ts`. Nouveaux cas :
+  réservation en attente, numéro absent du détail mais présent dans sa réservation,
+  changement de propriétaire/conducteur, annulation, expiration, cache ancien,
+  absence de suivi GPS avant acceptation et absence de fuite dans les listes publiques.
+  TypeScript application et backend (`tsconfig.build.json`) : aucune erreur.
+  ESLint ciblé : zéro erreur, un avertissement préexistant d’import React inutilisé
+  dans `tests/pendingBookingContact.test.js`. `git diff --check` ciblé réussi.
+- **Livraison et limites** : correctifs locaux uniquement, aucune intervention en
+  production ni essai WhatsApp sur appareil physique. Déployer le backend et publier
+  l’application corrigée ; aucune migration de base nécessaire. Sur deux comptes
+  de test Android/iOS : créer une réservation sans l’accepter, ouvrir « Contacter »
+  depuis le détail et la liste, puis WhatsApp ; vérifier le bon destinataire, le
+  retour à Zwanga et la désactivation après annulation/expiration. Un conducteur
+  sans numéro enregistré ou sans compte WhatsApp reste un cas distinct.
+
+## 11 octobre 2026 — Didit maintenu comme parcours KYC mobile actif
+
+- **Demande** : différer l’activation AWS dans l’application sans retirer
+  l’intégration préparée. Le choix dépendait auparavant du seul backend.
+- **Appliqué** : `features/identity/kycProvider.ts` exige le flag mobile public
+  `EXPO_PUBLIC_AWS_KYC_ENABLED=true` avant toute consultation des capacités AWS.
+  Sans ce flag, `useDiditKycFlow` suit directement Didit. La reprise depuis
+  `useProfileOnboarding` et l’entrée d’`AwsKycProvider` respectent le même verrou.
+- **Conservé** : parcours Didit, notifications KYC et actions internes serveur
+  après approbation. L’intégration AWS et ses dépendances natives restent dans
+  le code ; leur présence dans les builds n’est pas désactivée par ce verrou.
+  Aucun changement d’OTP, de secrets, de CI/CD ou d’infrastructure de production.
+- **Vérifications** : 55 tests JavaScript ciblés réussis, dont le parcours réel
+  du hook Didit avec services simulés et absence d’appel AWS ; TypeScript et
+  contrôle des frontières réseau réussis. Aucun build natif, essai sur téléphone
+  ou déploiement réalisé pour ce changement.
+- **Activation ultérieure** : flags mobile et backend, build natif et recette
+  requis ; voir [AWS_KYC.md](AWS_KYC.md). Une activation serveur seule ne bascule
+  plus l’application.
+
+## 11 octobre 2026 — Approbation KYC automatique et actions internes
+
+- **Évolution** : le parcours AWS n’impose plus une revue humaine systématique.
+  Décision du backend seulement ; les cas incertains affichent « Vérification
+  complémentaire ». Les captures Liveness échouées restent à refaire.
+- **Appliqué** : `AwsKycProvider`, `features/identity/kycDecision.ts`,
+  `NotificationHandler` et `notificationNavigation` actualisent le KYC/profil,
+  poursuivent un sondage modéré pendant revue manuelle et ouvrent le profil depuis
+  le push. Le rôle est relu sur le serveur, jamais accordé à partir d’un push.
+- **Règle serveur** : nouvelle approbation + véhicule actif appartenant au compte
+  → conducteur ; sinon passager vérifié. Les comptes bloqués restent bloqués et
+  les conducteurs existants ne sont pas rétrogradés. Actions internes uniquement,
+  pas de nouvel endpoint public d’approbation ni de webhook sortant.
+- **Compatibilité** : Didit et les statuts existants conservés ; pas de changement
+  de dépendances natives pour cette évolution. 52 tests JS ciblés passés,
+  TypeScript vérifié ; les limites de compilation/recette native de la livraison
+  initiale ci-dessous restent valables. Détails dans [AWS_KYC.md](AWS_KYC.md).
+
+## 11 octobre 2026 — Parcours KYC AWS additionnel
+
+- Pièces RDC, Textract côté serveur, capture vidéo native AWS Liveness et revue
+  humaine ; parcours repris après fermeture et consentement explicite.
+- Détail des fichiers, configuration, garanties et limites dans [AWS_KYC.md](AWS_KYC.md).
+- Didit, OTP et contrats existants conservés ; aucune modification de production,
+  de CI/CD ni de Terraform. Pas de contournement automatique vers un autre fournisseur.
+- TypeScript et 59 tests JS ciblés passés ; iOS non compilé sous Windows et
+  capture réelle non testée. Nouvelle compilation native et recette physique
+  requises avant activation. Les modifications de sonnerie présentes dans le
+  worktree n’ont pas été changées par cette intégration.
+- Compilation Android tentée mais bloquée par des téléchargements Google/Maven
+  indisponibles ; le pont Kotlin reste à valider en compilation native.
+
+## 11 octobre 2026 — Version 1.0.17 pour les prochains builds stores
+
+- **Demande et périmètre** : incrémenter la version de l’application, notamment
+  pour Apple. Il s’agit de la version commerciale, pas d’une migration du SDK Expo.
+- **Appliqué** : `1.0.16` → `1.0.17` dans `app.config.js`, `package.json`,
+  les deux métadonnées racine de `package-lock.json`, `android/app/build.gradle`
+  et les configurations Debug/Release de `ios/zwanga.xcodeproj/project.pbxproj`.
+  Numéros locaux iOS `122` → `123`, Android `137` → `138`, synchronisés avec Expo.
+  `Info.plist` conserve ses références aux réglages de version Xcode.
+- **Conservé** : SDK, dépendances, identifiants d’application, profils EAS et
+  `appVersionSource: remote` / `autoIncrement: true` inchangés par cette incrémentation.
+  EAS reste la source du numéro de build envoyé en production : il peut différer
+  de `123`/`138` selon son compteur distant. Aucun compteur distant réinitialisé
+  ou consulté. Les modifications KYC réalisées en parallèle sont conservées.
+- **Vérifications** : les 5 tests de `tests/appVersions.test.js` réussissent :
+  synchronisation Expo/package/lockfile/Xcode/Gradle et conservation des profils.
+  Ces vérifications font partie des 40 tests ciblés réussis avec les notifications.
+  Aucun build natif, envoi TestFlight/App Store ou déploiement lancé dans ce tour.
+- **Suite manuelle** : `npx eas-cli build --profile production --platform ios`
+  pour générer le prochain binaire iOS ; la soumission et la validation Apple restent
+  des étapes distinctes. [Gestion des versions EAS](https://docs.expo.dev/build-reference/app-versions/).
+
+## 11 octobre 2026 — Vibration des alertes conducteur sur les anciens Android
+
+- **Constat et périmètre** : le canal `booking-ring-v2` activait déjà la vibration
+  et son motif personnalisé sur Android 8+. Les invitations locales Notifee ne
+  définissaient pas ce motif directement, nécessaire sur les versions antérieures.
+  La permission Android `VIBRATE` est déjà présente dans le manifeste suivi.
+- **Appliqué** : `services/driverNotifications.ts` partage un motif constant entre
+  le canal et chaque notification de réservation/proposition conducteur, avec
+  des copies indépendantes transmises à Notifee. `tests/driverNotifications.test.js`
+  vérifie le motif dans les deux emplacements et pour les deux types d’invitation.
+- **Conservé** : sonnerie longue Zwanga, canal existant et préférences utilisateur,
+  limite de sonnerie à 30 s, silence à l’ouverture, actions sécurisées et absence
+  de double notification iOS. Aucun minuteur de vibration JavaScript, changement
+  backend, dépendance ou contournement du silencieux/Ne pas déranger ajouté pour
+  ce correctif. Les alertes distantes gardent leur parcours existant.
+- **Vérifications** : 40 tests JavaScript réussis dans `appVersions`,
+  `driverNotificationNativeAssets`, `driverNotifications`,
+  `driverNotificationResponse` et `requestAcceptanceSound`. ESLint ciblé sur
+  le service et son test : zéro erreur et zéro avertissement ; `git diff --check`
+  ciblé réussi. Les mocks valident les paramètres envoyés, pas l’exécution physique
+  du moteur de vibration.
+- **Limites et choix non appliqué** : sur iOS, la vibration des notifications
+  reste gérée par le système et ses réglages. Le son des appels du téléphone n’a
+  pas remplacé le fichier Zwanga. Android permet de référencer un son système par
+  URI ; `sound: 'default'` sélectionnerait le son de notification, pas celui des
+  appels. Le choix d’une sonnerie système reste une piste distincte.
+- **Essais nécessaires** : appareils physiques, permissions de notification et
+  vibration activées, écran verrouillé puis ouverture de Zwanga ; vérifier aussi
+  qu’une vibration désactivée par l’utilisateur n’est pas forcée. Utiliser le nouveau
+  build natif nécessaire au son renforcé, par exemple
+  `npx eas-cli build --profile dev-device --platform all`. Aucun essai physique
+  réalisé dans ce tour.
+- **Références** : [sons et vibrations Notifee](https://notifee.app/react-native/docs/android/behaviour/),
+  [sons et vibrations iPhone](https://support.apple.com/guide/iphone/change-sounds-and-vibrations-iph07c867f28/ios),
+  [sonnerie par défaut Android](https://developer.android.com/reference/android/media/RingtoneManager#getDefaultUri(int)).
+
+## 11 octobre 2026 — Sonnerie des commandes et réservations renforcée
+
+- **Problème et périmètre** : volume jugé trop faible par des utilisateurs. Le
+  fichier embarqué avait déjà des crêtes élevées (−1,13 dBFS), mais un niveau moyen
+  de −10,18 dBFS et des pauses importantes. Cette mesure du fichier ne prouve pas
+  que tous les cas signalés proviennent du son plutôt que des réglages du téléphone.
+- **Appliqué** : `scripts/generate-driver-ring.cjs` conserve les tonalités 660/880 Hz,
+  avec compression douce et amplitude bornée, passages de 0,8 s au lieu de 0,55 s,
+  deux passages par cycle de 2,4 s, attaque/relâchement progressifs. Régénération de
+  `assets/sounds/driver_ring.wav` et `android/app/src/main/res/raw/driver_ring.wav`.
+  Le générateur exporte une fonction pure pour vérifier que les fichiers suivis
+  correspondent exactement au résultat attendu, sans écrire de fichiers à l’import.
+- **Mesures réelles sur le PCM** : RMS de −10,18 à −4,81 dBFS, soit **+5,37 dB**
+  de niveau moyen ; crête de −1,13 à −0,55 dBFS ; aucun échantillon écrêté aux
+  limites du PCM 16 bits. Format mono 22 050 Hz, durée 29 s et taille
+  1 278 944 octets inchangés. Ces valeurs ne sont pas des dB acoustiques mesurés
+  sur téléphone et ne garantissent pas un gain perceptif identique sur tous les modèles.
+- **Conservé** : nom `driver_ring.wav`, canal `booking-ring-v2`, compatibilité des
+  messages serveur, destinataires et types d’alertes existants, limite temporelle,
+  boutons Accepter/Refuser, absence de seconde sonnerie au premier plan et arrêt
+  à l’ouverture de Zwanga. Aucun nouveau canal qui réinitialiserait les préférences,
+  aucune augmentation forcée du volume système, aucun contournement du silencieux
+  ou du mode Ne pas déranger. Pas de changement backend, de déploiement ou de dépendance.
+- **Vérifications** : 34 tests réussis dans `driverNotificationNativeAssets`,
+  `driverNotifications`, `driverNotificationResponse` et `requestAcceptanceSound`.
+  Niveau moyen/crête, absence d’écrêtage et de décalage continu significatif,
+  transitions aux extrémités, répétition sur toute la durée, pauses, reproductibilité,
+  égalité des copies Android/source et référence Xcode contrôlés. ESLint ciblé :
+  zéro erreur, un avertissement préexistant sur `__dirname`. `git diff --check` réussi.
+- **Installation et limites** : un **nouveau build natif Android/iOS est requis**,
+  car le son est embarqué ; Metro/une mise à jour JavaScript seule ne suffit pas.
+  Pour un essai sur appareils : `npx eas-cli build --profile dev-device --platform all`.
+  Aucun build ni essai acoustique physique effectué dans ce tour. Comparer à volume
+  système égal, d’abord modéré, téléphone verrouillé puis ouverture de Zwanga ;
+  vérifier également les préférences du canal Android et les réglages de sonnerie
+  iOS. La sonnerie standard des autres notifications n’est pas modifiée.
+- **Références** : [contrôle utilisateur des canaux Android](https://notifee.app/react-native/docs/android/channels/)
+  et [sons personnalisés iOS embarqués](https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/SchedulingandHandlingLocalNotifications.html).
+
 ## 11 octobre 2026 — Correctifs de fiabilité : GPS Android, fenêtres iOS et récupération
 
 Périmètre : application mobile, suivi natif Expo Android, affichage des formulaires,

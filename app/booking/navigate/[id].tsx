@@ -48,11 +48,11 @@ export default function PassengerNavigationScreen() {
 
   return (
     <RideOverlayScope scopeKey={`passenger:${model.data.bookingId}`} active={model.data.isScreenActive}>
-    <RideActionResult actor="passenger" tripId={model.data.tripId} bookingId={model.data.bookingId} active={model.data.isScreenActive} />
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView style={{ maxHeight: height * 0.4, flexGrow: 0 }} showsVerticalScrollIndicator>
         <PassengerNavigationHeader model={model} assistance={assistance} />
+        <RideActionResult actor="passenger" tripId={model.data.tripId} bookingId={model.data.bookingId} active={model.data.isScreenActive} />
       </ScrollView>
       
       {/* Carte */}

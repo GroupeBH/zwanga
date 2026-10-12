@@ -11,6 +11,7 @@ import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { ReduxProvider } from '@/components/ReduxProvider';
 import { ProtectedAppStack } from '@/components/ProtectedAppStack';
+import { AwsKycProvider } from '@/components/identity/AwsKycProvider';
 // Importer les handlers de fond pour qu'ils soient enregistres au demarrage
 import '@/services/backgroundNotificationTask';
 import '@/services/driverBackgroundLocationTask';
@@ -29,7 +30,7 @@ export default function RootLayout() {
       <ThemeProvider value={DefaultTheme}>
         <View style={styles.appRoot}>
           <AnalyticsTracker />
-          <ProtectedAppStack />
+          <AwsKycProvider><ProtectedAppStack /></AwsKycProvider>
           <StatusBar style="dark" />
         </View>
       </ThemeProvider>

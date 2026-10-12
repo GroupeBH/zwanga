@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
+import type { useHomeDiscoveryMode } from './useHomeDiscoveryMode';
 import type { useHomeLocation } from '@/hooks/home/useHomeLocation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 const EMPTY_TRIP_IDS = new Set<string>();
@@ -20,20 +21,26 @@ type Props =
   >
   & Pick<ReturnType<typeof useHomeContext>,
     'isFocused'
+    | 'isDriver'
     | 'storedTrips'
     | 'dispatch'
     | 'currentUser'
-  > & Pick<ReturnType<typeof useHomePassengerActivity>, 'bookedTripIds' | 'completedBookingTripIds'>;
+  > & Pick<ReturnType<typeof useHomePassengerActivity>, 'bookedTripIds' | 'completedBookingTripIds'>
+  & Pick<ReturnType<typeof useHomeDiscoveryMode>, 'isRequestsSheetMode'>;
 export function useHomeTripFeed({
   lastKnownLocation,
   isFocused,
+  isDriver,
+  isRequestsSheetMode = isDriver,
   storedTrips,
   dispatch,
   currentUser,
   bookedTripIds = EMPTY_TRIP_IDS,
   completedBookingTripIds = EMPTY_TRIP_IDS,
 }: Props) {
-  const enabled = useDisplayReadsEnabled(isFocused);
+  const showRequests = isDriver && isRequestsSheetMode;
+  // Public discovery is on demand for drivers; personal activity reads stay separate.
+  const enabled = useDisplayReadsEnabled(isFocused && !showRequests);
   const latitude = lastKnownLocation?.coords?.latitude;
   const longitude = lastKnownLocation?.coords?.longitude;
   const roundedLatitude = typeof latitude === 'number' && Number.isFinite(latitude) ? roundCoordinate(latitude) : null;
@@ -63,6 +70,7 @@ export function useHomeTripFeed({
     displayReadOptions(enabled && Boolean(nearbyTripsPayload), HOME_PASSIVE_LIST_POLL_MS),
   );
   const hasNearbySuggestion = useMemo(() => {
+    if (showRequests) return false;
     const point = nearbyTripsPayload?.departureCoordinates;
     const origin = point ? { latitude: point[1], longitude: point[0] } : null;
     const now = Date.now();
@@ -71,7 +79,7 @@ export function useHomeTripFeed({
       && getHomeTripSuggestionTier(trip, origin, now) === 0) ?? false;
     // Recheck time eligibility on existing refreshes, without a new timer.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nearby.currentData, nearby.fulfilledTimeStamp, nearbyTripsPayload, currentUser?.id, bookedTripIds, completedBookingTripIds, enabled]);
+  }, [showRequests, nearby.currentData, nearby.fulfilledTimeStamp, nearbyTripsPayload, currentUser?.id, bookedTripIds, completedBookingTripIds, enabled]);
   // A general feed must have no geographic/date restriction, including when GPS
   // is unavailable. Local tiers still prefer nearby departures among its candidates.
   const useGeneral = !nearbyTripsPayload || nearby.isError || (nearby.currentData !== undefined && !hasNearbySuggestion);
@@ -80,6 +88,7 @@ export function useHomeTripFeed({
   });
   // Only fall back after the nearby response; never download both full feeds on mount.
   const remoteTrips = useMemo(() => {
+    if (showRequests) return undefined;
     if (!nearbyTripsPayload) return general.currentData;
     if (!useGeneral) return nearby.currentData;
     if (!general.currentData) return nearby.currentData?.length ? nearby.currentData : undefined;
@@ -91,10 +100,11 @@ export function useHomeTripFeed({
     const trips = new Map(earlier.map(trip => [trip.id, trip]));
     latest.forEach(trip => trips.set(trip.id, trip));
     return Array.from(trips.values());
-  }, [useGeneral, general.currentData, nearby.currentData, general.fulfilledTimeStamp, nearby.fulfilledTimeStamp, nearbyTripsPayload]);
+  }, [showRequests, useGeneral, general.currentData, nearby.currentData, general.fulfilledTimeStamp, nearby.fulfilledTimeStamp, nearbyTripsPayload]);
   const selected = useGeneral ? general : nearby;
   const discoveryUpdatedAt = Math.max(nearby.fulfilledTimeStamp ?? 0, useGeneral ? general.fulfilledTimeStamp ?? 0 : 0);
   const hasDisplayableTrips = useMemo(() => {
+    if (showRequests) return false;
     const point = nearbyTripsPayload?.departureCoordinates;
     const origin = point ? { latitude: point[1], longitude: point[0] } : null;
     const now = Date.now();
@@ -104,9 +114,9 @@ export function useHomeTripFeed({
         && (trip.status === 'upcoming' || trip.status === 'ongoing') && hasUpcomingDeparture(trip))));
     // Same freshness signals as selection: no new polling or per-render scan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteTrips, storedTrips, nearbyTripsPayload, currentUser?.id, completedBookingTripIds, bookedTripIds, discoveryUpdatedAt, enabled]);
-  const tripsLoading = Boolean(selected.isFetching && !hasDisplayableTrips);
-  const tripsError = Boolean(selected.isError && !hasDisplayableTrips);
+  }, [showRequests, remoteTrips, storedTrips, nearbyTripsPayload, currentUser?.id, completedBookingTripIds, bookedTripIds, discoveryUpdatedAt, enabled]);
+  const tripsLoading = Boolean(!showRequests && selected.isFetching && !hasDisplayableTrips);
+  const tripsError = Boolean(!showRequests && selected.isError && !hasDisplayableTrips);
   const refetchNearby = useDisplayRefetch(enabled && Boolean(nearbyTripsPayload) && !nearby.isUninitialized,
     JSON.stringify(nearbyTripsPayload), nearby.refetch);
   const refetchGeneral = useDisplayRefetch(enabled && useGeneral && !general.isUninitialized,

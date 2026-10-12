@@ -11,6 +11,7 @@ import {
 
 import { styles } from '@/features/home/HomeTripsSheet.styles';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
+import type { useHomeDiscoveryMode } from '@/hooks/home/useHomeDiscoveryMode';
 import type { useHomeMap } from '@/hooks/home/useHomeMap';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
@@ -28,8 +29,6 @@ type Props =
     | 'toggleTripsSheet'
     | 'sheetTitle'
     | 'openSheetIndex'
-    | 'isRequestsSheetMode'
-    | 'setHomeSheetMode'
     | 'sheetLoading'
     | 'sheetError'
     | 'refetchSheetContent'
@@ -55,7 +54,7 @@ type Props =
   >
   & Pick<ReturnType<typeof useHomeMap>,
     'selectedTrip'
-  >;
+  > & ReturnType<typeof useHomeDiscoveryMode>;
 export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   sheetBottomOffset,
   sheetHeight,
@@ -66,9 +65,9 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   sheetTitle,
   openSheetIndex,
   isDriver,
-  isScreenActive,
-  isRequestsSheetMode,
+  isRequestsSheetMode = isDriver,
   setHomeSheetMode,
+  isScreenActive,
   availableDriverRequests,
   sheetLoading,
   sheetError,
@@ -82,36 +81,37 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   selectedTrip,
   openTripDetail,
 }: Props) {
-  // Never expose driver commands from stale mode props after a role change.
   const showRequests = isDriver && isRequestsSheetMode;
-  const toggleLabel = `${effectiveTripsSheetOpen ? 'Masquer' : 'Afficher'} les ${showRequests ? 'commandes' : 'trajets'}`;
+  const toggleLabel = `${effectiveTripsSheetOpen ? 'Masquer' : 'Afficher'} les ${showRequests ? 'clients' : 'trajets'}`;
   return (<View onLayout={onSheetLayout} style={[styles.tripsSheet, {
     bottom: sheetBottomOffset,
     // Expanded content wraps naturally; collapsed controls also grow with large fonts.
     minHeight: effectiveTripsSheetOpen ? undefined : sheetHeight,
   }]}>
     <View style={styles.sheetHeader}>
-      {effectiveTripsSheetOpen && isDriver && !isHomeSheetLockedRetracted ? (
+      {isDriver && !isHomeSheetLockedRetracted ? (
         <View style={styles.sheetModeSwitch} accessibilityRole="tablist">
           <TouchableOpacity
-            activeOpacity={0.82}
+            activeOpacity={0.78}
             accessibilityRole="tab"
-            accessibilityLabel="Trajets publiés"
-            accessibilityState={{ selected: !showRequests }}
-            style={[styles.sheetModeOption, !showRequests && styles.sheetModeOptionActive]}
-            onPress={() => setHomeSheetMode('trips')}
-          >
-            <Text style={[styles.sheetModeText, !showRequests && styles.sheetModeTextActive]}>Trajets</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            activeOpacity={0.82}
-            accessibilityRole="tab"
-            accessibilityLabel="Clients : commandes des passagers"
+            accessibilityLabel="Clients"
+            accessibilityHint="Afficher les clients sur la carte et dans la liste."
             accessibilityState={{ selected: showRequests }}
             style={[styles.sheetModeOption, showRequests && styles.sheetModeOptionActive]}
             onPress={() => setHomeSheetMode('requests')}
           >
             <Text style={[styles.sheetModeText, showRequests && styles.sheetModeTextActive]}>Clients</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.78}
+            accessibilityRole="tab"
+            accessibilityLabel="Trajets"
+            accessibilityHint="Afficher les trajets publiés sur la carte et dans la liste."
+            accessibilityState={{ selected: !showRequests }}
+            style={[styles.sheetModeOption, !showRequests && styles.sheetModeOptionActive]}
+            onPress={() => setHomeSheetMode('trips')}
+          >
+            <Text style={[styles.sheetModeText, !showRequests && styles.sheetModeTextActive]}>Trajets</Text>
           </TouchableOpacity>
         </View>
       ) : <TouchableOpacity
@@ -129,7 +129,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
       </TouchableOpacity>}
       <View style={styles.sheetHeaderActions}>
         <TouchableOpacity activeOpacity={0.75} onPress={openSheetIndex} style={styles.seeAllButton}
-          accessibilityRole="button" accessibilityLabel={showRequests ? 'Voir toutes les commandes' : 'Voir tous les trajets'}>
+          accessibilityRole="button" accessibilityLabel={showRequests ? 'Voir tous les clients' : 'Voir tous les trajets'}>
           <Text style={styles.seeAllText}>Voir tout</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -169,13 +169,14 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
     {effectiveTripsSheetOpen && !sheetLoading && !sheetError && sheetEmpty && (
       <View style={styles.emptyCard}>
         <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_COLORS.navy} accessible={false} />
-        <Text style={styles.emptyText}>{showRequests ? 'Pas de commande pour le moment.'
+        <Text style={styles.emptyText}>{showRequests ? 'Pas de client pour le moment.'
           : 'Aucun trajet disponible pour le moment. Essayez « Voir tout ».'}</Text>
       </View>
     )}
 
     {effectiveTripsSheetOpen && !sheetLoading && !sheetError && showRequests && availableDriverRequests.length > 0 && (
       <FlatList
+        key="clients"
         horizontal
         style={styles.tripsList}
         showsHorizontalScrollIndicator={false}
@@ -200,6 +201,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
     )}
     {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !showRequests && latestTrips.length > 0 && (
       <FlatList
+        key="trips"
         horizontal
         style={styles.tripsList}
         showsHorizontalScrollIndicator={false}

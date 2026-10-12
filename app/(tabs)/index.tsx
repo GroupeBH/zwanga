@@ -71,11 +71,11 @@ export default function HomeScreen() {
       toggleTripsSheet={home.toggleTripsSheet}
       isHomeSheetLockedRetracted={home.isHomeSheetLockedRetracted}
       sheetTitle={home.sheetTitle}
+      isRequestsSheetMode={home.isRequestsSheetMode}
+      setHomeSheetMode={home.setHomeSheetMode}
       openSheetIndex={home.openSheetIndex}
       isDriver={home.isDriver}
       isScreenActive={home.isScreenActive}
-      isRequestsSheetMode={home.isRequestsSheetMode}
-      setHomeSheetMode={home.setHomeSheetMode}
       availableDriverRequests={home.availableDriverRequests}
       sheetLoading={home.sheetLoading}
       sheetError={home.sheetError}

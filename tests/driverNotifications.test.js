@@ -66,6 +66,19 @@ test('long-ring channel is configured independently of recipient role before cap
   assert.equal(channels[0].sound, 'driver_ring');
   assert.equal(channels[0].importance, 4);
   assert.equal(channels[0].vibration, true);
+  assert.deepEqual(channels[0].vibrationPattern, [400, 300, 700, 300, 700, 300]);
+});
+test('bookings and nearby offers include the channel vibration pattern for pre-Android-8 devices', async () => {
+  for (const payload of [data, { ...data, type: 'new_booking', bookingId: id, expiresAt: undefined }]) {
+    const { loaded, displays, channels } = service();
+    await loaded.displayDriverInvitation(payload);
+    const pattern = displays[0].android.vibrationPattern;
+    assert.deepEqual(pattern, [400, 300, 700, 300, 700, 300]);
+    assert.deepEqual(pattern, channels[0].vibrationPattern);
+    assert.notEqual(pattern, channels[0].vibrationPattern, 'independent copies at the native boundary');
+    assert.equal(pattern.length % 2, 0);
+    assert.ok(pattern.every(value => Number.isFinite(value) && value > 0));
+  }
 });
 test('headless Android uses one stable id, actions, expiry and private lockscreen content', async () => {
   const { loaded, displays } = service();

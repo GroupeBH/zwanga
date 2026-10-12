@@ -139,19 +139,21 @@ export const styles = StyleSheet.create({
     padding: Spacing.sm,
   },
   actionPublishButton: {
-    backgroundColor: '#FFF1EA',
+    backgroundColor: '#2563EB',
   },
   actionRequestButton: {
+    backgroundColor: '#FFF1EA',
+    borderRadius: BorderRadius.md,
     minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
   },
   actionButtonText: {
     flex: 1,
-    color: HOME_COLORS.ink,
+    color: Colors.white,
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
@@ -163,7 +165,7 @@ export const styles = StyleSheet.create({
   },
   actionSearchButton: {
     minHeight: 52,
-    backgroundColor: HOME_COLORS.navy,
+    backgroundColor: '#047857',
   },
   actionSearchText: {
     color: Colors.white,

@@ -9,6 +9,7 @@ import type { Router } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { type BookingTab, STATUS_CONFIG } from './bookingsModel';
+import { getPassengerBookingContact } from '@/features/navigation/navigationContacts';
 
 export interface BookingCardActions {
   activeTab: BookingTab;
@@ -33,7 +34,8 @@ export const BookingListCard = React.memo(function BookingListCard({
   const pickupSync = booking.pickedUp && !booking.pickedUpConfirmedByPassenger;
   const arrivalSync = booking.droppedOffConfirmedByPassenger && !booking.droppedOff;
   const canFollow = accepted && trip?.status === 'ongoing';
-  const canContact = accepted && trip?.driverId && !pickupSync && !arrivalSync;
+  const canContact = active && (booking.status === 'pending' || booking.status === 'accepted') &&
+    getPassengerBookingContact(trip, booking, booking.passengerId) && !pickupSync && !arrivalSync;
   const canCancel = active && (booking.status === 'pending' || booking.status === 'accepted')
     && !pickupSync && !arrivalSync;
   const canRate = booking.status === 'completed' && booking.droppedOffConfirmedByPassenger && trip?.id;

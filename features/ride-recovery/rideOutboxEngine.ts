@@ -115,7 +115,7 @@ export function createRideOutbox(deps: Dependencies) {
             const status = snapshot[entry.stage]?.status;
             if (snapshot.bookingId !== entry.bookingId || !['none', 'awaiting_other', 'ready', 'confirmed', 'disputed'].includes(status)) throw new Error('Invalid acknowledgement');
             snapshots.set(entry.bookingId, snapshot);
-            // Reconcile a ready dual receipt using its SAME key, never invent the other vote.
+            // Reconcile a ready server receipt using its SAME key, never invent the other vote.
             if (entry.state === 'received' && entry.decision === 'confirm' && status === 'ready' &&
                 snapshot.pickup.status !== 'disputed' && snapshot.dropoff.status !== 'disputed') {
               await update(userId, entry.eventId, { state: 'queued', nextAttemptAt: 0, message: 'Confirmation reçue. Validation du serveur en cours…' });

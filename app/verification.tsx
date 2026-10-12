@@ -27,7 +27,7 @@ export default function VerificationScreen() {
         ? 'Pour réserver 3 places ou plus, vérifiez votre identité. Vous restez passager : aucun véhicule à ajouter.'
         : isPassengerVerification
         ? "Ce trajet exige des passagers vérifiés. Cette étape confirme uniquement votre identité : aucun véhicule n'est demandé."
-        : 'Lancez une vérification sécurisée avec Didit pour augmenter la confiance de votre profil.';
+        : 'Faites vérifier votre pièce d’identité et votre visage pour augmenter la confiance de votre profil.';
     const benefits = isPassengerVerification
         ? [
             isExtraSeatsVerification ? 'Réserver 3 places ou plus, selon les places disponibles' : 'Accès aux trajets qui exigent des passagers vérifiés',
@@ -36,7 +36,7 @@ export default function VerificationScreen() {
         ]
         : [
             'Badge « Vérifié » sur votre profil',
-            'Vérification guidée et hébergée par Didit',
+            'Vérification guidée de votre identité',
             'Plus de confiance des membres',
         ];
     const { startDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
@@ -124,7 +124,7 @@ export default function VerificationScreen() {
                             <ActivityIndicator color="white" />
                         ) : (
                             <>
-                                <Text style={styles.mainButtonText}>Vérifier avec Didit</Text>
+                                <Text style={styles.mainButtonText}>Vérifier mon identité</Text>
                                 <Ionicons name="scan" size={20} color="white" />
                             </>
                         )}

@@ -148,7 +148,7 @@ export const HomeHeader = React.memo(function HomeHeader({
           accessibilityHint="Publier votre trajet pour prendre des passagers."
           onPress={() => router.push('/publish')}
         >
-          <Ionicons name="car-outline" size={20} color={Colors.primaryDark} accessible={false} />
+          <Ionicons name="car-outline" size={20} color={Colors.white} accessible={false} />
           <Text style={styles.actionButtonText}>Je propose un trajet</Text>
         </TouchableOpacity>
       </View>

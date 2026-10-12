@@ -44,6 +44,14 @@ test('one payment modal keeps the same content component from selection through 
   const find = (tree, type) => all(tree).find(node => node.type === type);
   let tree = render(); assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
   assert.equal(find(tree, 'Modal').props.visible, true); assert.equal(find(tree, 'Fields').props.completionSummary, null);
+  state.waitingForArrivalConfirmation = true; state.paymentAmount = null;
+  tree = render();
+  assert.equal(find(tree, 'Modal').props.visible, true, 'payment opens immediately while server arrival is pending');
+  assert.equal(find(tree, 'Actions').props.isPayButtonDisabled, true);
+  assert.equal(find(tree, 'Fields').props.waitingForArrivalConfirmation, true);
+  state.waitingForArrivalConfirmation = false; state.paymentAmount = 3000;
+  tree = render();
+  assert.equal(find(tree, 'Actions').props.isPayButtonDisabled, false, 'server arrival unlocks payment without a driver declaration');
   submitting = true; tree = render(); assert.equal(find(tree, 'Actions').props.isBusy, true); assert.equal(find(tree, 'Fields').props.isBusy, true);
   submitting = false; state.paymentAlreadySucceeded = true; state.arrivalBooking = { ...booking, paymentStatus: 'succeeded', paymentReference: 'REF-TEST' };
   tree = render(); assert.equal(all(tree).filter(node => node.type === 'Fields').length, 1);
@@ -68,6 +76,12 @@ test('payment fields show group total, cash instructions and provider status wit
     paymentPhone: '', hasPendingProviderPayment: false };
   const render = () => hooks.render(() => ArrivalPaymentFields(props));
   let tree = render(); assert.match(words(tree), /Total pour 3 places/); assert.match(words(tree), /À remettre au conducteur/);
+  props.waitingForArrivalConfirmation = true; props.paymentAmount = null;
+  tree = render();
+  assert.match(words(tree), /ARRIVÉE DÉCLARÉE.*Calcul en cours.*synchronisation avec le serveur, sans attendre le conducteur/);
+  assert.doesNotMatch(words(tree), /ARRIVÉE CONFIRMÉE|À remettre au conducteur/);
+  assert.equal(all(tree).filter(node => node.props?.accessibilityRole === 'radio').length, 0);
+  props.waitingForArrivalConfirmation = false; props.paymentAmount = 3000; tree = render();
   assert.doesNotMatch(words(tree), /Paiement confirmé/); assert.equal(tree.props.keyboardShouldPersistTaps, 'handled');
   assert.equal(all(tree).some(node => node.type === 'Modal'), false);
   props.selectedMode = 'electronic'; props.hasPendingProviderPayment = true; props.statusMessage = 'duplicate waiting text';

@@ -30,14 +30,14 @@ export function KycStep({
         </View>
         <Text style={styles.heroTitle}>Vérification d’identité requise</Text>
         <Text style={styles.heroSubtitle}>
-          Pour devenir conducteur, vous devez vérifier votre identité avec Didit.
+          Pour devenir conducteur, vous devez faire vérifier votre identité.
         </Text>
       </View>
 
       <View style={styles.kycBenefitsContainer}>
         <View style={styles.benefitRow}>
           <Ionicons name="shield-checkmark" size={24} color={Colors.success} style={{ marginBottom: 2 }} />
-          <Text style={styles.benefitText}>Vérification sécurisée par Didit</Text>
+          <Text style={styles.benefitText}>Vérification sécurisée de votre identité</Text>
         </View>
         <View style={styles.benefitRow}>
           <Ionicons name="flash" size={24} color={Colors.warning} style={{ marginBottom: 2 }} />
@@ -86,7 +86,7 @@ export function KycStep({
           ) : (
             <>
               <Text style={styles.mainButtonText}>
-                {hasCreatedAccount ? 'Finaliser la connexion' : 'Confirmer et vérifier avec Didit'}
+                {hasCreatedAccount ? 'Finaliser la connexion' : 'Confirmer et vérifier mon identité'}
               </Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </>
