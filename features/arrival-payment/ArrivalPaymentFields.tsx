@@ -21,6 +21,8 @@ interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking | null;
   completionSummary?: PaymentCompletionSummary | null;
   isBeforeArrival?: boolean;
+  waitingForArrivalConfirmation?: boolean;
+  onRefreshArrival?: () => void;
   destination: string;
   paymentAmount: number | null;
   paymentCurrency: string;
@@ -53,7 +55,7 @@ interface ArrivalPaymentFieldsProps {
 
 export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
   const { arrivalBooking, completionSummary: receipt, destination, paymentAmount, paymentCurrency,
-    paymentAlreadySucceeded, isBeforeArrival = false, isBusy, hasPendingProviderPayment,
+    paymentAlreadySucceeded, isBeforeArrival = false, waitingForArrivalConfirmation = false, isBusy, hasPendingProviderPayment,
     selectedMode, setSelectedMode, hasPaymentFailure, setPaymentError, setStatusMessage,
     arePointsRecommended, pointsCoveragePercentage, isWalletFetching, walletBalance, pointsUsed,
     amountCoveredByPoints, moneyComplement, selectedChannel, setSelectedChannel, needsMobileMoneyPhone,
@@ -62,7 +64,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
   const modePickerY = useRef(0);
   const complete = Boolean(receipt || paymentAlreadySucceeded);
   const { currentData: paymentOptions, isError: optionsError } = useBookingPaymentOptionsQuery(arrivalBooking?.id ?? '', {
-    skip: !arrivalBooking?.id || complete, refetchOnMountOrArgChange: true,
+    skip: !arrivalBooking?.id || complete || waitingForArrivalConfirmation, refetchOnMountOrArgChange: true,
   });
   const locked = isBusy || hasPendingProviderPayment;
   const beforeArrival = receipt?.beforeArrival ?? isBeforeArrival;
@@ -83,7 +85,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
     keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content}>
     <View style={styles.header}>
       <View style={styles.headerCopy}>
-        <Text style={styles.eyebrow}>{beforeArrival ? 'DESTINATION À PROXIMITÉ' : arrivalBooking?.interruptionFareLocked ? 'ARRÊT CONFIRMÉ' : 'ARRIVÉE CONFIRMÉE'}</Text>
+        <Text style={styles.eyebrow}>{waitingForArrivalConfirmation ? 'ARRIVÉE DÉCLARÉE' : beforeArrival ? 'DESTINATION À PROXIMITÉ' : arrivalBooking?.interruptionFareLocked ? 'ARRÊT CONFIRMÉ' : 'ARRIVÉE CONFIRMÉE'}</Text>
         <Text style={styles.title} accessibilityLiveRegion="polite">
           {complete ? cash ? 'Règlement en espèces' : amount === 0 ? 'Trajet gratuit' : 'Paiement confirmé' : 'Régler le trajet'}
         </Text>
@@ -99,7 +101,8 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       <Text style={styles.amountLabel}>{seats > 1 ? `Total pour ${seats} places` : 'Montant du trajet'}</Text>
       <Text style={styles.amountValue}>{amount === null ? 'Calcul en cours…' : formatMoney(amount, currency)}</Text>
       <Text style={styles.amountHint}>
-        {cash ? 'À remettre au conducteur. Aucun prélèvement dans l’application.'
+        {waitingForArrivalConfirmation ? 'Votre arrivée est enregistrée sur ce téléphone. Le paiement sera disponible dès sa synchronisation avec le serveur, sans attendre le conducteur.'
+          : cash ? 'À remettre au conducteur. Aucun prélèvement dans l’application.'
           : complete ? 'Rien à payer de nouveau.'
           : hasPendingProviderPayment ? 'Paiement en cours : ne payez pas une seconde fois.'
           : beforeArrival ? 'Vous pouvez payer maintenant ; le trajet continue jusqu’à votre destination.'
@@ -108,7 +111,12 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       </Text>
       {distanceLabel ? <Text style={styles.amountHint}>{distanceLabel}</Text> : null}
     </View>
-    {receipt ? <ArrivalPaymentReceipt summary={receipt} /> : complete ? null : <>
+    {waitingForArrivalConfirmation && props.onRefreshArrival && <TouchableOpacity
+      accessibilityRole="button" onPress={props.onRefreshArrival} style={styles.resumePaymentButton}>
+      <Ionicons name="refresh" size={18} color={Colors.primary} />
+      <Text style={styles.resumePaymentText}>Actualiser la confirmation</Text>
+    </TouchableOpacity>}
+    {receipt ? <ArrivalPaymentReceipt summary={receipt} /> : complete || waitingForArrivalConfirmation ? null : <>
       <View onLayout={({ nativeEvent }) => {
         modePickerY.current = nativeEvent.layout.y;
         if (selectedMode === null || hasPaymentFailure) scrollRef.current?.scrollTo({ y: modePickerY.current, animated: false });

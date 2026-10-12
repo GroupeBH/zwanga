@@ -4,6 +4,8 @@ import { type NavigationCoordinate } from '@/utils/navigation/routeProgress';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import React, { useCallback, useEffect } from 'react';
 import type { Booking } from '@/types';
+import { useAppSelector } from '@/store/hooks';
+import { hasPassengerArrived } from '@/features/arrival-payment/paymentModel';
 
 interface Params {
   isScreenActive: boolean;
@@ -66,6 +68,11 @@ export function usePassengerTripDestinationNotice({
   booking,
   presentBoardedNotice,
 }: Params) {
+  const arrivalDeclared = useAppSelector(state => Boolean(booking && (hasPassengerArrived(booking) ||
+    (state.auth.user?.id === booking.passengerId && state.rideRecovery.userId === booking.passengerId &&
+      state.rideRecovery.entries.some(entry => entry.actorUserId === booking.passengerId && entry.bookingId === booking.id &&
+        entry.tripId === booking.tripId && entry.stage === 'dropoff' && entry.decision === 'confirm' &&
+        !['blocked', 'disputed'].includes(entry.state))))));
   const presentTripDestinationNotice = useCallback((event: BookingAutoProgressEvent) => {
     if (
       !isMountedRef.current ||
@@ -95,7 +102,8 @@ export function usePassengerTripDestinationNotice({
     const distanceText = roundedDistance ? ` Distance détectée: ${roundedDistance} m.` : '';
     const isReachedZone = !isCompleted && roundedDistance !== null && roundedDistance <= 10;
 
-    showDialog({
+    // The payment sheet owns the arrival flow after the passenger's declaration.
+    if (!arrivalDeclared) showDialog({
       variant: isCompleted ? 'success' : 'info',
       icon: 'flag',
       title: isCompleted
@@ -124,7 +132,7 @@ export function usePassengerTripDestinationNotice({
         },
       );
     });
-  }, [showDialog, isMountedRef, hasPresentedTripCompletedNoticeRef, hasPresentedTripDestinationApproachNoticeRef]);
+  }, [arrivalDeclared, showDialog, isMountedRef, hasPresentedTripCompletedNoticeRef, hasPresentedTripDestinationApproachNoticeRef]);
 
   useEffect(() => {
     if (!isScreenActive || !pickupNotice?.expiresAt) {

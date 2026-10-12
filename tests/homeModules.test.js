@@ -132,6 +132,66 @@ test('a cached feed remains visible when both network queries fail', () => {
   app.hooks.unmount();
 });
 
+test('driver Clients skips public reads but selecting Trips enables discovery and suspends it again on return', async () => {
+  const calls = [], dispatches = [], refreshes = [];
+  const queryState = { currentData: [trip('public')], isFetching: true, isError: true, isUninitialized: false };
+  const query = name => (args, options) => {
+    calls.push({ name, options });
+    return { ...queryState, refetch: async () => { refreshes.push(name); return { data: queryState.currentData }; } };
+  };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsQuery: query('general'), useGetTripsByCoordinatesQuery: query('nearby'),
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const storedTrips = [trip('cached')];
+  const props = { isFocused: true, isDriver: true, storedTrips,
+    lastKnownLocation: { coords: departure.coordinates }, dispatch: action => dispatches.push(action) };
+  const draw = () => app.hooks.render(() => useHomeTripFeed(props));
+  for (const location of [props.lastKnownLocation, null]) {
+    props.lastKnownLocation = location;
+    const feed = draw();
+    assert.equal(feed.remoteTrips, undefined);
+    assert.equal(feed.tripsLoading, false);
+    assert.equal(feed.tripsError, false);
+    assert.equal(feed.showInitialHomeLoader, false);
+    for (const call of calls.slice(-2)) {
+      assert.equal(call.options.skip, true);
+      assert.equal(call.options.pollingInterval, 0);
+    }
+    await feed.refetchTrips();
+  }
+  assert.deepEqual(refreshes, []);
+  assert.deepEqual(dispatches, [], 'skipped discovery must not overwrite shared Redux trips');
+  assert.equal(storedTrips.length, 1);
+  props.storedTrips = [];
+  queryState.currentData = undefined;
+  assert.equal(draw().showInitialHomeLoader, false, 'no first-entry loader for a driver without cached trips');
+  queryState.currentData = [trip('public')];
+  props.isRequestsSheetMode = false;
+  const driverTrips = draw();
+  assert.equal(calls.at(-1).options.skip, false);
+  assert.equal(driverTrips.remoteTrips[0].id, 'public');
+  await driverTrips.refetchTrips();
+  assert.deepEqual(refreshes, ['general']);
+  props.isRequestsSheetMode = true;
+  assert.equal(draw().remoteTrips, undefined);
+  assert.equal(calls.at(-1).options.pollingInterval, 0);
+  await driverTrips.refetchTrips();
+  assert.deepEqual(refreshes, ['general'], 'a late Trips callback cannot refresh from Clients');
+  refreshes.length = 0;
+  props.isDriver = false;
+  const passenger = draw();
+  assert.equal(calls.at(-1).options.skip, false);
+  assert.equal(passenger.remoteTrips[0].id, 'public');
+  const dispatchCount = dispatches.length;
+  props.isDriver = true;
+  assert.equal(draw().remoteTrips, undefined, 'cached data disappears in the same render as the role change');
+  await passenger.refetchTrips();
+  assert.deepEqual(refreshes, [], 'a stale passenger callback cannot restart a skipped query');
+  assert.equal(dispatches.length, dispatchCount);
+  app.hooks.unmount();
+});
+
 test('empty nearby results load a bounded general feed without geographic or date restrictions', async () => {
   const calls = [], refreshes = [];
   const nearby = { currentData: [], isError: false, isFetching: false, isUninitialized: false,
@@ -239,6 +299,87 @@ test('a stale tracking hint cannot lock Home or hide the feed without an active 
   assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['other'], 'tracking alone is not proof of participation');
   props.activeBookings = [{ id: 'mine', tripId: 'active', passengerId: 'me', status: 'accepted' }];
   assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['active']);
+  app.hooks.unmount();
+});
+
+test('map and camera follow the driver tab immediately, including cached role switches and no GPS', () => {
+  const app = environment();
+  const { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
+  const { useHomeMap } = app.load('hooks/home/useHomeMap.ts');
+  const props = { ...selectionProps(), remoteTrips: [trip('public')], storedTrips: [trip('cached')],
+    isFocused: false, availableDriverRequests: [], visibleDriverPassengerMarkers: [], openingMapDetailKey: null };
+  const draw = () => app.hooks.render(() => {
+    const selection = useHomeTripSelection(props);
+    return { ...selection, ...useHomeMap({ ...props, ...selection }) };
+  });
+  assert.equal(draw().tripsWithMapCoordinates[0].id, 'public');
+  props.isDriver = true;
+  props.availableDriverRequests = [request('client', { departure: arrival })];
+  let home = draw();
+  assert.deepEqual(home.latestTrips, []);
+  assert.deepEqual(home.homeMapTrips, []);
+  assert.deepEqual(home.tripsWithMapCoordinates, []);
+  assert.equal(home.selectedTrip, null, 'no stale selected car or camera target');
+  assert.deepEqual(home.tripRequestsWithMapCoordinates.map(item => item.request.id), ['client']);
+  assert.equal(home.mapRegion.latitude, arrival.lat);
+  assert.equal(home.mapRegion.longitude, arrival.lng);
+  assert.equal(home.isHomeSheetLockedRetracted, false);
+  const emptyTrips = home.homeMapTrips;
+  props.isRequestsSheetMode = false;
+  home = draw();
+  assert.deepEqual(home.tripsWithMapCoordinates.map(item => item.id), ['public']);
+  assert.deepEqual(home.tripRequestsWithMapCoordinates, [], 'Trips does not mix client markers into the map');
+  assert.equal(home.mapRegion.latitude, departure.lat);
+  assert.equal(home.selectedTrip.id, 'public');
+  props.isRequestsSheetMode = true;
+  assert.equal(draw().homeMapTrips, emptyTrips);
+  props.remoteTrips = undefined;
+  props.liveUserCoordinate = null;
+  assert.equal(draw().homeMapTrips, emptyTrips, 'stable empty trip markers even when cached discovery or GPS changes');
+  props.availableDriverRequests = [];
+  home = draw();
+  assert.deepEqual(home.tripsWithMapCoordinates, [], 'an empty client feed does not reintroduce cached cars');
+  assert.deepEqual(home.tripRequestsWithMapCoordinates, []);
+  props.isRequestsSheetMode = false;
+  assert.deepEqual(draw().tripsWithMapCoordinates.map(item => item.id), ['cached'], 'the driver can still choose cached trips');
+  props.isRequestsSheetMode = true;
+  props.availableDriverRequests = [request('client')];
+  props.isDriver = false;
+  assert.deepEqual(draw().tripsWithMapCoordinates.map(item => item.id), ['cached'], 'passenger discovery is preserved');
+  assert.deepEqual(draw().tripRequestsWithMapCoordinates, [], 'a stale client selection never exposes requests to passengers');
+  app.hooks.unmount();
+});
+
+test('driver discovery filtering preserves own active trip and an active personal passenger booking', () => {
+  const app = environment();
+  const { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
+  const { useHomeMap } = app.load('hooks/home/useHomeMap.ts');
+  const own = trip('own', { driverId: 'me', status: 'ongoing' });
+  const ride = trip('reserved', { status: 'ongoing' });
+  const props = { ...selectionProps(), isDriver: true, remoteTrips: [trip('public')], ongoingDriverTrip: own,
+    isFocused: false, availableDriverRequests: [request('client')], visibleDriverPassengerMarkers: [], openingMapDetailKey: null };
+  const draw = () => app.hooks.render(() => {
+    const selection = useHomeTripSelection(props);
+    return { ...selection, ...useHomeMap({ ...props, ...selection }) };
+  });
+  assert.deepEqual(draw().tripsWithMapCoordinates, [own]);
+  assert.deepEqual(draw().tripRequestsWithMapCoordinates, [], 'active ride keeps discovery retracted');
+  assert.equal(draw().isHomeSheetLockedRetracted, true);
+  props.isRequestsSheetMode = false;
+  assert.deepEqual(draw().tripsWithMapCoordinates, [own], 'Trips never replaces personal ongoing navigation');
+  props.isRequestsSheetMode = true;
+  props.ongoingDriverTrip = null;
+  props.activeBookings = [{ id: 'booking', passengerId: 'me', status: 'accepted', tripId: ride.id, trip: ride }];
+  assert.deepEqual(draw().homeMapTrips, [ride]);
+  assert.equal(draw().ongoingBookedTrip, ride);
+  props.activeBookings = [{ ...props.activeBookings[0], trip: undefined }];
+  props.remoteTrips = undefined;
+  props.storedTrips = [ride, trip('public')];
+  assert.deepEqual(draw().homeMapTrips, [ride], 'personal tracking retains its stored fallback without public discovery');
+  props.refreshedPassengerTrip = { ...ride, status: 'completed' };
+  assert.deepEqual(draw().homeMapTrips, [], 'server completion wins over the stored ongoing trip');
+  assert.equal(draw().isHomeSheetLockedRetracted, false);
+  assert.equal(draw().tripRequestsWithMapCoordinates[0].request.id, 'client');
   app.hooks.unmount();
 });
 
@@ -486,7 +627,7 @@ test('passenger tracking only presents progress for the active passenger booking
   app.hooks.unmount();
 });
 
-test('sheet switches between trips/requests, keeps stable actions and retracts during an active trip', () => {
+test('sheet follows the role immediately, keeps stable actions and retracts during an active trip', () => {
   const app = environment();
   const { useHomeSheet } = app.load('hooks/home/useHomeSheet.ts');
   const routes = [], refreshes = [];
@@ -495,15 +636,25 @@ test('sheet switches between trips/requests, keeps stable actions and retracts d
   const toggle = render().toggleTripsSheet;
   assert.equal(render().toggleTripsSheet, toggle);
   assert.equal(render().effectiveTripsSheetOpen, true);
-  render().setHomeSheetMode('requests');
+  assert.equal(render().isRequestsSheetMode, true);
+  assert.equal(render().sheetTitle, 'Clients');
   render().openSheetIndex(); render().refetchSheetContent();
   assert.deepEqual(routes, ['/requests']);
   assert.deepEqual(refreshes, ['requests']);
+  props.isRequestsSheetMode = false;
+  assert.equal(render().sheetTitle, 'Trajets');
+  render().openSheetIndex(); render().refetchSheetContent();
+  assert.deepEqual(routes, ['/requests', '/search']);
+  assert.deepEqual(refreshes, ['requests', 'trips']);
+  props.isRequestsSheetMode = true;
   props.isHomeSheetLockedRetracted = true; render();
   render().toggleTripsSheet();
   assert.equal(render().effectiveTripsSheetOpen, false);
-  assert.equal(render().isRequestsSheetMode, false);
+  assert.equal(render().isRequestsSheetMode, true);
   props.isHomeSheetLockedRetracted = false; props.isDriver = false; render();
   assert.equal(render().isRequestsSheetMode, false);
+  render().openSheetIndex(); render().refetchSheetContent();
+  assert.deepEqual(routes, ['/requests', '/search', '/search']);
+  assert.deepEqual(refreshes, ['requests', 'trips', 'trips']);
   app.hooks.unmount();
 });

@@ -142,7 +142,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
     }} style={[styles.trigger, compact && styles.compact, (highlighted || directStage) && styles.triggerHighlighted]}
       accessibilityRole="button" accessibilityLabel={trigger.accessibilityLabel}
       accessibilityState={{ disabled: !active || saving || saved, busy: saving || pendingStage?.entry?.state === 'sending' }}
-      accessibilityHint={directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}. L’autre personne confirme de son côté.` : 'Consulte les confirmations du trajet.'}>
+      accessibilityHint={directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}. ${actor === 'passenger' && directStage.stage === 'dropoff' ? 'Le paiement sera disponible dès la confirmation du serveur, sans attendre le conducteur.' : 'L’autre personne confirme de son côté.'}` : 'Consulte les confirmations du trajet.'}>
       {saving ? <ActivityIndicator color={Colors.primaryDark} /> : <Ionicons name={trigger.icon} size={20} color={Colors.primaryDark} />}
       <Text style={styles.triggerLabel}>{directStage ? saving ? 'Enregistrement…' : saved ? directStage.stage === 'pickup' ? 'Embarquement déclaré' : 'Arrivée à destination déclarée' : directStage.label : trigger.label}</Text>
       {!compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
@@ -152,10 +152,10 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
       : condensed && actor === 'driver' ? `${directRow?.item.passengerName || 'Passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme aussi.`
       : condensed && actor === 'passenger' ? directStage?.stage === 'dropoff'
-        ? 'Confirmez une fois à destination. Le conducteur confirme aussi.'
+        ? 'Confirmez votre arrivée pour passer au paiement.'
         : 'Confirmez une fois à bord. Le conducteur confirme aussi.'
       : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme de son côté.`
-      : directStage?.stage === 'dropoff' ? 'Appuyez une fois à destination. Le conducteur confirme aussi votre arrivée à destination ; la détection automatique reste active.'
+      : directStage?.stage === 'dropoff' ? 'Confirmez votre arrivée pour payer sans attendre le conducteur.'
       : 'Appuyez une fois à bord. Le conducteur confirme aussi l’embarquement ; la détection automatique reste active.'}</Text>
       : !compact && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
     {directRow && directStage && directRow.stages.some(stage => stage.other === 'confirm' && !stage.unavailable) &&
@@ -175,7 +175,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
             initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3} removeClippedSubviews={false}
             contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
             ListHeaderComponent={<>
-            <Text style={styles.explanation}>Le titulaire et le conducteur valident chacun l’embarquement et l’arrivée à destination. Un appui enregistre votre réponse pour toutes les places de la réservation. La détection automatique reste active.</Text>
+            <Text style={styles.explanation}>L’embarquement se confirme à deux. À destination, la confirmation du passager suffit pour passer au paiement. Une confirmation couvre toutes les places de la réservation. La détection automatique reste active.</Text>
             {isError && <Text style={styles.notice}>Le serveur n’est pas joignable pour le moment. Les informations ci-dessous peuvent ne pas être à jour.</Text>}
             {relevant.length === 0 && <Text style={styles.explanation}>Aucune réservation à confirmer pour ce trajet.</Text>}
             </>}

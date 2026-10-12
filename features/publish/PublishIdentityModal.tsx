@@ -10,7 +10,7 @@ import type { EdgeInsets } from 'react-native-safe-area-context';
 interface PublishIdentityModalProps {
   kycModalVisible: boolean;
   closeKycModal: () => void;
-  kycChecklist: readonly [{ readonly icon: "shield-checkmark"; readonly title: "Didit sécurisé"; readonly subtitle: "Vérification hébergée par Didit"; }, { readonly icon: "id-card"; readonly title: "Pièce d'identité"; readonly subtitle: "Contrôle guidé depuis le parcours Didit"; }, { readonly icon: "time"; readonly title: "Validation rapide"; readonly subtitle: "Suivi automatique de votre vérification"; }];
+  kycChecklist: ReadonlyArray<{ icon: 'shield-checkmark' | 'id-card' | 'time'; title: string; subtitle: string }>;
   insets: EdgeInsets;
   isKycBusy: boolean;
   handleStartKyc: () => Promise<void>;

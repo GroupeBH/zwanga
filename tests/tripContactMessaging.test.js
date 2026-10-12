@@ -142,5 +142,10 @@ test('trip detail mounts the shared contact sheet only while visible and passes 
   assert.equal(sheet.props.contacts[0].bookingId, 'booking');
   assert.equal(sheet.props.contacts[0].phone, null);
   assert.equal(sheet.props.allowPhoneCall, false, 'detail keeps its existing WhatsApp option without adding calls');
+  assert.equal(sheet.props.phoneUnavailableHint, undefined);
+  const beforeBooking = TripContactModal({ ...props, bookingId: undefined });
+  assert.match(beforeBooking.props.phoneUnavailableHint, /Réservez.*WhatsApp/);
+  const withPhone = TripContactModal({ ...props, driverPhone: '+243999000111' });
+  assert.equal(withPhone.props.contacts[0].phone, '+243999000111');
   assert.equal(TripContactModal({ ...props, contactModalVisible: false }), null);
 });

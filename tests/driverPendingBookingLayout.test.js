@@ -30,6 +30,7 @@ test('pending booking takes priority over scrolling details without removing con
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
+    '@/features/ride-recovery/RideActionResult': { RideActionResult: 'Result' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const value = model();

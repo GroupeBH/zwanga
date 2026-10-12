@@ -10,6 +10,8 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
+import { currentUserTag, kycStatusTag } from '@/store/api/user/identityContracts';
+import { isKycDecisionNotification } from '@/features/identity/kycDecision';
 import { useGetMyTripRequestsQuery, useReleaseOverdueDriverMutation } from '@/store/api/tripRequestApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
@@ -226,6 +228,9 @@ export function NotificationHandler() {
       fallbackBody?: string | null,
     ) => {
       if (!canShowRequestNotification(data, currentUserRef.current)) return;
+      if (isKycDecisionNotification(data, currentUserRef.current?.id)) {
+        dispatch(baseApi.util.invalidateTags([currentUserTag, kycStatusTag]));
+      }
       if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
         (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
@@ -250,6 +255,8 @@ export function NotificationHandler() {
       dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
+      if (isKycDecisionNotification(data, currentUserRef.current?.id))
+        dispatch(baseApi.util.invalidateTags([currentUserTag, kycStatusTag]));
       if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
         (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (isTripInterruptionNotification(data)) {

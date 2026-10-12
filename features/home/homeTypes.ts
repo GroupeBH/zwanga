@@ -5,6 +5,8 @@ import {
   type BookingAutoProgressPayload
 } from '@/services/trackingSocket';
 import type { Booking, Trip, TripRequest } from '@/types';
+export type HomeSheetMode = 'requests' | 'trips';
+
 export type MapCoordinate = {
   latitude: number;
   longitude: number;
@@ -30,7 +32,6 @@ export type TripVehicleMapMarkerProps = {
   trip: Trip;
 };
 
-export type HomeSheetMode = 'trips' | 'requests';
 
 export type UserLocationMarkerState = {
   address: string;

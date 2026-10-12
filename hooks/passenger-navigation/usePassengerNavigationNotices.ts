@@ -83,7 +83,7 @@ export function usePassengerNavigationNotices({
         { language: 'fr-FR', rate: 0.95 },
       );
     });
-  }, [refetchBooking]);
+  }, [hasPresentedArrivalModalRef, isMountedRef, refetchBooking]);
 
   const presentNoShowNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedNoShowNoticeRef.current) return;
@@ -105,7 +105,7 @@ export function usePassengerNavigationNotices({
         },
       ],
     });
-  }, [showDialog]);
+  }, [hasPresentedNoShowNoticeRef, isMountedRef, setPickupNotice, setPickupNoticeCountdown, showDialog]);
 
   const presentBoardingUncertainNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedBoardingUncertainNoticeRef.current) return;
@@ -131,7 +131,8 @@ export function usePassengerNavigationNotices({
         },
       ],
     });
-  }, [bookingId, navigateBackSafely, showDialog]);
+  }, [bookingId, hasPresentedBoardingUncertainNoticeRef, isMountedRef, navigateBackSafely,
+    passengerLocationSubscriptionRef, setPickupNotice, setPickupNoticeCountdown, showDialog]);
 
   const presentPickupNotice = useCallback((event: BookingAutoProgressEvent) => {
     const context = pickupContext.current;
@@ -186,13 +187,6 @@ export function usePassengerNavigationNotices({
 
     // A direct passenger action already has inline feedback; do not add another modal.
     if (manualPickupRef.current) return;
-    showNotice({
-      variant: 'success',
-      icon: 'checkmark-circle',
-      title: 'Prise en charge confirm\u00e9e',
-      message: 'Votre prise en charge est confirm\u00e9e. Vous \u00eates maintenant en route vers votre destination.',
-    });
-
     void Speech.stop().finally(() => {
       if (!isMountedRef.current) return;
       Speech.speak('Votre prise en charge est confirm\u00e9e.', {
@@ -200,7 +194,7 @@ export function usePassengerNavigationNotices({
         rate: 0.95,
       });
     });
-  }, [showNotice]);
+  }, [hasPresentedBoardedNoticeRef, isMountedRef, setPickupNotice, setPickupNoticeCountdown]);
 
   const presentDestinationApproachNotice = useCallback((event: BookingAutoProgressEvent) => {
     if (
@@ -237,7 +231,8 @@ export function usePassengerNavigationNotices({
         rate: 0.95,
       });
     });
-  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus, showNotice]);
+  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus,
+    hasPresentedDestinationApproachNoticeRef, isMountedRef, showNotice]);
 
   return {
     presentBoardedNotice,

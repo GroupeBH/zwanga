@@ -3,6 +3,7 @@ import type { User } from '@/types';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { invitationHref, parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
+import { isKycDecisionNotification } from '@/features/identity/kycDecision';
 
 type NotificationData = Record<string, any>;
 
@@ -82,6 +83,7 @@ export const getTripUrl = (
 export function getNotificationHref(input: NotificationData, currentUser?: User): Href | null {
   const data = normalizeData(input);
   if (currentUser && !canShowRequestNotification(data, currentUser)) return null;
+  if (isKycDecisionNotification(data, currentUser?.id)) return '/(tabs)/profile';
   const type = getType(data);
   if (type === 'app_update') return '/app-update';
   if (type === 'wallet_transfer_in' || type === 'wallet_transfer_out') return '/wallet';

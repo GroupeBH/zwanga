@@ -83,6 +83,26 @@ test('Home action labels wrap without ellipsis or font shrinking and keep access
   assert.equal(styles.actionDock.maxHeight, undefined);
 });
 
+test('modern emerald search, clear blue publishing and orange ordering keep readable text', () => {
+  const { styles } = load('features/home/HomeHeader.styles.ts');
+  const contrast = (a, b) => {
+    const luminance = hex => {
+      const channels = hex.replace('#', '').match(/../g).map(x => parseInt(x, 16) / 255)
+        .map(x => x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
+      return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    };
+    const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  assert.equal(styles.actionSearchButton.backgroundColor, '#047857');
+  assert.equal(styles.actionPublishButton.backgroundColor, '#2563EB');
+  assert.equal(styles.actionRequestButton.backgroundColor, '#FFF1EA');
+  for (const [textColor, background] of [[styles.actionButtonText.color, styles.actionPublishButton.backgroundColor],
+    [styles.actionSearchText.color, styles.actionSearchButton.backgroundColor], [styles.actionRequestText.color, styles.actionRequestButton.backgroundColor]]) {
+    assert.ok(contrast(textColor, background) >= 4.5);
+  }
+});
+
 test('driver intent opens available clients, while passengers and unconfirmed roles keep trip search', () => {
   const calls = [];
   const props = { insets: { top: 20 }, firstName: 'Alex', unreadNotifications: 0,
@@ -99,37 +119,70 @@ test('driver intent opens available clients, while passengers and unconfirmed ro
   assert.deepEqual(calls, ['/requests', '/search', '/search']);
 });
 
-test('one compact toolbar replaces the duplicated driver title, subtitle, badge and second tab row', () => {
-  const modes = [], calls = [];
-  const props = { isDriver: true, effectiveTripsSheetOpen: true, sheetTitle: 'Trajets',
-    sheetSubtitle: '10 trajets à parcourir', availableDriverRequests: Array(12).fill({ id: 'r' }), latestTrips: [],
-    setHomeSheetMode: mode => modes.push(mode), openSheetIndex: () => calls.push('all'),
+test('driver tabs default to Clients, allow published trips and never expose clients to passengers', () => {
+  const calls = [];
+  const props = { isDriver: true, effectiveTripsSheetOpen: true, sheetTitle: 'Clients',
+    availableDriverRequests: [{ id: 'r' }], latestTrips: [{ id: 'trip' }],
+    setHomeSheetMode: mode => calls.push(mode),
+    openSheetIndex: () => calls.push('all'),
     toggleTripsSheet: () => calls.push('toggle') };
   const tree = HomeTripsSheet.type(props);
   const elements = nodes(tree);
-  assert.equal(text(tree), 'TrajetsClientsVoir tout');
+  assert.equal(text(tree), 'ClientsTrajetsVoir tout');
   const tabs = elements.filter(node => node.props.accessibilityRole === 'tab');
-  tabs.forEach(tab => tab.props.onPress());
-  assert.deepEqual(modes, ['trips', 'requests']);
-  assert.equal(tabs[0].props.accessibilityState.selected, true);
-  const all = elements.find(node => node.props.accessibilityLabel === 'Voir tous les trajets');
+  assert.deepEqual(tabs.map(text), ['Clients', 'Trajets']);
+  assert.deepEqual(tabs.map(node => node.props.accessibilityState.selected), [true, false]);
+  assert.deepEqual(elements.filter(node => node.type === 'List').map(node => node.props.data), [props.availableDriverRequests]);
+  const all = elements.find(node => node.props.accessibilityLabel === 'Voir tous les clients');
   all.props.onPress();
-  const toggle = elements.find(node => node.props.accessibilityLabel === 'Masquer les trajets');
+  const toggle = elements.find(node => node.props.accessibilityLabel === 'Masquer les clients');
   assert.equal(toggle.props.accessibilityState.expanded, true);
   toggle.props.onPress(); assert.deepEqual(calls, ['all', 'toggle']);
+  tabs[1].props.onPress(); tabs[0].props.onPress();
+  assert.deepEqual(calls.slice(2), ['trips', 'requests']);
+  const trips = nodes(HomeTripsSheet.type({ ...props, isRequestsSheetMode: false }));
+  assert.deepEqual(trips.filter(node => node.type === 'List').map(node => node.props.data), [props.latestTrips]);
+  assert.deepEqual(trips.filter(node => node.props.accessibilityRole === 'tab')
+    .map(node => node.props.accessibilityState.selected), [false, true]);
+  assert.ok(trips.some(node => node.props.accessibilityLabel === 'Voir tous les trajets'));
   const requests = nodes(HomeTripsSheet.type({ ...props, isRequestsSheetMode: true }));
-  assert.ok(requests.some(node => node.props.accessibilityLabel === 'Voir toutes les commandes'));
-  assert.ok(requests.some(node => node.props.accessibilityLabel === 'Masquer les commandes'));
+  assert.ok(requests.some(node => node.props.accessibilityLabel === 'Voir tous les clients'));
+  assert.ok(requests.some(node => node.props.accessibilityLabel === 'Masquer les clients'));
   const passenger = nodes(HomeTripsSheet.type({ ...props, isDriver: false, isRequestsSheetMode: true }));
   assert.equal(passenger.some(node => node.props.accessibilityRole === 'tab'), false);
-  assert.equal(passenger.some(node => node.type === 'List'), false, 'stale driver records stay hidden');
+  assert.deepEqual(passenger.filter(node => node.type === 'List').map(node => node.props.data), [props.latestTrips], 'stale driver records stay hidden');
+  const empty = HomeTripsSheet.type({ ...props, availableDriverRequests: [], sheetEmpty: true });
+  assert.equal(nodes(empty).some(node => node.type === 'List'), false, 'no fallback to other drivers’ trips');
+  assert.match(text(empty), /Pas de client/);
+  assert.ok(nodes(HomeTripsSheet.type({ ...props, effectiveTripsSheetOpen: false }))
+    .some(node => node.props.accessibilityLabel === 'Afficher les clients'));
+  const active = HomeTripsSheet.type({ ...props, effectiveTripsSheetOpen: false,
+    isHomeSheetLockedRetracted: true, sheetTitle: 'Trajet en cours' });
+  assert.equal(nodes(active).some(node => node.props.accessibilityRole === 'tab'), false);
+  assert.match(text(active), /Trajet en cours/);
+});
+
+test('compact Home tabs keep 44-point touch targets and allow large text without an extra header row', () => {
+  const { styles } = load('features/home/HomeTripsSheet.styles.ts');
+  assert.ok(styles.sheetModeOption.minHeight >= 44);
+  assert.equal(styles.sheetModeOption.height, undefined);
+  assert.equal(styles.sheetHeader.flexWrap, 'wrap');
+  const tabs = nodes(HomeTripsSheet.type({ isDriver: true, effectiveTripsSheetOpen: false,
+    latestTrips: [], availableDriverRequests: [] })).filter(node => node.props.accessibilityRole === 'tab');
+  for (const tab of tabs) {
+    assert.ok(tab.props.accessibilityHint);
+    for (const label of nodes(tab).filter(node => node.type === 'Text')) {
+      assert.equal(label.props.numberOfLines, undefined);
+      assert.notEqual(label.props.allowFontScaling, false);
+    }
+  }
 });
 
 test('wider departures have an honest scope hint only in the expanded trips list', () => {
-  const props = { isDriver: true, effectiveTripsSheetOpen: true, latestTrips: [{ id: 'trip' }], availableDriverRequests: [],
+  const props = { isDriver: false, effectiveTripsSheetOpen: true, latestTrips: [{ id: 'trip' }], availableDriverRequests: [],
     suggestionScopeLabel: 'Autres départs · moins de 10 km, sous 48 h' };
   assert.match(text(HomeTripsSheet.type(props)), /10 km.*48 h/);
-  assert.doesNotMatch(text(HomeTripsSheet.type({ ...props, isRequestsSheetMode: true })), /10 km/);
+  assert.doesNotMatch(text(HomeTripsSheet.type({ ...props, isDriver: true })), /10 km/);
   assert.doesNotMatch(text(HomeTripsSheet.type({ ...props, effectiveTripsSheetOpen: false })), /10 km/);
 });
 
@@ -173,7 +226,7 @@ test('expanded trips and requests wrap their content without fixed height or los
   for (const requests of [true, false]) {
     const onLayout = () => {};
     const props = { sheetBottomOffset: 96, sheetHeight: 298, effectiveTripsSheetOpen: true, onSheetLayout: onLayout,
-      isDriver: true, isRequestsSheetMode: requests, availableDriverRequests: [{ id: 'r' }], latestTrips: [{ id: 't' }], bookedTripIds: new Set() };
+      isDriver: requests, availableDriverRequests: [{ id: 'r' }], latestTrips: [{ id: 't' }], bookedTripIds: new Set() };
     const tree = HomeTripsSheet.type(props);
     assert.equal(Object.assign({}, ...tree.props.style).height, undefined);
     assert.equal(Object.assign({}, ...tree.props.style).bottom, 96);

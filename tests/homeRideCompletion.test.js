@@ -47,10 +47,14 @@ test('Home immediately unlocks after dropoff, independent of stale tracking and 
     props.activeBookings = [{ ...booking, ...end }];
     props.completedBookingTripIds = new Set(['active']);
     props.refreshedPassengerTrip = trip;
-    const result = render();
-    assert.equal(result.isHomeSheetLockedRetracted, false);
-    assert.equal(result.ongoingBookedTrip, null);
-    assert.deepEqual(result.homeMapTrips.map(t => t.id), ['nearby']);
+    for (const isDriver of [true, false]) {
+      props.isDriver = isDriver;
+      const result = render();
+      assert.equal(result.isHomeSheetLockedRetracted, false);
+      assert.equal(result.ongoingBookedTrip, null);
+      assert.deepEqual(result.homeMapTrips.map(t => t.id), isDriver ? [] : ['nearby'],
+        'ending a personal ride restores discovery for the current role, not cached public cars for a driver');
+    }
   }
   hooks.unmount();
 });

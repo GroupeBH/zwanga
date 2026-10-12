@@ -126,7 +126,7 @@ function ArrivalPaymentSession() {
     state.arrivalBooking?.trip?.arrival?.address ??
     state.arrivalBooking?.trip?.arrival?.name ??
     'Votre destination';
-  const actionLabel = !state.selectedMode ? 'Choisir un mode de paiement' : state.paymentAlreadySucceeded
+  const actionLabel = state.waitingForArrivalConfirmation ? 'Synchronisation de l’arrivée…' : !state.selectedMode ? 'Choisir un mode de paiement' : state.paymentAlreadySucceeded
     ? state.isBeforeArrival ? 'Continuer le trajet' : 'Terminer'
     : state.selectedMode === 'cash'
       ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Terminer · paiement en espèces'
@@ -144,6 +144,7 @@ function ArrivalPaymentSession() {
   const isPaymentPhoneInvalid =
     needsMobileMoneyPhone && (!state.mobileMoneyPhone || !DRC_PAYMENT_PHONE_REGEX.test(state.mobileMoneyPhone));
   const isPayButtonDisabled =
+    state.waitingForArrivalConfirmation ||
     state.isBusy || submission.isSubmitting ||
     !state.selectedMode ||
     state.hasPendingProviderPayment ||
@@ -189,6 +190,8 @@ function ArrivalPaymentSession() {
                   completionSummary={receipt}
                   arrivalBooking={state.arrivalBooking}
                   isBeforeArrival={state.isBeforeArrival}
+                  waitingForArrivalConfirmation={state.waitingForArrivalConfirmation}
+                  onRefreshArrival={() => { void Promise.resolve().then(() => state.refetchBookings()).catch(() => undefined); }}
                   destination={destination}
                   paymentAmount={state.paymentAmount}
                   paymentCurrency={state.paymentCurrency}
@@ -229,6 +232,7 @@ function ArrivalPaymentSession() {
                   selectedMode={state.selectedMode}
                   actionLabel={actionLabel}
                   isPayButtonDisabled={isPayButtonDisabled}
+                  waitingForArrivalConfirmation={state.waitingForArrivalConfirmation}
                   verification={monitoring.verification}
                   paymentError={state.paymentError}
                   onPay={submission.handlePayment}

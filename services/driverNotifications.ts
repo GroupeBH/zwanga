@@ -11,6 +11,9 @@ import { driverRingDeadline } from '@/features/notifications/driverRinging';
 import { isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
 
 export const DRIVER_CHANNEL = 'booking-ring-v2';
+// Android 8+ reads the channel; Android 7 reads the notification itself.
+// Keep both in sync without resetting existing user channel preferences.
+const DRIVER_VIBRATION_PATTERN = [400, 300, 700, 300, 700, 300] as const;
 const actionKey = (invitation: DriverInvitation) => `driver-action-v1:${invitation.kind}:${invitation.id}`;
 export const invitationNotificationId = (invitation: DriverInvitation) => `driver-${invitation.kind}-${invitation.id}`;
 // Foreground delivery and the headless task can receive the same push. Never
@@ -41,7 +44,7 @@ export async function configureDriverNotifications() {
   ]);
   if (Platform.OS === 'android') await notifee.createChannel({ id: DRIVER_CHANNEL,
     name: 'Réservations et commandes acceptées', importance: AndroidImportance.HIGH,
-    sound: 'driver_ring', vibration: true, vibrationPattern: [400, 300, 700, 300, 700, 300],
+    sound: 'driver_ring', vibration: true, vibrationPattern: [...DRIVER_VIBRATION_PATTERN],
     visibility: AndroidVisibility.PRIVATE });
 }
 
@@ -73,6 +76,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
         visibility: AndroidVisibility.PRIVATE, pressAction: { id: 'default', launchActivity: 'default' },
         onlyAlertOnce: true, autoCancel: true, ongoing: true,
         loopSound: true, lightUpScreen: true,
+        vibrationPattern: [...DRIVER_VIBRATION_PATTERN],
         sound: 'driver_ring', style: { type: AndroidStyle.BIGTEXT, text: body },
         // Native timeout: works without a living JS timer while the phone sleeps.
         timeoutAfter: Math.max(1, deadline - Date.now()),

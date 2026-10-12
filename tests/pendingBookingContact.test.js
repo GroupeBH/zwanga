@@ -4,7 +4,7 @@ const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
-const { getDriverBookingContact, getNavigationContacts } = loader()('features/navigation/navigationContacts.ts');
+const { getDriverBookingContact, getPassengerBookingContact, getNavigationContacts } = loader()('features/navigation/navigationContacts.ts');
 const trip = Object.freeze({ id: 'trip', driverId: 'driver', status: 'ongoing', price: 1000 });
 const pending = Object.freeze({ id: 'booking-a', tripId: trip.id, passengerId: 'holder-a', passengerName: 'Titulaire A',
   passengerPhone: '0999000111', status: 'pending', numberOfSeats: 3 });
@@ -12,6 +12,58 @@ const other = Object.freeze({ ...pending, id: 'booking-b', passengerId: 'holder-
 const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
 const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join('') : words(node?.props?.children ?? '');
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } };
+
+test('the reservation holder can contact the driver while pending, without fabricating a number', () => {
+  const reservedTrip = { ...trip, driver: { id: 'driver', phone: '+243999000111' } };
+  const context = { role: 'passenger', trip: reservedTrip, booking: pending, userId: pending.passengerId };
+  const [contact] = getNavigationContacts(context);
+  assert.equal(contact.phone, reservedTrip.driver.phone);
+  assert.equal(contact.bookingId, pending.id);
+  assert.match(contact.detail, /en attente/);
+  assert.equal(pending.status, 'pending');
+  assert.deepEqual(getNavigationContacts({ ...context, userId: 'stranger' }), []);
+  for (const status of ['cancelled', 'rejected', 'completed', 'expired', 'no_show']) {
+    assert.deepEqual(getNavigationContacts({ ...context, booking: { ...pending, status } }), []);
+  }
+  for (const status of ['completed', 'cancelled']) {
+    assert.deepEqual(getNavigationContacts({ ...context, trip: { ...reservedTrip, status } }), []);
+  }
+  assert.deepEqual(getNavigationContacts({ ...context, trip: { ...reservedTrip,
+    status: 'upcoming', departureTime: '2000-01-01', startedAt: null } }), []);
+  const [withoutPhone] = getNavigationContacts({ ...context, trip: { ...trip, driver: null } });
+  assert.equal(withoutPhone.phone, null);
+});
+
+test('only the matching driver in an own booking can supply a pending phone missing from trip detail', () => {
+  const bookedTrip = { ...trip, driver: { id: trip.driverId, phone: '+33123456789' } };
+  const booked = { ...pending, trip: bookedTrip };
+  assert.equal(getPassengerBookingContact(trip, booked, pending.passengerId).phone, '+33123456789');
+  for (const patch of [{ id: 'other-trip' }, { driverId: 'other-driver' }, { driver: { id: 'other-driver', phone: '+33123456789' } }]) {
+    assert.equal(getPassengerBookingContact(trip, { ...booked, trip: { ...bookedTrip, ...patch } }, pending.passengerId).phone, null);
+  }
+});
+
+test('pending reservation cards offer contact without unlocking tracking or accepting the ride', () => {
+  const { BookingListCard } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '@/components/trip/CompactTripCard': { CompactTripCard: 'TripCard' },
+  })('features/bookings/BookingListCard.tsx');
+  const calls = [], booked = { ...pending, trip: { ...trip, departureTime: '2099-01-01',
+    driver: { id: trip.driverId, phone: '+243999000111' } } };
+  const props = { booking: booked, activeTab: 'active', router: { push: route => calls.push(['navigate', route]) },
+    onContact: booking => calls.push(['contact', booking.id]), handleCancel: id => calls.push(['cancel', id]), isCancelling: false };
+  const buttons = () => all(BookingListCard.type(props)).filter(n => n.type === 'Button');
+  assert.deepEqual(buttons().map(words), ['Contacter', 'Annuler']);
+  buttons().find(n => words(n) === 'Contacter').props.onPress();
+  assert.deepEqual(calls, [['contact', pending.id]]);
+  props.booking = { ...booked, status: 'accepted' };
+  assert.ok(buttons().some(n => words(n) === 'Suivre le trajet'), 'existing accepted tracking preserved');
+  for (const status of ['cancelled', 'rejected', 'completed', 'expired']) {
+    props.booking = { ...booked, status };
+    assert.equal(buttons().some(n => words(n) === 'Contacter'), false);
+  }
+  props.booking = booked; props.activeTab = 'history';
+  assert.equal(buttons().some(n => words(n) === 'Contacter'), false);
+});
 
 test('the owner can contact a pending reservation holder without accepting any of their seats', () => {
   const context = { role: 'driver', userId: 'driver', trip, bookings: [pending, other] };

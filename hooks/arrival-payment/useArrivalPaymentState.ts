@@ -9,6 +9,8 @@ import { PaymentChannel, PaymentCompletionSummary } from '../../features/arrival
 import { sharedBookingsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useNearArrivalPayment } from './useNearArrivalPayment';
+import { selectDeclaredArrivalBooking } from '@/features/arrival-payment/declaredArrivalPayment';
+import type { RideOutboxEntry } from '@/features/ride-recovery/rideRecoveryModel';
 import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
 import { usePaymentPersistence } from './usePaymentPersistence';
 import { useBookingPaymentMode } from './useBookingPaymentMode';
@@ -33,6 +35,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import type { Booking } from '@/types';
 const EMPTY_BOOKINGS: Booking[] = [];
+const EMPTY_DECLARATIONS: RideOutboxEntry[] = [];
 
 
 
@@ -44,6 +47,8 @@ export function useArrivalPaymentState() {
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
+  const declarations = useAppSelector(state => state.rideRecovery.userId === user?.id
+    ? state.rideRecovery.entries : EMPTY_DECLARATIONS);
   const { storedState, isStoredStateLoaded, persistBookingState, isSessionCurrent } = usePaymentPersistence(user?.id, isAuthenticated);
   const [deferredBookingId, setDeferredBookingId] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<PaymentChannel>('mpesa');
@@ -76,8 +81,17 @@ export function useArrivalPaymentState() {
     if (pinnedArrival) return pinnedArrival;
     return selectArrivedPaymentBooking(bookings, storedState);
   }, [bookings, isAuthenticated, isStoredStateLoaded, storedState]);
-  const arrivalBooking = arrivedBooking ?? earlyBooking;
-  const isBeforeArrival = Boolean(arrivalBooking && !hasPassengerArrived(arrivalBooking));
+  const declaredBooking = useMemo(() => isAuthenticated && isStoredStateLoaded
+    ? selectDeclaredArrivalBooking(bookings, declarations, user?.id, storedState) : null,
+  [bookings, declarations, isAuthenticated, isStoredStateLoaded, storedState, user?.id]);
+  // Do not replace an in-flight payment with another booking. Otherwise prefer the
+  // reservation the passenger has just confirmed over an older payment reminder.
+  const arrivalBooking = activeBookingIdRef.current === arrivedBooking?.id && deferredBookingId !== arrivedBooking?.id
+    ? arrivedBooking : declaredBooking ?? arrivedBooking ?? earlyBooking;
+  // Wait only for authoritative server arrival, not a second (driver) declaration.
+  // A durable offline tap may open the sheet, but must not enable payment on its own.
+  const waitingForArrivalConfirmation = Boolean(declaredBooking && arrivalBooking?.id === declaredBooking.id && !hasPassengerArrived(declaredBooking));
+  const isBeforeArrival = Boolean(arrivalBooking && !waitingForArrivalConfirmation && !hasPassengerArrived(arrivalBooking));
 
   const interruptionChoice = useMemo(() => {
     if (!isAuthenticated || !isAppActive) return null;
@@ -98,7 +112,7 @@ export function useArrivalPaymentState() {
     isFetching: isWalletFetching,
     refetch: refetchWallet,
   } = useGetMyWalletQuery(undefined, {
-    skip: !isAuthenticated || !arrivalBooking,
+    skip: !isAuthenticated || !arrivalBooking || waitingForArrivalConfirmation,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -112,7 +126,7 @@ export function useArrivalPaymentState() {
     tripId: arrivalBooking?.tripId,
     transactionId: arrivalBooking?.paymentTransactionId,
   }, {
-    skip: !isAuthenticated || !arrivalBooking,
+    skip: !isAuthenticated || !arrivalBooking || waitingForArrivalConfirmation,
     skipPollingIfUnfocused: true,
     refetchOnFocus: true,
     refetchOnReconnect: false,
@@ -133,7 +147,7 @@ export function useArrivalPaymentState() {
     isInitiatingWalletTopUp ||
     isCheckingPayment;
 
-  const paymentAmount = normalizeAmount(arrivalBooking?.paymentAmount);
+  const paymentAmount = waitingForArrivalConfirmation ? null : normalizeAmount(arrivalBooking?.paymentAmount);
   const paymentCurrency = arrivalBooking?.paymentCurrency ?? 'CDF';
   const walletBalance = Math.max(0, (normalizeAmount(wallet?.account.balance) ?? 0) - (normalizeAmount(wallet?.account.reservedCashCommissionBalance) ?? 0));
   const requiredPoints = paymentAmount === null
@@ -150,9 +164,9 @@ export function useArrivalPaymentState() {
       ? Math.min(100, Math.round((amountCoveredByPoints / paymentAmount) * 100))
       : 0;
   const arePointsRecommended = pointsCoveragePercentage >= 75;
-  const paymentAlreadySucceeded =
+  const paymentAlreadySucceeded = !waitingForArrivalConfirmation && (
     arrivalBooking?.paymentStatus === 'succeeded' || paymentAmount === 0 ||
-    (arrivalBooking?.paymentMode === 'cash' && Boolean(arrivalBooking.cashReceivedAt));
+    (arrivalBooking?.paymentMode === 'cash' && Boolean(arrivalBooking.cashReceivedAt)));
   const activeStoredState = arrivalBooking ? storedState[arrivalBooking.id] : undefined;
   const { selectedMode, setSelectedMode, reportPaymentFailure, canChangeFailedPaymentMode } =
     useBookingPaymentMode(arrivalBooking, activeStoredState, isBusy);
@@ -210,6 +224,7 @@ export function useArrivalPaymentState() {
     isAuthenticated,
     user,
     arrivalBooking,
+    waitingForArrivalConfirmation,
     isBeforeArrival,
     deferEarlyPayment,
     activeBookingIdRef,

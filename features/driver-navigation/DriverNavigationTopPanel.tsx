@@ -2,6 +2,7 @@ import { TripShareAction } from '@/components/trip/TripShareAction';
 import { Colors } from '@/constants/styles';
 import { NavigationAssistanceButtons } from '@/features/navigation/NavigationAssistanceButtons';
 import { RideRecoveryControl } from '@/features/ride-recovery/RideRecoveryControl';
+import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import type { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import type { useDriverNavigationController } from '@/hooks/driver-navigation/useDriverNavigationController';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,6 +74,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
     </ScrollView>)}
     {recovery}
+    <RideActionResult actor="driver" tripId={data.tripId} active={data.isScreenActive} />
   </View>;
 }
 

@@ -1,4 +1,5 @@
 import type { Booking, Trip } from '@/types';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 
 export interface NavigationContact {
   id: string;
@@ -50,17 +51,35 @@ export function getDriverBookingContact(trip: Trip | undefined, booking: Booking
   };
 }
 
+/** Pending reservations permit contact, but do not grant live tracking. */
+export function getPassengerBookingContact(trip: Trip | undefined, booking: Booking | undefined,
+  userId: string | undefined): NavigationContact | null {
+  if (!trip || !booking || !userId || booking.passengerId !== userId || booking.tripId !== trip.id ||
+      trip.driverId === userId || !trip.driverId ||
+      !['pending', 'accepted', 'boarding_uncertain'].includes(booking.status)) return null;
+  if (booking.status === 'pending' &&
+      (!['upcoming', 'ongoing'].includes(trip.status) || isTripExpired(trip))) return null;
+  // Own bookings already include an authorized driver projection. It may arrive
+  // before the detail query is refreshed after creating the reservation.
+  const bookingDriver = booking.trip?.id === trip.id && booking.trip.driverId === trip.driverId &&
+    booking.trip.driver?.id === trip.driverId ? booking.trip.driver : undefined;
+  return {
+    id: trip.driverId,
+    bookingId: booking.id,
+    name: trip.driverName || [trip.driver?.firstName, trip.driver?.lastName].filter(Boolean).join(' ') || 'Votre conducteur',
+    phone: usablePhone(trip.driver?.phone) ?? usablePhone(bookingDriver?.phone),
+    detail: booking.status === 'pending' ? 'Réservation en attente · Vous pouvez déjà échanger' : 'Votre conducteur',
+  };
+}
+
 /** Only reuse participant details already authorized and returned by the booking API. */
 export function getNavigationContacts(context: NavigationContactContext): NavigationContact[] {
   const { role, trip, bookings = [] } = context;
   if (!trip || !isNavigationParticipant(context)) return [];
-  if (role === 'passenger') return [{
-    id: trip.driverId,
-    bookingId: context.booking?.id,
-    name: trip.driverName || [trip.driver?.firstName, trip.driver?.lastName].filter(Boolean).join(' ') || 'Votre conducteur',
-    phone: usablePhone(trip.driver?.phone),
-    detail: 'Votre conducteur',
-  }];
+  if (role === 'passenger') {
+    const person = getPassengerBookingContact(trip, context.booking, context.userId);
+    return person ? [person] : [];
+  }
   const contacts = new Map<string, NavigationContact>();
   for (const booking of bookings) {
     const person = getDriverBookingContact(trip, booking, context.userId);

@@ -1,6 +1,7 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { readProfileState } from '@/features/profile/profileStateContract';
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
+import { AWS_KYC_MOBILE_ENABLED } from '@/features/identity/kycProvider';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { useActivateDriverMutation, useRequestDriverOnboardingMutation } from '@/store/api/userApi';
 import { useAppDispatch } from '@/store/hooks';
@@ -67,7 +68,9 @@ export function useProfileOnboarding({ currentUser, isScreenActive, isProfileSta
         return;
       }
       if (!driverJourney) {
-        if (state.identity.status === 'approved' || state.identity.status === 'pending') {
+        if (AWS_KYC_MOBILE_ENABLED && state.identity.status === 'pending' && state.identity.provider === 'aws') {
+          await startDiditKyc();
+        } else if (state.identity.status === 'approved' || state.identity.status === 'pending') {
           showDialog({ variant: 'info',
             title: state.identity.status === 'approved' ? 'Identité vérifiée' : 'Vérification en cours',
             message: state.identity.status === 'approved'
@@ -114,6 +117,10 @@ export function useProfileOnboarding({ currentUser, isScreenActive, isProfileSta
         }
         case 'contact_support':
           router.push('/support');
+          break;
+        case 'wait':
+          // AWS document upload may be complete while its guided capture is still missing.
+          if (AWS_KYC_MOBILE_ENABLED && state.identity.provider === 'aws') await startDiditKyc();
           break;
         // "wait" already refreshed the status; no new verification or mutation.
         // "none" also covers automatic activation during the intent request.

@@ -1,4 +1,4 @@
-import { getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
+import { EMPTY_HOME_TRIPS, getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import type { FeaturedDriverReservation } from '@/features/home/homeTypes';
 import { getHomeTripSuggestionTier, HOME_GENERAL_SUGGESTION_TIER, rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
 import { isActivePassengerBooking, ownsTrip } from '@/features/activity/tripParticipation';
@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
+import type { useHomeDiscoveryMode } from './useHomeDiscoveryMode';
 import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 import type { useHomeTripFeed } from '@/hooks/home/useHomeTripFeed';
@@ -34,7 +35,8 @@ type Props =
     | 'driverReservationHighlightTrip'
     | 'driverReservationHighlightBookings'
     | 'myDriverTrips'
-  > & { liveUserCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
+  > & Pick<ReturnType<typeof useHomeDiscoveryMode>, 'isRequestsSheetMode'>
+  & { liveUserCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomeTripSelection({
   remoteTrips,
   discoveryUpdatedAt,
@@ -46,6 +48,7 @@ export function useHomeTripSelection({
   refreshedPassengerTrip,
   ongoingDriverTrip,
   isDriver,
+  isRequestsSheetMode = isDriver,
   isScreenActive,
   driverReservationHighlightTrip,
   driverReservationHighlightBookings,
@@ -57,7 +60,12 @@ export function useHomeTripSelection({
   const latitude = coordinate?.latitude;
   const longitude = coordinate?.longitude;
   const hasTripLocation = Boolean(coordinate);
+  const showRequests = isDriver && isRequestsSheetMode;
   const latestTrips = useMemo(() => {
+    // The active discovery tab controls both cards and markers, even offline.
+    // Personal ongoing rides are selected independently below.
+    if (showRequests) return EMPTY_HOME_TRIPS;
+
     const tripsById = new Map<string, Trip>();
     (remoteTrips ?? storedTrips ?? []).forEach((trip) => tripsById.set(trip.id, trip));
     activeBookings.forEach((booking) => {
@@ -88,6 +96,7 @@ export function useHomeTripSelection({
     // Freshness signals intentionally invalidate the clock-based filter even for unchanged records.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    showRequests,
     remoteTrips,
     storedTrips,
     activeBookings,
@@ -175,6 +184,7 @@ export function useHomeTripSelection({
   }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips, hiddenHomePriorities]);
 
   const homeMapTrips = useMemo(
+    // Keep personal ride tracking, including a driver travelling as a passenger.
     () => (activeHomeTrip ? [activeHomeTrip] : latestTrips),
     [activeHomeTrip, latestTrips],
   );

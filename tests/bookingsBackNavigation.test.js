@@ -30,7 +30,7 @@ function screen(t, canGoBack = true) {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeInDown: {} },
-    '../hooks/bookings/useBookingCards': { useBookingCards: () => ({ renderBookingListItem() {} }) },
+    '../hooks/bookings/useBookingCards': { useBookingCards: actions => { state.onContact = actions.onContact; return { renderBookingListItem() {} }; } },
     '@/hooks/bookings/useBookingsFeed': { useBookingsFeed: () => feed },
     '@/components/ui/HistoryPaginationFooter': { HistoryPaginationFooter: 'Footer' },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: value => calls.push(['dialog', value]) }) },
@@ -42,8 +42,25 @@ function screen(t, canGoBack = true) {
   const render = () => hooks.render(BookingsScreen);
   const button = tree => nodes(tree).find(node => node.props.accessibilityLabel === 'Retour');
   t.after(() => hooks.unmount());
-  return { state, calls, hooks, render, button };
+  return { state, calls, hooks, render, button, feed };
 }
+
+test('reservation list opens the correct pending driver contact and removes it after cancellation', t => {
+  const app = screen(t);
+  const pending = { id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'pending',
+    trip: { id: 'trip', driverId: 'driver', status: 'upcoming', departureTime: '2099-01-01',
+      driver: { id: 'driver', phone: '+243999000111' } } };
+  app.feed.activeBookings = [pending];
+  app.render(); app.state.onContact(pending);
+  let modal = nodes(app.render()).find(n => n.type === 'ContactModal');
+  assert.equal(modal.props.contacts[0].phone, pending.trip.driver.phone);
+  assert.equal(modal.props.contacts[0].bookingId, pending.id);
+  assert.deepEqual(app.calls, [], 'opening contact must not accept, cancel, navigate or launch WhatsApp');
+  app.feed.activeBookings = [{ ...pending, status: 'cancelled' }];
+  modal = nodes(app.render()).find(n => n.type === 'ContactModal');
+  assert.deepEqual(modal.props.contacts, []);
+  modal.props.onClose(); assert.equal(nodes(app.render()).some(n => n.type === 'ContactModal'), false);
+});
 
 test('reservation list Back preserves ordinary navigation when a previous screen exists', t => {
   const app = screen(t); const button = app.button(app.render());

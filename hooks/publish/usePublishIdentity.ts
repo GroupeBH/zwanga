@@ -44,9 +44,9 @@ export function usePublishIdentity({
   const isKycBusy = isStartingDiditKyc;
 
   const kycChecklist = [
-    { icon: 'shield-checkmark', title: 'Didit sécurisé', subtitle: 'Vérification hébergée par Didit' },
-    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Contrôle guidé depuis le parcours Didit' },
-    { icon: 'time', title: 'Validation rapide', subtitle: 'Suivi automatique de votre vérification' },
+    { icon: 'shield-checkmark', title: 'Vérification sécurisée', subtitle: 'Votre identité et votre visage sont contrôlés' },
+    { icon: 'id-card', title: "Pièce d'identité", subtitle: 'Présentez votre document original' },
+    { icon: 'time', title: 'Suivi de la vérification', subtitle: 'Une notification après la décision' },
   ] as const;
 
   return {

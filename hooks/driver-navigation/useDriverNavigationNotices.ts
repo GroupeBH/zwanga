@@ -111,13 +111,6 @@ export function useDriverNavigationNotices({
         setPickupBypassAction(null);
       }
 
-      showDialog({
-        variant: 'success',
-        icon: 'checkmark-circle',
-        title: 'Passager embarqu\u00e9',
-        message: `${passengerName} a \u00e9t\u00e9 embarqu\u00e9. Vous pouvez continuer vers sa destination.`,
-      });
-
       void Speech.stop().finally(() => {
         if (!isMountedRef.current) return;
         Speech.speak(`${passengerName} a \u00e9t\u00e9 embarqu\u00e9.`, {
@@ -126,7 +119,7 @@ export function useDriverNavigationNotices({
         });
       });
     },
-    [getPassengerNameForBooking, showDialog, isMountedRef, pickupBypassConfirmationRef, pickupNoticeRef,
+    [getPassengerNameForBooking, isMountedRef, pickupBypassConfirmationRef, pickupNoticeRef,
       presentedPassengerBoardedKeysRef, setPickupBypassAction, setPickupBypassConfirmation, setPickupNotice, setPickupNoticeCountdown],
   );
 
@@ -144,13 +137,6 @@ export function useDriverNavigationNotices({
       presentedPassengerDestinationKeysRef.current.add(key);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
 
-      showDialog({
-        variant: 'success',
-        icon: 'flag',
-        title: 'Destination atteinte',
-        message: `Nous sommes arriv\u00e9s au point de destination de ${passengerName}.`,
-      });
-
       void Speech.stop().finally(() => {
         if (!isMountedRef.current) return;
         Speech.speak(`Nous sommes arriv\u00e9s au point de destination de ${passengerName}.`, {
@@ -159,7 +145,7 @@ export function useDriverNavigationNotices({
         });
       });
     },
-    [getPassengerNameForBooking, showDialog, isMountedRef, presentedPassengerDestinationKeysRef],
+    [getPassengerNameForBooking, isMountedRef, presentedPassengerDestinationKeysRef],
   );
 
   const presentPassengerDestinationApproachNotice = useCallback(

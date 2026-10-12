@@ -10,7 +10,7 @@ export interface KycDocument {
   cniBackUrl?: string | null;
   selfieUrl?: string | null;
   status: KycStatus;
-  provider?: 'legacy' | 'didit';
+  provider?: 'legacy' | 'didit' | 'aws';
   rejectionReason?: string | null;
   diditSessionId?: string | null;
   diditSessionNumber?: number | null;
@@ -42,7 +42,7 @@ export interface ProfileSummary {
 export interface ProfileState {
   version: 1;
   userId: string;
-  identity: { status: 'not_started' | KycStatus; rejectionReason: string | null };
+  identity: { status: 'not_started' | KycStatus; rejectionReason: string | null; provider?: KycDocument['provider'] };
   driver: {
     status: 'not_requested' | 'identity_required' | 'identity_pending' | 'vehicle_required' | 'ready_to_activate' | 'active' | 'restricted';
     nextAction: 'start' | 'verify_identity' | 'add_vehicle' | 'wait' | 'activate' | 'none' | 'contact_support';

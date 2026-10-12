@@ -47,6 +47,7 @@ test('Home keeps the map and GPS lifecycle during brief AppState transitions whi
   const app = controllerFixture();
   const workHooks = ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity', 'useHomeTracking', 'useHomeMap', 'useHomeUserLocation'];
   assert.equal(app.render().shouldRenderHomeMap, true);
+  assert.equal(app.received.useHomeTripFeed.isDriver, true, 'discovery receives the authenticated role');
   for (let i = 0; i < 50; i++) {
     app.state.active = false;
     const inactive = app.render();
@@ -72,6 +73,22 @@ test('leaving the Home route still removes its map and releases the location lif
   assert.equal(app.received.locationOptions.autoRequest, false);
   app.state.focused = true;
   assert.equal(app.render().shouldRenderHomeMap, true);
+  app.hooks.unmount();
+});
+
+test('the same driver selection reaches discovery, cards and map without remounting the native map', () => {
+  const app = controllerFixture();
+  const destinations = ['useHomeTripFeed', 'useHomeTripSelection', 'useHomeMap', 'useHomeSheet'];
+  assert.equal(app.render().isRequestsSheetMode, true);
+  for (const name of destinations) assert.equal(app.received[name].isRequestsSheetMode, true, name);
+  app.render().setHomeSheetMode('trips');
+  assert.equal(app.render().isRequestsSheetMode, false);
+  for (const name of destinations) assert.equal(app.received[name].isRequestsSheetMode, false, name);
+  assert.equal(app.render().shouldRenderHomeMap, true);
+  app.state.active = false; app.render(); app.state.active = true;
+  assert.equal(app.render().isRequestsSheetMode, false, 'returning from a brief background transition preserves the choice');
+  app.render().setHomeSheetMode('requests');
+  assert.equal(app.render().isRequestsSheetMode, true);
   app.hooks.unmount();
 });
 

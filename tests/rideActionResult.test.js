@@ -18,7 +18,13 @@ test('both stages and roles distinguish local save, server receipt, definitive s
       const content = rideActionResultContent(r, { ...e, state });
       assert.equal(content.stageLabel, stage === 'pickup' ? 'Embarquement' : 'Arrivée à destination');
       assert.equal(content.tone, 'pending'); assert.doesNotMatch(content.title, /Embarquement confirmé|Arrivée à destination confirmée/);
-      if (state === 'received') assert.match(content.message, actor === 'driver' ? /du passager/ : /du conducteur/);
+      if (state === 'received') {
+        assert.match(content.message, actor === 'driver' ? /du passager/ : /du conducteur/);
+        if (stage === 'dropoff' && actor === 'passenger') {
+          assert.match(content.message, /serveur prépare le paiement/);
+          assert.doesNotMatch(content.message, /En attente de la validation|vos deux validations/);
+        }
+      }
     }
     const confirmed = rideActionResultContent(r, { ...e, state: 'confirmed' });
     assert.equal(confirmed.tone, 'success'); assert.equal(confirmed.title, stage === 'pickup' ? 'Embarquement confirmé' : 'Arrivée à destination confirmée');
@@ -42,6 +48,15 @@ test('only matching receipts/snapshots can advance the result, and an old read c
   assert.equal(rideActionResultContent(result, entry, { ...snapshot, pickup: { status: 'awaiting_other', passenger: 'confirm' } }).phase, 'received');
   const ready = rideActionResultContent(result, entry, { ...snapshot, pickup: { status: 'ready' } });
   assert.equal(ready.phase, 'ready'); assert.doesNotMatch(ready.message, /attente.*conducteur/);
+});
+
+test('a ready passenger arrival does not claim that the driver has also confirmed or that payment succeeded', () => {
+  const snapshot = { bookingId: 'booking', tripId: 'trip', actor: 'passenger', pickup: { status: 'confirmed' },
+    dropoff: { status: 'ready', passenger: 'confirm' } };
+  const content = rideActionResultContent({ ...result, stage: 'dropoff' }, { ...entry, stage: 'dropoff' }, snapshot);
+  assert.equal(content.phase, 'ready');
+  assert.match(content.message, /permettre le paiement/);
+  assert.doesNotMatch(content.message + content.status, /deux|payé|paiement confirmé/i);
 });
 
 test('local failures stay in French and never expose native error text', () => {
@@ -89,7 +104,7 @@ function resultHost() {
   const { RideActionResult } = loader({ react: { ...React, ...hooks.react, memo: component => component },
     '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: fn => fn(state) },
     '@/store/api/rideRecoveryApi': { rideRecoveryApi: { endpoints: { getRideDeclarations: { select: () => () => ({ data: [] }) } } } },
-    './RideActionResultModal': { RideActionResultModal: 'ResultModal' },
+    './RideActionResultNotice': { RideActionResultNotice: 'ResultNotice' },
   })('features/ride-recovery/RideActionResult.tsx');
   const props = { ...target, active: true };
   const render = () => hooks.render(() => RideActionResult(props));
@@ -98,7 +113,7 @@ function resultHost() {
 
 test('a result survives button removal, updates in place, and closing never writes another declaration', () => {
   const h = resultHost(); h.dispatch(slice.showRideActionResult(result));
-  const tree = h.render(); assert.equal(tree.type, 'ResultModal'); const key = tree.key;
+  const tree = h.render(); assert.equal(tree.type, 'ResultNotice'); const key = tree.key;
   h.dispatch(slice.rideOutboxLoaded({ userId: 'passenger', entries: [{ ...entry, state: 'blocked', message: 'Le trajet a changé.' }] }));
   assert.equal(h.render().key, key); assert.equal(h.render().props.entry.state, 'blocked');
   tree.props.onClose(); assert.equal(h.render(), null); assert.equal(h.state.rideRecovery.entries[0].state, 'blocked');
@@ -120,21 +135,21 @@ test('blur, account change and route cleanup remove results without affecting an
   assert.ok(hidden.state.rideRecovery.actionResult, 'an inactive duplicate route must not dismiss the visible route result');
 });
 
-test('result overlay pauses payment, but never masks SOS or an important confirmation', () => {
+test('payment has no result overlay ahead of it and yields only to SOS or an important confirmation', () => {
   const { createRideOverlayStore, RIDE_OVERLAY_PRIORITY: priority } = load('features/navigation/rideOverlayStore.ts');
   const store = createRideOverlayStore(); store.setScope('passenger:booking', true);
   const put = (id, p, scope = 'passenger:booking') => store.put({ id, priority: p, scope, children: id });
-  put('payment', priority.payment, 'global'); put('result', priority.result);
-  assert.equal(store.getActive().id, 'result'); put('confirm', priority.confirmation); assert.equal(store.getActive().id, 'confirm');
+  assert.equal(priority.result, undefined);
+  put('payment', priority.payment, 'global');
+  assert.equal(store.getActive().id, 'payment'); put('confirm', priority.confirmation); assert.equal(store.getActive().id, 'confirm');
   put('sos', priority.sos); assert.equal(store.getActive().id, 'sos');
-  store.remove('sos'); store.remove('confirm'); assert.equal(store.getActive().id, 'result');
-  store.remove('result'); assert.equal(store.getActive().id, 'payment');
+  store.remove('sos'); store.remove('confirm'); assert.equal(store.getActive().id, 'payment');
 });
 
-test('both navigation routes host the result outside the disappearing recovery button', () => {
+test('both navigation panels host inline results outside the disappearing recovery button', () => {
   const fs = require('node:fs');
-  for (const [file, actor] of [['app/booking/navigate/[id].tsx', 'passenger'], ['app/trip/navigate/[id].tsx', 'driver']]) {
+  for (const [file, actor] of [['app/booking/navigate/[id].tsx', 'passenger'], ['features/driver-navigation/DriverNavigationTopPanel.tsx', 'driver']]) {
     const source = fs.readFileSync(file, 'utf8');
-    assert.match(source, new RegExp('<RideOverlayScope[^>]+>\\s*<RideActionResult actor="' + actor + '"'));
+    assert.match(source, new RegExp('<RideActionResult actor="' + actor + '"'));
   }
 });

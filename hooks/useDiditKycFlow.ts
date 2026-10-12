@@ -15,6 +15,10 @@ import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Platform } from 'react-native';
+import { useAwsKycFlow } from '@/components/identity/AwsKycProvider';
+import { useLazyAwsKycCapabilitiesQuery } from '@/store/api/awsKycApi';
+import { hasAwsLiveness } from '@/features/identity/awsLiveness';
+import { shouldStartAwsKyc } from '@/features/identity/kycProvider';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -28,6 +32,8 @@ export function useDiditKycFlow({
   pendingMessage = 'Votre vérification Didit est en cours. Nous mettrons votre statut à jour dès que Didit confirme la décision.',
 }: UseDiditKycFlowOptions) {
   const { showDialog } = useDialog();
+  const startAwsKyc = useAwsKycFlow();
+  const [readCapabilities] = useLazyAwsKycCapabilitiesQuery();
   const router = useRouter();
   const [getCurrentUser] = useLazyGetCurrentUserQuery();
   const [createDiditKycSession, { isLoading: isCreatingDiditKycSession }] =
@@ -102,6 +108,18 @@ export function useDiditKycFlow({
       let launchMode: DiditKycFlowOutcome['launchMode'] = 'native_sdk';
 
       try {
+        // No AWS request at all while the mobile rollout is disabled (default).
+        const awsEnabled = await shouldStartAwsKyc(() => readCapabilities(undefined, false).unwrap());
+        if (awsEnabled) {
+          if (!hasAwsLiveness()) {
+            showDialog({ variant: 'warning', title: 'Mise à jour nécessaire', message: 'Installez la nouvelle version de Zwanga pour utiliser la vérification AWS.' });
+            return null;
+          }
+          const outcome = await startAwsKyc();
+          await onStatusRefresh?.();
+          if (outcome?.status === 'approved') await onApproved?.(outcome);
+          return outcome;
+        }
         if (!skipLegalIdentityConfirmation) {
           flowStage = 'loading_user';
           const currentUser = await getCurrentUser().unwrap();
@@ -349,6 +367,8 @@ export function useDiditKycFlow({
       showDialog,
       sourceScreen,
       syncDiditKycSession,
+      startAwsKyc,
+      readCapabilities,
     ],
   );
 

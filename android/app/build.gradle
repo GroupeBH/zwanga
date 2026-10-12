@@ -105,8 +105,8 @@ android {
         applicationId 'com.zwanga'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 137
-        versionName "1.0.16"
+        versionCode 138
+        versionName "1.0.17"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -211,4 +211,17 @@ tasks.matching { it.name == 'bundleRelease' || it.name == 'assembleRelease' }.co
       }
     }
   }
+}
+
+// Zwanga AWS Liveness
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+android {
+  buildFeatures { compose true }
+  compileOptions { coreLibraryDesugaringEnabled true }
+}
+dependencies {
+  implementation 'com.amplifyframework.ui:liveness:1.5.0'
+  implementation 'androidx.activity:activity-compose:1.9.3'
+  implementation 'androidx.compose.material3:material3:1.3.1'
+  coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }

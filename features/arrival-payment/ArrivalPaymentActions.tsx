@@ -17,6 +17,7 @@ type Props = {
   selectedMode: TripPaymentMode | null;
   actionLabel: string;
   isPayButtonDisabled: boolean;
+  waitingForArrivalConfirmation?: boolean;
   verification: PaymentVerification;
   paymentError?: string;
   onPay: () => Promise<void>;
@@ -38,8 +39,8 @@ export function ArrivalPaymentActions(props: Props) {
   </View>;
   const pending = props.hasPendingProviderPayment && !props.paymentAlreadySucceeded;
   const paused = props.verification.phase === 'paused';
-  const disabled = pending ? props.isBusy || !paused : props.isPayButtonDisabled;
-  const label = props.isBusy ? props.selectedMode === 'cash' && !pending ? 'Enregistrement…' : 'Vérification…' : pending
+  const disabled = props.waitingForArrivalConfirmation || (pending ? props.isBusy || !paused : props.isPayButtonDisabled);
+  const label = props.waitingForArrivalConfirmation ? 'Synchronisation de l’arrivée…' : props.isBusy ? props.selectedMode === 'cash' && !pending ? 'Enregistrement…' : 'Vérification…' : pending
     ? paused ? 'Vérifier à nouveau' : 'En attente de confirmation' : props.actionLabel;
   return <View style={local.footer}>
     {!pending && props.paymentError ? (

@@ -36,6 +36,9 @@ export function rideStageMessage(stage: ReturnType<typeof rideBookingStages>[num
   }
   if (!['confirmed', 'disputed', 'ready'].includes(status ?? '') &&
       (entry?.state === 'received' || (!entry && own === 'confirm'))) {
+    if (stage.stage === 'dropoff' && actor === 'passenger') {
+      return 'Votre arrivée est reçue. Le serveur prépare le paiement.';
+    }
     return `Votre validation est reçue. En attente ${actor === 'driver' ? 'du passager' : 'du conducteur'}.`;
   }
   return rideEntryMessage(entry, status);

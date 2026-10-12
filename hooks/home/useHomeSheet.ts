@@ -1,12 +1,12 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { Spacing } from '@/constants/styles';
-import type { HomeSheetMode } from '@/features/home/homeTypes';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform, type LayoutChangeEvent,
 } from 'react-native';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
+import type { useHomeDiscoveryMode } from './useHomeDiscoveryMode';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 import type { useHomeTripFeed } from '@/hooks/home/useHomeTripFeed';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
@@ -35,9 +35,10 @@ type Props =
     'tripsLoading'
     | 'tripsError'
     | 'refetchTrips'
-  >;
+  > & Pick<ReturnType<typeof useHomeDiscoveryMode>, 'isRequestsSheetMode'>;
 export function useHomeSheet({
   isDriver,
+  isRequestsSheetMode: requestsSelected = isDriver,
   isScreenActive = true,
   isHomeSheetLockedRetracted,
   currentUser,
@@ -56,23 +57,6 @@ export function useHomeSheet({
   router,
 }: Props) {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
-
-  const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>('trips');
-
-  useEffect(() => {
-    if (!isDriver && homeSheetMode === 'requests') {
-      setHomeSheetMode('trips');
-    }
-  }, [homeSheetMode, isDriver]);
-
-  useEffect(() => {
-    if (!isHomeSheetLockedRetracted) {
-      return;
-    }
-
-    // Temporarily retract during a ride without losing the user's open/closed choice.
-    setHomeSheetMode('trips');
-  }, [isHomeSheetLockedRetracted]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
 
@@ -124,7 +108,7 @@ export function useHomeSheet({
 
   const tripCardWidth = Math.min(width - 40, 354);
 
-  const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
+  const isRequestsSheetMode = isDriver && requestsSelected;
 
   const sheetTitle = isHomeSheetLockedRetracted
     ? 'Trajet en cours'
@@ -174,7 +158,6 @@ export function useHomeSheet({
     sheetTitle,
     openSheetIndex,
     isRequestsSheetMode,
-    setHomeSheetMode,
     sheetLoading,
     sheetError,
     refetchSheetContent,

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import MapView, { type MapMarker, type Region } from 'react-native-maps';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
+import type { useHomeDiscoveryMode } from './useHomeDiscoveryMode';
 import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 import type { useHomeLocation } from '@/hooks/home/useHomeLocation';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
@@ -17,6 +18,7 @@ import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'isFocused'
+    | 'isDriver'
   >
   & Pick<ReturnType<typeof useHomeTripSelection>,
     'homeMapTrips'
@@ -36,9 +38,11 @@ type Props =
   >
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openingMapDetailKey'
-  >;
+  > & Pick<ReturnType<typeof useHomeDiscoveryMode>, 'isRequestsSheetMode'>;
 export function useHomeMap({
   isFocused,
+  isDriver,
+  isRequestsSheetMode = isDriver,
   homeMapTrips,
   ongoingDriverTrip,
   liveUserCoordinate,
@@ -79,7 +83,7 @@ export function useHomeMap({
   );
 
   const tripRequestsWithMapCoordinates = useMemo(() => {
-    if (isHomeSheetLockedRetracted) {
+    if (!isDriver || !isRequestsSheetMode || isHomeSheetLockedRetracted) {
       return [];
     }
 
@@ -87,7 +91,7 @@ export function useHomeMap({
       const coordinate = getTripLocationCoordinate(request.departure);
       return coordinate ? [{ request, coordinate }] : [];
     });
-  }, [availableDriverRequests, isHomeSheetLockedRetracted]);
+  }, [availableDriverRequests, isDriver, isRequestsSheetMode, isHomeSheetLockedRetracted]);
 
   useEffect(() => {
     if (homeMapTrips.length === 0) {

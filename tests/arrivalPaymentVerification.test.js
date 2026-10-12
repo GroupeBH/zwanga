@@ -33,6 +33,29 @@ function environment(kind = 'wallet') {
   return Object.assign(env, { hooks, provider, render: () => hooks.render(() => useArrivalPaymentMonitoring({ state, provider, completion })) });
 }
 
+test('a locally saved arrival neither starts settlement nor writes a payment intent before server confirmation', async () => {
+  const env = environment();
+  env.state.waitingForArrivalConfirmation = true;
+  env.state.activeStoredState.requiredActionAt = null;
+  env.response = async () => ({ payment: { status: 'succeeded' } });
+  env.render(); await flush();
+  assert.deepEqual(env.checks, []); assert.deepEqual(env.patches, []); assert.equal(env.settlements, 0);
+  env.state.waitingForArrivalConfirmation = false;
+  env.render(); await flush();
+  assert.equal(env.checks.length, 1); assert.equal(env.settlements, 1);
+  env.hooks.unmount();
+});
+
+test('a paused previous payment cannot be retried from the arrival-waiting sheet', () => {
+  const { ArrivalPaymentActions } = loader({ 'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button',
+    StyleSheet: { create: x => x }, Keyboard: { dismiss() {} } }, '@expo/vector-icons': { Ionicons: 'Icon' },
+  })('features/arrival-payment/ArrivalPaymentActions.tsx');
+  const tree = ArrivalPaymentActions({ hasPendingProviderPayment: true, waitingForArrivalConfirmation: true,
+    verification: { phase: 'paused' }, onRetry: () => assert.fail('not ready'), onPay: () => assert.fail('not ready') });
+  const button = tree.props.children.find(node => node?.type === 'Button');
+  assert.equal(button.props.disabled, true); button.props.onPress();
+});
+
 test('502 pauses checks, releases busy state and retains payment references despite rerenders and foregrounding', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   for (const kind of ['wallet', 'booking']) {

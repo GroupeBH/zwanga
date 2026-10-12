@@ -41,12 +41,12 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
   }, [bookingId]);
 
   useEffect(() => {
-    if (!bookingId || requiredActionAt) return;
+    if (!bookingId || requiredActionAt || state.waitingForArrivalConfirmation) return;
     persistBookingState(bookingId, { requiredActionAt: new Date().toISOString() });
-  }, [bookingId, requiredActionAt, persistBookingState]);
+  }, [bookingId, requiredActionAt, persistBookingState, state.waitingForArrivalConfirmation]);
 
   useEffect(() => {
-    if (!state.isAuthenticated || !state.isAppActive || !state.isResumeReady || state.isPaymentDeferred ||
+    if (!state.isAuthenticated || !state.isAppActive || !state.isResumeReady || state.isPaymentDeferred || state.waitingForArrivalConfirmation ||
         hasBlockingOverlay || !bookingId || (!walletOrder && !bookingOrder)) return;
     let cancelled = false;
     let inFlight = false;
@@ -156,7 +156,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
       retry.current = () => {};
       setChecking(false);
     };
-  }, [state.isAuthenticated, state.isAppActive, state.isResumeReady, state.isPaymentDeferred,
+  }, [state.isAuthenticated, state.isAppActive, state.isResumeReady, state.isPaymentDeferred, state.waitingForArrivalConfirmation,
     hasBlockingOverlay, serverPaymentSucceeded, bookingId, walletOrder, bookingOrder,
     orderKey, state.setIsCheckingPayment]);
 

@@ -2,7 +2,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { dismissRideActionResult } from '@/store/slices/rideRecoverySlice';
 import React, { memo, useCallback, useEffect, useMemo } from 'react';
 import { rideRecoveryApi } from '@/store/api/rideRecoveryApi';
-import { RideActionResultModal } from './RideActionResultModal';
+import { RideActionResultNotice } from './RideActionResultNotice';
 
 /** Lives in the navigation route, not in a button that disappears after dropoff. */
 export const RideActionResult = memo(function RideActionResult({ tripId, bookingId, actor, active }: {
@@ -28,5 +28,5 @@ export const RideActionResult = memo(function RideActionResult({ tripId, booking
     return close; // A dismissed/blurred result never reopens on a later server update.
   }, [visible, close]);
   if (!visible || !result) return null;
-  return <RideActionResultModal key={result.id} result={result} entry={entry} snapshot={snapshot} onClose={close} />;
+  return <RideActionResultNotice key={result.id} result={result} entry={entry} snapshot={snapshot} onClose={close} />;
 });

@@ -150,7 +150,7 @@ test('a paid booking remains pinned until closed, then older cash reminders stay
     './usePaymentPersistence': { usePaymentPersistence: () => ({ storedState, isStoredStateLoaded: true, persistBookingState, isSessionCurrent: () => true }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     'expo-router': { useRouter: () => ({}) },
-    '@/store/hooks': { useAppDispatch: () => () => {}, useAppSelector: fn => fn({ trips: { interruptionChoice: null } }) },
+    '@/store/hooks': { useAppDispatch: () => () => {}, useAppSelector: fn => fn({ trips: { interruptionChoice: null }, rideRecovery: { userId: null, entries: [] } }) },
     '@/store/selectors': { selectIsAuthenticated: () => true, selectUser: () => ({ id: 'user' }) },
     '@/features/trip/interruptionChoice': { getPassengerInterruptionChoice: () => null },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: bookings, refetch() {} }),

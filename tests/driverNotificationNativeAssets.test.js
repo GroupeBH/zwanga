@@ -34,19 +34,48 @@ test('ringtone has stronger signal without clipping and repeats throughout its 2
   const count = wav.readUInt32LE(40) / 2;
   const sampleRate = wav.readUInt32LE(24);
   const cycles = [];
-  let peak = 0, squared = 0;
+  let peak = 0, squared = 0, sum = 0, clipped = 0;
   for (let i = 0; i < count; i++) {
-    const amplitude = Math.abs(wav.readInt16LE(44 + i * 2) / 32768);
+    const sample = wav.readInt16LE(44 + i * 2);
+    const amplitude = Math.abs(sample / 32768);
+    sum += sample / 32768;
+    if (sample === -32768 || sample === 32767) clipped++;
     const cycle = Math.floor(i / sampleRate / 2.4);
     peak = Math.max(peak, amplitude);
     squared += amplitude * amplitude;
     cycles[cycle] = Math.max(cycles[cycle] ?? 0, amplitude);
   }
-  assert.ok(peak > 0.85 && peak < 0.95, 'audible headroom, no PCM saturation');
+  assert.ok(peak > 0.92 && peak < 0.95, 'headroom below PCM saturation');
   const rms = Math.sqrt(squared / count);
-  assert.ok(rms > 0.29 && rms < 0.34, 'signal level includes the spaces between rings');
+  assert.ok(rms > 0.55 && rms < 0.60, 'stronger average level, including pauses');
+  const previousRms = 0.30974754862775933; // Measured previous 0.62-gain asset.
+  assert.ok(20 * Math.log10(rms / previousRms) > 5, 'at least +5 dB average digital signal');
+  assert.equal(clipped, 0);
+  assert.ok(Math.abs(sum / count) < 0.001, 'no significant DC offset');
+  assert.ok(Math.abs(wav.readInt16LE(44)) < 10, 'smooth start');
+  assert.ok(Math.abs(wav.readInt16LE(wav.length - 2)) < 30, 'smooth ending');
   assert.equal(cycles.length, 13);
   assert.ok(cycles.every(value => value > 0.85), 'not a short initial beep followed by silence');
+});
+
+test('committed sound is reproducible and preserves pauses between the two pulses', () => {
+  const { generateDriverRing } = require('../scripts/generate-driver-ring.cjs');
+  const wav = fs.readFileSync(path.join(root, 'assets/sounds/driver_ring.wav'));
+  assert.deepEqual(generateDriverRing(), wav, 'generator and both native bundles must agree');
+  const rate = wav.readUInt32LE(24);
+  const windowRms = (start, duration) => {
+    let sum = 0;
+    const count = Math.floor(duration * rate);
+    for (let i = 0; i < count; i++) {
+      const sample = wav.readInt16LE(44 + (Math.floor(start * rate) + i) * 2) / 32768;
+      sum += sample * sample;
+    }
+    return Math.sqrt(sum / count);
+  };
+  assert.ok(windowRms(0.1, 0.5) > 0.65);
+  assert.equal(windowRms(0.85, 0.1), 0);
+  assert.ok(windowRms(1.1, 0.5) > 0.65);
+  assert.equal(windowRms(1.9, 0.4), 0);
 });
 
 test('the tracked iOS project bundles the sound and declares time-sensitive notifications', () => {

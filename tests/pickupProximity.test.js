@@ -80,7 +80,7 @@ test('passenger ignores foreign, boarded, cancelled, dropped-off and background 
   h.hooks.unmount();
 });
 
-test('manual pickup acknowledgement is inline only; automatic boarding keeps its normal notice', async () => {
+test('manual and automatic boarding use trip state and voice without an extra success modal', async () => {
   for (const mode of ['local', 'server', 'dual', 'automatic', 'foreign-entry', 'blocked-entry']) {
     const h = passengerNotices(), notices = [];
     h.props.hasPresentedBoardedNoticeRef = { current: false };
@@ -93,7 +93,8 @@ test('manual pickup acknowledgement is inline only; automatic boarding keeps its
       stage: 'pickup', decision: 'confirm', state: mode === 'blocked-entry' ? 'blocked' : 'queued',
     }];
     h.render().presentBoardedNotice(); h.render().presentBoardedNotice(); await flush();
-    assert.equal(notices.length, ['local', 'server', 'dual'].includes(mode) ? 0 : 1, mode);
+    assert.equal(notices.length, 0, mode);
+    assert.equal(h.spoken.length, ['local', 'server', 'dual'].includes(mode) ? 0 : 1, 'automatic boarding keeps its voice notice');
     assert.equal(h.props.hasPresentedBoardedNoticeRef.current, true);
     h.hooks.unmount();
   }

@@ -1,5 +1,6 @@
 import { pointToLatLng } from '../../features/trip-detail/tripDetailModel';
 import { isTripExpired, resolveTripDetailAvailability } from '@/features/trip-detail/tripDetailAvailability';
+import { getPassengerBookingContact, usablePhone } from '@/features/navigation/navigationContacts';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
@@ -66,8 +67,6 @@ export function useTripDetailData() {
   const trip = availability.trip;
   const { showDialog } = useDialog();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
-  const driverPhone = trip?.driver?.phone ?? null;
-  // console.log('driverPhone', driverPhone);
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
   const isLiveTrip = trip?.status === 'ongoing' || trip?.status === 'upcoming';
   const needsPassengerBookings = Boolean(isScreenActive && trip && user?.id && !isTripDriver);
@@ -93,6 +92,15 @@ export function useTripDetailData() {
     skip: !needsPassengerBookings || isLiveTrip,
   });
   const myBookings = isLiveTrip ? activityBookings : historicalBookings;
+  const driverPhone = useMemo(() => {
+    if (!user?.id) return null;
+    if (trip?.driverId === user.id) return usablePhone(trip.driver?.phone);
+    for (const booking of myBookings ?? []) {
+      const contact = getPassengerBookingContact(trip, booking, user?.id);
+      if (contact?.phone) return contact.phone;
+    }
+    return null;
+  }, [trip, myBookings, user?.id]);
   const refetchMyBookings = useCallback(() => {
     if (!needsPassengerBookings) return Promise.resolve();
     return isLiveTrip ? refetchActivityBookings() : refetchHistoricalBookings();
