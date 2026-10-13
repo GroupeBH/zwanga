@@ -27,6 +27,7 @@ interface Params {
   setStep: React.Dispatch<React.SetStateAction<AuthStep>>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   isAppleSignupFlow: boolean;
+  restartSocialSignup: () => void;
   legacyReferralCode: string;
   role: "driver" | "passenger";
   vehicleType: TripRequestVehicleType | null;
@@ -47,7 +48,6 @@ interface Params {
   googleProfileName: string | null;
   router: Router;
   pin: string;
-  email: string;
   profilePicture: string | null;
   register: ReturnType<typeof useRegisterMutation>[0];
 }
@@ -58,6 +58,7 @@ export function useRegistrationActions({
   setStep,
   showDialog,
   isAppleSignupFlow,
+  restartSocialSignup,
   legacyReferralCode,
   role,
   vehicleType,
@@ -78,7 +79,6 @@ export function useRegistrationActions({
   googleProfileName,
   router,
   pin,
-  email,
   profilePicture,
   register,
 }: Params) {
@@ -144,15 +144,29 @@ export function useRegistrationActions({
         await resumeFinalization.current();
         return;
       }
+      const hasSocialContext = Boolean(socialProvider || googleIdToken || isAppleSignupFlow);
+      if (hasSocialContext && (
+        !googleIdToken || !socialProvider || !isGooglePhoneVerified ||
+        (socialProvider === 'apple' && !appleNonce)
+      )) {
+        // A partial Apple/Google flow must never become a phone/PIN registration.
+        restartSocialSignup();
+        showDialog({
+          variant: 'warning',
+          title: 'Connexion à reprendre',
+          message: 'Appuyez à nouveau sur le bouton Apple ou Google utilisé pour reprendre votre inscription. Votre profil est conservé.',
+        });
+        return;
+      }
       const legalFirstName = normalizeLegalName(firstName);
       const legalLastName = normalizeLegalName(lastName);
       if (!hasCompleteLegalIdentity(legalFirstName, legalLastName)) {
         setStep('profile');
         showDialog({
           variant: 'warning',
-          title: isAppleSignupFlow ? 'Nom Apple indisponible' : 'Nom légal requis',
+          title: 'Complétez votre nom',
           message: isAppleSignupFlow
-            ? 'Apple n’a pas transmis votre nom. Reconnectez votre compte Apple après avoir retiré Zwanga des apps utilisant votre identifiant Apple, ou choisissez une autre méthode d’inscription.'
+            ? 'Complétez vos prénom(s) et votre nom dans le formulaire pour continuer avec Apple.'
             : 'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité. Le post-nom est facultatif.',
         });
         return;
@@ -193,8 +207,8 @@ export function useRegistrationActions({
           }
         : undefined;
       
-      if (googleIdToken && isGooglePhoneVerified) {
-        const authMethod = socialProvider ?? 'google';
+      if (hasSocialContext && googleIdToken && socialProvider) {
+        const authMethod = socialProvider;
         const result = authMethod === 'apple'
           ? await appleMobile({
               idToken: googleIdToken,
@@ -239,7 +253,6 @@ export function useRegistrationActions({
         formData.append('vehicle[color]', vehicleColor.trim());
         formData.append('vehicle[licensePlate]', normalizeVehiclePlate(vehiclePlate));
       }
-      if (email) formData.append('email', email.trim());
 
       if (profilePicture) {
         formData.append('profilePicture', { uri: profilePicture, name: `pp-${Date.now()}.jpg`, type: 'image/jpeg' } as any);

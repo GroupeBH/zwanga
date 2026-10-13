@@ -1,6 +1,7 @@
 const { withAppBuildGradle, withProjectBuildGradle, withMainApplication, withAndroidManifest, withDangerousMod, withXcodeProject } = require('@expo/config-plugins');
 const fs = require('node:fs');
 const path = require('node:path');
+const swiftPluginTrust = require('../config/ios-swift-plugin-trust.json');
 
 const gradleMarker = '// Zwanga AWS Liveness';
 function configureAppGradle(source) {
@@ -57,9 +58,14 @@ function configureXcode(project, name) {
       objects.PBXBuildFile[build] = { isa: 'PBXBuildFile', productRef: dependency, productRef_comment: product };
       project.pbxFrameworksBuildPhaseObj(target.uuid).files.push({ value: build, comment: `${product} in Frameworks` });
     }
+    return id;
   };
   addPackage('https://github.com/aws-amplify/amplify-ui-swift-liveness', '1.5.0', ['FaceLiveness']);
   addPackage('https://github.com/aws-amplify/amplify-swift', '2.60.2', ['AWSPluginsCore']);
+  // Already a transitive AWS dependency. Pin its version to the approved build
+  // plugin fingerprint, including on a fresh Expo prebuild.
+  const smithyId = addPackage(swiftPluginTrust.repositoryURL, swiftPluginTrust.version, []);
+  objects.XCRemoteSwiftPackageReference[smithyId].requirement = { kind: 'exactVersion', version: swiftPluginTrust.version };
   return project;
 }
 const copy = (root, platform, destination) => {

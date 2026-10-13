@@ -17,8 +17,10 @@ import { useGetMyWalletQuery, useInitiateWalletTopUpMutation } from '@/store/api
 import type { Booking, BookingPaymentResponse, TripPaymentMode } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
+import { prepareWalletTopUpIntent, clearWalletTopUpIntent, rememberWalletTopUpReference } from '@/services/walletTopUpIntent';
 
 interface Params {
+  submissionBookingIdRef?: React.RefObject<string | null>;
   acknowledgeCash?: (bookingId: string) => void;
   isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
@@ -49,6 +51,7 @@ interface Params {
 }
 
 export function useArrivalPaymentSubmission({
+  submissionBookingIdRef,
   acknowledgeCash,
   isSessionCurrent,
   arrivalBooking,
@@ -137,12 +140,21 @@ export function useArrivalPaymentSubmission({
         setStatusMessage(
           `Recharge de ${formatPoints(missingPoints)} pour compléter le paiement...`,
         );
+        const intent = await prepareWalletTopUpIntent({ userId: arrivalBooking.passengerId,
+          scope: arrivalBooking.id, amount: missingPoints, method: 'mobile_money', phone });
+        if (!isSessionCurrent()) return;
         const response = await initiateWalletTopUp({
+          idempotencyKey: intent.idempotencyKey,
           amount: missingPoints,
           method: 'mobile_money',
           phone,
         }).unwrap();
 
+        await rememberWalletTopUpReference(intent, response.payment.reference);
+
+        if (['succeeded', 'failed', 'cancelled'].includes(response.payment.status ?? '')) {
+          await clearWalletTopUpIntent(arrivalBooking.passengerId, arrivalBooking.id, response.payment.reference);
+        }
         if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
           if (isSessionCurrent()) {
             setStatusMessage('');
@@ -291,10 +303,15 @@ export function useArrivalPaymentSubmission({
   const handlePayment = useCallback(async () => {
     if (submissionInFlight.current) return;
     submissionInFlight.current = true;
+    if (submissionBookingIdRef) submissionBookingIdRef.current = arrivalBooking?.id ?? null;
     setIsSubmitting(true);
     try { await submitPayment(); }
-    finally { submissionInFlight.current = false; setIsSubmitting(false); }
-  }, [submitPayment]);
+    finally {
+      submissionInFlight.current = false;
+      if (submissionBookingIdRef) submissionBookingIdRef.current = null;
+      setIsSubmitting(false);
+    }
+  }, [arrivalBooking?.id, submissionBookingIdRef, submitPayment]);
 
   return {
     handlePayment,

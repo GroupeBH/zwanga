@@ -18,6 +18,7 @@ interface DriverNavigationControlsProps {
   passengerPresentation: { passengerStats: { totalPassengers: number; pendingPickups: number; pendingDropoffs: number; completedPickups: number; completedDropoffs: number; inVehicle: number; passengers: { name: string; pickedUp: boolean; droppedOff: boolean; id: string; }[]; }; fitVehicleAndPassengers: () => void; };
   forceRecalculateRoute: () => void;
   canToggleRouteSections?: boolean;
+  onRatePassenger?: (passengerId: string) => void;
 }
 
 export function DriverNavigationControls({
@@ -27,6 +28,7 @@ export function DriverNavigationControls({
   passengerPresentation,
   forceRecalculateRoute,
   canToggleRouteSections = false,
+  onRatePassenger,
 }: DriverNavigationControlsProps) {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const { bookings, tripId, isScreenActive } = foundation.data;
@@ -155,7 +157,7 @@ export function DriverNavigationControls({
           : <Ionicons name="refresh" size={22} color={Colors.primary} />}
       </TouchableOpacity>
       <RideModal inApp visible={receiptsVisible} transparent animationType="none" onRequestClose={closeReceipts}>
-        {receiptsVisible && <DriverDropoffReceiptsSheet bookings={completed} active={isScreenActive} onClose={closeReceipts} />}
+        {receiptsVisible && <DriverDropoffReceiptsSheet bookings={completed} active={isScreenActive} onClose={closeReceipts} onRatePassenger={onRatePassenger} />}
       </RideModal>
     </View>
   );

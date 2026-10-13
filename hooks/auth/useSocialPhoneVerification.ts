@@ -1,7 +1,5 @@
-import { SocialAuthProvider, getAuthErrorMessage } from '../../features/auth/authModel';
-import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
+import { SocialAuthProvider } from '../../features/auth/authModel';
 import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
-import { isSignupOtpVerificationEnabled } from '@/config/env';
 import React from 'react';
 import { AuthStep } from '@/components/auth';
 import type { DialogOptions } from '@/features/dialogs/dialogTypes';
@@ -50,17 +48,12 @@ export function useSocialPhoneVerification({
   setEmail,
   setGoogleSignupStep,
   setStep,
-  setIsSendingGoogleOtp,
-  sendPhoneVerificationOtp,
   setGoogleFlow,
   setGoogleIdToken,
   setGoogleProfileName,
   setSocialProvider,
   setAppleNonce,
   googleIdToken,
-  googleOtp,
-  setIsVerifyingGoogleOtp,
-  verifyPhoneOtp,
 }: Params) {
   const handleSendGoogleOtp = async () => {
     const normalizedPhone = googlePhone.trim();
@@ -68,41 +61,21 @@ export function useSocialPhoneVerification({
       showDialog({ variant: 'warning', title: 'Numéro invalide', message: authPhoneCopy.invalid });
       return;
     }
-    if (!isSignupOtpVerificationEnabled) {
-      setGooglePhone(normalizedPhone);
-      setPhone(normalizedPhone);
-      setGoogleOtp(['', '', '', '', '']);
-      setIsGooglePhoneVerified(true);
-      if (googleFirstName) setFirstName(googleFirstName);
-      if (googleLastName) setLastName(googleLastName);
-      if (googleEmail) setEmail(googleEmail);
-      setGoogleSignupStep('profile');
-      setStep('profile');
-      return;
-    }
-    try {
-      setIsSendingGoogleOtp(true);
-      await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
-      setGooglePhone(normalizedPhone);
-      setGoogleSignupStep('otp');
-    } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur OTP', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
-    } finally {
-      setIsSendingGoogleOtp(false);
-    }
+    setGooglePhone(normalizedPhone);
+    setPhone(normalizedPhone);
+    setGoogleOtp(['', '', '', '', '']);
+    // Legacy UI flag means phone entry is complete, never proof of ownership.
+    // The backend still owns the real isPhoneVerified field.
+    setIsGooglePhoneVerified(true);
+    if (googleFirstName) setFirstName(googleFirstName);
+    if (googleLastName) setLastName(googleLastName);
+    if (googleEmail) setEmail(googleEmail);
+    setGoogleSignupStep('profile');
+    setStep('profile');
   };
 
-  const handleResendGoogleOtp = async () => {
-    try {
-      setIsSendingGoogleOtp(true);
-      await sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' }).unwrap();
-      showDialog({ variant: 'success', title: 'Code renvoyé', message: otpDeliveryCopy.sent });
-    } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de renvoyer le code. Réessayez dans un instant.') });
-    } finally {
-      setIsSendingGoogleOtp(false);
-    }
-  };
+  // Old UI callbacks continue safely without invoking the retired OTP endpoints.
+  const handleResendGoogleOtp = handleSendGoogleOtp;
 
   const handleGooglePhoneBack = () => {
     setGoogleSignupStep('phone');
@@ -123,27 +96,7 @@ export function useSocialPhoneVerification({
       showDialog({ variant: 'danger', title: 'Token manquant', message: 'Veuillez relancer la connexion sociale.' });
       return;
     }
-    const code = googleOtp.join('');
-    if (code.length !== 5) {
-      showDialog({ variant: 'warning', title: 'Code incomplet', message: 'Saisissez les 5 chiffres du code.' });
-      return;
-    }
-    try {
-      setIsVerifyingGoogleOtp(true);
-      await verifyPhoneOtp({ phone: googlePhone, otp: code }).unwrap();
-      setIsGooglePhoneVerified(true);
-      setPhone(googlePhone);
-      if (googleFirstName) setFirstName(googleFirstName);
-      if (googleLastName) setLastName(googleLastName);
-      if (googleEmail) setEmail(googleEmail);
-      setGoogleSignupStep('profile'); // Passer à l'étape profile du flow Google
-      setStep('profile');
-      showDialog({ variant: 'success', title: 'Numéro vérifié', message: 'Complétez maintenant votre profil.' });
-    } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Validation', message: getAuthErrorMessage(error, 'Code invalide ou expiré.') });
-    } finally {
-      setIsVerifyingGoogleOtp(false);
-    }
+    await handleSendGoogleOtp();
   };
 
   return {

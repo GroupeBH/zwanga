@@ -58,6 +58,8 @@ function DriverNavigationScreen() {
   }
 
   const currentStep = model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex];
+  const canRateCompletedTrip = model.session.foundation.data.trip.status === 'completed' &&
+    model.session.foundation.data.bookings?.some(booking => booking.status === 'completed');
   const initialMapCoordinate =
     model.presentation.currentDriverCoordinate ??
     model.session.foundation.data.tripDepartureCoordinate ??
@@ -101,23 +103,26 @@ function DriverNavigationScreen() {
             <Text style={styles.preStartText}>
               {model.session.foundation.data.trip?.status === 'upcoming'
                 ? 'Le trajet doit être demarré avant d\'activer la navigation en direct.'
+                : canRateCompletedTrip ? 'Comment s’est passé le trajet avec vos passagers ?'
                 : 'La navigation en direct est disponible uniquement pour un trajet en cours.'}
             </Text>
             <View style={styles.preStartActions}>
               <TouchableOpacity
                 style={[styles.preStartButton, styles.preStartButtonPrimary]}
                 onPress={
-                  model.presentation.canRestartTripFromOverlay
+                  canRateCompletedTrip ? () => model.handleRatePassengersFromTripEnd()
+                  : model.presentation.canRestartTripFromOverlay
                     ? () => void model.interruptionActions.handleRestartTripFromNavigation()
                     : () => model.session.foundation.data.refetchTrip()
                 }
-                disabled={model.presentation.isRestartOverlayActionLoading}
+                accessibilityRole="button"
+                disabled={!model.session.foundation.data.isScreenActive || model.presentation.isRestartOverlayActionLoading}
               >
                 {model.presentation.isRestartOverlayActionLoading ? (
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
                   <Text style={styles.preStartButtonPrimaryText}>
-                    {model.presentation.canRestartTripFromOverlay ? 'Redemarrer' : 'Actualiser'}
+                    {canRateCompletedTrip ? 'Noter les passagers' : model.presentation.canRestartTripFromOverlay ? 'Redemarrer' : 'Actualiser'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -151,6 +156,7 @@ function DriverNavigationScreen() {
         voice={model.voice}
         passengerPresentation={model.passengerPresentation}
         forceRecalculateRoute={model.forceRecalculateRoute}
+        onRatePassenger={model.handleRatePassengersFromTripEnd}
         canToggleRouteSections={model.presentation.canToggleRouteSections}
       />
       )}

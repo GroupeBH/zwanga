@@ -1,7 +1,6 @@
 import { useAuthController } from '../hooks/auth/useAuthController';
 import { useAuthKeyboardLayout } from '../hooks/auth/useAuthKeyboardLayout';
 import { authCodeStyles } from '@/features/auth/authCode.styles';
-import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import React from 'react';
 import { Redirect } from 'expo-router';
@@ -9,14 +8,12 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   AuthHeader,
-  GoogleOtpStep,
   GooglePhoneStep,
   KycStep,
   PhoneStep,
   PinStep,
   ProfileStep,
   ResetPinStep,
-  SmsStep,
   VehicleModal,
   authStyles as styles,
 } from '@/components/auth';
@@ -93,37 +90,7 @@ export default function AuthScreen() {
               onSubmit={social.handleSendGoogleOtp}
               onCancel={social.handleGoogleCancel}
               isLoading={form.isSendingGoogleOtp}
-              submitLabel={isSignupOtpVerificationEnabled ? 'Recevoir le code' : 'Continuer'}
-            />
-          )}
-
-          {/* Google OTP Step */}
-          {isSignupOtpVerificationEnabled && isGoogleSignupActive && form.googleSignupStep === 'otp' && (
-            <GoogleOtpStep
-              phone={form.googlePhone}
-              otp={form.googleOtp}
-              otpRefs={form.googleOtpRefs}
-              onOtpChange={form.setGoogleOtp}
-              onVerify={social.handleVerifyGoogleOtpAndContinue}
-              onResend={social.handleResendGoogleOtp}
-              onBack={social.handleGooglePhoneBack}
-              isVerifying={form.isVerifyingGoogleOtp}
-              isResending={form.isSendingGoogleOtp}
-            />
-          )}
-
-          {/* Phone verification step */}
-          {isSignupOtpVerificationEnabled && form.step === 'sms' && (
-            <SmsStep
-              mode={form.mode}
-              phone={form.phone}
-              smsCode={form.smsCode}
-              smsInputRefs={form.smsInputRefs}
-              onSmsCodeChange={form.setSmsCode}
-              onSubmit={phoneActions.handleSmsSubmit}
-              onResend={phoneActions.handlePhoneSubmit}
-              isVerifying={form.isVerifyingOtp || form.isLoggingIn}
-              isResending={form.isSendingOtpMutation}
+              submitLabel="Continuer"
             />
           )}
 
@@ -172,7 +139,6 @@ export default function AuthScreen() {
             <ProfileStep
               firstName={form.firstName}
               lastName={form.lastName}
-              showNameFields={!form.isAppleSignupFlow}
               profilePicture={form.profilePicture}
               gender={form.gender}
               hasReferralAttribution={Boolean(form.referralAttribution || legacyReferralCode)}
@@ -201,7 +167,7 @@ export default function AuthScreen() {
           {form.step === 'kyc' && form.role === 'driver' && (
             <KycStep
               onFinish={registration.handleFinalRegister}
-              onEditIdentity={form.isAppleSignupFlow ? undefined : () => form.setStep('profile')}
+              onEditIdentity={() => form.setStep('profile')}
               isLoading={registration.isRegistrationPending || form.isRegistering || form.isStartingDiditKyc}
               hasCreatedAccount={registration.hasCreatedAccount}
               firstName={normalizeLegalName(form.firstName)}

@@ -8,6 +8,7 @@ import type { Trip } from '@/types';
 import type { useRatingLifecycle } from './useRatingLifecycle';
 
 interface Params {
+  onRatingSaved?: (ratedId: string) => boolean;
   selectedTags: string[];
   setSelectedTags: React.Dispatch<React.SetStateAction<string[]>>;
   submitInFlightRef: React.RefObject<boolean>;
@@ -29,6 +30,7 @@ interface Params {
 }
 
 export function useRatingActions({
+  onRatingSaved,
   selectedTags,
   setSelectedTags,
   submitInFlightRef,
@@ -137,6 +139,7 @@ export function useRatingActions({
       setSubmitSuccessMessage('Évaluation envoyée. Merci pour votre retour.');
       if (!session.canPresent()) return;
       Keyboard.dismiss();
+      if (onRatingSaved?.(targetUserId)) return;
       successReturnTimeoutRef.current = setTimeout(() => {
         successReturnTimeoutRef.current = null;
         if (session.canPresent()) {

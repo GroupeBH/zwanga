@@ -11,7 +11,7 @@ const { RequestListCard } = load('features/requests/RequestListCard.tsx');
 const trip = Object.freeze({ id: 'trip', departure: { name: 'Avenue Matadi' }, arrival: { name: 'Gombe' },
   departureTime: '2099-09-18T11:00:00Z', status: 'upcoming', price: 2500,
   driverId: 'driver', driverName: 'Alex', driverAvatar: 'https://example.test/driver.jpg', driver: { phone: '000' } });
-const booking = Object.freeze({ id: 'booking', tripId: trip.id, trip, status: 'accepted', numberOfSeats: 2 });
+const booking = Object.freeze({ id: 'booking', passengerId: 'passenger', tripId: trip.id, trip, status: 'accepted', numberOfSeats: 2 });
 const request = Object.freeze({ id: 'request', departure: trip.departure, arrival: trip.arrival,
   departureDateMin: trip.departureTime, departureDateMax: '2099-09-18T11:30:00Z',
   status: 'offers_received', numberOfSeats: 2, maxPricePerSeat: 2500, vehicleType: 'car',

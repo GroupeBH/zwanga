@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { SubscriptionPaymentMethod, TripPaymentMode } from '@/types';
+import type { BookingFareBreakdown } from './paymentFare';
 
 export type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
 
@@ -37,9 +38,12 @@ export type PaymentCompletionSummary = {
   cashInstructions?: boolean;
   bookingId: string;
   beforeArrival?: boolean;
+  tripId?: string;
+  canRateDriver?: boolean;
   mode: TripPaymentMode | null;
   channel?: PaymentChannel;
   amount: number;
+  fareBreakdown?: BookingFareBreakdown | null;
   currency: string;
   walletBalance: number | null;
   earnedPoints: number;

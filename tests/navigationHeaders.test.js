@@ -41,6 +41,8 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const model = driverModel();
   const tree = DriverNavigationTopPanel({ model, assistance });
+  const result = all(tree).find(node => node.type === 'RideResult');
+  assert.equal(result.props.actor, 'driver'); assert.equal(result.props.tripId, 'trip'); assert.equal(result.props.active, true);
   assert.equal(flatStyle(tree.props.style).top, 55);
   const header = tree.props.children[0];
   assert.match(words(header), /37 min.*En direct.*12,6 km.*Arrivée à 06:50/);
@@ -229,6 +231,8 @@ test('driver can still access receipts through Options after hiding the banner, 
 
 test('driver navigation wires contacts to this trip and defers automatic notice modals during assistance', () => {
   const model = driverModel(); const received = [];
+  let ratingCalls = 0;
+  model.handleRatePassengersFromTripEnd = () => { ratingCalls++; };
   const mocked = { ...defaults,
     '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'DriverAccessGuard' },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
@@ -251,13 +255,21 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.forceRecalculateRoute, model.forceRecalculateRoute);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.canToggleRouteSections, true);
+  assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.onRatePassenger, model.handleRatePassengersFromTripEnd);
   assert.equal(all(tree).find(node => node.type === 'Guidance').props.getManeuverIcon, model.routeFormatting.getManeuverIcon);
   for (const type of ['NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal']) {
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);
   }
   assert.equal(all(tree).find(node => node.type === 'AssistanceModals').props.role, 'driver');
-  const result = all(tree).find(node => node.type === 'RideResult');
-  assert.equal(result.props.actor, 'driver'); assert.equal(result.props.tripId, 'trip'); assert.equal(result.props.active, true);
+  // Feedback belongs to the top panel, which this screen test deliberately stubs.
+  assert.equal(all(tree).find(node => node.type === 'TopPanel').props.model, model);
+  model.session.foundation.data.isTripOngoing = false;
+  model.session.foundation.data.trip.status = 'completed';
+  model.session.foundation.data.bookings = [{ id: 'b', passengerId: 'passenger', status: 'completed' }];
+  const finished = guarded.props.children.type();
+  const rate = all(finished).find(node => node.type === 'Button' && words(node) === 'Noter les passagers');
+  assert.ok(rate); rate.props.onPress(); assert.equal(ratingCalls, 1);
+  assert.doesNotMatch(words(finished), /Actualiser/);
 });
 
 test('passenger navigation wires its own booking, keeps contacts on expanded map and defers pickup notices', () => {

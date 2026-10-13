@@ -103,7 +103,7 @@ export function useWalletController() {
   );
   const isRefreshing = isWalletFetching || isLedgerFetching || isCashDebtFetching;
   const isTopUpPhoneRequired = topUpMethod === 'mobile_money';
-  const isTopUpBusy = isStartingTopUp || isCheckingTopUp || isAutoCheckingTopUp;
+  const isTopUpBusy = topUpStage === 'preparing' || isStartingTopUp || isCheckingTopUp || isAutoCheckingTopUp;
   const topUpStatusTitle =
     topUpStage === 'success'
       ? 'Recharge confirmée'
@@ -165,6 +165,9 @@ export function useWalletController() {
   });
 
   const { handleTopUp, handleCheckTopUpStatus } = useWalletTopUpActions({
+    userId: user?.id ?? walletSummary?.account.userId,
+    setTopUpAmount,
+    setTopUpMethod,
     captureScope,
     setTopUpStage,
     setTopUpStatusMessage,

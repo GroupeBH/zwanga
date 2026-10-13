@@ -10,7 +10,7 @@ function app(t, mode = 'points') {
   const gate = new Promise(resolve => { resolvePoints = resolve; });
   const props = {
     isSessionCurrent: () => true,
-    arrivalBooking: { id: 'booking', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000 },
+    arrivalBooking: { id: 'booking', passengerId: 'passenger', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000 },
     selectedMode: mode, selectedChannel: 'mpesa', paymentAmount: 5000, paymentCurrency: 'CDF',
     isBusy: false, hasPendingProviderPayment: false, paymentAlreadySucceeded: false,
     requiredPoints: 50, missingPoints: 0, isWalletFetching: false, moneyComplement: 0,
@@ -24,6 +24,7 @@ function app(t, mode = 'points') {
     handleCompletedBookingPayment: async () => false,
   };
   const { useArrivalPaymentSubmission } = loader({
+    ...require('./helpers/walletTopUpNativeMocks.cjs')(),
     react: hooks.react,
     'expo-linking': { createURL: () => 'zwanga://booking/payment' },
     '@/constants/paymentFeatures': { ELECTRONIC_PAYMENTS_ENABLED: true },
@@ -79,10 +80,14 @@ test('cash switching closes only when the acknowledged fare matches what was sho
 });
 
 test('the visible busy state lasts for the whole submission, including the gap after the network mutation', async t => {
-  const env = app(t), first = env.render().handlePayment();
+  const env = app(t);
+  env.props.submissionBookingIdRef = { current: null };
+  const first = env.render().handlePayment();
+  assert.equal(env.props.submissionBookingIdRef.current, 'booking');
   assert.equal(env.render().isSubmitting, true); await env.render().handlePayment();
   assert.equal(env.calls.points, 1);
   env.resolvePoints(); await first; assert.equal(env.render().isSubmitting, false);
+  assert.equal(env.props.submissionBookingIdRef.current, null);
 });
 
 test('cash already received by the driver opens the summary without a forbidden mode update', async t => {

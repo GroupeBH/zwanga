@@ -1,4 +1,5 @@
-import { runDiditNativeVerification, getDiditSdkFailureError } from '../features/identity/diditSdk';
+import { runDiditNativeVerification, getDiditSdkFailureError, isDiditNativeModuleUnavailable } from '../features/identity/diditSdk';
+import { checkDiditExpiryRecovery } from '../features/identity/diditRecovery';
 
 export type { DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 import { asStringParam, getKycStatusFromDiditStatus, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
@@ -13,12 +14,12 @@ import type { VerificationResult } from '@didit-protocol/sdk-react-native';
 import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { useAwsKycFlow } from '@/components/identity/AwsKycProvider';
 import { useLazyAwsKycCapabilitiesQuery } from '@/store/api/awsKycApi';
 import { hasAwsLiveness } from '@/features/identity/awsLiveness';
-import { shouldStartAwsKyc } from '@/features/identity/kycProvider';
+import { KYC_PROVIDER, shouldStartAwsKyc } from '@/features/identity/kycProvider';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -41,6 +42,7 @@ export function useDiditKycFlow({
   const [syncDiditKycSession, { isLoading: isSyncingDiditKycSession }] =
     useSyncDiditKycSessionMutation();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const inFlight = useRef(false);
 
   const confirmLegalIdentity = useCallback(
     (firstNameValue?: string | null, lastNameValue?: string | null) => {
@@ -102,13 +104,15 @@ export function useDiditKycFlow({
       showResultDialog = true,
       skipLegalIdentityConfirmation = false,
     }: StartDiditKycOptions = {}): Promise<DiditKycFlowOutcome | null> => {
+      if (inFlight.current) return null;
+      inFlight.current = true;
       setIsBrowserOpen(true);
       let flowStage: KycFlowStage = 'loading_user';
       let sessionId: string | null = null;
       let launchMode: DiditKycFlowOutcome['launchMode'] = 'native_sdk';
 
       try {
-        // No AWS request at all while the mobile rollout is disabled (default).
+        // One explicit mobile provider for all entry points; Didit stays the default.
         const awsEnabled = await shouldStartAwsKyc(() => readCapabilities(undefined, false).unwrap());
         if (awsEnabled) {
           if (!hasAwsLiveness()) {
@@ -196,26 +200,25 @@ export function useDiditKycFlow({
               throw failureError;
             }
           } catch (sdkError: any) {
-            const message = String(sdkError?.message ?? '');
-            const lowerMessage = message.toLowerCase();
-
-            const isNativeModuleUnavailable =
-              message.includes('SdkReactNative') ||
-              message.includes('NativeSdkReactNative') ||
-              message.includes('TurboModule') ||
-              message.includes('notInitialized') ||
-              lowerMessage.includes('cannot find native module') ||
-              lowerMessage.includes('native module');
-
-            if (!isNativeModuleUnavailable) {
+            const nativeExpiry = sdkError instanceof KycUserFacingError &&
+              sdkError.presentation.code === 'KYC_SESSION_EXPIRED';
+            if (nativeExpiry) {
+              // Confirm the same session with the server before reopening its web flow.
+              const recovery = await checkDiditExpiryRecovery(session, () =>
+                syncDiditKycSession({ sessionId: session.sessionId }).unwrap());
+              if (recovery === 'approved') {
+                diditStatus = 'Approved';
+              } else if (recovery === 'browser') {
+                launchMode = 'web_browser';
+                void trackEvent('kyc_didit_sdk_expiry_web_recovery', { platform: Platform.OS }).catch(() => undefined);
+              } else {
+                throw sdkError;
+              }
+            } else if (!isDiditNativeModuleUnavailable(sdkError)) {
               throw sdkError;
+            } else {
+              launchMode = 'web_browser';
             }
-
-            console.warn(
-              '[DiditKyc] SDK natif indisponible, bascule temporaire vers WebBrowser:',
-              sdkError,
-            );
-            launchMode = 'web_browser';
           }
         } else {
           launchMode = 'web_browser';
@@ -335,7 +338,7 @@ export function useDiditKycFlow({
           });
         }
 
-        void trackEvent('kyc_didit_error', {
+        void trackEvent(KYC_PROVIDER === 'aws' ? 'kyc_aws_error' : KYC_PROVIDER === 'didit' ? 'kyc_didit_error' : 'kyc_configuration_error', {
           source_screen: sourceScreen,
           error_category: presentation.category,
           error_code: presentation.code,
@@ -353,6 +356,7 @@ export function useDiditKycFlow({
         });
         return null;
       } finally {
+        inFlight.current = false;
         setIsBrowserOpen(false);
       }
     },

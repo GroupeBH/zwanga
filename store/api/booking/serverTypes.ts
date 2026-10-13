@@ -25,6 +25,10 @@ export type ServerBooking = {
   paymentMode?: TripPaymentMode | null;
   paymentStatus?: TripPaymentStatus | null;
   paymentAmount?: number | string | null;
+  grossPaymentAmount?: number | string | null;
+  firstTripSubsidyApplied?: boolean;
+  passengerPaymentRate?: number | string | null;
+  zwangaSubsidyAmount?: number | string | null;
   paymentCurrency?: string | null;
   paymentReference?: string | null;
   paymentTransactionId?: string | null;

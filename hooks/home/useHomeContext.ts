@@ -30,6 +30,7 @@ export function useHomeContext() {
   const { width, height } = useWindowDimensions();
 
   const storedTrips = useAppSelector(selectAvailableTrips);
+  const isOnline = useAppSelector(state => state.zwangaApi.config.online);
 
   const locationRadiusKm = useAppSelector(selectLocationRadius);
 
@@ -39,6 +40,7 @@ export function useHomeContext() {
 
   const isDriver = isDriverAccount(currentUser);
   return {
+    isOnline,
     isDriver,
     isFocused,
     isScreenActive,

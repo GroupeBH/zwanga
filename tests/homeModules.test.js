@@ -103,7 +103,7 @@ test('trip feed keeps nearby precedence without a parallel general request, poll
   let feed = render();
   assert.deepEqual(feed.remoteTrips.map(trip => trip.id), ['shared']);
   assert.equal(feed.remoteTrips[0], nearby);
-  assert.deepEqual(calls[0].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1, limit: 50 });
+  assert.deepEqual(calls[0].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1, limit: 50, discovery: true });
   assert.equal(calls[0].options.pollingInterval, 120000);
   assert.equal(calls[1].options.skip, true);
   assert.equal(dispatches[0].type, 'trips/setTrips');
@@ -213,7 +213,7 @@ test('empty nearby results load a bounded general feed without geographic or dat
   assert.deepEqual(refreshes, ['nearby', 'general']);
   nearby.isError = true; draw();
   assert.equal(calls.at(-1).options.skip, false);
-  assert.deepEqual(calls.at(-1).args, { minSeats: 1, limit: 50, sort: 'date' });
+  assert.deepEqual(calls.at(-1).args, { minSeats: 1, limit: 50, sort: 'date', discovery: true });
   props.isFocused = false; draw();
   assert.equal(calls.at(-1).options.skip, true);
   props.isFocused = true; props.lastKnownLocation = null; draw();
@@ -657,4 +657,26 @@ test('sheet follows the role immediately, keeps stable actions and retracts duri
   assert.deepEqual(routes, ['/requests', '/search', '/search']);
   assert.deepEqual(refreshes, ['requests', 'trips', 'trips']);
   app.hooks.unmount();
+});
+
+test('offline Home never presents an empty marketplace or hides cached clients behind an error', () => {
+  for (const isDriver of [false, true]) {
+    const app = environment();
+    const { useHomeSheet } = app.load('hooks/home/useHomeSheet.ts');
+    const props = { isDriver, isOnline: false, width: 390, height: 844, insets: { bottom: 34 },
+      latestTrips: [], availableDriverRequests: [], tripsLoading: false, tripsError: false,
+      availableTripRequestsLoading: false, availableTripRequestsError: false, router: {} };
+    const render = () => app.hooks.render(() => useHomeSheet(props));
+    assert.equal(render().sheetOffline, true);
+    assert.equal(render().sheetLoading, false);
+    assert.equal(render().sheetError, false);
+    props.availableDriverRequests = [request('r')]; props.latestTrips = [trip('t')];
+    props.tripsError = true; props.availableTripRequestsError = true;
+    assert.equal(render().sheetEmpty, false);
+    assert.equal(render().sheetError, false);
+    props.isOnline = true;
+    assert.equal(render().sheetOffline, false);
+    assert.equal(render().sheetError, false, 'cached entries survive a failed refresh');
+    app.hooks.unmount();
+  }
 });

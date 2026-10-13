@@ -14,6 +14,7 @@ const unavailable = (message: string): { error: FetchBaseQueryError } =>
 /** A request belongs to its initial session, including refresh waits and retries. */
 export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> =
   async (args, api, extraOptions) => {
+    if (!API_BASE_URL) return unavailable('Configuration du serveur indisponible. Veuillez mettre à jour l’application.');
     const version = getTokenSessionVersion();
     const isCurrent = () => version === getTokenSessionVersion() && !api.signal.aborted;
     const stale = () => unavailable('La session a changé. Veuillez réessayer.');

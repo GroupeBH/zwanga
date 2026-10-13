@@ -1,6 +1,7 @@
 import { findBookingPaymentHistory, findBookingRewardEntry, getLedgerEntryAmount, hasPassengerArrived, normalizeAmount } from './paymentModel';
 import type { Booking, PaymentHistoryItem, TripPaymentMode, WalletSummary } from '@/types';
 import type { PaymentChannel, PaymentCompletionSummary } from './paymentTypes';
+import { getBookingFareBreakdown } from './paymentFare';
 
 export type CompletionOptions = { mode?: TripPaymentMode | null; channel?: PaymentChannel; paymentReference?: string | null };
 
@@ -13,11 +14,16 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
   if (!mode && normalizeAmount(booking.paymentAmount) !== 0) return null;
   const cashReceived = mode === 'cash' && Boolean(booking.cashReceivedAt);
   const cashInstructions = mode === 'cash' && !cashReceived && booking.paymentStatus !== 'succeeded' && normalizeAmount(booking.paymentAmount) !== 0;
+  const amount = normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0;
   return {
     destination: booking.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' : booking.passengerDestination ?? booking.trip?.arrival?.address ?? booking.trip?.arrival?.name,
     numberOfSeats: booking.numberOfSeats,
     bookingId: booking.id, beforeArrival: !hasPassengerArrived(booking), mode, channel: options.channel,
-    amount: normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0,
+    tripId: booking.tripId,
+    canRateDriver: booking.status === 'completed' && Boolean(booking.tripId) &&
+      (booking.paymentStatus === 'succeeded' || cashReceived || normalizeAmount(booking.paymentAmount) === 0),
+    amount,
+    fareBreakdown: getBookingFareBreakdown(booking, amount),
     currency: booking.paymentCurrency ?? payment?.currency ?? 'CDF',
     walletBalance: normalizeAmount(wallet?.account.balance), earnedPoints: getLedgerEntryAmount(reward),
     earnedPointsKnown: Boolean(reward), paymentHistoryId: payment?.id ?? null,

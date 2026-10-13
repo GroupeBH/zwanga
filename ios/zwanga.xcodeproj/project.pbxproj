@@ -212,6 +212,7 @@
 			packageReferences = (
 				DB4E2B174B534CFD8190619B /* amplify-ui-swift-liveness */,
 				AD7D6BF3856B4D158C3965B5 /* amplify-swift */,
+				5A940B18307F4A2EAB9B216D /* smithy-swift */,
 			);
 		};
 /* End PBXProject section */
@@ -697,6 +698,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		5A940B18307F4A2EAB9B216D = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/smithy-lang/smithy-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 0.238.0;
+			};
+		};
 		DB4E2B174B534CFD8190619B = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/aws-amplify/amplify-ui-swift-liveness";

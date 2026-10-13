@@ -32,7 +32,7 @@ function controllerFixture() {
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog }) },
     '@/services/ongoingTripNotification': { getCurrentTripInfo: () => trackedTripInfo },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },
-    '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: selector => selector() },
+    '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     '@/store/selectors': { selectAvailableTrips: () => empty, selectLocationRadius: () => 10 },
     '@/hooks/useUserLocation': { useUserLocation: options => {
       received.locationOptions = options;

@@ -79,7 +79,7 @@ export function PublishIdentityModal({
                 <ActivityIndicator color={Colors.white} />
               ) : (
                 <>
-                  <Text style={styles.kycPrimaryButtonText}>Commencer avec Didit</Text>
+                  <Text style={styles.kycPrimaryButtonText}>Vérifier mon identité</Text>
                   <Ionicons name="arrow-forward" size={18} color={Colors.white} />
                 </>
               )}

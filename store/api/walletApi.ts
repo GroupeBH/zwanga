@@ -9,12 +9,14 @@ import type {
   WalletWithdrawal,
 } from "../../types";
 import { baseApi } from "./baseApi";
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import type { BaseEndpointBuilder } from "./types";
 import type { HistoryArgs, HistoryPage } from './financeHistoryPage';
 
 export type WalletLedgerPage = HistoryPage<WalletLedgerEntry> & { limited?: boolean };
 
 type InitiateWalletTopUpPayload = {
+  idempotencyKey: string;
   amount: number;
   method: SubscriptionPaymentMethod;
   phone?: string;
@@ -288,6 +290,7 @@ export const walletApi = baseApi.injectEndpoints({
       query: (body) => ({
         url: "/wallet/topups",
         method: "POST",
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
         body,
       }),
       transformResponse: (response: RawWalletPaymentResponse) =>

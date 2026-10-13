@@ -16,6 +16,18 @@ const booking = { id: 'booking', tripId: 'trip', passengerId: 'passenger', statu
   numberOfSeats: 3, paymentAmount: 3000, paymentCurrency: 'CDF', paymentMode: 'electronic', paymentStatus: 'pending', passengerDestination: 'Destination de test' };
 const noop = () => {};
 
+test('a settled receipt offers driver rating and an explicit later action without adding a modal', () => {
+  const events = [];
+  const { ArrivalPaymentActions } = loader(mocks)('features/arrival-payment/ArrivalPaymentActions.tsx');
+  const tree = ArrivalPaymentActions({ completionSummary: { bookingId: 'booking', tripId: 'trip', canRateDriver: true },
+    onRateDriver: () => events.push('rate'), onDone: () => events.push('later'), isBusy: false });
+  const buttons = all(tree).filter(node => node.type === 'Button');
+  buttons.find(node => words(node) === 'Noter le conducteur').props.onPress();
+  buttons.find(node => words(node) === 'Plus tard').props.onPress();
+  assert.deepEqual(events, ['rate', 'later']);
+  assert.equal(all(tree).some(node => node.type === 'Modal'), false);
+});
+
 test('one payment modal keeps the same content component from selection through receipt, with one close action', () => {
   const hooks = hookHarness();
   const state = { arrivalBooking: booking, isAuthenticated: true, isAppActive: true, isResumeReady: true, insets: { bottom: 0 },
@@ -101,6 +113,37 @@ test('a free trip without a payment mode has a closable receipt and never implie
   const { ArrivalPaymentReceipt } = loader({ ...mocks, react: { ...React, memo: value => value } })('features/arrival-payment/ArrivalPaymentReceipt.tsx');
   assert.match(words(ArrivalPaymentReceipt({ summary })), /Aucun \(trajet gratuit\)/);
   assert.equal(buildPaymentCompletionSummary({ ...booking, paymentMode: null }, undefined, [], {}), null, 'unknown paid mode remains unknown');
+});
+
+test('discounted payment shows full fare, Zwanga contribution and passenger share before and after payment', () => {
+  const hooks = hookHarness();
+  const { ArrivalPaymentFields } = loader({ ...mocks, react: { ...React, ...hooks.react },
+    './ArrivalPaymentReceipt': { ArrivalPaymentReceipt: 'Receipt' },
+  })('features/arrival-payment/ArrivalPaymentFields.tsx');
+  const subsidized = { ...booking, numberOfSeats: 1, paymentMode: 'points', paymentAmount: 580,
+    grossPaymentAmount: 1450, firstTripSubsidyApplied: true, zwangaSubsidyAmount: 870 };
+  const props = { arrivalBooking: subsidized, destination: 'Destination de test', paymentAmount: 580, paymentCurrency: 'CDF',
+    selectedMode: 'points', selectedChannel: 'mpesa', setSelectedMode: noop, setPaymentError: noop, setStatusMessage: noop,
+    paymentPhone: '', walletBalance: 20, pointsUsed: 5.8, amountCoveredByPoints: 580, moneyComplement: 0 };
+  const renderText = () => words(hooks.render(() => ArrivalPaymentFields(props))).replace(/\s+/g, ' ');
+  for (const mode of ['points', 'cash', 'electronic']) {
+    props.selectedMode = mode;
+    const text = renderText();
+    assert.match(text, /Prix du trajet1 450 FC/);
+    assert.match(text, /Offert par Zwanga · 1er trajet−870 FC/);
+    assert.match(text, /Votre part à payer580 FC/);
+    assert.doesNotMatch(text, /Montant du trajet580/);
+    if (mode === 'points') assert.match(text, /Jetons à utiliser5,8 jetons · 580 FC/);
+  }
+  const { buildPaymentCompletionSummary } = loader(mocks)('features/arrival-payment/buildPaymentCompletionSummary.ts');
+  props.completionSummary = buildPaymentCompletionSummary({ ...subsidized, paymentStatus: 'succeeded' }, undefined, [], {});
+  props.arrivalBooking = { ...subsidized, grossPaymentAmount: 9999, zwangaSubsidyAmount: 9419 };
+  assert.match(renderText(), /Prix du trajet1 450 FC.*Votre part payée580 FC/);
+  props.completionSummary = { ...props.completionSummary, fareBreakdown: undefined };
+  assert.doesNotMatch(renderText(), /Offert par Zwanga|9 999/, 'an old receipt must not borrow a later fare');
+  props.completionSummary = null; props.waitingForArrivalConfirmation = true; props.paymentAmount = null;
+  assert.doesNotMatch(renderText(), /Offert par Zwanga|580 FC/);
+  hooks.unmount();
 });
 
 test('receipt exposes a selectable reference and only its useful wallet details; finishing does not pay again', () => {

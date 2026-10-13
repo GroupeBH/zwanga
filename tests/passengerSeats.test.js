@@ -133,7 +133,7 @@ test('passenger verification returns to the form only after closing its result d
     })('app/verification.tsx').default;
     const tree = Screen();
     assert.match(text(tree), /aucun véhicule/i);
-    const start = nodes(tree).find(node => node.type === 'TouchableOpacity' && text(node).includes('Vérifier avec Didit'));
+    const start = nodes(tree).find(node => node.type === 'TouchableOpacity' && text(node).includes('Vérifier mon identité'));
     await start.props.onPress();
     assert.deepEqual(starts, [{ showResultDialog: false }]);
     assert.deepEqual(routes, []);

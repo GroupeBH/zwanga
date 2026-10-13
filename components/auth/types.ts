@@ -14,7 +14,7 @@ export type ResetPinMode = 'otp' | 'newPin';
 
 // Step sequences
 export const LOGIN_STEPS: AuthStep[] = ['phone', 'pin'];
-export const SIGNUP_STEPS: AuthStep[] = ['phone', 'sms', 'pin', 'profile'];
+export const SIGNUP_STEPS: AuthStep[] = ['phone', 'pin', 'profile'];
 
 // Vehicle options
 export type VehicleOption = RegisteredVehicleTypeOption;

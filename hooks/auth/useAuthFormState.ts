@@ -102,7 +102,7 @@ export function useAuthFormState({
     approvedMessage:
       "Votre identité a été vérifiée avec succès. Bienvenue parmi les conducteurs Zwanga.",
     pendingMessage:
-      'Votre compte est créé. Terminez la vérification Didit pour activer toutes les fonctionnalités conducteur.',
+      'Votre compte est créé. Terminez la vérification d’identité pour activer toutes les fonctionnalités conducteur.',
   });
 
   return {

@@ -135,6 +135,11 @@ export interface Booking {
   paymentMode?: TripPaymentMode | null;
   paymentStatus?: TripPaymentStatus | null;
   paymentAmount?: number | string | null;
+  /** Server fare before the first-trip subsidy; paymentAmount is the passenger share. */
+  grossPaymentAmount?: number | string | null;
+  firstTripSubsidyApplied?: boolean;
+  passengerPaymentRate?: number | string | null;
+  zwangaSubsidyAmount?: number | string | null;
   paymentCurrency?: string | null;
   paymentReference?: string | null;
   paymentTransactionId?: string | null;

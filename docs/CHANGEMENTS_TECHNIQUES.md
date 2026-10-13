@@ -1,5 +1,629 @@
 # Journal des changements techniques
 
+## 13 octobre 2026 — Correctifs backend KYC préparés pour livraison
+
+- **Demande / périmètre :** préparer en priorité les correctifs backend du blocage
+  Android après photographie de pièce. Dépôt voisin `../zwanga-backend`, paramètres
+  de livraison Terraform et procédure opérationnelle. Les contrôles KYC déjà en cours
+  dans l'espace de travail ont été complétés et vérifiés ; les changements mobiles
+  existants n'ont pas été écrasés.
+- **Garde du workflow :** `src/users/didit-workflow-guard.ts` et `didit-kyc.service.ts`
+  vérifient une publication du même groupe, même si la référence configurée désigne une
+  ancienne version. Pagination de l'origine Didit autorisée, au maximum cinq pages,
+  sans suivre une URL externe avec la clé. Cache de succès de 60 secondes, lectures
+  simultanées mutualisées, pas de cache des échecs. Aucune création sur brouillon non
+  publié ; code stable `KYC_WORKFLOW_NOT_PUBLISHED`. Rejet des réponses terminales,
+  expirées ou d'échéance malformée ; échéance normalisée renvoyée dans les deux alias.
+- **Continuité pour les apps installées :** `didit-session-launch.ts` ajoute
+  `DIDIT_KYC_LAUNCH_MODE=native|hosted`. Sans réglage, le comportement natif est
+  conservé. En mode hébergé, les alias de jeton sont nuls et les alias d'URL désignent
+  le même dossier propriétaire sur le seul hôte HTTPS Didit autorisé. Les applications
+  qui utilisent déjà l'URL de secours ouvrent alors leur navigateur de vérification.
+  Une URL inattendue ou un mode invalide bloque proprement le lancement. Il s'agit
+  d'un contournement opérationnel à tester, pas d'une réparation prouvée du SDK Android.
+- **Outil de livraison :** `didit-kyc-preflight.ts` est en lecture seule par défaut,
+  sans création de session, connexion en base ou initialisation de l'app NestJS.
+  L'option SSM ne garde les secrets qu'en mémoire et ne les affiche pas. L'option
+  explicite `--publish` ne modifie que le statut de la version configurée, refuse des
+  contrôles de présence/comparaison manquants et relit la configuration ainsi que la
+  publication. Les principaux contrôles, seuils, documents, graphe et durées sont
+  comparés avant/après. Aucun choix automatique d'un autre workflow.
+- **Configuration préparée :** `infra-aws/ecs.tf`, `variables.tf`,
+  `production.auto.tfvars` produisent le paramètre SSM `DIDIT_KYC_LAUNCH_MODE` via le
+  mécanisme existant, réservé à Terraform. Production sélectionne `hosted` ; les autres
+  environnements gardent le défaut `native`. Aucune clé Didit modifiée ni permission
+  IAM, dépendance, schéma ou migration ajoutée.
+- **Préservation :** compte et dossier authentifiés, règles d'identité et comparaison,
+  signatures de webhook, approbation exclusivement serveur, activation conducteur et
+  bonus restent protégés. Un signal d'expiration mobile n'approuve aucun dossier et
+  ne déclenche pas une deuxième session en arrière-plan. Les modifications antérieures
+  Apple, paiements, notifications et disponibilité ont été conservées.
+- **Vérifications :** 120 tests backend réussis dans huit suites ciblant Didit,
+  publication, lancement, approbation KYC et inscription conducteur. Compilation
+  `npm run build` et TypeScript de production réussis. Tests significatifs ajoutés
+  dans `didit-workflow-guard.spec.ts`, `didit-session-launch.spec.ts`,
+  `didit-kyc-preflight.spec.ts` et le test du service. Requêtes/fournisseur et bases
+  simulés : aucune capture Android/iOS validée par ces tests.
+- **Mesure distante :** l'outil compilé, lancé sans `--publish` sur les paramètres
+  de production, a renvoyé `available=false`, `KYC_WORKFLOW_NOT_PUBLISHED` (sortie 1
+  attendue). Aucun effet de bord distant. `git diff --check` des fichiers concernés
+  réussi. Terraform absent de cet environnement : fmt, validate, plan et apply
+  restent à réaliser par l'opérateur ; aucune validation Terraform n'est annoncée.
+- **Livraison restant à faire :** publication ciblée après revue, configuration et
+  nouvelle tâche ECS/image backend, puis vraie recette Android/iOS. Aucune publication,
+  écriture SSM, création de dossier facturable, migration ou opération de production
+  exécutée ici. Le mode web ne requiert pas de nouveau build pour les clients déjà
+  compatibles avec le lien hébergé ; les autres changements mobiles se livrent séparément.
+- **Procédure / limites / rollback :**
+  [guide backend de continuité KYC](../../zwanga-backend/docs/operations/didit-kyc-recovery-2026-10-13.md)
+  et entrée `INFRA-2026-10-13-001` dans le journal infrastructure. Le déploiement
+  applicatif et la publication Didit sont des opérations séparées ; un backend testé
+  ne rend pas le workflow brouillon disponible à lui seul. Aucun statut de résolution
+  production ni disparition des erreurs natives n'est annoncé avant recette.
+
+## 13 octobre 2026 — Diagnostic KYC Android en production, sans modification distante
+
+- Symptôme rapporté : sur Android bêta/production, photographie de la pièce réussie,
+  puis message « session expirée, veuillez recommencer la vérification », signalé pour
+  tous les utilisateurs. Aucun téléphone Android n'était connecté pour relever l'erreur
+  native ou reproduire le parcours pendant ce diagnostic.
+- Vérifications réelles en lecture seule : API hébergée sur ECS, révision de tâche 15,
+  une tâche active et cible ALB saine ; image déployée le 11 octobre. Fournisseur runtime
+  Didit activé. Les paramètres KYC consultés ont été modifiés avant ce déploiement.
+  Aucune valeur de clé, identifiant de workflow/session ou donnée personnelle n'est
+  reproduite dans ce journal. Aucune session de vérification facturable créée.
+- Anomalie constatée par l'API de gestion Didit : le workflow référencé par AWS est
+  en `draft`, version 1, sans date de publication ni version publiée du même groupe.
+  Il prévoit 604 800 secondes d'expiration, avec présence réelle et comparaison faciale
+  activées. L'autre workflow publié possède des paramètres différents : aucune bascule
+  automatique n'a été réalisée. La documentation fournisseur indique que les nouvelles
+  sessions utilisent une version publiée : [versionnement Didit](https://docs.didit.me/console/workflows#workflow-versioning).
+- Échantillon fournisseur depuis le 12 octobre : 29 sessions retournées, toutes
+  `Not Started`. Trois décisions récentes consultées indiquaient une échéance sept jours
+  après création ; la dernière n'était pas expirée au moment de la lecture. Cela contredit
+  une expiration immédiate du dossier, mais ne prouve pas à lui seul la validité de son
+  jeton SDK. Aucun jeton ni image n'a été affiché ou sauvegardé.
+- Autre constat CloudWatch : sept webhooks Didit pour quatre comptes absents de la base
+  de production dans la fenêtre examinée le 13 octobre. Leur rejet est attendu pour un
+  compte inconnu. Un partage des configurations Didit entre développement et production
+  est une hypothèse, pas une cause démontrée de l'erreur de capture.
+- Lecture du code : `DiditKycService.createSession` crée une session à chaque lancement ;
+  `mapDiditKycSession` transmet le jeton au SDK. Le message d'expiration peut provenir
+  du SDK ou de sa présentation côté mobile. Les échanges de capture Didit ne transitent
+  pas par l'API Zwanga ; CloudWatch ne fournit pas leur réponse native détaillée.
+- Conclusion et piste de correction : la référence à un workflow non publié est une
+  anomalie de configuration confirmée et une cause possible du blocage général. Il faut
+  publier/revoir ce workflow avec ses contrôles d'identité existants puis tester une
+  nouvelle session sur Android réel. L'attribution définitive du message SDK exige cet
+  essai ou la réponse technique de capture ; aucune résolution native n'est annoncée.
+- État des changements : seule cette entrée documentaire a été ajoutée. Aucun paramètre
+  SSM, rôle IAM, workflow Didit, statut KYC, compte, déploiement ou fichier fonctionnel
+  modifié pendant le diagnostic. Les corrections Apple et les changements KYC locaux
+  déjà présents ont été préservés. Aucun test JavaScript ajouté pour ces lectures distantes.
+
+## 13 octobre 2026 — Sélection du KYC mobile Didit / AWS par environnement
+
+- **Demande / périmètre** : rendre utilisables les deux parcours existants selon
+  une variable mobile explicite, sans modifier le KYC backend, l’OTP Keccel,
+  la production AWS ou le CI/CD.
+- **Appliqué** : `features/identity/kycProvider.ts` lit
+  `EXPO_PUBLIC_KYC_PROVIDER=didit|aws`. Didit reste le défaut ; le sélecteur est
+  prioritaire sur l’ancien flag `EXPO_PUBLIC_AWS_KYC_ENABLED`, encore reconnu en
+  son absence. Une valeur invalide bloque uniquement le lancement KYC et présente
+  une erreur, sans planter l’application ni créer de session payante.
+- **Parcours conservés** : `useDiditKycFlow` garde son interface pour tous ses
+  consommateurs (inscription, profil, publication, vérification passager).
+  `AwsKycProvider` et la reprise depuis le profil utilisent le même choix.
+  Photos recto/verso ou passeport, consentement, selfie vidéo natif AWS et décision
+  serveur restent en place. Aucun SDK natif ajouté ou retiré pendant ce changement.
+- **Prévention des surprises** : AWS choisi exige un backend activé et le module
+  natif. Serveur désactivé, ancien endpoint (404) ou panne ne déclenchent plus de
+  parcours Didit de remplacement, même avec l’ancien flag. L’erreur indique
+  l’indisponibilité ; un ancien binaire sans le pont demande une mise à jour.
+  Les événements d’erreur AWS ne sont plus étiquetés Didit. Le bouton de publication
+  porte désormais « Vérifier mon identité », compatible avec les deux parcours.
+- **Configuration** : [.env.kyc.example](../.env.kyc.example) et
+  [AWS_KYC.md](AWS_KYC.md) décrivent le choix local/EAS et les prérequis serveur.
+  Les variables réelles n’ont pas été changées. Le choix est intégré au bundle,
+  pas modifiable à distance par une variable ECS seule.
+- **Vérifications** : 63 tests JavaScript ciblés réussis (sélecteur, hooks réels
+  avec services simulés, AWS KYC, profil, notifications), TypeScript et frontière
+  réseau RTK Query validés. Compilation Android tentée ; après levée du blocage
+  réseau du sandbox, l’essai hors ligne échoue sur des dépendances AndroidX,
+  Compose et Hermes absentes du cache. Le pont Kotlin n’est pas déclaré compilé.
+  Aucun essai physique, compilation iOS, appel AWS facturé ou déploiement réalisé.
+  Les modifications d’inscription Apple présentes dans le worktree sont préservées.
+
+## 13 octobre 2026 — Inscription Apple et compatibilité du champ email
+
+### Problème constaté et périmètre
+
+- La capture fournie après le rejet App Review du 12 octobre montre exactement
+  `property email should not exist` lors de la finalisation du profil. La validation
+  NestJS locale reproduisait ce rejet pour les DTO d'inscription classique et Apple.
+- Le mobile ajoutait encore un email conservé dans le formulaire à `/auth/register`,
+  alors que le DTO ne l'acceptait pas. Le corps de `/auth/apple/mobile` excluait déjà
+  ce champ. La capture seule ne permet pas d'identifier l'endpoint réellement appelé
+  par le build 1.2.2 (138) : aucun journal de production ou binaire soumis n'a été inspecté.
+- Deux défauts connexes ont été observés dans le code : un contexte social incomplet
+  pouvait retomber sur une inscription téléphone ; le profil Apple masquait les champs
+  du nom tout en exigeant qu'ils soient remplis. Ce dernier cas a été reproduit en
+  JavaScript avec la réponse native Apple et le stockage simulés, pas sur appareil réel.
+
+### Solutions effectivement appliquées
+
+- **Compatibilité backend ciblée** : dans `../zwanga-backend/src/auth/dto/auth.dto.ts`,
+  `RegisterDto`, `GoogleMobileAuthDto` et `AppleMobileAuthDto` héritent désormais de
+  `registration-compatibility.dto.ts`. Le champ historique `email` est accepté puis
+  remplacé par `undefined` à la transformation NestJS, avant la logique applicative.
+  Il n'est ni enregistré comme email d'inscription téléphone ni utilisé pour rechercher
+  ou associer un compte social. Les anciennes versions peuvent donc encore envoyer ce
+  champ sans subir ce rejet précis. La signature, l'audience, l'expiration et le nonce
+  Apple restent vérifiés par le code existant ; l'email social provient toujours du
+  jeton vérifié. `whitelist` et `forbidNonWhitelisted` restent activés globalement :
+  aucun autre champ inconnu ou drapeau privilégié n'est autorisé par cette exception.
+- **Contrat mobile** : `hooks/auth/useRegistrationActions.ts` ne reçoit ni n'envoie
+  plus l'email du formulaire à l'inscription téléphone. La présence d'un contexte
+  Apple/Google exige le fournisseur, le jeton, la saisie du téléphone terminée et,
+  pour Apple, le nonce. Sinon, aucune mutation d'inscription n'est lancée ;
+  `hooks/auth/useAuthController.ts` réinitialise uniquement le contexte social et
+  revient aux boutons de connexion en conservant les données du profil. Suppression
+  du choix implicite de Google lorsque le fournisseur manque. Le drapeau historique
+  `isGooglePhoneVerified` reste un indicateur de saisie, pas une preuve de possession.
+- **Nom Apple complétable** : `app/auth.tsx` affiche les champs nom/prénom même pour
+  Apple et permet leur correction avant le KYC. `useSignupProfileActions.ts` et
+  `useRegistrationActions.ts` invitent à compléter le formulaire au lieu de demander
+  de révoquer l'accès Apple. `useSocialAuthActions.ts` conserve les noms déjà saisis
+  lors d'une nouvelle autorisation Apple qui omet ces informations.
+- **Message utilisateur** : `utils/errors/errorPresentation.ts` présente les erreurs
+  `property … should not exist` en français, sans exposer le nom technique du champ.
+  Cette traduction ne transforme pas un échec en succès et ne remplace pas le correctif
+  de contrat. Les autres messages métier restent inchangés.
+
+### Précautions et comportements conservés
+
+- Aucun déploiement, build EAS, changement AWS, lecture de secrets, migration,
+  dépendance ajoutée ou création de compte réel. Les changements antérieurs du backend
+  concernant paiements, disponibilité et notifications ont été conservés.
+- Conservation du PIN, des contrôles véhicule/rôle, du parrainage, du KYC, du verrou
+  anti-double soumission et de la reprise locale après création réussie du compte.
+  Les validations de nom restent requises ; les données saisies ne sont pas une preuve KYC.
+- Les profils Apple existants continuent d'être retrouvés côté serveur par l'identité
+  vérifiée. Un jeton rejeté ne déclenche pas de création de compte en remplacement.
+
+### Vérifications réalisées
+
+- `npm run check:release` dans le mobile : TypeScript, frontière réseau, taille des
+  modules et **1 904 tests JavaScript réussis, 0 échec**. Nouveaux cas dans
+  `tests/appleRegistration.test.js` : email absent du formulaire envoyé, endpoint/nonce
+  Apple, contextes sociaux incomplets, reprise, noms absents, champs visibles et erreurs
+  françaises. Les fixtures de `authSubmissionLoading.test.js` et `vehiclePlate.test.js`
+  fournissent maintenant explicitement le nonce Apple ; leurs assertions sont conservées.
+- Backend : `npm test -- --runInBand --silent --testPathPatterns=auth` :
+  **121 tests réussis dans 7 suites**. `src/auth/registration-compatibility.spec.ts`
+  teste la vraie transformation/validation NestJS, le rejet des autres champs et rôles
+  interdits, ainsi que le passage de l'email du jeton à la résolution de compte.
+  Les échanges d'authentification et la base sont simulés : ces tests ne valident pas
+  une vraie autorisation Apple ni une requête sur la production.
+- `npx tsc -p tsconfig.build.json --noEmit --incremental false` côté backend : réussi.
+  `git diff --check` sur les changements concernés : réussi.
+
+### Livraison et limites restantes
+
+1. Déployer séparément le correctif backend pour rendre les anciennes versions
+   compatibles avec le champ email. Ce déploiement n'a pas été effectué ici.
+2. Préparer un nouveau build iOS incluant les corrections mobile, après vérification
+   de la version de livraison : les fichiers locaux indiquent 1.0.17 tandis que le
+   rejet porte sur 1.2.2 (138). Aucun numéro de version n'a été changé à l'aveugle.
+   Le profil EAS existant est `production` (`eas build --platform ios --profile production`).
+3. Tester sur iPhone et iPad physiques : première inscription Apple, nouvelle tentative
+   après abandon, nom absent/partiel, adresse Apple masquée, connexion à un compte
+   existant, installation neuve et mise à jour. Vérifier l'arrivée à l'accueil après
+   finalisation, le maintien du chargement et la reprise après erreur réseau.
+4. Vérifier l'audience Apple et les capacités du binaire réellement livré. La configuration
+   de production et la correspondance du dépôt avec le build refusé ne sont pas établies.
+   Aucune garantie de résolution du rejet App Store sans ces essais natifs et cette livraison.
+
+## 12 octobre 2026 — Correctifs de fiabilité, disponibilité et accueil après audit
+
+### Périmètre et autorisation
+
+- Mise en place des sept correctifs de l'audit : recharges, ordonnanceur de notifications,
+  sondes de santé, accueil hors ligne, délai du repli de recherche, configuration API et
+  contrôles de livraison. Code mobile et dépôt voisin `../zwanga-backend`.
+- Aucun déploiement, build EAS payant, changement AWS, paiement réel ou écriture en base
+  effectué. Les modifications iOS Smithy déjà présentes dans le worktree sont conservées.
+
+### Solutions appliquées et comportements conservés
+
+1. **Recharges rejouées sans second lancement de paiement.**
+   `services/walletTopUpIntent.ts` enregistre une clé UUID avant le POST, sous verrou local,
+   par compte et par contexte (portefeuille ou complément d'une réservation). Une réponse
+   perdue réutilise cette clé, y compris après redémarrage. Une intention illisible ou une
+   erreur de stockage bloque le POST ; une opération incertaine n'est pas supprimée pour
+   permettre une nouvelle tentative avec un autre montant. Sa suppression exige la même
+   référence serveur : une ancienne confirmation ne peut pas effacer une nouvelle intention.
+   Les hooks `hooks/wallet/useWalletTopUp{Actions,Storage,Monitoring}.ts`,
+   `useWalletController.tsx` et `hooks/arrival-payment/useArrivalPayment{Submission,Monitoring}.ts`
+   intègrent cette reprise et gardent les gardes de session/écran. Le bouton reste occupé
+   pendant la préparation locale ; un échec réseau après envoi indique une recharge à vérifier.
+   `store/api/walletApi.ts` utilise le délai de mutation critique existant de 60 s, contre 20 s.
+
+   Côté backend : `src/wallet/dto/wallet.dto.ts`, `wallet.service.ts`,
+   `src/payments/payments.service.ts` et `topup-payment-claim.ts` utilisent une référence
+   déterministe, liée au compte et à la clé, de 25 caractères alphanumériques maximum.
+   L'index unique `PaymentTransaction.reference` déjà déclaré dans le schéma arbitre
+   les requêtes concurrentes avant l'appel prestataire. Une collision renvoie l'opération
+   existante après contrôle du compte, du montant, du canal, de la devise et du numéro.
+   Aucun verrou de base n'est maintenu pendant un appel prestataire. La consultation du
+   statut accepte aussi la référence interne, toujours filtrée par propriétaire, tant que
+   le numéro prestataire manque. Aucun nouveau débit n'est déclenché par cette lecture.
+   Clé facultative côté DTO pour conserver les anciennes applications ; celles-ci ne
+   bénéficient pas de la nouvelle déduplication avant réception d'une référence.
+   Les règles de commission, crédit des jetons, preuves prestataire et versements restent
+   inchangées. Aucune nouvelle dépendance ni migration ajoutée. Le guide PostgreSQL a
+   orienté la réutilisation de l'unicité existante et l'absence de transaction longue.
+
+2. **Notifications urgentes non bloquées par un seul envoi lent.**
+   `../zwanga-backend/src/notifications/notifications.service.ts` dimensionne les lots selon
+   les workers disponibles (cinq envois simultanés, deux éléments par worker, dix au maximum)
+   pour conserver le débit de traitement sans attente collective. Le verrou de réservation du lot
+   est libéré avant les appels externes : le prochain passage, toutes les cinq secondes,
+   peut utiliser les places libérées même si un ancien envoi attend encore. La file ordinaire
+   utilise cinq workers qui prennent le prochain élément disponible, sans barrière par lots.
+   Les transactions courtes, `skip_locked`, reprises de claims, contrôles d'expiration et
+   de destinataire restent en place. Un avertissement mesure les envois dépassant 10 s.
+   Aucun timeout artificiel ne relance un envoi HTTP encore actif. Sons, permissions,
+   destinataires et actions Accepter/Refuser ne sont pas modifiés.
+
+3. **Vitalité du processus distincte de la disponibilité métier.**
+   Backend : `src/health/health.controller.ts`, `src/main.ts`, `Dockerfile`,
+   `infra-aws/ecs.tf`. Nouvelle sonde `/health/live` sans DB ni Redis, y compris sans
+   throttling Redis ; elle ne renvoie que l'état du processus et son uptime.
+   Le conteneur utilise cette sonde. ALB conserve `/health`, ses contrôles PostgreSQL,
+   Redis et de contrat financier, ainsi que ses limites de débit. Les vérifications au
+   démarrage restent inchangées. Détails, ordre de déploiement et retour arrière dans
+   `../zwanga-backend/infra-aws/docs/CHANGELOG.md`, entrée `INFRA-2026-10-12-001`.
+
+4. **Accueil hors ligne explicite.** `hooks/home/useHomeContext.ts`, `useHomeSheet.ts`,
+   `components/home/HomeTripsSheet.tsx`, `app/(tabs)/index.tsx` : sans cache, le message
+   explique l'absence de connexion plutôt qu'un marché vide. Avec cache, les cartes restent
+   visibles et signalées comme derniers résultats enregistrés ; un rafraîchissement échoué
+   ne masque plus les clients déjà affichés. Pas de polling supplémentaire ni de démontage
+   de la carte. L'information réseau reste celle des listeners existants, pas une garantie
+   que le serveur est joignable.
+
+5. **Repli de recherche plus rapide sur l'accueil.** `hooks/home/useHomeTripFeed.ts`,
+   `store/api/trip/contracts.ts`, `getTrips.endpoints.ts` : budget HTTP de 8 s par recherche
+   Home (proximité puis recherche élargie), contre 20 s chacune. Le drapeau `discovery` est
+   uniquement local et retiré des paramètres/body envoyés au serveur. Le classement proche,
+   le repli élargi, le nombre de résultats, les caches et la recherche séquentielle sont
+   conservés. Aucun changement des délais des mutations ni de la recherche manuelle.
+   Il s'agit d'un budget de transport, pas d'une mesure de latence globale sur appareil.
+
+6. **Configuration de livraison explicite.** `scripts/validate-api-config.cjs`,
+   `app.config.js`, `config/env.ts`, `store/api/baseApi.ts`, `package.json` : validation
+   de l'URL pour production/staging et le profil EAS production ; rejet des URL absentes,
+   non HTTPS, de l'ancien hôte de repli, locales usuelles, avec identifiants ou mauvais
+   chemin API. Les erreurs n'affichent pas les valeurs. Suppression du repli Render en
+   release ; l'API commune renvoie une erreur explicite si la configuration manque.
+   Le développement conserve HTTP local. Ne pas confondre ce contrôle de format avec
+   une sonde de disponibilité ou un contrôle DNS exhaustif.
+
+7. **Barrière de tests avant les builds du workflow.** `package.json` ajoute `test:all`
+   (quatre processus maximum) et `check:release` (TypeScript, frontière réseau, taille des
+   modules, tests). `.eas/workflows/create-production-builds.yml` impose un job de validation
+   avant les deux builds, suivant la [syntaxe EAS officielle](https://docs.expo.dev/eas/workflows/syntax/).
+   Le hook pré-installation contrôle l'URL même pour un build direct. Un build direct hors
+   workflow ne lance pas automatiquement la suite complète : lancer `npm run check:release`.
+   Les cinq tests initialement en échec ont été corrigés sans enlever leurs assertions
+   métier : textes identité/SMS actualisés, réservation avec propriétaire, doublures des
+   composants natifs. Des doublures explicites du stockage et de l'UUID accompagnent les
+   nouveaux tests ; seuls les deux snapshots d'endpoints modifiés ont été actualisés.
+
+### Vérifications et limites
+
+- `npm run check:release` : passe finale réussie, **1 892 tests Node / 1 892**, aucun
+  échec, TypeScript mobile, frontière réseau et 1 080 modules de moins de 401 lignes.
+  Durée de la suite Node : environ 113 s sous Node 24.11.0 / Windows ; ce n'est pas une
+  mesure de performance de l'application. Les tests d'initiation vérifient aussi que le
+  POST attend la persistance et qu'une réponse perdue réutilise la clé.
+- Backend : 391 tests Jest réussis dans 26 suites paiements/portefeuille/notifications/santé.
+  `tsc --noEmit --incremental false -p tsconfig.build.json` vérifie le code de production.
+  Compilation de production réussie ; les 26 tests de notifications ont également été
+  rejoués avec succès après le dernier ajustement conservant le débit des lots.
+  Le contrôle TypeScript sans ce projet, incluant toutes les anciennes fixtures backend,
+  signale encore des erreurs de typage dans des tests non modifiés ; il ne faut pas le
+  présenter comme réussi. Les tests Jest utilisent leurs doubles et ne valident pas une DB réelle.
+- Régressions ajoutées : concurrence et reprise de recharge, panne de disque, changement
+  de compte, référence tardive, déduplication jusqu'au service prestataire mocké, notification
+  lente et reprise après erreur de claim, liveness traversant le vrai garde sans Redis,
+  accueil hors ligne avec/sans cache, budget de découverte et configuration de livraison.
+- Terraform indisponible dans le PATH : ni `terraform fmt -check` ni `terraform validate`
+  ni plan/apply réalisés. Aucune mesure de disponibilité, de consommation, de chauffe ou
+  de crash natif avant/après ; aucun test physique Android/iOS ni build cloud exécuté.
+- À déployer **backend d'abord**, puis mobile. Vérifier l'index unique de référence sur la
+  base cible avant livraison ; le schéma déclaré est inspecté, pas la base de production.
+  Si un processus s'arrête après la réservation d'une référence mais avant l'appel prestataire,
+  l'opération reste prudemment en attente : rapprochement/support nécessaire, pas de nouveau
+  débit automatique. Une désinstallation/effacement des données locales ne conserve pas la clé.
+- Après déploiement contrôlé : tester réseau lent/coupé, fermeture pendant une recharge,
+  retour après paiement, notifications concurrentes sur appareils verrouillés, et les deux
+  sondes pendant une panne simulée dans un environnement isolé. Respect du mode silencieux,
+  du volume et des restrictions OS inchangé ; aucune garantie de sonnerie ou d'absence de crash
+  ne découle des tests JavaScript.
+
+
+## 12 octobre 2026 — Autorisation ciblée du plugin Smithy pour les builds iOS EAS
+
+- **Constat / périmètre** : le journal EAS fourni montre un échec de
+  `xcodebuild archive` (code 65) à l’étape de validation de
+  `SmithyCodeGeneratorPlugin`, fourni par la dépendance AWS `smithy-swift`
+  résolue en `0.238.0`. Le bundle JavaScript et l’installation des Pods avaient
+  réussi. L’avertissement Ruby et les premières tentatives lentes de lecture
+  des paramètres Xcode ne sont pas l’erreur terminale de ce journal.
+- **Solution appliquée** : `config/ios-swift-plugin-trust.json` définit le
+  paquet, sa version, le nom du plugin et l’empreinte Git autorisée
+  `baac48e6589bbf4622f338ef9e9fc4f83cdd39a5`. Cette empreinte a été vérifiée
+  par lecture du tag public `0.238.0` avec `git ls-remote` ; cela ne constitue
+  pas un audit complet du code du fournisseur. `plugins/withAwsLiveness.js`
+  et `ios/zwanga.xcodeproj/project.pbxproj` fixent cette version de la dépendance
+  déjà transitive d’AWS, sans produit supplémentaire lié à l’application.
+  Le verrouillage est conservé lors d’une régénération Expo du projet iOS.
+- **Préparation du serveur de build** :
+  `scripts/configure-ios-swift-plugin-trust.cjs`, ajouté à la fin du hook
+  `eas-build-post-install` dans `package.json`, autorise seulement ce nom de
+  plugin pour cette empreinte dans le registre SwiftPM du serveur EAS.
+  Il utilise le registre macOS `Library/org.swift.swiftpm/security/plugins.json`
+  et respecte un éventuel registre historique `.swiftpm/security` existant.
+  Les autorisations déjà présentes sont conservées ; un registre invalide
+  interrompt le hook sans écrasement. Une seconde exécution ne rajoute pas
+  de doublon. Le script ne modifie aucun réglage hors d’un build iOS EAS cloud
+  sur macOS, notamment pas lors d’un build EAS local ni sous Windows/Android.
+- **Précautions / comportements conservés** : pas de désactivation globale
+  de la validation des plugins ou macros Swift, pas de contournement du sandbox
+  ni de la signature iOS. Les contrôles existants Expo Location et Crashlytics
+  restent exécutés avant ce hook. Aucun changement du fonctionnement mobile,
+  du backend, des dépendances npm ou des versions Amplify déjà fixées.
+  Aucun changement du profil Android ni de l’auto-incrément du numéro de build
+  de production. Une future mise à jour Smithy nécessitera une vérification et
+  une mise à jour explicite de la version et de son empreinte ; aucun plugin
+  inconnu n’est approuvé automatiquement. Le reste du graphe Swift conserve
+  sa résolution actuelle ; aucun `Package.resolved` n’a été fabriqué.
+- **Vérifications réalisées** : **18 tests Node réussis** via
+  `npm.cmd run test:ios-build` (`iosSwiftPluginTrust.test.js`, `awsKyc.test.js`,
+  `iosCrashlytics.test.js`) et **15 tests Node Android réussis**
+  (`androidBuildPerformance.test.js`, `androidCrashlytics.test.js`,
+  `androidNativeArtifact.test.js`). Les nouveaux tests utilisent un système
+  de fichiers simulé pour les registres de confiance et le lecteur Xcode pour
+  vérifier le projet natif réel et la régénération en mémoire. Sont couverts
+  l’idempotence, les exclusions de plateformes, la préservation des autres
+  autorisations et le refus des registres invalides. Vérification de syntaxe
+  Node, exécution réelle sans effet sous Windows, ESLint ciblé et
+  `git diff --check` réussis. L’invocation initiale `npm` était bloquée par la
+  politique PowerShell ; `npm.cmd` a permis les tests sans changer cette politique.
+- **Limites / validation restante** : aucun build EAS, archivage Xcode,
+  déploiement ou essai sur appareil physique lancé ici. Ces tests JavaScript
+  ne prouvent pas encore la réussite de l’archive iOS. Relancer depuis le projet
+  `npx.cmd eas-cli build --platform ios --profile production` (sous Windows),
+  ou inclure ces fichiers dans le commit utilisé par le workflow EAS habituel.
+  Vérifier le message `[ios-swift-plugin-trust]` dans le hook post-install,
+  puis la réussite de l’archive. Une fois le build installé, vérifier le
+  démarrage et les parcours utilisant les composants AWS natifs lorsqu’ils
+  sont activés. Sur un Mac en build local, l’approbation habituelle dans Xcode
+  reste nécessaire. Aucune disparition de crash ou amélioration de performance
+  native n’est revendiquée pour ce correctif.
+- **Références** : plugin attendu confirmé par le
+  [projet AWS SDK Swift](https://github.com/awslabs/aws-sdk-swift/discussions/2188),
+  format du registre et empreinte de révision décrits sur les
+  [forums Swift](https://forums.swift.org/t/how-do-i-get-xcode-to-programmatically-trust-a-specific-build-tool-plugin-for-ci/61331),
+  ordre des étapes du [hook EAS post-install](https://docs.expo.dev/build-reference/npm-hooks/).
+
+## 12 octobre 2026 — Paiement du trajet courant et notation après la course
+
+- **Constat / périmètre** : un montant incorrect est signalé également sur les
+  trajets suivants. L’analyse mobile identifie une sélection qui pouvait garder
+  une ancienne réservation impayée devant celle dont l’arrivée vient d’être
+  déclarée. Il s’agit d’un défaut de sélection reproductible en test, pas d’une
+  preuve de la cause du cas réel signalé. La notation conducteur/passager était
+  aussi peu accessible à la sortie du paiement et le conducteur quittait l’écran
+  après avoir noté un seul passager.
+- **Diagnostic serveur réellement réalisé** : lecture du calcul tarifaire,
+  de l’éligibilité au premier trajet, du débit des jetons et des contrôles de
+  notation dans `../zwanga-backend`. Vérification PostgreSQL locale limitée aux
+  30 réservations les plus récentes, en transaction `READ ONLY` avec délai
+  maximal puis `ROLLBACK`, sans identifiants personnels dans le journal. Cet
+  échantillon ne contenait que des paiements cash et n’a montré ni subvention
+  répétée ni écart entre montant brut et part passager. Il ne valide donc pas
+  les paiements en jetons de production. Aucun montant, solde, configuration,
+  schéma ou code métier backend modifié pour cette intervention.
+- **Correction de sélection appliquée** :
+  `features/arrival-payment/selectPaymentBooking.ts` et
+  `hooks/arrival-payment/useArrivalPaymentState.ts` donnent priorité à l’arrivée
+  déclarée et à une arrivée serveur effectivement plus récente, au lieu d’un
+  ancien rappel inactif. Une modification de `updatedAt` seule ne suffit pas.
+  `useArrivalPaymentSubmission.ts` et
+  `components/PassengerArrivalPaymentCoordinator.tsx` conservent l’identifiant
+  de la réservation pendant toute la soumission, y compris entre deux appels
+  réseau. Un débit ou une référence de paiement en attente ne change pas de
+  réservation. Aucun recalcul, remise supplémentaire ou effacement d’impayé.
+- **Notation passager → conducteur** : `paymentTypes.ts`,
+  `buildPaymentCompletionSummary.ts`, `ArrivalPaymentActions.tsx` et
+  `useArrivalPaymentNavigation.ts` ajoutent « Noter le conducteur » et
+  « Plus tard » au reçu d’une réservation terminée, payée selon le serveur
+  (ou gratuite). Choisir le cash n’est pas une preuve de réception du cash.
+  Le reçu se ferme avant la navigation vers la notation, sans nouveau modal
+  natif ; les doubles clics, l’ouverture concurrente de facture et une fermeture
+  tardive après déconnexion/passage en arrière-plan ne doublent pas la navigation.
+  L’accès à la facture et la possibilité de fermer restent disponibles.
+- **Notation conducteur → passagers** : `app/trip/navigate/[id].tsx` propose
+  « Noter les passagers » sur la carte « Trajet terminé », à la place de la simple
+  actualisation lorsqu’il existe des réservations terminées. Le détail d’un gain
+  propose « Noter ce passager ». Câblage dans `DriverDropoffReceipts.tsx`,
+  `DriverDropoffReceiptsSheet.tsx`, `DriverNavigationControls.tsx`,
+  `DriverNavigationTopPanel.tsx` et `useDriverRatingTransition.ts` : conservation
+  du nettoyage de navigation et de la libération de la carte avant changement
+  d’écran, avec cible passager facultative.
+- **Écran de notation simplifié** : `features/rating/ratingEligibility.ts`,
+  `RatingParticipantSelector.tsx`, `hooks/rating/useRatingData.ts`,
+  `useRatingActions.ts` et `app/rate/[id].tsx` utilisent uniquement les passagers
+  distincts ayant une réservation terminée sur ce trajet. Retrait du choix
+  passager → autre passager, non autorisé par le serveur, et du repli sur une
+  simple liste publique de passagers. Après chaque note réussie, passage au
+  passager suivant avec étoiles, commentaire et tags remis à zéro ; retour
+  habituel après le dernier. Une cible issue d’un lien ne remplace plus le choix
+  explicite du conducteur. Aucun nouvel abonnement réseau ou dépendance.
+- **Précautions conservées** : remise du premier trajet, conversion FC/jetons,
+  prix ajustés par le serveur, commission, idempotence financière, contrôles
+  serveur des participants et interdiction des doublons de notation inchangés.
+  Une notation ne confirme aucun paiement ni aucune arrivée. Les erreurs réseau
+  ne sont pas transformées en paiement réussi. Le suivi GPS et les autres
+  actions de navigation ne sont pas modifiés.
+- **Vérifications** : **149 tests Node mobile réussis** sur paiement, notation,
+  navigation et gestion des panneaux ; **94 tests Jest backend réussis** sur
+  réservations, portefeuille et éligibilité des avis. Les ajouts couvrent une
+  ancienne part subventionnée remplacée par le plein tarif du trajet suivant,
+  le maintien d’un débit en cours, l’ouverture différée de la notation et trois
+  passagers successifs. Fichiers : `tests/paymentRatingFlow.test.js`,
+  `arrivalPaymentFare.test.js`, `arrivalPaymentSubmission.test.js`,
+  `arrivalPaymentSheet.test.js`, `ratingLifecycle.test.js`,
+  `ratingPresentation.test.js`, `driverBookingRevenue.test.js` et
+  `navigationHeaders.test.js`. Dans ce dernier, l’assertion du résultat
+  d’opération a été déplacée vers le test du véritable panneau supérieur qui
+  le contient, au lieu de le chercher dans l’écran qui simule ce panneau.
+  TypeScript mobile (`tsc --noEmit --incremental false`), ESLint ciblé et
+  `git diff --check` du périmètre : succès, sans erreur ni avertissement.
+- **Limites restantes** : tests JavaScript avec composants/réseau simulés,
+  aucun paiement réel ni essai physique iOS/Android. Pas de garantie de résolution
+  du montant signalé en production tant que la réservation et son décompte ne
+  sont pas identifiés. La notation déjà effectuée est masquée dans la session
+  courante de l’écran ; à sa réouverture, les doublons restent contrôlés par le
+  serveur. Distribution mobile et essais sur appareil nécessaires : terminer
+  deux trajets successifs, vérifier prix/part/débit ; payer puis noter le
+  conducteur ; terminer un trajet à plusieurs passagers et les noter ; répéter
+  avec réseau lent, fermeture, reprise et gros caractères. Aucun déploiement.
+
+## 12 octobre 2026 — Décompte explicite du premier trajet subventionné au paiement
+
+- **Constat / périmètre** : pour un tarif de 1 450 FC, l’écran présentait 580 FC
+  comme « Montant du trajet ». Le code serveur et sa documentation prévoient
+  déjà une part passager de 40 % pour le premier trajet éligible, avec 60 %
+  financés par Zwanga. Cet écart correspond exactement à cette règle, pas à
+  une conversion FC/jetons. Aucune réservation réelle de production n’a été
+  consultée pour confirmer l’éligibilité du cas signalé. L’utilisateur a
+  explicitement demandé de conserver la réduction et de clarifier le décompte.
+- **Correction appliquée** : `types/trips.ts`,
+  `store/api/booking/serverTypes.ts` et `bookingMapper.ts` conservent désormais
+  `grossPaymentAmount`, `firstTripSubsidyApplied`, `passengerPaymentRate` et
+  `zwangaSubsidyAmount`, qui étaient perdus dans la transformation mobile.
+  `features/arrival-payment/paymentFare.ts` valide le décompte reçu, sans
+  recalculer le tarif ni présumer l’éligibilité. Il vérifie en centimes que
+  prix total = part passager + participation Zwanga avant de présenter une remise.
+- **Présentation** : `ArrivalPaymentFields.tsx` distingue « Prix du trajet »,
+  « Offert par Zwanga · 1er trajet » et « Votre part à payer/payée ». Exemple :
+  1 450 FC − 870 FC = 580 FC, soit 5,8 jetons au taux de 100 FC/jeton.
+  Le libellé avant débit devient « Jetons à utiliser ». `paymentTypes.ts` et
+  `buildPaymentCompletionSummary.ts` gardent un instantané du décompte dans le
+  reçu pour qu’une actualisation de liste ne change pas rétroactivement son tarif.
+- **Comportements préservés** : montants serveur, éligibilité et taux de la
+  subvention, commission, crédits conducteur, cash, paiement électronique,
+  conversion et complément Mobile Money inchangés. Sans réduction, le prix
+  reste 1 450 FC / 14,5 jetons. Aucune multiplication supplémentaire par le
+  nombre de places, ni seconde réduction du prix. Les tarifs ajustés restent
+  ceux du serveur. Une réponse ancienne/incomplète ou incohérente n’invente
+  pas de remise. Aucun appel réseau, abonnement ni modal ajouté.
+- **Vérifications** : **91 tests Node mobile réussis**, dont les nouveaux cas
+  de mapping, calcul réel du hook de paiement, complément, plusieurs places,
+  tarif ajusté, reçu et affichage dans `tests/arrivalPaymentFare.test.js` et
+  `arrivalPaymentSheet.test.js`. **121 tests Jest backend réussis dans cinq
+  suites** : réservations, portefeuille, règlements conducteur, subvention cash
+  et résumé des revenus. Les ajouts à `src/bookings/bookings.service.spec.ts`
+  et `src/wallet/wallet.service.spec.ts` du dépôt `../zwanga-backend` vérifient
+  580 FC → débit de 5,8 jetons, 1 450 FC → 14,5 jetons, maintien du prix brut
+  conducteur et absence de second débit après paiement. Aucun changement du
+  code métier backend. TypeScript mobile et ESLint ciblé : succès, sans erreur
+  ni avertissement. `git diff --check` du périmètre : succès.
+- **Limites / livraison** : tests JavaScript/Jest avec réseau, stockage et vues
+  natives simulés, pas de paiement réel ni d’essai physique iOS/Android. Aucune
+  migration, modification de configuration, de solde utilisateur ou de production.
+  La correction nécessite de distribuer la version mobile modifiée. Sur appareil,
+  vérifier avant/après paiement les trois lignes et le débit en jetons avec et
+  sans subvention, puis avec un solde nécessitant un complément.
+
+## 12 octobre 2026 — OTP réservé au PIN oublié dans l’application, instructions SMS sans fournisseur
+
+- **Problème / périmètre** : les écrans indiquaient encore un code WhatsApp avec
+  un nom de fournisseur. Un ancien drapeau de build pouvait réactiver l’OTP
+  d’inscription; les routes publiques de vérification du numéro restaient actives.
+  La nouvelle règle utilisateur réserve les codes à l’oubli du mot de passe/PIN,
+  avec livraison par SMS classique.
+- **Parcours mobile appliqué** : `app/auth.tsx`, `components/auth/types.ts`,
+  `hooks/auth/useAuthController.ts`, `usePhoneAuthActions.ts` et
+  `useSocialPhoneVerification.ts` retirent l’étape OTP de l’inscription classique,
+  Google et Apple. Le téléphone reste validé syntaxiquement, puis le parcours
+  continue vers le PIN ou le profil. Les anciens callbacks OTP ne font plus
+  d’appel d’envoi/vérification. `config/env.ts` ignore le drapeau obsolète
+  d’activation OTP à l’inscription, même s’il figure encore dans un ancien build.
+  Les interfaces et composants historiques non montés restent disponibles pour
+  compatibilité interne, mais ne sont plus accessibles dans l’écran d’inscription.
+- **Textes / présentation** : `features/auth/otpDelivery.ts` et
+  `components/auth/OtpDeliveryNotice.tsx` utilisent « Code par SMS » et une icône
+  de message, sans citer Didit, Keccel ni WhatsApp. Le texte de secours WhatsApp
+  a été retiré. Le composant compact ne répète plus un titre et une instruction.
+  `PhoneStep.tsx` et `GooglePhoneStep.tsx` ne promettent plus de code à
+  l’inscription; l’action sociale est « Continuer ». Le login, `ResetPinStep` et
+  `ProfilePinModal` récupèrent ces textes partagés pour « PIN oublié ».
+  `useAuthFormState.ts` présente également la vérification d’identité sans marque,
+  sans changer son traitement. Commentaire de reprise aligné dans
+  `useAuthDraftPersistence.ts`.
+- **Reprise conservée** : `services/authFlowDraft.ts` migre les anciennes étapes
+  `sms` vers le PIN et l’ancien OTP social vers la saisie du téléphone, en
+  conservant les informations de profil et le contexte social encore valide.
+  Aucun PIN, chiffre OTP ou jeton de reset n’est ajouté au stockage. Le drapeau
+  social interne signifie seulement « téléphone renseigné »; il n’accorde aucune
+  preuve serveur de possession du numéro.
+- **Backend appliqué** (dépôt voisin `../zwanga-backend`) : les nouveaux resets
+  utilisent exclusivement l’adaptateur SMS dans `src/otp/otp.service.ts`, y
+  compris face à un ancien réglage sélectionnant un autre fournisseur. Aucun
+  second fournisseur n’est appelé en repli d’un échec d’envoi. Les deux méthodes
+  OTP téléphoniques de `src/users/users.service.ts` répondent désormais `410`
+  avec un message de mise à jour, sans lecture d’existence de compte, SMS,
+  consommation de challenge ni modification d’utilisateur. Les routes restent
+  documentées comme retirées dans `src/users/users.controller.ts`. Le profil
+  retourne `phoneVerificationRequired: false` sans modifier `isPhoneVerified`.
+  `src/auth/auth.service.ts` garde une réponse générique pour le reset tout en
+  précisant le canal SMS.
+- **Précautions** : six chiffres et validité de cinq minutes conservés pour la
+  récupération; preuve de reset à usage unique, expiration, révocation des
+  sessions, limites de tentatives et neutralité des réponses concernant
+  l’existence d’un compte inchangées. Un code historique déjà envoyé reste
+  vérifiable avec son fournisseur d’origine jusqu’à expiration pour ne pas
+  interrompre un reset en cours. Cette compatibilité ne déclenche pas de nouvel
+  envoi via cet ancien fournisseur. Le bootstrap administratif sécurisé et la
+  vérification d’identité sont des mécanismes séparés, non supprimés. Les règles
+  de réservation d’un numéro à l’inscription, les numéros internationaux et le
+  changement de PIN avec l’ancien PIN restent conservés.
+- **Vérifications** : **145 tests Node réussis dans 15 fichiers ciblés** couvrant
+  authentification, brouillons, clavier, OTP/collage, connexion sociale, sessions
+  et PIN. Tests adaptés dans `tests/otpDelivery.test.js`, `pinReset.test.js`,
+  `authFlowDraft.test.js` et `authInternationalPhone.test.js`. **204 tests Jest
+  backend réussis dans 10 suites** : routage OTP, reset PIN, routes retirées,
+  inscription conducteur, échange OAuth, unicité du numéro, état de profil,
+  onboarding conducteur, normalisation téléphonique et adaptateur SMS.
+  TypeScript mobile et code backend (`tsconfig.build.json`) validés. ESLint
+  ciblé mobile : aucune erreur, quatre avertissements de style sur des lignes
+  non modifiées. `git diff --check` des périmètres modifiés réussi.
+- **Limites / livraison** : tests avec stockage, réseau et interfaces natives
+  simulés; aucun SMS réel, essai physique iOS/Android ou déploiement effectué.
+  Aucun secret, fichier d’environnement réel, infrastructure ou schéma SQL
+  modifié. Les changements backend de routage déjà présents ont été conservés
+  et complétés, pas réinitialisés. Coordonner la mise à jour mobile et backend :
+  un ancien client qui impose encore l’OTP d’inscription doit être mis à jour
+  avant le retrait des anciennes routes. Tester « PIN oublié » depuis le login
+  et le profil, code erroné, renvoi, retour depuis les SMS et consommation unique.
+  Le [guide OTP backend](../../zwanga-backend/docs/auth/otp-providers.md) distingue
+  maintenant la politique actuelle de l’ancien routage archivé.
+
 ## 12 octobre 2026 — Paiement après confirmation d’arrivée du passager, sans attendre le conducteur
 
 - **Problème / périmètre** : la feuille de paiement s’ouvrait déjà après

@@ -2,7 +2,6 @@ import { getAuthErrorMessage } from '../../features/auth/authModel';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 import { useLoginMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
@@ -53,12 +52,6 @@ export function usePhoneAuthActions({
   setPhone,
   mode,
   setStep,
-  setIsSendingOtp,
-  sendPhoneVerificationOtp,
-  smsCode,
-  setSmsCode,
-  smsInputRefs,
-  verifyPhoneOtp,
   setPin,
   setPinConfirm,
   pin,
@@ -89,46 +82,11 @@ export function usePhoneAuthActions({
       return;
     }
     setPhone(normalizedPhone);
-    if (mode === 'login') {
-      setStep('pin');
-      return;
-    }
-    if (!isSignupOtpVerificationEnabled) {
-      setStep('pin');
-      return;
-    }
-    try {
-      setIsSendingOtp(true);
-      await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
-      setStep('sms');
-      showDialog({ variant: 'success', title: 'Code envoyé', message: otpDeliveryCopy.sent });
-    } catch (error: any) {
-      showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
-    } finally {
-      setIsSendingOtp(false);
-    }
+    setStep('pin');
   };
 
-  // SMS Handlers
-
-  const handleSmsSubmit = async () => {
-    const code = smsCode.join('');
-    if (code.length !== 5) {
-      showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet' });
-      return;
-    }
-    try {
-      await verifyPhoneOtp({ phone, otp: code }).unwrap();
-      setStep('pin');
-    } catch (error: any) {
-      showDialog({
-        variant: 'danger',
-        title: 'Code invalide',
-        message: getAuthErrorMessage(error, 'Code OTP invalide ou expiré.'),
-        actions: [{ label: 'Réessayer', variant: 'primary', onPress: () => { setSmsCode(['', '', '', '', '']); } }],
-      });
-    }
-  };
+  // Compatibility with an old mounted step; never send or verify a signup OTP.
+  const handleSmsSubmit = handlePhoneSubmit;
 
   // PIN Handlers
   const handlePinChange = (value: string) => {

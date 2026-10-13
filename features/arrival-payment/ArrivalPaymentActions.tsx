@@ -10,6 +10,7 @@ type Props = {
   completionSummary?: PaymentCompletionSummary | null;
   onDone?: () => void;
   onInvoice?: () => void;
+  onRateDriver?: () => void;
   closeLabel?: string;
   isBusy: boolean;
   hasPendingProviderPayment: boolean;
@@ -28,10 +29,15 @@ type Props = {
 /** Recovery and exit stay visible, outside the scrollable payment form. */
 export function ArrivalPaymentActions(props: Props) {
   if (props.completionSummary) return <View style={local.footer}>
-    <TouchableOpacity accessibilityRole="button" style={styles.payButton} onPress={props.onDone}>
-      <Ionicons name="checkmark" size={20} color={Colors.white} />
-      <Text style={styles.payButtonText}>{props.completionSummary.beforeArrival ? 'Continuer le trajet' : 'Terminer'}</Text>
+    <TouchableOpacity accessibilityRole="button" style={styles.payButton}
+      onPress={props.completionSummary.canRateDriver && props.onRateDriver ? props.onRateDriver : props.onDone}>
+      <Ionicons name={props.completionSummary.canRateDriver && props.onRateDriver ? 'star' : 'checkmark'} size={20} color={Colors.white} />
+      <Text style={styles.payButtonText}>{props.completionSummary.canRateDriver && props.onRateDriver ? 'Noter le conducteur'
+        : props.completionSummary.beforeArrival ? 'Continuer le trajet' : 'Terminer'}</Text>
     </TouchableOpacity>
+    {props.completionSummary.canRateDriver && props.onRateDriver && <TouchableOpacity accessibilityRole="button" style={local.secondary} onPress={props.onDone}>
+      <Text style={styles.invoiceButtonText}>Plus tard</Text>
+    </TouchableOpacity>}
     {props.completionSummary.invoiceUrl && <TouchableOpacity accessibilityRole="button" style={local.secondary} onPress={props.onInvoice}>
       <Ionicons name="receipt-outline" size={18} color={Colors.primary} />
       <Text style={styles.invoiceButtonText}>Voir la facture</Text>

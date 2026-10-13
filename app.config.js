@@ -11,6 +11,7 @@ const dotenv = require('dotenv');
 ['.env.local', 'env.local', '.env'].forEach((envFile) => {
   dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 });
+require('./scripts/validate-api-config.cjs').validateApiConfig(process.env);
 
 // Public OAuth client IDs (safe to ship in the app).
 // Keep fallbacks so cloud builds still work even when .env is not uploaded.

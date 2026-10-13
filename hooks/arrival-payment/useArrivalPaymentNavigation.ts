@@ -4,12 +4,14 @@ import {
   StoredBookingPaymentState,
   PaymentCompletionSummary,
 } from '../../features/arrival-payment/paymentTypes';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import type { Booking } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
+  isAppActive?: boolean;
+  isSessionCurrent?: () => boolean;
   completionSummary: PaymentCompletionSummary | null;
   acknowledgeBooking: (bookingId: string) => void;
   setCompletionSummary: React.Dispatch<React.SetStateAction<PaymentCompletionSummary | null>>;
@@ -24,6 +26,8 @@ interface Params {
 }
 
 export function useArrivalPaymentNavigation({
+  isAppActive = true,
+  isSessionCurrent,
   completionSummary,
   acknowledgeBooking,
   setCompletionSummary,
@@ -36,6 +40,7 @@ export function useArrivalPaymentNavigation({
   setPaymentError,
   openCardPaymentUrl,
 }: Params) {
+  const pendingRatingTripId = useRef<string | null>(null);
   const handleDismissSummary = useCallback(() => {
     if (!completionSummary) return;
     acknowledgeBooking(completionSummary.bookingId);
@@ -57,6 +62,16 @@ export function useArrivalPaymentNavigation({
   );
 
   const handleModalDismiss = useCallback(() => {
+    const ratingTripId = pendingRatingTripId.current;
+    if (ratingTripId) {
+      pendingRatingTripId.current = null;
+      try {
+        if (isAppActive && (!isSessionCurrent || isSessionCurrent())) {
+          router.push({ pathname: '/rate/[id]', params: { id: ratingTripId } });
+        }
+      } finally { setIsClosingForInvoice(false); }
+      return;
+    }
     const paymentHistoryId = pendingInvoicePaymentIdRef.current;
     if (paymentHistoryId === undefined) return;
 
@@ -64,10 +79,21 @@ export function useArrivalPaymentNavigation({
     // The in-app sheet is already removed; no native presentation or animation to await.
     try { navigateToInvoice(paymentHistoryId); }
     finally { setIsClosingForInvoice(false); }
-  }, [navigateToInvoice, pendingInvoicePaymentIdRef, setIsClosingForInvoice]);
+  }, [isAppActive, isSessionCurrent, router, navigateToInvoice, pendingInvoicePaymentIdRef, setIsClosingForInvoice]);
+
+  const handleRateDriver = useCallback(() => {
+    if (!completionSummary?.canRateDriver || !completionSummary.tripId || isBusy || !isAppActive ||
+      (isSessionCurrent && !isSessionCurrent()) || pendingRatingTripId.current || pendingInvoicePaymentIdRef.current !== undefined) return;
+    pendingRatingTripId.current = completionSummary.tripId;
+    // Reuse the sheet exit barrier: navigation happens only after its removal.
+    setIsClosingForInvoice(true);
+    acknowledgeBooking(completionSummary.bookingId);
+    setCompletionSummary(null);
+  }, [acknowledgeBooking, completionSummary, isAppActive, isBusy, isSessionCurrent,
+    pendingInvoicePaymentIdRef, setCompletionSummary, setIsClosingForInvoice]);
 
   const handleOpenInvoice = useCallback(() => {
-    if (!completionSummary) return;
+    if (!completionSummary || pendingRatingTripId.current || pendingInvoicePaymentIdRef.current !== undefined) return;
     const paymentHistoryId = completionSummary.paymentHistoryId;
 
     pendingInvoicePaymentIdRef.current = paymentHistoryId ?? null;
@@ -107,6 +133,7 @@ export function useArrivalPaymentNavigation({
   ]);
 
   return {
+    handleRateDriver,
     handleModalDismiss,
     handleDismissSummary,
     handleOpenInvoice,

@@ -80,6 +80,10 @@ export function isTechnicalOrEnglishMessage(message: string): boolean {
 export function getTechnicalErrorMessage(rawMessage: string, status: number | string | undefined): string | null {
   const message = rawMessage.toLowerCase();
 
+  if (/\bproperty\s+\S+\s+should not exist\b/.test(message)) {
+    return 'Certaines informations ne sont pas acceptées par le service. Réessayez avec la dernière version de Zwanga.';
+  }
+
   if (/\b(aborterror|aborted|request aborted)\b/.test(message)) {
     return 'La connexion a \u00e9t\u00e9 interrompue. Actualisez l\u2019\u00e9cran pour v\u00e9rifier si l\u2019action a bien \u00e9t\u00e9 prise en compte.';
   }

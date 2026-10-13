@@ -1,6 +1,14 @@
 import type { VerificationResult } from '@didit-protocol/sdk-react-native';
 import { KycUserFacingError } from './diditErrors';
 
+export function isDiditNativeModuleUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message :
+    typeof error === 'object' && error && 'message' in error ? String(error.message) : '';
+  const lower = message.toLowerCase();
+  return ['SdkReactNative', 'NativeSdkReactNative', 'TurboModule', 'notInitialized'].some(value => message.includes(value)) ||
+    lower.includes('cannot find native module') || lower.includes('native module');
+}
+
 export const runDiditNativeVerification = async (
   sessionToken: string,
 ): Promise<VerificationResult> => {
