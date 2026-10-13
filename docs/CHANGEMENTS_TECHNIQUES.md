@@ -1,5 +1,229 @@
 # Journal des changements techniques
 
+## 13 octobre 2026 — Correctifs backend KYC préparés pour livraison
+
+- **Demande / périmètre :** préparer en priorité les correctifs backend du blocage
+  Android après photographie de pièce. Dépôt voisin `../zwanga-backend`, paramètres
+  de livraison Terraform et procédure opérationnelle. Les contrôles KYC déjà en cours
+  dans l'espace de travail ont été complétés et vérifiés ; les changements mobiles
+  existants n'ont pas été écrasés.
+- **Garde du workflow :** `src/users/didit-workflow-guard.ts` et `didit-kyc.service.ts`
+  vérifient une publication du même groupe, même si la référence configurée désigne une
+  ancienne version. Pagination de l'origine Didit autorisée, au maximum cinq pages,
+  sans suivre une URL externe avec la clé. Cache de succès de 60 secondes, lectures
+  simultanées mutualisées, pas de cache des échecs. Aucune création sur brouillon non
+  publié ; code stable `KYC_WORKFLOW_NOT_PUBLISHED`. Rejet des réponses terminales,
+  expirées ou d'échéance malformée ; échéance normalisée renvoyée dans les deux alias.
+- **Continuité pour les apps installées :** `didit-session-launch.ts` ajoute
+  `DIDIT_KYC_LAUNCH_MODE=native|hosted`. Sans réglage, le comportement natif est
+  conservé. En mode hébergé, les alias de jeton sont nuls et les alias d'URL désignent
+  le même dossier propriétaire sur le seul hôte HTTPS Didit autorisé. Les applications
+  qui utilisent déjà l'URL de secours ouvrent alors leur navigateur de vérification.
+  Une URL inattendue ou un mode invalide bloque proprement le lancement. Il s'agit
+  d'un contournement opérationnel à tester, pas d'une réparation prouvée du SDK Android.
+- **Outil de livraison :** `didit-kyc-preflight.ts` est en lecture seule par défaut,
+  sans création de session, connexion en base ou initialisation de l'app NestJS.
+  L'option SSM ne garde les secrets qu'en mémoire et ne les affiche pas. L'option
+  explicite `--publish` ne modifie que le statut de la version configurée, refuse des
+  contrôles de présence/comparaison manquants et relit la configuration ainsi que la
+  publication. Les principaux contrôles, seuils, documents, graphe et durées sont
+  comparés avant/après. Aucun choix automatique d'un autre workflow.
+- **Configuration préparée :** `infra-aws/ecs.tf`, `variables.tf`,
+  `production.auto.tfvars` produisent le paramètre SSM `DIDIT_KYC_LAUNCH_MODE` via le
+  mécanisme existant, réservé à Terraform. Production sélectionne `hosted` ; les autres
+  environnements gardent le défaut `native`. Aucune clé Didit modifiée ni permission
+  IAM, dépendance, schéma ou migration ajoutée.
+- **Préservation :** compte et dossier authentifiés, règles d'identité et comparaison,
+  signatures de webhook, approbation exclusivement serveur, activation conducteur et
+  bonus restent protégés. Un signal d'expiration mobile n'approuve aucun dossier et
+  ne déclenche pas une deuxième session en arrière-plan. Les modifications antérieures
+  Apple, paiements, notifications et disponibilité ont été conservées.
+- **Vérifications :** 120 tests backend réussis dans huit suites ciblant Didit,
+  publication, lancement, approbation KYC et inscription conducteur. Compilation
+  `npm run build` et TypeScript de production réussis. Tests significatifs ajoutés
+  dans `didit-workflow-guard.spec.ts`, `didit-session-launch.spec.ts`,
+  `didit-kyc-preflight.spec.ts` et le test du service. Requêtes/fournisseur et bases
+  simulés : aucune capture Android/iOS validée par ces tests.
+- **Mesure distante :** l'outil compilé, lancé sans `--publish` sur les paramètres
+  de production, a renvoyé `available=false`, `KYC_WORKFLOW_NOT_PUBLISHED` (sortie 1
+  attendue). Aucun effet de bord distant. `git diff --check` des fichiers concernés
+  réussi. Terraform absent de cet environnement : fmt, validate, plan et apply
+  restent à réaliser par l'opérateur ; aucune validation Terraform n'est annoncée.
+- **Livraison restant à faire :** publication ciblée après revue, configuration et
+  nouvelle tâche ECS/image backend, puis vraie recette Android/iOS. Aucune publication,
+  écriture SSM, création de dossier facturable, migration ou opération de production
+  exécutée ici. Le mode web ne requiert pas de nouveau build pour les clients déjà
+  compatibles avec le lien hébergé ; les autres changements mobiles se livrent séparément.
+- **Procédure / limites / rollback :**
+  [guide backend de continuité KYC](../../zwanga-backend/docs/operations/didit-kyc-recovery-2026-10-13.md)
+  et entrée `INFRA-2026-10-13-001` dans le journal infrastructure. Le déploiement
+  applicatif et la publication Didit sont des opérations séparées ; un backend testé
+  ne rend pas le workflow brouillon disponible à lui seul. Aucun statut de résolution
+  production ni disparition des erreurs natives n'est annoncé avant recette.
+
+## 13 octobre 2026 — Diagnostic KYC Android en production, sans modification distante
+
+- Symptôme rapporté : sur Android bêta/production, photographie de la pièce réussie,
+  puis message « session expirée, veuillez recommencer la vérification », signalé pour
+  tous les utilisateurs. Aucun téléphone Android n'était connecté pour relever l'erreur
+  native ou reproduire le parcours pendant ce diagnostic.
+- Vérifications réelles en lecture seule : API hébergée sur ECS, révision de tâche 15,
+  une tâche active et cible ALB saine ; image déployée le 11 octobre. Fournisseur runtime
+  Didit activé. Les paramètres KYC consultés ont été modifiés avant ce déploiement.
+  Aucune valeur de clé, identifiant de workflow/session ou donnée personnelle n'est
+  reproduite dans ce journal. Aucune session de vérification facturable créée.
+- Anomalie constatée par l'API de gestion Didit : le workflow référencé par AWS est
+  en `draft`, version 1, sans date de publication ni version publiée du même groupe.
+  Il prévoit 604 800 secondes d'expiration, avec présence réelle et comparaison faciale
+  activées. L'autre workflow publié possède des paramètres différents : aucune bascule
+  automatique n'a été réalisée. La documentation fournisseur indique que les nouvelles
+  sessions utilisent une version publiée : [versionnement Didit](https://docs.didit.me/console/workflows#workflow-versioning).
+- Échantillon fournisseur depuis le 12 octobre : 29 sessions retournées, toutes
+  `Not Started`. Trois décisions récentes consultées indiquaient une échéance sept jours
+  après création ; la dernière n'était pas expirée au moment de la lecture. Cela contredit
+  une expiration immédiate du dossier, mais ne prouve pas à lui seul la validité de son
+  jeton SDK. Aucun jeton ni image n'a été affiché ou sauvegardé.
+- Autre constat CloudWatch : sept webhooks Didit pour quatre comptes absents de la base
+  de production dans la fenêtre examinée le 13 octobre. Leur rejet est attendu pour un
+  compte inconnu. Un partage des configurations Didit entre développement et production
+  est une hypothèse, pas une cause démontrée de l'erreur de capture.
+- Lecture du code : `DiditKycService.createSession` crée une session à chaque lancement ;
+  `mapDiditKycSession` transmet le jeton au SDK. Le message d'expiration peut provenir
+  du SDK ou de sa présentation côté mobile. Les échanges de capture Didit ne transitent
+  pas par l'API Zwanga ; CloudWatch ne fournit pas leur réponse native détaillée.
+- Conclusion et piste de correction : la référence à un workflow non publié est une
+  anomalie de configuration confirmée et une cause possible du blocage général. Il faut
+  publier/revoir ce workflow avec ses contrôles d'identité existants puis tester une
+  nouvelle session sur Android réel. L'attribution définitive du message SDK exige cet
+  essai ou la réponse technique de capture ; aucune résolution native n'est annoncée.
+- État des changements : seule cette entrée documentaire a été ajoutée. Aucun paramètre
+  SSM, rôle IAM, workflow Didit, statut KYC, compte, déploiement ou fichier fonctionnel
+  modifié pendant le diagnostic. Les corrections Apple et les changements KYC locaux
+  déjà présents ont été préservés. Aucun test JavaScript ajouté pour ces lectures distantes.
+
+## 13 octobre 2026 — Sélection du KYC mobile Didit / AWS par environnement
+
+- **Demande / périmètre** : rendre utilisables les deux parcours existants selon
+  une variable mobile explicite, sans modifier le KYC backend, l’OTP Keccel,
+  la production AWS ou le CI/CD.
+- **Appliqué** : `features/identity/kycProvider.ts` lit
+  `EXPO_PUBLIC_KYC_PROVIDER=didit|aws`. Didit reste le défaut ; le sélecteur est
+  prioritaire sur l’ancien flag `EXPO_PUBLIC_AWS_KYC_ENABLED`, encore reconnu en
+  son absence. Une valeur invalide bloque uniquement le lancement KYC et présente
+  une erreur, sans planter l’application ni créer de session payante.
+- **Parcours conservés** : `useDiditKycFlow` garde son interface pour tous ses
+  consommateurs (inscription, profil, publication, vérification passager).
+  `AwsKycProvider` et la reprise depuis le profil utilisent le même choix.
+  Photos recto/verso ou passeport, consentement, selfie vidéo natif AWS et décision
+  serveur restent en place. Aucun SDK natif ajouté ou retiré pendant ce changement.
+- **Prévention des surprises** : AWS choisi exige un backend activé et le module
+  natif. Serveur désactivé, ancien endpoint (404) ou panne ne déclenchent plus de
+  parcours Didit de remplacement, même avec l’ancien flag. L’erreur indique
+  l’indisponibilité ; un ancien binaire sans le pont demande une mise à jour.
+  Les événements d’erreur AWS ne sont plus étiquetés Didit. Le bouton de publication
+  porte désormais « Vérifier mon identité », compatible avec les deux parcours.
+- **Configuration** : [.env.kyc.example](../.env.kyc.example) et
+  [AWS_KYC.md](AWS_KYC.md) décrivent le choix local/EAS et les prérequis serveur.
+  Les variables réelles n’ont pas été changées. Le choix est intégré au bundle,
+  pas modifiable à distance par une variable ECS seule.
+- **Vérifications** : 63 tests JavaScript ciblés réussis (sélecteur, hooks réels
+  avec services simulés, AWS KYC, profil, notifications), TypeScript et frontière
+  réseau RTK Query validés. Compilation Android tentée ; après levée du blocage
+  réseau du sandbox, l’essai hors ligne échoue sur des dépendances AndroidX,
+  Compose et Hermes absentes du cache. Le pont Kotlin n’est pas déclaré compilé.
+  Aucun essai physique, compilation iOS, appel AWS facturé ou déploiement réalisé.
+  Les modifications d’inscription Apple présentes dans le worktree sont préservées.
+
+## 13 octobre 2026 — Inscription Apple et compatibilité du champ email
+
+### Problème constaté et périmètre
+
+- La capture fournie après le rejet App Review du 12 octobre montre exactement
+  `property email should not exist` lors de la finalisation du profil. La validation
+  NestJS locale reproduisait ce rejet pour les DTO d'inscription classique et Apple.
+- Le mobile ajoutait encore un email conservé dans le formulaire à `/auth/register`,
+  alors que le DTO ne l'acceptait pas. Le corps de `/auth/apple/mobile` excluait déjà
+  ce champ. La capture seule ne permet pas d'identifier l'endpoint réellement appelé
+  par le build 1.2.2 (138) : aucun journal de production ou binaire soumis n'a été inspecté.
+- Deux défauts connexes ont été observés dans le code : un contexte social incomplet
+  pouvait retomber sur une inscription téléphone ; le profil Apple masquait les champs
+  du nom tout en exigeant qu'ils soient remplis. Ce dernier cas a été reproduit en
+  JavaScript avec la réponse native Apple et le stockage simulés, pas sur appareil réel.
+
+### Solutions effectivement appliquées
+
+- **Compatibilité backend ciblée** : dans `../zwanga-backend/src/auth/dto/auth.dto.ts`,
+  `RegisterDto`, `GoogleMobileAuthDto` et `AppleMobileAuthDto` héritent désormais de
+  `registration-compatibility.dto.ts`. Le champ historique `email` est accepté puis
+  remplacé par `undefined` à la transformation NestJS, avant la logique applicative.
+  Il n'est ni enregistré comme email d'inscription téléphone ni utilisé pour rechercher
+  ou associer un compte social. Les anciennes versions peuvent donc encore envoyer ce
+  champ sans subir ce rejet précis. La signature, l'audience, l'expiration et le nonce
+  Apple restent vérifiés par le code existant ; l'email social provient toujours du
+  jeton vérifié. `whitelist` et `forbidNonWhitelisted` restent activés globalement :
+  aucun autre champ inconnu ou drapeau privilégié n'est autorisé par cette exception.
+- **Contrat mobile** : `hooks/auth/useRegistrationActions.ts` ne reçoit ni n'envoie
+  plus l'email du formulaire à l'inscription téléphone. La présence d'un contexte
+  Apple/Google exige le fournisseur, le jeton, la saisie du téléphone terminée et,
+  pour Apple, le nonce. Sinon, aucune mutation d'inscription n'est lancée ;
+  `hooks/auth/useAuthController.ts` réinitialise uniquement le contexte social et
+  revient aux boutons de connexion en conservant les données du profil. Suppression
+  du choix implicite de Google lorsque le fournisseur manque. Le drapeau historique
+  `isGooglePhoneVerified` reste un indicateur de saisie, pas une preuve de possession.
+- **Nom Apple complétable** : `app/auth.tsx` affiche les champs nom/prénom même pour
+  Apple et permet leur correction avant le KYC. `useSignupProfileActions.ts` et
+  `useRegistrationActions.ts` invitent à compléter le formulaire au lieu de demander
+  de révoquer l'accès Apple. `useSocialAuthActions.ts` conserve les noms déjà saisis
+  lors d'une nouvelle autorisation Apple qui omet ces informations.
+- **Message utilisateur** : `utils/errors/errorPresentation.ts` présente les erreurs
+  `property … should not exist` en français, sans exposer le nom technique du champ.
+  Cette traduction ne transforme pas un échec en succès et ne remplace pas le correctif
+  de contrat. Les autres messages métier restent inchangés.
+
+### Précautions et comportements conservés
+
+- Aucun déploiement, build EAS, changement AWS, lecture de secrets, migration,
+  dépendance ajoutée ou création de compte réel. Les changements antérieurs du backend
+  concernant paiements, disponibilité et notifications ont été conservés.
+- Conservation du PIN, des contrôles véhicule/rôle, du parrainage, du KYC, du verrou
+  anti-double soumission et de la reprise locale après création réussie du compte.
+  Les validations de nom restent requises ; les données saisies ne sont pas une preuve KYC.
+- Les profils Apple existants continuent d'être retrouvés côté serveur par l'identité
+  vérifiée. Un jeton rejeté ne déclenche pas de création de compte en remplacement.
+
+### Vérifications réalisées
+
+- `npm run check:release` dans le mobile : TypeScript, frontière réseau, taille des
+  modules et **1 904 tests JavaScript réussis, 0 échec**. Nouveaux cas dans
+  `tests/appleRegistration.test.js` : email absent du formulaire envoyé, endpoint/nonce
+  Apple, contextes sociaux incomplets, reprise, noms absents, champs visibles et erreurs
+  françaises. Les fixtures de `authSubmissionLoading.test.js` et `vehiclePlate.test.js`
+  fournissent maintenant explicitement le nonce Apple ; leurs assertions sont conservées.
+- Backend : `npm test -- --runInBand --silent --testPathPatterns=auth` :
+  **121 tests réussis dans 7 suites**. `src/auth/registration-compatibility.spec.ts`
+  teste la vraie transformation/validation NestJS, le rejet des autres champs et rôles
+  interdits, ainsi que le passage de l'email du jeton à la résolution de compte.
+  Les échanges d'authentification et la base sont simulés : ces tests ne valident pas
+  une vraie autorisation Apple ni une requête sur la production.
+- `npx tsc -p tsconfig.build.json --noEmit --incremental false` côté backend : réussi.
+  `git diff --check` sur les changements concernés : réussi.
+
+### Livraison et limites restantes
+
+1. Déployer séparément le correctif backend pour rendre les anciennes versions
+   compatibles avec le champ email. Ce déploiement n'a pas été effectué ici.
+2. Préparer un nouveau build iOS incluant les corrections mobile, après vérification
+   de la version de livraison : les fichiers locaux indiquent 1.0.17 tandis que le
+   rejet porte sur 1.2.2 (138). Aucun numéro de version n'a été changé à l'aveugle.
+   Le profil EAS existant est `production` (`eas build --platform ios --profile production`).
+3. Tester sur iPhone et iPad physiques : première inscription Apple, nouvelle tentative
+   après abandon, nom absent/partiel, adresse Apple masquée, connexion à un compte
+   existant, installation neuve et mise à jour. Vérifier l'arrivée à l'accueil après
+   finalisation, le maintien du chargement et la reprise après erreur réseau.
+4. Vérifier l'audience Apple et les capacités du binaire réellement livré. La configuration
+   de production et la correspondance du dépôt avec le build refusé ne sont pas établies.
+   Aucune garantie de résolution du rejet App Store sans ces essais natifs et cette livraison.
+
 ## 12 octobre 2026 — Correctifs de fiabilité, disponibilité et accueil après audit
 
 ### Périmètre et autorisation

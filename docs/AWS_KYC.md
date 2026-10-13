@@ -1,22 +1,36 @@
-# Parcours KYC AWS — 11 octobre 2026
+# Parcours KYC Didit / AWS — sélecteur mobile du 13 octobre 2026
 
 Pièces de RDC : carte d’électeur, passeport, permis. Envoi de photos privées,
 consentement explicite, capture vidéo AWS Liveness et suivi du contrôle serveur.
-**Parcours actuellement actif dans l’application : Didit.** Le verrou mobile
-`EXPO_PUBLIC_AWS_KYC_ENABLED` est désactivé par défaut (variable absente ou autre
-valeur que `true`). Dans ce cas, aucun appel à
-`GET /users/kyc/aws/capabilities` n’est effectué : une activation du backend seul
-ne fait pas basculer l’application vers AWS.
+Le fournisseur est choisi par **`EXPO_PUBLIC_KYC_PROVIDER=didit|aws`** dans
+l’environnement mobile. Didit reste le défaut si aucun choix n’est configuré.
+Aucune variable réelle, configuration EAS distante ou infrastructure AWS n’a été
+modifiée pendant cette livraison.
 
-Pour une activation ultérieure, ce verrou mobile et le flag backend doivent tous
-deux être activés. Ancien backend (404) ou flag serveur désactivé : Didit conservé.
-Après activation mobile, une erreur serveur autre que 404 est remontée sans
-tentative Didit payante automatique.
+| Configuration du bundle mobile | Parcours |
+| --- | --- |
+| `EXPO_PUBLIC_KYC_PROVIDER=didit` | Didit directement, sans requête de capacités AWS |
+| `EXPO_PUBLIC_KYC_PROVIDER=aws` | AWS seulement, après confirmation des capacités serveur et présence du pont natif |
+| Variable absente/vide | Ancien flag `EXPO_PUBLIC_AWS_KYC_ENABLED=true` reconnu ; sinon Didit |
+| Valeur autre que `didit` / `aws` | Message de configuration incorrecte au lancement KYC, aucun appel fournisseur |
+
+Le choix explicite est prioritaire sur l’ancien flag, y compris pour revenir à
+Didit. Les espaces et la casse sont normalisés. Une activation du backend seul
+ne fait pas basculer une application réglée sur Didit.
+
+**AWS choisi ne retombe plus silencieusement sur Didit**, même en cas de backend
+ancien (404), désactivé ou non configuré. L’app présente alors une erreur sans
+créer de session chez un autre fournisseur. Les erreurs réseau/authentification
+restent distinguées. Cette règle s’applique aussi à l’ancien flag lorsqu’il
+sélectionne AWS. Les deux intégrations sont conservées.
 
 ## Implémentation
 
 - `features/identity/kycProvider.ts` : choix explicite du fournisseur, partagé par
   `useDiditKycFlow`, la reprise depuis le profil et l’entrée du provider AWS.
+  Le nom historique `useDiditKycFlow` est conservé pour ses consommateurs ; il
+  aiguille désormais explicitement les deux parcours. Une erreur AWS n’est plus
+  comptée comme une erreur Didit dans les événements analytics.
   Les parcours AWS et leurs dépendances natives restent présents ; cette
   désactivation concerne leur lancement, pas leur inclusion dans les builds.
 - `components/identity/AwsKycProvider.tsx` : parcours global accessible depuis
@@ -47,6 +61,22 @@ déclarations de données des stores doivent être revues avant publication.
 
 ## Compilation / activation
 
+Dans le dossier **`zwanga`**, ajouter une seule des deux configurations à `.env`
+ou `.env.local` existant, sans remplacer les autres variables :
+
+```dotenv
+EXPO_PUBLIC_KYC_PROVIDER=aws
+```
+
+Pour revenir à Didit : `EXPO_PUBLIC_KYC_PROVIDER=didit`.
+Le modèle [.env.kyc.example](../.env.kyc.example) n’est pas chargé automatiquement.
+En développement, recharger complètement l’application après le changement.
+Pour un build EAS, fournir la variable dans l’environnement utilisé par son
+profil (`development` / `production` selon `eas.json` actuel).
+La valeur est intégrée au bundle JavaScript par Expo ; ce n’est pas un réglage
+serveur à distance. Modifier un `.env` ne change pas les applications déjà
+installées. Voir [les variables d’environnement Expo](https://docs.expo.dev/guides/environment-variables/).
+
 La partie native est indispensable : une mise à jour JavaScript seule ne suffit
 pas. Les anciens binaires restent sur Didit ; ne pas envoyer ce code JS par OTA
 à un binaire dépourvu du pont. L’app affiche une demande de nouvelle version si
@@ -56,7 +86,7 @@ Après installation des dépendances habituelles, si les projets natifs existent
 
 ```sh
 node scripts/configure-aws-liveness.cjs
-node --test tests/awsKyc.test.js
+node --test tests/kycProvider.test.js tests/awsKyc.test.js
 ```
 
 Android : compiler une nouvelle version native (`expo run:android` ou Gradle).
@@ -66,11 +96,10 @@ le protocole `AWSTemporaryCredentials` officiel. Ne pas ajouter d’utilisateur
 Cognito public ni de clé AWS permanente.
 
 Le backend doit avoir sa migration appliquée, le rôle STS de capture, les droits
-Rekognition/Textract et le stockage privé. Pour l’activation future, après recette
-native, définir `EXPO_PUBLIC_AWS_KYC_ENABLED=true` lors de la génération du bundle
-mobile et `AWS_KYC_ENABLED=true` côté backend. Le flag mobile est public, intégré
-au bundle par Expo ; changer uniquement une variable AWS ne le modifie pas.
-Pour le moment, laisser le flag mobile absent ou à `false` et conserver Didit.
+Rekognition/Textract et le stockage privé. Après recette native, choisir
+`EXPO_PUBLIC_KYC_PROVIDER=aws` lors de la génération du bundle mobile et
+`AWS_KYC_ENABLED=true` côté backend. Les identifiants AWS et les clés Didit restent
+côté serveur : **aucune clé privée dans une variable `EXPO_PUBLIC_*`**.
 La région Liveness proposée est `eu-west-1` ; elle peut différer de celle du
 serveur et du stockage de preuves.
 
@@ -93,15 +122,19 @@ ouvre le profil depuis la notification. La synchronisation de rôle existante re
 
 ## Vérifications et limites
 
-Après le maintien de Didit par défaut : 55 tests JavaScript ciblés exécutés
+Après l’ajout du sélecteur explicite : 63 tests JavaScript ciblés exécutés
 avec succès (sélection du fournisseur, AWS KYC, profil, navigation des
-notifications), dont un test du hook réel sur le parcours complet Didit sans
-appel AWS et l’idempotence de la configuration Android/Xcode. TypeScript et la
+notifications), dont le hook réel sur les parcours Didit et AWS avec transports
+simulés, priorité des variables, erreur de configuration, serveur AWS désactivé,
+404, panne réseau, absence du module natif, revue manuelle et annulation.
+L’idempotence de la configuration Android/Xcode est aussi vérifiée. TypeScript et la
 frontière réseau RTK Query sont également vérifiés. Ce résultat
 ne prouve pas le fonctionnement de la caméra, des permissions ou du streaming.
-La compilation Android a été tentée mais n’a pas abouti : téléchargements Gradle
-impossibles depuis `dl.google.com` et délai dépassé sur Maven Central (AndroidX,
-Hermes et autres dépendances). Le module Kotlin n’est donc pas déclaré compilé.
+La compilation Android initiale n’avait pas abouti : téléchargements impossibles
+depuis Google/Maven. Nouvel essai le 13 octobre avec
+`:app:compileDebugKotlin --offline` : le sandbox bloque d’abord le wrapper Gradle ;
+la relance autorisée hors sandbox utilise le cache mais échoue sur des dépendances
+AndroidX/Compose/Hermes absentes. Le module Kotlin n’est donc pas déclaré compilé.
 Il faut relancer cette compilation avec accès aux dépôts, sans remplacer les
 dépôts officiels par des miroirs non vérifiés. La compilation iOS n’est pas
 exécutée sur le PC Windows. Aucun appel AWS facturé

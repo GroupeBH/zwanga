@@ -237,6 +237,12 @@ export function useAuthController() {
     setStep: form.setStep,
     showDialog,
     isAppleSignupFlow: form.isAppleSignupFlow,
+    restartSocialSignup: () => {
+      social.handleGoogleCancel();
+      form.setIsGooglePhoneVerified(false);
+      form.setGoogleSignupStep('phone');
+      form.setStep('phone');
+    },
     legacyReferralCode,
     role: form.role,
     vehicleType: form.vehicleType,
@@ -257,7 +263,6 @@ export function useAuthController() {
     googleProfileName: form.googleProfileName,
     router,
     pin: form.pin,
-    email: form.email,
     profilePicture: form.profilePicture,
     register: form.register,
   });

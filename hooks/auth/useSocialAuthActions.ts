@@ -247,9 +247,10 @@ export function useSocialAuthActions({
       setGoogleFirstName(result.firstName);
       setGoogleLastName(result.lastName);
       setGoogleEmail(result.email);
-      setFirstName(result.firstName ?? '');
-      setLastName(result.lastName ?? '');
-      setEmail(result.email ?? '');
+      // Preserve names already completed by the user when Apple omits them.
+      if (result.firstName) setFirstName(result.firstName);
+      if (result.lastName) setLastName(result.lastName);
+      if (result.email) setEmail(result.email);
       setAppleNonce(result.nonce);
     } catch (error: any) {
       console.error('Apple signup error:', error);

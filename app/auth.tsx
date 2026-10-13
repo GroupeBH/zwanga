@@ -139,7 +139,6 @@ export default function AuthScreen() {
             <ProfileStep
               firstName={form.firstName}
               lastName={form.lastName}
-              showNameFields={!form.isAppleSignupFlow}
               profilePicture={form.profilePicture}
               gender={form.gender}
               hasReferralAttribution={Boolean(form.referralAttribution || legacyReferralCode)}
@@ -168,7 +167,7 @@ export default function AuthScreen() {
           {form.step === 'kyc' && form.role === 'driver' && (
             <KycStep
               onFinish={registration.handleFinalRegister}
-              onEditIdentity={form.isAppleSignupFlow ? undefined : () => form.setStep('profile')}
+              onEditIdentity={() => form.setStep('profile')}
               isLoading={registration.isRegistrationPending || form.isRegistering || form.isStartingDiditKyc}
               hasCreatedAccount={registration.hasCreatedAccount}
               firstName={normalizeLegalName(form.firstName)}

@@ -76,9 +76,9 @@ export function useSignupProfileActions({
     if (!hasCompleteLegalIdentity(legalFirstName, legalLastName)) {
       showDialog({
         variant: 'warning',
-        title: isAppleSignupFlow ? 'Nom Apple indisponible' : 'Nom légal requis',
+        title: 'Complétez votre nom',
         message: isAppleSignupFlow
-          ? 'Apple ne transmet le nom que lors de la première autorisation. Reconnectez votre compte Apple après avoir retiré Zwanga des apps utilisant votre identifiant Apple, ou choisissez une autre méthode d’inscription.'
+          ? 'Complétez vos prénom(s) et votre nom dans le formulaire pour continuer avec Apple.'
           : 'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité. Le post-nom est facultatif.',
       });
       return;

@@ -124,7 +124,7 @@ test('signup profile rejects an empty normalized plate and accepts variable form
 for (const method of ['phone', 'google', 'apple']) {
   test(`${method} final registration revalidates and normalizes the plate before sending`, async () => {
     const f = signupFixture(); const { useRegistrationActions } = f.load('hooks/auth/useRegistrationActions.ts');
-    if (method !== 'phone') Object.assign(f.props, { googleIdToken: 'test', isGooglePhoneVerified: true, socialProvider: method });
+    if (method !== 'phone') Object.assign(f.props, { googleIdToken: 'test', isGooglePhoneVerified: true, socialProvider: method, appleNonce: 'test-nonce' });
     f.props.vehiclePlate = '---';
     await f.hooks.render(() => useRegistrationActions(f.props)).handleFinalRegister();
     assert.equal(f.calls.length, 0); assert.equal(f.dialogs.at(-1).message, VEHICLE_PLATE_FORMAT_MESSAGE);
@@ -136,7 +136,7 @@ for (const method of ['phone', 'google', 'apple']) {
     f.hooks.unmount();
     const passenger = signupFixture();
     Object.assign(passenger.props, { role: 'passenger', vehiclePlate: '', vehicleType: null,
-      googleIdToken: f.props.googleIdToken, isGooglePhoneVerified: f.props.isGooglePhoneVerified, socialProvider: f.props.socialProvider });
+      googleIdToken: f.props.googleIdToken, isGooglePhoneVerified: f.props.isGooglePhoneVerified, socialProvider: f.props.socialProvider, appleNonce: f.props.appleNonce });
     const passengerHook = passenger.load('hooks/auth/useRegistrationActions.ts').useRegistrationActions;
     await passenger.hooks.render(() => passengerHook(passenger.props)).handleFinalRegister();
     const passengerPayload = passenger.calls[0].payload;
