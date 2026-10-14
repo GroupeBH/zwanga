@@ -2,6 +2,7 @@ import { baseApi } from './baseApi';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 import type { RootState } from '@/store';
+import type { Booking } from '@/types';
 
 export interface DriverDispatchStatus {
   enabled: boolean;
@@ -25,7 +26,7 @@ export interface DispatchOffer {
 
 export const driverDispatchApi = baseApi.injectEndpoints({
   endpoints: builder => ({
-    respondToBookingInvitation: builder.mutation<unknown, { id: string; accept: boolean }>({
+    respondToBookingInvitation: builder.mutation<Pick<Booking, 'id' | 'tripId' | 'status'>, { id: string; accept: boolean }>({
       query: ({ id, accept }) => ({ url: `/bookings/${id}/respond-invitation`, method: 'PUT', body: { accept }, timeout: 10000 }),
       invalidatesTags: ['Booking', 'Trip', 'MyTrips', 'AccountActivity'],
     }),

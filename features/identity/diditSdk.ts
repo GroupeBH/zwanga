@@ -12,19 +12,28 @@ export function isDiditNativeModuleUnavailable(error: unknown): boolean {
 export const runDiditNativeVerification = async (
   sessionToken: string,
 ): Promise<VerificationResult> => {
-  const diditSdk = await import('@didit-protocol/sdk-react-native');
+  try {
+    const diditSdk = await import('@didit-protocol/sdk-react-native');
 
-  return diditSdk.startVerification(sessionToken, {
-    languageCode: 'fr',
-    loggingEnabled: typeof __DEV__ !== 'undefined' ? __DEV__ : false,
-    showCloseButton: true,
-    showExitConfirmation: true,
-    closeOnComplete: false,
-    defaultDocumentCamera: diditSdk.CameraLens.Back,
-    defaultLivenessCamera: diditSdk.CameraLens.Front,
-    showDocumentCameraSwitchButton: true,
-    showLivenessCameraSwitchButton: false,
-  });
+    return await diditSdk.startVerification(sessionToken, {
+      languageCode: 'fr',
+      loggingEnabled: typeof __DEV__ !== 'undefined' ? __DEV__ : false,
+      showCloseButton: true,
+      showExitConfirmation: true,
+      closeOnComplete: false,
+      defaultDocumentCamera: diditSdk.CameraLens.Back,
+      defaultLivenessCamera: diditSdk.CameraLens.Front,
+      showDocumentCameraSwitchButton: true,
+      showLivenessCameraSwitchButton: false,
+    });
+  } catch (error: unknown) {
+    if (!isDiditNativeModuleUnavailable(error)) throw error;
+    throw new KycUserFacingError({
+      category: 'service_unavailable', code: 'KYC_NATIVE_MODULE_UNAVAILABLE',
+      title: 'Mise à jour nécessaire',
+      message: 'Installez la dernière version de Zwanga pour vérifier votre identité dans l’application.',
+    });
+  }
 };
 
 export const getDiditSdkFailureError = (result: VerificationResult) => {

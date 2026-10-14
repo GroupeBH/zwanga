@@ -1,5 +1,81 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — Accès direct au trajet après acceptation conducteur
+
+- **Périmètre/problème :** l'écran `incoming-driver` pouvait encore afficher
+  « Nouvelle réservation / Un passager vous attend » et imposer « Voir les détails »
+  après une acceptation, notamment au retour d'une notification. Le parcours
+  réservation n'avait pas la redirection déjà prévue pour les commandes de proximité.
+- **Solution appliquée :** `app/incoming-driver.tsx` ouvre directement la gestion
+  du trajet après acceptation serveur, ou la navigation conducteur si le trajet
+  est en cours. Une commande acceptée conserve son accès direct au détail de commande.
+  Une notification d'une proposition déjà acceptée suit le même parcours après
+  lecture des données courantes du serveur, sans rejouer l'acceptation.
+- **Interface :** retrait de l'écran de succès après acceptation et de l'étape
+  « Voir les détails » pour les propositions acceptées ; l'ancienne carte ne clignote
+  plus pendant la redirection. Le chargement initial utilise un simple indicateur.
+  Les propositions encore en attente gardent leurs actions Accepter / Refuser ;
+  le parcours de refus et les erreurs consultables restent disponibles.
+- **Précautions :** une réponse ambiguë, une donnée d'un autre dossier, un échec
+  réseau ou un autre compte ne déclenche pas de succès. Verrous contre les doubles
+  appuis et redirections multiples ; pas de redirection tardive après déconnexion,
+  changement de session, passage en arrière-plan ou démontage de l'écran.
+  Les droits restent vérifiés par le backend ; accepter ne démarre pas le trajet.
+- **Autres fichiers :** `store/api/driverDispatchApi.ts` précise le type des champs
+  de réponse existants sans changer l'endpoint ni le corps envoyé.
+  `tests/incomingDriverAcceptance.test.js` couvre le rendu et le comportement réel
+  du composant avec React, navigation, API et services natifs simulés.
+- **Conservé :** sonnerie, vibration, boutons de notification, arrêt du son à
+  l'ouverture, confirmation serveur et invitation à contacter un passager après
+  acceptation d'une commande. Aucun changement backend ou dépendance. Le minuteur
+  d'une seconde reste limité aux propositions de proximité, pas aux réservations.
+- **Vérifications :** 88 tests ciblés réussis, y compris la reprise d'une action
+  native simulée ; suite JavaScript complète réussie (code de sortie 0).
+  TypeScript, ESLint ciblé, frontières réseau, taille des sources et diff
+  sans erreur d'espacement.
+  Aucun build ni essai Android/iOS physique exécuté : les transitions natives,
+  particulièrement le remplacement du plein écran iOS, restent à vérifier.
+
+## 14 octobre 2026 — Token Didit absent en développement après retour au SDK
+
+- **Périmètre/problème :** erreur `KYC_SDK_TOKEN_MISSING` après correction du
+  fournisseur servi par Metro. Lecture du manifeste Metro : l'API cible le réseau
+  local. Le backend local gardait le lancement hébergé, qui masque volontairement
+  les deux alias du token SDK dans la réponse de création de session.
+- **Solution appliquée :** seul le paramètre `DIDIT_KYC_LAUNCH_MODE` dans
+  `../zwanga-backend/.env` est aligné sur le parcours natif. Aucun secret, autre
+  paramètre, code métier ou réglage de production modifié lors de cette correction.
+- **Conservé :** tokens d'authentification Zwanga, contrôles KYC serveur,
+  normalisation des alias de réponse et absence de repli navigateur dans le mobile.
+- **Vérifications :** relecture ciblée de la configuration locale, sans affichage
+  de secrets ; les 11 tests backend `didit-session-launch` passent. Aucune création
+  de session fournisseur, capture de pièce ou modification de compte réalisée.
+- **Reste à faire :** arrêter puis redémarrer le processus backend pour charger
+  la configuration, puis retester le parcours sur téléphone. Le processus en cours
+  n'a pas été redémarré ici ; aucune réussite native n'est revendiquée.
+- **Détails :** [diagnostic et livraison Didit natif](KYC_DIDIT_NATIVE_20261014.md).
+
+## 14 octobre 2026 — Didit par défaut, vérification uniquement dans le SDK
+
+- **Périmètre/problème :** retour demandé au KYC Didit natif. Le mobile choisissait
+  AWS par défaut et pouvait ouvrir le navigateur Didit si le token manquait, si
+  le module natif était absent ou après une expiration signalée par le SDK.
+- **Appliqué :** sélection Didit dans le sélecteur mobile et les profils EAS ;
+  parcours navigateur et lecture de son URL de retour supprimés du hook KYC.
+  Token natif obligatoire, erreurs explicites, aucune nouvelle session automatique
+  après expiration. L'approbation vient uniquement du serveur. Configuration
+  Terraform locale du backend alignée sur le lancement natif, sans application AWS.
+- **Conservé :** SDK et versions existants, choix AWS explicite, approbations
+  antérieures, contrôles serveur, confirmation des noms et verrou anti-double-appui.
+  Les usages du navigateur hors KYC restent inchangés ; aucune dépendance retirée.
+- **Vérifications réalisées :** 74 tests JavaScript ciblés réussis, contrôle
+  TypeScript sans émission, ESLint ciblé, frontières réseau, taille des sources
+  et `git diff --check` réussis. Suite JavaScript mobile complète réussie (code de
+  sortie 0) ; 11 tests backend de sélection du mode de lancement réussis.
+- **Fichiers, procédure et limites :** [Retour Didit natif](KYC_DIDIT_NATIVE_20261014.md).
+  Aucun build, déploiement ou essai de capture sur appareil physique réalisé.
+  Le retour au SDK ne démontre pas la correction des crashs ou expirations natives.
+
 ## 14 octobre 2026 — Correctifs Android après audit de la version 159
 
 - **Périmètre/problème :** fuite des callbacks natifs et mauvais suivi des tâches

@@ -1,16 +1,13 @@
 import type { KycDocument, KycStatus } from '@/types';
 import type { VerificationResult } from '@didit-protocol/sdk-react-native';
 
-export type QueryParams = Record<string, string | string[] | undefined>;
-
 export type DiditKycFlowOutcome = {
   kyc: KycDocument | null;
   status: KycStatus | null;
   diditStatus?: string | null;
   sessionId?: string | null;
-  launchMode?: 'native_sdk' | 'web_browser';
+  launchMode?: 'native_sdk';
   sdkResultType?: VerificationResult['type'];
-  browserResultType?: string;
 };
 
 export type StartDiditKycOptions = {
@@ -31,7 +28,6 @@ export type KycFlowStage =
   | 'confirming_identity'
   | 'creating_session'
   | 'opening_native_sdk'
-  | 'opening_web_browser'
   | 'syncing_session'
   | 'refreshing_status'
   | 'handling_result';

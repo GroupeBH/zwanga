@@ -21,15 +21,15 @@ function withProviderEnv(value, legacyFlag, read) {
 }
 const provider = (value, legacyFlag) => withProviderEnv(value, legacyFlag, () => loader()('features/identity/kycProvider.ts'));
 
-test('new builds default to AWS and cannot silently revert to Didit through the legacy flag', async () => {
+test('new builds default to Didit regardless of the retired AWS flag', async () => {
   for (const flag of [undefined, 'false', '', '1', 'TRUE']) {
     const policy = provider(undefined, flag);
     let calls = 0;
-    assert.equal(policy.KYC_PROVIDER, 'aws');
-    assert.equal(policy.AWS_KYC_MOBILE_ENABLED, true);
-    assert.equal(await policy.shouldStartAwsKyc(async () => { calls++; return { enabled: true }; }), true);
-    await assert.rejects(policy.shouldStartAwsKyc(async () => { calls++; throw new Error('AWS unavailable'); }), /AWS unavailable/);
-    assert.equal(calls, 2);
+    assert.equal(policy.KYC_PROVIDER, 'didit');
+    assert.equal(policy.AWS_KYC_MOBILE_ENABLED, false);
+    assert.equal(await policy.shouldStartAwsKyc(async () => { calls++; return { enabled: true }; }), false);
+    assert.equal(await policy.shouldStartAwsKyc(async () => { calls++; throw new Error('AWS unavailable'); }), false);
+    assert.equal(calls, 0);
   }
 });
 
@@ -43,18 +43,18 @@ test('an explicit provider takes precedence over the legacy flag', async () => {
   }
 });
 
-test('absent or empty provider selects AWS regardless of the retired opt-in', async () => {
+test('absent or empty provider selects Didit regardless of the retired opt-in', async () => {
   for (const value of [undefined, '', '   ']) {
     const policy = provider(value, 'true');
-    assert.equal(policy.KYC_PROVIDER, 'aws');
-    assert.equal(await policy.shouldStartAwsKyc(async () => ({ enabled: true })), true);
+    assert.equal(policy.KYC_PROVIDER, 'didit');
+    assert.equal(await policy.shouldStartAwsKyc(async () => ({ enabled: true })), false);
   }
 });
 
-test('release and device build profiles explicitly select AWS', () => {
+test('release and device build profiles explicitly select Didit', () => {
   const builds = require('../eas.json').build;
   for (const profile of ['dev', 'dev-device', 'production'])
-    assert.equal(builds[profile].env.EXPO_PUBLIC_KYC_PROVIDER, 'aws');
+    assert.equal(builds[profile].env.EXPO_PUBLIC_KYC_PROVIDER, 'didit');
 });
 
 test('a server-side cutover gives an actionable update message, not a retry loop', () => {
@@ -103,16 +103,22 @@ test('server preparation is explained without retry loops or leaking arbitrary d
   });
 });
 
-function mobileFlow({ selected, legacyFlag, capabilities = { enabled: true }, capabilityError, nativeAvailable = true, awsOutcome = { status: 'approved' }, kycStates = [null], kycError, createError, profileError, profileChangesSession = false } = {}) {
+function mobileFlow({ selected, legacyFlag, capabilities = { enabled: true }, capabilityError, nativeAvailable = true, awsOutcome = { status: 'approved' }, kycStates = [null], kycError, createError, profileError, profileChangesSession = false,
+  session = { sessionId: 'didit-id', sessionToken: 'test-token', status: 'Not Started', url: 'https://verify.didit.me/session/test-session' },
+  nativeResult = { type: 'completed', session: { sessionId: 'didit-id', status: 'Approved' } }, nativeError,
+  syncOutcome = { status: 'approved' }, syncError,
+} = {}) {
   const hooks = hookHarness();
   const calls = [], dialogs = [], events = [];
   let kycReads = 0;
-  const mutation = (name, value) => () => ({ unwrap: async () => { calls.push(name); return value; } });
   const load = loader({
     react: hooks.react,
     'react-native': { Platform: { OS: 'android' } },
     'expo-linking': { createURL: path => `zwanga://${path}` },
-    'expo-web-browser': { maybeCompleteAuthSession() {} },
+    'expo-web-browser': {
+      maybeCompleteAuthSession() { assert.fail('Didit must not initialize browser authentication'); },
+      openAuthSessionAsync() { assert.fail('Didit must never open a browser'); },
+    },
     'expo-router': { useRouter: () => ({ push() {} }) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: value => { calls.push('dialog'); dialogs.push(value); } }) },
     '@/services/analytics': { trackEvent: async name => { events.push(name); } },
@@ -140,29 +146,118 @@ function mobileFlow({ selected, legacyFlag, capabilities = { enabled: true }, ca
         if (profileChangesSession) load('services/tokenSession.ts').invalidateTokenSession();
         return {};
       } })],
-      useCreateDiditKycSessionMutation: () => [() => ({ unwrap: async () => {
+      useCreateDiditKycSessionMutation: () => [payload => ({ unwrap: async () => {
+        assert.deepEqual(payload, { language: 'fr', source: 'profile' });
         calls.push('didit-create'); if (createError) throw createError;
-        return { sessionId: 'didit-id', sessionToken: 'test-token', status: 'Not Started' };
+        return session;
       } }), {}],
-      useSyncDiditKycSessionMutation: () => [mutation('didit-sync', { status: 'approved' }), {}],
+      useSyncDiditKycSessionMutation: () => [payload => ({ unwrap: async () => {
+        calls.push('didit-sync'); assert.equal(payload.sessionId, session.sessionId);
+        if (syncError) throw syncError;
+        return syncOutcome;
+      } }), {}],
     },
-    '../features/identity/diditSdk': {
-      runDiditNativeVerification: async () => { calls.push('didit-native'); return { type: 'completed', session: { sessionId: 'didit-id', status: 'Approved' } }; },
-      getDiditSdkFailureError: () => null,
+    '@didit-protocol/sdk-react-native': {
+      CameraLens: { Back: 'back', Front: 'front' },
+      startVerification: async (token, config) => {
+        calls.push('didit-native');
+        assert.equal(token, session.sessionToken.trim());
+        assert.equal(config.languageCode, 'fr');
+        assert.equal(config.loggingEnabled, false);
+        if (nativeError) throw nativeError;
+        return nativeResult;
+      },
     },
   });
   const { useDiditKycFlow } = withProviderEnv(selected, legacyFlag, () => load('hooks/useDiditKycFlow.ts'));
-  const flow = hooks.render(() => useDiditKycFlow({ sourceScreen: 'profile',
+  const render = () => hooks.render(() => useDiditKycFlow({ sourceScreen: 'profile',
     onStatusRefresh: async () => calls.push('refresh'), onApproved: async () => calls.push('approved') }));
-  return { calls, dialogs, events, start: (options = {}) => flow.startDiditKyc({ skipLegalIdentityConfirmation: true, showResultDialog: false, ...options }) };
+  const flow = render();
+  return { calls, dialogs, events, busy: () => render().isStartingDiditKyc,
+    start: (options = {}) => flow.startDiditKyc({ skipLegalIdentityConfirmation: true, showResultDialog: false, ...options }) };
 }
 
 test('the real mobile hook continues the complete Didit path without touching AWS', async () => {
-  for (const config of [{ selected: 'didit' }, { selected: 'didit', legacyFlag: 'true' }]) {
+  for (const config of [{}, { selected: 'didit' }, { selected: 'didit', legacyFlag: 'true' }]) {
     const app = mobileFlow(config);
     assert.equal((await app.start()).status, 'approved');
     assert.deepEqual(app.calls, ['kyc-status', 'didit-create', 'didit-native', 'didit-sync', 'refresh', 'approved']);
   }
+});
+
+test('missing SDK token never falls back to the session web URL', async () => {
+  for (const token of [undefined, null, '', '   ']) {
+    const app = mobileFlow({ session: { sessionId: 'didit-id', sessionToken: token, url: 'https://verify.didit.me/session/test-session' } });
+    assert.equal(await app.start(), null);
+    assert.deepEqual(app.calls, ['kyc-status', 'didit-create', 'dialog']);
+    assert.match(app.dialogs[0].message, /ne peut pas démarrer/);
+    assert.equal(app.busy(), false);
+  }
+});
+
+test('missing native module asks for an update instead of opening the browser', async () => {
+  const app = mobileFlow({ nativeError: new Error('TurboModuleRegistry: SdkReactNative could not be found') });
+  assert.equal(await app.start(), null);
+  assert.deepEqual(app.calls, ['kyc-status', 'didit-create', 'didit-native', 'dialog']);
+  assert.equal(app.dialogs[0].title, 'Mise à jour nécessaire');
+  assert.doesNotMatch(app.dialogs[0].message, /TurboModule|SdkReactNative/);
+});
+
+test('SDK cancellation stops without synchronizing or approving and releases the lock', async () => {
+  const app = mobileFlow({ nativeResult: { type: 'cancelled' } });
+  const first = app.start();
+  assert.equal(app.busy(), true);
+  assert.equal(await app.start(), null);
+  assert.equal(await first, null);
+  assert.equal(app.busy(), false);
+  assert.deepEqual(app.calls, ['kyc-status', 'didit-create', 'didit-native']);
+  await app.start();
+  assert.equal(app.calls.filter(call => call === 'didit-create').length, 2);
+});
+
+test('camera, network and retry failures stay native and keep their French messages', async () => {
+  for (const [type, title] of [['cameraAccessDenied', 'Caméra inaccessible'], ['networkError', 'Connexion interrompue'], ['retryBlocked', 'Trop de tentatives']]) {
+    const app = mobileFlow({ nativeResult: { type: 'failed', error: { type, message: 'Internal SDK diagnostic' } } });
+    assert.equal(await app.start(), null);
+    assert.equal(app.dialogs[0].title, title);
+    assert.doesNotMatch(app.dialogs[0].message, /Internal SDK/);
+    assert.deepEqual(app.calls, ['kyc-status', 'didit-create', 'didit-native', 'dialog']);
+    assert.equal(app.busy(), false);
+  }
+});
+
+test('SDK approval never overrides pending, rejected or missing server results', async () => {
+  for (const syncOutcome of [null, { status: 'pending' }, { status: 'rejected' }]) {
+    const app = mobileFlow({ syncOutcome });
+    const result = await app.start({ showResultDialog: true });
+    assert.equal(result.status, syncOutcome?.status ?? null);
+    assert.equal(result.launchMode, 'native_sdk');
+    assert.equal(app.calls.includes('approved'), false);
+    if (!syncOutcome) assert.equal(app.dialogs[0].title, 'Confirmation en attente');
+  }
+});
+
+test('SDK expiry cannot open the browser, retry creation or approve another session', async () => {
+  const nativeResult = { type: 'failed', error: { type: 'sessionExpired', message: 'Expired' } };
+  for (const syncOutcome of [null, { status: 'pending', provider: 'didit', diditSessionId: 'didit-id' },
+    { status: 'approved', provider: 'didit', diditSessionId: 'other-session' },
+    { status: 'approved', provider: 'aws', diditSessionId: 'didit-id' }]) {
+    const app = mobileFlow({ nativeResult, syncOutcome });
+    assert.equal(await app.start(), null);
+    assert.deepEqual(app.calls, ['kyc-status', 'didit-create', 'didit-native', 'didit-sync', 'dialog']);
+    assert.equal(app.dialogs[0].title, 'Session expirée');
+  }
+  const app = mobileFlow({ nativeResult, syncOutcome: { status: 'approved', provider: 'didit', diditSessionId: 'didit-id' } });
+  assert.equal((await app.start()).status, 'approved');
+  assert.equal(app.calls.filter(call => call === 'didit-create').length, 1);
+  assert.equal(app.calls.filter(call => call === 'approved').length, 1);
+});
+
+test('failed server synchronization never approves the SDK result', async () => {
+  const app = mobileFlow({ syncError: { status: 'FETCH_ERROR' } });
+  assert.equal(await app.start(), null);
+  assert.equal(app.calls.includes('approved'), false);
+  assert.equal(app.busy(), false);
 });
 
 test('the real mobile hook starts AWS and refreshes server state after approval, with no Didit session', async () => {
