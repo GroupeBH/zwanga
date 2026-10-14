@@ -113,7 +113,7 @@ test('compact driver prompt preserves both actions, minimum touch targets and mu
   const calls = []; const props = { booking: { ...booking, passengerName: 'Passager', interruptionRequest: { reason: 'emergency' } }, queuedCount: 1,
     busy: false, confirming: false, rejecting: false, onConfirm: b => calls.push(['confirm', b.id]), onReject: b => calls.push(['reject', b.id]) };
   let tree = DriverInterruptionPrompt(props);
-  assert.match(words(tree), /Demande de descente.*\(\+1\).*Passager.*Urgence/);
+  assert.match(words(tree), /Le passager veut descendre.*\(\+1\).*Passager.*Urgence/);
   const buttons = all(tree).filter(node => node.type === 'Button');
   for (const button of buttons) { assert.ok(flatStyle(button.props.style).minHeight >= 44); button.props.onPress(); }
   assert.deepEqual(calls, [['reject', 'booking'], ['confirm', 'booking']]);

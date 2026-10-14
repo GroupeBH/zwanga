@@ -35,7 +35,7 @@ function DriverNavigationScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Chargement de la navigation...</Text>
+        <Text style={styles.loadingText}>Chargement du trajet…</Text>
       </View>
     );
   }
@@ -44,7 +44,7 @@ function DriverNavigationScreen() {
     return (
       <View style={styles.loadingContainer}>
         <Ionicons name="warning" size={48} color={Colors.warning} />
-        <Text style={styles.loadingText}>Coordonnées du trajet invalides</Text>
+        <Text style={styles.loadingText}>Impossible d’afficher ce trajet sur la carte.</Text>
         <TouchableOpacity
           style={styles.backButtonAlt}
           onPress={model.session.foundation.exitActions.navigateBackSafely}
@@ -100,9 +100,9 @@ function DriverNavigationScreen() {
             </Text>
             <Text style={styles.preStartText}>
               {model.session.foundation.data.trip?.status === 'upcoming'
-                ? 'Le trajet doit être demarré avant d\'activer la navigation en direct.'
+                ? 'Appuyez sur « Démarrer le trajet » quand vous êtes prêt.'
                 : canRateCompletedTrip ? 'Comment s’est passé le trajet avec vos passagers ?'
-                : 'La navigation en direct est disponible uniquement pour un trajet en cours.'}
+                : 'La carte vous guide pendant un trajet en cours.'}
             </Text>
             <View style={styles.preStartActions}>
               <TouchableOpacity
@@ -120,7 +120,7 @@ function DriverNavigationScreen() {
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
                   <Text style={styles.preStartButtonPrimaryText}>
-                    {canRateCompletedTrip ? 'Noter les passagers' : model.presentation.canRestartTripFromOverlay ? 'Redemarrer' : 'Actualiser'}
+                    {canRateCompletedTrip ? 'Noter les passagers' : model.presentation.canRestartTripFromOverlay ? 'Démarrer le trajet' : 'Actualiser'}
                   </Text>
                 )}
               </TouchableOpacity>

@@ -52,13 +52,13 @@ export function DriverNavigationPassengersBar({
   const stats = passengerPresentation.passengerStats;
   const showNext = next && !next.completed;
   const allStopsCompleted = waypoints.every(point => point.completed);
-  const nextLabel = next?.type === 'pickup' ? 'À récupérer' : 'Arrivée à destination';
+  const nextLabel = next?.type === 'pickup' ? 'Aller chercher le passager' : 'Emmener le passager';
   return (
     <View style={compact.bar}>
       {waypoints.length > 0 && <View style={compact.row}>
         {showNext ? <TouchableOpacity style={compact.stop} activeOpacity={0.8}
           accessibilityRole="button" accessibilityLabel={`${nextLabel} : ${next.passenger.name || 'Passager'}. ${next.address || 'Point sur la carte'}`}
-          accessibilityHint="Affiche le détail du prochain arrêt. Ne valide pas l’étape."
+          accessibilityHint="Affiche où aller. Ne confirme pas la montée ni l’arrivée."
           onPress={() => {
             foundation.refs.waypointModalVisibleRef.current = true;
             foundation.mapState.setActiveWaypoint(next);
@@ -69,10 +69,10 @@ export function DriverNavigationPassengersBar({
           <Text style={compact.address} numberOfLines={1}>{next.address || 'Voir le point sur la carte'}</Text>
         </TouchableOpacity> : <View style={compact.finished}>
           <Ionicons name={allStopsCompleted ? 'checkmark-circle-outline' : 'list-outline'} size={22} color={allStopsCompleted ? Colors.successDark : Colors.gray[600]} />
-          <Text style={compact.name}>{allStopsCompleted ? 'Arrêts effectués' : 'Vos arrêts'}</Text>
+          <Text style={compact.name}>{allStopsCompleted ? 'Arrêts terminés' : 'Mes passagers'}</Text>
         </View>}
         <TouchableOpacity style={compact.passengers} accessibilityRole="button"
-          accessibilityLabel={`Voir les ${stats.totalPassengers} passagers, ${stats.inVehicle} à bord, ${stats.pendingPickups} à récupérer`}
+          accessibilityLabel={`Voir les ${stats.totalPassengers} passagers, ${stats.inVehicle} avec vous, ${stats.pendingPickups} à chercher`}
           onPress={() => foundation.mapState.setPassengersPanelVisible(true)}>
           <View style={compact.count}>
             <Ionicons name="people-outline" size={18} color={Colors.primaryDark} />
@@ -80,7 +80,7 @@ export function DriverNavigationPassengersBar({
             <Ionicons name="chevron-forward" size={14} color={Colors.gray[500]} />
           </View>
           <Text style={compact.caption}>Passagers</Text>
-          {stats.inVehicle > 0 && <Text style={compact.caption}>{stats.inVehicle} à bord</Text>}
+          {stats.inVehicle > 0 && <Text style={compact.caption}>{stats.inVehicle} avec vous</Text>}
         </TouchableOpacity>
       </View>}
 
@@ -89,10 +89,10 @@ export function DriverNavigationPassengersBar({
           <Ionicons name="hourglass-outline" size={19} color={Colors.warning} />
           <View style={styles.driverInterruptionStatusCopy}>
             <Text style={styles.driverInterruptionStatusTitle}>
-              Interruption demandée
+              Arrêt du trajet demandé
             </Text>
             <Text style={styles.driverInterruptionStatusText}>
-              {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} réservation(s) confirmée(s) par leur titulaire.
+              {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} ont dit oui.
             </Text>
           </View>
         </View>

@@ -43,7 +43,7 @@ test('guidance preserves full directions in a bounded scroll region above the ho
   assert.equal(flat(tree.props.style).bottom, layout.guidanceBottom);
   assert.equal(flat(tree.props.style).left, 20);
   const pending = DriverNavigationGuidance({ ...props, loading: true, rerouting: true });
-  assert.match(words(pending), /Recalcul de l’itinéraire/);
+  assert.match(words(pending), /Recherche d’un autre chemin/);
   assert.doesNotMatch(words(pending), /Tournez/);
   assert.ok(all(pending).find(n => n.type === 'Spinner'));
   assert.equal(DriverNavigationGuidance({ ...props, step: undefined }), null);
@@ -60,23 +60,23 @@ test('next pickup or destination and the complete passenger list have distinct a
         setActiveWaypoint: value => calls.push(['waypoint', value.id]), setWaypointModalVisible: value => calls.push(['open', value]) } };
     const props = { foundation, bookingActions: {}, passengerPresentation: { passengerStats: { totalPassengers: 3, inVehicle: 1, pendingPickups: 2 } } };
     const tree = DriverNavigationPassengersBar(props);
-    assert.match(words(tree), type === 'pickup' ? /À récupérer/ : /Arrivée à destination/);
-    assert.match(words(tree), /Passager test.*Adresse du point de rendez-vous.*Passagers.*1\s+à bord/);
+    assert.match(words(tree), type === 'pickup' ? /Aller chercher le passager/ : /Emmener le passager/);
+    assert.match(words(tree), /Passager test.*Adresse du point de rendez-vous.*Passagers.*1\s+avec vous/);
     assert.doesNotMatch(words(tree), /Suivi actif/);
     const buttons = all(tree).filter(n => n.type === 'Button');
     assert.equal(buttons.length, 2);
     for (const button of buttons) { assert.ok(flat(button.props.style).minHeight >= 44); button.props.onPress(); }
-    assert.match(buttons[0].props.accessibilityHint, /Ne valide pas l’étape/);
-    assert.match(buttons[1].props.accessibilityLabel, /3 passagers, 1 à bord, 2 à récupérer/);
+    assert.match(buttons[0].props.accessibilityHint, /Ne confirme pas la montée ni l’arrivée/);
+    assert.match(buttons[1].props.accessibilityLabel, /3 passagers, 1 avec vous, 2 à chercher/);
     assert.deepEqual(calls, [['waypoint', 'stop'], ['open', true], ['passengers', true]]);
     assert.equal(foundation.refs.waypointModalVisibleRef.current, true);
     waypoint.completed = true;
-    assert.match(words(DriverNavigationPassengersBar(props)), /Arrêts effectués/);
+    assert.match(words(DriverNavigationPassengersBar(props)), /Arrêts terminés/);
     assert.equal(all(DriverNavigationPassengersBar(props)).filter(n => n.type === 'Button').length, 1);
     waypoint.completed = false;
     foundation.mapState.currentWaypointIndex = 1;
     const noCurrent = DriverNavigationPassengersBar(props);
-    assert.match(words(noCurrent), /Vos arrêts/);
+    assert.match(words(noCurrent), /Mes passagers/);
     assert.equal(all(noCurrent).find(n => n.type === 'Icon').props.name, 'list-outline');
     foundation.mapState.waypoints = [];
     assert.equal(all(DriverNavigationPassengersBar(props)).filter(n => n.type === 'Button').length, 0);

@@ -29,9 +29,9 @@ export function useDriverPickupNoticeQueue(params: Params) {
     p.setPickupNotice(notice);
     const name = notice.waypoint.passenger.name || 'Le passager';
     const speech = notice.type === 'driver_near_pickup'
-      ? `Vous approchez du point de prise en charge de ${name}. ${pickupDistanceText(notice.distanceMeters)}` :
-      notice.type === 'passenger_ready_pickup' ? `${name} s'est signalé au point de récupération.` :
-      notice.type === 'parties_nearby' ? `${name} est là et prêt à être embarqué.` : `Vous êtes arrivé au point de récupération de ${name}.`;
+      ? `Vous approchez du lieu de départ de ${name}. ${pickupDistanceText(notice.distanceMeters)}` :
+      notice.type === 'passenger_ready_pickup' ? `${name} vous attend au lieu de départ.` :
+      notice.type === 'parties_nearby' ? `${name} est tout près de vous.` : `Vous êtes au lieu de départ de ${name}.`;
     void Speech.stop().then(() => {
       const current = latest.current;
       if (current.isScreenActive && current.isMountedRef.current && current.pickupNoticeRef.current === notice)

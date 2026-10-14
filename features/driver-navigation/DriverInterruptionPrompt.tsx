@@ -20,11 +20,11 @@ export function DriverInterruptionPrompt(props: Props) {
   return <View style={styles.card}>
     <View style={styles.heading}>
       <Ionicons name="walk-outline" size={22} color={Colors.danger} />
-      <Text style={styles.title}>Demande de descente{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
+      <Text style={styles.title}>Le passager veut descendre{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
     </View>
     <Text style={styles.name} numberOfLines={1}>{props.booking.passengerName || 'Passager'}</Text>
-    {props.booking.numberOfSeats > 1 && <Text style={styles.reason}>Pour les {props.booking.numberOfSeats} places de sa réservation</Text>}
-    <Text style={styles.reason}>Motif : {getTripInterruptionReasonLabel(props.booking.interruptionRequest?.reason)}</Text>
+    {props.booking.numberOfSeats > 1 && <Text style={styles.reason}>Pour ses {props.booking.numberOfSeats} places</Text>}
+    <Text style={styles.reason}>Pourquoi : {getTripInterruptionReasonLabel(props.booking.interruptionRequest?.reason)}</Text>
     <View style={styles.actions}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Refuser la demande de descente"
         accessibilityState={{ disabled: props.busy, busy: props.rejecting }}
@@ -33,12 +33,12 @@ export function DriverInterruptionPrompt(props: Props) {
         {props.rejecting ? <ActivityIndicator color={Colors.danger} /> : <Ionicons name="close" size={20} color={Colors.danger} />}
         <Text style={[styles.buttonText, styles.rejectText]}>Refuser</Text>
       </TouchableOpacity>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirmer la descente du passager"
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Confirmer que le passager est descendu"
         accessibilityState={{ disabled: props.busy, busy: props.confirming }}
         disabled={props.busy} onPress={() => props.onConfirm(props.booking)}
         style={[styles.button, styles.confirm, props.busy && styles.disabled]}>
         {props.confirming ? <ActivityIndicator color={Colors.white} /> : <Ionicons name="checkmark" size={20} color={Colors.white} />}
-        <Text style={[styles.buttonText, styles.confirmText]}>Confirmer</Text>
+        <Text style={[styles.buttonText, styles.confirmText]}>Il est descendu</Text>
       </TouchableOpacity>
     </View>
   </View>;

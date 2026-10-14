@@ -40,8 +40,8 @@ export function buildPassengerPanelItems(waypoints: Waypoint[], currentWaypointI
 
 export function passengerPanelLabels(item: PassengerPanelItem) {
   return {
-    status: item.status === 'waiting' ? 'À récupérer' : item.status === 'onboard' ? 'À bord' : 'Arrivée à destination confirmée',
+    status: item.status === 'waiting' ? 'À chercher' : item.status === 'onboard' ? 'Avec vous' : 'Arrivé',
     seats: `${item.seats} ${item.seats > 1 ? 'places' : 'place'}`,
-    location: item.waypoint.type === 'pickup' ? 'Point de récupération' : 'Destination du passager',
+    location: item.waypoint.type === 'pickup' ? 'Où le chercher' : 'Où l’emmener',
   };
 }

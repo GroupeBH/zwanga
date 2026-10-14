@@ -87,6 +87,9 @@ module.exports = {
         NSLocationAlwaysUsageDescription: "Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.",
         NSCameraUsageDescription: "L'appareil photo est utilisé pour prendre des photos de profil ou des documents.",
         NSMicrophoneUsageDescription: "Le microphone peut être utilisé pendant la vérification vidéo de présence.",
+        // expo-speech links Apple's Speech framework; Zwanga uses speech synthesis,
+        // not voice recognition. Keep the description honest about that usage.
+        NSSpeechRecognitionUsageDescription: "Le guidage vocal de Zwanga annonce le chemin et les étapes du trajet. Cette fonction ne transcrit pas votre voix.",
         NSPhotoLibraryUsageDescription: "Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.",
         NSContactsUsageDescription: "Zwanga utilise vos contacts pour faciliter l'invitation d'amis.",
         // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",

@@ -57,8 +57,8 @@ export function NavigationTripEndModal({
           </View>
           <Text style={styles.waypointModalWaitingText}>
             {tripEndNotice?.completedWhileAppInactive
-              ? "Le trajet s'est terminé pendant que le téléphone était en veille ou hors de l'application. Il est maintenant clôturé. Vous pouvez noter les passagers."
-              : 'Vous avez atteint la destination finale. Le trajet est terminé automatiquement. Vous pouvez noter les passagers.'}
+              ? 'Le trajet s’est terminé quand vous n’étiez pas dans l’app. Vous pouvez noter les passagers.'
+              : 'Vous êtes arrivé. Le trajet est terminé. Vous pouvez noter les passagers.'}
           </Text>
           {tripEndNotice?.revenueSummary ? (
             <NavigationTripRevenueSummary summary={tripEndNotice.revenueSummary} />
@@ -66,13 +66,13 @@ export function NavigationTripEndModal({
             <View style={styles.tripRevenueLoading}>
               <Ionicons name="cloud-offline-outline" size={18} color={Colors.gray[500]} />
               <Text style={styles.tripRevenueHint}>
-                Le détail du gain reste disponible dans l&apos;espace conducteur.
+                Retrouvez vos gains dans « Revenus conducteur ».
               </Text>
             </View>
           ) : (
             <View style={styles.tripRevenueLoading}>
               <ActivityIndicator size="small" color={Colors.primary} />
-              <Text style={styles.tripRevenueHint}>Calcul du montant du trajet…</Text>
+              <Text style={styles.tripRevenueHint}>Chargement du montant…</Text>
             </View>
           )}
           <View
@@ -91,9 +91,6 @@ export function NavigationTripEndModal({
                 : 'Arrivée détectée'}
             </Text>
           </View>
-          <Text style={styles.waypointModalWaitingText}>
-            L&apos;embarquement est validé automatiquement lorsque les deux téléphones se déplacent ensemble.
-          </Text>
           <View style={styles.waypointModalActions}>
             <TouchableOpacity
               style={styles.waypointModalSecondaryButton}
@@ -106,7 +103,7 @@ export function NavigationTripEndModal({
               onPress={() => void handleRatePassengersFromTripEnd()}
             >
               <Ionicons name="star" size={20} color={Colors.white} />
-              <Text style={styles.waypointModalPrimaryButtonText}>Noter</Text>
+              <Text style={styles.waypointModalPrimaryButtonText}>Noter les passagers</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -96,7 +96,7 @@ test('compact navigation shows latest dropoff, opens details explicitly and clos
   assert.deepEqual(getConfirmedDropoffs(bookings, 't').map(value => value.id), ['two', 'one']);
   let active = true, tripId = 't';
   const render = () => hooks.render(() => DriverDropoffReceipts({ bookings, tripId, active }));
-  const title = all(render()).find(node => node.type === 'Text' && words(node).includes('Arrivées à destination'));
+  const title = all(render()).find(node => node.type === 'Text' && words(node).includes('Voir les paiements'));
   assert.ok(title);
   assert.equal(title.props.numberOfLines, 2, 'the longer arrival label can wrap');
   assert.equal(all(render()).find(node => node.type === 'Revenue').props.bookingId, 'two');
@@ -141,7 +141,7 @@ test('swiping hides only the receipt UI until a new dropoff, not a refetch or pa
   const find = type => all(render()).find(node => node.type === type);
   const swipe = find('Swipe');
   assert.equal(swipe.props.enabled, true);
-  assert.equal(swipe.props.dismissLabel, 'Masquer le récapitulatif');
+  assert.equal(swipe.props.dismissLabel, 'Masquer les paiements');
   swipe.props.onDismiss(swipe.props.priorityKey);
   assert.equal(render(), null, 'the hidden banner has no mounted query or overlay');
   props.bookings = props.bookings.map(value => ({ ...value, updatedAt: '2026-09-23T11:00:00Z', cashReceivedAt: 'now' })).reverse();
@@ -166,7 +166,7 @@ test('swiping hides only the receipt UI until a new dropoff, not a refetch or pa
   find('Swipe').props.onDismiss(next.props.priorityKey); assert.ok(render());
   find('Modal').props.onRequestClose();
   const button = find('Button');
-  assert.deepEqual(button.props.accessibilityActions, [{ name: 'dismiss', label: 'Masquer le récapitulatif' }]);
+  assert.deepEqual(button.props.accessibilityActions, [{ name: 'dismiss', label: 'Masquer les paiements' }]);
   button.props.onAccessibilityAction({ nativeEvent: { actionName: 'dismiss' } });
   assert.equal(render(), null);
   assert.equal(first.status, 'completed'); assert.equal(first.cashReceivedAt, undefined);
@@ -213,7 +213,7 @@ test('many passengers remain in one bounded virtualized sheet with a single expa
   const rows = () => bookings.flatMap((item, index) => all(list().props.renderItem({ item, index })));
   assert.equal(rows().filter(node => node.type === 'Revenue').length, 1);
   const second = list().props.renderItem({ item: bookings[1], index: 1 });
-  assert.match(words(second), /Arrivée à destination confirmée/);
+  assert.match(words(second), /Passager arrivé/);
   assert.doesNotMatch(words(second), /dépos/i);
   all(second).find(node => node.type === 'Button').props.onPress();
   bookings = [{ id: 'new', passengerName: 'Nouveau passager' }, ...bookings];

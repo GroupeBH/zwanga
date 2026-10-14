@@ -77,12 +77,12 @@ export function useDriverTripActions({
 
     if (activeDriverInterruptionRequest) {
       showDialog({
-        title: 'Interruption en attente',
-        message: `${activeDriverInterruptionConfirmedCount}/${activeDriverInterruptionRequiredCount} passager(s) ont confirmé.`,
+        title: 'Arrêt en attente',
+        message: `${activeDriverInterruptionConfirmedCount}/${activeDriverInterruptionRequiredCount} ont dit oui.`,
         variant: 'info',
         icon: 'hourglass-outline',
         actions: [
-          { label: 'Quitter la navigation', variant: 'primary', onPress: handleExitNavigation },
+          { label: 'Quitter la carte', variant: 'primary', onPress: handleExitNavigation },
           { label: 'Fermer', variant: 'ghost' },
           {
             label: 'Annuler la demande',
@@ -106,14 +106,14 @@ export function useDriverTripActions({
 
     if (passengersOnBoard.length === 0) {
       showDialog({
-        title: 'Interrompre le trajet',
-        message: "Aucun passager n'est à bord. Le trajet sera interrompu et vous reviendrez à sa gestion.",
+        title: 'Arrêter le trajet ?',
+        message: 'Aucun passager avec vous. Le trajet sera mis en pause. Retour aux détails du trajet.',
         variant: 'warning',
         icon: 'pause-circle-outline',
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
-            label: 'Interrompre et quitter',
+            label: 'Arrêter le trajet',
             variant: 'danger',
             onPress: pauseTripWithoutPassengerConfirmation,
           },
@@ -123,9 +123,9 @@ export function useDriverTripActions({
     }
 
     showDialog({
-      title: 'Demander une interruption',
+      title: 'Arrêter le trajet ?',
       message:
-        'Choisissez le motif pour envoyer la demande et quitter la navigation. Le trajet reste en cours jusqu’à la confirmation de tous les passagers à bord.',
+        'Tous les passagers doivent dire oui pour arrêter. Le trajet continue en attendant. Après l’envoi, vous quitterez la carte.',
       variant: 'warning',
       icon: 'stop-circle-outline',
       actions: [
