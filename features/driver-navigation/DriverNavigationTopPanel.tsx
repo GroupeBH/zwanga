@@ -10,6 +10,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { DriverNavigationPassengersBar } from './DriverNavigationPassengersBar';
 import { DriverDropoffReceipts } from './DriverDropoffReceipts';
+import { DriverPickupNotice } from './DriverPickupNotice';
 import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
 import { getDriverNavigationLayout } from './driverNavigationLayout';
 
@@ -29,9 +30,14 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const hasPendingBooking = data.isTripOngoing && !hasUrgentDropoff && Boolean(passengers.activePendingBooking);
   const pendingLayout = getDriverPendingBookingLayout(height, data.insets.top, data.insets.bottom);
   const layout = getDriverNavigationLayout(height, data.insets.top, data.insets.bottom);
+  const activeStop = mapState.pickupBypassConfirmation?.waypoint ?? mapState.waypoints[mapState.currentWaypointIndex];
   const recovery = data.isTripOngoing && !hasUrgentDropoff && Boolean(data.bookings?.length) ? <View style={styles.confirmation}>
     <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
       condensed
+      preferredBookingId={activeStop && !activeStop.completed ? activeStop.booking.id : undefined}
+      preferredStage={activeStop && !activeStop.completed ? activeStop.type : undefined}
+      disabled={Boolean(mapState.pickupBypassAction) || data.isPausingTrip || Boolean(activeStop && mapState.processingBookingId === activeStop.booking.id)}
+      onSaved={({ bookingId, stage }) => { if (stage === 'pickup') model.pickupActions.acknowledgePickupDeclaration(bookingId); }}
       fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
       destination={data.tripArrivalCoordinate} />
   </View> : null;
@@ -77,6 +83,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
     </ScrollView>)}
     {recovery}
+    {!hasPendingBooking && !hasUrgentDropoff && data.isTripOngoing && <DriverPickupNotice model={model} hidden={assistance.isOpen} />}
     <RideActionResult actor="driver" tripId={data.tripId} active={data.isScreenActive} />
   </View>;
 }

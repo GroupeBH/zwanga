@@ -109,7 +109,10 @@ test('panel explains seat counts, uses content height and preserves priority gat
   all(tree).find(n => n.type === 'Button' && words(n).includes('Revenir à la carte')).props.onPress();
   assert.deepEqual(calls, [false, false]);
   assert.equal(all(render()).find(n => n.type === 'List').props.data, list.props.data, 'no regrouping for unrelated renders');
-  for (const key of ['backgroundDisclosureVisible', 'securityModalVisible', 'tripEndNotice', 'pickupNotice', 'pickupBypassConfirmation', 'waypointModalVisible']) {
+  for (const key of ['pickupNotice', 'pickupBypassConfirmation']) {
+    assert.equal(render({ [key]: true }).props.visible, true, 'inline reminders must not block an explicit passenger-list action');
+  }
+  for (const key of ['backgroundDisclosureVisible', 'securityModalVisible', 'tripEndNotice', 'waypointModalVisible']) {
     const hidden = render({ [key]: true });
     assert.equal(hidden.props.visible, false);
     assert.deepEqual(all(hidden).find(n => n.type === 'List').props.data, []);

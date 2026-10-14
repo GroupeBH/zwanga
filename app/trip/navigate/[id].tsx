@@ -5,9 +5,7 @@ import { DriverNavigationTopPanel } from '@/features/driver-navigation/DriverNav
 import { DriverNavigationMap } from '../../../features/driver-navigation/DriverNavigationMap';
 import { NavigationLocationDisclosure } from '../../../features/driver-navigation/NavigationLocationDisclosure';
 import { NavigationPassengersModal } from '../../../features/driver-navigation/NavigationPassengersModal';
-import { NavigationPickupBypassModal } from '../../../features/driver-navigation/NavigationPickupBypassModal';
 import { NavigationWaypointModal } from '../../../features/driver-navigation/NavigationWaypointModal';
-import { NavigationPickupNoticeModal } from '../../../features/driver-navigation/NavigationPickupNoticeModal';
 import { NavigationTripEndModal } from '../../../features/driver-navigation/NavigationTripEndModal';
 import { DriverNavigationGuidance } from '@/features/driver-navigation/DriverNavigationGuidance';
 import { KINSHASA_FALLBACK_MAP_COORDINATE } from '../../../features/driver-navigation/navigationModel';
@@ -176,32 +174,6 @@ function DriverNavigationScreen() {
         insets={model.session.foundation.data.insets}
         trip={model.session.foundation.data.trip}
         handleRatePassengersFromTripEnd={model.handleRatePassengersFromTripEnd}
-      />
-
-      <NavigationPickupBypassModal
-        pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}
-        backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={assistanceOrSecurityVisible}
-        tripEndNotice={model.session.foundation.mapState.tripEndNotice}
-        insets={model.session.foundation.data.insets}
-        trip={model.session.foundation.data.trip}
-        pauseTripWithoutPassengerConfirmation={model.interruptionActions.pauseTripWithoutPassengerConfirmation}
-        pickupBypassAction={model.session.foundation.mapState.pickupBypassAction}
-        isPausingTrip={model.session.foundation.data.isPausingTrip}
-        handleCancelBypassedPickup={model.pickupActions.handleCancelBypassedPickup}
-        isCancellingPickupBypassBooking={model.session.foundation.data.isCancellingPickupBypassBooking}
-        handleConfirmBypassedPickup={model.pickupActions.handleConfirmBypassedPickup}
-      />
-
-      <NavigationPickupNoticeModal
-        pickupNotice={model.session.foundation.mapState.pickupNotice}
-        backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        securityModalVisible={assistanceOrSecurityVisible}
-        tripEndNotice={model.session.foundation.mapState.tripEndNotice}
-        pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}
-        dismissPickupNotice={model.pickupActions.dismissPickupNotice}
-        insets={model.session.foundation.data.insets}
-        pickupNoticeCountdown={model.session.foundation.mapState.pickupNoticeCountdown}
       />
 
       {/* Modal de waypoint stylise */}

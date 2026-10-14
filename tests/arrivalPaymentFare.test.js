@@ -60,12 +60,13 @@ test('the actual payment state converts only the passenger share and distinguish
   let booking = mapServerBookingToClient(discounted);
   let otherBookings = [];
   let account = { balance: 20 };
-  const store = { trips: { interruptionChoice: null }, rideRecovery: { userId: 'passenger', entries: [] } };
+  const store = { zwangaApi: { config: { online: true } }, trips: { interruptionChoice: null }, rideRecovery: { userId: 'passenger', entries: [] } };
   const mutation = () => [() => assert.fail('rendering or selecting a mode must never charge'), { isLoading: false }];
   const { useArrivalPaymentState } = loader({ react: hooks.react, 'expo-linking': {},
     '@/constants/paymentFeatures': { ZWANGA_POINT_VALUE_CDF: 100 },
     '@/hooks/useAppIsActive': { useAppIsActive: () => true },
     './useArrivalPaymentRefresh': { useArrivalPaymentRefresh: () => true },
+    './useArrivalConfirmationSync': { useArrivalConfirmationSync: () => ({ progress: { phase: 'idle' }, retry() {} }) },
     './useNearArrivalPayment': { useNearArrivalPayment: () => null },
     './usePaymentPersistence': { usePaymentPersistence: () => ({ storedState: {}, isStoredStateLoaded: true,
       persistBookingState() {}, isSessionCurrent: () => true }) },

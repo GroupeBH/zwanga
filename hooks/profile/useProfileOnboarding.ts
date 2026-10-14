@@ -68,7 +68,8 @@ export function useProfileOnboarding({ currentUser, isScreenActive, isProfileSta
         return;
       }
       if (!driverJourney) {
-        if (AWS_KYC_MOBILE_ENABLED && state.identity.status === 'pending' && state.identity.provider === 'aws') {
+        if (AWS_KYC_MOBILE_ENABLED && state.identity.status === 'pending' &&
+            ['aws', 'didit'].includes(state.identity.provider ?? '')) {
           await startDiditKyc();
         } else if (state.identity.status === 'approved' || state.identity.status === 'pending') {
           showDialog({ variant: 'info',
@@ -119,8 +120,9 @@ export function useProfileOnboarding({ currentUser, isScreenActive, isProfileSta
           router.push('/support');
           break;
         case 'wait':
-          // AWS document upload may be complete while its guided capture is still missing.
-          if (AWS_KYC_MOBILE_ENABLED && state.identity.provider === 'aws') await startDiditKyc();
+          // Resume AWS or explicitly replace a pending Didit dossier after cutover.
+          // The backend owns eligibility; a pending legacy/manual dossier stays untouched.
+          if (AWS_KYC_MOBILE_ENABLED && ['aws', 'didit'].includes(state.identity.provider ?? '')) await startDiditKyc();
           break;
         // "wait" already refreshed the status; no new verification or mutation.
         // "none" also covers automatic activation during the intent request.

@@ -15,6 +15,7 @@ import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoi
 import { usePaymentPersistence } from './usePaymentPersistence';
 import { useBookingPaymentMode } from './useBookingPaymentMode';
 import { useArrivalPaymentRefresh } from './useArrivalPaymentRefresh';
+import { useArrivalConfirmationSync } from './useArrivalConfirmationSync';
 import { selectPaymentBooking } from '@/features/arrival-payment/selectPaymentBooking';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,6 +49,7 @@ export function useArrivalPaymentState() {
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
+  const online = useAppSelector(state => state.zwangaApi.config.online);
   const declarations = useAppSelector(state => state.rideRecovery.userId === user?.id
     ? state.rideRecovery.entries : EMPTY_DECLARATIONS);
   const { storedState, isStoredStateLoaded, persistBookingState, isSessionCurrent } = usePaymentPersistence(user?.id, isAuthenticated);
@@ -103,6 +105,9 @@ export function useArrivalPaymentState() {
   // A durable offline tap may open the sheet, but must not enable payment on its own.
   const waitingForArrivalConfirmation = Boolean(declaredBooking && arrivalBooking?.id === declaredBooking.id && !hasPassengerArrived(declaredBooking));
   const isBeforeArrival = Boolean(arrivalBooking && !waitingForArrivalConfirmation && !hasPassengerArrived(arrivalBooking));
+  const arrivalConfirmation = useArrivalConfirmationSync({ booking: arrivalBooking, userId: user?.id,
+    waiting: waitingForArrivalConfirmation, entries: declarations, online,
+    active: isAuthenticated && isAppActive && isResumeReady && arrivalBooking?.id !== deferredBookingId });
 
   const interruptionChoice = useMemo(() => {
     if (!isAuthenticated || !isAppActive) return null;
@@ -221,6 +226,8 @@ export function useArrivalPaymentState() {
     user,
     arrivalBooking,
     waitingForArrivalConfirmation,
+    arrivalConfirmation: arrivalConfirmation.progress,
+    refreshArrivalConfirmation: arrivalConfirmation.retry,
     isBeforeArrival,
     deferEarlyPayment,
     activeBookingIdRef,

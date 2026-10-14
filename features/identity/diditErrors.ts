@@ -94,6 +94,15 @@ export const getKycErrorPresentation = (
     return error.presentation;
   }
 
+  if ((error?.data?.code ?? error?.code) === 'KYC_APP_UPDATE_REQUIRED') {
+    return {
+      category: 'service_unavailable',
+      code: 'KYC_APP_UPDATE_REQUIRED',
+      title: 'Mise à jour nécessaire',
+      message: 'Mettez à jour Zwanga pour vérifier votre identité avec le nouveau parcours sécurisé.',
+    };
+  }
+
   if (
     errorDetails.includes('cameraaccessdenied') ||
     (errorDetails.includes('camera') &&

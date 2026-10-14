@@ -36,7 +36,7 @@ export function NavigationPassengersModal({
   openReportForWaypoint,
 }: NavigationPassengersModalProps) {
   const visible = passengersPanelVisible && !backgroundDisclosureVisible && !securityModalVisible
-    && !tripEndNotice && !pickupNotice && !pickupBypassConfirmation && !waypointModalVisible;
+    && !tripEndNotice && !waypointModalVisible;
   const items = useMemo(() => visible ? buildPassengerPanelItems(waypoints, currentWaypointIndex) : [],
     [visible, waypoints, currentWaypointIndex]);
   const close = useCallback(() => setPassengersPanelVisible(false), [setPassengersPanelVisible]);

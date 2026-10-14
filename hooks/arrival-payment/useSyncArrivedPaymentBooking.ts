@@ -12,7 +12,7 @@ export function useSyncArrivedPaymentBooking(booking: Booking | undefined, enabl
   const accountId = useAppSelector(selectUser)?.id;
   useEffect(() => {
     if (!enabled || !accountId || !booking || booking.passengerId !== accountId ||
-        !(booking.status === 'completed' || booking.droppedOff || booking.droppedOffAt)) return;
+        !(booking.status === 'completed' || booking.droppedOff || booking.droppedOffAt || booking.droppedOffConfirmedByPassenger)) return;
     dispatch(bookingApi.util.updateQueryData('getMyActivityBookings', undefined, bookings => {
       const index = bookings.findIndex(item => item.id === booking.id);
       if (index < 0) {

@@ -173,22 +173,20 @@ test('failed, stale or foreign summaries cannot suppress a verified ongoing ride
   }
 });
 
-test('a fresh summary reporting passenger participation waits for that booking before choosing an older driver trip', async t => {
-  const app = fixture(t, { activity: activity({ passengerTrackingBookingId: 'booking' }) });
-  app.render(); await flush(); assert.deepEqual(app.reads, []);
-  app.options.bookings = { data: [booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) })], isSuccess: true };
-  app.options.readBooking = async () => booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) });
+test('a fresh server booking pointer verifies passenger participation without waiting for a shared list', async t => {
+  const app = fixture(t, { activity: activity({ passengerTrackingBookingId: 'booking' }),
+    readBooking: async id => { app.reads.push(['booking', id]); return booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) }); } });
   app.render(); await flush(); assert.deepEqual(app.calls, ['/booking/navigate/booking']);
+  assert.deepEqual(app.reads, [['booking', 'booking']]);
 });
 
 test('a passenger booking discovered during verification takes precedence over an old driver trip', async t => {
-  const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise });
+  const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise,
+    readBooking: async () => booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) }) });
   app.render();
   app.options.activity = activity({ passengerTrackingBookingId: 'booking' });
-  app.render(); pending.resolve(trip()); await flush(); assert.deepEqual(app.calls, []);
-  app.options.bookings = { data: [booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) })], isSuccess: true };
-  app.options.readBooking = async () => booking({ passengerId: 'driver', trip: trip({ driverId: 'another' }) });
-  app.render(); await flush(); assert.deepEqual(app.calls, ['/booking/navigate/booking']);
+  app.render(); pending.resolve(trip()); await flush(); app.render(); await flush();
+  assert.deepEqual(app.calls, ['/booking/navigate/booking']);
 });
 
 test('an unchanged shared summary can retry a failed verification once per refresh, without additional polls', async t => {
@@ -207,5 +205,55 @@ test('payment, chat, SOS, forms, notification actions and existing guidance reta
     '/publish', '/request/index', '/incoming-driver', '/trip/navigate/trip', '/booking/navigate/booking']) {
     const app = fixture(t, { path }); app.render(); await flush(); assert.deepEqual(app.reads, [], path);
     app.options.path = '/'; app.render(); await flush(); assert.deepEqual(app.calls, [], path);
+  }
+});
+
+test('accepted reservations resume before boarding for both published and request-created ongoing rides', async t => {
+  for (const tripRequestId of [undefined, 'request']) {
+    const ride = trip({ tripRequestId });
+    for (const nested of [undefined, trip({ status: 'upcoming', tripRequestId }), ride]) {
+      let tripReads = 0;
+      const app = fixture(t, { userId: 'passenger', activity: activity({ userId: 'passenger', passengerTrackingBookingId: 'booking' }),
+        trips: { isSuccess: false }, bookings: { isSuccess: false },
+        readBooking: async () => booking({ trip: nested, pickedUp: false }),
+        readTrip: async () => { tripReads++; return ride; } });
+      app.render(); await flush();
+      assert.deepEqual(app.calls, ['/booking/navigate/booking']);
+      assert.equal(tripReads, nested?.status === 'ongoing' ? 0 : 1, 'only read trip details when the booking lacks ongoing proof');
+    }
+    const driver = fixture(t, { trips: { data: [ride], isSuccess: true }, readTrip: async () => ride });
+    driver.render(); await flush(); assert.deepEqual(driver.calls, ['/trip/navigate/trip']);
+  }
+});
+
+test('server discovery cannot grant access to upcoming, terminal, unpaid-pending or foreign reservations', async t => {
+  for (const patch of [{ status: 'pending' }, { status: 'cancelled' }, { status: 'completed' },
+    { droppedOffConfirmedByPassenger: true }, { passengerId: 'another' }, { id: 'another' },
+    { trip: trip({ status: 'upcoming' }) }, { trip: trip({ id: 'another' }) }]) {
+    const app = fixture(t, { userId: 'passenger',
+      activity: activity({ userId: 'passenger', passengerTrackingBookingId: 'booking' }),
+      trips: { data: [], isSuccess: false }, bookings: { isSuccess: false },
+      readBooking: async () => booking(patch), readTrip: async () => trip({ status: 'upcoming' }) });
+    app.render(); await flush();
+    for (let i = 0; i < 8; i++) { app.render(); await flush(); }
+    assert.deepEqual(app.calls, [], JSON.stringify(patch));
+  }
+});
+
+test('late summary-booking or fallback-trip verification cannot redirect another session', async t => {
+  for (const step of ['booking', 'trip']) for (const change of ['account', 'logout', 'background', 'payment']) {
+    const pending = deferred();
+    const app = fixture(t, { userId: 'passenger',
+      activity: activity({ userId: 'passenger', passengerTrackingBookingId: 'booking' }),
+      bookings: { isSuccess: false }, trips: { isSuccess: false },
+      readBooking: async () => step === 'booking' ? pending.promise : booking({ trip: undefined }),
+      readTrip: () => pending.promise });
+    app.render(); await flush();
+    if (change === 'account') app.options.userId = 'another';
+    if (change === 'logout') app.logout();
+    if (change === 'background') app.options.active = false;
+    if (change === 'payment') app.options.path = '/booking/payment';
+    app.render(); pending.resolve(step === 'booking' ? booking() : trip()); await flush();
+    assert.deepEqual(app.calls, [], `${step}:${change}`);
   }
 });

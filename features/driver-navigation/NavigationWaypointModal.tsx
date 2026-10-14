@@ -39,9 +39,7 @@ export function NavigationWaypointModal({
         Boolean(activeWaypoint) &&
         !backgroundDisclosureVisible &&
         !securityModalVisible &&
-        !tripEndNotice &&
-        !pickupNotice &&
-        !pickupBypassConfirmation
+        !tripEndNotice
       }
       transparent
       animationType="slide"

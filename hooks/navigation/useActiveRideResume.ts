@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Booking, Trip } from '@/types';
-import { canResumeRideFromPath, findRideToResume, isRideNavigationPath, isRideResumeEntryTransition, verifyRideToResume } from '@/features/navigation/activeRideResume';
+import { canResumeRideFromPath, findRideToResume, isRideNavigationPath, isRideResumeEntryTransition, verifyRideToResume, type RideToResume } from '@/features/navigation/activeRideResume';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import type { AccountActivity } from '@/store/api/accountActivityApi';
 
@@ -17,6 +17,19 @@ function getEntryActivity(options: Options, since: number) {
   return options.activity?.isSuccess && !options.activity.isFetching &&
     options.activity.data?.userId === options.userId && (options.activity.fulfilledTimeStamp ?? 0) >= since
     ? options.activity.data : undefined;
+}
+
+function entryCandidate(options: Options, entry: { since: number; rejectedTrips: Set<string>; rejectedBookings: Set<string> }): RideToResume | null {
+  const summary = getEntryActivity(options, entry.since);
+  // This authenticated server pointer is discovery, not proof of navigation
+  // access. Verify the booking even when shared lists have not arrived yet.
+  const bookingId = summary?.passengerTrackingBookingId;
+  if (bookingId && !entry.rejectedBookings.has(bookingId)) {
+    return { role: 'passenger', bookingId, tripId: null };
+  }
+  return findRideToResume(options.userId!,
+    options.trips.data?.filter(trip => !entry.rejectedTrips.has(trip.id)),
+    options.bookings.data?.filter(booking => !entry.rejectedBookings.has(booking.id)));
 }
 
 /** At most one successful resume per foreground/account. No polling or persisted route. */
@@ -48,9 +61,7 @@ export function useActiveRideResume(options: Options) {
     // Empty accounts need no list reads. A fresh summary closes this entry so a
     // trip created later during normal use does not cause an unexpected redirect.
     if (summary && !summary.hasLiveActivity) { entry.consumed = true; return; }
-    const candidate = findRideToResume(userId,
-      options.trips.data?.filter(trip => !entry.rejectedTrips.has(trip.id)),
-      options.bookings.data?.filter(booking => !entry.rejectedBookings.has(booking.id)));
+    const candidate = entryCandidate(options, entry);
     if (!candidate) {
       // Lists fetched before the live summary may still describe the pre-start
       // state. Wait for reconciliation instead of prematurely declaring no ride.
@@ -62,10 +73,6 @@ export function useActiveRideResume(options: Options) {
       if (tripsReady && bookingsReady) entry.consumed = true;
       return;
     }
-    // Shared lists can finish in either order: a driver's older ongoing trip must
-    // not win while the server is reporting their current passenger reservation.
-    if (candidate.role === 'driver' && summary?.passengerTrackingBookingId &&
-      !entry.rejectedBookings.has(summary.passengerTrackingBookingId)) return;
     const attempt = `${candidate.role}:${candidate.tripId}:${candidate.bookingId}:${options.trips.fulfilledTimeStamp}:${options.bookings.fulfilledTimeStamp}:${options.activity?.fulfilledTimeStamp}`;
     if (entry.attempt === attempt) return;
     entry.attempt = attempt;
@@ -78,17 +85,13 @@ export function useActiveRideResume(options: Options) {
       if (current.options.overlayBusy) { entry.attempt = ''; return; }
       const currentSummary = getEntryActivity(current.options, entry.since);
       if (currentSummary && !currentSummary.hasLiveActivity) { entry.consumed = true; return; }
-      if (candidate.role === 'driver' && currentSummary?.passengerTrackingBookingId &&
-        !entry.rejectedBookings.has(currentSummary.passengerTrackingBookingId)) return;
-      const latestCandidate = findRideToResume(userId,
-        current.options.trips.data?.filter(trip => !entry.rejectedTrips.has(trip.id)),
-        current.options.bookings.data?.filter(booking => !entry.rejectedBookings.has(booking.id)));
+      const latestCandidate = entryCandidate(current.options, entry);
       if (path && (latestCandidate?.role !== candidate.role || latestCandidate.tripId !== candidate.tripId ||
         latestCandidate.bookingId !== candidate.bookingId)) return;
       if (path) {
         entry.consumed = true;
         current.options.replace(path);
-      } else if (candidate.bookingId) entry.rejectedBookings.add(candidate.bookingId);
+      } else if (candidate.role === 'passenger') entry.rejectedBookings.add(candidate.bookingId);
       else entry.rejectedTrips.add(candidate.tripId);
     }).catch(() => {
       // Do not retry on every render. A new discovery snapshot, foreground or reconnect can retry.

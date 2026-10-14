@@ -3,6 +3,7 @@ import { ActivityIndicator, Keyboard, StyleSheet, Text, TouchableOpacity, View }
 import { Colors, FontSizes, Spacing } from '@/constants/styles';
 import { styles } from '@/features/screen-styles/components/PassengerArrivalPaymentCoordinator/index';
 import type { PaymentVerification } from '@/hooks/arrival-payment/useArrivalPaymentMonitoring';
+import type { ArrivalConfirmationProgress } from '@/hooks/arrival-payment/useArrivalConfirmationSync';
 import type { TripPaymentMode } from '@/types';
 import type { PaymentCompletionSummary } from './paymentTypes';
 
@@ -19,6 +20,7 @@ type Props = {
   actionLabel: string;
   isPayButtonDisabled: boolean;
   waitingForArrivalConfirmation?: boolean;
+  arrivalConfirmation?: ArrivalConfirmationProgress;
   verification: PaymentVerification;
   paymentError?: string;
   onPay: () => Promise<void>;
@@ -46,7 +48,7 @@ export function ArrivalPaymentActions(props: Props) {
   const pending = props.hasPendingProviderPayment && !props.paymentAlreadySucceeded;
   const paused = props.verification.phase === 'paused';
   const disabled = props.waitingForArrivalConfirmation || (pending ? props.isBusy || !paused : props.isPayButtonDisabled);
-  const label = props.waitingForArrivalConfirmation ? 'Synchronisation de l’arrivée…' : props.isBusy ? props.selectedMode === 'cash' && !pending ? 'Enregistrement…' : 'Vérification…' : pending
+  const label = props.waitingForArrivalConfirmation ? props.arrivalConfirmation?.refreshing ? 'Confirmation de l’arrivée…' : 'Paiement après confirmation' : props.isBusy ? props.selectedMode === 'cash' && !pending ? 'Enregistrement…' : 'Vérification…' : pending
     ? paused ? 'Vérifier à nouveau' : 'En attente de confirmation' : props.actionLabel;
   return <View style={local.footer}>
     {!pending && props.paymentError ? (

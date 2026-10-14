@@ -9,7 +9,39 @@ dist/
 web-build/
 
 # Native
-android/.kotlin/
+# Keep machine-specific native caches out of the EAS archive. These rules
+# intentionally live at the ROOT: older EAS CLI versions on Windows can miss
+# nested .gitignore rules when the copy filter receives backslash paths.
+/android/**/build/
+/android/**/.gradle/
+/android/**/.kotlin/
+/android/**/.cxx/
+/android/**/.idea/
+/android/local.properties
+/android/**/*.iml
+/android/**/*.hprof
+/android/**/*.jsbundle
+/ios/**/build/
+/ios/**/DerivedData/
+/ios/Pods/
+/ios/**/xcuserdata/
+/ios/**/*.xcuserstate
+/ios/**/*.xccheckout
+/ios/**/*.moved-aside
+/ios/**/*.hmap
+/ios/**/*.ipa
+/ios/**/*.jsbundle
+/ios/.xcode.env.local
+/ios/**/*.pbxuser
+!/ios/**/default.pbxuser
+/ios/**/*.mode1v3
+!/ios/**/default.mode1v3
+/ios/**/*.mode2v3
+!/ios/**/default.mode2v3
+/ios/**/*.perspectivev3
+!/ios/**/default.perspectivev3
+# Do NOT ignore /android, /ios, shared workspaces, Gradle wrapper, native KYC
+# sources, Podfile.lock, Swift package resolution or notification resources.
 *.orig.*
 *.jks
 *.p8
