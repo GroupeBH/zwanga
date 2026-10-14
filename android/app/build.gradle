@@ -197,6 +197,16 @@ dependencies {
 apply plugin: 'com.google.gms.google-services'
 apply plugin: 'com.google.firebase.crashlytics'
 
+// ZWANGA_CRASHLYTICS_NATIVE_SYMBOLS
+plugins.withId('com.google.firebase.crashlytics') {
+  android.buildTypes.release {
+    firebaseCrashlytics {
+      nativeSymbolUploadEnabled true
+      unstrippedNativeLibsDir file("$buildDir/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib")
+    }
+  }
+}
+
 // ZWANGA_VERIFY_NATIVE_ARTIFACT
 tasks.matching { it.name == 'bundleRelease' || it.name == 'assembleRelease' }.configureEach {
   doLast {

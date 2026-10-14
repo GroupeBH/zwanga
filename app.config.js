@@ -200,6 +200,8 @@ module.exports = {
     },
 
     plugins: [
+      './plugins/withAndroidCrashlyticsSymbols',
+      './plugins/withBoundedImage',
       './plugins/withAwsLiveness',
       'expo-router',
       'expo-dev-client',

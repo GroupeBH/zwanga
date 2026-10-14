@@ -1,8 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { prepareLocalImage } from '@/utils/prepareLocalImage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { randomUUID } from 'expo-crypto';
 import { Colors } from '@/constants/styles';
@@ -89,12 +89,11 @@ function AwsKycModal({ onClose }: { onClose: (result: DiditKycFlowOutcome | null
   const photograph = (side: 'front' | 'back') => run(async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) throw new Error('Autorisez la caméra dans les réglages du téléphone.');
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.9, exif: false, allowsEditing: false });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: Platform.OS === 'android' ? 1 : 0.9, exif: false, allowsEditing: false });
     if (result.canceled) return;
     const original = result.assets[0].uri; files.current.add(original);
     if (!current()) { deleteCameraFile(original); return; }
-    const asset = result.assets[0];
-    const resized = await ImageManipulator.manipulateAsync(original, [{ resize: asset.width >= asset.height ? { width: Math.min(asset.width, 2000) } : { height: Math.min(asset.height, 2000) } }], { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG });
+    const resized = { uri: await prepareLocalImage(original, 2000, 0.9) };
     files.current.add(resized.uri);
     if (!current()) { deleteCameraFile(original); deleteCameraFile(resized.uri); return; }
     if (current()) setImages(v => ({ ...v, [side]: resized.uri }));

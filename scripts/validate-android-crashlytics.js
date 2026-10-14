@@ -49,6 +49,7 @@ function main() {
     fs.readFileSync(path.join(root, 'android', 'build.gradle'), 'utf8'),
     fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8'),
   );
+  failures.push(...validateNativeSymbols(fs.readFileSync(path.join(root, 'android/app/build.gradle'), 'utf8')));
   if (failures.length > 0) {
     console.error('[android-crashlytics] Configuration native invalide :');
     failures.forEach((failure) => console.error(`- ${failure}`));
@@ -58,5 +59,12 @@ function main() {
   console.log('[android-crashlytics] Configuration Gradle valide.');
 }
 
-module.exports = { validateCrashlyticsGradle };
+function validateNativeSymbols(source) {
+  const active = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const failures = [];
+  if (!/nativeSymbolUploadEnabled\s+(?:=\s*)?true\b/.test(active)) failures.push('Activez les symboles natifs Crashlytics pour release.');
+  if (!/unstrippedNativeLibsDir\s+file\([^\n]*merged_native_libs\/release\//.test(active)) failures.push('Le chemin des bibliothèques natives release manque.');
+  return failures;
+}
+module.exports = { validateCrashlyticsGradle, validateNativeSymbols };
 if (require.main === module) main();

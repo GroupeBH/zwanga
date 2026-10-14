@@ -1,5 +1,114 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — Correctifs Android après audit de la version 159
+
+- **Périmètre/problème :** fuite des callbacks natifs et mauvais suivi des tâches
+  simultanées constatés dans l'AAB 159 ; risque de décodage pleine résolution des
+  photos ; envoi des symboles Crashlytics natifs non configuré.
+- **Solution appliquée :** patch reproductible d'Expo TaskManager, module Android
+  local de préparation d'images à mémoire bornée utilisé par le profil et le KYC,
+  configuration des symboles natifs et envoi au prochain build EAS production.
+  Aucun changement de dépendance, de backend ou de données utilisateurs.
+- **Détails, fichiers, précautions, preuves et recette :**
+  [Android — stabilité du 14 octobre](ANDROID_STABILITE_20261014.md).
+- **Vérifications :** suite complète de 243 fichiers, 1 989 tests réussis, aucun
+  échec ni test ignoré ; TypeScript sans émission, contrôle des frontières réseau,
+  limite de taille des sources, ESLint ciblé et `git diff --check` réussis. Le module photo Java
+  compile contre les API Android 36 / React Native 0.81.5 locales. Les tests du
+  cycle de tâches et du sous-échantillonnage compilent les méthodes Java concernées
+  avec des doubles d'environnement ; ce ne sont pas des mesures mémoire natives.
+- **Limites :** pas de build natif complet ni d'essai physique pendant cette
+  intervention. La trace mémoire accessible concernait la version 146 : les
+  défauts confirmés dans la 159 ne démontrent pas la cause de toutes les fermetures.
+  Nouveau binaire Android obligatoire ; une OTA JavaScript ne suffit pas.
+
+## 14 octobre 2026 — Sortie de navigation conducteur : écran d'identité et boutons
+
+- **Signalement/problème :** après la sortie de navigation vers la gestion du
+  trajet, l'écran demande une vérification d'identité et son bouton orange prend
+  presque toute la hauteur. Le style `primaryButton` a `flex: 1` pour une ligne
+  d'actions ; il était réutilisé dans une colonne plein écran. Le contrôleur
+  traitait également `isIdentityVerified: false` comme un refus, même lorsque
+  le contexte KYC n'avait pas de réponse disponible.
+- **Solution appliquée :** `features/manage-trip/ManageTripIdentityGuard.tsx`
+  utilise le même `getProfileStatus` et la même réponse `/users/me` que le profil,
+  liée à l'identifiant du compte, avant de monter le contrôleur de gestion.
+  Une réponse inconnue n'est plus présentée comme une identité à refaire :
+  chargement ou « Profil indisponible », avec nouvelle tentative et retour à
+  l'accueil. Une vérification en cours ne demande pas de nouveaux documents ;
+  une identité réellement absente/rejetée propose toujours la vérification.
+  Seule une approbation serveur reconnue ouvre la gestion, jamais un rôle ou
+  un drapeau local `identityVerified`/`status` du compte authentifié.
+- **Affichage :** boutons indépendants du style de pied de page, hauteur minimale
+  de 52 points sans croissance verticale, largeur contenue et texte adaptable.
+  La zone peut défiler sur petit écran/grande police ; le retour à l'accueil
+  est explicite. La compétence frontend a guidé cette disposition sobre et les
+  messages courts ; aucune image, animation ou fenêtre modale ajoutée.
+- **Fichiers associés :** `app/trip/manage/[id].tsx` place ce garde après
+  `DriverTripAccessGuard` et retire l'ancien message ambigu ;
+  `hooks/manage-trip/useManageTripState.ts` retire sa lecture KYC indépendante.
+  `features/screen-styles/app/trip/manage/detail/container.styles.ts` ajoute un
+  style non extensible pour le bouton isolé de refus d'accès, sans modifier les
+  boutons côte à côte du pied de page. `tests/manageTripCancellation.test.js`
+  conserve ses assertions d'overlays en tenant compte du garde intermédiaire.
+- **Précautions :** garde de propriété conservé à l'extérieur ; contrôleur,
+  lectures des réservations et GPS non montés avant autorisation. Lecture du
+  profil via RTK Query sans polling, suspendue hors ligne/écran masqué.
+  Dernière réponse serveur conservée pour le même compte/session, mais jamais
+  réutilisée pour un autre compte ; une nouvelle réponse de refus ferme l'accès.
+  Si le profil est encore inconnu, un document KYC déjà approuvé par le serveur
+  et explicitement lié au compte courant préserve le premier retour hors ligne.
+  Cette preuve ne remplace jamais une décision connue du profil, notamment un refus.
+  Les rappels de nouvelle tentative ne relancent pas une requête masquée ou
+  celle d'un ancien compte. Pas de contournement KYC ou d'endpoint backend modifié.
+  La capture seule ne permet pas d'affirmer que le compte signalé est approuvé.
+- **Tests réels :** huit tests ajoutés dans `tests/manageTripIdentityGuard.test.js`
+  couvrent inconnu/chargement, absent/rejeté/en attente, approbation canonique,
+  hors ligne, changement de compte, nouvelle tentative tardive, dimensions et
+  ordre des gardes. Avec les suites annulation, accès aux réservations et lectures
+  d'écran : 23 tests JavaScript réussis. TypeScript sans émission réussi ; ESLint
+  ciblé sans erreur (deux avertissements préexistants dans `useManageTripState.ts`).
+  Contrôle réseau réussi ; 1 086 sources contrôlées, aucune au-delà de 400 lignes.
+  `git diff --check` réussi. Ces tests simulent le rendu et les échanges natifs.
+  L'empreinte de styles de `tests/fixtures/sourceExtractions.json` est mise à jour
+  pour le seul nouveau style `standaloneButton` ; `tests/tripParticipation.test.js`
+  vérifie toujours l'ordre du garde propriétaire, désormais suivi du garde identité.
+  Suite JavaScript complète relancée après les derniers changements :
+  241 fichiers, 1 980 tests réussis, aucun échec ni test ignoré.
+- **Limites/livraison :** pas de nouveau build, déploiement, appel KYC réel ni
+  essai physique de cet écran. À vérifier sur Android/iOS après sortie d'un
+  trajet, avec grande police, approbation connue, réseau indisponible et retour
+  du réseau. Ce correctif d'écran ne revendique pas une résolution du crash
+  Android au lancement signalé séparément.
+
+## 14 octobre 2026 — Android 159 : contrôles de l'artefact et limites du diagnostic
+
+- **Signalement :** la version 159 du test interne Google Play se ferme au
+  lancement. L'utilisateur ne dispose pas de trace ; modèle et version Android
+  du téléphone concerné ne sont pas encore fournis. Ce signalement reste ouvert.
+- **Vérifications en lecture seule :** le manifeste protobuf de l'AAB le plus
+  récemment téléchargé est analysé avec le parseur protobuf déjà installé,
+  selon le schéma AAPT public : package `com.zwanga`, version `1.0.17 (159)`,
+  SDK minimum 24 et cible 36. `scripts/validate-android-native.cjs` réussit pour
+  les quatre ABI (bibliothèques principales et ELF). Les symboles compilés
+  `boundedLocationExtras`, `MAX_LOCATION_SAMPLES` et `isZwangaLocationTask`
+  sont présents dans les DEX : la protection des jobs GPS n'est pas simplement
+  restée dans les sources. Cela ne prouve pas son comportement sur ce téléphone.
+- **Traces distinctes :** l'unique émulateur connecté est toujours en version
+  dev 146, confirmé avec `pm list packages --show-versioncode`. Son tampon de
+  crash contient une erreur de mémoire dans la livraison des jobs GPS et une
+  erreur OkHttp ; elles ne sont pas attribuées au build 159 du test interne.
+  L'essai natif vierge de la 158 documenté plus bas ne valide pas non plus la 159.
+- **Conservation/limites :** aucun APK installé, aucun arrêt d'émulateur ou de
+  processus demandé, aucune donnée ni trace effacée. Pas de changement natif
+  Android, d'augmentation artificielle du heap, de désactivation de GPS/KYC ou
+  de déclaration de crash résolu. Le contrôle AAB ne valide pas les splits
+  générés par Google Play, leur chargement, la reprise de données existantes
+  ou le démarrage sur ARM/ARM64. Il faut la trace du téléphone concerné :
+  Android Vitals/Crashlytics, ou téléphone connecté en USB puis
+  `adb logcat -b crash -d` après reproduction, sans nettoyer préalablement les logs.
+- **Référence de format :** [schéma AAPT de l'AOSP](https://github.com/aosp-mirror/platform_frameworks_base/blob/master/tools/aapt2/Resources.proto).
+
 ## 14 octobre 2026 — Rejet TestFlight 90683 : déclaration d'usage vocal iOS
 
 - **Problème constaté :** l'envoi de `1.0.17 (142)` termine le transfert de l'IPA,

@@ -1,5 +1,6 @@
 import { useManageTripController } from '../../../hooks/manage-trip/useManageTripController';
 import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
+import { ManageTripIdentityGuard } from '@/features/manage-trip/ManageTripIdentityGuard';
 import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
 import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
@@ -16,7 +17,7 @@ import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ManageTripScreen() {
-  return <DriverTripAccessGuard><OwnerManageTripScreen /></DriverTripAccessGuard>;
+  return <DriverTripAccessGuard><ManageTripIdentityGuard><OwnerManageTripScreen /></ManageTripIdentityGuard></DriverTripAccessGuard>;
 }
 
 function OwnerManageTripScreen() {
@@ -62,29 +63,10 @@ function OwnerManageTripScreen() {
             Vous n’avez pas l’autorisation d’accéder à ce trajet.
           </Text>
           <TouchableOpacity
-            style={[styles.primaryButton, { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl }]}
+            style={[styles.primaryButton, styles.standaloneButton]}
             onPress={model.state.goHome}
           >
             <Text style={styles.primaryButtonText}>Retour</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!model.state.isIdentityVerified) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centerContent}>
-          <Ionicons name="shield-outline" size={34} color={Colors.primary} />
-          <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
-            Votre identité doit être vérifiée pour gérer vos trajets.
-          </Text>
-          <TouchableOpacity
-            style={[styles.primaryButton, { marginTop: Spacing.lg }]}
-            onPress={() => model.state.router.push('/profile')}
-          >
-            <Text style={styles.primaryButtonText}>Vérifier mon identité</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

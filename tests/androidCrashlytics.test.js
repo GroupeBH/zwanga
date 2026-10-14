@@ -45,3 +45,18 @@ test('EAS checks native Crashlytics configuration before building', () => {
   const { scripts } = require('../package.json');
   assert.match(scripts['eas-build-pre-install'], /node \.\/scripts\/validate-android-crashlytics\.js/);
 });
+
+test('native symbols are enabled, checked and uploaded only for production Android builds', () => {
+  const { validateNativeSymbols } = require('../scripts/validate-android-crashlytics');
+  const { shouldUpload } = require('../scripts/upload-android-crashlytics-symbols.cjs');
+  const { configure } = require('../plugins/withAndroidCrashlyticsSymbols');
+  const source = fs.readFileSync('android/app/build.gradle', 'utf8');
+  assert.deepEqual(validateNativeSymbols(source), []);
+  assert.equal(validateNativeSymbols('').length, 2);
+  assert.equal(validateNativeSymbols(`/* ${source} */`).length, 2);
+  assert.deepEqual(validateNativeSymbols(configure('')), []);
+  assert.equal(configure(configure('')), configure(''));
+  assert(shouldUpload({ EAS_BUILD_PLATFORM: 'android', EAS_BUILD_PROFILE: 'production' }));
+  for (const env of [{}, { EAS_BUILD_PLATFORM: 'ios', EAS_BUILD_PROFILE: 'production' }, { EAS_BUILD_PLATFORM: 'android', EAS_BUILD_PROFILE: 'dev' }]) assert(!shouldUpload(env));
+  assert.match(require('../package.json').scripts['eas-build-on-success'], /upload-android-crashlytics-symbols.cjs --eas/);
+});

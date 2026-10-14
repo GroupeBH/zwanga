@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { prepareLocalImage } from './prepareLocalImage';
 
 export const PROFILE_PHOTO_MAX_EDGE = 1024;
 
@@ -23,19 +23,5 @@ export function getProfilePhotoSize(width: number, height: number) {
 
 /** Resize before preview/upload; never crop the user's photo or overwrite the original. */
 export async function prepareProfilePhoto(uri: string): Promise<string> {
-  const { width, height } = await Image.getSize(uri);
-  // Lazy loading lets older development clients start even without the new native module.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { ImageManipulator, SaveFormat } = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
-  const context = ImageManipulator.manipulate(uri);
-  let image: import('expo-image-manipulator').ImageRef | undefined;
-  try {
-    context.resize(getProfilePhotoSize(width, height));
-    image = await context.renderAsync();
-    const result = await image.saveAsync({ format: SaveFormat.JPEG, compress: 0.8 });
-    return result.uri;
-  } finally {
-    image?.release();
-    context.release();
-  }
+  return prepareLocalImage(uri, PROFILE_PHOTO_MAX_EDGE, 0.8);
 }

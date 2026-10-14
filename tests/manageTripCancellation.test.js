@@ -147,6 +147,7 @@ test('manage screen scopes confirmation and form overlays to its focus and wires
     'react-native-safe-area-context': { SafeAreaView: 'Safe' }, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { __esModule: true, default: { View: 'Animated' }, FadeInDown: {} },
     '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'Guard' },
+    '@/features/manage-trip/ManageTripIdentityGuard': { ManageTripIdentityGuard: 'IdentityGuard' },
     '../../../hooks/manage-trip/useManageTripController': { useManageTripController: () => model },
     '../../../features/manage-trip/ManageTripContent': { ManageTripContent: 'Content' },
     '../../../features/manage-trip/ManageTripActionsFooter': { ManageTripActionsFooter: 'Footer' },
@@ -155,7 +156,7 @@ test('manage screen scopes confirmation and form overlays to its focus and wires
     '@/components/forms/FormLayout': { FormModal: 'Modal' },
     '../../../features/screen-styles/app/trip/manage/detail/index': { styles: {} },
   })('app/trip/manage/[id].tsx');
-  const owner = Screen().props.children.type;
+  const owner = Screen().props.children.props.children.type;
   let tree = owner(); assert.equal(tree.type, 'Scope'); assert.equal(tree.props.scopeKey, 'manage:trip-test');
   assert.equal(tree.props.active, true);
   assert.equal(nodes(tree).find(node => node.type === 'Modal' && node.props.visible).props.onRequestClose, close);
