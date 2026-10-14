@@ -14,7 +14,7 @@ function environment() {
     '@reduxjs/toolkit/query/react':{createApi:config=>config,fetchBaseQuery:()=>async req=>{requests.push(req);return fetch(req)}},
   })('store/api/baseApi.ts');
   const controller=new AbortController();
-  return {requests,controller, run:()=>baseQueryWithReauth('/bookings',{signal:controller.signal},{}),
+  return {requests,controller, run:(args='/bookings')=>baseQueryWithReauth(args,{signal:controller.signal},{}),
     tokens:value=>{tokens=value}, refresh:fn=>{refresh=fn}, fetch:fn=>{fetch=fn}, changeSession:()=>version++};
 }
 test('offline expired session sends no protected request and returns a transient error',async()=>{
@@ -41,4 +41,28 @@ test('abort during renewal prevents the request from being sent',async()=>{
 test('public requests without a session still work',async()=>{
   const e=environment(); e.tokens({accessToken:null,refreshToken:null});
   assert.deepEqual(await e.run(),{data:'ok'}); assert.equal(e.requests[0].headers.has('authorization'),false);
+});
+
+test('an occupied registration phone is neither replayed nor masked by token renewal', async () => {
+  for (const data of [
+    { code: 'PHONE_ALREADY_REGISTERED', message: 'Ce numéro de téléphone existe déjà' },
+    { code: 'AUTHENTICATION_REQUIRED', message: 'Ce numéro de téléphone existe déjà' },
+  ]) {
+    const e = environment();
+    const response = { error: { status: 401, data } };
+    e.fetch(async () => response);
+    e.refresh(async () => assert.fail('A duplicate signup is not an expired session'));
+    assert.deepEqual(await e.run({ url: '/auth/register', method: 'POST' }), response);
+    assert.equal(e.requests.length, 1);
+  }
+});
+
+test('protected endpoints retain the existing 401 renewal behavior', async () => {
+  const e = environment();
+  let refreshes = 0;
+  e.fetch(async () => e.requests.length === 1 ? { error: { status: 401 } } : { data: 'renewed' });
+  e.refresh(async () => { refreshes++; return 'new'; });
+  assert.deepEqual(await e.run(), { data: 'renewed' });
+  assert.equal(refreshes, 1);
+  assert.equal(e.requests.length, 2);
 });

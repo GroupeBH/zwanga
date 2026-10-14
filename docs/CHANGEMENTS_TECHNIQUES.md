@@ -1,5 +1,153 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — KYC déjà validé et reprise d'un compte existant
+
+- **Problème :** le conflit backend `KYC_ALREADY_APPROVED` était présenté comme
+  une impossibilité de créer une session ; une inscription avec un numéro existant
+  ne proposait pas de reprise claire du compte.
+- **Solution :** `hooks/useExistingKycApproval.ts` relit le KYC côté serveur avant
+  de choisir Didit/AWS, invalide les caches du profil et recharge le compte si
+  l'identité est approuvée. `hooks/useDiditKycFlow.ts` reprend aussi l'approbation
+  arrivée entre cette lecture et le POST, sans rouvrir SDK/navigateur. L'export lazy
+  de lecture du KYC est ajouté dans `store/api/userApi.ts` ; les erreurs connues sont
+  reconnues par `features/identity/kycApproval.ts` et présentées par `diditErrors.ts`.
+- **Inscription :** `features/auth/registrationErrors.ts` reconnaît le code backend
+  et les anciens messages exacts. `hooks/auth/useRegistrationActions.ts` propose la
+  connexion ou la correction du numéro ; `useAuthController.ts` conserve le numéro
+  mais efface le PIN d'inscription et le contexte social en passant à la connexion.
+  Le bouton de récupération du PIN existant reste disponible. `store/api/baseApi.ts`
+  ne renouvelle/rejoue plus une inscription refusée pour un téléphone déjà occupé.
+- **Protections conservées :** aucun compte créé/authentifié à partir du seul numéro,
+  aucun code OTP contourné, aucune approbation sur simple conflit ou statut du navigateur.
+  Un échec de lecture ou un changement de compte empêche la reprise. Les parcours
+  Didit/AWS pour les utilisateurs non vérifiés et la configuration des fournisseurs
+  sont conservés ; aucun changement natif, `.env`, EAS ou version de SDK.
+- **Tests :** 99 tests JavaScript ciblés réussis (KYC, inscription, sessions, PIN,
+  contrats réseau), puis suite JavaScript complète réussie
+  (`node --test --test-reporter=dot --test-concurrency=4 tests/*.test.js`).
+  TypeScript sans émission réussi et contrôles réseau/taille des
+  sources réussis. Régressions ajoutées dans `tests/kycProvider.test.js`,
+  `tests/authSubmissionLoading.test.js` et `tests/authenticatedQueryLifecycle.test.js`.
+  Il s'agit de tests JavaScript avec entrées/sorties simulées, pas d'essais natifs.
+- **Livraison/limites :** aucun déploiement AWS ni publication store effectué.
+  Le correctif backend conserve les codes HTTP historiques et ajoute un code métier
+  de doublon ; le changement d'expérience nécessite aussi cette mise à jour mobile.
+  À vérifier sur Android/iOS : KYC déjà validé, approbation pendant le démarrage,
+  nouveau compte, doublon puis connexion/PIN oublié et coupure réseau.
+
+## 14 octobre 2026 — Build Android 158 : essai natif sur émulateur isolé
+
+- **Périmètre/objectif :** poursuivre le diagnostic de fermeture sur le logo du
+  test interne, sans remplacer ni effacer l'application de l'émulateur existant.
+  L'utilisateur a autorisé un nouvel émulateur isolé, puis l'arrêt temporaire et
+  la réouverture de l'émulateur initial pour limiter la pression mémoire du PC.
+- **Essai effectivement réalisé :** génération et installation d'un APK universel
+  à partir de l'AAB précédemment contrôlé, version `1.0.17 (158)`, avec bundletool
+  et les composants SDK déjà disponibles. Signature debug locale pour cet essai,
+  sans modification de la signature Google Play ou des dépendances du projet.
+  AVD temporaire vierge : Android 16/API 36, Google APIs, x86_64, 1 536 Mio de RAM,
+  deux cœurs et rendu graphique logiciel, lancé sans fenêtre ni snapshot initial.
+- **Résultats natifs observés :** deux démarrages à froid atteignent l'écran de
+  bienvenue ; l'activité et le processus restent présents. Le retour après passage
+  en arrière-plan réussit avec le même processus, et le bouton de connexion ouvre
+  le formulaire. Les captures sont inspectées et les extraits Logcat des processus
+  ainsi que le tampon de crash ne contiennent pas de crash attribué à `com.zwanga`
+  pendant ces essais. Le lanceur système Pixel Launcher a affiché un ANR au premier
+  démarrage de l'AVD ; les incidents système observés restent distincts de Zwanga.
+  Ces essais ne reproduisent pas la fermeture signalée sur téléphone.
+- **Restauration/conservation :** l'AVD de test est arrêté ; `Pixel_5` est rouvert
+  sur le port initial, son démarrage est confirmé et son application reste en
+  `1.0.16 (146)`. Aucune désinstallation, aucun effacement de données ou de logs
+  de l'émulateur initial. Les artefacts de diagnostic restent dans un dossier
+  temporaire hors du projet. Seul ce journal est modifié pour cette intervention ;
+  les correctifs iOS précédents restent conservés. Aucun nouveau build EAS,
+  déploiement, connexion à un compte utilisateur ou appel KYC effectué.
+- **Limites/suite :** test natif sur émulateur, pas sur téléphone physique. APK
+  universel resigné pour le test, pas livraison des splits Google Play ; ABI x86_64
+  uniquement exécutée, pas ARM/ARM64. L'installation vierge ne teste pas la reprise
+  d'une session ou de données d'une ancienne version. Le PC manque de RAM ; ces
+  observations ne servent pas de benchmark de performance. Il faut identifier la
+  version réellement installée et récupérer la trace du téléphone concerné
+  (Logcat, Crashlytics ou Android Vitals) pour choisir un correctif Android fondé
+  sur ce crash. Aucun correctif runtime ni disparition du crash n'est revendiqué.
+
+## 14 octobre 2026 — Fermeture Android sur le logo : diagnostic sans effacement
+
+- **Signalement/périmètre :** fermeture au lancement du test interne Android
+  de la même livraison que le build iOS échoué. Le correctif d'empreinte Smithy
+  est uniquement iOS et ne corrige pas ce signalement Android.
+- **Vérifications réelles :** l'AAB le plus récemment téléchargé a été inspecté
+  avec les outils Android déjà présents ; son manifeste donne le code de version
+  `158`. `scripts/validate-android-native.cjs` réussit sur cet AAB pour les quatre
+  ABI : présence des bibliothèques principales, structure ELF et alignement ELF
+  contrôlés. Cela ne valide ni leur chargement effectif ni le démarrage JavaScript.
+  Le garde Gradle Crashlytics réussit ; 16 tests JavaScript Crashlytics/restauration
+  de session réussissent également.
+- **Distinction des traces :** l'émulateur connecté conserve une ancienne version
+  dev `1.0.16 (146)`. Son journal contient des exceptions du lanceur de développement
+  et des erreurs de mémoire dans les tâches de localisation. Ces traces ne sont
+  pas attribuées au nouvel AAB et ne démontrent pas la cause du crash du test interne.
+- **Essai autorisé :** génération d'un APK universel de test à partir du même AAB,
+  dans un répertoire temporaire, signé avec la clé debug locale. L'installation
+  de mise à jour échoue avec `INSTALL_FAILED_UPDATE_INCOMPATIBLE` : la signature
+  de l'ancienne application diffère. Arrêt de l'essai conformément à l'accord
+  utilisateur ; aucune désinstallation, aucun effacement de données ni de logs.
+  Pas de dépendance ajoutée au projet, de source native/runtime modifiée, de build
+  EAS lancé ou de déploiement. Les modifications iOS précédentes restent conservées.
+- **Limites/suite :** crash du nouvel AAB non reproduit, aucun essai physique de
+  cette version. Il faut la trace du téléphone avec le test interne concerné
+  (Logcat/Crashlytics/Android Vitals) ou un émulateur isolé autorisé pour reproduire
+  le démarrage sans remplacer l'installation existante. Aucun correctif Android
+  ni disparition de crash ne sont annoncés à ce stade.
+
+## 14 octobre 2026 — Build iOS : empreinte du commit Smithy, pas du tag annoté
+
+- **Constat/périmètre :** le journal Xcode du build `e8e17bd7` s'arrête à
+  `Validate plug-in SmithyCodeGeneratorPlugin` pour `smithy-swift 0.238.0`, alors
+  que le hook post-install fourni annonce bien l'autorisation. Une lecture du
+  dépôt public avec `git ls-remote` sur `refs/tags/0.238.0` et
+  `refs/tags/0.238.0^{}` révèle deux objets différents : le tag annoté
+  `baac48e6589bbf4622f338ef9e9fc4f83cdd39a5` et son commit
+  `c3ec406867e570473e097344e64c3cfbcc5d36b9`. La configuration autorisait le
+  premier, alors que le registre de confiance Xcode attend le commit du paquet.
+  Le défaut d'empreinte est confirmé ; la réussite d'une archive après correction
+  reste à vérifier sur le serveur macOS.
+- **Appliqué/fichiers :** `config/ios-swift-plugin-trust.json` remplace uniquement
+  l'empreinte par celle du commit associé au même tag `0.238.0`. Le hook existant
+  `scripts/configure-ios-swift-plugin-trust.cjs` la transmet au registre SwiftPM
+  sans modification de son fonctionnement. `tests/iosSwiftPluginTrust.test.js`
+  ajoute une assertion indépendante du JSON sur ce commit, vérifie le refus de
+  confondre l'empreinte avec l'objet tag et l'ajout idempotent de l'approbation
+  correcte même si l'ancienne est déjà présente. Rectification de l'entrée du
+  12 octobre ci-dessous ; les résultats historiques ne sont pas réécrits.
+- **Conservé/précautions :** mêmes versions Smithy, AWS SDK et Amplify, même
+  verrouillage Xcode/prebuild, même cible de plugin et mêmes contrôles de confiance.
+  Les autres approbations restent préservées et les registres invalides restent
+  bloquants. Pas de désactivation globale des validations de plugins/macros, pas
+  de changement de KYC, Crashlytics, signature, profil EAS, dépendances Android
+  ou version de l'application. Aucun environnement, secret ni donnée utilisateur
+  n'est ajouté à ce journal.
+- **Vérifications :** le nouveau test échoue avec l'ancienne empreinte, puis
+  `npm.cmd run test:ios-build` réussit avec 21 tests JavaScript après correction.
+  `npm.cmd run test:android-build` réussit également avec 14 tests JavaScript.
+  Les 20 tests iOS antérieurs passaient déjà avant le correctif : ils ne validaient
+  pas indépendamment la distinction entre l'objet tag et le commit. ESLint ciblé
+  et `git diff --check` réussissent. La lecture Git distante vérifie la référence
+  publique, pas l'intégralité du code du fournisseur.
+- **Limites/livraison :** aucun build payant lancé, aucune archive Xcode ni essai
+  sur appareil physique depuis Windows. Inclure le correctif dans le commit
+  utilisé par EAS, puis relancer
+  `npx.cmd eas-cli build --platform ios --profile production`. Vérifier dans le
+  post-install que l'autorisation affiche désormais `c3ec406867e570473e097344e64c3cfbcc5d36b9`,
+  puis la réussite de la validation du plugin et de l'archive. Tester ensuite
+  l'application et le parcours KYC sur iPhone/iPad avec le nouveau build. Aucune
+  disparition de crash, réussite de compilation native ou amélioration de
+  performance n'est déduite des tests JavaScript.
+- **Sources :** distinction entre tag annoté et objet associé dans la
+  [documentation Git](https://git-scm.com/docs/git-ls-remote#_output), et empreinte
+  de commit du paquet dans le
+  [registre de confiance SwiftPM](https://forums.swift.org/t/how-do-i-get-xcode-to-programmatically-trust-a-specific-build-tool-plugin-for-ci/61331).
+
 ## 14 octobre 2026 — Archive EAS Windows : exclusions natives à la racine
 
 - **Constat/périmètre :** build Android dev avec archive annoncée de 957 Mo,
@@ -594,7 +742,11 @@
   paquet, sa version, le nom du plugin et l’empreinte Git autorisée
   `baac48e6589bbf4622f338ef9e9fc4f83cdd39a5`. Cette empreinte a été vérifiée
   par lecture du tag public `0.238.0` avec `git ls-remote` ; cela ne constitue
-  pas un audit complet du code du fournisseur. `plugins/withAwsLiveness.js`
+  pas un audit complet du code du fournisseur. **Rectification du 14 octobre :**
+  cette valeur désigne l'objet du tag annoté, pas le commit attendu par Xcode ;
+  la configuration utilise désormais le commit `c3ec406867e570473e097344e64c3cfbcc5d36b9`,
+  vérifié par la référence `refs/tags/0.238.0^{}`. Voir l'entrée dédiée en tête
+  de ce journal. `plugins/withAwsLiveness.js`
   et `ios/zwanga.xcodeproj/project.pbxproj` fixent cette version de la dépendance
   déjà transitive d’AWS, sans produit supplémentaire lié à l’application.
   Le verrouillage est conservé lors d’une régénération Expo du projet iOS.

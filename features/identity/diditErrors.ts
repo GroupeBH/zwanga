@@ -1,5 +1,6 @@
 import type { KycStatus } from '@/types';
 import { KycErrorPresentation, KycFlowStage, QueryParams } from './diditFlowTypes';
+import { isKycAlreadyApprovedError } from './kycApproval';
 
 export const asStringParam = (params: QueryParams, key: string) => {
   const value = params[key];
@@ -92,6 +93,14 @@ export const getKycErrorPresentation = (
 
   if (error instanceof KycUserFacingError) {
     return error.presentation;
+  }
+
+  if (isKycAlreadyApprovedError(error)) {
+    return {
+      category: 'interrupted', code: 'KYC_ALREADY_APPROVED',
+      title: 'Statut à actualiser',
+      message: 'Votre identité est indiquée comme déjà vérifiée. Actualisez votre profil ; il n’est pas nécessaire de recommencer la vérification.',
+    };
   }
 
   if ((error?.data?.code ?? error?.code) === 'KYC_APP_UPDATE_REQUIRED') {

@@ -96,6 +96,7 @@ export const {
   useGetPublicUserInfoQuery,
   useUploadKycMutation,
   useGetKycStatusQuery,
+  useLazyGetKycStatusQuery,
   useCreateDiditKycSessionMutation,
   useSyncDiditKycSessionMutation,
   useUpdateFcmTokenMutation,

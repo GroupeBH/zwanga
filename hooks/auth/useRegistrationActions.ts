@@ -20,6 +20,7 @@ import { AuthStep } from '@/components/auth';
 import type { Router } from 'expo-router';
 import type { StartDiditKycOptions, DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 import type { AuthResponse } from '@/store/api/authApi';
+import { isPhoneAlreadyRegisteredError } from '@/features/auth/registrationErrors';
 
 interface Params {
   firstName: string;
@@ -50,6 +51,7 @@ interface Params {
   pin: string;
   profilePicture: string | null;
   register: ReturnType<typeof useRegisterMutation>[0];
+  onExistingAccount: () => void;
 }
 
 export function useRegistrationActions({
@@ -81,6 +83,7 @@ export function useRegistrationActions({
   pin,
   profilePicture,
   register,
+  onExistingAccount,
 }: Params) {
   const [isRegistrationPending, setIsRegistrationPending] = React.useState(false);
   const [hasCreatedAccount, setHasCreatedAccount] = React.useState(false);
@@ -262,6 +265,17 @@ export function useRegistrationActions({
       await completeRegistration(result, 'phone', pendingAttribution?.token, legalFirstName);
     } catch (error: any) {
       if (!mounted.current) return;
+      if (!resumeFinalization.current && isPhoneAlreadyRegisteredError(error)) {
+        showDialog({
+          variant: 'info', title: 'Compte déjà existant',
+          message: 'Ce numéro est déjà associé à un compte Zwanga. Connectez-vous avec votre PIN. Si vous l’avez oublié, utilisez « PIN oublié ? » sur l’écran de connexion.',
+          actions: [
+            { label: 'Se connecter', variant: 'primary', onPress: onExistingAccount },
+            { label: 'Modifier le numéro', variant: 'secondary', onPress: () => setStep('phone') },
+          ],
+        });
+        return;
+      }
       showDialog(resumeFinalization.current
         ? { variant: 'warning', title: 'Connexion à finaliser', message: 'Votre compte est déjà créé. Réessayez pour finaliser la connexion, sans recréer de compte.' }
         : { variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, "Impossible de terminer l'inscription pour le moment.") });

@@ -265,6 +265,12 @@ export function useAuthController() {
     pin: form.pin,
     profilePicture: form.profilePicture,
     register: form.register,
+    onExistingAccount: () => {
+      // Clear signup PIN/social credentials; retain only the phone to log in.
+      navigation.handleModeChange('login');
+      form.setPhone(form.phone);
+      form.setStep('pin');
+    },
   });
 
   // Profile Handlers

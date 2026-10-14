@@ -10,6 +10,20 @@ const projectPath = path.join(__dirname, '../ios/zwanga.xcodeproj/project.pbxpro
 const expected = { fingerprint: approved.fingerprint, packageIdentity: 'smithy-swift', targetName: 'SmithyCodeGeneratorPlugin' };
 const cloudEnv = { EAS_BUILD: 'true', EAS_BUILD_PLATFORM: 'ios', EAS_BUILD_RUNNER: 'eas-build' };
 
+test('Smithy 0.238.0 approval uses the peeled commit, not the annotated tag object', () => {
+  // Verified with git ls-remote on the public repository, including refs/tags/0.238.0^{}.
+  // Xcode's plugin fingerprint is the package commit, not the Git tag object.
+  const tagObject = 'baac48e6589bbf4622f338ef9e9fc4f83cdd39a5';
+  const commit = 'c3ec406867e570473e097344e64c3cfbcc5d36b9';
+  assert.equal(approved.version, '0.238.0');
+  assert.equal(approved.fingerprint, commit);
+  assert.notEqual(approved.fingerprint, tagObject);
+  const previousApproval = { ...expected, fingerprint: tagObject };
+  const corrected = mergePluginTrust([previousApproval]);
+  assert.deepEqual(corrected, [previousApproval, expected]);
+  assert.equal(mergePluginTrust(corrected), corrected, 'correct approval is not duplicated');
+});
+
 function fixture() {
   const homeDirectory = path.resolve('synthetic-eas-home');
   const canonical = path.join(homeDirectory, 'Library', 'org.swift.swiftpm', 'security');

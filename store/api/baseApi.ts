@@ -6,6 +6,7 @@ import { refreshAccessToken } from '../../services/tokenRefresh';
 import { getTokens } from '../../services/tokenStorage';
 import { getTokenSessionVersion } from '../../services/tokenSession';
 import { isTokenExpired } from '../../utils/jwt';
+import { isPhoneAlreadyRegisteredError } from '../../features/auth/registrationErrors';
 
 const fetchQuery = fetchBaseQuery({ baseUrl: API_BASE_URL, timeout: DEFAULT_API_TIMEOUT_MS });
 const unavailable = (message: string): { error: FetchBaseQueryError } =>
@@ -38,6 +39,10 @@ export const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, Fetch
     };
     let result = await execute(tokens.accessToken);
     if (!isCurrent()) return stale();
+    // Registration historically uses 401 for an occupied phone, not an expired
+    // session. Never replay this POST or mask its actionable business response.
+    if ((typeof args === 'string' ? args : args.url) === '/auth/register' &&
+      isPhoneAlreadyRegisteredError(result.error)) return result;
     if (result.error?.status !== 401 || !tokens.refreshToken) return result;
 
     const latest = await getTokens();

@@ -1,13 +1,12 @@
 import { runDiditNativeVerification, getDiditSdkFailureError, isDiditNativeModuleUnavailable } from '../features/identity/diditSdk';
 import { checkDiditExpiryRecovery } from '../features/identity/diditRecovery';
-
-export type { DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
+import { isKycAlreadyApprovedError } from '../features/identity/kycApproval';
+import { useExistingKycApproval } from './useExistingKycApproval';
 import { asStringParam, getKycStatusFromDiditStatus, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
 import { QueryParams, DiditKycFlowOutcome, StartDiditKycOptions, UseDiditKycFlowOptions, KycFlowStage } from '../features/identity/diditFlowTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import { useCreateDiditKycSessionMutation, useLazyGetCurrentUserQuery, useSyncDiditKycSessionMutation } from '@/store/api/userApi';
-
 import { getEffectiveKycStatus } from '@/utils/kycStatus';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import type { VerificationResult } from '@didit-protocol/sdk-react-native';
@@ -21,10 +20,9 @@ import { useLazyAwsKycCapabilitiesQuery } from '@/store/api/awsKycApi';
 import { hasAwsLiveness } from '@/features/identity/awsLiveness';
 import { KYC_PROVIDER, shouldStartAwsKyc } from '@/features/identity/kycProvider';
 
+export type { DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 WebBrowser.maybeCompleteAuthSession();
-
 const DIDIT_KYC_RETURN_PATH = 'kyc/didit-return';
-
 export function useDiditKycFlow({
   sourceScreen,
   onStatusRefresh,
@@ -43,6 +41,7 @@ export function useDiditKycFlow({
     useSyncDiditKycSessionMutation();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const inFlight = useRef(false);
+  const resumeApprovedKyc = useExistingKycApproval({ sourceScreen, onStatusRefresh, onApproved, approvedMessage });
 
   const confirmLegalIdentity = useCallback(
     (firstNameValue?: string | null, lastNameValue?: string | null) => {
@@ -112,7 +111,9 @@ export function useDiditKycFlow({
       let launchMode: DiditKycFlowOutcome['launchMode'] = 'native_sdk';
 
       try {
-        // One explicit mobile provider for all entry points; Didit stays the default.
+        const approved = await resumeApprovedKyc(showResultDialog);
+        if (approved) return approved;
+        // Choose a provider only when a verification is still needed.
         const awsEnabled = await shouldStartAwsKyc(() => readCapabilities(undefined, false).unwrap());
         if (awsEnabled) {
           if (!hasAwsLiveness()) {
@@ -143,7 +144,16 @@ export function useDiditKycFlow({
           callbackUrl,
           language: 'fr',
           source: sourceScreen,
-        }).unwrap();
+        }).unwrap().catch(async (error: unknown) => {
+          // Approval may arrive after preflight (admin/webhook). Re-read it;
+          // neither a generic 409 nor a browser status proves approval.
+          if (isKycAlreadyApprovedError(error)) {
+            const approved = await resumeApprovedKyc(showResultDialog);
+            if (approved) return { existingApproval: approved };
+          }
+          throw error;
+        });
+        if ('existingApproval' in session) return session.existingApproval;
 
         if (!session.sessionToken && !session.url) {
           throw new Error("Le backend n'a pas retourné de token SDK ni d'URL Didit.");
@@ -373,6 +383,7 @@ export function useDiditKycFlow({
       syncDiditKycSession,
       startAwsKyc,
       readCapabilities,
+      resumeApprovedKyc,
     ],
   );
 
