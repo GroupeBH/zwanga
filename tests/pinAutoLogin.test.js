@@ -11,7 +11,7 @@ function fixture(extra = {}) {
   const state = { generation: 0, focuses: 0, saved: 0, analytics: 0 };
   const props = { mode: 'login', step: 'pin', phone: '+243000000000', pin: '', pinConfirm: '',
     login: payload => ({ unwrap: () => { calls.push(payload); return loginGate.promise; } }),
-    dispatch: () => ({ unwrap: () => { state.saved++; return storageGate.promise; } }),
+    dispatch: () => { state.generation++; return { unwrap: () => { state.saved++; return storageGate.promise; } }; },
     showDialog: value => dialogs.push(value), pinInputRef: { current: null }, pinConfirmInputRef: { current: { focus() {} } },
     focusAfterInteractions: () => { state.focuses++; }, ...extra,
   };
@@ -147,6 +147,36 @@ test('manual login is still available for a complete PIN and incomplete input re
   await app.finish();
   await task;
   assert.equal(app.calls.length, 1);
+  app.hooks.unmount();
+});
+
+test('a native save failure AFTER our generation advances is visible and allows a new PIN attempt', async () => {
+  const app = fixture();
+  app.render().handlePinChange('1234');
+  app.loginGate.resolve({ accessToken: 'test-access', refreshToken: 'test-refresh' });
+  await tick();
+  assert.equal(app.state.generation, 1);
+  app.storageGate.reject(new Error('Synthetic secure storage failure'));
+  await tick();
+  assert.equal(app.dialogs.length, 1);
+  assert.equal(app.props.pin, '');
+  assert.equal(app.state.focuses, 1);
+  assert.equal(app.render().isPinLoginInFlight(), false);
+  app.hooks.unmount();
+});
+
+for (const succeeds of [true, false]) test(`late storage result (${succeeds}) cannot affect a newer session`, async () => {
+  const app = fixture();
+  app.render().handlePinChange('1234');
+  app.loginGate.resolve({ accessToken: 'test-access', refreshToken: 'test-refresh' });
+  await tick();
+  app.state.generation++;
+  if (succeeds) app.storageGate.resolve(true);
+  else app.storageGate.reject(new Error('Old save failed'));
+  await tick();
+  assert.equal(app.dialogs.length, 0);
+  assert.equal(app.state.analytics, 0);
+  assert.equal(app.render().isPinLoginPending, false);
   app.hooks.unmount();
 });
 

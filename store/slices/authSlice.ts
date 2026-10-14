@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { validateAndRefreshTokens } from '../../services/tokenRefresh';
 import { clearTokens, getTokens, storeTokens } from '../../services/tokenStorage';
 import { getTokenSessionVersion } from '../../services/tokenSession';
+import { recordStartupMilestone } from '../../services/startupDiagnostics';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
 import { isDriverAccount } from '@/utils/accountRole';
@@ -86,12 +87,14 @@ export const saveTokensAndUpdateState = createAsyncThunk(
       if (!hasUsableNewAuthSession(tokens.accessToken, tokens.refreshToken)) {
         throw new Error('Session reçue invalide ou expirée. Veuillez réessayer.');
       }
-      // 1. Sauvegarder d'abord dans SecureStore (séquentiellement)
+      // Persist the pair before publishing the authenticated Redux session.
+      recordStartupMilestone('session_saving');
       console.log('[saveTokensAndUpdateState] Sauvegarde des tokens dans SecureStore...');
       const writing = storeTokens(tokens.accessToken, tokens.refreshToken);
       const version = getTokenSessionVersion();
       const saved = await writing;
       if (!saved || version !== getTokenSessionVersion()) return null;
+      recordStartupMilestone('session_saved');
       console.log('[saveTokensAndUpdateState] Tokens sauvegardés dans SecureStore avec succès');
 
       // 2. Ensuite, mettre à jour le state Redux
@@ -101,6 +104,7 @@ export const saveTokensAndUpdateState = createAsyncThunk(
       return tokens;
     } catch (error) {
       console.error('[saveTokensAndUpdateState] Erreur lors de la sauvegarde des tokens:', error);
+      recordStartupMilestone('session_save_failed');
       throw error;
     }
   }

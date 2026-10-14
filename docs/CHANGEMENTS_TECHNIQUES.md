@@ -1,5 +1,79 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — Connexion Android, disponibilité de l'accueil et reprise réseau
+
+- **Périmètre/problème :** fermeture signalée après le PIN, avec retour à la
+  connexion au lancement suivant. L'analyse du bundle Android 1.0.17 (161) a
+  confirmé la présence des correctifs natifs GPS/images ; elle n'a pas reproduit
+  le crash. Défauts distincts établis dans le JavaScript : erreur de sauvegarde
+  masquée après changement de génération, caméra appelée avant disponibilité,
+  restauration sans retour utilisateur si une opération reste pendante et
+  sockets pouvant démarrer avec un jeton nul.
+- **Connexion :** `hooks/auth/usePinLogin.ts` suit la génération créée par sa
+  propre sauvegarde. Un échec local redevient visible et permet une nouvelle
+  saisie ; les résultats d'une session remplacée ou d'un écran quitté restent
+  ignorés. Le verrou de connexion et la sauvegarde avant ouverture de l'accueil
+  sont conservés. Aucun changement d'authentification serveur.
+- **Carte :** `hooks/home/useHomeMapCamera.ts` attend le signal natif de disponibilité
+  ET des dimensions finies non nulles. Les commandes différées sont invalidées
+  lors du remplacement de la carte ; coordonnées invalides et mouvements hors
+  premier plan sont refusés. Le recentrage manuel utilise la même protection.
+  Raccordement dans `hooks/home/useHomeMap.ts`, `hooks/home/useHomeUserLocation.ts`,
+  `components/home/HomeMap.tsx` et `app/(tabs)/index.tsx`. Les limites de marqueurs,
+  le filtrage des petits déplacements et les intervalles d'animation restent en
+  place. La carte n'est ni supprimée ni remplacée par un écran de chargement lors
+  des lectures réseau ; listes, rôles, commandes proches et GPS restent conservés.
+- **Restauration :** `hooks/auth/useAuthBootstrap.ts` et `components/ReduxProvider.tsx`
+  affichent un message et Réessayer après 8 secondes. Ce seuil est un délai de
+  retour utilisateur, pas une suppression de session ni une annulation native.
+  Une nouvelle tentative réutilise l'opération encore pendante ; après échec,
+  elle peut en lancer une nouvelle. Un succès tardif ouvre normalement l'app.
+  Si SecureStore ne rend jamais la main, la fermeture/réouverture reste nécessaire.
+- **Sockets :** `services/socketAuthPolicy.ts`, `services/chatSocket.ts` et
+  `services/trackingSocket.ts` interdisent une connexion sans jeton valide et
+  relisent les identifiants à chaque handshake, y compris automatique. Paramètres
+  communs : délai de connexion 8 s, 5 reconnexions automatiques par cycle,
+  temporisation progressive de 1 à 10 s avec variation aléatoire. Les abonnements
+  utiles sont conservés en attendant une session renouvelée, pas après déconnexion
+  volontaire. `services/socketRecovery.ts` et `store/index.ts` reprennent les
+  connexions nécessaires au retour réseau/premier plan sans créer de socket inutilisé.
+  Les reprises explicites ne sont pas définitivement interdites après ces 5 essais.
+- **Diagnostic :** `services/startupDiagnostics.ts`, `services/diagnostics.ts`,
+  `store/slices/authSlice.ts` et `hooks/home/useHomeController.ts` ajoutent les étapes
+  connexion, sauvegarde, restauration, accueil et disponibilité de carte à
+  Crashlytics, ainsi que le numéro de build natif. File préalable limitée à 16
+  événements, libellés fixes et durées uniquement ; aucun identifiant de compte,
+  téléphone, token, position ou valeur de configuration ajouté aux marqueurs.
+  L'indisponibilité du diagnostic ne bloque pas le parcours.
+- **Tests :** nouvelles régressions dans `tests/socketAuthReliability.test.js` et
+  `tests/startupDiagnostics.test.js` ; compléments aux tests `pinAutoLogin`,
+  `startupSession`, `homeIdlePerformance`, `homeModules`, `homeTripPriority` et
+  `performancePolicy`. Suite JavaScript complète : **2 036 tests réussis, 0 échec**
+  avec concurrence limitée à 2 (environ 223 s sur cette machine, pas une mesure
+  de performance mobile). TypeScript sans erreur ; ESLint ciblé sans erreur
+  (un avertissement préexistant sur la déclaration globale `Buffer` du test de
+  session). Frontières réseau, limite de taille des sources et `git diff --check`
+  passent. Les sockets, SecureStore, timers et événements de carte des tests
+  sont simulés ; aucune connexion de test à un compte réel.
+- **Limites/déploiement :** aucune dépendance ajoutée, aucun réglage AWS, backend,
+  `.env` ou permission changé. Pas d'essai physique Android/iOS ni de mesure de
+  mémoire, chauffe ou délai d'affichage. Ces protections ne constituent pas la
+  preuve de disparition du crash natif. L'AAB examiné désactive les mises à jour
+  OTA : livrer ces changements aux testeurs exige un nouveau build Android.
+  Commande depuis le projet : `npx.cmd eas-cli build --platform android --profile production`.
+  Aucun build distant ni déploiement déclenché dans cette intervention.
+- **Recette restante sur appareils :** installation neuve et mise à jour, PIN
+  correct/incorrect, Google/Apple, réseau lent puis mode avion et reconnexion,
+  attente de restauration, ouverture/recentrage/quitter-revenir sur l'accueil,
+  messagerie, reprise d'un trajet actif et proximité conducteur sans trajet actif.
+  Contrôler les traces Crashlytics du nouveau build ou `adb logcat -b crash -d`.
+  Une suppression de carte ou une nouvelle disposition liste/carte reste une
+  piste UX à évaluer avec mesures natives, pas une solution appliquée ici.
+- **Références SDK vérifiées :** précondition de mise en page de la
+  [caméra Google Maps Android](https://developers.google.com/maps/documentation/android-sdk/views)
+  et configuration de l'authentification/reconnexion dans les
+  [options client Socket.IO](https://socket.io/docs/v4/client-options/).
+
 ## 14 octobre 2026 — Accès direct au trajet après acceptation conducteur
 
 - **Périmètre/problème :** l'écran `incoming-driver` pouvait encore afficher

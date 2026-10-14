@@ -3,6 +3,7 @@ import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import type { Message } from '@/types';
 import { io, Socket } from 'socket.io-client';
 import { deliverSocketEvent, isChatMessage } from './socketPayloads';
+import { bindSocketAuthentication, requireSocketToken, SOCKET_CONNECTION_OPTIONS, SocketSessionUnavailableError } from './socketAuthPolicy';
 
 type MessageListener = (message: Message) => void;
 
@@ -19,11 +20,13 @@ class ChatSocketClient {
     const connection = (async () => {
       const token = await getValidAccessToken();
       if (generation !== this.generation) throw new Error('Session de messagerie fermée');
+      requireSocketToken(token, this.socket);
       if (!this.socket) {
         const baseUrl = API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');
-        const socket = io(`${baseUrl}/chat`, { transports: ['websocket'], auth: { token }, autoConnect: false });
+        const socket = io(`${baseUrl}/chat`, { ...SOCKET_CONNECTION_OPTIONS, transports: ['websocket'] });
         this.socket = socket;
-        socket.on('session_expired', () => { void handle401Error(); });
+        bindSocketAuthentication(socket, () => this.socket === socket && generation === this.generation);
+        socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
         socket.on('connect', () => {
           this.rooms.forEach((_count, bookingId) => socket.emit('join_booking', { bookingId }));
         });
@@ -34,7 +37,6 @@ class ChatSocketClient {
           if (__DEV__) console.warn('[ChatSocket]', error.message);
         });
       }
-      this.socket.auth = { token };
       // Reuse the same Socket.IO manager, including during automatic reconnection.
       if (!this.socket.connected) this.socket.connect();
       return this.socket;
@@ -58,7 +60,8 @@ class ChatSocketClient {
         socket.emit('join_booking', { bookingId });
       }
     } catch (error) {
-      if (generation === this.generation) this.releaseRoom(bookingId);
+      // A mounted chat still owns its room while waiting for renewed credentials.
+      if (generation === this.generation && !(error instanceof SocketSessionUnavailableError)) this.releaseRoom(bookingId);
       throw error;
     }
   }
@@ -111,13 +114,21 @@ class ChatSocketClient {
 
   refreshAuthentication() {
     if (this.rooms.size === 0 && this.listeners.size === 0) return;
+    if (!this.socket) { this.resumeConnection(); return; }
     const generation = this.generation;
     void getValidAccessToken().then((token) => {
       if (generation !== this.generation || !this.socket) return;
-      this.socket.auth = { token };
+      requireSocketToken(token, this.socket);
       this.socket.disconnect().connect();
     }).catch(() => undefined);
   }
+
+  resumeConnection() {
+    if (this.socket?.connected || !this.hasActiveSubscriptions()) return;
+    void this.connect().catch(() => undefined);
+  }
+
+  hasActiveSubscriptions() { return this.rooms.size > 0 || this.listeners.size > 0; }
 }
 
 export const chatSocket = new ChatSocketClient();

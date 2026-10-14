@@ -168,8 +168,9 @@ export function useHomeMap({
 
   const cameraRegion = mapFocusedOnUser && liveUserCoordinate
     ? { ...liveUserCoordinate, latitudeDelta: 0.025, longitudeDelta: 0.025 } : mapRegion;
-  useHomeMapCamera(mapRef, isFocused && !openingMapDetailKey, cameraRegion);
+  const camera = useHomeMapCamera(mapRef, isFocused && !openingMapDetailKey, cameraRegion);
   return {
+    ...camera,
     setMapFocusedOnUser,
     mapRef,
     mapRegion,

@@ -167,7 +167,7 @@ test('a late chat connection cannot remove rooms belonging to a new authenticate
   old.resolve('old-token');
   await rejection;
   assert.equal(sockets.length, 1);
-  assert.equal(sockets[0].auth.token, 'new-token');
+  assert.deepEqual(await new Promise(resolve => sockets[0].auth(resolve)), { token: 'new-token' });
   assert.equal(sockets[0].connected, true);
   await chat.leaveBookingRoom('booking');
   assert.equal(sockets[0].connected, false);

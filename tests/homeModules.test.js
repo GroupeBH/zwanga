@@ -534,7 +534,7 @@ test('a delayed user location cannot move a closed map and duplicate taps make o
   const app = environment({ '@/utils/currentLocationSelection': { buildCurrentLocationSelection: async () => { geocodes++; return {}; } } });
   const { useHomeUserLocation } = app.load('hooks/home/useHomeUserLocation.ts');
   const movements = [];
-  const props = { isFocused: true, openingMapDetailKey: null, liveUserCoordinate: null, ongoingDriverTrip: null, lastKnownLocation: null, getCurrentLocation: () => { requests++; return new Promise(resolve => { resolveLocation = resolve; }); }, showDialog() {}, setMapFocusedOnUser() {}, mapRef: { current: { animateToRegion: (...args) => movements.push(args) } } };
+  const props = { isFocused: true, openingMapDetailKey: null, liveUserCoordinate: null, ongoingDriverTrip: null, lastKnownLocation: null, getCurrentLocation: () => { requests++; return new Promise(resolve => { resolveLocation = resolve; }); }, showDialog() {}, setMapFocusedOnUser() {}, animateHomeMapToRegion: (...args) => movements.push(args) };
   const render = () => app.hooks.render(() => useHomeUserLocation(props));
   const action = render().handleReturnToUserLocation();
   await render().handleReturnToUserLocation();
@@ -553,7 +553,7 @@ test('successful recentering preserves the address preview and cancels callouts 
   const app = environment({ '@/utils/currentLocationSelection': { buildCurrentLocationSelection: async () => ({ title: 'Ma position', address: 'Boulevard du 30 Juin' }) } });
   const { useHomeUserLocation } = app.load('hooks/home/useHomeUserLocation.ts');
   let callouts = 0;
-  const props = { isFocused: true, openingMapDetailKey: null, liveUserCoordinate: null, ongoingDriverTrip: null, lastKnownLocation: null, getCurrentLocation: async () => ({ coords: departure.coordinates }), showDialog() {}, setMapFocusedOnUser() {}, mapRef: { current: { animateToRegion() {} } } };
+  const props = { isFocused: true, openingMapDetailKey: null, liveUserCoordinate: null, ongoingDriverTrip: null, lastKnownLocation: null, getCurrentLocation: async () => ({ coords: departure.coordinates }), showDialog() {}, setMapFocusedOnUser() {}, animateHomeMapToRegion() {} };
   const render = () => app.hooks.render(() => useHomeUserLocation(props));
   render().userLocationMarkerRef.current = { showCallout() { callouts++; } };
   await render().handleReturnToUserLocation();
@@ -595,7 +595,10 @@ test('map camera animation is cancelled on blur, and invalid coordinates use the
   const props = { isFocused: true, homeMapTrips: [], ongoingDriverTrip: null, liveUserCoordinate: null, isHomeSheetLockedRetracted: false, availableDriverRequests: [], visibleDriverPassengerMarkers: [], openingMapDetailKey: null };
   const render = () => app.hooks.render(() => useHomeMap(props));
   assert.equal(render().mapRegion.latitude, -4.325);
-  render().mapRef.current = { animateToRegion: region => movements.push(region) };
+  const camera = render();
+  camera.attachHomeMap({ animateToRegion: region => movements.push(region) });
+  camera.onHomeMapReady();
+  camera.onHomeMapLayout({ nativeEvent: { layout: { width: 400, height: 600 } } });
   props.homeMapTrips = [trip('a')]; render();
   assert.equal(movements.length, 1);
   movements.length = 0;

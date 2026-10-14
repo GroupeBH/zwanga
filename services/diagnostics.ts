@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import { setStartupDiagnosticReporter } from './startupDiagnostics';
 
 type CrashModule = typeof import('@react-native-firebase/crashlytics');
 let moduleCache: CrashModule | null | undefined;
@@ -26,10 +27,15 @@ export function initializeDiagnostics() {
     if (!reporter) return;
     void reporter.setAttributes(reporter.getCrashlytics(), {
       app_version: Constants.expoConfig?.version ?? 'unknown',
+      app_build: Constants.nativeBuildVersion ?? 'unknown',
       device_model: Device.modelName ?? 'unknown',
       os_version: String(Platform.Version),
       screen: currentScreen,
     }).catch(() => undefined);
+    setStartupDiagnosticReporter(({ phase, elapsedMs }) => {
+      void reporter.setAttribute(reporter.getCrashlytics(), 'startup_phase', phase).catch(() => undefined);
+      reporter.log(reporter.getCrashlytics(), `startup:${phase}:${elapsedMs}ms`);
+    });
   } catch { /* Diagnostics must never prevent startup. */ }
 }
 

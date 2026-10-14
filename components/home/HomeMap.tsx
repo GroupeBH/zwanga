@@ -33,7 +33,9 @@ type Props =
     | 'openTripRequestDetail'
   >
   & Pick<ReturnType<typeof useHomeMap>,
-    'mapRef'
+    'attachHomeMap'
+    | 'onHomeMapReady'
+    | 'onHomeMapLayout'
     | 'mapRegion'
     | 'tripsWithMapCoordinates'
     | 'selectedTrip'
@@ -65,7 +67,9 @@ type Props =
 // map inputs are unchanged. Default shallow comparison still admits GPS updates.
 export const HomeMap = React.memo(function HomeMap({
   shouldRenderHomeMap,
-  mapRef,
+  attachHomeMap,
+  onHomeMapReady,
+  onHomeMapLayout,
   mapRegion,
   ongoingDriverTrip,
   userLocationMarker,
@@ -94,7 +98,9 @@ export const HomeMap = React.memo(function HomeMap({
   return (<>
     {shouldRenderHomeMap ? (
       <MapView
-        ref={mapRef}
+        ref={attachHomeMap}
+        onMapReady={onHomeMapReady}
+        onLayout={onHomeMapLayout}
         provider={HOME_MAP_PROVIDER}
         style={styles.map}
         initialRegion={mapRegion}

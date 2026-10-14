@@ -13,7 +13,9 @@ export default function HomeScreen() {
   return <SafeAreaView style={styles.container} edges={[]}>
     <HomeMap
       shouldRenderHomeMap={home.shouldRenderHomeMap}
-      mapRef={home.mapRef}
+      attachHomeMap={home.attachHomeMap}
+      onHomeMapReady={home.onHomeMapReady}
+      onHomeMapLayout={home.onHomeMapLayout}
       mapRegion={home.mapRegion}
       ongoingDriverTrip={home.ongoingDriverTrip}
       userLocationMarker={home.userLocationMarker}

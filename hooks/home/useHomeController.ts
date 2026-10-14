@@ -13,8 +13,11 @@ import { useHomeTripSelection } from './useHomeTripSelection';
 import { useHomeUserLocation } from './useHomeUserLocation';
 import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 import { useHomePriorityDismissals } from './useHomePriorityDismissals';
+import { useEffect } from 'react';
+import { recordStartupMilestone } from '@/services/startupDiagnostics';
 
 export function useHomeController() {
+  useEffect(() => { recordStartupMilestone('home_mounted'); }, []);
   const context = useHomeContext();
   const discovery = useHomeDiscoveryMode(context);
   const priorities = useHomePriorityDismissals(context.currentUser?.id);
