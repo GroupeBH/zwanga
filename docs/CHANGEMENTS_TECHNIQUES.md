@@ -1,5 +1,190 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — Accès direct au trajet après acceptation conducteur
+
+- **Périmètre/problème :** l'écran `incoming-driver` pouvait encore afficher
+  « Nouvelle réservation / Un passager vous attend » et imposer « Voir les détails »
+  après une acceptation, notamment au retour d'une notification. Le parcours
+  réservation n'avait pas la redirection déjà prévue pour les commandes de proximité.
+- **Solution appliquée :** `app/incoming-driver.tsx` ouvre directement la gestion
+  du trajet après acceptation serveur, ou la navigation conducteur si le trajet
+  est en cours. Une commande acceptée conserve son accès direct au détail de commande.
+  Une notification d'une proposition déjà acceptée suit le même parcours après
+  lecture des données courantes du serveur, sans rejouer l'acceptation.
+- **Interface :** retrait de l'écran de succès après acceptation et de l'étape
+  « Voir les détails » pour les propositions acceptées ; l'ancienne carte ne clignote
+  plus pendant la redirection. Le chargement initial utilise un simple indicateur.
+  Les propositions encore en attente gardent leurs actions Accepter / Refuser ;
+  le parcours de refus et les erreurs consultables restent disponibles.
+- **Précautions :** une réponse ambiguë, une donnée d'un autre dossier, un échec
+  réseau ou un autre compte ne déclenche pas de succès. Verrous contre les doubles
+  appuis et redirections multiples ; pas de redirection tardive après déconnexion,
+  changement de session, passage en arrière-plan ou démontage de l'écran.
+  Les droits restent vérifiés par le backend ; accepter ne démarre pas le trajet.
+- **Autres fichiers :** `store/api/driverDispatchApi.ts` précise le type des champs
+  de réponse existants sans changer l'endpoint ni le corps envoyé.
+  `tests/incomingDriverAcceptance.test.js` couvre le rendu et le comportement réel
+  du composant avec React, navigation, API et services natifs simulés.
+- **Conservé :** sonnerie, vibration, boutons de notification, arrêt du son à
+  l'ouverture, confirmation serveur et invitation à contacter un passager après
+  acceptation d'une commande. Aucun changement backend ou dépendance. Le minuteur
+  d'une seconde reste limité aux propositions de proximité, pas aux réservations.
+- **Vérifications :** 88 tests ciblés réussis, y compris la reprise d'une action
+  native simulée ; suite JavaScript complète réussie (code de sortie 0).
+  TypeScript, ESLint ciblé, frontières réseau, taille des sources et diff
+  sans erreur d'espacement.
+  Aucun build ni essai Android/iOS physique exécuté : les transitions natives,
+  particulièrement le remplacement du plein écran iOS, restent à vérifier.
+
+## 14 octobre 2026 — Token Didit absent en développement après retour au SDK
+
+- **Périmètre/problème :** erreur `KYC_SDK_TOKEN_MISSING` après correction du
+  fournisseur servi par Metro. Lecture du manifeste Metro : l'API cible le réseau
+  local. Le backend local gardait le lancement hébergé, qui masque volontairement
+  les deux alias du token SDK dans la réponse de création de session.
+- **Solution appliquée :** seul le paramètre `DIDIT_KYC_LAUNCH_MODE` dans
+  `../zwanga-backend/.env` est aligné sur le parcours natif. Aucun secret, autre
+  paramètre, code métier ou réglage de production modifié lors de cette correction.
+- **Conservé :** tokens d'authentification Zwanga, contrôles KYC serveur,
+  normalisation des alias de réponse et absence de repli navigateur dans le mobile.
+- **Vérifications :** relecture ciblée de la configuration locale, sans affichage
+  de secrets ; les 11 tests backend `didit-session-launch` passent. Aucune création
+  de session fournisseur, capture de pièce ou modification de compte réalisée.
+- **Reste à faire :** arrêter puis redémarrer le processus backend pour charger
+  la configuration, puis retester le parcours sur téléphone. Le processus en cours
+  n'a pas été redémarré ici ; aucune réussite native n'est revendiquée.
+- **Détails :** [diagnostic et livraison Didit natif](KYC_DIDIT_NATIVE_20261014.md).
+
+## 14 octobre 2026 — Didit par défaut, vérification uniquement dans le SDK
+
+- **Périmètre/problème :** retour demandé au KYC Didit natif. Le mobile choisissait
+  AWS par défaut et pouvait ouvrir le navigateur Didit si le token manquait, si
+  le module natif était absent ou après une expiration signalée par le SDK.
+- **Appliqué :** sélection Didit dans le sélecteur mobile et les profils EAS ;
+  parcours navigateur et lecture de son URL de retour supprimés du hook KYC.
+  Token natif obligatoire, erreurs explicites, aucune nouvelle session automatique
+  après expiration. L'approbation vient uniquement du serveur. Configuration
+  Terraform locale du backend alignée sur le lancement natif, sans application AWS.
+- **Conservé :** SDK et versions existants, choix AWS explicite, approbations
+  antérieures, contrôles serveur, confirmation des noms et verrou anti-double-appui.
+  Les usages du navigateur hors KYC restent inchangés ; aucune dépendance retirée.
+- **Vérifications réalisées :** 74 tests JavaScript ciblés réussis, contrôle
+  TypeScript sans émission, ESLint ciblé, frontières réseau, taille des sources
+  et `git diff --check` réussis. Suite JavaScript mobile complète réussie (code de
+  sortie 0) ; 11 tests backend de sélection du mode de lancement réussis.
+- **Fichiers, procédure et limites :** [Retour Didit natif](KYC_DIDIT_NATIVE_20261014.md).
+  Aucun build, déploiement ou essai de capture sur appareil physique réalisé.
+  Le retour au SDK ne démontre pas la correction des crashs ou expirations natives.
+
+## 14 octobre 2026 — Correctifs Android après audit de la version 159
+
+- **Périmètre/problème :** fuite des callbacks natifs et mauvais suivi des tâches
+  simultanées constatés dans l'AAB 159 ; risque de décodage pleine résolution des
+  photos ; envoi des symboles Crashlytics natifs non configuré.
+- **Solution appliquée :** patch reproductible d'Expo TaskManager, module Android
+  local de préparation d'images à mémoire bornée utilisé par le profil et le KYC,
+  configuration des symboles natifs et envoi au prochain build EAS production.
+  Aucun changement de dépendance, de backend ou de données utilisateurs.
+- **Détails, fichiers, précautions, preuves et recette :**
+  [Android — stabilité du 14 octobre](ANDROID_STABILITE_20261014.md).
+- **Vérifications :** suite complète de 243 fichiers, 1 989 tests réussis, aucun
+  échec ni test ignoré ; TypeScript sans émission, contrôle des frontières réseau,
+  limite de taille des sources, ESLint ciblé et `git diff --check` réussis. Le module photo Java
+  compile contre les API Android 36 / React Native 0.81.5 locales. Les tests du
+  cycle de tâches et du sous-échantillonnage compilent les méthodes Java concernées
+  avec des doubles d'environnement ; ce ne sont pas des mesures mémoire natives.
+- **Limites :** pas de build natif complet ni d'essai physique pendant cette
+  intervention. La trace mémoire accessible concernait la version 146 : les
+  défauts confirmés dans la 159 ne démontrent pas la cause de toutes les fermetures.
+  Nouveau binaire Android obligatoire ; une OTA JavaScript ne suffit pas.
+
+## 14 octobre 2026 — Sortie de navigation conducteur : écran d'identité et boutons
+
+- **Signalement/problème :** après la sortie de navigation vers la gestion du
+  trajet, l'écran demande une vérification d'identité et son bouton orange prend
+  presque toute la hauteur. Le style `primaryButton` a `flex: 1` pour une ligne
+  d'actions ; il était réutilisé dans une colonne plein écran. Le contrôleur
+  traitait également `isIdentityVerified: false` comme un refus, même lorsque
+  le contexte KYC n'avait pas de réponse disponible.
+- **Solution appliquée :** `features/manage-trip/ManageTripIdentityGuard.tsx`
+  utilise le même `getProfileStatus` et la même réponse `/users/me` que le profil,
+  liée à l'identifiant du compte, avant de monter le contrôleur de gestion.
+  Une réponse inconnue n'est plus présentée comme une identité à refaire :
+  chargement ou « Profil indisponible », avec nouvelle tentative et retour à
+  l'accueil. Une vérification en cours ne demande pas de nouveaux documents ;
+  une identité réellement absente/rejetée propose toujours la vérification.
+  Seule une approbation serveur reconnue ouvre la gestion, jamais un rôle ou
+  un drapeau local `identityVerified`/`status` du compte authentifié.
+- **Affichage :** boutons indépendants du style de pied de page, hauteur minimale
+  de 52 points sans croissance verticale, largeur contenue et texte adaptable.
+  La zone peut défiler sur petit écran/grande police ; le retour à l'accueil
+  est explicite. La compétence frontend a guidé cette disposition sobre et les
+  messages courts ; aucune image, animation ou fenêtre modale ajoutée.
+- **Fichiers associés :** `app/trip/manage/[id].tsx` place ce garde après
+  `DriverTripAccessGuard` et retire l'ancien message ambigu ;
+  `hooks/manage-trip/useManageTripState.ts` retire sa lecture KYC indépendante.
+  `features/screen-styles/app/trip/manage/detail/container.styles.ts` ajoute un
+  style non extensible pour le bouton isolé de refus d'accès, sans modifier les
+  boutons côte à côte du pied de page. `tests/manageTripCancellation.test.js`
+  conserve ses assertions d'overlays en tenant compte du garde intermédiaire.
+- **Précautions :** garde de propriété conservé à l'extérieur ; contrôleur,
+  lectures des réservations et GPS non montés avant autorisation. Lecture du
+  profil via RTK Query sans polling, suspendue hors ligne/écran masqué.
+  Dernière réponse serveur conservée pour le même compte/session, mais jamais
+  réutilisée pour un autre compte ; une nouvelle réponse de refus ferme l'accès.
+  Si le profil est encore inconnu, un document KYC déjà approuvé par le serveur
+  et explicitement lié au compte courant préserve le premier retour hors ligne.
+  Cette preuve ne remplace jamais une décision connue du profil, notamment un refus.
+  Les rappels de nouvelle tentative ne relancent pas une requête masquée ou
+  celle d'un ancien compte. Pas de contournement KYC ou d'endpoint backend modifié.
+  La capture seule ne permet pas d'affirmer que le compte signalé est approuvé.
+- **Tests réels :** huit tests ajoutés dans `tests/manageTripIdentityGuard.test.js`
+  couvrent inconnu/chargement, absent/rejeté/en attente, approbation canonique,
+  hors ligne, changement de compte, nouvelle tentative tardive, dimensions et
+  ordre des gardes. Avec les suites annulation, accès aux réservations et lectures
+  d'écran : 23 tests JavaScript réussis. TypeScript sans émission réussi ; ESLint
+  ciblé sans erreur (deux avertissements préexistants dans `useManageTripState.ts`).
+  Contrôle réseau réussi ; 1 086 sources contrôlées, aucune au-delà de 400 lignes.
+  `git diff --check` réussi. Ces tests simulent le rendu et les échanges natifs.
+  L'empreinte de styles de `tests/fixtures/sourceExtractions.json` est mise à jour
+  pour le seul nouveau style `standaloneButton` ; `tests/tripParticipation.test.js`
+  vérifie toujours l'ordre du garde propriétaire, désormais suivi du garde identité.
+  Suite JavaScript complète relancée après les derniers changements :
+  241 fichiers, 1 980 tests réussis, aucun échec ni test ignoré.
+- **Limites/livraison :** pas de nouveau build, déploiement, appel KYC réel ni
+  essai physique de cet écran. À vérifier sur Android/iOS après sortie d'un
+  trajet, avec grande police, approbation connue, réseau indisponible et retour
+  du réseau. Ce correctif d'écran ne revendique pas une résolution du crash
+  Android au lancement signalé séparément.
+
+## 14 octobre 2026 — Android 159 : contrôles de l'artefact et limites du diagnostic
+
+- **Signalement :** la version 159 du test interne Google Play se ferme au
+  lancement. L'utilisateur ne dispose pas de trace ; modèle et version Android
+  du téléphone concerné ne sont pas encore fournis. Ce signalement reste ouvert.
+- **Vérifications en lecture seule :** le manifeste protobuf de l'AAB le plus
+  récemment téléchargé est analysé avec le parseur protobuf déjà installé,
+  selon le schéma AAPT public : package `com.zwanga`, version `1.0.17 (159)`,
+  SDK minimum 24 et cible 36. `scripts/validate-android-native.cjs` réussit pour
+  les quatre ABI (bibliothèques principales et ELF). Les symboles compilés
+  `boundedLocationExtras`, `MAX_LOCATION_SAMPLES` et `isZwangaLocationTask`
+  sont présents dans les DEX : la protection des jobs GPS n'est pas simplement
+  restée dans les sources. Cela ne prouve pas son comportement sur ce téléphone.
+- **Traces distinctes :** l'unique émulateur connecté est toujours en version
+  dev 146, confirmé avec `pm list packages --show-versioncode`. Son tampon de
+  crash contient une erreur de mémoire dans la livraison des jobs GPS et une
+  erreur OkHttp ; elles ne sont pas attribuées au build 159 du test interne.
+  L'essai natif vierge de la 158 documenté plus bas ne valide pas non plus la 159.
+- **Conservation/limites :** aucun APK installé, aucun arrêt d'émulateur ou de
+  processus demandé, aucune donnée ni trace effacée. Pas de changement natif
+  Android, d'augmentation artificielle du heap, de désactivation de GPS/KYC ou
+  de déclaration de crash résolu. Le contrôle AAB ne valide pas les splits
+  générés par Google Play, leur chargement, la reprise de données existantes
+  ou le démarrage sur ARM/ARM64. Il faut la trace du téléphone concerné :
+  Android Vitals/Crashlytics, ou téléphone connecté en USB puis
+  `adb logcat -b crash -d` après reproduction, sans nettoyer préalablement les logs.
+- **Référence de format :** [schéma AAPT de l'AOSP](https://github.com/aosp-mirror/platform_frameworks_base/blob/master/tools/aapt2/Resources.proto).
+
 ## 14 octobre 2026 — Rejet TestFlight 90683 : déclaration d'usage vocal iOS
 
 - **Problème constaté :** l'envoi de `1.0.17 (142)` termine le transfert de l'IPA,

@@ -1,42 +1,5 @@
-import type { KycStatus } from '@/types';
-import { KycErrorPresentation, KycFlowStage, QueryParams } from './diditFlowTypes';
+import { KycErrorPresentation, KycFlowStage } from './diditFlowTypes';
 import { isKycAlreadyApprovedError } from './kycApproval';
-
-export const asStringParam = (params: QueryParams, key: string) => {
-  const value = params[key];
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  return value;
-};
-
-export const getKycStatusFromDiditStatus = (status?: string | null): KycStatus | null => {
-  const normalized = String(status ?? '').trim().toLowerCase();
-
-  if (normalized === 'approved') {
-    return 'approved';
-  }
-
-  if (
-    normalized === 'declined' ||
-    normalized === 'expired' ||
-    normalized === 'abandoned' ||
-    normalized === 'kyc expired'
-  ) {
-    return 'rejected';
-  }
-
-  if (
-    normalized === 'in review' ||
-    normalized === 'in progress' ||
-    normalized === 'resubmitted' ||
-    normalized === 'awaiting user'
-  ) {
-    return 'pending';
-  }
-
-  return null;
-};
 
 export const getRawKycErrorMessage = (error: any) => {
   const message =
@@ -178,16 +141,6 @@ export const getKycErrorPresentation = (
       };
     }
 
-    if (stage === 'opening_web_browser') {
-      return {
-        category: 'interrupted',
-        code: 'KYC_BROWSER_OPEN_ABORTED',
-        title: 'Fenêtre de validation interrompue',
-        message:
-          'La fenêtre sécurisée n’a pas pu rester ouverte. Fermez toute autre fenêtre de validation, puis réessayez.',
-      };
-    }
-
     if (stage === 'syncing_session' || stage === 'refreshing_status') {
       return {
         category: 'network',
@@ -253,12 +206,6 @@ export const getKycErrorPresentation = (
       code: 'KYC_NATIVE_OPEN_FAILED',
       title: 'Ouverture impossible',
       message: "L'écran de validation n'a pas pu s'ouvrir. Fermez puis relancez l'application avant de réessayer.",
-    },
-    opening_web_browser: {
-      category: 'service_unavailable',
-      code: 'KYC_BROWSER_OPEN_FAILED',
-      title: 'Ouverture impossible',
-      message: 'La fenêtre sécurisée de validation n’a pas pu s’ouvrir. Réessayez dans quelques instants.',
     },
     syncing_session: {
       category: 'service_unavailable',

@@ -93,8 +93,8 @@
       "sha256": "4036edb1a641072ad56810b096340dd8659f63bce40625cc3728b182503ad8e8"
     },
     "features/screen-styles/app/trip/manage/detail/index.ts": {
-      "keys": 111,
-      "sha256": "b434a3f9c9da6915e0d7a031190555503a8f4df89a0d4f315d9023f5acdb9535"
+      "keys": 112,
+      "sha256": "3588f46aa5720540706e9571ab3dfd5f472e916f7625db77cf530d2fed080e2d"
     },
     "features/screen-styles/app/trip/navigate/detail/index.ts": {
       "keys": 197,

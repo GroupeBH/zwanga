@@ -1,17 +1,15 @@
-import { runDiditNativeVerification, getDiditSdkFailureError, isDiditNativeModuleUnavailable } from '../features/identity/diditSdk';
+import { runDiditNativeVerification, getDiditSdkFailureError } from '../features/identity/diditSdk';
 import { checkDiditExpiryRecovery } from '../features/identity/diditRecovery';
 import { isKycAlreadyApprovedError } from '../features/identity/kycApproval';
 import { useExistingKycApproval } from './useExistingKycApproval';
-import { asStringParam, getKycStatusFromDiditStatus, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
-import { QueryParams, DiditKycFlowOutcome, StartDiditKycOptions, UseDiditKycFlowOptions, KycFlowStage } from '../features/identity/diditFlowTypes';
+import { getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
+import { DiditKycFlowOutcome, StartDiditKycOptions, UseDiditKycFlowOptions, KycFlowStage } from '../features/identity/diditFlowTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import { useCreateDiditKycSessionMutation, useLazyGetCurrentUserQuery, useSyncDiditKycSessionMutation } from '@/store/api/userApi';
 import { getEffectiveKycStatus } from '@/utils/kycStatus';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import type { VerificationResult } from '@didit-protocol/sdk-react-native';
-import * as ExpoLinking from 'expo-linking';
-import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
@@ -21,8 +19,6 @@ import { hasAwsLiveness } from '@/features/identity/awsLiveness';
 import { KYC_PROVIDER, shouldStartAwsKyc } from '@/features/identity/kycProvider';
 
 export type { DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
-WebBrowser.maybeCompleteAuthSession();
-const DIDIT_KYC_RETURN_PATH = 'kyc/didit-return';
 export function useDiditKycFlow({
   sourceScreen,
   onStatusRefresh,
@@ -39,7 +35,7 @@ export function useDiditKycFlow({
     useCreateDiditKycSessionMutation();
   const [syncDiditKycSession, { isLoading: isSyncingDiditKycSession }] =
     useSyncDiditKycSessionMutation();
-  const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const [isVerificationOpen, setIsVerificationOpen] = useState(false);
   const inFlight = useRef(false);
   const resumeApprovedKyc = useExistingKycApproval({ sourceScreen, onStatusRefresh, onApproved, approvedMessage });
 
@@ -105,10 +101,10 @@ export function useDiditKycFlow({
     }: StartDiditKycOptions = {}): Promise<DiditKycFlowOutcome | null> => {
       if (inFlight.current) return null;
       inFlight.current = true;
-      setIsBrowserOpen(true);
+      setIsVerificationOpen(true);
       let flowStage: KycFlowStage = 'loading_user';
       let sessionId: string | null = null;
-      let launchMode: DiditKycFlowOutcome['launchMode'] = 'native_sdk';
+      const launchMode = 'native_sdk' as const;
 
       try {
         const approved = await resumeApprovedKyc(showResultDialog);
@@ -139,14 +135,12 @@ export function useDiditKycFlow({
         }
 
         flowStage = 'creating_session';
-        const callbackUrl = ExpoLinking.createURL(DIDIT_KYC_RETURN_PATH);
         const session = await createDiditKycSession({
-          callbackUrl,
           language: 'fr',
           source: sourceScreen,
         }).unwrap().catch(async (error: unknown) => {
           // Approval may arrive after preflight (admin/webhook). Re-read it;
-          // neither a generic 409 nor a browser status proves approval.
+          // neither a generic 409 nor an SDK status proves approval.
           if (isKycAlreadyApprovedError(error)) {
             const approved = await resumeApprovedKyc(showResultDialog);
             if (approved) return { existingApproval: approved };
@@ -155,8 +149,12 @@ export function useDiditKycFlow({
         });
         if ('existingApproval' in session) return session.existingApproval;
 
-        if (!session.sessionToken && !session.url) {
-          throw new Error("Le backend n'a pas retourné de token SDK ni d'URL Didit.");
+        if (!session.sessionToken?.trim()) {
+          throw new KycUserFacingError({
+            category: 'service_unavailable', code: 'KYC_SDK_TOKEN_MISSING',
+            title: 'Vérification indisponible',
+            message: 'La vérification dans l’application ne peut pas démarrer. Réessayez plus tard ou contactez le support.',
+          });
         }
 
         await trackEvent('kyc_didit_session_started', {
@@ -168,7 +166,6 @@ export function useDiditKycFlow({
         sessionId = session.sessionId || null;
         let diditStatus = session.status ?? null;
         let sdkResultType: VerificationResult['type'] | undefined;
-        let browserResultType: string | undefined;
 
         const handleVerificationCancellation = async (cancelledSessionId?: string | null) => {
           await trackEvent('kyc_didit_cancelled', {
@@ -186,79 +183,43 @@ export function useDiditKycFlow({
           }
         };
 
-        if (session.sessionToken) {
-          try {
-            flowStage = 'opening_native_sdk';
-            const sdkResult = await runDiditNativeVerification(session.sessionToken);
-            sdkResultType = sdkResult.type;
+        try {
+          flowStage = 'opening_native_sdk';
+          const sdkResult = await runDiditNativeVerification(session.sessionToken.trim());
+          sdkResultType = sdkResult.type;
 
-            if (sdkResult.session?.sessionId) {
-              sessionId = sdkResult.session.sessionId;
-            }
-
-            if (sdkResult.session?.status) {
-              diditStatus = sdkResult.session.status;
-            }
-
-            if (sdkResult.type === 'cancelled') {
-              await handleVerificationCancellation(sdkResult.session?.sessionId);
-              return null;
-            }
-
-            const failureError = getDiditSdkFailureError(sdkResult);
-            if (failureError) {
-              throw failureError;
-            }
-          } catch (sdkError: any) {
-            const nativeExpiry = sdkError instanceof KycUserFacingError &&
-              sdkError.presentation.code === 'KYC_SESSION_EXPIRED';
-            if (nativeExpiry) {
-              // Confirm the same session with the server before reopening its web flow.
-              const recovery = await checkDiditExpiryRecovery(session, () =>
-                syncDiditKycSession({ sessionId: session.sessionId }).unwrap());
-              if (recovery === 'approved') {
-                diditStatus = 'Approved';
-              } else if (recovery === 'browser') {
-                launchMode = 'web_browser';
-                void trackEvent('kyc_didit_sdk_expiry_web_recovery', { platform: Platform.OS }).catch(() => undefined);
-              } else {
-                throw sdkError;
-              }
-            } else if (!isDiditNativeModuleUnavailable(sdkError)) {
-              throw sdkError;
-            } else {
-              launchMode = 'web_browser';
-            }
-          }
-        } else {
-          launchMode = 'web_browser';
-        }
-
-        if (launchMode === 'web_browser') {
-          flowStage = 'opening_web_browser';
-          if (!session.url) {
-            throw new Error(
-              "Le SDK natif Didit est indisponible et aucune URL de secours n'a été retournée.",
-            );
+          if (sdkResult.session?.sessionId) {
+            sessionId = sdkResult.session.sessionId;
           }
 
-          const browserResult = await WebBrowser.openAuthSessionAsync(session.url, callbackUrl);
-          browserResultType = browserResult.type;
+          if (sdkResult.session?.status) {
+            diditStatus = sdkResult.session.status;
+          }
 
-          if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
-            await handleVerificationCancellation(sessionId);
+          if (sdkResult.type === 'cancelled') {
+            await handleVerificationCancellation(sdkResult.session?.sessionId);
             return null;
           }
 
-          if (browserResult.type === 'success' && browserResult.url) {
-            const parsedUrl = ExpoLinking.parse(browserResult.url);
-            const params = (parsedUrl.queryParams ?? {}) as QueryParams;
-            sessionId =
-              asStringParam(params, 'verificationSessionId') ??
-              asStringParam(params, 'session_id') ??
-              asStringParam(params, 'sessionId') ??
-              sessionId;
-            diditStatus = asStringParam(params, 'status') ?? diditStatus;
+          const failureError = getDiditSdkFailureError(sdkResult);
+          if (failureError) {
+            throw failureError;
+          }
+        } catch (sdkError: unknown) {
+          const nativeExpiry = sdkError instanceof KycUserFacingError &&
+            sdkError.presentation.code === 'KYC_SESSION_EXPIRED';
+          if (nativeExpiry) {
+            // Only recover approval confirmed by the server for this exact session.
+            // Never reopen in a browser or automatically create another paid session.
+            const recovery = await checkDiditExpiryRecovery(session, () =>
+              syncDiditKycSession({ sessionId: session.sessionId }).unwrap());
+            if (recovery === 'approved') {
+              diditStatus = 'Approved';
+            } else {
+              throw sdkError;
+            }
+          } else {
+            throw sdkError;
           }
         }
 
@@ -272,7 +233,8 @@ export function useDiditKycFlow({
         await onStatusRefresh?.();
 
         flowStage = 'handling_result';
-        const status = getEffectiveKycStatus(kyc) ?? getKycStatusFromDiditStatus(diditStatus);
+        // The SDK reports capture progress; only the backend grants KYC approval.
+        const status = getEffectiveKycStatus(kyc);
         const outcome: DiditKycFlowOutcome = {
           kyc,
           status,
@@ -280,7 +242,6 @@ export function useDiditKycFlow({
           sessionId,
           launchMode,
           sdkResultType,
-          browserResultType,
         };
 
         if (status === 'approved') {
@@ -315,9 +276,9 @@ export function useDiditKycFlow({
           } else {
             showDialog({
               variant: 'info',
-              title: "Validation d'identité interrompue",
+              title: 'Confirmation en attente',
               message:
-                "Aucune validation n'a été soumise. Vous pourrez reprendre la procédure lorsque vous serez prêt.",
+                'Le résultat n’est pas encore disponible. Actualisez votre profil dans quelques instants.',
             });
           }
         }
@@ -367,7 +328,7 @@ export function useDiditKycFlow({
         return null;
       } finally {
         inFlight.current = false;
-        setIsBrowserOpen(false);
+        setIsVerificationOpen(false);
       }
     },
     [
@@ -390,6 +351,6 @@ export function useDiditKycFlow({
   return {
     startDiditKyc,
     isStartingDiditKyc:
-      isCreatingDiditKycSession || isSyncingDiditKycSession || isBrowserOpen,
+      isCreatingDiditKycSession || isSyncingDiditKycSession || isVerificationOpen,
   };
 }

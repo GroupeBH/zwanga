@@ -6,7 +6,7 @@ import { prepareProfilePhoto } from '@/utils/profilePhoto';
 import { useIsFocused } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Platform } from 'react-native';
 
 type SelectionFlow = { cancelled: boolean; dialog: boolean; finishWait?: () => void };
 
@@ -88,7 +88,8 @@ export function useProfilePhotoSelection({ enabled = true }: { enabled?: boolean
               return null;
             }
             const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: false,
-              quality: 0.65, base64: false, exif: false });
+              // Android quality=1 copies the original without decoding/recompressing it.
+              quality: Platform.OS === 'android' ? 1 : 0.65, base64: false, exif: false });
             if (!result.canceled) uri = result.assets?.[0]?.uri ?? null;
           }
           if (!uri || !valid()) return null;

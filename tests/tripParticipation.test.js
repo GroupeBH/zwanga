@@ -98,7 +98,11 @@ test('offline owner snapshot remains usable, but never a passenger or wrong-trip
 test('both driver routes are guarded outside their controller hooks', () => {
   for (const file of ['app/trip/navigate/[id].tsx', 'app/trip/manage/[id].tsx']) {
     const source = readFileSync(file, 'utf8');
-    assert.match(source, /return <DriverTripAccessGuard><\w+ \/><\/DriverTripAccessGuard>/);
+    if (file.includes('/manage/')) {
+      assert.match(source, /return <DriverTripAccessGuard><ManageTripIdentityGuard><\w+ \/><\/ManageTripIdentityGuard><\/DriverTripAccessGuard>/);
+    } else {
+      assert.match(source, /return <DriverTripAccessGuard><\w+ \/><\/DriverTripAccessGuard>/);
+    }
   }
 });
 

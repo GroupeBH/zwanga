@@ -16,6 +16,7 @@ import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionN
 import { RequestPassengerContact } from '@/features/request-detail/RequestPassengerContact';
 import { useAppDispatch } from '@/store/hooks';
 import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -47,6 +48,11 @@ function IncomingDriverContent() {
     navigatedAfterAcceptance.current = true;
     router.replace(getTripRequestDetailHref(requestId));
   }, [router]);
+  const openAcceptedBooking = useCallback((tripId: string, ongoing: boolean) => {
+    if (navigatedAfterAcceptance.current) return;
+    navigatedAfterAcceptance.current = true;
+    router.replace({ pathname: ongoing ? '/trip/navigate/[id]' : '/trip/manage/[id]', params: { id: tripId } });
+  }, [router]);
   const consumed = useRef(false);
   useEffect(() => { consumed.current = false; }, [id, params.actionEvent]);
   const mounted = useRef(true);
@@ -54,11 +60,11 @@ function IncomingDriverContent() {
   current.current = { active, userId: user?.id };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    if (!active) return;
+    if (!active || kind !== 'dispatch') return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [active]);
+  }, [active, kind]);
   const localDeadline = useMemo(() => offer.data ? Date.now() + Date.parse(offer.data.expiresAt) - Date.parse(offer.data.serverNow) : 0, [offer.data]);
   const remaining = Math.max(0, Math.ceil((localDeadline - now) / 1000));
   const driverId = kind === 'dispatch' ? offer.data?.driverId : booking.data?.trip?.driverId;
@@ -81,40 +87,61 @@ function IncomingDriverContent() {
   } : null;
 
   const answer = useCallback(async (decision: DriverDecision) => {
-    if (!invitation || !actionable || inFlight.current || done) return;
+    if (!invitation || !actionable || inFlight.current || done || navigatedAfterAcceptance.current) return;
     inFlight.current = true; setBusy(true); setError('');
+    const sessionVersion = getTokenSessionVersion();
+    const canContinue = () => mounted.current && current.current.active &&
+      current.current.userId === invitation.driverId && sessionVersion === getTokenSessionVersion();
     void dismissDriverInvitation(invitation).catch(() => {});
     try {
       if (invitation.kind === 'dispatch') {
         const result = await respond({ id, decision }).unwrap();
-        if (mounted.current && current.current.active && current.current.userId === invitation.driverId &&
-          decision === 'accept' && result.status === 'accepted') {
-          openAcceptedRequest(result.requestId);
+        if (decision === 'accept') {
+          if (result.status !== 'accepted' || !result.requestId) throw new Error('Votre acceptation n’est pas encore confirmée. Vérifiez la proposition.');
+          if (canContinue()) openAcceptedRequest(result.requestId);
         }
       }
-      else await respondBooking({ id, accept: decision === 'accept' }).unwrap();
-      if (mounted.current) setDone(decision);
+      else {
+        const result = await respondBooking({ id, accept: decision === 'accept' }).unwrap();
+        if (decision === 'accept') {
+          if (result.id !== id || result.status !== 'accepted' || result.tripId !== booking.currentData?.tripId)
+            throw new Error('Votre acceptation n’est pas encore confirmée. Vérifiez la réservation.');
+          if (canContinue()) openAcceptedBooking(result.tripId, booking.currentData?.trip?.status === 'ongoing');
+        }
+      }
+      if (canContinue()) setDone(decision);
       void dismissDriverInvitation(invitation).catch(() => {});
     } catch (cause) {
-      if (mounted.current) setError(getApiErrorMessage(cause, 'Votre réponse n’a pas pu être confirmée. Vérifiez la connexion puis réessayez.'));
+      if (canContinue()) setError(getApiErrorMessage(cause, 'Votre réponse n’a pas pu être confirmée. Vérifiez la connexion puis réessayez.'));
       // Reconcile an ambiguous result; never queue a later automatic acceptance.
       if (kind === 'dispatch') void refetchOffer(); else void refetchBooking();
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
-  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest]);
+  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest, openAcceptedBooking, booking.currentData]);
 
-  // Also recover a confirmed native-notification acceptance after a cold start.
+  const acceptedOffer = user?.id && kind === 'dispatch' && !offer.isFetching && !offer.isError &&
+    offer.currentData?.id === id && offer.currentData.status === 'accepted' &&
+    offer.currentData.driverId === user?.id ? offer.currentData : null;
+  const acceptedBooking = user?.id && kind === 'booking' && !booking.isFetching && !booking.isError &&
+    booking.currentData?.id === id && booking.currentData.status === 'accepted' &&
+    booking.currentData.trip?.driverId === user?.id ? booking.currentData : null;
+
+  // A notification opened after acceptance goes straight to the existing trip,
+  // using the server response, never another accept or a second "Voir les détails".
   useEffect(() => {
-    if (!active || !authorized || kind !== 'dispatch' || offer.isFetching || offer.isError ||
-      offer.currentData?.status !== 'accepted' || offer.currentData.driverId !== user?.id) return;
-    dispatch(inviteAcceptedRequestContact({ userId: user.id, requestId: offer.currentData.requestId }));
-    openAcceptedRequest(offer.currentData.requestId);
-  }, [active, authorized, dispatch, kind, offer.currentData, offer.isError, offer.isFetching, openAcceptedRequest, user?.id]);
+    if (!active || !authorized || !user?.id) return;
+    if (acceptedOffer) {
+      dispatch(inviteAcceptedRequestContact({ userId: user.id, requestId: acceptedOffer.requestId }));
+      openAcceptedRequest(acceptedOffer.requestId);
+    } else if (acceptedBooking) {
+      openAcceptedBooking(acceptedBooking.tripId, acceptedBooking.trip?.status === 'ongoing');
+    }
+  }, [active, authorized, dispatch, acceptedOffer, acceptedBooking, openAcceptedRequest, openAcceptedBooking, user?.id]);
 
   useEffect(() => {
     if (!active || !invitation || !user?.id || !authorized || loading || consumed.current) return;
     consumed.current = true;
     void consumeDriverAction(invitation, user.id).then(decision => {
-      if (decision && mounted.current) return answer(decision);
+      if (decision && mounted.current && current.current.active && current.current.userId === invitation.driverId) return answer(decision);
     }).catch(() => setError('Touchez Accepter ou Refuser pour confirmer votre choix.'));
   }, [active, invitation, user?.id, authorized, loading, answer, params.actionEvent]);
 
@@ -124,6 +151,11 @@ function IncomingDriverContent() {
     else router.replace('/(tabs)');
   };
   const failedRead = Boolean(kind === 'dispatch' ? offer.error : booking.error);
+  // Do not flash the incoming/success card while a processed invitation redirects.
+  if (navigatedAfterAcceptance.current || acceptedOffer || acceptedBooking || done === 'accept') return null;
+  if (loading && !failedRead && !busy) return <SafeAreaView style={[styles.screen, styles.loading]}>
+    <ActivityIndicator size="large" color={Colors.primary} accessibilityLabel="Chargement de la proposition" />
+  </SafeAreaView>;
   return <SafeAreaView style={styles.screen}>
     <View style={styles.top}>
       <Text style={styles.eyebrow}>{kind === 'dispatch' ? 'PROPOSITION À PROXIMITÉ' : 'NOUVELLE RÉSERVATION'}</Text>
@@ -134,12 +166,11 @@ function IncomingDriverContent() {
       </TouchableOpacity>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
-      <View style={[styles.icon, done === 'accept' && styles.successIcon]}>
-        <Ionicons name={done === 'accept' ? 'checkmark' : done === 'decline' ? 'close' : 'car-outline'} size={42} color={done === 'accept' ? Colors.successDark : Colors.primary} />
+      <View style={styles.icon}>
+        <Ionicons name={done === 'decline' ? 'close' : 'car-outline'} size={42} color={Colors.primary} />
       </View>
-      <Text style={styles.title}>{done === 'accept' ? 'C’est confirmé !' : done === 'decline' ? 'Proposition refusée' : 'Un passager vous attend'}</Text>
-      <Text style={styles.copy}>{done === 'accept' ? 'Le passager a été informé. Retrouvez la prise en charge dans les détails.'
-        : done === 'decline' ? kind === 'dispatch' ? 'La recherche peut continuer avec un autre conducteur.' : 'Le passager sera informé de votre réponse.'
+      <Text style={styles.title}>{done === 'decline' ? 'Proposition refusée' : 'Un passager vous attend'}</Text>
+      <Text style={styles.copy}>{done === 'decline' ? kind === 'dispatch' ? 'La recherche peut continuer avec un autre conducteur.' : 'Le passager sera informé de votre réponse.'
         : kind === 'dispatch' ? 'Acceptez uniquement si vous pouvez assurer cette prise en charge.' : 'Votre réponse concerne uniquement cette réservation.'}</Text>
       {loading && !details ? <ActivityIndicator size="large" color={Colors.primary} /> : null}
       {authorized && details && <>
@@ -156,7 +187,7 @@ function IncomingDriverContent() {
         {kind === 'booking' && booking.data?.trip?.departureTime && <Text style={styles.copy}>Départ : {new Date(booking.data.trip.departureTime).toLocaleString('fr-FR')}</Text>}
         {details.paymentMode === 'cash' && done !== 'decline' && <CashCommissionNotice
           amount={kind === 'booking' ? Number(booking.data?.paymentAmount ?? Number(details.pricePerSeat) * details.seats) : Number(details.pricePerSeat) * details.seats}
-          confirmed={done === 'accept'} />}
+          confirmed={false} />}
       </>}
       {!done && kind === 'dispatch' && authorized && <Text style={styles.countdown} accessibilityLiveRegion="polite">{remaining > 0 && offer.data?.actionable ? `${remaining} s pour répondre` : 'Cette proposition n’est plus disponible'}</Text>}
       {!done && kind === 'dispatch' && authorized && offer.data && actionable &&
@@ -182,10 +213,11 @@ function IncomingDriverContent() {
   </SafeAreaView>;
 }
 const styles = StyleSheet.create({
+  loading: { alignItems: 'center', justifyContent: 'center' },
   screen: { flex: 1, backgroundColor: Colors.white }, top: { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12 },
   eyebrow: { flex: 1, fontSize: 12, fontWeight: '800', letterSpacing: 1, color: Colors.primary }, close: { padding: 8 },
   content: { padding: 24, gap: 20 }, icon: { alignSelf: 'flex-start', padding: 22, borderRadius: 28, backgroundColor: '#FFF0E9' },
-  successIcon: { backgroundColor: '#ECFAF1' }, title: { fontSize: 32, fontWeight: '800', color: Colors.gray[900] },
+  title: { fontSize: 32, fontWeight: '800', color: Colors.gray[900] },
   copy: { fontSize: 15, lineHeight: 22, color: Colors.gray[600], fontWeight: '400' }, passenger: { fontSize: 20, fontWeight: '700', color: Colors.gray[900] },
   route: { padding: 20, backgroundColor: Colors.gray[50], borderRadius: 20, gap: 8 }, routeLabel: { fontSize: 11, letterSpacing: 1, color: Colors.gray[600], fontWeight: '700' },
   address: { color: Colors.gray[900], fontSize: 18, lineHeight: 26, fontWeight: '600' }, separator: { height: 16, borderLeftWidth: 2, borderColor: Colors.gray[300], marginLeft: 4 },

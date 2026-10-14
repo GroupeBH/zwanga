@@ -16,6 +16,17 @@ export const styles = StyleSheet.create({
     color: Colors.gray[600],
     textAlign: 'center',
   },
+  // The primary footer style has flex: 1 for horizontal rows, not full screens.
+  standaloneButton: {
+    flex: 0,
+    height: 'auto',
+    minHeight: 52,
+    width: '100%',
+    maxWidth: 360,
+    marginTop: Spacing.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

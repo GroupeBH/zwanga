@@ -3,9 +3,9 @@ import { KycUserFacingError } from './diditErrors';
 export type KycProvider = 'didit' | 'aws';
 
 // Expo requires static dot notation to inline these public, non-secret values.
-// New native builds use AWS by default. Didit requires an explicit rollback.
+// Didit uses its native SDK by default. AWS remains an explicit opt-in.
 const configuredProvider = process.env.EXPO_PUBLIC_KYC_PROVIDER?.trim().toLowerCase();
-const selectedProvider = configuredProvider || 'aws';
+const selectedProvider = configuredProvider || 'didit';
 
 // Invalid configuration must block KYC, not crash the whole app on import or
 // silently create a paid verification with an unintended provider.

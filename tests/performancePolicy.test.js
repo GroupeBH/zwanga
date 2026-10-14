@@ -92,7 +92,7 @@ test('photo preparation caps both orientations without upscaling/cropping and re
   const image = { saveAsync: async () => ({ uri: 'file:///prepared.jpg' }), release: () => released++ };
   const context = { resize: (size) => { resized = size; }, renderAsync: async () => image, release: () => released++ };
   const { prepareProfilePhoto, getProfilePhotoSize, chooseProfilePictureSize } = loader({
-    'react-native': { Image: { getSize: async () => ({ width: 4000, height: 3000 }) } },
+    'react-native': { Platform: { OS: 'ios' }, Image: { getSize: async () => ({ width: 4000, height: 3000 }) } },
     'expo-image-manipulator': { ImageManipulator: { manipulate: () => context }, SaveFormat: { JPEG: 'jpeg' } },
   })('utils/profilePhoto.ts');
   assert.deepEqual(getProfilePhotoSize(3000, 4000), { width: 768, height: 1024 });
