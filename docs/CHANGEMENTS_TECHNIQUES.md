@@ -1,5 +1,48 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — Archive EAS Windows : exclusions natives à la racine
+
+- **Constat/périmètre :** build Android dev avec archive annoncée de 957 Mo,
+  puis erreurs Gradle « No matching variant / No variants exist » sur plusieurs
+  modules natifs. Le filtre de copie de la CLI EAS locale 18.0.1 a été testé :
+  ses préfixes de `.gitignore` imbriqués ne reconnaissent pas les chemins Windows
+  avec antislashs. Les sorties Android locales, dont `autolinking.json` avec des
+  chemins absolus Windows et des empreintes de manifests encore valides, restent
+  alors sélectionnées. Cela fournit une explication très probable des erreurs
+  simultanées sur Linux ; l'archive du build distant échoué n'a pas été extraite.
+- **Appliqué :** `.gitignore` racine exclut explicitement les `build`, `.gradle`,
+  `.kotlin`, `.cxx`, `.idea`, `local.properties` et sorties générées Android,
+  ainsi que Pods/build/DerivedData et métadonnées locales iOS. Aucune création
+  de `.easignore` : les règles existantes pour dépendances, environnements et
+  clés de signature restent actives. Pas de suppression physique de fichiers.
+- **Conservé :** projets Android/iOS, Gradle wrapper, manifests, sources KYC AWS,
+  sonnerie et ressources de notifications, configuration Firebase, Podfile et
+  lockfile, projet/schéma/workspace Xcode partagé et résolution Swift. Ni version
+  d'app, dépendance, source native, profil EAS, cache de tâches distant ni logique
+  métier modifiés. Les exceptions `default.*` de métadonnées Xcode restent incluses.
+- **Tests appliqués :** `tests/easArchiveExclusions.test.js` contrôle les règles
+  racine seules, les séparateurs natifs, l'exclusion des sorties, les secrets et
+  dépendances déjà exclus, et l'inclusion de tous les fichiers natifs versionnés.
+  `package.json` ajoute ces tests à `test:android-build`, sans changement de
+  dépendances ni de lockfile.
+- **Vérifications/mesures :** `npm.cmd run test:android-build` : 14 tests
+  JavaScript réussis ; `npm.cmd run test:ios-build` : 20 tests JavaScript
+  supplémentaires réussis. ESLint ciblé et `git diff --check` réussissent.
+  Avec le filtre réel de la CLI
+  installée sous Windows, les fichiers générés Android/iOS sont désormais exclus
+  et les 91 fichiers natifs versionnés, dont le workspace partagé, sont inclus.
+  Somme des fichiers locaux sélectionnés :
+  3 237,4 Mio avant, 15,5 Mio après (1 674 fichiers après le correctif). Ce n'est
+  pas la taille du tarball compressé ni un débit/délai d'envoi garanti.
+- **Limites/livraison :** aucun build EAS distant, APK/AAB final, compilation
+  Linux ou essai sur appareil lancé. Les tests ELF existants utilisent aussi des
+  artefacts synthétiques et ne valident pas le futur APK. Le prochain build doit
+  confirmer la régénération d'autolinking sur Linux puis la compilation.
+  Relancer volontairement une fois avec
+  `npx.cmd eas-cli build --platform android --profile dev --clear-cache`.
+  Ne pas faire de `prebuild --clean` : les projets natifs personnalisés restent
+  nécessaires. La CLI globale n'a pas été mise à jour pendant cette intervention.
+
 ## 13 octobre 2026 — Arrivée en attente : synchronisation bornée avant paiement
 
 - **Constat/périmètre :** la capture affiche « Calcul en cours » alors que le
