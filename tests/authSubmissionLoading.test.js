@@ -22,6 +22,7 @@ function signupFixture(method = 'phone', extra = {}) {
     dispatch: () => ({ unwrap: () => { calls.push('storage'); return io.storage(); } }),
     startDiditKyc: () => { calls.push('kyc'); return kyc.promise; },
     showDialog: dialog => dialogs.push(dialog), setStep: () => calls.push('step'),
+    onExistingAccount: () => calls.push('existing-login'),
     router: { replace: () => calls.push('redirect') }, ...extra };
   const { useRegistrationActions } = loader({ react: hooks.react, 'react-native': { Platform: { OS: 'ios' } },
     '../../features/auth/authModel': { ensureAuthNotifeeLoaded() {},
@@ -34,6 +35,35 @@ function signupFixture(method = 'phone', extra = {}) {
   return { hooks, props, calls, dialogs, io, request, storage, kyc, notification,
     render: () => hooks.render(() => useRegistrationActions(props)) };
 }
+
+for (const error of [
+  { status: 401, data: { code: 'PHONE_ALREADY_REGISTERED' } },
+  { status: 400, data: { code: 'PHONE_ALREADY_REGISTERED' } },
+  { status: 401, data: { code: 'AUTHENTICATION_REQUIRED', message: 'Ce numéro de téléphone existe déjà' } },
+  { status: 400, data: { message: 'Ce numéro de téléphone est déjà utilisé' } },
+]) {
+  test(`duplicate signup offers explicit login without creating a session or retrying (${JSON.stringify(error)})`, async () => {
+    const app = signupFixture();
+    app.request.reject(error);
+    await app.render().handleFinalRegister();
+    assert.deepEqual(app.calls, ['phone']);
+    assert.equal(app.render().hasCreatedAccount, false);
+    assert.equal(app.render().isRegistrationPending, false);
+    assert.equal(app.dialogs[0].title, 'Compte déjà existant');
+    assert.match(app.dialogs[0].message, /PIN oublié/);
+    app.dialogs[0].actions[0].onPress();
+    assert.deepEqual(app.calls, ['phone', 'existing-login']);
+    app.hooks.unmount();
+  });
+}
+
+test('ordinary unauthorized/network errors are not duplicate registrations', () => {
+  const { isPhoneAlreadyRegisteredError } = loader()('features/auth/registrationErrors.ts');
+  for (const error of [null, { status: 401 }, { status: 'FETCH_ERROR' },
+    { status: 401, data: { code: 'INVALID_PIN' } },
+    { status: 500, data: { message: 'Ce numéro de téléphone existe déjà' } }])
+    assert.equal(isPhoneAlreadyRegisteredError(error), false);
+});
 
 for (const method of ['phone', 'google', 'apple']) {
   test(`${method} signup stays busy through preparation, network, session, notification and pending navigation`, async () => {
