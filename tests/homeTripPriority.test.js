@@ -260,12 +260,15 @@ test('the ongoing booked trip remains selected even with more than ten nearby up
 
 test('Home forwards its existing location to the published-trip selection', () => {
   let selectedProps;
+  const hooks = hookHarness();
   const hookNames = ['useHomeContext', 'useHomeDiscoveryMode', 'useHomeDriverActivity', 'useHomeLocation', 'useHomeMap', 'useHomeMapNavigation',
     'useHomePassengerActivity', 'useHomePassengerMarkers', 'useHomeSheet', 'useHomeTracking', 'useHomeTripFeed',
     'useHomeTripSelection', 'useHomeUserLocation', 'useHomeRequestHighlight', 'useHomePriorityDismissals'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, { [name]: () => ({}) }]));
   mocks['./useHomeLocation'].useHomeLocation = () => ({ liveUserCoordinate: origin });
   mocks['./useHomeTripSelection'].useHomeTripSelection = props => { selectedProps = props; return {}; };
-  loader(mocks)('hooks/home/useHomeController.ts').useHomeController();
+  const { useHomeController } = loader({ ...mocks, react: hooks.react })('hooks/home/useHomeController.ts');
+  hooks.render(useHomeController);
   assert.equal(selectedProps.liveUserCoordinate, origin);
+  hooks.unmount();
 });

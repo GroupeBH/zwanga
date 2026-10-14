@@ -23,7 +23,7 @@ type Props =
   >
   & Pick<ReturnType<typeof useHomeMap>,
     'setMapFocusedOnUser'
-    | 'mapRef'
+    | 'animateHomeMapToRegion'
   >
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openingMapDetailKey'
@@ -36,7 +36,7 @@ export function useHomeUserLocation({
   getCurrentLocation,
   showDialog,
   setMapFocusedOnUser,
-  mapRef,
+  animateHomeMapToRegion,
   openingMapDetailKey,
 }: Props) {
   const userLocationMarkerRef = useRef<MapMarker | null>(null);
@@ -126,7 +126,7 @@ export function useHomeUserLocation({
         address: "Recherche de l'adresse actuelle...",
       });
       setMapFocusedOnUser(true);
-      mapRef.current?.animateToRegion(
+      animateHomeMapToRegion(
         {
           ...coordinate,
           latitudeDelta: 0.025,
@@ -158,7 +158,7 @@ export function useHomeUserLocation({
         setIsCenteringOnUser(false);
       }
     }
-  }, [getCurrentLocation, lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude, mapRef, setMapFocusedOnUser, showDialog, showUserLocationCallout]);
+  }, [getCurrentLocation, lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude, animateHomeMapToRegion, setMapFocusedOnUser, showDialog, showUserLocationCallout]);
   return {
     userLocationMarker,
     userLocationMarkerRef,

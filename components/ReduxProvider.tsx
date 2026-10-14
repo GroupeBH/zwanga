@@ -56,9 +56,11 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
           // Ecran de chargement pendant la restauration du state
           <View style={styles.loadingContainer}>
             <Text style={styles.brand}>ZWANGA</Text>
-            {status === 'error' ? <>
+            {status === 'error' || status === 'slow' ? <>
               <Text style={styles.error} accessibilityRole="alert">
-                Votre session n’a pas pu être restaurée. Déverrouillez votre téléphone, puis réessayez.
+                {status === 'slow'
+                  ? 'La vérification prend plus de temps que prévu. Vous pouvez réessayer. Si le blocage persiste, fermez puis rouvrez Zwanga.'
+                  : 'Votre session n’a pas pu être restaurée. Déverrouillez votre téléphone, puis réessayez.'}
               </Text>
               <TouchableOpacity style={styles.retry} accessibilityRole="button" onPress={retry}>
                 <Text style={styles.retryText}>Réessayer</Text>

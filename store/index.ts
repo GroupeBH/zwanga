@@ -6,6 +6,7 @@ import { chatSocket } from '../services/chatSocket';
 import { trackingSocket } from '../services/trackingSocket';
 import { clearLocationDeliveries } from '../services/locationDelivery';
 import { invalidateTokenSession } from '../services/tokenSession';
+import { recoverSocketConnections } from '../services/socketRecovery';
 import { clearNearbyDriverLocation } from '../services/nearbyDriverLocation';
 import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
@@ -78,6 +79,9 @@ const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action)
   } else if (typedAction.type === 'auth/setTokens') {
     chatSocket.refreshAuthentication();
     trackingSocket.refreshAuthentication();
+  } else if (typedAction.type === zwangaApi.internalActions.onOnline.type
+    || typedAction.type === zwangaApi.internalActions.onFocus.type) {
+    recoverSocketConnections();
   }
   return result;
 };

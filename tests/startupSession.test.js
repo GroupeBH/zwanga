@@ -130,6 +130,43 @@ test('returning to the foreground retries failed startup once, without restartin
   assert.equal(e.listeners.size, 0); assert.equal(e.render().status, 'ready');
 });
 
+test('slow startup exposes recovery at 8 seconds without creating concurrent native reads', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const e = bootstrapFixture(t);
+  e.render();
+  t.mock.timers.tick(7999); assert.equal(e.render().status, 'loading');
+  t.mock.timers.tick(1); assert.equal(e.render().status, 'slow');
+  e.render().retry(); e.render().retry();
+  assert.equal(e.render().status, 'loading');
+  assert.equal(e.requests.length, 1, 'retry observes the same still-pending native operation');
+  e.requests[0].resolve({}); await flush();
+  assert.equal(e.render().status, 'ready');
+  t.mock.timers.tick(20000); assert.equal(e.render().status, 'ready');
+});
+
+test('a slow restoration that fails can be retried as a new operation', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const e = bootstrapFixture(t); e.render();
+  t.mock.timers.tick(8000); assert.equal(e.render().status, 'slow');
+  e.requests[0].reject(Error('Locked')); await flush();
+  assert.equal(e.render().status, 'error');
+  e.render().retry(); e.render();
+  assert.equal(e.requests.length, 2);
+  e.requests[1].resolve({}); await flush(); assert.equal(e.render().status, 'ready');
+});
+
+test('a success between a slow retry tap and its render cannot restart initialization', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const e = bootstrapFixture(t); e.render();
+  t.mock.timers.tick(8000);
+  const retry = e.render().retry;
+  retry();
+  e.requests[0].resolve({}); await flush();
+  assert.equal(e.render().status, 'ready');
+  retry(); e.render();
+  assert.equal(e.requests.length, 1);
+});
+
 test('unmounted startup ignores late responses and removes its listeners', async t => {
   const e = bootstrapFixture(t); e.render(); e.hooks.unmount();
   e.requests[0].resolve({}); await flush();

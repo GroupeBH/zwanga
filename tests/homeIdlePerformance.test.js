@@ -10,13 +10,21 @@ function camera(platform = 'ios') {
     'react-native': { Platform: { OS: platform } }, 'react-native-maps': {},
   })('hooks/home/useHomeMapCamera.ts');
   const mapRef = { current: { animateToRegion: (...args) => movements.push(args) } };
-  return { hooks, movements, render: (target = region, enabled = true) => hooks.render(() => useHomeMapCamera(mapRef, enabled, target)) };
+  const render = (target = region, enabled = true) => hooks.render(() => useHomeMapCamera(mapRef, enabled, target));
+  const mount = () => {
+    const handlers = render();
+    handlers.attachHomeMap(mapRef.current);
+    handlers.onHomeMapReady();
+    handlers.onHomeMapLayout({ nativeEvent: { layout: { width: 400, height: 600 } } });
+    return render();
+  };
+  return { hooks, movements, render, mount, mapRef };
 }
 
 test('one thousand stationary Home updates do not repeat the native camera animation', t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
   const app = camera();
-  app.render();
+  app.mount();
   for (let i = 0; i < 1000; i++) {
     t.mock.timers.tick(5000);
     app.render({ ...region, latitude: region.latitude + (i % 2) * 0.00001 });
@@ -31,7 +39,7 @@ for (const [platform, interval] of [['ios', 1200], ['android', 700]]) {
   test(`${platform}: camera follows the newest point within its throttle and cancels on release`, t => {
     t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
     const app = camera(platform);
-    app.render();
+    app.mount();
     app.render({ ...region, latitude: -4.33 });
     t.mock.timers.tick(interval - 1);
     app.render({ ...region, latitude: -4.34 });
@@ -51,6 +59,55 @@ for (const [platform, interval] of [['ios', 1200], ['android', 700]]) {
     assert.equal(app.movements.length, 3);
   });
 }
+
+test('Home camera waits for native readiness AND nonzero layout, in either event order', () => {
+  for (const readyFirst of [true, false]) {
+    const app = camera('android'), handlers = app.render();
+    handlers.attachHomeMap(app.mapRef.current);
+    const layout = (width, height) => handlers.onHomeMapLayout({ nativeEvent: { layout: { width, height } } });
+    if (readyFirst) handlers.onHomeMapReady();
+    for (const dimensions of [[0, 600], [400, 0], [NaN, 600]]) {
+      layout(...dimensions); app.render();
+      assert.equal(app.movements.length, 0);
+    }
+    layout(400, 600); app.render();
+    assert.equal(app.movements.length, readyFirst ? 1 : 0);
+    handlers.onHomeMapReady(); app.render();
+    assert.equal(app.movements.length, 1);
+    app.hooks.unmount();
+  }
+});
+
+test('map replacement cancels queued movements and requires new ready/layout events', t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  const app = camera('android');
+  const handlers = app.mount();
+  app.render({ ...region, latitude: -4.4 });
+  handlers.attachHomeMap(null);
+  const replacement = [];
+  handlers.attachHomeMap({ animateToRegion: value => replacement.push(value) });
+  t.mock.timers.tick(5000);
+  assert.equal(app.movements.length, 1);
+  assert.equal(replacement.length, 0);
+  const next = app.render(); next.onHomeMapReady();
+  next.onHomeMapLayout({ nativeEvent: { layout: { width: 400, height: 600 } } });
+  app.render(); assert.equal(replacement.length, 1);
+  app.hooks.unmount();
+});
+
+test('manual recenter rejects inactive/unready/invalid regions and catches bridge errors', () => {
+  const app = camera('android'), handlers = app.render();
+  assert.equal(handlers.animateHomeMapToRegion(region), false);
+  app.mount();
+  assert.equal(handlers.animateHomeMapToRegion({ ...region, longitude: Infinity }), false);
+  assert.equal(handlers.animateHomeMapToRegion({ ...region, latitudeDelta: 0 }), false);
+  app.render(region, false);
+  assert.equal(handlers.animateHomeMapToRegion(region), false);
+  app.render();
+  app.mapRef.current.animateToRegion = () => { throw Error('Synthetic native bridge failure'); };
+  assert.equal(handlers.animateHomeMapToRegion(region), false);
+  app.hooks.unmount();
+});
 
 test('GPS jitter with unchanged rounded coordinates neither recreates the feed nor dispatches a new Redux list', () => {
   const hooks = hookHarness(), dispatches = [], payloads = [];

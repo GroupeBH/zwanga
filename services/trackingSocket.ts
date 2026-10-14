@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
 import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
 import { isDriverLocation, isPassengerLocation, readPassengerLocations } from './socketPayloads';
+import { bindSocketAuthentication, requireSocketToken, SOCKET_CONNECTION_OPTIONS } from './socketAuthPolicy';
 export type { DriverLocationPayload } from './trackingSocket.types';
 export type { PassengerLocationPayload } from './trackingSocket.types';
 export type { TrackingLocationMetadata } from './trackingSocket.types';
@@ -130,25 +131,24 @@ class TrackingSocketClient {
     if (this.connecting) {
       return this.connecting;
     }
-    if (this.socket?.connected) return this.socket;
     const generation = this.generation;
 
     const connection = (async () => {
       const token = await getValidAccessToken();
       if (generation !== this.generation) throw new Error('Session de suivi fermée');
+      requireSocketToken(token, this.socket);
       if (this.socket) {
         const socket = this.socket;
-        socket.auth = { token };
         return this.waitForConnected(socket);
       }
       const baseUrl = resolveSocketBaseUrl();
       const socket = io(`${baseUrl}/tracking`, {
+        ...SOCKET_CONNECTION_OPTIONS,
         transports: ['websocket'],
-        auth: { token },
-        autoConnect: false,
       });
       this.socket = socket;
-      socket.on('session_expired', () => { void handle401Error(); });
+      bindSocketAuthentication(socket, () => this.socket === socket && generation === this.generation);
+      socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
 
       socket.on('connect', () => {
         this.notifyConnectionState(true);
@@ -287,14 +287,21 @@ class TrackingSocketClient {
   }
 
   refreshAuthentication() {
-    if (!this.socket) return;
+    if (!this.socket) { this.resumeConnection(); return; }
     const generation = this.generation;
     void getValidAccessToken().then((token) => {
       if (!this.socket || generation !== this.generation) return;
-      this.socket.auth = { token };
+      requireSocketToken(token, this.socket);
       this.socket.disconnect().connect();
     }).catch(() => undefined);
   }
+
+  resumeConnection() {
+    if (this.socket?.connected || !this.hasActiveSubscriptions()) return;
+    void this.connect().catch(() => undefined);
+  }
+
+  hasActiveSubscriptions() { return this.tripJoinCounts.size > 0; }
 
   async updateDriverLocation(
     tripId: string,
