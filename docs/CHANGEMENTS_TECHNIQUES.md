@@ -1,5 +1,190 @@
 # Journal des changements techniques
 
+## 13 octobre 2026 — Arrivée en attente : synchronisation bornée avant paiement
+
+- **Constat/périmètre :** la capture affiche « Calcul en cours » alors que le
+  paiement attend la confirmation serveur d'une arrivée sauvegardée localement.
+  Dans le code, « Actualiser » relisait uniquement la liste des réservations,
+  sans relancer sa déclaration ni garantir la récupération rapide du détail.
+  Le backend existant refuse une arrivée avant confirmation d'embarquement
+  (`RIDE_PICKUP_REQUIRED`) ; cette raison restait masquée par le texte générique.
+  Sans logs du cas réel, il n'est pas établi que ce refus explique précisément
+  la capture : il s'agit d'un chemin vérifié dans le code, pas d'une mesure en
+  production.
+- **Appliqué :** nouveau `useArrivalConfirmationSync.ts`, branché depuis
+  `useArrivalPaymentState.ts`. Une fenêtre de 30 s lit le détail de la seule
+  réservation concernée via RTK Query (intervalle 3 s), uniquement au premier
+  plan, connecté et tant que le panneau n'est pas différé. Ensuite les lectures
+  supplémentaires s'arrêtent et le réessai devient disponible. La surveillance
+  habituelle de navigation et le worker durable de déclarations restent distincts.
+  Une confirmation reçue plus tard peut encore déclencher une lecture ciblée.
+- **Relance appliquée :** `rideOutboxEngine.ts` ajoute `retry(bookingId)` et un
+  flush partagé sous forme de promesse. La relance rejoint un envoi existant,
+  retire seulement le délai de la réservation ciblée et conserve ses identifiants
+  idempotents. Elle ne débloque pas les refus/désaccords et ne remplace pas une
+  déclaration reçue par un nouvel événement. Compte et connexion sont revérifiés
+  après les attentes ; les autres réservations gardent leurs délais.
+- **Montant/UI appliqués :** `useSyncArrivedPaymentBooking.ts` reprend aussi le
+  signal serveur `droppedOffConfirmedByPassenger` dans la liste de paiement.
+  `PassengerArrivalPaymentCoordinator.tsx`, `ArrivalPaymentFields.tsx` et
+  `ArrivalPaymentActions.tsx` affichent « Confirmation de l'arrivée », la perte de
+  connexion, le manque de validation d'embarquement ou la confirmation non reçue,
+  au lieu d'un calcul indéfini. Le réessai est protégé des doubles clics et des
+  callbacks tardifs visant un autre compte/trajet ou un écran fermé.
+- **Conservé :** montant, réduction du premier trajet et décompte issus du
+  serveur, pas de recalcul client ni de prélèvement automatique. Arrivée locale
+  et arrivée serveur restent distinctes. Pas de validation inventée pour le
+  conducteur ; double validation d'embarquement maintenue, arrivée passager
+  suffisante ensuite selon le contrat serveur actuel. Paiement en cours,
+  références de transaction, possibilité de fermer/reprendre et stockage durable
+  restent conservés. Aucun changement de backend, base ou dépendance dans ce
+  correctif ; son état déployé n'a pas été modifié.
+- **Vérifications :** TypeScript, frontière réseau, taille des sources et
+  `git diff --check` réussissent ; 130 tests JavaScript ciblés passent.
+  Nouveau `arrivalConfirmationSync.test.js` : fenêtre bornée, absence de polling
+  hors connexion/arrière-plan, manque d'embarquement, relance unique, confirmation
+  tardive, isolation de réservation et déblocage du tarif réel sans déclaration
+  conducteur supplémentaire. Tests outbox/paiement/fare/régression actualisés dans
+  `rideRecovery.test.js`, `arrivalPaymentSheet.test.js`,
+  `arrivalPaymentResume.test.js`, `arrivalPaymentFare.test.js` et
+  `declaredArrivalPayment.test.js`. Suite globale `npm.cmd run test:all` :
+  1 938 tests réussis, zéro échec (163,0 s, mesure locale JavaScript uniquement).
+- **Limites :** aucun essai physique Android/iOS, reproduction sur le compte de
+  la capture ni déploiement réalisés. 30 s borne la surveillance et l'état de
+  chargement ajoutés, pas le temps garanti de traitement serveur ni les requêtes
+  déjà en cours. Recette nécessaire : confirmer les deux embarquements, déclarer
+  l'arrivée uniquement côté passager, vérifier le montant et payer en cash/jetons/
+  électronique ; refaire avec embarquement manquant, réseau lent, mode avion,
+  reconnexion, fermeture/reprise et plusieurs réservations sans double débit.
+
+## 13 octobre 2026 — Reprise du trajet en cours et navigation sans confirmations modales
+
+- **Problème/périmètre :** à l'ouverture ou au retour dans l'app, une réservation
+  acceptée sur un trajet démarré pouvait dépendre du chargement des listes pour
+  retrouver sa navigation. Les rappels d'embarquement et le choix d'un passager
+  ajoutaient aussi des fenêtres et des clics pendant le trajet.
+- **Reprise appliquée :** `features/navigation/activeRideResume.ts` et
+  `hooks/navigation/useActiveRideResume.ts` utilisent le pointeur de réservation
+  du résumé d'activité authentifié et récent, puis relisent la réservation.
+  Si le trajet imbriqué est absent ou encore « à venir », son détail est vérifié
+  avant toute redirection. Le rôle vient de la participation et de la propriété
+  du trajet, pas du statut conducteur du profil. Réservation sur publication et
+  trajet issu d'une commande suivent le même contrôle, même avant embarquement.
+- **Simplification appliquée :** `RideRecoveryControl.tsx` confirme directement
+  le prochain arrêt ciblé par `DriverNavigationTopPanel.tsx`, même avec plusieurs
+  réservations ; ses détails/désaccords se déplient dans l'écran, à la demande.
+  La liste conducteur reste virtualisée et bornée ; le détail du seul passager
+  n'imbrique plus de liste virtualisée dans son panneau défilant. Le bouton reste
+  bloqué pendant l'enregistrement et pour l'arrêt déjà déclaré en attente.
+- **Rappels appliqués :** nouveaux `DriverPickupNotice.tsx` et
+  `PassengerPickupNotice.tsx`, montés par les deux écrans `app/*/navigate/[id].tsx`.
+  Le rappel passager conserve identification/photo du conducteur, véhicule,
+  couleur, plaque et attente, sans requête de profil supplémentaire. Le hook
+  `useDriverPickupActions.ts` masque uniquement les rappels de la réservation
+  enregistrée ; `useDriverNavigationNotices.ts` n'ouvre plus automatiquement le
+  détail d'un arrêt à l'arrivée GPS. `NavigationPassengersModal.tsx` et
+  `NavigationWaypointModal.tsx` restent accessibles sur action explicite.
+- **Supprimé :** composants inutilisés `NavigationPickupNoticeModal.tsx` et
+  `NavigationPickupBypassModal.tsx`, ainsi que le modal automatique de rendez-vous
+  passager. Leur contenu utile et leurs actions secondaires sont repris dans les
+  rappels inline ; aucune donnée serveur ni règle tarifaire n'a été supprimée.
+- **Conservé/protections :** embarquement à deux, arrivée et paiement pilotés par
+  le serveur, déclaration durable hors connexion, garde contre doubles clics et
+  résultats tardifs d'un autre compte/arrêt, annulation/arrêt du trajet, contacts,
+  partage et SOS. Une déclaration locale ne simule pas un embarquement serveur.
+  Aucun nouveau polling, abonnement de liste ou dépendance. Un trajet futur,
+  une réservation non acceptée, annulée ou un passager déjà arrivé ne reprend pas
+  la navigation. Paiement, messagerie, SOS et formulaires ouverts gardent la main ;
+  le retour volontaire à l'accueil reste possible pendant la même session.
+- **Vérifications :** TypeScript sans émission, frontière réseau et garde de
+  taille des sources réussissent. Tests JavaScript ajoutés/actualisés dans
+  `activeRideResume*.test.js`, `rideRecoveryUI.test.js`,
+  `rideNavigationSimplicity.test.js`, `navigationHeaders.test.js` et
+  `navigationPassengersPanel.test.js`. `npm.cmd run test:all` : 1 928 tests
+  réussis, zéro échec (394,1 s, mesure JavaScript locale, pas une mesure native).
+  `git diff --check` réussit aussi. Les premiers essais ciblés ont révélé des
+  assertions encore liées aux anciens modals et un mock natif incomplet ; ces
+  tests ont été adaptés au rendu inline, puis la suite complète relancée.
+- **Limites/recette native :** aucun déploiement ni essai physique iOS/Android
+  réalisé pour ces changements JavaScript. Vérifier sur appareils : ouverture à
+  froid puis retour de veille pour les deux origines et deux rôles, prise en
+  charge avant embarquement, plusieurs passagers, hors connexion/reconnexion,
+  embarquement automatique et manuel, arrivée/paiement, annulation et SOS.
+  Si le réseau ne permet pas de vérifier le serveur, la reprise attend une
+  reconnexion/actualisation ; pas d'accès accordé sur une ancienne route persistée.
+
+## 13 octobre 2026 — Correctif AWS Amplify Android et préparation du runtime KYC
+
+- **Problème/périmètre :** échec EAS sur les ELF AWS Liveness 1.5.0 / TensorFlow
+  Lite 2.7.0 non alignés 16 Ko ; serveur de production sans configuration AWS_KYC_*.
+- **Appliqué mobile :** `plugins/withAwsLiveness.js` et `android/app/build.gradle`
+  passent à Liveness 1.6.0, qui utilise LiteRT 1.4.0. Migration idempotente du bloc
+  géré, refus de rétrograder une version personnalisée. `kycProvider.ts` et
+  `store/api/awsKycApi.ts` utilisent les codes limités de préparation serveur,
+  sans afficher de configuration arbitraire ni suggérer des réessais inutiles.
+  Régressions couvertes dans `tests/awsKyc.test.js` et `tests/kycProvider.test.js`.
+- **Appliqué backend voisin :** disponibilité syntaxique explicite dans
+  `aws-kyc.policy.ts`/`aws-kyc.service.ts`, tests associés ; `infra-aws/kyc.tf`,
+  `ssm.tf`, `ecs.tf` et `production.auto.tfvars` préparent IAM, huit SecureString
+  et références ECS avec activation désactivée. Quotas/seuils validés, doubles
+  déclarations refusées et paramètres protégés contre suppression accidentelle.
+- **Conservé :** décisions/approbations et hooks serveur, consentement, quotas,
+  authentification/OTP, coexistence historique Didit, packages Swift iOS, garde
+  16 Ko et quatre architectures. Pas de Cognito, d'OTA native, de clé permanente
+  ni modification des règles biométriques. Aucun apply, session facturée, build
+  EAS distant ou déploiement de production exécuté pour ce correctif.
+- **Mesures déjà réalisées :** huit ELF des AAR officiels Liveness/LiteRT contrôlés
+  avec succès ; Gradle `dependencyInsight` confirme l'absence de l'ancien
+  TensorFlow Lite. Ce n'est pas une validation de l'AAB final ni un essai caméra.
+- **Livraison/limites :** [procédure backend](../../zwanga-backend/docs/operations/aws-kyc-amplify-rollout-2026-10-13.md),
+  [guide mobile](./AWS_KYC.md) et journal infra INFRA-2026-10-13-004.
+  Recette Android/iPhone physique requise avant bascule générale.
+- **Vérifications JavaScript/backend :** 64 tests mobiles ciblés et 92 tests backend
+  ciblés réussis ; 13 tests PostgreSQL optionnels non exécutés dans cette commande.
+  TypeScript mobile, frontière réseau, compilation backend finale et
+  formatage/validation Terraform passent. Premier essai Terraform interrompu par
+  un timeout de plugin sous charge, puis réussi. Les erreurs temporaires d'une
+  modification administrative concurrente ne sont pas attribuées ni corrigées par
+  ce changement. Premier essai Kotlin interrompu par des téléchargements AndroidX.
+- **Plan AWS vérifié, non appliqué :** 12 créations et remplacement de l'ancienne
+  définition de tâche (1 suppression), sans changement du service actif ni de
+  RDS/Redis/S3/KMS. Activation désactivée confirmée par lecture structurée.
+  Le fichier plan est sensible, non versionné et à régénérer si l'environnement évolue.
+- **Limite native finale :** relance après `--refresh-dependencies` dépasse les
+  téléchargements AndroidX mais bloque sur Hermes/`nmake` absent sous Windows.
+  Aucun outil C++ système installé ni protection React Native retirée pour forcer
+  le passage. Compilation du binaire final EAS/Linux et recette physique restent
+  nécessaires ; les huit ELF contrôlés ne garantissent pas l'absence de crashs.
+
+## 13 octobre 2026 — Bascule KYC AWS, nouveaux binaires
+
+- **Périmètre :** remplacer le lancement Didit par le parcours AWS existant,
+  avec mise à jour exigée pour un nouveau KYC sur un ancien binaire. OTP inchangé.
+- **Appliqué :** AWS par défaut dans `features/identity/kycProvider.ts`, choix
+  explicite dans `eas.json` et `.env.kyc.example`. `useProfileOnboarding.ts`
+  permet la reprise des dossiers Didit pending côté passager/conducteur.
+  `diditErrors.ts` reconnaît le code serveur de mise à jour requise. Les anciens
+  binaires qui masquent ce message peuvent encore présenter une erreur générique.
+- **Conservé :** approbations existantes, revues legacy, contrats de statut,
+  contrôle serveur des rôles, SDK historique pour compatibilité, pas de fallback
+  payant. Les credentials temporaires restent en mémoire et aucune clé n'est ajoutée.
+- **Backend voisin :** refus des nouvelles sessions Didit en mode AWS,
+  reprise transactionnelle sans effacer l'historique, permissions IAM optionnelles
+  et diagnostics sans données sensibles. Aucun changement du CI/CD ni activation AWS.
+- **Vérifications :** 66 tests mobiles ciblés réussis ; TypeScript et frontière
+  réseau réussis. Suite complète finale : **1 915 tests réussis**. Première
+  exécution : 1 912/1 914, deux échecs `activeRideResume` non reproduits lors
+  des relances isolées (26/26 avec Didit, puis AWS) et complète. Aucun correctif
+  hors KYC ajouté pour les masquer. PostgreSQL isolé : 13 tests réussis côté
+  backend ; suite backend complète 1 932 réussis, puis 71 tests KYC ciblés après
+  le dernier ajustement du fallback historique. Terraform validé. La compilation
+  Android n'a pas atteint Kotlin : dépendances AndroidX/Compose manquantes,
+  HTTP 404 aussi confirmé par lecture du dépôt officiel Google Maven.
+  iOS non compilé sous Windows ; aucune recette caméra/appareil physique revendiquée.
+  Le rôle IAM prévu est encore absent dans AWS, confirmé en lecture seule.
+- **Guide :** [AWS_KYC.md](AWS_KYC.md). Les résultats JavaScript ne démontrent
+  ni capture réelle, ni authenticité d'une pièce RDC, ni réussite du build natif.
+
 ## 13 octobre 2026 — Correctifs backend KYC préparés pour livraison
 
 - **Demande / périmètre :** préparer en priorité les correctifs backend du blocage

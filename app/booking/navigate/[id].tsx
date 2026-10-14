@@ -10,10 +10,9 @@ import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, ScrollView, StatusBar, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
-import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
-import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
+import { PassengerPickupNotice } from '@/features/passenger-navigation/PassengerPickupNotice';
 
 export default function PassengerNavigationScreen() {
   const { height } = useWindowDimensions();
@@ -52,6 +51,7 @@ export default function PassengerNavigationScreen() {
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView style={{ maxHeight: height * 0.4, flexGrow: 0 }} showsVerticalScrollIndicator>
         <PassengerNavigationHeader model={model} assistance={assistance} />
+        <PassengerPickupNotice model={model} hidden={assistance.isOpen} />
         <RideActionResult actor="passenger" tripId={model.data.tripId} bookingId={model.data.bookingId} active={model.data.isScreenActive} />
       </ScrollView>
       
@@ -139,73 +139,6 @@ export default function PassengerNavigationScreen() {
       />
       )}
 
-      <Modal
-        visible={Boolean(model.state.pickupNotice) && !model.context.hasPassengerDroppedOff && !assistance.isOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => model.state.setPickupNotice(null)}
-      >
-        <View style={styles.arrivalModalOverlay}>
-          <View
-            style={[
-              styles.arrivalModalContent,
-              { paddingBottom: Math.max(model.data.insets.bottom, Spacing.lg) + Spacing.md },
-            ]}
-          >
-            <View style={styles.arrivalModalHandle} />
-            <View
-              style={[
-                styles.arrivalModalIcon,
-                { backgroundColor: model.presentation.pickupNoticeAccent },
-              ]}
-            >
-              <Ionicons
-                name={model.presentation.pickupNoticeIcon}
-                size={30}
-                color={Colors.white}
-              />
-            </View>
-            <Text style={styles.arrivalModalTitle}>
-              {model.presentation.pickupNoticeTitle}
-            </Text>
-            <Text style={styles.arrivalModalText}>
-              {model.presentation.pickupNoticeText}
-            </Text>
-            <PickupVehicleDetails trip={model.data.trip ?? model.data.booking.trip} />
-            <View style={styles.arrivalModalAddressRow}>
-              <Ionicons name="location" size={18} color={Colors.primary} />
-              <Text style={styles.arrivalModalAddress} numberOfLines={2}>
-                {model.data.booking.passengerOrigin || model.data.trip.departure.address}
-              </Text>
-            </View>
-            {model.state.pickupNoticeCountdown !== null && (
-              <View style={styles.arrivalModalGpsStatus}>
-                <Ionicons name="timer" size={18} color={Colors.secondary} />
-                <Text style={[styles.arrivalModalGpsStatusText, { color: Colors.secondary }]}>
-                  {model.state.pickupNoticeCountdown > 0
-                    ? `Temps restant ${Math.floor(model.state.pickupNoticeCountdown / 60)
-                        .toString()
-                        .padStart(2, '0')}:${(model.state.pickupNoticeCountdown % 60)
-                        .toString()
-                        .padStart(2, '0')}`
-                    : 'Le délai est écoulé'}
-                </Text>
-              </View>
-            )}
-            <Text style={styles.arrivalModalHint}>
-              Gardez la localisation active : l&apos;embarquement sera confirmé automatiquement pendant le déplacement.
-            </Text>
-            <View style={styles.arrivalModalActions}>
-              <TouchableOpacity
-                style={styles.arrivalModalLaterButton}
-                onPress={() => model.state.setPickupNotice(null)}
-              >
-                <Text style={styles.arrivalModalLaterButtonText}>Fermer</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
       <NavigationAssistanceModals assistance={assistance} role="passenger" insets={model.data.insets} />
     </View>
     </RideOverlayScope>

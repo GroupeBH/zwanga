@@ -147,6 +147,11 @@ export function useDriverPickupActions({
     lastOffRouteRerouteAtRef.current = 0;
   }, [lastRouteFetchTimeRef, routeFetchedRef, routeSignatureRef, offRouteSampleCountRef, lastOffRouteRerouteAtRef]);
 
+  const acknowledgePickupDeclaration = useCallback((bookingId: string) => {
+    dismissPickupNoticeForBooking(bookingId);
+    if (pickupBypassConfirmationRef.current?.waypoint.booking.id === bookingId) dismissPickupBypassConfirmation();
+  }, [dismissPickupNoticeForBooking, dismissPickupBypassConfirmation, pickupBypassConfirmationRef]);
+
   const handleConfirmBypassedPickup = useCallback(async () => {
     const confirmation = pickupBypassConfirmationRef.current;
     if (!confirmation || pickupBypassAction) {
@@ -263,6 +268,8 @@ export function useDriverPickupActions({
   ]);
 
   return {
+    acknowledgePickupDeclaration,
+    dismissPickupBypassConfirmation,
     dismissTripEndNotice,
     handleCancelBypassedPickup,
     handleConfirmBypassedPickup,

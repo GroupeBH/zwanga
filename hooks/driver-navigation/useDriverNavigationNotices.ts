@@ -44,7 +44,6 @@ export function useDriverNavigationNotices({
   pickupBypassConfirmationRef,
   presentedWaypointIdsRef,
   setActiveWaypoint,
-  setWaypointModalVisible,
   presentedPickupNoticeKeysRef,
   highestPickupNoticePriorityRef,
   pickupNoticeRef,
@@ -70,10 +69,9 @@ export function useDriverNavigationNotices({
     }
 
     presentedWaypointIdsRef.current.add(waypoint.id);
-    waypointModalVisibleRef.current = true;
     setActiveWaypoint(waypoint);
-    setWaypointModalVisible(true);
-  }, [isMountedRef, pickupBypassConfirmationRef, presentedWaypointIdsRef, setActiveWaypoint, setWaypointModalVisible, waypointModalVisibleRef]);
+    // GPS arrival updates inline context; details open only on an explicit tap.
+  }, [isMountedRef, pickupBypassConfirmationRef, presentedWaypointIdsRef, setActiveWaypoint, waypointModalVisibleRef]);
 
   const presentPickupNotice = useDriverPickupNoticeQueue({ tripId, isScreenActive, pickupNotice, pickupBypassConfirmation,
     isMountedRef, pickupBypassConfirmationRef, presentedPickupNoticeKeysRef, highestPickupNoticePriorityRef,

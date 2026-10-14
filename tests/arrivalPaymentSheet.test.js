@@ -90,9 +90,16 @@ test('payment fields show group total, cash instructions and provider status wit
   let tree = render(); assert.match(words(tree), /Total pour 3 places/); assert.match(words(tree), /À remettre au conducteur/);
   props.waitingForArrivalConfirmation = true; props.paymentAmount = null;
   tree = render();
-  assert.match(words(tree), /ARRIVÉE DÉCLARÉE.*Calcul en cours.*synchronisation avec le serveur, sans attendre le conducteur/);
+  assert.match(words(tree), /ARRIVÉE DÉCLARÉE.*Confirmation de l’arrivée.*confirmation du serveur, sans attendre le conducteur/);
   assert.doesNotMatch(words(tree), /ARRIVÉE CONFIRMÉE|À remettre au conducteur/);
   assert.equal(all(tree).filter(node => node.props?.accessibilityRole === 'radio').length, 0);
+  props.arrivalConfirmation = { phase: 'paused', title: 'Confirmation non reçue', message: 'Réessayez. Aucun paiement n’a été lancé.', refreshing: false };
+  props.onRefreshArrival = noop; tree = render();
+  assert.match(words(tree), /Confirmation non reçue.*Réessayer la synchronisation/);
+  assert.doesNotMatch(words(tree), /Calcul en cours/);
+  assert.equal(all(tree).find(node => node.type === 'Button' && words(node).includes('Réessayer la synchronisation')).props.disabled, false);
+  props.arrivalConfirmation = { ...props.arrivalConfirmation, refreshing: true }; tree = render();
+  assert.equal(all(tree).find(node => node.type === 'Button' && words(node).includes('Vérification en cours')).props.disabled, true);
   props.waitingForArrivalConfirmation = false; props.paymentAmount = 3000; tree = render();
   assert.doesNotMatch(words(tree), /Paiement confirmé/); assert.equal(tree.props.keyboardShouldPersistTaps, 'handled');
   assert.equal(all(tree).some(node => node.type === 'Modal'), false);

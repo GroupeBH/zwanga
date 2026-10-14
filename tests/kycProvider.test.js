@@ -21,15 +21,15 @@ function withProviderEnv(value, legacyFlag, read) {
 }
 const provider = (value, legacyFlag) => withProviderEnv(value, legacyFlag, () => loader()('features/identity/kycProvider.ts'));
 
-test('Didit is the default and never queries AWS, even if the server would enable it', async () => {
+test('new builds default to AWS and cannot silently revert to Didit through the legacy flag', async () => {
   for (const flag of [undefined, 'false', '', '1', 'TRUE']) {
     const policy = provider(undefined, flag);
     let calls = 0;
-    assert.equal(policy.KYC_PROVIDER, 'didit');
-    assert.equal(policy.AWS_KYC_MOBILE_ENABLED, false);
-    assert.equal(await policy.shouldStartAwsKyc(async () => { calls++; return { enabled: true }; }), false);
-    assert.equal(await policy.shouldStartAwsKyc(async () => { calls++; throw new Error('AWS unavailable'); }), false);
-    assert.equal(calls, 0);
+    assert.equal(policy.KYC_PROVIDER, 'aws');
+    assert.equal(policy.AWS_KYC_MOBILE_ENABLED, true);
+    assert.equal(await policy.shouldStartAwsKyc(async () => { calls++; return { enabled: true }; }), true);
+    await assert.rejects(policy.shouldStartAwsKyc(async () => { calls++; throw new Error('AWS unavailable'); }), /AWS unavailable/);
+    assert.equal(calls, 2);
   }
 });
 
@@ -43,12 +43,26 @@ test('an explicit provider takes precedence over the legacy flag', async () => {
   }
 });
 
-test('the legacy opt-in remains accepted when the provider is absent or empty', async () => {
+test('absent or empty provider selects AWS regardless of the retired opt-in', async () => {
   for (const value of [undefined, '', '   ']) {
     const policy = provider(value, 'true');
     assert.equal(policy.KYC_PROVIDER, 'aws');
     assert.equal(await policy.shouldStartAwsKyc(async () => ({ enabled: true })), true);
   }
+});
+
+test('release and device build profiles explicitly select AWS', () => {
+  const builds = require('../eas.json').build;
+  for (const profile of ['dev', 'dev-device', 'production'])
+    assert.equal(builds[profile].env.EXPO_PUBLIC_KYC_PROVIDER, 'aws');
+});
+
+test('a server-side cutover gives an actionable update message, not a retry loop', () => {
+  const { getKycErrorPresentation } = loader()('features/identity/diditErrors.ts');
+  const result = getKycErrorPresentation({ status: 400, data: { code: 'KYC_APP_UPDATE_REQUIRED' } }, 'creating_session');
+  assert.equal(result.code, 'KYC_APP_UPDATE_REQUIRED');
+  assert.equal(result.title, 'Mise à jour nécessaire');
+  assert.match(result.message, /Mettez à jour/);
 });
 
 test('AWS requires backend approval and never silently falls back to Didit', async () => {
@@ -71,6 +85,22 @@ test('invalid provider configuration blocks only the KYC action without contacti
     assert.equal(policy.AWS_KYC_MOBILE_ENABLED, false);
     await assert.rejects(policy.shouldStartAwsKyc(async () => assert.fail('No backend call expected')), error => error.presentation.code === 'KYC_PROVIDER_INVALID');
   }
+});
+test('server preparation is explained without retry loops or leaking arbitrary diagnostics', async () => {
+  const policy = provider('aws');
+  for (const code of ['AWS_KYC_DISABLED', 'AWS_KYC_CONFIGURATION_REQUIRED']) {
+    await assert.rejects(policy.shouldStartAwsKyc(async () => ({ enabled: false, unavailableCode: code })), error => {
+      assert.equal(error.presentation.code, code);
+      assert.equal(error.presentation.title, 'Vérification en préparation');
+      assert.doesNotMatch(error.presentation.message, /Réessayez/);
+      return true;
+    });
+  }
+  await assert.rejects(policy.shouldStartAwsKyc(async () => ({ enabled: false, unavailableCode: 'private-config-value' })), error => {
+    assert.equal(error.presentation.code, 'AWS_KYC_UNAVAILABLE');
+    assert.doesNotMatch(JSON.stringify(error.presentation), /private-config-value/);
+    return true;
+  });
 });
 
 function mobileFlow({ selected, legacyFlag, capabilities = { enabled: true }, capabilityError, nativeAvailable = true, awsOutcome = { status: 'approved' } } = {}) {
@@ -109,7 +139,7 @@ function mobileFlow({ selected, legacyFlag, capabilities = { enabled: true }, ca
 }
 
 test('the real mobile hook continues the complete Didit path without touching AWS', async () => {
-  for (const config of [{}, { selected: 'didit', legacyFlag: 'true' }]) {
+  for (const config of [{ selected: 'didit' }, { selected: 'didit', legacyFlag: 'true' }]) {
     const app = mobileFlow(config);
     assert.equal((await app.start()).status, 'approved');
     assert.deepEqual(app.calls, ['didit-create', 'didit-native', 'didit-sync', 'refresh', 'approved']);

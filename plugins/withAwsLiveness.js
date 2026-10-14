@@ -4,8 +4,21 @@ const path = require('node:path');
 const swiftPluginTrust = require('../config/ios-swift-plugin-trust.json');
 
 const gradleMarker = '// Zwanga AWS Liveness';
+// 1.6.0 fixes the shipped ELF alignment and replaces old TensorFlow Lite with
+// LiteRT. Keep this conservative pin with Expo 54's Kotlin 2.1.20; newer AWS
+// releases may require a coordinated Kotlin/Compose upgrade.
+const androidLivenessVersion = '1.6.0';
 function configureAppGradle(source) {
-  if (source.includes(gradleMarker)) return source;
+  const markerIndex = source.indexOf(gradleMarker);
+  if (markerIndex !== -1) {
+    const owned = source.slice(markerIndex);
+    const dependency = /(['"])com\.amplifyframework\.ui:liveness:([^'"]+)\1/g;
+    const matches = [...owned.matchAll(dependency)];
+    if (matches.length !== 1 || !['1.5.0', androidLivenessVersion].includes(matches[0][2])) {
+      throw new Error('AWS Liveness: review the existing dependency before upgrading its managed Gradle block.');
+    }
+    return source.slice(0, markerIndex) + owned.replace(dependency, `'com.amplifyframework.ui:liveness:${androidLivenessVersion}'`);
+  }
   return source + `\n${gradleMarker}
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 android {
@@ -13,7 +26,7 @@ android {
   compileOptions { coreLibraryDesugaringEnabled true }
 }
 dependencies {
-  implementation 'com.amplifyframework.ui:liveness:1.5.0'
+  implementation 'com.amplifyframework.ui:liveness:${androidLivenessVersion}'
   implementation 'androidx.activity:activity-compose:1.9.3'
   implementation 'androidx.compose.material3:material3:1.3.1'
   coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'

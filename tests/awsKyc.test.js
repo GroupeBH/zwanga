@@ -11,7 +11,22 @@ test('native Gradle and package registration are idempotent and pinned', () => {
   for (const [file, transform] of [['android/build.gradle', plugin.configureProjectGradle], ['android/app/build.gradle', plugin.configureAppGradle], ['android/app/src/main/java/com/zwanga/MainApplication.kt', plugin.configureMain]]) {
     const once = transform(read(file)); assert.equal(transform(once), once);
   }
-  assert.match(plugin.configureAppGradle(''), /liveness:1\.5\.0/);
+  assert.match(plugin.configureAppGradle(''), /liveness:1\.6\.0/);
+});
+test('upgrades the managed Android Liveness block without changing other dependencies', () => {
+  const prefix = "// Unrelated dependencies\ndependencies { implementation 'example:unchanged:1.0' }\n";
+  const existing = plugin.configureAppGradle(prefix).replace('liveness:1.6.0', 'liveness:1.5.0');
+  const upgraded = plugin.configureAppGradle(existing);
+  assert.ok(upgraded.startsWith(prefix));
+  assert.equal(upgraded, existing.replace('liveness:1.5.0', 'liveness:1.6.0'));
+  assert.equal(plugin.configureAppGradle(upgraded), upgraded);
+  assert.doesNotMatch(upgraded, /liveness:1\.5\.0/);
+  assert.match(read('android/app/build.gradle'), /liveness:1\.6\.0/);
+});
+test('requires review instead of downgrading a custom or malformed Liveness block', () => {
+  const managed = plugin.configureAppGradle('');
+  assert.throws(() => plugin.configureAppGradle(managed.replace('liveness:1.6.0', 'liveness:1.12.0')), /review/);
+  assert.throws(() => plugin.configureAppGradle(managed.replace(/.*implementation 'com\.amplifyframework\.ui:liveness:.*\n/, '')), /review/);
 });
 test('Swift package and source registration is idempotent without editing the project', () => {
   const p = xcode.project(path.join(__dirname, '../ios/zwanga.xcodeproj/project.pbxproj')); p.parseSync();

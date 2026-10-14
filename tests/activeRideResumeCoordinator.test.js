@@ -73,11 +73,11 @@ for (const passenger of [false, true]) test(`${passenger ? 'passenger' : 'driver
   assert.equal(f.routes.length, 2, 'a new real foreground entry resumes the trip again');
 });
 
-test('a cold passenger launch waits for shared bookings instead of interpreting an empty cache as no ride', async t => {
-  const f = fixture(t, true), bookings = f.env.bookings;
+test('a cold passenger launch verifies the server pointer before the shared bookings list arrives', async t => {
+  const f = fixture(t, true);
   f.env.bookings = { isSuccess: false }; f.env.segments = ['(tabs)'];
-  f.render(); await flush(); assert.deepEqual(f.reads, []);
-  f.env.bookings = bookings; f.render(); await flush();
+  f.render(); await flush();
+  assert.deepEqual(f.reads.map(read => read.name), ['getBookingById']);
   assert.deepEqual(f.routes, ['/booking/navigate/booking']);
 });
 

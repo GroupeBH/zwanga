@@ -1,9 +1,63 @@
-# Parcours KYC Didit / AWS — sélecteur mobile du 13 octobre 2026
+# Parcours KYC AWS — bascule du 13 octobre 2026
+
+## Correctif Android Amplify et préparation serveur
+
+Liveness Android passe de 1.5.0 à 1.6.0 (correctif 16 Ko) et ses dépendances
+passent à LiteRT 1.4.0. Le plugin met aussi à jour un projet natif existant ;
+les packages Swift et l'authentification Zwanga ne changent pas. Pas de Cognito,
+de nouvel utilisateur AWS mobile ni de clé permanente. Le garde natif reste actif.
+Un serveur en préparation fournit un code limité et un message sans boucle de
+réessai ; aucun repli vers Didit ni approbation depuis le téléphone.
+
+La préparation Terraform gère désormais les paramètres AWS_KYC_* et leurs
+références ECS, sans activer la capture avant recette. Pour les commandes, les
+tests physiques et le retour arrière, voir
+`../zwanga-backend/docs/operations/aws-kyc-amplify-rollout-2026-10-13.md`.
+Un nouveau build natif Android est nécessaire ; une OTA ne remplace pas les ELF.
+Sur le poste Windows utilisé, la compilation locale reste bloquée par l'outillage
+hôte Hermes (`nmake` absent), après résolution des téléchargements AndroidX.
+Utiliser un nouveau build EAS pour la recette ; ne pas désactiver le garde 16 Ko.
+
+## Bascule complète préparée
+
+AWS est désormais le défaut pour les nouveaux bundles ; les profils EAS `dev`,
+`dev-device` et `production` fixent `EXPO_PUBLIC_KYC_PROVIDER=aws`. Supprimer une
+ancienne valeur locale explicite `didit` ou la remplacer pour tester en local.
+Le sélecteur explicite `didit` reste uniquement un mécanisme de retour arrière,
+sans repli implicite. L'ancien flag booléen ne peut plus réactiver Didit.
+
+Le profil propose de reprendre sur AWS les dossiers Didit pending (passager et
+parcours conducteur), sans refaire un KYC approuvé ni remplacer une revue legacy.
+Le backend doit avoir `AWS_KYC_ENABLED=true` et `KYC_PROVIDER=aws` après IAM/recette.
+Il reste seul décisionnaire : un serveur en coexistence peut refuser cette reprise.
+
+Les anciens binaires sans le pont AWS exigent une mise à jour pour un **nouveau**
+KYC. Les comptes déjà approuvés restent opérationnels. Le backend arrête les
+nouvelles sessions Didit avec le message `KYC_APP_UPDATE_REQUIRED`, mais garde
+les sync/webhooks historiques. Les dépendances Didit ne sont pas arrachées du
+binaire dans cette livraison ; elles ne sont pas lancées en mode AWS.
+`diditErrors.ts` reconnaît maintenant ce code ; les anciens binaires dont le
+présentateur masque les messages serveur afficheront encore une erreur générique
+jusqu'à leur mise à jour. Aucune promesse de modifier leur écran à distance.
+
+Pas d'activation AWS/SSM, de build EAS distant ou de publication store exécutée.
+Pour IAM, environnement local, SSM et ordre de livraison :
+`../zwanga-backend/docs/auth/aws-kyc.md` (section Bascule complète).
+
+Vérifications finales de cette bascule : 66 tests mobiles ciblés, 1 915 tests
+de la suite complète, TypeScript et frontière réseau réussis. Les deux échecs
+intermittents initiaux de reprise de trajets ne se reproduisent pas isolément
+ni lors de la seconde suite complète. Voir le journal pour les limites natives :
+compilation Android bloquée par des HTTP 404 Google Maven, iOS non compilé et
+aucun essai caméra réel. Ne pas confondre ces tests JavaScript avec une recette native.
+
+## Historique du sélecteur avant la bascule
 
 Pièces de RDC : carte d’électeur, passeport, permis. Envoi de photos privées,
 consentement explicite, capture vidéo AWS Liveness et suivi du contrôle serveur.
 Le fournisseur est choisi par **`EXPO_PUBLIC_KYC_PROVIDER=didit|aws`** dans
-l’environnement mobile. Didit reste le défaut si aucun choix n’est configuré.
+l’environnement mobile. **Le défaut Didit décrit ci-dessous est historique et
+remplacé par AWS dans la bascule ci-dessus.**
 Aucune variable réelle, configuration EAS distante ou infrastructure AWS n’a été
 modifiée pendant cette livraison.
 

@@ -5,6 +5,7 @@
   },
   "build": {
     "dev": {
+      "env": { "EXPO_PUBLIC_KYC_PROVIDER": "aws" },
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -19,6 +20,7 @@
       "extends": "dev",
       "environment": "development",
       "env": {
+        "EXPO_PUBLIC_KYC_PROVIDER": "aws",
         "EXPO_PUBLIC_ENV": "development"
       },
       "android": {
@@ -48,6 +50,7 @@
         "simulator": false
       },
       "env": {
+        "EXPO_PUBLIC_KYC_PROVIDER": "aws",
         "EXPO_PUBLIC_ENV": "production",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com",

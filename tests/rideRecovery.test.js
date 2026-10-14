@@ -133,6 +133,47 @@ test('foreground worker stops when the app is paused; enqueuing still works offl
   h.deps.canSend = () => true; await box.flush(); assert.equal(h.sent.length, 1);
 });
 
+test('explicit retry skips the current booking backoff, never resets unrelated or blocked events, and keeps receipt IDs', async () => {
+  const h = harness({ send: async event => { h.sent.push(event); throw { status: 503 }; } });
+  const box = h.create();
+  await box.enqueue(input); await box.enqueue({ ...input, bookingId: 'other' }); await box.flush();
+  assert.equal(h.sent.length, 2);
+  h.deps.send = async event => { h.sent.push(event); return { ...snapshot('confirmed'), bookingId: event.bookingId }; };
+  await box.retry('booking');
+  assert.equal(h.sent.length, 3); assert.equal(h.sent[2].eventId, h.sent[0].eventId);
+  const other = h.published.at(-1).entries.find(entry => entry.bookingId === 'other');
+  assert.equal(other.state, 'queued'); assert.ok(other.nextAttemptAt > h.deps.now());
+  const key = [...h.disk.keys()][0], entries = JSON.parse(h.disk.get(key));
+  entries[0].state = 'blocked'; h.disk.set(key, JSON.stringify(entries));
+  await box.retry('booking'); assert.equal(h.sent.length, 3, 'a blocked business decision is not overridden');
+});
+
+test('retry joins a running batch instead of returning too early or duplicating its write', async () => {
+  const h = harness(); let finish, done = false;
+  h.deps.send = event => { h.sent.push(event); return new Promise(resolve => { finish = resolve; }); };
+  const box = h.create(); await box.enqueue(input);
+  const batch = box.flush();
+  while (!finish) await new Promise(resolve => setImmediate(resolve));
+  const retry = box.retry('booking').then(() => { done = true; });
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(done, false); assert.equal(h.sent.length, 1);
+  finish(snapshot('awaiting_other')); await batch; await retry;
+  assert.equal(h.sent.length, 1, 'a received declaration is reconciled by reading, never a fresh event');
+  assert.equal(h.published.at(-1).entries[0].state, 'confirmed');
+});
+
+test('retry waiting for an old batch cannot act after account change or loss of connection', async () => {
+  for (const changed of ['account', 'offline']) {
+    const h = harness({ canSend: () => true }); let finish;
+    h.deps.send = event => { h.sent.push(event); return new Promise(resolve => { finish = resolve; }); };
+    const box = h.create(); await box.enqueue(input); const batch = box.flush();
+    while (!finish) await new Promise(resolve => setImmediate(resolve));
+    const retry = box.retry('booking');
+    if (changed === 'account') h.user('b'); else h.deps.canSend = () => false;
+    finish(snapshot('awaiting_other')); await batch; await retry;
+    assert.equal(h.sent.length, 1); assert.equal(h.published.at(-1).entries[0].state, changed === 'account' ? 'sending' : 'received');
+  }
+});
+
 test('opposite decisions cannot silently overwrite an already saved declaration', async () => {
   const h = harness(); const box = h.create(); await box.enqueue(input);
   await assert.rejects(box.enqueue({ ...input, decision: 'reject' }), /déjà enregistrée/);

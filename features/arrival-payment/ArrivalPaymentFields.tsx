@@ -17,12 +17,14 @@ import type { Booking, TripPaymentMode } from '@/types';
 import { getInterruptionDistanceLabel } from './interruptionSettlement';
 import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 import { getBookingFareBreakdown } from './paymentFare';
+import type { ArrivalConfirmationProgress } from '@/hooks/arrival-payment/useArrivalConfirmationSync';
 
 interface ArrivalPaymentFieldsProps {
   arrivalBooking: Booking | null;
   completionSummary?: PaymentCompletionSummary | null;
   isBeforeArrival?: boolean;
   waitingForArrivalConfirmation?: boolean;
+  arrivalConfirmation?: ArrivalConfirmationProgress;
   onRefreshArrival?: () => void;
   destination: string;
   paymentAmount: number | null;
@@ -114,9 +116,11 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       <Text style={styles.amountLabel}>{fareBreakdown
         ? complete && !cash ? 'Votre part payée' : 'Votre part à payer'
         : seats > 1 ? `Total pour ${seats} places` : 'Montant du trajet'}</Text>
-      <Text style={styles.amountValue}>{amount === null ? 'Calcul en cours…' : formatMoney(amount, currency)}</Text>
+      <Text style={styles.amountValue} accessibilityLiveRegion="polite">{amount === null
+        ? waitingForArrivalConfirmation ? props.arrivalConfirmation?.title ?? 'Confirmation de l’arrivée…' : 'Montant indisponible'
+        : formatMoney(amount, currency)}</Text>
       <Text style={styles.amountHint}>
-        {waitingForArrivalConfirmation ? 'Votre arrivée est enregistrée sur ce téléphone. Le paiement sera disponible dès sa synchronisation avec le serveur, sans attendre le conducteur.'
+        {waitingForArrivalConfirmation ? props.arrivalConfirmation?.message ?? 'Votre arrivée est sauvegardée. Le paiement sera disponible dès la confirmation du serveur, sans attendre le conducteur.'
           : cash ? 'À remettre au conducteur. Aucun prélèvement dans l’application.'
           : complete ? 'Rien à payer de nouveau.'
           : hasPendingProviderPayment ? 'Paiement en cours : ne payez pas une seconde fois.'
@@ -127,9 +131,11 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       {distanceLabel ? <Text style={styles.amountHint}>{distanceLabel}</Text> : null}
     </View>
     {waitingForArrivalConfirmation && props.onRefreshArrival && <TouchableOpacity
-      accessibilityRole="button" onPress={props.onRefreshArrival} style={styles.resumePaymentButton}>
+      accessibilityRole="button" disabled={props.arrivalConfirmation?.refreshing || props.arrivalConfirmation?.phase === 'offline'}
+      accessibilityState={{ disabled: props.arrivalConfirmation?.refreshing || props.arrivalConfirmation?.phase === 'offline', busy: props.arrivalConfirmation?.refreshing }}
+      onPress={props.onRefreshArrival} style={styles.resumePaymentButton}>
       <Ionicons name="refresh" size={18} color={Colors.primary} />
-      <Text style={styles.resumePaymentText}>Actualiser la confirmation</Text>
+      <Text style={styles.resumePaymentText}>{props.arrivalConfirmation?.refreshing ? 'Vérification en cours…' : 'Réessayer la synchronisation'}</Text>
     </TouchableOpacity>}
     {receipt ? <ArrivalPaymentReceipt summary={receipt} /> : complete || waitingForArrivalConfirmation ? null : <>
       <View onLayout={({ nativeEvent }) => {

@@ -194,7 +194,8 @@ function ArrivalPaymentSession() {
                   arrivalBooking={state.arrivalBooking}
                   isBeforeArrival={state.isBeforeArrival}
                   waitingForArrivalConfirmation={state.waitingForArrivalConfirmation}
-                  onRefreshArrival={() => { void Promise.resolve().then(() => state.refetchBookings()).catch(() => undefined); }}
+                  arrivalConfirmation={state.arrivalConfirmation}
+                  onRefreshArrival={state.refreshArrivalConfirmation}
                   destination={destination}
                   paymentAmount={state.paymentAmount}
                   paymentCurrency={state.paymentCurrency}
@@ -237,6 +238,7 @@ function ArrivalPaymentSession() {
                   actionLabel={actionLabel}
                   isPayButtonDisabled={isPayButtonDisabled}
                   waitingForArrivalConfirmation={state.waitingForArrivalConfirmation}
+                  arrivalConfirmation={state.arrivalConfirmation}
                   verification={monitoring.verification}
                   paymentError={state.paymentError}
                   onPay={submission.handlePayment}

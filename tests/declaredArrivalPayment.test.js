@@ -37,13 +37,14 @@ test('other users, stages, trips, rejected declarations and inactive reservation
 
 test('payment follows durable declarations, waits for server arrival and remains dismissible', () => {
   const hooks = hookHarness();
-  const store = { trips: { interruptionChoice: null }, rideRecovery: { userId: 'passenger', entries: [] } };
+  const store = { zwangaApi: { config: { online: true } }, trips: { interruptionChoice: null }, rideRecovery: { userId: 'passenger', entries: [] } };
   let bookings = [booking], storedState = {}, userId = 'passenger';
   const queryOptions = [];
   const mutation = () => [() => assert.fail('rendering must never charge'), { isLoading: false }];
   const { useArrivalPaymentState } = loader({ react: hooks.react, 'expo-linking': {},
     '@/hooks/useAppIsActive': { useAppIsActive: () => true },
     './useArrivalPaymentRefresh': { useArrivalPaymentRefresh: () => true },
+    './useArrivalConfirmationSync': { useArrivalConfirmationSync: () => ({ progress: { phase: 'idle' }, retry() {} }) },
     './useNearArrivalPayment': { useNearArrivalPayment: () => null },
     './usePaymentPersistence': { usePaymentPersistence: () => ({ storedState, isStoredStateLoaded: true,
       persistBookingState: (id, patch) => { storedState = { ...storedState, [id]: { ...storedState[id], ...patch } }; }, isSessionCurrent: () => true }) },

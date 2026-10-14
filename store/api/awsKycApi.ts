@@ -2,7 +2,7 @@ import { baseApi } from './baseApi';
 import type { AwsKycSession, AwsLivenessStart } from '@/features/identity/awsKycContracts';
 export const awsKycApi = baseApi.injectEndpoints({
   endpoints: builder => ({
-    awsKycCapabilities: builder.query<{ enabled: boolean; consentVersion: string }, void>({
+    awsKycCapabilities: builder.query<{ enabled: boolean; consentVersion: string; unavailableCode?: string | null }, void>({
       query: () => '/users/kyc/aws/capabilities', keepUnusedDataFor: 0,
     }),
     currentAwsKyc: builder.query<AwsKycSession, void>({

@@ -23,7 +23,7 @@ const keyFor = (userId: string) => `@zwanga/ride-outbox/v1/${userId}`;
 /** All disk mutations are serialized; networking never holds the disk lock. */
 export function createRideOutbox(deps: Dependencies) {
   let lock = Promise.resolve();
-  let flushing = false;
+  let flushing: Promise<void> | null = null;
   const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
     const result = lock.then(fn, fn);
     lock = result.then(() => undefined, () => undefined);
@@ -54,7 +54,7 @@ export function createRideOutbox(deps: Dependencies) {
       await save(userId, entries.map(entry => entry.eventId === eventId ? { ...entry, ...patch } : entry));
     });
   }
-  return {
+  const api = {
     hydrate: () => exclusive(async () => {
       const userId = deps.userId();
       if (!userId) return;
@@ -84,12 +84,26 @@ export function createRideOutbox(deps: Dependencies) {
         return entry;
       });
     },
-    async flush() {
-      if (flushing) return;
+    async retry(bookingId: string) {
       const userId = deps.userId();
-      if (!userId) return;
-      flushing = true;
-      try {
+      if (!userId || deps.canSend?.() === false) return;
+      // Join the current batch before resetting this booking's backoff. A late
+      // response must not overwrite the user's explicit retry with its old delay.
+      await flushing;
+      if (deps.userId() !== userId || deps.canSend?.() === false) return;
+      await exclusive(async () => {
+        const entries = await read(userId);
+        if (deps.userId() !== userId) return;
+        await save(userId, entries.map(entry => entry.bookingId === bookingId &&
+          ['queued', 'received'].includes(entry.state) ? { ...entry, nextAttemptAt: 0 } : entry));
+      });
+      if (deps.userId() === userId && deps.canSend?.() !== false) await api.flush();
+    },
+    flush(): Promise<void> {
+      if (flushing) return flushing;
+      const userId = deps.userId();
+      if (!userId) return Promise.resolve();
+      const batch = (async () => {
         const candidates = await exclusive(() => read(userId));
         const snapshots = new Map<string, RideSnapshot>();
         // FIFO per booking; independent passengers are not blocked by another's conflict.
@@ -132,7 +146,10 @@ export function createRideOutbox(deps: Dependencies) {
             await update(userId, entry.eventId, { ...retry, state: entry.state === 'received' && retry.state === 'queued' ? 'received' : retry.state, attempts: entry.attempts + 1 });
           }
         }
-      } finally { flushing = false; }
+      })();
+      flushing = batch.finally(() => { flushing = null; });
+      return flushing;
     },
   };
+  return api;
 }

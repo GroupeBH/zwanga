@@ -257,7 +257,10 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.canToggleRouteSections, true);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.onRatePassenger, model.handleRatePassengersFromTripEnd);
   assert.equal(all(tree).find(node => node.type === 'Guidance').props.getManeuverIcon, model.routeFormatting.getManeuverIcon);
-  for (const type of ['NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal']) {
+  for (const type of ['NavigationPickupBypassModal', 'NavigationPickupNoticeModal']) {
+    assert.equal(all(tree).find(node => node.type === type), undefined, 'automatic pickup reminders must not mount native modals');
+  }
+  for (const type of ['NavigationPassengersModal', 'NavigationWaypointModal', 'NavigationTripEndModal']) {
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);
   }
   assert.equal(all(tree).find(node => node.type === 'AssistanceModals').props.role, 'driver');
@@ -283,6 +286,7 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
     '../../../features/passenger-navigation/PassengerNavigationMap': { PassengerNavigationMap: 'Map' },
     '../../../features/passenger-navigation/PassengerNavigationInfoCard': { PassengerNavigationInfoCard: 'InfoCard' },
     '@/features/passenger-navigation/PassengerNavigationHeader': { PassengerNavigationHeader: 'Header' },
+    '@/features/passenger-navigation/PassengerPickupNotice': { PassengerPickupNotice: 'PickupNotice' },
     '../../../features/screen-styles/app/booking/navigate/detail/index': { styles: {} },
     '@/features/navigation/NavigationAssistanceModals': { NavigationAssistanceModals: 'AssistanceModals' },
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true }; } },
@@ -291,7 +295,8 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
   const tree = loader(mocked)('app/booking/navigate/[id].tsx').default();
   assert.equal(received[0].role, 'passenger'); assert.equal(received[0].booking, model.data.booking);
   assert.ok(all(tree).find(node => node.type === 'Header')); assert.equal(all(tree).find(node => node.type === 'InfoCard'), undefined);
-  assert.equal(all(tree).find(node => node.type === 'Modal').props.visible, false);
+  assert.equal(all(tree).find(node => node.type === 'Modal'), undefined);
+  assert.equal(all(tree).find(node => node.type === 'PickupNotice').props.hidden, true, 'assistance defers inline reminders too');
   assert.equal(all(tree).find(node => node.type === 'AssistanceModals').props.role, 'passenger');
   const result = all(tree).find(node => node.type === 'RideResult');
   assert.equal(result.props.actor, 'passenger'); assert.equal(result.props.bookingId, 'b'); assert.equal(result.props.tripId, 't');

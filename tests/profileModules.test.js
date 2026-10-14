@@ -77,12 +77,14 @@ function onboardingApp(extra = {}, params = {}, activate, request) {
       : !props.hasVehicle ? 'add_vehicle' : props.isKycPending ? 'wait'
       : props.currentUser.role === 'driver' ? 'none' : 'activate'), {
       userId: props.currentUser.id,
-      identity: { status: props.isKycApproved ? 'approved' : props.isKycPending ? 'pending' : 'not_started' },
+      identity: { status: props.isKycApproved ? 'approved' : props.isKycPending ? 'pending' : 'not_started',
+        ...(props.identityProvider ? { provider: props.identityProvider } : {}) },
     }),
   } });
   props.refetchProfile = readProfile;
   const { useProfileOnboarding } = loader({
     react: hooks.react,
+    '@/features/identity/kycProvider': { AWS_KYC_MOBILE_ENABLED: extra.awsEnabled ?? true },
     'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: dialog => dialogs.push(dialog) }) },
     '@/store/hooks': { useAppDispatch: () => dispatch },
@@ -178,6 +180,26 @@ test('pending/approved identities show a status instead of starting another veri
     await app.render().handleOpenKycModal();
     assert.deepEqual(app.calls, []);
     assert.doesNotMatch(app.dialogs[0].title, /kyc/i);
+    app.hooks.unmount();
+  }
+});
+
+test('AWS cutover offers pending Didit users a new verification, but preserves approved and manual dossiers', async () => {
+  for (const driverJourney of [false, true]) {
+    const app = onboardingApp({ isKycPending: true, identityProvider: 'didit', serverAction: 'wait' });
+    const flow = app.render();
+    await (driverJourney ? flow.handleStartDriverOnboarding() : flow.handleOpenKycModal());
+    assert.deepEqual(app.calls, ['identity']);
+    app.hooks.unmount();
+  }
+  for (const extra of [
+    { isKycPending: true, identityProvider: 'legacy' },
+    { isKycApproved: true, identityProvider: 'didit' },
+    { isKycPending: true, identityProvider: 'didit', awsEnabled: false },
+  ]) {
+    const app = onboardingApp(extra);
+    await app.render().handleOpenKycModal();
+    assert.deepEqual(app.calls, []);
     app.hooks.unmount();
   }
 });
