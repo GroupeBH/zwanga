@@ -81,7 +81,7 @@ export function useDriverBookingActions({
         refreshInBackground();
         if (!action.isCurrent()) return;
         void speakNavigationMessage(
-          `${booking.passengerName || 'Passager'} accepte. Recalcul de l'itinéraire.`,
+          `Vous avez accepté ${booking.passengerName || 'ce passager'}. Le chemin se met à jour.`,
           { force: true },
         );
       } catch (error: any) {
@@ -126,7 +126,7 @@ export function useDriverBookingActions({
         refreshInBackground();
         if (!action.isCurrent()) return;
         void speakNavigationMessage(
-          `${booking.passengerName || 'Passager'} refuse.`,
+          `Vous avez refusé ${booking.passengerName || 'ce passager'}.`,
           { force: true },
         );
       } catch (error: any) {
@@ -161,12 +161,12 @@ export function useDriverBookingActions({
       showDialog({
         variant: 'warning',
         icon: 'walk-outline',
-        title: 'Confirmer la descente',
-        message: `${booking.passengerName || 'Ce passager'} demande à descendre avant sa destination. Confirmer l'interruption de ${booking.numberOfSeats > 1 ? `sa réservation de ${booking.numberOfSeats} places` : 'sa participation'} ? Les autres réservations ne sont pas interrompues.`,
+        title: 'Le passager est bien descendu ?',
+        message: `${booking.passengerName || 'Ce passager'} veut descendre avant l’arrivée. Confirmez seulement après sa descente${booking.numberOfSeats > 1 ? `, pour ses ${booking.numberOfSeats} places` : ''}. Le trajet continue pour les autres passagers.`,
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
-            label: 'Confirmer',
+            label: 'Oui, il est descendu',
             variant: 'primary',
             onPress: async () => {
               if (confirmingInterruptionRef.current || !mountedRef.current) return;

@@ -33,15 +33,15 @@ export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ booki
   const latest = completed[0];
   if (!latest || dismissedKey === receiptKey) return null;
   return <>
-    <SwipeableHomePriority priorityKey={receiptKey} enabled={interactive} onDismiss={dismiss} dismissLabel="Masquer le récapitulatif">
+    <SwipeableHomePriority priorityKey={receiptKey} enabled={interactive} onDismiss={dismiss} dismissLabel="Masquer les paiements">
       <TouchableOpacity style={styles.bar} activeOpacity={0.8} onPress={() => { if (interactive) setOpenedTrip(tripId); }} disabled={!interactive}
         accessibilityRole="button" accessibilityState={{ expanded: visible, disabled: !interactive }}
-        accessibilityActions={[{ name: 'dismiss', label: 'Masquer le récapitulatif' }]}
+        accessibilityActions={[{ name: 'dismiss', label: 'Masquer les paiements' }]}
         onAccessibilityAction={event => { if (event.nativeEvent.actionName === 'dismiss') dismiss(receiptKey); }}
-        accessibilityHint="Ouvre les gains et la confirmation du cash reçu. Glissez à gauche ou à droite pour masquer. Les gains restent dans les options.">
+        accessibilityHint="Affiche les paiements et le bouton pour confirmer le cash reçu. Glissez pour masquer. Ces paiements restent dans les options.">
         <View style={styles.icon}><Ionicons name="checkmark-done" size={20} color={Colors.successDark} /></View>
         <View style={styles.identity}>
-          <Text style={styles.title} numberOfLines={2}>Arrivées à destination · {completed.length}</Text>
+          <Text style={styles.title} numberOfLines={2}>Voir les paiements · {completed.length}</Text>
           <Text style={styles.name} numberOfLines={1}>{latest.passengerName || 'Passager'}</Text>
         </View>
         <View style={styles.amount}>

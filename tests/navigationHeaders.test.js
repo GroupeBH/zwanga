@@ -145,13 +145,15 @@ test('driver exposes icon-only rerouting directly and keeps my position in optio
   let tree; const render = () => { tree = hooks.render(() => DriverNavigationControls(props)); };
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   render(); assert.equal(all(tree).filter(node => node.type === 'Button').length, 4);
-  const rerouteLabel = 'Recalculer l’itinéraire';
-  assert.equal(words(button(rerouteLabel)), '', 'keep an accessible label without visible caption');
+  const rerouteLabel = 'Actualiser le chemin';
+  assert.equal(words(button(rerouteLabel)), 'Chemin', 'give the map command a visible, simple caption');
   assert.equal(all(button(rerouteLabel)).find(node => node.type === 'Icon').props.name, 'refresh');
   assert.equal(button('Recentrer sur ma position'), undefined);
   assert.equal(button('Ma position'), undefined);
-  button('Demander une interruption du trajet').props.onPress();
-  button('Activer le guidage vocal').props.onPress();
+  assert.equal(words(button('Arrêter le trajet')), 'Arrêter');
+  assert.equal(words(button('Activer la voix')), 'Voix');
+  button('Arrêter le trajet').props.onPress();
+  button('Activer la voix').props.onPress();
   for (const [label, result] of [['Modifier le trajet', 'edit'], ['Partager le trajet', 'share'], ['Voir les passagers', 'passengers']]) {
     button('Options de navigation').props.onPress(); render(); button(label).props.onPress(); render();
     assert.equal(calls.at(-1), result); assert.equal(button(label), undefined);
@@ -186,7 +188,7 @@ test('driver exposes icon-only rerouting directly and keeps my position in optio
   button('Options de navigation').props.onPress(); render();
   button('Ma position').props.onPress(); render(); assert.equal(calls.length, count);
   foundation.refs.currentLocationRef.current = latestPosition;
-  assert.equal(button('Demander une interruption du trajet').props.disabled, true);
+  assert.equal(button('Arrêter le trajet').props.disabled, true);
   button('Options de navigation').props.onPress(); render();
   const staleRecenter = button('Ma position').props.onPress;
   foundation.mapState.isLoadingRoute = false;
@@ -208,21 +210,21 @@ test('driver can still access receipts through Options after hiding the banner, 
   const find = type => all(render()).find(node => node.type === type);
   const button = label => all(render()).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   button('Options de navigation').props.onPress();
-  assert.equal(button('Gains des passagers'), undefined, 'no entry before the first dropoff');
+  assert.equal(button('Paiements des passagers'), undefined, 'no entry before the first dropoff');
   foundation.data.bookings = [{ id: 'completed', tripId: 'trip', status: 'completed' },
     { id: 'pending', tripId: 'trip', status: 'accepted' }, { id: 'elsewhere', tripId: 'other', status: 'completed' }];
   assert.equal(find('ReceiptsSheet'), undefined);
-  button('Gains des passagers').props.onPress();
-  assert.equal(button('Gains des passagers'), undefined, 'the options popup closes before opening the sheet');
+  button('Paiements des passagers').props.onPress();
+  assert.equal(button('Paiements des passagers'), undefined, 'the options popup closes before opening the sheet');
   assert.equal(find('Modal').props.inApp, true);
   assert.equal(find('Modal').props.visible, true);
   assert.deepEqual(find('ReceiptsSheet').props.bookings.map(value => value.id), ['completed']);
   find('ReceiptsSheet').props.onClose(); assert.equal(find('ReceiptsSheet'), undefined);
-  button('Options de navigation').props.onPress(); button('Gains des passagers').props.onPress();
+  button('Options de navigation').props.onPress(); button('Paiements des passagers').props.onPress();
   foundation.data.isScreenActive = false;
   assert.equal(find('ReceiptsSheet'), undefined);
   foundation.data.isScreenActive = true; assert.equal(find('ReceiptsSheet'), undefined);
-  button('Options de navigation').props.onPress(); button('Gains des passagers').props.onPress();
+  button('Options de navigation').props.onPress(); button('Paiements des passagers').props.onPress();
   foundation.data.tripId = 'other';
   assert.equal(find('ReceiptsSheet'), undefined);
   foundation.data.tripId = 'trip'; assert.equal(find('ReceiptsSheet'), undefined);

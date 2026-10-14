@@ -81,6 +81,8 @@
     <string>Allow $(PRODUCT_NAME) to access your device motion</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Le guidage vocal de Zwanga annonce le chemin et les étapes du trajet. Cette fonction ne transcrit pas votre voix.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

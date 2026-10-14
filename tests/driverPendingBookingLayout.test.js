@@ -71,7 +71,7 @@ test('pending booking buttons stay outside scrollable copy with flexible labels 
     busy: false, accepting: false, rejecting: false, onAccept: b => calls.push(['accept', b.id]), onReject: b => calls.push(['reject', b.id]),
     onContact: id => calls.push(['contact', id]) };
   const tree = DriverPendingBookingPrompt(props);
-  assert.match(words(tree), /Nouvelle réservation.*\+2.*Titulaire.*3 places.*Cash.*Départ lisible.*Destination lisible/);
+  assert.match(words(tree), /Nouveau passager.*\+2.*Titulaire.*3 places.*Cash.*Départ lisible.*Destination lisible/);
   const scroll = all(tree).find(n => n.type === 'Scroll');
   assert.ok(scroll, 'only long details may scroll on short screens');
   assert.equal(all(scroll).filter(n => n.type === 'Button').length, 0);

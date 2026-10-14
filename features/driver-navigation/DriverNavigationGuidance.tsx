@@ -28,7 +28,7 @@ export function DriverNavigationGuidance({ step, nextStep, loading, rerouting, i
     <ScrollView bounces={false} style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator>
       {loading ? <View style={styles.row}>
         <ActivityIndicator color={Colors.primary} />
-        <Text style={styles.loading}>{rerouting ? 'Recalcul de l’itinéraire…' : 'Calcul de l’itinéraire…'}</Text>
+        <Text style={styles.loading}>{rerouting ? 'Recherche d’un autre chemin…' : 'Recherche du chemin…'}</Text>
       </View> : step && <>
         <View style={styles.row}>
           <View style={styles.icon}>

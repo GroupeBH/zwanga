@@ -1,5 +1,109 @@
 # Journal des changements techniques
 
+## 14 octobre 2026 — Rejet TestFlight 90683 : déclaration d'usage vocal iOS
+
+- **Problème constaté :** l'envoi de `1.0.17 (142)` termine le transfert de l'IPA,
+  puis App Store Connect refuse son traitement :
+  `NSSpeechRecognitionUsageDescription` manque dans le `Info.plist` de l'app.
+  Ce journal d'envoi ne signale pas un échec de compilation Xcode.
+- **Analyse locale :** la clé est absente de `app.config.js` et de
+  `ios/zwanga/Info.plist`. Les configurations Xcode utilisent ce fichier natif ;
+  modifier seulement Expo ne suffit donc pas pour le projet iOS versionné.
+  `expo-speech` importe le framework Speech dans `SpeechDelegate.swift` ; les
+  usages trouvés dans Zwanga sont de la synthèse vocale pour le guidage et les
+  annonces du trajet, pas des commandes vocales. Cet import est une piste
+  cohérente avec la détection Apple, pas la preuve du symbole exact de l'IPA rejeté.
+- **Solution appliquée :** ajout de la même clé dans les deux configurations.
+  L'explication française décrit le guidage existant et précise que cette
+  fonction ne transcrit pas la voix de l'utilisateur ; aucune fonction de
+  reconnaissance vocale ni demande de permission supplémentaire n'est implémentée.
+  Pas de modification de dépendance, de Pod, de Swift package ou de microphone.
+- **Protection de build :** `scripts/validate-ios-privacy.cjs` lit et analyse le
+  plist natif avec le parseur déjà fourni par Expo, sans charger les variables
+  locales. Un fichier absent/invalide ou une clé absente, vide ou non textuelle
+  bloque le contrôle. Le hook `eas-build-post-install` de `package.json` exécute
+  ce contrôle pour iOS avant l'archivage ; Android ignore ce contrôle sans lire
+  ni modifier ses fichiers. Les gardes GPS, Crashlytics et Smithy restent présentes.
+  Ajout des commandes `check:ios-privacy` et du test au script `test:ios-build`.
+- **Tests :** `tests/iosPrivacy.test.js` protège la cohérence Expo/natif, l'unicité
+  de la clé, le texte sans commandes inventées, le chemin utilisé par Xcode,
+  les échecs de configuration sans affichage de leur contenu et l'exclusion Android.
+  `npm run check:ios-privacy` réussit ; `npm run test:ios-build` : 26 tests réussis,
+  dont 5 nouveaux. Versions, configuration release et ressources natives de la
+  sonnerie : 14 tests supplémentaires réussis. ESLint ciblé : aucune erreur et
+  un avertissement préexistant de variable inutilisée dans `app.config.js`,
+  également présent sur HEAD. Le plist source est analysable et `git diff --check`
+  réussit. Suite JavaScript complète : 240 fichiers, 1 972 tests réussis,
+  aucun échec ni test ignoré ; TypeScript sans émission réussi.
+  Les changements de navigation du travail précédent sont conservés.
+- **Livraison et limites :** aucun build EAS payant, envoi Apple, changement de
+  version distant ou déploiement lancé. Le numéro de build distant et
+  `autoIncrement: true` en production restent inchangés. Il faut reconstruire
+  depuis ces sources puis soumettre le nouvel IPA ; une mise à jour JavaScript
+  ou un nouvel envoi du build 142 ne modifie pas son plist. Pour un workflow,
+  vérifier que son commit inclut le correctif. Commande possible sous Windows :
+  `npx.cmd eas-cli@latest build --platform ios --profile production --auto-submit`.
+  L'acceptation effective du prochain IPA reste à vérifier dans App Store Connect,
+  puis sur iPhone/iPad (guidage et annonces, sans nouvelle demande d'écoute vocale).
+- **Références :** [déclaration Speech d'Apple](https://developer.apple.com/documentation/bundleresources/information-property-list/nsspeechrecognitionusagedescription)
+  et [processus de build iOS EAS](https://docs.expo.dev/build-reference/ios-builds/).
+
+## 14 octobre 2026 — Navigation conducteur : mots simples et actions explicites
+
+- **Périmètre/problème :** les termes « embarquement », « interruption » et
+  « confirmations », ainsi que certains boutons sans texte, demandaient trop
+  d'interprétation pendant un trajet. Les textes conducteur sont simplifiés
+  pour indiquer directement quoi faire, sans modifier les règles du trajet.
+- **Actions appliquées :** le prochain arrêt indique « Aller chercher le passager »
+  ou « Emmener le passager ». Les boutons disent « Le passager est monté »,
+  « Le passager est arrivé » et « J'ai reçu le cash », avec le montant existant.
+  La liste utilise « À chercher », « Avec vous » et « Arrivé ». Les commandes
+  existantes de la carte portent les légendes « Arrêter », « Voix » et « Chemin » ;
+  aucun bouton supplémentaire n'est ajouté. Les détails d'adresse expliquent
+  le déplacement à faire, sans confirmer eux-mêmes une montée ou une arrivée.
+- **Informations justes :** une réponse locale reste « Réponse enregistrée »,
+  distincte d'un envoi, d'une réception serveur et d'une confirmation finale.
+  Les erreurs bloquantes précises sont conservées. La voix dit désormais
+  « Vous avez accepté/refusé » : c'est le conducteur qui répond, pas le passager.
+  La proximité désigne le lieu de départ, pas une position du passager non connue.
+  Les textes d'arrêt conservent l'accord requis de tous les passagers, le trajet
+  qui continue en attendant et la différence entre quitter la carte et arrêter.
+- **Allègement :** retrait du sous-titre répétant le nombre de réservations dans
+  la liste et du rappel de montée devenu inutile après la fin du trajet.
+  La compétence frontend a guidé des textes courts centrés sur l'action et la
+  conservation de la carte et des contrôles existants ; aucune animation ajoutée.
+- **Fichiers :** composants de `features/driver-navigation/` (barre passagers,
+  liste, adresses, commandes, guidage, alertes, paiements et fin de trajet),
+  `features/ride-recovery/rideRecoveryPresentation.ts`, `RideRecoveryControl.tsx`,
+  `features/driver-payments/ConfirmCashReceipt.tsx`, les hooks
+  `useDriverTripActions.ts`, `useDriverBookingActions.ts` et
+  `useDriverPickupNoticeQueue.ts` dans `hooks/driver-navigation/`, ainsi que
+  `app/trip/navigate/[id].tsx`. Ajout de `tests/driverNavigationCopy.test.js`,
+  ajustement des attentes de texte de huit suites existantes et ajout du test
+  au script `test:driver-navigation-ui` de `package.json`.
+- **Comportements conservés :** suivi automatique, déclaration directe, validation
+  de montée par les deux parties, arrivée du passager permettant son paiement
+  sans attendre le conducteur, persistance hors ligne, sélection de réservation
+  et portée de ses places, protections contre les doubles clics et changements
+  de compte. Les confirmations existantes d'arrêt anticipé et de réception du
+  cash restent présentes ; aucun nouveau modal. Prix, commission, endpoints,
+  timers et règles financières inchangés ; le cash ne crédite pas le portefeuille.
+  Aucune dépendance ajoutée ni modification native/backend.
+- **Vérifications réelles :** suite JavaScript complète : 239 fichiers,
+  1 967 tests réussis, aucun échec ni test ignoré. Script
+  `npm run test:driver-navigation-ui` : 97 tests réussis. TypeScript sans émission
+  réussi. ESLint ciblé : aucune erreur ; trois avertissements déjà présents sur
+  la version HEAD de `useDriverTripActions.ts`, vérifiés séparément. Contrôles
+  réseau et taille des sources réussis : 1 085 sources, aucune au-delà de 400 lignes.
+  `git diff --check` réussi. Les tests protègent notamment la distinction
+  local/serveur, les erreurs bloquantes, les places et l'acteur des messages vocaux.
+- **Limites/livraison :** pas de test natif ou physique des nouveaux textes,
+  de build EAS, de déploiement ou de publication store. L'ancien essai Android
+  documenté plus bas portait sur un binaire antérieur, pas ces modifications.
+  À vérifier sur iOS/Android : petit écran et grande police, plusieurs passagers
+  et places, coupure réseau, montée, arrivée, cash et notation. Aucune mesure de
+  compréhension utilisateur, de performance ou de disparition de crash revendiquée.
+
 ## 14 octobre 2026 — KYC déjà validé et reprise d'un compte existant
 
 - **Problème :** le conflit backend `KYC_ALREADY_APPROVED` était présenté comme

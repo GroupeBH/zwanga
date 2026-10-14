@@ -13,17 +13,17 @@ export function DriverPickupNotice({ model, hidden }: { model: ReturnType<typeof
   const waypoint = bypass?.waypoint ?? notice?.waypoint;
   if (!waypoint || waypoint.completed || waypoint.booking.pickedUp || waypoint.booking.droppedOff) return null;
   const busy = Boolean(mapState.pickupBypassAction) || data.isPausingTrip || data.isCancellingPickupBypassBooking;
-  const title = bypass ? 'Embarquement à confirmer' : notice?.type === 'passenger_ready_pickup' || notice?.type === 'parties_nearby'
-    ? 'Le passager vous attend' : notice?.type === 'driver_arrived_pickup' ? 'Vous êtes au rendez-vous' : 'Rendez-vous proche';
+  const title = bypass ? 'Le passager est-il monté ?' : notice?.type === 'passenger_ready_pickup' || notice?.type === 'parties_nearby'
+    ? 'Le passager vous attend' : notice?.type === 'driver_arrived_pickup' ? 'Vous êtes au lieu de départ' : 'Le départ est tout près';
   const countdown = notice?.type === 'driver_arrived_pickup' ? mapState.pickupNoticeCountdown : null;
   return <View style={styles.notice}>
     <View style={styles.row}>
       <View style={styles.copy} accessibilityLiveRegion="polite">
         <Text style={styles.title}>{title} · {waypoint.passenger.name || 'Passager'}</Text>
-        {bypass ? <Text style={styles.detail}>À bord ? Confirmez avec le bouton ci-dessus.</Text>
-          : countdown !== null && <Text style={styles.detail}>{countdown > 0 ? `Attente : ${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, '0')}` : 'Délai d’attente écoulé'}</Text>}
+        {bypass ? <Text style={styles.detail}>S’il est monté, appuyez sur « Le passager est monté ».</Text>
+          : countdown !== null && <Text style={styles.detail}>{countdown > 0 ? `Attente : ${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, '0')}` : 'Le temps d’attente est terminé'}</Text>}
       </View>
-      <TouchableOpacity style={styles.close} disabled={busy} accessibilityRole="button" accessibilityLabel="Masquer le rappel d’embarquement"
+      <TouchableOpacity style={styles.close} disabled={busy} accessibilityRole="button" accessibilityLabel="Masquer le rappel du passager"
         onPress={bypass ? model.pickupActions.dismissPickupBypassConfirmation : model.pickupActions.dismissPickupNotice}>
         <Ionicons name="close" size={20} color={Colors.gray[600]} />
       </TouchableOpacity>

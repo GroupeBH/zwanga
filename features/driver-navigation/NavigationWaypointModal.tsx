@@ -64,7 +64,7 @@ export function NavigationWaypointModal({
 
           {/* Titre */}
           <Text style={styles.waypointModalTitle}>
-            {activeWaypoint?.type === 'pickup' ? 'Lieu de prise en charge' : 'Arrivée à destination'}
+            {activeWaypoint?.type === 'pickup' ? 'Où chercher le passager' : 'Où emmener le passager'}
           </Text>
 
           {/* Nom du passager */}
@@ -83,8 +83,8 @@ export function NavigationWaypointModal({
           {activeWaypoint && (
             <Text style={styles.waypointModalWaitingText}>
               {activeWaypoint.type === 'pickup'
-                ? `Retrouvez ${activeWaypoint.passenger.name || 'ce passager'} au point de récupération indiqué. L’embarquement est suivi automatiquement.`
-                : `Voici la destination prévue pour ${activeWaypoint.passenger.name || 'ce passager'}. L’arrivée à destination est suivie automatiquement.`}
+                ? 'Allez à cette adresse. Quand le passager est monté, vous pouvez confirmer sur la carte.'
+                : 'Emmenez le passager à cette adresse. Vous pouvez confirmer son arrivée sur la carte.'}
             </Text>
           )}
 
@@ -117,7 +117,7 @@ export function NavigationWaypointModal({
                   },
                 ]}
               >
-                Confirmation automatique activée
+                Suivi automatique actif
               </Text>
             </View>
           )}
@@ -129,7 +129,7 @@ export function NavigationWaypointModal({
               onPress={handleDismissWaypointModal}
             >
               <Text style={styles.waypointModalSecondaryButtonText}>
-                Fermer
+                Retour à la carte
               </Text>
             </TouchableOpacity>
           </View>

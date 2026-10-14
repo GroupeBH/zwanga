@@ -24,7 +24,7 @@ export function DriverPendingBookingPrompt(props: Props) {
   return <View style={styles.card}>
     <ScrollView style={styles.body} contentContainerStyle={styles.copy} bounces={false}
       showsVerticalScrollIndicator key={props.booking.id}>
-      <Text style={styles.eyebrow}>Nouvelle réservation{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
+      <Text style={styles.eyebrow}>Nouveau passager{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
       <Text style={styles.name} numberOfLines={1}>{props.booking.passengerName || 'Passager'}</Text>
       <Text style={styles.meta}>{formatSeatCount(props.booking.numberOfSeats)} · {formatPendingBookingPayment(props.booking, props.tripPrice)}</Text>
       <View style={styles.routeRow}>
@@ -40,7 +40,7 @@ export function DriverPendingBookingPrompt(props: Props) {
       accessibilityRole="button" accessibilityLabel={`Contacter ${props.booking.passengerName || 'le passager'} avant d’accepter`}
       disabled={props.busy} onPress={() => props.onContact(props.booking.passengerId)}>
       <Ionicons name="call-outline" size={18} color={Colors.primaryDark} />
-      <Text style={[styles.buttonText, styles.contactText]}>Contacter avant d’accepter</Text>
+      <Text style={[styles.buttonText, styles.contactText]}>Contacter le passager</Text>
     </TouchableOpacity>
     <View style={styles.actions}>
       <TouchableOpacity style={[styles.button, styles.reject, props.busy && styles.disabled]}

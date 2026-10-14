@@ -28,7 +28,7 @@ function CashReceiptSession({ booking }: { booking: Booking }) {
   const amount = normalizeAmount(booking.paymentAmount);
   if (booking.status !== 'completed' || !booking.droppedOff || booking.paymentMode !== 'cash'
     || !amount || !['CDF', 'USD'].includes(booking.paymentCurrency ?? '')) return null;
-  if (booking.cashReceivedAt || received) return <Text style={styles.received}>Cash reçu confirmé · {formatMoney(amount, booking.paymentCurrency)}</Text>;
+  if (booking.cashReceivedAt || received) return <Text style={styles.received}>Cash reçu · {formatMoney(amount, booking.paymentCurrency)}</Text>;
   const submit = async () => {
     if (busy.current || !activeRef.current || !alive.current) return;
     busy.current = true; setError('');
@@ -43,7 +43,7 @@ function CashReceiptSession({ booking }: { booking: Booking }) {
     } finally { busy.current = false; }
   };
   return <View style={styles.box}>
-    {confirming && <Text style={styles.hint}>Confirmez uniquement si vous avez reçu {formatMoney(amount, booking.paymentCurrency)} du passager. Aucun montant ne sera ajouté au solde de revenus.</Text>}
+    {confirming && <Text style={styles.hint}>Avez-vous reçu {formatMoney(amount, booking.paymentCurrency)} ? Ce cash ne va pas dans votre portefeuille Zwanga.</Text>}
     {Boolean(error) && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
     <View style={styles.actions}>
       {confirming && <TouchableOpacity style={styles.button} accessibilityRole="button" disabled={isLoading} onPress={() => setConfirming(false)}>
@@ -53,7 +53,7 @@ function CashReceiptSession({ booking }: { booking: Booking }) {
         accessibilityState={{ disabled: !active || isLoading, busy: isLoading }}
         onPress={confirming ? () => void submit() : () => setConfirming(true)}>
         {isLoading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryLabel}>
-          {confirming ? 'Oui, cash reçu' : `Confirmer le cash reçu · ${formatMoney(amount, booking.paymentCurrency)}`}
+          {confirming ? 'Oui, cash reçu' : `J’ai reçu le cash · ${formatMoney(amount, booking.paymentCurrency)}`}
         </Text>}
       </TouchableOpacity>
     </View>

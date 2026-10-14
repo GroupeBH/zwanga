@@ -26,7 +26,7 @@ test('one row per booking chooses pickup then dropoff; grouped seats and identic
   assert.equal(rows.length, 2);
   assert.equal(rows[0].waypoint, points[1]);
   assert.equal(rows[0].isNext, true);
-  assert.deepEqual(passengerPanelLabels(rows[0]), { status: 'À bord', seats: '3 places', location: 'Destination du passager' });
+  assert.deepEqual(passengerPanelLabels(rows[0]), { status: 'Avec vous', seats: '3 places', location: 'Où l’emmener' });
   assert.equal(rows[1].waypoint, points[2]);
   assert.equal(rows[1].status, 'waiting');
   assert.equal(rows[1].id, 'b');
@@ -62,7 +62,7 @@ test('rows explain statuses and reporting without nested touch targets, Auto pil
   const [item] = buildPassengerPanelItems(stops('a', 3, true), 1);
   const calls = [];
   const row = NavigationPassengerRow.type({ item, onSelect: w => calls.push(['detail', w.id]), onReport: w => calls.push(['report', w.id]) });
-  assert.match(words(row), /PROCHAIN ARRÊT.*Même nom.*À bord.*3 places.*Destination du passager.*Destination a/);
+  assert.match(words(row), /PROCHAIN ARRÊT.*Même nom.*Avec vous.*3 places.*Où l’emmener.*Destination a/);
   assert.doesNotMatch(words(row), /Auto|SUIVANT|place\(s\)/);
   const buttons = all(row).filter(node => node.type === 'Button');
   assert.equal(buttons.length, 2);
@@ -75,7 +75,7 @@ test('rows explain statuses and reporting without nested touch targets, Auto pil
   assert.deepEqual(calls, [['detail', 'a:dropoff'], ['report', 'a:dropoff']]);
   const [done] = buildPassengerPanelItems(stops('a', 3, true, true), 2);
   const completed = NavigationPassengerRow.type({ item: done });
-  assert.match(words(completed), /Arrivée à destination confirmée/);
+  assert.match(words(completed), /Arrivé/);
   assert.equal(all(completed).some(n => n.type === 'Button'), false);
   assert.equal(styles.name.textDecorationLine, undefined);
   assert.equal(styles.row.opacity, undefined);
@@ -98,15 +98,15 @@ test('panel explains seat counts, uses content height and preserves priority gat
   const render = patch => hooks.render(() => NavigationPassengersModal({ ...props, ...patch }));
   const tree = render();
   const list = all(tree).find(n => n.type === 'List');
-  assert.match(words(list.props.ListHeaderComponent), /2\s+réservations.*4\s+places/);
-  assert.match(words(list.props.ListHeaderComponent), /À récupérer.*À bord.*Arrivées à destination/);
+  assert.match(words(list.props.ListHeaderComponent), /4\s+places/);
+  assert.match(words(list.props.ListHeaderComponent), /À chercher.*Avec vous.*Arrivés/);
   assert.equal(list.props.initialNumToRender, 8);
   assert.equal(list.props.removeClippedSubviews, false);
   assert.equal(styles.sheet.height, undefined, 'no forced 85% empty sheet');
   assert.equal(styles.sheet.maxHeight, '85%');
   assert.equal(styles.list.flexShrink, 1);
   tree.props.onRequestClose();
-  all(tree).find(n => n.type === 'Button' && words(n).includes('Revenir à la carte')).props.onPress();
+  all(tree).find(n => n.type === 'Button' && words(n).includes('Retour à la carte')).props.onPress();
   assert.deepEqual(calls, [false, false]);
   assert.equal(all(render()).find(n => n.type === 'List').props.data, list.props.data, 'no regrouping for unrelated renders');
   for (const key of ['pickupNotice', 'pickupBypassConfirmation']) {
@@ -127,9 +127,9 @@ test('opening a point detail does not claim the driver has already arrived', () 
   for (const waypoint of stops('a')) {
     const tree = NavigationWaypointModal({ waypointModalVisible: true, activeWaypoint: waypoint, insets: { bottom: 0 } });
     assert.doesNotMatch(words(tree), /Vous êtes arrivé|Nous sommes arrivés/);
-    assert.match(words(tree), /suivi[e]? automatiquement/);
+    assert.match(words(tree), /Suivi automatique actif/);
     if (waypoint.type === 'dropoff') {
-      assert.match(words(tree), /Arrivée à destination.*destination prévue.*L’arrivée à destination est suivie automatiquement/);
+      assert.match(words(tree), /Où emmener le passager.*Emmenez le passager à cette adresse.*confirmer son arrivée sur la carte/);
       assert.doesNotMatch(words(tree), /dépos/i);
     }
   }

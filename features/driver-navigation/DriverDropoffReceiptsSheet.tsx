@@ -24,12 +24,12 @@ export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsShe
       <View style={[styles.dot, selectedId === item.id && styles.dotSelected]} />
       <View style={styles.identity}>
         <Text style={styles.name} numberOfLines={2}>{item.passengerName || 'Passager'}</Text>
-        <Text style={styles.status}>{item.cashReceivedAt ? 'Cash reçu confirmé' : 'Arrivée à destination confirmée'} · {item.numberOfSeats ?? 1} place(s)</Text>
+        <Text style={styles.status}>{item.cashReceivedAt ? 'Cash reçu' : 'Passager arrivé'} · {item.numberOfSeats ?? 1} place{(item.numberOfSeats ?? 1) > 1 ? 's' : ''}</Text>
       </View>
       <Ionicons name={selectedId === item.id ? 'chevron-down' : 'chevron-forward'} size={18} color={Colors.gray[500]} />
     </TouchableOpacity>
     {selectedId === item.id && <View style={styles.details}>
-      {item.numberOfSeats > 1 && <Text style={styles.status}>Montants pour l’ensemble des {item.numberOfSeats} places réservées.</Text>}
+      {item.numberOfSeats > 1 && <Text style={styles.status}>Montants pour ses {item.numberOfSeats} places.</Text>}
       <DriverBookingRevenue bookingId={item.id} active={active} cashReceived={Boolean(item.cashReceivedAt)} />
       <ConfirmCashReceipt booking={item} />
       {item.status === 'completed' && onRatePassenger && <TouchableOpacity style={styles.rate}
@@ -43,8 +43,8 @@ export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsShe
     <SafeAreaView edges={['bottom']} style={styles.sheet}>
       <View style={styles.header}>
         <View style={styles.identity}>
-          <Text style={styles.title}>Gains par réservation</Text>
-          <Text style={styles.subtitle}>{bookings.length} réservation{bookings.length > 1 ? 's' : ''} terminée{bookings.length > 1 ? 's' : ''} · À consulter à l’arrêt</Text>
+          <Text style={styles.title}>Paiements des passagers</Text>
+          <Text style={styles.subtitle}>À regarder à l’arrêt.</Text>
         </View>
         <TouchableOpacity onPress={onClose} style={styles.close} accessibilityRole="button" accessibilityLabel="Fermer les gains par passager">
           <Ionicons name="close" size={24} color={Colors.gray[800]} />

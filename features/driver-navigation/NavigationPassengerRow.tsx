@@ -21,12 +21,12 @@ export const NavigationPassengerRow = memo(function NavigationPassengerRow({ ite
       <Text style={styles.name}>{item.name}</Text>
       <Text style={styles.status}>{labels.status} · {labels.seats}</Text>
       <Text style={styles.locationLabel}>{labels.location}</Text>
-      <Text style={styles.address}>{item.waypoint.address || 'Adresse à confirmer avec le passager'}</Text>
+      <Text style={styles.address}>{item.waypoint.address || 'Demandez le lieu au passager'}</Text>
       {canOpen ? (
         <View style={styles.actions}>
           <TouchableOpacity style={styles.detailButton} onPress={() => onSelect(item.waypoint)}
-            accessibilityRole="button" accessibilityLabel={`Voir le point d’arrêt de ${item.name}, ${labels.status}, ${labels.seats}`}>
-            <Text style={styles.detailText}>Voir le point d’arrêt</Text>
+            accessibilityRole="button" accessibilityLabel={`Voir l’adresse de ${item.name}, ${labels.status}, ${labels.seats}`}>
+            <Text style={styles.detailText}>Voir l’adresse</Text>
             <Ionicons name="chevron-forward" size={18} color={Colors.gray[700]} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.reportButton} onPress={() => onReport(item.waypoint)}

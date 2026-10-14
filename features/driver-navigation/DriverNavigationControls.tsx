@@ -61,7 +61,7 @@ export function DriverNavigationControls({
     { label: 'Modifier le trajet', icon: 'create-outline', action: tripActions.handleEditTripFromNavigation },
     { label: 'Partager le trajet', icon: 'share-social-outline', action: () => void tripActions.handleShareTrip(), disabled: foundation.data.isCreatingTripShareLink },
     ...(foundation.passengers.passengerMapLocations.length > 0 ? [{ label: 'Voir les passagers', icon: 'people' as const, action: passengerPresentation.fitVehicleAndPassengers }] : []),
-    ...(completed.length > 0 ? [{ label: 'Gains des passagers', icon: 'receipt-outline' as const,
+    ...(completed.length > 0 ? [{ label: 'Paiements des passagers', icon: 'receipt-outline' as const,
       action: () => { if (isScreenActive) setReceiptsTrip(tripId); }, disabled: !isScreenActive }] : []),
     { label: 'Ma position', icon: 'locate', action: recenterOnMyPosition },
     ...(canToggleRouteSections ? (['next', 'remaining'] as const).map(section => ({
@@ -104,8 +104,8 @@ export function DriverNavigationControls({
         accessibilityRole="button"
         accessibilityLabel={
           foundation.passengers.activeDriverInterruptionRequest
-            ? "Voir la demande d'interruption"
-            : 'Demander une interruption du trajet'
+            ? 'Voir l’arrêt demandé'
+            : 'Arrêter le trajet'
         }
       >
         {foundation.data.isPausingTrip || foundation.data.isRequestingDriverInterruption || foundation.data.isCancellingDriverInterruption ? (
@@ -117,19 +117,21 @@ export function DriverNavigationControls({
             color={Colors.white}
           />
         )}
+        <Text style={menuStyles.stopCaption}>{foundation.passengers.activeDriverInterruptionRequest ? 'Attente' : 'Arrêter'}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.floatingButton, !foundation.mapState.isVoiceGuidanceEnabled && styles.voiceButtonMuted]}
         onPress={voice.toggleVoiceGuidance}
         accessibilityRole="button"
-        accessibilityLabel={foundation.mapState.isVoiceGuidanceEnabled ? 'Désactiver le guidage vocal' : 'Activer le guidage vocal'}
+        accessibilityLabel={foundation.mapState.isVoiceGuidanceEnabled ? 'Couper la voix' : 'Activer la voix'}
       >
         <Ionicons
           name={foundation.mapState.isVoiceGuidanceEnabled ? 'volume-high' : 'volume-mute'}
           size={22}
           color={foundation.mapState.isVoiceGuidanceEnabled ? Colors.primary : Colors.gray[500]}
         />
+        <Text style={[menuStyles.caption, !foundation.mapState.isVoiceGuidanceEnabled && { color: Colors.gray[500] }]}>Voix</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.floatingButton} onPress={() => setOptionsVisible(value => !value)}
@@ -143,7 +145,7 @@ export function DriverNavigationControls({
       <TouchableOpacity
         style={[styles.floatingButton, foundation.mapState.isLoadingRoute && styles.floatingButtonDisabled]}
         accessibilityRole="button"
-        accessibilityLabel="Recalculer l’itinéraire"
+        accessibilityLabel="Actualiser le chemin"
         accessibilityState={{ busy: foundation.mapState.isLoadingRoute, disabled: foundation.mapState.isLoadingRoute || !foundation.data.isScreenActive }}
         disabled={foundation.mapState.isLoadingRoute || !foundation.data.isScreenActive}
         onPress={() => {
@@ -155,6 +157,7 @@ export function DriverNavigationControls({
         {foundation.mapState.isLoadingRoute
           ? <ActivityIndicator size="small" color={Colors.primary} />
           : <Ionicons name="refresh" size={22} color={Colors.primary} />}
+        <Text style={menuStyles.caption}>Chemin</Text>
       </TouchableOpacity>
       <RideModal inApp visible={receiptsVisible} transparent animationType="none" onRequestClose={closeReceipts}>
         {receiptsVisible && <DriverDropoffReceiptsSheet bookings={completed} active={isScreenActive} onClose={closeReceipts} onRatePassenger={onRatePassenger} />}
@@ -169,5 +172,6 @@ const menuStyles = StyleSheet.create({
   content: { padding: 6 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, minHeight: 48 },
   label: { color: Colors.gray[800], fontSize: 13, fontWeight: '600', flex: 1 },
-  caption: { color: Colors.primaryDark, fontSize: 9, fontWeight: '700' },
+  caption: { color: Colors.primaryDark, fontSize: 10, fontWeight: '700' },
+  stopCaption: { color: Colors.white, fontSize: 10, fontWeight: '700' },
 });
