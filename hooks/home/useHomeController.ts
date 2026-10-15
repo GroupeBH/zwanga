@@ -5,13 +5,11 @@ import { useHomeLocation } from './useHomeLocation';
 import { useHomeMap } from './useHomeMap';
 import { useHomeMapNavigation } from './useHomeMapNavigation';
 import { useHomePassengerActivity } from './useHomePassengerActivity';
-import { useHomePassengerMarkers } from './useHomePassengerMarkers';
 import { useHomeSheet } from './useHomeSheet';
 import { useHomeTracking } from './useHomeTracking';
 import { useHomeTripFeed } from './useHomeTripFeed';
 import { useHomeTripSelection } from './useHomeTripSelection';
 import { useHomeUserLocation } from './useHomeUserLocation';
-import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 import { useHomePriorityDismissals } from './useHomePriorityDismissals';
 import { useEffect } from 'react';
 import { recordStartupMilestone } from '@/services/startupDiagnostics';
@@ -29,20 +27,12 @@ export function useHomeController() {
   const passengerActivity = useHomePassengerActivity({ ...foregroundContext, ...priorities, driverCoordinate: location.liveUserCoordinate });
   const tripFeed = useHomeTripFeed({ ...location, ...foregroundContext, ...passengerActivity, ...discovery });
   const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, ...priorities, ...discovery, liveUserCoordinate: location.liveUserCoordinate });
-  const requestHighlight = useHomeRequestHighlight({
-    enabled: context.isScreenActive && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
-      && !tripFeed.showInitialHomeLoader && !tripSelection.featuredDriverReservation,
-    userId: context.currentUser?.id,
-    requests: passengerActivity.availableDriverRequests,
-    hiddenHomePriorities: priorities.hiddenHomePriorities,
-    driverCoordinate: location.liveUserCoordinate,
-  });
-  const tracking = useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
-  const passengerMarkers = useHomePassengerMarkers({ ...driverActivity, ...tracking });
+  useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
   const mapNavigation = useHomeMapNavigation({ ...context });
-  const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation, ...discovery });
+  const map = useHomeMap({ isFocused: context.isScreenActive, liveUserCoordinate: location.liveUserCoordinate,
+    openingMapDetailKey: mapNavigation.openingMapDetailKey });
   const userLocation = useHomeUserLocation({ ...foregroundContext, ...location, ...driverActivity, ...map, ...mapNavigation });
-  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed, ...discovery });
+  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...tripFeed, ...discovery });
   return {
     ...context,
     ...discovery,
@@ -52,9 +42,6 @@ export function useHomeController() {
     ...tripFeed,
     ...passengerActivity,
     ...tripSelection,
-    ...requestHighlight,
-    ...tracking,
-    ...passengerMarkers,
     ...mapNavigation,
     ...map,
     ...userLocation,

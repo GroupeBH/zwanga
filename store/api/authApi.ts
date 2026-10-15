@@ -2,11 +2,9 @@ import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { getTokens } from '../../services/tokenStorage';
 import { refreshAccessToken } from '../../services/tokenRefresh';
 import { getTokenSessionVersion } from '../../services/tokenSession';
-import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
 import type { TripRequestVehicleType, User, UserGender } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
-import { userApi } from './userApi';
 
 const currentUserTag = { type: 'User' as const, id: 'CURRENT' };
 
@@ -35,6 +33,9 @@ export interface ReferralRegistrationAttributionPayload {
  */
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
+    // Authentication mutations only return the server response. The active form
+    // owns saveTokensAndUpdateState and awaits durable storage before navigation.
+    // An onQueryStarted save races that owner and invalidates its session guard.
     // Le login accepte uniquement le PIN actuel.
     login: builder.mutation<AuthResponse, { phone: string; pin: string }>({
       query: ({ phone, pin }) => ({
@@ -42,39 +43,6 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: { phone, pin },
       }),
-      async onQueryStarted(
-        _arg: { phone: string; pin: string },
-        { dispatch, queryFulfilled }: { dispatch: any; queryFulfilled: Promise<{ data: AuthResponse }> },
-      ) {
-        try {
-          const { data } = await queryFulfilled;
-          
-          console.log('[authApi] Login success - Saving tokens in SecureStore then updating state...');
-          
-          // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-          const saved = await dispatch(saveTokensAndUpdateState({
-            accessToken: data.accessToken, 
-            refreshToken: data.refreshToken 
-          })).unwrap();
-          if (!saved) return;
-          const sessionVersion = getTokenSessionVersion();
-          
-          console.log('[authApi] Tokens saved and state updated successfully');
-          
-          // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
-          if (!data.user) {
-            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }));
-            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
-              dispatch(setUser(userResult.data));
-            }
-          } else {
-            // Si data.user existe, on le met à jour
-            dispatch(setUser(data.user));
-          }
-        } catch (error) {
-          console.error('[authApi] Échec de la connexion ou de l’initialisation de session:', error);
-        }
-      },
       invalidatesTags: [currentUserTag],
     }),
 
@@ -110,39 +78,6 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body: formData,
       }),
-      async onQueryStarted(
-        _arg: FormData,
-        { dispatch, queryFulfilled }: { dispatch: any; queryFulfilled: Promise<{ data: AuthResponse }> },
-      ) {
-        try {
-          const { data } = await queryFulfilled;
-          
-          console.log('[authApi] Registration success - Saving tokens in SecureStore then updating state...');
-          
-          // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-          const saved = await dispatch(saveTokensAndUpdateState({
-            accessToken: data.accessToken, 
-            refreshToken: data.refreshToken 
-          })).unwrap();
-          if (!saved) return;
-          const sessionVersion = getTokenSessionVersion();
-          
-          console.log('[authApi] Tokens saved and state updated successfully');
-          
-          // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
-          if (!data.user) {
-            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }));
-            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
-              dispatch(setUser(userResult.data));
-            }
-          } else {
-            // Si data.user existe, on le met à jour
-            dispatch(setUser(data.user));
-          }
-        } catch (error) {
-          console.error('[authApi] Échec de l’inscription ou de l’initialisation de session:', error);
-        }
-      },
     }),
 
     // Google mobile (login ou signup)
@@ -167,37 +102,6 @@ export const authApi = baseApi.injectEndpoints({
         method: 'POST',
         body,
       }),
-      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled;
-          
-          console.log('[authApi] Google mobile success - Saving tokens in SecureStore then updating state...');
-          
-          // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-          const saved = await dispatch(saveTokensAndUpdateState({
-            accessToken: data.accessToken, 
-            refreshToken: data.refreshToken 
-          })).unwrap();
-          if (!saved) return;
-          const sessionVersion = getTokenSessionVersion();
-          
-          console.log('[authApi] Tokens saved and state updated successfully');
-
-          // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
-          if (!data.user) {
-            const userResult = await dispatch(
-              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }),
-            );
-            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
-              dispatch(setUser(userResult.data));
-            }
-          } else {
-            dispatch(setUser(data.user));
-          }
-        } catch (error) {
-          console.error('[authApi] Erreur lors du login Google mobile:', error);
-        }
-      },
       invalidatesTags: [currentUserTag],
     }),
 
@@ -254,35 +158,6 @@ export const authApi = baseApi.injectEndpoints({
           ...(referralCapturedAt ? { referralCapturedAt } : {}),
         },
       }),
-      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled;
-
-          console.log('[authApi] Apple mobile success - Saving tokens in SecureStore then updating state...');
-
-          const saved = await dispatch(saveTokensAndUpdateState({
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken
-          })).unwrap();
-          if (!saved) return;
-          const sessionVersion = getTokenSessionVersion();
-
-          console.log('[authApi] Tokens saved and state updated successfully');
-
-          if (!data.user) {
-            const userResult = await dispatch(
-              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }),
-            );
-            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
-              dispatch(setUser(userResult.data));
-            }
-          } else {
-            dispatch(setUser(data.user));
-          }
-        } catch (error) {
-          console.error('[authApi] Erreur lors du login Apple mobile:', error);
-        }
-      },
       invalidatesTags: [currentUserTag],
     }),
 

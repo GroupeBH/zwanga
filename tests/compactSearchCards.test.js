@@ -94,15 +94,16 @@ test('compact spacing does not shrink primary touch targets or introduce fixed l
   const toolbar = load('features/search/SearchResultsToolbar.styles.ts').styles;
   const header = load('features/home/HomeHeader.styles.ts').styles;
   const sheet = load('features/home/HomeTripsSheet.styles.ts').styles;
+  const actions = load('features/home/HomeDashboard.styles.ts').styles;
   assert.ok(search.resultSeparator.height <= 8);
   assert.ok(search.scrollContent.paddingHorizontal <= 16);
-  for (const style of [header.actionButton, header.actionSearchButton, search.searchModeButton,
-    sheet.sheetModeOption, toolbar.sortButton]) assert.ok(style.minHeight >= 44);
-  for (const style of [search.passengerStepButton, header.notificationButton, sheet.sheetToggle]) {
+  for (const style of [actions.primary, actions.secondary, search.searchModeButton,
+    sheet.mode, toolbar.sortButton]) assert.ok(style.minHeight >= 44);
+  for (const style of [search.passengerStepButton, header.roundButton]) {
     assert.ok(style.height >= 44); assert.ok(style.width >= 44);
   }
   assert.equal(header.topOverlay.paddingTop, undefined);
   assert.equal(toolbar.container.height, undefined);
   assert.equal(toolbar.sortOptions.flexWrap, 'wrap');
-  assert.equal(sheet.tripsHorizontalContent.alignItems, 'flex-start');
+  assert.equal(sheet.sheet.flex, 1);
 });

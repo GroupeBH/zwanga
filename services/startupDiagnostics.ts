@@ -1,5 +1,6 @@
 // Fixed labels only: never accept credentials, identifiers, locations or server errors.
 export type StartupMilestone = 'login_started' | 'login_received' | 'login_failed'
+  | 'login_request_failed' | 'login_session_failed'
   | 'session_saving' | 'session_saved' | 'session_save_failed'
   | 'restore_started' | 'restore_slow' | 'restore_ready' | 'restore_failed'
   | 'home_mounted' | 'home_map_mounted' | 'home_map_ready' | 'home_map_camera_failed';

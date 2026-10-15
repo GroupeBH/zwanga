@@ -5,7 +5,6 @@ import { getPendingReferralAttribution, type PendingReferralAttribution } from '
 import React, { useCallback, useEffect } from 'react';
 import { InteractionManager, Platform, TextInput } from 'react-native';
 import { AuthMode, AuthStep } from '@/components/auth';
-import type { Router } from 'expo-router';
 
 interface Params {
   focusInteractionRef: React.RefObject<{ cancel: () => void; } | null>;
@@ -19,8 +18,6 @@ interface Params {
   googleSignupStep: "phone" | "profile" | "otp";
   googleIdToken: string | null;
   googleOtpRefs: React.RefObject<(TextInput | null)[]>;
-  isAuthenticated: boolean;
-  router: Router;
   setStep: React.Dispatch<React.SetStateAction<AuthStep>>;
   setResetPinStep: React.Dispatch<React.SetStateAction<"otp" | "newPin">>;
   setResetOtpCode: React.Dispatch<React.SetStateAction<string[]>>;
@@ -72,8 +69,6 @@ export function useAuthFormNavigation({
   googleSignupStep,
   googleIdToken,
   googleOtpRefs,
-  isAuthenticated,
-  router,
   setStep,
   setResetPinStep,
   setResetOtpCode,
@@ -168,20 +163,6 @@ export function useAuthFormNavigation({
       return cancelPendingFocus;
     }
   }, [cancelPendingFocus, focusAfterInteractions, googleSignupStep, googleIdToken, googleOtpRefs]);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      // Si on est en train de compléter le KYC (étape kyc), rester sur la page auth
-      if (step === 'kyc') {
-        console.log('[AuthScreen] Authentifié mais en train de compléter le KYC - rester sur auth');
-        return;
-      }
-      
-      // Sinon, rediriger vers l'écran d'accueil
-      console.log('[AuthScreen] Authentifié -> redirection vers /(tabs)');
-      router.replace('/(tabs)');
-    }
-  }, [isAuthenticated, step, router]);
 
   // ============ HANDLERS ============
 

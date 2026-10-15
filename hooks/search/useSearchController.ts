@@ -197,8 +197,14 @@ export function useSearchController() {
     querySeats,
   ]);
 
+  // A saved address can differ from the label of a nearby trip. Once the server
+  // has returned this coordinate query, do not reject its results by exact text.
+  // Text-only searches and offline stored fallbacks retain their text filters.
+  const coordinateResults = searchMode === 'trips' && remoteTrips !== undefined ? lastAdvancedPayload : null;
   const { baseTrips, filteredTrips, filteredTripRequests } = useSearchResults({
-    advancedTrips, remoteTrips, storedTrips, searchMode, departure, arrival, desiredSeats,
+    advancedTrips, remoteTrips, storedTrips, searchMode,
+    departure: coordinateResults?.departureCoordinates ? '' : departure,
+    arrival: coordinateResults?.arrivalCoordinates ? '' : arrival, desiredSeats,
     sortMode, driverCoordinate, availableTripRequests, isDriverAccount, currentUser,
     isScreenActive,
   });

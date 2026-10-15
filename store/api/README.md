@@ -108,6 +108,17 @@ import { useLoginMutation } from '@/store/api/authApi';
 import { useGetTripsQuery } from '@/store/api/tripApi';
 ```
 
+## Finalisation de l'authentification
+
+`login`, `register`, `googleMobile` et `appleMobile` retournent uniquement la
+réponse serveur. Le formulaire propriétaire doit ensuite attendre
+`dispatch(saveTokensAndUpdateState(response)).unwrap()` et vérifier que le
+résultat n'est pas nul avant de considérer la connexion comme terminée.
+Ne pas ajouter une seconde sauvegarde dans `onQueryStarted` : elle change la
+génération de session avant la reprise du formulaire et contourne son suivi des
+erreurs. L'enrichissement du profil est optionnel, partagé avec le cache de
+`getCurrentUser`, sans nouvelle souscription ni attente avant ouverture de l'app.
+
 ## Avantages de cette structure
 
 1. **Séparation des responsabilités** : Chaque module gère ses propres endpoints

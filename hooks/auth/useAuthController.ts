@@ -97,8 +97,6 @@ export function useAuthController() {
     googleSignupStep: form.googleSignupStep,
     googleIdToken: form.googleIdToken,
     googleOtpRefs: form.googleOtpRefs,
-    isAuthenticated,
-    router,
     setStep: form.setStep,
     setResetPinStep: form.setResetPinStep,
     setResetOtpCode: form.setResetOtpCode,
@@ -139,8 +137,8 @@ export function useAuthController() {
   });
 
   const social = useSocialAuthActions({
-    confirmSession: async ({ accessToken, refreshToken }) => {
-      const saved = await dispatch(saveTokensAndUpdateState({ accessToken, refreshToken })).unwrap();
+    confirmSession: async (result) => {
+      const saved = await dispatch(saveTokensAndUpdateState(result)).unwrap();
       if (!saved) throw new Error('La connexion n’a pas pu être confirmée. Réessayez.');
     },
     phone: form.phone,

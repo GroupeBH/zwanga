@@ -23,7 +23,7 @@ export function useGoogleAuthActions({ attemptInFlight, onSignupRequired, setGoo
     if (!mounted.current || attemptInFlight.current) return;
     attemptInFlight.current = true;
     setIsGoogleLoading(true);
-    const session = getTokenSessionVersion();
+    let session = getTokenSessionVersion();
     const canContinue = () => mounted.current && session === getTokenSessionVersion();
     let result: GoogleAuthResult | null = null;
     let awaitingRedirect = false;
@@ -40,7 +40,10 @@ export function useGoogleAuthActions({ attemptInFlight, onSignupRequired, setGoo
       if (mode === 'login') {
         const tokens = await googleMobile({ idToken: result.idToken }).unwrap();
         if (!canContinue()) return;
-        await confirmSession(tokens);
+        const saving = confirmSession(tokens);
+        session = getTokenSessionVersion();
+        await saving;
+        if (!canContinue()) return;
         awaitingRedirect = true;
         // Analytics must not turn a successful login into an authentication error.
         void trackEvent('login_success', { method: 'google' }).catch(() => undefined);

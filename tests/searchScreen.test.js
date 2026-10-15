@@ -123,6 +123,20 @@ function screenApp() {
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
 
+test('saved-address coordinate search keeps nearby server results despite different address wording', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.isDriver = false;
+  Object.assign(app.params, { mode: 'map', arrival: 'Une adresse précise qui ne correspond pas au libellé Gombe',
+    arrivalLat: '-4.325', arrivalLng: '15.3222', arrivalRadiusKm: '5' });
+  app.render(); app.render();
+  assert.deepEqual(app.list(app.render()).props.data.map(item => item.trip.id), ['trip']);
+  assert.deepEqual(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.arrivalCoordinates, [15.3222, -4.325]);
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.arrivalRadiusKm, 5);
+  app.params.mode = ''; app.render(); app.render();
+  assert.deepEqual(app.list(app.render()).props.data, [], 'text searches still filter by the entered address');
+  app.hooks.unmount();
+});
+
 test('passenger search exposes only published trips and never subscribes to the available orders feed', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = screenApp(); app.isDriver = false;

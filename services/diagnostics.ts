@@ -7,6 +7,7 @@ type CrashModule = typeof import('@react-native-firebase/crashlytics');
 let moduleCache: CrashModule | null | undefined;
 const startedAt = Date.now();
 let currentScreen = 'startup';
+const reportedSessionFailures = new Set<string>();
 
 function getReporter() {
   if (__DEV__ || Platform.OS === 'web') return null;
@@ -35,6 +36,13 @@ export function initializeDiagnostics() {
     setStartupDiagnosticReporter(({ phase, elapsedMs }) => {
       void reporter.setAttribute(reporter.getCrashlytics(), 'startup_phase', phase).catch(() => undefined);
       reporter.log(reporter.getCrashlytics(), `startup:${phase}:${elapsedMs}ms`);
+      // Also report local session failures without requiring a fatal crash or
+      // a tester's screenshot. Fixed labels only; no PIN, JWT or raw exception.
+      if ((phase === 'session_save_failed' || phase === 'restore_failed') &&
+          !reportedSessionFailures.has(phase)) {
+        reportedSessionFailures.add(phase);
+        reporter.recordError(reporter.getCrashlytics(), new Error(`AuthSession:${phase}`));
+      }
     });
   } catch { /* Diagnostics must never prevent startup. */ }
 }

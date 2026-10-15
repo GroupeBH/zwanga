@@ -1,5 +1,428 @@
 # Journal des changements techniques
 
+## 15 octobre 2026 — Une barre de recherche identifiable sur l’accueil passager
+
+- **Problème :** « Où allez-vous ? » ressemblait à un gros bouton vert plutôt
+  qu’à une entrée de recherche.
+- **Solution :** `features/home/HomeDashboard.styles.ts` et
+  `components/home/HomeDashboardActions.tsx` : fond blanc, fine bordure neutre,
+  arrondi de 14 points, loupe verte de 22 points et texte gris de 17 points
+  sans gras. Le style de recherche est séparé du bouton principal coloré.
+- **Conservé :** toute la barre ouvre `/search`, où l’utilisateur saisit sa
+  destination. Aucun champ éditable factice, requête ou clavier ajouté à
+  l’accueil. Rôle accessible « bouton » conservé avec une indication d’ouverture
+  de la recherche ; hauteur minimale de 54 points et texte adaptable. Les
+  favoris, boutons Proposer/Commander et la barre d’onglets ne changent pas.
+- **Vérifications :** 18 tests JavaScript ciblés réussis dans
+  `tests/homeCompactLayout.test.js` et `tests/compactSearchCards.test.js`
+  (apparence, accès à la recherche, contrastes, cibles tactiles, actions
+  existantes). TypeScript, ESLint ciblé et `git diff --check` réussis. Aperçus statiques
+  des composants aux largeurs 320/390 points inspectés ; carte, données et
+  glyphes simulés. Aucun essai sur téléphone physique pour ce changement,
+  aucune mesure de performance ni modification native.
+
+## 15 octobre 2026 — Onglet Services pour passagers et conducteurs
+
+- **Périmètre / demande :** remettre un accès Services dans la barre d’onglets
+  pour les deux rôles, en complément de l’accès existant depuis le profil.
+- **Solution :** `app/(tabs)/_layout.tsx` affiche désormais cinq onglets :
+  Accueil, Services, Mes trajets (Trajets côté passager), Messages, Profil.
+  Services reprend la route `discover` existante et une icône de mallette en
+  contour, sans modifier les couleurs ni la hauteur de la barre.
+- `app/(tabs)/discover.tsx` affiche le catalogue Services pour tout compte,
+  au lieu de basculer vers la recherche pour les passagers. La recherche
+  demeure accessible depuis l’accueil et via `/search`. Le sélecteur de rôle
+  de `features/navigation/accountTabPolicy.ts` est renommé pour préciser
+  qu’il détermine seulement les libellés conducteur, pas l’accès aux services.
+- **Précautions :** chargement différé de l’onglet, lectures suspendues hors
+  focus/arrière-plan, zones sûres iOS/Android, badge Messages, reprise de trajet
+  actif et accès Services depuis le profil conservés. Aucun nouvel endpoint,
+  changement natif, SDK ou déploiement.
+- **Vérifications :** 22 tests JavaScript réussis (`accountTabs` et
+  `homeCompactLayout`), incluant les cinq onglets pour les deux rôles et le
+  contenu Services commun ; TypeScript, ESLint ciblé et `git diff --check` réussis.
+  Aperçus statiques à 320/390 points inspectés via
+  `scripts/preview-home-dashboard.cjs` (données, carte, navigateur et glyphes
+  simulés). Aucun essai physique iOS/Android ni mesure de performances pour
+  cette modification.
+
+## 15 octobre 2026 — Actions colorées et quatre onglets inspirés des maquettes
+
+### Périmètre et problème
+
+- Les boutons de l’accueil étaient essentiellement cuivrés ou simplement
+  détourés. Demande de couleurs plus expressives, avec du bleu et du vert
+  assortis au marron existant.
+- La demande suivante autorise aussi l’adaptation de la barre d’onglets aux
+  maquettes conducteur/passager, contrairement à la consigne de la refonte
+  précédente qui demandait de la conserver.
+
+### Solution appliquée et fichiers
+
+- `features/home/HomeDashboard.styles.ts` et
+  `components/home/HomeDashboardActions.tsx` : bleu `#2459D9` pour
+  publier/proposer, vert émeraude `#007F5F` pour chercher, marron cuivré
+  `#BC4008` conservé pour commander/réserver. Textes/icônes blancs sur les
+  boutons pleins ; accès aux clients sur fond vert clair. Les cartes de
+  suggestion réutilisent cette palette pour leur action client.
+- `app/(tabs)/_layout.tsx` : quatre onglets visibles, **Accueil / Mes trajets /
+  Messages / Profil** côté conducteur ; **Trajets** à la place de **Mes trajets**
+  côté passager. Fond blanc, séparation fine, icônes en contour, sélection
+  cuivrée. Suppression des fonds décoratifs derrière l’icône sélectionnée et
+  des ombres de la barre/du badge. Libellés sous les icônes, y compris sur
+  grand écran ; cibles d’onglets d’au moins 48 points.
+- `features/navigation/accountTabPolicy.ts` et
+  `hooks/profile/useProfileController.ts` : Services reste accessible depuis le
+  profil pour tous les rôles, via `/services`. La recherche reste accessible
+  sur l’accueil. L’ancienne route `discover` reste enregistrée pour les liens
+  et historiques existants mais n’occupe plus un bouton d’onglet (`href: null`).
+- `scripts/preview-home-dashboard.cjs` : aperçu des deux rôles avec les vraies
+  options/styles d’onglets ; navigateur de navigation, données, carte et
+  police d’icônes simulés pour cette prévisualisation uniquement.
+
+### Comportements conservés et précautions
+
+- Rôle issu du profil serveur, non du trajet courant ni d’un statut KYC local.
+  Routes des actions, compteurs, réservations et acceptations inchangés.
+- Compteur de messages non lus, retour vers Accueil, bannière de trajet actif,
+  chargement différé des écrans, protections Android de détachement/gel et
+  réserves de zones sûres conservés. `constants/navigation.ts` inchangé.
+- Aucun nouvel appel réseau, effet animé, SDK ou changement natif ; aucun
+  déploiement. Les changements ne prétendent pas corriger un crash natif.
+
+### Vérifications et limites
+
+- 63 tests JavaScript ciblés réussis : `accountTabs`, `homeCompactLayout`,
+  `homeOwnLocation`, `compactSearchCards`, `profileModules`. Vérification des
+  quatre onglets visibles sur les configurations simulées iOS/Android, des
+  changements de rôle sans changement de routes, des accès Services et
+  Recherche, du badge et des actions conservées.
+- Contrastes calculés selon la luminance relative : texte blanc sur bleu
+  **5,99:1**, sur vert **5,00:1**, sur cuivré **5,42:1**. Tests au seuil
+  4,5:1 également sur les fonds clairs concernés.
+- TypeScript, ESLint ciblé, contrôles de taille des sources/frontière réseau
+  et `git diff --check` : réussis.
+- Rendu conducteur observé dans l’émulateur Android avec Metro : couleurs et
+  quatre onglets présents. Aperçus statiques des deux rôles aux largeurs
+  320/390 points inspectés. Il ne s’agit ni d’un essai physique iOS/Android,
+  ni d’une mesure de performances ou d’une validation de stabilité release.
+
+## 15 octobre 2026 — Accueil conducteur/passager simplifié, carte centrée sur soi
+
+### Périmètre et problème
+
+- Les deux maquettes fournies demandent une carte dégagée et un panneau lisible,
+  sans modification des composants de la barre d’onglets. L’ancien accueil
+  superposait les actions, les priorités et plusieurs catégories de marqueurs à
+  une carte plein écran, avec une liste horizontale repliable.
+- L’allègement attendu concerne le rendu et les traitements propres à l’accueil.
+  Ce changement ne constitue pas une preuve de correction des crashs après
+  connexion, ni une mesure de mémoire, de batterie ou de fluidité en production.
+
+### Solution appliquée
+
+- `app/(tabs)/index.tsx`, `components/home/HomeHeader.tsx`,
+  `HomeDashboardActions.tsx`, `HomeTripsSheet.tsx`, `HomeSuggestionCard.tsx` et
+  leurs styles dans `features/home/` : carte dans une zone bornée (32 % de la
+  hauteur, entre 170 et 300 points), boutons profil/notifications flottants,
+  panneau clair à coins arrondis et **une seule liste verticale virtualisée**.
+  Les actions défilent avec la liste pour rester accessibles sur petit écran.
+  La présentation privilégie une action principale, des textes courts et des
+  espacements sobres ; aucune animation décorative supplémentaire.
+- Conducteur : publication en premier, compteur des suggestions de clients déjà
+  chargées, lien vers les revenus, commande personnelle toujours accessible et
+  choix **Clients / Trajets** conservé (Clients par défaut). Le compteur n’est
+  pas un total de tous les clients de la ville ; il montre « … » au chargement
+  et « — » si aucune donnée n’est disponible en erreur/hors connexion.
+  « Connecté » indique l’état réseau, pas une disponibilité métier garantie.
+- Passager : « Où allez-vous ? », Maison/Travail, Mes adresses, Proposer un
+  trajet et Commander. Les raccourcis utilisent les adresses existantes ; aucune
+  création automatique. « Mes adresses » remplace le « Récents » illustratif,
+  faute d’historique de destinations utilisable dans ce parcours.
+- Les valeurs fictives des maquettes ne sont pas intégrées : pas de gains du
+  jour ni de nombre d’avis inventés. « Mes revenus » ouvre l’écran existant sans
+  nouvelle lecture de revenus au démarrage. La carte client affiche « Voir » :
+  l’acceptation conserve la sélection du véhicule et les validations existantes.
+  « Réserver » ouvre les détails avant confirmation, sans réservation immédiate.
+- `HomeMap.tsx`, `useHomeMap.ts`, `useHomeUserLocation.ts` et
+  `homeBaseMapStyle.ts` : zéro marqueur sans position valide, sinon **un seul
+  marqueur image natif** représentant l’utilisateur, avec `tracksViewChanges`
+  désactivé. Aucun marqueur voiture/client/passager, aucune bulle d’adresse,
+  aucun géocodage inverse au recentrage. Style Google Maps adouci ; Apple Maps
+  conserve son rendu natif. L’attribution de la carte reste dégagée au-dessus
+  du panneau. Les protections de caméra (ready/layout, focus, limitation des
+  animations, coordonnées valides) sont conservées.
+- `useHomeController.ts`, `useHomeTracking.ts`, `useHomeSheet.ts` : suppression
+  de la préparation des marqueurs tiers, de l’abonnement aux positions des
+  passagers et des demandes de snapshots de positions pour cette carte.
+  Suppression des mesures de hauteur/repli du panneau et de leurs mises à jour
+  d’état. La suggestion client n’est plus dupliquée dans une carte prioritaire
+  supplémentaire au-dessus de la liste.
+- Anciens fichiers devenus sans consommateur supprimés :
+  `components/home/HomeMapMarkers.tsx`,
+  `features/home/HomeMapMarkers.styles.ts`,
+  `hooks/home/useHomeMarkerReadiness.ts`,
+  `hooks/home/useHomePassengerMarkers.ts`. Il s’agit uniquement de code versionné
+  récupérable par Git ; aucune donnée de compte ou de trajet n’a été supprimée.
+- `HomeFavoriteShortcuts.tsx`, `useHomeFavoriteShortcut.ts`,
+  `store/api/userApi.ts` : lecture RTK Query des favoris uniquement au clic,
+  réutilisation du cache, protection contre les doubles clics et résultats
+  tardifs après sortie/changement de compte. Erreur en ligne, réessayable.
+  Sans adresse enregistrée, ouverture de la gestion des adresses.
+- `hooks/search/useSearchController.ts` : lorsqu’une recherche par coordonnées
+  a des résultats serveur correspondant à cette requête, ne plus les éliminer
+  par comparaison avec le libellé exact de l’adresse favorite. Les champs
+  restent préremplis ; les recherches textuelles et le repli sur les trajets
+  stockés gardent leurs filtres textuels.
+
+### Comportements conservés
+
+- Aucun changement de `app/(tabs)/_layout.tsx`, des composants de navigation de
+  la barre d’onglets ou de `constants/navigation.ts`. Son espace iOS est réservé
+  dans l’accueil ; pas de double réserve Android.
+- Rôle provenant du profil serveur ; les passagers ne découvrent pas les
+  commandes des autres. Réservations personnelles, priorités conducteur,
+  commande personnelle, reprise d’un trajet actif et liens vers les détails
+  conservés. Aucun changement des contrôles de paiement/acceptation.
+- Classement des suggestions et élargissement quand les départs proches sont
+  absents conservés ; cache visible hors ligne, retours de chargement/erreur.
+- Les émissions de position conducteur et les événements de progression utiles
+  à un trajet actif sont conservés. La localisation en arrière-plan, les
+  notifications de proximité et les cartes de navigation ne sont pas supprimées.
+- Aucune nouvelle dépendance, aucun changement natif, aucun déploiement serveur
+  ou store effectué pour cette refonte.
+
+### Vérifications et limites
+
+- `npx.cmd tsc --noEmit --incremental false` : réussi ; ESLint ciblé : réussi.
+- Suite complète `node --test --test-concurrency=2 tests/*.test.js` :
+  **2 061 tests réussis**. Après l’ajout du cas d’adresse favorite dans la
+  recherche : **24 tests ciblés de recherche réussis**, dont le nouveau cas.
+  Les anciens tests de repli/marqueurs tiers sont remplacés par les invariants
+  du nouveau panneau, pas par la réintroduction de traitements supprimés.
+- `tests/homeOwnLocation.test.js` : 7 tests réussis (marqueur unique, aucun
+  appel de favoris au montage, défaut de lecture, recherche préremplie, résultat
+  tardif, actions sans mutation directe). Autres régressions dans les tests
+  Home, listes compactes et accès aux onglets.
+- `check-source-size`, `check-network-boundaries`, `git diff --check` : réussis.
+- Rendu passager effectivement observé dans l’émulateur Android connecté via
+  Metro, sans installation ni effacement des données. Carte simplifiée,
+  actions et barre d’onglets visibles. Ce constat n’est pas un essai de login,
+  de paiement, de GPS réel ou de stabilité d’une version release.
+- `node scripts/preview-home-dashboard.cjs` : aperçus des vrais composants à
+  320 et 390 pixels, conducteur/passager, avec données fictives et carte simulée,
+  contrôlés visuellement dans `.expo/home-dashboard-preview/layout.png`.
+  Aucun changement du rôle du compte réel pour obtenir l’aperçu conducteur.
+- Restent à vérifier sur appareils physiques Android/iOS : permission GPS,
+  recentrage, orientation et grande police, retour d’arrière-plan, commandes et
+  réservations, passage entre navigation et accueil. Aucun benchmark natif ou
+  essai iOS physique réalisé ; la carte native conserve un coût de base même
+  avec un seul marqueur.
+
+## 15 octobre 2026 — Suite du diagnostic après connexion : redirection, profil et rapports automatiques
+
+### Constats et limites de causalité
+
+- Connexion et inscription partagent la publication de la session, puis le
+  montage de l'accueil et l'activation de ses services. Une fermeture à cette
+  étape ne désigne pas à elle seule la carte, le serveur ou une bibliothèque.
+- Le conflit entre les callbacks d'authentification RTK Query et les formulaires
+  a été reproduit par les tests d'intégration de l'entrée précédente. Son
+  correctif reste présent : un seul responsable sauvegarde la session, avant
+  de la rendre visible. L'historique montre que les callbacks existaient avant
+  l'extraction de `usePinLogin` dans `b8db284` ; ce constat identifie la
+  coexistence du défaut, **pas un commit dont le crash natif serait prouvé**.
+- Un second doublon était observable : `app/auth.tsx` rend un `Redirect` et
+  `useAuthFormNavigation` effectuait aussi un `router.replace` pour la même
+  session. L'effet du hook est supprimé, avec ses paramètres inutilisés dans
+  `hooks/auth/useAuthController.ts`. La redirection de l'écran et l'exception
+  KYC restent présentes. La reprise d'un trajet actif n'est pas modifiée.
+- L'événement AWS déjà analysé est un `PUT /users/me` interrompu, pas un échec
+  du login. Sa durée est compatible avec le délai mobile de 20 s, sans prouver
+  quel acteur a coupé la connexion ni la présence d'une photo dans cet envoi.
+
+### Correctifs effectivement appliqués
+
+- `store/api/user/getProfileSummary.endpoints.ts` : la modification multipart
+  du profil dispose du budget borné de 60 s déjà utilisé pour les mutations
+  longues. Les lectures restent à 20 s. Aucun renvoi automatique du formulaire
+  n'est ajouté ; l'invalidation du profil après résultat ambigu est conservée.
+- Backend voisin `zwanga-backend` : classification partagée des erreurs de
+  réception dans `src/common/http-request-abort.ts`, employée par le filtre
+  d'exceptions et l'intercepteur de logs. L'intercepteur ne transforme plus
+  ces interruptions en faux 500 ; le filtre conserve ses avertissements
+  regroupés et ne répond pas à une connexion déjà fermée. La forme Node
+  `ECONNRESET` + `aborted` est reconnue ; un reset générique d'un service
+  externe reste une erreur. Les refus HTTP 4xx identifiés sont journalisés en
+  avertissement, les vrais 5xx restent des erreurs. Aucun changement des
+  contrôles JWT/PIN, du schéma, des comptes, de Multer ou des plafonds d'image.
+- `services/diagnostics.ts` : les jalons `session_save_failed` et
+  `restore_failed` déclenchent aussi un rapport non fatal Crashlytics, une seule
+  fois par type et par processus. Libellés fixes seulement, sans exception brute,
+  PIN, jeton ou donnée de compte. L'absence ou l'échec du module de diagnostic
+  ne bloque pas l'application. Les refus de PIN ordinaires restent des jalons,
+  pas des rapports non fatals systématiques.
+- Aucun déploiement, changement AWS, mise à jour de dépendance, build natif,
+  suppression de données ou modification de la carte n'a été effectué.
+
+### Vérifications
+
+- Tests ciblés mobile : **38 réussis** (session RTK réelle avec I/O simulées,
+  PIN, redirection, délai multipart, rapports de diagnostic).
+- Backend : **34 tests ciblés réussis**, dont un test Nest/Multer sur une vraie
+  connexion HTTP locale : interruption d'un multipart avant sa fin, aucune
+  exécution du gestionnaire de profil, aucun faux log d'erreur 500, puis succès
+  d'un envoi complet. Données synthétiques, aucune base ou API externe utilisée.
+- TypeScript mobile et TypeScript backend avec `tsconfig.build.json` : réussis.
+  Le contrôle TypeScript backend incluant tous les tests échoue dans des specs
+  hors périmètre non modifiées (activité, finance, migrations, OTP, utilisateurs,
+  etc.). Il ne faut pas le présenter comme entièrement vert.
+- ESLint ciblé mobile, contrôle des frontières réseau, tailles des sources et
+  configuration Gradle Crashlytics : réussis. `git diff --check` : réussi dans
+  les deux dépôts, avertissements de fins de ligne uniquement.
+- L'empreinte du seul endpoint `updateUser` dans
+  `tests/fixtures/sourceExtractions.json` est actualisée pour le changement
+  intentionnel de délai, couvert séparément par `profileUploadBudget.test.js`.
+  Les autres empreintes et contrôles d'extraction restent inchangés.
+- Suite mobile complète après actualisation de cette empreinte : **2 059 tests
+  réussis, 0 échec** (`node --test --test-concurrency=2 tests/*.test.js`, environ
+  166 s sur cette machine). Cette durée n'est pas une mesure de performance native.
+- Les tests ne reproduisent **pas** une mort de processus sur le téléphone des
+  testeurs. Ni disparition du crash ni livraison Firebase de vrais rapports
+  ne sont encore confirmées.
+
+### Livraison et diagnostic sans commande sur le téléphone
+
+- Déployer le backend par la procédure habituelle. Pas de migration ni de
+  nouvelle variable d'environnement pour ce correctif.
+- Reconstruire Android avec `npx.cmd eas-cli build --platform android --profile
+  production`, puis installer le nouveau build via le test interne. Le bundle
+  précédemment analysé désactive les mises à jour OTA : un simple reload Metro
+  ou déploiement backend ne lui apporte pas les correctifs mobile.
+- Tester connexion et inscription sur appareil réel, puis relancer l'application
+  si elle se ferme. Consulter Firebase Console > Crashlytics, filtré sur le
+  nouveau build : rapports fatals natifs et événements `AuthSession:*`, avec
+  l'attribut `startup_phase`. Aucun accès à cette console n'a été utilisé ici.
+  La [documentation Firebase](https://firebase.google.com/docs/crashlytics/android/test-implementation)
+  précise que le redémarrage permet l'envoi du rapport de crash ; son arrivée
+  doit être vérifiée, elle n'est pas garantie par les seuls tests JavaScript.
+
+## 15 octobre 2026 — Complément AWS autorisé : erreur isolée de modification du profil
+
+- **Périmètre :** après autorisation explicite de l'utilisateur, lecture ciblée
+  de l'entrée CloudWatch précédemment inaccessible. Aucun changement AWS,
+  backend ou mobile ; seul ce journal est complété. Aucun journal brut ni donnée
+  personnelle sauvegardé ou reproduit ; sorties limitées à la méthode HTTP,
+  l'heure, la durée et des marqueurs techniques prédéfinis.
+- **Observation réelle :** le 14 octobre à **14:37:19,943, heure de Kinshasa**
+  (13:37 UTC), `PUT /api/v1/users/me` est journalisé avec le code 500 après
+  **20 468 ms**. L'erreur contient `request aborted` et la pile passe par
+  `IncomingMessage._destroy` et `abortIncoming`. Il s'agit d'une modification
+  du profil, pas de `POST /auth/login` ni de la lecture `GET /users/me`.
+- **Analyse du code local :** l'intercepteur backend
+  `src/common/interceptors/logging.interceptor.ts` utilise `error.status || 500`,
+  même pour une interruption de transport sans statut. Le filtre
+  `src/common/filters/api-exception.filter.ts` distingue déjà `request aborted`
+  et évite de répondre à une connexion fermée. Le 500 du journal ne suffit donc
+  pas à établir qu'une réponse 500 a été reçue par le téléphone.
+- **Hypothèse distincte des mesures :** `constants/network.ts` fixe le délai
+  HTTP par défaut à 20 s ; `store/api/user/getProfileSummary.endpoints.ts`
+  ne surcharge pas ce délai pour l'envoi du profil. La proximité avec les
+  20,468 s observées est compatible avec une expiration côté client, mais
+  ne permet pas d'exclure une coupure réseau, une fermeture d'app ou un autre
+  intermédiaire. La présence d'une photo dans cet envoi n'a pas été vérifiée.
+- **Conclusion et suites non appliquées :** cet événement ne prouve pas la
+  cause du crash après le PIN. À améliorer séparément : classification des
+  interruptions dans les logs et délai adapté aux envois de profil, sans
+  réessai automatique aveugle d'une mutation. Aucun test JavaScript ou natif
+  supplémentaire n'a été exécuté pour ce diagnostic en lecture seule ;
+  `git diff --check` vérifie uniquement la documentation.
+
+## 15 octobre 2026 — Erreur après le PIN : session unique, retour dans le formulaire et diagnostic AWS
+
+- **Signalement et limite du diagnostic :** un modal de connexion impossible
+  apparaît brièvement puis l'application Android se ferme. Le numéro du build
+  utilisé pour ce nouvel essai et la trace fatale ne sont pas disponibles. Seul
+  un émulateur est connecté, pas un téléphone de test interne. Aucune fermeture
+  native n'a été reproduite dans cette intervention et la carte d'accueil n'est
+  pas établie comme cause de ce nouveau symptôme.
+- **Défaut reproduit en JavaScript :** les quatre mutations d'authentification
+  sauvegardaient la session dans `onQueryStarted` alors que les formulaires
+  faisaient déjà cette finalisation. Avec le véritable cycle RTK Query, la
+  sauvegarde API changeait la génération avant la reprise du formulaire PIN :
+  celui-ci cessait d'attendre la sauvegarde et pouvait en ignorer l'échec.
+  Une réponse tardive pouvait également connecter un écran déjà quitté.
+  Sept tests d'intégration ont échoué avant correction, puis réussi après.
+  Cette reproduction établit le conflit JavaScript, pas l'origine d'une mort
+  de processus Android.
+- **Solution appliquée :** suppression des quatre finalisations détachées dans
+  `store/api/authApi.ts`. Les formulaires sont seuls propriétaires de la
+  sauvegarde et attendent `saveTokensAndUpdateState`. Les réponses complètes
+  sont transmises par `hooks/auth/usePinLogin.ts`, `useAuthController.ts` et
+  `useRegistrationActions.ts`. `store/slices/authSlice.ts` conserve le profil
+  optionnel correspondant au JWT ; à défaut, une lecture de profil non bloquante
+  partage le cache RTK, sans abonnement impératif ni `forceRefetch`. Elle ne
+  peut remplacer une session plus récente. La règle est documentée dans
+  `store/api/README.md`.
+- **Retour utilisateur PIN :** une erreur de connexion s'affiche désormais
+  sous les cases, avec annonce d'accessibilité, au lieu d'ouvrir un modal natif
+  pendant la reprise du clavier. Fichiers : `hooks/auth/usePinLogin.ts`,
+  `hooks/auth/usePhoneAuthActions.ts`, `components/auth/steps/PinStep.tsx`,
+  `features/auth/authCode.styles.ts`, `app/auth.tsx`. Le PIN est effacé après
+  refus ; nouvelle saisie, bouton de connexion et PIN oublié restent disponibles.
+  Le message persiste jusqu'à une nouvelle tentative ou un changement d'étape.
+  Les erreurs locales ne sont plus présentées comme un mauvais PIN ; aucun
+  message natif brut n'est affiché pour ces erreurs de finalisation.
+- **Précautions :** sauvegarde sécurisée avant authentification, soumission unique
+  au quatrième chiffre, absence de réessai automatique du login, verrou jusqu'à
+  redirection, rejet des sessions invalides et protections de changement de
+  compte conservés. `hooks/auth/useGoogleAuthActions.ts` suit aussi la génération
+  de sa propre sauvegarde pour ne pas ignorer son échec. Deux marqueurs fixes
+  distinguent échec de requête et échec de finalisation dans
+  `services/startupDiagnostics.ts`, sans identifiant ni contenu d'erreur.
+  Aucune suppression de carte, dépendance, permission, `.env`, règle de PIN ou
+  modification de backend/production dans cette intervention.
+- **AWS, mesures réelles en lecture seule, environ 24 h avant le contrôle
+  nocturne du 15 octobre (Kinshasa) :** service ECS actif, déploiement de la
+  révision 19 terminé, une tâche sur une souhaitée, cible ALB saine. Pas de
+  tâche arrêtée dans la liste récente disponible (pas une preuve d'absence
+  de tout redémarrage sur 24 h). Maximum des points CloudWatch : mémoire
+  25,83 %, CPU 76,47 % ; ces maxima ne constituent pas une mesure de latence
+  mobile ni une preuve d'absence de pics entre échantillons.
+- **AWS, erreurs observées :** 56 entrées HTTP 401 associées au login, durée
+  maximale indiquée 126 ms. Les catégories métier agrégées incluent numéro
+  absent, PIN invalide et compte sans PIN. Les logs au niveau warning/error
+  ne permettent pas de calculer le taux de succès ; aucune attribution à
+  l'essai de l'utilisateur sans horaire précis. Aucune entrée 5xx de login
+  dans cette fenêtre. Les 1 785 entrées 503 concernent
+  `/app-updates/client` et les annonces non activées, avant le dernier
+  déploiement ; aucune entrée HTTP 5xx retrouvée dans les deux dernières
+  heures interrogées. Une entrée 500 sur `/users/me` n'était pas encore
+  expliquée à cette étape : la lecture de son message brut avait été refusée
+  par le contrôle d'accès pour risque d'exposition de données personnelles,
+  sans contournement. Voir le complément autorisé ci-dessus.
+  Aucune clé, configuration secrète, donnée de compte ou journal brut copié.
+- **Vérifications :** `tests/authSessionIntegration.test.js` ajoute des tests
+  avec le véritable RTK Query, thunk et stockage de session, mais des E/S
+  SecureStore/HTTP simulées. Cas : succès unique, erreur de sauvegarde,
+  réponse après départ de l'écran, 401/réseau/503, profil tardif ou absent,
+  isolation des comptes et finalisation Google. `tests/pinAutoLogin.test.js`
+  vérifie le retour inline et l'accessibilité. Les 50 tests ciblés passent ;
+  TypeScript, ESLint ciblé, frontières réseau et taille des sources passent.
+  Suite complète finale : **2 052 tests réussis, 0 échec**, en environ 140 s
+  sur cette machine (concurrence 2 ; ce n'est pas une mesure de performance
+  mobile). `git diff --check` passe ; seul un avertissement de normalisation
+  CRLF/LF concerne le README API.
+- **Livraison et recette restante :** aucun build distant lancé, aucun
+  déploiement AWS effectué. Un nouvel AAB est nécessaire pour les testeurs
+  dont le bundle embarqué désactive les OTA :
+  `npx.cmd eas-cli build --platform android --profile production`.
+  Vérifier sur Android physique PIN correct/incorrect, numéro différent de
+  celui de l'inscription, réseau coupé puis rétabli, reconnexion après fermeture,
+  inscription, Google et ouverture d'accueil. Vérifier aussi Apple sur iOS.
+  Conserver une trace native Crashlytics/Android Vitals du nouveau build si le
+  processus se ferme encore ; les tests JavaScript ne valident pas ce point.
+
 ## 14 octobre 2026 — Connexion Android, disponibilité de l'accueil et reprise réseau
 
 - **Périmètre/problème :** fermeture signalée après le PIN, avec retour à la

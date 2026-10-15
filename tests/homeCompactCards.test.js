@@ -189,21 +189,14 @@ test('invalid dates have readable fallbacks and cross-day departure windows pres
   assert.ok(window.includes('→'));
 });
 
-test('sheets take less space without changing locked or safe-area behavior', () => {
-  for (const isDriver of [false, true]) {
-    const hooks = hookHarness();
-    const { useHomeSheet } = loader({ 'react-native': native, react: hooks.react })('hooks/home/useHomeSheet.ts');
-    const props = { isDriver, currentUser: {}, width: 390, height: 844, insets: { bottom: 34 },
-      latestTrips: [], availableDriverRequests: [], visibleDriverPassengerMarkers: [], router: { push() {} } };
-    const draw = () => hooks.render(() => useHomeSheet(props));
-    const expanded = draw();
-    assert.equal(expanded.effectiveTripsSheetOpen, true);
-    assert.equal(expanded.sheetHeight, 250);
-    assert.equal(expanded.sheetBottomOffset, 96);
-    props.width = 320; props.height = 568;
-    assert.equal(draw().sheetHeight, 246);
-    props.isHomeSheetLockedRetracted = true;
-    assert.equal(draw().sheetHeight, 68);
-    hooks.unmount();
-  }
+test('dashboard preserves iOS tab clearance and does not hide the list during an active trip', () => {
+  const hooks = hookHarness();
+  const { useHomeSheet } = loader({ 'react-native': native, react: hooks.react })('hooks/home/useHomeSheet.ts');
+  const props = { isDriver: false, insets: { bottom: 34 }, latestTrips: [], availableDriverRequests: [], router: {} };
+  const draw = () => hooks.render(() => useHomeSheet(props));
+  assert.equal(draw().sheetBottomOffset, 96);
+  props.isHomeSheetLockedRetracted = true;
+  assert.equal(draw().sheetBottomOffset, 96);
+  assert.equal(draw().sheetHeight, undefined);
+  hooks.unmount();
 });

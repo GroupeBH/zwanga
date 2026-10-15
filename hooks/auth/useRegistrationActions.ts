@@ -117,7 +117,7 @@ export function useRegistrationActions({
   const completeRegistration = async (result: AuthResponse, method: 'phone' | SocialAuthProvider, referralToken: string | undefined, userName: string) => {
     if (mounted.current) setHasCreatedAccount(true);
     resumeFinalization.current = async () => {
-      const saved = await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
+      const saved = await dispatch(saveTokensAndUpdateState(result)).unwrap();
       if (!saved) throw new Error('La session n’a pas pu être confirmée.');
       // Optional side effects must not turn a created account into a failed signup.
       if (referralToken) await consumePendingReferralAttribution(referralToken).catch(() => undefined);

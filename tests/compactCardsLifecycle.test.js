@@ -11,52 +11,18 @@ function nodes(node) {
 }
 
 for (const platform of ['ios', 'android']) {
-  test(`${platform}: obsolete sheet layouts cannot update state after collapse, rotation, blur, refocus or unmount`, () => {
+  test(`${platform}: dashboard removes sheet measurement state and respects the existing tab offset`, () => {
     const hooks = hookHarness();
-    let changes = 0;
-    const react = { ...hooks.react, useState: initial => {
-      const [value, set] = hooks.react.useState(initial);
-      return [value, next => set(previous => {
-        const updated = typeof next === 'function' ? next(previous) : next;
-        if (updated?.height && updated !== previous) changes++;
-        return updated;
-      })];
-    } };
-    const { useHomeSheet } = loader({ react, 'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
-    const props = { isDriver: true, width: 390, height: 844, currentUser: {}, insets: { bottom: 34 }, isScreenActive: true,
-      latestTrips: [], availableDriverRequests: [], visibleDriverPassengerMarkers: [], router: { push() {} } };
+    const { useHomeSheet } = loader({ react: hooks.react, 'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
+    const props = { isDriver: true, insets: { bottom: 34 }, latestTrips: [], availableDriverRequests: [], router: {} };
     const draw = () => hooks.render(() => useHomeSheet(props));
-    const layout = height => ({ nativeEvent: { layout: { height } } });
-    let state = draw();
     for (let cycle = 0; cycle < 100; cycle++) {
-      const old = state.onSheetLayout;
-      old(layout(250)); state = draw();
-      state.toggleTripsSheet(); state = draw();
-      const collapsed = state.onSheetLayout;
-      const beforeCollapse = changes;
-      old(layout(800)); assert.equal(changes, beforeCollapse);
-      state.toggleTripsSheet(); state = draw();
-      collapsed(layout(68)); assert.equal(changes, beforeCollapse);
-      const beforeRotation = state.onSheetLayout;
-      props.width = props.width === 390 ? 320 : 390; state = draw();
-      const before = changes;
-      beforeRotation(layout(780)); assert.equal(changes, before);
-      const beforeBlur = state.onSheetLayout;
-      props.isScreenActive = false; state = draw();
-      beforeBlur(layout(770)); assert.equal(changes, before);
-      // Current hidden layouts remain useful: cached data can change the height
-      // in background without another native layout event on returning to Home.
-      const hidden = state.onSheetLayout;
-      hidden(layout(260)); state = draw();
-      const beforeReturn = changes, hiddenBottom = state.locationButtonBottom;
-      props.isScreenActive = true; state = draw();
-      assert.equal(state.locationButtonBottom, hiddenBottom);
-      beforeBlur(layout(750)); hidden(layout(745)); assert.equal(changes, beforeReturn);
-      state.onSheetLayout(layout(240)); state = draw();
+      props.isScreenActive = cycle % 2 === 0; props.width = cycle % 2 ? 320 : 390;
+      assert.equal(draw().onSheetLayout, undefined);
+      assert.equal(draw().locationButtonBottom, 36);
+      assert.equal(draw().sheetBottomOffset, platform === 'ios' ? 96 : 0);
     }
-    const beforeUnmount = changes, late = state.onSheetLayout;
-    hooks.unmount(); late(layout(700));
-    assert.equal(changes, beforeUnmount);
+    hooks.unmount();
   });
 
   test(`${platform}: the loading animation has one native loop, pauses in background, and releases on unmount`, () => {
@@ -97,7 +63,7 @@ test('HomeMap is shallow-memoized without a custom comparator that could suppres
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker', Callout: 'Callout' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/components/TrackingMapMarkers': { PassengerTrackingMarker: 'Passenger', VehicleTrackingMarker: 'Vehicle' },
-    '@/features/home/homeMapAssets': { getTripMarkerImage() {}, getTripRequestMarkerImage() {} },
+    '@/assets/images/map-markers/user-location-marker.png': 1,
     '@/hooks/home/useHomeMarkerReadiness': { useHomeMarkerReadiness: () => () => {} },
     './HomeMapMarkers': { TripVehicleMapMarker: 'TripVehicle', UserLocationMapMarker: 'UserMarker' },
   })('components/home/HomeMap.tsx');
@@ -106,12 +72,12 @@ test('HomeMap is shallow-memoized without a custom comparator that could suppres
   const trip = { id: 'ongoing', departure: { lat: -4.325, lng: 15.3222 } };
   const props = { shouldRenderHomeMap: true, ongoingDriverTrip: trip, tripsWithMapCoordinates: [trip],
     tripRequestsWithMapCoordinates: [], visibleDriverPassengerMarkers: [], loadedTripMarkerKeys: new Set(),
-    tripMarkerRefs: { current: {} }, passengerMarkerRefs: { current: {} }, liveUserCoordinate: { latitude: -4.325, longitude: 15.3222 } };
+    tripMarkerRefs: { current: {} }, passengerMarkerRefs: { current: {} }, userCoordinate: { latitude: -4.325, longitude: 15.3222 } };
   let rendered = nodes(HomeMap.type(props));
   assert.equal(rendered.filter(node => node.type === 'MapView').length, 1);
-  assert.deepEqual(rendered.find(node => node.type === 'Marker').props.coordinate, props.liveUserCoordinate);
+  assert.deepEqual(rendered.find(node => node.type === 'Marker').props.coordinate, props.userCoordinate);
   const moved = { latitude: -4.33, longitude: 15.32 };
-  rendered = nodes(HomeMap.type({ ...props, liveUserCoordinate: moved }));
+  rendered = nodes(HomeMap.type({ ...props, userCoordinate: moved }));
   assert.deepEqual(rendered.find(node => node.type === 'Marker').props.coordinate, moved);
   assert.equal(nodes(HomeMap.type({ ...props, shouldRenderHomeMap: false })).some(node => node.type === 'MapView'), false);
 });

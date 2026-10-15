@@ -105,6 +105,7 @@ export const {
   useUpdatePinMutation,
   // Favorite Locations
   useGetFavoriteLocationsQuery,
+  useLazyGetFavoriteLocationsQuery,
   useGetDefaultFavoriteLocationQuery,
   useGetFavoriteLocationByIdQuery,
   useCreateFavoriteLocationMutation,
