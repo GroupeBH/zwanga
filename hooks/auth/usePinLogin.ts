@@ -6,25 +6,24 @@ import { recordStartupMilestone } from '@/services/startupDiagnostics';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import type { useLoginMutation } from '@/store/api/zwangaApi';
 import type { useAppDispatch } from '@/store/hooks';
-import type { useDialog } from '@/components/ui/DialogProvider';
 
-export function usePinLogin({ active, phone, login, dispatch, setPin, showDialog, onRetry }: {
+export function usePinLogin({ active, phone, login, dispatch, setPin, onRetry }: {
   active: boolean;
   phone: string;
   login: ReturnType<typeof useLoginMutation>[0];
   dispatch: ReturnType<typeof useAppDispatch>;
   setPin: (value: string) => void;
-  showDialog: ReturnType<typeof useDialog>['showDialog'];
   onRetry: () => void;
 }) {
   const [isPending, setIsPending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
   const completed = useRef(false);
   const mounted = useRef(true);
   const view = useRef({ active, phone });
   view.current = { active, phone };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { completed.current = false; }, [active, phone]);
+  useEffect(() => { completed.current = false; setErrorMessage(null); }, [active, phone]);
 
   const submit = async (value: string) => {
     let session = getTokenSessionVersion();
@@ -34,14 +33,15 @@ export function usePinLogin({ active, phone, login, dispatch, setPin, showDialog
     // This ref also protects auto-submit + a button press before React rerenders.
     inFlight.current = true;
     setIsPending(true);
+    setErrorMessage(null);
     recordStartupMilestone('login_started');
+    let received = false;
     try {
       const result = await login({ phone, pin: value }).unwrap();
       if (!canContinue()) return;
+      received = true;
       recordStartupMilestone('login_received');
-      const saving = dispatch(saveTokensAndUpdateState({
-        accessToken: result.accessToken, refreshToken: result.refreshToken,
-      }));
+      const saving = dispatch(saveTokensAndUpdateState(result));
       // Our own new login advances the generation synchronously before native writes.
       // Follow that generation, but still ignore a later logout/account change.
       session = getTokenSessionVersion();
@@ -53,8 +53,13 @@ export function usePinLogin({ active, phone, login, dispatch, setPin, showDialog
     } catch (error) {
       if (!canContinue()) return;
       recordStartupMilestone('login_failed');
+      recordStartupMilestone(received ? 'login_session_failed' : 'login_request_failed');
       setPin('');
-      showDialog({ variant: 'danger', title: 'Connexion impossible', message: getAuthErrorMessage(error, 'Connexion impossible. Vérifiez votre PIN et réessayez.') });
+      // Keep failure feedback in this form: no native dialog/keyboard transition.
+      // A storage failure is not an incorrect PIN and must not be presented as one.
+      setErrorMessage(received
+        ? 'Impossible de finaliser la connexion sur ce téléphone. Réessayez.'
+        : getAuthErrorMessage(error, 'Connexion impossible. Vérifiez votre numéro et votre PIN, puis réessayez.'));
       onRetry();
     } finally {
       // A successful request is still busy until the auth screen is replaced.
@@ -65,5 +70,5 @@ export function usePinLogin({ active, phone, login, dispatch, setPin, showDialog
     }
   };
 
-  return { submit, isPending, isInFlight: () => inFlight.current };
+  return { submit, isPending, errorMessage, isInFlight: () => inFlight.current };
 }

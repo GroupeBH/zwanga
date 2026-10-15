@@ -82,7 +82,7 @@ export const performLogout = createAsyncThunk(
  */
 export const saveTokensAndUpdateState = createAsyncThunk(
   'auth/saveTokensAndUpdateState',
-  async (tokens: { accessToken: string; refreshToken: string }, { dispatch }) => {
+  async (tokens: { accessToken: string; refreshToken: string; user?: User }, { dispatch }) => {
     try {
       if (!hasUsableNewAuthSession(tokens.accessToken, tokens.refreshToken)) {
         throw new Error('Session reçue invalide ou expirée. Veuillez réessayer.');
@@ -99,6 +99,21 @@ export const saveTokensAndUpdateState = createAsyncThunk(
 
       // 2. Ensuite, mettre à jour le state Redux
       dispatch(setTokens(tokens));
+      // Keep an optional server profile, never one belonging to a different JWT.
+      // Otherwise mounted getCurrentUser consumers hydrate the profile once.
+      if (version === getTokenSessionVersion() && tokens.user?.id === parseUserInfo(decodeJWT(tokens.accessToken))?.id) {
+        dispatch(setUser(tokens.user));
+      } else if (!tokens.user) {
+        // Optional enrichment shares the existing profile query/cache. It must
+        // neither delay login nor turn a transient /users/me failure into logout.
+        void import('../api/userApi').then(async ({ userApi }) => {
+          if (version !== getTokenSessionVersion()) return;
+          const profile = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { subscribe: false }));
+          if (version === getTokenSessionVersion() && profile.data?.id === parseUserInfo(decodeJWT(tokens.accessToken))?.id) {
+            dispatch(setUser(profile.data));
+          }
+        }).catch(() => undefined);
+      }
       console.log('[saveTokensAndUpdateState] State Redux mis à jour');
 
       return tokens;

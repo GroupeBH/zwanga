@@ -1,4 +1,3 @@
-/* global __dirname */
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -25,7 +24,7 @@ const native = (platform) => ({
   KeyboardAvoidingView: "Keyboard",
 });
 
-test("the second tab depends on driver capability, never identity verification, vehicles or a current ride", () => {
+test("account tab presentation depends on server driver role, never identity verification, vehicles or a current ride", () => {
   for (const user of [
     null,
     undefined,
@@ -39,15 +38,15 @@ test("the second tab depends on driver capability, never identity verification, 
       currentTripRole: "driver",
     },
   ]) {
-    assert.equal(policy.usesServicesTab(user), false);
+    assert.equal(policy.usesDriverTabLabels(user), false);
   }
   for (const user of [
     { role: "driver" },
     { role: "both" },
   ]) {
-    assert.equal(policy.usesServicesTab(user), true);
+    assert.equal(policy.usesDriverTabLabels(user), true);
     assert.equal(
-      policy.usesServicesTab({ ...user, currentTripRole: "passenger" }),
+      policy.usesDriverTabLabels({ ...user, currentTripRole: "passenger" }),
       true,
     );
   }
@@ -55,10 +54,10 @@ test("the second tab depends on driver capability, never identity verification, 
 
 test("account selector stays primitive across unrelated store updates and resets for another account", () => {
   const state = { auth: { user: { id: "driver", role: "both" } } };
-  const selected = policy.selectUsesServicesTab(state);
+  const selected = policy.selectUsesDriverTabLabels(state);
   for (let i = 0; i < 50; i++) {
     assert.equal(
-      policy.selectUsesServicesTab({
+      policy.selectUsesDriverTabLabels({
         ...state,
         location: { sequence: i },
         wallet: { balance: i },
@@ -67,31 +66,29 @@ test("account selector stays primitive across unrelated store updates and resets
     );
   }
   assert.equal(
-    policy.selectUsesServicesTab({
+    policy.selectUsesDriverTabLabels({
       auth: { user: { id: "passenger", role: "passenger" } },
     }),
     false,
   );
-  assert.equal(policy.selectUsesServicesTab({ auth: { user: null } }), false);
+  assert.equal(policy.selectUsesDriverTabLabels({ auth: { user: null } }), false);
   assert.equal(
-    policy.selectUsesServicesTab({ auth: { user: { role: "driver" } } }),
+    policy.selectUsesDriverTabLabels({ auth: { user: { role: "driver" } } }),
     true,
   );
 });
 
-test("profile access keeps Services available to passengers, without KYC or subscription gating", () => {
-  assert.equal(policy.getServicesEntryHref(true), "/(tabs)/discover");
-  assert.equal(policy.getServicesEntryHref(false), "/services");
+test("profile access keeps the standalone Services entry available to every role", () => {
+  assert.equal(policy.getServicesEntryHref(), "/services");
   const source = fs.readFileSync(
     path.join(__dirname, "../hooks/profile/useProfileController.ts"),
     "utf8",
   );
-  assert.match(source, /getServicesEntryHref\(usesServices\)/);
-  assert.match(source, /router.navigate\(href/);
+  assert.match(source, /router\.push\(getServicesEntryHref\(\)\)/);
 });
 
 for (const platform of ["ios", "android"]) {
-  test(`${platform}: exactly five stable tabs, matching labels/icons, and native stability settings preserved`, () => {
+  test(`${platform}: five visible tabs including Services for both roles, with native stability settings preserved`, () => {
     const state = { auth: { user: { role: "passenger" } } };
     const Tabs = Object.assign(() => null, { Screen: "TabScreen" });
     const { default: TabLayout } = loader({
@@ -105,7 +102,7 @@ for (const platform of ["ios", "android"]) {
       "@/store/hooks": { useAppSelector: (selector) => selector(state) },
       "@/store/selectors": { selectUnreadMessagesCount: () => 4 },
     })("app/(tabs)/_layout.tsx");
-    for (const role of ["passenger", "driver", "both"]) {
+    for (const role of ["passenger", "driver", "both", "passenger"]) {
       state.auth.user = { role };
       const elements = nodes(TabLayout());
       const screens = elements.filter((node) => node.type === "TabScreen");
@@ -113,19 +110,17 @@ for (const platform of ["ios", "android"]) {
         screens.map((node) => node.props.name),
         ["index", "discover", "trips", "messages", "profile"],
       );
-      assert.equal(
-        screens[1].props.options.title,
-        role === "passenger" ? "Recherche" : "Services",
-      );
-      const icon = screens[1].props.options.tabBarIcon({
-        focused: true,
-        color: "#000",
-        size: 24,
-      });
-      assert.equal(
-        nodes(icon).find((node) => node.type === "Icon").props.name,
-        role === "passenger" ? "search" : "briefcase",
-      );
+      const visible = screens.filter(node => node.props.options.href !== null);
+      assert.deepEqual(visible.map(node => node.props.name), ['index', 'discover', 'trips', 'messages', 'profile']);
+      assert.deepEqual(visible.map(node => node.props.options.title),
+        ['Accueil', 'Services', role === 'passenger' ? 'Trajets' : 'Mes trajets', 'Messages', 'Profil']);
+      for (const focused of [false, true]) {
+        const icons = visible.map(screen => nodes(screen.props.options.tabBarIcon({ focused, color: '#66615B', size: 24 })));
+        assert.deepEqual(icons.map(icon => icon.find(node => node.type === 'Icon').props.name),
+          ['home-outline', 'briefcase-outline', 'car-outline', 'chatbubble-outline', 'person-outline']);
+        assert.ok(icons.every(icon => icon.find(node => node.type === 'Icon').props.color === (focused ? '#BC4008' : '#66615B')));
+        assert.ok(icons[3].some(node => node.type === 'Text' && node.props.children === 4), 'unread badge preserved');
+      }
       const tabs = elements.find((node) => node.type === Tabs);
       assert.equal(tabs.props.initialRouteName, 'index');
       assert.equal(tabs.props.backBehavior, 'initialRoute');
@@ -133,6 +128,11 @@ for (const platform of ["ios", "android"]) {
       assert.equal(tabBarStyle.borderTopLeftRadius ?? 0, 0);
       assert.equal(tabBarStyle.borderTopRightRadius ?? 0, 0);
       assert.equal(tabBarStyle.backgroundColor, '#FFFFFF');
+      assert.equal(tabBarStyle.elevation, 0);
+      assert.equal(tabBarStyle.shadowOpacity, 0);
+      assert.ok(tabBarStyle.paddingBottom >= 24, 'safe area is preserved');
+      assert.ok(tabs.props.screenOptions.tabBarItemStyle.minHeight >= 44);
+      assert.equal(tabs.props.screenOptions.tabBarLabelPosition, 'below-icon');
       assert.equal(tabs.props.screenOptions.lazy, true);
       assert.equal(tabs.props.detachInactiveScreens, platform !== "android");
       assert.equal(
@@ -148,24 +148,20 @@ for (const platform of ["ios", "android"]) {
     }
   });
 
-  test(`${platform}: contextual content uses the same account selector and reserves only the overlay space`, () => {
-    const state = { auth: { user: { role: "driver" } } };
+  test(`${platform}: Services content no longer depends on account role and reserves only the overlay space`, () => {
     const { default: DiscoverTab } = loader({
       "react-native": native(platform),
       "@react-navigation/bottom-tabs": { useBottomTabBarHeight: () => 92 },
-      "@/store/hooks": { useAppSelector: (selector) => selector(state) },
+      "@/store/hooks": { useAppSelector: () => { throw new Error('Services must not depend on driver role'); } },
       "@/features/pro-services/ServicesScreen": {
         default: "Services",
         __esModule: true,
       },
-      "../search": { default: "Search", __esModule: true },
     })("app/(tabs)/discover.tsx");
-    assert.equal(DiscoverTab().type, "Services");
-    state.auth.user = { role: "passenger" };
-    const search = DiscoverTab();
-    assert.equal(search.type, "Search");
-    assert.equal(search.props.embedded, true);
-    assert.equal(search.props.bottomOverlay, platform === "ios" ? 92 : 0);
+    const services = DiscoverTab();
+    assert.equal(services.type, "Services");
+    assert.equal(services.props.embedded, true);
+    assert.equal(services.props.bottomOverlay, platform === "ios" ? 92 : 0);
   });
 }
 
@@ -270,12 +266,12 @@ test("public search stays unambiguous and the home search links are unchanged", 
   );
   assert.ok(fs.existsSync(path.join(__dirname, "../app/search.tsx")));
   for (const filename of [
-    "components/home/HomeHeader.tsx",
+    "components/home/HomeDashboardActions.tsx",
     "hooks/home/useHomeSheet.ts",
   ]) {
     assert.match(
       fs.readFileSync(path.join(__dirname, "..", filename), "utf8"),
-      /router.push\('\/search'\)/,
+      /router\.push\([^)]*'\/search'/,
     );
   }
   const layout = fs.readFileSync(

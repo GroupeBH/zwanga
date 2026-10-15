@@ -2,7 +2,7 @@ import { getTabBarMetrics } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
 import { selectUnreadMessagesCount } from '@/store/selectors';
-import { selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
+import { getPersonalTripsTabTitle, selectUsesDriverTabLabels } from '@/features/navigation/accountTabPolicy';
 import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
@@ -12,34 +12,34 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Animated import removed to fix Android crash with New Architecture
 
 type TabIconName = keyof typeof Ionicons.glyphMap;
+const activeTabColor = '#BC4008';
+const inactiveTabColor = '#66615B';
 
 export default function TabLayout() {
   const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
-  const usesServices = useAppSelector(selectUsesServicesTab);
+  const isDriver = useAppSelector(selectUsesDriverTabLabels);
   const insets = useSafeAreaInsets();
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
 
   const renderTabIcon = ({
-    activeIcon,
-    inactiveIcon,
+    icon,
     color,
     focused,
     size,
     badgeCount,
   }: {
-    activeIcon: TabIconName;
-    inactiveIcon: TabIconName;
+    icon: TabIconName;
     color: string;
     focused: boolean;
     size?: number;
     badgeCount?: number;
   }) => (
     <View style={styles.iconContainer}>
-      <View style={[styles.iconSurface, focused && styles.iconSurfaceActive]}>
+      <View style={styles.iconSurface}>
         <Ionicons
-          name={focused ? activeIcon : inactiveIcon}
-          size={(size || 24) - 1}
-          color={focused ? Colors.primary : color}
+          name={icon}
+          size={size || 24}
+          color={focused ? activeTabColor : color}
         />
       </View>
       {badgeCount ? (
@@ -59,8 +59,8 @@ export default function TabLayout() {
         backBehavior="initialRoute"
         detachInactiveScreens={Platform.OS !== 'android'}
         screenOptions={{
-          tabBarActiveTintColor: Colors.primary,
-          tabBarInactiveTintColor: Colors.gray[600],
+          tabBarActiveTintColor: activeTabColor,
+          tabBarInactiveTintColor: inactiveTabColor,
           headerShown: false,
           lazy: true,
           freezeOnBlur: Platform.OS !== 'android',
@@ -70,6 +70,7 @@ export default function TabLayout() {
             tabBarMetrics,
           ],
           tabBarLabelStyle: styles.tabBarLabel,
+          tabBarLabelPosition: 'below-icon',
           tabBarAllowFontScaling: false,
           tabBarItemStyle: styles.tabBarItem,
           tabBarHideOnKeyboard: true,
@@ -81,8 +82,7 @@ export default function TabLayout() {
             freezeOnBlur: false,
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'home',
-                inactiveIcon: 'home-outline',
+                icon: 'home-outline',
                 color,
                 focused,
                 size,
@@ -93,26 +93,19 @@ export default function TabLayout() {
         <Tabs.Screen
           name="discover"
           options={{
-            title: usesServices ? 'Services' : 'Recherche',
+            title: 'Services',
             tabBarIcon: ({ color, focused, size }) => (
-              renderTabIcon({
-                activeIcon: usesServices ? 'briefcase' : 'search',
-                inactiveIcon: usesServices ? 'briefcase-outline' : 'search-outline',
-                color,
-                focused,
-                size,
-              })
+              renderTabIcon({ icon: 'briefcase-outline', color, focused, size })
             ),
           }}
         />
         <Tabs.Screen
           name="trips"
           options={{
-            title: 'Mes trajets',
+            title: getPersonalTripsTabTitle(isDriver),
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'car',
-                inactiveIcon: 'car-outline',
+                icon: 'car-outline',
                 color,
                 focused,
                 size,
@@ -127,8 +120,7 @@ export default function TabLayout() {
             freezeOnBlur: false,
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'chatbubbles',
-                inactiveIcon: 'chatbubbles-outline',
+                icon: 'chatbubble-outline',
                 color,
                 focused,
                 size,
@@ -143,8 +135,7 @@ export default function TabLayout() {
             title: 'Profil',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'person',
-                inactiveIcon: 'person-outline',
+                icon: 'person-outline',
                 color,
                 focused,
                 size,
@@ -162,15 +153,9 @@ const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: Colors.white,
     borderTopWidth: 1,
-    borderTopColor: Colors.gray[100],
-    elevation: 14,
-    shadowColor: Colors.black,
-    shadowOffset: {
-      width: 0,
-      height: -6,
-    },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
+    borderTopColor: '#E7E2DC',
+    elevation: 0,
+    shadowOpacity: 0,
   },
   tabBarIOS: {
     position: 'absolute',
@@ -182,6 +167,7 @@ const styles = StyleSheet.create({
   },
   tabBarItem: {
     paddingVertical: 0,
+    minHeight: 48,
   },
   iconContainer: {
     position: 'relative',
@@ -196,9 +182,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  iconSurfaceActive: {
-    backgroundColor: Colors.primary + '14',
   },
   badgeContainer: {
     position: 'absolute',
@@ -217,17 +200,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: Colors.white,
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.danger,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
   },
   badgeText: {
     color: Colors.white,

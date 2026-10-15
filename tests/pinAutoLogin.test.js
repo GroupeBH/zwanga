@@ -107,7 +107,8 @@ test('a rejected PIN is cleared, focus is restored and rerenders never retry it'
   await tick();
   assert.equal(app.props.pin, '');
   assert.equal(app.state.focuses, 1);
-  assert.match(app.dialogs[0].message, /PIN saisi est incorrect/);
+  assert.match(app.render().pinLoginError, /PIN saisi est incorrect/);
+  assert.deepEqual(app.dialogs, [], 'no native modal during keyboard recovery');
   assert.equal(app.state.saved, 0);
   for (let i = 0; i < 5; i++) app.render();
   assert.equal(app.calls.length, 1);
@@ -130,7 +131,8 @@ test('a transport failure or refused local session does not cause automatic retr
     } else app.loginGate.reject({ status: 'FETCH_ERROR' });
     await tick();
     assert.equal(app.props.pin, '');
-    assert.equal(app.dialogs.length, 1);
+    assert.ok(app.render().pinLoginError);
+    assert.equal(app.dialogs.length, 0);
     assert.equal(app.render().isPinLoginPending, false);
     assert.equal(app.calls.length, 1);
     app.hooks.unmount();
@@ -158,7 +160,8 @@ test('a native save failure AFTER our generation advances is visible and allows 
   assert.equal(app.state.generation, 1);
   app.storageGate.reject(new Error('Synthetic secure storage failure'));
   await tick();
-  assert.equal(app.dialogs.length, 1);
+  assert.match(app.render().pinLoginError, /finaliser la connexion/);
+  assert.equal(app.dialogs.length, 0);
   assert.equal(app.props.pin, '');
   assert.equal(app.state.focuses, 1);
   assert.equal(app.render().isPinLoginInFlight(), false);
@@ -221,6 +224,9 @@ test('PIN UI explains automatic login and locks inputs/recovery while submitting
   const signup = PinStep({ mode: 'signup', pin: '', pinConfirm: '', isLoading: false });
   assert.doesNotMatch(text(signup), /connexion démarre/);
   assert.match(text(signup), /Continuer/);
+  const failed = PinStep({ mode: 'login', pin: '', isLoading: false, errorMessage: 'Vérifiez votre numéro et votre PIN.' });
+  assert.match(text(failed), /Vérifiez votre numéro et votre PIN/);
+  assert.ok(nodes(failed).some(node => node.type === 'Text' && node.props.accessibilityRole === 'alert'));
 });
 
 test('auth screen keeps PIN loading and header locked through session persistence', () => {

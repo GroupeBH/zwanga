@@ -21,6 +21,7 @@ interface PinStepProps {
   onForgotPin?: () => void;
   isLoading: boolean;
   keyboardVisible?: boolean;
+  errorMessage?: string | null;
 }
 
 export function PinStep({
@@ -35,6 +36,7 @@ export function PinStep({
   onForgotPin,
   isLoading,
   keyboardVisible = false,
+  errorMessage,
 }: PinStepProps) {
   const isLoginValid = mode === 'login' && pin.length === 4;
   const isSignupValid = mode === 'signup' && pin.length === 4 && pinConfirm.length === 4;
@@ -120,6 +122,9 @@ export function PinStep({
         // Mode login : un seul champ PIN
         <>
           {renderPinInput(pin, pinInputRef, onPinChange, 'Code PIN à 4 chiffres')}
+          {errorMessage ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={codeStyles.error}>
+            {errorMessage}
+          </Text> : null}
 
           <View style={codeStyles.actions}>
             <TouchableOpacity

@@ -4,8 +4,8 @@ import {
   formatReferralTokens,
 } from '@/features/profile/profileModel';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { getServicesEntryHref, selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
+import { useAppDispatch } from '@/store/hooks';
+import { getServicesEntryHref } from '@/features/navigation/accountTabPolicy';
 import { performLogout } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -27,7 +27,6 @@ import { getProfilePriorityAction } from '@/features/profile/profileStatusModel'
 import { getDriverJourneyPresentation } from '@/features/profile/driverJourneyPresentation';
 export function useProfileController() {
   const router = useRouter();
-  const usesServices = useAppSelector(selectUsesServicesTab);
 
   const insets = useSafeAreaInsets();
 
@@ -98,9 +97,7 @@ export function useProfileController() {
   };
 
   const handleOpenDocumentsPack = () => {
-    const href = getServicesEntryHref(usesServices);
-    if (usesServices) router.navigate(href as any);
-    else router.push(href as any);
+    router.push(getServicesEntryHref());
   };
 
   const driverStatusItems = isDriver && data.profileState?.driver.canPublish ? [

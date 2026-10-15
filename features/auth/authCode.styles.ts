@@ -27,6 +27,7 @@ export const authCodeStyles = StyleSheet.create({
   secondaryAction: { alignItems: 'center', justifyContent: 'center' },
   secondaryText: { color: Colors.primaryDark, fontWeight: '600', fontSize: 14, lineHeight: 20, textAlign: 'center' },
   help: { fontSize: 13, lineHeight: 18, color: Colors.gray[700], textAlign: 'center', marginBottom: 0 },
+  error: { fontSize: 14, lineHeight: 20, color: Colors.danger, textAlign: 'center' },
   fields: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   field: { flexGrow: 1, flexBasis: 120, minWidth: 120, gap: 4 },
   label: { fontSize: 14, lineHeight: 18, fontWeight: '600', color: Colors.gray[800] },

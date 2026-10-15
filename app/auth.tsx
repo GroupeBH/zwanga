@@ -108,6 +108,7 @@ export default function AuthScreen() {
               onSubmit={phoneActions.handlePinSubmit}
               onForgotPin={form.mode === 'login' ? phoneActions.handleForgotPin : undefined}
               isLoading={form.isLoggingIn || phoneActions.isPinLoginPending}
+              errorMessage={phoneActions.pinLoginError}
             />
           )}
 

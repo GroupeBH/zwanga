@@ -1,0 +1,27 @@
+import { StyleSheet } from 'react-native';
+import { homePalette as p } from './HomeDashboard.styles';
+export const styles = StyleSheet.create({
+  card: { backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1, borderColor: p.line,
+    padding: 14, marginBottom: 12, gap: 12 },
+  top: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' },
+  when: { flex: 1, minWidth: 125, fontSize: 16, fontWeight: '700', color: p.ink, paddingTop: 3 },
+  price: { backgroundColor: '#FFF0DC', borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5, alignItems: 'center' },
+  priceText: { color: '#853A15', fontSize: 16, fontWeight: '700' },
+  priceHint: { color: '#853A15', fontSize: 11 },
+  free: { backgroundColor: p.greenSoft }, freeText: { color: p.green },
+  route: { gap: 3 }, routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  startDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: p.green },
+  endDot: { width: 9, height: 9, borderRadius: 2, backgroundColor: p.accent },
+  routeLine: { width: 2, height: 10, backgroundColor: '#DDD8D2', marginLeft: 3.5 },
+  place: { flex: 1, color: p.ink, fontSize: 16, fontWeight: '500' },
+  bottom: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  person: { flex: 1, minWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  personCopy: { flex: 1, gap: 3 },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F0EDE9', justifyContent: 'center', alignItems: 'center' },
+  initials: { color: p.muted, fontSize: 15, fontWeight: '700' },
+  name: { color: p.ink, fontSize: 14, fontWeight: '700' }, detail: { color: p.muted, fontSize: 12 },
+  action: { minHeight: 44, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: p.accent, justifyContent: 'center', alignItems: 'center' },
+  clientAction: { backgroundColor: p.green }, bookedAction: { backgroundColor: p.greenSoft },
+  actionText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' }, bookedText: { color: p.green },
+});

@@ -20,6 +20,7 @@ import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BaseEndpointBuilder } from '../types';
 import { syncAccountRole } from './syncAccountRole';
+import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 
 export function buildGetProfileSummaryEndpoints(builder: BaseEndpointBuilder) {
   return {
@@ -45,6 +46,9 @@ getProfileSummary: builder.query<ProfileSummary, void>({
         url: '/users/me',
         method: 'PUT',
         body: formData,
+        // Profile photos need an upload budget, not the 20 s read deadline.
+        // Keep a finite deadline and never automatically replay this mutation.
+        timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerUser) => mapServerUser(response),
       invalidatesTags: (result) =>

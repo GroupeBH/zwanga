@@ -76,9 +76,9 @@ test('leaving the Home route still removes its map and releases the location lif
   app.hooks.unmount();
 });
 
-test('the same driver selection reaches discovery, cards and map without remounting the native map', () => {
+test('the driver selection reaches discovery and cards, never the own-location map', () => {
   const app = controllerFixture();
-  const destinations = ['useHomeTripFeed', 'useHomeTripSelection', 'useHomeMap', 'useHomeSheet'];
+  const destinations = ['useHomeTripFeed', 'useHomeTripSelection', 'useHomeSheet'];
   assert.equal(app.render().isRequestsSheetMode, true);
   for (const name of destinations) assert.equal(app.received[name].isRequestsSheetMode, true, name);
   app.render().setHomeSheetMode('trips');
@@ -119,7 +119,7 @@ function nodes(element) {
 
 test('slow, empty, failed and refreshing trip queries keep the same map position in the Home render tree', () => {
   const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true };
-  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet'];
+  const parts = ['HomeDashboardActions', 'HomeActivityCards', 'HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet'];
   const load = loader({
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
@@ -133,10 +133,10 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     Object.assign(home, update);
     const tree = HomeScreen(), rendered = nodes(tree);
     assert.equal(tree.type, 'SafeArea');
-    assert.equal(tree.props.children[0].type, 'HomeMap');
+    assert.equal(tree.props.children[0].props.children[0].type, 'HomeMap');
     assert.equal(rendered.filter(node => node.type === 'HomeMap').length, 1);
     assert.equal(rendered.some(node => node.type === 'HomeTripsLoadingScreen'), false);
     assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.sheetLoading, home.sheetLoading);
-    assert.equal(rendered.find(node => node.type === 'HomeHeader').props.isDriver, home.isDriver);
+    assert.equal(rendered.find(node => node.type === 'HomeHeader').props.ongoingDriverTrip, undefined);
   }
 });

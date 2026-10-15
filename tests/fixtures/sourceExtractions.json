@@ -239,7 +239,7 @@
     "store/api/userApi.ts": {
       "getProfileSummary": "92d39e2e38f6634af5163d493d3f9daab2f943e1d86b876f07f626eae5dc4082",
       "getCurrentUser": "ef49b20fb6dc5d64144a2956aa02cb8f2b3c8d6ce317474205e6881dc66375a2",
-      "updateUser": "17cf4874ce92a822d3c6f8bf939f121b5d83371494357feee49ed7ef7e792a7e",
+      "updateUser": "bc12675fb81cafd44a2654b551bbeac0ebeaca4cbb6b5b52c48aa754e262f5e6",
       "requestDriverOnboarding": "52770635580b8b643e2268f9706d13d29f388ba7c239f6afed49f1038912172f",
       "activateDriver": "4c993e25751136fd9d234f4e999f313ca4461b26c09430487a3cd9a5275b155e",
       "deleteAccount": "8160786312d52735bfcf15c162f51916eec39a8d430822aedd97551738710686",

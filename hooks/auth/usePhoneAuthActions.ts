@@ -74,7 +74,7 @@ export function usePhoneAuthActions({
 }: Params) {
   const pinReset = usePinResetFlow(phone, step === 'resetPin' && mode === 'login');
   const pinLogin = usePinLogin({ active: mode === 'login' && step === 'pin', phone, login, dispatch,
-    setPin, showDialog, onRetry: () => focusAfterInteractions(pinInputRef) });
+    setPin, onRetry: () => focusAfterInteractions(pinInputRef) });
   const handlePhoneSubmit = async () => {
     const normalizedPhone = phone.trim();
     if (!isAuthPhoneValid(normalizedPhone)) {
@@ -192,6 +192,7 @@ export function usePhoneAuthActions({
 
   return {
     isPinLoginPending: pinLogin.isPending,
+    pinLoginError: pinLogin.errorMessage,
     isPinLoginInFlight: pinLogin.isInFlight,
     isResettingPin: pinReset.isBusy,
     handlePhoneSubmit,
