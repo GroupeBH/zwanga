@@ -40,6 +40,8 @@ test('driver header reserves safe-area space and puts confirmation outside the d
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const model = driverModel();
+  model.session.foundation.mapState.currentWaypointIndex = 0;
+  model.session.foundation.mapState.waypoints = [{ booking: { id: 'next-passenger' }, type: 'pickup', completed: false }];
   const tree = DriverNavigationTopPanel({ model, assistance });
   assert.equal(flatStyle(tree.props.style).top, 55);
   const header = tree.props.children[0];
@@ -50,6 +52,8 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(recovery.props.bookings, model.session.foundation.data.bookings);
   assert.equal(recovery.props.actor, 'driver'); assert.equal(recovery.props.compact, undefined);
   assert.equal(recovery.props.condensed, true);
+  assert.equal(recovery.props.preferredBookingId, 'next-passenger');
+  assert.equal(recovery.props.preferredStage, 'pickup');
   assert.equal(recovery.props.fix.recordedAt, 123); assert.equal(recovery.props.fix.accuracy, 10);
   const confirmation = all(tree).find(node => node.props?.children === recovery);
   const confirmationStyle = flatStyle(confirmation.props.style);
@@ -63,8 +67,13 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   const scroll = all(tree).find(node => node.type === 'ScrollView');
   assert.equal(all(scroll).find(node => node.type === 'Recovery'), undefined, 'keep confirmations outside the bounded details');
   assert.equal(all(tree).find(node => node.type === 'DropoffReceipts'), undefined, 'in-progress gains stay in Options');
-  assert.equal(scroll.props.style.flexGrow, 0); assert.equal(scroll.props.style.flexShrink, 1);
+  assert.equal(flatStyle(scroll.props.style).flexGrow, 0); assert.equal(flatStyle(scroll.props.style).flexShrink, 1);
+  assert.equal(flatStyle(scroll.props.style).minHeight, 44, 'the next stop never collapses to zero height');
   assert.ok(flatStyle(tree.props.style).maxHeight <= 300, 'the ordinary top panel leaves map space');
+  model.session.foundation.mapState.waypoints[0].completed = true;
+  const completedStop = all(DriverNavigationTopPanel({ model, assistance })).find(node => node.type === 'Recovery');
+  assert.equal(completedStop.props.preferredBookingId, undefined);
+  assert.equal(completedStop.props.preferredStage, undefined);
   model.session.foundation.data.trip.status = 'completed';
   model.session.foundation.data.isTripOngoing = false;
   const receipts = all(DriverNavigationTopPanel({ model, assistance })).find(node => node.type === 'DropoffReceipts');
@@ -127,7 +136,7 @@ test('passenger map top offset follows actual header height, including larger te
   hooks.unmount();
 });
 
-test('driver exposes icon-only rerouting directly and keeps my position in options', () => {
+test('driver labels the map controls and keeps my position in options', () => {
   const hooks = hookHarness(); const calls = [];
   const { DriverNavigationControls } = loader({ ...defaults, react: { ...React, ...hooks.react },
     '../screen-styles/app/trip/navigate/detail/index': { styles: {} },
@@ -144,7 +153,7 @@ test('driver exposes icon-only rerouting directly and keeps my position in optio
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   render(); assert.equal(all(tree).filter(node => node.type === 'Button').length, 4);
   const rerouteLabel = 'Recalculer l’itinéraire';
-  assert.equal(words(button(rerouteLabel)), '', 'keep an accessible label without visible caption');
+  assert.equal(words(button(rerouteLabel)), 'Actualiser', 'the icon also has a visible action label');
   assert.equal(all(button(rerouteLabel)).find(node => node.type === 'Icon').props.name, 'refresh');
   assert.equal(button('Recentrer sur ma position'), undefined);
   assert.equal(button('Ma position'), undefined);
@@ -230,6 +239,7 @@ test('driver can still access receipts through Options after hiding the banner, 
 test('driver navigation wires contacts to this trip and defers automatic notice modals during assistance', () => {
   const model = driverModel(); const received = [];
   const mocked = { ...defaults,
+    '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'DriverAccessGuard' },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
     '../../../hooks/driver-navigation/useDriverNavigationController': { useDriverNavigationController: () => model },
@@ -265,6 +275,7 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
   const model = { data: { tripId: 't', bookingId: 'b', trip: { id: 't', departure: { address: 'Départ' } }, booking: { id: 'b', tripId: 't' }, insets, isScreenActive: true },
     state: { isMapExpanded: true, mapTopOffset: 200, pickupNotice: {}, setPickupNotice() {} }, presentation: {}, context: {}, tripActions: {}, camera: {} };
   const mocked = { ...defaults,
+    '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
     '../../../hooks/passenger-navigation/usePassengerNavigationController': { usePassengerNavigationController: () => model },

@@ -4,6 +4,7 @@ import { styles as baseStyles } from '../screen-styles/app/trip/manage/detail/in
 import { bookingStyles } from './ManageTripBookings.styles';
 import { CompactCardAvatar } from '@/components/trip/CompactCardAvatar';
 import { ConfirmCashReceipt } from '@/features/driver-payments/ConfirmCashReceipt';
+import { homeDepartureLabel } from '@/features/home/homeCardPresentation';
 import { Colors, Spacing } from '@/constants/styles';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +17,7 @@ interface ManageTripBookingsProps {
   tracking: { visibleBookings: Booking[] | undefined; };
   state: ReturnType<typeof useManageTripState>;
   actions: { handleOpenNavigation: () => void; handleStartTrip: () => Promise<void>; handleOpenTripEdit: () => void; handleCancelTrip: () => void; handlePauseTrip: () => Promise<void>; };
-  bookingsActions: { showFeedback: (type: "success" | "error", message: string | string[]) => void; openRejectModal: (booking: Booking) => void; handleAcceptBooking: (bookingId: string) => Promise<void>; handleCancelBookingBeforePickup: (booking: Booking) => void; closeRejectModal: () => void; handleRejectSubmit: () => Promise<void>; };
+  bookingsActions: { showFeedback: (type: "success" | "error", message: string | string[]) => void; handleRejectBooking: (booking: Booking) => Promise<void>; handleAcceptBooking: (bookingId: string) => Promise<void>; handleCancelBookingBeforePickup: (booking: Booking) => void; };
 }
 
 export function ManageTripBookings({
@@ -27,13 +28,17 @@ export function ManageTripBookings({
 }: ManageTripBookingsProps) {
   const trip = state.trip;
   if (!trip) return null;
+  const busy = Boolean(state.processingBookingId || state.isAccepting || state.isRejecting);
+  const bookings = [...(tracking.visibleBookings ?? [])].sort((a, b) =>
+    Number(b.id === state.focusBookingId) - Number(a.id === state.focusBookingId) ||
+    Number(b.status === 'pending') - Number(a.status === 'pending'));
   return (
     <View style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
         <View>
           <Text style={styles.sectionTitle}>Passagers</Text>
           <Text style={styles.sectionSubtitle}>
-            {tracking.visibleBookings?.length || 0} réservation(s) au total
+            {homeDepartureLabel(trip.departureTime)} · {bookings.length} réservation{bookings.length > 1 ? 's' : ''}
           </Text>
         </View>
         {(trip.status === 'upcoming' || trip.status === 'ongoing') && (
@@ -49,7 +54,7 @@ export function ManageTripBookings({
       </View>
 
       {tracking.visibleBookings && tracking.visibleBookings.length > 0 ? (
-        tracking.visibleBookings.map((booking) => (
+        bookings.map((booking) => (
           <View key={booking.id} style={styles.bookingCard}>
             <View style={styles.bookingHeader}>
               <TouchableOpacity
@@ -65,7 +70,7 @@ export function ManageTripBookings({
                   <Text style={styles.bookingMeta}>
                     {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''} • {(booking.numberOfSeats * (trip.price ?? 0)).toLocaleString()} FC
                   </Text>
-                  {booking.passengerDestination && (
+                  {booking.status !== 'pending' && booking.passengerDestination && (
                     <Text style={styles.destination} numberOfLines={1}>
                       Vers {booking.passengerDestination}
                     </Text>
@@ -96,13 +101,18 @@ export function ManageTripBookings({
               </View>
             </View>
 
-            {booking.status === 'pending' && (
+            {booking.status === 'pending' && <View style={{ marginTop: Spacing.sm }}>
+              <Text style={styles.destination} numberOfLines={2}>Départ : {booking.passengerOrigin || trip.departure?.address || 'À préciser'}</Text>
+              <Text style={styles.destination} numberOfLines={2}>Arrivée : {booking.passengerDestination || trip.arrival?.address || 'À préciser'}</Text>
+            </View>}
+
+            {booking.status === 'pending' && (trip.status === 'upcoming' || trip.status === 'ongoing') && (
               <View style={styles.bookingFooter}>
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: Colors.gray[100] }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Contacter ${booking.passengerName || 'le passager'} avant d’accepter`}
-                  disabled={state.isAccepting || state.isRejecting}
+                  disabled={busy}
                   onPress={() => state.setContactBookingId(booking.id)}
                 >
                   <Ionicons name="call-outline" size={16} color={Colors.primary} />
@@ -111,18 +121,24 @@ export function ManageTripBookings({
                 <TouchableOpacity
                   style={[styles.actionButton, styles.rejectButton]}
                   accessibilityRole="button"
-                  onPress={() => bookingsActions.openRejectModal(booking)}
-                  disabled={state.isAccepting || state.isRejecting}
+                  accessibilityLabel={`Refuser la réservation de ${booking.passengerName || 'ce passager'}`}
+                  accessibilityState={{ disabled: busy, busy: state.processingBookingId === booking.id && state.isRejecting }}
+                  onPress={() => { void bookingsActions.handleRejectBooking(booking); }}
+                  disabled={busy}
                 >
-                  <Text style={[styles.actionText, { color: Colors.danger }]}>Refuser</Text>
+                  {state.processingBookingId === booking.id && state.isRejecting
+                    ? <ActivityIndicator size="small" color={Colors.danger} />
+                    : <Text style={[styles.actionText, { color: Colors.danger }]}>Refuser</Text>}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.acceptButton]}
                   accessibilityRole="button"
+                  accessibilityLabel={`Accepter la réservation de ${booking.passengerName || 'ce passager'}`}
+                  accessibilityState={{ disabled: busy, busy: state.processingBookingId === booking.id && state.isAccepting }}
                   onPress={() => bookingsActions.handleAcceptBooking(booking.id)}
-                  disabled={state.isAccepting || state.isRejecting}
+                  disabled={busy}
                 >
-                  {state.processingBookingId === booking.id ? (
+                  {state.processingBookingId === booking.id && state.isAccepting ? (
                     <ActivityIndicator size="small" color={Colors.white} />
                   ) : (
                     <Text style={styles.actionText}>Accepter</Text>

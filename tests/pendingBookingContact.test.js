@@ -57,7 +57,7 @@ test('the management contact action stays separate from accept/reject and target
   })('features/manage-trip/ManageTripBookings.tsx');
   const props = { tracking: { visibleBookings: [pending, other] },
     state: { trip, setContactBookingId: id => calls.push(['contact', id]), router: { push() {} } }, actions: {},
-    bookingsActions: { openRejectModal: booking => calls.push(['reject', booking.id]), handleAcceptBooking: id => calls.push(['accept', id]) } };
+    bookingsActions: { handleRejectBooking: booking => calls.push(['reject', booking.id]), handleAcceptBooking: id => calls.push(['accept', id]) } };
   const buttons = all(ManageTripBookings(props)).filter(n => n.type === 'Button');
   const contacts = buttons.filter(n => words(n) === 'Contacter');
   assert.equal(contacts.length, 2);
@@ -85,4 +85,19 @@ test('management uses current authorized data, handles missing numbers and unmou
   state.isOwner = false; assert.equal(render([pending, other]), null);
   state.isOwner = true; state.isScreenActive = false; assert.equal(render([pending, other]), null);
   state.isScreenActive = true; tree.props.onClose(); assert.equal(render([pending, other]), null);
+});
+
+test('the reservation selected from a notification is shown first, then other pending passengers', () => {
+  const { ManageTripBookings } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '../screen-styles/app/trip/manage/detail/index': { styles: {} },
+    '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
+    '@/components/trip/CompactCardAvatar': { CompactCardAvatar: 'Avatar' },
+  })('features/manage-trip/ManageTripBookings.tsx');
+  const accepted = { ...pending, id: 'accepted', passengerName: 'Déjà accepté', status: 'accepted' };
+  const rows = [accepted, pending, other];
+  const props = { tracking: { visibleBookings: rows }, state: { trip, focusBookingId: other.id, router: {} }, actions: {}, bookingsActions: {} };
+  const text = words(ManageTripBookings(props));
+  assert.ok(text.indexOf('Titulaire B') < text.indexOf('Titulaire A'));
+  assert.ok(text.indexOf('Titulaire A') < text.indexOf('Déjà accepté'));
+  assert.deepEqual(rows.map(row => row.id), ['accepted', pending.id, other.id], 'cache array is not reordered in place');
 });

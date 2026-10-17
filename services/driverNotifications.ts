@@ -12,6 +12,7 @@ import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert, type NearbyPhoneAler
 import { getDriverAlertChannel, LEGACY_DRIVER_CHANNEL } from './driverAlertChannel';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
+const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
 type DriverAlert = DriverInvitation | NearbyPhoneAlert;
 const actionKey = (invitation: DriverInvitation) => `driver-action-v1:${invitation.kind}:${invitation.id}`;
 export const invitationNotificationId = (invitation: DriverAlert) => `driver-${invitation.kind}-${invitation.id}`;
@@ -53,8 +54,14 @@ export async function configureDriverNotifications() {
 export async function displayDriverInvitation(data: Record<string, unknown>): Promise<boolean> {
   const invitation = parseDriverInvitation(data) ?? parseNearbyPhoneAlert(data);
   if (!invitation) return false;
-  // The foreground screen owns the invitation. Never start a second sound there.
-  if (isAppActive()) { acknowledgeDelivery(invitation); return true; }
+  // Bookings no longer open an intrusive screen. Android data-only pushes still
+  // need a visible, silent banner with the same direct native actions.
+  if (isAppActive()) {
+    if (invitation.kind === 'booking' && Platform.OS === 'android') {
+      await displayForegroundBooking(invitation, data);
+    } else acknowledgeDelivery(invitation);
+    return true;
+  }
   if (invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) return true;
   if (Platform.OS !== 'android') return true; // iOS remote alert/category is already displayed by APNs.
   const version = getTokenSessionVersion();
@@ -93,6 +100,38 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     throw error;
   }
   return true;
+}
+
+async function displayForegroundBooking(invitation: DriverInvitation, data: Record<string, unknown>) {
+  const version = getTokenSessionVersion();
+  const { refreshToken } = await getTokens();
+  if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId ||
+    version !== getTokenSessionVersion() || !isAppActive()) return;
+  const key = deliveryKey(invitation);
+  if (deliveries.has(key)) return;
+  const delivery = rememberDelivery(key);
+  try {
+    await notifee.createChannel({ id: FOREGROUND_BOOKING_CHANNEL, name: 'Réservations dans l’application',
+      importance: AndroidImportance.HIGH, vibration: false, sound: undefined });
+    if (delivery.cancelled || version !== getTokenSessionVersion() || !isAppActive()) return;
+    await notifee.displayNotification({ id: invitationNotificationId(invitation),
+      title: 'Nouvelle réservation',
+      body: typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800) : 'Un passager souhaite vous rejoindre.',
+      data: Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
+      android: { channelId: FOREGROUND_BOOKING_CHANNEL, importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PRIVATE, autoCancel: true, onlyAlertOnce: true,
+        pressAction: { id: 'default', launchActivity: 'default' },
+        actions: [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
+          { title: 'Accepter', pressAction: { id: 'driver-accept' } }],
+      },
+    });
+    if (delivery.cancelled || version !== getTokenSessionVersion()) {
+      await notifee.cancelNotification(invitationNotificationId(invitation));
+    }
+  } catch (error) {
+    if (!delivery.cancelled) deliveries.delete(key);
+    throw error;
+  }
 }
 
 // Only native notification actions write this intent. A deep link never authorizes a mutation.

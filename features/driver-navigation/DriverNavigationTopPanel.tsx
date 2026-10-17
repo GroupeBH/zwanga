@@ -28,9 +28,12 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const hasPendingBooking = data.isTripOngoing && !hasUrgentDropoff && Boolean(passengers.activePendingBooking);
   const pendingLayout = getDriverPendingBookingLayout(height, data.insets.top, data.insets.bottom);
   const layout = getDriverNavigationLayout(height, data.insets.top, data.insets.bottom);
+  const nextStop = mapState.waypoints[mapState.currentWaypointIndex];
   const recovery = data.isTripOngoing && !hasUrgentDropoff && Boolean(data.bookings?.length) ? <View style={styles.confirmation}>
     <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
       condensed
+      preferredBookingId={!nextStop?.completed ? nextStop?.booking?.id : undefined}
+      preferredStage={!nextStop?.completed ? nextStop?.type : undefined}
       fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
       destination={data.tripArrivalCoordinate} />
   </View> : null;
@@ -65,7 +68,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
     {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff || hasPendingBooking ? <DriverNavigationPassengersBar
       onContact={assistance.openContact}
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
-      : <ScrollView style={styles.scroll} contentContainerStyle={styles.details}
+      : <ScrollView style={[styles.scroll, mapState.waypoints.length > 0 && styles.stopsScroll]} contentContainerStyle={styles.details}
       showsVerticalScrollIndicator bounces={false}>
       {data.trip?.status === 'completed' && <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive} />}
       {(mapState.waypoints.length > 0 || passengers.activePendingBooking) && <DriverNavigationPassengersBar
@@ -77,7 +80,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
 }
 
 const styles = StyleSheet.create({
-  panel: { position: 'absolute', gap: 8, zIndex: 40 },
+  panel: { position: 'absolute', gap: 6, zIndex: 40 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   back: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', backgroundColor: '#26363D' },
   info: { flex: 1, minWidth: 0, backgroundColor: '#26363D', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 8, gap: 4 },
@@ -92,5 +95,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   confirmation: { flexShrink: 0, minWidth: 130, backgroundColor: Colors.white, borderRadius: 16, padding: 8 },
   scroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
+  stopsScroll: { minHeight: 44 },
   details: { gap: 6, paddingBottom: 2 },
 });

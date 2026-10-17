@@ -24,6 +24,95 @@ function fixture(t, overrides = {}) {
     logout: () => { version++; } };
 }
 
+test('entry stays covered through verification and route replacement, but not a voluntary Home return', async t => {
+  const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise });
+  assert.equal(app.render().visible, true);
+  pending.resolve(trip()); await flush();
+  assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+  assert.equal(app.render().visible, true, 'do not flash Home while the router is replacing');
+  app.options.path = '/trip/navigate/trip'; assert.equal(app.render().visible, false);
+  app.options.path = '/'; assert.equal(app.render().visible, false);
+});
+
+test('empty fresh discovery releases the cover without waiting for the timeout', t => {
+  const app = fixture(t, { trips: { data: [], isSuccess: false }, bookings: { data: [], isSuccess: false } });
+  app.render();
+  // Set response timestamps after module loading/entry, even on a saturated CI worker.
+  app.options.trips = { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() };
+  app.options.bookings = { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() };
+  app.render(); assert.equal(app.render().visible, false); assert.deepEqual(app.reads, []);
+});
+
+test('slow discovery exposes retry and an escape after eight seconds; a late reply cannot hijack Home', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise });
+  assert.equal(app.render().failed, false);
+  t.mock.timers.tick(7999); assert.equal(app.render().failed, false);
+  t.mock.timers.tick(1); const stalled = app.render();
+  assert.equal(stalled.visible, true); assert.equal(stalled.failed, true);
+  stalled.dismiss(); assert.equal(app.render().visible, false);
+  pending.resolve(trip()); await flush(); assert.deepEqual(app.calls, []);
+});
+
+test('a transient failure retries verification and shared discovery on demand, not on every render', async t => {
+  let fail = true, refreshes = 0;
+  const app = fixture(t, { readTrip: async () => { if (fail) throw new Error('offline'); return trip(); },
+    refreshActivity: async () => { refreshes++; } });
+  app.render(); await flush(); assert.equal(app.render().failed, true);
+  app.render(); app.render(); assert.equal(refreshes, 0);
+  fail = false; app.render().retry(); app.render(); await flush();
+  assert.equal(refreshes, 1); assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+});
+
+test('offline entry can be dismissed without fresh reads or a loop, and checks again on next foreground', async t => {
+  const app = fixture(t, { online: false });
+  const gate = app.render(); assert.equal(gate.visible, true); assert.equal(gate.failed, true);
+  gate.retry(); await flush(); assert.deepEqual(app.reads, []);
+  gate.dismiss(); app.options.online = true; assert.equal(app.render().visible, false);
+  await flush(); assert.deepEqual(app.calls, []);
+  app.options.active = false; app.render(); app.options.active = true; app.render(); await flush();
+  assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+});
+
+test('a scheduled retry never refreshes a different account', async t => {
+  let refreshes = 0;
+  const app = fixture(t, { trips: { isSuccess: false }, bookings: { isSuccess: false },
+    refreshActivity: async () => { refreshes++; } });
+  app.render().retry(); app.options.userId = 'other'; app.render();
+  await flush(); assert.equal(refreshes, 0);
+});
+
+test('a stalled route replacement can be retried without an infinite cover', async t => {
+  const app = fixture(t); app.render(); await flush(); assert.equal(app.calls.length, 1);
+  app.render().retry(); app.render(); await flush(); assert.equal(app.calls.length, 2);
+  app.options.path = '/trip/navigate/trip'; assert.equal(app.render().visible, false);
+});
+
+test('a pending entry remains blocked while backgrounded, without displaying or animating its loader', t => {
+  const app = fixture(t, { trips: { isSuccess: false }, bookings: { isSuccess: false } });
+  assert.equal(app.render().pending, true); app.options.active = false;
+  const background = app.render(); assert.equal(background.pending, true); assert.equal(background.visible, false);
+});
+
+test('the initial Home stays covered before the navigator is ready, without navigating too early', async t => {
+  const app = fixture(t, { ready: false });
+  assert.equal(app.render().pending, true); assert.equal(app.render().visible, true);
+  await flush(); assert.deepEqual(app.reads, []); assert.deepEqual(app.calls, []);
+  app.options.ready = true; app.render(); await flush();
+  assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+});
+
+test('profile loading shares the same eight-second recovery instead of an endless second loader', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = fixture(t, { trips: { isSuccess: false }, bookings: { isSuccess: false },
+    homeRole: { ready: false, failed: false, retry: async () => {} } });
+  app.render();
+  app.options.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, fulfilledTimeStamp: Date.now() };
+  app.render(); assert.equal(app.render().visible, true);
+  t.mock.timers.tick(8000); assert.equal(app.render().failed, true);
+  app.options.homeRole.ready = true; assert.equal(app.render().visible, false);
+});
+
 test('driver entry verifies the server, resumes once, and a voluntary Home return stays on Home', async t => {
   const app = fixture(t); app.render(); app.render(); await flush();
   assert.deepEqual(app.reads, [['trip', 'trip']]); assert.deepEqual(app.calls, ['/trip/navigate/trip']);

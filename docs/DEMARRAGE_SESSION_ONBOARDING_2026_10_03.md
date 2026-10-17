@@ -3,6 +3,13 @@
 Date : 3 octobre 2026. Périmètre : démarrage mobile, restauration d’authentification,
 écran de bienvenue et anciennes routes de présentation.
 
+Mise à jour du 17 octobre 2026 : la présentation de bienvenue a été remplacée
+selon la maquette fournie. Les actions font désormais partie du défilement et
+l'information de localisation se déplie dans la page ; les règles de session
+décrites ici restent inchangées. Voir l'entrée « Nouvel accueil avant connexion »
+dans le [journal des changements](CHANGEMENTS_TECHNIQUES.md) pour les fichiers,
+vérifications et limites de cette nouvelle présentation.
+
 ## Problèmes identifiés
 
 - Le splash lisait `hasSeenOnboarding` et `hasSeenBackgroundLocationDisclosure`

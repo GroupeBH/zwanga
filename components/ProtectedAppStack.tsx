@@ -31,7 +31,7 @@ export function ProtectedAppStack() {
 
       <Stack.Protected guard={hasSession}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="incoming-driver" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="incoming-driver" options={{ presentation: 'card', animation: 'none' }} />
         <Stack.Screen name="driver-availability" />
         <Stack.Screen name="booking/navigate/[id]" />
         <Stack.Screen name="booking/payment" />

@@ -208,6 +208,27 @@ test('iOS never redisplays a remote notification as a second local notification'
   assert.equal(displays.length, 0);
 });
 
+test('foreground bookings use one silent Android banner with direct actions, not the ringing channel', async () => {
+  const payload = { ...data, type: 'new_booking', bookingId: id, expiresAt: undefined };
+  const f = service(); f.appState.currentState = 'active';
+  await Promise.all([f.loaded.displayDriverInvitation(payload), f.loaded.displayDriverInvitation(payload)]);
+  assert.equal(f.displays.length, 1);
+  assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
+  assert.equal(f.displays[0].android.loopSound, undefined);
+  assert.equal(f.displays[0].android.sound, undefined);
+  assert.equal(f.channels[0].sound, undefined); assert.equal(f.channels[0].vibration, false);
+  assert.deepEqual(f.displays[0].android.actions.map(action => action.pressAction.id), ['driver-decline', 'driver-accept']);
+  assert.equal(f.storage.size, 0, 'delivery does not create a decision');
+  await f.loaded.silenceDriverInvitations(driverId);
+  assert.deepEqual(f.cancelled, [`driver-booking-${id}`]);
+  f.appState.currentState = 'background'; await f.loaded.displayDriverInvitation(payload);
+  assert.equal(f.displays.length, 1, 'acknowledged receipt must not start ringing later');
+  const ios = service('ios'); ios.appState.currentState = 'active';
+  await ios.loaded.displayDriverInvitation(payload); assert.equal(ios.displays.length, 0);
+  const wrong = service('android', 'another-user'); wrong.appState.currentState = 'active';
+  await wrong.loaded.displayDriverInvitation(payload); assert.equal(wrong.displays.length, 0);
+});
+
 test('Android ignores an invitation belonging to a logged-out or different account', async () => {
   for (const account of [null, '00000000-0000-4000-8000-000000000099']) {
     const f = service('android', account);

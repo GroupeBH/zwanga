@@ -9,11 +9,12 @@ import { styles } from '../../../features/screen-styles/app/booking/navigate/det
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, ScrollView, StatusBar, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StatusBar, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
+import { NavigationLoading } from '@/features/navigation/NavigationLoading';
 
 export default function PassengerNavigationScreen() {
   const { height } = useWindowDimensions();
@@ -23,13 +24,7 @@ export default function PassengerNavigationScreen() {
 
   // Loading
   if ((model.data.bookingLoading && !model.data.booking) || (model.data.tripLoading && !model.data.trip)) {
-    return (
-      <View style={styles.loadingContainer}>
-        <StatusBar barStyle="dark-content" />
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Chargement...</Text>
-      </View>
-    );
+    return <NavigationLoading onExit={model.state.navigateBackSafely} />;
   }
 
   // Erreur
@@ -69,9 +64,8 @@ export default function PassengerNavigationScreen() {
           presentation={model.presentation}
         />
       ) : (
-        <View style={[styles.map, styles.mapPlaceholder]}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.mapPlaceholderText}>Préparation de la navigation...</Text>
+        <View style={styles.map}>
+          <NavigationLoading compact label="Préparation de la carte" />
         </View>
       )}
 
@@ -118,7 +112,7 @@ export default function PassengerNavigationScreen() {
                 model.state.activeRouteSegment === 'pickup' && styles.segmentToggleTextActive,
               ]}
             >
-              Prise en charge
+              Rendez-vous
             </Text>
           </TouchableOpacity>
         </View>
@@ -193,7 +187,7 @@ export default function PassengerNavigationScreen() {
               </View>
             )}
             <Text style={styles.arrivalModalHint}>
-              Gardez la localisation active : l&apos;embarquement sera confirmé automatiquement pendant le déplacement.
+              Gardez la localisation active pendant le trajet.
             </Text>
             <View style={styles.arrivalModalActions}>
               <TouchableOpacity

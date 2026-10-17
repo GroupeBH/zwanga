@@ -28,6 +28,7 @@ function guard(overrides = {}) {
   const calls = [], routes = [];
   const child = React.createElement('DriverController');
   const load = loader({
+    '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     react: { ...React, ...hooks.react },
     'react-native': { ActivityIndicator: 'Spinner', Text: 'Text', TouchableOpacity: 'Button', View: 'View', StyleSheet: { create: x => x } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },

@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
+import { NavigationLoading } from '@/features/navigation/NavigationLoading';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 
 export default function NavigationScreen() {
@@ -35,12 +36,7 @@ function DriverNavigationScreen() {
   const assistanceOrSecurityVisible = assistance.isOpen || model.session.foundation.mapState.securityModalVisible;
 
   if ((model.session.foundation.data.isLoading && !model.session.foundation.data.trip) || (model.session.foundation.data.bookingsLoading && !model.session.foundation.data.bookings) || !model.session.foundation.data.trip) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Chargement de la navigation...</Text>
-      </View>
-    );
+    return <NavigationLoading onExit={model.session.foundation.exitActions.navigateBackSafely} />;
   }
 
   if (!model.presentation.hasValidTripCoordinates) {
@@ -77,8 +73,8 @@ function DriverNavigationScreen() {
         initialMapCoordinate={initialMapCoordinate}
         presentation={model.presentation}
       />
-      ) : <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      ) : <View style={styles.map}>
+        <NavigationLoading compact label="Préparation de la carte" />
       </View>}
 
       {!model.session.foundation.data.isTripOngoing && (

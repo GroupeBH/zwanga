@@ -32,3 +32,15 @@ test('trip routes no longer mount the contacts/security modals and retain emerge
   assert.ok(read('features/passenger-navigation/PassengerNavigationHeader.tsx').includes('onSos={assistance.openSos}'));
   assert.ok(read('features/driver-navigation/DriverNavigationTopPanel.tsx').includes('onSos={assistance.openSos}'));
 });
+
+test('inline share keeps intrinsic label width instead of collapsing it to one letter per line', () => {
+  const hooks = hookHarness();
+  const { TripShareAction } = loader({ react: hooks.react, '@expo/vector-icons': { Ionicons: 'Icon' },
+    'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: value => value } },
+  })('components/trip/TripShareAction.tsx');
+  const tree = hooks.render(() => TripShareAction({ onShare() {}, inline: true, compact: true }));
+  const copy = tree.props.children.find(child => child?.type === 'View');
+  const style = Object.assign({}, ...copy.props.style);
+  assert.equal(style.flex, undefined); assert.equal(style.flexShrink, 0); assert.equal(style.flexBasis, 'auto');
+  hooks.unmount();
+});

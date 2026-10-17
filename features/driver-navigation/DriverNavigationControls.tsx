@@ -37,6 +37,7 @@ export function DriverNavigationControls({
   const receiptsVisible = isScreenActive && receiptsTrip === tripId && completed.length > 0;
   const { width, height } = useWindowDimensions();
   const layout = getDriverNavigationLayout(height, foundation.data.insets.top, foundation.data.insets.bottom);
+  const commandSize = { width: layout.controlsHeight, height: layout.controlsHeight, borderRadius: 18 };
   const menuWidth = Math.min(240, width - foundation.data.insets.left - foundation.data.insets.right - 96);
   const menuMaxHeight = height * 0.35;
   useEffect(() => { setOptionsVisible(false); }, [isScreenActive, tripId]);
@@ -91,6 +92,7 @@ export function DriverNavigationControls({
       <TouchableOpacity
         style={[
           styles.floatingButton,
+          commandSize,
           styles.interruptTripButton,
           (foundation.data.isPausingTrip ||
             foundation.data.isRequestingDriverInterruption ||
@@ -115,10 +117,11 @@ export function DriverNavigationControls({
             color={Colors.white}
           />
         )}
+        <Text style={[menuStyles.caption, { color: Colors.white }]}>Arrêter</Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.floatingButton, !foundation.mapState.isVoiceGuidanceEnabled && styles.voiceButtonMuted]}
+        style={[styles.floatingButton, commandSize, !foundation.mapState.isVoiceGuidanceEnabled && styles.voiceButtonMuted]}
         onPress={voice.toggleVoiceGuidance}
         accessibilityRole="button"
         accessibilityLabel={foundation.mapState.isVoiceGuidanceEnabled ? 'Désactiver le guidage vocal' : 'Activer le guidage vocal'}
@@ -128,9 +131,10 @@ export function DriverNavigationControls({
           size={22}
           color={foundation.mapState.isVoiceGuidanceEnabled ? Colors.primary : Colors.gray[500]}
         />
+        <Text style={menuStyles.caption}>Son</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.floatingButton} onPress={() => setOptionsVisible(value => !value)}
+      <TouchableOpacity style={[styles.floatingButton, commandSize]} onPress={() => setOptionsVisible(value => !value)}
         accessibilityRole="button" accessibilityLabel={optionsVisible ? 'Fermer les options' : 'Options de navigation'}
         accessibilityState={{ expanded: optionsVisible }}>
         <Ionicons name={optionsVisible ? 'close' : 'ellipsis-horizontal'} size={22} color={Colors.primary} />
@@ -139,7 +143,7 @@ export function DriverNavigationControls({
 
       {/* Recalcul direct ; le recentrage reste dans les options. */}
       <TouchableOpacity
-        style={[styles.floatingButton, foundation.mapState.isLoadingRoute && styles.floatingButtonDisabled]}
+        style={[styles.floatingButton, commandSize, foundation.mapState.isLoadingRoute && styles.floatingButtonDisabled]}
         accessibilityRole="button"
         accessibilityLabel="Recalculer l’itinéraire"
         accessibilityState={{ busy: foundation.mapState.isLoadingRoute, disabled: foundation.mapState.isLoadingRoute || !foundation.data.isScreenActive }}
@@ -153,6 +157,7 @@ export function DriverNavigationControls({
         {foundation.mapState.isLoadingRoute
           ? <ActivityIndicator size="small" color={Colors.primary} />
           : <Ionicons name="refresh" size={22} color={Colors.primary} />}
+        <Text style={menuStyles.caption}>Actualiser</Text>
       </TouchableOpacity>
       <RideModal inApp visible={receiptsVisible} transparent animationType="none" onRequestClose={closeReceipts}>
         {receiptsVisible && <DriverDropoffReceiptsSheet bookings={completed} active={isScreenActive} onClose={closeReceipts} />}
@@ -167,5 +172,5 @@ const menuStyles = StyleSheet.create({
   content: { padding: 6 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, minHeight: 48 },
   label: { color: Colors.gray[800], fontSize: 13, fontWeight: '600', flex: 1 },
-  caption: { color: Colors.primaryDark, fontSize: 9, fontWeight: '700' },
+  caption: { color: Colors.gray[800], fontSize: 11, fontWeight: '600' },
 });

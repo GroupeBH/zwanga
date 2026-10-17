@@ -35,6 +35,7 @@ interface Params {
   tripDepartureCoordinate: MapCoordinate | null;
   trip: Trip | undefined;
   processingBookingId: string | null;
+  focusBookingId?: string;
 }
 
 export function useDriverNavigationBookings({
@@ -53,6 +54,7 @@ export function useDriverNavigationBookings({
   tripDepartureCoordinate,
   trip,
   processingBookingId,
+  focusBookingId,
 }: Params) {
   const rememberAcceptedBooking = useCallback((bookingId: string) => {
     setLocallyAcceptedBookingIds((current) => {
@@ -277,7 +279,9 @@ export function useDriverNavigationBookings({
     () => (visibleBookings ?? []).filter((booking) => booking.status === 'pending'),
     [visibleBookings],
   );
-  const activePendingBooking = pendingNavigationBookings[0] ?? null;
+  const activePendingBooking = pendingNavigationBookings.find(booking => booking.id === processingBookingId)
+    ?? pendingNavigationBookings.find(booking => booking.id === focusBookingId)
+    ?? pendingNavigationBookings[0] ?? null;
   const activePendingBookingPickupLabel = getBookingPickupLabel(activePendingBooking, trip);
   const activePendingBookingDropoffLabel = getBookingDropoffLabel(activePendingBooking, trip);
   const pendingBookingQueueCount = Math.max(0, pendingNavigationBookings.length - 1);

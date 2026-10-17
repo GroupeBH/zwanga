@@ -52,6 +52,7 @@ export function useDriverNavigationFoundation() {
     tripDepartureCoordinate: data.tripDepartureCoordinate,
     trip: data.trip,
     processingBookingId: mapState.processingBookingId,
+    focusBookingId: data.focusBookingId,
   });
 
   const destination = useDriverNavigationDestination({

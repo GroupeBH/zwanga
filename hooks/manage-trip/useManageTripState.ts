@@ -35,7 +35,7 @@ export function useManageTripState() {
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
-  const { id } = useLocalSearchParams();
+  const { id, bookingId, section } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
@@ -104,10 +104,6 @@ export function useManageTripState() {
 
   const { showDialog } = useDialog();
   const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [rejectModalVisible, setRejectModalVisible] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectError, setRejectError] = useState('');
-  const [targetBooking, setTargetBooking] = useState<Booking | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -146,20 +142,16 @@ export function useManageTripState() {
     highestManageAutoProgressPriorityRef,
     lastManageDriverLocationSentAtRef,
     tripId,
+    focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,
+    passengersFirst: section === 'passengers',
     isOwner,
     trip,
     lastKnownLocation,
     setSecurityModalVisible,
     setFeedback,
-    setTargetBooking,
-    setRejectReason,
-    setRejectError,
-    setRejectModalVisible,
     isRejecting,
     setProcessingBookingId,
     acceptBooking,
-    targetBooking,
-    rejectReason,
     rejectBooking,
     cancelBooking,
     setEditDepartureAddress,
@@ -199,7 +191,5 @@ export function useManageTripState() {
     securityModalVisible,
     editRouteModalVisible,
     editRouteError,
-    rejectModalVisible,
-    rejectError,
   };
 }

@@ -76,14 +76,15 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
               <RideOutboxCoordinator />
               <NotificationHandler />
               <AuthGuard>
-                <ActiveRideResumeCoordinator />
-                <AcceptedRequestContactCoordinator />
-                <PassengerArrivalPaymentCoordinator />
-                <DriverPaymentNoticeCoordinator />
-                <StoreReviewCoordinator />
-                <TutorialProvider>
-                  <IdentityProvider>{children}</IdentityProvider>
-                </TutorialProvider>
+                <ActiveRideResumeCoordinator>
+                  <AcceptedRequestContactCoordinator />
+                  <PassengerArrivalPaymentCoordinator />
+                  <DriverPaymentNoticeCoordinator />
+                  <StoreReviewCoordinator />
+                  <TutorialProvider>
+                    <IdentityProvider>{children}</IdentityProvider>
+                  </TutorialProvider>
+                </ActiveRideResumeCoordinator>
               </AuthGuard>
             </DialogProvider>
           </View>

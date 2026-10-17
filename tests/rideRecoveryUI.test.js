@@ -56,7 +56,7 @@ test('one passenger tap saves pickup directly, then reports its result without a
   h.trigger().props.onPress(); h.render();
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, false);
   assert.equal(h.queries.at(-1).options.skip, true);
-  assert.equal(h.button('Je suis arrivé à destination'), undefined);
+  assert.equal(h.button('Je suis arrivé'), undefined);
   await new Promise(resolve => setImmediate(resolve)); h.render();
   assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', decision: 'confirm' }]);
   assert.equal(h.booking.pickedUp, undefined);
@@ -72,8 +72,8 @@ test('condensed passenger controls retain both confirmations and the offline rec
     const h = setup();
     h.props({ tripId: 'trip', booking: { ...h.booking, pickedUp: stage === 'dropoff' }, actor: 'passenger', condensed: true });
     h.render();
-    assert.match(words(h.tree()), stage === 'pickup' ? /Confirmez une fois à bord/ : /Confirmez une fois à destination/);
-    assert.match(words(h.tree()), /Le conducteur confirme aussi/);
+    assert.match(words(h.tree()), stage === 'pickup' ? /Appuyez une fois dans le véhicule/ : /À destination, confirmez pour passer au paiement/);
+    assert.match(h.trigger().props.accessibilityHint, /L’autre personne confirme de son côté/);
     h.trigger().props.onPress();
     await new Promise(resolve => setImmediate(resolve)); h.render();
     assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage, decision: 'confirm' }]);
@@ -88,8 +88,8 @@ test('condensed driver controls confirm either stage without acting for the pass
     const h = setup(); h.state.auth.user.id = 'driver'; h.state.rideRecovery.userId = 'driver';
     h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: stage === 'dropoff' }], actor: 'driver', condensed: true });
     h.render(); h.render();
-    assert.match(words(h.tree()), /Test · 1 place\(s\). Le passager confirme aussi/);
-    assert.equal(words(h.trigger()), stage === 'pickup' ? 'Confirmer l’embarquement' : 'Confirmer l’arrivée à destination');
+    assert.match(words(h.tree()), /Test · 1 place\(s\). À confirmer à l’arrêt/);
+    assert.equal(words(h.trigger()), stage === 'pickup' ? 'Le passager est à bord' : 'Le passager est descendu');
     const press = h.trigger().props.onPress; press(); press();
     await new Promise(resolve => setImmediate(resolve)); h.render(); press();
     assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage, decision: 'confirm' }]);
@@ -183,7 +183,7 @@ test('the optional status link preserves disagreement without adding a step to p
   h.snapshots([{ bookingId: 'booking', pickup: { status: 'awaiting_other', driver: 'confirm' }, dropoff: { status: 'none' } }]);
   h.render(); h.render();
   assert.equal(words(h.trigger()), 'Je suis à bord');
-  const inspect = all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Vérifier les confirmations');
+  const inspect = all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Voir les confirmations');
   inspect.props.onPress(); h.render();
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true);
   h.button('Ce n’est pas exact').props.onPress(); h.render();
@@ -196,8 +196,8 @@ test('the optional status link preserves disagreement without adding a step to p
 test('a saved pickup allows queuing arrival, but neither is displayed as server-confirmed', () => {
   const h = setup();
   h.state.rideRecovery.entries = [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', state: 'queued', decision: 'confirm' }];
-  h.render(); assert.ok(h.button('Je suis arrivé à destination')); assert.equal(h.button('Je suis à bord'), undefined);
-  assert.equal(words(h.trigger()), 'Je suis arrivé à destination');
+  h.render(); assert.ok(h.button('Je suis arrivé')); assert.equal(h.button('Je suis à bord'), undefined);
+  assert.equal(words(h.trigger()), 'Je suis arrivé');
   assert.match(words(h.tree()), /Enregistré sur ce téléphone/);
   assert.doesNotMatch(words(h.tree()), /Confirmation validée/);
   h.hooks.unmount();
@@ -242,8 +242,8 @@ test('passenger arrival is saved in one tap with a result but no intermediate co
   assert.equal(all(h.trigger()).find(node => node.type === 'Icon').props.name, 'car-outline');
   h.booking.pickedUp = true;
   h.props({ tripId: 'trip', booking: { ...h.booking }, actor: 'passenger' }); h.render();
-  assert.equal(words(h.trigger()), 'Je suis arrivé à destination');
-  assert.equal(h.trigger().props.accessibilityLabel, 'Je suis arrivé à destination');
+  assert.equal(words(h.trigger()), 'Je suis arrivé');
+  assert.equal(h.trigger().props.accessibilityLabel, 'Je suis arrivé');
   assert.equal(all(h.trigger()).find(node => node.type === 'Icon').props.name, 'flag-outline');
   h.trigger().props.onPress(); h.render();
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, false);
@@ -251,14 +251,14 @@ test('passenger arrival is saved in one tap with a result but no intermediate co
   assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage: 'dropoff', decision: 'confirm' }]);
   assert.equal(h.booking.droppedOff, undefined); assert.equal(h.booking.paymentStatus, undefined);
   assert.equal(h.results.length, 1); assert.equal(h.results[0].target.stage, 'dropoff');
-  assert.equal(h.trigger().props.disabled, true); assert.match(words(h.trigger()), /Arrivée à destination déclarée/);
+  assert.equal(h.trigger().props.disabled, true); assert.match(words(h.trigger()), /Confirmation enregistrée/);
   h.hooks.unmount();
 });
 
 test('server pickup confirmation updates the label even if the booking cache is older', () => {
   const h = setup();
   h.snapshots([{ bookingId: 'booking', pickup: { status: 'confirmed' }, dropoff: { status: 'none' } }]); h.render();
-  assert.equal(words(h.trigger()), 'Je suis arrivé à destination');
+  assert.equal(words(h.trigger()), 'Je suis arrivé');
   h.hooks.unmount();
 });
 
@@ -266,20 +266,58 @@ test('driver labels cover pickup, dropoff and passengers at different stages', (
   const h = setup();
   const props = { tripId: 'trip', actor: 'driver', compact: true };
   h.props({ ...props, bookings: [h.booking] }); h.render();
-  assert.equal(words(h.trigger()), 'Confirmer l’embarquement');
+  assert.equal(words(h.trigger()), 'Le passager est à bord');
   const onboard = { ...h.booking, id: 'onboard', passengerName: 'À bord', pickedUp: true };
   h.props({ ...props, bookings: [onboard] }); h.render();
-  assert.equal(words(h.trigger()), 'Confirmer l’arrivée à destination');
+  assert.equal(words(h.trigger()), 'Le passager est descendu');
   h.props({ ...props, bookings: [h.booking, onboard] }); h.render();
-  assert.equal(words(h.trigger()), 'Embarquement ou arrivée à destination');
+  assert.equal(words(h.trigger()), 'Mes passagers');
   h.trigger().props.onPress(); h.render();
   all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations de Test').props.onPress(); h.render();
-  assert.ok(h.button('Confirmer l’embarquement')); assert.equal(h.button('Confirmer l’arrivée à destination'), undefined);
+  assert.ok(h.button('Le passager est à bord')); assert.equal(h.button('Le passager est descendu'), undefined);
   all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations de À bord').props.onPress(); h.render();
-  assert.ok(h.button('Confirmer l’arrivée à destination'));
+  assert.ok(h.button('Le passager est descendu'));
   assert.deepEqual(h.sent, []);
   assert.ok(h.trigger().props.style.flat().some(style => style?.maxWidth === 126));
   h.hooks.unmount();
+});
+
+test('the next stop confirms only its passenger in one tap and keeps every other passenger accessible', async () => {
+  for (const stage of ['pickup', 'dropoff']) {
+    const h = setup(); h.state.auth.user.id = 'driver'; h.state.rideRecovery.userId = 'driver';
+    const next = { ...h.booking, id: 'next', passengerName: 'Prochain passager', pickedUp: stage === 'dropoff' };
+    h.props({ tripId: 'trip', actor: 'driver', bookings: [h.booking, next],
+      preferredBookingId: next.id, preferredStage: stage, condensed: true });
+    h.render(); h.render();
+    assert.equal(words(h.trigger()), stage === 'pickup' ? 'Le passager est à bord' : 'Le passager est descendu');
+    assert.match(h.trigger().props.accessibilityLabel, /Prochain passager/);
+    assert.match(words(h.tree()), /Prochain passager · 1 place/);
+    all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Tous les passagers').props.onPress(); h.render();
+    assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true);
+    assert.deepEqual(all(h.tree()).find(node => node.type === 'List').props.data.map(row => row.item.id), ['booking', 'next']);
+    all(h.tree()).find(node => node.props?.accessibilityLabel === 'Fermer les confirmations').props.onPress(); h.render();
+    const press = h.trigger().props.onPress; press(); press();
+    await new Promise(resolve => setImmediate(resolve)); h.render(); press();
+    assert.deepEqual(h.sent, [{ bookingId: 'next', tripId: 'trip', stage, decision: 'confirm' }]);
+    assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, false);
+    assert.equal(h.results.length, 1); assert.equal(h.results[0].target.bookingId, 'next');
+    h.hooks.unmount();
+  }
+});
+
+test('an obsolete next stop cannot silently confirm a different passenger or a different stage', () => {
+  for (const condition of ['picked-up', 'cancelled', 'missing', 'arrival-before-boarding']) {
+    const h = setup();
+    const target = { ...h.booking, id: 'target', pickedUp: condition === 'picked-up',
+      status: condition === 'cancelled' ? 'cancelled' : 'accepted' };
+    h.props({ tripId: 'trip', actor: 'driver', bookings: [h.booking, target],
+      preferredBookingId: condition === 'missing' ? 'missing' : target.id,
+      preferredStage: condition === 'arrival-before-boarding' ? 'dropoff' : 'pickup' });
+    h.render(); h.render(); h.trigger().props.onPress(); h.render();
+    assert.deepEqual(h.sent, [], condition);
+    assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true, 'fallback opens explicit choices only');
+    h.hooks.unmount();
+  }
 });
 
 test('submitted or completed stages offer a status view instead of an unavailable action', () => {
@@ -291,7 +329,7 @@ test('submitted or completed stages offer a status view instead of an unavailabl
   h.props({ tripId: 'trip', booking: { ...h.booking, pickedUp: true, droppedOff: true }, actor: 'passenger' });
   h.render(); assert.equal(words(h.trigger()), 'Voir les confirmations');
   assert.equal(h.button('Je suis à bord'), undefined);
-  assert.equal(h.button('Je suis arrivé à destination'), undefined);
+  assert.equal(h.button('Je suis arrivé'), undefined);
   h.hooks.unmount();
 });
 
@@ -300,7 +338,7 @@ test('blocked, disputed or other-account pickup entries do not advertise arrival
   for (const state of ['blocked', 'disputed']) {
     h.state.rideRecovery.entries = [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', state, decision: 'confirm' }];
     h.render(); assert.equal(words(h.trigger()), 'Voir les confirmations');
-    assert.equal(h.button('Je suis arrivé à destination'), undefined);
+    assert.equal(h.button('Je suis arrivé'), undefined);
   }
   h.state.rideRecovery.userId = 'someone-else'; h.render();
   assert.equal(words(h.trigger()), 'Je suis à bord');
@@ -400,7 +438,7 @@ test('multiple groups confirm the selected reservation directly, including after
   h.props({ ...props, bookings: [...bookings].reverse() }); h.render();
   assert.equal(select('Titulaire 1').props.accessibilityState.expanded, true);
   assert.equal(all(h.tree()).find(node => node.type === 'List').props.initialNumToRender, 6);
-  const press = h.button('Confirmer l’arrivée à destination').props.onPress; press(); press();
+  const press = h.button('Le passager est descendu').props.onPress; press(); press();
   await new Promise(resolve => setImmediate(resolve)); h.render(); press();
   assert.deepEqual(h.sent, [{ bookingId: 'b1', tripId: 'trip', stage: 'dropoff', decision: 'confirm' }]);
   assert.equal(h.button('Enregistrer ma réponse'), undefined);

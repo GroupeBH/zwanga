@@ -30,14 +30,14 @@ test('panel is bounded in normal flow; details reveal the route and cancellation
   assert.equal(flat(tree.props.style).maxHeight, 640 * 0.36);
   assert.ok(all(tree).some(n => n.type === 'Scroll'));
   assert.equal(all(tree).find(n => n.type === 'Recovery').props.condensed, true);
-  assert.doesNotMatch(words(tree), /Point de départ complet|Annuler ma participation|Tracking|Détection automatique/);
+  assert.doesNotMatch(words(tree), /Point de départ complet|Annuler ma place|Tracking|Détection automatique/);
   let toggle = all(tree).find(n => n.props.accessibilityLabel === 'Détails du trajet');
   assert.equal(toggle.props.accessibilityState.expanded, false);
   assert.ok(flat(toggle.props.style).minHeight >= 44);
   toggle.props.onPress(); tree = f.render();
   assert.equal(flat(tree.props.style).maxHeight, 640 * 0.5);
   assert.match(words(tree), /Point de départ complet/);
-  const cancel = all(tree).find(n => n.type === 'Button' && words(n).includes('Annuler ma participation'));
+  const cancel = all(tree).find(n => n.type === 'Button' && words(n).includes('Annuler ma place'));
   cancel.props.onPress(); assert.deepEqual(f.calls, ['cancel']);
   assert.ok(all(tree).some(n => n.type === 'Recovery'));
   f.props.data.isCancellingBooking = true;
@@ -51,7 +51,7 @@ test('driver interruption response and paused-ride recovery do not depend on exp
   const f = fixture(); f.props.interruption = { pendingDriverInterruptionRequest: { reason: 'other' },
     canRespondToDriverInterruption: true, handleConfirmDriverInterruption: () => f.calls.push('confirm'), handleRejectDriverInterruption: () => f.calls.push('reject') };
   let tree = f.render();
-  assert.match(words(tree), /Le conducteur veut interrompre/);
+  assert.match(words(tree), /Le conducteur veut arrêter/);
   all(tree).find(n => n.type === 'Button' && words(n).trim() === 'Confirmer').props.onPress();
   all(tree).find(n => n.type === 'Button' && words(n).trim() === 'Refuser').props.onPress();
   assert.deepEqual(f.calls, ['confirm', 'reject']);

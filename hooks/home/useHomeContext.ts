@@ -8,6 +8,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { isDriverAccount } from '@/utils/accountRole';
 import { isHomeProfileReady } from '@/features/home/homeRolePolicy';
+import { useAppEntryPending } from '@/features/navigation/appEntryContext';
 import { useCallback } from 'react';
 import {
   useWindowDimensions
@@ -23,7 +24,8 @@ export function useHomeContext() {
   // Route visibility must not toggle when a native permission dialog pauses the app.
   const isFocused = useIsFocused();
   const isAppActive = useAppIsActive();
-  const isScreenActive = isFocused && isAppActive;
+  const entryPending = useAppEntryPending();
+  const isScreenActive = isFocused && isAppActive && !entryPending;
 
   const dispatch = useAppDispatch();
 
@@ -59,6 +61,7 @@ export function useHomeContext() {
 
   const isDriver = isDriverAccount(currentUser);
   return {
+    entryPending,
     isDriver,
     isFocused,
     isScreenActive,

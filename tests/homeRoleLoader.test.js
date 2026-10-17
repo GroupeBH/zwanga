@@ -12,6 +12,7 @@ function fixture() {
     refetch: () => { calls++; return Promise.resolve({ data: profile.data }); } };
   const load = loader({
     react: hooks.react,
+    '@/features/navigation/appEntryContext': { useAppEntryPending: () => Boolean(state.entryPending) },
     '@/components/home/HomeDashboard': { HomeDashboard: 'Dashboard' },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'RoleLoader' },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
@@ -38,6 +39,34 @@ test('only a known role and a nonempty user ID can reveal Home, including legacy
     assert.equal(isHomeProfileReady(user), false);
   }
   for (const role of ['driver', 'passenger', 'both']) assert.equal(isHomeProfileReady({ id: 'me', role }), true);
+});
+
+test('a resolved profile cannot mount Home until the shared ride decision is complete', () => {
+  const app = fixture(); app.state.entryPending = true;
+  Object.assign(app.profile, { data: { id: 'me', role: 'driver' }, isFetching: false, isSuccess: true });
+  assert.equal(app.render(), null, 'the global loader is the only loading surface');
+  app.state.active = false; assert.equal(app.render(), null, 'backgrounding cannot mount the dashboard');
+  app.state.active = true; app.state.entryPending = false;
+  const dashboard = app.render(); assert.equal(dashboard.type, 'Dashboard');
+  app.state.entryPending = true;
+  const checkingAgain = app.render();
+  assert.equal(checkingAgain.type, dashboard.type); assert.equal(checkingAgain.key, dashboard.key);
+  assert.equal(checkingAgain.props.context.isScreenActive, false, 'foreground work pauses without remounting an existing map');
+  app.hooks.unmount();
+});
+
+test('profile and ride discovery may finish in either order without flashing the wrong Home', () => {
+  for (const role of ['driver', 'passenger']) {
+    const app = fixture(); app.state.entryPending = true;
+    assert.equal(app.render(), null);
+    Object.assign(app.profile, { data: { id: 'me', role }, isFetching: false, isSuccess: true });
+    assert.equal(app.render(), null);
+    app.state.entryPending = false;
+    assert.equal(app.render().props.context.isDriver, role === 'driver');
+    app.state.auth.tokenPayload.sub = 'other'; app.state.entryPending = true;
+    assert.equal(app.render(), null, 'do not reuse another account dashboard');
+    app.hooks.unmount();
+  }
 });
 
 for (const role of ['driver', 'passenger', 'both']) {

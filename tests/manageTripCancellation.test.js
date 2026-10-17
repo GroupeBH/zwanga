@@ -2,8 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
-const pendingBooking = { id: 'booking-test', status: 'pending', passengerName: 'Passager test' };
-const trip = { id: 'trip-test', status: 'upcoming' };
+const pendingBooking = { id: 'booking-test', tripId: 'trip-test', status: 'pending', passengerName: 'Passager test' };
+const trip = { id: 'trip-test', driverId: 'driver-test', status: 'upcoming' };
 const native = { StyleSheet: { create: value => value }, Platform: { OS: 'ios' } };
 const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
 function nodes(tree) {
@@ -13,24 +13,23 @@ function nodes(tree) {
 }
 
 function bookingFixture() {
-  const h = hookHarness(), calls = { reject: [], cancel: [], feedback: [], keyboard: 0, refresh: 0, dialogs: [] };
+  const h = hookHarness(), calls = { accept: [], reject: [], cancel: [], feedback: [], commits: [], refresh: 0, dialogs: [] };
   let rejection = deferred(), cancellation = deferred(), reconciled = null;
   const params = {
-    trip, targetBooking: pendingBooking, rejectReason: '  Indisponible  ', isRejecting: false,
+    trip, userId: trip.driverId, isScreenActive: true, bookings: [pendingBooking],
     setFeedback: feedback => calls.feedback.push(feedback),
-    setTargetBooking: value => { params.targetBooking = value; },
-    setRejectReason: value => { params.rejectReason = value; },
-    setRejectError: value => { params.error = value; },
-    setRejectModalVisible: value => { params.visible = value; },
+    commitBookingDecision: (...args) => calls.commits.push(args),
+    rememberAcceptedBooking() {},
     setProcessingBookingId: value => { params.processing = value; },
     showDialog: value => calls.dialogs.push(value),
     refreshAll: async () => { calls.refresh++; },
     reconcileBookingStatus: async () => reconciled,
+    acceptBooking: value => { calls.accept.push(value); return { unwrap: () => rejection.promise }; },
     rejectBooking: value => { calls.reject.push(value); return { unwrap: () => rejection.promise }; },
     cancelBooking: value => { calls.cancel.push(value); return { unwrap: () => cancellation.promise }; },
   };
   const { useManageTripBookingActions } = loader({
-    react: h.react, 'react-native': { ...native, Keyboard: { dismiss: () => calls.keyboard++ } },
+    react: h.react, 'react-native': native,
     '@/services/analytics': { trackEvent: async () => {} },
   })('hooks/manage-trip/useManageTripBookingActions.ts');
   return { h, calls, params, rejection, cancellation,
@@ -41,51 +40,77 @@ function bookingFixture() {
   };
 }
 
-test('booking refusal requires a reason and sends nothing when the form is closed', async () => {
-  const env = bookingFixture();
-  env.params.rejectReason = '  ';
-  await env.render().handleRejectSubmit();
-  assert.equal(env.calls.reject.length, 0); assert.match(env.params.error, /motif/);
-  env.render().closeRejectModal();
-  assert.equal(env.params.visible, false); assert.equal(env.params.targetBooking, null);
-  assert.equal(env.calls.keyboard, 1); env.h.unmount();
+test('refusal is direct, without a reason form or confirmation screen', async () => {
+  const env = bookingFixture(), actions = env.render();
+  const pending = actions.handleRejectBooking(pendingBooking);
+  assert.deepEqual(env.calls.reject, [{ id: pendingBooking.id, reason: 'Refus du conducteur' }]);
+  assert.equal(env.calls.dialogs.length, 0);
+  env.rejection.resolve({ ...pendingBooking, status: 'rejected' }); await pending;
+  assert.deepEqual(env.calls.feedback, [{ type: 'success', message: 'Réservation refusée.' }]);
+  assert.equal(env.calls.commits[0][1], 'rejected');
+  assert.equal(actions.openRejectModal, undefined); env.h.unmount();
 });
 
-test('refusal double-taps issue one request, keep the target locked, and close the keyboard after success', async () => {
+test('accept/refuse double taps share one lock and confirmed decisions cannot replay from stale cards', async () => {
   const env = bookingFixture(), actions = env.render();
-  const first = actions.handleRejectSubmit(), second = actions.handleRejectSubmit();
-  actions.closeRejectModal();
-  actions.openRejectModal({ id: 'other', status: 'pending' });
-  assert.deepEqual(env.calls.reject, [{ id: pendingBooking.id, reason: 'Indisponible' }]);
-  assert.equal(env.params.targetBooking.id, pendingBooking.id);
-  env.params.isRejecting = true; env.render().closeRejectModal();
+  const first = actions.handleAcceptBooking(pendingBooking.id), second = actions.handleRejectBooking(pendingBooking);
+  assert.deepEqual(env.calls.accept, [pendingBooking.id]); assert.deepEqual(env.calls.reject, []);
   env.rejection.resolve({});
   await Promise.all([first, second]);
-  assert.equal(env.params.visible, false);
-  assert.equal(env.params.targetBooking, null); assert.equal(env.params.processing, null);
-  assert.equal(env.calls.keyboard, 1); assert.equal(env.calls.refresh, 1);
+  await actions.handleAcceptBooking(pendingBooking.id); await actions.handleRejectBooking(pendingBooking);
+  assert.deepEqual(env.calls.accept, [pendingBooking.id]); assert.deepEqual(env.calls.reject, []);
+  assert.equal(env.params.processing, null); assert.equal(env.calls.refresh, 1);
   assert.equal(env.calls.feedback.at(-1).type, 'success'); env.h.unmount();
 });
 
-test('refusal network error preserves the reason for retry and releases the lock', async () => {
+test('refusal network error stays inline, never replays and releases the lock for a deliberate retry', async () => {
   const env = bookingFixture(), actions = env.render();
-  const first = actions.handleRejectSubmit();
+  const first = actions.handleRejectBooking(pendingBooking);
   env.rejection.reject(new Error('offline')); await first;
-  assert.equal(env.params.targetBooking.id, pendingBooking.id);
-  assert.equal(env.params.rejectReason, '  Indisponible  ');
-  assert.ok(env.params.error); assert.equal(env.calls.keyboard, 0);
+  assert.equal(env.calls.feedback.at(-1).type, 'error'); assert.equal(env.calls.dialogs.length, 0);
+  assert.equal(env.calls.commits.length, 0);
   const retry = env.nextRejection();
-  const second = env.render().handleRejectSubmit();
+  const second = env.render().handleRejectBooking(pendingBooking);
   retry.resolve({}); await second;
-  assert.equal(env.calls.reject.length, 2); assert.equal(env.params.targetBooking, null); env.h.unmount();
+  assert.equal(env.calls.reject.length, 2); assert.equal(env.calls.feedback.at(-1).type, 'success'); env.h.unmount();
 });
 
-test('refusal reconciled from server state closes the form without a second write', async () => {
+test('refusal reconciled from server state updates the card without a second write', async () => {
   const env = bookingFixture(); env.reconcile({ ...pendingBooking, status: 'rejected' });
-  const action = env.render().handleRejectSubmit();
+  const action = env.render().handleRejectBooking(pendingBooking);
   env.rejection.reject(new Error('timeout')); await action;
-  assert.equal(env.calls.reject.length, 1); assert.equal(env.params.visible, false);
-  assert.equal(env.params.targetBooking, null); assert.equal(env.calls.keyboard, 1); env.h.unmount();
+  assert.equal(env.calls.reject.length, 1); assert.equal(env.calls.commits[0][1], 'rejected');
+  assert.equal(env.calls.feedback.at(-1).type, 'success'); env.h.unmount();
+});
+
+test('wrong owner, inactive screen, already processed booking and old account callbacks do not respond', async () => {
+  for (const patch of [{ userId: 'other' }, { isScreenActive: false }, { bookings: [{ ...pendingBooking, status: 'accepted' }] },
+    { bookings: [{ ...pendingBooking, tripId: 'other' }] }, { trip: { ...trip, status: 'completed' } }]) {
+    const env = bookingFixture(); Object.assign(env.params, patch);
+    await env.render().handleRejectBooking(pendingBooking);
+    assert.equal(env.calls.reject.length, 0); env.h.unmount();
+  }
+  const env = bookingFixture(), stale = env.render();
+  env.params.userId = 'other'; env.render(); await stale.handleRejectBooking(pendingBooking);
+  assert.equal(env.calls.reject.length, 0); env.h.unmount();
+});
+
+test('leaving the screen while answering cannot show feedback or patch another account', async () => {
+  for (const leave of ['unmount', 'account', 'background']) {
+    const env = bookingFixture(), pending = env.render().handleRejectBooking(pendingBooking);
+    if (leave === 'unmount') env.h.unmount();
+    else { if (leave === 'account') env.params.userId = 'other'; else env.params.isScreenActive = false; env.render(); }
+    env.rejection.resolve({}); await pending;
+    assert.equal(env.calls.feedback.length, 0); assert.equal(env.calls.commits.length, 0);
+    env.h.unmount();
+  }
+});
+
+test('failed background refresh does not turn a confirmed refusal into an error', async () => {
+  const env = bookingFixture(); env.params.refreshAll = async () => { throw Error('offline'); };
+  const pending = env.render().handleRejectBooking(pendingBooking); env.rejection.resolve({}); await pending;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(env.calls.feedback, [{ type: 'success', message: 'Réservation refusée.' }]); env.h.unmount();
 });
 
 test('booking cancellation still requires confirmation, refuses a boarded passenger, and coalesces writes', async () => {
@@ -140,8 +165,8 @@ test('trip cancellation error remains on screen and allows a new attempt', async
 test('manage screen scopes confirmation and form overlays to its focus and wires native back dismissal', () => {
   const close = () => {};
   const model = { trip, state: { tripId: trip.id, isOwner: true, isIdentityVerified: true,
-    isScreenActive: true, insets: { bottom: 0 }, rejectModalVisible: true },
-    actions: {}, bookingsActions: { closeRejectModal: close }, routeEditor: {}, tracking: {} };
+    isScreenActive: true, insets: { bottom: 0 }, editRouteModalVisible: true },
+    actions: {}, bookingsActions: {}, routeEditor: { closeEditRouteModal: close }, tracking: {} };
   const { default: Screen } = loader({
     'react-native': { ...native, View: 'View', Text: 'Text', TouchableOpacity: 'Button', TextInput: 'Input', ActivityIndicator: 'Spinner' },
     'react-native-safe-area-context': { SafeAreaView: 'Safe' }, '@expo/vector-icons': { Ionicons: 'Icon' },
@@ -159,5 +184,6 @@ test('manage screen scopes confirmation and form overlays to its focus and wires
   let tree = owner(); assert.equal(tree.type, 'Scope'); assert.equal(tree.props.scopeKey, 'manage:trip-test');
   assert.equal(tree.props.active, true);
   assert.equal(nodes(tree).find(node => node.type === 'Modal' && node.props.visible).props.onRequestClose, close);
+  assert.equal(nodes(tree).filter(node => node.type === 'Modal').length, 1, 'no refusal form remains');
   model.state.isScreenActive = false; tree = owner(); assert.equal(tree.props.active, false);
 });

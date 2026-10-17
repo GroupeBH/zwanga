@@ -21,6 +21,7 @@ test('access feedback distinguishes connection, server, not-found and permission
 test('driver access retry stays visibly busy and cannot retry during an outstanding read', () => {
   let fetching = false, retries = 0;
   const Component = loader({
+    '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: v => v } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     'expo-router': { useRouter: () => ({ replace() {} }), useLocalSearchParams: () => ({ id: 'trip' }), Redirect: 'Redirect' },
@@ -34,9 +35,11 @@ test('driver access retry stays visibly busy and cannot retry during an outstand
   assert.match(words(tree), /Connexion/); assert.doesNotMatch(words(tree), /protected content/);
   nodes(tree).find(n => n.type === 'Button' && words(n) === 'Réessayer').props.onPress();
   tree = Component({ children: 'protected content' });
-  assert.match(words(tree), /Vérification du trajet/);
-  const button = nodes(tree).find(n => n.type === 'Button' && words(n) === 'Vérification…');
-  assert.equal(button.props.disabled, true); button.props.onPress(); assert.equal(retries, 1);
+  assert.equal(tree.type, 'NavigationLoading');
+  assert.equal(tree.props.label, 'Ouverture de votre trajet');
+  assert.ok(tree.props.onExit);
+  assert.equal(nodes(tree).some(n => n.type === 'Button'), false, 'no duplicate retry while the read is pending');
+  assert.equal(retries, 1);
 });
 
 test('active trip feeds have no independent poll, query only the visible tab and stop reads offline', async () => {

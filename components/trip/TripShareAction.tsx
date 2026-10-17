@@ -32,7 +32,7 @@ const styles = StyleSheet.create({
   action: { flexDirection: 'row', flexShrink: 1, minWidth: 0, alignItems: 'center', gap: 12, padding: 16, borderRadius: 14, backgroundColor: '#FFF4EE', minHeight: 52 },
   compact: { paddingVertical: 10, minHeight: 44 },
   inline: { paddingHorizontal: 10, gap: 6, flexShrink: 0 },
-  inlineCopy: { flex: 0 },
+  inlineCopy: { flex: undefined, flexGrow: 0, flexShrink: 0, flexBasis: 'auto' },
   copy: { flex: 1, minWidth: 0 }, title: { color: Colors.primary, fontSize: 15, fontWeight: '700' },
   hint: { color: Colors.gray[700], fontSize: 13, lineHeight: 18, marginTop: 4 }, disabled: { opacity: 0.5 },
 });

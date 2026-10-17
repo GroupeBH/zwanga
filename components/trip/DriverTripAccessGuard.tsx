@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '@/constants/styles';
@@ -11,6 +11,7 @@ import { useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
 import { useAppSelector } from '@/store/hooks';
 import { tripAccessFeedback } from '@/features/navigation/tripAccessFeedback';
 import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
+import { NavigationLoading } from '@/features/navigation/NavigationLoading';
 
 /** Do not mount driver controllers (GPS, sockets, actions) until ownership is known. */
 export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
@@ -37,12 +38,12 @@ export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
   }
   const loading = Boolean(userId && tripId && !trip && (isLoading || isFetching));
   const feedback = tripAccessFeedback(error, Boolean(trip));
+  if (loading) return <NavigationLoading label="Ouverture de votre trajet" onExit={() => router.replace('/(tabs)')} />;
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.content}>
-        {loading && <ActivityIndicator size="large" color={Colors.primary} />}
-        <Text accessibilityLiveRegion="polite" style={styles.title}>{loading ? 'Vérification du trajet…' : feedback.title}</Text>
-        {!loading && <Text style={styles.message}>{feedback.message}</Text>}
+        <Text accessibilityLiveRegion="polite" style={styles.title}>{feedback.title}</Text>
+        <Text style={styles.message}>{feedback.message}</Text>
         {feedback.retry && userId && tripId ? <TouchableOpacity accessibilityRole="button"
           accessibilityState={{ disabled: isFetching, busy: isFetching }} disabled={isFetching}
           style={[styles.button, isFetching && styles.disabled]} onPress={() => { if (!isFetching) void refetch(); }}>

@@ -1,5 +1,21 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Reprise du trajet et chargement illustré de la navigation
+
+Correction d'un démarrage refusé après pause avant embarquement : le backend
+conservait `startedAt`, puis exigeait sa valeur vide. Reprise sans réinitialiser
+le suivi, démarrages répétés sans double notification, lecture fraîche des
+conflits côté mobile et loader voiture/itinéraire partagé conducteur/passager.
+Contrôles de participation et workflow d'interruption conservés, aucune
+réactivation de trajet terminé ou annulé. Fichiers, précautions et recette dans
+[Démarrage et chargement de navigation](DEMARRAGE_TRAJET_ET_CHARGEMENT_NAVIGATION.md).
+
+121 tests JavaScript mobiles et 61 tests backend réussis ; typage mobile/backend
+réussi, lint ciblé sans erreur (quatre avertissements préexistants). Aperçus Web
+standard/petit écran/carte inspectés ; pas d'essai sur téléphone ou PostgreSQL
+réel pour ce correctif. Backend à déployer, code mobile à livrer ; aucun build,
+déploiement, migration ou changement de configuration effectué ici.
+
 ## 11 octobre 2026 — Correctifs de fiabilité : GPS Android, fenêtres iOS et récupération
 
 Périmètre : application mobile, suivi natif Expo Android, affichage des formulaires,
@@ -6347,3 +6363,119 @@ avec relance en 390 × 760 ; aucun débordement constaté sur ces aperçus.
 valident pas son rendu animé natif. Fluidité réelle, grands caractères et
 VoiceOver/TalkBack restent à tester sur iOS/Android. Aucune mesure de mémoire,
 de batterie ou de stabilité native, aucun build ni déploiement pour cette retouche.
+
+## 2026-10-17 — Chargement commun profil/trajet et navigation simplifiée
+
+**Problème.** L'accueil pouvait apparaître avant la reprise d'un trajet en cours ;
+le chargement du rôle et la décision de reprise étaient séparés. Certaines
+actions du trajet étaient longues à lire ou nécessitaient de retrouver le bon
+passager dans une liste.
+
+**Solution appliquée.** Un seul loader attend le choix de l'écran : navigation
+selon la participation vérifiée au trajet, sinon accueil avec le rôle du compte.
+Le premier dashboard et sa carte ne montent pas avant cette décision. Ajout
+d'une récupération après huit secondes, sans nouveau polling. Actions courtes,
+confirmation directe du passager du prochain arrêt, commandes cartographiques
+libellées et correction du texte compact « Partager ». La compétence
+`frontend-skill` a guidé la hiérarchie et la réduction des textes.
+
+Les fichiers, règles préservées, contrôles, limites et recette native sont
+détaillés dans [Entrée unifiée et navigation](ENTREE_UNIFIEE_ET_NAVIGATION.md).
+355 tests JavaScript de la sélection élargie réussis, puis 60 tests ciblés
+rejoués après le dernier garde d'entrée. Aperçus Web statiques consultés à
+390 × 760 et 320 × 568. TypeScript (`tsc --noEmit --incremental false`),
+lint ciblé et `git diff --check` réussis. Aucun changement backend, build ou déploiement ;
+validation physique iOS/Android encore nécessaire.
+
+## 2026-10-17 — Réservations conducteur sans écrans intermédiaires
+
+**Problème.** La notification ouvrait un écran « Nouvelle réservation », puis
+un second état « C’est confirmé ! » obligeait à rouvrir les détails. Le refus
+dans la gestion imposait aussi un formulaire de motif.
+
+**Solution appliquée.** Réponse directe depuis les cartes de passagers et les
+actions natives de notification. Une simple réception ne change plus l'écran.
+L'ouverture cible les passagers du trajet ou la navigation en cours ; la
+réservation visée est prioritaire. Retour de succès discret, refus sans
+formulaire obligatoire, contrôles de session et verrou anti-double appui.
+La compétence `frontend-skill` a guidé cette réduction des interfaces.
+
+Fichiers concernés, comportements préservés et recette détaillés dans
+[Réservations : réponse directe](RESERVATIONS_REPONSE_DIRECTE.md).
+183 tests JavaScript ciblés réussis ; TypeScript et `git diff --check` réussis.
+Lint sans erreur, avec douze avertissements préexistants. Aperçus Web statiques
+contrôlés à 390 et 320 px ; notifications et interactions natives encore à
+valider sur appareils. Aucun changement backend, build ou déploiement.
+
+## 2026-10-17 — Nouvel accueil avant connexion, selon la maquette fournie
+
+**Problème et périmètre.** L'écran public précédant la connexion et l'inscription
+ne reprenait pas la nouvelle composition souhaitée. Cette modification concerne
+uniquement la présentation de `/auth-entry`, pas l'accueil connecté ni les
+formulaires d'authentification.
+
+**Solution appliquée et fichiers.**
+
+- `features/auth/AuthWelcome.tsx` reprend le titre, la phrase de présentation,
+  les quatre avantages, le bouton orange « Créer un compte », le bouton bordé
+  « Déjà inscrit ? Se connecter » et la mise en évidence des mentions légales.
+  Un défilement unique permet d'atteindre les actions sur écran court et avec
+  de grands caractères, sans étape d'introduction supplémentaire.
+- `features/auth/AuthWelcomeHero.tsx` compose le bandeau pêche, les rues, un
+  exemple de trajet et sa bulle de message avec des vues, un petit SVG et le
+  logo local existant. C'est une illustration non interactive, pas une offre
+  réelle. Les lecteurs d'écran reçoivent une seule description de cette image ;
+  ses textes décoratifs ne constituent pas des données de réservation.
+- `features/auth/authWelcomeStyles.ts` isole la palette de cet écran et conserve
+  les styles du reste de l'application. L'orange du bouton est légèrement
+  assombri pour un contraste calculé blanc/orange de **4,56:1**. Les avantages
+  passent sur une colonne sous 350 points ou au-delà de 120 % de taille de texte.
+  Les textes fonctionnels conservent leur agrandissement système ; seule
+  l'illustration est dimensionnée comme une image.
+- La compétence `frontend-skill` a guidé la hiérarchie visuelle fidèle à la
+  référence, les espacements, le bandeau pleine largeur et des retours limités
+  aux appuis et à l'attente des boutons. Aucun mouvement décoratif ajouté.
+
+**Comportements conservés et précautions.** Connexion et inscription ouvrent
+toujours `/auth` avec leur mode explicite. Le verrou synchrone contre les
+doubles appuis, les états d'attente, le réarmement au retour et les erreurs
+françaises sont conservés. La session restaurée et la reprise d'un formulaire
+en cours continuent de passer avant l'introduction. Le lien légal garde sa
+destination préexistante ; la disponibilité et le contenu distant de cette
+page n'ont pas été audités dans cette intervention.
+
+La phrase de la maquette limitant le partage de position aux seuls trajets
+n'est pas reprise : les conducteurs disponibles peuvent aussi actualiser
+leur position hors trajet. Une ligne « Vous gardez le contrôle de votre
+localisation » déplie cette explication directement dans la page, avec le refus
+d'autorisation et la désactivation du suivi en veille. Aucune autorisation GPS
+n'est demandée par cet écran ; les explications et demandes contextuelles
+existantes restent inchangées. Aucun SDK cartographique, lecture GPS, appel API,
+timer ou dépendance ajouté. Pas de modification du backend ou de configuration.
+
+**Vérifications réalisées.**
+
+- **102 tests JavaScript réussis** : bienvenue, navigation/authentification,
+  brouillon de formulaire, restauration et renouvellement de session, retour,
+  clavier et chargement des formulaires. `tests/authWelcome.test.js` couvre
+  notamment les doubles appuis, les erreurs, le dépliage de l'information GPS,
+  les dimensions de l'illustration, la disponibilité des actions et le contraste.
+- TypeScript sans émission, lint ciblé et `git diff --check` réussis. Contrôles
+  des frontières réseau et de taille des sources réussis ; aucun fichier source
+  de plus de 400 lignes parmi les 1 088 contrôlés.
+- `scripts/preview-auth-welcome.cjs` rend les composants réels via React Native
+  Web avec le logo et les glyphes existants, sans session ni donnée utilisateur.
+  Six formats mesurés : référence 390 × 844 sans marges système, téléphone
+  390 × 844 avec marges 47/34, 320 × 568, texte 160 % simulé, paysage 844 × 390
+  et tablette 768 × 1024. Aucun débordement horizontal ; connexion, inscription
+  et lien légal accessibles en fin de défilement dans les six cas, cibles d'au
+  moins 44 pixels. Les actions sont visibles initialement au format standard
+  et sur tablette ; le petit écran, le paysage et les grands caractères
+  nécessitent un défilement. Captures standard/petit écran/grands caractères
+  inspectées sous `.expo/auth-welcome-preview/` (sorties locales ignorées).
+
+**Limites.** Aperçus Web et tests JavaScript, pas d'essai physique Android/iOS.
+Le rendu natif, VoiceOver/TalkBack, les zones sûres et l'ouverture du lien légal
+restent à vérifier sur appareil. Aucune mesure de mémoire, de chauffe ou de
+crash réalisée ; aucun build ni déploiement effectué. Les changements antérieurs
+présents dans l'arbre de travail sont conservés.

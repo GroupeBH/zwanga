@@ -23,9 +23,9 @@ test('shared bounds separate guidance, commands and normal/priority panels with 
     assert.ok(layout.guidanceBottom >= bottom + 8);
     assert.ok(layout.guidanceMaxHeight >= 64 && layout.guidanceMaxHeight <= 124);
     assert.ok(layout.controlsBottom >= layout.guidanceBottom + layout.guidanceMaxHeight + 8);
-    assert.ok(top + 8 + layout.priorityPanelMaxHeight + 12 <= height - layout.controlsBottom - 48 + 0.01);
+    assert.ok(top + 8 + layout.priorityPanelMaxHeight + 12 <= height - layout.controlsBottom - layout.controlsHeight + 0.01);
     assert.ok(layout.panelMaxHeight < layout.priorityPanelMaxHeight, 'reserve clear map space except for an urgent decision');
-    assert.equal(layout.controlsWidth, 216);
+    assert.equal(layout.controlsWidth, 248); assert.equal(layout.controlsHeight, 56);
   }
 });
 
@@ -60,7 +60,7 @@ test('next pickup or destination and the complete passenger list have distinct a
         setActiveWaypoint: value => calls.push(['waypoint', value.id]), setWaypointModalVisible: value => calls.push(['open', value]) } };
     const props = { foundation, bookingActions: {}, passengerPresentation: { passengerStats: { totalPassengers: 3, inVehicle: 1, pendingPickups: 2 } } };
     const tree = DriverNavigationPassengersBar(props);
-    assert.match(words(tree), type === 'pickup' ? /À récupérer/ : /Arrivée à destination/);
+    assert.match(words(tree), type === 'pickup' ? /Aller chercher/ : /Déposer le passager/);
     assert.match(words(tree), /Passager test.*Adresse du point de rendez-vous.*Passagers.*1\s+à bord/);
     assert.doesNotMatch(words(tree), /Suivi actif/);
     const buttons = all(tree).filter(n => n.type === 'Button');

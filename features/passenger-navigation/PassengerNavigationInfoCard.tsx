@@ -77,8 +77,8 @@ export function PassengerNavigationInfoCard({
       </View>}
       {expanded && data.isTripOngoing && <Text style={compact.caption}>La détection automatique reste active.</Text>}
       {booking.pickedUp && <Text style={compact.caption} accessibilityLiveRegion="polite">
-        {booking.droppedOff ? 'Arrivée à destination confirmée' : booking.droppedOffConfirmedByPassenger
-          ? 'Confirmation de l’arrivée à destination en cours' : 'En route vers votre destination'}
+        {booking.droppedOff ? 'Vous êtes arrivé' : booking.droppedOffConfirmedByPassenger
+          ? 'Votre arrivée est enregistrée' : 'En route vers votre destination'}
       </Text>}
 
       {!awaitingPickup && (presentation.displayedRouteDistance || presentation.displayedRouteDuration) && (
@@ -123,7 +123,7 @@ export function PassengerNavigationInfoCard({
               <Ionicons name="hourglass-outline" size={22} color={Colors.warning} />
               <View style={styles.interruptionStatusCopy}>
                 <Text style={styles.interruptionStatusTitle}>
-                  Demande d&apos;interruption envoyée
+                  Arrêt demandé
                 </Text>
                 <Text style={styles.interruptionStatusText}>
                   En attente de confirmation du conducteur.
@@ -151,7 +151,7 @@ export function PassengerNavigationInfoCard({
               <Text style={styles.actionButtonText}>
                 {data.isRequestingPassengerInterruption
                   ? 'Envoi...'
-                  : 'Descendre avant destination'}
+                  : 'Je veux descendre ici'}
               </Text>
             </TouchableOpacity>
           )}
@@ -162,7 +162,7 @@ export function PassengerNavigationInfoCard({
                 <Ionicons name="stop-circle-outline" size={22} color={Colors.danger} />
                 <View style={styles.interruptionStatusCopy}>
                   <Text style={styles.driverInterruptionTitle}>
-                    Le conducteur veut interrompre le trajet
+                    Le conducteur veut arrêter le trajet
                   </Text>
                   <Text style={styles.driverInterruptionText}>
                     Motif: {getTripInterruptionReasonLabel(interruption.pendingDriverInterruptionRequest.reason)}
@@ -226,7 +226,7 @@ export function PassengerNavigationInfoCard({
                 <Ionicons name="close-circle-outline" size={22} color={Colors.danger} />
               )}
               <Text style={styles.cancelTripButtonText}>
-                {data.isCancellingBooking ? 'Annulation...' : 'Annuler ma participation'}
+                {data.isCancellingBooking ? 'Annulation...' : 'Annuler ma place'}
               </Text>
             </TouchableOpacity>
           )}

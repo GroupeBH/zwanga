@@ -22,6 +22,7 @@ function controllerFixture() {
     },
   }]));
   const load = loader({ ...mocks, react: hooks.react,
+    '@/features/navigation/appEntryContext': { useAppEntryPending: () => Boolean(state.entryPending) },
     'react-native': { Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 400, height: 800 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 20 }) },
     '@react-navigation/native': { useIsFocused: () => state.focused },

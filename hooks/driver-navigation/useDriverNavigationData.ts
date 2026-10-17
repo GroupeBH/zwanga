@@ -24,6 +24,7 @@ import {
   useUpdateDriverLocationMutation,
 } from '@/store/api/tripApi';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
+import { reconcileTripMutation } from '@/utils/tripStartReconciliation';
 import { getTripLocationCoordinate, isCoordinateInKinshasaBounds } from '@/utils/tripCoordinates';
 import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -38,7 +39,7 @@ import { ownsTrip } from '@/features/activity/tripParticipation';
 
 
 export function useDriverNavigationData() {
-  const { id } = useLocalSearchParams();
+  const { id, bookingId } = useLocalSearchParams();
   const router = useRouter();
   const { showDialog } = useDialog();
   const dispatch = useAppDispatch();
@@ -52,6 +53,7 @@ export function useDriverNavigationData() {
 
   const { data: liveTrip, error: tripError, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
+    refetchOnMountOrArgChange: typeof bookingId === 'string',
     skipPollingIfUnfocused: true,
   });
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
@@ -61,6 +63,7 @@ export function useDriverNavigationData() {
     tripId,
     {
       skip: !tripId || !isOwner,
+      refetchOnMountOrArgChange: typeof bookingId === 'string',
       pollingInterval: isScreenActive && isTripOngoing && isOnline ? 20_000 : 0,
       refetchOnReconnect: isScreenActive,
       skipPollingIfUnfocused: true,
@@ -114,12 +117,8 @@ export function useDriverNavigationData() {
   );
   const reconcileTripStatus = useCallback(
     async (error: unknown, expectedStatuses: readonly string[]) =>
-      reconcileAmbiguousMutation({
-        error,
-        loadSnapshot: async () => (await refetchTrip()).data ?? null,
-        isApplied: (latestTrip) => expectedStatuses.includes(latestTrip.status),
-      }),
-    [refetchTrip],
+      reconcileTripMutation({ error, tripId, expectedStatuses, refetch: refetchTrip }),
+    [refetchTrip, tripId],
   );
   const tripDepartureCoordinate = useMemo(
     () =>
@@ -187,6 +186,7 @@ export function useDriverNavigationData() {
 
   return {
     tripId,
+    focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,
     isScreenActive,
     tripDepartureCoordinate,
     bookings,

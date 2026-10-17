@@ -154,6 +154,21 @@ test('a reconciled server-confirmed start also navigates after an ambiguous tran
   assert.equal(app.calls.length, 1);
 });
 
+for (const status of ['ongoing', 'cancelled']) test(`manage start conflict uses a fresh ${status} snapshot before choosing navigation`, async t => {
+  const app = fixture(t, 'manage');
+  const { reconcileTripMutation } = loader()('utils/tripStartReconciliation.ts');
+  app.state.start = async () => { throw { status: 400, data: { message: 'Le statut du trajet a changé. Actualisez-le avant de réessayer.' } }; };
+  let reads = 0;
+  app.props.reconcileTripStatus = (error, expectedStatuses) => reconcileTripMutation({
+    error, expectedStatuses, tripId: 'trip', refetch: async () => { reads++; return { data: { ...started, status } }; },
+  });
+  await app.render().handleStartTrip();
+  await app.dialogs[0].actions[1].onPress();
+  assert.equal(reads, 1); assert.equal(app.calls.length, 1);
+  assert.deepEqual(app.routes, status === 'ongoing' ? ['/trip/navigate/trip'] : []);
+  assert.equal(app.feedback.length, status === 'ongoing' ? 0 : 1);
+});
+
 for (const kind of ['request', 'manage']) {
   test(`${kind}: start failure stays on the current screen, reports an error and allows retry`, async t => {
     const app = fixture(t, kind);

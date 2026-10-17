@@ -52,7 +52,7 @@ export function DriverNavigationPassengersBar({
   const stats = passengerPresentation.passengerStats;
   const showNext = next && !next.completed;
   const allStopsCompleted = waypoints.every(point => point.completed);
-  const nextLabel = next?.type === 'pickup' ? 'À récupérer' : 'Arrivée à destination';
+  const nextLabel = next?.type === 'pickup' ? 'Aller chercher' : 'Déposer le passager';
   return (
     <View style={compact.bar}>
       {waypoints.length > 0 && <View style={compact.row}>
@@ -89,10 +89,10 @@ export function DriverNavigationPassengersBar({
           <Ionicons name="hourglass-outline" size={19} color={Colors.warning} />
           <View style={styles.driverInterruptionStatusCopy}>
             <Text style={styles.driverInterruptionStatusTitle}>
-              Interruption demandée
+              Arrêt du trajet demandé
             </Text>
             <Text style={styles.driverInterruptionStatusText}>
-              {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} réservation(s) confirmée(s) par leur titulaire.
+              {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} passager(s) ont confirmé.
             </Text>
           </View>
         </View>

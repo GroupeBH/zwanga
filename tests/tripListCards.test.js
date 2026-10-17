@@ -88,7 +88,7 @@ function received(overrides = {}, tripOverrides = {}, busy = {}) {
   };
   const result = render(ManageTripBookings, { tracking: { visibleBookings: [item] }, state,
     actions: { handleOpenNavigation: () => calls.push(['navigation']) }, bookingsActions: {
-      openRejectModal: item => calls.push(['reject', item.id]), handleAcceptBooking: id => calls.push(['accept', id]),
+      handleRejectBooking: item => calls.push(['reject', item.id]), handleAcceptBooking: id => calls.push(['accept', id]),
       handleCancelBookingBeforePickup: item => calls.push(['cancel', item.id]),
     } });
   return { ...result, calls, button: label => result.buttons.find(button => text(button) === label) };

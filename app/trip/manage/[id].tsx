@@ -127,6 +127,7 @@ function OwnerManageTripScreen() {
 
       {model.state.feedback && (
         <Animated.View
+          accessibilityLiveRegion="polite"
           entering={FadeInDown}
           style={[
             styles.feedbackBanner,
@@ -222,52 +223,6 @@ function OwnerManageTripScreen() {
                   <ActivityIndicator color={Colors.white} />
                 ) : (
                   <Text style={styles.bookingModalButtonPrimaryText}>Enregistrer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-
-      <Modal animationType="slide" transparent visible={model.state.rejectModalVisible}
-        onRequestClose={model.bookingsActions.closeRejectModal}>
-        <View style={styles.bookingModalOverlay}>
-          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]}>
-            <Text style={styles.bookingModalTitle}>Refuser la réservation</Text>
-            <Text style={styles.bookingModalDescription}>
-              Expliquez brièvement au passager la raison du refus.
-            </Text>
-            <TextInput
-              style={styles.bookingSeatInput}
-              placeholder="Ex: Nombre de places insuffisant"
-              placeholderTextColor={Colors.gray[400]}
-              value={model.state.rejectReason}
-              onChangeText={(text) => {
-                model.state.setRejectReason(text);
-                if (model.state.rejectError) model.state.setRejectError('');
-              }}
-              multiline
-              editable={!model.state.isRejecting}
-            />
-            {model.state.rejectError ? <Text style={styles.bookingModalError}>{model.state.rejectError}</Text> : null}
-            <View style={styles.bookingModalActions}>
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
-                onPress={model.bookingsActions.closeRejectModal}
-                disabled={model.state.isRejecting}
-              >
-                <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
-                onPress={model.bookingsActions.handleRejectSubmit}
-                disabled={model.state.isRejecting}
-              >
-                {model.state.isRejecting ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
                 )}
               </TouchableOpacity>
             </View>

@@ -16,9 +16,11 @@ import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionN
 import { RequestPassengerContact } from '@/features/request-detail/RequestPassengerContact';
 import { useAppDispatch } from '@/store/hooks';
 import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
+import { IncomingBookingRedirect } from '@/features/notifications/IncomingBookingRedirect';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
+  if (params.kind === 'booking') return <IncomingBookingRedirect key={params.id} />;
   return <IncomingDriverContent key={`${params.kind}:${params.id}`} />;
 }
 

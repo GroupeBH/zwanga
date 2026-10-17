@@ -14,10 +14,10 @@ interface Props {
 }
 export function PassengerNavigationHeader({ model, assistance }: Props) {
   const { data, state, presentation, tripActions } = model;
-  const title = presentation.tripStatus === 'waiting_pickup' ? 'Votre prise en charge' :
-    presentation.tripStatus === 'pickup_confirmation_needed' ? 'Confirmez l’embarquement' :
+  const title = presentation.tripStatus === 'waiting_pickup' ? 'Votre rendez-vous' :
+    presentation.tripStatus === 'pickup_confirmation_needed' ? 'Êtes-vous à bord ?' :
     presentation.tripStatus === 'in_transit' ? 'En route' :
-    presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivée détectée' :
+    presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Êtes-vous arrivé ?' :
     presentation.tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet';
   return <View onLayout={state.onHeaderLayout} style={[styles.header, {
     paddingTop: data.insets.top + 8,

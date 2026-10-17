@@ -48,7 +48,9 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
         store.dispatch(inviteAcceptedRequestContact({ userId, requestId: result.requestId }));
       }
       success = true;
-      message = decision === 'accept' ? 'Vous avez accepté. Consultez les détails pour la prise en charge.' : 'Votre refus a été enregistré.';
+      message = decision === 'accept'
+        ? invitation.kind === 'booking' ? 'Réservation acceptée.' : 'Vous avez accepté. Consultez les détails pour la prise en charge.'
+        : 'Votre refus a été enregistré.';
       completed.add(key);
       if (completed.size > 100) completed.delete(completed.values().next().value!);
     } catch {

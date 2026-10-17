@@ -230,7 +230,7 @@ export function NotificationHandler() {
         (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
       if (parseDriverInvitation(data)) return;
-      if (isTripInterruptionNotification(data)) {
+      if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
       if (await handlePassengerOverdueNotification(data, fallbackBody)) {
@@ -252,7 +252,7 @@ export function NotificationHandler() {
       const data = (content.data || {}) as Record<string, any>;
       if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
         (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
-      if (isTripInterruptionNotification(data)) {
+      if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
       if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));

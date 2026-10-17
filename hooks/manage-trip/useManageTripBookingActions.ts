@@ -4,24 +4,21 @@ import { trackEvent } from '@/services/analytics';
 import { useAcceptBookingMutation, useCancelBookingMutation, useRejectBookingMutation } from '@/store/api/bookingApi';
 import type { Booking, BookingStatus, Trip } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import React, { useRef } from 'react';
-import { Keyboard } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 interface Params {
   setFeedback: React.Dispatch<React.SetStateAction<FeedbackState>>;
-  setTargetBooking: React.Dispatch<React.SetStateAction<Booking | null>>;
-  setRejectReason: React.Dispatch<React.SetStateAction<string>>;
-  setRejectError: React.Dispatch<React.SetStateAction<string>>;
-  setRejectModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  isRejecting: boolean;
+  userId: string | undefined;
+  isScreenActive: boolean;
+  bookings: Booking[] | undefined;
+  commitBookingDecision: (booking: Booking, status: 'accepted' | 'rejected', response?: Booking) => void;
   setProcessingBookingId: React.Dispatch<React.SetStateAction<string | null>>;
   acceptBooking: ReturnType<typeof useAcceptBookingMutation>[0];
   rememberAcceptedBooking: (bookingId: string) => void;
   trip: Trip | undefined;
   refreshAll: () => Promise<void>;
   reconcileBookingStatus: (error: unknown, bookingId: string, expectedStatuses: readonly BookingStatus[]) => Promise<Booking | null>;
-  targetBooking: Booking | null;
-  rejectReason: string;
   rejectBooking: ReturnType<typeof useRejectBookingMutation>[0];
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   cancelBooking: ReturnType<typeof useCancelBookingMutation>[0];
@@ -29,24 +26,27 @@ interface Params {
 
 export function useManageTripBookingActions({
   setFeedback,
-  setTargetBooking,
-  setRejectReason,
-  setRejectError,
-  setRejectModalVisible,
-  isRejecting,
+  userId,
+  isScreenActive,
+  bookings,
+  commitBookingDecision,
   setProcessingBookingId,
   acceptBooking,
   rememberAcceptedBooking,
   trip,
   refreshAll,
   reconcileBookingStatus,
-  targetBooking,
-  rejectReason,
   rejectBooking,
   showDialog,
   cancelBooking,
 }: Params) {
-  const rejectLock = useRef(false);
+  const decisionLock = useRef(false);
+  const completed = useRef(new Set<string>());
+  const mounted = useRef(true);
+  const current = useRef({ userId, isScreenActive, trip, bookings });
+  current.current = { userId, isScreenActive, trip, bookings };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { completed.current.clear(); }, [userId, trip?.id]);
   const cancelLock = useRef(false);
   const showFeedback = (type: 'success' | 'error', message: string | string[]) => {
     setFeedback({
@@ -55,93 +55,54 @@ export function useManageTripBookingActions({
     });
   };
 
-  const openRejectModal = (booking: Booking) => {
-    if (rejectLock.current || isRejecting) return;
-    setTargetBooking(booking);
-    setRejectReason('');
-    setRejectError('');
-    setRejectModalVisible(true);
-  };
-
-  const resetRejectForm = () => {
-    Keyboard.dismiss();
-    setRejectModalVisible(false);
-    setTargetBooking(null);
-    setRejectReason('');
-    setRejectError('');
-  };
-
-  const closeRejectModal = () => {
-    if (rejectLock.current || isRejecting) return;
-    resetRejectForm();
-  };
-
-  const handleAcceptBooking = async (bookingId: string) => {
+  const answerBooking = async (bookingId: string, status: 'accepted' | 'rejected') => {
+    const booking = current.current.bookings?.find(candidate => candidate.id === bookingId);
+    if (!mounted.current || !isScreenActive || !userId || trip?.driverId !== userId ||
+      current.current.userId !== userId || !current.current.isScreenActive || current.current.trip?.id !== trip.id ||
+      !booking || booking.tripId !== trip.id || booking.status !== 'pending' ||
+      (trip.status !== 'upcoming' && trip.status !== 'ongoing') || decisionLock.current ||
+      cancelLock.current || completed.current.has(bookingId)) return;
+    decisionLock.current = true;
+    const version = getTokenSessionVersion();
+    const isCurrent = () => mounted.current && current.current.isScreenActive &&
+      current.current.userId === userId && current.current.trip?.id === trip.id &&
+      getTokenSessionVersion() === version;
+    const commit = (response?: Booking) => {
+      if (!isCurrent()) return;
+      completed.current.add(bookingId);
+      if (completed.current.size > 100) completed.current.delete(completed.current.values().next().value!);
+      commitBookingDecision(booking, status, response);
+      if (status === 'accepted') rememberAcceptedBooking(bookingId);
+      showFeedback('success', status === 'accepted' ? 'Réservation acceptée.' : 'Réservation refusée.');
+      // A refresh failure must not turn a confirmed decision into an error.
+      void Promise.resolve().then(refreshAll).catch(() => {});
+    };
     setProcessingBookingId(bookingId);
     try {
-      await acceptBooking(bookingId).unwrap();
-      rememberAcceptedBooking(bookingId);
-      void trackEvent('booking_accepted', {
-        booking_id: bookingId,
-        trip_id: trip?.id ?? '',
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'La réservation a été acceptée.');
-      refreshAll();
-    } catch (error: any) {
-      const acceptedBooking = await reconcileBookingStatus(error, bookingId, ['accepted']);
-      if (acceptedBooking) {
-        rememberAcceptedBooking(bookingId);
-        showFeedback('success', 'La réservation a bien été acceptée malgré la connexion lente.');
-        void refreshAll();
-        return;
-      }
-      showFeedback(
-        'error',
-        getApiErrorMessage(error, 'Impossible d’accepter cette réservation.'),
-      );
+      const result = status === 'accepted' ? await acceptBooking(bookingId).unwrap()
+        : await rejectBooking({ id: bookingId, reason: 'Refus du conducteur' }).unwrap();
+      if (!isCurrent()) return;
+      commit(result);
+      void trackEvent(status === 'accepted' ? 'booking_accepted' : 'booking_rejected', {
+        booking_id: bookingId, trip_id: trip.id, source_screen: 'trip_manage',
+      }).catch(() => {});
+    } catch (error: unknown) {
+      if (!isCurrent()) return;
+      const reconciled = await reconcileBookingStatus(error, bookingId, [status]).catch(() => null);
+      if (!isCurrent()) return;
+      if (reconciled) { commit(reconciled); return; }
+      showFeedback('error', getApiErrorMessage(error, status === 'accepted'
+        ? 'Impossible d’accepter cette réservation. Réessayez.' : 'Impossible de refuser cette réservation. Réessayez.'));
     } finally {
-      setProcessingBookingId(null);
+      decisionLock.current = false;
+      if (mounted.current) setProcessingBookingId(null);
     }
   };
-
-  const handleRejectSubmit = async () => {
-    if (!targetBooking || rejectLock.current || isRejecting) return;
-    if (!rejectReason.trim()) {
-      setRejectError('Veuillez indiquer un motif de refus.');
-      return;
-    }
-    rejectLock.current = true;
-    setProcessingBookingId(targetBooking.id);
-    try {
-      await rejectBooking({ id: targetBooking.id, reason: rejectReason.trim() }).unwrap();
-      void trackEvent('booking_rejected', {
-        booking_id: targetBooking.id,
-        trip_id: trip?.id ?? '',
-        source_screen: 'trip_manage',
-      });
-      showFeedback('success', 'La réservation a été refusée.');
-      resetRejectForm();
-      refreshAll();
-    } catch (error: any) {
-      const rejectedBooking = await reconcileBookingStatus(error, targetBooking.id, ['rejected']);
-      if (rejectedBooking) {
-        resetRejectForm();
-        showFeedback('success', 'La réservation a bien été refusée malgré la connexion lente.');
-        void refreshAll();
-        return;
-      }
-      setRejectError(
-        getApiErrorMessage(error, 'Impossible de refuser cette réservation.'),
-      );
-    } finally {
-      rejectLock.current = false;
-      setProcessingBookingId(null);
-    }
-  };
+  const handleAcceptBooking = (bookingId: string) => answerBooking(bookingId, 'accepted');
+  const handleRejectBooking = (booking: Booking) => answerBooking(booking.id, 'rejected');
 
   const handleCancelBookingBeforePickup = (booking: Booking) => {
-    if (!trip || cancelLock.current) return;
+    if (!trip || cancelLock.current || decisionLock.current) return;
 
     if (booking.status !== 'accepted' || hasPassengerBoarded(booking)) {
       showFeedback('error', 'Impossible d\'annuler cette réservation : le passager a déjà embarqué.');
@@ -160,7 +121,7 @@ export function useManageTripBookingActions({
           label: 'Oui, annuler',
           variant: 'primary',
           onPress: async () => {
-            if (cancelLock.current) return;
+            if (cancelLock.current || decisionLock.current) return;
             cancelLock.current = true;
             setProcessingBookingId(booking.id);
             try {
@@ -195,10 +156,8 @@ export function useManageTripBookingActions({
 
   return {
     showFeedback,
-    openRejectModal,
+    handleRejectBooking,
     handleAcceptBooking,
     handleCancelBookingBeforePickup,
-    closeRejectModal,
-    handleRejectSubmit,
   };
 }
