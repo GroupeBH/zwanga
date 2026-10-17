@@ -12,6 +12,7 @@ import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDism
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
 import { HomeRequestHighlightCard } from './HomeRequestHighlightCard';
 import { SwipeableHomePriority } from './SwipeableHomePriority';
+import { HomeMapPriorities, type HomeMapPriorityLayout } from './HomeMapPriorities';
 
 type Props =
   Pick<ReturnType<typeof useHomeTripSelection>,
@@ -21,6 +22,7 @@ type Props =
     | 'featuredDriverReservationSeatsLabel'
     | 'featuredDriverUpcomingTrip'
     | 'featuredDriverUpcomingTripSeatsLabel'
+    | 'featuredPassengerTrip'
   >
   & Pick<ReturnType<typeof useHomeContext>,
     'router'
@@ -32,14 +34,16 @@ type Props =
   & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest' | 'highlightedRequestDistance'>
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openTripRequestDetail'
+    | 'openTripDetail'
   > & Pick<ReturnType<typeof useHomePriorityDismissals>, 'dismissPriority'>
-  & { prioritiesEnabled: boolean };
+  & { prioritiesEnabled: boolean; mapLayout?: HomeMapPriorityLayout };
 export const HomeActivityCards = React.memo(function HomeActivityCards({
   featuredDriverReservation, featuredDriverReservationStatus, router,
   featuredDriverReservationPassengerName, featuredDriverReservationSeatsLabel,
   featuredDriverUpcomingTrip, featuredDriverUpcomingTripSeatsLabel,
   activeTripRequest, activeRequestStatus, openTripRequestDetail,
   highlightedDriverRequest, highlightedRequestDistance, dismissPriority, prioritiesEnabled,
+  featuredPassengerTrip, openTripDetail, mapLayout,
 }: Props) {
   const bookingKey = featuredDriverReservation ? homePriorityKeys.booking(featuredDriverReservation.booking) : '';
   const tripKey = featuredDriverUpcomingTrip ? homePriorityKeys.upcomingTrip(featuredDriverUpcomingTrip) : '';
@@ -56,8 +60,8 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
     },
   });
 
-  return (<>
-    {featuredDriverReservation && featuredDriverReservationStatus && (
+  const cards = [
+    featuredDriverReservation && featuredDriverReservationStatus && (
       <SwipeableHomePriority key={bookingKey} priorityKey={bookingKey} enabled={prioritiesEnabled} onDismiss={dismissPriority}>
         <CompactTripCard
           {...dismissAccessibility(bookingKey)}
@@ -71,8 +75,8 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           onPress={() => router.push(`/trip/manage/${featuredDriverReservation.trip.id}`)}
         />
       </SwipeableHomePriority>
-    )}
-    {featuredDriverUpcomingTrip && (
+    ),
+    featuredDriverUpcomingTrip && (
       <SwipeableHomePriority key={tripKey} priorityKey={tripKey} enabled={prioritiesEnabled} onDismiss={dismissPriority}>
         <CompactTripCard
           {...dismissAccessibility(tripKey)}
@@ -88,8 +92,18 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           onPress={() => router.push(`/trip/manage/${featuredDriverUpcomingTrip.id}`)}
         />
       </SwipeableHomePriority>
-    )}
-    {highlightedDriverRequest && (
+    ),
+    featuredPassengerTrip && (
+      <SwipeableHomePriority key={homePriorityKeys.passengerTrip(featuredPassengerTrip)}
+        priorityKey={homePriorityKeys.passengerTrip(featuredPassengerTrip)} enabled={prioritiesEnabled} onDismiss={dismissPriority}>
+        <CompactTripCard {...dismissAccessibility(homePriorityKeys.passengerTrip(featuredPassengerTrip))}
+          inlineRoute priorityAppearance="reservation" label="Votre réservation"
+          departure={placeName(featuredPassengerTrip.departure)} arrival={placeName(featuredPassengerTrip.arrival)}
+          metadata={homeDepartureLabel(featuredPassengerTrip.departureTime)}
+          accessibilityLabel="Ouvrir mon trajet réservé" onPress={() => openTripDetail(featuredPassengerTrip.id)} />
+      </SwipeableHomePriority>
+    ),
+    highlightedDriverRequest && (
       <SwipeableHomePriority key={nearbyKey} priorityKey={nearbyKey} enabled={prioritiesEnabled} onDismiss={dismissPriority}>
         <HomeRequestHighlightCard
           {...dismissAccessibility(nearbyKey)}
@@ -98,8 +112,8 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           onOpen={openTripRequestDetail}
         />
       </SwipeableHomePriority>
-    )}
-    {activeTripRequest && activeRequestStatus && (
+    ),
+    activeTripRequest && activeRequestStatus && (
       <SwipeableHomePriority key={ownRequestKey} priorityKey={ownRequestKey} enabled={prioritiesEnabled} onDismiss={dismissPriority}>
         <CompactTripCard
           {...dismissAccessibility(ownRequestKey)}
@@ -114,6 +128,9 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           onPress={() => openTripRequestDetail(activeTripRequest.id)}
         />
       </SwipeableHomePriority>
-    )}
-  </>);
+    ),
+  ];
+  return mapLayout
+    ? <HomeMapPriorities layout={mapLayout} enabled={prioritiesEnabled}>{cards}</HomeMapPriorities>
+    : <>{cards}</>;
 });

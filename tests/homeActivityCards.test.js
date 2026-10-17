@@ -33,6 +33,7 @@ function render(overrides = {}) {
   const tree = HomeActivityCards.type({
     router: { push: route => routes.push(route) },
     openTripRequestDetail: id => routes.push(`/request/${id}`),
+    openTripDetail: id => routes.push(`/trip/${id}`),
     featuredDriverUpcomingTrip: upcoming,
     featuredDriverUpcomingTripSeatsLabel: '3 places libres',
     highlightedDriverRequest: request,
@@ -58,6 +59,19 @@ test('without an upcoming trip, the highlighted request remains directly accessi
   assert.equal(buttons.length, 1);
   buttons[0].props.onPress();
   assert.deepEqual(routes, ['/request/nearest']);
+});
+
+test('personal passenger reservations open details and can be dismissed without cancelling them', () => {
+  const hidden = [];
+  const { buttons, routes } = render({ featuredDriverUpcomingTrip: null, highlightedDriverRequest: null,
+    featuredPassengerTrip: upcoming, dismissPriority: key => hidden.push(key) });
+  assert.equal(buttons.length, 1);
+  assert.equal(buttons[0].props.accessibilityLabel, 'Ouvrir mon trajet réservé');
+  buttons[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'dismiss' } });
+  assert.deepEqual(hidden, [`passenger-trip:${upcoming.id}:${upcoming.departureTime}`]);
+  assert.deepEqual(routes, []);
+  buttons[0].props.onPress();
+  assert.deepEqual(routes, ['/trip/upcoming']);
 });
 
 test('a booked unstarted trip shows its real reservation count before nearby requests and opens management', () => {

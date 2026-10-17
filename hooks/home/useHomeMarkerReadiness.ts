@@ -1,13 +1,10 @@
 import { IS_ANDROID } from '@/features/home/homeMapPolicy';
-import { useCallback, useEffect, useRef } from 'react';
-import type { useHomeMap } from './useHomeMap';
+import { useCallback, useEffect, useRef, type RefObject, type Dispatch, type SetStateAction } from 'react';
+import type { MapMarker } from 'react-native-maps';
 
-type Props =
-  Pick<ReturnType<typeof useHomeMap>,
-    'passengerMarkerRefs'
-    | 'setLoadedTripMarkerKeys'
-  >
-  & {
+type Props = {
+    passengerMarkerRefs: RefObject<Record<string, MapMarker | null>>;
+    setLoadedTripMarkerKeys: Dispatch<SetStateAction<ReadonlySet<string>>>;
     enabled: boolean;
     tripId?: string;
   };

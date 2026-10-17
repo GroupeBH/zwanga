@@ -36,6 +36,7 @@ test('foreground/background delivery is single flight and resets RTK mutation en
   assert.equal(f.calls.length, 1); assert.equal(f.resets.length, 1);
   assert.deepEqual(Object.keys(f.calls[0]).sort(), ['latitude', 'longitude', 'accuracy', 'recordedAt'].sort());
   t.mock.timers.tick(60000); assert.equal(await f.send('driver', fix()), 'skipped');
+  t.mock.timers.tick(60000); assert.equal(await f.send('driver', fix()), 'skipped');
   t.mock.timers.tick(60000); assert.equal(await f.send('driver', fix()), 'sent');
   assert.equal(f.calls.length, 2);
 });

@@ -51,6 +51,8 @@ test('background task does not replay the remote acceptance on the default chann
   assert.deepEqual(calls, []);
   await task({ data: { notification: { request: { content: { title: 'Message', data: { type: 'message' } } } } } });
   assert.deepEqual(calls, ['standard']);
+  await task({ data: { data: { ...nearby, delivery: 'driver-phone-v3', ringUntil: new Date(Date.now() + 30000).toISOString() } } });
+  assert.deepEqual(calls, ['standard', 'driver'], 'only v3 data-only nearby alert delegates its sound to Notifee');
 });
 
 test('acceptance opens the request or created trip without an accept/decline action', () => {

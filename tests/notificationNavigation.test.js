@@ -8,6 +8,13 @@ const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificatio
 
 const requestHref = id => ({ pathname: '/request-details/[id]', params: { id } });
 
+test('stale location reminder opens driver GPS settings, never another account or an arbitrary link', () => {
+  const data = { type: 'driver_location_stale', driverId: 'driver', navigateTo: 'https://untrusted.invalid' };
+  assert.equal(getNotificationHref(data, { id: 'driver' }), '/driver-availability');
+  assert.equal(getNotificationHref({ data }), '/driver-availability');
+  assert.equal(getNotificationHref(data, { id: 'someone-else' }), null);
+});
+
 test('sent and received token transfers open the wallet, including nested pushes', () => {
   for (const type of ['wallet_transfer_in', 'wallet_transfer_out']) {
     const payload = { type, transferId: 'transfer', amount: 10 };

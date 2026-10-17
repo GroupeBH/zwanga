@@ -26,6 +26,15 @@ function fixture() {
     session: () => saved && JSON.parse(saved), delayStop: p => { stopWait = p; }, delayPermission: p => { permissionWait = p; } };
 }
 
+test('in-ride GPS keeps its existing fast profile and stops nearby discovery first', async () => {
+  const f = fixture(); await f.module.startDriverBackgroundLocationTracking('trip');
+  assert.deepEqual(f.stops, ['discovery']);
+  assert.equal(f.starts.length, 1);
+  assert.equal(f.starts[0].timeInterval, 8000);
+  assert.equal(f.starts[0].deferredUpdatesInterval, 2000);
+  assert.equal(f.starts[0].accuracy, 4);
+});
+
 test('a delayed stop of A cannot stop the newly started B task', async () => {
   const f = fixture(); await f.module.startDriverBackgroundLocationTracking('A');
   const stop = deferred(); f.delayStop(stop.promise);

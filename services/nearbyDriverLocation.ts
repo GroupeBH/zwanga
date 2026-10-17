@@ -138,7 +138,18 @@ export function ensureNearbyDriverLocation(userId: string) {
       if (!current()) { await AsyncStorage.removeItem(OWNER_KEY); return false; }
       owner = userId;
     }
-    if (!(await Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK))) {
+    let running = await Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK);
+    if (running) {
+      // Native registrations survive JS/OTA updates. Apply the new cadence once,
+      // without registering another GPS task or restarting from the background.
+      const options = await TaskManager.getTaskOptionsAsync<Location.LocationTaskOptions | null>(NEARBY_DRIVER_LOCATION_TASK);
+      if (options?.timeInterval !== NEARBY_DRIVER_INTERVAL_MS ||
+          options?.deferredUpdatesInterval !== NEARBY_DRIVER_INTERVAL_MS) {
+        if (!current() || AppState.currentState !== 'active') return false;
+        await stopNative(); running = false;
+      }
+    }
+    if (!running) {
       if (!current() || AppState.currentState !== 'active') return false;
       await Location.startLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK, {
         accuracy: Location.Accuracy.Balanced,

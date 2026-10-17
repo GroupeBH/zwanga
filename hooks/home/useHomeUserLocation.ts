@@ -1,10 +1,10 @@
 import type { UserLocationMarkerState } from '@/features/home/homeTypes';
+import { HOME_USER_LOCATION_DELTA } from '@/features/home/homeMapPolicy';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type MapMarker } from 'react-native-maps';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 import type { useHomeLocation } from '@/hooks/home/useHomeLocation';
 import type { useHomeMap } from '@/hooks/home/useHomeMap';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
@@ -18,9 +18,6 @@ type Props =
     | 'lastKnownLocation'
     | 'getCurrentLocation'
   >
-  & Pick<ReturnType<typeof useHomeDriverActivity>,
-    'ongoingDriverTrip'
-  >
   & Pick<ReturnType<typeof useHomeMap>,
     'setMapFocusedOnUser'
     | 'mapRef'
@@ -31,7 +28,6 @@ type Props =
 export function useHomeUserLocation({
   isFocused,
   liveUserCoordinate,
-  ongoingDriverTrip,
   lastKnownLocation,
   getCurrentLocation,
   showDialog,
@@ -65,7 +61,7 @@ export function useHomeUserLocation({
   }, [clearCalloutTimers, isFocused, openingMapDetailKey]);
 
   useEffect(() => {
-    if (!isFocused || !liveUserCoordinate || ongoingDriverTrip) {
+    if (!isFocused || !liveUserCoordinate) {
       return;
     }
 
@@ -74,7 +70,7 @@ export function useHomeUserLocation({
       title: current?.title || 'Ma position',
       address: 'Position en temps réel',
     }));
-  }, [isFocused, liveUserCoordinate, ongoingDriverTrip]);
+  }, [isFocused, liveUserCoordinate]);
 
   const showUserLocationCallout = useCallback(() => {
     clearCalloutTimers();
@@ -129,8 +125,8 @@ export function useHomeUserLocation({
       mapRef.current?.animateToRegion(
         {
           ...coordinate,
-          latitudeDelta: 0.025,
-          longitudeDelta: 0.025,
+          latitudeDelta: HOME_USER_LOCATION_DELTA,
+          longitudeDelta: HOME_USER_LOCATION_DELTA,
         },
         480,
       );

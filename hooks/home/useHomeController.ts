@@ -1,4 +1,4 @@
-import { useHomeContext } from './useHomeContext';
+import type { useHomeContext } from './useHomeContext';
 import { useHomeDriverActivity } from './useHomeDriverActivity';
 import { useHomeLocation } from './useHomeLocation';
 import { useHomeMap } from './useHomeMap';
@@ -13,8 +13,7 @@ import { useHomeUserLocation } from './useHomeUserLocation';
 import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 import { useHomePriorityDismissals } from './useHomePriorityDismissals';
 
-export function useHomeController() {
-  const context = useHomeContext();
+export function useHomeController(context: ReturnType<typeof useHomeContext>) {
   const priorities = useHomePriorityDismissals(context.currentUser?.id);
   // Queries, sockets and camera commands pause outside the foreground. Map ownership
   // and the GPS lifecycle follow route focus; useUserLocation handles AppState itself.
@@ -37,7 +36,13 @@ export function useHomeController() {
   const mapNavigation = useHomeMapNavigation({ ...context });
   const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation });
   const userLocation = useHomeUserLocation({ ...foregroundContext, ...location, ...driverActivity, ...map, ...mapNavigation });
-  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed });
+  const hasMapPriorities = !tripSelection.isHomeSheetLockedRetracted && Boolean(
+    (tripSelection.featuredDriverReservation && tripSelection.featuredDriverReservationStatus)
+    || tripSelection.featuredDriverUpcomingTrip || tripSelection.featuredPassengerTrip
+    || requestHighlight.highlightedDriverRequest
+    || (passengerActivity.activeTripRequest && passengerActivity.activeRequestStatus),
+  );
+  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed, hasMapPriorities });
   return {
     ...context,
     ...priorities,
@@ -53,5 +58,6 @@ export function useHomeController() {
     ...map,
     ...userLocation,
     ...sheet,
+    hasMapPriorities,
   };
 }

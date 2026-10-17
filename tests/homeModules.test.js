@@ -242,6 +242,23 @@ test('a stale tracking hint cannot lock Home or hide the feed without an active 
   app.hooks.unmount();
 });
 
+test('the passenger reservation priority follows existing booking ranking and dismissal without retaining ended trips', () => {
+  const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
+  const first = trip('reserved-first'), second = trip('reserved-second', { departureTime: new Date(Date.now() + 2 * 86400000).toISOString() });
+  const props = { ...selectionProps(), remoteTrips: [first, second], bookedTripIds: new Set([first.id, second.id]), hiddenHomePriorities: {} };
+  const draw = () => app.hooks.render(() => useHomeTripSelection(props));
+  const { homePriorityKeys } = app.load('features/home/homePriorityDismissal.ts');
+  assert.equal(draw().featuredPassengerTrip.id, first.id);
+  props.hiddenHomePriorities = { [homePriorityKeys.passengerTrip(first)]: true };
+  assert.equal(draw().featuredPassengerTrip.id, second.id);
+  props.remoteTrips = [{ ...first, status: 'completed' }, { ...second, status: 'cancelled' }];
+  assert.equal(draw().featuredPassengerTrip, null);
+  props.remoteTrips = [first, second];
+  props.ongoingDriverTrip = trip('active', { status: 'ongoing' });
+  assert.equal(draw().featuredPassengerTrip, null, 'an active ride keeps navigation precedence, even for a driver with a passenger reservation');
+  app.hooks.unmount();
+});
+
 test('passenger activity excludes own, linked and expired requests and preserves role-based query skipping', () => {
   const calls = [];
   const requests = [request('available'), request('own', { passengerId: 'me' }), request('linked', { tripId: 'trip' }), request('expired', { departureDateMax: '2020-01-01' })];
@@ -447,7 +464,7 @@ test('Android marker redraws are bounded, deduplicated and cancelled when the ma
   assert.equal(redraws, 2);
 });
 
-test('map camera animation is cancelled on blur, and invalid coordinates use the Kinshasa region', t => {
+test('Home camera follows only the user, ignores trip updates, and cancels on blur', t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
   const app = environment(), movements = [];
   const { useHomeMap } = app.load('hooks/home/useHomeMap.ts');
@@ -456,9 +473,12 @@ test('map camera animation is cancelled on blur, and invalid coordinates use the
   assert.equal(render().mapRegion.latitude, -4.325);
   render().mapRef.current = { animateToRegion: region => movements.push(region) };
   props.homeMapTrips = [trip('a')]; render();
+  assert.equal(movements.length, 0, 'suggestions never move the user map');
+  props.liveUserCoordinate = { latitude: departure.lat, longitude: departure.lng }; render();
   assert.equal(movements.length, 1);
   movements.length = 0;
   props.homeMapTrips = [trip('b', { departure: arrival })]; render();
+  props.liveUserCoordinate = { latitude: arrival.lat, longitude: arrival.lng }; render();
   props.isFocused = false; render();
   t.mock.timers.tick(1500);
   assert.deepEqual(movements, []);

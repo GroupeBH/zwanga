@@ -25,17 +25,17 @@ export const DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS = 3 * 60 * 60 * 1000;
 export { UNACCEPTED_TRIP_REQUEST_EXPIRATION_MS, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 
 export const HOME_COLORS = {
-  ink: '#07112A',
-  text: '#111318',
-  body: '#4B2D28',
-  rust: '#B92A00',
-  rustDark: '#982300',
-  navy: '#304B77',
-  navySoft: '#DCE7FF',
-  surface: '#F7F8FA',
-  line: '#E8D6CF',
-  softLine: '#E8EBEF',
-  success: '#0EAD65',
+  ink: '#211C19',
+  text: '#211C19',
+  body: '#6E6863',
+  rust: '#C84310',
+  rustDark: '#98320E',
+  navy: '#315BC6',
+  navySoft: '#E7EDFF',
+  surface: '#F2F3EF',
+  line: '#E8E0D9',
+  softLine: '#E7E9EA',
+  success: '#168047',
 };
 
 export const vehicleLabel: Record<Trip['vehicleType'], string> = {

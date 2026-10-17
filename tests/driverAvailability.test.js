@@ -140,13 +140,13 @@ test('foreground GPS is aborted on background and cannot publish a delayed fix',
   app.hooks.unmount();
 });
 
-test('60-second foreground refreshes stop when the app leaves the foreground', async t => {
+test('3-minute foreground refreshes stop when the app leaves the foreground', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const app = coordinator(); app.render(); await tick();
-  t.mock.timers.tick(60000); await tick();
+  t.mock.timers.tick(180000); await tick();
   assert.equal(app.calls.filter(value => typeof value === 'object').length, 2);
   app.deactivate(); app.render();
-  t.mock.timers.tick(90000); await tick();
+  t.mock.timers.tick(360000); await tick();
   assert.equal(app.calls.filter(value => typeof value === 'object').length, 2);
   app.hooks.unmount();
 });

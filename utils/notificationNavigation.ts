@@ -84,6 +84,10 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
   if (currentUser && !canShowRequestNotification(data, currentUser)) return null;
   const type = getType(data);
   if (type === 'app_update') return '/app-update';
+  if (type === 'driver_location_stale') {
+    if (currentUser && currentUser.id !== data.driverId) return null;
+    return '/driver-availability';
+  }
   if (type === 'wallet_transfer_in' || type === 'wallet_transfer_out') return '/wallet';
   if (type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus') return '/wallet';
   if (['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started'].includes(type)) return '/wallet';

@@ -8,29 +8,31 @@ import { getTokenSessionVersion } from './tokenSession';
 import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
 import { notificationDecision, parseDriverInvitation, type DriverDecision, type DriverInvitation } from '@/features/notifications/driverInvitation';
 import { driverRingDeadline } from '@/features/notifications/driverRinging';
-import { isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
+import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert, type NearbyPhoneAlert } from '@/features/notifications/rideSound';
+import { getDriverAlertChannel, LEGACY_DRIVER_CHANNEL } from './driverAlertChannel';
 
-export const DRIVER_CHANNEL = 'booking-ring-v2';
+export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
+type DriverAlert = DriverInvitation | NearbyPhoneAlert;
 const actionKey = (invitation: DriverInvitation) => `driver-action-v1:${invitation.kind}:${invitation.id}`;
-export const invitationNotificationId = (invitation: DriverInvitation) => `driver-${invitation.kind}-${invitation.id}`;
+export const invitationNotificationId = (invitation: DriverAlert) => `driver-${invitation.kind}-${invitation.id}`;
 // Foreground delivery and the headless task can receive the same push. Never
 // restart its native timeout, including after an action dismissed the card.
 const deliveries = new Map<string, { cancelled: boolean }>();
-const deliveryKey = (invitation: DriverInvitation) => `${getTokenSessionVersion()}:${invitation.driverId}:${invitationNotificationId(invitation)}`;
+const deliveryKey = (invitation: DriverAlert) => `${getTokenSessionVersion()}:${invitation.driverId}:${invitationNotificationId(invitation)}`;
 function rememberDelivery(key: string, cancelled = false) {
   const delivery = { cancelled };
   deliveries.set(key, delivery);
   if (deliveries.size > 100) deliveries.delete(deliveries.keys().next().value!);
   return delivery;
 }
-function acknowledgeDelivery(invitation: DriverInvitation) {
+function acknowledgeDelivery(invitation: DriverAlert) {
   const key = deliveryKey(invitation);
   const delivery = deliveries.get(key) ?? rememberDelivery(key, true);
   delivery.cancelled = true;
 }
 
 export async function configureDriverNotifications() {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web') return DRIVER_CHANNEL;
   await Notifications.setNotificationCategoryAsync('driver-offer-v1', [
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
@@ -39,14 +41,17 @@ export async function configureDriverNotifications() {
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: false, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: false, isAuthenticationRequired: true } },
   ]);
+  // Resolve before creating v2 so a new install does not look like a legacy install.
+  const channelId = await getDriverAlertChannel();
   if (Platform.OS === 'android') await notifee.createChannel({ id: DRIVER_CHANNEL,
     name: 'Réservations et commandes acceptées', importance: AndroidImportance.HIGH,
     sound: 'driver_ring', vibration: true, vibrationPattern: [400, 300, 700, 300, 700, 300],
     visibility: AndroidVisibility.PRIVATE });
+  return channelId;
 }
 
 export async function displayDriverInvitation(data: Record<string, unknown>): Promise<boolean> {
-  const invitation = parseDriverInvitation(data);
+  const invitation = parseDriverInvitation(data) ?? parseNearbyPhoneAlert(data);
   if (!invitation) return false;
   // The foreground screen owns the invitation. Never start a second sound there.
   if (isAppActive()) { acknowledgeDelivery(invitation); return true; }
@@ -62,21 +67,21 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   if (deadline <= Date.now()) return true;
   const delivery = rememberDelivery(key);
   try {
-    await configureDriverNotifications();
+    const channelId = await configureDriverNotifications();
     if (delivery.cancelled || isAppActive() || version !== getTokenSessionVersion() || deadline <= Date.now()) return true;
     const safeData = Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
     const body = typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800) : 'Une proposition vous attend. Accepter ou refuser ?';
     await notifee.displayNotification({ id: invitationNotificationId(invitation),
       title: invitation.kind === 'booking' ? 'Nouvelle réservation' : 'Commande à proximité',
       body, data: safeData,
-      android: { channelId: DRIVER_CHANNEL, importance: AndroidImportance.HIGH,
+      android: { channelId, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, pressAction: { id: 'default', launchActivity: 'default' },
         onlyAlertOnce: true, autoCancel: true, ongoing: true,
         loopSound: true, lightUpScreen: true,
         sound: 'driver_ring', style: { type: AndroidStyle.BIGTEXT, text: body },
         // Native timeout: works without a living JS timer while the phone sleeps.
         timeoutAfter: Math.max(1, deadline - Date.now()),
-        actions: [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
+        actions: invitation.kind === 'nearby' ? undefined : [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
           { title: 'Accepter', pressAction: { id: 'driver-accept' } }],
       },
     });
@@ -136,6 +141,8 @@ export async function silenceDriverInvitations(userId: string): Promise<void> {
   if (version !== getTokenSessionVersion()) return;
   const invitations = new Map<string, DriverInvitation>();
   for (const data of [...native.map(item => item.notification.data), ...remote.map(item => item.request.content.data)]) {
+    const nearby = parseNearbyPhoneAlert(data);
+    if (nearby?.driverId === userId) acknowledgeDelivery(nearby);
     const invitation = parseDriverInvitation(data);
     if (invitation?.driverId === userId) invitations.set(invitationNotificationId(invitation), invitation);
   }

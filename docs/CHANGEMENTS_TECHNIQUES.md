@@ -5818,3 +5818,532 @@ réussit. Aucun essai sur appareil physique ni déploiement n’a été effectu�
 Pour chaque problème corrigé : date/périmètre, problème constaté, solution
 effectivement appliquée, fichiers concernés, comportements conservés, vérifications
 et limites. Référencer les documents spécialisés si le détail devient volumineux.
+
+## 2026-10-15 — Refonte visuelle de l’accueil par rôle
+
+**Périmètre et problème constaté.** L’accueil plaçait plusieurs actions au-dessus
+de la carte, tandis que la zone inférieure ne montrait qu’une liste horizontale.
+Cela s’éloignait des maquettes passager/conducteur et rendait l’action principale
+moins évidente. La carte affichait aussi des marqueurs de tous les trajets et
+commandes, en doublon avec leurs cartes.
+
+**Solution appliquée et fichiers.** `components/home/HomeHeader.tsx` et
+`features/home/HomeHeader.styles.ts` réduisent la zone supérieure à l’avatar,
+aux notifications et, si nécessaire, à l’indication d’un trajet en cours.
+`components/home/HomeTripsSheet.tsx` et `features/home/HomeTripsSheet.styles.ts`
+transforment la feuille en tableau de bord défilant, avec accueil personnalisé,
+recherche visuellement identifiable pour le passager, actions « Proposer un
+trajet »/« Commander », publication principale pour le conducteur, compteurs
+fondés sur les données déjà chargées et une suggestion de trajet/client.
+`components/home/HomeSuggestionCard.tsx` et
+`features/home/HomeSuggestionCard.styles.ts` ajoutent une carte de route compacte
+avec prix, horaire, lieux, identité et accès aux détails.
+`components/home/HomeMap.tsx` n’affiche plus les marqueurs des trajets et demandes
+ordinaires : ces résultats restent accessibles depuis la feuille. La position
+de l’utilisateur et les marqueurs des passagers pendant le trajet du conducteur
+restent affichés. `hooks/home/useHomeMap.ts` ne calcule plus les coordonnées,
+la sélection ni les références de marqueurs des suggestions cachées ; la caméra
+se centre sur l’utilisateur (ou cadre le trajet actif du conducteur). La palette
+est ajustée dans `features/home/homeModel.ts` et
+l’éclaircissement de fond dans `features/home/HomeScreen.styles.ts`.
+`hooks/home/useHomeSheet.ts` sélectionne par défaut les clients pour un compte
+conducteur et les trajets pour un passager, y compris après le chargement tardif
+du rôle. `components/home/HomeLocationButton.tsx` conserve son action de recentrage.
+La barre d’onglets n’a pas été modifiée.
+
+**Comportements conservés et précautions.** Les actions de publication, recherche,
+commande, ouverture des détails, listes complètes, notifications et balayage pour
+masquer une priorité restent reliés aux mêmes parcours. L’aperçu d’un trajet ouvre
+ses détails — il ne contourne pas le flux de réservation. Les nombres affichés
+proviennent des listes déjà présentes, sans chiffre de gains inventé et sans
+nouvelle requête. La consultation des adresses enregistrées « Maison/Travail »
+et les raccourcis récents ne sont pas ajoutés ici, car leur branchement direct
+à la recherche n’était pas présent dans le flux existant.
+
+**Vérifications et limites.** `npx.cmd tsc --noEmit --pretty false` passe sans
+erreur. `git diff --check` passe. Aucun test unitaire n’a été lancé et aucun essai
+sur appareil physique ou émulateur n’a été réalisé ; la disposition selon les
+tailles d’écran et le rendu natif de la carte restent à confirmer sur appareils.
+L’effet de performance n’a pas été mesuré : les marqueurs supprimés réduisent le
+travail de rendu cartographique, mais les lectures de données existantes restent
+inchangées.
+
+## 2026-10-15 — Accueil : fidélité aux maquettes conducteur et passager
+
+**Problème constaté.** La première reprise visuelle restait trop éloignée des
+références : proportion de carte réduite, tailles de textes et boutons différentes,
+absence des raccourcis et bloc conducteur incomplet. Le repère de position pouvait
+être caché sous la feuille. Cette entrée complète et remplace les limites visuelles
+de l’entrée précédente.
+
+**Solution appliquée.** La palette partagée `features/home/homeDashboardTheme.ts`
+et les styles `HomeTripsSheet.styles.ts`, `HomeSuggestionCard.styles.ts` et
+`HomeHeader.styles.ts` reprennent le fond crème, le brun orangé, le vert, les
+arrondis, les initiales, les boutons bordés et la hiérarchie des deux références.
+`HomeTripsSheet.tsx` et `HomeSuggestionCard.tsx` présentent une suggestion principale,
+avec l’horaire, le prix, le parcours et les boutons « Réserver » / « Accepter ».
+Ces boutons ouvrent les parcours existants de détail et de confirmation ; aucune
+réservation ou acceptation n’est envoyée par un simple changement de présentation.
+Les avis sont affichés uniquement lorsqu’ils sont fournis par l’API. Un prix absent
+n’est plus assimilé à un trajet gratuit dans cette carte.
+
+`HomeDestinationShortcuts.tsx` branche Maison/Travail sur les adresses enregistrées
+et préremplit la recherche ; sans adresse enregistrée, le raccourci ouvre leur
+gestion. « Récents » déplie jusqu’à trois destinations personnelles tirées des
+réservations et commandes déjà chargées dans `useHomePassengerActivity.ts`.
+Il s’agit d’un aperçu de l’activité disponible, pas d’un nouvel historique exhaustif.
+
+`HomeDriverStatus.tsx` reprend l’état du serveur et l’échéance de présence pour
+afficher « En ligne » ; les états inconnus, expirés ou hors connexion ne sont pas
+présentés comme disponibles. `HomeDriverEarnings.tsx` lit le résumé des revenus,
+avec cache de 60 secondes et sans interrogation périodique ni téléchargement de
+l’historique. Le libellé est « Mes gains — disponibles » : l’API existante ne fournit
+pas un agrégat journalier qui permette d’afficher fidèlement « Gains du jour ».
+Les lectures de favoris/revenus sont suspendues hors écran actif ou hors réseau.
+
+`useHomeSheet.ts` mesure la zone réellement disponible en tenant compte de la barre
+d’onglets : environ 37 % pour la carte et 63 % pour la feuille, plafonnée sur grand
+écran et défilable. `HomeMap.tsx`, `useHomeMap.ts`, `useHomeUserLocation.ts` et
+`homeMapAppearance.ts` affichent exclusivement la position de l’utilisateur sur
+l’accueil, y compris pendant un trajet. Le suivi des passagers reste dans les écrans
+de navigation. La carte occupe sa propre zone et son attribution reste visible.
+Les priorités de réservation/commande sont déplacées dans la feuille via
+`app/(tabs)/index.tsx`. Les destinations de la barre d’onglets sont conservées.
+
+**Précautions et observations natives.** L’aperçu Android a montré un découpage
+du halo lorsque le repère utilisait une vue React personnalisée. Il est remplacé
+par une image native locale, avec trois densités, générée de manière reproductible
+par `scripts/generate-home-position-marker.cjs` :
+`assets/images/map-markers/home-position-dot*.png` (4 391 octets au total).
+Il ne requiert aucune animation, boucle de capture de vue ou image distante.
+`useHomeMarkerReadiness.ts` conserve un contrat de types autonome pour l’ancien
+utilitaire ; l’accueil n’en dépend plus. Aucun changement d’authentification,
+de dépendance ou de configuration native n’est inclus.
+
+**Vérifications (finalisées le 16 octobre).** TypeScript et lint ciblé passent.
+La suite `npm.cmd run test:home` passe (148 tests), ainsi que les trois tests
+ajoutés dans `tests/homeDestinationShortcuts.test.js`. Les attentes de
+`homeCompactLayout.test.js`, `homeCompactCards.test.js`,
+`homeForegroundLifecycle.test.js` et `homeModules.test.js` ont été adaptées aux
+proportions, au déplacement des actions et au centrage sur l'utilisateur. Les
+vérifications du cycle de vie, des listes en cache, des accès et de la navigation
+restent présentes. `git diff --check` passe. Ces tests JavaScript ne constituent
+pas des essais natifs.
+Un contrôle visuel a été réalisé dans le build de développement de l’émulateur
+Android : accueil passager réel et aperçu conducteur isolé avec données fictives,
+sans changement de rôle du compte et sans acceptation de commande. Le repère
+complet a été vérifié avec une coordonnée locale de présentation, sans injection
+dans le GPS ni envoi de cette coordonnée au serveur. Le GPS réel de l’émulateur
+n’a pas fourni de position lors de cet essai : le centrage sur une position réelle
+reste à vérifier sur téléphone. Aucun essai iOS, build release, mesure de mémoire
+ou conclusion sur la disparition des crashs n’est revendiqué.
+L'écran temporaire de présentation conducteur a été retiré du projet. Les
+raccourcis ont été vérifiés par tests isolés (favoris, recherche préremplie,
+destinations récentes et absence de lecture hors écran/réseau) ; leur essai
+manuel final n'a pas été terminé, l'émulateur n'étant plus connecté. Le rendu
+de carte utilise Google Maps sur Android et MapKit atténué sur iOS : les fonds
+cartographiques ne peuvent pas reproduire à l'identique l'illustration fournie.
+
+## 2026-10-16 — Accueil passager : actions plus visibles
+
+**Périmètre et problème.** À la demande de l'utilisateur, les actions passager
+devaient ressortir davantage que les deux boutons blancs de la maquette.
+
+**Solution appliquée.** Dans `components/home/HomeTripsSheet.tsx` et
+`features/home/HomeTripsSheet.styles.ts`, « Proposer un trajet » reçoit le bleu
+de la palette existante et « Commander » le brun orangé, avec du texte blanc.
+La barre « Où allez-vous ? » reste blanche et bordée pour conserver son apparence
+de recherche. La palette reste limitée, sans ombre ni animation supplémentaire.
+
+**Comportements conservés.** Dimensions minimales, texte redimensionnable, retour
+visuel à l'appui, destinations de navigation, affichage conducteur et barre
+d'onglets inchangés par cet ajustement. Aucune dépendance ni configuration native
+n'a été ajoutée.
+
+**Vérifications et limites.** Le test de `tests/homeCompactLayout.test.js` vérifie
+les couleurs distinctes, le contraste du texte blanc (au moins 4,5:1), les cibles
+tactiles et les mêmes destinations de navigation. Lint ciblé et tests Home
+passent. Ces dernières couleurs n'ont pas fait l'objet d'un nouvel essai visuel
+sur appareil physique ou émulateur.
+
+## 2026-10-16 — Accueil : orange, réservation verte et position plus lisible
+
+**Périmètre et demande.** Remplacer le brun des boutons principaux de l'accueil
+par de l'orange, afficher « Réserver » en vert et rendre la position personnelle
+plus identifiable sur la carte. Cette entrée remplace le choix de couleurs de
+l'entrée précédente, sans modifier les parcours métier.
+
+**Solution appliquée.**
+
+- `features/home/homeDashboardTheme.ts`, `HomeTripsSheet.styles.ts` et
+  `components/home/HomeTripsSheet.tsx` : « Commander » et « Publier un trajet »
+  utilisent l'orange vif `#FF6B35`. Leur texte est sombre pour préserver un
+  contraste d'au moins 4,5:1 ; « Proposer un trajet » reste bleu et blanc.
+- `features/home/HomeSuggestionCard.styles.ts` : l'action de réservation
+  devient verte, avec texte blanc. Les commandes conducteur restent vertes.
+- `components/home/HomeMap.tsx` et `features/home/HomeMap.styles.ts` : un seul
+  repère personnel, légendé « Votre position ». En l'absence de coordonnées
+  valides, la carte indique « Position en attente » sans inventer de position
+  à partir du centre par défaut. Les coordonnées sont contrôlées avant rendu.
+- `scripts/generate-home-position-marker.cjs` et les trois fichiers
+  `assets/images/map-markers/home-position-dot*.png` : repère natif de 60 points,
+  orange, cerclé de blanc avec halo renforcé. Les images locales totalisent
+  5 178 octets ; aucune vue React animée ni capture répétée de marqueur.
+- `features/home/homeMapPolicy.ts`, `hooks/home/useHomeMap.ts` et
+  `hooks/home/useHomeUserLocation.ts` : zoom de quartier commun de 0,008 degré
+  pour le centrage automatique et le bouton de recentrage.
+
+**Comportements conservés.** Mêmes destinations des boutons, contrôle de la
+réservation dans les détails, permissions GPS, fréquences de localisation et
+limitation des animations de caméra. Aucune nouvelle lecture réseau, dépendance,
+configuration native ou modification de la barre d'onglets. Les cartes de trajet
+restent dans la feuille, pas sur la carte géographique.
+
+**Vérifications et limites.** `npm.cmd run test:home` : 156 tests réussis.
+`npx.cmd tsc --noEmit --pretty false` passe sans erreur.
+`tests/homeCompactLayout.test.js` couvre couleurs, contrastes et actions ;
+`tests/homeUserPositionDisplay.test.js` couvre marqueur unique, coordonnées
+absentes/invalides, position de secours, légende, retrait de la carte et centrage
+à son initialisation. Lint ciblé et `git diff --check` passent. Contrôle visuel
+sur l'émulateur Android : boutons orange/vert, repère orange complet et légende
+visibles, attribution de la carte non masquée. Aucune coordonnée fictive n'a été
+injectée pour cet essai. Pas d'essai sur téléphone physique ni sur iOS ; la
+précision GPS réelle et les performances natives ne sont pas mesurées ici.
+
+## 2026-10-16 — Accueil : intégration de la palette A « Orange brûlé et nuit »
+
+**Périmètre et problème.** L'utilisateur a retenu la proposition A pour réduire
+la concurrence entre les trois couleurs des boutons. Cette entrée remplace le
+choix précédent d'une réservation verte et d'un texte sombre sur orange.
+
+**Solution appliquée.** `features/home/homeDashboardTheme.ts` définit le bleu nuit
+`#1E2A4A` et l'orange brûlé `#D1430F`. Ce dernier est légèrement plus sombre que
+le `#D9480F` proposé : le contraste calculé avec le blanc passe de 4,30:1 à
+4,65:1. Le bleu nuit atteint 14,14:1. Ces chiffres sont des calculs à partir des
+couleurs sRGB, pas des mesures d'écran.
+
+`HomeTripsSheet.styles.ts` et `components/home/HomeTripsSheet.tsx` appliquent le
+bleu nuit à « Proposer un trajet » et l'orange à « Commander » / « Publier un
+trajet », avec texte et icône blancs. L'exception de texte sombre est retirée.
+`HomeSuggestionCard.styles.ts` utilise le même orange pour « Réserver » et
+« Accepter ». Le vert reste réservé aux repères informatifs, dont « Gratuit »
+et « En ligne », sur fond vert pâle adouci. Les accents et contours orange de
+l'accueil reprennent la même palette.
+
+**Comportements conservés.** Positions, dimensions, libellés, destinations et
+confirmations des boutons inchangés. La recherche reste blanche. Le repère de
+position et sa légende conservent leur orange vif : couleur dédiée dans la
+palette, consommée par `HomeMap.styles.ts`, sans modification du GPS ni des images
+de marqueur. Aucun changement de barre d'onglets, réseau, dépendance ou animation.
+
+**Vérifications et limites.** `npm.cmd run test:home` : 157 tests réussis.
+`npx.cmd tsc --noEmit --pretty false` passe sans erreur.
+`tests/homeCompactLayout.test.js` vérifie les couleurs de la proposition A,
+le texte blanc, le contraste minimal de 4,5:1, les actions conservées et les états
+verts. Lint ciblé et `git diff --check` passent. Contrôle visuel de l'accueil
+passager sur l'émulateur Android : boutons bleu nuit/orange et texte blanc,
+badge gratuit vert, repère personnel inchangé. Pas de nouvel essai iOS ou sur
+téléphone physique, ni de mesure de performance native.
+
+## 2026-10-16 — Accueil : navigation de liste intégrée et commande côté conducteur
+
+**Périmètre et problème.** Les accès aux autres trajets et à la liste complète
+étaient placés après les cartes et pouvaient sortir de la zone visible. Une
+première variante fixée au bas du panneau a été abandonnée à la demande de
+l'utilisateur. Le conducteur souhaitait aussi pouvoir commander un véhicule
+depuis son accueil, sans devoir changer son profil.
+
+**Solution appliquée.** Dans `components/home/HomeTripsSheet.tsx`, les onglets
+« Clients » et « Trajets », avec leur état sélectionné, remplacent le lien de
+bascule en bas de liste. Ils sont placés avant les suggestions, à côté de
+« Voir tout ». Ce dernier conserve une étiquette accessible précisant la liste
+ouverte. Ces contrôles défilent avec le contenu : aucun pied fixe ni élément
+superposé aux dernières cartes. Côté passager, le titre des trajets et
+« Voir tout » partagent la même ligne, sans accès aux commandes des autres.
+
+Le conducteur dispose de « Commander » à côté de « Publier un trajet ».
+Le bouton ouvre le formulaire existant via `getTripRequestCreateHref()`, sans
+modifier le rôle du compte ni créer automatiquement une commande. Publication
+orange pleine, commande secondaire blanche avec contour orange ; les libellés
+peuvent revenir à la ligne. `features/home/HomeTripsSheet.styles.ts` définit
+ces rangées compactes et conserve des cibles tactiles d'au moins 44 points.
+
+**Comportements conservés et précautions.** Dimensions du panneau, espace de la
+carte, localisation, barre d'onglets principale, priorités des réservations et
+limitation à une suggestion montée inchangés. Les contrôles restent présents
+sur une liste vide, en chargement ou en erreur. Le repli du panneau continue à
+retirer son contenu. Aucun changement réseau, backend, dépendance, permission,
+configuration native, fréquence GPS ou animation.
+
+**Vérifications.** `tests/homeCompactLayout.test.js` couvre le positionnement
+des accès dans le défilement et avant les suggestions, les deux rôles et modes,
+les états vides/chargement/erreur, l'état accessible des onglets, les destinations
+et les deux actions conducteur sur une même ligne. Les 19 tests ciblés passent.
+`npm.cmd run test:home` : 160 tests réussis, aucun échec.
+`npx.cmd tsc --noEmit --pretty false`, le lint ciblé des deux fichiers de
+présentation et du test, ainsi que `git diff --check`, passent sans erreur.
+
+**Limites.** Les scénarios avec plusieurs éléments sont des tests JavaScript,
+pas une mesure de charge native. Le rendu final n'a pas été validé sur appareil :
+l'émulateur Android affichait une navigation de trajet en cours, laissée intacte.
+Pas d'essai iOS ni sur téléphone physique. Pour la recette : recharger le build
+de développement existant (ou lancer `npx.cmd expo start --dev-client`), vérifier
+sur Android et iOS le défilement, les deux onglets internes, « Voir tout » et
+l'ouverture du formulaire « Commander » côté conducteur, puis revenir sans
+soumettre de commande. Aucun nouveau build natif n'est requis pour ces seuls
+changements JavaScript et styles.
+
+## 2026-10-17 — Accueil : priorités au-dessus de la carte
+
+**Périmètre et problème.** Les cartes prioritaires encombraient le panneau
+défilant de l'accueil. L'utilisateur souhaite retrouver les trajets et
+réservations prioritaires, ainsi que la commande proche, sur la zone de carte.
+
+**Solution appliquée.**
+
+- `app/(tabs)/index.tsx` place `HomeActivityCards` au-dessus de la carte, en
+  dehors du panneau et du composant natif `MapView`. Les cartes utilisent les
+  sélections et destinations existantes : réservation reçue, trajet conducteur
+  à venir, réservation personnelle, commande proche et commande personnelle.
+- `components/home/HomeMapPriorities.tsx` affiche une seule carte montée à la
+  fois. Des flèches de 44 points et un compteur permettent d'accéder aux autres,
+  sans défilement automatique. Le choix reste stable au rafraîchissement ; si la
+  carte disparaît ou est masquée, la première priorité restante devient visible.
+  La zone de texte est bornée et défile verticalement si nécessaire. Le geste
+  horizontal existant continue à masquer une priorité, pas à changer de carte.
+- `components/home/HomeActivityCards.tsx`, `hooks/home/useHomeTripSelection.ts`
+  et `features/home/homePriorityDismissal.ts` ajoutent la réservation personnelle
+  issue des trajets et réservations déjà chargés. Son masquage reste local à
+  l'accueil et ne modifie ni réservation ni statut serveur.
+- `components/home/HomeTripsSheet.tsx` ne reçoit plus les priorités dans son
+  contenu. La commande proche et la réservation déjà mises en avant sur la
+  carte sont exclues de sa suggestion pour éviter un doublon. Les autres
+  suggestions et les accès aux listes complètes restent disponibles.
+- `hooks/home/useHomeController.ts` et `hooks/home/useHomeSheet.ts` réservent
+  davantage de hauteur à la carte uniquement lorsqu'une priorité existe. Le
+  panneau conserve un défilement et au moins 35 % de l'espace disponible dans
+  cette configuration. Ses anciennes mesures natives ne peuvent pas déplacer
+  le bouton de recentrage après un changement de hauteur.
+- `components/home/HomeMap.tsx` et `features/home/homeMapAppearance.ts` adaptent
+  les marges de caméra à la zone occupée, avec une limite selon la hauteur de la
+  carte. Le seul marqueur géographique reste la position de l'utilisateur :
+  aucun nouveau marqueur de trajet ni position fictive.
+
+**Comportements conservés.** Ordre de sélection des trajets conducteur et des
+commandes proches, validité des commandes, priorité de la navigation en cours,
+masquage accessible, accès aux détails, boutons de commande/publication et
+barre d'onglets principale. Pas de nouvelle dépendance, requête, minuterie,
+permission GPS, modification backend ou configuration native. Les tests
+confirment la conservation de la place de `HomeMap` dans l'arbre React pendant
+les chargements et erreurs ; ils ne mesurent pas la mémoire native.
+
+**Vérifications réalisées.** `npm.cmd run test:home` : 167 tests réussis, aucun
+échec. `npx.cmd tsc --noEmit --pretty false`, le lint ciblé et
+`git diff --check` passent. Les tests ajoutés ou adaptés dans
+`tests/homeMapPriorities.test.js`, `homeActivityCards.test.js`,
+`homeCompactLayout.test.js`, `homeForegroundLifecycle.test.js`,
+`homeModules.test.js` et `homeUserPositionDisplay.test.js` couvrent la pagination,
+le retrait des doublons, le retrait d'une carte obsolète, les réservations
+personnelles, le masquage, les marges, les anciennes mesures natives et les
+dimensions simulées de petits/grands écrans iOS et Android.
+
+**Limites et recette.** Aucun appareil ni émulateur connecté lors de la
+vérification finale. Ces résultats sont JavaScript/TypeScript : rendu, gestes,
+grands caractères, orientation paysage et caméra restent à valider sur iOS et
+Android réels, sans conclusion sur les crashs ou la chauffe. Recharger le build
+de développement avec `npx.cmd expo start --dev-client` ; tester zéro, une et
+plusieurs priorités, les flèches, le masquage et l'ouverture des détails,
+le repli du panneau et le recentrage. Vérifier la visibilité du point personnel,
+des attributions cartographiques et l'absence de doublon dans le panneau.
+Aucun nouveau build natif n'est requis pour ces changements ; aucun déploiement
+ni envoi de mise à jour n'a été effectué.
+
+## 2026-10-17 — Sonnerie du téléphone pour les alertes conducteur
+
+**Problème et périmètre.** Sonnerie des nouvelles commandes proches et des
+réservations signalée comme trop faible. Intervention mobile Android/iOS et
+backend des notifications, sans modifier la sélection des conducteurs ni les
+changements d'accueil déjà présents.
+
+**Solution appliquée.** Canal Android dédié utilisant la sonnerie du téléphone
+et ses attributs audio, avec vibration, compatibilité v2 et respect des choix
+utilisateur. Fichier iOS/secours renforcé sans saturation, toujours 29 secondes.
+Capacité backend v3 et livraison bornée des commandes programmées, sans migration
+de base. Accès aux vrais réglages système depuis « Sonnerie et vibrations ».
+Pas d'appel simulé, de volume forcé ni de contournement du mode silencieux.
+
+**Vérifications et limites.** 67 tests mobile et 74 tests backend réussis ; classes
+Java compilées isolément ; typage backend de production réussi. Le typage global
+backend incluant tous les tests reste en échec hors des fichiers concernés.
+Typage mobile réussi, lint ciblé sans erreur (quatre avertissements préexistants).
+Gain numérique moyen du fichier : +5,88 dB, pas une mesure acoustique sur appareil.
+Nouveaux binaires et déploiement backend encore nécessaires ; aucune action sur
+la production et aucune validation sonore sur téléphone physique effectuées.
+
+Fichiers, protections, vérifications détaillées, limites natives et ordre de
+déploiement : [Sonnerie conducteur](SONNERIE_CONDUCTEUR.md).
+
+## 2026-10-17 — Diffusion à 5 km, position hors course à 3 minutes et rappel à 6 heures
+
+**Problème et périmètre.** L'utilisateur souhaite informer tous les conducteurs
+admissibles proches, renouveler leur position même en veille et les prévenir
+après six heures sans position, sans ralentir le suivi d'une course en cours.
+
+**Solution appliquée.** Diffusion backend par lots dans un rayon fixe de 5 km,
+première acceptation gagnante, cadence mobile hors course de 180 secondes et
+cron de rappel toutes les 5 minutes, une fois par épisode. Migration ajoutée
+mais non appliquée à une base applicative. Permissions, désactivation volontaire,
+isolation des comptes et cadence GPS pendant une course conservées.
+
+**Vérifications et limites.** 81 tests mobile et 115 tests backend réussis, dont
+des tests sur une vraie base PostgreSQL/PostGIS temporaire pour la concurrence,
+les distances, les rappels et la migration réversible. Typage mobile et backend
+de production réussi. Pas d'essai physique en veille, de mesure batterie ou de
+livraison réelle des push. Aucun déploiement, aucune modification AWS ou .env.
+
+Fichiers, déploiement, limites système et recette :
+[Alertes proches et localisation](ALERTES_PROXIMITE_LOCALISATION.md).
+
+## 2026-10-17 — Priorités superposées sans déplacement de l'accueil
+
+**Problème constaté.** La présence d'une priorité dans useHomeSheet réduisait
+explicitement la hauteur du panneau et agrandissait la carte. Le panneau était
+donc poussé vers le bas. Les marges de caméra changeaient aussi, alors que la
+demande est une simple superposition sur la carte existante.
+
+**Solution appliquée.** hooks/home/useHomeSheet.ts calcule maintenant la même
+hauteur de panneau, le même emplacement de carte et les mêmes marges caméra
+avec ou sans priorité. La fonction de marges conditionnelles est retirée de
+features/home/homeMapAppearance.ts. Le contrôle de recentrage reste à sa place.
+components/home/HomeMapPriorities.tsx conserve une seule carte montée et un
+défilement borné qui inclut désormais la pagination : sur une petite zone, ses
+flèches restent accessibles en défilant. Lorsque l'espace vertical est court,
+le bloc se place à côté du recentrage, sans redimensionner le panneau.
+components/home/HomeMap.tsx et app/(tabs)/index.tsx masquent uniquement le libellé
+redondant de position dans ce cas, pour éviter un chevauchement ; le point GPS
+réel, sa coordonnée et son info-bulle sont conservés.
+
+**Comportements conservés.** Style existant et barre d'onglets, sélection et
+ordre métier des priorités, accès aux détails, geste de masquage, pagination,
+repli volontaire et repli pendant un trajet. Carte native au même emplacement
+dans l'arbre React, sans nouvelle animation, requête ou dépendance. La compétence
+frontend-skill a guidé cette retouche limitée à la composition et à la lisibilité,
+sans ajout de décor ou de nouvelle fenêtre.
+
+**Vérifications.** 166 tests d'accueil réussis ; les 5 tests de position ont été
+rejoués avec succès après ajout du cas de libellé masqué. Typage TypeScript et
+lint ciblé sans erreur ; git diff --check réussi. Tests adaptés dans
+tests/homeMapPriorities.test.js et tests/homeUserPositionDisplay.test.js :
+dimensions identiques avec/sans priorité, iOS/Android simulés, trois hauteurs
+portrait, pagination accessible, point GPS conservé. Les tests existants
+couvrent le repli, les callbacks de mesure obsolètes et la carte non remontée.
+
+**Observation native et limites.** Accueil ouvert et capture consultée sur
+l'émulateur Android déjà démarré : carte, point personnel et panneau visibles.
+Ce compte n'avait aucune priorité ; aucune commande ou réservation artificielle
+n'a été créée pour le test. Le cas réel avec plusieurs priorités, les grands
+caractères, le paysage et iOS restent à vérifier sur appareil. Cette observation
+ne prouve ni une résolution de crash ni un gain de performance. Aucun build,
+déploiement, changement de données métier ou modification de .env pour la retouche.
+
+## 2026-10-17 — Attendre le rôle avant d'afficher l'accueil
+
+**Problème constaté et périmètre.** Avant la réponse du profil, l'accueil évaluait
+`isDriverAccount(undefined)` à `false` et montait donc provisoirement les actions
+passager et leur panneau. Le profil conducteur provoquait ensuite un changement
+d'interface visible. Correction limitée à l'accueil mobile et à ses tests.
+
+**Solution appliquée.**
+
+- `hooks/home/useHomeContext.ts` expose l'état de résolution du profil existant,
+  son erreur et sa relance. Le profil doit appartenir au compte de la session.
+  `features/home/homeRolePolicy.ts` exige un identifiant et un rôle reconnu
+  (`passenger`, `driver` ou l'ancien alias `both`) avant de révéler l'accueil.
+- `app/(tabs)/index.tsx` affiche `components/home/HomeRoleLoader.tsx` pendant
+  cette attente : fond clair, accent orange, signature Zwanga, indicateur natif
+  et texte neutre « Préparation de votre accueil ». Aucun délai artificiel.
+  Échec sans profil exploitable : message dans la page et bouton « Réessayer »,
+  sans modal. La relance est inactive hors écran, en arrière-plan ou pendant
+  une lecture déjà en cours ; ses exceptions sont absorbées par le gestionnaire.
+- Le contenu précédent est déplacé sans modification visuelle dans
+  `components/home/HomeDashboard.tsx`. `hooks/home/useHomeController.ts` reçoit
+  désormais le contexte déjà résolu. Ses hooks de carte, GPS et données métier
+  ne sont montés qu'avec le bon profil, plutôt que derrière un simple cache visuel.
+- Le loader utilise uniquement un indicateur natif, suspendu quand l'écran est
+  inactif, et un contenu défilable pour les petits écrans/grands caractères.
+  Statut accessible, annonce polie et cible de relance d'au moins 48 points.
+  La compétence `frontend-skill` a guidé une présentation neutre et sobre,
+  sans nouvelle dépendance ni boucle d'animation JavaScript.
+
+**Comportements conservés et protections.** Un profil valide déjà en cache pour
+le même compte ouvre directement l'accueil, même pendant une actualisation ou
+une erreur réseau ultérieure : le dashboard et sa carte ne sont pas remontés.
+Un profil provenant d'un autre compte n'est pas affiché. Pas de seconde requête
+de profil, de polling ou de changement de l'authentification. Carte, superposition
+des priorités, proportions du panneau, barre d'onglets et suivi en cours conservés.
+
+**Vérifications réalisées.** 177 tests d'accueil JavaScript réussis, dont 11
+nouveaux dans `tests/homeRoleLoader.test.js` : chaque rôle, chargement initial,
+cache, erreur, relance, changement de compte et accessibilité du loader.
+Ces 11 tests ont été rejoués après l'ajout du regroupement accessible du statut.
+`tests/homeForegroundLifecycle.test.js` et `tests/homeTripPriority.test.js`
+adaptés à l'extraction du dashboard, avec leurs assertions de carte et de cycle
+de vie conservées. Corps visuel du dashboard comparé exactement à l'ancien
+écran dans l'index Git : identique. Typage TypeScript, lint ciblé et
+`git diff --check` réussis.
+
+**Limites.** Aucun essai de ce loader sur appareil physique iOS/Android,
+aucun nouveau build et aucun déploiement. Le rendu réel avec lecteur d'écran,
+les grands caractères et une première connexion lente restent à vérifier.
+Les tests utilisent des I/O natives simulées : aucune disparition de crash ni
+réduction mémoire, batterie ou chauffe n'est mesurée. Aucun changement backend,
+de données métier, d'infrastructure ou de configuration d'environnement.
+
+## 2026-10-17 — Loader d'accueil illustré : covoiturage et VTC
+
+**Problème et périmètre.** Le premier loader de détermination du rôle était jugé
+trop générique. Retouche visuelle du loader uniquement ; la résolution du profil
+et les écrans conducteur/passager ne sont pas modifiés par cette itération.
+
+**Solution effectivement appliquée.** `components/home/HomeRoleLoader.tsx`
+remplace l'icône encadrée et le spinner par une composition centrée sur Zwanga,
+une illustration de trajet et une seule ligne de statut. Le nouveau composant
+`components/home/HomeRideLoaderVisual.tsx` dessine une carte stylisée, deux
+silhouettes au départ, une voiture bleu nuit et un repère d'arrivée orange.
+Illustration SVG avec la dépendance déjà présente : aucun téléchargement d'image,
+aucun SDK cartographique, aucune lecture GPS et aucune nouvelle dépendance.
+La compétence `frontend-skill` a guidé une composition aérée, un seul visuel
+dominant, moins de texte et une animation liée au déplacement.
+
+`features/home/homeLoaderJourney.ts` précalcule 49 positions et orientations sur
+la courbe affichée. `hooks/home/useHomeLoaderMotion.ts` utilise une seule boucle
+Animated de 3,6 secondes avec `useNativeDriver: true` et `isInteraction: false` :
+la voiture suit cette courbe et un halo accompagne l'arrivée. Aucune mise à jour
+React par image, aucun timer JavaScript ou écouteur par image. Arrêt de la boucle
+à la perte de focus, en arrière-plan, en erreur et au démontage. Une préférence
+de réduction des mouvements activée, inconnue ou indisponible conserve un dessin
+fixe. Les événements tardifs de préférence ne réactivent pas un loader démonté
+et une lecture ancienne ne remplace pas une préférence reçue plus récemment.
+
+**Comportements conservés.** Attente du rôle avant l'accueil, accès immédiat
+avec profil en cache, aucun délai minimal ajouté, isolation des comptes et
+relance en cas d'erreur. L'illustration ne représente pas un conducteur réellement
+attribué et n'annonce aucune position/commande fictive. Décor ignoré des lecteurs
+d'écran, statut annoncé séparément, bouton Réessayer conservé. Carte réelle,
+panneau d'accueil, barre d'onglets, authentification et backend inchangés.
+
+**Vérifications.** 184 tests d'accueil réussis, dont les 18 tests ciblés du rôle
+et de l'illustration. `tests/homeLoaderJourney.test.js` couvre la trajectoire,
+la réutilisation des valeurs, 20 cycles actif/inactif, l'arrêt des boucles et
+les préférences d'accessibilité ; `tests/homeRoleLoader.test.js` conserve les
+tests de rôle et vérifie l'état actif/statique du nouveau visuel. TypeScript,
+lint ciblé et `git diff --check` réussis. Le script
+`scripts/preview-home-role-loader.cjs` produit des aperçus des composants réels
+via React Native Web sous `.expo/home-role-loader-preview`, sans donnée utilisateur.
+Captures statiques consultées : chargement en 390 × 760 et 320 × 568, erreur
+avec relance en 390 × 760 ; aucun débordement constaté sur ces aperçus.
+
+**Limites.** Les aperçus Web échantillonnent l'animation à mi-parcours ; ils ne
+valident pas son rendu animé natif. Fluidité réelle, grands caractères et
+VoiceOver/TalkBack restent à tester sur iOS/Android. Aucune mesure de mémoire,
+de batterie ou de stabilité native, aucun build ni déploiement pour cette retouche.

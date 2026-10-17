@@ -140,6 +140,7 @@ declare module '@notifee/react-native' {
     getInitialNotification(): Promise<{ notification: Notification; pressAction: AndroidPressAction } | null>;
     requestPermission(): Promise<any>;
     createChannel(channel: AndroidChannel): Promise<string>;
+    openNotificationSettings(channelId?: string): Promise<void>;
     displayNotification(options: DisplayNotificationOptions): Promise<string>;
     cancelNotification(notificationId: string, tag?: string): Promise<void>;
     stopForegroundService(): Promise<void>;

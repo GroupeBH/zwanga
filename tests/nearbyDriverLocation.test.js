@@ -15,19 +15,21 @@ test('GPS policy rejects stale, inaccurate, future, mocked and malformed fixes',
     }))]) assert.equal(policy.isUsableNearbyDriverPosition(value, now), false);
 });
 
-test('movement is throttled at 60s; stationary drivers renew at 120s with a new fix', () => {
+test('moving and stationary drivers renew every 3 minutes, only with a fresh fix', () => {
   const start = 100000, previous = fix(start);
   assert.equal(policy.shouldSendNearbyDriverPosition(null, previous, 0, start), true);
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 59999, 1), start, start + 59999), false);
-  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 60000, 0.002), start, start + 60000), true);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 60000, 0.002), start, start + 60000), false);
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 60000, 0.0001), start, start + 60000), false);
-  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 120000), start, start + 120000), true);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 179999), start, start + 179999), false);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 180000), start, start + 180000), true);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 180000), start + 20000, start + 180000), true, 'HTTP response latency does not double the period');
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, previous, start, start + 120000), false);
 });
 
 const OWNER_KEY = 'zwanga.nearbyDriverLocationConsent.v1';
 const disabledKey = id => `zwanga.nearbyDriverLocationDisabled.v1:${id}`;
-function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map(), initialRunning = false } = {}) {
+function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map(), initialRunning = false, interval = 180000 } = {}) {
   if (savedOwner && !disk.has(OWNER_KEY)) disk.set(OWNER_KEY, savedOwner);
   let version = 0, trip = null, passenger = null, running = initialRunning, permission = true;
   let waitStart, waitPermission, waitRead, account = 'driver';
@@ -45,11 +47,12 @@ function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map()
       hasServicesEnabledAsync: async () => true,
       hasStartedLocationUpdatesAsync: async () => running,
       startLocationUpdatesAsync: async (name, options) => {
-        starts.push({ name, options }); if (waitStart) await waitStart; running = true;
+        starts.push({ name, options }); if (waitStart) await waitStart; running = true; interval = options.timeInterval;
       },
       stopLocationUpdatesAsync: async () => { stops.push('stop'); running = false; },
     },
     'expo-task-manager': { isAvailableAsync: async () => true, isTaskDefined: () => false,
+      getTaskOptionsAsync: async () => ({ timeInterval: interval, deferredUpdatesInterval: interval }),
       defineTask: (name, handler) => definitions.push({ name, handler }) },
     './driverBackgroundLocationSession': { getActiveDriverBackgroundTripSession: async () => trip },
     './background/passengerTaskLifecycle': { getActiveTrackingSession: async () => passenger },
@@ -94,12 +97,27 @@ test('balanced profile is started once, with visible indicator and Android foreg
   assert.equal(await f.api.ensureNearbyDriverLocation('driver'), true);
   assert.equal(f.starts.length, 1);
   const options = f.starts[0].options;
-  assert.equal(options.accuracy, 3); assert.equal(options.timeInterval, 60000);
-  assert.equal(options.deferredUpdatesInterval, 60000); assert.equal(options.showsBackgroundLocationIndicator, true);
+  assert.equal(options.accuracy, 3); assert.equal(options.timeInterval, 180000);
+  assert.equal(options.deferredUpdatesInterval, 180000); assert.equal(options.showsBackgroundLocationIndicator, true);
   assert.equal(options.foregroundService.killServiceOnDestroy, true);
   assert.equal(options.distanceInterval, 0); assert.equal(options.pausesUpdatesAutomatically, false);
   const ios = fixture({ platform: 'ios' }); await ios.api.ensureNearbyDriverLocation('driver');
   assert.equal(ios.starts[0].options.foregroundService, undefined);
+});
+
+test('an existing native registration adopts the 3-minute cadence once on foreground return', async () => {
+  const f = fixture({ initialRunning: true, interval: 60000 });
+  await f.api.ensureNearbyDriverLocation('driver');
+  await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.stops.length, 1); assert.equal(f.starts.length, 1);
+  assert.equal(f.starts[0].options.timeInterval, 180000);
+});
+
+test('a registered task delivers a fresh position while the app is backgrounded or locked', async () => {
+  const f = fixture(); await f.api.ensureNearbyDriverLocation('driver');
+  f.appState.currentState = 'background';
+  await f.definitions[0].handler({ data: { locations: [fix(Date.now())] } });
+  assert.equal(f.sends.length, 1); assert.equal(f.running(), true);
 });
 
 test('starting a ride pauses discovery before precise GPS; no second reader or upload during rides', async () => {

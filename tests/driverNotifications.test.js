@@ -39,7 +39,7 @@ test('SDK54 raw and dataString headless payloads are decoded without affecting o
   assert.equal(policy.parseDriverInvitation(policy.readDriverPushData({ title: 'regular' })), null);
 });
 
-function service(platform = 'android', account = driverId) {
+function service(platform = 'android', account = driverId, phoneChannel = false) {
   const storage = new Map();
   const displays = [];
   const channels = [];
@@ -53,7 +53,8 @@ function service(platform = 'android', account = driverId) {
     'expo-notifications': { setNotificationCategoryAsync: async () => {},
       getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => cancelled.push(id) },
     '@notifee/react-native': { __esModule: true, default: native, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, AndroidStyle: { BIGTEXT: 'BIGTEXT' } },
-    'react-native': { Platform: { OS: platform }, AppState: appState },
+    'react-native': { Platform: { OS: platform }, AppState: appState,
+      NativeModules: phoneChannel ? { ZwangaDriverAlerts: { ensureChannel: async () => 'driver-phone-ring-v3' } } : {} },
   })('services/driverNotifications.ts');
   return { loaded, displays, storage, channels, cancelled, appState, native, presented };
 }
@@ -86,6 +87,45 @@ test('headless Android uses one stable id, actions, expiry and private lockscree
   assert.ok(displays[0].android.timeoutAfter <= 30000);
   await loaded.displayDriverInvitation({ ...data, expiresAt: new Date(0).toISOString() });
   assert.equal(displays.length, 1);
+});
+
+test('new native binaries use the phone channel for both booking and dispatch, without changing actions', async () => {
+  for (const payload of [data, { ...data, type: 'new_booking', bookingId: id, expiresAt: undefined }]) {
+    const f = service('android', driverId, true);
+    await f.loaded.displayDriverInvitation(payload);
+    assert.equal(f.displays[0].android.channelId, 'driver-phone-ring-v3');
+    assert.equal(f.displays[0].android.loopSound, true);
+    assert.ok(f.displays[0].android.timeoutAfter <= 30000);
+    assert.equal(f.displays[0].android.actions.length, 2);
+    f.appState.currentState = 'active';
+    await f.loaded.silenceDriverInvitations(driverId);
+    assert.deepEqual(f.cancelled, [f.displays[0].id]);
+  }
+});
+
+test('v3 scheduled orders ring once for at most 30s, without exclusive accept/decline actions', async () => {
+  const payload = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+    driverId, tripRequestId: id, ringUntil: new Date(Date.now() + 5000).toISOString() };
+  const f = service('android', driverId, true);
+  await Promise.all([f.loaded.displayDriverInvitation(payload), f.loaded.displayDriverInvitation(payload)]);
+  assert.equal(f.displays.length, 1);
+  assert.equal(f.displays[0].android.channelId, 'driver-phone-ring-v3');
+  assert.equal(f.displays[0].android.actions, undefined);
+  assert.ok(f.displays[0].android.timeoutAfter <= 5000);
+  f.appState.currentState = 'active';
+  await f.loaded.silenceDriverInvitations(driverId);
+  assert.deepEqual(f.cancelled, [`driver-nearby-${id}`]);
+  f.appState.currentState = 'background';
+  await f.loaded.displayDriverInvitation(payload);
+  assert.equal(f.displays.length, 1);
+  for (const platform of ['ios', 'android']) {
+    const other = service(platform, 'other-user', true);
+    await other.loaded.displayDriverInvitation(payload);
+    assert.equal(other.displays.length, 0);
+  }
+  const expired = service('android', driverId, true);
+  await expired.loaded.displayDriverInvitation({ ...payload, ringUntil: new Date(0).toISOString() });
+  assert.equal(expired.displays.length, 0);
 });
 
 test('booking sound stops after 30s without expiring the booking; late rings are ignored', async () => {

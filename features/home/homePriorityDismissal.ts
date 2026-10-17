@@ -7,6 +7,7 @@ export const EMPTY_HIDDEN_HOME_PRIORITIES: HiddenHomePriorities = Object.freeze(
 export const homePriorityKeys = {
   booking: (booking: Pick<Booking, 'id'>) => `booking:${booking.id}`,
   upcomingTrip: (trip: Pick<Trip, 'id' | 'departureTime'>) => `trip:${trip.id}:${trip.departureTime}`,
+  passengerTrip: (trip: Pick<Trip, 'id' | 'departureTime'>) => `passenger-trip:${trip.id}:${trip.departureTime}`,
   nearbyRequest: (request: Pick<TripRequest, 'id' | 'departureDateMax'>) => `nearby:${request.id}:${request.departureDateMax}`,
   ownRequest: (request: Pick<TripRequest, 'id' | 'status' | 'departureDateMin' | 'offers'>) =>
     `request:${request.id}:${request.status}:${request.departureDateMin}:${request.offers?.length ?? 0}`,

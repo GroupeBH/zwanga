@@ -44,7 +44,7 @@ test('ringtone has stronger signal without clipping and repeats throughout its 2
   }
   assert.ok(peak > 0.85 && peak < 0.95, 'audible headroom, no PCM saturation');
   const rms = Math.sqrt(squared / count);
-  assert.ok(rms > 0.29 && rms < 0.34, 'signal level includes the spaces between rings');
+  assert.ok(rms > 0.50 && rms < 0.65, 'higher average signal includes the spaces between rings');
   assert.equal(cycles.length, 13);
   assert.ok(cycles.every(value => value > 0.85), 'not a short initial beep followed by silence');
 });

@@ -266,6 +266,6 @@ test('Home forwards its existing location to the published-trip selection', () =
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, { [name]: () => ({}) }]));
   mocks['./useHomeLocation'].useHomeLocation = () => ({ liveUserCoordinate: origin });
   mocks['./useHomeTripSelection'].useHomeTripSelection = props => { selectedProps = props; return {}; };
-  loader(mocks)('hooks/home/useHomeController.ts').useHomeController();
+  loader(mocks)('hooks/home/useHomeController.ts').useHomeController({});
   assert.equal(selectedProps.liveUserCoordinate, origin);
 });

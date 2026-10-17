@@ -33,8 +33,8 @@ export const driverDispatchApi = baseApi.injectEndpoints({
       query: () => '/driver-dispatch/status', keepUnusedDataFor: 15,
       providesTags: ['DriverDispatch'],
     }),
-    registerDriverNotifications: builder.mutation<{ registered: boolean }, void>({
-      query: () => ({ url: '/driver-dispatch/notifications', method: 'POST', body: { version: 2 } }),
+    registerDriverNotifications: builder.mutation<{ registered: boolean }, 2 | 3 | void>({
+      query: (version = 2) => ({ url: '/driver-dispatch/notifications', method: 'POST', body: { version } }),
     }),
     setDriverPresence: builder.mutation<DriverDispatchStatus, PresenceInput>({
       query: body => ({ url: '/driver-dispatch/presence', method: 'PUT', body, timeout: 10000 }),

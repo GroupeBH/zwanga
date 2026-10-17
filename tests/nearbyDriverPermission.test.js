@@ -47,7 +47,7 @@ function fixture({ enabled = true, granted = false, role = 'driver', available =
 
 test('settings disclose background location and require an explicit tap before any OS prompt', async () => {
   const f = fixture(); f.render(); await tick(); const tree = f.render();
-  assert.match(words(tree), /même en arrière-plan/); assert.deepEqual(f.calls, []);
+  assert.match(words(tree), /toutes les 3 minutes, même en veille/); assert.deepEqual(f.calls, []);
   nodes(tree).find(node => node.type === 'Button').props.onPress(); await tick();
   assert.deepEqual(f.calls, ['permission', 'enable', 'start']);
   assert.match(words(f.render()), /Suivi automatique autorisé/); f.hooks.unmount();

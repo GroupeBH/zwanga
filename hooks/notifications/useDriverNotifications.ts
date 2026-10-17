@@ -8,6 +8,7 @@ import { configureDriverNotifications, displayDriverInvitation, silenceDriverInv
 import { respondToDriverNotification } from '@/services/driverNotificationResponse';
 import { takePendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
+import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 
 export function useDriverNotifications(userId: string | undefined, driverAccount: boolean) {
   const router = useRouter();
@@ -28,6 +29,11 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
         return;
       }
       const invitation = parseDriverInvitation(raw);
+      const nearby = parseNearbyPhoneAlert(raw);
+      if (nearby?.driverId === userId && pressed && !disposed) {
+        router.navigate({ pathname: '/request-details/[id]', params: { id: nearby.id } });
+        return;
+      }
       if (!invitation || invitation.driverId !== userId || disposed) return;
       // A past background tap is never replayed just because the app is opened later.
       if (initial && notificationDecision(action)) return;

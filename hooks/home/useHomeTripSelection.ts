@@ -128,6 +128,8 @@ export function useHomeTripSelection({
   }, [activeBookings, currentUser?.id, refreshedPassengerTrip, remoteTrips, storedTrips]);
 
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
+  const featuredPassengerTrip = !activeHomeTrip ? latestTrips.find(trip =>
+    bookedTripIds.has(trip.id) && !hiddenHomePriorities[homePriorityKeys.passengerTrip(trip)]) ?? null : null;
   const suggestion = latestTrips.find(trip => !bookedTripIds.has(trip.id));
   const suggestionTier = suggestion ? getHomeTripSuggestionTier(suggestion, coordinate) : -1;
   const suggestionScopeLabel = suggestionTier === HOME_GENERAL_SUGGESTION_TIER ? 'Autres trajets disponibles'
@@ -209,6 +211,7 @@ export function useHomeTripSelection({
     featuredDriverReservationSeatsLabel,
     featuredDriverUpcomingTrip,
     featuredDriverUpcomingTripSeatsLabel,
+    featuredPassengerTrip,
     ongoingBookedTrip,
   };
 }

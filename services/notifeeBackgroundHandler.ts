@@ -10,6 +10,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import { notificationDecision, parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { respondToDriverNotification } from './driverNotificationResponse';
 import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
+import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 
 // Types Notifee
 type NotifeeModule = typeof import('@notifee/react-native');
@@ -68,6 +69,11 @@ if (notifee && EventTypeEnum) {
     // Gérer les pressions sur les notifications
     if (type === EventTypeEnum!.PRESS || type === EventTypeEnum!.ACTION_PRESS) {
       const data = notification?.data || {};
+      const nearby = parseNearbyPhoneAlert(data);
+      if (nearby) {
+        await openAppDeepLink(`zwanga://request-details/${nearby.id}`);
+        return;
+      }
       const invitation = parseDriverInvitation(data);
       if (invitation) {
         if (type === EventTypeEnum!.ACTION_PRESS && notificationDecision(pressAction?.id)) {

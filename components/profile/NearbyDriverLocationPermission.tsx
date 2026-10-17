@@ -85,7 +85,7 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
   const disabled = busy || !loaded || (!available && !canDisable);
   return <View style={styles.section}>
     <Text style={styles.title}>Recevoir aussi en veille</Text>
-    <Text style={styles.copy}>Activé par défaut avec votre autorisation : Zwanga utilise votre position même en arrière-plan pour recevoir les commandes proches.</Text>
+    <Text style={styles.copy}>Avec votre autorisation, Zwanga actualise votre position environ toutes les 3 minutes, même en veille, pour recevoir les commandes proches. Le téléphone peut retarder ces mises à jour.</Text>
     <Text accessibilityLiveRegion="polite" style={styles.status}>{loadError ? 'Impossible de vérifier les autorisations.' : !loaded ? 'Vérification des autorisations…' : !enabled
       ? 'Désactivé dans Zwanga. Votre choix reste mémorisé.' : permission
         ? 'Suivi automatique autorisé, sans activation supplémentaire.'

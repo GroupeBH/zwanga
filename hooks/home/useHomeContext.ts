@@ -7,6 +7,8 @@ import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { isDriverAccount } from '@/utils/accountRole';
+import { isHomeProfileReady } from '@/features/home/homeRolePolicy';
+import { useCallback } from 'react';
 import {
   useWindowDimensions
 } from 'react-native';
@@ -35,7 +37,25 @@ export function useHomeContext() {
 
   const trackedTripInfo = getCurrentTripInfo();
 
-  const { data: currentUser } = useGetCurrentUserQuery();
+  const sessionUserId = useAppSelector(state =>
+    state.auth.tokenPayload?.sub ?? state.auth.tokenPayload?.userId ?? state.auth.user?.id);
+  const profile = useGetCurrentUserQuery();
+  const currentUser = profile.data?.id === sessionUserId ? profile.data : undefined;
+  const isHomeRoleReady = isHomeProfileReady(currentUser);
+  const homeRoleFetching = Boolean(profile.isFetching);
+  const homeRoleError = !isHomeRoleReady && !homeRoleFetching &&
+    (profile.isError || profile.isSuccess);
+  const refetchProfile = profile.refetch;
+  const canRetryRole = isScreenActive && !profile.isUninitialized && !homeRoleFetching;
+  const retryHomeRole = useCallback(async () => {
+    if (!canRetryRole) return;
+    // RTK shares an in-flight profile read; a failure stays in the inline loader.
+    try {
+      await refetchProfile();
+    } catch {
+      // The query state owns the error; never open another modal for this retry.
+    }
+  }, [canRetryRole, refetchProfile]);
 
   const isDriver = isDriverAccount(currentUser);
   return {
@@ -43,6 +63,10 @@ export function useHomeContext() {
     isFocused,
     isScreenActive,
     currentUser,
+    isHomeRoleReady,
+    homeRoleError: Boolean(homeRoleError),
+    homeRoleFetching,
+    retryHomeRole,
     trackedTripInfo,
     locationRadiusKm,
     storedTrips,

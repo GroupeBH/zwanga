@@ -1,7 +1,7 @@
 import type { LocationObject } from 'expo-location';
 
-export const NEARBY_DRIVER_INTERVAL_MS = 60_000;
-export const NEARBY_DRIVER_HEARTBEAT_MS = 120_000;
+// Discovery only. In-ride GPS keeps its own, more frequent tracking profile.
+export const NEARBY_DRIVER_INTERVAL_MS = 180_000;
 
 /** Match the server contract; never renew eligibility using an old/approximate fix. */
 export function isUsableNearbyDriverPosition(value: LocationObject, now = Date.now()) {
@@ -17,12 +17,8 @@ export function shouldSendNearbyDriverPosition(previous: LocationObject | null, 
   sentAt: number, now = Date.now()) {
   if (!isUsableNearbyDriverPosition(next, now)) return false;
   if (!previous) return true;
-  if (next.timestamp <= previous.timestamp || now - sentAt < NEARBY_DRIVER_INTERVAL_MS) return false;
-  if (now - sentAt >= NEARBY_DRIVER_HEARTBEAT_MS) return true;
-  const rad = Math.PI / 180;
-  const dLat = (next.coords.latitude - previous.coords.latitude) * rad;
-  const dLon = (next.coords.longitude - previous.coords.longitude) * rad;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(previous.coords.latitude * rad) *
-    Math.cos(next.coords.latitude * rad) * Math.sin(dLon / 2) ** 2;
-  return 2 * 6371000 * Math.asin(Math.sqrt(Math.min(1, a))) >= 100;
+  if (next.timestamp <= previous.timestamp) return false;
+  // A slow HTTP response must not push the next native sample into a second
+  // 3-minute interval. A fresh fix renews presence even without movement.
+  return Math.max(now - sentAt, next.timestamp - previous.timestamp) >= NEARBY_DRIVER_INTERVAL_MS;
 }

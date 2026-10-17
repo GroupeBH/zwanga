@@ -32,7 +32,7 @@ function controllerFixture() {
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog }) },
     '@/services/ongoingTripNotification': { getCurrentTripInfo: () => trackedTripInfo },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },
-    '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: selector => selector() },
+    '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: selector => selector({ auth: { user } }) },
     '@/store/selectors': { selectAvailableTrips: () => empty, selectLocationRadius: () => 10 },
     '@/hooks/useUserLocation': { useUserLocation: options => {
       received.locationOptions = options;
@@ -40,7 +40,8 @@ function controllerFixture() {
     } },
   });
   const { useHomeController } = load('hooks/home/useHomeController.ts');
-  return { state, hooks, received, routes, render: () => hooks.render(useHomeController) };
+  const { useHomeContext } = load('hooks/home/useHomeContext.ts');
+  return { state, hooks, received, routes, render: () => hooks.render(() => useHomeController(useHomeContext())) };
 }
 
 test('Home keeps the map and GPS lifecycle during brief AppState transitions while pausing foreground work', () => {
@@ -101,8 +102,9 @@ function nodes(element) {
 }
 
 test('slow, empty, failed and refreshing trip queries keep the same map position in the Home render tree', () => {
-  const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true };
-  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet'];
+  const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true,
+    hasMapPriorities: true, mapPriorityLayout: { top: 100, bottom: 400 }, highlightedDriverRequest: { id: 'nearby' } };
+  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards'];
   const load = loader({
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
@@ -110,16 +112,27 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     '@/features/home/HomeScreen.styles': { styles: {} },
     'react-native': { View: 'View' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
   });
-  const { default: HomeScreen } = load('app/(tabs)/index.tsx');
+  const { HomeDashboard } = load('components/home/HomeDashboard.tsx');
+  const render = () => HomeDashboard({ context: {} });
   for (const update of [{}, { showInitialHomeLoader: false, sheetLoading: false },
     { sheetLoading: true }, { sheetLoading: false, sheetError: true }, { sheetError: false }]) {
     Object.assign(home, update);
-    const tree = HomeScreen(), rendered = nodes(tree);
+    const tree = render(), rendered = nodes(tree);
     assert.equal(tree.type, 'SafeArea');
     assert.equal(tree.props.children[0].type, 'HomeMap');
     assert.equal(rendered.filter(node => node.type === 'HomeMap').length, 1);
     assert.equal(rendered.some(node => node.type === 'HomeTripsLoadingScreen'), false);
     assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.sheetLoading, home.sheetLoading);
-    assert.equal(rendered.find(node => node.type === 'HomeHeader').props.isDriver, home.isDriver);
+    assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.isDriver, home.isDriver);
+    const sheet = rendered.find(node => node.type === 'HomeTripsSheet');
+    const priority = rendered.find(node => node.type === 'HomeActivityCards');
+    assert.equal(sheet.props.priorityContent, undefined);
+    assert.equal(tree.props.children.includes(priority), true, 'priorities are an overlay sibling, not inside the sheet or native map');
+    assert.deepEqual(priority.props.mapLayout, home.mapPriorityLayout);
+    assert.equal(priority.props.highlightedDriverRequest.id, 'nearby');
+  }
+  for (const update of [{ hasMapPriorities: false }, { hasMapPriorities: true, shouldRenderHomeMap: false }]) {
+    Object.assign(home, update);
+    assert.equal(nodes(render()).some(node => node.type === 'HomeActivityCards'), false);
   }
 });

@@ -186,7 +186,25 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     );
     return rankRequestsByProximity(eligible, driverCoordinate).slice(0, RECENT_TRIPS_LIMIT);
   }, [availableTripRequests, currentUser?.id, driverCoordinate, isDriver]);
+  // Reuse personal activity already loaded; no extra history request or persistence.
+  const recentDestinations = useMemo(() => {
+    const visits = [
+      ...(myBookings ?? []).filter(booking => booking.passengerId === currentUser?.id && booking.trip)
+        .map(booking => ({ date: booking.createdAt, place: booking.trip!.arrival })),
+      ...myTripRequests.filter(request => request.passengerId === currentUser?.id)
+        .map(request => ({ date: request.createdAt, place: request.arrival })),
+    ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    const unique = new Map<string, typeof visits[number]['place']>();
+    for (const { place } of visits) {
+      if (!place || !(place.name || place.address)) continue;
+      const key = `${place.name || place.address}:${place.lat}:${place.lng}`;
+      if (!unique.has(key)) unique.set(key, place);
+      if (unique.size === 3) break;
+    }
+    return [...unique.values()];
+  }, [myBookings, myTripRequests, currentUser?.id]);
   return {
+    recentDestinations,
     activeBookings,
     completedBookingTripIds,
     bookedTripIds,

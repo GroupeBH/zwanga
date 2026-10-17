@@ -1,6 +1,7 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { Spacing } from '@/constants/styles';
 import type { HomeSheetMode } from '@/features/home/homeTypes';
+import { HOME_MAP_PADDING } from '@/features/home/homeMapAppearance';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform, type LayoutChangeEvent,
@@ -35,7 +36,7 @@ type Props =
     'tripsLoading'
     | 'tripsError'
     | 'refetchTrips'
-  >;
+  > & { hasMapPriorities?: boolean };
 export function useHomeSheet({
   isDriver,
   isScreenActive = true,
@@ -54,16 +55,17 @@ export function useHomeSheet({
   refetchAvailableTripRequests,
   refetchTrips,
   router,
+  hasMapPriorities = false,
 }: Props) {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
 
-  const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>('trips');
-
+  const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>(isDriver ? 'requests' : 'trips');
+  const previousDriverRole = useRef(isDriver);
   useEffect(() => {
-    if (!isDriver && homeSheetMode === 'requests') {
-      setHomeSheetMode('trips');
-    }
-  }, [homeSheetMode, isDriver]);
+    if (previousDriverRole.current === isDriver) return;
+    previousDriverRole.current = isDriver;
+    setHomeSheetMode(isDriver ? 'requests' : 'trips');
+  }, [isDriver]);
 
   useEffect(() => {
     if (!isHomeSheetLockedRetracted) {
@@ -80,25 +82,37 @@ export function useHomeSheet({
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
 
-  const isCompactScreen = width <= 360;
-
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
 
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
 
-  const openSheetHeight = Math.min(Math.max(height * 0.26, isCompactScreen ? 246 : 250), 258);
+  // Android excludes the tab bar from the scene; iOS overlays it. Measure the
+  // actual scene so the map keeps the same ~37% share as the reference layouts.
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
+  const onHomeLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
+    if (nextWidth <= 0 || nextHeight <= 0) return;
+    setViewport(previous => previous?.width === nextWidth && previous.height === nextHeight
+      ? previous : { width: nextWidth, height: nextHeight });
+  }, []);
+  const viewportHeight = viewport?.width === width ? viewport.height
+    : height - (Platform.OS === 'ios' ? 0 : tabBarMetrics.height);
+  const availableHeight = viewportHeight - sheetBottomOffset;
+  // Priorities are overlays, not layout content: adding/removing one must never
+  // resize the native map or push the discovery panel down.
+  const openSheetHeight = Math.min(availableHeight * 0.63, 680);
 
-  const retractedSheetHeight = 68;
+  const retractedSheetHeight = 78;
 
   const effectiveTripsSheetOpen = tripsSheetOpen && !isHomeSheetLockedRetracted;
 
   const sheetHeight = effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
 
-  const [sheetMeasurement, setSheetMeasurement] = useState<{ height: number; width: number; open: boolean } | null>(null);
+  const [sheetMeasurement, setSheetMeasurement] = useState<{ height: number; width: number; open: boolean; expectedHeight: number } | null>(null);
   // Native layout events can arrive after blur, rotation, collapse or unmount.
   // Each committed layout context invalidates callbacks from the previous one.
-  const layoutContext = useMemo(() => ({ width, open: effectiveTripsSheetOpen, isScreenActive }),
-    [width, effectiveTripsSheetOpen, isScreenActive]);
+  const layoutContext = useMemo(() => ({ width, open: effectiveTripsSheetOpen, isScreenActive, sheetHeight }),
+    [width, effectiveTripsSheetOpen, isScreenActive, sheetHeight]);
   const liveLayoutContext = useRef<typeof layoutContext | null>(null);
   useLayoutEffect(() => {
     // A hidden sheet may settle after a cached/network update. Retain its current
@@ -107,20 +121,31 @@ export function useHomeSheet({
     return () => { liveLayoutContext.current = null; };
   }, [isScreenActive, layoutContext]);
   // Measure only to position the map control. Never feed this height back into
-  // the sheet itself: its content determines its height, without a layout loop.
+  // the sheet itself: its viewport determines its height, without a layout loop.
   const onSheetLayout = useCallback((event: LayoutChangeEvent) => {
     if (liveLayoutContext.current !== layoutContext) return;
     const measuredHeight = Math.ceil(event.nativeEvent.layout.height);
     if (!Number.isFinite(measuredHeight) || measuredHeight <= 0) return;
     setSheetMeasurement(previous => {
       if (liveLayoutContext.current !== layoutContext) return previous;
-      return previous?.height === measuredHeight && previous.width === width && previous.open === effectiveTripsSheetOpen
-        ? previous : { height: measuredHeight, width, open: effectiveTripsSheetOpen };
+      return previous?.height === measuredHeight && previous.width === width && previous.open === effectiveTripsSheetOpen && previous.expectedHeight === sheetHeight
+        ? previous : { height: measuredHeight, width, open: effectiveTripsSheetOpen, expectedHeight: sheetHeight };
     });
-  }, [layoutContext, width, effectiveTripsSheetOpen]);
+  }, [layoutContext, width, effectiveTripsSheetOpen, sheetHeight]);
   const displayedSheetHeight = sheetMeasurement?.width === width
-    && sheetMeasurement.open === effectiveTripsSheetOpen ? sheetMeasurement.height : sheetHeight;
+    && sheetMeasurement.open === effectiveTripsSheetOpen && sheetMeasurement.expectedHeight === sheetHeight ? sheetMeasurement.height : sheetHeight;
   const locationButtonBottom = sheetBottomOffset + displayedSheetHeight + Spacing.md;
+  const mapBottomOffset = sheetBottomOffset + sheetHeight - 26;
+  const priorityTop = (insets.top || 0) + Spacing.lg + 56;
+  const priorityBottom = sheetBottomOffset + sheetHeight + 72;
+  // On short screens use the space BESIDE the location control instead of
+  // changing the map/panel heights. The complete priority deck can scroll.
+  const compactPriorities = viewportHeight - priorityTop - priorityBottom < 96;
+  const mapPriorityLayout = { top: priorityTop,
+    bottom: compactPriorities ? sheetBottomOffset + sheetHeight + 12 : priorityBottom,
+    compact: compactPriorities };
+  const homeMapPadding = HOME_MAP_PADDING;
+  const showLocationLegend = !(hasMapPriorities && compactPriorities);
 
   const tripCardWidth = Math.min(width - 40, 354);
 
@@ -181,5 +206,10 @@ export function useHomeSheet({
     sheetEmpty,
     tripCardWidth,
     locationButtonBottom,
+    mapBottomOffset,
+    mapPriorityLayout,
+    homeMapPadding,
+    showLocationLegend,
+    onHomeLayout,
   };
 }

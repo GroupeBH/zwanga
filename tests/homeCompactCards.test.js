@@ -189,7 +189,7 @@ test('invalid dates have readable fallbacks and cross-day departure windows pres
   assert.ok(window.includes('→'));
 });
 
-test('sheets take less space without changing locked or safe-area behavior', () => {
+test('dashboard proportions keep map space without changing locked or safe-area behavior', () => {
   for (const isDriver of [false, true]) {
     const hooks = hookHarness();
     const { useHomeSheet } = loader({ 'react-native': native, react: hooks.react })('hooks/home/useHomeSheet.ts');
@@ -198,12 +198,12 @@ test('sheets take less space without changing locked or safe-area behavior', () 
     const draw = () => hooks.render(() => useHomeSheet(props));
     const expanded = draw();
     assert.equal(expanded.effectiveTripsSheetOpen, true);
-    assert.equal(expanded.sheetHeight, 250);
+    assert.equal(expanded.sheetHeight, (844 - 96) * 0.63);
     assert.equal(expanded.sheetBottomOffset, 96);
     props.width = 320; props.height = 568;
-    assert.equal(draw().sheetHeight, 246);
+    assert.equal(draw().sheetHeight, (568 - 96) * 0.63);
     props.isHomeSheetLockedRetracted = true;
-    assert.equal(draw().sheetHeight, 68);
+    assert.equal(draw().sheetHeight, 78);
     hooks.unmount();
   }
 });
