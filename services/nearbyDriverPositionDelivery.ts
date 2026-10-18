@@ -4,6 +4,8 @@ import { getTokenSessionVersion } from './tokenSession';
 import { decodeJWT } from '@/utils/jwt';
 import { shouldSendNearbyDriverPosition } from './nearbyDriverLocationPolicy';
 import { getRtkErrorStatus } from './background/driverTrackingErrors';
+import { getActiveDriverBackgroundTripSession } from './driverBackgroundLocationSession';
+import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
 
 let scope = '';
 let previous: LocationObject | null = null;
@@ -31,6 +33,12 @@ export async function sendNearbyDriverPosition(userId: string, position: Locatio
     if ((claims?.sub ?? claims?.userId) !== userId) return 'stop';
     // Existing authenticated transport refreshes tokens, enforces timeouts and ownership.
     const [{ store }, { driverDispatchApi }] = await Promise.all([import('@/store'), import('@/store/api/driverDispatchApi')]);
+    // A ride may have started while credentials or transport were loading.
+    // Last-known discovery fixes must never be submitted as live ride tracking.
+    const [driverRide, passengerRide] = await Promise.all([
+      getActiveDriverBackgroundTripSession(), getActiveTrackingSession(),
+    ]);
+    if (driverRide || passengerRide) return 'skipped';
     if (!current() || !shouldSendNearbyDriverPosition(previous, position, sentAt)) return 'skipped';
     const request = store.dispatch(driverDispatchApi.endpoints.recordDriverPosition.initiate({
       latitude: position.coords.latitude, longitude: position.coords.longitude,
@@ -47,7 +55,7 @@ export async function sendNearbyDriverPosition(userId: string, position: Locatio
     if (!current()) return 'skipped';
     const status = getRtkErrorStatus(error);
     if (status === 401 || status === 403 || status === 404) return 'stop';
-    // Network outage/429: discard the fix and await a fresh one, with bounded backoff.
+    // Network outage/429: no queue; retry only on a later callback, with bounded backoff.
     retryAt = Date.now() + Math.min(300_000, 30_000 * 2 ** Math.min(failures++, 4));
     return 'skipped';
   } finally { busy = false; }

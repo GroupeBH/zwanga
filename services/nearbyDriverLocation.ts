@@ -155,7 +155,7 @@ export function ensureNearbyDriverLocation(userId: string) {
         accuracy: Location.Accuracy.Balanced,
         timeInterval: NEARBY_DRIVER_INTERVAL_MS,
         deferredUpdatesInterval: NEARBY_DRIVER_INTERVAL_MS,
-        distanceInterval: 0, // A stationary driver still needs a fresh server lease.
+        distanceInterval: 0, // Update last-known discovery even while stationary.
         pausesUpdatesAutomatically: false,
         activityType: Location.ActivityType.Other,
         showsBackgroundLocationIndicator: true,
@@ -190,7 +190,8 @@ export async function handleNearbyDriverLocations(locations: Location.LocationOb
     return;
   }
   if (!current()) return;
-  // Feed the map before any network wait. Home no longer needs a parallel GPS watcher.
+  // Feed the map before any network wait; its independent freshness check still
+  // rejects old fixes. Discovery can send them without presenting them as live GPS.
   publishNativeRideLocation(`nearby:${userId}`, latest);
   if (await sendNearbyDriverPosition(userId, latest, current) === 'stop' && current()) {
     await pauseNearbyDriverLocation();

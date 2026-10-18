@@ -114,11 +114,19 @@ test('automatic discovery never runs for a passenger, logged-out session or disa
   }
 });
 
-test('denied permission, stale GPS and poor precision cannot renew server eligibility', async () => {
+test('foreground discovery can send an old valid fix with its real timestamp', async () => {
+  const timestamp = Date.now() - 86400000;
+  const app = coordinator({ position: async () => ({ timestamp, coords: { latitude: 1, longitude: 2, accuracy: 20 } }) });
+  app.render(); await tick();
+  assert.equal(app.calls[2].recordedAt, new Date(timestamp).toISOString());
+  app.hooks.unmount();
+});
+
+test('denied permission, missing coordinates and poor precision cannot update discovery', async () => {
   for (const options of [
     { permission: async () => ({ granted: false }) },
-    { position: async () => ({ timestamp: Date.now() - 40000, coords: { accuracy: 10 } }) },
-    { position: async () => ({ timestamp: Date.now(), coords: { accuracy: 300 } }) },
+    { position: async () => ({ timestamp: Date.now(), coords: { accuracy: 10 } }) },
+    { position: async () => ({ timestamp: Date.now(), coords: { latitude: 1, longitude: 2, accuracy: 300 } }) },
     { position: async () => { throw new Error('unavailable'); } },
   ]) {
     const app = coordinator(options); app.render(); await tick();
@@ -176,8 +184,9 @@ test('presence does not poll offline and resumes once on reconnect', async t => 
   app.hooks.unmount();
 });
 
-test('settings explain automatic notifications and GPS freshness with no extra activation step', () => {
+test('settings explain last-known positions while remaining compatible with legacy server expiry', () => {
   const calls = [], hooks = hookHarness();
+  const status = { enabled: true, automatic: true, positionFreshSeconds: 300 };
   const Screen = loader({ ...mocks, react: hooks.react,
     '@/store/hooks': { useAppSelector: select => select({ zwangaApi: { config: { online: true } } }) },
     '@/components/profile/NearbyDriverLocationPermission': { NearbyDriverLocationPermission: 'LocationPermission' },
@@ -186,7 +195,7 @@ test('settings explain automatic notifications and GPS freshness with no extra a
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/api/driverDispatchApi': { useDriverDispatchStatusQuery: () => ({
-      data: { enabled: true, automatic: true, positionFreshSeconds: 300 },
+      data: status,
     }) },
   })('app/driver-availability.tsx').default;
   let tree = hooks.render(Screen);
@@ -202,5 +211,13 @@ test('settings explain automatic notifications and GPS freshness with no extra a
   assert.match(text(tree), /Aucune disponibilité à activer/);
   assert.match(text(tree), /5 minute/);
   assert.match(text(tree), /position trop ancienne/);
+  status.locationPolicy = 'last_known'; status.positionExpires = true;
+  assert.match(text(hooks.render(Screen)), /5 minute/, 'legacy rows still expire until a new GPS update');
+  status.positionExpires = false;
+  tree = hooks.render(Screen);
+  assert.match(text(tree), /Hors trajet, votre dernière position connue/);
+  assert.match(text(tree), /même si elle est ancienne/);
+  assert.match(text(tree), /pas forcément votre emplacement actuel/);
+  assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
   hooks.unmount();
 });

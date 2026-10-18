@@ -138,3 +138,13 @@ test('stale, future and invalid native samples never shut down the working fallb
   assert.equal(updates, 0);
   assert.equal(env.watches[0].removed, 0);
 });
+
+test('an old discovery fix is not presented as a live Home position', async t => {
+  const env = fixture(t); let updates = 0;
+  env.subscribe('nearby:driver', () => updates++, 180000); await flush();
+  env.publishNativeRideLocation('nearby:driver', env.fix(Date.now() - 60000));
+  assert.equal(updates, 0);
+  assert.equal(env.watches[0].removed, 0, 'keep the live fallback for the map');
+  env.publishNativeRideLocation('nearby:driver', env.fix());
+  assert.equal(updates, 1); assert.equal(env.watches[0].removed, 1);
+});
