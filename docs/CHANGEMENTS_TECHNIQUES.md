@@ -1,5 +1,48 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Annulation passager : stabilisation des vues natives des dialogues
+
+- **Périmètre et constat :** fermeture Android signalée dans la navigation
+  passager après « Oui, annuler ». Le journal natif de l’émulateur, à 9 h 21,
+  contient réellement `addViewAt` / `View already has a parent` : un lot Fabric
+  retire un conteneur puis tente de rattacher ses enfants à
+  `RNSScreenContentWrapper`. Il s’agit d’un échec de montage de vues, pas d’une
+  preuve de refus de l’annulation par le backend. Le statut final de la
+  réservation n’a pas été vérifié sur le serveur.
+- **Analyse :** le conteneur qui neutralise les clics derrière les dialogues
+  change de propriétés à leur fermeture. Son aplatissement natif correspond au
+  déplacement observé dans le journal ; l’interaction avec une transition
+  d’écran est l’explication retenue, sans nouvelle reproduction contrôlée.
+  La [documentation React Native 0.81](https://reactnative.dev/docs/0.81/view#collapsable)
+  précise comment empêcher cet aplatissement. Un
+  [signalement amont similaire](https://github.com/software-mansion/react-native-screens/issues/4677)
+  décrit ce mécanisme sur d’autres versions ; il ne constitue pas une validation
+  de notre correctif sur appareil.
+- **Solution appliquée :** `features/navigation/RideOverlayProvider.tsx` fixe
+  `collapsable={false}` sur les deux conteneurs de `RideOverlayScope`. Leur
+  présence native ne dépend plus de l’ouverture ou fermeture d’un dialogue.
+  Cette protection est limitée à ces conteneurs, sans désactiver Fabric ni
+  modifier les dépendances, les animations globales ou les sources natives.
+- **Comportements conservés :** confirmation explicite, appel d’annulation,
+  résultat/erreur, ordre de priorité des dialogues, blocage des clics et de
+  l’accessibilité derrière le dialogue puis restitution à la fermeture.
+  Aucun changement du backend, des tarifs, du GPS ou des règles métier.
+- **Vérifications :** `tests/rideOverlays.test.js` ajoute deux tests qui échouent
+  avant le correctif puis passent après. Ils vérifient les propriétés et la
+  structure React de 100 cycles confirmation/résultat par plateforme simulée,
+  ainsi que la restitution des interactions et le nettoyage. Suite élargie
+  navigation, dialogues, notation, partage et récupération : **137 tests
+  JavaScript réussis**. Typage TypeScript et lint ciblé validés ; contrôle de
+  taille : 1 096 sources, aucun dépassement. Ces tests ne rendent pas les vues
+  natives Android.
+- **Limites et livraison :** aucun gain de performance mesuré, aucune annulation
+  réelle déclenchée pour tester, aucun déploiement effectué. Le correctif est
+  JavaScript/TSX : recharger complètement le build de développement depuis Metro
+  avant l’essai. Sur une version distribuée, il faut livrer le nouveau code.
+  À vérifier sur Android et iOS : garder la réservation, confirmer une annulation
+  autorisée, retour à la liste et gestion d’une erreur réseau. La disparition du
+  crash reste à confirmer par ces essais natifs et leurs journaux.
+
 ## 2026-10-18 — Correctifs de fiabilité de l’audit mobile et préparation backend
 
 Signalements réellement envoyés, transferts protégés contre les doubles appuis et
