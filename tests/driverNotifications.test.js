@@ -39,6 +39,18 @@ test('SDK54 raw and dataString headless payloads are decoded without affecting o
   assert.equal(policy.parseDriverInvitation(policy.readDriverPushData({ title: 'regular' })), null);
 });
 
+test('nearby alert fields survive the plain body copied into dataString by Expo Android', () => {
+  const nearby = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+    driverId, tripRequestId: id, ringUntil: new Date(Date.now() + 30000).toISOString(), dataString: 'Un client près de vous' };
+  for (const payload of [nearby, { data: nearby }, { notification: { data: nearby } },
+    { request: { content: { data: nearby } } }, { data: { dataString: JSON.stringify(nearby) } }]) {
+    assert.deepEqual(policy.readDriverPushData(payload), nearby);
+    assert.equal(load('features/notifications/rideSound.ts').parseNearbyPhoneAlert(policy.readDriverPushData(payload)).id, id);
+  }
+  const malformed = { ...nearby, driverId: 'invalid' };
+  assert.equal(load('features/notifications/rideSound.ts').parseNearbyPhoneAlert(policy.readDriverPushData({ data: malformed })), null);
+});
+
 function service(platform = 'android', account = driverId, phoneChannel = false) {
   const storage = new Map();
   const displays = [];
@@ -227,6 +239,34 @@ test('foreground bookings use one silent Android banner with direct actions, not
   await ios.loaded.displayDriverInvitation(payload); assert.equal(ios.displays.length, 0);
   const wrong = service('android', 'another-user'); wrong.appState.currentState = 'active';
   await wrong.loaded.displayDriverInvitation(payload); assert.equal(wrong.displays.length, 0);
+});
+
+test('nearby Android foreground delivery remains visible, silent and deduplicated without accepting the order', async () => {
+  const payload = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+    driverId, tripRequestId: id, ringUntil: new Date(Date.now() + 30000).toISOString() };
+  const f = service('android', driverId, true); f.appState.currentState = 'active';
+  const nativePayload = policy.readDriverPushData({ data: { ...payload, dataString: 'Un client près de vous' } });
+  await Promise.all([f.loaded.displayDriverInvitation(nativePayload), f.loaded.displayDriverInvitation(nativePayload)]);
+  assert.equal(f.displays.length, 1);
+  assert.equal(f.displays[0].title, 'Commande à proximité');
+  assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
+  assert.equal(f.displays[0].android.loopSound, undefined);
+  assert.equal(f.displays[0].android.sound, undefined);
+  assert.equal(f.displays[0].android.actions, undefined, 'nearby broadcast is not an exclusive offer');
+  assert.equal(f.channels[0].sound, undefined); assert.equal(f.channels[0].vibration, false);
+  assert.equal(f.storage.size, 0);
+  f.appState.currentState = 'background';
+  await f.loaded.displayDriverInvitation(payload);
+  assert.equal(f.displays.length, 1, 'foreground delivery cannot ring later on a duplicate');
+  for (const account of [null, '00000000-0000-4000-8000-000000000099']) {
+    const other = service('android', account, true); other.appState.currentState = 'active';
+    await other.loaded.displayDriverInvitation(payload); assert.equal(other.displays.length, 0);
+  }
+  const expired = service(); expired.appState.currentState = 'active';
+  await expired.loaded.displayDriverInvitation({ ...payload, ringUntil: new Date(0).toISOString() });
+  assert.equal(expired.displays.length, 0);
+  const ios = service('ios'); ios.appState.currentState = 'active';
+  await ios.loaded.displayDriverInvitation(payload); assert.equal(ios.displays.length, 0);
 });
 
 test('Android ignores an invitation belonging to a logged-out or different account', async () => {

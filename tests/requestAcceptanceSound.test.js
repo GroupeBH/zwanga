@@ -51,7 +51,8 @@ test('background task does not replay the remote acceptance on the default chann
   assert.deepEqual(calls, []);
   await task({ data: { notification: { request: { content: { title: 'Message', data: { type: 'message' } } } } } });
   assert.deepEqual(calls, ['standard']);
-  await task({ data: { data: { ...nearby, delivery: 'driver-phone-v3', ringUntil: new Date(Date.now() + 30000).toISOString() } } });
+  await task({ data: { data: { ...nearby, delivery: 'driver-phone-v3', ringUntil: new Date(Date.now() + 30000).toISOString(),
+    dataString: 'Un client près de vous' } } });
   assert.deepEqual(calls, ['standard', 'driver'], 'only v3 data-only nearby alert delegates its sound to Notifee');
 });
 
@@ -85,6 +86,10 @@ test('foreground scheduled alerts keep a visible banner but no ringtone on iOS a
     const notification = data => ({ request: { content: { data } } });
     const result = await handler.handleNotification(notification(nearby));
     assert.equal(result.shouldPlaySound, false); assert.equal(result.shouldShowBanner, true);
+    const phoneAlert = await handler.handleNotification(notification({ ...nearby, delivery: 'driver-phone-v3',
+      ringUntil: new Date(Date.now() + 30000).toISOString() }));
+    assert.equal(phoneAlert.shouldPlaySound, false);
+    assert.equal(phoneAlert.shouldShowBanner, platform === 'ios', 'Android v3 banner belongs only to Notifee');
     assert.equal((await handler.handleNotification(notification({ type: 'message' }))).shouldPlaySound, true);
     user = { ...user, role: 'passenger' };
     hooks.render(() => loadComponent('components/NotificationHandler.tsx').NotificationHandler());

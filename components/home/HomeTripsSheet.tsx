@@ -14,7 +14,6 @@ import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 import { HomeSheetLoadingState } from './HomeSheetLoadingState';
 import { HomeSuggestionCard } from './HomeSuggestionCard';
-import { HomeDriverStatus } from './HomeDriverStatus';
 import { HomeDriverEarnings } from './HomeDriverEarnings';
 import { HomeDestinationShortcuts } from './HomeDestinationShortcuts';
 import { SwipeableHomePriority } from './SwipeableHomePriority';
@@ -65,7 +64,6 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={styles.greetingRow}>
             <Text style={[styles.greeting, isDriver && styles.driverGreeting]} numberOfLines={1}>Bonjour {firstName}</Text>
-            {isDriver && <HomeDriverStatus active={isScreenActive} onPress={() => router.push('/driver-availability')} />}
           </View>
           {isDriver ? (
             <>

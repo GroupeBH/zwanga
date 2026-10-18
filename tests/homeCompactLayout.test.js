@@ -68,11 +68,12 @@ test('driver dashboard keeps publishing, ordering, clients and revenue without p
     elements.find(node => node.type === 'Button' && text(node) === label).props.onPress();
   }
   elements.find(node => node.props.accessibilityLabel === '0 clients disponibles').props.onPress();
-  elements.find(node => node.type === 'HomeDriverStatus').props.onPress();
+  assert.equal(elements.some(node => node.type === 'HomeDriverStatus'), false);
+  assert.doesNotMatch(text(tree), /Indisponible|Hors ligne|En ligne/);
   elements.find(node => node.type === 'HomeDriverEarnings').props.onPress();
   assert.deepEqual(modes, []);
   assert.deepEqual(calls, ['/publish', { pathname: '/request-create' }, '/search',
-    'all', 'all', '/driver-availability', '/driver-earnings']);
+    'all', 'all', '/driver-earnings']);
   const searchButton = elements.find(node => node.props.accessibilityLabel === 'Chercher un trajet');
   assert.ok(flatten(searchButton.props.style).minHeight >= 44);
   assert.match(searchButton.props.accessibilityHint, /voyager comme passager/);

@@ -76,6 +76,19 @@ target 'zwanga' do
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
 
+    # @generated begin zwanga-ios-deployment-target-floor
+    minimum_ios_target = Gem::Version.new(podfile_properties['ios.deploymentTarget'] || '15.1')
+    installer.pods_project.targets.each do |pod_target|
+      pod_target.build_configurations.each do |build_config|
+        current_target = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_s
+        # Preserve build-setting expressions; compare numeric versions, not floats.
+        if current_target.empty? || (current_target.match?(/\A\d+(?:\.\d+)*\z/) && Gem::Version.new(current_target) < minimum_ios_target)
+          build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = minimum_ios_target.to_s
+        end
+      end
+    end
+    # @generated end zwanga-ios-deployment-target-floor
+
     # Some React Native pods import React headers while built as frameworks.
     # Keep modules enabled for dependencies that use @import, but avoid treating
     # these bridge pods as public Clang modules during archive builds.

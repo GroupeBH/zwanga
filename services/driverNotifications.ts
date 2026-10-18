@@ -54,11 +54,11 @@ export async function configureDriverNotifications() {
 export async function displayDriverInvitation(data: Record<string, unknown>): Promise<boolean> {
   const invitation = parseDriverInvitation(data) ?? parseNearbyPhoneAlert(data);
   if (!invitation) return false;
-  // Bookings no longer open an intrusive screen. Android data-only pushes still
-  // need a visible, silent banner with the same direct native actions.
+  // Data-only pushes need a visible banner even with the application open.
+  // Keep it silent and never interrupt the current screen with a modal.
   if (isAppActive()) {
-    if (invitation.kind === 'booking' && Platform.OS === 'android') {
-      await displayForegroundBooking(invitation, data);
+    if (invitation.kind !== 'dispatch' && Platform.OS === 'android') {
+      await displayForegroundAlert(invitation, data);
     } else acknowledgeDelivery(invitation);
     return true;
   }
@@ -102,7 +102,8 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   return true;
 }
 
-async function displayForegroundBooking(invitation: DriverInvitation, data: Record<string, unknown>) {
+async function displayForegroundAlert(invitation: DriverAlert, data: Record<string, unknown>) {
+  if (invitation.kind === 'nearby' && driverRingDeadline(invitation) <= Date.now()) return;
   const version = getTokenSessionVersion();
   const { refreshToken } = await getTokens();
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId ||
@@ -111,17 +112,18 @@ async function displayForegroundBooking(invitation: DriverInvitation, data: Reco
   if (deliveries.has(key)) return;
   const delivery = rememberDelivery(key);
   try {
-    await notifee.createChannel({ id: FOREGROUND_BOOKING_CHANNEL, name: 'Réservations dans l’application',
+    await notifee.createChannel({ id: FOREGROUND_BOOKING_CHANNEL, name: 'Réservations et commandes dans l’application',
       importance: AndroidImportance.HIGH, vibration: false, sound: undefined });
     if (delivery.cancelled || version !== getTokenSessionVersion() || !isAppActive()) return;
     await notifee.displayNotification({ id: invitationNotificationId(invitation),
-      title: 'Nouvelle réservation',
-      body: typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800) : 'Un passager souhaite vous rejoindre.',
+      title: invitation.kind === 'nearby' ? 'Commande à proximité' : 'Nouvelle réservation',
+      body: typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800)
+        : invitation.kind === 'nearby' ? 'Un client cherche un véhicule près de vous.' : 'Un passager souhaite vous rejoindre.',
       data: Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       android: { channelId: FOREGROUND_BOOKING_CHANNEL, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, autoCancel: true, onlyAlertOnce: true,
         pressAction: { id: 'default', launchActivity: 'default' },
-        actions: [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
+        actions: invitation.kind === 'nearby' ? undefined : [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
           { title: 'Accepter', pressAction: { id: 'driver-accept' } }],
       },
     });

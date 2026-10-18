@@ -39,7 +39,9 @@ export function readDriverPushData(payload: unknown, depth = 0): Record<string, 
   const data = raw.data;
   if (data && typeof data === 'object') {
     const nested = data as Record<string, unknown>;
-    if (nested.actionProtocol) return nested;
+    // Expo also copies a plain notification body into dataString. Direct
+    // protocol fields take precedence for nearby alerts as well as bookings.
+    if (nested.actionProtocol || nested.ringAlert) return nested;
     if (typeof nested.dataString === 'string') {
       try { return readDriverPushData(JSON.parse(nested.dataString), depth + 1); } catch { return undefined; }
     }

@@ -1,5 +1,187 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Nouvelle commande : diffusion serveur et notification de secours
+
+- **Périmètre :** absence de push simple signalée, avec diffusion souhaitée à
+  tous les conducteurs éligibles à 5 km. Le backend possédait déjà les lots de
+  diffusion ; son filtre d’inscription à la sonnerie pouvait néanmoins exclure
+  des destinataires ayant un jeton push valide.
+- **Solution :** correctif préparé dans le dépôt voisin `zwanga-backend` :
+  séparation de la sélection géographique et de la capacité sonore, push
+  ordinaire visible en secours pour les clients non enregistrés/anciens,
+  conservation des alertes sonores pour les clients compatibles. Aucun fichier
+  fonctionnel mobile, statut du conducteur ou choix de son n’est changé par
+  cette intervention complémentaire. Le mécanisme Android de sonnerie du
+  téléphone reste celui de `DriverAlertModule.java` et de son canal v3.
+- **Vérifications et limites :** 99 tests unitaires serveur et 39 tests sur
+  PostgreSQL/PostGIS local jetable réussis ; compilation serveur validée,
+  contrôles AWS en lecture seule, essais SQL isolés documentés côté backend.
+  Aucun envoi push réel ou déploiement. La réception et le volume sur téléphone
+  ne sont pas déduits des tests serveur. Les filtres de rôle, KYC, véhicule,
+  disponibilité réelle et fraîcheur de position sont conservés.
+- **Détail des fichiers, tests et précautions :**
+  [journal technique backend](../../zwanga-backend/docs/CHANGEMENTS_TECHNIQUES.md#18-octobre-2026--diffusion-à-tous-les-conducteurs-proches-et-push-de-secours).
+
+## 2026-10-18 — Alertes conducteur automatiques et retrait du badge de disponibilité
+
+- **Demande et périmètre :** absence de notification/sonnerie signalée dans le
+  test interne Android, sans passage souhaité par un écran de configuration.
+  Retirer aussi le badge « Indisponible » de l’accueil conducteur, qui peut être
+  interprété à tort comme une déconnexion. Travail limité au dépôt mobile sur
+  `rollback/production-155-20261015`, sans reprendre de code de `master`.
+- **Constats dans le code, distincts du signalement sur téléphone :**
+  l’enregistrement automatique existait déjà dans `AuthGuard` via
+  `usePushRegistration`. Le canal Android était préparé après la demande de
+  permission. Le hook considérait cette demande comme effectuée même après
+  une erreur native temporaire. Le décodeur Expo privilégiait `actionProtocol`
+  mais pas `ringAlert` devant `dataString` : un corps textuel non JSON pouvait
+  masquer une alerte de proximité pourtant valide. Les commandes Android v3
+  reçues au premier plan étaient acquittées sans notification locale visible.
+  Ces cas sont reproduits par tests JavaScript ; ils ne prouvent pas la cause
+  du défaut signalé sur le build interne. L’émulateur inspecté en lecture seule
+  utilise un ancien build 146 / 1.0.16, pas le binaire concerné. Aucun envoi FCM
+  réel ni mesure acoustique n’a été réalisé.
+- **Préparation automatique :** `services/pushNotifications.ts` prépare le
+  canal Android avant la permission et la récupération du jeton. Une seule
+  demande système peut être en cours ; une réponse terminée n’est pas répétée
+  dans la même exécution de l’application. Une erreur native reste réessayable.
+  Aucun prompt en arrière-plan ou quand `canAskAgain` vaut faux. Un accord donné
+  ensuite dans les réglages est reconnu. La rotation du jeton ne déclenche
+  jamais de demande de permission. `hooks/auth/usePushRegistration.ts` conserve
+  sa reprise à 60 secondes, au premier plan/en ligne, sans visite d’un écran
+  spécial ; le service de permissions décide désormais si le prompt est permis.
+- **Réception et visibilité :** `features/notifications/driverInvitation.ts`
+  reconnaît les champs directs `ringAlert` avant `dataString` sans assouplir la
+  validation des identifiants ni du protocole. `services/driverNotifications.ts`
+  affiche aussi les commandes v3 au premier plan sur le canal silencieux déjà
+  utilisé pour les réservations. Une commande diffusée à plusieurs conducteurs
+  n’obtient pas les actions d’une offre exclusive. Le tap ouvre les détails,
+  jamais une acceptation automatique. `hooks/notifications/useDriverNotifications.ts`
+  transmet ces messages au gestionnaire ; `components/NotificationHandler.tsx`
+  évite une seconde présentation Expo sur Android. iOS et les notifications
+  distantes v2 conservent leur présentation existante.
+- **Interface :** `components/home/HomeTripsSheet.tsx` ne monte plus
+  `HomeDriverStatus`. Aucun statut « En ligne » artificiel ne le remplace ;
+  disponibilité serveur, GPS, rôle, boutons et barre d’onglets sont inchangés.
+  `app/driver-availability.tsx` reste une aide facultative depuis le profil,
+  explicite la préparation automatique et propose de personnaliser le canal
+  réellement utilisé via `openDriverAlertSettings`, plutôt que les réglages
+  génériques de l’application. Le consentement à la localisation est conservé.
+- **Précautions :** délai maximal de sonnerie de 30 secondes, vibration/canal
+  sonnerie du téléphone déjà natifs, arrêt à l’ouverture de Zwanga, contrôle du
+  destinataire et de la session, déduplication et expiration conservés. Aucun
+  volume forcé, contournement du mode silencieux ou de « Ne pas déranger »,
+  suppression de canal ni modification des préférences système. Aucune
+  dépendance, configuration native, variable d’environnement, règle de sélection
+  des conducteurs, base ou infrastructure modifiée.
+- **Vérifications réalisées :**
+  - **117 tests JavaScript réussis** : `pushPermissions`, `pushRegistration`,
+    `driverNotifications`, `driverAlertChannel`, `driverNotificationNativeAssets`,
+    `driverNotificationResponse`, `requestAcceptanceSound`, `incomingBookingRedirect`,
+    `driverAvailability`, `requestNotificationVisibility`, `notificationNavigation`
+    et `homeCompactLayout` (`node --test tests/<nom>.test.js`). Le nouveau fichier
+    `tests/pushPermissions.test.js` simule permission initiale, refus, fermeture
+    du prompt, panne temporaire, concurrence, reprise, rotation et transport iOS.
+  - **253 tests JavaScript de non-régression réussis** avec
+    `node --test --test-concurrency=2 tests/home*.test.js tests/startupSession.test.js
+    tests/nearbyDriver*.test.js tests/driverGpsLifecycle.test.js
+    tests/driverBackgroundSession.test.js tests/passengerGpsProfile.test.js`.
+    Certains tests Home sont communs aux deux exécutions : les compteurs ne
+    représentent pas des tests distincts à additionner.
+  - `npx.cmd --no-install tsc --noEmit` réussi. ESLint des fichiers modifiés :
+    aucune erreur, un avertissement préexistant sur le chargement différé par
+    `require` de Notifee. Contrôle de taille : 1 096 sources, aucun dépassement
+    des 400 lignes. `git diff --check` validé.
+- **Livraison et limites :** aucun build/push/déploiement déclenché ; les versions
+  installées restent inchangées. À vérifier après livraison sur un vrai Android :
+  installation neuve et mise à jour, autorisation système, réception d’une
+  réservation et d’une commande éligible à proximité, application ouverte puis
+  en arrière-plan/écran verrouillé, vibration et sonnerie, arrêt au retour dans
+  Zwanga, refus de permission et réglages silencieux conservés. L’envoi serveur
+  (éligibilité, position récente, jeton enregistré, résultat FCM) n’a pas été
+  vérifié en production. Ne pas conclure à une réception garantie ni à un gain
+  de volume mesuré à partir de ces seuls tests.
+- **Références et contrôle local :** [préparation des notifications Expo](https://docs.expo.dev/versions/latest/sdk/notifications/),
+  [autorisation Android des notifications](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+  Le comportement Android « denied + canAskAgain » à la première demande a aussi
+  été vérifié dans le code installé du SDK Expo 54, `NotificationPermissionsModule.kt`.
+
+## 2026-10-18 — Version de l’application Android et iOS : 1.0.17
+
+- **Demande et périmètre :** incrémenter la version Expo pour les prochaines
+  livraisons Android et iOS. La branche actuelle utilisait encore 1.0.16.
+- **Solution appliquée :** passage à **1.0.17** dans `app.config.js`,
+  `package.json`, les deux métadonnées racine de `package-lock.json`,
+  `android/app/build.gradle` (`versionName`) et les deux configurations Xcode
+  de `ios/zwanga.xcodeproj/project.pbxproj` (`MARKETING_VERSION`). Le plist
+  continue de lire les variables de build Xcode, sans valeur dupliquée.
+- **Comportements conservés :** SDK Expo 54 et versions de toutes les
+  dépendances inchangés, correctif CocoaPods précédent conservé, identifiants
+  des applications et profils EAS inchangés. `appVersionSource: remote` et
+  `production.autoIncrement: true` restent actifs : les prochains builds de
+  production incrémenteront leurs compteurs Android/iOS côté EAS. Les anciens
+  compteurs locaux ne sont pas utilisés pour réinitialiser les compteurs
+  distants ; leur prochaine valeur n’a pas été inventée ni modifiée à distance.
+- **Vérifications :** `node --test tests/appVersions.test.js
+  tests/iosDeploymentTarget.test.js tests/iosCrashlytics.test.js
+  tests/androidBuildPerformance.test.js` : **18 tests réussis, 1 test Ruby
+  ignoré** (Ruby absent sous Windows), dont les 5 contrôles de cohérence des
+  versions. `git diff --check` validé. Aucun build natif ni test sur appareil.
+- **Livraison :** modifications locales sur `rollback/production-155-20261015`,
+  sans fusion de `master`, sans commit/push, build ou publication déclenchés.
+  Les versions déjà installées restent inchangées jusqu’à une nouvelle livraison.
+  Le prochain numéro de build et l’acceptation par les stores restent à vérifier
+  lors de cette livraison. [Gestion des versions EAS](https://docs.expo.dev/build-reference/app-versions/).
+
+## 2026-10-18 — Build iOS : minimum de déploiement des bundles CocoaPods
+
+- **Périmètre et constat réel :** le journal Xcode du build `46bce993` contient
+  15 erreurs `IPHONEOS_DEPLOYMENT_TARGET` dans le projet Pods. Des bundles de
+  ressources/confidentialité ciblent iOS 9 à 14 alors que ce SDK iPhoneOS 27.1
+  refuse les cibles inférieures à 15.0. Le projet de l’application cible déjà
+  **15.1** en Debug et Release. Les messages `MODULEMAP_FILE` et les phases
+  Crashlytics sans sorties sont des avertissements, pas les erreurs bloquantes
+  identifiées dans ce journal.
+- **Solution appliquée :** après `react_native_post_install`, `ios/Podfile`
+  parcourt toutes les cibles du projet Pods et toutes leurs configurations,
+  y compris les bundles oubliés par le relèvement des seules bibliothèques.
+  Les versions numériques inférieures et les valeurs absentes sont relevées
+  au minimum de l’application. `Gem::Version` évite les comparaisons erronées
+  par flottant ; les versions supérieures et les expressions de build sont
+  conservées. `ios/Podfile.properties.json` et `app.config.js` rendent explicite
+  le minimum existant de 15.1, sans augmenter le minimum de l’application.
+- **Régénération :** `plugins/withIosDeploymentTargetFloor.js`, enregistré dans
+  `app.plugin.js`, reproduit le même bloc au prochain prebuild, sans doublon.
+  Il échoue explicitement si le point d’insertion est absent ou ambigu ou si
+  un marqueur manque. Le Podfile déjà versionné est corrigé directement : le
+  prochain build n’a pas besoin d’un prebuild destructif sur le poste local.
+- **Précautions :** aucune fusion, récupération ou reprise de code de `master` ;
+  travail sur `rollback/production-155-20261015`. Versions des dépendances,
+  `Podfile.lock`, règles des modules Maps/Firebase, intégration Didit/Crashlytics,
+  signature, Android et code métier inchangés. Ni `.env` modifié, ni déploiement,
+  ni build EAS lancé. L’image iOS `latest` n’a pas été changée.
+- **Vérifications :** `node --test tests/iosDeploymentTarget.test.js
+  tests/iosCrashlytics.test.js tests/androidBuildPerformance.test.js
+  tests/storeReview.test.js` : **23 tests JavaScript réussis, 1 test Ruby ignoré**
+  car Ruby est absent du poste Windows. Deux tests de configuration échouaient
+  avant le correctif et passent après ; contrôle du bloc natif/prébuild,
+  idempotence, branchement du plugin et configurations existantes. Aucun test
+  Node ne prouve l’exécution du bloc Ruby dans CocoaPods ni une archive Xcode.
+  Lint des fichiers JavaScript concernés : aucune erreur, un avertissement
+  préexistant de variable inutilisée dans `app.config.js`. Contrôle de taille
+  (1 096 sources) et `git diff --check` validés.
+- **Livraison et limites :** relancer un build iOS depuis cette branche avec
+  `npx.cmd eas-cli build --platform ios --profile production`. Pour un workflow
+  GitHub/EAS, enregistrer et pousser ces changements sur cette même branche,
+  puis la sélectionner explicitement. À vérifier sur macOS/EAS : `pod install`,
+  cibles Pods à 15.1 minimum (sans abaisser celles plus récentes), archive et
+  acceptation App Store Connect. La réussite du prochain build reste à confirmer.
+- **Références :** [hook CocoaPods post_install](https://guides.cocoapods.org/syntax/podfile.html#post_install),
+  [étapes du build iOS EAS](https://docs.expo.dev/build-reference/ios-builds/).
+  Le code local de React Native 0.81.5 (`scripts/cocoapods/utils.rb`) ne relève
+  que les `native_target` des résultats d’installation, d’où la protection
+  complémentaire des cibles de ressources.
+
 ## 2026-10-18 — Annulation passager : stabilisation des vues natives des dialogues
 
 - **Périmètre et constat :** fermeture Android signalée dans la navigation

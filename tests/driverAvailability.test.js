@@ -181,7 +181,7 @@ test('settings explain automatic notifications and GPS freshness with no extra a
   const Screen = loader({ ...mocks, react: hooks.react,
     '@/store/hooks': { useAppSelector: select => select({ zwangaApi: { config: { online: true } } }) },
     '@/components/profile/NearbyDriverLocationPermission': { NearbyDriverLocationPermission: 'LocationPermission' },
-    'react-native': { ...native, Linking: { openSettings: async () => calls.push('settings') } },
+    '@/services/driverAlertChannel': { openDriverAlertSettings: async () => calls.push('alert-settings') },
     'expo-router': { useRouter: () => ({ back() {} }) },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
@@ -193,8 +193,10 @@ test('settings explain automatic notifications and GPS freshness with no extra a
   assert.match(text(tree), /automatiquement/);
   assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
   assert.doesNotMatch(text(tree), /Places proposées|Avec quel véhicule|Me rendre disponible/);
-  nodes(tree).find(node => node.type === 'Button' && /réglages du téléphone/.test(text(node))).props.onPress();
-  assert.deepEqual(calls, ['settings']);
+  assert.match(text(tree), /dès la connexion/);
+  assert.match(text(tree), /après votre autorisation/);
+  nodes(tree).find(node => node.type === 'Button' && /Personnaliser les alertes \(facultatif\)/.test(text(node))).props.onPress();
+  assert.deepEqual(calls, ['alert-settings']);
   nodes(tree).find(node => node.type === 'Button' && /En savoir plus/.test(text(node))).props.onPress();
   tree = hooks.render(Screen);
   assert.match(text(tree), /Aucune disponibilité à activer/);
