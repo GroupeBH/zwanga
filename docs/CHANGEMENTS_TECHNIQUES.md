@@ -1,5 +1,53 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Positions anciennes autorisées pour les commandes hors trajet
+
+- **Demande et problème :** accepter la dernière position du conducteur même
+  lorsqu’elle date de plus de 30 secondes, uniquement pour les commandes de
+  proximité hors trajet. Le filtre partagé mobile rejetait auparavant ces
+  relevés avant leur envoi au backend, notamment les lots natifs retardés.
+- **Solution appliquée :** `services/nearbyDriverLocationPolicy.ts` supprime la
+  limite d’âge pour la découverte des conducteurs. La date doit rester valide,
+  ne pas dépasser le futur de plus de cinq secondes ; coordonnées, précision
+  maximale de 250 m et refus des positions simulées restent contrôlés.
+  `services/nearbyDriverPositionDelivery.ts` conserve le `recordedAt` original,
+  refuse les doublons/retours en arrière, maintient la cadence de trois minutes,
+  l’authentification, le contrôle de session et le recul progressif après erreur
+  réseau. Aucune file d’historique ni réécriture de date n’est ajoutée.
+- **Séparation des trajets :** juste avant l’envoi, le service vérifie à nouveau
+  les sessions conducteur et passager, notamment si un trajet a démarré pendant
+  la lecture des identifiants. `services/nearbyDriverLocation.ts` conserve
+  l’arrêt de la collecte de proximité pendant un trajet et sélectionne toujours
+  le relevé le plus récent du lot natif. Les profils GPS en trajet, permissions,
+  désactivation explicite et déconnexion ne sont pas assouplis. Les contrôles
+  de fraîcheur du flux cartographique en direct restent inchangés.
+- **Information utilisateur :** `app/driver-availability.tsx` explique que la
+  dernière position connue peut être ancienne et ne pas refléter l’emplacement
+  actuel. Les champs facultatifs `locationPolicy` et `positionExpires` de
+  `store/api/driverDispatchApi.ts` conditionnent ce texte : un ancien serveur ou
+  une ancienne présence encore soumise à expiration conserve le texte précédent.
+- **Vérifications réalisées :** `npm run test:nearby-drivers` : 108 tests
+  réussis ; `node --test tests/rideLocationStream.test.js
+  tests/sharedScreenLocation.test.js tests/performanceGpsPlaces.test.js` :
+  21 tests réussis ; `node node_modules/typescript/bin/tsc --noEmit
+  --incremental false` : réussi. Les nouveaux cas dans
+  `tests/nearbyDriverLocation.test.js`, `tests/nearbyDriverDelivery.test.js`,
+  `tests/driverAvailability.test.js` et `tests/rideLocationStream.test.js`
+  couvrent les relevés de plus de 30 secondes jusqu’à 90 jours, leur date réelle,
+  l’ordre d’envoi, les lots retardés, la reprise réseau, les sessions de trajet
+  et l’absence d’affichage d’un ancien relevé comme position en direct.
+- **Déploiement et limites :** déployer d’abord la migration et le correctif de
+  dernière position connue du dépôt `zwanga-backend`, préparés séparément :
+  l’ancien backend peut encore refuser les dates anciennes. Aucun déploiement,
+  changement AWS/Terraform/CI/CD ou modification de `.env` dans cette étape.
+  Les tests sont JavaScript avec services natifs simulés, pas des essais sur
+  téléphone. Le lecteur GPS de secours au premier plan continue de chercher
+  une position récente ; aucun parcours illimité du cache ni nouvelle tâche
+  native n’a été ajouté. Un système qui ne livre aucun relevé, une permission
+  refusée ou un arrêt forcé ne sont pas réparés par cette suppression du filtre.
+  À valider sur Android et iPhone : réception de lots retardés hors trajet,
+  passage en arrière-plan, début/fin de trajet et retrait des permissions.
+
 ## 2026-10-18 — Nouvelle commande : diffusion serveur et notification de secours
 
 - **Périmètre :** absence de push simple signalée, avec diffusion souhaitée à

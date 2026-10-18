@@ -11,6 +11,8 @@ export interface DriverDispatchStatus {
   responseSeconds?: number;
   automatic?: boolean;
   positionFreshSeconds?: number;
+  locationPolicy?: 'last_known';
+  positionExpires?: boolean;
 }
 export type PresenceInput = { available: false } | {
   available: true; vehicleId: string; seats: number; latitude: number; longitude: number; leaseId?: string;

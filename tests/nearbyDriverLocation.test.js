@@ -6,16 +6,24 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const fix = (now, latitude = 0) => ({ timestamp: now, coords: { latitude, longitude: 0, accuracy: 20 } });
 const policy = loader()('services/nearbyDriverLocationPolicy.ts');
 
-test('GPS policy rejects stale, inaccurate, future, mocked and malformed fixes', () => {
+test('discovery accepts old positions without an age limit', () => {
+  const now = Date.now();
+  for (const age of [0, 30000, 30001, 60000, 300000, 86400000, 90 * 86400000]) {
+    assert.equal(policy.isUsableNearbyDriverPosition(fix(now - age), now), true, `age ${age}`);
+  }
+});
+
+test('GPS policy still rejects inaccurate, future, mocked and malformed fixes', () => {
   const now = 100000;
   assert.equal(policy.isUsableNearbyDriverPosition(fix(now), now), true);
-  for (const value of [fix(now - 30001), fix(now + 5001), fix(now, NaN), fix(now, 91),
+  for (const value of [fix(now + 5001), fix(NaN), fix(Infinity), fix(-Infinity), fix(-1e20), fix(now, NaN), fix(now, 91),
+    { ...fix(now), coords: { ...fix(now).coords, longitude: 181 } },
     { ...fix(now), mocked: true }, ...[null, -1, Infinity, 251].map(accuracy => ({
       ...fix(now), coords: { ...fix(now).coords, accuracy },
     }))]) assert.equal(policy.isUsableNearbyDriverPosition(value, now), false);
 });
 
-test('moving and stationary drivers renew every 3 minutes, only with a fresh fix', () => {
+test('moving and stationary drivers update every 3 minutes, only with a newer fix', () => {
   const start = 100000, previous = fix(start);
   assert.equal(policy.shouldSendNearbyDriverPosition(null, previous, 0, start), true);
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 59999, 1), start, start + 59999), false);
@@ -25,6 +33,15 @@ test('moving and stationary drivers renew every 3 minutes, only with a fresh fix
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 180000), start, start + 180000), true);
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(start + 180000), start + 20000, start + 180000), true, 'HTTP response latency does not double the period');
   assert.equal(policy.shouldSendNearbyDriverPosition(previous, previous, start, start + 120000), false);
+});
+
+test('old discovery fixes keep ordering and the 3-minute upload cadence', () => {
+  const now = Date.now(), previous = fix(now - 86400000);
+  assert.equal(policy.shouldSendNearbyDriverPosition(null, previous, 0, now), true);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(previous.timestamp + 1000), now, now + 1000), false);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(previous.timestamp + 1000), now, now + 180000), true);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, previous, now, now + 180000), false);
+  assert.equal(policy.shouldSendNearbyDriverPosition(previous, fix(previous.timestamp - 1), now, now + 180000), false);
 });
 
 const OWNER_KEY = 'zwanga.nearbyDriverLocationConsent.v1';
@@ -120,6 +137,17 @@ test('a registered task delivers a fresh position while the app is backgrounded 
   assert.equal(f.sends.length, 1); assert.equal(f.running(), true);
 });
 
+test('a delayed native batch sends only the newest position, even older than 30 seconds', async () => {
+  const f = fixture(); await f.api.ensureNearbyDriverLocation('driver');
+  f.appState.currentState = 'background';
+  const newest = fix(Date.now() - 86400000, 1);
+  await f.definitions[0].handler({ data: { locations: [
+    fix(newest.timestamp - 180000), newest, fix(newest.timestamp - 60000),
+  ] } });
+  assert.equal(f.sends.length, 1);
+  assert.equal(f.sends[0][1], newest, 'preserve the native timestamp, never pretend it is current');
+});
+
 test('starting a ride pauses discovery before precise GPS; no second reader or upload during rides', async () => {
   for (const passenger of [false, true]) {
     const f = fixture(); await f.api.ensureNearbyDriverLocation('driver');
@@ -128,6 +156,7 @@ test('starting a ride pauses discovery before precise GPS; no second reader or u
     assert.equal(f.running(), false);
     assert.equal(await f.api.ensureNearbyDriverLocation('driver'), false);
     await f.api.handleNearbyDriverLocations([fix(Date.now())]);
+    await f.api.handleNearbyDriverLocations([fix(Date.now() - 86400000)]);
     assert.equal(f.starts.length, 1); assert.equal(f.sends.length, 0);
   }
 });
