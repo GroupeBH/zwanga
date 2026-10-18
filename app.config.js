@@ -265,6 +265,7 @@ module.exports = {
         {
           ios:{
             useFrameworks: 'static',
+            deploymentTarget: '15.1',
           }
         }
       ],

@@ -3,6 +3,7 @@
   "EX_DEV_CLIENT_NETWORK_INSPECTOR": "true",
   "newArchEnabled": "true",
   "ios.useFrameworks": "static",
+  "ios.deploymentTarget": "15.1",
   "ios.forceStaticLinking": "[]",
   "didit.iosVariant": "autodetection",
   "apple.privacyManifestAggregationEnabled": "true"

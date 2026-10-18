@@ -1,5 +1,54 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Build iOS : minimum de déploiement des bundles CocoaPods
+
+- **Périmètre et constat réel :** le journal Xcode du build `46bce993` contient
+  15 erreurs `IPHONEOS_DEPLOYMENT_TARGET` dans le projet Pods. Des bundles de
+  ressources/confidentialité ciblent iOS 9 à 14 alors que ce SDK iPhoneOS 27.1
+  refuse les cibles inférieures à 15.0. Le projet de l’application cible déjà
+  **15.1** en Debug et Release. Les messages `MODULEMAP_FILE` et les phases
+  Crashlytics sans sorties sont des avertissements, pas les erreurs bloquantes
+  identifiées dans ce journal.
+- **Solution appliquée :** après `react_native_post_install`, `ios/Podfile`
+  parcourt toutes les cibles du projet Pods et toutes leurs configurations,
+  y compris les bundles oubliés par le relèvement des seules bibliothèques.
+  Les versions numériques inférieures et les valeurs absentes sont relevées
+  au minimum de l’application. `Gem::Version` évite les comparaisons erronées
+  par flottant ; les versions supérieures et les expressions de build sont
+  conservées. `ios/Podfile.properties.json` et `app.config.js` rendent explicite
+  le minimum existant de 15.1, sans augmenter le minimum de l’application.
+- **Régénération :** `plugins/withIosDeploymentTargetFloor.js`, enregistré dans
+  `app.plugin.js`, reproduit le même bloc au prochain prebuild, sans doublon.
+  Il échoue explicitement si le point d’insertion est absent ou ambigu ou si
+  un marqueur manque. Le Podfile déjà versionné est corrigé directement : le
+  prochain build n’a pas besoin d’un prebuild destructif sur le poste local.
+- **Précautions :** aucune fusion, récupération ou reprise de code de `master` ;
+  travail sur `rollback/production-155-20261015`. Versions des dépendances,
+  `Podfile.lock`, règles des modules Maps/Firebase, intégration Didit/Crashlytics,
+  signature, Android et code métier inchangés. Ni `.env` modifié, ni déploiement,
+  ni build EAS lancé. L’image iOS `latest` n’a pas été changée.
+- **Vérifications :** `node --test tests/iosDeploymentTarget.test.js
+  tests/iosCrashlytics.test.js tests/androidBuildPerformance.test.js
+  tests/storeReview.test.js` : **23 tests JavaScript réussis, 1 test Ruby ignoré**
+  car Ruby est absent du poste Windows. Deux tests de configuration échouaient
+  avant le correctif et passent après ; contrôle du bloc natif/prébuild,
+  idempotence, branchement du plugin et configurations existantes. Aucun test
+  Node ne prouve l’exécution du bloc Ruby dans CocoaPods ni une archive Xcode.
+  Lint des fichiers JavaScript concernés : aucune erreur, un avertissement
+  préexistant de variable inutilisée dans `app.config.js`. Contrôle de taille
+  (1 096 sources) et `git diff --check` validés.
+- **Livraison et limites :** relancer un build iOS depuis cette branche avec
+  `npx.cmd eas-cli build --platform ios --profile production`. Pour un workflow
+  GitHub/EAS, enregistrer et pousser ces changements sur cette même branche,
+  puis la sélectionner explicitement. À vérifier sur macOS/EAS : `pod install`,
+  cibles Pods à 15.1 minimum (sans abaisser celles plus récentes), archive et
+  acceptation App Store Connect. La réussite du prochain build reste à confirmer.
+- **Références :** [hook CocoaPods post_install](https://guides.cocoapods.org/syntax/podfile.html#post_install),
+  [étapes du build iOS EAS](https://docs.expo.dev/build-reference/ios-builds/).
+  Le code local de React Native 0.81.5 (`scripts/cocoapods/utils.rb`) ne relève
+  que les `native_target` des résultats d’installation, d’où la protection
+  complémentaire des cibles de ressources.
+
 ## 2026-10-18 — Annulation passager : stabilisation des vues natives des dialogues
 
 - **Périmètre et constat :** fermeture Android signalée dans la navigation

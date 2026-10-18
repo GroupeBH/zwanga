@@ -135,5 +135,6 @@ module.exports = (config) => {
   config = withIOSUserScriptSandboxingDisabled(config);
   config = require('./plugins/withIosCrashlytics')(config);
   config = withReactNativeMapsFix(config);
+  config = require('./plugins/withIosDeploymentTargetFloor')(config);
   return config;
 };
