@@ -1,7 +1,7 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
 import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
 import { parseDriverInvitation } from '@/features/notifications/driverInvitation';
-import { isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
+import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import { isDriverAccount } from '@/utils/accountRole';
 import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
@@ -125,7 +125,7 @@ export function NotificationHandler() {
         const type = notification.request.content.data?.type;
         const tripRevenueModalAlreadyOwnsForeground =
           !canShowRequestNotification(notification.request.content.data, currentUserRef.current) ||
-          (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data))) ||
+          (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data) || parseNearbyPhoneAlert(notification.request.content.data))) ||
           (type === 'driver_trip_revenue' && pathnameRef.current.startsWith('/trip/navigate/'));
         const invitation = parseDriverInvitation(notification.request.content.data);
         const incomingScreenOwnsSound = Boolean(invitation && invitation.driverId === currentUserRef.current?.id) ||

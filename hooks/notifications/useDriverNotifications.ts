@@ -62,7 +62,7 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
     if (pendingOpen) void open(pendingOpen, 'default', true).catch(() => {});
     const foreground = Notifications.addNotificationReceivedListener(notification => {
       const data = readDriverPushData(notification);
-      if (!data || !allowed(data) || parseDriverInvitation(data)?.driverId !== userId) return;
+      if (!data || !allowed(data) || (parseDriverInvitation(data) ?? parseNearbyPhoneAlert(data))?.driverId !== userId) return;
       void displayDriverInvitation(data).catch(() => {});
       void open(data).catch(() => {});
     });

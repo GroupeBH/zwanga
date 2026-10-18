@@ -88,3 +88,34 @@ test('foreground booking delivery does not open a screen; pressing it opens the 
   assert.equal(actions.length, 1); assert.equal(routes.length, 1, 'native response adds no confirmation page');
   hooks.unmount();
 });
+
+test('foreground nearby broadcasts reach the banner handler only for the driver; navigation requires a tap', async () => {
+  const hooks = hookHarness(), routes = [], displayed = [];
+  let nativeListener, expoListener;
+  const payload = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+    tripRequestId: id, driverId, ringUntil: new Date(Date.now() + 30000).toISOString(), dataString: 'Un client près de vous' };
+  const router = { navigate: path => routes.push(path) };
+  const { useDriverNotifications } = loader({ react: hooks.react,
+    'expo-router': { useRouter: () => router },
+    'react-native': { Platform: { OS: 'android' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
+    'expo-notifications': { addNotificationReceivedListener: fn => { expoListener = fn; return { remove() {} }; },
+      addNotificationResponseReceivedListener: () => ({ remove() {} }), getLastNotificationResponseAsync: async () => null },
+    '@notifee/react-native': { __esModule: true, default: { onForegroundEvent: fn => { nativeListener = fn; return () => {}; },
+      getInitialNotification: async () => null }, EventType: { DELIVERED: 3, PRESS: 1, ACTION_PRESS: 2 } },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => {},
+      displayDriverInvitation: async data => displayed.push(data), silenceDriverInvitations: async () => {} },
+    '@/services/driverNotificationResponse': { respondToDriverNotification: async () => assert.fail('no automatic decision') },
+  })('hooks/notifications/useDriverNotifications.ts');
+  hooks.render(() => useDriverNotifications(driverId, true));
+  expoListener({ data: payload });
+  nativeListener({ type: 3, detail: { notification: { data: payload } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(displayed, [payload]); assert.deepEqual(routes, []);
+  nativeListener({ type: 1, detail: { notification: { data: payload }, pressAction: { id: 'default' } } });
+  assert.deepEqual(routes, [{ pathname: '/request-details/[id]', params: { id } }]);
+  expoListener({ data: { ...payload, driverId: '00000000-0000-4000-8000-000000000099' } });
+  hooks.render(() => useDriverNotifications(driverId, false));
+  expoListener({ data: payload });
+  assert.equal(displayed.length, 1, 'no other-driver or passenger alerts');
+  hooks.unmount();
+});

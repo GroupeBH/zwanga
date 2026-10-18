@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { getStoredFcmToken, removeFcmToken, storeFcmToken } from './tokenStorage';
 
 const DEFAULT_CHANNEL_ID = 'zwanga_default';
@@ -44,19 +44,36 @@ function getNotifeeRuntime(): {
   };
 }
 
-export async function requestPushPermissions(): Promise<boolean> {
+let pendingPermission: Promise<boolean> | null = null;
+let permissionPromptCompleted = false;
+
+async function resolvePushPermission(): Promise<boolean> {
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    if (existingStatus === 'granted') {
+    const permission = await Notifications.getPermissionsAsync();
+    if (permission.status === 'granted') {
       return true;
     }
-
+    // Android can report denied + canAskAgain on a fresh installation. Do not
+    // mistake that for a permanent denial. Never prompt from a background task
+    // or repeat a completed prompt on each registration retry.
+    if (permission.canAskAgain === false || permissionPromptCompleted || AppState.currentState !== 'active') {
+      return false;
+    }
     const { status } = await Notifications.requestPermissionsAsync();
+    permissionPromptCompleted = true;
     return status === 'granted';
-  } catch (error) {
-    console.warn('Cannot request push permission:', error);
+  } catch {
+    // A native failure is not a user choice: the foreground registration loop
+    // can try again without requiring a visit to a settings screen.
+    console.warn('[Push] Autorisation non vérifiée ; nouvelle tentative différée.');
     return false;
   }
+}
+
+export async function requestPushPermissions(): Promise<boolean> {
+  const request = pendingPermission ?? (pendingPermission = resolvePushPermission());
+  try { return await request; }
+  finally { if (pendingPermission === request) pendingPermission = null; }
 }
 
 export async function ensureAndroidChannel(options?: {
@@ -105,19 +122,19 @@ async function getExpoProjectId(): Promise<string | undefined> {
 }
 
 export async function obtainFcmToken(options?: { requestPermission?: boolean }): Promise<string | null> {
+  if (isExpoGo) {
+    console.warn('Expo Go does not support remote push from SDK 53. Use a dev build or EAS build.');
+    return null;
+  }
+  // Prepare Android before the OS permission prompt or token lookup, not only
+  // after permission was granted. This setup is automatic after authentication.
+  await ensureAndroidChannel();
   const granted = options?.requestPermission === false
     ? (await Notifications.getPermissionsAsync()).status === 'granted'
     : await requestPushPermissions();
   if (!granted) {
     return null;
   }
-
-  if (isExpoGo) {
-    console.warn('Expo Go does not support remote push from SDK 53. Use a dev build or EAS build.');
-    return null;
-  }
-
-  await ensureAndroidChannel();
 
   try {
     if (Platform.OS === 'android') {
@@ -161,7 +178,7 @@ export function subscribeToFcmRefresh(
     // Sur iOS, l'événement contient le token APNs natif alors que Zwanga
     // enregistre un ExpoPushToken. On recalcule donc le token transportable
     // au lieu de transmettre aveuglément la valeur native au backend.
-    void obtainFcmToken()
+    void obtainFcmToken({ requestPermission: false })
       .then(async (token) => {
         if (token) {
           await onTokenRefresh(token);

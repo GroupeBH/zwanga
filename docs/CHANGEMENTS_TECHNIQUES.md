@@ -1,5 +1,89 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Alertes conducteur automatiques et retrait du badge de disponibilité
+
+- **Demande et périmètre :** absence de notification/sonnerie signalée dans le
+  test interne Android, sans passage souhaité par un écran de configuration.
+  Retirer aussi le badge « Indisponible » de l’accueil conducteur, qui peut être
+  interprété à tort comme une déconnexion. Travail limité au dépôt mobile sur
+  `rollback/production-155-20261015`, sans reprendre de code de `master`.
+- **Constats dans le code, distincts du signalement sur téléphone :**
+  l’enregistrement automatique existait déjà dans `AuthGuard` via
+  `usePushRegistration`. Le canal Android était préparé après la demande de
+  permission. Le hook considérait cette demande comme effectuée même après
+  une erreur native temporaire. Le décodeur Expo privilégiait `actionProtocol`
+  mais pas `ringAlert` devant `dataString` : un corps textuel non JSON pouvait
+  masquer une alerte de proximité pourtant valide. Les commandes Android v3
+  reçues au premier plan étaient acquittées sans notification locale visible.
+  Ces cas sont reproduits par tests JavaScript ; ils ne prouvent pas la cause
+  du défaut signalé sur le build interne. L’émulateur inspecté en lecture seule
+  utilise un ancien build 146 / 1.0.16, pas le binaire concerné. Aucun envoi FCM
+  réel ni mesure acoustique n’a été réalisé.
+- **Préparation automatique :** `services/pushNotifications.ts` prépare le
+  canal Android avant la permission et la récupération du jeton. Une seule
+  demande système peut être en cours ; une réponse terminée n’est pas répétée
+  dans la même exécution de l’application. Une erreur native reste réessayable.
+  Aucun prompt en arrière-plan ou quand `canAskAgain` vaut faux. Un accord donné
+  ensuite dans les réglages est reconnu. La rotation du jeton ne déclenche
+  jamais de demande de permission. `hooks/auth/usePushRegistration.ts` conserve
+  sa reprise à 60 secondes, au premier plan/en ligne, sans visite d’un écran
+  spécial ; le service de permissions décide désormais si le prompt est permis.
+- **Réception et visibilité :** `features/notifications/driverInvitation.ts`
+  reconnaît les champs directs `ringAlert` avant `dataString` sans assouplir la
+  validation des identifiants ni du protocole. `services/driverNotifications.ts`
+  affiche aussi les commandes v3 au premier plan sur le canal silencieux déjà
+  utilisé pour les réservations. Une commande diffusée à plusieurs conducteurs
+  n’obtient pas les actions d’une offre exclusive. Le tap ouvre les détails,
+  jamais une acceptation automatique. `hooks/notifications/useDriverNotifications.ts`
+  transmet ces messages au gestionnaire ; `components/NotificationHandler.tsx`
+  évite une seconde présentation Expo sur Android. iOS et les notifications
+  distantes v2 conservent leur présentation existante.
+- **Interface :** `components/home/HomeTripsSheet.tsx` ne monte plus
+  `HomeDriverStatus`. Aucun statut « En ligne » artificiel ne le remplace ;
+  disponibilité serveur, GPS, rôle, boutons et barre d’onglets sont inchangés.
+  `app/driver-availability.tsx` reste une aide facultative depuis le profil,
+  explicite la préparation automatique et propose de personnaliser le canal
+  réellement utilisé via `openDriverAlertSettings`, plutôt que les réglages
+  génériques de l’application. Le consentement à la localisation est conservé.
+- **Précautions :** délai maximal de sonnerie de 30 secondes, vibration/canal
+  sonnerie du téléphone déjà natifs, arrêt à l’ouverture de Zwanga, contrôle du
+  destinataire et de la session, déduplication et expiration conservés. Aucun
+  volume forcé, contournement du mode silencieux ou de « Ne pas déranger »,
+  suppression de canal ni modification des préférences système. Aucune
+  dépendance, configuration native, variable d’environnement, règle de sélection
+  des conducteurs, base ou infrastructure modifiée.
+- **Vérifications réalisées :**
+  - **117 tests JavaScript réussis** : `pushPermissions`, `pushRegistration`,
+    `driverNotifications`, `driverAlertChannel`, `driverNotificationNativeAssets`,
+    `driverNotificationResponse`, `requestAcceptanceSound`, `incomingBookingRedirect`,
+    `driverAvailability`, `requestNotificationVisibility`, `notificationNavigation`
+    et `homeCompactLayout` (`node --test tests/<nom>.test.js`). Le nouveau fichier
+    `tests/pushPermissions.test.js` simule permission initiale, refus, fermeture
+    du prompt, panne temporaire, concurrence, reprise, rotation et transport iOS.
+  - **253 tests JavaScript de non-régression réussis** avec
+    `node --test --test-concurrency=2 tests/home*.test.js tests/startupSession.test.js
+    tests/nearbyDriver*.test.js tests/driverGpsLifecycle.test.js
+    tests/driverBackgroundSession.test.js tests/passengerGpsProfile.test.js`.
+    Certains tests Home sont communs aux deux exécutions : les compteurs ne
+    représentent pas des tests distincts à additionner.
+  - `npx.cmd --no-install tsc --noEmit` réussi. ESLint des fichiers modifiés :
+    aucune erreur, un avertissement préexistant sur le chargement différé par
+    `require` de Notifee. Contrôle de taille : 1 096 sources, aucun dépassement
+    des 400 lignes. `git diff --check` validé.
+- **Livraison et limites :** aucun build/push/déploiement déclenché ; les versions
+  installées restent inchangées. À vérifier après livraison sur un vrai Android :
+  installation neuve et mise à jour, autorisation système, réception d’une
+  réservation et d’une commande éligible à proximité, application ouverte puis
+  en arrière-plan/écran verrouillé, vibration et sonnerie, arrêt au retour dans
+  Zwanga, refus de permission et réglages silencieux conservés. L’envoi serveur
+  (éligibilité, position récente, jeton enregistré, résultat FCM) n’a pas été
+  vérifié en production. Ne pas conclure à une réception garantie ni à un gain
+  de volume mesuré à partir de ces seuls tests.
+- **Références et contrôle local :** [préparation des notifications Expo](https://docs.expo.dev/versions/latest/sdk/notifications/),
+  [autorisation Android des notifications](https://developer.android.com/develop/ui/compose/notifications/notification-permission).
+  Le comportement Android « denied + canAskAgain » à la première demande a aussi
+  été vérifié dans le code installé du SDK Expo 54, `NotificationPermissionsModule.kt`.
+
 ## 2026-10-18 — Version de l’application Android et iOS : 1.0.17
 
 - **Demande et périmètre :** incrémenter la version Expo pour les prochaines

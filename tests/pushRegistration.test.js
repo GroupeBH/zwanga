@@ -10,7 +10,7 @@ function fixture(platform = 'android') {
   const hooks = hookHarness();
   const io = { enabled: true, account: 'a', token: 'device', registered: false, setupFails: false,
     updates: 0, registrations: 0, resets: 0, version: 0, receive: null, backgroundReady: true,
-    channel: 'booking-ring-v2', capabilities: [], rejectV3: null };
+    channel: 'booking-ring-v2', capabilities: [], rejectV3: null, permissionAttempts: [], tokenFails: false };
   const update = () => ({ unwrap: async () => { io.updates++; } });
   const dispatch = capability => ({ unwrap: async () => {
     io.capabilities.push(capability); io.registrations++;
@@ -24,7 +24,10 @@ function fixture(platform = 'android') {
     '@/store/hooks': { useAppDispatch: () => dispatch },
     '@/store/api/userApi': { useUpdateFcmTokenMutation: () => [update] },
     '@/store/api/driverDispatchApi': { driverDispatchApi: { endpoints: { registerDriverNotifications: { initiate: version => version } } } },
-    '@/services/pushNotifications': { obtainFcmToken: async () => io.token, subscribeToFcmRefresh: fn => { io.receive = fn; return () => { io.receive = null; }; } },
+    '@/services/pushNotifications': { obtainFcmToken: async options => {
+      io.permissionAttempts.push(options?.requestPermission !== false);
+      return io.tokenFails ? null : io.token;
+    }, subscribeToFcmRefresh: fn => { io.receive = fn; return () => { io.receive = null; }; } },
     '@/services/driverNotifications': { configureDriverNotifications: async () => { if (io.setupFails) throw Error('not ready'); return io.channel; } },
     '@/services/backgroundNotificationTask': { registerBackgroundNotificationTask: async () => io.backgroundReady },
     '@/services/tokenSession': { getTokenSessionVersion: () => io.version },
@@ -90,4 +93,16 @@ test('native token rotation re-registers ordinary and interactive notifications'
   const f = fixture(); f.io.registered = true; f.render(); t.mock.timers.tick(1200); await tick();
   f.io.token = 'rotated-device'; await f.io.receive(f.io.token);
   assert.equal(f.io.updates, 2); assert.equal(f.io.registrations, 2); f.hooks.unmount();
+});
+
+test('automatic setup retries permission failures without a trip to a configuration screen', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const f = fixture(); f.io.tokenFails = true; f.io.registered = true;
+  f.render(); t.mock.timers.tick(1200); await tick();
+  assert.equal(f.io.updates, 0); assert.equal(f.io.registrations, 0);
+  f.io.tokenFails = false;
+  t.mock.timers.tick(60000); await tick();
+  assert.deepEqual(f.io.permissionAttempts, [true, true], 'permission service decides whether a prompt remains allowed');
+  assert.equal(f.io.updates, 1); assert.equal(f.io.registrations, 1);
+  f.hooks.unmount();
 });

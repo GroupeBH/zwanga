@@ -1,13 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/styles';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useDriverDispatchStatusQuery } from '@/store/api/driverDispatchApi';
 import { NearbyDriverLocationPermission } from '@/components/profile/NearbyDriverLocationPermission';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
+import { openDriverAlertSettings } from '@/services/driverAlertChannel';
 
 export default function DriverAvailabilityScreen() {
   const router = useRouter();
@@ -31,9 +32,10 @@ export default function DriverAvailabilityScreen() {
         : <Text style={styles.hint}>{available ? 'Commandes proches : service disponible' : 'Commandes proches : service indisponible'}</Text>}
       <NearbyDriverLocationPermission available={available} />
       <Text style={styles.label}>Son des notifications</Text>
+      <Text style={styles.copy}>Les alertes se préparent dès la connexion, après votre autorisation de notifications. Aucun réglage supplémentaire n’est nécessaire ici.</Text>
       <Text style={styles.copy}>Une sonnerie jusqu’à 30 secondes, arrêtée à l’ouverture de Zwanga.</Text>
-      <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={() => { void Linking.openSettings().catch(() => {}); }}>
-        <Text style={styles.buttonText}>Ouvrir les réglages du téléphone</Text>
+      <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={() => { void openDriverAlertSettings().catch(() => {}); }}>
+        <Text style={styles.buttonText}>Personnaliser les alertes (facultatif)</Text>
       </TouchableOpacity>
       <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded }} style={styles.more}
         onPress={() => setExpanded(value => !value)}>
@@ -41,7 +43,7 @@ export default function DriverAvailabilityScreen() {
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[600]} />
       </TouchableOpacity>
       {expanded && <>
-        <Text style={styles.copy}>Aucune disponibilité à activer. Les commandes sont proposées au conducteur éligible le plus proche avec un véhicule adapté. Acceptez ou refusez depuis la notification.</Text>
+        <Text style={styles.copy}>Aucune disponibilité à activer. Les commandes proches sont proposées automatiquement aux conducteurs éligibles avec un véhicule adapté. Touchez la notification pour voir le client.</Text>
         <Text style={styles.copy}>Une position trop ancienne n’est plus utilisée : elle reste valable au maximum {Math.round((data?.positionFreshSeconds ?? 300) / 60)} minute(s). Un arrêt forcé de l’app peut interrompre la localisation.</Text>
         <Text style={styles.copy}>Le mode silencieux, « Ne pas déranger » et les restrictions du téléphone peuvent limiter les alertes.</Text>
       </>}

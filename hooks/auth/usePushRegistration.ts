@@ -18,8 +18,8 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
   const account = accessToken ? getUserIdFromToken(accessToken) : null;
   const dispatch = useAppDispatch();
   const [updateToken] = useUpdateFcmTokenMutation();
-  const state = useRef({ account, tokenKey: '', capabilityKey: '', busy: false, permissionRequested: false });
-  if (state.current.account !== account) state.current = { account, tokenKey: '', capabilityKey: '', busy: false, permissionRequested: false };
+  const state = useRef({ account, tokenKey: '', capabilityKey: '', busy: false });
+  if (state.current.account !== account) state.current = { account, tokenKey: '', capabilityKey: '', busy: false };
 
   useEffect(() => {
     if (!enabled || !account) return;
@@ -32,9 +32,9 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
       const version = getTokenSessionVersion();
       const current = () => !cancelled && state.current === registration && version === getTokenSessionVersion();
       try {
-        const requestPermission = !registration.permissionRequested;
-        registration.permissionRequested = true;
-        const token = provided ?? await obtainFcmToken({ requestPermission });
+        // The permission service coalesces prompts and remembers completed
+        // choices, but leaves transient native failures eligible for a retry.
+        const token = provided ?? await obtainFcmToken();
         if (!token || !current()) return;
         const key = `${account}:${token}`;
         if (registration.tokenKey !== key) {
