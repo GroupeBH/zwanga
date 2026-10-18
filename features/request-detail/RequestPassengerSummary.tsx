@@ -14,6 +14,8 @@ import React from 'react';
 import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
 import type { TripRequest } from '@/types';
+import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 
 interface RequestPassengerSummaryProps {
   statusConfig: { label: string; color: string; bg: string };
@@ -54,6 +56,7 @@ export function RequestPassengerSummary({
   isCancelling,
   handleCancelRequest,
 }: RequestPassengerSummaryProps) {
+  const routeLabels = useRouteLocationLabels(tripRequest);
   return (
     <Animated.View
       entering={FadeInDown.duration(280)}
@@ -92,30 +95,17 @@ export function RequestPassengerSummary({
           />
         </View>
         <View style={styles.ownerHeroLeadCopy}>
-          <Text style={styles.ownerHeroTitle} numberOfLines={2}>{ownerHero.title}</Text>
-          <Text style={styles.ownerHeroSubtitle} numberOfLines={2}>{ownerHero.subtitle}</Text>
+          <Text style={styles.ownerHeroTitle} numberOfLines={2}>{tripRequest.immediateDispatch && tripRequest.status === 'pending' ? 'Recherche à proximité' : ownerHero.title}</Text>
+          <Text style={styles.ownerHeroSubtitle} numberOfLines={3}>{tripRequest.immediateDispatch && tripRequest.status === 'pending'
+            ? 'Nous sollicitons les conducteurs disponibles les plus proches, un à la fois. Vous serez informé dès qu’un conducteur accepte.' : ownerHero.subtitle}</Text>
         </View>
       </View>
 
       <Animated.View layout={LinearTransition.duration(220)} style={styles.driverRouteCard}>
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Départ</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.departure.name}</Text>
-          </View>
-        </View>
-        <View style={[styles.ownerHeroRouteLine, styles.driverRouteLine]} />
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Destination</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.arrival.name}</Text>
-          </View>
-        </View>
+        <RouteLocationDetails labels={routeLabels} tone="dark" trailingInset={44} />
         <CollapsibleRouteMap
-          arrivalName={tripRequest.arrival.name}
-          departureName={tripRequest.departure.name}
+          arrivalName={routeLabels.arrival.address}
+          departureName={routeLabels.departure.address}
           mapData={requestRouteMapData}
           routeCoordinates={displayedRouteCoordinates}
         />
@@ -179,7 +169,7 @@ export function RequestPassengerSummary({
           <View style={styles.ownerPassengerKycNoticeCopy}>
             <Text style={styles.ownerPassengerKycNoticeTitle}>Identité vérifiée requise</Text>
             <Text style={styles.ownerPassengerKycNoticeText}>
-              Ce conducteur demande une vérification d&apos;identité approuvée avant la prise en charge.
+              Ce conducteur commande une vérification d&apos;identité approuvée avant la prise en charge.
             </Text>
           </View>
         </View>
@@ -187,9 +177,9 @@ export function RequestPassengerSummary({
 
       <View style={styles.ownerProgressPanel}>
         <View style={styles.ownerProgressHeader}>
-          <Text style={styles.ownerProgressTitle}>Suivi de la demande</Text>
+          <Text style={styles.ownerProgressTitle}>Suivi de la commande</Text>
           <Text style={styles.ownerProgressCount}>
-            {heroStepIndex >= 0 ? `Étape ${heroStepIndex + 1} sur 4` : 'Demande clôturée'}
+            {heroStepIndex >= 0 ? `Étape ${heroStepIndex + 1} sur 4` : 'Commande clôturée'}
           </Text>
         </View>
         <View style={styles.ownerHeroSteps}>
@@ -243,7 +233,7 @@ export function RequestPassengerSummary({
               onPress={handleOpenEditForm}
             >
               <Ionicons name="create-outline" size={16} color={Colors.primary} />
-              <Text style={styles.ownerHeroGhostButtonText}>Modifier</Text>
+              <Text style={styles.ownerHeroGhostButtonText}>{tripRequest.status === 'expired' ? 'Reprogrammer' : 'Modifier'}</Text>
             </Pressable>
           )}
           {canCancel && (

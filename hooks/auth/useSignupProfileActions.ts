@@ -1,10 +1,15 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import type { TripRequestVehicleType } from '@/types';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
-import * as ImagePicker from 'expo-image-picker';
-import React from 'react';
+import { isValidVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
+import { useProfilePhotoSelection } from '@/hooks/profile/useProfilePhotoSelection';
+import React, { useEffect, useRef } from 'react';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { claimPendingProfileImageUri } from '@/features/profile/profilePhotoRecovery';
 import { AuthStep } from '@/components/auth';
 
 interface Params {
+  photoEnabled?: boolean;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   setProfilePicture: React.Dispatch<React.SetStateAction<string | null>>;
   firstName: string;
@@ -23,6 +28,7 @@ interface Params {
 }
 
 export function useSignupProfileActions({
+  photoEnabled = true,
   showDialog,
   setProfilePicture,
   firstName,
@@ -39,57 +45,31 @@ export function useSignupProfileActions({
   setStep,
   handleFinalRegister,
 }: Params) {
+  const { choosePhoto, isSelecting } = useProfilePhotoSelection({ enabled: photoEnabled });
+  const active = useScreenIsActive();
+  const selecting = useRef(false);
+  useEffect(() => {
+    if (!active || !photoEnabled || isSelecting) return;
+    let cancelled = false;
+    void (async () => {
+      if (selecting.current) return;
+      const uri = await claimPendingProfileImageUri();
+      if (cancelled || !uri || selecting.current) return;
+      selecting.current = true;
+      try {
+        const selected = await choosePhoto({ uri, source: 'gallery' });
+        if (selected) setProfilePicture(selected);
+      } finally { selecting.current = false; }
+    })();
+    return () => { cancelled = true; };
+  }, [active, photoEnabled, isSelecting, choosePhoto, setProfilePicture]);
   const handleSelectProfilePicture = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        showDialog({ variant: 'danger', title: 'Permission requise', message: "L'accès à la galerie est nécessaire." });
-        return;
-      }
-      showDialog({
-        variant: 'info',
-        title: 'Photo de profil',
-        message: 'Choisissez une source',
-        actions: [
-          {
-            label: 'Caméra',
-            variant: 'primary',
-            onPress: async () => {
-              try {
-                const { status: camStatus } = await ImagePicker.requestCameraPermissionsAsync();
-                if (camStatus !== 'granted') return;
-                const result = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
-                const imageUri = result.assets?.[0]?.uri;
-                if (!result.canceled && imageUri) setProfilePicture(imageUri);
-              } catch (error) {
-                console.warn('[Auth] Profile camera failed:', error);
-                showDialog({ variant: 'danger', title: 'Photo impossible', message: "Impossible d'ouvrir la camera pour le moment." });
-              }
-            }
-          },
-          {
-            label: 'Galerie',
-            variant: 'secondary',
-            onPress: async () => {
-              try {
-                const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.65, base64: false, exif: false });
-                const imageUri = result.assets?.[0]?.uri;
-                if (!result.canceled && imageUri) setProfilePicture(imageUri);
-              } catch (error) {
-                console.warn('[Auth] Profile gallery failed:', error);
-                showDialog({ variant: 'danger', title: 'Photo impossible', message: "Impossible d'ouvrir la galerie pour le moment." });
-              }
-            }
-          },
-          { label: 'Annuler', variant: 'ghost' },
-        ],
-      });
-    } catch (e) {
-      console.error(e);
-    }
+    const uri = await choosePhoto();
+    if (uri) setProfilePicture(uri);
   };
 
   const validateProfileAndContinue = () => {
+    if (isSelecting) return;
     const legalFirstName = normalizeLegalName(firstName);
     const legalLastName = normalizeLegalName(lastName);
 
@@ -114,6 +94,10 @@ export function useSignupProfileActions({
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez compléter les informations du véhicule.' });
         return;
       }
+      if (!isValidVehiclePlate(vehiclePlate)) {
+        showDialog({ variant: 'warning', title: 'Plaque d’immatriculation invalide', message: VEHICLE_PLATE_FORMAT_MESSAGE });
+        return;
+      }
       setStep('kyc');
     } else {
       handleFinalRegister();
@@ -121,8 +105,8 @@ export function useSignupProfileActions({
   };
 
   return {
+    isSelectingProfilePhoto: isSelecting,
     handleSelectProfilePicture,
     validateProfileAndContinue,
   };
 }
-import type { TripRequestVehicleType } from '@/types';

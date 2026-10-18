@@ -20,8 +20,8 @@ function fixture(t, pending = false) {
     },
     '@/utils/throttledWarning': { warnThrottled() {} },
   })('services/rideLocationStream.ts');
-  const subscribe = (key, callback) => {
-    const subscription = stream.subscribeRideLocation(key, {}, callback);
+  const subscribe = (key, callback, silenceMs) => {
+    const subscription = stream.subscribeRideLocation(key, {}, callback, silenceMs);
     subscriptions.push(subscription);
     return subscription;
   };
@@ -55,6 +55,23 @@ test('screens share a foreground fallback, then reuse native GPS without a secon
   assert.equal(env.hasActivityListener(), false);
   t.mock.timers.tick(60_000);
   assert.equal(env.watches.length, 1);
+});
+
+test('nearby Home uses the slower native heartbeat without GPS churn; stop or silence restores its fallback', async t => {
+  const env = fixture(t); let updates = 0;
+  env.subscribe('nearby:driver', () => updates++, 120000); await flush();
+  env.publishNativeRideLocation('nearby:driver', env.fix());
+  assert.equal(env.watches[0].removed, 1);
+  for (let i = 0; i < 60; i++) {
+    t.mock.timers.tick(60000);
+    env.publishNativeRideLocation('nearby:driver', env.fix());
+  }
+  assert.equal(env.watches.length, 1, 'one hour of nearby fixes adds no parallel foreground watcher');
+  assert.equal(updates, 61);
+  env.invalidateNativeRideLocation('nearby:other'); assert.equal(env.watches.length, 1);
+  env.invalidateNativeRideLocation('nearby:driver'); await flush(); assert.equal(env.watches.length, 2);
+  env.publishNativeRideLocation('nearby:driver', env.fix()); assert.equal(env.watches[1].removed, 1);
+  t.mock.timers.tick(120000); await flush(); assert.equal(env.watches.length, 3);
 });
 
 test('a silent native task resumes foreground GPS within the boarding freshness window', async t => {

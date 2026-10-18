@@ -104,8 +104,10 @@ async function getExpoProjectId(): Promise<string | undefined> {
   );
 }
 
-export async function obtainFcmToken(): Promise<string | null> {
-  const granted = await requestPushPermissions();
+export async function obtainFcmToken(options?: { requestPermission?: boolean }): Promise<string | null> {
+  const granted = options?.requestPermission === false
+    ? (await Notifications.getPermissionsAsync()).status === 'granted'
+    : await requestPushPermissions();
   if (!granted) {
     return null;
   }

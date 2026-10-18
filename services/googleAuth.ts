@@ -1,10 +1,10 @@
 import {
   GoogleSignin,
-  isErrorWithCode,
   isSuccessResponse,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import Constants from 'expo-constants';
+import { GoogleAuthError, normalizeGoogleAuthError } from '@/features/auth/googleAuthErrors';
 
 export type GoogleAuthResult = {
   idToken: string;
@@ -20,8 +20,12 @@ const FALLBACK_GOOGLE_WEB_CLIENT_ID =
 const FALLBACK_GOOGLE_IOS_CLIENT_ID =
   '754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com';
 
-// Configure Google Sign-In (call this once at app startup)
+let configured = false;
+let interactiveSignIn: Promise<GoogleAuthResult> | null = null;
+
+// Idempotent, including remounts of the authentication screen.
 export function configureGoogleSignIn() {
+  if (configured) return;
   const extra =
     ((Constants.expoConfig?.extra ?? Constants.manifest2?.extra) as Record<string, string | undefined> | undefined) ??
     {};
@@ -45,26 +49,39 @@ export function configureGoogleSignIn() {
     offlineAccess: false,
     scopes: ['profile', 'email'],
   });
+  configured = true;
 }
 
-// Sign in with Google and return user info + idToken
-export async function signInWithGoogle(): Promise<GoogleAuthResult> {
+// Share the actual native operation, not a timer. Never unlock while Google's UI
+// is still pending: launching another signIn can reject the first native promise.
+export function signInWithGoogle(): Promise<GoogleAuthResult> {
+  if (interactiveSignIn) return interactiveSignIn;
+  const attempt = performGoogleSignIn();
+  interactiveSignIn = attempt;
+  const release = () => { if (interactiveSignIn === attempt) interactiveSignIn = null; };
+  void attempt.then(release, release);
+  return attempt;
+}
+
+async function performGoogleSignIn(): Promise<GoogleAuthResult> {
   try {
+    // The installed SDK itself waits for its native configuration promise.
+    configureGoogleSignIn();
     // Check if Play Services are available (Android only)
-    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    const available = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    if (!available) throw new GoogleAuthError('services_unavailable');
 
     // Trigger the native Google Sign-In UI
     const response = await GoogleSignin.signIn();
 
-    if (!isSuccessResponse(response)) {
-      throw new Error('Connexion Google annulée');
-    }
+    if (response.type === 'cancelled') throw new GoogleAuthError('cancelled');
+    if (!isSuccessResponse(response)) throw new GoogleAuthError('unavailable');
 
     const { data } = response;
     const idToken = data.idToken;
 
     if (!idToken) {
-      throw new Error('Impossible de récupérer le token Google');
+      throw new GoogleAuthError('missing_token');
     }
 
     return {
@@ -76,19 +93,7 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
       picture: data.user.photo ?? undefined,
     };
   } catch (error) {
-    if (isErrorWithCode(error)) {
-      switch (error.code) {
-        case statusCodes.SIGN_IN_CANCELLED:
-          throw new Error('Connexion annulée par l\'utilisateur');
-        case statusCodes.IN_PROGRESS:
-          throw new Error('Connexion déjà en cours');
-        case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
-          throw new Error('Google Play Services non disponible');
-        default:
-          throw new Error(`Erreur Google Sign-In: ${error.message}`);
-      }
-    }
-    throw error;
+    throw normalizeGoogleAuthError(error, statusCodes);
   }
 }
 
@@ -109,6 +114,7 @@ export async function isGoogleSignedIn(): Promise<boolean> {
 // Get current user info without prompting sign-in
 export async function getCurrentGoogleUser(): Promise<GoogleAuthResult | null> {
   try {
+    configureGoogleSignIn();
     const response = await GoogleSignin.signInSilently();
     
     if (response.type !== 'success') {

@@ -47,7 +47,7 @@ export function PassengerNavigationMap({
     <MapView
       ref={state.mapRef}
       provider={PASSENGER_NAVIGATION_MAP_PROVIDER}
-      style={[styles.map, { top: state.mapTopOffset }]}
+      style={styles.map}
       initialRegion={camera.mapRegion}
       mapType="standard"
       onMapReady={state.handleMapReady}

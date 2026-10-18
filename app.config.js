@@ -54,7 +54,7 @@ module.exports = {
   expo: {
     name: 'zwanga',
     slug: 'zwanga-app',
-    version: '1.0.14',
+    version: '1.0.16',
     // Do not lock orientation. Google Play flags portrait-only apps as less
     // compatible with tablets, foldables, Chromebooks, and large screens.
     orientation: 'default',
@@ -66,9 +66,11 @@ module.exports = {
 
     ios: {
       bundleIdentifier: "com.biso.zwanga",
-      buildNumber: "104",
+      appStoreUrl: 'https://apps.apple.com/app/id6756211830',
+      buildNumber: "122",
       supportsTablet: true,
       usesAppleSignIn: true,
+      entitlements: { 'com.apple.developer.usernotifications.time-sensitive': true },
       ...(HAS_CHOTTULINK
         ? {
             associatedDomains: [`applinks:${CHOTTULINK_DOMAIN}`],
@@ -80,8 +82,8 @@ module.exports = {
       },
       infoPlist: {
         NSLocationWhenInUseUsageDescription: "Zwanga utilise votre position pour afficher les trajets à proximité.",
-        NSLocationAlwaysAndWhenInUseUsageDescription: "Zwanga utilise votre position pour détecter votre emplacement même lorsque l'application est en arrière-plan.",
-        NSLocationAlwaysUsageDescription: "Zwanga nécessite un accès constant à votre position pour fournir des trajets précis.",
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.",
+        NSLocationAlwaysUsageDescription: "Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.",
         NSCameraUsageDescription: "L'appareil photo est utilisé pour prendre des photos de profil ou des documents.",
         NSMicrophoneUsageDescription: "Le microphone peut être utilisé pendant la vérification vidéo de présence.",
         NSPhotoLibraryUsageDescription: "Zwanga nécessite l'accès à votre galerie pour permettre l'envoi d'images.",
@@ -96,7 +98,8 @@ module.exports = {
     android: {
       googleServicesFile: './google-services.json',
       package: 'com.zwanga',
-      versionCode: 121,
+      playStoreUrl: 'https://play.google.com/store/apps/details?id=com.zwanga',
+      versionCode: 137,
       config: {
         googleMaps: {
           apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
@@ -202,8 +205,8 @@ module.exports = {
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission: 'Zwanga utilise votre position pour la navigation GPS même en arrière-plan.',
-          locationAlwaysPermission: 'Zwanga a besoin de votre position en arrière-plan pour continuer la navigation.',
+          locationAlwaysAndWhenInUsePermission: 'Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.',
+          locationAlwaysPermission: 'Avec votre accord, Zwanga utilise votre position en arrière-plan pour le suivi des trajets et les demandes proches lorsque vous êtes conducteur.',
           locationWhenInUsePermission: 'Zwanga utilise votre position pour afficher les trajets à proximité et la navigation.',
           isIosBackgroundLocationEnabled: true,
           isAndroidBackgroundLocationEnabled: true,
@@ -222,6 +225,7 @@ module.exports = {
           "icon": "./assets/images/zwanga.png",
           "color": "#ffffff",
           "defaultChannel": "default",
+          "sounds": ["./assets/sounds/driver_ring.wav"],
           "enableBackgroundRemoteNotifications": true
         }
       ],

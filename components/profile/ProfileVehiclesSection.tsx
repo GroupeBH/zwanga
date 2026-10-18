@@ -124,7 +124,7 @@ export function ProfileVehiclesSection({
             <TouchableOpacity
               style={styles.vehicleDeleteButton}
               accessibilityRole="button"
-              accessibilityLabel={`Supprimer ${vehicle.brand} ${vehicle.model}`}
+              accessibilityLabel={`Retirer ${vehicle.brand} ${vehicle.model}`}
               onPress={() => handleDeleteVehicle(vehicle)}
               disabled={deletingVehicle || updatingVehicle}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -132,7 +132,7 @@ export function ProfileVehiclesSection({
               {deletingVehicle ? (
                 <ActivityIndicator size="small" color={Colors.danger} />
               ) : (
-                <Ionicons name="trash-outline" size={19} color={Colors.danger} />
+                <Ionicons name="remove-circle-outline" size={19} color={Colors.danger} />
               )}
             </TouchableOpacity>
           </View>
@@ -140,7 +140,7 @@ export function ProfileVehiclesSection({
       ))
     ) : (
       <Text style={styles.vehicleEmptyText}>
-        Aucun véhicule enregistré. Ajoutez-en un pour devenir conducteur.
+        Aucun véhicule actif. Ajoutez-en un pour pouvoir publier des trajets.
       </Text>
     )}
   </View>);

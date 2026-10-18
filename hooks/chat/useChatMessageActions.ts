@@ -1,8 +1,9 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { messageApi, useDeleteConversationMessageMutation } from '@/store/api/messageApi';
+import { useDeleteConversationMessageMutation } from '@/store/api/messageApi';
+import { updateMessageCache } from '@/store/api/messages/updateMessageCache';
 import { useAppDispatch } from '@/store/hooks';
 import { Message } from '@/types';
-import React from 'react';
+import React, { useCallback } from 'react';
 import type { User } from '@/types';
 
 interface Params {
@@ -13,6 +14,7 @@ interface Params {
   deleteMessageMutation: ReturnType<typeof useDeleteConversationMessageMutation>[0];
   conversationId: string;
   dispatch: ReturnType<typeof useAppDispatch>;
+  isCurrent: () => boolean;
 }
 
 export function useChatMessageActions({
@@ -23,15 +25,16 @@ export function useChatMessageActions({
   deleteMessageMutation,
   conversationId,
   dispatch,
+  isCurrent,
 }: Params) {
-  const handleEditMessage = (msg: Message) => {
-    if (msg.senderId !== user?.id) return;
+  const handleEditMessage = useCallback((msg: Message) => {
+    if (!isCurrent() || msg.senderId !== user?.id) return;
     setEditingMessageId(msg.id);
     setMessage(msg.content);
-  };
+  }, [isCurrent, user?.id, setEditingMessageId, setMessage]);
 
-  const handleDeleteMessage = (msg: Message) => {
-    if (msg.senderId !== user?.id) return;
+  const handleDeleteMessage = useCallback((msg: Message) => {
+    if (!isCurrent() || msg.senderId !== user?.id) return;
 
     showDialog({
       title: 'Supprimer le message',
@@ -43,16 +46,10 @@ export function useChatMessageActions({
           label: 'Supprimer',
           variant: 'primary',
           onPress: async () => {
+            if (!isCurrent()) return;
             try {
               await deleteMessageMutation({ messageId: msg.id, conversationId }).unwrap();
-              dispatch(
-                messageApi.util.updateQueryData('getConversationMessages', { conversationId }, (draft) => {
-                  const index = draft.findIndex((m) => m.id === msg.id);
-                  if (index !== -1) {
-                    draft.splice(index, 1);
-                  }
-                }),
-              );
+              updateMessageCache(dispatch, conversationId, { deletedId: msg.id });
             } catch (error) {
               console.warn('Erreur lors de la suppression du message:', error);
             }
@@ -60,7 +57,7 @@ export function useChatMessageActions({
         },
       ],
     });
-  };
+  }, [isCurrent, user?.id, showDialog, deleteMessageMutation, conversationId, dispatch]);
 
   return {
     handleEditMessage,

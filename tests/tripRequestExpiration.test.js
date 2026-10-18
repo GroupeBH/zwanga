@@ -5,7 +5,7 @@ const { createApi } = require('@reduxjs/toolkit/query');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 
 const NOW = Date.parse('2026-09-12T22:00:00.000Z');
-const UNACCEPTED_GRACE_MS = 30000;
+const UNACCEPTED_GRACE_MS = 3 * 60 * 60 * 1000;
 const ACCEPTED_GRACE_MS = 2 * 60 * 60 * 1000;
 const request = (id, expiresIn = 10000, extra = {}) => ({
   id, passengerId: 'passenger', status: 'pending',
@@ -13,6 +13,26 @@ const request = (id, expiresIn = 10000, extra = {}) => ({
   offers: [], ...extra,
 });
 const policy = loader()('features/trip-request/requestExpiration.ts');
+
+test('only unassigned requests, including expired and immediate requests, may be edited', () => {
+  for (const status of ['pending', 'offers_received', 'expired']) {
+    const row = request('editable', 0, { status, immediateDispatch: true });
+    assert.equal(policy.canEditTripRequest(row), true);
+    for (const assignment of [{ selectedDriverId: 'driver' }, { tripId: 'trip' }, { offers: [{ status: 'accepted' }] }])
+      assert.equal(policy.canEditTripRequest({ ...row, ...assignment }), false);
+  }
+  assert.equal(policy.canEditTripRequest(request('closed', 0, { status: 'cancelled' })), false);
+});
+
+test('a server-confirmed reschedule replaces an expired cached request on the same ID', async t => {
+  const ctx = setup(t);
+  await ctx.put('getTripRequestById', request('reopened', 0, { status: 'expired' }), 'reopened');
+  await ctx.put('getTripRequestById', request('reopened', 60000), 'reopened');
+  t.mock.timers.tick(59999);
+  assert.equal(ctx.read('getTripRequestById', 'reopened').status, 'pending');
+  t.mock.timers.tick(1);
+  assert.equal(ctx.read('getTripRequestById', 'reopened').status, 'expired');
+});
 
 function setup(t) {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
@@ -45,7 +65,7 @@ function setup(t) {
   };
 }
 
-test('unaccepted requests expire thirty seconds after departureDateMax, inclusively, not createdAt or Home highlight', () => {
+test('unaccepted requests expire three hours after departureDateMax, inclusively, not createdAt or Home highlight', () => {
   const item = request('pending', 0, { createdAt: new Date(NOW - 90 * ACCEPTED_GRACE_MS).toISOString() });
   assert.equal(policy.getTripRequestExpirationAt(item), NOW);
   assert.equal(policy.hasTripRequestExpired(item, NOW - 1), false);
@@ -101,7 +121,7 @@ test('an accepted request leaves active caches at two hours without changing its
 test('shared cache removes expired public requests at the deadline and preserves the history and detail', async t => {
   const ctx = setup(t);
   const due = request('due'), later = request('later', 70000);
-  const accepted = request('accepted', 0, { selectedDriverId: 'driver' });
+  const accepted = request('accepted', 0, { selectedDriverId: 'driver', departureDateMax: new Date(NOW).toISOString() });
   await ctx.put('getAvailableTripRequests', [due, later]);
   await ctx.put('getMyTripRequests', [due, later, accepted]);
   await ctx.put('getTripRequestById', due, due.id);
@@ -169,7 +189,7 @@ test('server acceptance and deadline edits cancel the old local expiration', asy
   await ctx.put('getTripRequestById', request('accepted'), 'accepted');
   await ctx.put('getTripRequestById', request('edited'), 'edited');
   t.mock.timers.tick(9000);
-  await ctx.put('getTripRequestById', request('accepted', 10000, { status: 'driver_selected', tripId: 'trip' }), 'accepted');
+  await ctx.put('getTripRequestById', request('accepted', 10000, { status: 'driver_selected', tripId: 'trip', departureDateMax: new Date(NOW).toISOString() }), 'accepted');
   ctx.store.dispatch(ctx.api.util.updateQueryData('getTripRequestById', 'edited', draft => {
     draft.departureDateMax = request('edited', 60000).departureDateMax;
   }));

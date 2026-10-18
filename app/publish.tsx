@@ -34,14 +34,12 @@ export default function PublishScreen() {
     <FormScreen style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => model.router.back()} style={styles.closeButton}>
+        <TouchableOpacity onPress={() => model.router.back()} style={styles.closeButton}
+          accessibilityRole="button" accessibilityLabel="Fermer la publication">
           <Ionicons name="close" size={28} color={Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Publier un trajet</Text>
-          <Text style={styles.headerSubtitle}>
-            Étape {model.navigation.getStepNumber()}/5
-          </Text>
+          <Text style={styles.headerTitle}>Proposer un trajet</Text>
         </View>
       </View>
 
@@ -166,9 +164,12 @@ export default function PublishScreen() {
         {/* Étape 4: Places & Prix */}
         {model.step === 'pricing' && (
           <PublishPricingStep
+            acceptedPaymentModes={model.form.acceptedPaymentModes}
+            setAcceptedPaymentModes={model.form.setAcceptedPaymentModes}
             stepEntering={model.stepEntering}
             setSeats={model.form.setSeats}
             seats={model.form.seats}
+            vehicleType={model.selectedVehicleType}
             isFreeTrip={model.form.isFreeTrip}
             price={model.form.price}
             setPrice={model.form.setPrice}
@@ -177,15 +178,13 @@ export default function PublishScreen() {
             setRequiresPassengerKyc={model.form.setRequiresPassengerKyc}
             description={model.form.description}
             setDescription={model.form.setDescription}
-            insets={model.insets}
-            goToStep={model.navigation.goToStep}
-            handleNextStep={model.navigation.handleNextStep}
           />
         )}
 
         {/* Étape 5: Confirmation */}
         {model.step === 'confirm' && (
           <PublishConfirmationStep
+            acceptedPaymentModes={model.form.acceptedPaymentModes}
             stepEntering={model.stepEntering}
             publicationSuccess={model.publicationSuccess}
             routePreviewRegion={model.route.routePreviewRegion}
@@ -337,5 +336,3 @@ export default function PublishScreen() {
     </FormScreen>
   );
 }
-
-

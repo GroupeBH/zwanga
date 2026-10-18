@@ -16,9 +16,15 @@ import { ServerTrip } from './serverTypes';
 import type { InterruptionFareQuote, RecurringTripTemplate, Trip, TripInterruptionReason } from '../../../types';
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import type { BaseEndpointBuilder } from '../types';
+import { mapActivityTrip, type ActivityTrip, type ServerActivityTrip } from './activityTripMapper';
 
 export function buildGetTripsEndpoints(builder: BaseEndpointBuilder) {
   return {
+    getMyActivityTrips: builder.query<ActivityTrip[], void>({
+      query: () => ({ url: '/trips/my-trips', params: { scope: 'activity' } }),
+      transformResponse: (response: ServerActivityTrip[]) => response.map(mapActivityTrip),
+      providesTags: result => [...(result ?? []).map(({ id }) => ({ type: 'MyTrips' as const, id })), myTripsListTag],
+    }),
 // Rechercher des trajets avec filtres
     getTrips: builder.query<Trip[], TripSearchParams>({
       query: (params: TripSearchParams) => ({
@@ -141,6 +147,11 @@ resumeRecurringTrip: builder.mutation<RecurringTripTemplate, string>({
       ],
     }),
 // Mettre à jour un trajet existant
+    reprogramTrip: builder.mutation<Trip, { id: string; updates: UpdateTripRequest }>({
+      query: ({ id, updates }) => ({ url: `/trips/${id}/reprogram`, method: 'POST', body: updates, timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
+      invalidatesTags: [tripListTag, myTripsListTag],
+    }),
     updateTrip: builder.mutation<Trip, { id: string; updates: UpdateTripRequest }>({
       query: ({ id, updates }: { id: string; updates: UpdateTripRequest }) => ({
         url: `/trips/${id}`,

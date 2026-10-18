@@ -1,6 +1,9 @@
 import { baseApi } from './baseApi';
 import type { Conversation, Message } from '../../types';
 import type { BaseEndpointBuilder } from './types';
+import { buildMessagePages } from './messages/pages';
+import { CONVERSATION_PAGE_SIZE, MAX_LIST_PAGES } from './boundedListPages';
+import { forgetConversation } from '../slices/messagesSlice';
 
 type PaginatedResponse<T> = {
   data: T[];
@@ -49,15 +52,19 @@ type DeleteConversationPayload = {
 
 export const messageApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
+    ...buildMessagePages(builder),
     listConversationPages: builder.infiniteQuery<PaginatedResponse<Conversation>, void, number>({
       keepUnusedDataFor: 30,
       infiniteQueryOptions: {
         initialPageParam: 1,
+        maxPages: MAX_LIST_PAGES,
+        refetchCachedPages: false,
+        getPreviousPageParam: (_page, _pages, page) => page > 1 ? page - 1 : undefined,
         getNextPageParam: (lastPage, _pages, page) =>
           lastPage.data.length > 0 && page * lastPage.meta.limit < lastPage.meta.total
             ? page + 1 : undefined,
       },
-      query: ({ pageParam }) => ({ url: '/conversations', params: { page: pageParam, limit: 50 } }),
+      query: ({ pageParam }) => ({ url: '/conversations', params: { page: pageParam, limit: CONVERSATION_PAGE_SIZE } }),
       providesTags: (result) => [
         'Conversation',
         ...(result?.pages.flatMap((page) => page.data.map(({ id }) => ({ type: 'Conversation' as const, id }))) ?? []),
@@ -108,6 +115,10 @@ export const messageApi = baseApi.injectEndpoints({
         body: payload,
       }),
       invalidatesTags: ['Conversation'],
+    }),
+    resolveDirectConversation: builder.mutation<Conversation, string>({
+      query: userId => ({ url: '/conversations/direct', method: 'POST', body: { userId } }),
+      invalidatesTags: result => result ? ['Conversation'] : [],
     }),
 
     markConversationAsRead: builder.mutation<{ message: string }, string>({
@@ -180,6 +191,15 @@ export const messageApi = baseApi.injectEndpoints({
     }),
 
     deleteConversation: builder.mutation<{ message: string }, DeleteConversationPayload>({
+      async onQueryStarted({ conversationId }, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          dispatch(forgetConversation(conversationId));
+          dispatch(messageApi.util.updateQueryData('listConversationPages', undefined, draft => {
+            for (const page of draft.pages) page.data = page.data.filter(row => row.id !== conversationId);
+          }));
+        } catch { /* Keep the list unchanged until deletion has been confirmed. */ }
+      },
       query: ({ conversationId }: DeleteConversationPayload) => ({
         url: `/conversations/${conversationId}`,
         method: 'DELETE',
@@ -190,6 +210,7 @@ export const messageApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetConversationMessagePagesInfiniteQuery,
   useListConversationPagesInfiniteQuery,
   useListConversationsQuery,
   useLazyListConversationsQuery,
@@ -197,6 +218,7 @@ export const {
   useGetConversationMessagesQuery,
   useSendConversationMessageMutation,
   useCreateConversationMutation,
+  useResolveDirectConversationMutation,
   useMarkConversationAsReadMutation,
   useAddParticipantsMutation,
   useRemoveParticipantMutation,

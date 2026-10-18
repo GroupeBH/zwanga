@@ -83,6 +83,17 @@ export const styles = StyleSheet.create({
     fontWeight: FontWeights.semibold,
     marginTop: Spacing.xs,
   },
+  cashSection: {
+    backgroundColor: Colors.white,
+    borderBottomColor: Colors.gray[200],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    padding: Spacing.xl,
+  },
+  cashAmount: {
+    color: Colors.gray[800], fontSize: FontSizes.xxl,
+    fontWeight: FontWeights.bold, marginVertical: Spacing.xs,
+  },
+  cashLabel: { color: Colors.gray[700], fontSize: FontSizes.xs, fontWeight: FontWeights.semibold },
   section: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl },
   sectionHeading: {
     alignItems: 'center',
@@ -141,6 +152,7 @@ export const styles = StyleSheet.create({
   rowTitle: { color: Colors.gray[900], fontSize: FontSizes.sm, fontWeight: FontWeights.semibold },
   rowMeta: { color: Colors.gray[600], fontSize: FontSizes.xs, lineHeight: 17, marginTop: 3 },
   earningAmount: { color: Colors.successDark, fontSize: FontSizes.sm, fontWeight: FontWeights.bold },
+  cancelledAmount: { color: Colors.gray[600], textDecorationLine: 'line-through' },
   emptyState: { alignItems: 'center', paddingHorizontal: Spacing.xl, paddingVertical: 56 },
   emptyTitle: {
     color: Colors.gray[800],

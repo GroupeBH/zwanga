@@ -1,15 +1,24 @@
+import { AppUpdateCoordinator } from './AppUpdateCoordinator';
 import { DialogProvider } from '@/components/ui/DialogProvider';
 import { RideOutboxCoordinator } from '@/components/RideOutboxCoordinator';
 import { ActiveRideLocationCoordinator } from '@/components/ActiveRideLocationCoordinator';
+import { AccountActivityCoordinator } from '@/components/AccountActivityCoordinator';
+import { AcceptedRequestContactCoordinator } from '@/components/AcceptedRequestContactCoordinator';
+import { ActiveRideResumeCoordinator } from '@/components/ActiveRideResumeCoordinator';
+import { DriverPresenceCoordinator } from '@/components/DriverPresenceCoordinator';
+import { StoreReviewCoordinator } from '@/components/StoreReviewCoordinator';
 import { DriverPaymentNoticeCoordinator } from '@/components/DriverPaymentNoticeCoordinator';
 import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
 import { store } from '@/store';
+import { clearAuthFlowDraft, restoreAuthFlowDraft } from '@/services/authFlowDraft';
+import { selectHasAuthenticatedSession } from '@/store/selectors';
 import { initializeAuth } from '@/store/slices/authSlice';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useAuthBootstrap } from '@/hooks/auth/useAuthBootstrap';
+import React, { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
@@ -19,46 +28,63 @@ interface ReduxProviderProps {
   children: React.ReactNode;
 }
 
+const restoreSession = async () => {
+  await store.dispatch(initializeAuth()).unwrap();
+  if (selectHasAuthenticatedSession(store.getState())) {
+    // An optional draft must never block a valid session from reaching Home.
+    void clearAuthFlowDraft().catch(() => {});
+  } else {
+    await restoreAuthFlowDraft();
+  }
+};
+
 export function ReduxProvider({ children }: ReduxProviderProps) {
-  const [isLoading, setIsLoading] = useState(true);
-
   useEffect(() => {
-    // Initialiser l'authentification depuis SecureStore au demarrage
-    const initializeStore = async () => {
-      try {
-        // Initialiser l'auth (charge les tokens depuis SecureStore)
-        await store.dispatch(initializeAuth());
-      } catch (error) {
-        console.error("Erreur lors de l'initialisation du store:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    initializeStore();
+    let previous = selectHasAuthenticatedSession(store.getState());
+    return store.subscribe(() => {
+      const authenticated = selectHasAuthenticatedSession(store.getState());
+      if (authenticated && !previous) void clearAuthFlowDraft().catch(() => {});
+      previous = authenticated;
+    });
   }, []);
+  const { status, retry } = useAuthBootstrap(restoreSession);
 
   return (
     <Provider store={store}>
       <View style={styles.appContainer}>
-        {isLoading ? (
+        {status !== 'ready' ? (
           // Ecran de chargement pendant la restauration du state
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.white} />
+            <Text style={styles.brand}>ZWANGA</Text>
+            {status === 'error' ? <>
+              <Text style={styles.error} accessibilityRole="alert">
+                L’ouverture prend trop de temps ou a échoué. Vérifiez votre connexion et déverrouillez votre téléphone, puis réessayez.
+              </Text>
+              <TouchableOpacity style={styles.retry} accessibilityRole="button" onPress={retry}>
+                <Text style={styles.retryText}>Réessayer</Text>
+              </TouchableOpacity>
+            </> : <ActivityIndicator size="large" color={Colors.white} accessibilityLabel="Restauration de votre session" />}
           </View>
         ) : (
           <View style={styles.appContent}>
             <DialogProvider>
               <ReferralAttributionHandler />
+              <AccountActivityCoordinator />
+              <DriverPresenceCoordinator />
+              <AppUpdateCoordinator />
               <ActiveRideLocationCoordinator />
               <RideOutboxCoordinator />
               <NotificationHandler />
               <AuthGuard>
-                <PassengerArrivalPaymentCoordinator />
-                <DriverPaymentNoticeCoordinator />
-                <TutorialProvider>
-                  <IdentityProvider>{children}</IdentityProvider>
-                </TutorialProvider>
+                <ActiveRideResumeCoordinator>
+                  <AcceptedRequestContactCoordinator />
+                  <PassengerArrivalPaymentCoordinator />
+                  <DriverPaymentNoticeCoordinator />
+                  <StoreReviewCoordinator />
+                  <TutorialProvider>
+                    <IdentityProvider>{children}</IdentityProvider>
+                  </TutorialProvider>
+                </ActiveRideResumeCoordinator>
               </AuthGuard>
             </DialogProvider>
           </View>
@@ -77,7 +103,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primary,
+    padding: 24,
+    gap: 24,
   },
+  brand: { fontSize: 30, fontWeight: '800', color: Colors.white },
+  error: { maxWidth: 360, fontSize: 16, lineHeight: 24, textAlign: 'center', color: Colors.white },
+  retry: { minHeight: 48, paddingHorizontal: 28, justifyContent: 'center', borderRadius: 14, backgroundColor: Colors.white },
+  retryText: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
   appContent: {
     flex: 1,
   },

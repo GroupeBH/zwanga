@@ -21,6 +21,7 @@ import {
 } from '@/utils/errorHelpers';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import type { useProfileData } from './useProfileData';
 
 type Props = Pick<ReturnType<typeof useProfileData>,
@@ -87,7 +88,7 @@ export function useProfileVehicles({
     setVehicleBrand(vehicle.brand);
     setVehicleModel(vehicle.model);
     setVehicleColor(vehicle.color);
-    setVehiclePlate(vehicle.licensePlate);
+    setVehiclePlate(normalizeVehiclePlate(vehicle.licensePlate));
     setVehicleModalVisible(true);
   }, []);
 
@@ -117,7 +118,7 @@ export function useProfileVehicles({
   }, []);
 
   const handleVehiclePlateChange = useCallback((text: string) => {
-    setVehiclePlate(text);
+    setVehiclePlate(normalizeVehiclePlate(text));
     setVehicleFormError(null);
   }, []);
 
@@ -148,6 +149,10 @@ export function useProfileVehicles({
       setVehicleFormError('Choisissez le type et renseignez la marque, le modèle, la couleur et la plaque.');
       return;
     }
+    if (!isValidVehiclePlate(vehiclePlate)) {
+      setVehicleFormError(VEHICLE_PLATE_FORMAT_MESSAGE);
+      return;
+    }
 
     setVehicleFormError(null);
     const isEditing = editingVehicleId !== null;
@@ -158,7 +163,7 @@ export function useProfileVehicles({
         brand: vehicleBrand.trim(),
         model: vehicleModel.trim(),
         color: vehicleColor.trim(),
-        licensePlate: vehiclePlate.trim(),
+        licensePlate: normalizeVehiclePlate(vehiclePlate),
       };
 
       if (editingVehicleId) {
@@ -225,12 +230,12 @@ export function useProfileVehicles({
     (vehicle: Vehicle) => {
       showDialog({
         variant: 'warning',
-        title: 'Supprimer le véhicule',
-        message: `Êtes-vous sûr de vouloir supprimer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) ? Cette action est irréversible.`,
+        title: 'Retirer le véhicule',
+        message: `Retirer ${vehicle.brand} ${vehicle.model} (${vehicle.licensePlate}) de votre profil ? Il ne pourra plus être choisi pour de nouveaux trajets, mais restera dans l'historique. Un trajet en cours ou à venir doit d'abord être terminé, modifié ou annulé.`,
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
-            label: 'Supprimer',
+            label: 'Retirer',
             variant: 'primary',
             onPress: async () => {
               try {
@@ -253,16 +258,16 @@ export function useProfileVehicles({
                 void Promise.allSettled([refetchVehicles(), refetchProfile()]);
                 showDialog({
                   variant: 'success',
-                  title: 'Véhicule supprimé',
-                  message: 'Le véhicule a été supprimé avec succès.',
+                  title: 'Véhicule retiré',
+                  message: 'Le véhicule n’est plus actif. Les anciens trajets restent dans votre historique.',
                 });
               } catch (error: any) {
-                const message = getApiErrorMessage(error, 'Impossible de supprimer le véhicule pour le moment.');
+                const message = getApiErrorMessage(error, 'Impossible de retirer le véhicule pour le moment.');
                 const isDriverError = isDriverRequiredError(error);
 
                 showDialog({
                   variant: 'danger',
-                  title: 'Erreur',
+                  title: 'Véhicule non retiré',
                   message,
                   actions: isDriverError
                     ? [{ label: 'Fermer', variant: 'ghost' }, createBecomeDriverAction(router)]

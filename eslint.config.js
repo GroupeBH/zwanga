@@ -7,4 +7,9 @@ module.exports = defineConfig([
   {
     ignores: ['dist/**', '.expo/**', 'docs/backend-examples/**'],
   },
+  {
+    files: ['tests/**/*.{js,cjs}'],
+    // The regression suite runs in Node, not in the React Native runtime.
+    languageOptions: { globals: { Buffer: 'readonly', __dirname: 'readonly' } },
+  },
 ]);

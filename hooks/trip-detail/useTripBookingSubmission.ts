@@ -4,13 +4,13 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import { useCancelBookingMutation, useCreateBookingMutation } from '@/store/api/bookingApi';
 import { useGetKycStatusQuery } from '@/store/api/userApi';
-import type { Booking, TripPaymentMode } from '@/types';
+import type { Booking, Trip, TripPaymentMode } from '@/types';
 import { getApiErrorMessage, isPassengerKycRequiredError, isExtraSeatsIdentityError } from '@/utils/errorHelpers';
 import { getPassengerSeatValidation } from '@/utils/passengerSeats';
 import { isPointOnRoute } from '@/utils/routeHelpers';
 import { isCoordinateInKinshasaBounds, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import React from 'react';
-import type { Trip } from '@/types';
+import { useLazyTripPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 
 interface Params {
   isBooking: boolean;
@@ -79,11 +79,26 @@ export function useTripBookingSubmission({
   cancelBookingMutation,
   showDialog,
 }: Params) {
+  const [getPaymentOptions] = useLazyTripPaymentOptionsQuery();
+  const confirming = React.useRef(false);
   const handleConfirmBooking = async () => {
-    if (isBooking || !trip || isValidatingDestination) {
+    if (confirming.current || isBooking || !trip || isValidatingDestination) {
       return;
     }
+    confirming.current = true;
+    try {
     const seatsValue = parseInt(bookingSeats, 10);
+    if (estimatedTotal > 0) {
+      try {
+        const options = await getPaymentOptions({ tripId: trip.id, numberOfSeats: seatsValue }, false).unwrap();
+        if (!options.availablePaymentModes.includes(bookingPaymentMode)) {
+          setBookingModalError(options.cashUnavailableReason ?? 'Choisissez un mode de paiement accepté et disponible.');
+          setBookingStep(1); return;
+        }
+      } catch {
+        setBookingModalError('Impossible de vérifier les modes de paiement. Réessayez.'); return;
+      }
+    }
     const seatError = getPassengerSeatValidation(seatsValue, isIdentityVerified, seatLimit);
     if (seatError) {
       setBookingModalError(seatError.message);
@@ -278,6 +293,9 @@ export function useTripBookingSubmission({
       setBookingModalError(
         getApiErrorMessage(error, 'Impossible de créer la réservation pour le moment.'),
       );
+    }
+    } finally {
+      confirming.current = false;
     }
   };
 

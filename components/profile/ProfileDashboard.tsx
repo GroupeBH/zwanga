@@ -1,5 +1,6 @@
 import { Colors } from '@/constants/styles';
 import { ProfileIdentitySection } from './ProfileIdentitySection';
+import { ProfileDriverJourney } from './ProfileDriverJourney';
 import { styles } from '@/features/profile/ProfileDashboard.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
 import Animated, { FadeInDown } from '@/utils/reanimated';
@@ -14,10 +15,13 @@ import {
 
 type Props = Pick<ReturnType<typeof useProfileController>,
   | 'driverStatusItems'
+  | 'profileState'
+  | 'handleStartDriverOnboarding'
   | 'driverTripsCount'
   | 'handleOpenKycModal'
   | 'isDriver'
   | 'isKycApproved'
+  | 'isIdentityStatusKnown'
   | 'isKycPending'
   | 'isKycBusy'
   | 'kycLoading'
@@ -30,10 +34,13 @@ type Props = Pick<ReturnType<typeof useProfileController>,
 
 export function ProfileDashboard({
   driverStatusItems,
+  profileState,
+  handleStartDriverOnboarding,
   driverTripsCount,
   handleOpenKycModal,
   isDriver,
   isKycApproved,
+  isIdentityStatusKnown,
   isKycPending,
   isKycBusy,
   kycLoading,
@@ -43,7 +50,11 @@ export function ProfileDashboard({
   priorityCta,
   quickActionItems,
 }: Props) {
+  const showJourney = profileState && profileState.driver.nextAction !== 'none';
+  const showPassengerIdentity = profileState?.driver.status === 'not_requested';
   return (<Animated.View entering={FadeInDown.delay(120)} style={styles.profileOverviewPanel}>
+    {showJourney ? <ProfileDriverJourney state={profileState} busy={isPriorityCtaBusy}
+      onContinue={handleStartDriverOnboarding} /> : (
     <View style={[styles.profileOverviewHeader, !isDriver && styles.passengerOverviewHeader]}>
       <View style={styles.profileOverviewTitleBlock}>
         <Text style={styles.profileOverviewTitle}>Tableau de bord</Text>
@@ -69,15 +80,16 @@ export function ProfileDashboard({
           </>
         )}
       </TouchableOpacity>
-    </View>
+    </View>)}
 
-    <ProfileIdentitySection
+    {showPassengerIdentity && <ProfileIdentitySection
+      known={isIdentityStatusKnown}
       approved={isKycApproved}
       pending={isKycPending}
       rejected={isKycRejected}
-      busy={isKycBusy || kycLoading}
+      busy={isKycBusy || kycLoading || isPriorityCtaBusy}
       onPress={handleOpenKycModal}
-    />
+    />}
 
     {driverStatusItems.length > 0 && <View style={styles.driverStatusGrid}>
       {driverStatusItems.map((item) => (
@@ -93,7 +105,7 @@ export function ProfileDashboard({
       ))}
     </View>}
 
-    {isKycRejected && kycStatus?.rejectionReason ? (
+    {showPassengerIdentity && isKycRejected && kycStatus?.rejectionReason ? (
       <TouchableOpacity activeOpacity={0.85} onPress={handleOpenKycModal} style={styles.profileAlert}>
         <Ionicons name="alert-circle-outline" size={18} color={Colors.danger} />
         <Text numberOfLines={2} style={styles.profileAlertText}>

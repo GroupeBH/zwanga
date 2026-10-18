@@ -7,6 +7,7 @@ import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { trackingSocket } from '@/services/trackingSocket';
 import { useDriverLocationFallback } from '@/hooks/passenger-navigation/useDriverLocationFallback';
 import { normalizeAmount } from '@/features/arrival-payment/paymentModel';
+import { useSyncArrivedPaymentBooking } from './useSyncArrivedPaymentBooking';
 
 /** Uses the shared tracking socket / RTK cache: never starts another GPS watcher. */
 export function useNearArrivalPayment(bookings: Booking[], passengerId: string | undefined, enabled: boolean, storedState: StoredPaymentState) {
@@ -24,6 +25,7 @@ export function useNearArrivalPayment(bookings: Booking[], passengerId: string |
     Number(Boolean(b.pickedUp)) - Number(Boolean(a.pickedUp)))[0] ?? null, [bookings, passengerId, storedState, nearKey]);
 
   const { currentData: liveBooking, refetch } = useGetBookingByIdQuery(candidate?.id ?? '', { skip: !enabled || !candidate });
+  useSyncArrivedPaymentBooking(liveBooking, enabled);
   const { currentData: trip } = useGetTripByIdQuery(candidate?.tripId ?? '', { skip: !enabled || !candidate });
   const booking = useMemo(() => candidate ? {
     ...candidate, ...(liveBooking?.id === candidate.id ? liveBooking : {}),

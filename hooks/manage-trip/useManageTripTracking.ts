@@ -3,8 +3,7 @@ import type { DialogOptions } from '@/features/dialogs/dialogTypes';
 import { ManageAutoProgressEvent, MANAGE_AUTO_PROGRESS_PRIORITY } from '../../features/manage-trip/manageTripModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackingSocket } from '@/services/trackingSocket';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo } from 'react';
@@ -17,9 +16,9 @@ interface Params {
   showDialogRef: React.RefObject<(options: DialogOptions) => void>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   refetchTripRef: React.RefObject<(() => unknown) | null>;
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
+  refetchTrip: DisplayRefetch<Trip>;
   refetchBookingsRef: React.RefObject<(() => unknown) | null>;
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchBookings: DisplayRefetch<Booking[]>;
   presentedManageAutoProgressKeysRef: React.RefObject<Set<string>>;
   highestManageAutoProgressPriorityRef: React.RefObject<Map<string, number>>;
   lastManageDriverLocationSentAtRef: React.RefObject<number>;
@@ -101,7 +100,7 @@ export function useManageTripTracking({
       }
 
       payload.events
-        .filter((event) => event.type !== 'driver_near_pickup')
+        .slice()
         .sort(
           (first, second) =>
             MANAGE_AUTO_PROGRESS_PRIORITY[first.type] -
@@ -117,10 +116,13 @@ export function useManageTripTracking({
             const nextPriority = MANAGE_AUTO_PROGRESS_PRIORITY[event.type];
             const highestPriorityForBooking =
               highestManageAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
-            if (highestPriorityForBooking > nextPriority) {
+            const approachAfterReadiness = event.type === 'driver_near_pickup' &&
+              highestPriorityForBooking <= MANAGE_AUTO_PROGRESS_PRIORITY.passenger_ready_pickup &&
+              !presentedManageAutoProgressKeysRef.current.has(`${tripId}:driver_arrived_pickup:${event.bookingId}`);
+            if (highestPriorityForBooking > nextPriority && !approachAfterReadiness) {
               return;
             }
-            highestManageAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
+            highestManageAutoProgressPriorityRef.current.set(event.bookingId, Math.max(highestPriorityForBooking, nextPriority));
           }
 
           const booking = bookingsRef.current?.find((item) => item.id === event.bookingId);
@@ -147,7 +149,7 @@ export function useManageTripTracking({
             driver_near_pickup: {
               variant: 'info',
               icon: 'car-sport',
-              title: 'Conducteur proche',
+              title: 'Prise en charge à proximité',
               message: `Vous approchez du point de récupération de ${passengerName}.${distanceText}`,
             },
             driver_arrived_pickup: {

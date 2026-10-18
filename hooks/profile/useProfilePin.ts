@@ -1,19 +1,18 @@
 import { useDialog } from '@/components/ui/DialogProvider';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import {
-  useSendPhoneVerificationOtpMutation,
   useUpdatePinMutation,
-  useUpdatePinWithOtpMutation,
-  useVerifyPhoneOtpMutation
 } from '@/store/api/userApi';
+import { emptyPinResetOtp, PIN_RESET_OTP_LENGTH, usePinResetFlow } from '@/hooks/auth/usePinResetFlow';
+import { clearTokens } from '@/services/tokenStorage';
+import { useAppDispatch } from '@/store/hooks';
+import { logout } from '@/store/slices/authSlice';
+import { useRouter } from 'expo-router';
 import {
   getApiErrorMessage
 } from '@/utils/errorHelpers';
 import { useRef, useState } from 'react';
-import {
-  NativeSyntheticEvent,
-  TextInput,
-  TextInputKeyPressEventData
-} from 'react-native';
+import { TextInput } from 'react-native';
 import type { useProfileData } from './useProfileData';
 
 type Props = Pick<ReturnType<typeof useProfileData>,
@@ -24,6 +23,8 @@ export function useProfilePin({
   currentUser,
 }: Props) {
   const { showDialog } = useDialog();
+  const dispatch = useAppDispatch();
+  const router = useRouter();
 
   const [pinModalVisible, setPinModalVisible] = useState(false);
 
@@ -33,7 +34,7 @@ export function useProfilePin({
 
   const [oldPin, setOldPin] = useState('');
 
-  const [otpCode, setOtpCode] = useState(['', '', '', '', '']);
+  const [otpCode, setOtpCode] = useState(emptyPinResetOtp);
 
   const [newPin, setNewPin] = useState('');
 
@@ -51,18 +52,15 @@ export function useProfilePin({
 
   const [updatePin, { isLoading: isUpdatingPin }] = useUpdatePinMutation();
 
-  const [updatePinWithOtp, { isLoading: isUpdatingPinWithOtp }] = useUpdatePinWithOtpMutation();
-
-  const [sendPhoneVerificationOtp] = useSendPhoneVerificationOtpMutation();
-
-  const [verifyPhoneOtp] = useVerifyPhoneOtpMutation();
+  const pinReset = usePinResetFlow(currentUser?.phone || '', pinModalVisible && forgotPinMode);
+  const isUpdatingPinWithOtp = pinReset.isBusy;
 
   const handleOpenPinModal = () => {
     setPinModalVisible(true);
     setPinStep('oldPin');
     setForgotPinMode(false);
     setOldPin('');
-    setOtpCode(['', '', '', '', '']);
+    setOtpCode(emptyPinResetOtp());
     setNewPin('');
     setNewPinConfirm('');
     // Focus sur le champ de l'ancien PIN
@@ -72,22 +70,22 @@ export function useProfilePin({
   };
 
   const handleForgotPin = async () => {
+    if (pinReset.isBusy || isUpdatingPin) return;
     setForgotPinMode(true);
     setPinStep('otp');
     setOldPin('');
-    setOtpCode(['', '', '', '', '']);
+    setOtpCode(emptyPinResetOtp());
+    setNewPin('');
+    setNewPinConfirm('');
 
     // Envoyer automatiquement l'OTP
     try {
       setIsSendingOtp(true);
-      await sendPhoneVerificationOtp({
-        phone: currentUser?.phone || '',
-        context: 'update',
-      }).unwrap();
+      if (!await pinReset.requestOtp()) return;
       showDialog({
         variant: 'success',
-        title: 'Code envoyé',
-        message: 'Un code de vérification a été envoyé à votre numéro de téléphone.',
+        title: 'Demande envoyée',
+        message: otpDeliveryCopy.pinResetRequested,
       });
       setTimeout(() => {
         otpInputRefs.current[0]?.focus();
@@ -103,58 +101,20 @@ export function useProfilePin({
     }
   };
 
-  const handleOtpInputChange = (value: string, index: number) => {
-    const sanitized = value.replace(/\D/g, '');
-    if (sanitized.length > 1) {
-      const digits = sanitized.split('');
-      const updated = [...otpCode];
-      let cursor = index;
-      digits.forEach((digit) => {
-        if (cursor <= updated.length - 1) updated[cursor] = digit;
-        cursor += 1;
-      });
-      setOtpCode(updated);
-      if (cursor <= updated.length - 1) otpInputRefs.current[cursor]?.focus();
-      else otpInputRefs.current[updated.length - 1]?.blur();
-      return;
-    }
-    const nextCode = [...otpCode];
-    nextCode[index] = sanitized;
-    setOtpCode(nextCode);
-    if (sanitized && index < nextCode.length - 1) otpInputRefs.current[index + 1]?.focus();
-  };
-
-  const handleOtpKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>, index: number) => {
-    if (event.nativeEvent.key === 'Backspace') {
-      if (otpCode[index]) {
-        const updated = [...otpCode];
-        updated[index] = '';
-        setOtpCode(updated);
-      } else if (index > 0) {
-        otpInputRefs.current[index - 1]?.focus();
-        const updated = [...otpCode];
-        updated[index - 1] = '';
-        setOtpCode(updated);
-      }
-    }
-  };
-
   const handleVerifyOtpForPinChange = async () => {
     const code = otpCode.join('');
-    if (code.length !== 5) {
+    if (code.length !== PIN_RESET_OTP_LENGTH) {
       showDialog({
         variant: 'danger',
         title: 'Code incomplet',
-        message: 'Veuillez entrer le code complet (5 chiffres)',
+        message: 'Veuillez entrer le code complet (6 chiffres)',
       });
       return;
     }
 
     try {
-      await verifyPhoneOtp({
-        phone: currentUser?.phone || '',
-        otp: code,
-      }).unwrap();
+      if (!await pinReset.verifyOtp(code)) return;
+      setOtpCode(emptyPinResetOtp());
       setPinStep('newPin');
       setTimeout(() => {
         pinInputRef.current?.focus();
@@ -200,6 +160,7 @@ export function useProfilePin({
   };
 
   const handleUpdatePin = async () => {
+    if (isUpdatingPin || pinReset.isBusy) return;
     if (newPin.length !== 4) {
       showDialog({
         variant: 'danger',
@@ -240,16 +201,18 @@ export function useProfilePin({
 
     try {
       if (forgotPinMode) {
-        // Utiliser updatePinWithOtp si l'utilisateur a oublié son PIN
-        // Note: L'OTP doit être vérifié avant d'appeler cette fonction
-        await updatePinWithOtp({
-          newPin: newPin,
-        }).unwrap();
+        if (!await pinReset.confirmPin(newPin)) return;
       } else {
-        // Utiliser updatePin (l'ancien PIN est vérifié côté serveur via l'authentification)
-        await updatePin({
-          newPin: newPin,
-        }).unwrap();
+        if (oldPin.length !== 4) {
+          setPinStep('oldPin');
+          return;
+        }
+        const request = updatePin({ oldPin, newPin });
+        try {
+          await request.unwrap();
+        } finally {
+          request.reset();
+        }
       }
 
       setPinModalVisible(false);
@@ -258,26 +221,35 @@ export function useProfilePin({
       setOldPin('');
       setNewPin('');
       setNewPinConfirm('');
-      setOtpCode(['', '', '', '', '']);
+      setOtpCode(emptyPinResetOtp());
+
+      // The backend revoked refresh tokens. Clear this device's session too.
+      await clearTokens();
+      dispatch(logout());
+      router.replace('/auth?mode=login');
 
       showDialog({
         variant: 'success',
         title: 'PIN modifié',
-        message: 'Votre code PIN a été modifié avec succès.',
+        message: 'Votre code PIN a été modifié. Connectez-vous avec votre nouveau PIN.',
       });
     } catch (error: any) {
       showDialog({
         variant: 'danger',
         title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de modifier le PIN pour le moment.'),
+        message: getApiErrorMessage(error, forgotPinMode
+          ? otpDeliveryCopy.resetNotConfirmed
+          : 'Impossible de modifier le PIN pour le moment.'),
       });
-      // En cas d'erreur, réinitialiser et revenir à l'étape de l'ancien PIN
+      // A reset proof may already be consumed, including after a timeout.
       setOldPin('');
       setNewPin('');
       setNewPinConfirm('');
-      setPinStep('oldPin');
+      setOtpCode(emptyPinResetOtp());
+      setPinStep(forgotPinMode ? 'otp' : 'oldPin');
       setTimeout(() => {
-        oldPinInputRef.current?.focus();
+        if (forgotPinMode) otpInputRefs.current[0]?.focus();
+        else oldPinInputRef.current?.focus();
       }, 100);
     }
   };
@@ -287,8 +259,7 @@ export function useProfilePin({
     handleNewPinConfirmChange,
     handleOldPinChange,
     handleOpenPinModal,
-    handleOtpInputChange,
-    handleOtpKeyPress,
+    setOtpCode,
     handleUpdatePin,
     handleVerifyOldPin,
     handleVerifyOtpForPinChange,

@@ -2,6 +2,8 @@ import { useDriverNavigationRefs } from './useDriverNavigationRefs';
 import { useDriverNavigationData } from './useDriverNavigationData';
 import { useDriverNavigationMapState } from './useDriverNavigationMapState';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 interface Params {
   data: ReturnType<typeof useDriverNavigationData>;
@@ -14,30 +16,31 @@ export function useDriverMapPerspective({
   mapState,
   refs,
 }: Params) {
+  const { isTripOngoing } = data;
+  const { isNativeMapReady, isLoadingRoute, mapRef, currentLocation, heading, runMapCommand } = mapState;
+  const { hasEnabled3DRef, currentLocationRef } = refs;
   useEffect(() => {
-    if (!data.isTripOngoing || !mapState.isNativeMapReady) {
-      refs.hasEnabled3DRef.current = false;
+    if (!isTripOngoing || !isNativeMapReady) {
+      hasEnabled3DRef.current = false;
       return;
     }
 
-    if (refs.hasEnabled3DRef.current || !mapState.mapRef.current || !refs.currentLocationRef.current) {
+    if (hasEnabled3DRef.current || isLoadingRoute || !mapRef.current || !currentLocationRef.current) {
       return;
     }
 
-    const location = refs.currentLocationRef.current;
-    refs.hasEnabled3DRef.current = mapState.runMapCommand((map) => map.animateCamera(
-      {
-        center: {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        },
-        pitch: 60,
-        heading: mapState.heading,
-        zoom: 17,
-      },
-      { duration: 800 }
-    ));
-  }, [data.isTripOngoing, mapState.isNativeMapReady, mapState.currentLocation, mapState.heading, mapState.runMapCommand]);
+    const location = currentLocationRef.current;
+    const center = normalizeTripMapCoordinate(location.coords.latitude, location.coords.longitude);
+    if (!center) return;
+    hasEnabled3DRef.current = runMapCommand((map) => {
+      const camera = { center, pitch: Platform.OS === 'ios' ? 0 : 60,
+        heading: Number.isFinite(heading) ? heading : 0, zoom: 17 };
+      // One initial command, after route fitting. A flat iOS view also renders fewer distant tiles.
+      if (Platform.OS === 'ios') map.setCamera(camera);
+      else map.animateCamera(camera, { duration: 800 });
+    });
+  }, [isTripOngoing, isNativeMapReady, isLoadingRoute, mapRef, currentLocation,
+    heading, runMapCommand, hasEnabled3DRef, currentLocationRef]);
 
   return {
 

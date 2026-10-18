@@ -1,13 +1,15 @@
 import { styles } from '../features/screen-styles/components/OngoingTripBanner/index';
 import { getFloatingBannerBottomOffset } from '@/constants/navigation';
 import { Colors } from '@/constants/styles';
+import { sharedTripsOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
+import { selectOngoingParticipation } from '@/features/activity/tripParticipation';
 import {
   getCurrentTripInfo,
   startOngoingTripTracking,
   stopOngoingTripTracking,
 } from '@/services/ongoingTripNotification';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery } from '@/store/api/tripApi';
+import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { formatDateTime } from '@/utils/dateHelpers';
@@ -20,6 +22,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withSpring, withTim
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type OngoingTripBannerPosition = 'top' | 'bottom';
+const routeNameEmphasis = { fontWeight: '700' as const };
 
 interface OngoingTripBannerProps {
   position?: OngoingTripBannerPosition;
@@ -36,65 +39,21 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
   // Récupérer les trajets de l'utilisateur (comme conducteur)
   const { data: myTrips, isLoading: myTripsLoading } = useGetMyTripsQuery(undefined, {
+    ...sharedTripsOptions,
     skip: !user,
-    // Pas de polling : les trajets en cours changent rarement de statut
-    // RTK Query invalide automatiquement le cache via les tags après startTrip, updateTrip, etc.
-    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Récupérer les réservations de l'utilisateur (comme passager)
   const { data: myBookings, isLoading: myBookingsLoading } = useGetMyBookingsQuery(undefined, {
+    ...sharedBookingsOptions,
     skip: !user,
-    // Pas de polling : les réservations changent rarement de statut
-    // RTK Query invalide automatiquement le cache via les tags après acceptBooking, updateBookingStatus, etc.
-    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
   });
 
   // Trouver un trajet en cours
-  const ongoingTrip = useMemo(() => {
-    if (!user) return null;
-
-    // Chercher un trajet en cours comme conducteur
-    const driverOngoingTrip = myTrips?.find((trip) => trip.status === 'ongoing' && trip.driverId === user.id);
-    if (driverOngoingTrip) {
-      return {
-        trip: driverOngoingTrip,
-        role: 'driver' as const,
-        bookingId: null,
-      };
-    }
-
-    // Chercher un trajet en cours comme passager
-    const passengerOngoingBooking = myBookings?.find(
-      (booking) => {
-        if (booking.passengerId !== user.id) {
-          return false;
-        }
-        if (booking.status === 'completed') {
-          return false;
-        }
-        if (booking.status !== 'accepted') {
-          return false;
-        }
-        if (booking.trip?.status !== 'ongoing') {
-          return false;
-        }
-        if (booking.droppedOff === true || booking.droppedOffConfirmedByPassenger === true) {
-          return false;
-        }
-        return true;
-      }
-    );
-    if (passengerOngoingBooking?.trip) {
-      return {
-        trip: passengerOngoingBooking.trip,
-        role: 'passenger' as const,
-        bookingId: passengerOngoingBooking.id,
-      };
-    }
-
-    return null;
-  }, [myTrips, myBookings, user]);
+  const ongoingTrip = useMemo(
+    () => selectOngoingParticipation(user?.id, myTrips, myBookings),
+    [myTrips, myBookings, user?.id],
+  );
 
   // Ref pour suivre le trajet précédent
   const previousTripRef = useRef(getCurrentTripInfo());
@@ -256,14 +215,14 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
 
               <View style={styles.routeRow}>
                 <View style={styles.routeDot} />
-                <Text style={styles.routeText} numberOfLines={1}>
+                <Text style={[styles.routeText, routeNameEmphasis]} numberOfLines={1}>
                   {trip.departure.name}
                 </Text>
               </View>
 
               <View style={styles.routeRow}>
                 <Ionicons name="navigate" size={14} color={Colors.primary} style={styles.routeIcon} />
-                <Text style={styles.routeText} numberOfLines={1}>
+                <Text style={[styles.routeText, routeNameEmphasis]} numberOfLines={1}>
                   {trip.arrival.name}
                 </Text>
               </View>

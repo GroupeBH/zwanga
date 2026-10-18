@@ -1,5 +1,4 @@
 import {
-  DRIVER_PAYMENT_NOTICE_REFRESH_MS,
   DRIVER_PAYMENT_NOTICE_MAX_TRIPS,
   SeenDriverPaymentNotices,
   DriverPaymentNotice,
@@ -8,17 +7,14 @@ import {
   getPaymentModeLabel,
   isDriverUser,
   isTripEligibleForNotice,
-  buildPaymentNotice,
 } from '../features/driver-payments/paymentNoticeModel';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
-  Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,15 +23,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { bookingApi } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery } from '@/store/api/tripApi';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tripApi';
+import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
+import { sharedTripsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 
 export function DriverPaymentNoticeCoordinator() {
   const isAppActive = useAppIsActive();
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
@@ -44,16 +39,11 @@ export function DriverPaymentNoticeCoordinator() {
   const [isSeenLoaded, setIsSeenLoaded] = useState(false);
   const [activeNotice, setActiveNotice] = useState<DriverPaymentNotice | null>(null);
   const [isClosingForTripNavigation, setIsClosingForTripNavigation] = useState(false);
-  const seenNoticesRef = useRef<SeenDriverPaymentNotices>({});
   const pendingTripNavigationRef = useRef<string | null>(null);
-  const scanInFlightRef = useRef(false);
 
   const { data: myTrips = [] } = useGetMyTripsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated || !driverUser,
-    pollingInterval: DRIVER_PAYMENT_NOTICE_REFRESH_MS,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
   });
 
   const relevantTrips = useMemo(
@@ -64,11 +54,6 @@ export function DriverPaymentNoticeCoordinator() {
         .slice(0, DRIVER_PAYMENT_NOTICE_MAX_TRIPS),
     [myTrips],
   );
-  const relevantTripIdsKey = relevantTrips.map((trip) => trip.id).join('|');
-
-  useEffect(() => {
-    seenNoticesRef.current = seenNotices;
-  }, [seenNotices]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,10 +120,9 @@ export function DriverPaymentNoticeCoordinator() {
     if (!tripId) return;
 
     pendingTripNavigationRef.current = null;
-    InteractionManager.runAfterInteractions(() => {
-      navigateToTrip(tripId);
-      setIsClosingForTripNavigation(false);
-    });
+    // The in-app panel is already removed: no UIKit or interaction queue to await.
+    try { navigateToTrip(tripId); }
+    finally { setIsClosingForTripNavigation(false); }
   }, [navigateToTrip]);
 
   const openTrip = useCallback(() => {
@@ -146,17 +130,12 @@ export function DriverPaymentNoticeCoordinator() {
     markNoticeSeen(activeNotice);
     const tripId = activeNotice.tripId;
 
-    if (Platform.OS === 'ios') {
-      pendingTripNavigationRef.current = tripId;
-      setIsClosingForTripNavigation(true);
-    }
+    pendingTripNavigationRef.current = tripId;
+    setIsClosingForTripNavigation(true);
 
     setActiveNotice(null);
 
-    if (Platform.OS !== 'ios') {
-      navigateToTrip(tripId);
-    }
-  }, [activeNotice, markNoticeSeen, navigateToTrip]);
+  }, [activeNotice, markNoticeSeen]);
 
   useEffect(() => {
     if (
@@ -164,93 +143,31 @@ export function DriverPaymentNoticeCoordinator() {
       !driverUser ||
       !isSeenLoaded ||
       !isAppActive ||
-      !relevantTripIdsKey ||
       activeNotice ||
       isClosingForTripNavigation
     ) {
       return;
     }
 
-    let cancelled = false;
-
-    const scanPayments = async () => {
-      if (!isAppActive || scanInFlightRef.current || cancelled) return;
-      scanInFlightRef.current = true;
-
-      try {
-        const tripById = new Map(relevantTrips.map((trip) => [trip.id, trip]));
-        const tripIds = relevantTripIdsKey.split('|').filter(Boolean);
-        const results = await Promise.allSettled(
-          tripIds.map(async (tripId) => {
-            const request = dispatch(
-              bookingApi.endpoints.getTripBookings.initiate(tripId, {
-                forceRefetch: DRIVER_PAYMENT_NOTICE_REFRESH_MS / 1000,
-                subscribe: false,
-              }),
-            );
-
-            try {
-              return {
-                tripId,
-                bookings: await request.unwrap(),
-              };
-            } finally {
-              request.unsubscribe();
-            }
-          }),
-        );
-
-        if (cancelled) return;
-
-        for (const result of results) {
-          if (result.status !== 'fulfilled') continue;
-          const trip = tripById.get(result.value.tripId);
-          if (!trip) continue;
-
-          const notice = result.value.bookings
-            .map((booking) => buildPaymentNotice(booking, trip))
-            .find((candidate): candidate is DriverPaymentNotice =>
-              Boolean(candidate && !seenNoticesRef.current[candidate.key]),
-            );
-
-          if (notice) {
-            setActiveNotice(notice);
-            return;
-          }
-        }
-      } catch (error) {
-        console.warn('[DriverPaymentNotice] Verification impossible:', error);
-      } finally {
-        scanInFlightRef.current = false;
-      }
-    };
-
-    void scanPayments();
-    const interval = setInterval(() => void scanPayments(), DRIVER_PAYMENT_NOTICE_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
+    const notice = relevantTrips.flatMap(trip => trip.paymentNotices)
+      .find(candidate => candidate.mode !== 'cash' && !seenNotices[candidate.key]);
+    if (notice) setActiveNotice(notice);
   }, [
     activeNotice,
-    dispatch,
     driverUser,
     isAuthenticated,
     isClosingForTripNavigation,
     isSeenLoaded,
-    relevantTripIdsKey,
+    seenNotices,
     relevantTrips,
     isAppActive,
   ]);
 
-  const shouldKeepModalMounted = Boolean(activeNotice || isClosingForTripNavigation);
   const isModalVisible = Boolean(activeNotice && !isClosingForTripNavigation);
-
-  if (!shouldKeepModalMounted) return null;
 
   return (
     <Modal
+      inApp
       visible={isModalVisible}
       transparent
       animationType="fade"
@@ -266,7 +183,7 @@ export function DriverPaymentNoticeCoordinator() {
             </View>
             <Text style={styles.title}>Paiement passager confirmé</Text>
             <Text style={styles.message}>
-              {activeNotice.passengerName} a confirmé le paiement du trajet.
+              Le paiement de {activeNotice.passengerName} a été confirmé.
             </Text>
 
             <ScrollView bounces={false} style={styles.details} contentContainerStyle={styles.detailsContent}>

@@ -7,6 +7,7 @@ import {
 import type { Booking, Trip } from '@/types';
 import * as Location from 'expo-location';
 import { useRef } from 'react';
+import { createRouteAnalysisCache } from '@/utils/navigation/routeAnalysis';
 
 interface Params {
   trip: Trip | undefined;
@@ -15,6 +16,10 @@ interface Params {
 export function useDriverNavigationRefs({
   trip,
 }: Params) {
+  const routeAnalysisRef = useRef<ReturnType<typeof createRouteAnalysisCache> | null>(null);
+  if (!routeAnalysisRef.current) routeAnalysisRef.current = createRouteAnalysisCache();
+  const routeAnalysis = routeAnalysisRef.current;
+  const routeAnalysisScopeRef = useRef('');
   const routeFetchedRef = useRef(false);
   const routeCoordinatesRef = useRef<RouteCoordinate[]>([]);
   const lastRouteFetchTimeRef = useRef(0);
@@ -56,6 +61,8 @@ export function useDriverNavigationRefs({
   const bookingsRef = useRef<Booking[] | undefined>(undefined);
 
   return {
+    routeAnalysis,
+    routeAnalysisScopeRef,
     skippedPickupBookingIdsRef,
     stepsRef,
     currentStepIndexRef,

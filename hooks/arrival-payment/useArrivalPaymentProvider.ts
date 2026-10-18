@@ -4,7 +4,7 @@ import {
   getCardPaymentResultFromUrl,
 } from '../../features/arrival-payment/paymentModel';
 import { PaymentChannel } from '../../features/arrival-payment/paymentTypes';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import * as WebBrowser from 'expo-web-browser';
 import {
   useGetMyBookingsQuery,
@@ -15,6 +15,7 @@ import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import type { Booking, BookingPaymentResponse, TripPaymentMode } from '@/types';
 
 interface Params {
+  isSessionCurrent: () => boolean;
   setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
   setPaymentError: React.Dispatch<React.SetStateAction<string>>;
   checkBookingPaymentStatus: ReturnType<typeof useLazyCheckBookingPaymentStatusQuery>[0];
@@ -26,15 +27,15 @@ interface Params {
 }
 
 export function useArrivalPaymentProvider({
+  isSessionCurrent,
   setStatusMessage,
   setPaymentError,
   checkBookingPaymentStatus,
   handleCompletedBookingPayment,
   updatePaymentMode,
-  refetchBookings,
-  refetchWallet,
   showCompletionSummary,
 }: Params) {
+  const pointsInFlight = useRef(new Map<string, Promise<boolean>>());
   const openCardPaymentUrl = useCallback(
     async (
       paymentUrl: string,
@@ -45,6 +46,7 @@ export function useArrivalPaymentProvider({
       setStatusMessage('Page carte ouverte. Finalisez le paiement; nous verifierons le retour.');
 
       const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+      if (!isSessionCurrent()) return true;
       if (result.type !== 'success') {
         if (orderNumber) {
           setStatusMessage("Vérification du paiement par carte en cours…");
@@ -87,17 +89,18 @@ export function useArrivalPaymentProvider({
 
       return finished;
     },
-    [checkBookingPaymentStatus, handleCompletedBookingPayment],
+    [checkBookingPaymentStatus, handleCompletedBookingPayment, isSessionCurrent, setPaymentError, setStatusMessage],
   );
 
-  const settleWithPoints = useCallback(
+  const settleWithPointsOnce = useCallback(
     async (bookingId: string) => {
+      if (!isSessionCurrent()) return false;
       const updatedBooking = await updatePaymentMode({
         bookingId,
         paymentMode: 'points',
       }).unwrap();
 
-      await Promise.all([refetchBookings(), refetchWallet()]);
+      if (!isSessionCurrent()) return false;
       if (
         updatedBooking.paymentStatus === 'succeeded' ||
         updatedBooking.paymentStatus === 'not_required' ||
@@ -107,11 +110,19 @@ export function useArrivalPaymentProvider({
         return true;
       }
 
-      setStatusMessage('Les jetons sont en cours de vérification. Le modal restera ouvert.');
+      setStatusMessage('Les jetons sont en cours de vérification. Vous pouvez fermer cette fenêtre et reprendre plus tard.');
       return false;
     },
-    [refetchBookings, refetchWallet, showCompletionSummary, updatePaymentMode],
+    [isSessionCurrent, showCompletionSummary, updatePaymentMode, setStatusMessage],
   );
+
+  const settleWithPoints = useCallback((bookingId: string) => {
+    const pending = pointsInFlight.current.get(bookingId);
+    if (pending) return pending;
+    const task = settleWithPointsOnce(bookingId).finally(() => { pointsInFlight.current.delete(bookingId); });
+    pointsInFlight.current.set(bookingId, task);
+    return task;
+  }, [settleWithPointsOnce]);
 
   return {
     settleWithPoints,

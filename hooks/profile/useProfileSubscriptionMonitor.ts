@@ -130,7 +130,7 @@ export function useProfileSubscriptionMonitor({
           getSubscriptionPaymentStatusMessage(
             response.payment.message,
             options?.pendingMessage ||
-            'Paiement en attente chez FlexPay. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
+            'Paiement en attente chez le prestataire. Confirmez sur votre téléphone ou terminez la page de paiement par carte ; nous continuons la vérification.',
           ),
         );
         return 'pending' as SubscriptionPaymentCheckOutcome;
@@ -168,7 +168,7 @@ export function useProfileSubscriptionMonitor({
       setSubscriptionPaymentStage(isSubscriptionCardPayment ? 'zwanga_activation' : 'phone_confirmation');
       setSubscriptionPaymentMessage(
         initialMessage ||
-        'Demande envoyée à FlexPay. Confirmez sur votre téléphone ; nous actualisons le statut quelques instants sans bloquer l’app.',
+        'Demande envoyée au prestataire. Confirmez sur votre téléphone ; nous actualisons le statut quelques instants sans bloquer l’app.',
       );
 
       void (async () => {

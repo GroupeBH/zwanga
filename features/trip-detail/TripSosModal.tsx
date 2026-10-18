@@ -3,7 +3,8 @@ import { PoliceContactPanel } from '@/components/PoliceContactPanel';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface TripSosModalProps {
@@ -19,6 +20,7 @@ export function TripSosModal({
 }: TripSosModalProps) {
   return (
     <Modal
+      priority={100}
       visible={sosModalVisible}
       animationType="slide"
       transparent

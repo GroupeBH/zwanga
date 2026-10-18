@@ -1,15 +1,14 @@
 import { MainTab, SubTab, TripListItem, normalizeSearchText } from '../../features/trips/tripsModel';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetMyTripsQuery } from '@/store/api/tripApi';
-import type { Booking, Trip } from '@/types';
+import type { Booking, Trip, RecurringTripTemplate } from '@/types';
 import React, { useMemo } from 'react';
 
 interface Params {
+  pagedHistory?: boolean;
   myTrips: Trip[] | undefined;
   recurringTemplates: RecurringTripTemplate[];
   setIsRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
-  refetchTrips: ReturnType<typeof useGetMyTripsQuery>['refetch'];
-  refetchBookings: ReturnType<typeof useGetMyBookingsQuery>['refetch'];
+  refetchTrips: () => Promise<unknown>;
+  refetchBookings: () => Promise<unknown>;
   myBookings: Booking[] | undefined;
   subTab: SubTab;
   searchQuery: string;
@@ -23,6 +22,7 @@ interface Params {
 }
 
 export function useTripsListData({
+  pagedHistory,
   myTrips,
   recurringTemplates,
   setIsRefreshing,
@@ -73,12 +73,8 @@ export function useTripsListData({
         return false;
       });
 
-      // Trier par date de départ (les plus récents en premier)
+      // Trier par départ le plus imminent, sans deuxième tri redondant.
       return filtered.sort((a, b) => {
-        const dateA = new Date(a.departureTime).getTime();
-        const dateB = new Date(b.departureTime).getTime();
-        return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
-      }).sort((a, b) => {
         const dateA = new Date(a.departureTime).getTime();
         const dateB = new Date(b.departureTime).getTime();
         return dateA - dateB;
@@ -89,6 +85,7 @@ export function useTripsListData({
 
   const completedTrips = useMemo(
     () => {
+      if (pagedHistory) return trips;
       const now = new Date();
       const filtered = trips.filter((trip) => {
         // Les trajets avec status 'completed' sont dans l'historique
@@ -117,7 +114,7 @@ export function useTripsListData({
         return dateB - dateA; // dateB - dateA = du plus récent au plus ancien
       });
     },
-    [trips],
+    [trips, pagedHistory],
   );
 
   const handleRefresh = async () => {
@@ -133,7 +130,7 @@ export function useTripsListData({
   const upcomingBookings = useMemo(() => {
     const now = new Date();
     return (myBookings ?? []).filter((booking) => {
-      if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
+      if (booking.status === 'completed' || booking.status === 'expired' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
         return false;
       }
       if (booking.trip?.status === 'ongoing') {
@@ -147,15 +144,12 @@ export function useTripsListData({
     }).sort((a, b) => {
       const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
       const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
-      return dateB - dateA;
-    }).sort((a, b) => {
-      const dateA = new Date(a.trip?.departureTime || a.createdAt).getTime();
-      const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
       return dateA - dateB;
     });
   }, [myBookings]);
 
   const completedBookingsList = useMemo(() => {
+    if (pagedHistory) return myBookings ?? [];
     const now = new Date();
     return (myBookings ?? []).filter((booking) => {
       if (booking.status === 'completed' || booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain') {
@@ -174,13 +168,13 @@ export function useTripsListData({
       const dateB = new Date(b.trip?.departureTime || b.createdAt).getTime();
       return dateB - dateA;
     });
-  }, [myBookings]);
+  }, [myBookings, pagedHistory]);
 
   const displayTrips = subTab === 'upcoming' ? upcomingTrips : completedTrips;
   const displayBookings = subTab === 'upcoming' ? upcomingBookings : completedBookingsList;
   const normalizedSearchQuery = normalizeSearchText(searchQuery);
   const filteredTrips = useMemo(() => {
-    if (!normalizedSearchQuery) return displayTrips;
+    if (pagedHistory || !normalizedSearchQuery) return displayTrips;
 
     return displayTrips.filter((trip) =>
       normalizeSearchText([
@@ -194,9 +188,9 @@ export function useTripsListData({
         trip.vehicleInfo,
       ].join(' ')).includes(normalizedSearchQuery),
     );
-  }, [displayTrips, normalizedSearchQuery]);
+  }, [displayTrips, normalizedSearchQuery, pagedHistory]);
   const filteredBookings = useMemo(() => {
-    if (!normalizedSearchQuery) return displayBookings;
+    if (pagedHistory || !normalizedSearchQuery) return displayBookings;
 
     return displayBookings.filter((booking) => {
       const trip = booking.trip;
@@ -212,7 +206,7 @@ export function useTripsListData({
         trip?.vehicleInfo,
       ].join(' ')).includes(normalizedSearchQuery);
     });
-  }, [displayBookings, normalizedSearchQuery]);
+  }, [displayBookings, normalizedSearchQuery, pagedHistory]);
   const tripListData = useMemo<TripListItem[]>(
     () =>
       mainTab === 'published'
@@ -239,4 +233,3 @@ export function useTripsListData({
     normalizedSearchQuery,
   };
 }
-import type { RecurringTripTemplate } from '@/types';

@@ -5,138 +5,136 @@ import {
   useGetTripsQuery
 } from '@/store/api/tripApi';
 import { setTrips } from '@/store/slices/tripsSlice';
-import type { Trip } from '@/types';
+import { getHomeTripSuggestionTier, HOME_SUGGESTION_RADIUS_KM } from '@/features/home/homeTripPriority';
+import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { useCallback, useEffect, useMemo } from 'react';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeLocation } from '@/hooks/home/useHomeLocation';
+import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
+const EMPTY_TRIP_IDS = new Set<string>();
 type Props =
   Pick<ReturnType<typeof useHomeLocation>,
     'lastKnownLocation'
   >
   & Pick<ReturnType<typeof useHomeContext>,
-    'locationRadiusKm'
-    | 'isFocused'
+    'isFocused'
     | 'storedTrips'
     | 'dispatch'
-  >;
+    | 'currentUser'
+    | 'isDriver'
+  > & Pick<ReturnType<typeof useHomePassengerActivity>, 'bookedTripIds' | 'completedBookingTripIds'>;
 export function useHomeTripFeed({
   lastKnownLocation,
-  locationRadiusKm,
   isFocused,
   storedTrips,
   dispatch,
+  currentUser,
+  isDriver,
+  bookedTripIds = EMPTY_TRIP_IDS,
+  completedBookingTripIds = EMPTY_TRIP_IDS,
 }: Props) {
+  const enabled = useDisplayReadsEnabled(isFocused && !isDriver);
+  const latitude = lastKnownLocation?.coords?.latitude;
+  const longitude = lastKnownLocation?.coords?.longitude;
+  const roundedLatitude = typeof latitude === 'number' && Number.isFinite(latitude) ? roundCoordinate(latitude) : null;
+  const roundedLongitude = typeof longitude === 'number' && Number.isFinite(longitude) ? roundCoordinate(longitude) : null;
   const nearbyTripsPayload = useMemo<TripSearchByPointsPayload | null>(() => {
-    const latitude = lastKnownLocation?.coords?.latitude;
-    const longitude = lastKnownLocation?.coords?.longitude;
-
-    if (
-      typeof latitude !== 'number' ||
-      typeof longitude !== 'number' ||
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude)
-    ) {
+    const coordinate = normalizeTripMapCoordinate(roundedLatitude, roundedLongitude);
+    if (!coordinate) {
       return null;
     }
 
     return {
       departureCoordinates: [
-        roundCoordinate(longitude),
-        roundCoordinate(latitude),
+        coordinate.longitude,
+        coordinate.latitude,
       ],
-      departureRadiusKm: locationRadiusKm,
+      departureRadiusKm: HOME_SUGGESTION_RADIUS_KM,
+      limit: 50,
       minSeats: HOME_MIN_AVAILABLE_SEATS,
     };
   }, [
-    lastKnownLocation?.coords?.latitude,
-    lastKnownLocation?.coords?.longitude,
-    locationRadiusKm,
+    roundedLatitude,
+    roundedLongitude,
   ]);
 
-  const {
-    data: generalTrips,
-    isLoading: generalTripsLoading,
-    isError: generalTripsError,
-    refetch: refetchGeneralTrips,
-  } = useGetTripsQuery(
-    { minSeats: HOME_MIN_AVAILABLE_SEATS },
-    {
-      pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
-      skipPollingIfUnfocused: true,
-      refetchOnFocus: isFocused,
-      refetchOnReconnect: false,
-    },
+  const nearby = useGetTripsByCoordinatesQuery(
+    nearbyTripsPayload ?? { departureCoordinates: [0, 0], minSeats: HOME_MIN_AVAILABLE_SEATS },
+    displayReadOptions(enabled && Boolean(nearbyTripsPayload), HOME_PASSIVE_LIST_POLL_MS),
   );
-
-  const {
-    data: nearbyTrips,
-    isLoading: nearbyTripsLoading,
-    isError: nearbyTripsError,
-    refetch: refetchNearbyTrips,
-  } = useGetTripsByCoordinatesQuery(
-    nearbyTripsPayload ?? {
-      departureCoordinates: [0, 0] as [number, number],
-      minSeats: HOME_MIN_AVAILABLE_SEATS,
-    },
-    {
-      skip: !nearbyTripsPayload,
-      pollingInterval: isFocused ? HOME_PASSIVE_LIST_POLL_MS : 0,
-      skipPollingIfUnfocused: true,
-      refetchOnFocus: isFocused,
-      refetchOnReconnect: false,
-    },
-  );
-
+  const hasNearbySuggestion = useMemo(() => {
+    const point = nearbyTripsPayload?.departureCoordinates;
+    const origin = point ? { latitude: point[1], longitude: point[0] } : null;
+    const now = Date.now();
+    return nearby.currentData?.some(trip => (!currentUser?.id || trip.driverId !== currentUser.id)
+      && !bookedTripIds.has(trip.id) && !completedBookingTripIds.has(trip.id)
+      && getHomeTripSuggestionTier(trip, origin, now) === 0) ?? false;
+    // Recheck time eligibility on existing refreshes, without a new timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nearby.currentData, nearby.fulfilledTimeStamp, nearbyTripsPayload, currentUser?.id, bookedTripIds, completedBookingTripIds, enabled]);
+  // A general feed must have no geographic/date restriction, including when GPS
+  // is unavailable. Local tiers still prefer nearby departures among its candidates.
+  const useGeneral = !nearbyTripsPayload || nearby.isError || (nearby.currentData !== undefined && !hasNearbySuggestion);
+  const general = useGetTripsQuery({ minSeats: HOME_MIN_AVAILABLE_SEATS, limit: 50, sort: 'date' }, {
+    ...displayReadOptions(enabled && useGeneral, HOME_PASSIVE_LIST_POLL_MS),
+  });
+  // Only fall back after the nearby response; never download both full feeds on mount.
   const remoteTrips = useMemo(() => {
-    if (!nearbyTripsPayload) {
-      return generalTrips;
-    }
-
-    if (!nearbyTrips?.length && !generalTrips) {
-      return undefined;
-    }
-
-    const tripsById = new Map<string, Trip>();
-
-    (nearbyTrips ?? []).forEach((trip) => {
-      tripsById.set(trip.id, trip);
-    });
-
-    (generalTrips ?? []).forEach((trip) => {
-      if (!tripsById.has(trip.id)) {
-        tripsById.set(trip.id, trip);
-      }
-    });
-
-    return Array.from(tripsById.values());
-  }, [nearbyTripsPayload, nearbyTrips, generalTrips]);
-
-  const tripsLoading = nearbyTripsPayload
-    ? (nearbyTripsLoading || generalTripsLoading) && !remoteTrips?.length && storedTrips.length === 0
-    : generalTripsLoading && !generalTrips && storedTrips.length === 0;
-
-  const tripsError = nearbyTripsPayload
-    ? nearbyTripsError && generalTripsError && !remoteTrips?.length && storedTrips.length === 0
-    : generalTripsError && !generalTrips && storedTrips.length === 0;
-
-  const refetchTrips = useCallback(() => {
+    if (isDriver) return undefined;
+    if (!nearbyTripsPayload) return general.currentData;
+    if (!useGeneral) return nearby.currentData;
+    if (!general.currentData) return nearby.currentData?.length ? nearby.currentData : undefined;
+    // When both scopes are needed, the newest fulfilled response wins duplicates
+    // (including newly full/cancelled rides). Once nearby recovers, wide data is ignored.
+    const nearbyIsNewer = (nearby.fulfilledTimeStamp ?? 0) >= (general.fulfilledTimeStamp ?? 0);
+    const earlier = nearbyIsNewer ? general.currentData : nearby.currentData ?? [];
+    const latest = nearbyIsNewer ? nearby.currentData ?? [] : general.currentData;
+    const trips = new Map(earlier.map(trip => [trip.id, trip]));
+    latest.forEach(trip => trips.set(trip.id, trip));
+    return Array.from(trips.values());
+  }, [isDriver, useGeneral, general.currentData, nearby.currentData, general.fulfilledTimeStamp, nearby.fulfilledTimeStamp, nearbyTripsPayload]);
+  const selected = useGeneral ? general : nearby;
+  const discoveryUpdatedAt = Math.max(nearby.fulfilledTimeStamp ?? 0, useGeneral ? general.fulfilledTimeStamp ?? 0 : 0);
+  const hasDisplayableTrips = useMemo(() => {
+    const point = nearbyTripsPayload?.departureCoordinates;
+    const origin = point ? { latitude: point[1], longitude: point[0] } : null;
+    const now = Date.now();
+    return (remoteTrips ?? storedTrips).some(trip => (!currentUser?.id || trip.driverId !== currentUser.id)
+      && !completedBookingTripIds.has(trip.id)
+      && (getHomeTripSuggestionTier(trip, origin, now) >= 0 || (bookedTripIds.has(trip.id)
+        && (trip.status === 'upcoming' || trip.status === 'ongoing') && hasUpcomingDeparture(trip))));
+    // Same freshness signals as selection: no new polling or per-render scan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteTrips, storedTrips, nearbyTripsPayload, currentUser?.id, completedBookingTripIds, bookedTripIds, discoveryUpdatedAt, enabled]);
+  const tripsLoading = Boolean(enabled && selected.isFetching && !hasDisplayableTrips);
+  const tripsError = Boolean(enabled && selected.isError && !hasDisplayableTrips);
+  const refetchNearby = useDisplayRefetch(enabled && Boolean(nearbyTripsPayload) && !nearby.isUninitialized,
+    JSON.stringify(nearbyTripsPayload), nearby.refetch);
+  const refetchGeneral = useDisplayRefetch(enabled && useGeneral && !general.isUninitialized,
+    JSON.stringify(nearbyTripsPayload), general.refetch);
+  const generalUninitialized = general.isUninitialized;
+  const refetchTrips = useCallback(async () => {
+    if (!enabled) return;
     if (nearbyTripsPayload) {
-      void refetchNearbyTrips();
+      const result = await refetchNearby();
+      if ((result.error || useGeneral) && !generalUninitialized) return refetchGeneral();
+      return result;
     }
-
-    return refetchGeneralTrips();
-  }, [nearbyTripsPayload, refetchNearbyTrips, refetchGeneralTrips]);
+    if (!generalUninitialized) return refetchGeneral();
+  }, [enabled, nearbyTripsPayload, refetchNearby, refetchGeneral, generalUninitialized, useGeneral]);
 
   useEffect(() => {
     if (remoteTrips) {
-      dispatch(setTrips(remoteTrips.filter(hasUpcomingDeparture).slice(0, 50)));
+      dispatch(setTrips(remoteTrips.filter(hasUpcomingDeparture).slice(0, 100)));
     }
   }, [remoteTrips, dispatch]);
 
   const showInitialHomeLoader = tripsLoading && !remoteTrips && storedTrips.length === 0;
   return {
     remoteTrips,
+    discoveryUpdatedAt,
     tripsLoading,
     tripsError,
     refetchTrips,

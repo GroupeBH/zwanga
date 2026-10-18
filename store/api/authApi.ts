@@ -1,8 +1,9 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
-import { storeTokens } from '../../services/tokenStorage';
+import { getTokens } from '../../services/tokenStorage';
+import { refreshAccessToken } from '../../services/tokenRefresh';
+import { getTokenSessionVersion } from '../../services/tokenSession';
 import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
 import type { TripRequestVehicleType, User, UserGender } from '../../types';
-import { authRefreshApi } from './authRefreshApi';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { userApi } from './userApi';
@@ -34,15 +35,15 @@ export interface ReferralRegistrationAttributionPayload {
  */
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
-    // Connexion avec téléphone et PIN (ou newPin pour réinitialisation)
-    login: builder.mutation<AuthResponse, { phone: string; pin?: string; newPin?: string }>({
-      query: (credentials: { phone: string; pin?: string; newPin?: string }) => ({
+    // Le login accepte uniquement le PIN actuel.
+    login: builder.mutation<AuthResponse, { phone: string; pin: string }>({
+      query: ({ phone, pin }) => ({
         url: '/auth/login',
         method: 'POST',
-        body: credentials,
+        body: { phone, pin },
       }),
       async onQueryStarted(
-        _arg: { phone: string; pin?: string; newPin?: string },
+        _arg: { phone: string; pin: string },
         { dispatch, queryFulfilled }: { dispatch: any; queryFulfilled: Promise<{ data: AuthResponse }> },
       ) {
         try {
@@ -51,17 +52,19 @@ export const authApi = baseApi.injectEndpoints({
           console.log('[authApi] Login success - Saving tokens in SecureStore then updating state...');
           
           // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-          await dispatch(saveTokensAndUpdateState({ 
+          const saved = await dispatch(saveTokensAndUpdateState({
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
           })).unwrap();
+          if (!saved) return;
+          const sessionVersion = getTokenSessionVersion();
           
           console.log('[authApi] Tokens saved and state updated successfully');
           
           // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
           if (!data.user) {
-            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
-            if (userResult.data) {
+            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }));
+            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
               dispatch(setUser(userResult.data));
             }
           } else {
@@ -73,6 +76,31 @@ export const authApi = baseApi.injectEndpoints({
         }
       },
       invalidatesTags: [currentUserTag],
+    }),
+
+    requestPinResetOtp: builder.mutation<{ message: string }, { phone: string }>({
+      query: ({ phone }) => ({
+        url: '/auth/pin/reset/request-otp',
+        method: 'POST',
+        body: { phone },
+      }),
+    }),
+    verifyPinResetOtp: builder.mutation<
+      { resetToken: string; expiresInSeconds: number },
+      { phone: string; otp: string }
+    >({
+      query: ({ phone, otp }) => ({
+        url: '/auth/pin/reset/verify-otp',
+        method: 'POST',
+        body: { phone, otp },
+      }),
+    }),
+    resetPin: builder.mutation<{ message: string }, { resetToken: string; newPin: string }>({
+      query: ({ resetToken, newPin }) => ({
+        url: '/auth/pin/reset',
+        method: 'POST',
+        body: { resetToken, newPin },
+      }),
     }),
 
     // Inscription d'un nouvel utilisateur
@@ -92,17 +120,19 @@ export const authApi = baseApi.injectEndpoints({
           console.log('[authApi] Registration success - Saving tokens in SecureStore then updating state...');
           
           // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-          await dispatch(saveTokensAndUpdateState({ 
+          const saved = await dispatch(saveTokensAndUpdateState({
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
           })).unwrap();
+          if (!saved) return;
+          const sessionVersion = getTokenSessionVersion();
           
           console.log('[authApi] Tokens saved and state updated successfully');
           
           // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
           if (!data.user) {
-            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }));
-            if (userResult.data) {
+            const userResult = await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }));
+            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
               dispatch(setUser(userResult.data));
             }
           } else {
@@ -144,19 +174,21 @@ export const authApi = baseApi.injectEndpoints({
           console.log('[authApi] Google mobile success - Saving tokens in SecureStore then updating state...');
           
           // 1. Sauvegarder dans SecureStore puis mettre à jour le state Redux (séquentiellement)
-          await dispatch(saveTokensAndUpdateState({ 
+          const saved = await dispatch(saveTokensAndUpdateState({
             accessToken: data.accessToken, 
             refreshToken: data.refreshToken 
           })).unwrap();
+          if (!saved) return;
+          const sessionVersion = getTokenSessionVersion();
           
           console.log('[authApi] Tokens saved and state updated successfully');
 
           // 2. Récupérer l'utilisateur complet (si nécessaire) APRÈS la sauvegarde des tokens
           if (!data.user) {
             const userResult = await dispatch(
-              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }),
+              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }),
             );
-            if (userResult.data) {
+            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
               dispatch(setUser(userResult.data));
             }
           } else {
@@ -228,18 +260,20 @@ export const authApi = baseApi.injectEndpoints({
 
           console.log('[authApi] Apple mobile success - Saving tokens in SecureStore then updating state...');
 
-          await dispatch(saveTokensAndUpdateState({
+          const saved = await dispatch(saveTokensAndUpdateState({
             accessToken: data.accessToken,
             refreshToken: data.refreshToken
           })).unwrap();
+          if (!saved) return;
+          const sessionVersion = getTokenSessionVersion();
 
           console.log('[authApi] Tokens saved and state updated successfully');
 
           if (!data.user) {
             const userResult = await dispatch(
-              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true }),
+              userApi.endpoints.getCurrentUser.initiate(undefined, { forceRefetch: true, subscribe: false }),
             );
-            if (userResult.data) {
+            if (userResult.data && sessionVersion === getTokenSessionVersion()) {
               dispatch(setUser(userResult.data));
             }
           } else {
@@ -282,46 +316,18 @@ export const authApi = baseApi.injectEndpoints({
     // Rafraîchir l'access token avec le refresh token
     // Délègue à l'API RTK Query non authentifiée pour éviter une boucle de refresh.
     refreshToken: builder.mutation<{ accessToken: string; refreshToken: string }, { refreshToken: string }>({
-      queryFn: async (data: { refreshToken: string }, api) => {
-        const request = api.dispatch(authRefreshApi.endpoints.refreshSession.initiate(data));
-        try {
-          const responseData = await request.unwrap();
-
-          if (!responseData.accessToken || !responseData.refreshToken) {
-            const error: FetchBaseQueryError = {
-              status: 'CUSTOM_ERROR',
-              data: 'Tokens manquants dans la réponse',
-              error: 'Tokens manquants dans la réponse',
-            };
-            return { error };
-          }
-
-          const refreshedTokens = {
-            accessToken: responseData.accessToken,
-            refreshToken: responseData.refreshToken,
-          };
-
-          // Stocker les nouveaux tokens dans SecureStore
-          try {
-            await storeTokens(refreshedTokens.accessToken, refreshedTokens.refreshToken);
-          } catch (error) {
-            console.error('Erreur lors du stockage des tokens après refresh:', error);
-          }
-
-          return { data: refreshedTokens };
-        } catch (error: any) {
-          if (error && typeof error === 'object' && 'status' in error) {
-            return { error: error as FetchBaseQueryError };
-          }
-          const fetchError: FetchBaseQueryError = {
+      queryFn: async (data: { refreshToken: string }) => {
+        const version = getTokenSessionVersion();
+        const accessToken = await refreshAccessToken(data.refreshToken);
+        const tokens = await getTokens();
+        if (!accessToken || version !== getTokenSessionVersion() || !tokens.refreshToken) {
+          const error: FetchBaseQueryError = {
             status: 'CUSTOM_ERROR',
-            data: error?.message || 'Erreur lors du rafraîchissement du token',
-            error: error?.message || 'Erreur lors du rafraîchissement du token',
+            error: 'Impossible de renouveler la session pour le moment. Veuillez réessayer.',
           };
-          return { error: fetchError };
-        } finally {
-          request.reset();
+          return { error };
         }
+        return { data: { accessToken, refreshToken: tokens.refreshToken } };
       },
     }),
   }),
@@ -329,6 +335,9 @@ export const authApi = baseApi.injectEndpoints({
 
 export const {
   useLoginMutation,
+  useRequestPinResetOtpMutation,
+  useVerifyPinResetOtpMutation,
+  useResetPinMutation,
   useRegisterMutation,
   useVerifyPhoneMutation,
   useVerifyKYCMutation,

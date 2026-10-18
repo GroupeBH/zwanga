@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { SearchMode, SearchSortMode as SortMode } from '@/components/search/SearchResultsToolbar';
 import type { Trip, TripRequest, User } from '@/types';
 import type { selectUserCoordinates } from '@/store/selectors';
@@ -12,6 +12,7 @@ import {
 } from '@/features/search/searchModel';
 
 interface Params {
+  isScreenActive?: boolean;
   advancedTrips: Trip[] | null;
   remoteTrips: Trip[] | undefined;
   storedTrips: Trip[];
@@ -28,8 +29,12 @@ interface Params {
 
 export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, searchMode,
   departure, arrival, desiredSeats, sortMode, driverCoordinate, availableTripRequests,
-  isDriverAccount, currentUser }: Params) {
+  isDriverAccount, currentUser, isScreenActive = true }: Params) {
+  const previous = useRef({ userId: currentUser?.id, baseTrips: EMPTY_SEARCH_TRIPS,
+    filteredTrips: EMPTY_SEARCH_TRIPS, filteredTripRequests: EMPTY_SEARCH_REQUESTS });
   const baseTrips = useMemo(() => {
+    if (!isScreenActive) return previous.current.userId === currentUser?.id
+      ? previous.current.baseTrips : EMPTY_SEARCH_TRIPS;
     if (advancedTrips) {
       return advancedTrips;
     }
@@ -39,14 +44,21 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
     }
 
     return storedTrips;
-  }, [advancedTrips, remoteTrips, storedTrips]);
+  }, [advancedTrips, remoteTrips, storedTrips, isScreenActive, currentUser?.id]);
 
   const filteredTrips = useMemo(() => {
+    if (!isScreenActive) return previous.current.userId === currentUser?.id
+      ? previous.current.filteredTrips : EMPTY_SEARCH_TRIPS;
     if (searchMode !== 'trips') return EMPTY_SEARCH_TRIPS;
 
     const routeQuery = [departure, arrival].filter(Boolean).join(' ');
     const visibleTrips = baseTrips.filter((trip) => {
       if (!getSafeTripId(trip)) {
+        return false;
+      }
+
+      // Applied to every source (remote, map search and cached trips), before counts/sorting.
+      if (currentUser?.id && (trip.driverId === currentUser.id || trip.driver?.id === currentUser.id)) {
         return false;
       }
 
@@ -74,9 +86,12 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
 
       return safeDepartureA - safeDepartureB;
     });
-  }, [arrival, baseTrips, departure, desiredSeats, searchMode, sortMode]);
+  }, [arrival, baseTrips, currentUser?.id, departure, desiredSeats, searchMode, sortMode, isScreenActive]);
 
   const filteredTripRequests = useMemo(() => {
+    if (!isDriverAccount) return EMPTY_SEARCH_REQUESTS;
+    if (!isScreenActive) return previous.current.userId === currentUser?.id
+      ? previous.current.filteredTripRequests : EMPTY_SEARCH_REQUESTS;
     if (searchMode !== 'requests' || !isDriverAccount) {
       return EMPTY_SEARCH_REQUESTS;
     }
@@ -131,7 +146,14 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
     isDriverAccount,
     searchMode,
     sortMode,
+    isScreenActive,
   ]);
+
+  // Keep the existing list/scroll state, without sorting GPS or cache updates in
+  // a hidden tab. Never reuse another account's snapshot.
+  useEffect(() => {
+    previous.current = { userId: currentUser?.id, baseTrips, filteredTrips, filteredTripRequests };
+  }, [currentUser?.id, baseTrips, filteredTrips, filteredTripRequests]);
 
   return { baseTrips, filteredTrips, filteredTripRequests };
 }

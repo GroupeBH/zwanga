@@ -78,7 +78,7 @@ export function useSubscriptionPaymentPresentation({
           {
             key: 'activation',
             title: 'Activation',
-            description: "Nous activons l'abonnement dès que FlexPay confirme.",
+            description: "Nous activons l'abonnement dès que le paiement est confirmé.",
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
           },
         ]
@@ -109,7 +109,7 @@ export function useSubscriptionPaymentPresentation({
           {
             key: 'activation',
             title: 'Activation',
-            description: "Nous activons l'abonnement dès que FlexPay confirme.",
+            description: "Nous activons l'abonnement dès que le paiement est confirmé.",
             icon: 'shield-checkmark-outline' as keyof typeof Ionicons.glyphMap,
           },
         ];

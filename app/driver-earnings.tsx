@@ -1,82 +1,73 @@
 import { styles } from '../features/screen-styles/app/driver-earnings/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { Colors } from '@/constants/styles';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch, useDisplayReadData } from '@/hooks/useDisplayReads';
+import { Colors, Spacing } from '@/constants/styles';
 import {
-  useGetMyDriverEarningsQuery,
-  useGetMyDriverPayoutsQuery,
+  useGetDriverEarningsPageQuery,
+  useGetDriverPayoutsPageQuery,
   useGetMyDriverSettlementQuery,
 } from '@/store/api/driverSettlementsApi';
-import type { DriverEarning } from '@/types';
-import { formatAmount, formatDate, maskPhone } from '@/features/driver-earnings/payoutModel';
+import { formatAmount, maskPhone } from '@/features/driver-earnings/payoutModel';
+import { CashRevenueSummary } from '@/features/driver-earnings/CashRevenueSummary';
+import { DriverEarningRow } from '@/features/driver-earnings/DriverEarningRow';
 import { PayoutHistory } from '@/features/driver-earnings/PayoutHistory';
+import { PayoutDestinationModal } from '@/features/driver-earnings/PayoutDestinationModal';
 import { useDriverPayout } from '@/hooks/driver-earnings/useDriverPayout';
+import { useHistoryCursor } from '@/hooks/useHistoryCursor';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const getPaymentModeLabel = (earning: DriverEarning) =>
-  earning.paymentMode === 'points' ? 'Payé en jetons' : 'Paiement électronique';
+const pageInsets = { paddingHorizontal: Spacing.xl };
 
 export default function DriverEarningsScreen() {
   const isScreenActive = useScreenIsActive();
+  const enabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const earningsCursor = useHistoryCursor('earnings');
+  const payoutsCursor = useHistoryCursor('payouts');
   const {
     data: summary,
     isLoading: summaryLoading,
     isError: summaryError,
-    refetch: refetchSummary,
+    refetch: rawRefetchSummary,
   } = useGetMyDriverSettlementQuery(undefined, {
-    pollingInterval: isScreenActive ? (60_000) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled, 60_000),
   });
   const {
-    data: earnings = [],
+    currentData: liveEarningsPage,
     isLoading: earningsLoading,
     isError: earningsError,
-    refetch: refetchEarnings,
-  } = useGetMyDriverEarningsQuery(undefined, {
-    pollingInterval: isScreenActive ? (60_000) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    isFetching: earningsFetching,
+    refetch: rawRefetchEarnings,
+  } = useGetDriverEarningsPageQuery({ before: earningsCursor.before }, {
+    ...displayReadOptions(enabled, !earningsCursor.before ? 60_000 : 0),
   });
   const {
-    data: payouts = [],
+    currentData: livePayoutsPage,
     isError: payoutsError,
-    refetch: refetchPayouts,
-  } = useGetMyDriverPayoutsQuery(undefined, {
-    pollingInterval: isScreenActive ? (60_000) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    isFetching: payoutsFetching,
+    refetch: rawRefetchPayouts,
+  } = useGetDriverPayoutsPageQuery({ before: payoutsCursor.before, limit: 6 }, {
+    ...displayReadOptions(enabled, !payoutsCursor.before ? 60_000 : 0),
   });
+  const earningsPage = useDisplayReadData(earningsCursor.before ?? '', liveEarningsPage);
+  const payoutsPage = useDisplayReadData(payoutsCursor.before ?? '', livePayoutsPage);
+  const refetchSummary = useDisplayRefetch(enabled, 'summary', rawRefetchSummary);
+  const refetchEarnings = useDisplayRefetch(enabled, earningsCursor.before ?? '', rawRefetchEarnings);
+  const refetchPayouts = useDisplayRefetch(enabled, payoutsCursor.before ?? '', rawRefetchPayouts);
 
-  const sortedEarnings = useMemo(
-    () =>
-      [...earnings].sort(
-        (left, right) =>
-          Date.parse(right.availableAt ?? right.createdAt) -
-          Date.parse(left.availableAt ?? left.createdAt),
-      ),
-    [earnings],
-  );
-  const recentPayouts = useMemo(
-    () =>
-      [...payouts]
-        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
-        .slice(0, 6),
-    [payouts],
-  );
+  const earnings = earningsPage?.data ?? [];
+  const payouts = payoutsPage?.data ?? [];
   const currency = summary?.currency ?? earnings[0]?.currency ?? 'CDF';
   const availableBalance = Number(summary?.availableBalance ?? 0);
   const commissionPercent = Math.round(Number(summary?.commissionRate ?? 0) * 100);
-  const isLoading = summaryLoading || earningsLoading;
+  const isLoading = summaryLoading || earningsLoading || (earningsFetching && !earningsPage);
   const hasError = summaryError || earningsError;
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -86,8 +77,9 @@ export default function DriverEarningsScreen() {
       setRefreshing(false);
     }
   }, [refetchSummary, refetchEarnings, refetchPayouts]);
-  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, handlePayout, checkPayout, storageError, hasUnconfirmedIntent } =
-    useDriverPayout({ summary, payouts, refresh });
+  const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, checkPayout, requestPayoutReview, storageError, hasUnconfirmedIntent,
+    payoutForm, openPayoutForm, setPayoutPhone, confirmPayoutForm, closePayoutForm } =
+    useDriverPayout({ summary, payouts, refresh, isActive: isScreenActive });
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -97,7 +89,7 @@ export default function DriverEarningsScreen() {
         </TouchableOpacity>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Revenus conducteur</Text>
-          <Text style={styles.subtitle}>Courses créditées et versements Mobile Money</Text>
+          <Text style={styles.subtitle}>Gains, cash reçu et retraits Mobile Money</Text>
         </View>
         <TouchableOpacity
           accessibilityLabel="Actualiser les revenus"
@@ -112,28 +104,31 @@ export default function DriverEarningsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <FlatList
+        data={earnings} keyExtractor={earning => earning.id}
+        initialNumToRender={8} maxToRenderPerBatch={8} windowSize={5}
+        renderItem={({ item: earning }) => <View style={pageInsets}><DriverEarningRow earning={earning} /></View>}
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />
         }
         showsVerticalScrollIndicator={false}
-      >
+        ListHeaderComponent={<>
         <Animated.View entering={FadeInDown.delay(60)} style={styles.balanceSection}>
-          <Text style={styles.eyebrow}>DISPONIBLE AU VERSEMENT</Text>
+          <Text style={styles.eyebrow}>SOLDE RETIRABLE</Text>
           {isLoading && !summary ? (
             <ActivityIndicator size="small" color={Colors.primary} style={styles.loader} />
           ) : (
-            <Text style={styles.balance}>{formatAmount(availableBalance, currency)}</Text>
+            <Text style={styles.balance}>{summary ? formatAmount(availableBalance, currency) : '—'}</Text>
           )}
           <Text style={styles.balanceHint}>
-            Montant net après la commission Zwanga de {commissionPercent} %. Une course apparaît ici seulement après son paiement confirmé.
+            Paiements électroniques et jetons, nets de commission ({commissionPercent} %), plus les participations Zwanga créditées. Le cash reçu des passagers n’est pas inclus.
           </Text>
 
           <TouchableOpacity
             accessibilityRole="button"
             disabled={!canOpenWithdrawal}
-            onPress={() => handlePayout()}
+            onPress={() => openPayoutForm()}
             style={[styles.payoutButton, !canOpenWithdrawal && styles.payoutButtonDisabled]}
           >
             {isWithdrawing ? (
@@ -142,15 +137,15 @@ export default function DriverEarningsScreen() {
               <Ionicons name="phone-portrait-outline" size={19} color={Colors.white} />
             )}
             <Text style={styles.payoutButtonText}>
-              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier ma demande' : 'Recevoir mes gains'}
+              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier ma demande' : 'Retirer mes gains'}
             </Text>
           </TouchableOpacity>
           <Text style={styles.payoutDestination}>
-            Destination : {maskPhone(summary?.payoutPhone)} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
+            Numéro habituel : {summary?.payoutPhone ? maskPhone(summary.payoutPhone) : 'Non renseigné'} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
           </Text>
 
           <Text style={styles.balanceHint}>
-            Zwanga verse vos gains sur votre Mobile Money. Aucun compte FlexPay n’est nécessaire pour les recevoir.
+            Zwanga verse vos gains sur votre Mobile Money. Vous pouvez choisir un autre numéro avant de confirmer.
           </Text>
           {storageError && <Text style={styles.balanceHint}>Impossible de restaurer le suivi du versement sur ce téléphone. Contactez l’assistance avant une nouvelle demande.</Text>}
           <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/support')} style={styles.headerButton} accessibilityLabel="Contacter l’assistance pour mes gains">
@@ -159,28 +154,33 @@ export default function DriverEarningsScreen() {
 
           <View style={styles.balanceBreakdown}>
             <View style={styles.breakdownItem}>
-              <Text style={styles.breakdownLabel}>Versement en cours</Text>
+              <Text style={styles.breakdownLabel}>Retrait en cours</Text>
               <Text style={styles.breakdownValue}>
-                {formatAmount(summary?.pendingPayoutBalance, currency)}
+                {summary ? formatAmount(summary.pendingPayoutBalance, currency) : '—'}
               </Text>
             </View>
             <View style={styles.breakdownDivider} />
             <View style={styles.breakdownItem}>
-              <Text style={styles.breakdownLabel}>Déjà versé</Text>
-              <Text style={styles.breakdownValue}>{formatAmount(summary?.paidBalance, currency)}</Text>
+              <Text style={styles.breakdownLabel}>Déjà retiré</Text>
+              <Text style={styles.breakdownValue}>{summary ? formatAmount(summary.paidBalance, currency) : '—'}</Text>
             </View>
           </View>
         </Animated.View>
 
-        <PayoutHistory payouts={recentPayouts} availableBalance={availableBalance} busy={isWithdrawing}
-          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={handlePayout} onCheck={checkPayout}
+        <CashRevenueSummary amount={summary?.cashReceivedAmount} currency={currency} />
+
+        <PayoutHistory payouts={payouts} availableBalance={availableBalance} busy={isWithdrawing}
+          canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={openPayoutForm} onCheck={checkPayout} onReview={requestPayoutReview}
           onSupport={() => router.push('/support')} />
+        <View style={pageInsets}><HistoryPagination page={payoutsCursor.page} hasNext={Boolean(payoutsPage?.nextCursor)}
+          busy={payoutsFetching} error={payoutsError} onPrevious={payoutsCursor.previous}
+          onNext={() => payoutsCursor.next(payoutsPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetchPayouts(); }} /></View>
 
         <Animated.View entering={FadeInDown.delay(150)} style={styles.section}>
           <View style={styles.sectionHeading}>
             <View>
-              <Text style={styles.sectionTitle}>Courses créditées</Text>
-              <Text style={styles.sectionMeta}>{sortedEarnings.length} opération(s)</Text>
+              <Text style={styles.sectionTitle}>Historique des gains</Text>
+              <Text style={styles.sectionMeta}>{earningsPage?.total ?? '—'} opération(s)</Text>
             </View>
             <View style={styles.liveIndicator}>
               <View style={styles.liveDot} />
@@ -188,50 +188,31 @@ export default function DriverEarningsScreen() {
             </View>
           </View>
 
-          {hasError && !isLoading ? (
+        </Animated.View>
+        </>}
+        ListEmptyComponent={hasError && !isLoading ? (
             <View style={styles.emptyState}>
               <Ionicons name="cloud-offline-outline" size={28} color={Colors.gray[500]} />
               <Text style={styles.emptyTitle}>Revenus indisponibles</Text>
               <Text style={styles.emptyText}>Tirez vers le bas pour réessayer.</Text>
             </View>
-          ) : sortedEarnings.length === 0 && !isLoading ? (
+          ) : !isLoading ? (
             <View style={styles.emptyState}>
               <Ionicons name="receipt-outline" size={28} color={Colors.gray[500]} />
               <Text style={styles.emptyTitle}>Aucune course créditée</Text>
               <Text style={styles.emptyText}>
-                Les gains apparaissent dès que le paiement de fin de trajet est confirmé.
+                Les paiements électroniques, jetons et participations Zwanga apparaissent ici après crédit. Le cash reçu est suivi séparément.
               </Text>
             </View>
-          ) : (
-            sortedEarnings.map((earning, index) => (
-              <Animated.View
-                entering={FadeInDown.delay(180 + Math.min(index, 5) * 35)}
-                key={earning.id}
-                style={styles.earningRow}
-              >
-                <View style={styles.earningIcon}>
-                  <Ionicons name="car-outline" size={20} color={Colors.primary} />
-                </View>
-                <View style={styles.rowCopy}>
-                  <Text style={styles.rowTitle}>{getPaymentModeLabel(earning)}</Text>
-                  <Text style={styles.rowMeta}>
-                    {formatDate(earning.availableAt ?? earning.createdAt)} · Brut{' '}
-                    {formatAmount(earning.grossAmount, earning.currency)}
-                  </Text>
-                </View>
-                <Text style={styles.earningAmount}>
-                  +{formatAmount(earning.netAmount, earning.currency)}
-                </Text>
-              </Animated.View>
-            ))
-          )}
-
-          {payoutsError && (
-            <Text style={styles.inlineError}>L’historique des versements sera réactualisé automatiquement.</Text>
-          )}
-        </Animated.View>
-      </ScrollView>
+          ) : <ActivityIndicator color={Colors.primary} />}
+        ListFooterComponent={<View style={pageInsets}><HistoryPagination page={earningsCursor.page} hasNext={Boolean(earningsPage?.nextCursor)}
+          busy={earningsFetching} error={earningsError} onPrevious={earningsCursor.previous}
+          onNext={() => earningsCursor.next(earningsPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetchEarnings(); }} /></View>}
+      />
+      <PayoutDestinationModal visible={Boolean(payoutForm)} amount={payoutForm?.amount ?? 0}
+        currency={currency} phone={payoutForm?.phone ?? ''} defaultPhone={summary?.payoutPhone}
+        disabled={!canOpenWithdrawal} onChangePhone={setPayoutPhone}
+        onContinue={confirmPayoutForm} onClose={closePayoutForm} />
     </SafeAreaView>
   );
 }
-

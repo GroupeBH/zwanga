@@ -18,7 +18,7 @@ interface RatingParticipantSelectorProps {
   setSelectedPassenger: React.Dispatch<React.SetStateAction<string | null>>;
   bookingsLoading: boolean;
   bookingsError: ReturnType<typeof useGetTripBookingsQuery>['error'];
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchBookings: () => unknown;
 }
 
 export function RatingParticipantSelector({

@@ -47,6 +47,8 @@ export const purposeLabels: Record<string, string> = {
   subscription_pro: 'Abonnement Pro',
   trip_booking: 'Réservation trajet',
   wallet_top_up: 'Recharge de jetons',
+  wallet_payout: 'Retrait de jetons achetés',
+  referral_payout: 'Retrait de gains de parrainage',
   driver_payout: 'Paiement chauffeur',
   generic: 'Paiement',
 };
@@ -124,7 +126,7 @@ export const getPaymentDetailRows = (payment: PaymentHistoryItem) => {
     { label: 'Méthode', value: methodLabels[payment.method] ?? payment.method },
     { label: 'Prestataire', value: payment.provider },
     { label: 'Référence Zwanga', value: payment.reference },
-    { label: 'Commande FlexPay', value: formatValue(payment.orderNumber) },
+    { label: 'Référence prestataire', value: formatValue(payment.orderNumber) },
     { label: 'Référence opérateur', value: formatValue(payment.providerReference) },
     { label: 'Code statut', value: formatValue(payment.statusCode) },
     { label: 'Téléphone', value: formatValue(payment.phone) },

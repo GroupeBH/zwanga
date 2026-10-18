@@ -1,97 +1,56 @@
 import { useBookingCards } from '../hooks/bookings/useBookingCards';
+import { useBookingsFeed } from '@/hooks/bookings/useBookingsFeed';
+import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { BookingTab } from '../features/bookings/bookingsModel';
 import { styles } from '../features/screen-styles/app/bookings/index';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { trackEvent } from '@/services/analytics';
-import { useCancelBookingMutation, useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { useCancelBookingMutation } from '@/store/api/bookingApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import { openWhatsApp } from '@/utils/phoneHelpers';
+import { NavigationContactModal } from '@/features/navigation/NavigationContactModal';
+import { getNavigationContacts } from '@/features/navigation/navigationContacts';
+import { useAppSelector } from '@/store/hooks';
+import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeInDown } from '@/utils/reanimated';
+import React, { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function BookingsScreen() {
   const router = useRouter();
+  const leavingRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    leavingRef.current = false;
+    return () => { leavingRef.current = true; };
+  }, []));
+  const handleBack = useCallback(() => {
+    // Router actions are queued: a second tap must not pop the previous screen too.
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [router]);
   const { showDialog } = useDialog();
   const [activeTab, setActiveTab] = useState<BookingTab>('active');
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [selectedDriverPhone, setSelectedDriverPhone] = useState<string | null>(null);
-  const [selectedDriverName, setSelectedDriverName] = useState<string | null>(null);
+  const [contactBookingId, setContactBookingId] = useState<string | null>(null);
+  const userId = useAppSelector(state => state.auth.user?.id);
+  const onContact = useCallback((booking: Booking) => setContactBookingId(booking.id), []);
 
-  const {
-    data: bookings,
-    isLoading,
-    isFetching,
-    isError,
-    refetch,
-  } = useGetMyBookingsQuery();
+  const feed = useBookingsFeed(activeTab);
+  const { activeBookings, displayBookings, isLoading, isFetching, isError, refetch } = feed;
+  const contactBooking = activeBookings.find(booking => booking.id === contactBookingId && booking.status === 'accepted');
+  const contacts = getNavigationContacts({ role: 'passenger', userId, booking: contactBooking, trip: contactBooking?.trip });
   const [cancelBooking, { isLoading: isCancelling }] = useCancelBookingMutation();
 
-  const activeBookings = useMemo(
-    () => {
-      const now = new Date();
-      return (bookings ?? []).filter((booking) => {
-        // Les réservations rejetées, annulées ou complétées ne sont pas actives
-        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain' || booking.status === 'completed') {
-          return false;
-        }
-        
-        // Les réservations pending ou accepted sont actives seulement si le trajet n'est pas expiré
-        if (booking.status === 'pending' || booking.status === 'accepted') {
-          // Vérifier si le trajet associé a une date de départ passée
-          if (booking.trip?.departureTime) {
-            const departureDate = new Date(booking.trip.departureTime);
-            // Si la date de départ est passée, la réservation est expirée
-            if (booking.trip.status !== 'ongoing' && departureDate < now) {
-              return false;
-            }
-          }
-          return true;
-        }
-        
-        return false;
-      });
-    },
-    [bookings],
-  );
-
-  const historyBookings = useMemo(
-    () => {
-      const now = new Date();
-      return (bookings ?? []).filter((booking) => {
-        // Les réservations rejetées, annulées ou complétées sont dans l'historique
-        if (booking.status === 'rejected' || booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'boarding_uncertain' || booking.status === 'completed') {
-          return true;
-        }
-        
-        // Les réservations pending ou accepted dont le trajet est expiré sont dans l'historique
-        if (booking.status === 'pending' || booking.status === 'accepted') {
-          if (booking.trip?.departureTime) {
-            const departureDate = new Date(booking.trip.departureTime);
-            // Si la date de départ est passée, la réservation est expirée et va dans l'historique
-            if (booking.trip.status !== 'ongoing' && departureDate < now) {
-              return true;
-            }
-          }
-        }
-        
-        return false;
-      });
-    },
-    [bookings],
-  );
-
-  const displayBookings = activeTab === 'active' ? activeBookings : historyBookings;
   const emptyText =
     activeTab === 'active'
-      ? 'Vous n&apos;avez pas encore de réservation active.'
+      ? "Vous n'avez pas encore de réservation active."
       : 'Aucune réservation passée pour le moment.';
 
-  const handleCancel = (bookingId: string) => {
+  const handleCancel = useCallback((bookingId: string) => {
     showDialog({
       variant: 'warning',
       title: 'Annuler la réservation',
@@ -120,15 +79,12 @@ export default function BookingsScreen() {
         },
       ],
     });
-  };
+  }, [cancelBooking, refetch, showDialog]);
 
-  const { renderBookingCard } = useBookingCards({
-    displayBookings,
+  const { renderBookingListItem } = useBookingCards({
     activeTab,
     router,
-    setSelectedDriverPhone,
-    setSelectedDriverName,
-    setContactModalVisible,
+    onContact,
     handleCancel,
     isCancelling,
   });
@@ -137,12 +93,12 @@ export default function BookingsScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={handleBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Retour">
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
           <View>
             <Text style={styles.headerTitle}>Mes réservations</Text>
-            <Text style={styles.headerSubtitle}>Suivez vos demandes en temps réel</Text>
+            <Text style={styles.headerSubtitle}>Suivez vos réservations en temps réel</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.headerIcon} onPress={() => refetch()}>
@@ -164,7 +120,7 @@ export default function BookingsScreen() {
           onPress={() => setActiveTab('history')}
         >
           <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
-            Historique ({historyBookings.length})
+            Historique
           </Text>
         </TouchableOpacity>
       </View>
@@ -179,19 +135,27 @@ export default function BookingsScreen() {
         </View>
       )}
 
-      <ScrollView
+      <FlatList
+        data={displayBookings}
+        keyExtractor={booking => booking.id}
+        renderItem={renderBookingListItem}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
         contentContainerStyle={styles.scrollViewContent}
         refreshControl={
-          <RefreshControl refreshing={isFetching} onRefresh={refetch} tintColor={Colors.primary} />
+          <RefreshControl refreshing={isFetching && !feed.loadingMore} onRefresh={refetch} tintColor={Colors.primary} />
         }
         showsVerticalScrollIndicator={false}
-      >
-        {isLoading && displayBookings.length === 0 ? (
+        ListFooterComponent={activeTab === 'history' ? <HistoryPaginationFooter
+          hasMore={feed.hasMore} loading={feed.loadingMore} error={isError}
+          loaded={displayBookings.length} onLoad={feed.loadMore} /> : null}
+        ListEmptyComponent={isLoading ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.loaderText}>Chargement de vos réservations…</Text>
           </View>
-        ) : displayBookings.length === 0 ? (
+        ) : isError ? null : (
           <View style={styles.emptyState}>
             <View style={styles.emptyIcon}>
               <Ionicons
@@ -210,76 +174,11 @@ export default function BookingsScreen() {
               <Text style={styles.primaryButtonText}>Rechercher un trajet</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          displayBookings.map((booking, index) => renderBookingCard(booking.id, booking, index))
         )}
-      </ScrollView>
+      />
 
-      {/* Contact Modal */}
-      <Modal
-        visible={contactModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setContactModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.contactModalOverlay}
-          activeOpacity={1}
-          onPress={() => setContactModalVisible(false)}
-        >
-          <Animated.View entering={FadeInDown} style={styles.contactModalCard} onStartShouldSetResponder={() => true}>
-            <View style={styles.contactModalHeader}>
-              <View style={styles.contactModalIconWrapper}>
-                <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
-                </View>
-              </View>
-              <Text style={styles.contactModalTitle}>
-                Contacter {selectedDriverName || 'le conducteur'}
-              </Text>
-              <Text style={styles.contactModalSubtitle}>
-                Contact via WhatsApp uniquement
-              </Text>
-            </View>
-
-            <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
-                onPress={async () => {
-                  setContactModalVisible(false);
-                  if (selectedDriverPhone) {
-                    await openWhatsApp(selectedDriverPhone, (errorMsg) => {
-                      showDialog({
-                        variant: 'danger',
-                        title: 'Erreur',
-                        message: errorMsg,
-                      });
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un message WhatsApp</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.contactModalCancelButton}
-              onPress={() => setContactModalVisible(false)}
-            >
-              <Text style={styles.contactModalCancelText}>Annuler</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
+      {contactBookingId && <NavigationContactModal contacts={contacts} role="passenger"
+        onClose={() => setContactBookingId(null)} />}
     </SafeAreaView>
   );
 }
-
-

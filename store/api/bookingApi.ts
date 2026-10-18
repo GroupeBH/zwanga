@@ -1,4 +1,6 @@
 import { buildCreateBookingEndpoints } from './booking/createBooking.endpoints';
+import { buildBookingHistory } from './booking/history';
+import { buildCashReceiptEndpoints } from './booking/cashReceipt.endpoints';
 import { buildConfirmDropoffByPassengerEndpoints } from './booking/confirmDropoffByPassenger.endpoints';
 import {
   bookingListTag,
@@ -19,6 +21,8 @@ export const bookingApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
     ...buildCreateBookingEndpoints(builder),
+    ...buildBookingHistory(builder),
+    ...buildCashReceiptEndpoints(builder),
     acceptBooking: builder.mutation<Booking, string>({
       query: (id: string) => ({
         url: `/bookings/${id}/accept`,
@@ -44,6 +48,14 @@ export const bookingApi = baseApi.injectEndpoints({
             }),
           );
           dispatch(
+            bookingApi.util.updateQueryData('getMyActivityBookings', undefined, (draft) => {
+              patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
+            }),
+          );
+          dispatch(bookingApi.util.updateQueryData('getMyBookingsForTrip', acceptedBooking.tripId, draft => {
+            patchAcceptedBookingInList(draft, acceptedBooking, acceptedAt);
+          }));
+          dispatch(
             bookingApi.util.updateQueryData('getBookingById', id, (draft) => {
               Object.assign(draft, mergeAcceptedBooking(draft, acceptedBooking, acceptedAt));
             }),
@@ -68,8 +80,12 @@ export const bookingApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useConfirmCashReceiptMutation,
+  useGetMyBookingHistoryInfiniteQuery,
+  useGetMyActivityBookingsQuery,
   useCreateBookingMutation,
   useGetMyBookingsQuery,
+  useGetMyBookingsForTripQuery,
   useGetTripBookingsQuery,
   useInitiateBookingPaymentMutation,
   useLazyCheckBookingPaymentStatusQuery,
@@ -86,6 +102,7 @@ export const {
   useConfirmDropoffMutation,
   useConfirmDropoffByPassengerMutation,
   useRequestPassengerTripInterruptionMutation,
+  useGetPassengerInterruptionFarePreviewQuery,
   useCancelPassengerTripInterruptionMutation,
   useConfirmPassengerTripInterruptionMutation,
   useRejectPassengerTripInterruptionMutation,

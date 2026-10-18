@@ -3,10 +3,40 @@ const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const React = require('react');
-const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificationNavigation } =
+const { getNotificationHref, extractTripRequestId, getTripUrl, handleNotificationNavigation, isTripInterruptionNotification } =
   loader()('utils/notificationNavigation.ts');
 
 const requestHref = id => ({ pathname: '/request-details/[id]', params: { id } });
+
+test('stale location reminder opens driver GPS settings, never another account or an arbitrary link', () => {
+  const data = { type: 'driver_location_stale', driverId: 'driver', navigateTo: 'https://untrusted.invalid' };
+  assert.equal(getNotificationHref(data, { id: 'driver' }), '/driver-availability');
+  assert.equal(getNotificationHref({ data }), '/driver-availability');
+  assert.equal(getNotificationHref(data, { id: 'someone-else' }), null);
+});
+
+test('sent and received token transfers open the wallet, including nested pushes', () => {
+  for (const type of ['wallet_transfer_in', 'wallet_transfer_out']) {
+    const payload = { type, transferId: 'transfer', amount: 10 };
+    assert.equal(getNotificationHref(payload), '/wallet');
+    assert.equal(getNotificationHref({ data: payload }), '/wallet');
+    assert.equal(getNotificationHref({ ...payload, tripId: 'unrelated' }), '/wallet');
+  }
+});
+
+test('welcome bonus confirmation opens the wallet for flat and nested push payloads', () => {
+  const payload = { type: 'wallet_loyalty_reward', relatedEntityType: 'welcome_bonus', amount: 50 };
+  assert.equal(getNotificationHref(payload), '/wallet');
+  assert.equal(getNotificationHref({ data: payload }), '/wallet');
+  assert.equal(getNotificationHref({ ...payload, tripId: 'unrelated' }), '/wallet');
+  assert.equal(getNotificationHref({ type: 'wallet_loyalty_reward', tripId: 'trip' }), '/trip/trip');
+});
+
+test('cash commission and trial alerts open the wallet even when a booking identifier is present', () => {
+  for (const type of ['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started']) {
+    assert.equal(getNotificationHref({ type, bookingId: 'booking', tripId: 'trip' }), '/wallet');
+  }
+});
 
 test('manual confirmation notices open the recipient navigation, not the original request', () => {
   assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'passenger', bookingId: 'booking', tripId: 'trip', requestId: 'request' }), '/booking/navigate/booking');
@@ -50,10 +80,22 @@ test('actual backend emergency payloads route to the recipient’s trip view, ne
   for (const [type, role] of cases) {
     const data = { type, role, tripId: 'trip', bookingId: 'booking', requestId: 'interruption' };
     assert.equal(extractTripRequestId(data), null);
-    assert.equal(getNotificationHref(data), role === 'driver' ? '/trip/manage/trip' : '/trip/trip');
+    assert.equal(getNotificationHref(data), type === 'passenger_trip_interruption_confirmed'
+      ? '/booking/navigate/booking' : role === 'driver' ? '/trip/manage/trip' : '/trip/trip');
     assert.equal(getNotificationHref({ data }), getNotificationHref(data));
   }
   assert.equal(getNotificationHref({ type: 'driver_trip_interruption_requested', requestId: 'interruption' }), null);
+});
+
+test('both interruption families refresh booking/payment data, including nested push payloads', () => {
+  for (const type of ['passenger_trip_interruption_confirmed', 'passenger_trip_interruption_rejected',
+    'driver_trip_interruption_completed']) {
+    assert.equal(isTripInterruptionNotification({ type }), true);
+    assert.equal(isTripInterruptionNotification({ data: { type } }), true);
+  }
+  assert.equal(isTripInterruptionNotification({ type: 'message' }), false);
+  assert.equal(isTripInterruptionNotification({}), false);
+  assert.equal(getNotificationHref({ type: 'passenger_trip_interruption_confirmed', role: 'passenger', bookingId: 'booking' }), '/booking/navigate/booking');
 });
 
 test('request IDs are explicit first and request offers/overdue recovery retain the request route', () => {
@@ -130,6 +172,7 @@ function inbox(data) {
     'expo-router': { useRouter: () => ({ push: href => routes.push(href), back() {} }) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/features/navigation/RideModal': { RideModal: 'Modal' },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: { id: 'passenger' } }) },
     '@/store/api/notificationApi': {
       useGetNotificationPagesInfiniteQuery: () => ({ data: { pages: [{ notifications: [notification], unreadCount: 1 }] } }),

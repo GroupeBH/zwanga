@@ -25,6 +25,8 @@ export function TripDetailMapPreview({
       style={styles.mapContainer}
       onPress={() => model.bookingState.setMapModalVisible(true)}
       activeOpacity={0.95}
+      accessibilityRole="button"
+      accessibilityLabel="Agrandir la carte du trajet"
     >
       <View style={[styles.mapPreview, { height: Math.min(214, Math.max(172, model.data.viewportHeight * 0.27)) }]}>
         <MapView
@@ -50,8 +52,8 @@ export function TripDetailMapPreview({
             anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
             image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
             pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
-            title="Départ"
-            description={model.data.trip?.departure?.address}
+            title={`Départ · ${model.presentation.routeLabels.departure.title}`}
+            description={model.presentation.routeLabels.departure.address}
             tracksViewChanges={false}
           >
             {USE_CUSTOM_MAP_MARKERS ? (
@@ -66,8 +68,8 @@ export function TripDetailMapPreview({
             anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
             image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
             pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
-            title="Arrivée"
-            description={model.data.trip?.arrival?.address}
+            title={`Arrivée · ${model.presentation.routeLabels.arrival.title}`}
+            description={model.presentation.routeLabels.arrival.address}
             tracksViewChanges={false}
           >
             {USE_CUSTOM_MAP_MARKERS ? (
@@ -98,18 +100,10 @@ export function TripDetailMapPreview({
           ))}
         </MapView>
 
-        <View style={styles.mapOverlay}>
-          <View>
-            <Text style={styles.mapOverlayLabel}>DÉPART</Text>
-            <Text style={styles.mapOverlayValue}>{model.presentation.tripDepartureTimeLabel}</Text>
-          </View>
-          <View style={styles.mapOverlayDivider} />
-          <Text style={styles.mapOverlayText}>Agrandir</Text>
-        </View>
-
         <View style={styles.expandButton}>
           <View style={styles.expandButtonInner}>
-            <Ionicons name="expand" size={20} color={Colors.gray[700]} />
+            <Ionicons name="expand" size={16} color={Colors.gray[700]} />
+            <Text style={styles.mapOverlayText}>Voir la carte</Text>
           </View>
         </View>
       </View>

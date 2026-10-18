@@ -1,5 +1,6 @@
 import type { setupListeners } from '@reduxjs/toolkit/query';
 import { AppState } from 'react-native';
+import { observeNetworkConnection, notifyConnectionRecovery } from './networkRecovery';
 
 /** Bridge native lifecycle signals into RTK Query without duplicate refetch events. */
 export const nativeQueryListeners: NonNullable<Parameters<typeof setupListeners>[1]> = (dispatch, actions) => {
@@ -13,8 +14,10 @@ export const nativeQueryListeners: NonNullable<Parameters<typeof setupListeners>
   const syncNetwork = (state: import('expo-network').NetworkState) => {
     if (cancelled) return;
     const connected = state.isInternetReachable ?? state.isConnected;
+    if (typeof connected === 'boolean') observeNetworkConnection(connected);
     if (typeof connected === 'boolean' && connected !== online) {
       online = connected;
+      // The recovery epoch is updated before reads react to onOnline.
       dispatch(online ? actions.onOnline() : actions.onOffline());
     }
   };
@@ -30,6 +33,7 @@ export const nativeQueryListeners: NonNullable<Parameters<typeof setupListeners>
     if (active !== focused) {
       focused = active;
       dispatch(active ? actions.onFocus() : actions.onFocusLost());
+      if (active) notifyConnectionRecovery();
     }
     if (active) refreshNetwork();
   };

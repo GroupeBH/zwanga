@@ -40,7 +40,7 @@ export function usePublishSuccessActions({
     form.setDepartureDateTime(null);
     form.setIosPickerMode(null);
     form.setIosPickerTarget('departure');
-    form.setSeats('4');
+    form.resetSeats();
     form.setIsFreeTrip(false);
     form.setPrice('');
     form.setDescription('');

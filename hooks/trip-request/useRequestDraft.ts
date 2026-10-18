@@ -1,4 +1,4 @@
-import { buildPresetWindow } from '@/features/trip-request/requestFormModel';
+import { buildPresetWindow, DEFAULT_REQUEST_FLEXIBILITY_MINUTES } from '@/features/trip-request/requestFormModel';
 import type { RootState } from '@/store';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
@@ -19,7 +19,8 @@ export function useRequestDraft() {
   const store = useStore<RootState>();
   const [initialDraft] = useState(() => {
     const window = buildPresetWindow('now');
-    return createRequestDraft(window.min.getTime(), window.flex);
+    // A starting value for the native picker, never an implicitly selected departure.
+    return createRequestDraft(window.min.getTime(), DEFAULT_REQUEST_FLEXIBILITY_MINUTES);
   });
   const draft = useAppSelector((state) => state.requestDrafts.byId[id] ?? initialDraft);
   useEffect(() => {
@@ -39,6 +40,7 @@ export function useRequestDraft() {
       setDepartureManualAddress: setter('departureManualAddress'), setArrivalManualAddress: setter('arrivalManualAddress'),
       setDepartureReference: setter('departureReference'), setArrivalReference: setter('arrivalReference'),
       setTimePreset: setter('timePreset'), setDepartureDateMinMs: setter('departureDateMinMs'),
+      setHasChosenDepartureTime: setter('hasChosenDepartureTime'),
       setFlexibilityMinutes: setter('flexibilityMinutes'), setNumberOfSeats: setter('numberOfSeats'),
       setHasSpecifiedNumberOfSeats: setter('hasSpecifiedNumberOfSeats'), setSelectedVehicleType: setter('selectedVehicleType'),
       setMaxPricePerSeat: setter('maxPricePerSeat'), setHasEditedBudget: setter('hasEditedBudget'),

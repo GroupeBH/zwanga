@@ -1,9 +1,10 @@
 import { WalletAction, TopUpStage, TopUpCheckOutcome, StoredWalletTopUp } from '../../features/wallet/walletTypes';
 import type { SubscriptionPaymentMethod } from '@/types';
 import React, { useEffect } from 'react';
-import { AppState } from 'react-native';
 
 interface Params {
+  isScreenActive: boolean;
+  captureScope: () => () => boolean;
   mountedRef: React.RefObject<boolean>;
   pollingRunIdRef: React.RefObject<number>;
   storageKey: string | null;
@@ -19,11 +20,11 @@ interface Params {
   setActiveModal: React.Dispatch<React.SetStateAction<WalletAction | null>>;
   setTopUpStage: React.Dispatch<React.SetStateAction<TopUpStage>>;
   setTopUpStatusMessage: React.Dispatch<React.SetStateAction<string | null>>;
-  topUpStage: TopUpStage;
-  isAutoCheckingTopUp: boolean;
 }
 
 export function useWalletTopUpRecovery({
+  isScreenActive,
+  captureScope,
   mountedRef,
   pollingRunIdRef,
   storageKey,
@@ -39,23 +40,22 @@ export function useWalletTopUpRecovery({
   setActiveModal,
   setTopUpStage,
   setTopUpStatusMessage,
-  topUpStage,
-  isAutoCheckingTopUp,
 }: Params) {
-  useEffect(() => () => {
-    mountedRef.current = false;
-    pollingRunIdRef.current += 1;
-  }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; pollingRunIdRef.current += 1; };
+  }, [mountedRef, pollingRunIdRef]);
 
   useEffect(() => {
-    if (!storageKey) return;
+    if (!storageKey || !isScreenActive) return;
     if (restoredStorageKeyRef.current === storageKey) return;
     restoredStorageKeyRef.current = storageKey;
 
     let cancelled = false;
+    const isCurrent = captureScope();
     void (async () => {
       const storedPayment = await readStoredTopUp();
-      if (cancelled || !storedPayment?.orderNumber) return;
+      if (cancelled || !isCurrent() || !storedPayment?.orderNumber) return;
 
       applyStoredTopUp(storedPayment);
       const outcome = await checkTopUpByOrderNumber(storedPayment.orderNumber, {
@@ -63,7 +63,7 @@ export function useWalletTopUpRecovery({
         suppressErrorDialog: true,
       });
 
-      if (!cancelled && (outcome === 'pending' || outcome === 'error')) {
+      if (!cancelled && isCurrent() && (outcome === 'pending' || outcome === 'error')) {
         startTopUpAutoCheck(
           storedPayment.orderNumber,
           storedPayment.paymentMethod,
@@ -74,6 +74,7 @@ export function useWalletTopUpRecovery({
 
     return () => {
       cancelled = true;
+      if (restoredStorageKeyRef.current === storageKey) restoredStorageKeyRef.current = null;
     };
   }, [
     applyStoredTopUp,
@@ -81,18 +82,23 @@ export function useWalletTopUpRecovery({
     readStoredTopUp,
     startTopUpAutoCheck,
     storageKey,
+    isScreenActive,
+    captureScope,
+    restoredStorageKeyRef,
   ]);
 
   useEffect(() => {
-    if (!returnedPaymentStatus) return;
+    if (!returnedPaymentStatus || !isScreenActive) return;
 
-    const returnStatusKey = `${String(returnedPaymentStatus)}:${topUpOrderNumber ?? 'stored'}`;
+    const returnStatusKey = `${storageKey}:${String(returnedPaymentStatus)}`;
     if (handledReturnStatusRef.current === returnStatusKey) return;
     handledReturnStatusRef.current = returnStatusKey;
 
     const normalizedStatus = String(returnedPaymentStatus).toLowerCase();
+    const isCurrent = captureScope();
     void (async () => {
       const storedPayment = await readStoredTopUp();
+      if (!isCurrent()) return;
       const orderNumber = topUpOrderNumber ?? storedPayment?.orderNumber;
       const paymentMethod = storedPayment?.paymentMethod ?? topUpMethod;
       setActiveModal('top_up');
@@ -121,7 +127,7 @@ export function useWalletTopUpRecovery({
         suppressErrorDialog: true,
       });
 
-      if (outcome === 'pending' || outcome === 'error') {
+      if (isCurrent() && (outcome === 'pending' || outcome === 'error')) {
         startTopUpAutoCheck(orderNumber, paymentMethod, pendingMessage);
       }
     })();
@@ -132,48 +138,15 @@ export function useWalletTopUpRecovery({
     startTopUpAutoCheck,
     topUpMethod,
     topUpOrderNumber,
+    isScreenActive,
+    captureScope,
+    storageKey,
+    handledReturnStatusRef,
+    setActiveModal,
+    setTopUpStage,
+    setTopUpStatusMessage,
   ]);
 
-  useEffect(() => {
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (
-        nextState !== 'active' ||
-        !topUpOrderNumber ||
-        topUpStage === 'success' ||
-        topUpStage === 'failed'
-      ) {
-        return;
-      }
-
-      void checkTopUpByOrderNumber(topUpOrderNumber, {
-        pendingMessage: "Retour dans l'app détecté. Nous actualisons la recharge.",
-        suppressErrorDialog: true,
-      }).then((outcome) => {
-        if (
-          mountedRef.current &&
-          (outcome === 'pending' || outcome === 'error') &&
-          !isAutoCheckingTopUp
-        ) {
-          startTopUpAutoCheck(
-            topUpOrderNumber,
-            topUpMethod,
-            "Retour dans l'app détecté. Nous reprenons le suivi.",
-          );
-        }
-      });
-    });
-
-    return () => {
-      appStateSubscription.remove();
-    };
-  }, [
-    checkTopUpByOrderNumber,
-    isAutoCheckingTopUp,
-    startTopUpAutoCheck,
-    topUpMethod,
-    topUpOrderNumber,
-    topUpStage,
-  ]);
 
   return {
 

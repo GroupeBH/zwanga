@@ -2,6 +2,8 @@ import type { Review } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
+export interface ReviewPage { data: Review[]; total: number; nextCursor: string | null }
+
 const buildFullName = (user?: { firstName?: string | null; lastName?: string | null; phone?: string }) => {
   if (!user) {
     return 'Utilisateur';
@@ -53,12 +55,22 @@ export const reviewApi = baseApi.injectEndpoints({
       providesTags: (_result, _error, userId) => [{ type: 'User', id: userId }],
     }),
 
+    getReviewPage: builder.query<ReviewPage, { userId: string; before?: string; limit?: number }>({
+      query: ({ userId, before, limit = 20 }) => ({ url: `/ratings/user/${userId}/page`, params: { before, limit } }),
+      transformResponse: (response: { data: unknown[]; total: number; nextCursor: string | null }) => ({
+        data: response.data.map(mapServerRating), total: response.total, nextCursor: response.nextCursor,
+      }),
+      keepUnusedDataFor: 30,
+      providesTags: (_result, _error, { userId }) => [{ type: 'User', id: userId }],
+    }),
+
     getAverageRating: builder.query<{ userId: string; averageRating: number }, string>({
       query: (userId: string) => `/ratings/user/${userId}/average`,
       transformResponse: (response: any, _meta, userId: string) => ({
         userId: String(response?.userId ?? userId),
         averageRating: toFiniteRating(response?.averageRating),
       }),
+      providesTags: (_result, _error, userId) => [{ type: 'User', id: userId }],
     }),
   }),
 });
@@ -66,5 +78,6 @@ export const reviewApi = baseApi.injectEndpoints({
 export const {
   useCreateReviewMutation,
   useGetReviewsQuery,
+  useGetReviewPageQuery,
   useGetAverageRatingQuery,
 } = reviewApi;

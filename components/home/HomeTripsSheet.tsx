@@ -1,249 +1,179 @@
-import { Colors } from '@/constants/styles';
-import { HOME_COLORS } from '@/features/home/homeModel';
+import { getTripRequestCreateHref } from '@/utils/requestNavigation';
+import { RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
+import { homePriorityKeys } from '@/features/home/homePriorityDismissal';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import {
-  FlatList,
-  Text,
-  TouchableOpacity,
-  View
-} from 'react-native';
-
-import { styles } from '@/features/home/HomeTripsSheet.styles';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { HOME_DASHBOARD_COLORS, styles } from '@/features/home/HomeTripsSheet.styles';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-import type { useHomeMap } from '@/hooks/home/useHomeMap';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
+import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDismissals';
+import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 import { HomeSheetLoadingState } from './HomeSheetLoadingState';
-import { TripPreviewCard } from './TripPreviewCard';
-import { TripRequestPreviewCard } from './TripRequestPreviewCard';
+import { HomeSuggestionCard } from './HomeSuggestionCard';
+import { HomeDriverStatus } from './HomeDriverStatus';
+import { HomeDriverEarnings } from './HomeDriverEarnings';
+import { HomeDestinationShortcuts } from './HomeDestinationShortcuts';
+import { SwipeableHomePriority } from './SwipeableHomePriority';
+
 type Props =
   Pick<ReturnType<typeof useHomeSheet>,
-    'sheetBottomOffset'
-    | 'sheetHeight'
-    | 'effectiveTripsSheetOpen'
-    | 'toggleTripsSheet'
-    | 'sheetTitle'
-    | 'sheetSubtitle'
-    | 'openSheetIndex'
-    | 'isRequestsSheetMode'
-    | 'setHomeSheetMode'
-    | 'sheetLoading'
-    | 'sheetError'
-    | 'refetchSheetContent'
-    | 'sheetEmpty'
-    | 'tripCardWidth'
-  >
-  & Pick<ReturnType<typeof useHomeTripSelection>,
-    'isHomeSheetLockedRetracted'
-    | 'latestTrips'
-  >
-  & Pick<ReturnType<typeof useHomeContext>,
-    'isDriver'
-  >
-  & Pick<ReturnType<typeof useHomePassengerActivity>,
-    'availableDriverRequests'
-    | 'bookedTripIds'
-  >
-  & Pick<ReturnType<typeof useHomeMapNavigation>,
-    'openTripRequestDetail'
-    | 'openTripDetail'
-  >
-  & Pick<ReturnType<typeof useHomeMap>,
-    'selectedTrip'
-  >;
-export const HomeTripsSheet = React.memo(function HomeTripsSheet({
-  sheetBottomOffset,
-  sheetHeight,
-  effectiveTripsSheetOpen,
-  toggleTripsSheet,
-  isHomeSheetLockedRetracted,
-  sheetTitle,
-  sheetSubtitle,
-  openSheetIndex,
-  isDriver,
-  isRequestsSheetMode,
-  setHomeSheetMode,
-  availableDriverRequests,
-  sheetLoading,
-  sheetError,
-  refetchSheetContent,
-  sheetEmpty,
-  tripCardWidth,
-  openTripRequestDetail,
-  latestTrips,
-  bookedTripIds,
-  selectedTrip,
-  openTripDetail,
-}: Props) {
-  return (<View style={[styles.tripsSheet, { bottom: sheetBottomOffset, height: sheetHeight }]}>
-    <View style={styles.sheetHeader}>
-      <TouchableOpacity
-        activeOpacity={0.78}
-        accessibilityRole="button"
-        accessibilityLabel={effectiveTripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
-        style={styles.sheetHeaderCopy}
-        onPress={toggleTripsSheet}
-        disabled={isHomeSheetLockedRetracted}
-      >
-        <Text style={styles.sheetTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
-          {sheetTitle}
-        </Text>
-        <Text style={styles.sheetSubtitle} numberOfLines={1}>
-          {sheetSubtitle}
-        </Text>
-      </TouchableOpacity>
-      <View style={styles.sheetHeaderActions}>
-        <TouchableOpacity activeOpacity={0.75} onPress={openSheetIndex}>
-          <Text style={styles.seeAllText} numberOfLines={1}>Voir tout</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel={effectiveTripsSheetOpen ? 'Rétracter la liste des trajets' : 'Afficher la liste des trajets'}
-          style={styles.sheetToggle}
-          onPress={toggleTripsSheet}
-          disabled={isHomeSheetLockedRetracted}
-        >
-          <Ionicons
-            name={effectiveTripsSheetOpen ? 'chevron-down' : 'chevron-up'}
-            size={18}
-            color={HOME_COLORS.ink}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
+    'firstName' | 'sheetBottomOffset' | 'sheetHeight' | 'onSheetLayout'
+    | 'effectiveTripsSheetOpen' | 'toggleTripsSheet' | 'sheetTitle' | 'openSheetIndex'
+    | 'sheetLoading' | 'sheetError'
+    | 'refetchSheetContent' | 'sheetEmpty'>
+  & Pick<ReturnType<typeof useHomeTripSelection>, 'isHomeSheetLockedRetracted' | 'latestTrips' | 'suggestionScopeLabel' | 'featuredPassengerTrip'>
+  & Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isScreenActive' | 'router'>
+  & Pick<ReturnType<typeof useHomePassengerActivity>, 'availableDriverRequests' | 'bookedTripIds' | 'recentDestinations'>
+  & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest'>
+  & Pick<ReturnType<typeof useHomePriorityDismissals>, 'dismissPriority' | 'hiddenHomePriorities'>
+  & Pick<ReturnType<typeof useHomeMapNavigation>, 'openTripRequestDetail' | 'openTripDetail'>
+  & { prioritiesEnabled: boolean };
 
-    {effectiveTripsSheetOpen && isDriver && (
-      <View style={styles.sheetModeSwitch}>
-        <TouchableOpacity
-          activeOpacity={0.82}
-          accessibilityRole="button"
-          accessibilityState={{ selected: !isRequestsSheetMode }}
-          style={[styles.sheetModeOption, !isRequestsSheetMode && styles.sheetModeOptionActive]}
-          onPress={() => setHomeSheetMode('trips')}
-        >
-          <Ionicons
-            name="car-outline"
-            size={15}
-            color={!isRequestsSheetMode ? Colors.white : HOME_COLORS.navy}
-          />
-          <Text
-            style={[styles.sheetModeText, !isRequestsSheetMode && styles.sheetModeTextActive]}
-            numberOfLines={1}
-          >
-            Trajets
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          activeOpacity={0.82}
-          accessibilityRole="button"
-          accessibilityState={{ selected: isRequestsSheetMode }}
-          style={[styles.sheetModeOption, isRequestsSheetMode && styles.sheetModeOptionActive]}
-          onPress={() => setHomeSheetMode('requests')}
-        >
-          <Ionicons
-            name="document-text-outline"
-            size={15}
-            color={isRequestsSheetMode ? Colors.white : HOME_COLORS.navy}
-          />
-          <Text
-            style={[styles.sheetModeText, isRequestsSheetMode && styles.sheetModeTextActive]}
-            numberOfLines={1}
-          >
-            Demandes
-          </Text>
-          {availableDriverRequests.length > 0 && (
-            <View style={[styles.sheetModeCountBadge, isRequestsSheetMode && styles.sheetModeCountBadgeActive]}>
-              <Text style={[styles.sheetModeCountText, isRequestsSheetMode && styles.sheetModeCountTextActive]}>
-                {availableDriverRequests.length > 9 ? '9+' : availableDriverRequests.length}
+export const HomeTripsSheet = React.memo(function HomeTripsSheet({
+  firstName, suggestionScopeLabel, sheetBottomOffset, sheetHeight, onSheetLayout,
+  effectiveTripsSheetOpen, toggleTripsSheet, isHomeSheetLockedRetracted, sheetTitle,
+  openSheetIndex, isDriver, isScreenActive, highlightedDriverRequest,
+  dismissPriority, hiddenHomePriorities, prioritiesEnabled,
+  availableDriverRequests, sheetLoading,
+  sheetError, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
+  openTripDetail, router, recentDestinations, featuredPassengerTrip,
+}: Props) {
+  const showRequests = isDriver;
+  const clientCount = availableDriverRequests.length;
+  const clientCountLabel = clientCount >= RECENT_TRIPS_LIMIT ? `${RECENT_TRIPS_LIMIT}+` : String(clientCount);
+  const suggestionTrip = latestTrips.find(trip => !bookedTripIds.has(trip.id))
+    ?? latestTrips.find(trip => trip.id !== featuredPassengerTrip?.id);
+  const featuredRequest = availableDriverRequests.find(
+    request => request.id !== highlightedDriverRequest?.id && !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)],
+  );
+  const hasSuggestion = showRequests ? Boolean(featuredRequest) : Boolean(suggestionTrip);
+
+  return (
+    <View onLayout={onSheetLayout} style={[styles.tripsSheet, { bottom: sheetBottomOffset, height: sheetHeight }]}>
+      <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+        accessibilityLabel={effectiveTripsSheetOpen ? 'Agrandir la carte' : 'Afficher les suggestions'}
+        accessibilityState={{ expanded: effectiveTripsSheetOpen, disabled: isHomeSheetLockedRetracted }}
+        style={styles.sheetHandleButton} onPress={toggleTripsSheet} disabled={isHomeSheetLockedRetracted}>
+        <View style={styles.sheetHandle} />
+      </TouchableOpacity>
+      {effectiveTripsSheetOpen ? (
+        <ScrollView style={styles.dashboardScroll} contentContainerStyle={styles.dashboardContent}
+          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <View style={styles.greetingRow}>
+            <Text style={[styles.greeting, isDriver && styles.driverGreeting]} numberOfLines={1}>Bonjour {firstName}</Text>
+            {isDriver && <HomeDriverStatus active={isScreenActive} onPress={() => router.push('/driver-availability')} />}
+          </View>
+          {isDriver ? (
+            <>
+              <View style={styles.driverActions}>
+                <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.publishButton}
+                  onPress={() => router.push('/publish')}>
+                  <Ionicons name="add" size={18} color="#FFFFFF" accessible={false} />
+                  <Text style={styles.publishButtonText}>Publier un trajet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+                  accessibilityLabel="Commander un véhicule"
+                  accessibilityHint="Ouvrir le formulaire pour voyager comme passager."
+                  style={styles.driverOrderButton} onPress={() => router.push(getTripRequestCreateHref())}>
+                  <Text style={styles.driverOrderText}>Commander</Text>
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+                accessibilityLabel="Chercher un trajet"
+                accessibilityHint="Trouver un trajet publié pour voyager comme passager."
+                style={styles.driverSearchButton}
+                onPress={() => router.push('/search')}>
+                <Ionicons name="search-outline" size={20} color={HOME_DASHBOARD_COLORS.blue} accessible={false} />
+                <Text style={styles.driverSearchText}>Chercher un trajet</Text>
+                <Ionicons name="chevron-forward" size={16} color={HOME_DASHBOARD_COLORS.blue} accessible={false} />
+              </TouchableOpacity>
+              <View style={styles.metricsRow}>
+                <TouchableOpacity activeOpacity={0.8} style={styles.metricCard} accessibilityRole="button"
+                  accessibilityLabel={`${clientCountLabel} clients disponibles`}
+                  onPress={openSheetIndex}>
+                  <Text style={styles.metricLabel}>Clients près de vous</Text>
+                  <Text style={styles.metricValue}>{clientCountLabel}</Text>
+                  <Text style={styles.metricHint}>commandes</Text>
+                </TouchableOpacity>
+                <HomeDriverEarnings active={isScreenActive} onPress={() => router.push('/driver-earnings')} />
+              </View>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+                accessibilityLabel="Où allez-vous ?" accessibilityHint="Ouvrir la recherche par destination."
+                style={styles.searchBar} onPress={() => router.push('/search')}>
+                <Ionicons name="search-outline" size={24} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
+                <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
+              </TouchableOpacity>
+              <HomeDestinationShortcuts active={isScreenActive} recentDestinations={recentDestinations} />
+              <View style={styles.passengerActions}>
+                <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={[styles.passengerAction, styles.passengerProposeAction]}
+                  onPress={() => router.push('/publish')}>
+                  <Text style={styles.passengerActionText}>Proposer un trajet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={[styles.passengerAction, styles.passengerOrderAction]}
+                  onPress={() => router.push(getTripRequestCreateHref())}>
+                  <Text style={styles.passengerActionText}>Commander</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+          <View testID="home-discovery-actions" style={styles.feedHeading}>
+            <Text style={styles.feedTitle} accessibilityRole="header">
+              {isDriver ? 'Clients' : suggestionScopeLabel ? 'Trajets pour vous' : 'Trajets près de vous'}
+            </Text>
+            <TouchableOpacity style={styles.seeAllButton} activeOpacity={0.8}
+              accessibilityRole="button" accessibilityLabel={showRequests ? 'Voir tous les clients' : 'Voir tous les trajets'}
+              accessibilityHint="Ouvrir la liste complète." onPress={openSheetIndex}>
+              <Text style={styles.seeAllText}>Voir tout</Text>
+              <Ionicons name="chevron-forward" size={16} color={HOME_DASHBOARD_COLORS.orange} accessible={false} />
+            </TouchableOpacity>
+          </View>
+          {sheetLoading && !hasSuggestion ? <HomeSheetLoadingState active={isScreenActive} /> : null}
+          {sheetError && !hasSuggestion ? (
+            <View style={styles.stateRow}>
+              <Text style={styles.stateText}>Chargement impossible.</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={refetchSheetContent} accessibilityRole="button">
+                <Text style={styles.retryButtonText}>Réessayer</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+          {!sheetLoading && !sheetError && !hasSuggestion ? (
+            <View style={styles.emptyState}>
+              <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
+              <Text style={styles.emptyText}>
+                {showRequests
+                  ? highlightedDriverRequest ? 'Le client le plus proche est sur la carte.' : 'Aucun nouveau client pour le moment.'
+                  : featuredPassengerTrip ? 'Votre réservation est sur la carte.' : 'Aucun trajet disponible pour le moment.'}
               </Text>
             </View>
-          )}
+          ) : null}
+          {showRequests && featuredRequest ? (
+            <SwipeableHomePriority priorityKey={homePriorityKeys.nearbyRequest(featuredRequest)}
+              enabled={prioritiesEnabled} onDismiss={dismissPriority}>
+              <HomeSuggestionCard kind="request" item={featuredRequest}
+                onOpen={openTripRequestDetail} />
+            </SwipeableHomePriority>
+          ) : null}
+          {!showRequests && suggestionTrip ? (
+            <HomeSuggestionCard kind="trip" item={suggestionTrip} onOpen={openTripDetail} booked={bookedTripIds.has(suggestionTrip.id)} />
+          ) : null}
+          {!isDriver && suggestionScopeLabel ? <Text style={styles.scopeLabel}>{suggestionScopeLabel}</Text> : null}
+        </ScrollView>
+      ) : (
+        <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+          accessibilityLabel={`Afficher ${sheetTitle.toLowerCase()}`}
+          accessibilityState={{ expanded: false, disabled: isHomeSheetLockedRetracted }}
+          style={styles.collapsedRow} onPress={toggleTripsSheet} disabled={isHomeSheetLockedRetracted}>
+          <Text style={styles.collapsedTitle}>{sheetTitle}</Text>
+          <Ionicons name="chevron-up" size={20} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
         </TouchableOpacity>
-      </View>
-    )}
-
-    {effectiveTripsSheetOpen && sheetLoading && (
-      <HomeSheetLoadingState />
-    )}
-
-    {effectiveTripsSheetOpen && sheetError && !sheetLoading && (
-      <View style={styles.sheetState}>
-        <Ionicons name="alert-circle-outline" size={24} color={Colors.danger} />
-        <Text style={styles.sheetStateText}>
-          Impossible de charger les {isRequestsSheetMode ? 'demandes' : 'trajets'}.
-        </Text>
-        <TouchableOpacity style={styles.retryButton} onPress={refetchSheetContent}>
-          <Text style={styles.retryButtonText}>Réessayer</Text>
-        </TouchableOpacity>
-      </View>
-    )}
-
-    {effectiveTripsSheetOpen && !sheetLoading && !sheetError && sheetEmpty && (
-      <View style={styles.emptyCard}>
-        <View style={styles.emptyIcon}>
-          <Ionicons
-            name={isRequestsSheetMode ? 'document-text-outline' : 'car-outline'}
-            size={24}
-            color={HOME_COLORS.navy}
-          />
-        </View>
-        <View style={styles.emptyTextBlock}>
-          <Text style={styles.emptyTitle}>
-            {isRequestsSheetMode ? 'Aucune demande disponible' : 'Aucun trajet disponible'}
-          </Text>
-          <Text style={styles.emptyText}>
-            {isRequestsSheetMode
-              ? 'Revenez plus tard pour accepter une demande passager.'
-              : 'Publiez le vôtre ou revenez plus tard.'}
-          </Text>
-        </View>
-      </View>
-    )}
-
-    {effectiveTripsSheetOpen && !sheetLoading && !sheetError && isRequestsSheetMode && availableDriverRequests.length > 0 && (
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tripsHorizontalContent}
-        data={availableDriverRequests}
-        keyExtractor={(request) => request.id}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        windowSize={5}
-        renderItem={({ item: request }) => (
-          <TripRequestPreviewCard
-            cardWidth={tripCardWidth}
-            request={request}
-            onOpen={openTripRequestDetail}
-          />
-        )}
-      />
-    )}
-
-    {effectiveTripsSheetOpen && !sheetLoading && !sheetError && !isRequestsSheetMode && latestTrips.length > 0 && (
-      <FlatList
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tripsHorizontalContent}
-        data={latestTrips}
-        keyExtractor={(trip) => trip.id}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        windowSize={5}
-        renderItem={({ item: trip }) => (
-          <TripPreviewCard
-            cardWidth={tripCardWidth}
-            trip={trip}
-            isBooked={bookedTripIds.has(trip.id)}
-            isSelected={trip.id === selectedTrip?.id}
-            onOpen={openTripDetail}
-          />
-        )}
-      />
-    )}
-  </View>);
+      )}
+    </View>
+  );
 });

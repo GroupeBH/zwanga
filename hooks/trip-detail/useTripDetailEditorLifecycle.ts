@@ -1,5 +1,6 @@
 import { EditTripStep } from '../../features/trip-detail/tripDetailModel';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { useDialog } from '@/components/ui/DialogProvider';
 import React, { useEffect } from 'react';
 import { InteractionManager } from 'react-native';
@@ -86,11 +87,11 @@ export function useTripDetailEditorLifecycle({
           }
         : null;
 
-    setEditSeats(String(trip.availableSeats));
+    setEditSeats(String(trip.canReprogram ? (trip.totalSeats ?? trip.availableSeats) : trip.availableSeats));
     setEditPrice(String(trip.price));
     setEditRequiresPassengerKyc(Boolean(trip.requiresPassengerKyc));
     const parsedDate = trip.departureTime ? new Date(trip.departureTime) : null;
-    setEditDateTime(parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
+    setEditDateTime(!isTripExpired(trip) && parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : getDefaultFutureDate());
     setEditDepartureSelection(departureSelection);
     setEditArrivalSelection(arrivalSelection);
     setEditDepartureManualAddress((trip.departure?.address || trip.departure?.name || '').trim());
@@ -141,7 +142,7 @@ export function useTripDetailEditorLifecycle({
 
     handledOpenEditParamKeyRef.current = openEditParamKey;
 
-    if (trip.status !== 'upcoming' && trip.status !== 'ongoing') {
+    if (!trip.canReprogram && trip.status !== 'upcoming' && trip.status !== 'ongoing') {
       showDialog({
         variant: 'warning',
         title: 'Modification indisponible',
@@ -159,9 +160,11 @@ export function useTripDetailEditorLifecycle({
     };
   }, [
     editTripModalVisible,
+    handledOpenEditParamKeyRef,
     isFocused,
     isTripDriver,
     openEditParamKey,
+    openEditModalRef,
     shouldOpenEditFromParams,
     showDialog,
     trip,

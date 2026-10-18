@@ -84,6 +84,7 @@ target 'zwanga' do
       'react-native-google-maps',
       'RNFBApp',
       'RNFBAnalytics',
+      'RNFBCrashlytics',
     ]
 
     installer.pods_project.targets.each do |target|

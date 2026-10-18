@@ -15,13 +15,33 @@
         "simulator": true
       }
     },
+    "dev-device": {
+      "extends": "dev",
+      "environment": "development",
+      "env": {
+        "EXPO_PUBLIC_ENV": "development"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
     "production": {
       "distribution": "store",
       "environment": "production",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle",
-        "image": "latest"
+        "image": "ubuntu-24.04-jdk-17-ndk-r27b",
+        "env": {
+          "EAS_USE_CACHE": "1"
+        },
+        "cache": {
+          "key": "android-sdk54-gradle-v1",
+          "paths": ["/home/expo/.gradle/caches/build-cache-1"]
+        }
       },
       "ios": {
         "image": "latest",

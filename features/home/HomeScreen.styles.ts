@@ -9,6 +9,6 @@ export const styles = StyleSheet.create({
   },
   mapVeil: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(248,249,250,0.12)',
+    backgroundColor: 'rgba(250,248,244,0.18)',
   }
 });

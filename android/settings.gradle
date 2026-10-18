@@ -37,3 +37,25 @@ expoAutolinking.useExpoVersionCatalog()
 
 include ':app'
 includeBuild(expoAutolinking.reactNativeGradlePlugin)
+
+// ZWANGA_PATCHED_REACT_ANDROID
+// Compile the installed, postinstall-patched sources. Maven AARs do not contain our guard.
+// Keep local debug builds usable without a host C++ compiler (notably Windows).
+def sourceRequested = providers.gradleProperty('zwanga.buildReactNativeFromSource').orNull == 'true'
+def releaseRequested = gradle.startParameter.taskNames.any { task ->
+  def name = task.tokenize(':').last().toLowerCase()
+  name.contains('release') || name in ['assemble', 'build', 'bundle']
+}
+if (sourceRequested || releaseRequested) {
+if (!file('../node_modules/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ViewGroupDrawingOrderHelper.kt').text.contains('ZWANGA_DRAWING_ORDER_GUARD')) {
+  throw new GradleException('React Native drawing-order patch missing. Run the project postinstall before a release build.')
+}
+includeBuild('../node_modules/react-native') {
+  dependencySubstitution {
+    substitute(module('com.facebook.react:react-android')).using(project(':packages:react-native:ReactAndroid'))
+    substitute(module('com.facebook.react:react-native')).using(project(':packages:react-native:ReactAndroid'))
+    substitute(module('com.facebook.react:hermes-android')).using(project(':packages:react-native:ReactAndroid:hermes-engine'))
+    substitute(module('com.facebook.react:hermes-engine')).using(project(':packages:react-native:ReactAndroid:hermes-engine'))
+  }
+}
+}

@@ -1,227 +1,164 @@
-import type { BookingPaymentResponse } from '@/types';
-import {
-  normalizePaymentPhone,
-  isPaymentChannel,
-  getPaymentFailureMessage,
-  getPaymentStatusMessage,
-  getStorageKey,
-} from '../../features/arrival-payment/paymentModel';
-import {
-  PaymentChannel,
-  StoredBookingPaymentState,
-  StoredPaymentState,
-  PaymentCompletionSummary,
-} from '../../features/arrival-payment/paymentTypes';
-import { ARRIVAL_PAYMENT_STATUS_REFRESH_MS } from '../../features/arrival-payment/paymentPolicy';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect } from 'react';
-import { useLazyCheckBookingPaymentStatusQuery } from '@/store/api/bookingApi';
-import { useGetMyWalletQuery, useLazyCheckWalletTopUpStatusQuery } from '@/store/api/walletApi';
-import type { TripPaymentMode } from '@/types';
-import type { Booking, User } from '@/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isPaymentChannel, normalizePaymentPhone, getPaymentFailureMessage } from '@/features/arrival-payment/paymentModel';
+import { ARRIVAL_PAYMENT_CHECK_TIMEOUT_MS, ARRIVAL_PAYMENT_MONITOR_WINDOW_MS, ARRIVAL_PAYMENT_STATUS_REFRESH_MS } from '@/features/arrival-payment/paymentPolicy';
+import type { useArrivalPaymentState } from './useArrivalPaymentState';
+import type { useArrivalPaymentProvider } from './useArrivalPaymentProvider';
+import type { useArrivalPaymentCompletion } from './useArrivalPaymentCompletion';
 
-interface Params {
-  setIsStoredStateLoaded: React.Dispatch<React.SetStateAction<boolean>>;
-  isAuthenticated: boolean;
-  user: User | null;
-  setStoredState: React.Dispatch<React.SetStateAction<StoredPaymentState>>;
-  arrivalBooking: Booking | null;
-  activeBookingIdRef: React.RefObject<string | null>;
-  storedState: StoredPaymentState;
-  setSelectedMode: React.Dispatch<React.SetStateAction<TripPaymentMode>>;
-  setSelectedChannel: React.Dispatch<React.SetStateAction<PaymentChannel>>;
-  setPaymentPhone: React.Dispatch<React.SetStateAction<string>>;
-  setCompletionSummary: React.Dispatch<React.SetStateAction<PaymentCompletionSummary | null>>;
-  setStatusMessage: React.Dispatch<React.SetStateAction<string>>;
-  setPaymentError: React.Dispatch<React.SetStateAction<string>>;
-  persistBookingState: (bookingId: string, patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => void;
-  activeStoredState: StoredBookingPaymentState | undefined;
-  isAppActive: boolean;
-  paymentCheckInFlightRef: React.RefObject<boolean>;
-  setIsCheckingPayment: React.Dispatch<React.SetStateAction<boolean>>;
-  checkWalletTopUpStatus: ReturnType<typeof useLazyCheckWalletTopUpStatusQuery>[0];
-  refetchWallet: ReturnType<typeof useGetMyWalletQuery>['refetch'];
-  settleWithPoints: (bookingId: string) => Promise<boolean>;
-  checkBookingPaymentStatus: ReturnType<typeof useLazyCheckBookingPaymentStatusQuery>[0];
-  handleCompletedBookingPayment: (response: BookingPaymentResponse, options?: { mode?: TripPaymentMode | null; channel?: PaymentChannel; }) => Promise<boolean>;
-}
+type Params = { state: ReturnType<typeof useArrivalPaymentState>;
+  provider: ReturnType<typeof useArrivalPaymentProvider>;
+  completion: ReturnType<typeof useArrivalPaymentCompletion> };
+export type PaymentVerification = { phase: 'idle' | 'checking' | 'waiting' | 'paused' | 'complete'; message: string };
+const IDLE: PaymentVerification = { phase: 'idle', message: '' };
+const UNAVAILABLE = 'Vérification indisponible. Ne payez pas une seconde fois. Vérifiez à nouveau ou fermez cette fenêtre.';
+const PENDING = 'Le paiement attend une confirmation. Ne payez pas une seconde fois. Vous pouvez fermer cette fenêtre et reprendre plus tard.';
 
-export function useArrivalPaymentMonitoring({
-  setIsStoredStateLoaded,
-  isAuthenticated,
-  user,
-  setStoredState,
-  arrivalBooking,
-  activeBookingIdRef,
-  storedState,
-  setSelectedMode,
-  setSelectedChannel,
-  setPaymentPhone,
-  setCompletionSummary,
-  setStatusMessage,
-  setPaymentError,
-  persistBookingState,
-  activeStoredState,
-  isAppActive,
-  paymentCheckInFlightRef,
-  setIsCheckingPayment,
-  checkWalletTopUpStatus,
-  refetchWallet,
-  settleWithPoints,
-  checkBookingPaymentStatus,
-  handleCompletedBookingPayment,
-}: Params) {
+export function useArrivalPaymentMonitoring({ state, provider, completion }: Params) {
+  const latest = useRef({ state, provider, completion });
+  latest.current = { state, provider, completion };
+  const bookingId = state.arrivalBooking?.id;
+  const walletOrder = state.activeStoredState?.walletTopUpOrderNumber;
+  const bookingOrder = state.activeStoredState?.bookingPaymentOrderNumber;
+  const requiredActionAt = state.activeStoredState?.requiredActionAt;
+  const persistBookingState = state.persistBookingState;
+  const hasBlockingOverlay = Boolean(state.completionSummary || state.interruptionChoice);
+  const serverPaymentSucceeded = state.arrivalBooking?.paymentStatus === 'succeeded';
+  const orderKey = JSON.stringify([bookingId, walletOrder, bookingOrder]);
+  const [progress, setProgress] = useState<{ key: string; value: PaymentVerification }>({ key: '', value: IDLE });
+  const pausedOrder = useRef<string | null>(null);
+  const retry = useRef<() => void>(() => {});
+  const retryVerification = useCallback(() => retry.current(), []);
+
   useEffect(() => {
+    const current = latest.current.state;
+    if (current.activeBookingIdRef.current === (bookingId ?? null)) return;
+    current.activeBookingIdRef.current = bookingId ?? null;
+    const channel = current.activeStoredState?.bookingPaymentChannel;
+    current.setSelectedChannel(isPaymentChannel(channel) ? channel : 'mpesa');
+    current.setPaymentPhone(normalizePaymentPhone(current.user?.phone));
+    current.setStatusMessage('');
+    current.setPaymentError('');
+  }, [bookingId]);
+
+  useEffect(() => {
+    if (!bookingId || requiredActionAt) return;
+    persistBookingState(bookingId, { requiredActionAt: new Date().toISOString() });
+  }, [bookingId, requiredActionAt, persistBookingState]);
+
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.isAppActive || !state.isResumeReady || state.isPaymentDeferred ||
+        hasBlockingOverlay || !bookingId || (!walletOrder && !bookingOrder)) return;
     let cancelled = false;
-    setIsStoredStateLoaded(false);
-
-    if (!isAuthenticated || !user?.id) {
-      setStoredState({});
-      setIsStoredStateLoaded(true);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void AsyncStorage.getItem(getStorageKey(user.id))
-      .then((rawValue) => {
-        if (cancelled) return;
-        if (!rawValue) {
-          setStoredState({});
-          return;
-        }
-        const parsed = JSON.parse(rawValue) as StoredPaymentState;
-        setStoredState(parsed && typeof parsed === 'object' ? parsed : {});
-      })
-      .catch((error) => {
-        console.warn('[PassengerArrivalPayment] État local illisible:', error);
-        if (!cancelled) setStoredState({});
-      })
-      .finally(() => {
-        if (!cancelled) setIsStoredStateLoaded(true);
-      });
-
-    return () => {
-      cancelled = true;
+    let inFlight = false;
+    let stopped = false;
+    let deadline = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelRead: (() => void) | undefined;
+    const setChecking = state.setIsCheckingPayment;
+    const publish = (value: PaymentVerification) => {
+      if (cancelled) return;
+      setChecking(value.phase === 'checking');
+      setProgress({ key: orderKey, value });
     };
-  }, [isAuthenticated, user?.id]);
+    const pause = (message: string) => {
+      stopped = true;
+      pausedOrder.current = orderKey;
+      publish({ phase: 'paused', message });
+    };
+    // Bound even a read waiting on token refresh. Never abort a payment mutation.
+    const read = <T,>(request: { unwrap(): Promise<T>; abort?: () => void; unsubscribe?: () => void }): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Payment status read timed out'));
+          request.abort?.();
+        }, Math.min(ARRIVAL_PAYMENT_CHECK_TIMEOUT_MS, Math.max(1, deadline - Date.now())));
+        cancelRead = () => {
+          clearTimeout(timeout);
+          reject(new Error('Payment status read cancelled'));
+          request.abort?.();
+        };
+        void request.unwrap().then(resolve, reject).finally(() => clearTimeout(timeout));
+      }).finally(() => { request.unsubscribe?.(); cancelRead = undefined; });
 
-  useEffect(() => {
-    const bookingId = arrivalBooking?.id ?? null;
-    if (activeBookingIdRef.current === bookingId) return;
-
-    activeBookingIdRef.current = bookingId;
-    const storedChannel = bookingId ? storedState[bookingId]?.bookingPaymentChannel : null;
-    setSelectedMode(arrivalBooking?.paymentMode ?? 'cash');
-    setSelectedChannel(isPaymentChannel(storedChannel) ? storedChannel : 'mpesa');
-    setPaymentPhone(normalizePaymentPhone(user?.phone));
-    setCompletionSummary((current) =>
-      current && bookingId && current.bookingId !== bookingId ? null : current,
-    );
-    setStatusMessage('');
-    setPaymentError('');
-  }, [arrivalBooking?.id, arrivalBooking?.paymentMode, storedState, user?.phone]);
-
-  useEffect(() => {
-    if (!arrivalBooking || storedState[arrivalBooking.id]?.requiredActionAt) return;
-    persistBookingState(arrivalBooking.id, { requiredActionAt: new Date().toISOString() });
-  }, [arrivalBooking, persistBookingState, storedState]);
-
-  useEffect(() => {
-    const bookingId = arrivalBooking?.id;
-    const walletTopUpOrderNumber = activeStoredState?.walletTopUpOrderNumber;
-    const bookingPaymentOrderNumber = activeStoredState?.bookingPaymentOrderNumber;
-    if (!isAppActive || !bookingId || (!walletTopUpOrderNumber && !bookingPaymentOrderNumber)) return;
-
-    let cancelled = false;
-
-    const checkPayment = async () => {
-      if (paymentCheckInFlightRef.current || cancelled) return;
-      paymentCheckInFlightRef.current = true;
-      setIsCheckingPayment(true);
-
+    const check = async () => {
+      if (cancelled || stopped || inFlight) return;
+      if (Date.now() >= deadline) { pause(PENDING); return; }
+      inFlight = true;
+      publish({ phase: 'checking', message: 'Vérification du paiement en cours…' });
+      let finished = false;
       try {
-        if (walletTopUpOrderNumber) {
-          const response = await checkWalletTopUpStatus(walletTopUpOrderNumber).unwrap();
+        const booking = latest.current.state.arrivalBooking;
+        if (booking?.id !== bookingId) return;
+        if (booking.paymentStatus === 'succeeded') {
+          latest.current.state.persistBookingState(bookingId, { walletTopUpOrderNumber: null,
+            bookingPaymentOrderNumber: null, bookingPaymentUrl: null });
+          await latest.current.completion.showCompletionSummary(booking);
+          finished = true;
+        } else if (walletOrder) {
+          const response = await read(latest.current.state.checkWalletTopUpStatus(walletOrder));
           if (cancelled) return;
-
           if (response.payment.status === 'succeeded') {
-            persistBookingState(bookingId, { walletTopUpOrderNumber: null });
-            setStatusMessage('Recharge confirmée. Paiement de la course en cours...');
-            await refetchWallet();
-            await settleWithPoints(bookingId);
-            return;
+            latest.current.state.setStatusMessage('Recharge confirmée. Paiement de la course en cours…');
+            finished = await latest.current.provider.settleWithPoints(bookingId);
+            if (!cancelled && finished) latest.current.state.persistBookingState(bookingId, { walletTopUpOrderNumber: null });
+            // A confirmed top-up must not trigger automatic repeated settlement mutations.
+            if (!cancelled && !finished) pause(PENDING);
+          } else if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+            latest.current.state.setStatusMessage('');
+            latest.current.state.persistBookingState(bookingId, { walletTopUpOrderNumber: null });
+            latest.current.state.setPaymentError(getPaymentFailureMessage(response.payment.message));
+            latest.current.state.reportPaymentFailure(bookingId);
+            finished = true;
           }
-
-          if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
-            persistBookingState(bookingId, { walletTopUpOrderNumber: null });
-            setPaymentError(getPaymentFailureMessage(response.payment.message));
-            return;
-          }
-
-          setStatusMessage(
-            getPaymentStatusMessage(
-              response.payment.message,
-              'Confirmez le complément Mobile Money sur votre téléphone.',
-            ),
-          );
-          return;
-        }
-
-        if (bookingPaymentOrderNumber) {
-          const response = await checkBookingPaymentStatus(bookingPaymentOrderNumber).unwrap();
+        } else if (bookingOrder) {
+          const response = await read(latest.current.state.checkBookingPaymentStatus(bookingOrder));
           if (cancelled) return;
-
-          const finished = await handleCompletedBookingPayment(response, {
-            mode: 'electronic',
-            channel: activeStoredState?.bookingPaymentChannel,
+          finished = await latest.current.completion.handleCompletedBookingPayment(response, {
+            mode: 'electronic', channel: latest.current.state.activeStoredState?.bookingPaymentChannel,
           });
-          if (finished) {
-            return;
-          }
-
-          if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
-            persistBookingState(bookingId, { bookingPaymentOrderNumber: null });
-            setPaymentError(getPaymentFailureMessage(response.payment.message));
-            return;
-          }
-
-          setStatusMessage(
-            getPaymentStatusMessage(
-              response.payment.message,
-              'Confirmez le paiement Mobile Money sur votre téléphone.',
-            ),
-          );
         }
-      } catch (error) {
-        console.warn('[PassengerArrivalPayment] Vérification du paiement impossible:', error);
+        if (cancelled || stopped) return;
+        if (finished) {
+          stopped = true;
+          publish({ phase: 'complete', message: '' });
+        } else if (Date.now() >= deadline) pause(PENDING);
+        else {
+          publish({ phase: 'waiting', message: PENDING });
+          // Delay from response completion, not a fixed interval during slow reads.
+          timer = setTimeout(() => void check(), Math.min(ARRIVAL_PAYMENT_STATUS_REFRESH_MS, deadline - Date.now()));
+        }
+      } catch {
+        if (!cancelled) {
+          latest.current.state.setStatusMessage('');
+          pause(UNAVAILABLE); // An unavailable status is not a failed or cancelled payment.
+        }
       } finally {
-        paymentCheckInFlightRef.current = false;
-        if (!cancelled) setIsCheckingPayment(false);
+        inFlight = false;
+        if (!cancelled) setChecking(false);
       }
     };
-
-    void checkPayment();
-    const interval = setInterval(() => void checkPayment(), ARRIVAL_PAYMENT_STATUS_REFRESH_MS);
+    const start = () => {
+      if (cancelled || inFlight) return;
+      clearTimeout(timer);
+      stopped = false;
+      pausedOrder.current = null;
+      deadline = Date.now() + ARRIVAL_PAYMENT_MONITOR_WINDOW_MS;
+      latest.current.state.setStatusMessage('');
+      latest.current.state.setPaymentError('');
+      void check();
+    };
+    retry.current = start;
+    if (pausedOrder.current !== orderKey || serverPaymentSucceeded) start();
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearTimeout(timer);
+      cancelRead?.();
+      retry.current = () => {};
+      setChecking(false);
     };
-  }, [
-    isAppActive,
-    activeStoredState?.bookingPaymentChannel,
-    activeStoredState?.bookingPaymentOrderNumber,
-    activeStoredState?.walletTopUpOrderNumber,
-    arrivalBooking?.id,
-    checkBookingPaymentStatus,
-    checkWalletTopUpStatus,
-    handleCompletedBookingPayment,
-    persistBookingState,
-    refetchWallet,
-    settleWithPoints,
-  ]);
+  }, [state.isAuthenticated, state.isAppActive, state.isResumeReady, state.isPaymentDeferred,
+    hasBlockingOverlay, serverPaymentSucceeded, bookingId, walletOrder, bookingOrder,
+    orderKey, state.setIsCheckingPayment]);
 
-  return {
-
-  };
+  return { verification: progress.key === orderKey ? progress.value : IDLE, retryVerification };
 }

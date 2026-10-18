@@ -4,9 +4,22 @@ import { ServerBooking, UpdatePassengerLocationResponse } from './serverTypes';
 import type { Booking, TripPaymentMode, TripInterruptionReason } from '../../../types';
 import type { BaseEndpointBuilder } from '../types';
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
+import type { PassengerInterruptionFarePreview } from '@/types/interruptions';
 
 export function buildConfirmDropoffByPassengerEndpoints(builder: BaseEndpointBuilder) {
   return {
+    getPassengerInterruptionFarePreview: builder.query<PassengerInterruptionFarePreview, {
+      bookingId: string;
+      coordinates?: { latitude: number; longitude: number } | null;
+    }>({
+      query: ({ bookingId, coordinates }) => ({
+        url: `/bookings/${bookingId}/interruption-request/preview`,
+        method: 'POST',
+        body: { coordinates },
+      }),
+      // Only requested while the confirmation is open; never poll or retain GPS snapshots.
+      keepUnusedDataFor: 0,
+    }),
 // Signaler l'arrivée du passager (par le passager)
     confirmDropoffByPassenger: builder.mutation<Booking, string | { id: string; paymentMode?: TripPaymentMode }>({
       query: (arg: string | { id: string; paymentMode?: TripPaymentMode }) => {

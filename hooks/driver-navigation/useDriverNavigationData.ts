@@ -24,18 +24,27 @@ import {
   useUpdateDriverLocationMutation,
 } from '@/store/api/tripApi';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
+import { reconcileTripMutation } from '@/utils/tripStartReconciliation';
 import { getTripLocationCoordinate, isCoordinateInKinshasaBounds } from '@/utils/tripCoordinates';
 import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { applyPassengerInterruptionResponse } from '@/store/api/booking/passengerInterruptionResponseCache';
+import { applyDriverBookingDecision, type DriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
+import type { Booking } from '@/types';
+import { ownsTrip } from '@/features/activity/tripParticipation';
 
 
 
 export function useDriverNavigationData() {
-  const { id } = useLocalSearchParams();
+  const { id, bookingId } = useLocalSearchParams();
   const router = useRouter();
   const { showDialog } = useDialog();
+  const dispatch = useAppDispatch();
+  const driverId = useAppSelector(state => state.auth.user?.id);
+  const isOnline = useAppSelector(state => state.zwangaApi.config.online);
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const isFocused = useIsFocused();
@@ -44,15 +53,19 @@ export function useDriverNavigationData() {
 
   const { data: liveTrip, error: tripError, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
+    refetchOnMountOrArgChange: typeof bookingId === 'string',
     skipPollingIfUnfocused: true,
   });
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
-  const isTripOngoing = trip?.status === 'ongoing';
+  const isOwner = trip?.id === tripId && ownsTrip(trip, driverId);
+  const isTripOngoing = isOwner && trip?.status === 'ongoing';
   const { data: liveBookings, error: bookingsError, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
     tripId,
     {
-      skip: !tripId,
-      pollingInterval: isScreenActive && isTripOngoing ? 20_000 : 0,
+      skip: !tripId || !isOwner,
+      refetchOnMountOrArgChange: typeof bookingId === 'string',
+      pollingInterval: isScreenActive && isTripOngoing && isOnline ? 20_000 : 0,
+      refetchOnReconnect: isScreenActive,
       skipPollingIfUnfocused: true,
     },
   );
@@ -84,6 +97,12 @@ export function useDriverNavigationData() {
   const [getDriverLocationSnapshot] = useLazyGetDriverLocationQuery();
   const [createTripShareLink, { isLoading: isCreatingTripShareLink }] =
     useCreateTripShareLinkMutation();
+  const commitPassengerInterruptionResponse = useCallback((response: Booking, source: Booking) => {
+    if (driverId) dispatch(applyPassengerInterruptionResponse(response, source, driverId));
+  }, [dispatch, driverId]);
+  const commitBookingDecision = useCallback((source: Booking, status: DriverBookingDecision, response?: Booking) => {
+    if (driverId) dispatch(applyDriverBookingDecision(source, status, driverId, response));
+  }, [dispatch, driverId]);
   const reconcileBookingStatus = useCallback(
     async (error: unknown, bookingId: string, expectedStatuses: readonly string[]) =>
       reconcileAmbiguousMutation({
@@ -98,12 +117,8 @@ export function useDriverNavigationData() {
   );
   const reconcileTripStatus = useCallback(
     async (error: unknown, expectedStatuses: readonly string[]) =>
-      reconcileAmbiguousMutation({
-        error,
-        loadSnapshot: async () => (await refetchTrip()).data ?? null,
-        isApplied: (latestTrip) => expectedStatuses.includes(latestTrip.status),
-      }),
-    [refetchTrip],
+      reconcileTripMutation({ error, tripId, expectedStatuses, refetch: refetchTrip }),
+    [refetchTrip, tripId],
   );
   const tripDepartureCoordinate = useMemo(
     () =>
@@ -171,6 +186,7 @@ export function useDriverNavigationData() {
 
   return {
     tripId,
+    focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,
     isScreenActive,
     tripDepartureCoordinate,
     bookings,
@@ -198,6 +214,8 @@ export function useDriverNavigationData() {
     rejectBooking,
     isConfirmingPassengerInterruption,
     confirmPassengerTripInterruption,
+    commitPassengerInterruptionResponse,
+    commitBookingDecision,
     isRejectingPassengerInterruption,
     rejectPassengerTripInterruption,
     cancelBooking,

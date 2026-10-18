@@ -43,6 +43,46 @@ La vérification manuelle utilise l'endpoint de statut existant, jamais un
 nouveau transfert. L'historique et le solde sont relus toutes les 60 secondes
 uniquement lorsque l'écran est actif ; aucun nouveau polling permanent n'a été ajouté.
 
+### Choisir un autre numéro Mobile Money — 17 septembre 2026
+
+Le bouton « Recevoir mes gains » ouvre désormais `PayoutDestinationModal` :
+
+1. Le montant du versement et le numéro habituel fourni par `summary.payoutPhone`
+   sont affichés. Le numéro est modifiable ; son absence dans le profil ne bloque
+   plus la saisie d'un bénéficiaire pour ce versement.
+2. Le conducteur peut conserver ce numéro ou en saisir un autre. Le bouton
+   « Utiliser mon numéro habituel » rétablit le numéro du profil s'il est valide.
+3. « Vérifier et continuer » contrôle le format puis ouvre la confirmation avec
+   le numéro complet normalisé en `+243…` et le montant. Aucun POST n'est effectué
+   pendant la saisie, à la fermeture du formulaire ou en cas d'annulation.
+4. Seule la confirmation finale prépare l'intention persistée et appelle la
+   mutation RTK Query `requestDriverPayout` avec le numéro choisi.
+
+Le brouillon est local à `useDriverPayout` : une frappe ne déclenche aucune
+requête ni modification du profil. Un rafraîchissement des revenus ne remplace
+pas le texte saisi. La fermeture, la sortie de l'écran ou le changement de compte
+suppriment ce brouillon. Les contrôles d'identité, de montant et de solde restent
+en place ; le backend effectue toujours la validation finale.
+
+Le formulaire réutilise `WalletSheetModal`, notamment sa gestion du clavier,
+des zones de sécurité Android/iOS et du démontage de la couche tactile. Il est
+placé hors du défilement de l'écran. Les boutons de reprise d'un versement
+explicitement échoué ou annulé ouvrent aussi ce formulaire avec le montant à
+réessayer. L'historique affiche le destinataire masqué de chaque versement.
+
+Une demande dont le résultat est incertain ne propose **pas** de changement de
+numéro : sa vérification réutilise le montant, le destinataire et la clé sauvegardés,
+y compris après redémarrage. Un double appui sur « Vérifier et continuer » ne
+crée qu'une confirmation ; la protection contre les doubles envois est conservée.
+
+Côté backend, aucun changement n'est nécessaire pour cette option :
+`RequestDriverPayoutDto.phone` est déjà facultatif. `reservePayout` donne priorité
+au numéro demandé, puis utilise celui du profil seulement en son absence, conserve
+ce numéro dans `DriverPayout` et contrôle sa cohérence lors d'une reprise.
+`requestPayout` transmet ensuite `payout.phone` au service de paiement. Ce parcours
+ne réécrit pas le téléphone de l'utilisateur. Le code backend a été vérifié en
+lecture seule ; aucune configuration ni donnée de production n'a été changée.
+
 ## Backend (zwanga-backend)
 
 - `src/payments/payout-policy.ts` : normalisation, validation des URLs de
@@ -106,6 +146,13 @@ code de retour côté serveur dans un canal de support autorisé.
 
 Mobile : `node --test tests/driverPayout.test.js`, TypeScript,
 `node scripts/check-network-boundaries.js`, `node scripts/check-source-size.cjs`.
+
+Pour le choix du destinataire :
+`node --test tests/driverPayout.test.js tests/driverPayoutDestination.test.js tests/walletSheetKeyboard.test.js`.
+Ces tests couvrent le numéro alternatif, l'absence de numéro de profil, les formats
+invalides, l'annulation, le rafraîchissement, les doubles appuis, la reprise après
+coupure/redémarrage et le branchement du formulaire sur les deux boutons de retrait.
+La vérification visuelle clavier ouvert sur Android/iOS reste à effectuer sur appareil.
 
 Backend : suites `payout-flow.spec.ts`, `driver-payout-recovery.spec.ts`,
 `flexpay.service.spec.ts`, `payments.service.spec.ts`,

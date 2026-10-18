@@ -4,6 +4,7 @@ import {
 } from '@/constants/paymentFeatures';
 import type { FavoriteLocation, TripPaymentMode } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { boundedRoutePoints, routeBounds } from '@/utils/routes/safePolyline';
 import type { Ionicons } from '@expo/vector-icons';
 import { type Region } from 'react-native-maps';
 
@@ -23,10 +24,11 @@ export const TIME_PRESETS: {
 }[] = [
     { id: 'now', label: 'Maintenant', caption: 'Départ rapide', icon: 'flash' },
     { id: 'soon', label: 'Dans 30 min', caption: 'Encore un peu', icon: 'time' },
-    { id: 'custom', label: 'Je choisis', caption: 'Date et heure', icon: 'create-outline' },
   ];
 
-export const FLEX_OPTIONS = [0, 30, 60, 120];
+// The backend requires a non-empty departure window; do not offer an invalid "Exact" option.
+export const FLEX_OPTIONS = [15, 30, 60, 120];
+export const DEFAULT_REQUEST_FLEXIBILITY_MINUTES = 30;
 
 export const MIN_REQUEST_SEATS = 1;
 
@@ -66,15 +68,15 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
       ? [
         {
           id: 'electronic' as const,
-          label: 'Paiement électronique',
-          description: 'Paiement securisé via FlexPay',
+          label: 'Électronique',
+          description: 'Paiement sécurisé sur votre téléphone',
           icon: 'card-outline' as const,
         },
       ]
       : []),
     {
       id: 'cash',
-      label: "Paiement cash",
+      label: 'Espèces (cash)',
       description: 'Réglez directement auprès du conducteur',
       icon: 'cash-outline',
     },
@@ -113,6 +115,15 @@ export function applyTimePart(date: Date, current: Date) {
 
 export function formatDateLabel(date: Date) {
   return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+export function formatRequestDayLabel(date: Date, now = new Date()) {
+  if (date.toDateString() === now.toDateString()) return 'Aujourd’hui';
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) return 'Demain';
+  return date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short',
+    ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}) });
 }
 
 export function formatTimeLabel(date: Date) {
@@ -234,20 +245,22 @@ export function getRenderableRouteCoordinates(
   origin: LatLng,
   destination: LatLng,
 ) {
-  if (coordinates.length < 2) {
+  const safeCoordinates = boundedRoutePoints(coordinates);
+  if (safeCoordinates.length < 2) {
     return [];
   }
 
   const isStraightFallback =
-    coordinates.length === 2 &&
-    areSameCoordinate(coordinates[0], origin) &&
-    areSameCoordinate(coordinates[1], destination);
+    safeCoordinates.length === 2 &&
+    areSameCoordinate(safeCoordinates[0], origin) &&
+    areSameCoordinate(safeCoordinates[1], destination);
 
-  return isStraightFallback ? [] : coordinates;
+  return isStraightFallback ? [] : safeCoordinates;
 }
 
 export function buildRoutePreviewRegion(points: LatLng[]): Region {
-  if (points.length === 0) {
+  const bounds = routeBounds(points);
+  if (!bounds) {
     return DEFAULT_REQUEST_REGION;
   }
 
@@ -260,12 +273,7 @@ export function buildRoutePreviewRegion(points: LatLng[]): Region {
     };
   }
 
-  const latitudes = points.map((point) => point.latitude);
-  const longitudes = points.map((point) => point.longitude);
-  const minLatitude = Math.min(...latitudes);
-  const maxLatitude = Math.max(...latitudes);
-  const minLongitude = Math.min(...longitudes);
-  const maxLongitude = Math.max(...longitudes);
+  const { minLatitude, maxLatitude, minLongitude, maxLongitude } = bounds;
 
   return {
     latitude: (minLatitude + maxLatitude) / 2,

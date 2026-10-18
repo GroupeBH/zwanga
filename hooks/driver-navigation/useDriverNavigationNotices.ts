@@ -1,11 +1,5 @@
 import {
-  hasBookingPickupCompleted,
-  hasBookingDropoffCompleted,
-} from '../../features/driver-navigation/navigationBooking';
-import { PICKUP_NOTICE_PRIORITY } from '../../features/driver-navigation/navigationPresentation';
-import {
   Waypoint,
-  PickupNoticeEventType,
   BookingAutoProgressEvent,
   PickupNotice,
   PickupBypassConfirmation,
@@ -16,8 +10,13 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import type { Booking } from '@/types';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import React, { useCallback } from 'react';
+import { useDriverPickupNoticeQueue } from './useDriverPickupNoticeQueue';
 
 interface Params {
+  tripId: string;
+  isScreenActive: boolean;
+  pickupNotice: PickupNotice | null;
+  pickupBypassConfirmation: PickupBypassConfirmation | null;
   isMountedRef: React.RefObject<boolean>;
   waypointModalVisibleRef: React.RefObject<boolean>;
   pickupBypassConfirmationRef: React.RefObject<PickupBypassConfirmation | null>;
@@ -39,6 +38,7 @@ interface Params {
 }
 
 export function useDriverNavigationNotices({
+  tripId, isScreenActive, pickupNotice, pickupBypassConfirmation,
   isMountedRef,
   waypointModalVisibleRef,
   pickupBypassConfirmationRef,
@@ -73,76 +73,11 @@ export function useDriverNavigationNotices({
     waypointModalVisibleRef.current = true;
     setActiveWaypoint(waypoint);
     setWaypointModalVisible(true);
-  }, []);
+  }, [isMountedRef, pickupBypassConfirmationRef, presentedWaypointIdsRef, setActiveWaypoint, setWaypointModalVisible, waypointModalVisibleRef]);
 
-  const presentPickupNotice = useCallback(
-    (event: BookingAutoProgressEvent, waypoint: Waypoint) => {
-      if (
-        !isMountedRef.current ||
-        pickupBypassConfirmationRef.current ||
-        !event.bookingId ||
-        !['driver_arrived_pickup', 'parties_nearby', 'passenger_ready_pickup'].includes(event.type)
-      ) {
-        return;
-      }
-
-      if (
-        waypoint.completed ||
-        hasBookingPickupCompleted(waypoint.booking) ||
-        hasBookingDropoffCompleted(waypoint.booking)
-      ) {
-        return;
-      }
-
-      const key = `${event.type}:${event.bookingId}`;
-      if (presentedPickupNoticeKeysRef.current.has(key)) {
-        return;
-      }
-
-      const nextType = event.type as PickupNoticeEventType;
-      const nextPriority = PICKUP_NOTICE_PRIORITY[nextType];
-      const highestPriorityForBooking =
-        highestPickupNoticePriorityRef.current.get(event.bookingId) ?? -1;
-      if (highestPriorityForBooking >= nextPriority) {
-        return;
-      }
-
-      const currentNotice = pickupNoticeRef.current;
-      if (
-        currentNotice?.waypoint.booking.id === event.bookingId &&
-        PICKUP_NOTICE_PRIORITY[currentNotice.type] >= nextPriority
-      ) {
-        return;
-      }
-
-      presentedPickupNoticeKeysRef.current.add(key);
-      const nextNotice: PickupNotice = {
-        type: nextType,
-        waypoint,
-        distanceMeters: event.distanceMeters,
-        detectedAt: event.detectedAt,
-        expiresAt: event.expiresAt,
-        pickupWaitSeconds: event.pickupWaitSeconds,
-      };
-      pickupNoticeRef.current = nextNotice;
-      highestPickupNoticePriorityRef.current.set(event.bookingId, nextPriority);
-      setPickupNotice(nextNotice);
-
-      const passengerName = waypoint.passenger.name || 'Le passager';
-      const speech =
-        event.type === 'passenger_ready_pickup'
-          ? `${passengerName} s'est signalé au point de récupération.`
-          : event.type === 'parties_nearby'
-            ? `${passengerName} est là et prêt à être embarqué.`
-            : `Vous êtes arrivé au point de récupération de ${passengerName}.`;
-
-      void Speech.stop().finally(() => {
-        if (!isMountedRef.current) return;
-        Speech.speak(speech, { language: 'fr-FR', rate: 0.95 });
-      });
-    },
-    [],
-  );
+  const presentPickupNotice = useDriverPickupNoticeQueue({ tripId, isScreenActive, pickupNotice, pickupBypassConfirmation,
+    isMountedRef, pickupBypassConfirmationRef, presentedPickupNoticeKeysRef, highestPickupNoticePriorityRef,
+    pickupNoticeRef, setPickupNotice, setPickupNoticeCountdown, visibleBookings });
 
   const getPassengerNameForBooking = useCallback(
     (bookingId: string, waypoint?: Waypoint | null) =>
@@ -165,10 +100,11 @@ export function useDriverNavigationNotices({
 
       presentedPassengerBoardedKeysRef.current.add(key);
       const passengerName = getPassengerNameForBooking(event.bookingId, waypoint);
-      setPickupNotice((current) =>
-        current?.waypoint.booking.id === event.bookingId ? null : current,
-      );
-      setPickupNoticeCountdown(null);
+      if (pickupNoticeRef.current?.waypoint.booking.id === event.bookingId) {
+        pickupNoticeRef.current = null;
+        setPickupNotice(null);
+        setPickupNoticeCountdown(null);
+      }
       if (pickupBypassConfirmationRef.current?.waypoint.booking.id === event.bookingId) {
         pickupBypassConfirmationRef.current = null;
         setPickupBypassConfirmation(null);
@@ -190,7 +126,8 @@ export function useDriverNavigationNotices({
         });
       });
     },
-    [getPassengerNameForBooking, showDialog],
+    [getPassengerNameForBooking, showDialog, isMountedRef, pickupBypassConfirmationRef, pickupNoticeRef,
+      presentedPassengerBoardedKeysRef, setPickupBypassAction, setPickupBypassConfirmation, setPickupNotice, setPickupNoticeCountdown],
   );
 
   const presentPassengerDestinationNotice = useCallback(
@@ -222,7 +159,7 @@ export function useDriverNavigationNotices({
         });
       });
     },
-    [getPassengerNameForBooking, showDialog],
+    [getPassengerNameForBooking, showDialog, isMountedRef, presentedPassengerDestinationKeysRef],
   );
 
   const presentPassengerDestinationApproachNotice = useCallback(
@@ -259,10 +196,11 @@ export function useDriverNavigationNotices({
         });
       });
     },
-    [getPassengerNameForBooking, showDialog],
+    [getPassengerNameForBooking, showDialog, isMountedRef, presentedPassengerDestinationApproachKeysRef],
   );
 
   return {
+    showInformation: showDialog,
     getPassengerNameForBooking,
     presentPickupNotice,
     presentPassengerBoardedNotice,

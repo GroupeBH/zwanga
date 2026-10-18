@@ -4,6 +4,7 @@ import { type RouteInfo } from '@/utils/routeApi';
 import { Ionicons } from '@expo/vector-icons';
 import type { Trip } from '@/types';
 import type { EdgeInsets } from 'react-native-safe-area-context';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 
 interface Params {
   trip: Trip | undefined;
@@ -20,10 +21,9 @@ export function useTripDetailPresentation({
   routeInfo,
   insets,
 }: Params) {
-  const tripDepartureName = trip?.departure?.name || trip?.departure?.address || 'Départ';
-  const tripArrivalName = trip?.arrival?.name || trip?.arrival?.address || 'Arrivée';
-  const tripDepartureAddress = trip?.departure?.address || tripDepartureName;
-  const tripArrivalAddress = trip?.arrival?.address || tripArrivalName;
+  const routeLabels = useRouteLocationLabels(trip);
+  const tripDepartureName = routeLabels.departure.title;
+  const tripArrivalName = routeLabels.arrival.title;
   const tripDepartureTimeLabel = trip?.departureTime ? formatDateTime(trip.departureTime) : '--:--';
   const tripArrivalTimeLabel = calculatedArrivalTime
     ? formatDateTime(calculatedArrivalTime.toISOString())
@@ -88,6 +88,7 @@ export function useTripDetailPresentation({
   const headerFloatingOffset = Math.max(insets.top, 12) + 10;
 
   return {
+    routeLabels,
     headerFloatingOffset,
     tripDepartureTimeLabel,
     tripDepartureName,

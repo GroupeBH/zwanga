@@ -6,14 +6,16 @@ import {
   formatDurationSeconds,
 } from '../../features/passenger-navigation/navigationModel';
 import { Colors } from '@/constants/styles';
+import { passengerPickupInstruction } from '@/features/navigation/pickupAwareness';
 import { calculateDistance } from '@/utils/routeHelpers';
-import { trimPolylineFromCurrentPosition } from '@/utils/navigation/routeProgress';
+import type { createPassengerRouteAnalysis } from '@/utils/navigation/passengerRouteAnalysis';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo } from 'react';
 import type { Trip, Booking } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
 interface Params {
+  routeAnalysis: ReturnType<typeof createPassengerRouteAnalysis>;
   booking: Booking | undefined;
   trip: Trip | undefined;
   pickupNotice: PassengerPickupNotice | null;
@@ -30,6 +32,7 @@ interface Params {
 }
 
 export function usePassengerNavigationPresentation({
+  routeAnalysis,
   booking,
   trip,
   pickupNotice,
@@ -83,14 +86,7 @@ export function usePassengerNavigationPresentation({
       : pickupNotice?.type === 'parties_nearby'
         ? 'Vous \u00eates au point'
         : 'Le conducteur est l\u00e0';
-  const pickupNoticeText =
-    pickupNotice?.type === 'driver_near_pickup'
-      ? `${
-          pickupNoticeDistanceMeters ? `Il est \u00e0 environ ${pickupNoticeDistanceMeters} m. ` : ''
-        }Pr\u00e9parez-vous \u00e0 rejoindre le point de r\u00e9cup\u00e9ration.`
-      : pickupNotice?.type === 'parties_nearby'
-        ? 'Vous \u00eates au point de r\u00e9cup\u00e9ration. Signalez-vous au conducteur si vous \u00eates pr\u00eat.'
-        : 'Le conducteur est arriv\u00e9 au point de r\u00e9cup\u00e9ration. Vous disposez de 10 minutes pour vous signaler.';
+  const pickupNoticeText = passengerPickupInstruction(pickupNotice?.type ?? '', pickupNoticeDistanceMeters ?? undefined);
 
   const hasPickupConnectorSegment = Boolean(
     displayedDriverLocation &&
@@ -103,12 +99,12 @@ export function usePassengerNavigationPresentation({
   const currentVehicleRoutePosition = displayedDriverLocation ?? routeOriginCoordinate;
   const remainingPassengerRoute = useMemo(
     () =>
-      trimPolylineFromCurrentPosition(
-        currentVehicleRoutePosition,
+      routeAnalysis.remaining(
         routeCoordinates,
+        currentVehicleRoutePosition,
         activePassengerDestination,
       ),
-    [activePassengerDestination, currentVehicleRoutePosition, routeCoordinates],
+    [routeAnalysis, activePassengerDestination, currentVehicleRoutePosition, routeCoordinates],
   );
   const displayedRouteCoordinates =
     remainingPassengerRoute.remainingCoordinates.length > 1
@@ -169,9 +165,11 @@ export function usePassengerNavigationPresentation({
     if (!hasPickupConnectorSegment && activeRouteSegment === 'pickup') {
       setActiveRouteSegment('route');
     }
-  }, [activeRouteSegment, hasPickupConnectorSegment]);
+  }, [activeRouteSegment, hasPickupConnectorSegment, setActiveRouteSegment]);
 
   return {
+    remainingDistanceMeters,
+    isRemainingRouteUsable: remainingPassengerRoute.isRouteUsable,
     displayedRouteCoordinates,
     canToggleRouteSegments,
     canCenterOnPassenger,

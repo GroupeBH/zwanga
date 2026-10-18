@@ -93,10 +93,7 @@ export function PublishRouteStep({
       <View style={styles.publishRouteSheet}>
         <View style={styles.rideSheetHeader}>
           <View style={styles.routeSheetHeaderCopy}>
-            <Text style={styles.sectionTitle}>Votre itinéraire</Text>
-            <Text style={styles.routeSheetSubtitle} numberOfLines={1}>
-              Choisissez le départ et la destination sur la carte
-            </Text>
+            <Text style={styles.sectionTitle}>Départ et arrivée</Text>
           </View>
         </View>
 
@@ -143,17 +140,17 @@ export function PublishRouteStep({
           activeOpacity={0.85}
         >
           <Ionicons name="navigate-outline" size={15} color={Colors.primary} />
-          <Text style={styles.quickLandmarksOpenText}>Repères rapides</Text>
+          <Text style={styles.quickLandmarksOpenText}>Références rapides</Text>
           <Ionicons name="chevron-down" size={15} color={Colors.gray[500]} />
         </TouchableOpacity>
       )}
 
-      {/* Repères rapides Kinshasa */}
+      {/* Références rapides Kinshasa */}
       {showQuickLandmarks && (
         <View style={styles.quickLandmarksSection}>
           <View style={styles.quickLandmarksHeader}>
             <Ionicons name="navigate" size={14} color={Colors.primary} />
-            <Text style={styles.quickLandmarksTitle}>Repères rapides</Text>
+            <Text style={styles.quickLandmarksTitle}>Références rapides</Text>
             <TouchableOpacity
               style={styles.quickLandmarksToggle}
               onPress={() => setShowQuickLandmarks(false)}

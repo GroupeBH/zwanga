@@ -1,19 +1,18 @@
 import { useAuthForegroundSession } from '../hooks/auth/useAuthForegroundSession';
+import { STARTUP_ROUTES } from '@/features/navigation/homeBackPolicy';
 import { Colors } from '@/constants/styles';
-import { clearStoredFcmToken, obtainFcmToken, subscribeToFcmRefresh } from '@/services/pushNotifications';
+import { usePushRegistration } from '@/hooks/auth/usePushRegistration';
 import { proactiveTokenRefresh, validateAndRefreshTokens } from '@/services/tokenRefresh';
 import { getTokens } from '@/services/tokenStorage';
-import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectAccessToken, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
+import { selectAccessToken, selectHasAuthenticatedSession, selectIsAuthenticated, selectIsLoading, selectRefreshToken } from '@/store/selectors';
 import { performLogout, setTokens } from '@/store/slices/authSlice';
-import { getUserIdFromToken, isTokenExpired } from '@/utils/jwt';
+import { isTokenExpired } from '@/utils/jwt';
 import { useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import { useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, AppState, InteractionManager, StyleSheet, View } from 'react-native';
 import type { AppStateStatus } from 'react-native';
 
-const FCM_SYNC_RETRY_DELAY_MS = 60_000;
 
 /**
  * Route guard:
@@ -26,25 +25,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const rootNavigationState = useRootNavigationState();
   const dispatch = useAppDispatch();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const hasSession = useAppSelector(selectHasAuthenticatedSession);
   const isLoading = useAppSelector(selectIsLoading);
   const accessToken = useAppSelector(selectAccessToken);
   const refreshToken = useAppSelector(selectRefreshToken);
-  const [updateFcmTokenMutation] = useUpdateFcmTokenMutation();
   const inAuthGroup = segments[0] === 'auth';
   const currentSegment = segments[0];
   const isPublicRoute =
-    currentSegment === 'splash' ||
-    currentSegment === 'onboarding' ||
-    currentSegment === 'auth-entry' ||
-    currentSegment === 'background-location-disclosure';
+    !currentSegment ||
+    STARTUP_ROUTES.has(currentSegment) ||
+    currentSegment === 'auth-entry' || currentSegment === 'app-update';
   const hasCheckedSecureStore = useRef(false);
   const isLoggingOut = useRef(false);
   const lastAuthTime = useRef<number | null>(null);
   const isRedirectingAfterLogout = useRef(false);
-  const lastFcmSyncAccessToken = useRef<string | null>(null);
-  const lastSyncedFcmRegistration = useRef<string | null>(null);
-  const fcmSyncInFlightRegistration = useRef<string | null>(null);
-  const fcmSyncRetry = useRef<{ key: string; notBefore: number } | null>(null);
   const latestAuthState = useRef({ isAuthenticated, accessToken, refreshToken });
   const lastAppState = useRef<AppStateStatus>(AppState.currentState);
   const appBackgroundedAt = useRef<number | null>(null);
@@ -166,30 +160,12 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         : Infinity;
       const justAuthenticated = timeSinceLastAuth < 3000;
 
-      if (isAuthenticated && inAuthGroup) {
+      if (hasSession && inAuthGroup) {
         return;
       }
 
-      if (isAuthenticated && !accessToken && !refreshToken) {
-        if (justAuthenticated) {
-          if (__DEV__) {
-            console.log('[AuthGuard] Recent auth, waiting token propagation...');
-          }
-          return;
-        }
-        if (__DEV__) {
-          console.log('[AuthGuard] Authenticated but tokens missing in Redux');
-        }
-        return;
-      }
-
-      if (
-        !accessToken &&
-        !refreshToken &&
-        !isAuthenticated &&
-        !justAuthenticated &&
-        !isLoggingOut.current
-      ) {
+      if (!hasSession && !justAuthenticated && !isLoggingOut.current &&
+          !(refreshToken && isTokenExpired(refreshToken))) {
         if (!inAuthGroup && !isPublicRoute && !isRedirectingAfterLogout.current) {
           replaceRootRoute('auth-entry');
         }
@@ -229,6 +205,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     accessToken,
     refreshToken,
     isAuthenticated,
+    hasSession,
     isLoading,
     dispatch,
     replaceRootRoute,
@@ -249,7 +226,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       );
     }
 
-    if (isAuthenticated && accessToken && refreshToken) {
+    if (hasSession) {
       if (segments[0] === 'auth-entry') {
         if (__DEV__) {
           console.log('[AuthGuard] Authenticated on auth-entry - redirect /(tabs)');
@@ -258,16 +235,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (inAuthGroup && segments[0] === 'auth' && segments.length === 1) {
-        if (__DEV__) {
-          console.log('[AuthGuard] Authenticated on /auth - redirect /(tabs)');
-        }
-        replaceRootRoute('(tabs)');
-        return;
-      }
+      // AuthScreen owns its redirect: an in-progress KYC step must remain usable.
     }
 
-    if (!isAuthenticated && !inAuthGroup && !isPublicRoute && !accessToken && !refreshToken) {
+    if (!hasSession && !inAuthGroup && !isPublicRoute) {
       if (__DEV__) {
         console.log('[AuthGuard] Unauthenticated outside auth - redirect /auth-entry');
       }
@@ -275,6 +246,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [
     isAuthenticated,
+    hasSession,
     isLoading,
     segments,
     inAuthGroup,
@@ -284,88 +256,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     refreshToken,
   ]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    let interactionTask: { cancel: () => void } | null = null;
-    let unsubscribeTokenRefresh: (() => void) | null = null;
-
-    const syncTokenWithBackend = async (token: string | null) => {
-      const userId = accessToken ? getUserIdFromToken(accessToken) : null;
-      if (!token || !userId) {
-        return;
-      }
-
-      const registrationKey = `${userId}:${token}`;
-      const retry = fcmSyncRetry.current;
-      if (
-        lastSyncedFcmRegistration.current === registrationKey ||
-        fcmSyncInFlightRegistration.current === registrationKey ||
-        (retry?.key === registrationKey && Date.now() < retry.notBefore)
-      ) {
-        return;
-      }
-
-      fcmSyncInFlightRegistration.current = registrationKey;
-      try {
-        await updateFcmTokenMutation({ fcmToken: token }).unwrap();
-        lastSyncedFcmRegistration.current = registrationKey;
-        fcmSyncRetry.current = null;
-      } catch (error) {
-        fcmSyncRetry.current = {
-          key: registrationKey,
-          notBefore: Date.now() + FCM_SYNC_RETRY_DELAY_MS,
-        };
-        console.warn('Unable to send FCM token to backend:', error);
-      } finally {
-        if (fcmSyncInFlightRegistration.current === registrationKey) {
-          fcmSyncInFlightRegistration.current = null;
-        }
-      }
-    };
-
-    const registerPushToken = async () => {
-      if (!isAuthenticated) {
-        lastFcmSyncAccessToken.current = null;
-        lastSyncedFcmRegistration.current = null;
-        fcmSyncInFlightRegistration.current = null;
-        fcmSyncRetry.current = null;
-        await clearStoredFcmToken();
-        return;
-      }
-
-      if (!accessToken || lastFcmSyncAccessToken.current === accessToken) {
-        return;
-      }
-
-      const token = await obtainFcmToken();
-      if (!cancelled) {
-        await syncTokenWithBackend(token);
-        lastFcmSyncAccessToken.current = accessToken;
-      }
-    };
-
-    interactionTask = InteractionManager.runAfterInteractions(() => {
-      if (isAuthenticated) {
-        unsubscribeTokenRefresh = subscribeToFcmRefresh(syncTokenWithBackend);
-      }
-      timeout = setTimeout(() => {
-        if (cancelled || AppState.currentState !== 'active') {
-          return;
-        }
-        registerPushToken();
-      }, 1200);
-    });
-
-    return () => {
-      cancelled = true;
-      interactionTask?.cancel();
-      unsubscribeTokenRefresh?.();
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-    };
-  }, [isAuthenticated, accessToken, updateFcmTokenMutation]);
+  usePushRegistration(hasSession, accessToken);
 
   if (isLoading) {
     return (

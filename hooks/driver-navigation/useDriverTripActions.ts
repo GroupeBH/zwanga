@@ -77,11 +77,12 @@ export function useDriverTripActions({
 
     if (activeDriverInterruptionRequest) {
       showDialog({
-        title: 'Interruption en attente',
+        title: 'Les passagers doivent répondre',
         message: `${activeDriverInterruptionConfirmedCount}/${activeDriverInterruptionRequiredCount} passager(s) ont confirmé.`,
         variant: 'info',
         icon: 'hourglass-outline',
         actions: [
+          { label: 'Revenir au trajet', variant: 'primary', onPress: handleExitNavigation },
           { label: 'Fermer', variant: 'ghost' },
           {
             label: 'Annuler la demande',
@@ -105,15 +106,15 @@ export function useDriverTripActions({
 
     if (passengersOnBoard.length === 0) {
       showDialog({
-        title: 'Interrompre le trajet',
-        message: "Aucun passager n'est à bord. Vous pouvez interrompre ce trajet directement.",
+        title: 'Mettre le trajet en pause ?',
+        message: "Personne n’est à bord. Vous pourrez reprendre ce trajet plus tard.",
         variant: 'warning',
         icon: 'pause-circle-outline',
         actions: [
           { label: 'Annuler', variant: 'ghost' },
           {
-            label: 'Interrompre',
-            variant: 'secondary',
+            label: 'Mettre en pause',
+            variant: 'danger',
             onPress: pauseTripWithoutPassengerConfirmation,
           },
         ],
@@ -122,9 +123,9 @@ export function useDriverTripActions({
     }
 
     showDialog({
-      title: 'Demander une interruption',
+      title: 'Arrêter avant l’arrivée ?',
       message:
-        'Cette interruption devra être confirmée par tous les passagers à bord avant de prendre effet.',
+        'Les passagers à bord doivent tous accepter l’arrêt. Vous reviendrez à l’écran du trajet. Le trajet continue en attendant leur accord.',
       variant: 'warning',
       icon: 'stop-circle-outline',
       actions: [
@@ -142,6 +143,8 @@ export function useDriverTripActions({
       ],
     });
   }, [
+    bookingsRef,
+    handleExitNavigation,
     activeDriverInterruptionConfirmedCount,
     activeDriverInterruptionRequest,
     activeDriverInterruptionRequiredCount,

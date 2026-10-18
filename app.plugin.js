@@ -127,11 +127,13 @@ const withReactNativeMapsFix = (config) => {
 };
 
 module.exports = (config) => {
+  config = require('./plugins/withPatchedReactAndroid')(config);
   config = withIOSModularHeaders(config);
   config = withAndroidLocationPermissions(config);
   config = withAndroidLargeScreenCompatibility(config);
   config = withModernEdgeToEdgeGradleProperties(config);
   config = withIOSUserScriptSandboxingDisabled(config);
+  config = require('./plugins/withIosCrashlytics')(config);
   config = withReactNativeMapsFix(config);
   return config;
 };

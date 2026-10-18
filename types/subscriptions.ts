@@ -7,6 +7,10 @@ import type {
 import type { WalletLedgerEntry } from './wallet';
 
 export interface SubscriptionPlanSummary {
+  durationDays?: number;
+  trialDays?: number;
+  commissionRate?: number;
+  cashCommissionRequiresPurchasedTokens?: boolean;
   plan: SubscriptionPlan;
   amount: number | string;
   currency: string;
@@ -82,6 +86,7 @@ export type PaymentPurpose =
   | 'subscription_pro'
   | 'trip_booking'
   | 'wallet_top_up'
+  | 'wallet_payout'
   | 'driver_payout'
   | 'referral_payout';
 

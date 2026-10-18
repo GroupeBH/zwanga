@@ -59,6 +59,8 @@ export function useHomeTracking({
   const activeBookingsRef = useRef<Booking[]>(EMPTY_HOME_BOOKINGS);
 
   const activePassengerBookingRef = useRef<Booking | null>(null);
+  const activeHomeTripRef = useRef(activeHomeTrip);
+  activeHomeTripRef.current = activeHomeTrip;
 
   const ongoingDriverBookingsRef = useRef<Booking[]>(EMPTY_HOME_BOOKINGS);
 
@@ -203,7 +205,7 @@ export function useHomeTracking({
             return false;
           }
           if (isHomeDriverTracking) {
-            return event.type !== 'driver_near_pickup';
+            return true;
           }
           return event.bookingId === passengerBookingId && event.type !== 'passenger_ready_pickup';
         })
@@ -222,19 +224,23 @@ export function useHomeTracking({
             const nextPriority = HOME_AUTO_PROGRESS_PRIORITY[event.type];
             const highestPriorityForBooking =
               highestHomeAutoProgressPriorityRef.current.get(event.bookingId) ?? -1;
-            if (highestPriorityForBooking > nextPriority) {
+            const approachAfterReadiness = event.type === 'driver_near_pickup' &&
+              highestPriorityForBooking <= HOME_AUTO_PROGRESS_PRIORITY.passenger_ready_pickup &&
+              !presentedHomeAutoProgressKeysRef.current.has(`${homeTrackingTripId}:driver_arrived_pickup:${event.bookingId}`);
+            if (highestPriorityForBooking > nextPriority && !approachAfterReadiness) {
               return;
             }
-            highestHomeAutoProgressPriorityRef.current.set(event.bookingId, nextPriority);
+            highestHomeAutoProgressPriorityRef.current.set(event.bookingId, Math.max(highestPriorityForBooking, nextPriority));
           }
 
           const booking =
-            ongoingDriverBookingsRef.current.find((item) => item.id === event.bookingId) ??
+            (isHomeDriverTracking ? ongoingDriverBookingsRef.current.find((item) => item.id === event.bookingId)
+              : activePassengerBookingRef.current?.id === event.bookingId ? activePassengerBookingRef.current : null) ??
             activeBookingsRef.current.find((item) => item.id === event.bookingId) ??
             null;
 
           presentedHomeAutoProgressKeysRef.current.add(key);
-          showDialogRef.current(getHomeTrackingDialog(event, booking, isHomeDriverTracking));
+          showDialogRef.current(getHomeTrackingDialog(event, booking, isHomeDriverTracking, activeHomeTripRef.current));
         });
 
       if (isHomeDriverTracking) {

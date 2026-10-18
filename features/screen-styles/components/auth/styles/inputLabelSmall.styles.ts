@@ -3,6 +3,11 @@ import { AUTH_SURFACE, AUTH_WARM_SURFACE, AUTH_WARM_BORDER, AUTH_MUTED_TEXT } fr
 import { Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
 
 export const styles = StyleSheet.create({
+  phoneHint: {
+    fontSize: FontSizes.xs,
+    color: AUTH_MUTED_TEXT,
+    marginBottom: Spacing.sm,
+  },
   inputLabelSmall: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.semibold,

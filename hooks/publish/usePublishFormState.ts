@@ -1,11 +1,13 @@
 import { LatLng, RoutePointStatus } from '../../features/publish/publishModel';
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
-import { useState } from 'react';
+import { getDefaultPublishSeats, getPublishSeats } from '@/features/publish/publishSeatPolicy';
+import type { TripRequestVehicleType, TripPaymentMode } from '@/types';
+import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
 
 
 
-export function usePublishFormState() {
+export function usePublishFormState(selectedVehicleType: TripRequestVehicleType | null | undefined) {
   const [departureLocation, setDepartureLocation] = useState<MapLocationSelection | null>(null);
   const [arrivalLocation, setArrivalLocation] = useState<MapLocationSelection | null>(null);
   const [departurePointStatus, setDeparturePointStatus] = useState<RoutePointStatus>(null);
@@ -25,8 +27,20 @@ export function usePublishFormState() {
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
-  const [seats, setSeats] = useState('4');
+  const [seatsByType, setSeatsByType] = useState<Partial<Record<TripRequestVehicleType, string>>>({});
+  const seatType = selectedVehicleType ?? 'car';
+  const resetSeats = useCallback(() => setSeatsByType({}), []);
+  const seats = getPublishSeats(seatsByType[seatType] ?? getDefaultPublishSeats(seatType), seatType);
+  // Remember an explicit adjustment per vehicle type, without leaking a car count into a motorcycle.
+  const setSeats: Dispatch<SetStateAction<string>> = useCallback((update) => {
+    setSeatsByType((previous) => {
+      const current = getPublishSeats(previous[seatType] ?? getDefaultPublishSeats(seatType), seatType);
+      const requested = typeof update === 'function' ? update(current) : update;
+      return { ...previous, [seatType]: getPublishSeats(requested, seatType) };
+    });
+  }, [seatType]);
   const [isFreeTrip, setIsFreeTrip] = useState(false);
+  const [acceptedPaymentModes, setAcceptedPaymentModes] = useState<TripPaymentMode[]>(['electronic', 'points']);
   const [requiresPassengerKyc, setRequiresPassengerKyc] = useState(false);
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
@@ -37,6 +51,7 @@ export function usePublishFormState() {
   const [isRouteLoading, setIsRouteLoading] = useState(false);
 
   return {
+    acceptedPaymentModes, setAcceptedPaymentModes,
     setDepartureLocation,
     setArrivalLocation,
     setDeparturePointStatus,
@@ -46,6 +61,7 @@ export function usePublishFormState() {
     setIosPickerMode,
     setIosPickerTarget,
     setSeats,
+    resetSeats,
     setIsFreeTrip,
     setPrice,
     setDescription,

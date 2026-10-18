@@ -30,8 +30,8 @@ function banner(initial = {}) {
       useAnimatedStyle: fn => fn(), withSpring: value => value, withTiming: value => value,
     },
     '@/store/hooks': { useAppSelector: () => data.user }, '@/store/selectors': { selectUser() {} },
-    '@/store/api/tripApi': { useGetMyTripsQuery: () => ({ data: data.trips }) },
-    '@/store/api/bookingApi': { useGetMyBookingsQuery: () => ({ data: data.bookings }) },
+    '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: data.trips }) },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: data.bookings }) },
     '@/services/ongoingTripNotification': {
       getCurrentTripInfo: () => data.tracked ?? null,
       startOngoingTripTracking: value => starts.push(value), stopOngoingTripTracking: () => stops.push(true),
@@ -56,6 +56,29 @@ test('the actual driver still opens driver navigation', () => {
   const h = banner({ user: { id: 'driver' }, trips: [trip], bookings: [] });
   h.press(); assert.deepEqual(h.routes, ['/trip/navigate/trip']);
   assert.equal(h.starts[0].bookingId, undefined);
+  h.hooks.unmount();
+});
+
+test('an active passenger reservation wins over an old ongoing driver trip and stale tracking', () => {
+  const h = banner({
+    user: { id: 'passenger', role: 'driver', isDriver: true },
+    trips: [{ ...trip, id: 'old-owned-trip', driverId: 'passenger' }],
+    tracked: { tripId: 'old-owned-trip', role: 'driver' },
+  });
+  h.press();
+  assert.deepEqual(h.routes, ['/booking/navigate/reservation']);
+  assert.equal(h.starts[0].role, 'passenger');
+  assert.equal(h.starts[0].tripId, trip.id);
+  assert.equal(h.stops.length, 1);
+  h.data.bookings = [{ ...booking, droppedOff: true }];
+  h.press();
+  assert.equal(h.routes.at(-1), '/trip/navigate/old-owned-trip');
+  h.hooks.unmount();
+});
+
+test('a booking for another account or trip cannot grant passenger navigation', () => {
+  const h = banner({ bookings: [{ ...booking, tripId: 'different-trip' }] });
+  assert.equal(h.render(), null);
   h.hooks.unmount();
 });
 
@@ -108,6 +131,7 @@ test('background notification taps use the same passenger route, including the q
   loader({
     'react-native': { Linking: { openURL: async href => links.push(href) } },
     './ongoingTripNotification': { ONGOING_TRIP_NOTIFICATION_ID: 'ongoing' },
+    './driverNotificationResponse': { respondToDriverNotification: async () => {} },
     '@notifee/react-native': { default: { onBackgroundEvent: fn => { handler = fn; } }, EventType: { PRESS: 1, ACTION_PRESS: 2 } },
   })('services/notifeeBackgroundHandler.ts');
   for (const type of [1, 2]) await handler({ type, detail: { notification: {

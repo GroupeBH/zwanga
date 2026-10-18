@@ -9,6 +9,7 @@ interface KycStepProps {
   onFinish: () => void;
   onEditIdentity?: () => void;
   isLoading: boolean;
+  hasCreatedAccount?: boolean;
   firstName: string;
   lastName: string;
 }
@@ -17,6 +18,7 @@ export function KycStep({
   onFinish,
   onEditIdentity,
   isLoading,
+  hasCreatedAccount = false,
   firstName,
   lastName,
 }: KycStepProps) {
@@ -60,7 +62,7 @@ export function KycStep({
           <TouchableOpacity
             style={styles.kycIdentityEditButton}
             onPress={onEditIdentity}
-            disabled={isLoading}
+            disabled={isLoading || hasCreatedAccount}
           >
             <Ionicons name="pencil-outline" size={17} color={Colors.primary} />
             <Text style={styles.kycIdentityEditText}>Modifier mes noms</Text>
@@ -73,13 +75,18 @@ export function KycStep({
           style={[styles.mainButton, styles.mainButtonActive, { backgroundColor: Colors.primary }]}
           onPress={onFinish}
           disabled={isLoading}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isLoading, busy: isLoading }}
         >
           {isLoading ? (
-            <ActivityIndicator color="white" />
+            <>
+              <ActivityIndicator color="white" />
+              <Text style={styles.mainButtonText}>Finalisation en cours…</Text>
+            </>
           ) : (
             <>
               <Text style={styles.mainButtonText}>
-                Confirmer et vérifier avec Didit
+                {hasCreatedAccount ? 'Finaliser la connexion' : 'Confirmer et vérifier avec Didit'}
               </Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </>

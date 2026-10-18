@@ -1,6 +1,7 @@
 import { getLocationText, getLocationCoordinatesTuple } from '../../features/trips/tripsModel';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
-import { useDeleteTripMutation, useGetMyTripsQuery, useUpdateTripMutation } from '@/store/api/tripApi';
+import { tripApi, useDeleteTripMutation, useUpdateTripMutation } from '@/store/api/tripApi';
+import { useAppDispatch } from '@/store/hooks';
 import type { Trip } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
@@ -22,7 +23,7 @@ interface Params {
   deleteTarget: Trip | null;
   deleteTripMutation: ReturnType<typeof useDeleteTripMutation>[0];
   closeDeleteModal: () => void;
-  refetchTrips: ReturnType<typeof useGetMyTripsQuery>['refetch'];
+  refetchTrips: () => Promise<{ data?: Trip[] }>;
 }
 
 export function useTripsManagementActions({
@@ -44,6 +45,7 @@ export function useTripsManagementActions({
   closeDeleteModal,
   refetchTrips,
 }: Params) {
+  const dispatch = useAppDispatch();
   const handleSaveTrip = async () => {
     if (!editingTrip || !editDateTime) {
       return;
@@ -161,10 +163,17 @@ export function useTripsManagementActions({
       const deletedTripId = deleteTarget.id;
       const reconciledTrips = await reconcileAmbiguousMutation({
         error,
-        loadSnapshot: async () => (await refetchTrips()).data ?? null,
-        isApplied: (latestTrips) => !latestTrips.some((trip) => trip.id === deletedTripId),
+        loadSnapshot: async () => {
+          // A missing row in a paginated list is not proof of deletion.
+          const result = await dispatch(tripApi.endpoints.getTripById.initiate(deletedTripId,
+            { subscribe: false, forceRefetch: true }));
+          if (result.error && 'status' in result.error && result.error.status === 404) return { deleted: true };
+          return result.data ? { deleted: false } : null;
+        },
+        isApplied: (snapshot) => snapshot.deleted,
       });
       if (reconciledTrips) {
+        void refetchTrips();
         showFeedback('success', 'Le trajet a bien été supprimé malgré la connexion lente.');
         closeDeleteModal();
         return;

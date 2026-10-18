@@ -14,14 +14,20 @@ export interface User {
   lastName?: string;
   rating: number;
   totalTrips: number;
+  completedTrips?: number;
+  passengerBookingsCount?: number;
   verified: boolean;
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
+  vehicles?: Vehicle[];
   isDriver?: boolean;
+  driverOnboardingRequestedAt?: string | null;
+  driverActivatedAt?: string | null;
   isPremium?: boolean;
   premiumBadge?: boolean;
   premiumBadgeEnabled?: boolean;
   createdAt: string; // ISO string date
+  updatedAt?: string;
   status?: string;
 }
 

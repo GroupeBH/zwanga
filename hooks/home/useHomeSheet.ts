@@ -1,25 +1,23 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { Spacing } from '@/constants/styles';
-import type { HomeSheetMode } from '@/features/home/homeTypes';
-import { useCallback, useEffect, useState } from 'react';
+import { HOME_MAP_PADDING } from '@/features/home/homeMapAppearance';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Platform
+  Platform, type LayoutChangeEvent,
 } from 'react-native';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
-import type { useHomePassengerMarkers } from '@/hooks/home/useHomePassengerMarkers';
 import type { useHomeTripFeed } from '@/hooks/home/useHomeTripFeed';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 type Props =
   Pick<ReturnType<typeof useHomeContext>,
     'isDriver'
+    | 'isScreenActive'
     | 'currentUser'
     | 'width'
     | 'insets'
     | 'height'
-    | 'trackedTripInfo'
     | 'router'
   >
   & Pick<ReturnType<typeof useHomeTripSelection>,
@@ -33,19 +31,14 @@ type Props =
     | 'availableTripRequestsError'
     | 'refetchAvailableTripRequests'
   >
-  & Pick<ReturnType<typeof useHomeDriverActivity>,
-    'ongoingDriverTrip'
-  >
-  & Pick<ReturnType<typeof useHomePassengerMarkers>,
-    'visibleDriverPassengerMarkers'
-  >
   & Pick<ReturnType<typeof useHomeTripFeed>,
     'tripsLoading'
     | 'tripsError'
     | 'refetchTrips'
-  >;
+  > & { hasMapPriorities?: boolean };
 export function useHomeSheet({
   isDriver,
+  isScreenActive = true,
   isHomeSheetLockedRetracted,
   currentUser,
   notificationsData,
@@ -54,9 +47,6 @@ export function useHomeSheet({
   height,
   latestTrips,
   availableDriverRequests,
-  ongoingDriverTrip,
-  trackedTripInfo,
-  visibleDriverPassengerMarkers,
   availableTripRequestsLoading,
   tripsLoading,
   availableTripRequestsError,
@@ -64,25 +54,9 @@ export function useHomeSheet({
   refetchAvailableTripRequests,
   refetchTrips,
   router,
+  hasMapPriorities = false,
 }: Props) {
-  const [tripsSheetOpen, setTripsSheetOpen] = useState(false);
-
-  const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>('trips');
-
-  useEffect(() => {
-    if (!isDriver && homeSheetMode === 'requests') {
-      setHomeSheetMode('trips');
-    }
-  }, [homeSheetMode, isDriver]);
-
-  useEffect(() => {
-    if (!isHomeSheetLockedRetracted) {
-      return;
-    }
-
-    setTripsSheetOpen(false);
-    setHomeSheetMode('trips');
-  }, [isHomeSheetLockedRetracted]);
+  const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
 
@@ -90,15 +64,25 @@ export function useHomeSheet({
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
 
-  const isCompactScreen = width <= 360;
-
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
 
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
 
-  const openSheetHeight = isDriver
-    ? Math.min(Math.max(height * 0.38, isCompactScreen ? 328 : 354), 388)
-    : Math.min(Math.max(height * 0.34, isCompactScreen ? 296 : 318), 348);
+  // Android excludes the tab bar from the scene; iOS overlays it. Measure the
+  // actual scene so the map keeps the same ~37% share as the reference layouts.
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
+  const onHomeLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
+    if (nextWidth <= 0 || nextHeight <= 0) return;
+    setViewport(previous => previous?.width === nextWidth && previous.height === nextHeight
+      ? previous : { width: nextWidth, height: nextHeight });
+  }, []);
+  const viewportHeight = viewport?.width === width ? viewport.height
+    : height - (Platform.OS === 'ios' ? 0 : tabBarMetrics.height);
+  const availableHeight = viewportHeight - sheetBottomOffset;
+  // Priorities are overlays, not layout content: adding/removing one must never
+  // resize the native map or push the discovery panel down.
+  const openSheetHeight = Math.min(availableHeight * 0.63, 680);
 
   const retractedSheetHeight = 78;
 
@@ -106,41 +90,59 @@ export function useHomeSheet({
 
   const sheetHeight = effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
 
-  const locationButtonBottom = sheetBottomOffset + sheetHeight + Spacing.md;
+  const [sheetMeasurement, setSheetMeasurement] = useState<{ height: number; width: number; open: boolean; expectedHeight: number } | null>(null);
+  // Native layout events can arrive after blur, rotation, collapse or unmount.
+  // Each committed layout context invalidates callbacks from the previous one.
+  const layoutContext = useMemo(() => ({ width, open: effectiveTripsSheetOpen, isScreenActive, sheetHeight }),
+    [width, effectiveTripsSheetOpen, isScreenActive, sheetHeight]);
+  const liveLayoutContext = useRef<typeof layoutContext | null>(null);
+  useLayoutEffect(() => {
+    // A hidden sheet may settle after a cached/network update. Retain its current
+    // valid size for the return to Home; only obsolete callbacks are discarded.
+    liveLayoutContext.current = layoutContext;
+    return () => { liveLayoutContext.current = null; };
+  }, [isScreenActive, layoutContext]);
+  // Measure only to position the map control. Never feed this height back into
+  // the sheet itself: its viewport determines its height, without a layout loop.
+  const onSheetLayout = useCallback((event: LayoutChangeEvent) => {
+    if (liveLayoutContext.current !== layoutContext) return;
+    const measuredHeight = Math.ceil(event.nativeEvent.layout.height);
+    if (!Number.isFinite(measuredHeight) || measuredHeight <= 0) return;
+    setSheetMeasurement(previous => {
+      if (liveLayoutContext.current !== layoutContext) return previous;
+      return previous?.height === measuredHeight && previous.width === width && previous.open === effectiveTripsSheetOpen && previous.expectedHeight === sheetHeight
+        ? previous : { height: measuredHeight, width, open: effectiveTripsSheetOpen, expectedHeight: sheetHeight };
+    });
+  }, [layoutContext, width, effectiveTripsSheetOpen, sheetHeight]);
+  const displayedSheetHeight = sheetMeasurement?.width === width
+    && sheetMeasurement.open === effectiveTripsSheetOpen && sheetMeasurement.expectedHeight === sheetHeight ? sheetMeasurement.height : sheetHeight;
+  const locationButtonBottom = sheetBottomOffset + displayedSheetHeight + Spacing.md;
+  const mapBottomOffset = sheetBottomOffset + sheetHeight - 26;
+  const priorityTop = (insets.top || 0) + Spacing.lg + 56;
+  const priorityBottom = sheetBottomOffset + sheetHeight + 72;
+  // On short screens use the space BESIDE the location control instead of
+  // changing the map/panel heights. The complete priority deck can scroll.
+  const compactPriorities = viewportHeight - priorityTop - priorityBottom < 96;
+  const mapPriorityLayout = { top: priorityTop,
+    bottom: compactPriorities ? sheetBottomOffset + sheetHeight + 12 : priorityBottom,
+    compact: compactPriorities };
+  const homeMapPadding = HOME_MAP_PADDING;
+  const showLocationLegend = !(hasMapPriorities && compactPriorities);
 
-  const tripCardWidth = Math.min(width - 56, 342);
+  const tripCardWidth = Math.min(width - 40, 354);
 
-  const availableTripsLabel = `${latestTrips.length} trajet${latestTrips.length > 1 ? 's' : ''}`;
-
-  const availableRequestsLabel = `${availableDriverRequests.length} demande${availableDriverRequests.length > 1 ? 's' : ''}`;
-
-  const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
+  // Driver discovery is always clients, including after returning from a ride.
+  const isRequestsSheetMode = isDriver;
 
   const sheetTitle = isHomeSheetLockedRetracted
-    ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
-      ? 'Trajet conducteur en cours'
-      : 'Trajet réservé en cours'
+    ? 'Trajet en cours'
     : isRequestsSheetMode
-      ? 'Demandes de trajet'
-      : 'Trajets publiés';
+      ? 'Clients'
+      : 'Trajets';
 
-  const sheetSubtitle = isHomeSheetLockedRetracted
-    ? ongoingDriverTrip || trackedTripInfo?.role === 'driver'
-      ? visibleDriverPassengerMarkers.length > 0
-        ? `${visibleDriverPassengerMarkers.length} passager${visibleDriverPassengerMarkers.length > 1 ? 's' : ''} et votre véhicule en direct`
-        : 'Votre véhicule reste visible en direct'
-      : 'Votre position et le véhicule restent visibles'
-    : isRequestsSheetMode
-      ? availableDriverRequests.length > 0
-        ? `${availableRequestsLabel} à traiter`
-        : 'Aucune demande pour le moment'
-      : latestTrips.length > 0
-        ? `${availableTripsLabel} à parcourir`
-        : 'Aucune offre pour le moment';
+  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading && latestTrips.length === 0;
 
-  const sheetLoading = isRequestsSheetMode ? availableTripRequestsLoading : tripsLoading;
-
-  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError;
+  const sheetError = isRequestsSheetMode ? availableTripRequestsError : tripsError && latestTrips.length === 0;
 
   const sheetEmpty = isRequestsSheetMode ? availableDriverRequests.length === 0 : latestTrips.length === 0;
 
@@ -171,22 +173,25 @@ export function useHomeSheet({
   return {
     avatarUri,
     firstName,
-    availableTripsLabel,
     unreadNotifications,
     sheetBottomOffset,
     sheetHeight,
+    onSheetLayout,
     effectiveTripsSheetOpen,
     toggleTripsSheet,
     sheetTitle,
-    sheetSubtitle,
     openSheetIndex,
     isRequestsSheetMode,
-    setHomeSheetMode,
     sheetLoading,
     sheetError,
     refetchSheetContent,
     sheetEmpty,
     tripCardWidth,
     locationButtonBottom,
+    mapBottomOffset,
+    mapPriorityLayout,
+    homeMapPadding,
+    showLocationLegend,
+    onHomeLayout,
   };
 }

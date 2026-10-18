@@ -24,6 +24,7 @@ import React, { useCallback } from 'react';
 import { Keyboard } from 'react-native';
 
 interface Params {
+  captureScope: () => () => boolean;
   setTopUpStage: React.Dispatch<React.SetStateAction<TopUpStage>>;
   setTopUpStatusMessage: React.Dispatch<React.SetStateAction<string | null>>;
   checkTopUpByOrderNumber: (orderNumber: string, options?: { pendingMessage?: string; suppressErrorDialog?: boolean; suppressSuccessDialog?: boolean; }) => Promise<TopUpCheckOutcome>;
@@ -48,6 +49,7 @@ interface Params {
 }
 
 export function useWalletTopUpActions({
+  captureScope,
   setTopUpStage,
   setTopUpStatusMessage,
   checkTopUpByOrderNumber,
@@ -76,10 +78,13 @@ export function useWalletTopUpActions({
       orderNumber: string | null,
       returnUrl: string,
     ) => {
+      const isCurrent = captureScope();
+      if (!isCurrent()) return;
       setTopUpStage('card_redirect');
       setTopUpStatusMessage('Page carte FlexPay ouverte. Finalisez le paiement; nous suivrons le retour.');
 
       const result = await WebBrowser.openAuthSessionAsync(paymentUrl, returnUrl);
+      if (!isCurrent()) return; // Stored reference is recovered on foreground, without a second charge.
       if (result.type !== 'success') {
         if (orderNumber) {
           const pendingMessage = "Retour dans l'app détecté. Vérification du paiement carte en cours.";
@@ -127,10 +132,12 @@ export function useWalletTopUpActions({
         startTopUpAutoCheck(orderNumber, 'card', pendingMessage);
       }
     },
-    [checkTopUpByOrderNumber, startTopUpAutoCheck],
+    [captureScope, checkTopUpByOrderNumber, startTopUpAutoCheck, setTopUpStage, setTopUpStatusMessage],
   );
 
   const handleTopUp = async () => {
+    const isCurrent = captureScope();
+    if (!isCurrent()) return;
     Keyboard.dismiss();
 
     if (topUpOrderNumber) {
@@ -195,10 +202,6 @@ export function useWalletTopUpActions({
           : {}),
       }).unwrap();
 
-      if (formattedPhone) setTopUpPhone(formattedPhone);
-      setTopUpOrderNumber(response.payment.orderNumber);
-      setTopUpPaymentUrl(response.payment.paymentUrl);
-
       if (response.payment.orderNumber) {
         await persistStoredTopUp({
           amount,
@@ -208,6 +211,11 @@ export function useWalletTopUpActions({
           paymentUrl: response.payment.paymentUrl,
         });
       }
+      // Always retain the ORIGINAL account's financial reference, even after leaving.
+      if (!isCurrent()) return;
+      if (formattedPhone) setTopUpPhone(formattedPhone);
+      setTopUpOrderNumber(response.payment.orderNumber);
+      setTopUpPaymentUrl(response.payment.paymentUrl);
 
       if (isTopUpSucceeded(response)) {
         await finishSuccessfulTopUp(response);
@@ -232,6 +240,7 @@ export function useWalletTopUpActions({
         await openExternalUrlSafely(response.payment.paymentUrl, {
           logLabel: 'WalletTopUp',
         });
+        if (!isCurrent()) return;
       }
 
       const pendingMessage = getPaymentStatusMessage(
@@ -242,12 +251,13 @@ export function useWalletTopUpActions({
       );
       setTopUpStage(topUpMethod === 'card' ? 'checking' : 'phone_confirmation');
       setTopUpStatusMessage(pendingMessage);
-      await refreshAll();
+      void Promise.resolve().then(refreshAll).catch(() => undefined);
 
       if (response.payment.orderNumber) {
         startTopUpAutoCheck(response.payment.orderNumber, topUpMethod, pendingMessage);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       setTopUpStage('failed');
       showDialog({
         variant: 'danger',
@@ -258,7 +268,7 @@ export function useWalletTopUpActions({
   };
 
   const handleCheckTopUpStatus = async () => {
-    if (!topUpOrderNumber) return;
+    if (!topUpOrderNumber || !captureScope()()) return;
 
     stopTopUpAutoCheck();
     const outcome = await checkTopUpByOrderNumber(topUpOrderNumber, {

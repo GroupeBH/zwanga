@@ -60,8 +60,10 @@ export const mapServerTripRequestToClient = (request: ServerTripRequest): TripRe
 
   return {
     id: request.id,
+    immediateDispatch: request.immediateDispatch ?? false,
     passengerId: request.passenger.id,
     passengerName: formatFullName(request.passenger),
+    passengerPhone: request.passenger.phone ?? null,
     passengerAvatar: request.passenger.profilePicture ?? undefined,
     passengerGender: request.passenger.gender ?? null,
     departure: {

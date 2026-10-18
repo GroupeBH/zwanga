@@ -1,6 +1,14 @@
 import type { TripPaymentMode, TripRequestVehicleType } from '@/types';
 
+export interface TripRequestPassengerContact {
+  requestId: string;
+  passenger: { id: string; name: string; phone: string | null };
+  expiresAt: string;
+  serverNow: string;
+}
+
 export type CreateTripRequestPayload = {
+  immediateDispatch?: boolean;
   departureLocation: string;
   departureReference?: string;
   departureCoordinates?: [number, number];

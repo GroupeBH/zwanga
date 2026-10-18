@@ -9,7 +9,7 @@ import { styles } from '../screen-styles/app/request/detail/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors } from '@/constants/styles';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, Vehicle } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -25,11 +25,13 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
-import type { Vehicle } from '@/types';
+import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionNotice';
 
 interface RequestAcceptModalProps {
+  cashAmount?: number;
   showDirectAcceptModal: boolean;
   closeDirectAcceptModal: () => void;
+  onDirectAcceptModalDismiss: () => void;
   directAcceptDepartureDate: Date | null;
   requestedVehicleType: TripRequestVehicleType;
   directAcceptRequiresPassengerKyc: boolean;
@@ -54,8 +56,10 @@ interface RequestAcceptModalProps {
 }
 
 export function RequestAcceptModal({
+  cashAmount,
   showDirectAcceptModal,
   closeDirectAcceptModal,
+  onDirectAcceptModalDismiss,
   directAcceptDepartureDate,
   requestedVehicleType,
   directAcceptRequiresPassengerKyc,
@@ -84,6 +88,7 @@ export function RequestAcceptModal({
       animationType="slide"
       transparent
       onRequestClose={closeDirectAcceptModal}
+      onDismiss={onDirectAcceptModalDismiss}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -102,7 +107,7 @@ export function RequestAcceptModal({
                 <Ionicons name="checkmark-circle-outline" size={20} color={Colors.primary} />
               </View>
               <View style={styles.directAcceptModalTitleCopy}>
-                <Text style={styles.editModalTitle}>Accepter la demande</Text>
+                <Text style={styles.editModalTitle}>Accepter la commande</Text>
                 <Text style={styles.editModalSubtitle}>Choisissez le véhicule utilisé</Text>
               </View>
             </View>
@@ -122,6 +127,7 @@ export function RequestAcceptModal({
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
+            {showDirectAcceptModal && cashAmount !== undefined && <CashCommissionNotice amount={cashAmount} />}
             <View style={styles.directAcceptSummaryCard}>
               <View style={styles.directAcceptSummaryRow}>
                 <Ionicons name="calendar-outline" size={17} color={Colors.primary} />

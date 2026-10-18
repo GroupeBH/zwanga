@@ -1,12 +1,14 @@
 import { pointToLatLng } from '../../features/trip-detail/tripDetailModel';
+import { isTripExpired, resolveTripDetailAvailability } from '@/features/trip-detail/tripDetailAvailability';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
-import { useGetMyBookingsQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyActivityBookingsQuery, useGetMyBookingsForTripQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
-import { selectConversations, selectTripById, selectUser } from '@/store/selectors';
+import { selectTripById, selectUser } from '@/store/selectors';
 import { useIsFocused } from '@react-navigation/native';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
@@ -17,6 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export function useTripDetailData() {
   const router = useRouter();
   const isFocused = useIsFocused();
+  const isAppActive = useAppIsActive();
+  const isScreenActive = isFocused && isAppActive;
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
@@ -29,63 +33,88 @@ export function useTripDetailData() {
   const openEditParamKey = `${tripId}:${openEditParamValue ?? ''}`;
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
+  const user = useAppSelector(selectUser);
 
   // Récupérer le trajet depuis l'API si pas dans le store
   // Polling intelligent basé sur le statut du trajet
   const {
     data: tripFromApi,
-    isLoading: tripLoading,
+    isLoading,
     isFetching: tripFetching,
+    error: tripError,
     refetch: refetchTrip,
   } = useGetTripByIdQuery(tripId, {
-    skip: !tripId,
+    skip: !tripId || !isScreenActive,
     // Polling automatique basé sur le statut du trajet
-    pollingInterval: !isFocused ? 0 : tripFromStore?.status === 'ongoing'
+    pollingInterval: !isScreenActive || isTripExpired(tripFromStore) ? 0 : tripFromStore?.status === 'ongoing'
       ? 15000 // 15 secondes pour les trajets en cours
       : tripFromStore?.status === 'upcoming'
         ? 60000 // 60 secondes pour les trajets à venir
         : 0, // Pas de polling pour les trajets terminés/annulés
     skipPollingIfUnfocused: true,
-    refetchOnFocus: true, // Rafraîchir quand l'utilisateur revient dans l'app
+    refetchOnFocus: false, // Le retour à l'écran recrée l'abonnement et relit le trajet.
     refetchOnMountOrArgChange: true, // Une notification peut annoncer un démarrage ou une interruption.
     refetchOnReconnect: false,
   });
 
   // Utiliser le trajet de l'API en priorité, sinon celui du store
-  const trip = tripFromApi || tripFromStore;
-
-  const user = useAppSelector(selectUser);
-  const conversations = useAppSelector(selectConversations);
+  const candidate = tripFromApi?.id === tripId ? tripFromApi : tripFromStore?.id === tripId ? tripFromStore : undefined;
+  const availability = resolveTripDetailAvailability({
+    trip: candidate, userId: user?.id, error: tripError,
+    loading: Boolean(tripId && (isLoading || tripFetching)),
+  });
+  const trip = availability.trip;
   const { showDialog } = useDialog();
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
   const driverPhone = trip?.driver?.phone ?? null;
   // console.log('driverPhone', driverPhone);
   const isTripDriver = Boolean(trip && user && trip.driverId === user.id);
+  const isLiveTrip = trip?.status === 'ongoing' || trip?.status === 'upcoming';
+  const needsPassengerBookings = Boolean(isScreenActive && trip && user?.id && !isTripDriver);
+  const passengerBookingsOptions = {
+    // Le coordinateur global rafraîchit scope=activity sur changement de révision.
+    pollingInterval: 0,
+    refetchOnMountOrArgChange: true,
+    refetchOnFocus: false,
+    refetchOnReconnect: false,
+  };
   const {
-    data: myBookings,
-    isLoading: myBookingsLoading,
-    isFetching: myBookingsFetching,
-    refetch: refetchMyBookings,
-  } = useGetMyBookingsQuery(undefined, {
-    // Polling pour les réservations si le trajet est actif
-    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
+    data: activityBookings,
+    refetch: refetchActivityBookings,
+  } = useGetMyActivityBookingsQuery(undefined, {
+    ...passengerBookingsOptions,
+    skip: !needsPassengerBookings || !isLiveTrip,
+  });
+  const {
+    data: historicalBookings,
+    refetch: refetchHistoricalBookings,
+  } = useGetMyBookingsForTripQuery(tripId, {
+    ...passengerBookingsOptions,
+    skip: !needsPassengerBookings || isLiveTrip,
+  });
+  const myBookings = isLiveTrip ? activityBookings : historicalBookings;
+  const refetchMyBookings = useCallback(() => {
+    if (!needsPassengerBookings) return Promise.resolve();
+    return isLiveTrip ? refetchActivityBookings() : refetchHistoricalBookings();
+  }, [isLiveTrip, needsPassengerBookings, refetchActivityBookings, refetchHistoricalBookings]);
+  const {
+    data: driverTripBookings,
+    refetch: refetchDriverTripBookings,
+  } = useGetTripBookingsQuery(tripId, {
+    skip: !tripId || !isTripDriver || !isScreenActive,
+    // Polling pour les réservations du trajet
+    pollingInterval: !isScreenActive || availability.expired ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
     skipPollingIfUnfocused: true,
     refetchOnMountOrArgChange: true,
-    refetchOnFocus: true,
+    refetchOnFocus: false,
     refetchOnReconnect: false,
   });
-  const {
-    data: tripBookings,
-    isLoading: tripBookingsLoading,
-    refetch: refetchTripBookings,
-  } = useGetTripBookingsQuery(tripId, {
-    skip: !tripId,
-    // Polling pour les réservations du trajet
-    pollingInterval: !isFocused ? 0 : trip?.status === 'ongoing' ? 30_000 : trip?.status === 'upcoming' ? 60_000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
-  });
+  // This endpoint is driver-only. Passenger details use their own reservations.
+  const tripBookings = useMemo(() => isTripDriver ? driverTripBookings : myBookings?.filter(booking => booking.tripId === tripId),
+    [driverTripBookings, isTripDriver, myBookings, tripId]);
+  const refetchTripBookings = useCallback(() => {
+    if (isTripDriver && tripId) return refetchDriverTripBookings();
+  }, [isTripDriver, refetchDriverTripBookings, tripId]);
   const {
     lastKnownLocation,
     requestPermission: requestDriverLocationPermission,
@@ -124,6 +153,7 @@ export function useTripDetailData() {
     isTripDriver,
     shouldOpenEditFromParams,
     isFocused,
+    isScreenActive,
     openEditParamKey,
     showDialog,
     refetchTrip,
@@ -151,8 +181,10 @@ export function useTripDetailData() {
     checkIdentity,
     requestDriverLocationPermission,
     router,
-    conversations,
-    tripLoading,
+    tripLoading: availability.loading,
+    tripFetching: Boolean(tripFetching),
+    tripFeedback: availability.feedback,
+    tripExpired: availability.expired,
     goHome,
     viewportHeight,
     driverPhone,

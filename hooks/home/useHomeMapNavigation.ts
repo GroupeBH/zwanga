@@ -5,8 +5,10 @@ import {
 } from 'react-native';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'router'>;
-export function useHomeMapNavigation({ isFocused, router }: Props) {
+type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'router'>
+  & Partial<Pick<ReturnType<typeof useHomeContext>, 'isScreenActive'>>;
+export function useHomeMapNavigation({ isFocused, isScreenActive = isFocused, router }: Props) {
+  const canNavigate = isFocused && isScreenActive;
   const openingMapDetailRef = useRef(false);
 
   const openingMapDetailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -18,7 +20,7 @@ export function useHomeMapNavigation({ isFocused, router }: Props) {
   const shouldRenderHomeMap = isFocused && !openingMapDetailKey;
 
   const scheduleMapDetailNavigation = useCallback((key: string, navigate: () => void) => {
-    if (!isFocused || openingMapDetailRef.current) return;
+    if (!canNavigate || openingMapDetailRef.current) return;
 
     openingMapDetailRef.current = true;
     setOpeningMapDetailKey(key);
@@ -32,7 +34,7 @@ export function useHomeMapNavigation({ isFocused, router }: Props) {
       navigate();
       openingMapDetailTimerRef.current = null;
     }, Platform.OS === 'ios' ? 260 : 40);
-  }, [isFocused]);
+  }, [canNavigate]);
 
   const openTripDetail = useCallback((tripId: string) => {
     scheduleMapDetailNavigation(`trip:${tripId}`, () => {
@@ -47,7 +49,7 @@ export function useHomeMapNavigation({ isFocused, router }: Props) {
   }, [router, scheduleMapDetailNavigation]);
 
   useEffect(() => {
-    if (!isFocused) {
+    if (!canNavigate) {
       if (openingMapDetailTimerRef.current) {
         clearTimeout(openingMapDetailTimerRef.current);
         openingMapDetailTimerRef.current = null;
@@ -59,7 +61,7 @@ export function useHomeMapNavigation({ isFocused, router }: Props) {
       openingMapDetailRef.current = false;
       setOpeningMapDetailKey(null);
     }
-  }, [isFocused]);
+  }, [canNavigate]);
 
   useEffect(() => () => {
     if (openingMapDetailTimerRef.current) clearTimeout(openingMapDetailTimerRef.current);

@@ -50,7 +50,6 @@ export function RequestBudgetFields({
   budgetHintLabel,
   totalBudgetLabel,
   requestSeatsLabel,
-  hasSpecifiedNumberOfSeats,
   numberOfSeats,
   selectedVehicleType,
   setHasSpecifiedNumberOfSeats,
@@ -97,6 +96,7 @@ export function RequestBudgetFields({
           style={[styles.offerPriceButton, budgetValue <= MIN_REQUEST_PRICE && styles.offerPriceButtonDisabled]}
           onPress={() => updateBudget(budgetValue - REQUEST_PRICE_STEP)}
           disabled={budgetValue <= MIN_REQUEST_PRICE}
+          accessibilityRole="button" accessibilityLabel="Diminuer le prix par place"
           activeOpacity={0.78}
         >
           <Ionicons name="remove" size={26} color={budgetValue <= MIN_REQUEST_PRICE ? Colors.gray[400] : Colors.gray[900]} />
@@ -106,18 +106,14 @@ export function RequestBudgetFields({
           <Text style={styles.offerPriceHint}>
             {budgetHintLabel}
           </Text>
-          <Text
-            style={styles.offerPriceTotal}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.86}
-          >
+          <Text style={styles.offerPriceTotal}>
             Total estimé · {totalBudgetLabel} pour {requestSeatsLabel}
           </Text>
         </View>
         <TouchableOpacity
           style={styles.offerPriceButton}
           onPress={() => updateBudget(budgetValue + REQUEST_PRICE_STEP)}
+          accessibilityRole="button" accessibilityLabel="Augmenter le prix par place"
           activeOpacity={0.78}
         >
           <Ionicons name="add" size={26} color={Colors.gray[900]} />
@@ -130,10 +126,7 @@ export function RequestBudgetFields({
             <Ionicons name="people" size={17} color={Colors.primary} />
           </View>
           <View style={styles.offerOptionTextBlock}>
-            <Text style={styles.offerOptionLabel}>Places souhaitées</Text>
-            <Text style={styles.offerOptionText}>
-              {hasSpecifiedNumberOfSeats ? requestSeatsLabel : `${requestSeatsLabel} par défaut`}
-            </Text>
+            <Text style={styles.offerOptionText}>Places</Text>
           </View>
         </View>
         <View style={styles.counterCompact}>
@@ -147,6 +140,7 @@ export function RequestBudgetFields({
               setNumberOfSeats((value) => clampRequestSeats(value - 1, seatCapacity));
             }}
             disabled={numberOfSeats <= MIN_REQUEST_SEATS}
+            accessibilityRole="button" accessibilityLabel="Diminuer le nombre de places"
             activeOpacity={0.75}
           >
             <Ionicons
@@ -166,6 +160,7 @@ export function RequestBudgetFields({
               setNumberOfSeats((value) => clampRequestSeats(value + 1, seatCapacity));
             }}
             disabled={cannotAddSeat}
+            accessibilityRole="button" accessibilityLabel="Augmenter le nombre de places"
             activeOpacity={0.75}
           >
             <Ionicons
@@ -191,6 +186,8 @@ export function RequestBudgetFields({
                 selected && styles.offerPaymentOptionSelected,
               ]}
               onPress={() => setRequestPaymentMode(option.id)}
+              accessibilityRole="radio" accessibilityState={{ checked: selected }}
+              accessibilityLabel={option.label} accessibilityHint={option.description}
               activeOpacity={0.84}
             >
               <Ionicons
@@ -200,7 +197,6 @@ export function RequestBudgetFields({
               />
               <View style={styles.offerPaymentCopy}>
                 <Text style={styles.offerPaymentTitle}>{option.label}</Text>
-                <Text style={styles.offerPaymentText}>{option.description}</Text>
               </View>
               <Ionicons
                 name={selected ? 'checkmark-circle' : 'ellipse-outline'}
@@ -212,7 +208,8 @@ export function RequestBudgetFields({
         })}
       </View>
 
-      <TouchableOpacity style={styles.offerNoteToggle} onPress={() => setShowAdvanced((value) => !value)}>
+      <TouchableOpacity style={styles.offerNoteToggle} onPress={() => setShowAdvanced((value) => !value)}
+        accessibilityRole="button" accessibilityState={{ expanded: showAdvanced }}>
         <Text style={styles.offerNoteToggleText}>{showAdvanced ? 'Masquer la note' : 'Ajouter une note'}</Text>
         <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[500]} />
       </TouchableOpacity>

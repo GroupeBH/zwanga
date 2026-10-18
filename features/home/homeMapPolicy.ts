@@ -15,6 +15,8 @@ export const TRIP_REQUEST_MARKER_ANCHOR = { x: 0.5, y: 0.92 };
 
 export const USER_LOCATION_MARKER_ANCHOR = { x: 0.5, y: 0.5 };
 
+export const HOME_USER_LOCATION_DELTA = 0.008;
+
 export const KINSHASA_REGION: Region = {
   latitude: -4.325,
   longitude: 15.3222,

@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
+const { profileState } = require('./helpers/profileStateFixture.cjs');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const action = (callback) => (args) => ({ unwrap: () => callback(args) });
 const errors = {
@@ -52,24 +53,91 @@ test('vehicle matching remains case insensitive and includes all vehicle fields'
   assert.equal(vehicleMatchesFormData(vehicle, { ...vehicle, type: 'moto' }), false);
 });
 
-function onboardingApp(extra = {}) {
+function onboardingApp(extra = {}, params = {}, activate, request) {
   const calls = [], dialogs = [], hooks = hookHarness();
+  const state = { auth: { user: { id: 'passenger', role: 'passenger' } } };
+  const dispatch = action => {
+    if (typeof action === 'function') return action(dispatch, () => state);
+    state.auth.user = { ...state.auth.user, ...action.payload };
+    state.auth.user.isDriver = state.auth.user.role === 'driver';
+  };
   const props = {
     currentUser: { id: 'passenger', role: 'passenger' },
+    isScreenActive: true,
+    isProfileStatusAvailable: true,
     hasVehicle: false, isKycApproved: false, isKycPending: false, kycLoading: false,
     needsDriverOnboarding: true, vehiclesLoading: false,
     openCreateVehicleModal: () => calls.push('vehicle'),
     refetchKycStatus: async () => {}, refetchProfile: async () => {}, ...extra,
   };
+  const readProfile = async () => ({ data: { user: props.currentUser,
+    profileState: profileState(props.serverAction ?? (
+      props.currentUser.role !== 'driver' && !props.currentUser.driverOnboardingRequestedAt ? 'start'
+      : !props.isKycApproved && !props.isKycPending ? 'verify_identity'
+      : !props.hasVehicle ? 'add_vehicle' : props.isKycPending ? 'wait'
+      : props.currentUser.role === 'driver' ? 'none' : 'activate'), {
+      userId: props.currentUser.id,
+      identity: { status: props.isKycApproved ? 'approved' : props.isKycPending ? 'pending' : 'not_started' },
+    }),
+  } });
+  props.refetchProfile = readProfile;
   const { useProfileOnboarding } = loader({
     react: hooks.react,
-    'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => ({}) },
+    'expo-router': { useRouter: () => ({ push() {} }), useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: dialog => dialogs.push(dialog) }) },
+    '@/store/hooks': { useAppDispatch: () => dispatch },
+    '@/store/slices/authSlice': { updateUser: payload => ({ type: 'auth/updateUser', payload }) },
     '@/hooks/useDiditKycFlow': { useDiditKycFlow: () => ({ startDiditKyc: async () => { calls.push('identity'); }, isStartingDiditKyc: false }) },
-    '@/store/api/userApi': { useUpdateUserMutation: () => [form => ({ unwrap: async () => { calls.push(['role', form.get('role')]); } }), { isLoading: false }] },
+    '@/store/api/userApi': {
+      useActivateDriverMutation: () => [() => ({ unwrap: async () => {
+        calls.push('activate'); const user = activate ? await activate() : { id: 'passenger', role: 'driver' };
+        props.currentUser = user;
+        return user;
+      } }), { isLoading: false }],
+      useRequestDriverOnboardingMutation: () => [() => ({ unwrap: async () => {
+        calls.push('intent'); props.currentUser.driverOnboardingRequestedAt = '2026-09-24T10:00:00Z';
+        if (request) props.currentUser = await request();
+        return props.currentUser;
+      } }), { isLoading: false }],
+    },
   })('hooks/profile/useProfileOnboarding.ts');
-  return { hooks, calls, dialogs, props, render: () => hooks.render(() => useProfileOnboarding(props)) };
+  return { hooks, calls, dialogs, props, state, readProfile, render: () => hooks.render(() => useProfileOnboarding(props)) };
 }
+
+test('confirmed driver activation refreshes the tab role without changing other account fields', async () => {
+  let complete;
+  const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, () => new Promise(resolve => { complete = resolve; }));
+  app.state.auth.user.name = 'Existing display name';
+  app.render().handleStartDriverOnboarding();
+  await tick();
+  assert.equal(app.state.auth.user.role, 'passenger', 'no optimistic role change');
+  complete({ id: 'passenger', role: 'driver', isDriver: true, name: 'Not merged' });
+  await tick();
+  assert.equal(app.state.auth.user.role, 'driver');
+  assert.equal(app.state.auth.user.isDriver, true);
+  assert.equal(app.state.auth.user.name, 'Existing display name');
+  app.hooks.unmount();
+});
+
+test('driver activation never changes a signed-out or different account and rejection keeps the passenger role', async () => {
+  for (const nextUser of [null, { id: 'other', role: 'passenger' }]) {
+    let complete;
+    const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, () => new Promise(resolve => { complete = resolve; }));
+    app.render().handleStartDriverOnboarding();
+    await tick();
+    app.state.auth.user = nextUser;
+    complete({ id: 'passenger', role: 'driver', isDriver: true });
+    await tick();
+    assert.equal(app.state.auth.user, nextUser);
+    app.hooks.unmount();
+  }
+  const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, async () => { throw { status: 403 }; });
+  app.render().handleStartDriverOnboarding();
+  await tick();
+  assert.equal(app.state.auth.user.role, 'passenger');
+  assert.equal(app.dialogs[0].variant, 'danger');
+  app.hooks.unmount();
+});
 
 test('passenger identity verification neither asks for a vehicle nor changes account role', async () => {
   const app = onboardingApp();
@@ -81,12 +149,26 @@ test('passenger identity verification neither asks for a vehicle nor changes acc
 
 test('only explicit driver onboarding requires a vehicle; approved identity is reused', async () => {
   const app = onboardingApp({ isKycApproved: true });
-  app.render().handleStartDriverOnboarding();
-  assert.deepEqual(app.calls, ['vehicle']);
+  await app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['intent', 'vehicle']);
   app.props.hasVehicle = true;
   app.render().handleStartDriverOnboarding();
   await tick();
-  assert.deepEqual(app.calls, ['vehicle', ['role', 'driver']]);
+  assert.deepEqual(app.calls, ['intent', 'vehicle', 'activate']);
+  app.hooks.unmount();
+});
+
+test('driver onboarding deep link waits for the profile to be active, then opens only once', async () => {
+  const app = onboardingApp({ isScreenActive: false, isKycApproved: true }, { openDriverOnboarding: '1' });
+  app.render(); app.render();
+  assert.deepEqual(app.calls, []);
+  app.props.isScreenActive = true;
+  app.render(); app.render();
+  await tick();
+  assert.deepEqual(app.calls, ['intent', 'vehicle']);
+  app.props.isScreenActive = false; app.render();
+  app.props.isScreenActive = true; app.render();
+  assert.deepEqual(app.calls, ['intent', 'vehicle']);
   app.hooks.unmount();
 });
 
@@ -100,6 +182,90 @@ test('pending/approved identities show a status instead of starting another veri
   }
 });
 
+test('unavailable profile status never starts Didit, driver intent or activation', async () => {
+  const app = onboardingApp({ isProfileStatusAvailable: false }, { openDriverOnboarding: '1' });
+  app.props.refetchProfile = async () => app.calls.push('refresh');
+  app.render();
+  assert.deepEqual(app.calls, [], 'the deep link waits for a confirmed status');
+  await app.render().handleOpenKycModal();
+  await app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['refresh', 'refresh']);
+  app.props.refetchProfile = app.readProfile;
+  app.props.isProfileStatusAvailable = true;
+  app.render();
+  await tick();
+  assert.deepEqual(app.calls.slice(2), ['intent', 'identity']);
+  app.hooks.unmount();
+});
+
+test('server-confirmed drivers complete missing prerequisites without another driver activation', async () => {
+  for (const isKycApproved of [true, false]) {
+    const app = onboardingApp({ currentUser: { id: 'passenger', role: 'driver' }, isKycApproved, hasVehicle: false });
+    await app.render().handleStartDriverOnboarding();
+    assert.deepEqual(app.calls, [isKycApproved ? 'vehicle' : 'identity']);
+    app.hooks.unmount();
+  }
+});
+
+test('server activation during onboarding intent is refreshed without replaying activation or KYC', async () => {
+  const app = onboardingApp({ isKycApproved: true, hasVehicle: true }, {}, undefined, () => ({ id: 'passenger', role: 'driver' }));
+  app.props.refetchProfile = async () => { app.calls.push('refresh'); return app.readProfile(); };
+  await app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['refresh', 'intent', 'refresh']);
+  app.hooks.unmount();
+});
+
+test('server nextAction overrides stale local requirements and pending KYC permits vehicle setup', async () => {
+  const app = onboardingApp({ serverAction: 'add_vehicle', isKycPending: true, hasVehicle: true });
+  await app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['vehicle']);
+  app.props.serverAction = 'wait';
+  await app.render().handleStartDriverOnboarding();
+  assert.deepEqual(app.calls, ['vehicle'], 'waiting only reads status, never restarts Didit');
+  app.hooks.unmount();
+});
+
+test('failed revalidation with cached data never starts a mutation or Didit', async () => {
+  const app = onboardingApp();
+  app.props.refetchProfile = async () => ({ ...await app.readProfile(), error: { status: 503 } });
+  await app.render().handleStartDriverOnboarding();
+  await app.render().handleOpenKycModal();
+  assert.deepEqual(app.calls, []);
+  assert.equal(app.dialogs.length, 2);
+  app.hooks.unmount();
+});
+
+test('repeated presses share a lock and profile responses after blur or account change do nothing', async () => {
+  for (const change of ['blur', 'account', 'unmount', 'none']) {
+    const app = onboardingApp({ serverAction: 'verify_identity' });
+    let resolveRead, reads = 0;
+    app.props.refetchProfile = () => { reads++; return new Promise(resolve => { resolveRead = resolve; }); };
+    const hook = app.render();
+    const first = hook.handleStartDriverOnboarding();
+    await hook.handleOpenKycModal();
+    assert.equal(reads, 1);
+    if (change === 'blur') { app.props.isScreenActive = false; app.render(); }
+    if (change === 'account') app.state.auth.user = { id: 'different' };
+    if (change === 'unmount') app.hooks.unmount();
+    resolveRead(await app.readProfile());
+    await first;
+    assert.deepEqual(app.calls, change === 'none' ? ['identity'] : []);
+    assert.deepEqual(app.dialogs, []);
+    app.hooks.unmount();
+  }
+});
+
+test('partial, foreign-account and unknown contract versions do not allow actions', async () => {
+  for (const response of [{}, { version: 2 }, profileState('start', { userId: 'other' })]) {
+    const app = onboardingApp();
+    app.props.refetchProfile = async () => ({ data: { user: app.props.currentUser, profileState: response } });
+    await app.render().handleStartDriverOnboarding();
+    assert.deepEqual(app.calls, []);
+    assert.equal(app.dialogs.length, 1);
+    app.hooks.unmount();
+  }
+});
+
 test('profile reads keep server data in RTK Query and skip driver-only refreshes for a passenger', async () => {
   const calls = [], refreshes = [];
   const query = (name, data) => (_args, options) => {
@@ -109,14 +275,22 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
   const user = { id: 'passenger', role: 'passenger', rating: 4 };
   const app = environment({
     '@/store/hooks': { useAppSelector: () => user },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    './useProfileRefresh': { useProfileRefresh: () => ({
+      refetchProfile: async () => refreshes.push('profile'),
+      refetchKycStatus: async () => refreshes.push('kyc'),
+      refetchVehicles: async () => refreshes.push('vehicles'),
+      refetchReferralSummary: async () => refreshes.push('referrals'),
+      refetchDriverSettlement: async () => refreshes.push('settlements'),
+    }) },
     '@/store/selectors': { selectUser: () => user },
-    '@/store/api/userApi': { useGetProfileSummaryQuery: query('profile', { user, stats: {} }), useGetKycStatusQuery: query('kyc', {}) },
+    '@/store/api/userApi': { useGetProfileSummaryQuery: query('profile', { user, stats: { vehicles: 0 }, identity: null }) },
     '@/store/api/vehicleApi': { useGetVehiclesQuery: query('vehicles', []) },
     '@/store/api/referralApi': { useGetMyReferralSummaryQuery: query('referrals', {}) },
     '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: query('settlements') },
-    '@/store/api/paymentApi': { useGetPaymentHistoryQuery: query('payments') },
+    '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans', []), useGetPremiumOverviewQuery: query('premium') },
-    '@/store/api/reviewApi': { useGetReviewsQuery: query('reviews', []), useGetAverageRatingQuery: query('rating', {}) },
+    '@/store/api/reviewApi': { useGetReviewPageQuery: query('reviews', { data: [], total: 0 }), useGetAverageRatingQuery: query('rating', {}) },
     '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests', []), useGetMyDriverOffersQuery: query('offers', []) },
   });
   const { useProfileData } = app.load('hooks/profile/useProfileData.ts');
@@ -132,7 +306,7 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
 
 test('ambiguous vehicle creation verifies the new vehicle without replaying the mutation', async () => {
   const calls = [];
-  const vehicle = { id: 'new', type: 'car', brand: 'Dacia', model: 'Sandero', color: 'violet', licensePlate: 'ABC123' };
+  const vehicle = { id: 'new', type: 'car', brand: 'Dacia', model: 'Sandero', color: 'violet', licensePlate: '1234AB56' };
   const app = environment({
     '@/store/api/vehicleApi': {
       useCreateVehicleMutation: () => [action(async payload => { calls.push(payload); throw { status: 'TIMEOUT_ERROR' }; }), { isLoading: false }],
@@ -148,7 +322,7 @@ test('ambiguous vehicle creation verifies the new vehicle without replaying the 
   form.handleVehicleBrandChange(' Dacia ');
   form.handleVehicleModelChange('Sandero');
   form.handleVehicleColorChange('violet');
-  form.handleVehiclePlateChange('ABC123');
+  form.handleVehiclePlateChange('1234ab56');
   form = render();
   await form.handleSaveVehicle();
   assert.equal(calls.length, 1);
@@ -158,7 +332,7 @@ test('ambiguous vehicle creation verifies the new vehicle without replaying the 
   app.hooks.unmount();
 });
 
-test('vehicle deletion still requires confirmation and reconciles a transport timeout by reading', async () => {
+test('vehicle deactivation explains the retained history and reconciles a transport timeout by reading', async () => {
   let deletes = 0, reads = 0;
   const app = environment({
     '@/store/api/vehicleApi': {
@@ -171,41 +345,140 @@ test('vehicle deletion still requires confirmation and reconciles a transport ti
   const form = app.hooks.render(() => useProfileVehicles({ vehicleList: [], refetchVehicles: async () => { reads++; return { data: [] }; }, refetchProfile: async () => ({}) }));
   form.handleDeleteVehicle({ id: 'car', brand: 'Dacia', model: 'Sandero', licensePlate: 'ABC123' });
   assert.equal(deletes, 0);
-  await app.dialogs[0].actions.find(action => action.label === 'Supprimer').onPress();
+  assert.match(app.dialogs[0].message, /restera dans l'historique/);
+  assert.match(app.dialogs[0].message, /trajet en cours ou à venir/);
+  await app.dialogs[0].actions.find(action => action.label === 'Retirer').onPress();
   assert.equal(deletes, 1);
   assert.ok(reads > 0);
-  assert.equal(app.dialogs.at(-1).title, 'Véhicule supprimé');
+  assert.equal(app.dialogs.at(-1).title, 'Véhicule retiré');
   app.hooks.unmount();
 });
 
-test('PIN input sanitation, OTP verification and reset preserve existing API payloads', async (t) => {
+test('vehicle deactivation refusal keeps the vehicle and shows the server reason', async () => {
+  const app = environment({
+    '@/store/api/vehicleApi': {
+      useCreateVehicleMutation: () => [action(async () => {}), { isLoading: false }],
+      useUpdateVehicleMutation: () => [action(async () => {}), { isLoading: false }],
+      useDeleteVehicleMutation: () => [action(async () => {
+        throw { status: 400, data: { code: 'VEHICLE_HAS_ACTIVE_TRIPS', message: 'Un trajet à venir utilise ce véhicule.' } };
+      }), { isLoading: false }],
+    },
+    '@/utils/errorHelpers': {
+      ...errors,
+      getApiErrorMessage: (error) => error.data.message,
+    },
+  });
+  const { useProfileVehicles } = app.load('hooks/profile/useProfileVehicles.ts');
+  const form = app.hooks.render(() => useProfileVehicles({
+    vehicleList: [{ id: 'car' }],
+    refetchVehicles: async () => ({ data: [{ id: 'car' }] }),
+    refetchProfile: async () => ({}),
+  }));
+
+  form.handleDeleteVehicle({ id: 'car', brand: 'Dacia', model: 'Sandero', licensePlate: 'ABC123' });
+  await app.dialogs[0].actions.find(action => action.label === 'Retirer').onPress();
+
+  assert.equal(app.dialogs.at(-1).title, 'Véhicule non retiré');
+  assert.equal(app.dialogs.at(-1).message, 'Un trajet à venir utilise ce véhicule.');
+  app.hooks.unmount();
+});
+
+test('profile forgotten PIN uses the reset proof and clears the local session', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const calls = [];
-  const mutation = (name) => [action(async payload => { calls.push({ name, payload }); }), { isLoading: false }];
+  const mutation = (name) => [payload => ({
+    unwrap: async () => {
+      calls.push({ name, payload });
+      return name === 'verify' ? { resetToken: 'proof', expiresInSeconds: 300 } : {};
+    },
+    reset() {},
+  }), { isLoading: false }];
   const app = environment({ '@/store/api/userApi': {
-    useUpdatePinMutation: () => mutation('update'), useUpdatePinWithOtpMutation: () => mutation('reset'),
-    useSendPhoneVerificationOtpMutation: () => mutation('send'), useVerifyPhoneOtpMutation: () => mutation('verify'),
-  } });
+    useUpdatePinMutation: () => mutation('update'),
+  },
+    '@/store/api/authApi': {
+      useRequestPinResetOtpMutation: () => mutation('send'),
+      useVerifyPinResetOtpMutation: () => mutation('verify'),
+      useResetPinMutation: () => mutation('reset'),
+    },
+    '@/services/tokenStorage': { clearTokens: async () => calls.push({ name: 'clear' }) },
+    '@/store/hooks': { useAppDispatch: () => value => calls.push(value) },
+    '@/store/slices/authSlice': { logout: () => ({ name: 'logout' }) },
+  });
   const { useProfilePin } = app.load('hooks/profile/useProfilePin.ts');
   const render = () => app.hooks.render(() => useProfilePin({ currentUser: { phone: '0991234567' } }));
   render().handleOpenPinModal();
   render().handleOldPinChange('1x234567');
   assert.equal(render().oldPin, '1234');
   await render().handleForgotPin();
-  assert.deepEqual(calls[0], { name: 'send', payload: { phone: '0991234567', context: 'update' } });
-  render().handleOtpInputChange('12345', 0);
+  assert.deepEqual(calls[0], { name: 'send', payload: { phone: '0991234567' } });
+  assert.match(app.dialogs.at(-1).message, /^Si ce numéro correspond à un compte éligible,.*WhatsApp.*Didit.*SMS/);
+  render().setOtpCode('123456'.split(''));
   await render().handleVerifyOtpForPinChange();
   assert.equal(render().pinStep, 'newPin');
-  assert.deepEqual(calls[1].payload, { phone: '0991234567', otp: '12345' });
+  assert.deepEqual(calls[1].payload, { phone: '0991234567', otp: '123456' });
   render().handleNewPinChange('5678');
   render().handleNewPinConfirmChange('5678');
   await render().handleUpdatePin();
-  assert.deepEqual(calls[2], { name: 'reset', payload: { newPin: '5678' } });
+  assert.deepEqual(calls[2], { name: 'reset', payload: { resetToken: 'proof', newPin: '5678' } });
+  assert.deepEqual(calls.slice(3), [{ name: 'clear' }, { name: 'logout' }]);
   assert.equal(render().oldPin, '');
   assert.equal(render().newPin, '');
-  assert.deepEqual(render().otpCode, ['', '', '', '', '']);
+  assert.deepEqual(render().otpCode, ['', '', '', '', '', '']);
   app.hooks.unmount();
 });
+
+for (const refused of [false, true]) {
+  test(`profile sends the old PIN to the server and logs out only after success (refused=${refused})`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const calls = [], navigation = [];
+    const unused = () => [() => { throw new Error('OTP not expected for a known PIN'); }, { isLoading: false }];
+    const app = environment({
+      '@/store/api/userApi': {
+        useUpdatePinMutation: () => [payload => ({
+          unwrap: async () => {
+            calls.push({ name: 'update', payload });
+            if (refused) throw { status: 401 };
+            return {};
+          },
+          reset: () => calls.push({ name: 'discard' }),
+        }), { isLoading: false }],
+      },
+      '@/store/api/authApi': {
+        useRequestPinResetOtpMutation: unused,
+        useVerifyPinResetOtpMutation: unused,
+        useResetPinMutation: unused,
+      },
+      '@/services/tokenStorage': { clearTokens: async () => calls.push({ name: 'clear' }) },
+      '@/store/hooks': { useAppDispatch: () => value => calls.push(value) },
+      '@/store/slices/authSlice': { logout: () => ({ name: 'logout' }) },
+      'expo-router': { useRouter: () => ({ replace: route => navigation.push(route) }) },
+    });
+    const { useProfilePin } = app.load('hooks/profile/useProfilePin.ts');
+    const render = () => app.hooks.render(() => useProfilePin({ currentUser: { phone: '0991234567' } }));
+    render().handleOpenPinModal();
+    render().handleOldPinChange('1234');
+    render().handleVerifyOldPin();
+    render().handleNewPinChange('5678');
+    render().handleNewPinConfirmChange('5678');
+    await render().handleUpdatePin();
+    assert.deepEqual(calls[0], { name: 'update', payload: { oldPin: '1234', newPin: '5678' } });
+    assert.equal(render().oldPin, '');
+    assert.equal(render().newPin, '');
+    if (refused) {
+      assert.deepEqual(calls.map(call => call.name), ['update', 'discard']);
+      assert.equal(render().pinStep, 'oldPin');
+      assert.deepEqual(navigation, []);
+      assert.equal(app.dialogs.at(-1).variant, 'danger');
+    } else {
+      assert.deepEqual(calls.map(call => call.name), ['update', 'discard', 'clear', 'logout']);
+      assert.deepEqual(navigation, ['/auth?mode=login']);
+      assert.equal(render().pinModalVisible, false);
+      assert.equal(app.dialogs.at(-1).variant, 'success');
+    }
+    app.hooks.unmount();
+  });
+}
 
 test('restoring a payment rejects a stored reference belonging to another account', async () => {
   const deleted = [];

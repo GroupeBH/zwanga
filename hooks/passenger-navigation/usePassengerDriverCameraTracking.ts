@@ -1,11 +1,13 @@
 import { BookingAutoProgressEvent } from '../../features/passenger-navigation/navigationModel';
 import { DRIVER_NEAR_PICKUP_DISTANCE_KM, PASSENGER_READY_DISTANCE_KM } from '@/constants/rideProgress';
-import { calculateDistance, getRouteAlignedPosition } from '@/utils/routeHelpers';
+import { calculateDistance } from '@/utils/routeHelpers';
+import { createPassengerRouteAnalysis } from '@/utils/navigation/passengerRouteAnalysis';
 import { useEffect, useMemo } from 'react';
 import type { Booking } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
 interface Params {
+  isScreenActive: boolean;
   driverLocation: { latitude: number; longitude: number; } | null;
   routeCoordinates: { latitude: number; longitude: number; }[];
   booking: Booking | undefined;
@@ -17,6 +19,7 @@ interface Params {
 }
 
 export function usePassengerDriverCameraTracking({
+  isScreenActive,
   driverLocation,
   routeCoordinates,
   booking,
@@ -26,19 +29,16 @@ export function usePassengerDriverCameraTracking({
   pickupCoordinate,
   presentPickupNotice,
 }: Params) {
-  const routeAlignedDriver = useMemo(
-    () =>
-      driverLocation
-        ? getRouteAlignedPosition(driverLocation, routeCoordinates, 0.1)
-        : null,
-    [driverLocation, routeCoordinates],
-  );
+  const routeAnalysis = useMemo(() => ({ tripId, analysis: createPassengerRouteAnalysis() }), [tripId]).analysis;
+  const displayedDriverHeading = useMemo(() => routeAnalysis.heading(routeCoordinates, driverLocation),
+    [routeAnalysis, routeCoordinates, driverLocation]);
   const displayedDriverLocation = driverLocation;
-  const displayedDriverHeading = routeAlignedDriver?.heading ?? 0;
 
   useEffect(() => {
     if (
       !booking?.id ||
+      !isScreenActive ||
+      !['accepted', 'no_show'].includes(booking.status) ||
       !tripId ||
       !isTripOngoing ||
       booking.pickedUp ||
@@ -88,8 +88,10 @@ export function usePassengerDriverCameraTracking({
     booking?.passengerId,
     booking?.pickedUp,
     booking?.pickedUpConfirmedByPassenger,
+    booking?.status,
     displayedDriverLocation,
     isTripOngoing,
+    isScreenActive,
     passengerLocation,
     pickupCoordinate,
     presentPickupNotice,
@@ -97,6 +99,7 @@ export function usePassengerDriverCameraTracking({
   ]);
 
   return {
+    routeAnalysis,
     displayedDriverLocation,
     displayedDriverHeading,
   };

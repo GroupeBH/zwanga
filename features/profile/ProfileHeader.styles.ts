@@ -142,6 +142,8 @@ export const styles = StyleSheet.create({
     marginTop: Spacing.xs,
   },
   userRolePill: {
+    maxWidth: '100%',
+    flexShrink: 1,
     minHeight: 24,
     flexDirection: 'row',
     alignItems: 'center',
@@ -153,6 +155,7 @@ export const styles = StyleSheet.create({
     borderColor: Colors.primary + '24',
   },
   userRolePillText: {
+    flexShrink: 1,
     color: Colors.primaryDark,
     fontSize: 10,
     fontWeight: FontWeights.bold,

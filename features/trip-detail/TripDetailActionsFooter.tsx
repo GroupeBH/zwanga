@@ -4,6 +4,7 @@ import { useTripDetailAccess } from '../../hooks/trip-detail/useTripDetailAccess
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors, Spacing } from '@/constants/styles';
+import { isTripExpired } from './tripDetailAvailability';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -39,10 +40,7 @@ export function TripDetailActionsFooter({
     <View style={[styles.stickyFooter, { paddingBottom: Math.max(data.insets.bottom, 10) + 10 }]}>
       {(() => {
         // Vérifier si le trajet est expiré (date de départ passée)
-        const isExpired =
-          trip?.status !== 'ongoing' &&
-          trip?.departureTime &&
-          new Date(trip?.departureTime) < new Date();
+        const isExpired = isTripExpired(trip);
         // Vérifier si le trajet peut être réservé (pas complété, pas annulé, pas expiré)
         const canBook = trip?.status !== 'completed' &&
           trip?.status !== 'cancelled' &&
@@ -62,10 +60,12 @@ export function TripDetailActionsFooter({
                 <Ionicons name="settings-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
                 <Text style={styles.actionButtonText}>Gérer le trajet</Text>
               </TouchableOpacity>
-              {(trip?.status === 'upcoming' || trip?.status === 'ongoing') && !isExpired && (
+              {(trip.canReprogram || trip.status === 'upcoming' || trip.status === 'ongoing') && (
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: Colors.secondary, flex: 1 }]}
                   onPress={editor.openEditModal}
+                  accessibilityRole="button"
+                  accessibilityLabel={trip.canReprogram ? 'Modifier et reprogrammer ce trajet' : 'Modifier ce trajet'}
                 >
                   <Ionicons name="create-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
                   <Text style={styles.actionButtonText}>Modifier</Text>
@@ -183,21 +183,25 @@ export function TripDetailActionsFooter({
                       )}
 
                       <View style={styles.bookingSecondaryActionsRow}>
-                        {/* Bouton Navigation - visible quand le trajet est en cours */}
-                        {activeBooking.status === 'accepted' && trip.status === 'ongoing' &&
+                        {/* Le passager peut consulter l'arrivée dès l'acceptation. */}
+                        {activeBooking.status === 'accepted' && ['upcoming', 'ongoing'].includes(trip.status) &&
                           !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
                           !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
                             <TouchableOpacity
                               activeOpacity={0.82}
                               style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionNavigation]}
                               onPress={() => data.router.push(`/booking/navigate/${activeBooking.id}`)}
+                              accessibilityRole="button"
+                              accessibilityLabel={!activeBooking.pickedUp ? 'Voir l’arrivée estimée du conducteur' : 'Suivre le trajet'}
                             >
                               <Ionicons name="navigate" size={18} color={Colors.white} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>Suivre</Text>
+                              <Text style={[styles.bookingActionText, styles.bookingActionNavigationText]}>
+                                {!activeBooking.pickedUp ? 'Voir l’arrivée' : 'Suivre'}
+                              </Text>
                             </TouchableOpacity>
                           )}
 
-                        {activeBooking.status === 'accepted' && data.driverPhone &&
+                        {activeBooking.status === 'accepted' &&
                           !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
                           !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
                             <TouchableOpacity
@@ -205,8 +209,8 @@ export function TripDetailActionsFooter({
                               style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionCall]}
                               onPress={() => bookingState.setContactModalVisible(true)}
                             >
-                              <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
-                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>WhatsApp</Text>
+                              <Ionicons name="chatbubbles-outline" size={18} color={Colors.primary} />
+                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Contacter</Text>
                             </TouchableOpacity>
                           )}
 

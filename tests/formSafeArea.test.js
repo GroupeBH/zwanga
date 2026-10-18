@@ -16,6 +16,7 @@ const native = {
 const safeArea = { SafeAreaProvider: 'SafeAreaProvider', SafeAreaView: 'SafeAreaView' };
 const read = file => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
 const loadLayout = (os = 'android') => loader({
+  '@/features/navigation/RideModal': { RideModal: 'Modal' },
   'react-native': { ...native, Platform: { OS: os } },
   'react-native-safe-area-context': safeArea,
 })('components/forms/FormLayout.tsx');
@@ -66,6 +67,7 @@ function vehicleForm() {
   const listeners = new Map();
   const calls = [];
   const { VehicleFormModal } = loader({
+    '@/features/navigation/RideModal': { RideModal: 'Modal' },
     react: hooks.react, 'react-native-safe-area-context': safeArea,
     '@expo/vector-icons': { Ionicons: 'Ionicons' },
     'react-native': { ...native, Keyboard: {
@@ -73,7 +75,7 @@ function vehicleForm() {
       addListener: (event, listener) => { listeners.set(event, listener); return { remove: () => listeners.delete(event) }; },
     } },
   })('components/VehicleFormModal.tsx');
-  const props = { visible: false, vehicleType: 'car', brand: '', model: '', color: '', licensePlate: '',
+  const props = { visible: false, vehicleType: 'car', brand: '', model: '', color: '', licensePlate: '1234AB56',
     onClose: () => calls.push('close'), onSubmit: () => calls.push('submit') };
   return { hooks, listeners, calls, props, render: () => hooks.render(() => VehicleFormModal(props)) };
 }
@@ -141,10 +143,12 @@ for (const [file, footers] of [
 }
 
 test('creation and update modals consistently use the protected layout', () => {
+  // Wallet sheets intentionally use a screen-local overlay, not a native Modal.
+  // Their safe insets and lifecycle are covered in walletSheetKeyboard.test.js.
   for (const file of [
     'features/request-detail/RequestAcceptModal.tsx', 'features/request-detail/RequestEditModal.tsx',
     'features/security/EmergencyContactFormModal.tsx', 'app/favorite-locations.tsx',
-    'features/wallet/WalletSheetModal.tsx', 'features/support/SupportTicketModal.tsx',
+    'features/support/SupportTicketModal.tsx',
     'app/trip/manage/[id].tsx', 'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
     'components/LocationPickerModal.tsx', 'components/profile/ProfilePinModal.tsx',
     'components/profile/ProfileSubscriptionModal.tsx', 'components/PassengerArrivalPaymentCoordinator.tsx',

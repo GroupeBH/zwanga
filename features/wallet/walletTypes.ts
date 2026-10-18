@@ -1,6 +1,6 @@
 import type { SubscriptionPaymentMethod } from '@/types';
 
-export type WalletAction = 'top_up' | 'transfer';
+export type WalletAction = 'top_up' | 'transfer' | 'withdrawal';
 export type TopUpStage =
   | 'idle'
   | 'preparing'

@@ -8,6 +8,9 @@ import type {
   Vehicle,
 } from '../../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isDriverAccount } from '@/utils/accountRole';
+import { mapProfileIdentity } from './profileIdentityMapper';
+import { readProfileState } from '@/features/profile/profileStateContract';
 
 export type ServerUser = Record<string, any>;
 export const FAVORITE_LOCATION_NOTES_KEY = 'favorite_location_local_notes';
@@ -46,20 +49,26 @@ export const mapServerUser = (user: ServerUser): User => {
     profilePicture: user.profilePicture ?? null,
     rating: user.rating ?? 0,
     totalTrips: user.totalTrips ?? 0,
-    verified: Boolean(user.isEmailVerified || user.isPhoneVerified || user.isDriver),
-    identityVerified: Boolean(user.kycDocuments?.some?.((doc: any) => doc.status === 'approved')),
+    verified: Boolean(user.isEmailVerified || user.isPhoneVerified),
+    identityVerified: mapProfileIdentity(user.kycDocuments, user.id)?.status === 'approved',
     vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
-    isDriver: user.isDriver ?? false,
+    vehicles: Array.isArray(user.vehicles) ? user.vehicles.map(mapServerVehicle) : undefined,
+    isDriver: isDriverAccount(user),
+    driverOnboardingRequestedAt: user.driverOnboardingRequestedAt ?? null,
+    driverActivatedAt: user.driverActivatedAt ?? null,
     isPremium: Boolean(user.isPremium),
     premiumBadge: Boolean(user.premiumBadge),
     premiumBadgeEnabled: Boolean(user.premiumBadgeEnabled ?? user.premiumBadge),
     createdAt: user.createdAt ?? new Date().toISOString(),
+    updatedAt: user.updatedAt,
   };
 };
 
-export const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats }): ProfileSummary => ({
+export const mapProfileSummary = (payload: { user: ServerUser; stats: ProfileStats; profileState?: unknown }): ProfileSummary => ({
   user: mapServerUser(payload.user),
   stats: payload.stats,
+  identity: mapProfileIdentity(payload.user.kycDocuments, payload.user.id),
+  profileState: readProfileState(payload.profileState, payload.user.id),
 });
 
 export const loadFavoriteLocationNotes = async (): Promise<Record<string, string>> => {

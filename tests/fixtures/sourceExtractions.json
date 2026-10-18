@@ -6,7 +6,7 @@
     },
     "features/screen-styles/app/bookings/index.ts": {
       "keys": 70,
-      "sha256": "ec54b7981c8c6c663ff8a802d834e75f5600d907cbf8e1b50050cd33364e9a54"
+      "sha256": "b860a03ee998dd3255cf52481665216f3e59cb44e0f33f4f65d33844962945d5"
     },
     "features/screen-styles/app/chat/detail/index.ts": {
       "keys": 39,
@@ -17,8 +17,8 @@
       "sha256": "a45ef6b062488162c44e6e9625087aa30e8313a86aa381b78af4246a5ab873b8"
     },
     "features/screen-styles/app/driver-earnings/index.ts": {
-      "keys": 41,
-      "sha256": "0c68af44030d3e84c34b1ecdcb5865ea85fd6ff63a71c155036c0d1014b8feb8"
+      "keys": 45,
+      "sha256": "245fcbfbfdac4b3bb3dc3d375d01af421c5d5123ac1472499d92dea93ff928a2"
     },
     "features/screen-styles/app/edit-profile/index.ts": {
       "keys": 44,
@@ -30,7 +30,7 @@
     },
     "features/screen-styles/app/my-requests/index.ts": {
       "keys": 42,
-      "sha256": "1fb05bd12f132b4389d201bc6df7b04b192565ca258ccb1caeba1882fe8c9efe"
+      "sha256": "dfab64ae87a794db5ebfc67074151d70b07c90dbd915ac95736db173d83675c2"
     },
     "features/screen-styles/app/notifications/index.ts": {
       "keys": 49,
@@ -45,8 +45,8 @@
       "sha256": "36116a9519a54f86575536262e23bdac51426b13b38c48e568dbd3552e3e462b"
     },
     "features/screen-styles/app/publish/index.ts": {
-      "keys": 320,
-      "sha256": "785c1463fde9a2f5478149008aef7d719054d3245e0c9a5d5174611d85684b43"
+      "keys": 313,
+      "sha256": "2590cd452c2b469052e9d75a980673c1788a7731949a0bae1498f61642073b0c"
     },
     "features/screen-styles/app/rate/detail/index.ts": {
       "keys": 74,
@@ -61,12 +61,12 @@
       "sha256": "5c4be262129da3c61d563285edc9c2310feaff8df293e3d1c2b9079368a3385c"
     },
     "features/screen-styles/app/requests/index.ts": {
-      "keys": 67,
-      "sha256": "9f624e5a9645d6537d0e02b1cc9b056e9523f133becf60f079d3960649a6f1f8"
+      "keys": 32,
+      "sha256": "4e8f783d36ad4636dd13e65c9ea67664b54bb5fc5a88c2c9e8f2309cec376654"
     },
     "features/screen-styles/app/search/index.ts": {
-      "keys": 89,
-      "sha256": "073cd77b57515f9e704f8a81d66aaeab04219de32036d097bc51de75c91f4385"
+      "keys": 44,
+      "sha256": "c8306d23db773c241ce0785546aa42e16ee0719f6e856ba4090e2f77cc835016"
     },
     "features/screen-styles/app/security/index.ts": {
       "keys": 71,
@@ -85,28 +85,28 @@
       "sha256": "d18c5853ffcf14ebbbedd5f589b9f73e4aaa52336869cc5c9c72f79b3be8a65f"
     },
     "features/screen-styles/app/tabs/trips/index.ts": {
-      "keys": 146,
-      "sha256": "b2089ae8cd20f61208cd16b597513b84afb1bb3b0e8773bbfff32af1c5af41f6"
+      "keys": 149,
+      "sha256": "bfc749e4215442acb33412f73a6e817fd2a6d562edd222ba4abdc68b0f45b007"
     },
     "features/screen-styles/app/trip/detail/index.ts": {
-      "keys": 548,
-      "sha256": "a2b72265f86e43d6622eed077f396839cf66a8d4a8d0674b4303630614676ab7"
+      "keys": 539,
+      "sha256": "4036edb1a641072ad56810b096340dd8659f63bce40625cc3728b182503ad8e8"
     },
     "features/screen-styles/app/trip/manage/detail/index.ts": {
-      "keys": 130,
-      "sha256": "cd96df77649d6ad87ce3e386018f0cb5630d58fb170c98f4d927deb91e6b0098"
+      "keys": 111,
+      "sha256": "b434a3f9c9da6915e0d7a031190555503a8f4df89a0d4f315d9023f5acdb9535"
     },
     "features/screen-styles/app/trip/navigate/detail/index.ts": {
-      "keys": 207,
-      "sha256": "3f639372b2aee03a8c7584f282eacc2c46404ac299b63e1a943f24e1dd4a73b4"
+      "keys": 197,
+      "sha256": "b06849f1246d7e8150bcb008b75132cf9a6182086c53a03af28b7aa680dc830a"
     },
     "features/screen-styles/app/wallet/index.ts": {
-      "keys": 73,
-      "sha256": "f5168c50ff9773b2c73dae95397a6d9132ba0a04e3215865647fc1b2cd77d995"
+      "keys": 77,
+      "sha256": "65c49bca99bfb45785e99bf5b7bc2afd865150fa8e55901be713cef14c751909"
     },
     "features/screen-styles/components/auth/styles/index.ts": {
-      "keys": 162,
-      "sha256": "43345f034e93ea23beee727cc9479180dcce545adb153efd3e1613359bd42fe1"
+      "keys": 163,
+      "sha256": "ce2d41c26a7af5167cc2d2dbddba88c18b085d431e807062a77e2c7291036e57"
     },
     "features/screen-styles/components/KycWizardModal/index.ts": {
       "keys": 48,
@@ -118,7 +118,7 @@
     },
     "features/screen-styles/components/PassengerArrivalPaymentCoordinator/index.ts": {
       "keys": 84,
-      "sha256": "9062d638212de936af36be563f5c9e75a5bb3603b9fb3f1134724d0fb32bf63d"
+      "sha256": "1f5ebce2c02cfddecab068e58f9b4476f1950f8cf1e5a99f5413b8eb6cba4471"
     },
     "features/screen-styles/components/support/supportStyles/index.ts": {
       "keys": 81,
@@ -138,6 +138,7 @@
       "getTrips": "4a1fb3117db14f20783c6f470cb3500a76c3d5c6b17fd67b2593dcbbdcc5b2ad",
       "getAllTrips": "da14591bee14313537229643279bc5d38711303aae294147a56bbe00bc14bf1b",
       "getMyTrips": "a2bd082e088a0d3f0d1ca26f6a65de978dd20e511a8bd9c0a0152d364fd74ba3",
+      "getMyActivityTrips": "8e1aac383d53ddadbacccbbca7d6cac6cc277c8fe14e442427cfa311e8127af8",
       "getMyRecurringTrips": "031aa9160a0a8b333d6938f3df04e2258034efbea9e8e4d6ca93f75cc4701de0",
       "searchTripsByCoordinates": "56a72403d9e53eb702bd593a921b6e7faf1e57734775864775262b3dc9c4b912",
       "getTripsByCoordinates": "f682a7d2e263a469d8151bc2401d33a4c1803bb10d9980e58630f48d6a3e7713",
@@ -147,6 +148,7 @@
       "pauseRecurringTrip": "4452a781c367ea80753be2496916c52b105128b4bb90266a1b3fb01f5cbd11e9",
       "resumeRecurringTrip": "a9994bc859944971b97bb7fedf449cfb2bcfad9da7414ab302beb31c7a2fb738",
       "updateTrip": "a391c7b63cf755f8d1a3cc77339f985b1723b1800f833c6bbca8c7678bc727b6",
+      "reprogramTrip": "d6ff2c824489d485e5e3549a8bc02eb3e9fe845262d03252cc737fd7d08fb7f2",
       "deleteTrip": "772418944283ae192ea117f5330f553b2c672057962db4647ec54f96000813ac",
       "startTrip": "954fa55dd81885eca37589e87543a6d1c4ec3f979f863c18165b2ca8fba1e933",
       "pauseTrip": "bd666f668e5ae27aa14e8f7e974a52da4fc82e47a4a3b285a783ac9511ab8082",
@@ -165,22 +167,26 @@
     "store/api/bookingApi.ts": {
       "createBooking": "a07187a1d3937ecadf08dee9213e61457aa7c1d3113ffedfb5e6b259a4b2a3fc",
       "getMyBookings": "e7eee3710ab82b20aaf5f903ad2090578f13c0a2ebe61529e1a76d02cb7d06a6",
+      "getMyActivityBookings": "183b1eacab4b43af84061ec6e87f57fbca1c03ad9cce1e0461d8b65e8e2cf572",
+      "getMyBookingsForTrip": "f0310b56d356b4c410cdfabd9038b083d18a1c962f2d6a936020b33c10b78adb",
       "getTripBookings": "c94d382891128dca142b042c13e25acd9b585cf76638386204c493bcddad0790",
       "initiateBookingPayment": "edf682498af3026ab51fd689f8175ee4a1ab82f6671a990be4118894efcc610f",
       "updateBookingPaymentMode": "f2831d040b8c3aa43f8cfadce8d67ca7575198c11cb22977c4ae4971e03d83b2",
       "checkBookingPaymentStatus": "f50275b6813e7394db325229f341cc4ef68a768796a9b6742322ad1b71292fe4",
       "getBookingById": "f914acaf2be3558e3f601f59b9132346c5d70a5127b0974129ad9cb51290e0b5",
-      "updateBookingStatus": "9d0f2e2a9bd4e20cda75b6225d3c774d1b3935c834ad7735b0a5ca2d6a54ee47",
+      "updateBookingStatus": "6372c965c9014687cd08406dc65a58323183c7fadd1f604d51fac23cc0c03a26",
       "cancelBooking": "f6a2d55f38d5b3a54e2199423989d7c0a8df344f879b1c5fdf3fb608b9e956fa",
-      "acceptBooking": "1ef20f6477f48fa716e429570449b1776488abd88685844260384113e507b565",
+      "acceptBooking": "764535271051bd4b7d29378c47e5670777869fb82cefec5b8bf190fe8783b6f4",
       "rejectBooking": "d0e9f0d95eda38a1729ab04b98a614b622ac2e2e3f80c58d6892d9810ca2548f",
       "getWhatsAppNotificationData": "e0883f4e918c3f623c735e6b7dcc70f1a1c00682c72020e000b69d8649f932aa",
       "setBookingEmergencyContacts": "d8a3597648d48fadb30a669ba933000a55ccfeb3f9bd4b60d4cf0656f4e159e1",
       "confirmPickup": "f0d60847d16a8d6d520fdc806d7e576360374b195a1c2ec8623200b7c057e04d",
       "confirmPickupByPassenger": "e4fa535c7c04a3e39903b340e05f6bb93f7db49a6b25406ccdb3c3af9253324d",
       "confirmDropoff": "f13e77b03b41b64b0bbbc99b5c2036be4c995cbe8c14887ca08704e13850b7f9",
+      "confirmCashReceipt": "4287b978148c1d55c289cb945ad244ab02524a0ae8ac476c04a97216eab13849",
       "confirmDropoffByPassenger": "0da76855d8156244520c6d63f68180e8481354505fb48a7031e2ab87a7007afc",
       "requestPassengerTripInterruption": "2a806c2359610fee3b1dabab996157d18d2399c46d46681e4e5ba51c31bed44e",
+      "getPassengerInterruptionFarePreview": "88f44e03f4119e9af4019f368093db58db6dae6f7bce9cd54334cf217ae6a44f",
       "cancelPassengerTripInterruption": "8eb942bd2a9c3b3332ad464833740930c8cc22cdbca3dfeb75b32c11a4e95537",
       "confirmPassengerTripInterruption": "ac6b3e30d6b50cd99cf2b1124ac6f43854b1b60a2addc1060f4ff4ac24852f1f",
       "rejectPassengerTripInterruption": "b76d949e1f7b9d3694feab7bad20af35e943dbeaf629bcd38fe53b5cb9970530",
@@ -194,7 +200,8 @@
       "getAvailableTripRequests": "4dab933356429dd643af6d689809a533db043e23dbdfef9e58f426070eb1c463",
       "getMyTripRequests": "3497b6ca1266d364fd281a13be04189220f0837db698716c14fff92bb5614ef6",
       "getTripRequestById": "59fddab115f95eafa643c13405d8498b612ebea4dbe001535e1b38c9d92506dc",
-      "updateTripRequest": "04965754184647390c63c800857e301390528fc73206f0af725edad8a1c97e98",
+      "getTripRequestPassengerContact": "52ca623ed1b045b2398596b7e38eab25f84e3b86e769a7549f594ce8821a7a7a",
+      "updateTripRequest": "96921f02da7b1e7847d1c7f40e9a57628da0808de0bc9b86b9b65fcc2846386c",
       "cancelTripRequest": "68912ade31fcd1d37c14b92e5fea0485237b87f962a75a3bf24b4bbd1dcb9922",
       "releaseOverdueDriver": "cabc7fabcf5116e29ea76df367838c71fd918c908ea02dbcbf2b40bf2a4ddaa5",
       "createDriverOffer": "5a947799ef2113e9cb9a292629bd11d68dcd8a5c5ca0c985b583e5510786f7d7",
@@ -202,7 +209,7 @@
       "acceptDriverOffer": "be740e7d27541380d59242311cdf774fee01c9c22e49d99e9c0a51ad203ab9b4",
       "rejectDriverOffer": "58ef702131933192b65cd0b1562152ffbfac418fba4a506d139774cb34c1be50",
       "startTripFromRequest": "857d4966408630693775f57cdf8c79b278e09d4bb657da0e69cab96dc1fff53b",
-      "acceptTripRequest": "5383a26d90a79c03b547bab9f2340e555b58a0b0cf135f2a636463dc6651b776"
+      "acceptTripRequest": "8acef8768809a5d1c31116c54ee785cf64d0f45e659368240f34fc47aed280f8"
     },
     "store/api/safetyApi.ts": {
       "createEmergencyContact": "5e83fa346bfc7d927f0c807ec41b5412d8ed1d0f513df644e61721005a12c080",
@@ -230,21 +237,22 @@
       "updateReportStatus": "0c7364e19fb451957e87c6f1b066a0a496f35f9f11a57dc3098b0e6ab2afefa6"
     },
     "store/api/userApi.ts": {
-      "getProfileSummary": "852853c18418c1a5ea401f712ccf39aada485b0f5fb911e830fb0ac940fe3390",
-      "getCurrentUser": "b954675980a0b259ba2e4adccde987b1013e5599bf0c0c324874984b45ccbf95",
-      "updateUser": "04251da937958cb0fc94fe5afdad8fb0a8f1bab8a3fb9bbf2245e31f12135235",
+      "getProfileSummary": "92d39e2e38f6634af5163d493d3f9daab2f943e1d86b876f07f626eae5dc4082",
+      "getCurrentUser": "ef49b20fb6dc5d64144a2956aa02cb8f2b3c8d6ce317474205e6881dc66375a2",
+      "updateUser": "17cf4874ce92a822d3c6f8bf939f121b5d83371494357feee49ed7ef7e792a7e",
+      "requestDriverOnboarding": "52770635580b8b643e2268f9706d13d29f388ba7c239f6afed49f1038912172f",
+      "activateDriver": "4c993e25751136fd9d234f4e999f313ca4461b26c09430487a3cd9a5275b155e",
       "deleteAccount": "8160786312d52735bfcf15c162f51916eec39a8d430822aedd97551738710686",
       "getUserById": "0dd2b49af2389970548294e121c6a58453000224ae9fbe3843638beede569fc6",
-      "getPublicUserInfo": "44c654e732f032f70f847f93d4fc0eebf872baa5336216ae03ec6f9a5942aa3a",
-      "uploadKyc": "14e7025732e56fabbc7c72059c2fb76fd1d4e7940dbedf34982663d1a3eb18d8",
+      "getPublicUserInfo": "7d6e542d9b50bed9d1c3b10f3d3a810abf9253211af30f44edea65eac70f6e21",
+      "uploadKyc": "be53fdfe6215cf289ccb00b1b0a1a8c26be961ce51d0a49c2af7f453831329d3",
       "getKycStatus": "5dd86bba5de91ef64a5566f8ab1a84da8c02abf63250375ddcdcea26d7fd0306",
       "createDiditKycSession": "d35e21590ae5f111201d28287eafcb5683180b62b145c3c36d92fd1a4b3a33f8",
-      "syncDiditKycSession": "c7b539b14e26d12a3908f0bb3988fd2e28062f0f67f37e7dd386affc98b1511b",
+      "syncDiditKycSession": "392cd5c91ad2d9a5ef2b58f4b2b9c1b993dae256f6868ffd32284026b6f6a601",
       "updateFcmToken": "c16b433263f85bfea2280df22c8eb8adfc3ad2d8eb6ac656d6fd595fadb9084a",
       "sendPhoneVerificationOtp": "6f072f90ffdafbadd937b327e40aeb7edd26c43bcff4e4eb4af38f80aac5c127",
       "verifyPhoneOtp": "a49bef8199f97b08ccd038aaaf8ce998de904f4859cb54a0438423fd9e04a3ea",
-      "updatePin": "59706b5ffc9ec4e42372c974a2299e6f315bb2720df4d2182b4eac52d9392214",
-      "updatePinWithOtp": "aefc038f17bcf91a9c4ae6193a17ea7031050d280f3386be302c5551f8170494",
+      "updatePin": "d0d0ca605f4822f08aa94574dd6be6d84050db6623dcfaef4f6ba719361bc558",
       "getFavoriteLocations": "55ca5af8afc60552041c4a96c06159cc38948ea9bf5d84004f52fe46cb7204e6",
       "getDefaultFavoriteLocation": "79c9336add9fb983ed5eaae041e176fdf2b5d33000089a13dde5b427ddaf2bb4",
       "getFavoriteLocationById": "f1c93d9158bd85420c0f5f5adcfe43e2aabba22ef4bbd7923b244eac4caadddc",

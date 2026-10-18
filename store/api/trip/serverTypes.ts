@@ -73,6 +73,7 @@ export type ServerVehicle = {
 };
 
 export type ServerTrip = {
+  acceptedPaymentModes?: import('@/types').TripPaymentMode[];
   id: string;
   driverId: string;
   driver?: ServerUser | null;
@@ -83,6 +84,9 @@ export type ServerTrip = {
   departureCoordinates?: CoordinatesTuple;
   arrivalCoordinates?: CoordinatesTuple;
   departureDate: string;
+  previewArrivalDate?: string | null;
+  estimatedDurationSeconds?: number | null;
+  arrivalEstimateSource?: 'trip_start' | 'route' | 'approximate' | 'unavailable';
   availableSeats: number;
   totalSeats?: number; // Nombre total de places (ajouté par le backend)
   pricePerSeat: number | string;
@@ -96,6 +100,8 @@ export type ServerTrip = {
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
   startedAt?: string | null;
+  canReprogram?: boolean;
+  isExpired?: boolean;
   completedAt?: string | null;
   driverSafetyEmergencyContactIds?: string[];
   tripRequestId?: string | null;

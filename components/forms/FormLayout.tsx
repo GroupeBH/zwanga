@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Platform, StyleSheet, type ModalProps, type ViewProps } from 'react-native';
+import { Platform, StyleSheet, type ViewProps } from 'react-native';
+import { RideModal as Modal, type RideModalProps } from '@/features/navigation/RideModal';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 /** Measure this native window, not the screen behind a modal or another route. */
@@ -16,7 +17,7 @@ export function FormScreen({ children, style, ...props }: ViewProps) {
   );
 }
 
-export function FormModal({ children, ...props }: ModalProps) {
+export function FormModal({ children, ...props }: RideModalProps) {
   return (
     <Modal {...props}>
       {Platform.OS === 'android' ? <FormScreen>{children}</FormScreen> : children}

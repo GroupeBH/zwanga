@@ -1,12 +1,23 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { HOME_COLORS } from '@/features/home/homeModel';
+import { HOME_DASHBOARD_COLORS } from '@/features/home/homeDashboardTheme';
 import {
   StyleSheet
 } from 'react-native';
 export const styles = StyleSheet.create({
+  mapViewport: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden', backgroundColor: '#EDF0EA' },
   map: {
     ...StyleSheet.absoluteFillObject,
   },
+  locationLegend: {
+    position: 'absolute', left: 16, bottom: 68, maxWidth: '65%',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14,
+    backgroundColor: Colors.white,
+  },
+  locationLegendDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: HOME_DASHBOARD_COLORS.positionOrange },
+  locationLegendPendingDot: { backgroundColor: Colors.gray[500] },
+  locationLegendText: { flexShrink: 1, color: HOME_DASHBOARD_COLORS.ink, fontSize: 12, fontWeight: '600' },
   userLocationCallout: {
     width: 236,
     borderRadius: BorderRadius.lg,

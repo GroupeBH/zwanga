@@ -1,7 +1,9 @@
 import { FeedbackState } from '../../features/manage-trip/manageTripModel';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch, useDisplayReadData } from '@/hooks/useDisplayReads';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { ownsTrip } from '@/features/activity/tripParticipation';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import {
   useAcceptBookingMutation,
@@ -21,18 +23,19 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking } from '@/types';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 
 export function useManageTripState() {
   const isScreenActive = useScreenIsActive();
+  const readsEnabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const goHome = useCallback(() => {
     router.replace('/(tabs)');
   }, [router]);
-  const { id } = useLocalSearchParams();
+  const { id, bookingId, section } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
   const user = useAppSelector(selectUser);
@@ -42,18 +45,15 @@ export function useManageTripState() {
   const [pollingInterval, setPollingInterval] = useState<number>(0);
 
   const {
-    data: trip,
+    currentData: liveTrip,
     isLoading: tripLoading,
     isFetching: tripFetching,
-    refetch: refetchTrip,
+    refetch: rawRefetchTrip,
   } = useGetTripByIdQuery(tripId, { 
-    skip: !tripId,
-    pollingInterval: isScreenActive ? pollingInterval : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnMountOrArgChange: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(readsEnabled && Boolean(tripId), pollingInterval),
   });
+  const trip = useDisplayReadData(tripId, liveTrip);
+  const refetchTrip = useDisplayRefetch(readsEnabled && Boolean(tripId), tripId, rawRefetchTrip);
 
   // Mettre à jour l'intervalle de polling en fonction du statut du trajet
   // Note: polling réduit car la navigation gère le temps réel via WebSocket
@@ -73,24 +73,22 @@ export function useManageTripState() {
     }
   }, [trip?.status]);
 
-  const isOwner = useMemo(() => !!trip && !!user && trip.driverId === user.id, [trip, user]);
+  const isOwner = trip?.id === tripId && ownsTrip(trip, user?.id);
   const { lastKnownLocation } = useUserLocation({
     autoRequest: Boolean(isScreenActive && isOwner && trip?.status === 'ongoing'),
     trackingProfile: 'navigation',
+    rideLocationKey: isOwner && trip?.status === 'ongoing' ? `driver:${tripId}` : null,
   });
   const {
-    data: bookings,
+    currentData: liveBookings,
     isLoading: bookingsLoading,
     isFetching: bookingsFetching,
-    refetch: refetchBookings,
+    refetch: rawRefetchBookings,
   } = useGetTripBookingsQuery(tripId, { 
-    skip: !tripId,
-    // Polling réduit - utiliser le refresh manuel ou refetchOnFocus
-    pollingInterval: isScreenActive ? (trip?.status === 'upcoming' ? 60000 : 0) : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+    ...displayReadOptions(readsEnabled && Boolean(tripId && isOwner), trip?.status === 'upcoming' ? 60000 : 0),
   });
+  const bookings = useDisplayReadData(tripId, liveBookings);
+  const refetchBookings = useDisplayRefetch(readsEnabled && Boolean(tripId && isOwner), tripId, rawRefetchBookings);
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
   const [cancelBooking, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
@@ -106,17 +104,12 @@ export function useManageTripState() {
 
   const { showDialog } = useDialog();
   const [feedback, setFeedback] = useState<FeedbackState>(null);
-  const [rejectModalVisible, setRejectModalVisible] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejectError, setRejectError] = useState('');
-  const [targetBooking, setTargetBooking] = useState<Booking | null>(null);
   const [processingBookingId, setProcessingBookingId] = useState<string | null>(null);
   const [locallyAcceptedBookingIds, setLocallyAcceptedBookingIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const [contactModalVisible, setContactModalVisible] = useState(false);
-  const [selectedPassengerPhone, setSelectedPassengerPhone] = useState<string | null>(null);
-  const [selectedPassengerName, setSelectedPassengerName] = useState<string | null>(null);
+  const [contactBookingId, setContactBookingId] = useState<string | null>(null);
+  useEffect(() => { setContactBookingId(null); }, [isScreenActive, tripId, user?.id]);
   const [refreshing, setRefreshing] = useState(false);
   const [securityModalVisible, setSecurityModalVisible] = useState(false);
   const [editRouteModalVisible, setEditRouteModalVisible] = useState(false);
@@ -149,20 +142,16 @@ export function useManageTripState() {
     highestManageAutoProgressPriorityRef,
     lastManageDriverLocationSentAtRef,
     tripId,
+    focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,
+    passengersFirst: section === 'passengers',
     isOwner,
     trip,
     lastKnownLocation,
     setSecurityModalVisible,
     setFeedback,
-    setTargetBooking,
-    setRejectReason,
-    setRejectError,
-    setRejectModalVisible,
     isRejecting,
     setProcessingBookingId,
     acceptBooking,
-    targetBooking,
-    rejectReason,
     rejectBooking,
     cancelBooking,
     setEditDepartureAddress,
@@ -189,9 +178,10 @@ export function useManageTripState() {
     refreshing,
     isAccepting,
     processingBookingId,
-    setSelectedPassengerPhone,
-    setSelectedPassengerName,
-    setContactModalVisible,
+    contactBookingId,
+    setContactBookingId,
+    userId: user?.id,
+    isScreenActive,
     isCancellingBooking,
     insets,
     isStartingTrip,
@@ -201,10 +191,5 @@ export function useManageTripState() {
     securityModalVisible,
     editRouteModalVisible,
     editRouteError,
-    rejectModalVisible,
-    rejectError,
-    contactModalVisible,
-    selectedPassengerName,
-    selectedPassengerPhone,
   };
 }

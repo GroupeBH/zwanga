@@ -51,6 +51,11 @@ export class AppErrorBoundary extends Component<
   };
 
   private reload = () => {
+    // DevSettings.reload is a silent no-op in release, not an exception.
+    if (!__DEV__) {
+      this.retry();
+      return;
+    }
     try {
       DevSettings.reload();
     } catch (error) {
@@ -89,7 +94,9 @@ export class AppErrorBoundary extends Component<
             style={styles.secondaryButton}
             onPress={this.reload}
           >
-            <Text style={styles.secondaryButtonText}>Redémarrer l&apos;application</Text>
+            <Text style={styles.secondaryButtonText}>
+              {__DEV__ ? "Redémarrer l’application" : "Relancer l’interface"}
+            </Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>

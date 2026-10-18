@@ -1,6 +1,7 @@
 import type { TripPaymentMode, TripRequestVehicleType, UserGender } from '@/types';
 
 export type ServerTripRequest = {
+  immediateDispatch?: boolean;
   id: string;
   passenger: {
     id: string;

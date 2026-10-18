@@ -10,6 +10,7 @@ import { usePublishPresentation } from './usePublishPresentation';
 import { usePublishRoutePreview } from './usePublishRoutePreview';
 import { usePublishFormState } from './usePublishFormState';
 import { usePublishSubmission } from './usePublishSubmission';
+import { useLazyDriverFinanceSummaryQuery } from '@/store/api/driverFinanceApi';
 import { usePublishLocationActions } from './usePublishLocationActions';
 import { usePublishScheduleActions } from './usePublishScheduleActions';
 import { PublishStep, PublicationSuccess, PUBLISH_STEP_ORDER } from '../../features/publish/publishModel';
@@ -42,6 +43,7 @@ export function usePublishController() {
   const [createRecurringTrip, { isLoading: isPublishingRecurring }] = useCreateRecurringTripMutation();
   const [getMyTrips] = useLazyGetMyTripsQuery();
   const [getMyRecurringTrips] = useLazyGetMyRecurringTripsQuery();
+  const [getDriverFinance] = useLazyDriverFinanceSummaryQuery();
   const publishInFlightRef = useRef(false);
   const publicationSuccessActionRef = useRef(false);
   const [publicationSuccess, setPublicationSuccess] = useState<PublicationSuccess>(null);
@@ -59,6 +61,9 @@ export function usePublishController() {
 
   // Driver and Vehicle Management
   const vehicle = usePublishVehicleState();
+  const selectedVehicleType = vehicle.activeVehicles.find(
+    (item) => item.id === vehicle.selectedVehicleId,
+  )?.type;
 
   const vehicleEditor = usePublishVehicleEditor({
     setVehicleType: vehicle.setVehicleType,
@@ -73,7 +78,7 @@ export function usePublishController() {
   });
 
   // Données du formulaire
-  const form = usePublishFormState();
+  const form = usePublishFormState(selectedVehicleType);
   const route = usePublishRoutePreview({
     manualAddressTarget: form.manualAddressTarget,
     departureManualAddress: form.departureManualAddress,
@@ -253,6 +258,8 @@ export function usePublishController() {
     formatTimeOnlyValue: presentation.formatTimeOnlyValue,
     description: form.description,
     requiresPassengerKyc: form.requiresPassengerKyc,
+    acceptedPaymentModes: form.acceptedPaymentModes,
+    refreshDriverFinance: () => getDriverFinance(vehicle.user?.id ?? '', false).unwrap(),
     createTrip,
     setPublicationSuccess,
     getMyRecurringTrips,
@@ -281,7 +288,7 @@ export function usePublishController() {
     }
     if (step === 'confirm') {
       if (!identity.isPublishIdentityVerified) return 'Identité à vérifier';
-      return form.isRecurringTrip ? 'Publier les trajets' : 'Publier';
+      return form.isRecurringTrip ? 'Publier mes trajets' : 'Publier mon trajet';
     }
     return 'Continuer';
   })();
@@ -334,6 +341,7 @@ export function usePublishController() {
     schedule,
     insets,
     vehicle,
+    selectedVehicleType,
     vehicleEditor,
     publicationSuccess,
     submission,

@@ -11,11 +11,9 @@ import {
   DRIVER_REROUTE_MIN_INTERVAL_MS,
 } from './navigationModel';
 import { DRIVER_LOCATION_BACKEND_UPDATE_INTERVAL_MS } from '@/constants/rideProgress';
-import { getRouteAlignedPosition } from '@/utils/routeHelpers';
 import {
   MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
   calculateDistanceMeters,
-  distanceFromCoordinateToPolyline,
   isPlausibleLocationUpdate,
   isRouteDeviationConfirmed,
 } from '@/utils/navigation/routeProgress';
@@ -117,8 +115,12 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
                 fitToRoute: !refs.routeFetchedRef.current,
             });
         }
-        const routeAlignment = getRouteAlignedPosition(rawCoordinate, refs.routeCoordinatesRef.current, OFF_ROUTE_DISTANCE_KM);
-        const distanceFromRouteMeters = distanceFromCoordinateToPolyline(rawCoordinate, refs.routeCoordinatesRef.current);
+        const routeAnalysis = refs.routeAnalysis.analyze(
+            refs.routeCoordinatesRef.current, rawCoordinate, refs.routeAnalysisScopeRef.current,
+        );
+        const routeAlignment = routeAnalysis && routeAnalysis.alignment.distanceKm <= OFF_ROUTE_DISTANCE_KM
+            ? routeAnalysis.alignment : null;
+        const distanceFromRouteMeters = routeAnalysis?.progress.closestPoint.distanceMeters ?? null;
         const gpsAccuracy = typeof normalizedLocation.coords.accuracy === 'number'
             ? normalizedLocation.coords.accuracy
             : null;
@@ -159,20 +161,27 @@ export function createDriverLocationListener({ data, mapState, refs, sendDriverL
             }
         }
         const displayedCoordinate = rawCoordinate;
+        const shouldAnimateMarker = lastDisplayedCoordinate !== null && mapState.isMapReadyRef.current;
         const markerMoved = !lastDisplayedCoordinate || calculateDistanceMeters(lastDisplayedCoordinate, displayedCoordinate) >= 2;
         if (markerMoved) mapState.stopDriverMarkerAnimation();
-        if (markerMoved && mapState.isMapReadyRef.current) {
+        if (markerMoved && shouldAnimateMarker) {
+            // maps 1.20.1 types require a full Region, but timing() only animates own properties.
+            // Keep this narrow assertion: adding zero deltas creates two unnecessary animations.
             const animation = mapState.driverPosition.timing({
                 latitude: displayedCoordinate.latitude,
                 longitude: displayedCoordinate.longitude,
-                duration: 750,
+                duration: 250,
                 useNativeDriver: false,
+                isInteraction: false,
                 toValue: 0,
-                latitudeDelta: 0,
-                longitudeDelta: 0,
-            });
+            } as Parameters<typeof mapState.driverPosition.timing>[0]);
             mapState.driverMarkerAnimationRef.current = animation;
-            animation.start();
+            animation.start(() => {
+                // A cancelled/late completion must not clear a newer animation.
+                if (mapState.driverMarkerAnimationRef.current === animation) {
+                    mapState.driverMarkerAnimationRef.current = null;
+                }
+            });
         }
         else if (markerMoved) {
             mapState.driverPosition.setValue({ ...displayedCoordinate, latitudeDelta: 0, longitudeDelta: 0 });

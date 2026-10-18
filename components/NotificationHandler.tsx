@@ -1,4 +1,11 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
+import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
+import { parseDriverInvitation } from '@/features/notifications/driverInvitation';
+import { isRemoteNearbyRequestAlert } from '@/features/notifications/rideSound';
+import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
+import { isDriverAccount } from '@/utils/accountRole';
+import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
+import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
@@ -7,12 +14,12 @@ import { useGetMyTripRequestsQuery, useReleaseOverdueDriverMutation } from '@/st
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
 import { selectIsAuthenticated } from '@/store/selectors';
-import { getTripUrl, handleNotificationNavigation } from '@/utils/notificationNavigation';
+import { getTripUrl, handleNotificationNavigation, isTripInterruptionNotification } from '@/utils/notificationNavigation';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
 import { usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { InteractionManager, Linking } from 'react-native';
+import { InteractionManager, Linking, Platform } from 'react-native';
 
 export function NotificationHandler() {
   const dispatch = useAppDispatch();
@@ -27,14 +34,12 @@ export function NotificationHandler() {
     data: myTripRequests = [],
     refetch: refetchMyTripRequests,
   } = useGetMyTripRequestsQuery(undefined, {
+    ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
-    pollingInterval: isAuthenticated ? 60_000 : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: true,
-    refetchOnReconnect: true,
   });
   const [releaseOverdueDriver] = useReleaseOverdueDriverMutation();
   const currentUserRef = useRef(currentUser);
+  useDriverNotifications(isAuthenticated ? currentUser?.id : undefined, isDriverAccount(currentUser));
   const myTripRequestsRef = useRef(myTripRequests);
   const pathnameRef = useRef(pathname);
   const shownOverdueRequestsRef = useRef(new Set<string>());
@@ -119,12 +124,17 @@ export function NotificationHandler() {
       handleNotification: async (notification) => {
         const type = notification.request.content.data?.type;
         const tripRevenueModalAlreadyOwnsForeground =
-          type === 'driver_trip_revenue' &&
-          pathnameRef.current.startsWith('/trip/navigate/');
+          !canShowRequestNotification(notification.request.content.data, currentUserRef.current) ||
+          (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data))) ||
+          (type === 'driver_trip_revenue' && pathnameRef.current.startsWith('/trip/navigate/'));
+        const invitation = parseDriverInvitation(notification.request.content.data);
+        const incomingScreenOwnsSound = Boolean(invitation && invitation.driverId === currentUserRef.current?.id) ||
+          (isRemoteNearbyRequestAlert(notification.request.content.data) &&
+            notification.request.content.data.driverId === currentUserRef.current?.id);
 
         return {
           shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
-          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground,
+          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground && !incomingScreenOwnsSound,
           shouldSetBadge: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowBanner: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowList: !tripRevenueModalAlreadyOwnsForeground,
@@ -155,6 +165,10 @@ export function NotificationHandler() {
     ): boolean => {
       const type = data.type;
 
+      if (type === 'driver_trip_revenue' || type === 'driver_booking_earning_confirmed') {
+        dispatch(baseApi.util.invalidateTags([{ type: 'DriverSettlement', id: 'ME' }]));
+      }
+
       if (type === 'driver_trip_revenue') {
         // L'écran de navigation possède son propre modal, alimenté par Socket.IO
         // avec un repli REST. Ne pas ouvrir deux modals pour la même clôture.
@@ -165,35 +179,12 @@ export function NotificationHandler() {
           return false;
         }
 
-        const currency = typeof data.currency === 'string' ? data.currency : 'CDF';
-        const total = Number(data.totalExpectedAmount) || 0;
-        const confirmed = Number(data.confirmedAmount) || 0;
-        const cash = Number(data.cashToCollectAmount) || 0;
-        const electronicPending = Number(data.electronicPendingAmount) || 0;
-        const details: string[] = [];
-
-        if (total > 0) {
-          details.push(`Total du trajet : ${formatAmount(total, currency)}`);
-        }
-        if (confirmed > 0) {
-          details.push(`Acquis dans vos gains : ${formatAmount(confirmed, currency)}`);
-        }
-        if (cash > 0) {
-          details.push(`À encaisser en liquide : ${formatAmount(cash, currency)}`);
-        }
-        if (electronicPending > 0) {
-          details.push(
-            `Paiement électronique attendu : ${formatAmount(electronicPending, currency)}`,
-          );
-        }
+        const message = getTripRevenueMessage(data);
 
         showDialog({
           title: 'Votre gain du trajet',
-          message:
-            details.length > 0
-              ? details.join('\n')
-              : fallbackBody || 'Aucun montant à encaisser pour ce trajet.',
-          variant: 'success',
+          message,
+          variant: Number(data.confirmedAmount) > 0 && (data.ledgerVerified === true || data.ledgerVerified === 'true') ? 'success' : 'info',
           icon: 'wallet',
           dismissible: true,
           actions: [
@@ -234,7 +225,12 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
-      if (typeof data.type === 'string' && data.type.startsWith('driver_trip_interruption_')) {
+      if (!canShowRequestNotification(data, currentUserRef.current)) return;
+      if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
+        (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
+      if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
+      if (parseDriverInvitation(data)) return;
+      if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
       if (await handlePassengerOverdueNotification(data, fallbackBody)) {
@@ -251,11 +247,15 @@ export function NotificationHandler() {
     };
 
     const foregroundListener = Notifications.addNotificationReceivedListener((notification) => {
+      dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
-      if (typeof data.type === 'string' && data.type.startsWith('driver_trip_interruption_')) {
+      if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
+        (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
+      if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
+      if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
       if (data.type === 'trip_request_driver_overdue') {
         void handlePassengerOverdueNotification(data, content.body);
       } else {
@@ -264,6 +264,7 @@ export function NotificationHandler() {
     });
 
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+      dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       console.log('[NotificationHandler] Notification pressed from background.');
       const data = response.notification.request.content.data || {};
       void handleNotificationPress(data, response.notification.request.content.body);

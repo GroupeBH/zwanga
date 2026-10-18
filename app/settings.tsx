@@ -10,6 +10,7 @@ import { useDeleteAccountMutation } from '@/store/api/userApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { updateUser } from '@/store/slices/authSlice';
+import { openDriverAlertSettings } from '@/services/driverAlertChannel';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -31,7 +32,6 @@ export default function SettingsScreen() {
   const [notifications, setNotifications] = useState({
     tripUpdates: true,
     messages: true,
-    sounds: false,
     promotions: true,
   });
 
@@ -182,18 +182,21 @@ export default function SettingsScreen() {
               />
             </View>
 
-            <View style={[styles.menuItem, styles.menuItemBorder]}>
+            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} accessibilityRole="button"
+              accessibilityLabel="Régler la sonnerie et les vibrations"
+              onPress={() => { void openDriverAlertSettings().catch(() => showDialog({
+                variant: 'danger', title: 'Réglages indisponibles',
+                message: 'Ouvrez les réglages de votre téléphone, puis les notifications de Zwanga.',
+              })); }}>
               <View style={[styles.menuIcon, styles.menuIconYellow]}>
                 <Ionicons name="volume-high" size={20} color={Colors.secondary} />
               </View>
-              <Text style={styles.menuText}>Sons</Text>
-              <Switch
-                value={notifications.sounds}
-                onValueChange={(value) => setNotifications({ ...notifications, sounds: value })}
-                trackColor={{ false: Colors.gray[200], true: Colors.primary }}
-                thumbColor={Colors.white}
-              />
-            </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuText}>Sonnerie et vibrations</Text>
+                <Text style={styles.menuSubtext}>Commandes et réservations</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+            </TouchableOpacity>
 
             <View style={styles.menuItem}>
               <View style={[styles.menuIcon, styles.menuIconOrange]}>

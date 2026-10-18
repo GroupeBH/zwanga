@@ -1,24 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDialog } from '@/components/ui/DialogProvider';
 import type { SearchMode, SearchSortMode as SortMode } from '@/components/search/SearchResultsToolbar';
-import type { Trip } from '@/types';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { screenReadOptions } from '@/features/performance/screenReadPolicy';
 import { useAppSelector } from '@/store/hooks';
-import { selectTrips, selectUserCoordinates } from '@/store/selectors';
+import { selectTrips, selectUser, selectUserCoordinates } from '@/store/selectors';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetAvailableTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
-  useGetTripsQuery,
-  useSearchTripsByCoordinatesMutation,
+  useGetTripDiscoveryInfiniteQuery,
   type TripSearchParams,
   type TripSearchByPointsPayload,
 } from '@/store/api/tripApi';
 import { trackEvent } from '@/services/analytics';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import {
   MIN_SEARCH_SEATS,
   EMPTY_SEARCH_REQUESTS,
+  EMPTY_SEARCH_TRIPS,
   clampSearchSeats,
   parseNumberParam,
   type SearchResultListItem,
@@ -27,6 +28,7 @@ import { useSearchNavigation } from './useSearchNavigation';
 import { useSearchResults } from './useSearchResults';
 
 export function useSearchController() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { showDialog } = useDialog();
   const searchParams = useLocalSearchParams<{
@@ -42,47 +44,71 @@ export function useSearchController() {
     mode?: string;
     seats?: string;
   }>();
-  const storedTrips = useAppSelector(selectTrips);
-  const { data: currentUser } = useGetCurrentUserQuery();
-  const isDriverAccount = Boolean(
-    currentUser?.isDriver ||
-      currentUser?.role === 'driver' ||
-      currentUser?.role === 'both',
-  );
+  const storedTrips = useAppSelector(state => isScreenActive ? selectTrips(state) : EMPTY_SEARCH_TRIPS);
+  const storedUser = useAppSelector(selectUser);
+  const reads = screenReadOptions(isScreenActive);
+  const { data: profile } = useGetCurrentUserQuery(undefined, reads);
+  // Keep ownership filtering while the profile refresh is slow or unavailable.
+  const currentUser = profile ?? storedUser ?? undefined;
+  // A stored identity can filter own trips, but cannot grant driver discovery.
+  const isDriverAccount = hasDriverRole(profile);
   const [departure, setDeparture] = useState('');
   const [arrival, setArrival] = useState('');
   const [draftDeparture, setDraftDeparture] = useState('');
   const [draftArrival, setDraftArrival] = useState('');
   const [desiredSeats, setDesiredSeats] = useState(MIN_SEARCH_SEATS);
-  const [searchMode, setSearchMode] = useState<SearchMode>('trips');
+  const [querySeats, setQuerySeats] = useState(MIN_SEARCH_SEATS);
+  const [requestedSearchMode, setRequestedSearchMode] = useState<SearchMode>('trips');
+  // Role changes must hide cached driver results in the same render, even off-screen.
+  const searchMode: SearchMode = isDriverAccount ? requestedSearchMode : 'trips';
+  const setSearchMode = useCallback((mode: SearchMode) => {
+    setRequestedSearchMode(isDriverAccount ? mode : 'trips');
+  }, [isDriverAccount]);
   const [queryParams, setQueryParams] = useState<TripSearchParams>({});
-  const [advancedTrips, setAdvancedTrips] = useState<Trip[] | null>(null);
-  const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
+  const clearAdvancedSearch = useCallback(() => setLastAdvancedPayload(null), []);
+  const runAdvancedSearch = useCallback((payload: TripSearchByPointsPayload) => setLastAdvancedPayload(payload), []);
   const [tripSortMode, setTripSortMode] = useState<SortMode>('cheap');
   const [requestSortMode, setRequestSortMode] = useState<SortMode>('nearby');
   const sortMode = searchMode === 'requests' ? requestSortMode : tripSortMode;
   const setSortMode = searchMode === 'requests' ? setRequestSortMode : setTripSortMode;
   // GPS updates need not redraw the trips tab or a budget/time-sorted request list.
   const driverCoordinate = useAppSelector(state =>
-    searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
+    isScreenActive && searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
   );
   const { openingTripId, openingRequestId, handleOpenTrip, handleOpenTripRequest } = useSearchNavigation({ router, showDialog });
-  const [searchTripsByCoordinates, { isLoading: isAdvancedSearching }] = useSearchTripsByCoordinatesMutation();
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
   const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
 
+  const discoveryParams = useMemo<TripSearchParams>(() => ({
+    ...(lastAdvancedPayload ? Object.fromEntries(Object.entries(lastAdvancedPayload).filter(([, value]) => value != null)) : queryParams),
+    minSeats: querySeats,
+    sort: tripSortMode === 'cheap' ? 'price' : 'date',
+  }), [lastAdvancedPayload, queryParams, querySeats, tripSortMode]);
+  useEffect(() => {
+    if (!isScreenActive || searchMode !== 'trips') return;
+    const timer = setTimeout(() => setQuerySeats(desiredSeats), 350);
+    return () => clearTimeout(timer);
+  }, [desiredSeats, isScreenActive, searchMode]);
   const {
-    data: remoteTrips,
+    currentData: tripPages,
     isLoading: queryLoading,
     isFetching: queryFetching,
+    isError: queryError,
+    hasNextPage, hasPreviousPage, fetchNextPage, fetchPreviousPage,
     refetch,
-  } = useGetTripsQuery(queryParams, {
-    skip: searchMode !== 'trips',
-    pollingInterval: 0,
-    refetchOnFocus: false,
-    refetchOnReconnect: false,
+  } = useGetTripDiscoveryInfiniteQuery(discoveryParams, {
+    ...reads,
+    skip: reads.skip || searchMode !== 'trips',
   });
+  const remoteTrips = useMemo(() => tripPages
+    ? [...new Map(tripPages.pages.flatMap(page => page.data).map(trip => [trip.id, trip])).values()] : undefined, [tripPages]);
+  const advancedTrips = null;
+  const isAdvancedSearching = Boolean(lastAdvancedPayload && queryFetching);
+  const advancedError = queryError && !remoteTrips?.length
+    ? 'Impossible de charger les trajets. Réessayez dans un instant.' : null;
+  const loadNextTrips = () => { if (isScreenActive && !queryFetching && hasNextPage) void fetchNextPage(); };
+  const loadPreviousTrips = () => { if (isScreenActive && !queryFetching && hasPreviousPage) void fetchPreviousPage(); };
 
   const {
     data: availableTripRequests = EMPTY_SEARCH_REQUESTS,
@@ -91,10 +117,8 @@ export function useSearchController() {
     isError: requestsError,
     refetch: refetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
-    skip: !isDriverAccount || searchMode !== 'requests',
-    pollingInterval: 0,
-    refetchOnFocus: false,
-    refetchOnReconnect: false,
+    ...reads,
+    skip: reads.skip || !isDriverAccount || searchMode !== 'requests',
   });
 
   useEffect(() => {
@@ -109,6 +133,7 @@ export function useSearchController() {
     setDraftDeparture(departureParam);
     setDraftArrival(arrivalParam);
     setDesiredSeats(seatsParam);
+    setQuerySeats(seatsParam);
     setQueryParams({
       departureLocation: departureParam || undefined,
       arrivalLocation: arrivalParam || undefined,
@@ -116,30 +141,10 @@ export function useSearchController() {
     });
   }, [searchParams.departure, searchParams.arrival, searchParams.minSeats, searchParams.seats]);
 
-  const runAdvancedSearch = async (payload: TripSearchByPointsPayload) => {
-    setAdvancedError(null);
-    setAdvancedTrips(null);
-
-    try {
-      const results = await searchTripsByCoordinates(payload).unwrap();
-      setAdvancedTrips(results);
-      void trackEvent('search_results_viewed', {
-        search_mode: 'coordinates',
-        results_count: results.length,
-        departure_radius_km: payload.departureRadiusKm,
-        arrival_radius_km: payload.arrivalRadiusKm,
-      });
-    } catch (error: any) {
-      setAdvancedError(
-        getApiErrorMessage(error, 'Impossible de filtrer par carte pour le moment. Réessayez dans un instant.'),
-      );
-    }
-  };
-
   useEffect(() => {
+    if (!isScreenActive) return;
     if (searchMode !== 'trips') {
-      setAdvancedTrips(null);
-      setAdvancedError(null);
+      clearAdvancedSearch();
       setLastAdvancedPayload(null);
       return;
     }
@@ -156,7 +161,7 @@ export function useSearchController() {
 
     if (mode === 'map' && (hasDepartureCoordinates || hasArrivalCoordinates)) {
       const payload = {
-        minSeats: desiredSeats,
+        minSeats: querySeats,
         ...(hasDepartureCoordinates
           ? {
               departureCoordinates: [depLng, depLat] as [number, number],
@@ -174,12 +179,13 @@ export function useSearchController() {
       setLastAdvancedPayload(payload);
       runAdvancedSearch(payload);
     } else {
-      setAdvancedTrips(null);
-      setAdvancedError(null);
+      clearAdvancedSearch();
       setLastAdvancedPayload(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    isScreenActive,
+    runAdvancedSearch,
+    clearAdvancedSearch,
     searchMode,
     searchParams.mode,
     searchParams.departureLat,
@@ -188,17 +194,18 @@ export function useSearchController() {
     searchParams.arrivalLng,
     searchParams.departureRadiusKm,
     searchParams.arrivalRadiusKm,
-    desiredSeats,
+    querySeats,
   ]);
 
   const { baseTrips, filteredTrips, filteredTripRequests } = useSearchResults({
     advancedTrips, remoteTrips, storedTrips, searchMode, departure, arrival, desiredSeats,
     sortMode, driverCoordinate, availableTripRequests, isDriverAccount, currentUser,
+    isScreenActive,
   });
 
   const requestSearchError =
     requestsError && searchMode === 'requests'
-      ? 'Impossible de charger les demandes disponibles pour le moment. Réessayez dans un instant.'
+      ? 'Impossible de charger les commandes disponibles pour le moment. Réessayez dans un instant.'
       : null;
   const currentError = searchMode === 'trips' ? advancedError : requestSearchError;
   const isLoadingResults =
@@ -210,6 +217,7 @@ export function useSearchController() {
       ? queryFetching || isAdvancedSearching
       : isDriverAccount && requestsFetching;
   useEffect(() => {
+    if (!isScreenActive) return;
     const timeout = setTimeout(() => {
       const nextDeparture = draftDeparture.trim();
       const nextArrival = draftArrival.trim();
@@ -220,8 +228,7 @@ export function useSearchController() {
 
       setDeparture(nextDeparture);
       setArrival(nextArrival);
-      setAdvancedTrips(null);
-      setAdvancedError(null);
+      clearAdvancedSearch();
       setLastAdvancedPayload(null);
       setQueryParams({
         departureLocation: nextDeparture || undefined,
@@ -232,6 +239,8 @@ export function useSearchController() {
 
     return () => clearTimeout(timeout);
   }, [
+    isScreenActive,
+    clearAdvancedSearch,
     arrival,
     departure,
     desiredSeats,
@@ -240,12 +249,12 @@ export function useSearchController() {
   ]);
 
   const handleApplySearch = () => {
+    if (!isScreenActive) return;
     const nextDeparture = draftDeparture.trim();
     const nextArrival = draftArrival.trim();
     setDeparture(nextDeparture);
     setArrival(nextArrival);
-    setAdvancedTrips(null);
-    setAdvancedError(null);
+    clearAdvancedSearch();
     setLastAdvancedPayload(null);
     setQueryParams({
       departureLocation: nextDeparture || undefined,
@@ -265,15 +274,11 @@ export function useSearchController() {
   };
 
   const handleRetry = () => {
+    if (!isScreenActive) return;
     if (searchMode === 'requests') {
       if (isDriverAccount) {
         refetchAvailableTripRequests();
       }
-      return;
-    }
-
-    if (lastAdvancedPayload) {
-      runAdvancedSearch(lastAdvancedPayload);
       return;
     }
 
@@ -305,8 +310,8 @@ export function useSearchController() {
   const resultsCount = searchMode === 'requests' ? filteredTripRequests.length : filteredTrips.length;
   const resultsCountLabel =
     searchMode === 'requests'
-      ? `${resultsCount} demande${resultsCount > 1 ? 's' : ''} trouvée${resultsCount > 1 ? 's' : ''}`
-      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''} trouvé${resultsCount > 1 ? 's' : ''}`;
+      ? `${resultsCount} commande${resultsCount > 1 ? 's' : ''}`
+      : `${resultsCount} trajet${resultsCount > 1 ? 's' : ''}`;
 
   return {
     router, firstName, avatarUri, openingTripId,
@@ -316,5 +321,6 @@ export function useSearchController() {
     sortMode, setSortMode, resultsCountLabel, isRefreshingResults,
     isLoadingResults, currentError, handleRetry, handleApplySearch,
     filteredTrips, filteredTripRequests, handleCreateTripRequest, isDriverAccount,
+    hasNextPage, hasPreviousPage, loadNextTrips, loadPreviousTrips,
   };
 }

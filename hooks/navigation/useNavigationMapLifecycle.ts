@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { InteractionManager, Platform, type LayoutChangeEvent } from 'react-native';
 import type MapView from 'react-native-maps';
 import { warnThrottled } from '@/utils/throttledWarning';
+import type { MapLayout } from '@/utils/navigation/mapCamera';
 
 /** Owns native map readiness and screen transitions, not the trip's background tracking. */
 export function useNavigationMapLifecycle({
@@ -16,6 +17,7 @@ export function useNavigationMapLifecycle({
   const epochRef = useRef(0);
   const loadedRef = useRef(false);
   const layoutRef = useRef(false);
+  const mapLayoutRef = useRef<MapLayout | null>(null);
   const leavingRef = useRef(false);
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recoveryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -28,6 +30,7 @@ export function useNavigationMapLifecycle({
     readyRef.current = false;
     loadedRef.current = false;
     layoutRef.current = false;
+    mapLayoutRef.current = null;
     leavingRef.current = false;
     recoveryRef.current?.();
     recoveryRef.current = undefined;
@@ -69,6 +72,7 @@ export function useNavigationMapLifecycle({
     if (!mayUseCurrentMap()) return;
     const { width, height } = event.nativeEvent.layout;
     layoutRef.current = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+    mapLayoutRef.current = layoutRef.current ? { width, height } : null;
     updateReady();
   }, [mayUseCurrentMap, updateReady]);
 
@@ -85,6 +89,7 @@ export function useNavigationMapLifecycle({
     readyRef.current = false;
     loadedRef.current = false;
     layoutRef.current = false;
+    mapLayoutRef.current = null;
     setIsMapReady(false);
     setReleased(true);
     recoveryRef.current = onRecovered;
@@ -114,6 +119,6 @@ export function useNavigationMapLifecycle({
 
   return {
     shouldRenderMap: enabled && !released && mountedEpoch !== null && mountedEpoch === epochRef.current,
-    isMapReady, readyRef, onMapReady, onMapLayout, runMapCommand, navigateAfterRelease,
+    isMapReady, readyRef, mapLayoutRef, onMapReady, onMapLayout, runMapCommand, navigateAfterRelease,
   };
 }

@@ -8,10 +8,11 @@ interface Props {
   onContact: () => void;
   onSos: () => void;
   disabled?: boolean;
+  inline?: boolean;
 }
-export const NavigationAssistanceButtons = memo(function NavigationAssistanceButtons({ role, onContact, onSos, disabled }: Props) {
+export const NavigationAssistanceButtons = memo(function NavigationAssistanceButtons({ role, onContact, onSos, disabled, inline }: Props) {
   return <View style={styles.row}>
-    <TouchableOpacity style={[styles.button, disabled && styles.disabled]} onPress={onContact} disabled={disabled}
+    <TouchableOpacity style={[styles.button, inline && styles.inline, disabled && styles.disabled]} onPress={onContact} disabled={disabled}
       accessibilityRole="button" accessibilityLabel={role === 'driver' ? 'Contacter un passager' : 'Contacter le conducteur'}>
       <Ionicons name="call-outline" size={19} color={Colors.primaryDark} />
       <Text style={styles.label}>Contacter</Text>
@@ -32,4 +33,5 @@ const styles = StyleSheet.create({
   sos: { minWidth: 52, backgroundColor: Colors.danger, borderColor: Colors.danger },
   sosLabel: { fontSize: 16, fontWeight: '800', color: Colors.white },
   disabled: { opacity: 0.45 },
+  inline: { flexDirection: 'row', minHeight: 44, gap: 5, paddingVertical: 6 },
 });

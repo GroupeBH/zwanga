@@ -1,6 +1,8 @@
 import type { Href, Router } from 'expo-router';
 import type { User } from '@/types';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
+import { invitationHref, parseDriverInvitation } from '@/features/notifications/driverInvitation';
+import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 
 type NotificationData = Record<string, any>;
 
@@ -20,6 +22,11 @@ function getId(...values: unknown[]): string | null {
 
 function getType(data: NotificationData): string {
   return typeof data.type === 'string' ? data.type.toLowerCase().replace(/-/g, '_') : '';
+}
+
+export function isTripInterruptionNotification(input: NotificationData): boolean {
+  const type = getType(normalizeData(input));
+  return type.startsWith('driver_trip_interruption_') || type.startsWith('passenger_trip_interruption_');
 }
 
 function isTripRequestType(type: string): boolean {
@@ -74,11 +81,26 @@ export const getTripUrl = (
 /** Single routing policy shared by push notifications and the notification inbox. */
 export function getNotificationHref(input: NotificationData, currentUser?: User): Href | null {
   const data = normalizeData(input);
+  if (currentUser && !canShowRequestNotification(data, currentUser)) return null;
   const type = getType(data);
+  if (type === 'app_update') return '/app-update';
+  if (type === 'driver_location_stale') {
+    if (currentUser && currentUser.id !== data.driverId) return null;
+    return '/driver-availability';
+  }
+  if (type === 'wallet_transfer_in' || type === 'wallet_transfer_out') return '/wallet';
+  if (type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus') return '/wallet';
+  if (['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started'].includes(type)) return '/wallet';
+  const invitation = parseDriverInvitation({ ...data, actionProtocol: 'driver-v1' });
+  if (invitation && (!currentUser || currentUser.id === invitation.driverId)) return invitationHref(invitation);
   const tripId = getId(data.tripId, data.trip_id, data.trip?.id);
   const requestId = extractTripRequestId(data);
   const bookingId = getId(data.bookingId, data.booking?.id);
   const conversationId = getId(data.conversationId, data.conversation?.id);
+
+  if (type === 'passenger_trip_interruption_confirmed' && bookingId && data.role !== 'driver') {
+    return `/booking/navigate/${bookingId}`;
+  }
 
   if (type === 'ride_confirmation_required') {
     if (data.role === 'passenger' && bookingId) return `/booking/navigate/${bookingId}`;

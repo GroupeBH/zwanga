@@ -1,17 +1,17 @@
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors } from '@/constants/styles';
 import { formatDateTime } from '@/utils/dateHelpers';
-import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import type { Trip } from '@/types';
 import type { Router } from 'expo-router';
+import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import type { RouteLocationLabels } from '@/utils/routeLocationLabels';
 
 interface TripSummaryProps {
   config: { color: string; bgColor: string; label: string; };
-  tripDepartureName: string;
-  tripArrivalName: string;
+  routeLabels: RouteLocationLabels;
   tripPriceLabel: string;
   trip: Trip | undefined;
   tripDepartureTimeLabel: string;
@@ -34,8 +34,7 @@ interface TripSummaryProps {
 
 export function TripSummary({
   config,
-  tripDepartureName,
-  tripArrivalName,
+  routeLabels,
   tripPriceLabel,
   trip,
   tripDepartureTimeLabel,
@@ -52,63 +51,32 @@ export function TripSummary({
   tripVehicleMetaLabel,
   handleContactDriver,
   isOpeningConversation,
-  driverPhone,
   setContactModalVisible,
 }: TripSummaryProps) {
   return (
-    <Animated.View entering={FadeInDown.delay(120)} style={styles.tripHeroSummary}>
+    <View style={styles.tripHeroSummary}>
       <View style={styles.tripHeroTopRow}>
-        <View style={styles.tripHeroTitleBlock}>
-          <View style={styles.tripHeroStatusRow}>
-            <View style={[styles.tripHeroStatusDot, { backgroundColor: config.color }]} />
-            <Text style={styles.tripHeroEyebrow}>{config.label}</Text>
-          </View>
-          <Text style={styles.tripHeroTitle} numberOfLines={2}>
-            {tripDepartureName} vers {tripArrivalName}
-          </Text>
+        <View style={styles.tripHeroStatusRow}>
+          <View style={[styles.tripHeroStatusDot, { backgroundColor: config.color }]} />
+          <Text style={styles.tripHeroEyebrow}>{config.label}</Text>
         </View>
-        <View style={styles.tripPriceBadge}>
-          <Text style={styles.tripPriceBadgeText}>{tripPriceLabel}</Text>
-          {trip?.price !== 0 ? <Text style={styles.tripPriceBadgeHint}>par place</Text> : null}
-        </View>
+        <Text style={styles.tripPriceBadgeText}>
+          {tripPriceLabel}
+          {trip?.price !== 0 ? <Text style={styles.tripPriceBadgeHint}> / place</Text> : null}
+        </Text>
       </View>
 
+      <RouteLocationDetails labels={routeLabels} compact
+        departureTimeLabel={tripDepartureTimeLabel} arrivalTimeLabel={tripArrivalTimeLabel} />
+
       <View style={styles.tripQuickFacts}>
-        <View style={styles.tripQuickFact}>
-          <View style={styles.tripQuickFactIcon}>
-            <Ionicons name="time-outline" size={16} color={Colors.primary} />
-          </View>
-          <View>
-            <Text style={styles.tripQuickFactLabel}>Départ</Text>
-            <Text style={styles.tripQuickFactValue}>{tripDepartureTimeLabel}</Text>
-          </View>
+        <View style={styles.tripQuickFact} accessible accessibilityLabel={`Places disponibles : ${tripSeatsLabel}`}>
+          <Ionicons name="people-outline" size={16} color={Colors.gray[600]} />
+          <Text style={styles.tripQuickFactValue}>{tripSeatsLabel}</Text>
         </View>
-        <View style={styles.tripQuickFact}>
-          <View style={styles.tripQuickFactIcon}>
-            <Ionicons name="flag-outline" size={16} color={Colors.success} />
-          </View>
-          <View>
-            <Text style={styles.tripQuickFactLabel}>Arrivée estimée</Text>
-            <Text style={styles.tripQuickFactValue}>{tripArrivalTimeLabel}</Text>
-          </View>
-        </View>
-        <View style={styles.tripQuickFact}>
-          <View style={styles.tripQuickFactIcon}>
-            <Ionicons name="people-outline" size={16} color={Colors.primary} />
-          </View>
-          <View>
-            <Text style={styles.tripQuickFactLabel}>Places</Text>
-            <Text style={styles.tripQuickFactValue}>{tripSeatsLabel}</Text>
-          </View>
-        </View>
-        <View style={styles.tripQuickFact}>
-          <View style={styles.tripQuickFactIcon}>
-            <Ionicons name="navigate-outline" size={16} color={Colors.info} />
-          </View>
-          <View>
-            <Text style={styles.tripQuickFactLabel}>Distance</Text>
-            <Text style={styles.tripQuickFactValue}>{tripRouteDistanceLabel}</Text>
-          </View>
+        <View style={styles.tripQuickFact} accessible accessibilityLabel={`Distance : ${tripRouteDistanceLabel}`}>
+          <Ionicons name="navigate-outline" size={16} color={Colors.gray[600]} />
+          <Text style={styles.tripQuickFactValue}>{tripRouteDistanceLabel}</Text>
         </View>
       </View>
 
@@ -127,32 +95,6 @@ export function TripSummary({
         </View>
       )}
 
-      {/* <View style={styles.tripCompactRoute}>
-        <View style={styles.tripCompactRail}>
-          <View style={[styles.tripCompactDot, styles.tripCompactStartDot]} />
-          <View style={styles.tripCompactLine} />
-          <View style={[styles.tripCompactDot, styles.tripCompactEndDot]} />
-        </View>
-        <View style={styles.tripCompactRouteCopy}>
-          <View style={styles.tripCompactStop}>
-            <View style={styles.tripCompactStopTop}>
-              <Text style={[styles.tripCompactStopLabel, styles.tripCompactDepartureLabel]}>Départ</Text>
-              <Text style={styles.tripCompactStopTime}>{tripDepartureTimeLabel}</Text>
-            </View>
-            <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripDepartureName}</Text>
-            <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripDepartureAddress}</Text>
-          </View>
-          <View style={styles.tripCompactStop}>
-            <View style={styles.tripCompactStopTop}>
-              <Text style={[styles.tripCompactStopLabel, styles.tripCompactArrivalLabel]}>Arrivée estimee</Text>
-              <Text style={styles.tripCompactStopTime}>{tripArrivalTimeLabel}</Text>
-            </View>
-            <Text style={styles.tripCompactStopName} numberOfLines={1}>{tripArrivalName}</Text>
-            <Text style={styles.tripCompactStopAddress} numberOfLines={1}>{tripArrivalAddress}</Text>
-          </View>
-        </View>
-      </View> */}
-
       <View style={styles.tripDirectInfoRow}>
         <TouchableOpacity
           style={styles.tripDriverCompact}
@@ -165,9 +107,11 @@ export function TripSummary({
             }
           }}
           activeOpacity={0.82}
+          accessibilityRole="button"
+          accessibilityLabel={`Voir le profil de ${trip?.driverName || 'votre conducteur'}`}
         >
           {trip?.driverAvatar ? (
-            <Image source={{ uri: trip.driverAvatar }} style={styles.tripDriverCompactAvatar} />
+            <Image source={{ uri: trip.driverAvatar }} style={styles.tripDriverCompactAvatar} resizeMethod="resize" fadeDuration={0} />
           ) : (
             <View style={styles.tripDriverCompactAvatar}>
               <Ionicons name="person" size={20} color={Colors.gray[500]} />
@@ -209,14 +153,9 @@ export function TripSummary({
 
       {trip?.requiresPassengerKyc ? (
         <View style={styles.passengerKycTripNotice}>
-          <View style={styles.passengerKycTripNoticeIcon}>
-            <Ionicons name="shield-checkmark-outline" size={17} color={Colors.primary} />
-          </View>
+          <Ionicons name="shield-checkmark-outline" size={18} color={Colors.primaryDark} />
           <View style={styles.passengerKycTripNoticeCopy}>
-            <Text style={styles.passengerKycTripNoticeTitle}>Identité des passagers vérifiée</Text>
-            <Text style={styles.passengerKycTripNoticeText}>
-              Ce conducteur accepte uniquement les passagers dont l&apos;identité est vérifiée.
-            </Text>
+            <Text style={styles.passengerKycTripNoticeTitle}>Identité vérifiée requise pour réserver</Text>
           </View>
         </View>
       ) : null}
@@ -227,6 +166,8 @@ export function TripSummary({
           onPress={handleContactDriver}
           disabled={isOpeningConversation}
           activeOpacity={0.86}
+          accessibilityRole="button"
+          accessibilityLabel="Envoyer un message au conducteur"
         >
           {isOpeningConversation ? (
             <ActivityIndicator size="small" color={Colors.primary} />
@@ -238,15 +179,16 @@ export function TripSummary({
           )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tripInlineActionButton, !driverPhone && styles.tripInlineActionButtonDisabled]}
-          disabled={!driverPhone}
+          style={styles.tripInlineActionButton}
           onPress={() => setContactModalVisible(true)}
           activeOpacity={0.86}
+          accessibilityRole="button"
+          accessibilityLabel="Choisir comment contacter le conducteur"
         >
-          <Ionicons name="logo-whatsapp" size={17} color={driverPhone ? '#25D366' : Colors.gray[400]} />
-          <Text style={[styles.tripInlineActionText, driverPhone && styles.tripInlineWhatsappText]}>WhatsApp</Text>
+          <Ionicons name="chatbubbles-outline" size={17} color={Colors.primary} />
+          <Text style={styles.tripInlineActionText}>Contacter</Text>
         </TouchableOpacity>
       </View>
-    </Animated.View>
+    </View>
   );
 }

@@ -1,5 +1,8 @@
 # Optimisations de production — 11 septembre 2026
 
+Mise à jour : [correctifs mobile et backend du 17 septembre 2026](./PERFORMANCE_2026-09-17.md).
+Le bilan ci-dessous décrit le lot du 11 septembre ; la pagination des messages et les lectures d'activité ont depuis été implémentées dans ce nouveau lot.
+
 Modifications côté application, sans changement des contrats de paiement, de réservation, de KYC ou de progression automatique des trajets. Aucun déploiement en production n'a été effectué.
 
 ## État du plan

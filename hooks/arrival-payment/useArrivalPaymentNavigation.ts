@@ -5,7 +5,7 @@ import {
   PaymentCompletionSummary,
 } from '../../features/arrival-payment/paymentTypes';
 import React, { useCallback } from 'react';
-import { InteractionManager, Platform } from 'react-native';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
 import type { Booking } from '@/types';
 import type { Router } from 'expo-router';
 
@@ -40,7 +40,7 @@ export function useArrivalPaymentNavigation({
     if (!completionSummary) return;
     acknowledgeBooking(completionSummary.bookingId);
     setCompletionSummary(null);
-  }, [acknowledgeBooking, completionSummary]);
+  }, [acknowledgeBooking, completionSummary, setCompletionSummary]);
 
   const navigateToInvoice = useCallback(
     (paymentHistoryId?: string | null) => {
@@ -61,28 +61,22 @@ export function useArrivalPaymentNavigation({
     if (paymentHistoryId === undefined) return;
 
     pendingInvoicePaymentIdRef.current = undefined;
-    InteractionManager.runAfterInteractions(() => {
-      navigateToInvoice(paymentHistoryId);
-      setIsClosingForInvoice(false);
-    });
-  }, [navigateToInvoice]);
+    // The in-app sheet is already removed; no native presentation or animation to await.
+    try { navigateToInvoice(paymentHistoryId); }
+    finally { setIsClosingForInvoice(false); }
+  }, [navigateToInvoice, pendingInvoicePaymentIdRef, setIsClosingForInvoice]);
 
   const handleOpenInvoice = useCallback(() => {
     if (!completionSummary) return;
     const paymentHistoryId = completionSummary.paymentHistoryId;
 
-    if (Platform.OS === 'ios') {
-      pendingInvoicePaymentIdRef.current = paymentHistoryId ?? null;
-      setIsClosingForInvoice(true);
-    }
+    pendingInvoicePaymentIdRef.current = paymentHistoryId ?? null;
+    setIsClosingForInvoice(true);
 
     acknowledgeBooking(completionSummary.bookingId);
     setCompletionSummary(null);
 
-    if (Platform.OS !== 'ios') {
-      navigateToInvoice(paymentHistoryId);
-    }
-  }, [acknowledgeBooking, completionSummary, navigateToInvoice]);
+  }, [acknowledgeBooking, completionSummary, pendingInvoicePaymentIdRef, setCompletionSummary, setIsClosingForInvoice]);
 
   const handleResumeCardPayment = useCallback(async () => {
     if (
@@ -96,18 +90,19 @@ export function useArrivalPaymentNavigation({
 
     setPaymentError('');
     const redirectUrls = createBookingCardPaymentRedirectUrls(arrivalBooking.id);
-    await openCardPaymentUrl(
-      activeStoredState.bookingPaymentUrl,
-      activeStoredState.bookingPaymentOrderNumber,
-      redirectUrls.returnUrl,
-      activeStoredState.bookingPaymentChannel ?? 'card',
-    );
+    try {
+      await openCardPaymentUrl(activeStoredState.bookingPaymentUrl, activeStoredState.bookingPaymentOrderNumber,
+        redirectUrls.returnUrl, activeStoredState.bookingPaymentChannel ?? 'card');
+    } catch (error) {
+      setPaymentError(getApiErrorMessage(error, 'La page de paiement ne peut pas être ouverte. Réessayez dans un instant.'));
+    }
   }, [
     activeStoredState?.bookingPaymentChannel,
     activeStoredState?.bookingPaymentOrderNumber,
     activeStoredState?.bookingPaymentUrl,
     arrivalBooking,
     isBusy,
+    setPaymentError,
     openCardPaymentUrl,
   ]);
 

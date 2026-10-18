@@ -2,6 +2,7 @@ import { store } from '@/store';
 import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 import { calculateDistance } from '@/utils/routeHelpers';
 import { BoundedCache } from '@/utils/boundedCache';
+import { decodeSafePolyline } from '@/utils/routes/safePolyline';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -21,41 +22,6 @@ const routeInfoCache = new BoundedCache<RouteInfo>(64);
 const inFlightRouteRequests = new Map<string, Promise<RouteInfo>>();
 let routeApiCooldownUntil = 0;
 let lastThrottleWarningAt = 0;
-
-function decodePolyline(encoded: string): [number, number][] {
-  const poly: [number, number][] = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
-
-  while (index < len) {
-    let b: number;
-    let shift = 0;
-    let result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-
-    poly.push([lat * 1e-5, lng * 1e-5]);
-  }
-
-  return poly;
-}
 
 function normalizeCoordinate(value: number) {
   return Number.isFinite(value) ? value.toFixed(5) : '0.00000';
@@ -244,12 +210,7 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
 
       const route = result.data.routes[0];
       const leg = route.legs?.[0];
-      const decodedCoordinates = route.overviewPolyline
-        ? decodePolyline(route.overviewPolyline).map(([lat, lng]) => ({
-            latitude: lat,
-            longitude: lng,
-          }))
-        : [];
+      const decodedCoordinates = decodeSafePolyline(route.overviewPolyline);
 
       const routeInfo: RouteInfo = {
         coordinates: decodedCoordinates.length > 0 ? decodedCoordinates : fallbackRouteInfo.coordinates,

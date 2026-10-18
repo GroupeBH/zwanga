@@ -10,7 +10,7 @@ import {
 } from '@/constants/rideProgress';
 import { trackingSocket } from '@/services/trackingSocket';
 import { recordLocationDelivery } from '@/services/locationDelivery';
-import { subscribeRideLocation } from '@/services/rideLocationStream';
+import { subscribeBootstrappedRideLocation } from '@/services/rideLocationBootstrap';
 import {
   startPassengerBackgroundLocationTracking,
   stopPassengerBackgroundLocationTracking,
@@ -251,11 +251,29 @@ export function usePassengerLocationSharing({
       }
     };
 
-    const startPassengerLocationSharing = async () => {
+    let locationPermitted = false;
+    const subscribeLocation = () => {
+      if (!locationPermitted || isCancelled || !isMountedRef.current || isExitingRef.current) return;
+      const subscription = subscribeBootstrappedRideLocation(
+        `passenger:${booking.id}`,
+        { accuracy: Location.Accuracy.High, timeInterval: PASSENGER_LOCATION_SEND_INTERVAL_MS,
+          distanceInterval: PASSENGER_LOCATION_DISTANCE_INTERVAL_METERS },
+        location => { void sendLocation(location); },
+      );
+      // Keep the shared channel alive when refreshing its bounded cache bootstrap.
+      passengerLocationSubscriptionRef.current?.remove();
+      passengerLocationSubscriptionRef.current = subscription;
+    };
+    let checkingPermission = false;
+    const startPassengerLocationSharing = async (requestPermission = true) => {
+      if (checkingPermission) return;
+      checkingPermission = true;
       try {
-        const permission = await Location.requestForegroundPermissionsAsync();
+        const permission = await (requestPermission
+          ? Location.requestForegroundPermissionsAsync() : Location.getForegroundPermissionsAsync());
         if (isCancelled || !isMountedRef.current || isExitingRef.current) return;
         if (permission.status !== 'granted') {
+          if (!requestPermission) return;
           showDialog({
             variant: 'warning',
             title: 'Localisation requise',
@@ -265,45 +283,15 @@ export function usePassengerLocationSharing({
           return;
         }
 
+        locationPermitted = true;
+        subscribeLocation();
         void startPassengerBackgroundLocationTracking(booking.id, {
           requestMissingPermissions: true,
-        });
-
-        let initialLocation: Location.LocationObject | null = null;
-        try {
-          initialLocation = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
-        } catch {
-          initialLocation = await Location.getLastKnownPositionAsync({});
-        }
-
-        if (initialLocation) {
-          // A slow first upload must not delay installation of the foreground GPS watcher.
-          void sendLocation(initialLocation);
-        }
-
-        if (isCancelled || !isMountedRef.current) return;
-        const subscription = subscribeRideLocation(
-          `passenger:${booking.id}`,
-          {
-            accuracy: Location.Accuracy.High,
-            timeInterval: PASSENGER_LOCATION_SEND_INTERVAL_MS,
-            distanceInterval: PASSENGER_LOCATION_DISTANCE_INTERVAL_METERS,
-          },
-          (location) => {
-            void sendLocation(location);
-          },
-        );
-
-        if (isCancelled || !isMountedRef.current) {
-          subscription.remove();
-          return;
-        }
-
-        passengerLocationSubscriptionRef.current = subscription;
+        }).catch(error => warnThrottled('[PassengerNavigation] Suivi arrière-plan indisponible:', error));
       } catch (error) {
         console.warn('[PassengerNavigation] Suivi GPS passager indisponible:', error);
+      } finally {
+        checkingPermission = false;
       }
     };
 
@@ -314,11 +302,8 @@ export function usePassengerLocationSharing({
       void trackingSocket.resumeBoardingDetection(tripId).catch((error) => {
         console.warn('[PassengerNavigation] Reprise détection embarquement impossible:', error);
       });
-      void Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-        .then(sendLocation)
-        .catch((error) => {
-          console.warn('[PassengerNavigation] Position de reprise indisponible:', error);
-        });
+      if (locationPermitted) subscribeLocation();
+      else void startPassengerLocationSharing(false);
     });
 
     return () => {
@@ -347,6 +332,13 @@ export function usePassengerLocationSharing({
     showDialog,
     tripId,
     updatePassengerLocation,
+    isExitingRef,
+    isMountedRef,
+    lastAcceptedPassengerCoordinateRef,
+    lastAcceptedPassengerTimestampRef,
+    passengerLocationSubscriptionRef,
+    setPassengerLocation,
+    setRecoveryFix,
   ]);
 
   return {

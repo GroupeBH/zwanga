@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = 'zwanga.pending-referral-attribution.v2';
+const UNRESOLVED_STORAGE_KEY = 'zwanga.unresolved-referral-attribution.v1';
 const CONSUMED_STORAGE_KEY = 'zwanga.consumed-referral-attributions.v1';
 const ATTRIBUTION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const CONSUMED_ATTRIBUTION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
 export interface PendingReferralAttribution {
+  ownerAccountId?: string | null;
   token: string;
   provider: 'chottulink';
   capturedAt: string;
@@ -39,6 +41,7 @@ const normalize = (
     return null;
   }
   return {
+    ...(typeof value.ownerAccountId === 'string' ? { ownerAccountId: value.ownerAccountId } : {}),
     token: value.token,
     provider: value.provider,
     capturedAt: capturedAt.toISOString(),
@@ -80,25 +83,50 @@ const getConsumedAttributions = async (): Promise<ConsumedReferralAttribution[]>
   }
 };
 
-export const getPendingReferralAttribution = async () => {
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+const readAttribution = async (key: string) => {
+  const raw = await AsyncStorage.getItem(key);
   if (!raw) return null;
   try {
     const pending = normalize(
       JSON.parse(raw) as PendingReferralAttribution,
     );
-    if (!pending) await AsyncStorage.removeItem(STORAGE_KEY);
+    if (!pending) await AsyncStorage.removeItem(key);
     return pending;
   } catch {
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await AsyncStorage.removeItem(key);
     return null;
   }
+};
+
+const scopedKey = (key: string, owner?: string | null) => owner ? `${key}:${encodeURIComponent(owner)}` : key;
+export const getPendingReferralAttribution = (owner?: string | null) => readAttribution(scopedKey(STORAGE_KEY, owner));
+
+// Keep unverified links separate: signup must never mistake them for a
+// server-validated attribution. Preserve the original capture date on retries.
+export const getUnresolvedReferralAttribution = (owner?: string | null) => readAttribution(scopedKey(UNRESOLVED_STORAGE_KEY, owner));
+
+export const captureUnresolvedReferralAttribution = async (value: PendingReferralAttribution) => {
+  const existing = await getUnresolvedReferralAttribution(value.ownerAccountId);
+  if (existing) return existing;
+  const pending = normalize(value);
+  if (!pending) return null;
+  if (pending.isDeferred) {
+    const consumed = await getConsumedAttributions();
+    if (consumed.some(entry => entry.token === pending.token)) return null;
+  }
+  await AsyncStorage.setItem(scopedKey(UNRESOLVED_STORAGE_KEY, pending.ownerAccountId), JSON.stringify(pending));
+  return pending;
+};
+
+export const clearUnresolvedReferralAttribution = async (token: string, owner?: string | null) => {
+  const pending = await getUnresolvedReferralAttribution(owner);
+  if (pending?.token === token) await AsyncStorage.removeItem(scopedKey(UNRESOLVED_STORAGE_KEY, owner));
 };
 
 export const captureFirstReferralAttribution = async (
   value: PendingReferralAttribution,
 ) => {
-  const existing = await getPendingReferralAttribution();
+  const existing = await getPendingReferralAttribution(value.ownerAccountId);
   if (existing) return existing;
   const pending = normalize(value);
   if (!pending) return null;
@@ -108,12 +136,12 @@ export const captureFirstReferralAttribution = async (
       return null;
     }
   }
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(pending));
+  await AsyncStorage.setItem(scopedKey(STORAGE_KEY, pending.ownerAccountId), JSON.stringify(pending));
   return pending;
 };
 
-export const clearPendingReferralAttribution = () =>
-  AsyncStorage.removeItem(STORAGE_KEY);
+export const clearPendingReferralAttribution = (owner?: string | null) =>
+  AsyncStorage.removeItem(scopedKey(STORAGE_KEY, owner));
 
 /**
  * Marks an attribution as consumed before removing it. ChottuLink can return
@@ -121,8 +149,8 @@ export const clearPendingReferralAttribution = () =>
  * prevents that deferred value from being silently applied to another account
  * on the same device. A new explicit (non-deferred) link click stays eligible.
  */
-export const consumePendingReferralAttribution = async (token?: string) => {
-  const pending = await getPendingReferralAttribution();
+export const consumePendingReferralAttribution = async (token?: string, owner?: string | null) => {
+  const pending = await getPendingReferralAttribution(owner);
   const consumedToken = token ?? pending?.token;
   if (consumedToken && TOKEN_PATTERN.test(consumedToken)) {
     const values = await getConsumedAttributions();
@@ -132,5 +160,6 @@ export const consumePendingReferralAttribution = async (token?: string) => {
     ].slice(0, 10);
     await AsyncStorage.setItem(CONSUMED_STORAGE_KEY, JSON.stringify(next));
   }
-  await clearPendingReferralAttribution();
+  // A late completion cannot erase a newer invitation in the same scope.
+  if (!token || pending?.token === token) await clearPendingReferralAttribution(owner);
 };

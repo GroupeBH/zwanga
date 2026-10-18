@@ -7,7 +7,7 @@ import { isFreshLivePassengerLocation } from '../../features/driver-navigation/n
 import { isCoordinateAllowedForNavigationRoute } from '../../features/driver-navigation/navigationMap';
 import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
 import { areTripMapCoordinatesSame, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface Params {
   data: ReturnType<typeof useDriverNavigationData>;
@@ -24,7 +24,11 @@ export function useDriverTrackingSocket({
   notices,
   refs,
 }: Params) {
+  const latest = useRef({ data, mapState, completion, notices, refs });
+  latest.current = { data, mapState, completion, notices, refs };
+  const { isScreenActive, tripId, isTripOngoing } = data;
   useEffect(() => {
+    const { data, mapState, refs } = latest.current;
     if (!data.isScreenActive || !data.tripId || !data.isTripOngoing) {
       mapState.setIsSocketConnected(false);
       return;
@@ -33,16 +37,28 @@ export function useDriverTrackingSocket({
     let isCancelled = false;
     let requestPending = false;
     const freshPassengerPositions = new Map<string, number>();
+    let nextMissingPositionRequestAt = 0;
+    let missingPositionRetryDelayMs = 10_000;
+    let waypointIdsKey = '';
+    const resetMissingPositionBackoff = () => {
+      nextMissingPositionRequestAt = 0;
+      missingPositionRetryDelayMs = 10_000;
+    };
     const requestPassengerPositions = () => {
-      if (isCancelled || requestPending) return;
+      if (isCancelled || requestPending || Date.now() < nextMissingPositionRequestAt) return;
       requestPending = true;
+      nextMissingPositionRequestAt = Date.now() + missingPositionRetryDelayMs;
+      missingPositionRetryDelayMs = Math.min(missingPositionRetryDelayMs * 2, 60_000);
       void trackingSocket.requestPassengerLocations(data.tripId)
         .catch(() => undefined)
         .finally(() => { requestPending = false; });
     };
     mapState.setLivePassengerLocations({});
     const unsubscribeConnection = trackingSocket.subscribeToConnectionState((connected) => {
-      if (!connected) freshPassengerPositions.clear();
+      if (!connected) {
+        freshPassengerPositions.clear();
+        resetMissingPositionBackoff();
+      }
       if (!isCancelled && mapState.isMountedRef.current) mapState.setIsSocketConnected(connected);
     });
 
@@ -52,7 +68,7 @@ export function useDriverTrackingSocket({
       .then(() => {
         if (!mapState.isMountedRef.current || isCancelled) return;
         mapState.setIsSocketConnected(true);
-        requestPassengerPositions();
+        if (refs.waypointsRef.current.length > 0) requestPassengerPositions();
         if (__DEV__) {
           console.log('[Navigation] Connecté au suivi en temps réel');
         }
@@ -71,6 +87,7 @@ export function useDriverTrackingSocket({
     });
 
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
+      const { data, mapState, refs, notices, completion } = latest.current;
       if (!mapState.isMountedRef.current || isCancelled || payload.tripId !== data.tripId) return;
       if (payload.events.length > 0) {
         const hasTripDestinationEvent = payload.events.some(
@@ -99,7 +116,7 @@ export function useDriverTrackingSocket({
               mapState.setPickupNotice(null);
               mapState.setPickupNoticeCountdown(null);
             }
-            data.showDialog({
+            notices.showInformation({
               variant: 'info',
               icon: 'person-remove',
               title: 'Passager non embarqué',
@@ -120,7 +137,7 @@ export function useDriverTrackingSocket({
               mapState.setPickupNotice(null);
               mapState.setPickupNoticeCountdown(null);
             }
-            data.showDialog({
+            notices.showInformation({
               variant: 'warning',
               icon: 'help-circle',
               title: 'Embarquement non confirmé',
@@ -130,6 +147,7 @@ export function useDriverTrackingSocket({
           }
 
           if (
+            event.type === 'driver_near_pickup' ||
             event.type === 'driver_arrived_pickup' ||
             event.type === 'parties_nearby' ||
             event.type === 'passenger_ready_pickup'
@@ -177,6 +195,7 @@ export function useDriverTrackingSocket({
 
     const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
       (payload: PassengerLocationPayload) => {
+        const { data, mapState } = latest.current;
         if (
           !mapState.isMountedRef.current ||
           isCancelled ||
@@ -237,6 +256,11 @@ export function useDriverTrackingSocket({
 
     const passengerLocationsRefreshInterval = setInterval(() => {
       const bookingIds = new Set(refs.waypointsRef.current.map(waypoint => waypoint.booking.id));
+      const nextWaypointIdsKey = [...bookingIds].sort().join('|');
+      if (waypointIdsKey !== nextWaypointIdsKey) {
+        waypointIdsKey = nextWaypointIdsKey;
+        resetMissingPositionBackoff();
+      }
       for (const id of freshPassengerPositions.keys()) {
         if (!bookingIds.has(id)) freshPassengerPositions.delete(id);
       }
@@ -245,6 +269,7 @@ export function useDriverTrackingSocket({
         return timestamp === undefined || Date.now() - timestamp >= 15_000;
       });
       if (missingPosition) requestPassengerPositions();
+      else resetMissingPositionBackoff();
     }, 10000);
 
     return () => {
@@ -261,21 +286,7 @@ export function useDriverTrackingSocket({
         console.log('[Navigation] Déconnecté du suivi en temps réel');
       }
     };
-  }, [
-    data.isScreenActive,
-    data.isTripOngoing,
-    data.isKinshasaNavigationTrip,
-    notices.getPassengerNameForBooking,
-    notices.presentPassengerBoardedNotice,
-    notices.presentPassengerDestinationApproachNotice,
-    notices.presentPassengerDestinationNotice,
-    notices.presentPickupNotice,
-    completion.presentTripDestinationNotice,
-    data.refetchBookings,
-    data.refetchTrip,
-    data.showDialog,
-    data.tripId,
-  ]);
+  }, [isScreenActive, tripId, isTripOngoing]);
 
   return {
 

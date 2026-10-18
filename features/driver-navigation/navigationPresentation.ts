@@ -1,13 +1,8 @@
-import { PickupNoticeEventType } from './navigationModel';
 import type { Booking } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { type ImageRequireSource } from 'react-native';
 
-export const PICKUP_NOTICE_PRIORITY: Record<PickupNoticeEventType, number> = {
-  driver_arrived_pickup: 1,
-  parties_nearby: 2,
-  passenger_ready_pickup: 3,
-};
+export { PICKUP_NOTICE_PRIORITY } from './pickupNoticePriority';
 export const androidNavigationMarkerImages: Record<'departure' | 'pickup' | 'dropoff' | 'destination', ImageRequireSource> = {
   departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
   pickup: require('@/assets/images/map-markers/trip-detail-marker-passenger.png'),

@@ -2,12 +2,14 @@ import { TRIP_PAYMENT_MODE_OPTIONS, getTripPaymentModeLabel, getTripPaymentSelec
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors } from '@/constants/styles';
-import type { TripPaymentMode } from '@/types';
+import type { Trip, TripPaymentMode } from '@/types';
 import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
+import { useTripPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import type { Trip } from '@/types';
+import { getRouteStopLabel } from '@/utils/routeLocationLabels';
 
 interface TripBookingStepsProps {
   viewportHeight: number;
@@ -62,6 +64,12 @@ export function TripBookingSteps({
   setPassengerDestination,
   trip,
 }: TripBookingStepsProps) {
+  const active = useScreenIsActive();
+  const { currentData: options, isFetching, isError } = useTripPaymentOptionsQuery(
+    { tripId: trip?.id ?? '', numberOfSeats: Math.max(1, Number(bookingSeats) || 1) },
+    { skip: !active || !trip?.id || estimatedTotal <= 0, refetchOnMountOrArgChange: true },
+  );
+  const accepted = trip?.acceptedPaymentModes ?? ['cash', 'electronic', 'points'];
   return (
     <ScrollView
       style={[
@@ -126,7 +134,12 @@ export function TripBookingSteps({
         {estimatedTotal > 0 ? (
           <View style={styles.bookingPaymentSection}>
             <Text style={styles.bookingPaymentTitle}>Mode de paiement</Text>
+            {isFetching && <Text style={styles.bookingModalHint}>Vérification des modes disponibles…</Text>}
+            {isError && <Text style={styles.bookingModalHint}>Disponibilité non vérifiée. Réessayez avant de confirmer.</Text>}
+            {options?.cashUnavailableReason && <Text style={styles.bookingModalHint}>{options.cashUnavailableReason}</Text>}
             {TRIP_PAYMENT_MODE_OPTIONS.map((option) => {
+              if (!accepted.includes(option.id)) return null;
+              const unavailable = !options || isError || !options.availablePaymentModes.includes(option.id);
               const selected = bookingPaymentMode === option.id;
               return (
                 <TouchableOpacity
@@ -136,7 +149,7 @@ export function TripBookingSteps({
                     selected && styles.bookingPaymentOptionSelected,
                   ]}
                   onPress={() => setBookingPaymentMode(option.id)}
-                  disabled={isBooking}
+                  disabled={isBooking || unavailable}
                 >
                   <Ionicons
                     name={option.icon}
@@ -145,7 +158,7 @@ export function TripBookingSteps({
                   />
                   <View style={styles.bookingPaymentCopy}>
                     <Text style={styles.bookingPaymentOptionTitle}>{option.label}</Text>
-                    <Text style={styles.bookingPaymentOptionText}>{option.description}</Text>
+                    <Text style={styles.bookingPaymentOptionText}>{unavailable ? 'Indisponible actuellement' : option.description}</Text>
                   </View>
                   <Ionicons
                     name={getTripPaymentSelectionIcon(option, selected)}
@@ -254,7 +267,7 @@ export function TripBookingSteps({
       <>
         <Text style={styles.bookingModalTitle}>Prévisualisation</Text>
         <Text style={styles.bookingModalDescription}>
-          Vérifiez les informations avant d&apos;envoyer votre demande au conducteur.
+          Vérifiez les informations avant d&apos;envoyer votre réservation au conducteur.
         </Text>
 
         <View style={styles.bookingPreviewHero}>
@@ -284,8 +297,8 @@ export function TripBookingSteps({
               <Text style={[styles.bookingSummaryPointLabel, styles.bookingSummaryPointLabelDeparture]}>
                 D&eacute;part / prise en charge
               </Text>
-              <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                {passengerOriginDisplay || trip?.departure?.address}
+              <Text style={styles.bookingSummaryText}>
+                {getRouteStopLabel({ address: passengerOriginDisplay || trip?.departure?.address }, 'Point de départ').address}
               </Text>
             </View>
           </View>
@@ -297,8 +310,8 @@ export function TripBookingSteps({
               <Text style={[styles.bookingSummaryPointLabel, styles.bookingSummaryPointLabelArrival]}>
                 Arriv&eacute;e / destination
               </Text>
-              <Text style={styles.bookingSummaryText} numberOfLines={1}>
-                {passengerDestinationDisplay || trip?.arrival?.address}
+              <Text style={styles.bookingSummaryText}>
+                {getRouteStopLabel({ address: passengerDestinationDisplay || trip?.arrival?.address }, 'Destination').address}
               </Text>
             </View>
           </View>

@@ -28,16 +28,19 @@ export function useTripDetailController() {
   const bookingState = useTripDetailBookingState({
     trip: data.trip,
     isFocused: data.isFocused,
+    isScreenActive: data.isScreenActive,
     tripId: data.tripId,
   });
 
   const activity = useTripDetailActivity({
+    isScreenActive: data.isScreenActive,
     setRefreshing: bookingState.setRefreshing,
     refetchTrip: data.refetchTrip,
     refetchMyBookings: data.refetchMyBookings,
     refetchTripBookings: data.refetchTripBookings,
     refetchKycStatus: bookingState.refetchKycStatus,
     driverReviews: bookingState.driverReviews,
+    driverReviewTotal: bookingState.driverReviewTotal,
     driverAverageData: bookingState.driverAverageData,
     trip: data.trip,
     presentedTripDetailAutoProgressKeysRef: data.presentedTripDetailAutoProgressKeysRef,
@@ -69,6 +72,7 @@ export function useTripDetailController() {
   });
 
   useTripDetailTracking({
+    isScreenActive: data.isScreenActive,
     trip: data.trip,
     canTrackTrip: activity.canTrackTrip,
     isTripDriver: data.isTripDriver,
@@ -161,11 +165,7 @@ export function useTripDetailController() {
   const contact = useTripDetailContactActions({
     trip: data.trip,
     user: data.user,
-    conversations: data.conversations,
-    loadConversations: bookingState.loadConversations,
-    createConversation: bookingState.createConversation,
     activeBooking: activity.activeBooking,
-    router: data.router,
     showDialog: data.showDialog,
     isCreatingTripShareLink: bookingState.isCreatingTripShareLink,
     createTripShareLink: bookingState.createTripShareLink,
@@ -230,11 +230,14 @@ export function useTripDetailController() {
     cancelled: { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Annulé' },
   };
 
-  const config = data.trip
+  const config = data.tripExpired
+    ? { color: Colors.gray[600], bgColor: Colors.gray[200], label: 'Expiré' }
+    : data.trip
     ? statusConfig[data.trip.status as keyof typeof statusConfig] ?? statusConfig.upcoming
     : statusConfig.upcoming;
 
   const route = useTripDetailRouteCoordinates({
+    isScreenActive: data.isScreenActive,
     trip: data.trip,
     setRouteCoordinates: bookingState.setRouteCoordinates,
     setRouteInfo: bookingState.setRouteInfo,
@@ -244,6 +247,7 @@ export function useTripDetailController() {
 
   // Calculate estimated coordinate based on progress
   const mapPresentation = useTripDetailMapPresentation({
+    isScreenActive: data.isScreenActive,
     trip: data.trip,
     progress: access.progress,
     departureCoordinate: route.departureCoordinate,

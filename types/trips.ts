@@ -39,6 +39,7 @@ export interface Location {
 }
 
 export interface Trip {
+  acceptedPaymentModes?: import('./common').TripPaymentMode[];
   id: string;
   driverId: string;
   driverName: string;
@@ -51,16 +52,23 @@ export interface Trip {
   arrival: Location;
   departureTime: string; // ISO string date
   arrivalTime: string; // ISO string date
+  estimatedDurationSeconds?: number | null;
+  arrivalEstimateSource?: 'trip_start' | 'route' | 'approximate' | 'unavailable';
   price: number;
   isFree?: boolean;
   availableSeats: number;
   totalSeats: number;
   status: TripStatus;
   passengers?: Passenger[];
+  /** Active bookings from the authenticated activity response, even without a passenger profile. */
+  reservationSummary?: { pendingBookingIds: string[]; acceptedCount: number };
   progress?: number;
   currentLocation?: GeoPoint | null;
   lastLocationUpdateAt?: string | null;
   startedAt?: string | null;
+  canReprogram?: boolean;
+  /** Explicit server distinction between an expired departure and a completed ride. */
+  isExpired?: boolean;
   completedAt?: string | null; // ISO string date - Date de complétion du trajet
   vehicleId?: string | null; // ID du véhicule associé
   description?: string | null; // Description du trajet
@@ -75,6 +83,7 @@ export interface Trip {
 }
 
 export interface RecurringTripTemplate {
+  acceptedPaymentModes?: TripPaymentMode[];
   id: string;
   driverId: string;
   departure: Location;
@@ -109,7 +118,12 @@ export interface Passenger {
 }
 
 export interface Booking {
+  cashReceivedAt?: string | null;
+  cashReceivedByDriverId?: string | null;
+  cashReceivedAmount?: number | string | null;
   interruptionFareLocked?: boolean;
+  plannedDistanceMeters?: number | null;
+  travelledDistanceMeters?: number | null;
   id: string;
   tripId: string;
   passengerId: string;

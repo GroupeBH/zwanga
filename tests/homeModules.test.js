@@ -10,7 +10,9 @@ const request = (id, extra = {}) => ({ id, passengerId: 'passenger', status: 'pe
 function environment(mocks = {}, platform = 'ios') {
   const hooks = hookHarness();
   const load = loader({
-    react: hooks.react,
+    react: { ...require('react'), ...hooks.react },
+    '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
+    '@/features/navigation/PickupVehicleDetails': { PickupVehicleDetails: 'VehicleDetails' },
     'react-native': { Platform: { OS: platform }, StyleSheet: { create: value => value } },
     'react-native-maps': { PROVIDER_GOOGLE: 'google' },
     ...mocks,
@@ -21,8 +23,8 @@ function environment(mocks = {}, platform = 'ios') {
 test('request expiry still allows accepted drivers but hides expired, cancelled and invalid requests', () => {
   const { isTripRequestWithinAcceptanceWindow: accepts } = environment().load('features/home/homeModel.ts');
   const now = Date.now();
-  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 29999).toISOString() }), now), true);
-  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 30000).toISOString() }), now), false);
+  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 3 * 3600000 + 1).toISOString() }), now), true);
+  assert.equal(accepts(request('a', { departureDateMax: new Date(now - 3 * 3600000).toISOString() }), now), false);
   assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: new Date(now - 2 * 3600000 + 1).toISOString() }), now), true);
   assert.equal(accepts(request('a', { status: 'driver_selected', departureDateMax: new Date(now - 2 * 3600000).toISOString() }), now), false);
   assert.equal(accepts(request('a', { departureDateMax: 'invalid' }), now), false);
@@ -84,12 +86,12 @@ test('leaving Home or unmounting cancels a pending detail navigation', t => {
   }
 });
 
-test('trip feed keeps RTK Query reads, nearby precedence, polling guards and the existing Redux fallback', () => {
+test('trip feed keeps nearby precedence without a parallel general request, polling guards and Redux fallback', async () => {
   const calls = [], dispatches = [], refreshes = [];
   const nearby = trip('shared', { price: 1000 }), general = trip('shared', { price: 2000 });
   const query = (name, data) => (args, options) => {
     calls.push({ name, args, options });
-    return { data, isLoading: false, isError: false, refetch: () => refreshes.push(name) };
+    return { data, currentData: data, isFetching: false, isLoading: false, isError: false, refetch: async () => { refreshes.push(name); return { data }; } };
   };
   const app = environment({ '@/store/api/tripApi': {
     useGetTripsQuery: query('general', [general, trip('other')]),
@@ -99,13 +101,14 @@ test('trip feed keeps RTK Query reads, nearby precedence, polling guards and the
   const props = { isFocused: true, lastKnownLocation: { coords: { latitude: -4.32512345, longitude: 15.32212345 } }, locationRadiusKm: 5, storedTrips: [], dispatch: action => dispatches.push(action) };
   const render = () => app.hooks.render(() => useHomeTripFeed(props));
   let feed = render();
-  assert.deepEqual(feed.remoteTrips.map(trip => trip.id), ['shared', 'other']);
+  assert.deepEqual(feed.remoteTrips.map(trip => trip.id), ['shared']);
   assert.equal(feed.remoteTrips[0], nearby);
-  assert.deepEqual(calls[1].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1 });
-  assert.equal(calls[1].options.pollingInterval, 120000);
+  assert.deepEqual(calls[0].args, { departureCoordinates: [15.32212, -4.32512], departureRadiusKm: 5, minSeats: 1, limit: 50 });
+  assert.equal(calls[0].options.pollingInterval, 120000);
+  assert.equal(calls[1].options.skip, true);
   assert.equal(dispatches[0].type, 'trips/setTrips');
-  feed.refetchTrips();
-  assert.deepEqual(refreshes, ['nearby', 'general']);
+  await feed.refetchTrips();
+  assert.deepEqual(refreshes, ['nearby']);
   props.isFocused = false;
   render();
   assert.equal(calls.at(-1).options.pollingInterval, 0);
@@ -113,23 +116,142 @@ test('trip feed keeps RTK Query reads, nearby precedence, polling guards and the
   props.lastKnownLocation = null;
   feed = render();
   assert.equal(calls.at(-1).options.skip, true);
-  assert.equal(feed.remoteTrips[0], general);
+  assert.equal(feed.remoteTrips[0], general, 'without GPS only the general snapshot is used');
+  app.hooks.unmount();
+});
+
+test('driver Home skips both public feeds, their loading errors and manual refresh even with cached responses', async () => {
+  const calls = [], dispatches = [], refreshes = [];
+  const query = name => (args, options) => {
+    calls.push({ name, options });
+    return { currentData: [trip('public')], isFetching: true, isError: true, isUninitialized: false,
+      refetch: async () => { refreshes.push(name); return { data: [] }; } };
+  };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsQuery: query('general'), useGetTripsByCoordinatesQuery: query('nearby'),
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const props = { isDriver: true, isFocused: true, storedTrips: [trip('cached')],
+    dispatch: action => dispatches.push(action), lastKnownLocation: null };
+  const render = () => app.hooks.render(() => useHomeTripFeed(props));
+  for (const location of [null, { coords: departure.coordinates }]) {
+    props.lastKnownLocation = location;
+    const result = render();
+    assert.equal(result.remoteTrips, undefined);
+    assert.equal(result.tripsLoading, false); assert.equal(result.tripsError, false);
+    assert.equal(result.showInitialHomeLoader, false);
+    assert.ok(calls.slice(-2).every(call => call.options.skip && call.options.pollingInterval === 0));
+    await result.refetchTrips();
+  }
+  assert.deepEqual(dispatches, []); assert.deepEqual(refreshes, []);
+  props.isDriver = false; render();
+  assert.equal(calls.at(-2).options.skip, false, 'passenger discovery resumes immediately');
+  assert.ok(dispatches.length > 0);
+  const actionCount = dispatches.length;
+  props.isDriver = true; render();
+  assert.ok(calls.slice(-2).every(call => call.options.skip));
+  assert.equal(dispatches.length, actionCount);
   app.hooks.unmount();
 });
 
 test('a cached feed remains visible when both network queries fail', () => {
   const app = environment({ '@/store/api/tripApi': {
-    useGetTripsQuery: () => ({ isLoading: false, isError: true }),
-    useGetTripsByCoordinatesQuery: () => ({ isLoading: false, isError: true }),
+    useGetTripsQuery: () => ({ isFetching: false, isLoading: false, isError: true }),
+    useGetTripsByCoordinatesQuery: () => ({ isFetching: false, isLoading: false, isError: true }),
   } });
   const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
-  const result = app.hooks.render(() => useHomeTripFeed({ isFocused: true, lastKnownLocation: null, locationRadiusKm: 5, storedTrips: [trip('cached')], dispatch() {} }));
+  const result = app.hooks.render(() => useHomeTripFeed({ isFocused: true, lastKnownLocation: { coords: { latitude: -4.325, longitude: 15.3222 } }, storedTrips: [trip('cached')], dispatch() {} }));
   assert.equal(result.tripsError, false);
   assert.equal(result.showInitialHomeLoader, false);
   app.hooks.unmount();
 });
 
-const selectionProps = () => ({ remoteTrips: [], storedTrips: [], activeBookings: [], currentUser: { id: 'me' }, completedBookingTripIds: new Set(), bookedTripIds: new Set(), refreshedPassengerTrip: undefined, trackedTripInfo: null, ongoingDriverTrip: null, isDriver: false, driverReservationHighlightTrip: null, driverReservationHighlightBookings: [], myDriverTrips: [] });
+test('empty nearby results load a bounded general feed without geographic or date restrictions', async () => {
+  const calls = [], refreshes = [];
+  const nearby = { currentData: [], isError: false, isFetching: false, isUninitialized: false,
+    refetch: async () => { refreshes.push('nearby'); return { data: [] }; } };
+  const general = { currentData: [], isFetching: false, isUninitialized: false,
+    refetch: async () => { refreshes.push('general'); return { data: [] }; } };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsByCoordinatesQuery: (args, options) => { calls.push({ name: 'nearby', args, options }); return nearby; },
+    useGetTripsQuery: (args, options) => { calls.push({ name: 'general', args, options }); return general; },
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const props = { isFocused: true, storedTrips: [], dispatch() {}, locationRadiusKm: 50,
+    lastKnownLocation: { coords: { latitude: -4.325, longitude: 15.3222 } } };
+  const draw = () => app.hooks.render(() => useHomeTripFeed(props));
+  draw();
+  assert.equal(calls[0].args.departureRadiusKm, 5, 'a broad search preference must not broaden Home');
+  assert.equal(calls.at(-1).options.skip, false);
+  await draw().refetchTrips();
+  assert.deepEqual(refreshes, ['nearby', 'general']);
+  nearby.isError = true; draw();
+  assert.equal(calls.at(-1).options.skip, false);
+  assert.deepEqual(calls.at(-1).args, { minSeats: 1, limit: 50, sort: 'date' });
+  props.isFocused = false; draw();
+  assert.equal(calls.at(-1).options.skip, true);
+  props.isFocused = true; props.lastKnownLocation = null; draw();
+  assert.equal(calls.at(-1).options.skip, false, 'GPS is not required to browse published departures');
+  assert.equal(calls.at(-2).options.skip, true);
+  assert.equal(draw().tripsLoading, false);
+  props.lastKnownLocation = { coords: { latitude: 0, longitude: 0 } }; draw();
+  assert.equal(calls.at(-2).options.skip, true);
+  assert.equal(calls.at(-1).options.skip, false);
+  refreshes.length = 0;
+  await draw().refetchTrips();
+  assert.deepEqual(refreshes, ['general']);
+  app.hooks.unmount();
+});
+
+const selectionProps = () => ({ remoteTrips: [], storedTrips: [], activeBookings: [], currentUser: { id: 'me' }, completedBookingTripIds: new Set(), bookedTripIds: new Set(), refreshedPassengerTrip: undefined, trackedTripInfo: null, ongoingDriverTrip: null, isDriver: false, driverReservationHighlightTrip: null, driverReservationHighlightBookings: [], myDriverTrips: [], liveUserCoordinate: departure.coordinates });
+
+test('wider Home reads wait for nearby completion, ignore unavailable suggestions and stop when a close ride appears', () => {
+  const calls = [], dispatches = [];
+  const nearby = { currentData: undefined, isFetching: true, isError: false, fulfilledTimeStamp: 1 };
+  const wide = { currentData: [trip('wider', { departure: { lat: -4.4, lng: 15.3222 } })], isFetching: false };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsByCoordinatesQuery: (args, options) => { calls.push({ name: 'nearby', args, options }); return nearby; },
+    useGetTripsQuery: (args, options) => { calls.push({ name: 'wide', args, options }); return wide; },
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const props = { isFocused: true, currentUser: { id: 'me' }, storedTrips: [],
+    bookedTripIds: new Set(['reserved']), completedBookingTripIds: new Set(['done']),
+    lastKnownLocation: { coords: departure.coordinates }, dispatch: action => dispatches.push(action) };
+  const draw = () => app.hooks.render(() => useHomeTripFeed(props));
+  assert.equal(draw().remoteTrips, undefined);
+  assert.equal(calls.at(-1).options.skip, true, 'cached wide data cannot trigger parallel discovery on entry');
+  nearby.isFetching = false;
+  nearby.currentData = [trip('mine', { driverId: 'me' }), trip('reserved'), trip('done'), trip('full', { availableSeats: 0 }),
+    trip('late', { departureTime: new Date(Date.now() + 3 * 86400000).toISOString() })];
+  assert.equal(draw().remoteTrips[0].id, 'wider');
+  assert.equal(calls.at(-1).options.skip, false);
+  const count = dispatches.length;
+  for (let i = 0; i < 100; i++) draw();
+  assert.equal(dispatches.length, count, 'stable feeds do not dispatch on every render');
+  nearby.currentData = [trip('new-nearby')];
+  assert.deepEqual(draw().remoteTrips.map(item => item.id), ['new-nearby']);
+  assert.equal(calls.at(-1).options.skip, true);
+  assert.equal(calls.at(-1).options.pollingInterval, 0);
+  nearby.currentData = [];
+  wide.currentData = undefined;
+  wide.isError = true;
+  props.storedTrips = [trip('cached')];
+  const beforeFailure = dispatches.length;
+  assert.equal(draw().remoteTrips, undefined, 'an unavailable wider feed does not erase the stored snapshot');
+  assert.equal(dispatches.length, beforeFailure);
+  props.storedTrips = [];
+  assert.equal(draw().tripsError, true);
+  nearby.currentData = [trip('mine', { driverId: 'me' })];
+  assert.equal(draw().tripsError, true, 'irrelevant server records must not disguise a failed wider search as an empty result');
+  wide.isFetching = true; wide.isError = false;
+  assert.equal(draw().tripsLoading, true, 'show loading while wider discovery is pending, not a false empty list');
+  nearby.currentData = [trip('shared')]; nearby.isError = true;
+  wide.currentData = [trip('shared', { status: 'cancelled' })]; wide.isFetching = false; wide.fulfilledTimeStamp = 2;
+  assert.equal(draw().remoteTrips[0].status, 'cancelled', 'a stale narrow response cannot resurrect a cancelled departure');
+  nearby.fulfilledTimeStamp = 3; nearby.isError = false;
+  assert.equal(draw().remoteTrips[0].status, 'upcoming', 'a successful newer nearby response becomes authoritative again');
+  app.hooks.unmount();
+});
 test('trip selection prioritizes reservations, removes own/completed/expired trips, and caps the list', () => {
   const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
   const booked = trip('booked', { departureTime: new Date(Date.now() + 2 * 86400000).toISOString() });
@@ -141,14 +263,33 @@ test('trip selection prioritizes reservations, removes own/completed/expired tri
   app.hooks.unmount();
 });
 
-test('restoration locks the sheet and waits for the tracked trip without showing unrelated map trips', () => {
+test('a stale tracking hint cannot lock Home or hide the feed without an active participation', () => {
   const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
   const props = { ...selectionProps(), remoteTrips: [trip('other')], trackedTripInfo: { tripId: 'active', role: 'passenger' } };
   const render = () => app.hooks.render(() => useHomeTripSelection(props));
-  assert.equal(render().isHomeSheetLockedRetracted, true);
-  assert.deepEqual(render().homeMapTrips, []);
+  assert.equal(render().isHomeSheetLockedRetracted, false);
+  assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['other']);
   props.refreshedPassengerTrip = trip('active', { status: 'ongoing' });
+  assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['other'], 'tracking alone is not proof of participation');
+  props.activeBookings = [{ id: 'mine', tripId: 'active', passengerId: 'me', status: 'accepted' }];
   assert.deepEqual(render().homeMapTrips.map(trip => trip.id), ['active']);
+  app.hooks.unmount();
+});
+
+test('the passenger reservation priority follows existing booking ranking and dismissal without retaining ended trips', () => {
+  const app = environment(), { useHomeTripSelection } = app.load('hooks/home/useHomeTripSelection.ts');
+  const first = trip('reserved-first'), second = trip('reserved-second', { departureTime: new Date(Date.now() + 2 * 86400000).toISOString() });
+  const props = { ...selectionProps(), remoteTrips: [first, second], bookedTripIds: new Set([first.id, second.id]), hiddenHomePriorities: {} };
+  const draw = () => app.hooks.render(() => useHomeTripSelection(props));
+  const { homePriorityKeys } = app.load('features/home/homePriorityDismissal.ts');
+  assert.equal(draw().featuredPassengerTrip.id, first.id);
+  props.hiddenHomePriorities = { [homePriorityKeys.passengerTrip(first)]: true };
+  assert.equal(draw().featuredPassengerTrip.id, second.id);
+  props.remoteTrips = [{ ...first, status: 'completed' }, { ...second, status: 'cancelled' }];
+  assert.equal(draw().featuredPassengerTrip, null);
+  props.remoteTrips = [first, second];
+  props.ongoingDriverTrip = trip('active', { status: 'ongoing' });
+  assert.equal(draw().featuredPassengerTrip, null, 'an active ride keeps navigation precedence, even for a driver with a passenger reservation');
   app.hooks.unmount();
 });
 
@@ -157,10 +298,10 @@ test('passenger activity excludes own, linked and expired requests and preserves
   const requests = [request('available'), request('own', { passengerId: 'me' }), request('linked', { tripId: 'trip' }), request('expired', { departureDateMax: '2020-01-01' })];
   const app = environment({
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({ data: { unreadCount: 2 } }) },
-    '@/store/api/bookingApi': { useGetMyBookingsQuery: () => ({ data: [], refetch() {} }) },
+    '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [], refetch() {} }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
-      useGetMyTripRequestsQuery: () => ({ data: [request('own')] }),
+      useGetMyTripRequestsQuery: () => ({ data: [request('foreign-cache'), request('own', { passengerId: 'me' })] }),
       useGetAvailableTripRequestsQuery: (_args, options) => { calls.push(options); return { data: requests }; },
     },
   });
@@ -168,8 +309,10 @@ test('passenger activity excludes own, linked and expired requests and preserves
   const props = { isFocused: true, currentUser: { id: 'me' }, isDriver: true, trackedTripInfo: null };
   const render = () => app.hooks.render(() => useHomePassengerActivity(props));
   assert.deepEqual(render().availableDriverRequests.map(request => request.id), ['available']);
+  assert.equal(render().activeTripRequest.id, 'own');
   props.isDriver = false;
   assert.deepEqual(render().availableDriverRequests, []);
+  assert.equal(render().activeTripRequest.id, 'own');
   assert.equal(calls.at(-1).skip, true);
   props.isFocused = false;
   render();
@@ -218,6 +361,46 @@ test('live tracking ignores unrelated/stale locations, deduplicates progress, an
   assert.equal(app.dialogs.length, 1);
   assert.ok(app.calls.some(call => call[0] === 'unsubscribe-progress'));
   assert.ok(app.calls.some(call => call[0] === 'leave'));
+  app.hooks.unmount();
+});
+
+test('Home passenger pickup uses the refreshed trip vehicle without reconnecting the socket', async () => {
+  const app = trackingEnvironment();
+  app.props.ongoingDriverTrip = null;
+  app.props.activePassengerBooking = { id: 'mine', tripId: 'active', status: 'accepted',
+    numberOfSeats: 3, trip: trip('active', { vehicleId: 'vehicle', vehicle: undefined }) };
+  app.render(); await tick();
+  const vehicle = { id: 'vehicle', brand: 'Toyota', model: 'Yaris', color: 'rouge', licensePlate: '1234AB01' };
+  app.props.activeHomeTrip = trip('active', { status: 'ongoing', vehicleId: vehicle.id, vehicle });
+  app.render();
+  const payload = { tripId: 'active', events: [
+    { type: 'parties_nearby', tripId: 'active', bookingId: 'mine', distanceMeters: 5 },
+  ] };
+  app.events.progress(payload); app.events.progress(payload);
+  assert.equal(app.dialogs.length, 1, 'one alert for the booking holder despite three seats');
+  assert.equal(app.dialogs[0].content.props.trip, app.props.activeHomeTrip);
+  assert.equal(app.dialogs[0].content.props.trip.vehicle, vehicle);
+  assert.equal(app.calls.filter(call => call[0] === 'join').length, 1);
+  app.props.isFocused = false; app.render();
+  app.events.progress({ tripId: 'active', events: [
+    { type: 'driver_arrived_pickup', tripId: 'active', bookingId: 'mine' },
+  ] });
+  assert.equal(app.dialogs.length, 1, 'no new alert after leaving Home');
+  app.hooks.unmount();
+});
+
+test('Home driver receives one approach per booking after readiness but never after arrival or boarding', async () => {
+  const app = trackingEnvironment();
+  app.render(); await tick();
+  const emit = (type, bookingId = 'booking') => app.events.progress({ tripId: 'active', events: [
+    { type, bookingId, tripId: 'active', distanceMeters: 300 },
+  ] });
+  emit('passenger_ready_pickup'); emit('driver_near_pickup'); emit('driver_near_pickup');
+  assert.equal(app.dialogs.length, 2); assert.match(app.dialogs[1].message, /Vous approchez.*300 m/);
+  emit('driver_arrived_pickup', 'second'); emit('driver_near_pickup', 'second');
+  assert.equal(app.dialogs.length, 3);
+  emit('pickup_confirmed', 'third'); emit('driver_near_pickup', 'third');
+  assert.equal(app.dialogs.length, 4);
   app.hooks.unmount();
 });
 
@@ -315,7 +498,7 @@ test('Android marker redraws are bounded, deduplicated and cancelled when the ma
   assert.equal(redraws, 2);
 });
 
-test('map camera animation is cancelled on blur, and invalid coordinates use the Kinshasa region', t => {
+test('Home camera follows only the user, ignores trip updates, and cancels on blur', t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
   const app = environment(), movements = [];
   const { useHomeMap } = app.load('hooks/home/useHomeMap.ts');
@@ -324,12 +507,18 @@ test('map camera animation is cancelled on blur, and invalid coordinates use the
   assert.equal(render().mapRegion.latitude, -4.325);
   render().mapRef.current = { animateToRegion: region => movements.push(region) };
   props.homeMapTrips = [trip('a')]; render();
+  assert.equal(movements.length, 0, 'suggestions never move the user map');
+  props.liveUserCoordinate = { latitude: departure.lat, longitude: departure.lng }; render();
+  assert.equal(movements.length, 1);
+  movements.length = 0;
+  props.homeMapTrips = [trip('b', { departure: arrival })]; render();
+  props.liveUserCoordinate = { latitude: arrival.lat, longitude: arrival.lng }; render();
   props.isFocused = false; render();
   t.mock.timers.tick(1500);
   assert.deepEqual(movements, []);
   props.isFocused = true; render();
   assert.equal(movements.length, 1);
-  assert.equal(movements[0].longitude, departure.lng);
+  assert.equal(movements[0].longitude, arrival.lng);
   app.hooks.unmount();
 });
 
@@ -351,7 +540,7 @@ test('passenger tracking only presents progress for the active passenger booking
   app.hooks.unmount();
 });
 
-test('sheet switches between trips/requests, keeps stable actions and retracts during an active trip', () => {
+test('sheet follows the role immediately and stays on clients after a driver ride', () => {
   const app = environment();
   const { useHomeSheet } = app.load('hooks/home/useHomeSheet.ts');
   const routes = [], refreshes = [];
@@ -359,17 +548,25 @@ test('sheet switches between trips/requests, keeps stable actions and retracts d
   const render = () => app.hooks.render(() => useHomeSheet(props));
   const toggle = render().toggleTripsSheet;
   assert.equal(render().toggleTripsSheet, toggle);
-  toggle();
   assert.equal(render().effectiveTripsSheetOpen, true);
-  render().setHomeSheetMode('requests');
   render().openSheetIndex(); render().refetchSheetContent();
   assert.deepEqual(routes, ['/requests']);
   assert.deepEqual(refreshes, ['requests']);
   props.isHomeSheetLockedRetracted = true; render();
   render().toggleTripsSheet();
   assert.equal(render().effectiveTripsSheetOpen, false);
-  assert.equal(render().isRequestsSheetMode, false);
+  assert.equal(render().isRequestsSheetMode, true);
+  assert.equal(render().sheetTitle, 'Trajet en cours');
+  props.isHomeSheetLockedRetracted = false;
+  assert.equal(render().sheetTitle, 'Clients');
+  render().openSheetIndex();
+  assert.deepEqual(routes, ['/requests', '/requests']);
   props.isHomeSheetLockedRetracted = false; props.isDriver = false; render();
   assert.equal(render().isRequestsSheetMode, false);
+  render().openSheetIndex(); render().refetchSheetContent();
+  assert.equal(routes.at(-1), '/search');
+  assert.equal(refreshes.at(-1), 'trips');
+  props.isDriver = true;
+  assert.equal(render().sheetTitle, 'Clients');
   app.hooks.unmount();
 });

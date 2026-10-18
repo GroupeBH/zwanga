@@ -17,7 +17,7 @@ import {
 
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 
-type Props = Pick<RequestTripController, 'addressInputMode' | 'addressSectionStep' | 'applyQuickPlaceToNextSlot' | 'applySelectionToNextSlot' | 'arrivalAddress' | 'arrivalManualAddress' | 'arrivalManualGeocodeStatus' | 'departureAddress' | 'departureManualAddress' | 'departureManualGeocodeStatus' | 'departureTouchedRef' | 'favoriteSuggestions' | 'hasArrivalAddress' | 'hasDepartureAddress' | 'openPickerFor' | 'quickPlaceResolvingKey' | 'selectedVehicleType' | 'setArrivalLocation' | 'setArrivalManualAddress' | 'setDepartureLocation' | 'setDepartureManualAddress' | 'setSelectedVehicleType' | 'setShowQuickLandmarks' | 'showQuickLandmarks' | 'swapRoutePoints'>;
+type Props = Pick<RequestTripController, 'addressInputMode' | 'addressSectionStep' | 'applyQuickPlaceToNextSlot' | 'applySelectionToNextSlot' | 'arrivalAddress' | 'arrivalManualAddress' | 'arrivalManualGeocodeStatus' | 'arrivalReference' | 'departureAddress' | 'departureManualAddress' | 'departureManualGeocodeStatus' | 'departureReference' | 'departureTouchedRef' | 'favoriteSuggestions' | 'hasArrivalAddress' | 'hasDepartureAddress' | 'openPickerFor' | 'quickPlaceResolvingKey' | 'selectedVehicleType' | 'setArrivalLocation' | 'setArrivalManualAddress' | 'setArrivalReference' | 'setDepartureLocation' | 'setDepartureManualAddress' | 'setDepartureReference' | 'setSelectedVehicleType' | 'setShowQuickLandmarks' | 'showQuickLandmarks' | 'swapRoutePoints'>;
 
 export function RequestRouteStep({
   addressInputMode,
@@ -27,9 +27,11 @@ export function RequestRouteStep({
   arrivalAddress,
   arrivalManualAddress,
   arrivalManualGeocodeStatus,
+  arrivalReference,
   departureAddress,
   departureManualAddress,
   departureManualGeocodeStatus,
+  departureReference,
   departureTouchedRef,
   favoriteSuggestions,
   hasArrivalAddress,
@@ -39,8 +41,10 @@ export function RequestRouteStep({
   selectedVehicleType,
   setArrivalLocation,
   setArrivalManualAddress,
+  setArrivalReference,
   setDepartureLocation,
   setDepartureManualAddress,
+  setDepartureReference,
   setSelectedVehicleType,
   setShowQuickLandmarks,
   showQuickLandmarks,
@@ -48,8 +52,9 @@ export function RequestRouteStep({
 }: Props) {
   return (<Animated.View entering={FadeIn} style={styles.routeSetup}>
     <View style={styles.routeSetupHeader}>
-      <Text style={styles.routeSetupTitle}>Votre trajet</Text>
-      <TouchableOpacity style={styles.routeSetupSwap} onPress={swapRoutePoints} activeOpacity={0.85}>
+      <Text style={styles.routeSetupTitle}>Où allez-vous ?</Text>
+      <TouchableOpacity style={styles.routeSetupSwap} onPress={swapRoutePoints} activeOpacity={0.85}
+        accessibilityRole="button" accessibilityLabel="Inverser le départ et la destination">
         <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
       </TouchableOpacity>
     </View>
@@ -91,6 +96,20 @@ export function RequestRouteStep({
             <ManualAddressStatus status={departureManualGeocodeStatus} appearance={styles} />
           </View>
         ) : null}
+        <View style={styles.routeManualWrap}>
+          <Text style={styles.routeReferenceLabel}>Référence au départ · facultative</Text>
+          <TextInput
+            style={styles.rideReferenceInput}
+            value={departureReference}
+            onChangeText={setDepartureReference}
+            placeholder="Ex. Devant la pharmacie"
+            placeholderTextColor={Colors.gray[500]}
+            accessibilityLabel="Référence au départ, facultative"
+            autoCapitalize="sentences"
+            returnKeyType="done"
+            maxLength={200}
+          />
+        </View>
       </View>
 
       <View style={styles.routeStackDivider} />
@@ -130,6 +149,20 @@ export function RequestRouteStep({
             <ManualAddressStatus status={arrivalManualGeocodeStatus} appearance={styles} />
           </View>
         ) : null}
+        <View style={styles.routeManualWrap}>
+          <Text style={styles.routeReferenceLabel}>Référence à l’arrivée · facultative</Text>
+          <TextInput
+            style={styles.rideReferenceInput}
+            value={arrivalReference}
+            onChangeText={setArrivalReference}
+            placeholder="Ex. Portail bleu, entrée principale"
+            placeholderTextColor={Colors.gray[500]}
+            accessibilityLabel="Référence à l’arrivée, facultative"
+            autoCapitalize="sentences"
+            returnKeyType="done"
+            maxLength={200}
+          />
+        </View>
       </View>
     </View>
 
@@ -210,10 +243,7 @@ export function RequestRouteStep({
 
     <View style={styles.routeVehicleChoice}>
       <View style={styles.routeVehicleChoiceHeader}>
-        <Text style={styles.routeVehicleChoiceTitle}>Type de véhicule</Text>
-        <Text style={styles.routeVehicleChoiceSubtitle}>
-          Choisissez le véhicule souhaité pour ce trajet
-        </Text>
+        <Text style={styles.routeVehicleChoiceTitle}>Quel véhicule ?</Text>
       </View>
       <View style={styles.routeVehicleChoiceRow}>
         {REGISTERED_VEHICLE_TYPE_OPTIONS.map((option) => {

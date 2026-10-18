@@ -1,7 +1,9 @@
 import { styles } from '../../features/screen-styles/app/driver/detail/index';
 import { Colors } from '@/constants/styles';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
-import { useGetAllTripsQuery } from '@/store/api/tripApi';
+import { useGetAverageRatingQuery } from '@/store/api/reviewApi';
+import { usePublicReviewPage } from '@/hooks/usePublicReviewPage';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,75 +21,49 @@ import {
 } from 'react-native';
 
 export default function DriverDetailsScreen() {
+  const active = useScreenIsActive();
   const router = useRouter();
   const params = useLocalSearchParams();
   const driverId = typeof params.id === 'string' ? params.id : '';
 
   const { data: driver, isLoading: driverLoading, refetch: refetchDriver } = useGetPublicUserInfoQuery(driverId, {
-    skip: !driverId,
+    skip: !driverId || !active,
   });
 
-  const { data: reviews, refetch: refetchReviews } = useGetReviewsQuery(driverId, {
-    skip: !driverId,
-  });
+  const { reviews, total: reviewCount, refetch: refetchReviews, pagination } = usePublicReviewPage(driverId, active);
 
   const { data: avgRatingData, refetch: refetchAvgRating } = useGetAverageRatingQuery(driverId, {
-    skip: !driverId,
+    skip: !driverId || !active,
   });
 
-  // Récupérer les trajets du driver pour calculer les statistiques
-  // Note: L'API peut ne pas supporter le filtre driverId, donc on récupère tous les trajets et on filtre côté client
-  // Pour une meilleure performance, on pourrait créer une API dédiée
-  const { data: allTrips, refetch: refetchTrips } = useGetAllTripsQuery(
-    {
-      skip: !driver?.id,
-    }
-  );
-
   const [refreshing, setRefreshing] = useState(false);
-  console.log("driver's trips:", allTrips?.length)
 
   const onRefresh = useCallback(async () => {
+    if (!active) return;
     setRefreshing(true);
     try {
       await Promise.all([
         refetchDriver(),
         refetchReviews(),
         refetchAvgRating(),
-        refetchTrips(),
       ]);
     } catch (error) {
       console.warn('Error refreshing driver data:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchDriver, refetchReviews, refetchAvgRating, refetchTrips]);
+  }, [active, refetchDriver, refetchReviews, refetchAvgRating]);
 
-  const driverTrips = useMemo(() => {
-    if (!allTrips) return [];
-    return allTrips.filter((trip) => trip.driverId === driverId);
-  }, [allTrips, driverId]);
+  // Aggregate server statistics preserve privacy without downloading everyone's trips.
+  const stats = { totalTrips: driver?.totalTrips ?? 0, completedTrips: driver?.completedTrips ?? '—' };
+  const driverVehicles = driver?.vehicles?.filter(vehicle => vehicle.isActive) ?? [];
 
-  const stats = useMemo(() => {
-    const totalTrips = driverTrips?.length;
-    const completedTrips = driverTrips?.filter((trip) => trip.status === 'completed').length;
-    return {
-      totalTrips,
-      completedTrips,
-    };
-  }, [driver?.totalTrips, driverTrips]);
-
-  const reviewCount = reviews?.length ?? 0;
   const averageRating = useMemo(() => {
     if (avgRatingData?.averageRating !== undefined) {
       return avgRatingData.averageRating;
     }
-    if (reviews && reviews.length > 0) {
-      const sum = reviews.reduce((acc, review) => acc + review.rating, 0);
-      return sum / reviews.length;
-    }
     return driver?.rating ?? 0;
-  }, [avgRatingData, reviews, driver?.rating]);
+  }, [avgRatingData, driver?.rating]);
 
   const driverName = useMemo(() => {
     if (!driver) return '';
@@ -231,15 +207,9 @@ export default function DriverDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.vehiclesCard}>
             <Text style={styles.sectionTitle}>VÉHICULES</Text>
-            {driverTrips.length > 0 ? (
+            {driverVehicles.length > 0 ? (
               <View style={styles.vehiclesList}>
-                {Array.from(
-                  new Map(
-                    driverTrips
-                      .filter((trip) => trip?.vehicle?.isActive)
-                      .map((trip) => [trip.vehicle!.id, trip.vehicle!])
-                  ).values()
-                ).map((vehicle) => (
+                {driverVehicles.map((vehicle) => (
                   <View key={vehicle.id} style={styles.vehicleItem}>
                     <View style={styles.vehicleIcon}>
                       <Ionicons name="car" size={24} color={Colors.primary} />
@@ -260,11 +230,6 @@ export default function DriverDetailsScreen() {
                     )}
                   </View>
                 ))}
-                {driverTrips.filter((trip) => trip.vehicle).length === 0 && (
-                  <Text style={styles.emptyVehiclesText}>
-                    Aucun véhicule enregistré visible publiquement
-                  </Text>
-                )}
               </View>
             ) : (
               <Text style={styles.emptyVehiclesText}>
@@ -278,7 +243,7 @@ export default function DriverDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.reviewsCard}>
             <Text style={styles.sectionTitle}>AVIS ({reviewCount})</Text>
-            {reviewCount === 0 ? (
+            {reviewCount === 0 && !pagination.busy && !pagination.error ? (
               <Text style={styles.emptyReviewsText}>
                 Pas encore d’avis pour ce conducteur
               </Text>
@@ -311,6 +276,7 @@ export default function DriverDetailsScreen() {
                 ))}
               </View>
             )}
+            <HistoryPagination {...pagination} />
           </View>
         </View>
       </ScrollView>

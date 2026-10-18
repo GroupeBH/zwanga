@@ -19,7 +19,8 @@ import {
   normalizeHeadingDelta,
   type NavigationStop,
 } from '@/utils/navigation/routeProgress';
-import MapView from 'react-native-maps';
+import type MapView from 'react-native-maps';
+import { fitNavigationCamera, type MapLayout } from '@/utils/navigation/mapCamera';
 
 export const isCoordinateAllowedForNavigationRoute = (
   coordinate: RouteCoordinate | null | undefined,
@@ -78,12 +79,14 @@ export const fitMapToSafeCoordinates = (
     edgePadding,
     logContext = 'navigation-map',
     singleCoordinateDelta = DEFAULT_MAP_FOCUS_DELTA,
+    layout = null,
   }: {
     animated?: boolean;
     durationMs?: number;
     edgePadding: MapEdgePadding;
     logContext?: string;
     singleCoordinateDelta?: number;
+    layout?: MapLayout | null;
   },
 ) => {
   if (!map) {
@@ -99,21 +102,8 @@ export const fitMapToSafeCoordinates = (
   }
 
   try {
-    if (safeCoordinates.length === 1) {
-      map.animateToRegion(
-        {
-          ...safeCoordinates[0],
-          latitudeDelta: singleCoordinateDelta,
-          longitudeDelta: singleCoordinateDelta,
-        },
-        durationMs,
-      );
-      return;
-    }
-
-    map.fitToCoordinates(safeCoordinates, {
-      edgePadding,
-      animated,
+    return fitNavigationCamera(map, safeCoordinates, layout, {
+      edgePadding, animated, durationMs, singleCoordinateDelta,
     });
   } catch (error) {
     console.warn('[Navigation] Ajustement de la carte ignoré pour éviter un plantage :', {

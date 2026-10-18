@@ -31,7 +31,7 @@ export function useDriverNavigationMapState({
   const mapRef = useRef<MapView>(null);
   const {
     shouldRenderMap, isMapReady: isNativeMapReady, readyRef: isMapReadyRef,
-    onMapReady: handleMapReady, onMapLayout, runMapCommand, navigateAfterRelease,
+    onMapReady: handleMapReady, onMapLayout, mapLayoutRef, runMapCommand, navigateAfterRelease,
   } = useNavigationMapLifecycle({ screenKey: tripId, enabled: isScreenActive, mapRef });
   const passengerMarkerRefs = useRef<Record<string, MapMarker | null>>({});
   const [currentLocation, setCurrentLocation] = useState<Location.LocationObject | null>(null);
@@ -118,6 +118,7 @@ export function useDriverNavigationMapState({
 
   return {
     runMapCommand,
+    mapLayoutRef,
     setLocallyAcceptedBookingIds,
     setLocallyPickedUpBookingIds,
     setLocallyCancelledBookingIds,

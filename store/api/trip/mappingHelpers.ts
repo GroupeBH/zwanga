@@ -28,6 +28,7 @@ export const mapServerVehicleTypeToClient = (
 };
 
 export type ServerRecurringTripTemplate = {
+  acceptedPaymentModes?: import('@/types').TripPaymentMode[];
   id: string;
   driverId: string;
   departureLocation: string;

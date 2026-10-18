@@ -1,19 +1,25 @@
 import { useManageTripController } from '../../../hooks/manage-trip/useManageTripController';
+import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
 import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
+import { ManageTripContactModal } from '@/features/manage-trip/ManageTripContactModal';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { labelStatus, statusColor } from '../../../features/manage-trip/manageTripStatus';
 import { styles } from '../../../features/screen-styles/app/trip/manage/detail/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
-import TripSecurityPanel from '@/components/trip/TripSecurityPanel';
 import { Colors, Spacing } from '@/constants/styles';
-import { openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ManageTripScreen() {
+  return <DriverTripAccessGuard><OwnerManageTripScreen /></DriverTripAccessGuard>;
+}
+
+function OwnerManageTripScreen() {
   const model = useManageTripController();
 
   if (!model.state.tripId) {
@@ -86,6 +92,7 @@ export default function ManageTripScreen() {
   }
 
   return (
+    <RideOverlayScope scopeKey={`manage:${model.state.tripId}`} active={model.state.isScreenActive}>
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity 
@@ -100,7 +107,7 @@ export default function ManageTripScreen() {
           <View style={styles.headerBadge}>
             <View style={[styles.statusDot, { backgroundColor: statusColor(model.trip.status).color }]} />
             <Text style={[styles.headerSubtitle, { color: statusColor(model.trip.status).color }]}>
-              {labelStatus(model.trip.status)}
+              {isTripExpired(model.trip) ? 'Expiré' : labelStatus(model.trip.status)}
             </Text>
           </View>
         </View>
@@ -120,6 +127,7 @@ export default function ManageTripScreen() {
 
       {model.state.feedback && (
         <Animated.View
+          accessibilityLiveRegion="polite"
           entering={FadeInDown}
           style={[
             styles.feedbackBanner,
@@ -155,50 +163,6 @@ export default function ManageTripScreen() {
         canCompleteTrip={model.canCompleteTrip}
       />
 
-      <Modal
-        animationType="slide"
-        transparent
-        visible={model.state.securityModalVisible}
-        onRequestClose={model.closeTripSecurityModal}
-      >
-        <View style={styles.securityModalOverlay}>
-          <TouchableOpacity
-            style={styles.securityModalBackdrop}
-            activeOpacity={1}
-            onPress={model.closeTripSecurityModal}
-          />
-          <View
-            style={[
-              styles.securityModalContent,
-              { paddingBottom: Math.max(model.state.insets.bottom, Spacing.md) + Spacing.md },
-            ]}
-          >
-            <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Sécurité du trajet</Text>
-              <TouchableOpacity
-                style={styles.securityModalCloseButton}
-                onPress={model.closeTripSecurityModal}
-              >
-                <Ionicons name="close" size={22} color={Colors.gray[700]} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.securityModalBody}
-              contentContainerStyle={styles.securityModalBodyContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <TripSecurityPanel
-                tripId={model.trip.id}
-                role="driver"
-                tripStatus={model.trip.status}
-                openSelectorByDefault={model.state.securityModalVisible}
-                compact
-              />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
 
 
       <Modal
@@ -267,116 +231,8 @@ export default function ManageTripScreen() {
       </Modal>
 
 
-      <Modal animationType="slide" transparent visible={model.state.rejectModalVisible}>
-        <View style={styles.bookingModalOverlay}>
-          <View style={[styles.bookingModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]}>
-            <Text style={styles.bookingModalTitle}>Refuser la réservation</Text>
-            <Text style={styles.bookingModalDescription}>
-              Expliquez brièvement au passager la raison du refus.
-            </Text>
-            <TextInput
-              style={styles.bookingSeatInput}
-              placeholder="Ex: Nombre de places insuffisant"
-              placeholderTextColor={Colors.gray[400]}
-              value={model.state.rejectReason}
-              onChangeText={(text) => {
-                model.state.setRejectReason(text);
-                if (model.state.rejectError) model.state.setRejectError('');
-              }}
-              multiline
-              editable={!model.state.isRejecting}
-            />
-            {model.state.rejectError ? <Text style={styles.bookingModalError}>{model.state.rejectError}</Text> : null}
-            <View style={styles.bookingModalActions}>
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
-                onPress={model.bookingsActions.closeRejectModal}
-                disabled={model.state.isRejecting}
-              >
-                <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
-                onPress={model.bookingsActions.handleRejectSubmit}
-                disabled={model.state.isRejecting}
-              >
-                {model.state.isRejecting ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-
-      {/* Contact Modal pour les passagers */}
-      <Modal
-        visible={model.state.contactModalVisible}
-        animationType="fade"
-        transparent
-        onRequestClose={() => model.state.setContactModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.contactModalOverlay}
-          activeOpacity={1}
-          onPress={() => model.state.setContactModalVisible(false)}
-        >
-          <Animated.View entering={FadeInDown} style={[styles.contactModalCard, { paddingBottom: Math.max(model.state.insets.bottom, 16) + 24 }]} onStartShouldSetResponder={() => true}>
-            <View style={styles.contactModalHeader}>
-              <View style={styles.contactModalIconWrapper}>
-                <View style={styles.contactModalIconBadge}>
-                  <Ionicons name="logo-whatsapp" size={32} color="#25D366" />
-                </View>
-              </View>
-              <Text style={styles.contactModalTitle}>
-                Contacter {model.state.selectedPassengerName || 'le passager'}
-              </Text>
-              <Text style={styles.contactModalSubtitle}>
-                Contact via WhatsApp uniquement
-              </Text>
-            </View>
-
-            <View style={styles.contactModalActions}>
-              <TouchableOpacity
-                style={[styles.contactModalButton, styles.contactModalButtonWhatsApp]}
-                onPress={async () => {
-                  model.state.setContactModalVisible(false);
-                  if (model.state.selectedPassengerPhone) {
-                    await openWhatsApp(model.state.selectedPassengerPhone, (errorMsg) => {
-                      model.state.showDialog({
-                        variant: 'danger',
-                        title: 'Erreur',
-                        message: errorMsg,
-                      });
-                    });
-                  }
-                }}
-              >
-                <View style={styles.contactModalButtonIcon}>
-                  <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
-                </View>
-                <View style={styles.contactModalButtonContent}>
-                  <Text style={styles.contactModalButtonTitle}>WhatsApp</Text>
-                  <Text style={styles.contactModalButtonSubtitle}>Envoyer un message WhatsApp</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.contactModalCancelButton}
-              onPress={() => model.state.setContactModalVisible(false)}
-            >
-              <Text style={styles.contactModalCancelText}>Annuler</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
+      <ManageTripContactModal state={model.state} bookings={model.tracking.visibleBookings} />
     </SafeAreaView>
+    </RideOverlayScope>
   );
 }
-
-

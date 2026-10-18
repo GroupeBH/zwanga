@@ -1,10 +1,15 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { validateAndRefreshTokens } from '../../services/tokenRefresh';
 import { clearTokens, getTokens, storeTokens } from '../../services/tokenStorage';
+import { getTokenSessionVersion } from '../../services/tokenSession';
 import type { User } from '../../types';
 import { decodeJWT } from '../../utils/jwt';
+import { isDriverAccount } from '@/utils/accountRole';
+import { hasRecoverableAuthSession, hasUsableNewAuthSession } from '@/features/auth/sessionPolicy';
 
 interface AuthState {
+  initializationId?: string;
+  logoutRequestId?: string;
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -33,12 +38,14 @@ const initialState: AuthState = {
 export const performLogout = createAsyncThunk(
   'auth/performLogout',
   async (_, { dispatch }) => {
+    const version = getTokenSessionVersion();
     let backendLogoutSucceeded = false;
 
     // 1. Appeler le backend pour invalider le refresh token côté serveur
     // On ne bloque pas si ça échoue (l'utilisateur peut être offline)
     try {
       const { authApi } = await import('../api/authApi');
+      if (version !== getTokenSessionVersion()) return false;
       const logoutRequest = dispatch(authApi.endpoints.logout.initiate()) as {
         unwrap: () => Promise<unknown>;
         reset: () => void;
@@ -57,7 +64,7 @@ export const performLogout = createAsyncThunk(
     }
 
     // 2. Nettoyer les tokens dans SecureStore (access, refresh, FCM)
-    await clearTokens();
+    if (!(await clearTokens(version))) return false;
     console.log('[performLogout] SecureStore nettoyé');
 
     // 3. Nettoyer immédiatement l'auth Redux
@@ -76,9 +83,15 @@ export const saveTokensAndUpdateState = createAsyncThunk(
   'auth/saveTokensAndUpdateState',
   async (tokens: { accessToken: string; refreshToken: string }, { dispatch }) => {
     try {
+      if (!hasUsableNewAuthSession(tokens.accessToken, tokens.refreshToken)) {
+        throw new Error('Session reçue invalide ou expirée. Veuillez réessayer.');
+      }
       // 1. Sauvegarder d'abord dans SecureStore (séquentiellement)
       console.log('[saveTokensAndUpdateState] Sauvegarde des tokens dans SecureStore...');
-      await storeTokens(tokens.accessToken, tokens.refreshToken);
+      const writing = storeTokens(tokens.accessToken, tokens.refreshToken);
+      const version = getTokenSessionVersion();
+      const saved = await writing;
+      if (!saved || version !== getTokenSessionVersion()) return null;
       console.log('[saveTokensAndUpdateState] Tokens sauvegardés dans SecureStore avec succès');
 
       // 2. Ensuite, mettre à jour le state Redux
@@ -101,7 +114,12 @@ export const saveTokensAndUpdateState = createAsyncThunk(
 export const initializeAuth = createAsyncThunk(
   'auth/initialize',
   async () => {
+    const sessionVersion = getTokenSessionVersion();
     try {
+      // A locked/unavailable keychain is not proof of logout. Keep the startup
+      // gate mounted on read errors, and never cache that failure as empty tokens.
+      await getTokens({ throwOnError: true });
+      if (sessionVersion !== getTokenSessionVersion()) return null;
       // Valider et rafraîchir les tokens si nécessaire
       const isAuthenticated = await validateAndRefreshTokens();
       
@@ -111,28 +129,19 @@ export const initializeAuth = createAsyncThunk(
       }
       
       // Récupérer les tokens (potentiellement rafraîchis)
-      const { accessToken, refreshToken } = await getTokens();
+      const { accessToken, refreshToken } = await getTokens({ throwOnError: true });
+      if (sessionVersion !== getTokenSessionVersion()) return null;
       
       if (!accessToken || !refreshToken) {
+        return null;
+      }
+      if (!hasRecoverableAuthSession(accessToken, refreshToken)) {
+        await clearTokens(sessionVersion);
         return null;
       }
       
       // Décoder le payload du token
       const payload = decodeJWT(accessToken);
-      console.log("payload at initializeAuth", payload);
-      
-      if (!payload) {
-        console.warn('[initializeAuth] Token JWT invalide - mais on garde les tokens pour éviter la déconnexion');
-        // NE PAS supprimer les tokens - ils pourraient être valides mais juste mal décodés
-        // L'utilisateur pourra toujours utiliser l'app, même si certaines infos ne sont pas disponibles
-        // Les tokens seront validés lors de la prochaine requête API
-        return {
-          accessToken,
-          refreshToken,
-          tokenPayload: null,
-          userInfo: null,
-        };
-      }
       
       console.log('[initializeAuth] Authentification initialisée avec succès');
       
@@ -147,9 +156,8 @@ export const initializeAuth = createAsyncThunk(
       // Cela pourrait être une erreur temporaire (réseau, etc.)
       console.error('[initializeAuth] Erreur lors de l\'initialisation de l\'auth:', error);
       console.warn('[initializeAuth] Erreur non critique - les tokens sont conservés dans SecureStore');
-      // Retourner null mais NE PAS supprimer les tokens
-      // L'utilisateur pourra toujours se reconnecter avec ses tokens existants
-      return null;
+      // Do not mount login before we know whether credentials exist.
+      throw new Error('Impossible de restaurer la session. Veuillez réessayer.');
     }
   }
 );
@@ -159,13 +167,17 @@ const authSlice = createSlice({
   initialState,
   reducers: {
     setUser: (state, action: PayloadAction<any>) => {
-      state.user = action.payload;
+      state.user = action.payload ? { ...action.payload, isDriver: isDriverAccount(action.payload) } : null;
       // Ne mettre isAuthenticated = true que si on a des tokens
       // Cela évite les problèmes de timing où setUser est appelé avant setTokens
       state.isAuthenticated = !!(state.accessToken && state.refreshToken);
       state.error = null;
     },
     setTokens: (state, action: PayloadAction<{ accessToken: string; refreshToken: string }>) => {
+      if (!hasRecoverableAuthSession(action.payload.accessToken, action.payload.refreshToken)) return;
+      state.initializationId = undefined;
+      state.logoutRequestId = undefined;
+      state.isLoading = false;
       state.accessToken = action.payload.accessToken;
       state.refreshToken = action.payload.refreshToken;
       
@@ -173,15 +185,22 @@ const authSlice = createSlice({
       applyTokenDataToState(state, action.payload.accessToken);
     },
     setAccessToken: (state, action: PayloadAction<string>) => {
+      if (!hasRecoverableAuthSession(action.payload, state.refreshToken)) return;
       state.accessToken = action.payload;
       applyTokenDataToState(state, action.payload);
     },
     updateUser: (state, action: PayloadAction<Partial<User>>) => {
-      if (state.user) {
+      if (state.user && (!action.payload.id || action.payload.id === state.user.id)) {
+        if (state.user.updatedAt && action.payload.updatedAt &&
+          Date.parse(state.user.updatedAt) > Date.parse(action.payload.updatedAt)) return;
         state.user = { ...state.user, ...action.payload };
+        state.user.isDriver = isDriverAccount(state.user);
       }
     },
     logout: (state) => {
+      state.initializationId = undefined;
+      state.logoutRequestId = undefined;
+      state.isLoading = false;
       // Réinitialiser l'état Redux (le nettoyage SecureStore est fait par performLogout)
       state.user = null;
       state.isAuthenticated = false;
@@ -203,10 +222,13 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(initializeAuth.pending, (state) => {
+      .addCase(initializeAuth.pending, (state, action) => {
+        state.initializationId = action.meta.requestId;
         state.isLoading = true;
       })
       .addCase(initializeAuth.fulfilled, (state, action) => {
+        if (state.initializationId !== action.meta.requestId) return;
+        state.initializationId = undefined;
         state.isLoading = false;
         if (action.payload) {
           state.accessToken = action.payload.accessToken;
@@ -227,12 +249,16 @@ const authSlice = createSlice({
         }
       })
       .addCase(initializeAuth.rejected, (state, action) => {
+        if (state.initializationId !== action.meta.requestId) return;
+        state.initializationId = undefined;
         state.isLoading = false;
         state.error = action.error.message || 'Erreur lors de l\'initialisation';
         state.isAuthenticated = false;
       })
       // Gérer le logout complet via performLogout
-      .addCase(performLogout.fulfilled, (state) => {
+      .addCase(performLogout.fulfilled, (state, action) => {
+        if (state.logoutRequestId !== action.meta.requestId) return;
+        state.logoutRequestId = undefined;
         state.user = null;
         state.isAuthenticated = false;
         state.accessToken = null;
@@ -241,10 +267,14 @@ const authSlice = createSlice({
         state.error = null;
         state.isLoading = false;
       })
-      .addCase(performLogout.pending, (state) => {
+      .addCase(performLogout.pending, (state, action) => {
+        state.initializationId = undefined;
+        state.logoutRequestId = action.meta.requestId;
         state.isLoading = true;
       })
-      .addCase(performLogout.rejected, (state) => {
+      .addCase(performLogout.rejected, (state, action) => {
+        if (state.logoutRequestId !== action.meta.requestId) return;
+        state.logoutRequestId = undefined;
         // Même en cas d'erreur, on déconnecte l'utilisateur
         state.user = null;
         state.isAuthenticated = false;
@@ -275,7 +305,7 @@ function parseUserInfo(payload: any): any | null {
     return null;
   }
   return {
-    id: payload.sub,
+    id: payload.sub ?? payload.userId,
     phone: payload.phone,
     role: (payload.role as User['role']),
     status: payload.status,
@@ -290,7 +320,16 @@ function applyTokenDataToState(state: AuthState, accessToken: string) {
   const user = parseUserInfo(payload);
   console.log("user from token", user);
   if (user) {
-    state.user = user;
+    const current = state.user?.id === user.id ? state.user : null;
+    // Preserve a server-confirmed activation against an older token replayed by
+    // registration. A token issued after that activation remains authoritative.
+    const keepActivatedRole = current?.driverActivatedAt &&
+      user.iat * 1000 < new Date(current.driverActivatedAt).getTime();
+    const nextUser: User = { ...current, ...user,
+      ...(keepActivatedRole ? { role: current.role } : {}),
+    };
+    nextUser.isDriver = isDriverAccount(nextUser);
+    state.user = nextUser;
   }
   state.isAuthenticated = true;
   state.error = null;

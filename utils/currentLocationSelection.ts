@@ -1,4 +1,5 @@
 import * as Location from 'expo-location';
+import { readableLocation } from '@/utils/readableLocation';
 
 type Coordinate = {
   latitude: number;
@@ -28,10 +29,18 @@ export async function buildCurrentLocationSelection(coordinate: Coordinate) {
   }
 
   return {
-    title: address?.name || address?.street || 'Ma position',
-    address:
-      formatAddress(address) ||
-      `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
+    ...readableLocation({
+      name: address?.name,
+      formattedAddress: formatAddress(address),
+      addressComponents: [
+        { longName: address?.streetNumber ?? '', types: ['street_number'] },
+        { longName: address?.street ?? '', types: ['route'] },
+        { longName: address?.district ?? '', types: ['neighborhood'] },
+        { longName: address?.city || address?.subregion || '', types: ['locality'] },
+        { longName: address?.region ?? '', types: ['administrative_area_level_1'] },
+      ],
+      fallbackTitle: 'Ma position',
+    }),
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
   };

@@ -1,7 +1,8 @@
 import { evaluateBackgroundTripEnd } from './background/driverTripCompletion';
-import { isDriverBackgroundLocationAvailable, hasStartedDriverBackgroundLocationUpdates, stopRegisteredDriverBackgroundLocationTask } from './background/driverTaskLifecycle';
+import { latestLocation as selectLatestLocation } from './background/latestLocation';
+import { isDriverBackgroundLocationAvailable } from './background/driverTaskLifecycle';
+import { reserveDriverGpsStart, startDriverGpsProfile, stopDriverGpsProfile, stopDriverGpsIfIdle } from './background/driverGpsProfile';
 import { DRIVER_BACKGROUND_LOCATION_TASK } from './background/driverTaskName';
-export { DRIVER_BACKGROUND_LOCATION_TASK } from './background/driverTaskName';
 import { getRtkErrorStatus, getRtkErrorMessage, shouldBackOffAfterBackgroundResponse, isTerminalDriverTrackingResponse } from './background/driverTrackingErrors';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
@@ -9,14 +10,14 @@ import { Platform } from 'react-native';
 import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 import { publishNativeRideLocation } from './rideLocationStream';
 
-import { ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS } from '@/constants/rideProgress';
-import { clearActiveDriverBackgroundTripId, getActiveDriverBackgroundTripSession, setActiveDriverBackgroundTripId, updateActiveDriverBackgroundTripSession, type DriverBackgroundLocationCoordinate } from '@/services/driverBackgroundLocationSession';
-import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
+import { ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS } from '@/constants/rideProgress';
+import { getActiveDriverBackgroundTripSession, updateActiveDriverBackgroundTripSession, type DriverBackgroundLocationCoordinate } from '@/services/driverBackgroundLocationSession';
+import { hasRecoverableSession, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { tripApi } from '@/store/api/tripApi';
 
-import { DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS, DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS } from '@/utils/navigation/tripCompletion';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+export { DRIVER_BACKGROUND_LOCATION_TASK } from './background/driverTaskName';
 
 const BACKGROUND_LOCATION_FETCH_TIMEOUT_MS = 18_000;
 const BACKGROUND_LOCATION_FAILURE_BACKOFF_MS = 30_000;
@@ -66,9 +67,8 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
   driverLocationRequestInFlight = true;
 
   try {
-    if (!(await getValidAccessToken())) {
-      await clearActiveDriverBackgroundTripId(tripId);
-      await stopRegisteredDriverBackgroundLocationTask();
+    if (!(await hasRecoverableSession())) {
+      await stopDriverGpsProfile(tripId);
       return false;
     }
 
@@ -122,8 +122,7 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
       const responseStatus = getRtkErrorStatus(result.error);
       const responseMessage = getRtkErrorMessage(result.error);
       if (isTerminalDriverTrackingResponse(responseStatus, responseMessage)) {
-        await clearActiveDriverBackgroundTripId(tripId);
-        await stopRegisteredDriverBackgroundLocationTask();
+        await stopDriverGpsProfile(tripId);
       } else if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
         driverLocationBackoffUntil = Date.now() + BACKGROUND_LOCATION_FAILURE_BACKOFF_MS;
       }
@@ -170,14 +169,12 @@ const defineDriverBackgroundLocationTask = () => {
         const session = await getActiveDriverBackgroundTripSession();
         const tripId = session?.tripId ?? null;
         if (!tripId) {
-          await stopRegisteredDriverBackgroundLocationTask();
+          await stopDriverGpsIfIdle();
           return;
         }
 
         const locations = data?.locations ?? [];
-        const latestLocation = locations
-          .filter((location) => typeof location?.timestamp === 'number')
-          .sort((a, b) => b.timestamp - a.timestamp)[0];
+        const latestLocation = selectLatestLocation(locations);
 
         if (!latestLocation) {
           return;
@@ -205,6 +202,7 @@ export async function startDriverBackgroundLocationTracking(
     return false;
   }
 
+  const generation = reserveDriverGpsStart(tripId);
   try {
     if (!(await isDriverBackgroundLocationAvailable())) {
       return false;
@@ -255,53 +253,8 @@ export async function startDriverBackgroundLocationTracking(
       return false;
     }
 
-    const existingSession = await getActiveDriverBackgroundTripSession();
-    const sessionStored = await setActiveDriverBackgroundTripId(tripId, {
-      arrivalCoordinate: options.arrivalCoordinate ?? existingSession?.arrivalCoordinate ?? null,
-      lastDriverCoordinate:
-        options.lastDriverCoordinate ??
-        existingSession?.lastDriverCoordinate ??
-        null,
-      autoCompleteDistanceMeters:
-        options.autoCompleteDistanceMeters ??
-        existingSession?.autoCompleteDistanceMeters ??
-        DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
-      autoCompleteDwellMs:
-        options.autoCompleteDwellMs ??
-        existingSession?.autoCompleteDwellMs ??
-        DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
-      nearDestinationSinceMs:
-        existingSession?.tripId === tripId ? existingSession.nearDestinationSinceMs ?? null : null,
-    });
-    if (!sessionStored) {
-      return false;
-    }
-
-    if (await hasStartedDriverBackgroundLocationUpdates()) {
-      return true;
-    }
-
-    await Location.startLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
-      deferredUpdatesInterval: 2000, // iOS batches background callbacks, not GPS acquisition.
-      distanceInterval: ACTIVE_RIDE_BACKGROUND_DISTANCE_INTERVAL_METERS,
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-      foregroundService: Platform.OS === 'android'
-        ? {
-            notificationTitle: 'Trajet Zwanga en cours',
-            notificationBody: 'Votre position est partagée pendant le trajet.',
-            notificationColor: '#FF6B35',
-            killServiceOnDestroy: false,
-          }
-        : undefined,
-    });
-
-    return true;
+    return await startDriverGpsProfile(tripId, generation, options);
   } catch (error) {
-    await clearActiveDriverBackgroundTripId(tripId).catch(() => undefined);
     console.warn('[DriverBackgroundLocation] Demarrage ignore après erreur:', error);
     return false;
   }
@@ -329,12 +282,7 @@ export async function updateDriverBackgroundLocationCheckpoint(
 
 export async function stopDriverBackgroundLocationTracking(tripId?: string | null) {
   try {
-    const didClearActiveTrip = await clearActiveDriverBackgroundTripId(tripId);
-    if (!didClearActiveTrip) {
-      return;
-    }
-
-    await stopRegisteredDriverBackgroundLocationTask();
+    await stopDriverGpsProfile(tripId);
   } catch (error) {
     console.warn('[DriverBackgroundLocation] Stop ignore après erreur:', error);
   }

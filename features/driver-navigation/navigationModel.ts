@@ -60,6 +60,7 @@ export type FetchRouteOptions = {
 };
 
 export type PickupNoticeEventType =
+  | 'driver_near_pickup'
   | 'driver_arrived_pickup'
   | 'parties_nearby'
   | 'passenger_ready_pickup';

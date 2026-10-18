@@ -4,7 +4,8 @@ import { useDriverNavigationMapState } from './useDriverNavigationMapState';
 import { normalizeDriverLocationObject } from '../../features/driver-navigation/navigationBooking';
 import { fitMapToSafeCoordinates } from '../../features/driver-navigation/navigationMap';
 import { RouteCoordinate } from '../../features/driver-navigation/navigationModel';
-import React, { useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
+import { getNavigationPassengerStats } from '@/features/driver-navigation/passengerStats';
 
 interface Params {
   passengers: ReturnType<typeof useDriverNavigationBookings>;
@@ -34,43 +35,10 @@ export function useDriverPassengerPresentation({
         edgePadding: { top: 190, right: 56, bottom: 190, left: 56 },
       logContext: 'vehicle-passengers',
     });
-  }, [mapState.currentLocation, focusMapOnCoordinates, passengers.passengerMapLocations]);
+  }, [mapState.currentLocation, refs.currentLocationRef, focusMapOnCoordinates, passengers.passengerMapLocations]);
 
   // Calculs pour les stats passagers (mémorisés)
-  const passengerStats = React.useMemo(() => {
-    const pickups = mapState.waypoints.filter(wp => wp.type === 'pickup');
-    const dropoffs = mapState.waypoints.filter(wp => wp.type === 'dropoff');
-    const pendingPickups = pickups.filter(wp => !wp.completed);
-    const pendingDropoffs = dropoffs.filter(wp => !wp.completed);
-    const completedPickups = pickups.filter(wp => wp.completed);
-    const completedDropoffs = dropoffs.filter(wp => wp.completed);
-    
-    // Passagers uniques
-    const uniquePassengers = new Map<string, { name: string; pickedUp: boolean; droppedOff: boolean }>();
-    mapState.waypoints.forEach(wp => {
-      const existing = uniquePassengers.get(wp.passenger.id);
-      if (!existing) {
-        uniquePassengers.set(wp.passenger.id, {
-          name: wp.passenger.name,
-          pickedUp: wp.type === 'pickup' ? wp.completed : false,
-          droppedOff: wp.type === 'dropoff' ? wp.completed : false,
-        });
-      } else {
-        if (wp.type === 'pickup') existing.pickedUp = wp.completed;
-        if (wp.type === 'dropoff') existing.droppedOff = wp.completed;
-      }
-    });
-    
-    return {
-      totalPassengers: uniquePassengers.size,
-      pendingPickups: pendingPickups.length,
-      pendingDropoffs: pendingDropoffs.length,
-      completedPickups: completedPickups.length,
-      completedDropoffs: completedDropoffs.length,
-      inVehicle: completedPickups.length - completedDropoffs.length,
-      passengers: Array.from(uniquePassengers.entries()).map(([id, data]) => ({ id, ...data })),
-    };
-  }, [mapState.waypoints]);
+  const passengerStats = useMemo(() => getNavigationPassengerStats(mapState.waypoints), [mapState.waypoints]);
 
   return {
     passengerStats,

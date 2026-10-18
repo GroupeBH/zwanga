@@ -1,5 +1,6 @@
 import type { MapLocationSelection } from '@/components/LocationPickerModal';
 import type { GeocodeResponse } from '@/store/api/googleMapsApi';
+import { readableLocation } from '@/utils/readableLocation';
 import {
   isCoordinateInKinshasaBounds,
   normalizeTripMapCoordinate,
@@ -47,8 +48,7 @@ export function mapGeocodeResponseToSelection(
   }
 
   return {
-    title: trimmedAddress,
-    address: response.formattedAddress?.trim() || trimmedAddress,
+    ...readableLocation({ ...response, name: trimmedAddress }),
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
   };

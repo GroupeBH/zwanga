@@ -10,13 +10,18 @@ import { useDriverVoiceGuidance } from './useDriverVoiceGuidance';
 import { useDriverPickupActions } from './useDriverPickupActions';
 import { useDriverTripActions } from './useDriverTripActions';
 import { useDriverTripInterruptionActions } from './useDriverTripInterruptionActions';
+import { useDriverNavigationExitPrompt } from './useDriverNavigationExitPrompt';
 import { useDriverBookingActions } from './useDriverBookingActions';
-import { useCallback } from 'react';
+import { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
+import { useDriverRatingTransition } from './useDriverRatingTransition';
 
 
 
 export function useDriverNavigationController() {
   const session = useDriverNavigationSession();
+  const beginBookingAction = useDriverBookingActionGuard({ tripId: session.foundation.data.tripId,
+    active: session.foundation.data.isScreenActive, bookings: session.foundation.passengers.visibleBookings,
+    setProcessingBookingId: session.foundation.mapState.setProcessingBookingId });
 
   const voice = useDriverVoiceGuidance({
     isMountedRef: session.foundation.mapState.isMountedRef,
@@ -82,6 +87,16 @@ export function useDriverNavigationController() {
   // Mettre à jour l'étape actuelle en fonction de la position
   session.foundation.refs.fetchRouteRef.current = routeQuery.fetchRoute;
 
+  const forceRecalculateRoute = () => {
+    if (!session.foundation.data.isScreenActive || !session.foundation.data.isTripOngoing
+      || !session.foundation.mapState.isMountedRef.current || session.foundation.mapState.isLoadingRoute) return;
+    // Reuse the guarded RTK Query path, without clearing route signatures or the displayed route.
+    void routeQuery.fetchRoute({
+      originOverride: routeContext.getFreshDriverCoordinate() ?? undefined,
+      announceReroute: true,
+    });
+  };
+
   const stepProgress = useDriverNavigationStepProgress({
     stepsRef: session.foundation.refs.stepsRef,
     waypointsRef: session.foundation.refs.waypointsRef,
@@ -109,19 +124,9 @@ export function useDriverNavigationController() {
     completion: session.completion,
   });
 
-  // Forcer le recalcul de l'itinéraire
-  const forceRecalculateRoute = () => {
-    session.foundation.refs.lastRouteFetchTimeRef.current = 0; // Reset le timestamp
-    session.foundation.refs.routeFetchedRef.current = false; // Permettre un nouveau fetch
-    session.foundation.refs.routeSignatureRef.current = '';
-    if (session.foundation.data.trip && session.foundation.data.tripDepartureCoordinate && session.foundation.destination.activeRouteDestination) {
-      const originOverride = session.foundation.data.isTripOngoing ? routeContext.getFreshDriverCoordinate() ?? undefined : undefined;
-      routeQuery.fetchRoute({ originOverride });
-    }
-  };
-
   const bookingActions = useDriverBookingActions({
-    setProcessingBookingId: session.foundation.mapState.setProcessingBookingId,
+    commitBookingDecision: session.foundation.data.commitBookingDecision,
+    beginBookingAction,
     acceptBooking: session.foundation.data.acceptBooking,
     rememberAcceptedBooking: session.foundation.passengers.rememberAcceptedBooking,
     lastRouteFetchTimeRef: session.foundation.refs.lastRouteFetchTimeRef,
@@ -134,6 +139,7 @@ export function useDriverNavigationController() {
     rejectBooking: session.foundation.data.rejectBooking,
     isConfirmingPassengerInterruption: session.foundation.data.isConfirmingPassengerInterruption,
     confirmPassengerTripInterruption: session.foundation.data.confirmPassengerTripInterruption,
+    commitPassengerInterruptionResponse: session.foundation.data.commitPassengerInterruptionResponse,
     routeSignatureRef: session.foundation.refs.routeSignatureRef,
     isRejectingPassengerInterruption: session.foundation.data.isRejectingPassengerInterruption,
     rejectPassengerTripInterruption: session.foundation.data.rejectPassengerTripInterruption,
@@ -148,6 +154,8 @@ export function useDriverNavigationController() {
 
   // Fermer le modal de waypoint sans confirmer
   const pickupActions = useDriverPickupActions({
+    commitBookingDecision: session.foundation.data.commitBookingDecision,
+    beginBookingAction,
     waypointModalVisibleRef: session.foundation.refs.waypointModalVisibleRef,
     setWaypointModalVisible: session.foundation.mapState.setWaypointModalVisible,
     setActiveWaypoint: session.foundation.mapState.setActiveWaypoint,
@@ -168,7 +176,6 @@ export function useDriverNavigationController() {
     offRouteSampleCountRef: session.foundation.refs.offRouteSampleCountRef,
     lastOffRouteRerouteAtRef: session.foundation.refs.lastOffRouteRerouteAtRef,
     pickupBypassAction: session.foundation.mapState.pickupBypassAction,
-    setProcessingBookingId: session.foundation.mapState.setProcessingBookingId,
     speakNavigationMessage: voice.speakNavigationMessage,
     showDialog: session.foundation.data.showDialog,
     cancelBooking: session.foundation.data.cancelBooking,
@@ -179,34 +186,19 @@ export function useDriverNavigationController() {
     reconcileBookingStatus: session.foundation.data.reconcileBookingStatus,
   });
 
-  const handleRatePassengersFromTripEnd = useCallback(() => {
-    if (!session.foundation.data.tripId) {
-      return;
-    }
+  const handleRatePassengersFromTripEnd = useDriverRatingTransition(session.foundation);
 
-    pickupActions.dismissTripEndNotice();
-    session.foundation.mapState.navigateAfterRelease(() => session.foundation.data.router.replace(`/rate/${session.foundation.data.tripId}`));
-  }, [pickupActions.dismissTripEndNotice, session.foundation.mapState.navigateAfterRelease, session.foundation.data.router, session.foundation.data.tripId]);
-
-  // Quitter la navigation
-  const handleExitNavigation = useCallback(() => {
-    session.foundation.data.showDialog({
-      title: 'Quitter la navigation',
-      message: 'Voulez-vous vraiment quitter la navigation GPS ?',
-      variant: 'warning',
-      icon: 'exit-outline',
-      actions: [
-        {
-          label: 'Quitter',
-          variant: 'primary',
-          onPress: session.foundation.exitActions.navigateBackSafely,
-        },
-        { label: 'Annuler', variant: 'secondary' },
-      ],
-    });
-  }, [session.foundation.exitActions.navigateBackSafely, session.foundation.data.showDialog]);
+  const handleBackNavigation = useDriverNavigationExitPrompt({
+    status: session.foundation.data.trip?.status,
+    interruptionPending: Boolean(session.foundation.passengers.activeDriverInterruptionRequest),
+    navigateBackSafely: session.foundation.exitActions.navigateBackSafely,
+    showDialog: session.foundation.data.showDialog,
+  });
 
   const interruptionActions = useDriverTripInterruptionActions({
+    isScreenActive: session.foundation.data.isScreenActive,
+    navigateBackSafely: session.foundation.exitActions.navigateBackSafely,
+    isExitingRef: session.foundation.refs.isExitingRef,
     tripId: session.foundation.data.tripId,
     isRestartingTrip: session.foundation.data.isRestartingTrip,
     isTripFetching: session.foundation.data.isTripFetching,
@@ -258,7 +250,7 @@ export function useDriverNavigationController() {
     isFocused: session.foundation.data.isFocused,
     securityModalVisible: session.foundation.mapState.securityModalVisible,
     setSecurityModalVisible: session.foundation.mapState.setSecurityModalVisible,
-    handleExitNavigation,
+    handleExitNavigation: handleBackNavigation,
   });
 
   // Vérifier que le trip est chargé et a des coordonnées valides
@@ -273,7 +265,9 @@ export function useDriverNavigationController() {
     session,
     presentation,
     interruptionActions,
-    handleExitNavigation,
+    // The explicit close icon leaves directly; hardware Back keeps its existing prompt.
+    // Use the guarded exit so native map release and UI cleanup still run.
+    handleExitNavigation: session.foundation.exitActions.navigateBackSafely,
     passengerPresentation,
     bookingActions,
     routeFormatting,

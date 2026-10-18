@@ -20,6 +20,7 @@ const mocks = {
   '@/components/forms/FormLayout': { FormModal: 'FormModal' },
   '@/utils/reanimated': { default: { View: 'AnimatedView' }, FadeInDown: motion },
   '@/utils/errorHelpers': errors,
+  '@/features/driver-payments/CashCommissionNotice': { CashCommissionNotice: 'CashCommissionNotice' },
 };
 const location = { name: 'Gombe', lat: -4.3, lng: 15.3, address: 'Gombe', hasCoordinates: true };
 const request = {
@@ -39,12 +40,23 @@ function text(tree) {
   return React.isValidElement(tree) ? text(tree.props.children) : '';
 }
 
+function driverActionsHook() {
+  const hooks = hookHarness();
+  const { useRequestDriverActions } = loader({
+    ...mocks, react: { ...React, ...hooks.react },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/store/hooks': { useAppDispatch: () => noop },
+    '@/store/api/tripApi': { tripApi: { util: { upsertQueryEntries: value => value } } },
+  })('hooks/request-detail/useRequestDriverActions.ts');
+  return params => hooks.render(() => useRequestDriverActions(params));
+}
+
 test('request acceptance still uses the selected vehicle and confirmed price is never replaced in its payload', async () => {
   const calls = [], dialogs = [], routes = [];
-  const { useRequestDriverActions } = loader(mocks)('hooks/request-detail/useRequestDriverActions.ts');
+  const useRequestDriverActions = driverActionsHook();
   const params = {
     tripRequest: request, id: request.id, showDialog: value => dialogs.push(value),
-    router: { push: value => routes.push(value) }, refetch: noop,
+    router: { push: value => routes.push(value), replace: value => routes.push(value) }, refetch: noop,
     directAcceptDepartureDate: new Date(request.departureDateMin), canAcceptRequest: true,
     setShowDirectAcceptModal: noop, compatibleActiveVehicles: [vehicle('first'), vehicle('second')],
     requestedVehicleType: 'car', directAcceptVehicle: vehicle('second'),
@@ -58,7 +70,7 @@ test('request acceptance still uses the selected vehicle and confirmed price is 
   assert.deepEqual(calls, [{ tripRequestId: 'request', payload: {
     vehicleId: 'second', departureDate: '2099-01-01T10:00:00.000Z', requiresPassengerKyc: true,
   } }]);
-  dialogs.at(-1).actions[0].onPress();
+  assert.deepEqual(dialogs, [], 'the shared contact invitation replaces the old success dialog');
   assert.deepEqual(routes, ['/trip/manage/created']);
   calls.length = 0;
   await useRequestDriverActions({ ...params, directAcceptVehicle: null }).handleDirectAcceptTripRequest(false);
@@ -70,7 +82,7 @@ test('request acceptance still uses the selected vehicle and confirmed price is 
 test('a start failure after acceptance keeps access to the created trip without accepting a second time', async () => {
   const dialogs = [], routes = [];
   let accepts = 0;
-  const { useRequestDriverActions } = loader(mocks)('hooks/request-detail/useRequestDriverActions.ts');
+  const useRequestDriverActions = driverActionsHook();
   await useRequestDriverActions({
     tripRequest: request, id: request.id, showDialog: value => dialogs.push(value),
     router: { push: value => routes.push(value) }, refetch: noop,
@@ -147,6 +159,8 @@ test('acceptance modal keeps the vehicle actions, protected footer and disabled 
   const busy = elements(RequestAcceptModal({ ...params, isAcceptingTripRequest: true }));
   const submits = busy.filter(node => node.type === 'TouchableOpacity' && node.props.disabled);
   assert.ok(submits.length > 0);
+  assert.ok(elements(RequestAcceptModal({ ...params, cashAmount: 4000 })).some(node => node.type === 'CashCommissionNotice' && node.props.amount === 4000));
+  assert.ok(!elements(RequestAcceptModal({ ...params, cashAmount: 4000, showDirectAcceptModal: false })).some(node => node.type === 'CashCommissionNotice'));
 });
 
 test('native location disclosure still requires consent and Android back declines it', () => {

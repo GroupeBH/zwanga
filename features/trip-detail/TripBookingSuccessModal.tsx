@@ -2,7 +2,8 @@ import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Modal, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface TripBookingSuccessModalProps {
@@ -19,13 +20,13 @@ export function TripBookingSuccessModal({
   handleViewBookings,
 }: TripBookingSuccessModalProps) {
   return (
-    <Modal animationType="fade" transparent visible={bookingSuccess.visible}>
+    <Modal animationType="fade" transparent visible={bookingSuccess.visible} onRequestClose={closeBookingSuccessModal}>
       <View style={styles.feedbackModalOverlay}>
         <View style={[styles.feedbackModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
           <View style={styles.feedbackModalIcon}>
             <Ionicons name="checkmark-circle" size={32} color={Colors.white} />
           </View>
-          <Text style={styles.feedbackModalTitle}>Demande envoyée</Text>
+          <Text style={styles.feedbackModalTitle}>Réservation envoyée</Text>
           <Text style={styles.feedbackModalText}>
             Votre réservation de {bookingSuccess.seats} place
             {bookingSuccess.seats > 1 ? 's' : ''} est en attente de confirmation du conducteur.

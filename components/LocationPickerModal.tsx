@@ -8,7 +8,7 @@ import { useGetLandmarksQuery } from '@/store/api/googleMapsApi';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { useLocationPicker } from '@/hooks/location-picker/useLocationPicker';
 import { LocationPickerMap } from '@/components/location-picker/LocationPickerMap';
-import { pointSelection, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
+import { pointSelection, readableSelection, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
 import { styles } from '@/features/location-picker/LocationPicker.styles';
 
 export type { MapLocationSelection } from '@/features/location-picker/locationPickerModel';
@@ -35,7 +35,7 @@ function PickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute 
   const { data: favorites } = useGetFavoriteLocationsQuery();
   const { data: landmarks } = useGetLandmarksQuery({ city: 'kinshasa', limit: 6 });
   const favoriteRows = useMemo(() => (favorites ?? []).map(favorite => ({
-    id: favorite.id, title: favorite.name, address: favorite.address, ...favorite.coordinates,
+    id: favorite.id, ...readableSelection({ title: favorite.name, address: favorite.address, ...favorite.coordinates }),
   })), [favorites]);
   const { choose } = picker;
   const onMapPress = useCallback((point: PickerCoordinate) => choose(pointSelection(point), true), [choose]);
@@ -51,7 +51,7 @@ function PickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute 
       <View style={styles.header}>
         <View style={styles.heading}>
           <Text style={styles.title} numberOfLines={2}>{title}</Text>
-          {!picker.searchOpen && <Text style={styles.subtitle}>Recherchez un lieu ou ajustez le point.</Text>}
+          {!picker.searchOpen && <Text style={styles.subtitle}>Recherchez un lieu ou touchez la carte.</Text>}
         </View>
         <TouchableOpacity style={styles.iconButton} accessibilityRole="button" accessibilityLabel="Fermer le choix du lieu" onPress={picker.close}>
           <Ionicons name="close" size={23} color={Colors.gray[800]} />
@@ -61,8 +61,8 @@ function PickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute 
       <View style={[styles.search, picker.searchOpen && styles.searchFocused]}>
         <Ionicons name="search-outline" size={20} color={Colors.gray[600]} />
         <TextInput
-          style={styles.input} value={picker.query} placeholder="Adresse, quartier, repère…" placeholderTextColor={Colors.gray[600]}
-          accessibilityLabel="Rechercher une adresse, un quartier ou un repère"
+          style={styles.input} value={picker.query} placeholder="Adresse, quartier, référence…" placeholderTextColor={Colors.gray[600]}
+          accessibilityLabel="Rechercher une adresse, un quartier ou une référence"
           onChangeText={picker.setQuery} onFocus={() => { setFavoritesOpen(false); picker.openSearch(); }}
           onSubmitEditing={() => { if (picker.query.trim().length >= 3) void picker.resolvePlace(picker.query.trim()); }}
           returnKeyType="search" autoCorrect={false} autoComplete="off" maxLength={256}

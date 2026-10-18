@@ -1,15 +1,15 @@
 import { useDriverNavigationController } from '../../../hooks/driver-navigation/useDriverNavigationController';
+import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
 import { DriverNavigationControls } from '../../../features/driver-navigation/DriverNavigationControls';
 import { DriverNavigationTopPanel } from '@/features/driver-navigation/DriverNavigationTopPanel';
 import { DriverNavigationMap } from '../../../features/driver-navigation/DriverNavigationMap';
 import { NavigationLocationDisclosure } from '../../../features/driver-navigation/NavigationLocationDisclosure';
 import { NavigationPassengersModal } from '../../../features/driver-navigation/NavigationPassengersModal';
 import { NavigationPickupBypassModal } from '../../../features/driver-navigation/NavigationPickupBypassModal';
-import { NavigationSecurityModal } from '../../../features/driver-navigation/NavigationSecurityModal';
 import { NavigationWaypointModal } from '../../../features/driver-navigation/NavigationWaypointModal';
 import { NavigationPickupNoticeModal } from '../../../features/driver-navigation/NavigationPickupNoticeModal';
 import { NavigationTripEndModal } from '../../../features/driver-navigation/NavigationTripEndModal';
-import { cleanHtmlInstructions } from '../../../features/driver-navigation/navigationPresentation';
+import { DriverNavigationGuidance } from '@/features/driver-navigation/DriverNavigationGuidance';
 import { KINSHASA_FALLBACK_MAP_COORDINATE } from '../../../features/driver-navigation/navigationModel';
 import { styles } from '../../../features/screen-styles/app/trip/navigate/detail/index';
 import { NavigationAssistanceModals } from '@/features/navigation/NavigationAssistanceModals';
@@ -17,9 +17,16 @@ import { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssista
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
+import { NavigationLoading } from '@/features/navigation/NavigationLoading';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 
 export default function NavigationScreen() {
+  return <DriverTripAccessGuard><DriverNavigationScreen /></DriverTripAccessGuard>;
+}
+
+function DriverNavigationScreen() {
   const model = useDriverNavigationController();
   const assistance = useNavigationAssistance({
     role: 'driver', trip: model.session.foundation.data.trip,
@@ -29,19 +36,14 @@ export default function NavigationScreen() {
   const assistanceOrSecurityVisible = assistance.isOpen || model.session.foundation.mapState.securityModalVisible;
 
   if ((model.session.foundation.data.isLoading && !model.session.foundation.data.trip) || (model.session.foundation.data.bookingsLoading && !model.session.foundation.data.bookings) || !model.session.foundation.data.trip) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Chargement de la navigation...</Text>
-      </View>
-    );
+    return <NavigationLoading onExit={model.session.foundation.exitActions.navigateBackSafely} />;
   }
 
   if (!model.presentation.hasValidTripCoordinates) {
     return (
       <View style={styles.loadingContainer}>
         <Ionicons name="warning" size={48} color={Colors.warning} />
-        <Text style={styles.loadingText}>Coordonnées du trajet invalides</Text>
+        <Text style={styles.loadingText}>L’adresse du trajet est introuvable.</Text>
         <TouchableOpacity
           style={styles.backButtonAlt}
           onPress={model.session.foundation.exitActions.navigateBackSafely}
@@ -59,6 +61,8 @@ export default function NavigationScreen() {
     KINSHASA_FALLBACK_MAP_COORDINATE;
 
   return (
+    <RideOverlayScope scopeKey={`driver:${model.session.foundation.data.tripId}`} active={model.session.foundation.data.isScreenActive}>
+    <RideActionResult actor="driver" tripId={model.session.foundation.data.tripId} active={model.session.foundation.data.isScreenActive} />
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
       
@@ -69,8 +73,8 @@ export default function NavigationScreen() {
         initialMapCoordinate={initialMapCoordinate}
         presentation={model.presentation}
       />
-      ) : <View style={[styles.map, { alignItems: 'center', justifyContent: 'center' }]}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      ) : <View style={styles.map}>
+        <NavigationLoading compact label="Préparation de la carte" />
       </View>}
 
       {!model.session.foundation.data.isTripOngoing && (
@@ -85,7 +89,7 @@ export default function NavigationScreen() {
             </View>
             <Text style={styles.preStartTitle}>
               {model.session.foundation.data.trip?.status === 'upcoming'
-                ? 'Trajet pas encore démarré'
+                ? model.session.foundation.data.trip.startedAt ? 'Trajet en pause' : 'Prêt à partir ?'
                 : model.session.foundation.data.trip?.status === 'completed'
                   ? 'Trajet terminé'
                   : model.session.foundation.data.trip?.status === 'cancelled'
@@ -94,8 +98,8 @@ export default function NavigationScreen() {
             </Text>
             <Text style={styles.preStartText}>
               {model.session.foundation.data.trip?.status === 'upcoming'
-                ? 'Le trajet doit être demarré avant d\'activer la navigation en direct.'
-                : 'La navigation en direct est disponible uniquement pour un trajet en cours.'}
+                ? 'Appuyez sur le bouton pour partir et suivre la carte.'
+                : 'Vous pouvez revenir au trajet.'}
             </Text>
             <View style={styles.preStartActions}>
               <TouchableOpacity
@@ -111,7 +115,7 @@ export default function NavigationScreen() {
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
                   <Text style={styles.preStartButtonPrimaryText}>
-                    {model.presentation.canRestartTripFromOverlay ? 'Redemarrer' : 'Actualiser'}
+                    {model.presentation.canRestartTripFromOverlay ? model.session.foundation.data.trip?.startedAt ? 'Reprendre le trajet' : 'Démarrer le trajet' : 'Actualiser'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -119,7 +123,7 @@ export default function NavigationScreen() {
                 style={[styles.preStartButton, styles.preStartButtonSecondary]}
                 onPress={model.handleExitNavigation}
               >
-                <Text style={styles.preStartButtonSecondaryText}>Fermer</Text>
+                <Text style={styles.preStartButtonSecondaryText}>Retour au trajet</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -128,46 +132,14 @@ export default function NavigationScreen() {
 
       <DriverNavigationTopPanel model={model} assistance={assistance} />
 
-      {/* Instructions de navigation */}
-      {model.session.foundation.data.isTripOngoing && !model.session.foundation.mapState.isLoadingRoute && currentStep && (
-        <View style={styles.instructionCard}>
-          <View style={styles.instructionHeader}>
-            <View style={styles.maneuverIcon}>
-              <Ionicons 
-                name={model.routeFormatting.getManeuverIcon(currentStep.maneuver) as any}
-                size={36} 
-                color={Colors.white} 
-              />
-            </View>
-            <View style={styles.instructionInfo}>
-              <Text style={styles.instructionText}>
-                {cleanHtmlInstructions(currentStep.html_instructions)}
-              </Text>
-              <Text style={styles.instructionDistance}>{currentStep.distance.text}</Text>
-            </View>
-          </View>
-
-          {/* Prochaine instruction */}
-          {model.session.foundation.mapState.currentStepIndex < model.session.foundation.mapState.steps.length - 1 && (
-            <View style={styles.nextInstruction}>
-              <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-              <Text style={styles.nextInstructionText}>
-                Ensuite : {cleanHtmlInstructions(model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex + 1].html_instructions)}
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* Loading route indicator */}
-      {model.session.foundation.data.isTripOngoing && model.session.foundation.mapState.isLoadingRoute && (
-        <View style={styles.loadingRouteCard}>
-          <ActivityIndicator size="small" color={Colors.primary} />
-          <Text style={styles.loadingRouteText}>
-            {model.session.foundation.mapState.isReroutingRoute ? "Recalcul de l'itinéraire..." : "Calcul de l'itinéraire..."}
-          </Text>
-        </View>
-      )}
+      {model.session.foundation.data.isTripOngoing && <DriverNavigationGuidance
+        step={currentStep}
+        nextStep={model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex + 1]}
+        loading={model.session.foundation.mapState.isLoadingRoute}
+        rerouting={model.session.foundation.mapState.isReroutingRoute}
+        insets={model.session.foundation.data.insets}
+        getManeuverIcon={model.routeFormatting.getManeuverIcon}
+      />}
 
       {/* Boutons d'action flottants */}
       {model.session.foundation.data.isTripOngoing && (
@@ -177,6 +149,7 @@ export default function NavigationScreen() {
         voice={model.voice}
         passengerPresentation={model.passengerPresentation}
         forceRecalculateRoute={model.forceRecalculateRoute}
+        canToggleRouteSections={model.presentation.canToggleRouteSections}
       />
       )}
 
@@ -186,13 +159,6 @@ export default function NavigationScreen() {
         resolveBackgroundDisclosure={model.session.foundation.resolveBackgroundDisclosure}
       />
 
-      <NavigationSecurityModal
-        securityModalVisible={model.session.foundation.mapState.securityModalVisible && !assistance.isOpen}
-        backgroundDisclosureVisible={model.session.foundation.mapState.backgroundDisclosureVisible}
-        setSecurityModalVisible={model.session.foundation.mapState.setSecurityModalVisible}
-        insets={model.session.foundation.data.insets}
-        trip={model.session.foundation.data.trip}
-      />
 
       <NavigationTripEndModal
         tripEndNotice={model.session.foundation.mapState.tripEndNotice}
@@ -266,5 +232,6 @@ export default function NavigationScreen() {
       <NavigationAssistanceModals assistance={assistance} role="driver" insets={model.session.foundation.data.insets}
         blocked={model.session.foundation.mapState.backgroundDisclosureVisible} />
     </View>
+    </RideOverlayScope>
   );
 }

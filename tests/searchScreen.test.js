@@ -54,7 +54,7 @@ test('request filters preserve labels, selection and actions; trips retain their
   const changes = [];
   const render = searchMode => SearchResultsToolbar.type({ searchMode, sortMode: 'nearby', resultsCountLabel: '1 résultat', isRefreshingResults: false, onSortChange: value => changes.push(value) });
   const requestButtons = nodes(render('requests')).filter(node => node.type === 'TouchableOpacity');
-  assert.deepEqual(requestButtons.map(text), ['Plus proches', 'Meilleur budget', 'Plus tôt']);
+  assert.deepEqual(requestButtons.map(text), ['Plus proches', 'Prix le plus élevé', 'Plus tôt']);
   assert.deepEqual(requestButtons.map(button => button.props.accessibilityState.selected), [true, false, false]);
   requestButtons.forEach(button => button.props.onPress());
   assert.deepEqual(changes, ['nearby', 'cheap', 'early']);
@@ -78,9 +78,11 @@ const request = (id, extra = {}) => ({ id, passengerId: 'passenger', status: 'pe
 function screenApp() {
   const hooks = hookHarness(), params = {}, queryCalls = [], routes = [];
   const router = { push: value => routes.push(value), back() {} };
-  const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true };
+  const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false, active: true };
+  let lastTrips, tripPages;
   const coords = { latitude: -4.325, longitude: 15.3222 };
   const state = {
+    auth: { user: { id: 'me', firstName: 'Alice', role: 'driver', isDriver: true } },
     trips: { items: [] },
     location: { get lastKnownLocation() { app.coordinateReads++; return { coords }; } },
   };
@@ -92,12 +94,20 @@ function screenApp() {
     'expo-router': { useRouter: () => router, useLocalSearchParams: () => params },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/hooks/useTripArrivalTime': { useTripArrivalTime: () => null },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => app.active },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/utils/errorHelpers': { getApiErrorMessage: (_error, fallback) => fallback },
     '@/store/hooks': { useAppSelector: selector => selector(state) },
-    '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: { id: 'me', firstName: 'Alice', isDriver: app.isDriver } }) },
+    '@/store/api/userApi': { useGetCurrentUserQuery: (args, options) => {
+      queryCalls.push({ name: 'profile', args, options });
+      return { data: app.profileUnavailable ? undefined : { id: 'me', firstName: 'Alice', role: app.isDriver ? 'driver' : 'passenger', isDriver: app.isDriver } };
+    } },
     '@/store/api/tripApi': {
-      useGetTripsQuery: (args, options) => { queryCalls.push({ name: 'trips', args, options }); return { data: app.trips, isLoading: false, isFetching: false, refetch() {} }; },
+      useGetTripDiscoveryInfiniteQuery: (args, options) => {
+        queryCalls.push({ name: 'trips', args, options });
+        if (lastTrips !== app.trips) { lastTrips = app.trips; tripPages = { pages: [{ data: app.trips, nextCursor: null, previousCursor: null }] }; }
+        return { currentData: tripPages, isLoading: false, isFetching: false, refetch() {}, fetchNextPage() {}, fetchPreviousPage() {} };
+      },
       useSearchTripsByCoordinatesMutation: () => [() => { throw new Error('Unexpected coordinate request'); }, { isLoading: false }],
     },
     '@/store/api/tripRequestApi': {
@@ -106,12 +116,78 @@ function screenApp() {
   });
   const Screen = load('app/search.tsx').default;
   const Toolbar = load('components/search/SearchResultsToolbar.tsx').SearchResultsToolbar;
-  const render = () => hooks.render(Screen);
+  const render = (props) => hooks.render(() => Screen(props));
   const list = tree => nodes(tree).find(node => node.type === 'FlatList');
   const toolbar = tree => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === Toolbar);
-  const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Demandes' : 'Trajets')).props.onPress();
+  const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Clients' : 'Trajets')).props.onPress();
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
+
+test('opening search as a driver starts with published trips to travel as a passenger', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  const tree = app.render();
+  assert.equal(app.toolbar(tree).props.searchMode, 'trips');
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).options.skip, false);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  assert.equal(app.isDriver, true, 'searching never changes account role');
+  app.hooks.unmount();
+});
+
+test('passenger search exposes only published trips and never subscribes to the available orders feed', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.isDriver = false;
+  const tree = app.render();
+  assert.equal(nodes(tree).some(node => node.type === 'TouchableOpacity' && text(node) === 'Clients'), false);
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  assert.equal(app.coordinateReads, 0);
+  app.profileUnavailable = true;
+  assert.equal(nodes(app.render()).some(node => node.type === 'TouchableOpacity' && text(node) === 'Clients'), false,
+    'a legacy stored driver identity must not grant access without a server profile');
+  app.hooks.unmount();
+});
+
+test('losing the driver role immediately removes a selected commands tab and cached driver results', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.switchMode(app.render(), 'requests');
+  assert.equal(app.list(app.render()).props.data[0].request.id, 'request');
+  app.isDriver = false;
+  const tree = app.render();
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  app.hooks.unmount();
+});
+
+test('empty trip search offers Commander ce trajet without changing the request creation route', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  app.trips = [];
+  const header = app.list(app.render()).props.ListHeaderComponent;
+  assert.match(text(header), /Commandez votre trajet/);
+  assert.doesNotMatch(text(header), /Demander ce trajet|Demandez ce trajet/);
+  const command = nodes(header).find(node => node.type === 'TouchableOpacity' && text(node) === 'Commander ce trajet');
+  assert.ok(command);
+  command.props.onPress();
+  assert.deepEqual(app.routes, [{ pathname: '/request-create', params: { seats: '1' } }]);
+  app.hooks.unmount();
+});
+
+test('embedded search has a tab title without a back arrow and reserves the tab overlay without changing results', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  const standalone = app.render();
+  const embedded = app.render({ embedded: true, bottomOverlay: 92 });
+  assert.ok(nodes(standalone).some(node => node.props.name === 'arrow-back'));
+  assert.equal(nodes(embedded).some(node => node.props.name === 'arrow-back'), false);
+  assert.ok(nodes(embedded).some(node => node.type === 'Text' && text(node) === 'Trouver un trajet'));
+  assert.deepEqual(embedded.props.edges, ['top', 'left', 'right']);
+  assert.equal(app.list(embedded).props.contentContainerStyle[1].paddingBottom - app.list(standalone).props.contentContainerStyle[1].paddingBottom, 92);
+  assert.equal(app.list(embedded).props.data, app.list(standalone).props.data);
+  assert.equal(app.toolbar(embedded).props.onSortChange, app.toolbar(standalone).props.onSortChange);
+  app.hooks.unmount();
+});
 
 test('seat filter reaches four and preserves the same threshold for trips and requests', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
@@ -128,6 +204,10 @@ test('seat filter reaches four and preserves the same threshold for trips and re
   }
   assert.equal(stepButton('Augmenter le nombre de places').props.disabled, true);
   assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['four']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.minSeats, 1);
+  t.mock.timers.tick(350);
+  tree = app.render();
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.minSeats, 4);
   app.switchMode(tree, 'requests');
   tree = app.render();
   assert.deepEqual(app.list(tree).props.data.map(item => item.request.id), ['four']);
@@ -158,8 +238,25 @@ test('the screen keeps one virtualized list and the compact toolbar in its heade
   assert.equal(list.props.maxToRenderPerBatch, 5);
   assert.equal(list.props.windowSize, 7);
   assert.equal(list.props.keyboardShouldPersistTaps, 'handled');
-  assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet trouvé');
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet');
   assert.equal(list.props.data[0].trip.id, 'trip');
+  app.hooks.unmount();
+});
+
+test('signed-in users never see their own trips or count them, including while the profile is unavailable', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  app.trips = Object.freeze([{ ...trip('own'), driverId: 'me', price: 0 }, trip('other')]);
+  for (const profileUnavailable of [false, true]) {
+    app.profileUnavailable = profileUnavailable;
+    const tree = app.render();
+    assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['other']);
+    assert.equal(app.toolbar(tree).props.resultsCountLabel, '1 trajet');
+  }
+  app.trips = Object.freeze([{ ...trip('own'), driverId: 'me' }]);
+  const tree = app.render();
+  assert.equal(app.list(tree).props.data.length, 0);
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '0 trajet');
   app.hooks.unmount();
 });
 
@@ -226,5 +323,48 @@ test('nearby remains the default request ordering, explicit budget sorting and p
   app.switchMode(tree, 'requests'); tree = app.render();
   assert.equal(app.toolbar(tree).props.sortMode, 'cheap');
   assert.deepEqual(app.requests.map(item => item.id), ['far', 'near']);
+  app.hooks.unmount();
+});
+
+test('leaving search pauses display subscriptions and GPS sorting while retaining the visible list', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  let tree = app.render(); app.switchMode(tree, 'requests'); tree = app.render();
+  const previousList = app.list(tree).props.data;
+  const previousCount = app.toolbar(tree).props.resultsCountLabel;
+  app.active = false; app.coordinateReads = 0;
+  for (let i = 0; i < 50; i++) {
+    // Updates may still be published by Home or an ongoing trip's subscriptions.
+    app.requests = [request(`new-${i}`)];
+    tree = app.render();
+    assert.equal(app.list(tree).props.data, previousList);
+    assert.equal(app.toolbar(tree).props.resultsCountLabel, previousCount);
+    for (const name of ['profile', 'trips', 'requests']) {
+      assert.equal(app.queryCalls.filter(call => call.name === name).at(-1).options.skip, true);
+    }
+  }
+  assert.equal(app.coordinateReads, 0);
+  app.active = true; tree = app.render();
+  assert.deepEqual(app.list(tree).props.data.map(item => item.request.id), ['new-49']);
+  assert.equal(app.toolbar(tree).props.sortMode, 'nearby');
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, false);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.refetchOnMountOrArgChange, 30);
+  app.hooks.unmount();
+});
+
+test('a draft search survives blur and is applied only after returning to the screen', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.render();
+  let tree = app.render();
+  const input = () => nodes(app.list(tree).props.ListHeaderComponent).find(node =>
+    node.type === 'TextInput' && node.props.placeholder === 'Point de départ');
+  input().props.onChangeText('unknown');
+  tree = app.render(); t.mock.timers.tick(200);
+  app.active = false; tree = app.render(); t.mock.timers.tick(10000); tree = app.render();
+  assert.equal(input().props.value, 'unknown');
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.departureLocation, undefined);
+  app.active = true; tree = app.render(); t.mock.timers.tick(450); tree = app.render();
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).args.departureLocation, 'unknown');
+  assert.equal(app.list(tree).props.data.length, 0);
   app.hooks.unmount();
 });

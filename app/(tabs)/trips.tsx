@@ -1,118 +1,48 @@
 import { useTripsController } from '../../hooks/trips/useTripsController';
 import { TripsEditModal } from '../../features/trips/TripsEditModal';
+import { TripsHeader } from '../../features/trips/TripsHeader';
 import { styles } from '../../features/screen-styles/app/tabs/trips/index';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { Colors } from '@/constants/styles';
+import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Platform,
   RefreshControl,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 
 export default function TripsScreen() {
+  const focused = useIsFocused();
+  return <RideOverlayScope scopeKey="my-trips" active={focused}>
+    <TripsContent />
+  </RideOverlayScope>;
+}
+
+function TripsContent() {
   const model = useTripsController();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <Text style={styles.headerTitle}>Mes trajets</Text>
-          <TouchableOpacity
-            style={styles.headerPublishButton}
-            onPress={() => model.state.router.push('/publish')}
-            accessibilityLabel="Publier un trajet"
-          >
-            <Ionicons name="add" size={24} color={Colors.white} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Main Tabs */}
-        <View style={styles.mainTabsContainer}>
-          <TouchableOpacity
-            style={[styles.mainTab, model.state.mainTab === 'published' && styles.mainTabActive]}
-            onPress={() => {
-              model.state.setMainTab('published');
-              model.state.setSubTab('upcoming');
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.mainTabText, model.state.mainTab === 'published' && styles.mainTabTextActive]}
-            >
-              Publiés {model.list.trips.length}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.mainTab, model.state.mainTab === 'bookings' && styles.mainTabActive]}
-            onPress={() => {
-              model.state.setMainTab('bookings');
-              model.state.setSubTab('upcoming');
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.mainTabText, model.state.mainTab === 'bookings' && styles.mainTabTextActive]}
-            >
-              Réservations {model.state.myBookings?.length ?? 0}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Sub Tabs */}
-        <View style={styles.subTabsContainer}>
-          <TouchableOpacity
-            style={[styles.subTab, model.state.subTab === 'upcoming' && styles.subTabActive]}
-            onPress={() => model.state.setSubTab('upcoming')}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.subTabText, model.state.subTab === 'upcoming' && styles.subTabTextActive]}
-            >
-              À venir {model.state.mainTab === 'published' ? model.list.upcomingTrips.length : model.list.upcomingBookings.length}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.subTab, model.state.subTab === 'completed' && styles.subTabActive]}
-            onPress={() => model.state.setSubTab('completed')}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.subTabText, model.state.subTab === 'completed' && styles.subTabTextActive]}
-            >
-              Terminés {model.state.mainTab === 'published' ? model.list.completedTrips.length : model.list.completedBookingsList.length}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.searchContainer}>
-          <Ionicons name="search-outline" size={20} color={Colors.gray[500]} />
-          <TextInput
-            value={model.state.searchQuery}
-            onChangeText={model.state.setSearchQuery}
-            placeholder="Rechercher..."
-            placeholderTextColor={Colors.gray[400]}
-            style={styles.searchInput}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-          />
-          {model.state.searchQuery.length > 0 && Platform.OS !== 'ios' ? (
-            <TouchableOpacity style={styles.searchClearButton} onPress={() => model.state.setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color={Colors.gray[400]} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-      </View>
+      <TripsHeader
+        mainTab={model.state.mainTab}
+        subTab={model.state.subTab}
+        searchQuery={model.state.searchQuery}
+        onMainTabChange={model.state.setMainTab}
+        onSubTabChange={model.state.setSubTab}
+        onSearchChange={model.state.setSearchQuery}
+        onPublish={() => model.state.router.push('/publish')}
+      />
 
       {model.list.isError && (
         <View style={styles.errorBanner}>
@@ -160,10 +90,14 @@ export default function TripsScreen() {
         maxToRenderPerBatch={5}
         updateCellsBatchingPeriod={50}
         windowSize={7}
+        ListFooterComponent={model.state.feeds.history ? <HistoryPaginationFooter
+          loaded={model.list.tripListData.length} hasMore={model.state.feeds.hasMore}
+          loading={model.state.feeds.loadingMore} error={model.state.feeds.historyError}
+          onLoad={model.state.feeds.loadMore} /> : null}
         removeClippedSubviews={Platform.OS === 'android'}
         refreshControl={
           <RefreshControl
-            refreshing={model.state.isRefreshing || model.list.isFetching}
+            refreshing={model.state.isRefreshing || (model.list.isFetching && !model.state.feeds.loadingMore)}
             onRefresh={model.list.handleRefresh}
             tintColor={Colors.primary}
           />
@@ -228,10 +162,10 @@ export default function TripsScreen() {
                   : model.state.mainTab === 'published'
                     ? model.state.subTab === 'upcoming'
                       ? "Vous n'avez pas de trajet à venir"
-                      : "Vous n'avez pas encore terminé de trajet"
+                      : "Aucun trajet dans votre historique"
                     : model.state.subTab === 'upcoming'
                       ? "Vous n'avez pas de réservation à venir"
-                      : "Vous n'avez pas encore terminé de réservation"}
+                      : "Aucune réservation dans votre historique"}
               </Text>
               {model.list.normalizedSearchQuery ? (
                 <TouchableOpacity
@@ -252,16 +186,6 @@ export default function TripsScreen() {
           )
         }
       />
-
-      {/* FAB - Publier un trajet (seulement pour les trajets publiés) */}
-      {model.state.mainTab === 'published' && (
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => model.state.router.push('/publish')}
-        >
-          <Ionicons name="add" size={32} color={Colors.white} />
-        </TouchableOpacity>
-      )}
 
       <TripsEditModal
         editingTrip={model.state.editingTrip}
@@ -322,7 +246,7 @@ export default function TripsScreen() {
         }}
       />
 
-      <Modal transparent animationType="fade" visible={Boolean(model.state.deleteTarget)}>
+      <Modal transparent animationType="fade" visible={Boolean(model.state.deleteTarget)} onRequestClose={model.closeDeleteModal}>
         <View style={styles.confirmOverlay}>
           <View style={styles.confirmCard}>
             <View style={styles.confirmIcon}>
@@ -369,4 +293,3 @@ export default function TripsScreen() {
     </SafeAreaView>
   );
 }
-

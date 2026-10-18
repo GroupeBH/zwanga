@@ -1,7 +1,11 @@
 import { SocialAuthProvider, getAuthErrorMessage } from '../../features/auth/authModel';
+import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
+import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import React from 'react';
 import { AuthStep } from '@/components/auth';
+import type { DialogOptions } from '@/features/dialogs/dialogTypes';
+import type { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 
 interface Params {
   googlePhone: string;
@@ -60,8 +64,8 @@ export function useSocialPhoneVerification({
 }: Params) {
   const handleSendGoogleOtp = async () => {
     const normalizedPhone = googlePhone.trim();
-    if (!normalizedPhone || normalizedPhone.length < 10) {
-      showDialog({ variant: 'warning', title: 'Numéro requis', message: 'Veuillez entrer un numéro valide.' });
+    if (!isAuthPhoneValid(normalizedPhone)) {
+      showDialog({ variant: 'warning', title: 'Numéro invalide', message: authPhoneCopy.invalid });
       return;
     }
     if (!isSignupOtpVerificationEnabled) {
@@ -92,7 +96,7 @@ export function useSocialPhoneVerification({
     try {
       setIsSendingGoogleOtp(true);
       await sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' }).unwrap();
-      showDialog({ variant: 'success', title: 'Code renvoyé', message: 'Un nouveau code a été envoyé par SMS.' });
+      showDialog({ variant: 'success', title: 'Code renvoyé', message: otpDeliveryCopy.sent });
     } catch (error: any) {
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de renvoyer le code. Réessayez dans un instant.') });
     } finally {
@@ -150,5 +154,3 @@ export function useSocialPhoneVerification({
     handleGooglePhoneBack,
   };
 }
-import type { DialogOptions } from '@/features/dialogs/dialogTypes';
-import type { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';

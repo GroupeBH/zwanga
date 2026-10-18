@@ -19,17 +19,20 @@ import {
 import type { FavoriteLocation, KycDocument, ProfileStats, ProfileSummary, User } from '../../../types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BaseEndpointBuilder } from '../types';
+import { syncAccountRole } from './syncAccountRole';
 
 export function buildGetProfileSummaryEndpoints(builder: BaseEndpointBuilder) {
   return {
 getProfileSummary: builder.query<ProfileSummary, void>({
+      onQueryStarted: syncAccountRole,
       query: () => '/users/me',
       providesTags: [currentUserTag],
-      transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
+      transformResponse: (response: { user: ServerUser; stats: ProfileStats; profileState?: unknown }) =>
         mapProfileSummary(response),
     }),
 // Récupérer l'utilisateur actuellement connecté
     getCurrentUser: builder.query<User, void>({
+      onQueryStarted: syncAccountRole,
       query: () => '/users/me',
       providesTags: [currentUserTag],
       transformResponse: (response: { user: ServerUser; stats: ProfileStats }) =>
@@ -37,6 +40,7 @@ getProfileSummary: builder.query<ProfileSummary, void>({
     }),
 // Mettre à jour le profil de l'utilisateur connecté
     updateUser: builder.mutation<User, FormData>({
+      onQueryStarted: syncAccountRole,
       query: (formData: FormData) => ({
         url: '/users/me',
         method: 'PUT',
@@ -45,6 +49,18 @@ getProfileSummary: builder.query<ProfileSummary, void>({
       transformResponse: (response: ServerUser) => mapServerUser(response),
       invalidatesTags: (result) =>
         result ? [currentUserTag, { type: 'User' as const, id: result.id }] : [currentUserTag],
+    }),
+    requestDriverOnboarding: builder.mutation<User, void>({
+      query: () => ({ url: '/users/driver-onboarding', method: 'POST' }),
+      transformResponse: (response: ServerUser) => mapServerUser(response),
+      onQueryStarted: syncAccountRole,
+      invalidatesTags: [currentUserTag],
+    }),
+    activateDriver: builder.mutation<User, void>({
+      query: () => ({ url: '/users/driver-activation', method: 'POST' }),
+      transformResponse: (response: ServerUser) => mapServerUser(response),
+      onQueryStarted: syncAccountRole,
+      invalidatesTags: [currentUserTag],
     }),
 deleteAccount: builder.mutation<{ message: string }, void>({
       query: () => ({
@@ -66,7 +82,11 @@ getUserById: builder.query<User, string>({
     getPublicUserInfo: builder.query<User, string>({
       query: (id: string) => `/users/${id}/public`,
       providesTags: (_result: User | undefined, _error: unknown, id: string) => [{ type: 'User', id }],
-      transformResponse: (response: ServerUser) => mapServerUser(response),
+      transformResponse: (response: ServerUser) => ({ ...mapServerUser(response),
+        totalTrips: response.stats?.tripsAsDriver ?? response.totalTrips ?? 0,
+        completedTrips: response.stats?.completedTripsAsDriver,
+        passengerBookingsCount: response.stats?.bookingsAsPassenger,
+      }),
     }),
 getKycStatus: builder.query<KycDocument | null, void>({
       query: () => '/users/kyc/status',
@@ -132,22 +152,13 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
       }),
     }),
 // Modifier le PIN (nécessite l'ancien PIN pour validation)
-    updatePin: builder.mutation<{ message: string }, { newPin: string }>({
-      query: ({ newPin }: { newPin: string }) => ({
+    updatePin: builder.mutation<{ message: string }, { oldPin: string; newPin: string }>({
+      query: ({ oldPin, newPin }) => ({
         url: '/users/pin/change',
-        method: 'PUT',
-        body: { newPin },
+        method: 'POST',
+        body: { oldPin, newPin },
       }),
-      invalidatesTags: [currentUserTag],
-    }),
-// Modifier le PIN avec OTP (quand l'utilisateur a oublié son PIN)
-    updatePinWithOtp: builder.mutation<{ message: string }, { newPin: string }>({
-      query: ({ newPin }: { newPin: string }) => ({
-        url: '/users/pin/change',
-        method: 'PUT',
-        body: { newPin },
-      }),
-      invalidatesTags: [currentUserTag],
+      // Le parcours déconnecte la session après le changement du PIN.
     }),
 // ==================== Favorite Locations Endpoints ====================
 

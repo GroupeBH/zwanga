@@ -70,6 +70,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
 
   return {
     id: trip.id,
+    acceptedPaymentModes: trip.acceptedPaymentModes,
     driverId: trip.driverId,
     driverName: formatFullName(trip.driver),
     driverAvatar: trip.driver?.profilePicture ?? undefined,
@@ -118,7 +119,10 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
       hasCoordinates: Boolean(arrivalCoords),
     },
     departureTime: trip.departureDate,
-    arrivalTime: trip.departureDate,
+    arrivalTime: trip.previewArrivalDate && Number.isFinite(Date.parse(trip.previewArrivalDate))
+      ? trip.previewArrivalDate : trip.departureDate,
+    estimatedDurationSeconds: trip.estimatedDurationSeconds,
+    arrivalEstimateSource: trip.arrivalEstimateSource,
     price: Number(trip.pricePerSeat),
     isFree: trip.isFree ?? Number(trip.pricePerSeat) === 0,
     availableSeats: trip.availableSeats,
@@ -129,6 +133,8 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     currentLocation: trip.currentLocation ?? null,
     lastLocationUpdateAt: trip.lastLocationUpdateAt ?? null,
     startedAt: trip.startedAt ?? null,
+    canReprogram: trip.canReprogram === true,
+    isExpired: trip.isExpired,
     completedAt: trip.completedAt ?? null,
     vehicleId: trip.vehicleId ?? null,
     description: trip.description ?? null,
@@ -181,6 +187,7 @@ export const mapServerRecurringTripToClient = (
     totalSeats: Number(template.totalSeats ?? 0),
     pricePerSeat: Number(template.pricePerSeat ?? 0),
     isFree: template.isFree ?? Number(template.pricePerSeat) === 0,
+    acceptedPaymentModes: template.acceptedPaymentModes,
     description: template.description ?? null,
     status: mapRecurringTripStatus(template.status),
     vehicleId: template.vehicleId,

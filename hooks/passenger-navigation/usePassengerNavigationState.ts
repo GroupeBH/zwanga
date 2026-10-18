@@ -39,7 +39,7 @@ export function usePassengerNavigationState({
   const mapRef = useRef<MapView>(null);
   const {
     shouldRenderMap: isNavigationMapReady, isMapReady: isNativeMapReady,
-    onMapReady: handleMapReady, onMapLayout, runMapCommand, navigateAfterRelease,
+    onMapReady: handleMapReady, onMapLayout, mapLayoutRef, runMapCommand, navigateAfterRelease,
   } = useNavigationMapLifecycle({ screenKey: bookingId, enabled: isScreenActive, mapRef });
   const driverMarkerRef = useRef<MapMarker | null>(null);
   const passengerMarkerRef = useRef<MapMarker | null>(null);
@@ -187,6 +187,7 @@ export function usePassengerNavigationState({
     setRecoveryFix,
     beginLocationRequest,
     runMapCommand,
+    mapLayoutRef,
     mapRef,
     mapTopOffset,
     onHeaderLayout,

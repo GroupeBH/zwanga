@@ -3,7 +3,7 @@ import { chooseProfilePictureSize } from '@/utils/profilePhoto';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ProfilePhotoCameraCaptureProps {
   onCapture: (uri: string) => void;
@@ -18,6 +18,19 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [pictureSize, setPictureSize] = useState<string>();
   const cameraGeneration = useRef(0);
+  const captureLock = useRef(false);
+  const [foreground, setForeground] = useState(AppState.currentState === 'active');
+
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', next => {
+      if (next !== 'active') {
+        cameraGeneration.current += 1;
+        setIsCameraReady(false);
+      }
+      setForeground(next === 'active');
+    });
+    return () => listener.remove();
+  }, []);
 
   useEffect(() => () => { cameraGeneration.current += 1; }, []);
 
@@ -43,6 +56,7 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
   }, [permission, requestPermission]);
 
   const handleFlipCamera = useCallback(() => {
+    if (captureLock.current) return;
     cameraGeneration.current += 1;
     setPictureSize(undefined);
     setFacing((current) => (current === 'front' ? 'back' : 'front'));
@@ -50,10 +64,12 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
   }, []);
 
   const handleCapture = useCallback(async () => {
-    if (!cameraRef.current || isCapturing) {
+    if (!cameraRef.current || !isCameraReady || AppState.currentState !== 'active' || captureLock.current) {
       return;
     }
 
+    captureLock.current = true;
+    const generation = cameraGeneration.current;
     try {
       setIsCapturing(true);
       setCaptureError(null);
@@ -65,6 +81,7 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
         skipProcessing: false,
       });
 
+      if (generation !== cameraGeneration.current || AppState.currentState !== 'active') return;
       if (photo?.uri) {
         onCapture(photo.uri);
         return;
@@ -72,11 +89,12 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
 
       setCaptureError("La photo n'a pas pu être récupérée. Réessayez.");
     } catch {
-      setCaptureError("La photo n'a pas pu être prise. Réessayez.");
+      if (generation === cameraGeneration.current) setCaptureError("La photo n'a pas pu être prise. Réessayez.");
     } finally {
+      captureLock.current = false;
       setIsCapturing(false);
     }
-  }, [isCapturing, onCapture]);
+  }, [isCameraReady, onCapture]);
 
   if (!permission) {
     return (
@@ -111,7 +129,7 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
   return (
     <View style={styles.container}>
       <View style={styles.cameraFrame}>
-        <CameraView
+        {foreground && <CameraView
           ref={(ref) => {
             cameraRef.current = ref;
           }}
@@ -121,7 +139,7 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
           autofocus="on"
           pictureSize={pictureSize}
           onCameraReady={handleCameraReady}
-        />
+        />}
         <View pointerEvents="none" style={styles.overlay}>
           {!isCameraReady ? (
             <View style={styles.preparingBadge}>
@@ -137,7 +155,7 @@ export function ProfilePhotoCameraCapture({ onCapture }: ProfilePhotoCameraCaptu
       {captureError ? <Text style={styles.errorText}>{captureError}</Text> : null}
 
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.secondaryControl} onPress={handleFlipCamera}>
+        <TouchableOpacity style={styles.secondaryControl} onPress={handleFlipCamera} disabled={isCapturing || !foreground}>
           <Ionicons name="camera-reverse" size={18} color={Colors.gray[800]} />
           <Text style={styles.secondaryControlText}>Retourner</Text>
         </TouchableOpacity>

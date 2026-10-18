@@ -17,11 +17,13 @@ import {
   evaluateDestinationPassage,
 } from '@/utils/navigation/tripCompletion';
 import * as Location from 'expo-location';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
 import { type AppStateStatus } from 'react-native';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
 interface Params {
+  isScreenActive: boolean;
   tripId: string;
   trip: Trip | undefined;
   tripArrivalCoordinate: MapCoordinate | null;
@@ -30,7 +32,10 @@ interface Params {
   refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
   refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
   bookingsRef: React.RefObject<Booking[] | undefined>;
-  presentCompletedTripFromServerSync: (completedTrip?: Trip | null, options?: { completedWhileAppInactive?: boolean; }) => boolean;
+  presentCompletedTripFromServerSync: (
+    completedTrip?: Trip | null,
+    options?: { completedWhileAppInactive?: boolean },
+  ) => boolean;
   completedDuringInactiveCandidateRef: React.RefObject<boolean>;
   lastAcceptedDriverTimestampRef: React.RefObject<number | null>;
   getDriverLocationSnapshot: ReturnType<typeof useLazyGetDriverLocationQuery>[0];
@@ -42,36 +47,59 @@ interface Params {
   currentLocationRef: React.RefObject<Location.LocationObject | null>;
   setCurrentLocation: React.Dispatch<React.SetStateAction<Location.LocationObject | null>>;
   updateDriverLocation: ReturnType<typeof useUpdateDriverLocationMutation>[0];
-  tryCompleteTripFromNavigation: (distanceMeters?: number, options?: { completedWhileAppInactive?: boolean; }) => void;
+  tryCompleteTripFromNavigation: (
+    distanceMeters?: number,
+    options?: { completedWhileAppInactive?: boolean },
+  ) => void;
   appStateRef: React.RefObject<AppStateStatus>;
 }
 
-export function useDriverForegroundCompletion({
-  tripId,
-  trip,
-  tripArrivalCoordinate,
-  isRestCompletionCheckRunningRef,
-  lastRestCompletionCheckAtRef,
-  refetchTrip,
-  refetchBookings,
-  bookingsRef,
-  presentCompletedTripFromServerSync,
-  completedDuringInactiveCandidateRef,
-  lastAcceptedDriverTimestampRef,
-  getDriverLocationSnapshot,
-  isMountedRef,
-  lastTripCompletionCheckCoordinateRef,
-  lastAcceptedDriverCoordinateRef,
-  tripDestinationNearSinceMsRef,
-  getTripDestinationReferenceRoute,
-  currentLocationRef,
-  setCurrentLocation,
-  updateDriverLocation,
-  tryCompleteTripFromNavigation,
-  appStateRef,
-}: Params) {
+export function useDriverForegroundCompletion(params: Params) {
+  const latest = useRef(params);
+  latest.current = params;
+  const { begin } = useNavigationRequestGuard(params.isScreenActive, params.tripId);
+  useEffect(
+    () => () => {
+      // A cancelled recovery must not block the next foreground session, even if
+      // its shared REST read or native GPS promise has not settled yet.
+      params.isRestCompletionCheckRunningRef.current = false;
+      params.lastRestCompletionCheckAtRef.current = 0;
+    },
+    [
+      params.isScreenActive,
+      params.tripId,
+      params.isRestCompletionCheckRunningRef,
+      params.lastRestCompletionCheckAtRef,
+    ],
+  );
   const checkTripCompletionFromRestOnForeground = useCallback(async () => {
+    const {
+      tripId,
+      trip,
+      tripArrivalCoordinate,
+      isRestCompletionCheckRunningRef,
+      lastRestCompletionCheckAtRef,
+      refetchTrip,
+      refetchBookings,
+      bookingsRef,
+      presentCompletedTripFromServerSync,
+      completedDuringInactiveCandidateRef,
+      lastAcceptedDriverTimestampRef,
+      getDriverLocationSnapshot,
+      isMountedRef,
+      lastTripCompletionCheckCoordinateRef,
+      lastAcceptedDriverCoordinateRef,
+      tripDestinationNearSinceMsRef,
+      getTripDestinationReferenceRoute,
+      currentLocationRef,
+      setCurrentLocation,
+      updateDriverLocation,
+      tryCompleteTripFromNavigation,
+      appStateRef,
+    } = latest.current;
     if (
+      !latest.current.isScreenActive ||
+      appStateRef.current !== 'active' ||
       !tripId ||
       trip?.status !== 'ongoing' ||
       !tripArrivalCoordinate ||
@@ -84,15 +112,21 @@ export function useDriverForegroundCompletion({
     if (now - lastRestCompletionCheckAtRef.current < 5000) {
       return;
     }
+    const request = begin(tripId);
+    if (!request) return;
+    const isCurrent = () =>
+      request.isCurrent() &&
+      isMountedRef.current &&
+      latest.current.tripId === tripId &&
+      latest.current.isScreenActive &&
+      appStateRef.current === 'active';
 
     isRestCompletionCheckRunningRef.current = true;
     lastRestCompletionCheckAtRef.current = now;
 
     try {
-      const [tripResult, bookingsResult] = await Promise.all([
-        refetchTrip(),
-        refetchBookings(),
-      ]);
+      const [tripResult, bookingsResult] = await Promise.all([refetchTrip(), refetchBookings()]);
+      if (!isCurrent()) return;
       const refreshedTrip = (tripResult as { data?: Trip }).data ?? trip;
       const refreshedBookings = (bookingsResult as { data?: Booking[] }).data;
       if (refreshedBookings) {
@@ -119,7 +153,10 @@ export function useDriverForegroundCompletion({
       const previousAcceptedTimestamp = lastAcceptedDriverTimestampRef.current ?? 0;
 
       try {
-        const restLocationSnapshot = await getDriverLocationSnapshot(tripId, false).unwrap();
+        const snapshotRequest = getDriverLocationSnapshot(tripId, false);
+        request.attach(snapshotRequest);
+        const restLocationSnapshot = await snapshotRequest.unwrap();
+        if (!isCurrent()) return;
         const restCoordinate = normalizeTripMapCoordinate(
           restLocationSnapshot.coordinates?.[1],
           restLocationSnapshot.coordinates?.[0],
@@ -143,19 +180,28 @@ export function useDriverForegroundCompletion({
         console.warn('[Navigation] Position REST du conducteur indisponible au retour dans l’app :', error);
       }
 
-      let location: Location.LocationObject | null = null;
-      try {
-        location = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
-        });
-      } catch {
-        location = await Location.getLastKnownPositionAsync({
-          maxAge: 15 * 60_000,
-          requiredAccuracy: MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
-        });
+      if (!isCurrent()) return;
+      // The shared ride stream already owns GPS. Do not request another fix while it is fresh.
+      let location = normalizeDriverLocationObject(currentLocationRef.current);
+      const age = location ? Date.now() - location.timestamp : Infinity;
+      const accuracy = location?.coords.accuracy;
+      if (
+        age < 0 ||
+        age > 10_000 ||
+        (typeof accuracy === 'number' && accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_METERS)
+      ) {
+        try {
+          location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        } catch {
+          if (!isCurrent()) return;
+          location = await Location.getLastKnownPositionAsync({
+            maxAge: 15 * 60_000,
+            requiredAccuracy: MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
+          });
+        }
       }
 
-      if (!isMountedRef.current) {
+      if (!isCurrent()) {
         return;
       }
 
@@ -168,9 +214,7 @@ export function useDriverForegroundCompletion({
           accuracy <= MAX_ACCEPTABLE_GPS_ACCURACY_METERS
         ) {
           const locationTimestamp = Number(normalizedLocation.timestamp);
-          const safeLocationTimestamp = Number.isFinite(locationTimestamp)
-            ? locationTimestamp
-            : now;
+          const safeLocationTimestamp = Number.isFinite(locationTimestamp) ? locationTimestamp : now;
           if (safeLocationTimestamp + 2000 >= previousAcceptedTimestamp) {
             completionCandidates.push({
               source: 'device',
@@ -189,13 +233,10 @@ export function useDriverForegroundCompletion({
         return;
       }
 
-      const orderedCandidates = completionCandidates.sort(
-        (a, b) => a.timestampMs - b.timestampMs,
-      );
+      const orderedCandidates = completionCandidates.sort((a, b) => a.timestampMs - b.timestampMs);
       const firstCandidate = orderedCandidates[0];
       let previousDriverCoordinate =
-        lastTripCompletionCheckCoordinateRef.current ??
-        lastAcceptedDriverCoordinateRef.current;
+        lastTripCompletionCheckCoordinateRef.current ?? lastAcceptedDriverCoordinateRef.current;
       let nearDestinationSinceMs = tripDestinationNearSinceMsRef.current;
       let completionDistanceMeters: number | null = null;
       const destinationReferenceRoute = getTripDestinationReferenceRoute();
@@ -242,21 +283,14 @@ export function useDriverForegroundCompletion({
         const location = latestCandidate.location;
         await updateDriverLocation({
           tripId,
-          coordinates: [
-            latestCandidate.coordinate.longitude,
-            latestCandidate.coordinate.latitude,
-          ],
-          ...(location &&
-          typeof location.coords.accuracy === 'number' &&
-          location.coords.accuracy >= 0
+          coordinates: [latestCandidate.coordinate.longitude, latestCandidate.coordinate.latitude],
+          ...(location && typeof location.coords.accuracy === 'number' && location.coords.accuracy >= 0
             ? { accuracy: location.coords.accuracy }
             : {}),
           ...(location && typeof location.coords.speed === 'number' && location.coords.speed >= 0
             ? { speed: location.coords.speed }
             : {}),
-          ...(location &&
-          typeof location.coords.heading === 'number' &&
-          location.coords.heading >= 0
+          ...(location && typeof location.coords.heading === 'number' && location.coords.heading >= 0
             ? { heading: location.coords.heading }
             : {}),
           ...(location && Number.isFinite(location.timestamp)
@@ -269,7 +303,7 @@ export function useDriverForegroundCompletion({
           });
       }
 
-      if (completionDistanceMeters !== null) {
+      if (isCurrent() && completionDistanceMeters !== null) {
         tryCompleteTripFromNavigation(completionDistanceMeters, {
           completedWhileAppInactive: completedDuringInactiveCandidateRef.current,
         });
@@ -277,23 +311,13 @@ export function useDriverForegroundCompletion({
     } catch (error) {
       console.warn('[Navigation] Vérification REST de fin de trajet impossible:', error);
     } finally {
-      if (appStateRef.current === 'active') {
+      if (isCurrent()) {
         completedDuringInactiveCandidateRef.current = false;
+        isRestCompletionCheckRunningRef.current = false;
       }
-      isRestCompletionCheckRunningRef.current = false;
+      request.finish();
     }
-  }, [
-    getDriverLocationSnapshot,
-    getTripDestinationReferenceRoute,
-    presentCompletedTripFromServerSync,
-    refetchBookings,
-    refetchTrip,
-    trip,
-    tripArrivalCoordinate,
-    tripId,
-    tryCompleteTripFromNavigation,
-    updateDriverLocation,
-  ]);
+  }, [begin]);
 
   return {
     checkTripCompletionFromRestOnForeground,

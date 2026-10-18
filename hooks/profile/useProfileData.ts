@@ -4,86 +4,86 @@ import {
   getMostRecentPendingSubscriptionPayment
 } from '@/features/profile/profileModel';
 import { useGetMyDriverSettlementQuery } from '@/store/api/driverSettlementsApi';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetPendingSubscriptionPaymentsQuery } from '@/store/api/paymentApi';
 import { useGetMyReferralSummaryQuery } from '@/store/api/referralApi';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetAverageRatingQuery, useGetReviewPageQuery } from '@/store/api/reviewApi';
 import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery
 } from '@/store/api/subscriptionApi';
 import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import {
-  useGetKycStatusQuery,
   useGetProfileSummaryQuery
 } from '@/store/api/userApi';
 import {
   useGetVehiclesQuery
 } from '@/store/api/vehicleApi';
 import { useAppSelector } from '@/store/hooks';
+import { getProfileStatus } from '@/features/profile/profileStatusModel';
 import { selectUser } from '@/store/selectors';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { screenReadOptions } from '@/features/performance/screenReadPolicy';
+import { useProfileRefresh } from './useProfileRefresh';
 import type {
-  Vehicle
+  Vehicle, TripRequest, DriverOfferWithTripRequest, SubscriptionPlanSummary
 } from '@/types';
-import { getEffectiveKycStatus } from '@/utils/kycStatus';
 import { useMemo, useState } from 'react';
+
+const EMPTY_VEHICLES: Vehicle[] = [];
+const EMPTY_REQUESTS: TripRequest[] = [];
+const EMPTY_OFFERS: DriverOfferWithTripRequest[] = [];
+const EMPTY_PLANS: SubscriptionPlanSummary[] = [];
 
 export function useProfileData() {
   const user = useAppSelector(selectUser);
+  const isScreenActive = useScreenIsActive();
+  const reads = screenReadOptions(isScreenActive && Boolean(user?.id));
+  const { refetchProfile, refetchKycStatus, refetchVehicles, refetchReferralSummary, refetchDriverSettlement } = useProfileRefresh();
 
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: profileSummary, isLoading: profileLoading, refetch: refetchProfile } = useGetProfileSummaryQuery();
+  const { data: profileSummary, isLoading: profileLoading, isFetching: profileFetching,
+    isError: hasProfileLoadError } = useGetProfileSummaryQuery(undefined, reads);
 
-  const { data: referralSummary, refetch: refetchReferralSummary } =
-    useGetMyReferralSummaryQuery(undefined, {
-      refetchOnFocus: true,
-      refetchOnReconnect: false,
-      refetchOnMountOrArgChange: true,
-    });
-
-  const { data: kycStatus, isLoading: kycLoading, refetch: refetchKycStatus } = useGetKycStatusQuery();
+  const { data: referralSummary } = useGetMyReferralSummaryQuery(undefined, reads);
 
   const {
     data: vehicles,
     isLoading: vehiclesLoading,
     isFetching: vehiclesFetching,
     isError: vehiclesLoadError,
-    refetch: refetchVehicles,
-  } = useGetVehiclesQuery();
+  } = useGetVehiclesQuery(undefined, reads);
 
-  const { data: myTripRequests = [] } = useGetMyTripRequestsQuery();
+  const { data: myTripRequests = EMPTY_REQUESTS } = useGetMyTripRequestsQuery(undefined, reads);
 
-  const { data: myDriverOffers = [] } = useGetMyDriverOffersQuery();
+  const { data: myDriverOffers = EMPTY_OFFERS } = useGetMyDriverOffersQuery(undefined, reads);
 
-  const currentUser = profileSummary?.user ?? user;
+  const status = getProfileStatus(profileSummary, user?.id);
+  const { currentUser, stats, isDriver, displaysDriverRole, kycStatus,
+    isKycApproved, isKycPending, isKycRejected, needsDriverOnboarding,
+    isProfileStatusKnown, isIdentityStatusKnown, profileVehicleCount, profileState, profileRoleLabel } = status;
+  const isProfileStatusAvailable = Boolean(profileState);
+  const kycLoading = !isIdentityStatusKnown && profileFetching;
 
-  const stats = profileSummary?.stats;
+  const vehicleList: Vehicle[] = vehicles ?? EMPTY_VEHICLES;
 
-  const vehicleList: Vehicle[] = vehicles ?? [];
+  const { data: subscriptionPlans = EMPTY_PLANS } = useGetSubscriptionPlansQuery(undefined, reads);
 
-  const isDriver = useMemo(() => {
-    const role = currentUser?.role;
-    return role === 'driver' || role === 'both' || Boolean(currentUser?.isDriver);
-  }, [currentUser?.isDriver, currentUser?.role]);
-
-  const displaysDriverRole = currentUser?.role === 'driver' || currentUser?.role === 'both';
-
-  const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
-
+  // Keep payment dependencies live: an operator/browser return can settle an
+  // existing subscription while this tab is hidden. These queries do not poll.
   const {
     data: premiumOverview,
     isFetching: premiumOverviewFetching,
     refetch: refetchPremiumOverview,
   } = useGetPremiumOverviewQuery(undefined, { skip: !isDriver });
 
-  const { data: paymentHistory, refetch: refetchPaymentHistory } = useGetPaymentHistoryQuery(undefined, {
+  const { data: paymentHistory, refetch: refetchPaymentHistory } = useGetPendingSubscriptionPaymentsQuery(undefined, {
     skip: !isDriver,
   });
 
-  const { data: driverSettlement, refetch: refetchDriverSettlement } = useGetMyDriverSettlementQuery(undefined, {
-    skip: !isDriver,
-    refetchOnFocus: true,
-    refetchOnReconnect: false,
+  const { data: driverSettlement } = useGetMyDriverSettlementQuery(undefined, {
+    ...reads,
+    skip: reads.skip || !isDriver,
   });
 
   const recentPendingSubscriptionPayment = useMemo(
@@ -95,17 +95,7 @@ export function useProfileData() {
 
   const paymentHistoryLoaded = Boolean(paymentHistory);
 
-  const effectiveKycStatus = getEffectiveKycStatus(kycStatus);
-
-  const isKycApproved = effectiveKycStatus === 'approved';
-
-  const isKycPending = effectiveKycStatus === 'pending';
-
-  const isKycRejected = effectiveKycStatus === 'rejected';
-
   const hasLoadedVehicles = vehicles !== undefined;
-
-  const isVehicleInitialLoading = !hasLoadedVehicles && vehiclesLoading;
 
   const isVehicleDataUnavailable = !hasLoadedVehicles && vehiclesLoadError;
 
@@ -113,38 +103,30 @@ export function useProfileData() {
 
   const shouldShowVehicleLoadError = isVehicleDataUnavailable || isVehicleRetrying;
 
-  const isProfileDataLoading = profileLoading || (isDriver && isVehicleInitialLoading);
+  const isProfileDataLoading = !isProfileStatusKnown && (profileLoading || profileFetching);
 
-  const knownVehicleCount = hasLoadedVehicles ? vehicleList.length : stats?.vehicles;
+  // Status cards and onboarding use the same server snapshot as role/identity.
+  // The independent vehicle query is only for the detailed editable list.
+  const knownVehicleCount = profileVehicleCount;
 
   const hasVehicle = (knownVehicleCount ?? 0) > 0;
 
-  const hasNoVehicle = knownVehicleCount === 0;
-
-  const needsDriverOnboarding = !isDriver || hasNoVehicle || !isKycApproved;
-
   const userId = currentUser?.id ?? '';
 
-  const { data: reviews } = useGetReviewsQuery(userId, {
-    skip: !userId,
+  const { data: reviewsPage } = useGetReviewPageQuery({ userId, limit: 3 }, {
+    ...reads,
+    skip: reads.skip || !userId,
   });
 
   const { data: avgRatingData } = useGetAverageRatingQuery(userId, {
-    skip: !userId,
+    ...reads,
+    skip: reads.skip || !userId,
   });
 
-  const reviewCount = reviews?.length ?? 0;
-
-  const reviewAverage = useMemo(() => {
-    if (avgRatingData?.averageRating !== undefined) {
-      return avgRatingData.averageRating;
-    }
-    if (!reviews || reviews.length === 0) {
-      return currentUser?.rating ?? 0;
-    }
-    const total = reviews.reduce((sum, review) => sum + review.rating, 0);
-    return total / reviews.length;
-  }, [avgRatingData?.averageRating, reviews, currentUser?.rating]);
+  const reviews = reviewsPage?.data;
+  const reviewCount = reviewsPage?.total;
+  // A partial page cannot be used to calculate the user's global average.
+  const reviewAverage = avgRatingData?.averageRating ?? currentUser?.rating ?? 0;
 
   const featuredReviews = useMemo(() => (reviews ?? []).slice(0, 3), [reviews]);
 
@@ -179,6 +161,7 @@ export function useProfileData() {
   }, [myTripRequests]);
 
   const handleRefresh = async () => {
+    if (!isScreenActive || !user?.id) return;
     setRefreshing(true);
     try {
       const refreshTasks: Promise<unknown>[] = [
@@ -214,6 +197,8 @@ export function useProfileData() {
   const driverBookingsCount = stats?.bookingsAsDriver ?? 0;
   return {
     currentUser,
+    profileState,
+    profileRoleLabel,
     displaysDriverRole,
     driverBookingsCount,
     driverSettlement,
@@ -221,12 +206,17 @@ export function useProfileData() {
     featuredReviews,
     handleRefresh,
     hasVehicle,
+    hasProfileLoadError,
     isDriver,
     isKycApproved,
     isKycPending,
     isKycRejected,
     isPremiumActive,
     isProfileDataLoading,
+    isProfileStatusKnown,
+    isIdentityStatusKnown,
+    isProfileStatusAvailable,
+    isScreenActive,
     knownVehicleCount,
     kycLoading,
     kycStatus,
@@ -236,6 +226,7 @@ export function useProfileData() {
     pendingOffersCount,
     premiumOverview,
     premiumOverviewFetching,
+    profileFetching,
     proEndDateLabel,
     proPriceLabel,
     recentPendingSubscriptionOrderNumber,

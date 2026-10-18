@@ -1,5 +1,5 @@
-import { EMPTY_HOME_TRIP_REQUESTS, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS, isTripRequestWithinAcceptanceWindow, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
+import { EMPTY_HOME_TRIP_REQUESTS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS, isTripRequestWithinAcceptanceWindow, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
+import { useGetMyActivityBookingsQuery as useGetMyBookingsQuery } from '@/store/api/bookingApi';
 import { useGetNotificationsQuery } from '@/store/api/notificationApi';
 import {
   useGetTripByIdQuery
@@ -9,43 +9,41 @@ import {
   useGetMyTripRequestsQuery,
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
+import { sharedBookingsOptions, sharedRequestsOptions } from '@/features/activity/activityQueryOptions';
+import { findOngoingPassengerBooking, hasPassengerFinishedRide, isActivePassengerBooking } from '@/features/activity/tripParticipation';
 import { isRequestUnassigned, rankRequestsByProximity } from '@/features/trip-request/requestPriority';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'> & { driverCoordinate?: MapCoordinate | null };
-export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo, driverCoordinate = null }: Props) {
+type Props = Pick<ReturnType<typeof useHomeContext>, 'isFocused' | 'currentUser' | 'isDriver' | 'trackedTripInfo'> & { driverCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
+export function useHomePassengerActivity({ isFocused, currentUser, isDriver, trackedTripInfo, driverCoordinate = null, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
+  const enabled = useDisplayReadsEnabled(isFocused);
   const { data: notificationsData } = useGetNotificationsQuery({ limit: 1 }, {
-    refetchOnMountOrArgChange: true,
+    ...displayReadOptions(enabled),
   });
 
-  const { data: myBookings, refetch: refetchMyBookings } = useGetMyBookingsQuery(undefined, {
-    pollingInterval: isFocused ? HOME_ACTIVE_BOOKINGS_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+  const { data: myBookings, refetch: rawRefetchMyBookings } = useGetMyBookingsQuery(undefined, {
+    ...sharedBookingsOptions,
+    skip: !enabled,
   });
+  const refetchMyBookings = useDisplayRefetch(enabled, 'activity', rawRefetchMyBookings);
 
   const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS } = useGetMyTripRequestsQuery(undefined, {
-    skip: !currentUser?.id,
-    pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...sharedRequestsOptions,
+    skip: !enabled || !currentUser?.id,
   });
 
   const {
     data: availableTripRequests = EMPTY_HOME_TRIP_REQUESTS,
     isLoading: availableTripRequestsLoading,
     isError: availableTripRequestsError,
-    refetch: refetchAvailableTripRequests,
+    refetch: rawRefetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
-    skip: !isDriver,
-    pollingInterval: isFocused && isDriver ? HOME_ACTIVITY_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && isDriver, HOME_ACTIVITY_POLL_MS),
   });
+  const refetchAvailableTripRequests = useDisplayRefetch(enabled && isDriver, 'available', rawRefetchAvailableTripRequests);
 
   const activeBookings = useMemo(() => {
     if (!myBookings || !currentUser?.id) {
@@ -54,36 +52,26 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
 
     return myBookings.filter(
       (booking) =>
-        (booking.status === 'pending' || booking.status === 'accepted') && booking.tripId,
+        booking.passengerId === currentUser.id &&
+        (booking.status === 'pending' || isActivePassengerBooking(booking, currentUser.id)) &&
+        !hasPassengerFinishedRide(booking) && booking.tripId,
     );
   }, [myBookings, currentUser?.id]);
 
   const activePassengerBooking = useMemo(
     () =>
-      activeBookings.find(
-        (booking) =>
-          booking.status === 'accepted' &&
-          !booking.droppedOff &&
-          booking.trip?.status === 'ongoing',
-      ) ??
-      activeBookings.find(
-        (booking) => booking.status === 'accepted' && !booking.droppedOff,
-      ) ??
+      findOngoingPassengerBooking(activeBookings, currentUser?.id) ??
+      activeBookings.find(booking => isActivePassengerBooking(booking, currentUser?.id)) ??
       null,
-    [activeBookings],
+    [activeBookings, currentUser?.id],
   );
 
   const passengerTripLookupId =
-    (trackedTripInfo?.role === 'passenger' ? trackedTripInfo.tripId : null) ??
     activePassengerBooking?.tripId ??
     '';
 
   const { data: refreshedPassengerTrip } = useGetTripByIdQuery(passengerTripLookupId, {
-    skip: !currentUser?.id || !passengerTripLookupId,
-    pollingInterval: isFocused ? HOME_ACTIVE_TRIP_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && Boolean(currentUser?.id && passengerTripLookupId), HOME_ACTIVE_TRIP_POLL_MS),
   });
 
   const bookedTripIds = useMemo(
@@ -100,15 +88,17 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
       myBookings
         .filter(
           (booking) =>
-            booking.status === 'completed' &&
-            booking.droppedOffConfirmedByPassenger === true &&
+            booking.passengerId === currentUser.id &&
+            hasPassengerFinishedRide(booking) &&
+            !bookedTripIds.has(booking.tripId) &&
             booking.tripId,
         )
         .map((booking) => booking.tripId),
     );
-  }, [myBookings, currentUser?.id]);
+  }, [myBookings, currentUser?.id, bookedTripIds]);
 
   const activeTripRequest = useMemo(() => {
+    if (!currentUser?.id) return null;
     const statusPriority = {
       driver_selected: 0,
       offers_received: 1,
@@ -128,10 +118,12 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
       [...myTripRequests]
         .filter(
           (request) =>
+            request.passengerId === currentUser.id &&
             (request.status === 'pending' ||
               request.status === 'offers_received' ||
               request.status === 'driver_selected') &&
             !request.tripId &&
+            !hiddenHomePriorities[homePriorityKeys.ownRequest(request)] &&
             isTripRequestWithinAcceptanceWindow(request),
         )
         .sort((a, b) => {
@@ -156,7 +148,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
           return updatedB - updatedA;
         })[0] ?? null
     );
-  }, [myTripRequests]);
+  }, [myTripRequests, hiddenHomePriorities, currentUser?.id]);
 
   const activeTripRequestPendingOffers = useMemo(
     () => activeTripRequest?.offers?.filter((offer) => offer.status === 'pending').length ?? 0,
@@ -194,7 +186,25 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     );
     return rankRequestsByProximity(eligible, driverCoordinate).slice(0, RECENT_TRIPS_LIMIT);
   }, [availableTripRequests, currentUser?.id, driverCoordinate, isDriver]);
+  // Reuse personal activity already loaded; no extra history request or persistence.
+  const recentDestinations = useMemo(() => {
+    const visits = [
+      ...(myBookings ?? []).filter(booking => booking.passengerId === currentUser?.id && booking.trip)
+        .map(booking => ({ date: booking.createdAt, place: booking.trip!.arrival })),
+      ...myTripRequests.filter(request => request.passengerId === currentUser?.id)
+        .map(request => ({ date: request.createdAt, place: request.arrival })),
+    ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+    const unique = new Map<string, typeof visits[number]['place']>();
+    for (const { place } of visits) {
+      if (!place || !(place.name || place.address)) continue;
+      const key = `${place.name || place.address}:${place.lat}:${place.lng}`;
+      if (!unique.has(key)) unique.set(key, place);
+      if (unique.size === 3) break;
+    }
+    return [...unique.values()];
+  }, [myBookings, myTripRequests, currentUser?.id]);
   return {
+    recentDestinations,
     activeBookings,
     completedBookingTripIds,
     bookedTripIds,

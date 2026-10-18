@@ -67,9 +67,9 @@ export const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
   vehicleAddButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',

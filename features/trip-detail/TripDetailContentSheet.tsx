@@ -1,3 +1,4 @@
+import { TripShareAction } from '@/components/trip/TripShareAction';
 import { useTripDetailData } from '../../hooks/trip-detail/useTripDetailData';
 import { useTripDetailBookingState } from '../../hooks/trip-detail/useTripDetailBookingState';
 import { useTripDetailAccess } from '../../hooks/trip-detail/useTripDetailAccess';
@@ -20,7 +21,7 @@ interface TripDetailContentSheetProps {
   access: ReturnType<typeof useTripDetailAccess>;
   bookingState: ReturnType<typeof useTripDetailBookingState>;
   activity: { activeBooking: Booking | null; bookingForTrip: Booking | null; canTrackTrip: boolean; refreshBookingLists: () => void; onRefresh: () => Promise<void>; driverReviewAverage: number; driverReviewCount: number; dismissTripGuide: () => void; };
-  contact: { handleShareTrip: () => Promise<void>; handleContactDriver: () => Promise<void>; };
+  contact: { handleShareTrip: () => Promise<void>; handleContactDriver: () => Promise<void>; isOpeningConversation: boolean; };
   safety: { openTripSecurityModal: () => void; openSosModal: () => void; closeSosModal: () => void; closeTripSecurityModal: () => void; };
 }
 
@@ -41,8 +42,7 @@ export function TripDetailContentSheet({
 
       <TripSummary
         config={config}
-        tripDepartureName={presentation.tripDepartureName}
-        tripArrivalName={presentation.tripArrivalName}
+        routeLabels={presentation.routeLabels}
         tripPriceLabel={presentation.tripPriceLabel}
         trip={data.trip}
         tripDepartureTimeLabel={presentation.tripDepartureTimeLabel}
@@ -58,10 +58,23 @@ export function TripDetailContentSheet({
         tripVehicleLabel={presentation.tripVehicleLabel}
         tripVehicleMetaLabel={presentation.tripVehicleMetaLabel}
         handleContactDriver={contact.handleContactDriver}
-        isOpeningConversation={bookingState.isOpeningConversation}
+        isOpeningConversation={contact.isOpeningConversation}
         driverPhone={data.driverPhone}
         setContactModalVisible={bookingState.setContactModalVisible}
       />
+
+    {data.isTripDriver && data.tripExpired && <View style={styles.section}>
+      <Text style={styles.trackingSubtitle}>
+        {data.trip?.canReprogram
+          ? 'Modifiez la date pour republier ce trajet. Les anciennes réservations restent dans l’historique.'
+          : 'Ce départ a expiré. Les détails de votre trajet restent consultables.'}
+      </Text>
+    </View>}
+
+    {!!data.trip?.acceptedPaymentModes?.length && Number(data.trip.price) > 0 && <View style={styles.section}>
+      <Text style={styles.sectionTitle}>PAIEMENTS ACCEPTÉS</Text>
+      <Text>{data.trip.acceptedPaymentModes.map(mode => ({ cash: 'Cash', electronic: 'Électronique', points: 'Jetons' })[mode]).join(' · ')}</Text>
+    </View>}
 
     {activity.canTrackTrip && data.trip?.status !== 'ongoing' && (
       <View style={styles.trackingBanner}>
@@ -119,60 +132,7 @@ export function TripDetailContentSheet({
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.tripSafetyCompactTrustedButton,
-              (!access.canAccessTripSecurity || access.isPassengerSecurityLocked) &&
-                styles.tripSafetyCompactTrustedDisabled,
-              access.isPassengerSecurityLocked && styles.tripSafetyCompactButtonBlurred,
-            ]}
-            onPress={safety.openTripSecurityModal}
-            disabled={!access.canAccessTripSecurity || access.isPassengerSecurityLocked}
-            activeOpacity={0.9}
-          >
-            <View style={styles.tripSafetyCompactTrustedIcon}>
-              <Ionicons
-                name="people-outline"
-                size={18}
-                color={
-                  access.canAccessTripSecurity && !access.isPassengerSecurityLocked
-                    ? Colors.primary
-                    : Colors.gray[500]
-                }
-              />
-            </View>
-            <View style={styles.tripSafetyCompactTrustedCopy}>
-              <Text
-                style={[
-                  styles.tripSafetyCompactTrustedTitle,
-                  (!access.canAccessTripSecurity || access.isPassengerSecurityLocked) &&
-                    styles.tripSafetyActionTitleDisabled,
-                ]}
-                numberOfLines={1}
-              >
-                {access.trustedContactsActionLabel}
-              </Text>
-              <Text
-                style={[
-                  styles.tripSafetyCompactTrustedSubtitle,
-                  (!access.canAccessTripSecurity || access.isPassengerSecurityLocked) &&
-                    styles.tripSafetyActionSubtitleDisabled,
-                ]}
-                numberOfLines={1}
-              >
-                {access.canAccessTripSecurity ? access.passengerTrustedContactsHint : 'Connexion requise'}
-              </Text>
-            </View>
-            <Ionicons
-              name="chevron-forward"
-              size={18}
-              color={
-                access.canAccessTripSecurity && !access.isPassengerSecurityLocked
-                  ? Colors.primary
-                  : Colors.gray[500]
-              }
-            />
-          </TouchableOpacity>
+          <TripShareAction onShare={contact.handleShareTrip} disabled={bookingState.isCreatingTripShareLink || !access.canAccessTripSecurity || access.isPassengerSecurityLocked} />
         </View>
       </Animated.View>
     )}
@@ -287,24 +247,7 @@ export function TripDetailContentSheet({
               <Ionicons name="chevron-forward" size={18} color={Colors.white} />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.tripSafetyActionButton, styles.tripSafetyTrustedButton]}
-              onPress={safety.openTripSecurityModal}
-              activeOpacity={0.9}
-            >
-              <View style={styles.tripSafetyActionIcon}>
-                <Ionicons name="people-outline" size={18} color={Colors.primary} />
-              </View>
-              <View style={styles.tripSafetyActionCopy}>
-                <Text style={styles.tripSafetyActionTitle} numberOfLines={2}>
-                  Ajouter / notifier mes proches
-                </Text>
-                <Text style={styles.tripSafetyActionSubtitle} numberOfLines={1}>
-                  Choisir qui reçoit les alertes.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
-            </TouchableOpacity>
+            <TripShareAction onShare={contact.handleShareTrip} disabled={bookingState.isCreatingTripShareLink} />
           </View>
         </View>
       </Animated.View>

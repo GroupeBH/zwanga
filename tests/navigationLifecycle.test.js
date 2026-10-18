@@ -53,10 +53,12 @@ for (const platform of ['ios', 'android']) {
     state.onMapLayout(layout(NaN));
     assert.equal(state.runMapCommand(command), false);
     state.onMapLayout(layout());
+    assert.deepEqual(state.mapLayoutRef.current, { width: 400, height: 800 });
     assert.equal(app.render().isMapReady, true);
     assert.equal(state.runMapCommand(command), true);
     assert.equal(commands, 1);
     state.onMapLayout(layout(400, 0));
+    assert.equal(state.mapLayoutRef.current, null);
     assert.equal(state.runMapCommand(command), false, 'layout can become invalid again');
   });
 
@@ -90,6 +92,7 @@ test('backgrounding/reopening or changing trip rejects old readiness callbacks',
   old.onMapReady();
   app.props.enabled = false;
   assert.equal(app.render().shouldRenderMap, false);
+  assert.equal(app.render().mapLayoutRef.current, null);
   old.onMapReady();
   assert.equal(app.render().isMapReady, false);
   app.props.enabled = true;

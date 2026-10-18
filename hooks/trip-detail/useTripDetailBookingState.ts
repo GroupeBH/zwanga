@@ -5,8 +5,7 @@ import {
   useCreateBookingMutation,
   useInitiateBookingPaymentMutation,
 } from '@/store/api/bookingApi';
-import { useCreateConversationMutation, useLazyListConversationsQuery } from '@/store/api/messageApi';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetAverageRatingQuery, useGetReviewPageQuery } from '@/store/api/reviewApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetKycStatusQuery } from '@/store/api/userApi';
 import type { TripPaymentMode } from '@/types';
@@ -18,21 +17,20 @@ import type { Trip } from '@/types';
 interface Params {
   trip: Trip | undefined;
   isFocused: boolean;
+  isScreenActive: boolean;
   tripId: string;
 }
 
 export function useTripDetailBookingState({
   trip,
   isFocused,
+  isScreenActive,
   tripId,
 }: Params) {
   const [createBooking, { isLoading: isBooking }] = useCreateBookingMutation();
   const [initiateBookingPayment, { isLoading: isInitiatingBookingPayment }] =
     useInitiateBookingPaymentMutation();
   const [cancelBookingMutation, { isLoading: isCancellingBooking }] = useCancelBookingMutation();
-  const [createConversation, { isLoading: isCreatingConversation }] = useCreateConversationMutation();
-  const [loadConversations, { isFetching: isLookingUpConversation }] = useLazyListConversationsQuery();
-  const isOpeningConversation = isCreatingConversation || isLookingUpConversation;
   const [createTripShareLink, { isLoading: isCreatingTripShareLink }] = useCreateTripShareLinkMutation();
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
@@ -74,12 +72,14 @@ export function useTripDetailBookingState({
   const securityModalTransitionRef = useRef(false);
   const securityModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sosModalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { refetch: refetchKycStatus } = useGetKycStatusQuery();
-  const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
-    skip: !trip?.driverId,
+  const { refetch: refetchKycStatus } = useGetKycStatusQuery(undefined, {
+    skip: !isScreenActive,
+  });
+  const { currentData: reviewPage } = useGetReviewPageQuery({ userId: trip?.driverId ?? '', limit: 1 }, {
+    skip: !isScreenActive || !trip?.driverId,
   });
   const { data: driverAverageData } = useGetAverageRatingQuery(trip?.driverId ?? '', {
-    skip: !trip?.driverId,
+    skip: !isScreenActive || !trip?.driverId,
   });
 
   const [refreshing, setRefreshing] = useState(false);
@@ -116,7 +116,8 @@ export function useTripDetailBookingState({
   return {
     setRefreshing,
     refetchKycStatus,
-    driverReviews,
+    driverReviews: reviewPage?.data,
+    driverReviewTotal: reviewPage?.total ?? 0,
     driverAverageData,
     shouldShowTripGuide,
     setTripGuideVisible,
@@ -150,8 +151,6 @@ export function useTripDetailBookingState({
     bookingStep,
     bookingSeats,
     setBookingSuccess,
-    loadConversations,
-    createConversation,
     isCreatingTripShareLink,
     createTripShareLink,
     initiateBookingPayment,
@@ -175,7 +174,6 @@ export function useTripDetailBookingState({
     setMapModalVisible,
     estimatedArrivalTime,
     setVehicleDetailModalVisible,
-    isOpeningConversation,
     setContactModalVisible,
     setSelectedImageUri,
     setImageModalVisible,

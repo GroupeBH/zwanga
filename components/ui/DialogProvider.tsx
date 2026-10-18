@@ -7,7 +7,10 @@ import {
   DialogContextValue,
 } from '../../features/dialogs/dialogTypes';
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { RideOverlayProvider } from '@/features/navigation/RideOverlayProvider';
+import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
@@ -46,12 +49,15 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const pendingDismissActionRef = useRef<PendingDialogAction | null>(null);
 
   const hideDialog = useCallback(() => {
+    pendingDismissActionRef.current = null;
     setDialog(null);
     setRunningActionLabel(null);
   }, []);
 
   const showDialog = useCallback(
     (options: DialogOptions) => {
+      // A new dialog supersedes an action awaiting dismissal of an older one.
+      pendingDismissActionRef.current = null;
       const variant = options.variant ?? 'info';
       const message =
         (variant === 'danger' || variant === 'warning') && options.message
@@ -169,8 +175,10 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 
   return (
     <DialogContext.Provider value={value}>
+      <RideOverlayProvider>
       {children}
       <Modal
+        priority={RIDE_OVERLAY_PRIORITY.confirmation}
         visible={dialog?.visible ?? false}
         transparent
         animationType="fade"
@@ -238,6 +246,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           </View>
         </View>
       </Modal>
+      </RideOverlayProvider>
     </DialogContext.Provider>
   );
 }

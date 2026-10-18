@@ -6,6 +6,7 @@ import React, { useCallback, useEffect } from 'react';
 import type { Booking } from '@/types';
 
 interface Params {
+  isScreenActive: boolean;
   isMountedRef: React.RefObject<boolean>;
   hasPresentedTripCompletedNoticeRef: React.RefObject<boolean>;
   hasPresentedTripDestinationApproachNoticeRef: React.RefObject<boolean>;
@@ -36,6 +37,7 @@ interface Params {
 }
 
 export function usePassengerTripDestinationNotice({
+  isScreenActive,
   isMountedRef,
   hasPresentedTripCompletedNoticeRef,
   hasPresentedTripDestinationApproachNoticeRef,
@@ -122,10 +124,10 @@ export function usePassengerTripDestinationNotice({
         },
       );
     });
-  }, [showDialog]);
+  }, [showDialog, isMountedRef, hasPresentedTripCompletedNoticeRef, hasPresentedTripDestinationApproachNoticeRef]);
 
   useEffect(() => {
-    if (!pickupNotice?.expiresAt) {
+    if (!isScreenActive || !pickupNotice?.expiresAt) {
       setPickupNoticeCountdown(null);
       return;
     }
@@ -136,15 +138,17 @@ export function usePassengerTripDestinationNotice({
       return;
     }
 
+    let interval: ReturnType<typeof setInterval> | undefined;
     const updateCountdown = () => {
       const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
       setPickupNoticeCountdown(remainingSeconds);
+      if (remainingSeconds === 0 && interval) clearInterval(interval);
     };
 
     updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
+    if (expiresAt > Date.now()) interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [pickupNotice?.expiresAt]);
+  }, [isScreenActive, pickupNotice?.expiresAt, setPickupNoticeCountdown]);
 
   useEffect(() => {
     hasPresentedArrivalModalRef.current = false;
@@ -168,7 +172,15 @@ export function usePassengerTripDestinationNotice({
     highestPickupNoticePriorityRef.current.clear();
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
-  }, [bookingId]);
+  }, [bookingId, hasPresentedArrivalModalRef, hasDisplayedDriverNearNotificationRef,
+    hasPresentedBoardedNoticeRef, hasPresentedDestinationApproachNoticeRef,
+    hasPresentedTripDestinationApproachNoticeRef, hasPresentedTripCompletedNoticeRef,
+    hasPresentedNoShowNoticeRef, hasPresentedBoardingUncertainNoticeRef,
+    hasObservedPickupStateRef, previousPickupStateRef, lastAcceptedDriverCoordinateRef,
+    lastAcceptedDriverTimestampRef, lastAcceptedPassengerCoordinateRef,
+    lastAcceptedPassengerTimestampRef, routeSignatureRef, routeFetchedRef,
+    lastRouteFetchRef, presentedPickupNoticeKeysRef, highestPickupNoticePriorityRef,
+    setPickupNotice, setPickupNoticeCountdown]);
 
   useEffect(() => {
     if (!booking?.id) {
@@ -204,6 +216,10 @@ export function usePassengerTripDestinationNotice({
     booking?.pickedUp,
     booking?.pickedUpConfirmedByPassenger,
     presentBoardedNotice,
+    hasObservedPickupStateRef,
+    previousPickupStateRef,
+    setPickupNotice,
+    setPickupNoticeCountdown,
   ]);
 
   return {

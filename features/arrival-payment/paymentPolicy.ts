@@ -2,6 +2,8 @@
 
 export const ARRIVAL_BOOKING_REFRESH_MS = 45_000;
 export const ARRIVAL_PAYMENT_STATUS_REFRESH_MS = 12_000;
+export const ARRIVAL_PAYMENT_CHECK_TIMEOUT_MS = 25_000;
+export const ARRIVAL_PAYMENT_MONITOR_WINDOW_MS = 120_000;
 export const RECENT_ARRIVAL_WINDOW_MS = 24 * 60 * 60 * 1_000;
 export const PAYMENT_STATE_STORAGE_PREFIX = 'zwanga:passenger-arrival-payment:';
 export const BOOKING_CARD_PAYMENT_RETURN_PATH = 'booking/payment';

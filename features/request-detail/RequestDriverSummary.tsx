@@ -7,14 +7,17 @@ import {
 } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
-import type { TripRequestVehicleType } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
-import type { DriverOffer, Vehicle, TripRequest } from '@/types';
+import type { DriverOffer, Vehicle, TripRequest, TripRequestVehicleType } from '@/types';
 import type { useIdentityCheck } from '@/hooks/useIdentityCheck';
+import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
+import { RequestPassengerContact } from './RequestPassengerContact';
+import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 
 interface RequestDriverSummaryProps {
   driverHero: { badge: string; title: string; subtitle: string; };
@@ -37,6 +40,7 @@ interface RequestDriverSummaryProps {
   isIdentityVerified: boolean;
   checkIdentity: ReturnType<typeof useIdentityCheck>['checkIdentity'];
   compatibleActiveVehicles: Vehicle[];
+  contactBlocked?: boolean;
 }
 
 export function RequestDriverSummary({
@@ -60,7 +64,9 @@ export function RequestDriverSummary({
   isIdentityVerified,
   checkIdentity,
   compatibleActiveVehicles,
+  contactBlocked = false,
 }: RequestDriverSummaryProps) {
+  const routeLabels = useRouteLocationLabels(tripRequest);
   return (
     <Animated.View
       entering={FadeInDown.duration(280)}
@@ -89,7 +95,7 @@ export function RequestDriverSummary({
           </View>
         )}
         <View style={styles.driverHeroPassengerInfo}>
-          <Text style={styles.driverHeroPassengerLabel}>Demande de</Text>
+          <Text style={styles.driverHeroPassengerLabel}>Commande de</Text>
           <Text style={styles.driverHeroPassengerName}>{tripRequest.passengerName}</Text>
         </View>
         <View style={styles.driverHeroRoleBadge}>
@@ -102,25 +108,11 @@ export function RequestDriverSummary({
       <Text style={styles.ownerHeroSubtitle} numberOfLines={2}>{driverHero.subtitle}</Text>
 
       <Animated.View layout={LinearTransition.duration(220)} style={styles.driverRouteCard}>
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, { backgroundColor: Colors.success }]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Départ</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.departure.name}</Text>
-          </View>
-        </View>
-        <View style={[styles.ownerHeroRouteLine, styles.driverRouteLine]} />
-        <View style={styles.ownerHeroRouteRow}>
-          <View style={[styles.ownerHeroRouteDot, styles.ownerHeroRouteSquare]} />
-          <View style={styles.ownerHeroRouteInfo}>
-            <Text style={styles.driverRouteLabel}>Destination</Text>
-            <Text style={styles.driverRouteText} numberOfLines={1}>{tripRequest.arrival.name}</Text>
-          </View>
-        </View>
+        <RouteLocationDetails labels={routeLabels} tone="dark" trailingInset={44} />
 
         <CollapsibleRouteMap
-          arrivalName={tripRequest.arrival.name}
-          departureName={tripRequest.departure.name}
+          arrivalName={routeLabels.arrival.address}
+          departureName={routeLabels.departure.address}
           mapData={requestRouteMapData}
           routeCoordinates={displayedRouteCoordinates}
         />
@@ -174,6 +166,11 @@ export function RequestDriverSummary({
         ) : null}
       </View>
 
+      {isDriverAccount && isIdentityVerified && isRequestUnassigned(tripRequest) && isTripRequestWithinAcceptanceWindow(tripRequest) && (
+        <RequestPassengerContact key={tripRequest.id} requestId={tripRequest.id}
+          enabled={!contactBlocked && !isAcceptingTripRequest && !isStartingTrip} />
+      )}
+
       {canOpenAssignedTrip ? (
         <TouchableOpacity
           style={styles.ownerHeroPrimaryButton}
@@ -208,7 +205,7 @@ export function RequestDriverSummary({
           ) : (
             <>
               <Ionicons name="checkmark-circle-outline" size={18} color={Colors.white} />
-              <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la demande</Text>
+              <Text style={styles.ownerHeroPrimaryButtonText}>Accepter la commande</Text>
             </>
           )}
         </TouchableOpacity>
@@ -228,7 +225,7 @@ export function RequestDriverSummary({
           <Text style={styles.ownerHeroHintText}>
             {compatibleActiveVehicles.length === 0
               ? 'Aucun de vos véhicules actifs ne correspond au type demandé pour cette course.'
-              : 'Cette demande ne peut plus être acceptée. Actualisez l’écran pour obtenir son dernier statut.'}
+              : 'Cette commande ne peut plus être acceptée. Actualisez l’écran pour obtenir son dernier statut.'}
           </Text>
         </View>
       )}

@@ -15,6 +15,7 @@ import { type PassengerTrackingMarkerStatus } from '@/components/TrackingMapMark
 import type { Booking, Trip } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { isPendingTripInterruption } from '@/utils/tripInterruption';
+import { canRespondToPassengerInterruption } from '@/features/driver-navigation/passengerInterruptionResponse';
 import React, { useCallback, useMemo } from 'react';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 
@@ -34,6 +35,7 @@ interface Params {
   tripDepartureCoordinate: MapCoordinate | null;
   trip: Trip | undefined;
   processingBookingId: string | null;
+  focusBookingId?: string;
 }
 
 export function useDriverNavigationBookings({
@@ -52,6 +54,7 @@ export function useDriverNavigationBookings({
   tripDepartureCoordinate,
   trip,
   processingBookingId,
+  focusBookingId,
 }: Params) {
   const rememberAcceptedBooking = useCallback((bookingId: string) => {
     setLocallyAcceptedBookingIds((current) => {
@@ -276,7 +279,9 @@ export function useDriverNavigationBookings({
     () => (visibleBookings ?? []).filter((booking) => booking.status === 'pending'),
     [visibleBookings],
   );
-  const activePendingBooking = pendingNavigationBookings[0] ?? null;
+  const activePendingBooking = pendingNavigationBookings.find(booking => booking.id === processingBookingId)
+    ?? pendingNavigationBookings.find(booking => booking.id === focusBookingId)
+    ?? pendingNavigationBookings[0] ?? null;
   const activePendingBookingPickupLabel = getBookingPickupLabel(activePendingBooking, trip);
   const activePendingBookingDropoffLabel = getBookingDropoffLabel(activePendingBooking, trip);
   const pendingBookingQueueCount = Math.max(0, pendingNavigationBookings.length - 1);
@@ -285,9 +290,7 @@ export function useDriverNavigationBookings({
   );
   const passengerInterruptionRequests = useMemo(
     () =>
-      (visibleBookings ?? []).filter((booking) =>
-        isPendingTripInterruption(booking.interruptionRequest?.status),
-      ),
+      (visibleBookings ?? []).filter(canRespondToPassengerInterruption),
     [visibleBookings],
   );
   const activePassengerInterruptionBooking = passengerInterruptionRequests[0] ?? null;

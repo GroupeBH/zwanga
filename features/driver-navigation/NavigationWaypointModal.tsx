@@ -3,7 +3,8 @@ import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Modal, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { Text, TouchableOpacity, View } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface NavigationWaypointModalProps {
@@ -65,7 +66,7 @@ export function NavigationWaypointModal({
 
           {/* Titre */}
           <Text style={styles.waypointModalTitle}>
-            {activeWaypoint?.type === 'pickup' ? 'Lieu de prise en charge' : "Point d'arrivée"}
+            {activeWaypoint?.type === 'pickup' ? 'Où prendre le passager' : 'Où déposer le passager'}
           </Text>
 
           {/* Nom du passager */}
@@ -84,8 +85,8 @@ export function NavigationWaypointModal({
           {activeWaypoint && (
             <Text style={styles.waypointModalWaitingText}>
               {activeWaypoint.type === 'pickup'
-                ? `Vous êtes arrivé au point de récupération de ${activeWaypoint.passenger.name || 'ce passager'}.`
-                : `Nous sommes arrivés au point de destination de ${activeWaypoint.passenger.name || 'ce passager'}. La dépose se confirme automatiquement.`}
+                ? 'Retrouvez le passager à cette adresse.'
+                : 'Déposez le passager à cette adresse.'}
             </Text>
           )}
 

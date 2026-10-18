@@ -10,8 +10,10 @@ import type { TripRequestVehicleType } from '@/types';
 import React, { useEffect } from 'react';
 import { Keyboard, Platform } from 'react-native';
 import type { User, TripRequest } from '@/types';
+import { canEditTripRequest } from '@/features/trip-request/requestExpiration';
 
 interface Params {
+  setEditExpectedUpdatedAt: (value: string | undefined) => void;
   setEditVehicleType: React.Dispatch<React.SetStateAction<TripRequestVehicleType>>;
   resetEditBudget: () => void;
   tripRequest: TripRequest | undefined;
@@ -38,6 +40,7 @@ interface Params {
 }
 
 export function useRequestEditInitialization({
+  setEditExpectedUpdatedAt,
   setEditVehicleType,
   resetEditBudget,
   tripRequest,
@@ -71,6 +74,7 @@ export function useRequestEditInitialization({
   // Initialiser le formulaire de modification avec les valeurs actuelles
   const initializeEditForm = (suggestUpdatedSchedule = false) => {
     if (!tripRequest) return;
+    setEditExpectedUpdatedAt(tripRequest.updatedAt);
     const hasMapCoordinates = tripRequest.departure.hasCoordinates && tripRequest.arrival.hasCoordinates;
     setEditAddressInputMode(hasMapCoordinates ? 'map' : 'manual');
     
@@ -134,6 +138,7 @@ export function useRequestEditInitialization({
   };
 
   const handleOpenEditForm = () => {
+    if (!tripRequest || !canEditTripRequest(tripRequest)) return;
     initializeEditForm();
     setShowEditForm(true);
   };
@@ -144,7 +149,7 @@ export function useRequestEditInitialization({
       overdueScheduleEditorOpenedRef.current ||
       !tripRequest ||
       currentUser?.id !== tripRequest.passengerId ||
-      !['pending', 'offers_received'].includes(tripRequest.status)
+      !canEditTripRequest(tripRequest)
     ) {
       return;
     }

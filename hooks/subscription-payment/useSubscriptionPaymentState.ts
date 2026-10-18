@@ -7,7 +7,7 @@ import {
 } from '../../features/subscription-payment/paymentModel';
 import { PaymentChannel, PaymentStage } from '../../features/subscription-payment/paymentTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetPaymentHistoryQuery } from '@/store/api/paymentApi';
+import { useGetPendingSubscriptionPaymentsQuery } from '@/store/api/paymentApi';
 import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery,
@@ -18,6 +18,7 @@ import {
 import { useGetProfileSummaryQuery } from '@/store/api/userApi';
 import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import { useAppSelector } from '@/store/hooks';
+import { isDriverAccount } from '@/utils/accountRole';
 import { selectUser } from '@/store/selectors';
 import type { SubscriptionPaymentMethod } from '@/types';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,11 +44,7 @@ export function useSubscriptionPaymentState() {
 
   const { data: profileSummary, refetch: refetchProfile } = useGetProfileSummaryQuery();
   const currentUser = profileSummary?.user ?? user;
-  const isDriver = Boolean(
-    currentUser?.role === 'driver' ||
-      currentUser?.role === 'both' ||
-      currentUser?.isDriver,
-  );
+  const isDriver = isDriverAccount(currentUser);
 
   const { data: subscriptionPlans = [] } = useGetSubscriptionPlansQuery();
   const { data: premiumOverview, refetch: refetchPremiumOverview } =
@@ -55,7 +52,7 @@ export function useSubscriptionPaymentState() {
   const {
     data: paymentHistory,
     refetch: refetchPaymentHistory,
-  } = useGetPaymentHistoryQuery(undefined, { skip: !isDriver });
+  } = useGetPendingSubscriptionPaymentsQuery(undefined, { skip: !isDriver });
   const {
     data: walletSummary,
     refetch: refetchWallet,
@@ -96,7 +93,7 @@ export function useSubscriptionPaymentState() {
   const subscriptionPointsAmount = Number(
     proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
   );
-  const walletBalance = Number(walletSummary?.account.balance ?? 0);
+  const walletBalance = Math.max(0, Number(walletSummary?.account.balance ?? 0) - Number(walletSummary?.account.reservedCashCommissionBalance ?? 0));
   const pointsCurrency =
     proPlan?.tokensCurrency ||
     proPlan?.pointsCurrency ||
@@ -106,7 +103,7 @@ export function useSubscriptionPaymentState() {
     proPlan?.tokensAmount ?? proPlan?.pointsAmount ?? proPlan?.amount ?? 0,
     pointsCurrency,
   );
-  const walletBalanceLabel = formatPointsAmount(walletSummary?.account.balance ?? 0, pointsCurrency);
+  const walletBalanceLabel = formatPointsAmount(walletBalance, pointsCurrency);
   const subscriptionRewardTokens = Number(proPlan?.subscriptionRewardTokens ?? 25);
   const isPremiumActive = Boolean(
     premiumOverview?.isPremium ||

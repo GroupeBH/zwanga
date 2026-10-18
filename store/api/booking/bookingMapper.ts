@@ -11,7 +11,7 @@ import type {
   TripInterruptionReason,
   TripInterruptionStatus,
 } from '../../../types';
-import { mapServerTripToClient } from '../tripApi';
+import { mapServerTripToClient } from '../trip/tripMapper';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 
 export const formatPassengerName = (passenger?: ServerUser | null) => {
@@ -149,7 +149,12 @@ export const mapDriverInterruptionRequest = (
 };
 
 export const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
+  cashReceivedAt: booking.cashReceivedAt ?? null,
+  cashReceivedByDriverId: booking.cashReceivedByDriverId ?? null,
+  cashReceivedAmount: booking.cashReceivedAmount ?? null,
   interruptionFareLocked: booking.interruptionFareLocked ?? false,
+  plannedDistanceMeters: booking.plannedDistanceMeters ?? null,
+  travelledDistanceMeters: booking.travelledDistanceMeters ?? null,
   id: booking.id,
   tripId: booking.tripId,
   passengerId: booking.passengerId,

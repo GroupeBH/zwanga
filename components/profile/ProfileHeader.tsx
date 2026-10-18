@@ -15,7 +15,9 @@ type Props = Pick<ReturnType<typeof useProfileController>,
   | 'changeProfilePhoto'
   | 'currentUser'
   | 'displaysDriverRole'
+  | 'profileRoleLabel'
   | 'isPremiumActive'
+  | 'isKycApproved'
   | 'isUploading'
   | 'router'
   | 'user'
@@ -25,7 +27,9 @@ export function ProfileHeader({
   changeProfilePhoto,
   currentUser,
   displaysDriverRole,
+  profileRoleLabel,
   isPremiumActive,
+  isKycApproved,
   isUploading,
   router,
   user,
@@ -71,7 +75,7 @@ export function ProfileHeader({
             </View>
           )}
         </View>
-        {currentUser?.identityVerified && (
+        {isKycApproved && (
           <View style={styles.verifiedBadge}>
             <Ionicons name="checkmark-sharp" size={14} color={Colors.white} />
           </View>
@@ -97,7 +101,7 @@ export function ProfileHeader({
               size={12}
               color={Colors.primaryDark}
             />
-            <Text style={styles.userRolePillText}>{displaysDriverRole ? 'Conducteur' : 'Passager'}</Text>
+            <Text style={styles.userRolePillText}>{profileRoleLabel}</Text>
           </View>
           {isPremiumActive ? (
             <View style={styles.userRolePill}>

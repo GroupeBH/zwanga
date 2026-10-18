@@ -1,4 +1,4 @@
-import { useHomeContext } from './useHomeContext';
+import type { useHomeContext } from './useHomeContext';
 import { useHomeDriverActivity } from './useHomeDriverActivity';
 import { useHomeLocation } from './useHomeLocation';
 import { useHomeMap } from './useHomeMap';
@@ -11,29 +11,41 @@ import { useHomeTripFeed } from './useHomeTripFeed';
 import { useHomeTripSelection } from './useHomeTripSelection';
 import { useHomeUserLocation } from './useHomeUserLocation';
 import { useHomeRequestHighlight } from './useHomeRequestHighlight';
+import { useHomePriorityDismissals } from './useHomePriorityDismissals';
 
-export function useHomeController() {
-  const context = useHomeContext();
-  const driverActivity = useHomeDriverActivity({ ...context });
+export function useHomeController(context: ReturnType<typeof useHomeContext>) {
+  const priorities = useHomePriorityDismissals(context.currentUser?.id);
+  // Queries, sockets and camera commands pause outside the foreground. Map ownership
+  // and the GPS lifecycle follow route focus; useUserLocation handles AppState itself.
+  const foregroundContext = { ...context, isFocused: context.isScreenActive };
+  const driverActivity = useHomeDriverActivity({ ...foregroundContext, ...priorities });
   const location = useHomeLocation({ ...context, ...driverActivity });
-  const tripFeed = useHomeTripFeed({ ...location, ...context });
-  const passengerActivity = useHomePassengerActivity({ ...context, driverCoordinate: location.liveUserCoordinate });
-  const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, liveUserCoordinate: location.liveUserCoordinate });
+  const passengerActivity = useHomePassengerActivity({ ...foregroundContext, ...priorities, driverCoordinate: location.liveUserCoordinate });
+  const tripFeed = useHomeTripFeed({ ...location, ...foregroundContext, ...passengerActivity });
+  const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, ...priorities, liveUserCoordinate: location.liveUserCoordinate });
   const requestHighlight = useHomeRequestHighlight({
-    enabled: context.isFocused && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
+    enabled: context.isScreenActive && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
       && !tripFeed.showInitialHomeLoader && !tripSelection.featuredDriverReservation,
     userId: context.currentUser?.id,
     requests: passengerActivity.availableDriverRequests,
+    hiddenHomePriorities: priorities.hiddenHomePriorities,
     driverCoordinate: location.liveUserCoordinate,
   });
-  const tracking = useHomeTracking({ ...context, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
+  const tracking = useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
   const passengerMarkers = useHomePassengerMarkers({ ...driverActivity, ...tracking });
   const mapNavigation = useHomeMapNavigation({ ...context });
-  const map = useHomeMap({ ...context, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation });
-  const userLocation = useHomeUserLocation({ ...context, ...location, ...driverActivity, ...map, ...mapNavigation });
-  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed });
+  const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation });
+  const userLocation = useHomeUserLocation({ ...foregroundContext, ...location, ...driverActivity, ...map, ...mapNavigation });
+  const hasMapPriorities = !tripSelection.isHomeSheetLockedRetracted && Boolean(
+    (tripSelection.featuredDriverReservation && tripSelection.featuredDriverReservationStatus)
+    || tripSelection.featuredDriverUpcomingTrip || tripSelection.featuredPassengerTrip
+    || requestHighlight.highlightedDriverRequest
+    || (passengerActivity.activeTripRequest && passengerActivity.activeRequestStatus),
+  );
+  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed, hasMapPriorities });
   return {
     ...context,
+    ...priorities,
     ...driverActivity,
     ...location,
     ...tripFeed,
@@ -46,5 +58,6 @@ export function useHomeController() {
     ...map,
     ...userLocation,
     ...sheet,
+    hasMapPriorities,
   };
 }

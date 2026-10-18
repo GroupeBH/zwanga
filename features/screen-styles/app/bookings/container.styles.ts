@@ -94,8 +94,8 @@ export const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   scrollViewContent: {
-    paddingHorizontal: Spacing.xl,
-    paddingBottom: Spacing.xxl,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
   },
   loaderContainer: {
     alignItems: 'center',

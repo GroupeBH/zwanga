@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image } from 'react-native';
+import { ActivityIndicator, View, Text, TextInput, TouchableOpacity, Image } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -11,6 +11,9 @@ import { VehicleType, vehicleOptions } from '../types';
 const SIGNUP_GENDERS = ['male', 'female'] as const satisfies readonly UserGender[];
 
 interface ProfileStepProps {
+  isLoading?: boolean;
+  isSelectingPhoto?: boolean;
+  hasCreatedAccount?: boolean;
   firstName: string;
   lastName: string;
   showNameFields?: boolean;
@@ -35,6 +38,9 @@ interface ProfileStepProps {
 }
 
 export function ProfileStep({
+  isLoading = false,
+  isSelectingPhoto = false,
+  hasCreatedAccount = false,
   firstName,
   lastName,
   showNameFields = true,
@@ -57,6 +63,7 @@ export function ProfileStep({
   onOpenVehicleModal,
   onContinue,
 }: ProfileStepProps) {
+  const fieldsLocked = isLoading || hasCreatedAccount;
   return (
     <Animated.View
       entering={FadeInDown.springify()}
@@ -68,8 +75,10 @@ export function ProfileStep({
           <Text style={styles.profileCompactEyebrow}>DERNIÈRE ÉTAPE</Text>
           <Text style={styles.profileCompactTitle}>Votre profil</Text>
         </View>
-        <TouchableOpacity style={styles.avatarUpload} onPress={onSelectProfilePicture}>
-          {profilePicture ? (
+        <TouchableOpacity style={styles.avatarUpload} onPress={onSelectProfilePicture} disabled={fieldsLocked || isSelectingPhoto}
+          accessibilityRole="button" accessibilityLabel="Choisir une photo de profil"
+          accessibilityState={{ disabled: fieldsLocked || isSelectingPhoto, busy: isSelectingPhoto }}>
+          {isSelectingPhoto ? <ActivityIndicator color={Colors.primary} /> : profilePicture ? (
             <Image source={{ uri: profilePicture }} style={styles.avatarImage} />
           ) : (
             <View style={styles.avatarPlaceholder}>
@@ -98,6 +107,7 @@ export function ProfileStep({
                 placeholder="Prénom(s)"
                 placeholderTextColor={Colors.gray[400]}
                 value={firstName}
+                editable={!fieldsLocked}
                 onChangeText={onFirstNameChange}
                 autoCapitalize="words"
               />
@@ -109,6 +119,7 @@ export function ProfileStep({
                 placeholder="Nom (post-nom facultatif)"
                 placeholderTextColor={Colors.gray[400]}
                 value={lastName}
+                editable={!fieldsLocked}
                 onChangeText={onLastNameChange}
                 autoCapitalize="words"
               />
@@ -120,6 +131,7 @@ export function ProfileStep({
       <View style={styles.genderSelection}>
         <GenderSelector
           compact
+          disabled={fieldsLocked}
           label="Sexe"
           value={gender}
           onChange={onGenderChange}
@@ -150,6 +162,7 @@ export function ProfileStep({
           <TouchableOpacity
             style={[styles.roleCard, role === 'passenger' && styles.roleCardActive]}
             onPress={() => onRoleChange('passenger')}
+            disabled={fieldsLocked}
           >
             <View style={[styles.roleIconBadge, role === 'passenger' && styles.roleIconBadgeActive]}>
               <Ionicons
@@ -166,6 +179,7 @@ export function ProfileStep({
           <TouchableOpacity
             style={[styles.roleCard, role === 'driver' && styles.roleCardActive]}
             onPress={() => onRoleChange('driver')}
+            disabled={fieldsLocked}
           >
             <View style={[styles.roleIconBadge, role === 'driver' && styles.roleIconBadgeActive]}>
               <Ionicons
@@ -193,6 +207,7 @@ export function ProfileStep({
                   vehicleType === opt.id && styles.vehicleTypeCardActive,
                 ]}
                 onPress={() => onVehicleTypeChange(opt.id)}
+                disabled={fieldsLocked}
               >
                 <Ionicons
                   name={opt.icon}
@@ -213,7 +228,7 @@ export function ProfileStep({
             ))}
           </View>
 
-          <TouchableOpacity style={styles.vehicleDetailsSheet} onPress={onOpenVehicleModal}>
+          <TouchableOpacity style={styles.vehicleDetailsSheet} onPress={onOpenVehicleModal} disabled={fieldsLocked}>
             <View style={styles.vehicleDetailsInfo}>
               <Text style={styles.vehicleDetailsTitle}>
                 {vehicleBrand ? `${vehicleBrand} ${vehicleModel}` : 'Informations du véhicule'}
@@ -230,8 +245,14 @@ export function ProfileStep({
       <TouchableOpacity
         style={[styles.mainButton, styles.mainButtonActive, styles.profileContinueButton]}
         onPress={onContinue}
+        disabled={isLoading || isSelectingPhoto}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: isLoading || isSelectingPhoto, busy: isLoading || isSelectingPhoto }}
       >
-        <Text style={styles.mainButtonText}>Continuer</Text>
+        {isLoading && <ActivityIndicator color="white" />}
+        <Text style={styles.mainButtonText}>
+          {isLoading ? 'Finalisation en cours…' : hasCreatedAccount ? 'Finaliser la connexion' : 'Continuer'}
+        </Text>
       </TouchableOpacity>
     </Animated.View>
   );

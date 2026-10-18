@@ -1,31 +1,43 @@
 import { TabType, RateTargetType } from '../../features/rating/ratingTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useGetMyBookingsForTripQuery, useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useCreateReviewMutation } from '@/store/api/reviewApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRatingLifecycle } from './useRatingLifecycle';
 
 
 
 export function useRatingData() {
+  const active = useScreenIsActive();
   const router = useRouter();
   const params = useLocalSearchParams();
   const user = useAppSelector(selectUser);
   const tripId = typeof params.id === 'string' ? params.id : '';
   const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
-  const isMountedRef = useRef(true);
+  const ratingScopeKey = `rating:${user?.id ?? ''}:${tripId}`;
+  const { captureRatingSession, beginLeaving, successReturnTimeoutRef } = useRatingLifecycle(ratingScopeKey, active);
   const submitInFlightRef = useRef(false);
-  const successReturnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasInitializedTargetRef = useRef(false);
-  const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId });
-  const isTripDriver = trip?.driverId === user?.id;
-  // Charger les bookings - toujours charger pour le conducteur, et aussi pour les passagers
-  const { data: tripBookings, isLoading: bookingsLoading, error: bookingsError, refetch: refetchBookings } = useGetTripBookingsQuery(tripId, {
-    skip: !tripId,
+  const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId || !active });
+  const isTripDriver = Boolean(user?.id && trip?.driverId === user.id);
+  const driverBookings = useGetTripBookingsQuery(tripId, {
+    skip: !tripId || !isTripDriver || !active,
   });
+  const passengerBookings = useGetMyBookingsForTripQuery(tripId, { skip: !active || !tripId || !trip || !user?.id || isTripDriver });
+  const tripBookings = useMemo(() => isTripDriver ? driverBookings.data
+    : passengerBookings.data?.filter(booking => booking.tripId === tripId),
+  [driverBookings.data, isTripDriver, passengerBookings.data, tripId]);
+  const bookingsLoading = isTripDriver ? driverBookings.isLoading : passengerBookings.isLoading;
+  const bookingsError = isTripDriver ? driverBookings.error : passengerBookings.error;
+  const refetchBookings = () => {
+    if (isTripDriver) return driverBookings.refetch();
+    if (tripId && trip && user?.id) return passengerBookings.refetch();
+  };
 
   // Déterminer si l'utilisateur est un passager du trajet
   const isTripPassenger = useMemo(() => {
@@ -49,28 +61,24 @@ export function useRatingData() {
   const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
 
   const goBackSafely = useCallback(() => {
+    if (!beginLeaving()) return;
     if (router.canGoBack()) {
       router.back();
       return;
     }
 
     router.replace('/(tabs)');
-  }, [router]);
+  }, [beginLeaving, router]);
 
   useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      submitInFlightRef.current = false;
-      if (successReturnTimeoutRef.current) {
-        clearTimeout(successReturnTimeoutRef.current);
-        successReturnTimeoutRef.current = null;
-      }
-    };
-  }, []);
+    submitInFlightRef.current = false;
+    hasInitializedTargetRef.current = false;
+    setSubmitSuccessMessage(null);
+  }, [ratingScopeKey]);
 
   // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
   const passengers = useMemo(() => {
-    const result: Array<{ id: string; name: string; seats: number }> = [];
+    const result: { id: string; name: string; seats: number }[] = [];
     
     // Pour le conducteur, utiliser les bookings en priorité (source la plus fiable)
     // Si on a des bookings, les utiliser
@@ -196,6 +204,8 @@ export function useRatingData() {
   ];
 
   return {
+    active,
+    ratingScopeKey,
     selectedTags,
     setSelectedTags,
     submitInFlightRef,
@@ -210,7 +220,7 @@ export function useRatingData() {
     passengers,
     comment,
     createReview,
-    isMountedRef,
+    captureRatingSession,
     successReturnTimeoutRef,
     goBackSafely,
     reportReason,

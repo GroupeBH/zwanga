@@ -1,13 +1,11 @@
-import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
 import { useTutorialGuide } from '@/contexts/TutorialContext';
 import {
   formatReferralTokens,
-  openExternalUrl,
-  ZWANGA_DOCUMENTS_PACK_URL
 } from '@/features/profile/profileModel';
 import { useProfilePhoto } from '@/hooks/useProfilePhoto';
-import { useAppDispatch } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { getServicesEntryHref, selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
 import { performLogout } from '@/store/slices/authSlice';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -25,14 +23,15 @@ import { useProfileSubscriptionState } from './useProfileSubscriptionState';
 import { useProfileSubscriptionStorage } from './useProfileSubscriptionStorage';
 import { useProfileSubscriptionView } from './useProfileSubscriptionView';
 import { useProfileVehicles } from './useProfileVehicles';
+import { getProfilePriorityAction } from '@/features/profile/profileStatusModel';
+import { getDriverJourneyPresentation } from '@/features/profile/driverJourneyPresentation';
 export function useProfileController() {
   const router = useRouter();
+  const usesServices = useAppSelector(selectUsesServicesTab);
 
   const insets = useSafeAreaInsets();
 
   const dispatch = useAppDispatch();
-
-  const { showDialog } = useDialog();
 
   const data = useProfileData();
 
@@ -58,13 +57,13 @@ export function useProfileController() {
 
   useProfileSubscriptionLifecycle({ ...subscriptionStorage, ...data, ...subscriptionState, ...subscriptionRecovery, ...subscriptionMonitor });
 
-  const { driverBookingsCount, driverSettlement, handleOpenPinModal, handleStartDriverOnboarding, hasVehicle, isDriver, isKycBusy, isPremiumActive, isUpdatingUser, knownVehicleCount, needsDriverOnboarding, passengerBookingsCount, pendingOffersCount, proBusy, shouldShowVehicleLoadError, tripRequestsCount, tripRequestsStats } = { ...data, ...onboarding, ...subscriptionView, ...pin, ...vehicles, ...subscriptionState, ...subscriptionCheckout, ...subscriptionMonitor };
+  const { driverBookingsCount, driverSettlement, handleOpenPinModal, handleStartDriverOnboarding, hasVehicle, isDriver, isKycBusy, isPremiumActive, isUpdatingUser, knownVehicleCount, needsDriverOnboarding, passengerBookingsCount, pendingOffersCount, proBusy, tripRequestsCount, tripRequestsStats } = { ...data, ...onboarding, ...subscriptionView, ...pin, ...vehicles, ...subscriptionState, ...subscriptionCheckout, ...subscriptionMonitor };
 
   const { changeProfilePhoto, isUploading } = useProfilePhoto();
 
   const [reviewsModalVisible, setReviewsModalVisible] = useState(false);
 
-  const [openingDocumentsPack, setOpeningDocumentsPack] = useState(false);
+  const openingDocumentsPack = false;
 
   const { shouldShow: shouldShowProfileGuide, complete: completeProfileGuide } = useTutorialGuide('profile_screen');
 
@@ -82,6 +81,10 @@ export function useProfileController() {
   };
 
   const handleSubscribePro = async () => {
+    if (!data.isProfileStatusAvailable) {
+      await data.refetchProfile();
+      return;
+    }
     if (needsDriverOnboarding) {
       handleStartDriverOnboarding();
       return;
@@ -94,33 +97,24 @@ export function useProfileController() {
     router.push('/subscriptions/payment' as any);
   };
 
-  const handleOpenDocumentsPack = async () => {
-    try {
-      setOpeningDocumentsPack(true);
-      await openExternalUrl(ZWANGA_DOCUMENTS_PACK_URL);
-    } catch {
-      showDialog({
-        variant: 'danger',
-        title: 'Redirection impossible',
-        message: `Impossible d'ouvrir le site pour le moment. Vous pouvez aller sur ${ZWANGA_DOCUMENTS_PACK_URL}.`,
-      });
-    } finally {
-      setOpeningDocumentsPack(false);
-    }
+  const handleOpenDocumentsPack = () => {
+    const href = getServicesEntryHref(usesServices);
+    if (usesServices) router.navigate(href as any);
+    else router.push(href as any);
   };
 
-  const driverStatusItems = isDriver ? [
+  const driverStatusItems = isDriver && data.profileState?.driver.canPublish ? [
     {
       icon: 'car-outline' as keyof typeof Ionicons.glyphMap,
       label: 'Véhicule',
       value: hasVehicle
         ? `${knownVehicleCount} ajouté${knownVehicleCount !== 1 ? 's' : ''}`
-        : shouldShowVehicleLoadError && knownVehicleCount === undefined
+        : knownVehicleCount === undefined
           ? 'Indisponible'
           : 'À ajouter',
       color: hasVehicle
         ? Colors.success
-        : shouldShowVehicleLoadError && knownVehicleCount === undefined
+        : knownVehicleCount === undefined
           ? Colors.gray[500]
           : Colors.warning,
     },
@@ -129,40 +123,48 @@ export function useProfileController() {
         ? ('shield-checkmark-outline' as keyof typeof Ionicons.glyphMap)
         : ('sparkles-outline' as keyof typeof Ionicons.glyphMap),
       label: 'Pro',
-      value: needsDriverOnboarding ? 'Profil incomplet' : isPremiumActive ? 'Actif' : 'Disponible',
+      value: !data.isProfileStatusAvailable ? 'Statut indisponible' : needsDriverOnboarding ? 'Profil incomplet' : isPremiumActive ? 'Actif' : 'Disponible',
       color: needsDriverOnboarding ? Colors.gray[500] : isPremiumActive ? Colors.success : Colors.primary,
     },
   ] : [];
 
-  const priorityCta = !isDriver
-    ? {
-      label: 'Devenir conducteur',
+  const priorityAction = getProfilePriorityAction(data);
+  const priorityCta = {
+    refresh: {
+      label: 'Actualiser le profil',
+      icon: 'refresh-outline' as keyof typeof Ionicons.glyphMap,
+      onPress: data.handleRefresh,
+    },
+    onboarding: {
+      label: data.profileState ? getDriverJourneyPresentation(data.profileState).label : 'Continuer',
       icon: 'car-sport-outline' as keyof typeof Ionicons.glyphMap,
       onPress: handleStartDriverOnboarding,
-    }
-    : needsDriverOnboarding
-    ? {
-      label: 'Devenir conducteur',
-      icon: 'car-sport-outline' as keyof typeof Ionicons.glyphMap,
-      onPress: handleStartDriverOnboarding,
-    }
-    : isDriver && !isPremiumActive
-      ? {
-        label: 'Activer Pro',
-        icon: 'sparkles-outline' as keyof typeof Ionicons.glyphMap,
-        onPress: handleSubscribePro,
-      }
-      : {
-        label: 'Jetons Zwanga',
-        icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
-        onPress: () => router.push('/wallet' as any),
-      };
+    },
+    support: {
+      label: 'Contacter le support',
+      icon: 'help-circle-outline' as keyof typeof Ionicons.glyphMap,
+      onPress: () => router.push('/support'),
+    },
+    pro: {
+      label: 'Activer Pro',
+      icon: 'sparkles-outline' as keyof typeof Ionicons.glyphMap,
+      onPress: handleSubscribePro,
+    },
+    wallet: {
+      label: 'Jetons Zwanga',
+      icon: 'wallet-outline' as keyof typeof Ionicons.glyphMap,
+      onPress: () => router.push('/wallet' as any),
+    },
+  }[priorityAction];
 
-  const isPriorityCtaBusy = needsDriverOnboarding
-    ? isUpdatingUser || isKycBusy || data.kycLoading || data.vehiclesLoading
+  const isPriorityCtaBusy = priorityAction === 'refresh'
+    ? data.profileFetching || data.refreshing
+    : needsDriverOnboarding
+    ? isUpdatingUser || isKycBusy
     : proBusy;
 
-  const shouldShowProDetailsCard = !needsDriverOnboarding && isPremiumActive;
+  const shouldShowProDetailsCard = data.isProfileStatusKnown && data.isIdentityStatusKnown &&
+    !needsDriverOnboarding && isPremiumActive;
 
   const quickActionItems = [
     {
@@ -173,7 +175,7 @@ export function useProfileController() {
     },
     {
       icon: 'document-text-outline' as keyof typeof Ionicons.glyphMap,
-      label: 'Demandes',
+      label: 'Mes commandes',
       meta: `${tripRequestsStats.activeRequests} actives`,
       badge: tripRequestsCount > 0 ? tripRequestsCount : undefined,
       onPress: () => router.push('/my-requests'),
@@ -218,7 +220,7 @@ export function useProfileController() {
       ? [
         {
           icon: 'list-outline',
-          label: 'Demandes disponibles',
+          label: 'Commandes disponibles',
           route: '/requests',
           badge: pendingOffersCount > 0 ? pendingOffersCount : undefined,
           badgeColor: Colors.info,

@@ -4,7 +4,8 @@ import { Colors, Spacing } from '@/constants/styles';
 import type { Trip } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface NavigationSecurityModalProps {

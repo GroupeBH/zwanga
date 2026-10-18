@@ -5,6 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
+import { isSignupOtpVerificationEnabled } from '@/config/env';
+import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
+import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 
 interface PhoneStepProps {
   mode: AuthMode;
@@ -35,7 +38,7 @@ export function PhoneStep({
   hasReferralAttribution = false,
   referrerFirstName,
 }: PhoneStepProps) {
-  const isPhoneValid = phone.length >= 10;
+  const isPhoneValid = isAuthPhoneValid(phone);
   const showAppleAuth = Platform.OS === 'ios' && isAppleAvailable && onAppleAuth;
   const isAnySocialLoading = isGoogleLoading || isAppleLoading;
   const appleButtonLabel = mode === 'login' ? 'Continuer avec Apple' : 'S\'inscrire avec Apple';
@@ -87,21 +90,30 @@ export function PhoneStep({
           <Ionicons name="call-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
           <TextInput
             style={styles.input}
-            placeholder="+243 000 000 000"
+            placeholder="Votre numéro de téléphone"
             placeholderTextColor={Colors.gray[400]}
             keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            autoCorrect={false}
+            accessibilityLabel="Numéro de téléphone"
+            accessibilityHint={authPhoneCopy.hint}
             value={phone}
             onChangeText={onPhoneChange}
           />
         </View>
 
+        <Text style={styles.phoneHint}>{authPhoneCopy.hint}</Text>
+
+        {mode === 'signup' && isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
+
         <TouchableOpacity
           style={[
             styles.mainButton,
-            isPhoneValid && !isLoading ? styles.mainButtonActive : styles.mainButtonDisabled,
+            isPhoneValid && !isLoading && !isAnySocialLoading ? styles.mainButtonActive : styles.mainButtonDisabled,
           ]}
           onPress={onSubmit}
-          disabled={!isPhoneValid || isLoading}
+          disabled={!isPhoneValid || isLoading || isAnySocialLoading}
         >
           {isLoading ? (
             <ActivityIndicator color="white" />
@@ -120,13 +132,16 @@ export function PhoneStep({
         </View>
 
         <TouchableOpacity
-          style={[styles.googleButton, isAnySocialLoading && { opacity: 0.7 }]}
+          style={[styles.googleButton, (isAnySocialLoading || isLoading) && { opacity: 0.7 }]}
           onPress={onGoogleAuth}
-          disabled={isAnySocialLoading}
+          disabled={isAnySocialLoading || isLoading}
+          accessibilityRole="button"
+          accessibilityLabel={isGoogleLoading ? 'Connexion Google en cours' : mode === 'login' ? 'Continuer avec Google' : 'S’inscrire avec Google'}
+          accessibilityState={{ disabled: isAnySocialLoading || isLoading, busy: isGoogleLoading }}
           activeOpacity={0.8}
         >
           {isGoogleLoading ? (
-            <ActivityIndicator color="#4285F4" />
+            <><ActivityIndicator color="#4285F4" /><Text style={styles.googleButtonText}>Connexion en cours…</Text></>
           ) : (
             <>
               <Image 
@@ -150,7 +165,7 @@ export function PhoneStep({
             <TouchableOpacity
               style={[styles.appleFallbackButton, isGoogleLoading && { opacity: 0.7 }]}
               onPress={handleAppleAuthPress}
-              disabled={isAnySocialLoading}
+              disabled={isAnySocialLoading || isLoading}
               activeOpacity={0.8}
             >
               <Ionicons name="logo-apple" size={20} color="#000000" />

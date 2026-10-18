@@ -3,7 +3,7 @@ import { useDriverNavigationData } from './useDriverNavigationData';
 import { useDriverNavigationMapState } from './useDriverNavigationMapState';
 import { useDriverCompletionActions } from './useDriverCompletionActions';
 import { trackingSocket } from '@/services/trackingSocket';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 
 interface Params {
@@ -21,8 +21,11 @@ export function useDriverProgressLifecycle({
   refs,
   completion,
 }: Params) {
+  const latest = useRef({ data, mapState });
+  latest.current = { data, mapState };
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
+      const { data, mapState } = latest.current;
       const previousState = mapState.appStateRef.current;
       mapState.appStateRef.current = nextState;
 
@@ -37,8 +40,8 @@ export function useDriverProgressLifecycle({
         nextState === 'active' &&
         (previousState === 'background' || previousState === 'inactive')
       ) {
-        void foregroundCompletion.checkTripCompletionFromRestOnForeground();
-        if (data.tripId) {
+        // Completion recovery runs once through the active-screen effect below.
+        if (data.isFocused && data.isTripOngoing && data.tripId) {
           void trackingSocket.resumeBoardingDetection(data.tripId).catch((error) => {
             console.warn('[Navigation] Reprise détection embarquement impossible:', error);
           });
@@ -49,50 +52,58 @@ export function useDriverProgressLifecycle({
     return () => {
       subscription.remove();
     };
-  }, [foregroundCompletion.checkTripCompletionFromRestOnForeground, data.tripId]);
+  }, []);
 
+  const hasArrival = Boolean(data.tripArrivalCoordinate);
+  const { checkTripCompletionFromRestOnForeground } = foregroundCompletion;
   useEffect(() => {
-    if (!data.isTripOngoing || !data.tripArrivalCoordinate) {
+    if (!data.isScreenActive || !data.isTripOngoing || !hasArrival) {
       return;
     }
 
-    void foregroundCompletion.checkTripCompletionFromRestOnForeground();
-  }, [foregroundCompletion.checkTripCompletionFromRestOnForeground, data.isTripOngoing, data.tripArrivalCoordinate]);
+    void checkTripCompletionFromRestOnForeground();
+  }, [checkTripCompletionFromRestOnForeground, data.isScreenActive, data.isTripOngoing, data.tripId, hasArrival]);
 
+  const { previousTripStatusRef } = refs;
+  const { completedDuringInactiveCandidateRef, setPickupNoticeCountdown } = mapState;
+  const { presentCompletedTripFromServerSync } = completion;
   useEffect(() => {
-    const previousStatus = refs.previousTripStatusRef.current;
+    const previousStatus = previousTripStatusRef.current;
     const currentStatus = data.trip?.status ?? null;
 
     if (previousStatus === 'ongoing' && currentStatus === 'completed' && data.trip) {
-      completion.presentCompletedTripFromServerSync(data.trip, {
-        completedWhileAppInactive: mapState.completedDuringInactiveCandidateRef.current,
+      presentCompletedTripFromServerSync(data.trip, {
+        completedWhileAppInactive: completedDuringInactiveCandidateRef.current,
       });
     }
 
-    refs.previousTripStatusRef.current = currentStatus;
-  }, [completion.presentCompletedTripFromServerSync, data.trip]);
+    previousTripStatusRef.current = currentStatus;
+  }, [presentCompletedTripFromServerSync, data.trip, previousTripStatusRef, completedDuringInactiveCandidateRef]);
 
+  const noticeExpiresAt = mapState.pickupNotice?.expiresAt;
   useEffect(() => {
-    if (!mapState.pickupNotice?.expiresAt) {
-      mapState.setPickupNoticeCountdown(null);
+    if (!data.isScreenActive || !noticeExpiresAt) {
+      setPickupNoticeCountdown(null);
       return;
     }
 
-    const expiresAt = new Date(mapState.pickupNotice.expiresAt).getTime();
+    const expiresAt = new Date(noticeExpiresAt).getTime();
     if (!Number.isFinite(expiresAt)) {
-      mapState.setPickupNoticeCountdown(null);
+      setPickupNoticeCountdown(null);
       return;
     }
 
+    let interval: ReturnType<typeof setInterval> | undefined;
     const updateCountdown = () => {
       const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-      mapState.setPickupNoticeCountdown(remainingSeconds);
+      setPickupNoticeCountdown(remainingSeconds);
+      if (remainingSeconds === 0 && interval) clearInterval(interval);
     };
 
     updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
+    if (expiresAt > Date.now()) interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [mapState.pickupNotice?.expiresAt]);
+  }, [data.isScreenActive, noticeExpiresAt, setPickupNoticeCountdown]);
 
   return {
 

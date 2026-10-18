@@ -6,7 +6,6 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { getPassengerSeatValidation } from '@/utils/passengerSeats';
 import {
   useCancelTripRequestMutation,
-  useGetTripRequestByIdQuery,
   useUpdateTripRequestMutation,
 } from '@/store/api/tripRequestApi';
 import type { TripRequestVehicleType } from '@/types';
@@ -14,8 +13,10 @@ import { getApiErrorMessage, isPassengerKycRequiredError, isExtraSeatsIdentityEr
 import React from 'react';
 import { Platform } from 'react-native';
 import type { TripRequest } from '@/types';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 
 interface Params {
+  editExpectedUpdatedAt: string | undefined;
   isUpdating: boolean;
   isEditVehicleOptionsLoading: boolean;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
@@ -40,13 +41,14 @@ interface Params {
   editVehicleType: TripRequestVehicleType;
   editDescription: string;
   setShowEditForm: React.Dispatch<React.SetStateAction<boolean>>;
-  refetch: ReturnType<typeof useGetTripRequestByIdQuery>['refetch'];
+  refetch: DisplayRefetch<TripRequest>;
   tripRequest: TripRequest | undefined;
   cancelRequest: ReturnType<typeof useCancelTripRequestMutation>[0];
   goHome: () => void;
 }
 
 export function useRequestPassengerActions({
+  editExpectedUpdatedAt,
   isUpdating,
   isEditVehicleOptionsLoading,
   showDialog,
@@ -107,7 +109,8 @@ export function useRequestPassengerActions({
       });
       return;
     }
-    if (updatedDepartureDateMin.getTime() <= Date.now()) {
+    if (updatedDepartureDateMin.getTime() <= Date.now() && (tripRequest?.status === 'expired' ||
+        updatedDepartureDateMin.getTime() !== new Date(tripRequest?.departureDateMin ?? '').getTime())) {
       showDialog({
         title: 'Heure pass\u00e9e',
         message: 'Choisissez une heure de d\u00e9part dans le futur.',
@@ -166,12 +169,13 @@ export function useRequestPassengerActions({
       await updateTripRequest({
         id,
         payload: {
+          expectedUpdatedAt: editExpectedUpdatedAt,
           departureLocation: editDepartureAddress,
-          departureReference: editDepartureReference.trim() || undefined,
+          departureReference: editDepartureReference.trim(),
           departureCoordinates:
             editAddressInputMode === 'map' ? getLocationCoordinates(editDepartureLocation) : undefined,
           arrivalLocation: editArrivalAddress,
-          arrivalReference: editArrivalReference.trim() || undefined,
+          arrivalReference: editArrivalReference.trim(),
           arrivalCoordinates:
             editAddressInputMode === 'map' ? getLocationCoordinates(editArrivalLocation) : undefined,
           departureDateMin: updatedDepartureDateMin.toISOString(),
@@ -179,7 +183,7 @@ export function useRequestPassengerActions({
           numberOfSeats: parsedEditNumberOfSeats,
           vehicleType: editVehicleType,
           maxPricePerSeat: parsedEditBudget,
-          description: editDescription.trim() || undefined,
+          description: editDescription.trim(),
         },
       }).unwrap();
 
@@ -188,8 +192,8 @@ export function useRequestPassengerActions({
 
       setTimeout(() => {
         showDialog({
-          title: 'Demande modifiée',
-          message: `Votre demande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}.`,
+          title: tripRequest?.status === 'expired' ? 'Commande reprogrammée' : 'Commande modifiée',
+          message: `Votre commande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}. Les anciennes offres en attente ont été retirées.`,
           variant: 'success',
         });
       }, Platform.OS === 'ios' ? 350 : 0);
@@ -200,7 +204,7 @@ export function useRequestPassengerActions({
       }
       showDialog({
         title: 'Erreur',
-        message: getApiErrorMessage(error, 'Impossible de modifier la demande.'),
+        message: getApiErrorMessage(error, 'Impossible de modifier la commande.'),
         variant: 'danger',
       });
     }
@@ -210,11 +214,11 @@ export function useRequestPassengerActions({
     if (!id) return;
 
     showDialog({
-      title: 'Annuler la demande',
+      title: 'Annuler la commande',
       message:
         tripRequest?.status === 'driver_selected'
-          ? 'Un conducteur a déjà accepté cette demande. Voulez-vous vraiment annuler la demande, la réservation et le trajet associé ?'
-          : 'Êtes-vous sûr de vouloir annuler cette demande ?',
+          ? 'Un conducteur a déjà accepté cette commande. Voulez-vous vraiment annuler la commande, la réservation et le trajet associé ?'
+          : 'Êtes-vous sûr de vouloir annuler cette commande ?',
       variant: 'danger',
       actions: [
         { label: 'Non', variant: 'secondary' },
@@ -225,15 +229,15 @@ export function useRequestPassengerActions({
             try {
               await cancelRequest(id).unwrap();
               showDialog({
-                title: 'Demande annulée',
-                message: 'Votre demande a été annulée avec succès',
+                title: 'Commande annulée',
+                message: 'Votre commande a été annulée avec succès',
                 variant: 'success',
                 actions: [{ label: 'OK', onPress: goHome }],
               });
             } catch (error: any) {
               showDialog({
                 title: 'Erreur',
-                message: getApiErrorMessage(error, 'Impossible d\'annuler la demande.'),
+                message: getApiErrorMessage(error, 'Impossible d\'annuler la commande.'),
                 variant: 'danger',
               });
             }

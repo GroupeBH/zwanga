@@ -10,12 +10,23 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { getTokenSessionVersion } from '@/services/tokenSession';
+import { isDriverAccount } from '@/utils/accountRole';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function EditProfileScreen() {
+  const active = useScreenIsActive();
+  const mounted = useRef(true);
+  const view = useRef({ active, epoch: 0 });
+  if (view.current.active !== active) view.current = { active, epoch: view.current.epoch + 1 };
+  const saving = useRef(false);
+  const leaveAfterDismiss = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { data: profileSummary, isLoading: summaryLoading, refetch } = useGetProfileSummaryQuery();
@@ -30,38 +41,36 @@ export default function EditProfileScreen() {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState<UserGender | null>(null);
-  const [wantsToBeDriver, setWantsToBeDriver] = useState(false);
   const [feedback, setFeedback] = useState<{ visible: boolean; success: boolean; message: string }>({
     visible: false,
     success: false,
     message: '',
   });
 
+  const previousProfile = useRef<typeof user>(undefined);
   useEffect(() => {
-    if (user) {
-      setFirstName(user.firstName ?? '');
-      setLastName(user.lastName ?? '');
-      setPhone(user.phone ?? '');
-      setGender(user.gender ?? null);
-      // Utiliser role pour déterminer si l'utilisateur est conducteur
-      const isDriver = user?.role === 'driver' || user?.role === 'both';
-      setWantsToBeDriver(isDriver);
-    }
+    if (!active) { leaveAfterDismiss.current = false; setFeedback(previous => ({ ...previous, visible: false })); }
+  }, [active]);
+  useEffect(() => {
+    if (!user) return;
+    const previous = previousProfile.current;
+    const sameAccount = previous?.id === user.id;
+    // A photo refetch must not erase personal fields currently being edited.
+    setFirstName(current => sameAccount && current !== (previous?.firstName ?? '') ? current : user.firstName ?? '');
+    setLastName(current => sameAccount && current !== (previous?.lastName ?? '') ? current : user.lastName ?? '');
+    setPhone(current => sameAccount && current !== (previous?.phone ?? '') ? current : user.phone ?? '');
+    setGender(current => sameAccount && current !== (previous?.gender ?? null) ? current : user.gender ?? null);
+    previousProfile.current = user;
   }, [user]);
 
-  // L'utilisateur peut devenir conducteur s'il n'est pas déjà driver ou both
-  const canBecomeDriver = useMemo(() => {
-    const role = user?.role;
-    return role !== 'driver' && role !== 'both';
-  }, [user?.role]);
-  
-  // L'utilisateur est actuellement conducteur si son role est driver ou both
-  const isCurrentlyDriver = useMemo(() => {
-    const role = user?.role;
-    return role === 'driver' || role === 'both';
-  }, [user?.role]);
+  const isCurrentlyDriver = isDriverAccount(user);
 
   const handleSave = async () => {
+    if (!active || saving.current) return;
+    const version = getTokenSessionVersion();
+    const epoch = view.current.epoch;
+    const current = () => mounted.current && version === getTokenSessionVersion();
+    const canPresent = () => current() && view.current.active && view.current.epoch === epoch;
     const legalFirstName = normalizeLegalName(firstName);
     const legalLastName = normalizeLegalName(lastName);
 
@@ -73,6 +82,7 @@ export default function EditProfileScreen() {
       });
       return;
     }
+    saving.current = true;
     try {
       const formData = new FormData();
       if (!isLegalIdentityLocked) {
@@ -81,16 +91,9 @@ export default function EditProfileScreen() {
       }
       formData.append('phone', phone.trim());
       if (gender) formData.append('gender', gender);
-      // Ne modifier le rôle que si l'utilisateur n'est pas déjà conducteur
-      // et qu'il souhaite devenir conducteur
-      if (canBecomeDriver && wantsToBeDriver) {
-        formData.append('role', 'driver');
-      } else if (canBecomeDriver && !wantsToBeDriver) {
-        // Si l'utilisateur ne veut plus être conducteur (mais n'est pas encore actif)
-        formData.append('role', 'passenger');
-      }
-      // Si l'utilisateur est déjà conducteur (role === 'driver' ou 'both'), on ne modifie pas le rôle
+      // Editing personal information never requests or changes a driver role.
       const updated = await updateUserMutation(formData).unwrap();
+      if (!current()) return;
       dispatch(
         updateUserAction({
           id: updated.id,
@@ -101,31 +104,28 @@ export default function EditProfileScreen() {
           gender: updated.gender,
           avatar: updated.profilePicture ?? updated.avatar,
           profilePicture: updated.profilePicture,
-          role: updated.role,
-          isDriver: updated.isDriver,
+          updatedAt: updated.updatedAt,
         }),
       );
       void refetch();
-      const successMessage = wantsToBeDriver && canBecomeDriver
-        ? 'Profil mis à jour. N\'oubliez pas d\'ajouter un véhicule et de vérifier votre identité pour devenir conducteur.'
-        : 'Profil mis à jour avec succès.';
+      if (!canPresent()) return;
       setFeedback({
         visible: true,
         success: true,
-        message: successMessage,
+        message: 'Profil mis à jour avec succès.',
       });
     } catch (error: any) {
+      if (!canPresent()) return;
       setFeedback({
         visible: true,
         success: false,
         message: getApiErrorMessage(error, 'Impossible de sauvegarder les informations.'),
       });
-    }
+    } finally { saving.current = false; }
   };
 
   const handleChangePhoto = async () => {
-    await changeProfilePhoto();
-    void refetch();
+    if (await changeProfilePhoto()) void refetch();
   };
 
   return (
@@ -224,22 +224,9 @@ export default function EditProfileScreen() {
               <Text style={styles.sectionSubtitle}>
                 {isCurrentlyDriver
                   ? 'Vous êtes conducteur. Vous pouvez proposer des trajets sur Zwanga.'
-                  : canBecomeDriver
-                    ? 'Activez pour proposer vos trajets sur Zwanga. Vous devrez ajouter un véhicule et vérifier votre identité.'
-                    : 'Vous êtes déjà conducteur.'}
+                  : 'Vérifiez votre identité puis ajoutez un véhicule dans le parcours conducteur. Modifier ce profil ne change pas votre statut.'}
               </Text>
             </View>
-            <Switch
-              value={isCurrentlyDriver || wantsToBeDriver}
-              onValueChange={(value) => {
-                if (!isCurrentlyDriver) {
-                  setWantsToBeDriver(value);
-                }
-              }}
-              disabled={isCurrentlyDriver}
-              thumbColor={isCurrentlyDriver || wantsToBeDriver ? Colors.primary : Colors.gray[300]}
-              trackColor={{ false: Colors.gray[200], true: Colors.primary + '50' }}
-            />
           </View>
 
           {isCurrentlyDriver && (
@@ -261,7 +248,7 @@ export default function EditProfileScreen() {
             </View>
           )}
 
-          {!isCurrentlyDriver && wantsToBeDriver && (
+          {!isCurrentlyDriver && (
             <View style={styles.driverCard}>
               <View style={styles.driverCardHeader}>
                 <Ionicons name="information-circle" size={20} color={Colors.warning} />
@@ -269,17 +256,17 @@ export default function EditProfileScreen() {
               </View>
               <View style={styles.stepsList}>
                 <View style={styles.stepItem}>
-                  <Ionicons name="car-outline" size={16} color={Colors.primary} />
-                  <Text style={styles.stepText}>Ajouter un véhicule</Text>
-                </View>
-                <View style={styles.stepItem}>
                   <Ionicons name="shield-checkmark-outline" size={16} color={Colors.primary} />
                   <Text style={styles.stepText}>Vérifier mon identité</Text>
+                </View>
+                <View style={styles.stepItem}>
+                  <Ionicons name="car-outline" size={16} color={Colors.primary} />
+                  <Text style={styles.stepText}>Ajouter un véhicule</Text>
                 </View>
               </View>
               <TouchableOpacity
                 style={styles.driverButton}
-                onPress={() => router.push('/profile')}
+                onPress={() => router.push({ pathname: '/(tabs)/profile', params: { openDriverOnboarding: '1' } })}
               >
                 <Ionicons name="car" size={16} color={Colors.primary} />
                 <Text style={styles.driverButtonText}>Commencer maintenant</Text>
@@ -303,7 +290,13 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={feedback.visible} transparent animationType="fade">
+      <Modal inApp visible={active && feedback.visible} transparent animationType="fade"
+        onRequestClose={() => setFeedback(previous => ({ ...previous, visible: false }))}
+        onDismiss={() => {
+          if (!leaveAfterDismiss.current) return;
+          leaveAfterDismiss.current = false;
+          if (active) { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/profile'); }
+        }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View
@@ -323,10 +316,8 @@ export default function EditProfileScreen() {
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => {
+                leaveAfterDismiss.current = feedback.success;
                 setFeedback((prev) => ({ ...prev, visible: false }));
-                if (feedback.success) {
-                  router.back();
-                }
               }}
             >
               <Text style={styles.modalButtonText}>OK</Text>
@@ -337,6 +328,3 @@ export default function EditProfileScreen() {
     </SafeAreaView>
   );
 }
-
-
-

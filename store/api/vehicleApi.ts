@@ -66,7 +66,7 @@ export const vehicleApi = baseApi.injectEndpoints({
         currentUserTag,
       ],
     }),
-    deleteVehicle: builder.mutation<{ message: string }, string>({
+    deleteVehicle: builder.mutation<{ message: string; isActive?: false }, string>({
       query: (id: string) => ({
         url: `/vehicles/${id}`,
         method: 'DELETE',

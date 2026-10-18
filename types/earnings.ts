@@ -39,6 +39,14 @@ export interface DriverPayout {
   failureReason?: string | null;
   reference?: string | null;
   requiresReview?: boolean;
+  isStale?: boolean;
+  canRequestReview?: boolean;
+  canCheckStatus?: boolean;
+  canRetry?: boolean;
+  reviewStatus?: 'none' | 'requested' | 'resolved' | 'blocked';
+  recoveryBlocked?: boolean;
+  reviewRequestedAt?: string | null;
+  reviewResolvedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,6 +55,8 @@ export interface DriverSettlementSummary {
   availableBalance: number;
   pendingPayoutBalance: number;
   paidBalance: number;
+  /** Confirmed passenger cash receipts, informational only; absent on older servers. */
+  cashReceivedAmount?: number;
   currency: string;
   commissionRate: number;
   kycApproved: boolean;
@@ -59,9 +69,19 @@ export interface DriverTripRevenueSummary {
   currency: string;
   commissionRate: number;
   confirmedAmount: number;
+  /** Only true when confirmedAmount was read from the persisted earnings ledger. */
+  ledgerVerified?: boolean;
+  creditPendingAmount?: number;
+  zwangaSubsidyAmount?: number;
   cashToCollectAmount: number;
   electronicPendingAmount: number;
+  pointsPendingAmount?: number;
   totalExpectedAmount: number;
   completedBookings: number;
   generatedAt: string;
+}
+
+export interface DriverBookingRevenueSummary extends DriverTripRevenueSummary {
+  bookingId: string;
+  dropoffConfirmed: boolean;
 }

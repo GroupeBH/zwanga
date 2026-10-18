@@ -27,7 +27,7 @@ test('navigation contacts use the actual role in this trip, not the account driv
 
 test('driver contacts exclude other trips, rejected bookings and passengers already dropped off', () => {
   const bookings = [booking, { ...booking },
-    ...['pending', 'rejected', 'cancelled', 'completed'].map(status => ({ ...booking, passengerId: status, status })),
+    ...['rejected', 'cancelled', 'completed'].map(status => ({ ...booking, passengerId: status, status })),
     { ...booking, passengerId: 'wrong-trip', tripId: 'other' },
     { ...booking, passengerId: 'dropped', droppedOff: true },
     { ...booking, passengerId: 'confirmed', droppedOffConfirmedByPassenger: true },
@@ -95,9 +95,12 @@ for (const role of ['driver', 'passenger']) {
 
 function contactModal(phones = {}) {
   const hooks = hookHarness(); const calls = [];
-  const { NavigationContactModal } = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+  const { NavigationContactModal, ContactModalContent } = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+    '@react-navigation/native': { useIsFocused: () => true },
     '@expo/vector-icons': { Ionicons: 'Icon' }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '@/hooks/navigation/useTripContactMessaging': { useContactMessaging: () => ({ canMessage: true, userId: 'driver',
+      cancel: () => calls.push(['cancel']), openMessage: async person => { calls.push(['message', person.id]); await phones.message?.(person); } }) },
     '@/utils/phoneHelpers': { openPhoneCall: async (...args) => { calls.push(['phone', args[0]]); await phones.phone?.(...args); },
       openWhatsApp: async (...args) => { calls.push(['whatsapp', args[0]]); await phones.whatsapp?.(...args); } },
   })('features/navigation/NavigationContactModal.tsx');
@@ -106,7 +109,11 @@ function contactModal(phones = {}) {
     { id: 'two', name: 'Bob', phone: '0999000222', detail: 'À prendre en charge' },
     { id: 'three', name: 'Charles', phone: null, detail: 'À prendre en charge' },
   ], onClose() {} };
-  let tree; const render = () => { tree = hooks.render(() => NavigationContactModal(props)); return tree; };
+  let tree; const render = () => {
+    const wrapper = NavigationContactModal(props);
+    assert.equal(wrapper.type, ContactModalContent);
+    tree = hooks.render(() => ContactModalContent(wrapper.props)); return tree;
+  };
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   render(); return { calls, hooks, props, render, button, tree: () => tree };
 }
@@ -139,6 +146,33 @@ test('contact sheet displays French errors and offers a retry instead of leaking
   assert.match(words(h.tree()), /Impossible d’ouvrir ce moyen de contact/);
   assert.doesNotMatch(words(h.tree()), /ActivityNotFoundException/);
   assert.equal(h.button('Appeler Alice').props.disabled, false); h.hooks.unmount();
+});
+
+test('in-app messaging works without a phone, locks every contact during opening and cancels on close', async () => {
+  let finish;
+  const h = contactModal({ message: () => new Promise(resolve => { finish = resolve; }) });
+  assert.equal(h.button('Envoyer un message dans Zwanga à Charles').props.disabled, false);
+  h.button('Envoyer un message dans Zwanga à Charles').props.onPress();
+  h.button('Envoyer un message dans Zwanga à Alice').props.onPress();
+  h.button('Appeler Bob').props.onPress();
+  assert.deepEqual(h.calls, [['message', 'three']]);
+  h.render(); assert.equal(h.button('Appeler Bob').props.disabled, true);
+  assert.match(words(h.tree()), /Ouverture/);
+  h.button('Fermer les contacts').props.onPress();
+  assert.deepEqual(h.calls.at(-1), ['cancel']);
+  h.hooks.unmount(); finish(); await flush();
+});
+
+test('a messaging failure keeps the sheet open and allows another attempt without exposing server text', async () => {
+  const h = contactModal({ message: async () => { throw new Error('Internal database detail'); } });
+  h.button('Envoyer un message dans Zwanga à Alice').props.onPress(); await flush(); h.render();
+  assert.match(words(h.tree()), /Impossible d’ouvrir la messagerie/);
+  assert.doesNotMatch(words(h.tree()), /Internal database detail/);
+  assert.equal(h.button('Envoyer un message dans Zwanga à Alice').props.disabled, false);
+  h.props.allowPhoneCall = false; h.render();
+  assert.equal(h.button('Appeler Alice'), undefined);
+  assert.ok(h.button('Contacter sur WhatsApp Alice'));
+  h.hooks.unmount();
 });
 
 test('assistance mounts only the requested sheet and yields to location permission disclosure', () => {

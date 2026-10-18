@@ -1,3 +1,4 @@
+import { useRideNotice } from '@/hooks/navigation/useRideNotice';
 import { usePassengerRouteContext } from './usePassengerRouteContext';
 import { usePassengerDriverLocationSync } from './usePassengerDriverLocationSync';
 import { usePassengerNavigationTracking } from './usePassengerNavigationTracking';
@@ -9,6 +10,7 @@ import { usePassengerNavigationState } from './usePassengerNavigationState';
 import { usePassengerTripDestinationNotice } from './usePassengerTripDestinationNotice';
 import { usePassengerNavigationPresentation } from './usePassengerNavigationPresentation';
 import { usePassengerNavigationRoute } from './usePassengerNavigationRoute';
+import { usePassengerPickupEstimate } from './usePassengerPickupEstimate';
 import { usePassengerNavigationCamera } from './usePassengerNavigationCamera';
 import { usePassengerNavigationNotices } from './usePassengerNavigationNotices';
 import { usePassengerNavigationCoordinates } from './usePassengerNavigationCoordinates';
@@ -21,6 +23,7 @@ import type { MapMarker } from 'react-native-maps';
 
 export function usePassengerNavigationController() {
   const data = usePassengerNavigationData();
+  const showNotice = useRideNotice(`passenger:${data.bookingId}`, data.isScreenActive);
 
   const state = usePassengerNavigationState({
     bookingId: data.bookingId,
@@ -54,6 +57,9 @@ export function usePassengerNavigationController() {
   });
 
   const notices = usePassengerNavigationNotices({
+    isScreenActive: data.isScreenActive,
+    trip: data.trip,
+    showNotice,
     isMountedRef: state.isMountedRef,
     hasPresentedArrivalModalRef: state.hasPresentedArrivalModalRef,
     refetchBooking: data.refetchBooking,
@@ -74,10 +80,11 @@ export function usePassengerNavigationController() {
   });
 
   const destinationNotice = usePassengerTripDestinationNotice({
+    isScreenActive: data.isScreenActive,
     isMountedRef: state.isMountedRef,
     hasPresentedTripCompletedNoticeRef: state.hasPresentedTripCompletedNoticeRef,
     hasPresentedTripDestinationApproachNoticeRef: state.hasPresentedTripDestinationApproachNoticeRef,
-    showDialog: data.showDialog,
+    showDialog: showNotice,
     pickupNotice: state.pickupNotice,
     setPickupNoticeCountdown: state.setPickupNoticeCountdown,
     hasPresentedArrivalModalRef: state.hasPresentedArrivalModalRef,
@@ -103,11 +110,12 @@ export function usePassengerNavigationController() {
     presentBoardedNotice: notices.presentBoardedNotice,
   });
 
+  const { refreshTrackingMarker } = state;
   const handleTrackingMarkerReady = useCallback(
     (markerKey: string, markerRef: React.MutableRefObject<MapMarker | null>) => {
-      state.refreshTrackingMarker(markerKey, () => markerRef.current);
+      refreshTrackingMarker(markerKey, () => markerRef.current);
     },
-    [state.refreshTrackingMarker],
+    [refreshTrackingMarker],
   );
 
   usePassengerDriverLocationSync({
@@ -123,6 +131,8 @@ export function usePassengerNavigationController() {
 
   // Fonction pour récupérer la route
   const route = usePassengerNavigationRoute({
+    isOnline: data.isOnline,
+    isScreenActive: data.isScreenActive,
     routeOriginCoordinate: context.routeOriginCoordinate,
     activePassengerDestination: context.activePassengerDestination,
     isMountedRef: state.isMountedRef,
@@ -208,6 +218,7 @@ export function usePassengerNavigationController() {
   });
 
   const driverCamera = usePassengerDriverCameraTracking({
+    isScreenActive: data.isScreenActive,
     driverLocation: state.driverLocation,
     routeCoordinates: state.routeCoordinates,
     booking: data.booking,
@@ -225,10 +236,9 @@ export function usePassengerNavigationController() {
     pickupCoordinate: coordinates.pickupCoordinate,
     dropoffCoordinate: coordinates.dropoffCoordinate,
     runMapCommand: state.runMapCommand,
-    mapRef: state.mapRef,
+    mapLayoutRef: state.mapLayoutRef,
     booking: data.booking,
     routeCoordinates: state.routeCoordinates,
-    mapTopOffset: state.mapTopOffset,
     isMapExpanded: state.isMapExpanded,
     isNativeMapReady: state.isNativeMapReady,
     hasFitInitialMapRef: state.hasFitInitialMapRef,
@@ -251,6 +261,7 @@ export function usePassengerNavigationController() {
   });
 
   const interruption = usePassengerNavigationInterruption({
+    isScreenActive: data.isScreenActive,
     booking: data.booking,
     trip: data.trip,
     requestPassengerTripInterruption: data.requestPassengerTripInterruption,
@@ -261,11 +272,13 @@ export function usePassengerNavigationController() {
     isRequestingPassengerInterruption: data.isRequestingPassengerInterruption,
     tripId: data.tripId,
     confirmDriverTripInterruption: data.confirmDriverTripInterruption,
+    commitDriverInterruptionResponse: data.commitDriverInterruptionResponse,
     rejectDriverTripInterruption: data.rejectDriverTripInterruption,
   });
 
   // État du trajet pour le passager
   const presentation = usePassengerNavigationPresentation({
+    routeAnalysis: driverCamera.routeAnalysis,
     booking: data.booking,
     trip: data.trip,
     pickupNotice: state.pickupNotice,
@@ -281,7 +294,18 @@ export function usePassengerNavigationController() {
     setActiveRouteSegment: state.setActiveRouteSegment,
   });
 
+  const pickupEstimate = usePassengerPickupEstimate({
+    booking: data.booking, trip: data.trip, isScreenActive: data.isScreenActive,
+    online: data.isOnline && !data.offlineBooking && !data.offlineTrip,
+    hasDriverLocation: Boolean(state.driverLocation), locationTimestamp: state.lastUpdate?.getTime(),
+    routeInfo: state.routeInfo, routeSignature: context.passengerRouteSignature,
+    remainingDistanceMeters: presentation.remainingDistanceMeters,
+    isRouteUsable: presentation.isRemainingRouteUsable,
+    loading: state.isLoadingRoute, fetchRoute: route.fetchRoute,
+  });
+
   return {
+    pickupEstimate,
     data,
     state,
     camera,

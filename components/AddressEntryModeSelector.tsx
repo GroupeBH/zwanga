@@ -23,7 +23,7 @@ const OPTIONS: {
     mode: 'map',
     icon: 'map-outline',
     title: 'Choisir sur la carte',
-    description: 'Point GPS précis + détail du lieu (entrée, repère, bâtiment).',
+    description: 'Point GPS précis + référence du lieu (entrée, bâtiment).',
   },
   {
     mode: 'manual',

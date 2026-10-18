@@ -5,14 +5,18 @@ import { useManageTripActions } from './useManageTripActions';
 import { useManageTripBookingActions } from './useManageTripBookingActions';
 import type { BookingStatus } from '@/types';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
+import { reconcileTripMutation } from '@/utils/tripStartReconciliation';
 import { calculateDistance } from '@/utils/routeHelpers';
 import { getGeoPointCoordinate, getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import { useCallback, useMemo } from 'react';
+import { useAppDispatch } from '@/store/hooks';
+import { applyDriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
 
 
 
 export function useManageTripController() {
   const state = useManageTripState();
+  const dispatch = useAppDispatch();
   const trip = state.trip;
 
   const refreshAll = useCallback(async () => {
@@ -41,12 +45,8 @@ export function useManageTripController() {
 
   const reconcileTripStatus = useCallback(
     async (error: unknown, expectedStatuses: readonly string[]) =>
-      reconcileAmbiguousMutation({
-        error,
-        loadSnapshot: async () => (await state.refetchTrip()).data ?? null,
-        isApplied: (latestTrip) => expectedStatuses.includes(latestTrip.status),
-      }),
-    [state.refetchTrip],
+      reconcileTripMutation({ error, tripId: state.tripId, expectedStatuses, refetch: state.refetchTrip }),
+    [state.refetchTrip, state.tripId],
   );
 
   const rememberAcceptedBooking = useCallback((bookingId: string) => {
@@ -88,19 +88,18 @@ export function useManageTripController() {
 
   const bookingsActions = useManageTripBookingActions({
     setFeedback: state.setFeedback,
-    setTargetBooking: state.setTargetBooking,
-    setRejectReason: state.setRejectReason,
-    setRejectError: state.setRejectError,
-    setRejectModalVisible: state.setRejectModalVisible,
-    isRejecting: state.isRejecting,
+    userId: state.userId,
+    isScreenActive: state.isScreenActive,
+    bookings: tracking.visibleBookings,
+    commitBookingDecision: (booking, status, response) => {
+      if (state.userId) dispatch(applyDriverBookingDecision(booking, status, state.userId, response));
+    },
     setProcessingBookingId: state.setProcessingBookingId,
     acceptBooking: state.acceptBooking,
     rememberAcceptedBooking,
     trip: trip,
     refreshAll,
     reconcileBookingStatus,
-    targetBooking: state.targetBooking,
-    rejectReason: state.rejectReason,
     rejectBooking: state.rejectBooking,
     showDialog: state.showDialog,
     cancelBooking: state.cancelBooking,

@@ -2,7 +2,8 @@ import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Modal, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { Text, TouchableOpacity, View } from 'react-native';
 
 interface NavigationLocationDisclosureProps {
   backgroundDisclosureVisible: boolean;

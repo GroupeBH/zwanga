@@ -1,7 +1,9 @@
 import { styles } from '../../features/screen-styles/app/passenger/detail/index';
 import { Colors } from '@/constants/styles';
-import { useGetMyBookingsQuery } from '@/store/api/bookingApi';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { useGetAverageRatingQuery } from '@/store/api/reviewApi';
+import { usePublicReviewPage } from '@/hooks/usePublicReviewPage';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,78 +21,45 @@ import {
 } from 'react-native';
 
 export default function PassengerDetailsScreen() {
+  const active = useScreenIsActive();
   const router = useRouter();
   const params = useLocalSearchParams();
   const passengerId = typeof params.id === 'string' ? params.id : '';
 
   const { data: passenger, isLoading: passengerLoading, refetch: refetchPassenger } = useGetPublicUserInfoQuery(passengerId, {
-    skip: !passengerId,
+    skip: !passengerId || !active,
   });
 
-  const { data: reviews, refetch: refetchReviews } = useGetReviewsQuery(passengerId, {
-    skip: !passengerId,
-  });
+  const { reviews, total: reviewCount, refetch: refetchReviews, pagination } = usePublicReviewPage(passengerId, active);
 
   const { data: avgRatingData, refetch: refetchAvgRating } = useGetAverageRatingQuery(passengerId, {
-    skip: !passengerId,
-  });
-
-  // Récupérer les réservations du passager pour calculer les statistiques
-  // Note: On utilise getMyBookings pour l'utilisateur connecté, mais pour un autre passager,
-  // on devrait idéalement avoir une API dédiée. Pour l'instant, on utilise les données disponibles.
-  const { data: myBookings, refetch: refetchBookings } = useGetMyBookingsQuery(undefined, {
-    skip: !passengerId,
+    skip: !passengerId || !active,
   });
 
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
+    if (!active) return;
     setRefreshing(true);
     try {
       await Promise.all([
         refetchPassenger(),
         refetchReviews(),
         refetchAvgRating(),
-        refetchBookings(),
       ]);
     } catch (error) {
       console.warn('Error refreshing passenger data:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchPassenger, refetchReviews, refetchAvgRating, refetchBookings]);
+  }, [active, refetchPassenger, refetchReviews, refetchAvgRating]);
 
-  // Filtrer les réservations de ce passager spécifique
-  const passengerBookings = useMemo(() => {
-    if (!myBookings) return [];
-    // Si c'est l'utilisateur connecté, on affiche toutes ses réservations
-    // Sinon, on devrait avoir une API pour récupérer les réservations d'un passager spécifique
-    // Pour l'instant, on retourne un tableau vide si ce n'est pas l'utilisateur connecté
-    return myBookings.filter((booking) => booking.passengerId === passengerId);
-  }, [myBookings, passengerId]);
-
-  const stats = useMemo(() => {
-    const totalBookings = passengerBookings.length;
-    const completedBookings = passengerBookings.filter((booking) => booking.status === 'completed').length;
-    const acceptedBookings = passengerBookings.filter((booking) => booking.status === 'accepted').length;
-    return {
-      totalBookings,
-      completedBookings,
-      acceptedBookings,
-    };
-  }, [passengerBookings]);
-
-  const reviewCount = reviews?.length ?? 0;
   const averageRating = useMemo(() => {
     if (avgRatingData?.averageRating !== undefined) {
       return avgRatingData.averageRating;
     }
-    if (reviews && reviews.length > 0) {
-      const sum = reviews.reduce((acc, review) => acc + review.rating, 0);
-      return sum / reviews.length;
-    }
     return passenger?.rating ?? 0;
-  }, [avgRatingData, reviews, passenger?.rating]);
+  }, [avgRatingData, passenger?.rating]);
 
   const passengerName = useMemo(() => {
     if (!passenger) return '';
@@ -219,16 +188,16 @@ export default function PassengerDetailsScreen() {
             <Text style={styles.sectionTitle}>STATISTIQUES</Text>
             <View style={styles.statsGrid}>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.totalBookings}</Text>
+                <Text style={styles.statValue}>{passenger?.passengerBookingsCount ?? '—'}</Text>
                 <Text style={styles.statLabel}>Réservations</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.acceptedBookings}</Text>
-                <Text style={styles.statLabel}>Acceptées</Text>
+                <Text style={styles.statValue}>{averageRating.toFixed(1)}</Text>
+                <Text style={styles.statLabel}>Note moyenne</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statValue}>{stats.completedBookings}</Text>
-                <Text style={styles.statLabel}>Complétées</Text>
+                <Text style={styles.statValue}>{reviewCount}</Text>
+                <Text style={styles.statLabel}>Avis reçus</Text>
               </View>
             </View>
           </View>
@@ -238,7 +207,7 @@ export default function PassengerDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.reviewsCard}>
             <Text style={styles.sectionTitle}>AVIS ({reviewCount})</Text>
-            {reviewCount === 0 ? (
+            {reviewCount === 0 && !pagination.busy && !pagination.error ? (
               <Text style={styles.emptyReviewsText}>
                 Pas encore d’avis pour ce passager
               </Text>
@@ -271,6 +240,7 @@ export default function PassengerDetailsScreen() {
                 ))}
               </View>
             )}
+            <HistoryPagination {...pagination} />
           </View>
         </View>
       </ScrollView>

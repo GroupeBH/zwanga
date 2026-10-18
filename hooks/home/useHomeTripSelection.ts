@@ -1,9 +1,12 @@
-import { DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS, getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
+import { getBookingStatusMeta, hasUpcomingDeparture, RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import type { FeaturedDriverReservation } from '@/features/home/homeTypes';
-import { rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
-import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { getHomeTripSuggestionTier, HOME_GENERAL_SUGGESTION_TIER, rankHomeTripsByProximity } from '@/features/home/homeTripPriority';
+import { isActivePassengerBooking, ownsTrip } from '@/features/activity/tripParticipation';
+import { rankDriverUpcomingTrips } from '@/features/home/homeDriverTripPriority';
+import { normalizeTripMapCoordinate, type MapCoordinate } from '@/utils/tripCoordinates';
 import type { Trip } from '@/types';
 import { useMemo } from 'react';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
@@ -12,12 +15,13 @@ import type { useHomeTripFeed } from '@/hooks/home/useHomeTripFeed';
 type Props =
   Pick<ReturnType<typeof useHomeTripFeed>,
     'remoteTrips'
+    | 'discoveryUpdatedAt'
   >
   & Pick<ReturnType<typeof useHomeContext>,
     'storedTrips'
     | 'currentUser'
-    | 'trackedTripInfo'
     | 'isDriver'
+    | 'isScreenActive'
   >
   & Pick<ReturnType<typeof useHomePassengerActivity>,
     'activeBookings'
@@ -30,25 +34,29 @@ type Props =
     | 'driverReservationHighlightTrip'
     | 'driverReservationHighlightBookings'
     | 'myDriverTrips'
-  > & { liveUserCoordinate?: MapCoordinate | null };
+  > & { liveUserCoordinate?: MapCoordinate | null; hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomeTripSelection({
   remoteTrips,
+  discoveryUpdatedAt,
   storedTrips,
   activeBookings,
   currentUser,
   completedBookingTripIds,
   bookedTripIds,
   refreshedPassengerTrip,
-  trackedTripInfo,
   ongoingDriverTrip,
   isDriver,
+  isScreenActive,
   driverReservationHighlightTrip,
   driverReservationHighlightBookings,
   myDriverTrips,
   liveUserCoordinate = null,
+  hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES,
 }: Props) {
-  const latitude = liveUserCoordinate?.latitude;
-  const longitude = liveUserCoordinate?.longitude;
+  const coordinate = normalizeTripMapCoordinate(liveUserCoordinate?.latitude, liveUserCoordinate?.longitude);
+  const latitude = coordinate?.latitude;
+  const longitude = coordinate?.longitude;
+  const hasTripLocation = Boolean(coordinate);
   const latestTrips = useMemo(() => {
     const tripsById = new Map<string, Trip>();
     (remoteTrips ?? storedTrips ?? []).forEach((trip) => tripsById.set(trip.id, trip));
@@ -60,6 +68,9 @@ export function useHomeTripSelection({
 
     const baseTrips = Array.from(tripsById.values());
     const eligibleTrips = baseTrips.filter((trip) => {
+      // Personal passenger reservations remain useful even for a driver account.
+      if (isDriver && !bookedTripIds.has(trip.id)) return false;
+      if (trip.status !== 'upcoming' && trip.status !== 'ongoing') return false;
       if (!hasUpcomingDeparture(trip)) {
         return false;
       }
@@ -75,16 +86,23 @@ export function useHomeTripSelection({
       return !completedBookingTripIds.has(trip.id);
     });
     const origin = latitude !== undefined && longitude !== undefined ? { latitude, longitude } : null;
-    return rankHomeTripsByProximity(eligibleTrips, origin, bookedTripIds).slice(0, RECENT_TRIPS_LIMIT);
+    return rankHomeTripsByProximity(eligibleTrips, origin, bookedTripIds, Date.now(), true).slice(0, RECENT_TRIPS_LIMIT);
+    // Freshness signals intentionally invalidate the clock-based filter even for unchanged records.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     remoteTrips,
     storedTrips,
     activeBookings,
     bookedTripIds,
     currentUser?.id,
+    isDriver,
     completedBookingTripIds,
     latitude,
     longitude,
+    // Re-evaluate the 24-hour window on existing refreshes/foreground, even if
+    // RTK Query reuses identical records. No additional timer or network poll.
+    discoveryUpdatedAt,
+    isScreenActive,
   ]);
 
   const ongoingBookedTrip = useMemo(() => {
@@ -92,34 +110,40 @@ export function useHomeTripSelection({
       activeBookings
         .filter(
           (booking) =>
-            booking.status === 'accepted' &&
-            booking.tripId &&
-            !booking.droppedOff &&
-            !booking.droppedOffConfirmedByPassenger,
+            isActivePassengerBooking(booking, currentUser?.id),
         )
         .map((booking) => booking.tripId),
     );
 
     if (ongoingBookingTripIds.size === 0) {
-      return refreshedPassengerTrip?.status === 'ongoing' && trackedTripInfo?.role === 'passenger'
-        ? refreshedPassengerTrip
-        : null;
+      return null;
     }
 
-    if (refreshedPassengerTrip) {
-      return refreshedPassengerTrip.status === 'ongoing' &&
-        ongoingBookingTripIds.has(refreshedPassengerTrip.id)
-        ? refreshedPassengerTrip
-        : null;
+    if (refreshedPassengerTrip && ongoingBookingTripIds.has(refreshedPassengerTrip.id)) {
+      return refreshedPassengerTrip.status === 'ongoing' ? refreshedPassengerTrip : null;
     }
 
-    return latestTrips.find((trip) => trip.status === 'ongoing' && ongoingBookingTripIds.has(trip.id)) ?? null;
-  }, [activeBookings, latestTrips, refreshedPassengerTrip, trackedTripInfo?.role]);
+    // Participation must not depend on the ten suggestions selected for the map.
+    return activeBookings.find(booking => ongoingBookingTripIds.has(booking.tripId)
+      && booking.trip?.status === 'ongoing')?.trip
+      ?? (remoteTrips ?? storedTrips ?? []).find(trip => trip.status === 'ongoing'
+        && ongoingBookingTripIds.has(trip.id)) ?? null;
+  }, [activeBookings, currentUser?.id, refreshedPassengerTrip, remoteTrips, storedTrips]);
 
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
+  const featuredPassengerTrip = !activeHomeTrip ? latestTrips.find(trip =>
+    bookedTripIds.has(trip.id) && !hiddenHomePriorities[homePriorityKeys.passengerTrip(trip)]) ?? null : null;
+  const suggestion = latestTrips.find(trip => !bookedTripIds.has(trip.id));
+  const suggestionTier = suggestion ? getHomeTripSuggestionTier(suggestion, coordinate) : -1;
+  const suggestionScopeLabel = suggestionTier === HOME_GENERAL_SUGGESTION_TIER ? 'Autres trajets disponibles'
+    : suggestionTier > 0
+      ? suggestionTier === 1 ? 'Autres départs · moins de 10 km, sous 48 h' : 'Autres départs · moins de 25 km, sous 7 jours'
+      : null;
 
   const featuredDriverReservation = useMemo<FeaturedDriverReservation | null>(() => {
-    if (!isDriver || activeHomeTrip || !driverReservationHighlightTrip) {
+    if (!isDriver || activeHomeTrip || !driverReservationHighlightTrip
+      || !ownsTrip(driverReservationHighlightTrip, currentUser?.id)
+      || driverReservationHighlightTrip.status !== 'upcoming' || driverReservationHighlightTrip.startedAt) {
       return null;
     }
 
@@ -128,6 +152,7 @@ export function useHomeTripSelection({
         (booking) =>
           booking.tripId === driverReservationHighlightTrip.id &&
           booking.status === 'pending' &&
+          !hiddenHomePriorities[homePriorityKeys.booking(booking)] &&
           !booking.droppedOff,
       )
       .sort((a, b) => {
@@ -143,36 +168,24 @@ export function useHomeTripSelection({
     }
 
     return null;
-  }, [activeHomeTrip, driverReservationHighlightBookings, driverReservationHighlightTrip, isDriver]);
+  }, [activeHomeTrip, currentUser?.id, driverReservationHighlightBookings, driverReservationHighlightTrip, isDriver, hiddenHomePriorities]);
 
   const featuredDriverUpcomingTrip = useMemo(() => {
     if (!isDriver || !currentUser?.id || activeHomeTrip || featuredDriverReservation) {
       return null;
     }
 
-    const now = Date.now();
-    const highlightUntil = now + DRIVER_UPCOMING_TRIP_HIGHLIGHT_WINDOW_MS;
-
-    return [...myDriverTrips]
-      .filter((trip) => {
-        if (trip.driverId !== currentUser.id || trip.status !== 'upcoming' || !hasUpcomingDeparture(trip)) {
-          return false;
-        }
-
-        const departureTs = new Date(trip.departureTime).getTime();
-        return Number.isFinite(departureTs) && departureTs >= now && departureTs <= highlightUntil;
-      })
-      .sort((a, b) => new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime())[0] ?? null;
-  }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips]);
-
-  const isRestoringTrackedTrip = Boolean(trackedTripInfo?.tripId && !activeHomeTrip);
+    const visibleTrips = myDriverTrips.filter(trip => !hiddenHomePriorities[homePriorityKeys.upcomingTrip(trip)]);
+    return rankDriverUpcomingTrips(visibleTrips, currentUser.id, hiddenHomePriorities)[0] ?? null;
+  }, [activeHomeTrip, currentUser?.id, featuredDriverReservation, isDriver, myDriverTrips, hiddenHomePriorities]);
 
   const homeMapTrips = useMemo(
-    () => (activeHomeTrip ? [activeHomeTrip] : isRestoringTrackedTrip ? [] : latestTrips),
-    [activeHomeTrip, isRestoringTrackedTrip, latestTrips],
+    () => (activeHomeTrip ? [activeHomeTrip] : latestTrips),
+    [activeHomeTrip, latestTrips],
   );
 
-  const isHomeSheetLockedRetracted = Boolean(activeHomeTrip || isRestoringTrackedTrip);
+  // A notification hint can outlive the ride; it must never lock the Home interface.
+  const isHomeSheetLockedRetracted = Boolean(activeHomeTrip);
 
   const featuredDriverReservationStatus = featuredDriverReservation?.booking
     ? getBookingStatusMeta(featuredDriverReservation.booking.status)
@@ -189,6 +202,8 @@ export function useHomeTripSelection({
     ? `${featuredDriverUpcomingTrip.availableSeats} place${featuredDriverUpcomingTrip.availableSeats > 1 ? 's' : ''} libre${featuredDriverUpcomingTrip.availableSeats > 1 ? 's' : ''}`
     : '';
   return {
+    hasTripLocation,
+    suggestionScopeLabel,
     activeHomeTrip,
     homeMapTrips,
     isHomeSheetLockedRetracted,
@@ -199,6 +214,7 @@ export function useHomeTripSelection({
     featuredDriverReservationSeatsLabel,
     featuredDriverUpcomingTrip,
     featuredDriverUpcomingTripSeatsLabel,
+    featuredPassengerTrip,
     ongoingBookedTrip,
   };
 }

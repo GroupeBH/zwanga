@@ -1,10 +1,12 @@
 import { getLocationText, getLocationCoordinatesTuple } from '../../features/trip-detail/tripDetailModel';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetTripByIdQuery, useUpdateTripMutation } from '@/store/api/tripApi';
+import { useGetTripByIdQuery, useUpdateTripMutation, useReprogramTripMutation } from '@/store/api/tripApi';
+import { useRouter } from 'expo-router';
 import { getApiErrorMessage, isPassengerKycRequiredError } from '@/utils/errorHelpers';
 import React from 'react';
 import type { Trip } from '@/types';
+import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 
 interface Params {
   trip: Trip | undefined;
@@ -49,13 +51,22 @@ export function useTripDetailEditSubmission({
   closeEditModal,
   refetchTrip,
 }: Params) {
-  const handleSaveTrip = async () => {
+  const [reprogramTrip] = useReprogramTripMutation();
+  const router = useRouter();
+  const saving = React.useRef(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const saveTrip = async () => {
     if (!trip || !editDateTime || !isTripDriver) {
       showDialog({
         variant: 'warning',
         title: 'Action non autorisee',
         message: 'Seul le conducteur de ce trajet peut le modifier.',
       });
+      return;
+    }
+
+    if (!Number.isFinite(editDateTime.getTime()) || (isTripExpired(trip) && editDateTime.getTime() <= Date.now())) {
+      showDialog({ variant: 'warning', title: 'Date de départ', message: 'Choisissez une nouvelle date et une heure de départ dans le futur.' });
       return;
     }
 
@@ -198,6 +209,13 @@ export function useTripDetailEditSubmission({
     }
 
     try {
+      if (trip.canReprogram) {
+        const published = await reprogramTrip({ id: trip.id, updates }).unwrap();
+        closeEditModal();
+        router.replace(`/trip/${published.id}`);
+        showDialog({ variant: 'success', title: 'Trajet reprogrammé', message: 'Un nouveau trajet a été publié. Les anciennes réservations restent dans votre historique.' });
+        return;
+      }
       await updateTripMutation({
         id: trip.id,
         updates,
@@ -218,6 +236,12 @@ export function useTripDetailEditSubmission({
   };
 
   return {
-    handleSaveTrip,
+    isSubmitting,
+    handleSaveTrip: async () => {
+      if (saving.current) return;
+      saving.current = true;
+      setIsSubmitting(true);
+      try { await saveTrip(); } finally { saving.current = false; setIsSubmitting(false); }
+    },
   };
 }

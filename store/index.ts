@@ -5,18 +5,23 @@ import { nativeQueryListeners } from '../services/nativeQueryListeners';
 import { chatSocket } from '../services/chatSocket';
 import { trackingSocket } from '../services/trackingSocket';
 import { clearLocationDeliveries } from '../services/locationDelivery';
+import { invalidateTokenSession } from '../services/tokenSession';
+import { clearNearbyDriverLocation } from '../services/nearbyDriverLocation';
 import { authRefreshApi } from './api/authRefreshApi';
 import { zwangaApi } from './api/zwangaApi';
 import { mapboxApi } from './api/mapboxApi';
 import authReducer from './slices/authSlice';
 import rideRecoveryReducer, { resetRideRecovery } from './slices/rideRecoverySlice';
+import rideEntryReducer, { resetRideEntry } from './slices/rideEntrySlice';
 import messagesReducer from './slices/messagesSlice';
 import locationReducer from './slices/locationSlice';
 import tripsReducer, { openInterruptionChoice } from './slices/tripsSlice';
 import requestDraftsReducer, { resetRequestDrafts } from './slices/requestDraftsSlice';
 import homeRequestHighlightsReducer, { resetHomeRequestHighlights } from './slices/homeRequestHighlightsSlice';
+import homePriorityDismissalsReducer, { resetHomePriorityDismissals } from './slices/homePriorityDismissalsSlice';
 import { setStoreAccessor } from './storeAccessor';
 import { createTripRequestExpirationMiddleware } from './middleware/tripRequestExpiration';
+import { createPassengerRideCompletionMiddleware } from './middleware/passengerRideCompletion';
 
 const apiQueryActionTypes = [
   `${zwangaApi.reducerPath}/executeQuery/fulfilled`,
@@ -37,28 +42,36 @@ const largeStatePaths = [
  * KYC data can never leak from the previous session on a shared device.
  */
 const apiCacheIsolationMiddleware: Middleware = (storeApi) => (next) => (action) => {
-  const typedAction = action as { type?: string };
+  const typedAction = action as { type?: string; meta?: { requestId?: string } };
+  if (typedAction.type === 'auth/logout' || typedAction.type === 'auth/performLogout/pending') {
+    invalidateTokenSession();
+    void clearNearbyDriverLocation().catch(() => undefined);
+  }
   const previousUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
     .auth?.user?.id;
+  const previousLogoutRequestId = (storeApi.getState() as { auth?: { logoutRequestId?: string } }).auth?.logoutRequestId;
   const result = next(action);
   const currentUserId = (storeApi.getState() as { auth?: { user?: { id?: string } } })
     .auth?.user?.id;
   const logoutAction =
     typedAction.type === 'auth/logout' ||
-    typedAction.type === 'auth/performLogout/fulfilled' ||
-    typedAction.type === 'auth/performLogout/rejected';
+    (Boolean(previousLogoutRequestId) && previousLogoutRequestId === typedAction.meta?.requestId &&
+      (typedAction.type === 'auth/performLogout/fulfilled' || typedAction.type === 'auth/performLogout/rejected'));
   const accountChanged =
     typedAction.type === 'auth/setTokens' &&
     Boolean(previousUserId && currentUserId && previousUserId !== currentUserId);
 
   if (logoutAction || accountChanged) {
+    if (accountChanged) void clearNearbyDriverLocation({ endSession: false }).catch(() => undefined);
     chatSocket.disconnect();
     trackingSocket.disconnect();
     clearLocationDeliveries();
     storeApi.dispatch(resetRideRecovery());
+    storeApi.dispatch(resetRideEntry());
     storeApi.dispatch({ type: 'messages/resetMessages' });
     storeApi.dispatch(resetRequestDrafts());
     storeApi.dispatch(resetHomeRequestHighlights());
+    storeApi.dispatch(resetHomePriorityDismissals());
     storeApi.dispatch(openInterruptionChoice(null));
     storeApi.dispatch(zwangaApi.util.resetApiState());
     storeApi.dispatch(authRefreshApi.util.resetApiState());
@@ -73,9 +86,11 @@ export const store = configureStore({
   reducer: {
     auth: authReducer,
     rideRecovery: rideRecoveryReducer,
+    rideEntry: rideEntryReducer,
     trips: tripsReducer,
     requestDrafts: requestDraftsReducer,
     homeRequestHighlights: homeRequestHighlightsReducer,
+    homePriorityDismissals: homePriorityDismissalsReducer,
     messages: messagesReducer,
     location: locationReducer,
     [zwangaApi.reducerPath]: zwangaApi.reducer,
@@ -107,7 +122,8 @@ export const store = configureStore({
       },
     })
       .prepend(apiCacheIsolationMiddleware)
-      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware, createTripRequestExpirationMiddleware()),
+      .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware,
+        createTripRequestExpirationMiddleware(), createPassengerRideCompletionMiddleware()),
 });
 
 // Initialize store accessor to avoid circular dependencies

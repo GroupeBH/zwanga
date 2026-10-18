@@ -7,9 +7,12 @@ import {
     shareReferralLink,
 } from '@/utils/shareReferralLink';
 import { Ionicons } from '@expo/vector-icons';
-import * as Contacts from 'expo-contacts';
+import type { Contact } from 'expo-contacts';
+import { useInviteContacts } from '@/hooks/invite/useInviteContacts';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -26,21 +29,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function InviteScreen() {
     const router = useRouter();
     const { showDialog } = useDialog();
-    const [contacts, setContacts] = useState<Contacts.Contact[]>([]);
-    const [filteredContacts, setFilteredContacts] = useState<Contacts.Contact[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [permissionStatus, setPermissionStatus] = useState<Contacts.PermissionStatus | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
+    const active = useScreenIsActive();
+    const enabled = useDisplayReadsEnabled(active);
+    const contacts = useInviteContacts(active);
     const [isSharing, setIsSharing] = useState(false);
     const {
         data: referralSummary,
         isFetching: isReferralFetching,
         refetch: refetchReferralSummary,
-    } = useGetMyReferralSummaryQuery();
+    } = useGetMyReferralSummaryQuery(undefined, displayReadOptions(enabled));
 
     const getReferralLink = async () => {
         const existingLink = normalizeReferralShareLink(referralSummary?.shareLink);
         if (existingLink) return existingLink;
+        if (!enabled) throw new Error('Connectez-vous à Internet pour récupérer votre lien.');
         const refreshed = await refetchReferralSummary().unwrap();
         const refreshedLink = normalizeReferralShareLink(refreshed.shareLink);
         if (!refreshedLink) {
@@ -68,46 +70,7 @@ export default function InviteScreen() {
         }
     };
 
-    useEffect(() => {
-        (async () => {
-            try {
-                const { status } = await Contacts.requestPermissionsAsync();
-                setPermissionStatus(status);
-
-                if (status === 'granted') {
-                    const { data } = await Contacts.getContactsAsync({
-                        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Image],
-                        sort: Contacts.SortTypes.FirstName,
-                    });
-
-                    // Filter contacts that have phone numbers
-                    const validContacts = data.filter(c => c.phoneNumbers && c.phoneNumbers.length > 0);
-                    setContacts(validContacts);
-                    setFilteredContacts(validContacts);
-                }
-            } catch (error) {
-                console.warn('Error fetching contacts', error);
-            } finally {
-                setIsLoading(false);
-            }
-        })();
-    }, []);
-
-    const handleSearch = (text: string) => {
-        setSearchQuery(text);
-        if (!text.trim()) {
-            setFilteredContacts(contacts);
-            return;
-        }
-        const lower = text.toLowerCase();
-        const filtered = contacts.filter(contact =>
-            contact.name.toLowerCase().includes(lower) ||
-            contact.phoneNumbers?.some(pn => pn.number?.includes(lower))
-        );
-        setFilteredContacts(filtered);
-    };
-
-    const handleInvite = async (contact: Contacts.Contact) => {
+    const handleInvite = async (contact: Contact) => {
         if (!contact.phoneNumbers || contact.phoneNumbers.length === 0) return;
 
         // Pick the first mobile number or just the first number
@@ -139,15 +102,7 @@ export default function InviteScreen() {
         }
     };
 
-    if (isLoading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Colors.primary} />
-            </View>
-        );
-    }
-
-    if (permissionStatus !== 'granted') {
+    if (contacts.permission && contacts.permission !== 'granted') {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.header}>
@@ -215,26 +170,25 @@ export default function InviteScreen() {
                 <TextInput
                     style={styles.searchInput}
                     placeholder="Rechercher un contact..."
-                    value={searchQuery}
-                    onChangeText={handleSearch}
+                    value={contacts.search}
+                    onChangeText={contacts.changeSearch}
                     placeholderTextColor={Colors.gray[400]}
                 />
             </View>
 
             <FlatList
-                data={filteredContacts}
-                keyExtractor={(item) => (item as any).id || (item as any).lookupKey || Math.random().toString()}
+                key={`${contacts.search}:${contacts.pageNumber}`}
+                data={contacts.contacts}
+                keyExtractor={(item, index) => item.id ?? `${item.name}:${item.phoneNumbers?.[0]?.number}:${index}`}
+                initialNumToRender={12}
+                maxToRenderPerBatch={12}
+                windowSize={5}
+                keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.listContent}
                 renderItem={({ item }) => (
                     <TouchableOpacity style={styles.contactItem} onPress={() => handleInvite(item)}>
                         <View style={styles.avatar}>
-                            {item.imageAvailable && item.image ? (
-                                // <Image source={{ uri: item.image.uri }} ... />
-                                // expo-contacts image uri might need handling, keeping it simple text for now
-                                <Text style={styles.avatarText}>{item.name?.charAt(0)}</Text>
-                            ) : (
-                                <Text style={styles.avatarText}>{item.name?.charAt(0) || '?'}</Text>
-                            )}
+                            <Text style={styles.avatarText}>{item.name?.charAt(0) || '?'}</Text>
                         </View>
                         <View style={styles.contactInfo}>
                             <Text style={styles.contactName}>{item.name}</Text>
@@ -247,9 +201,28 @@ export default function InviteScreen() {
                 )}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>Aucun contact trouvé</Text>
+                        {contacts.loading ? <>
+                            <ActivityIndicator color={Colors.primary} />
+                            <Text style={styles.emptyText}>{contacts.search ? 'Recherche dans vos contacts…' : 'Chargement des contacts…'}</Text>
+                        </> : contacts.error ? <>
+                            <Text style={styles.emptyText}>Impossible de lire les contacts.</Text>
+                            <TouchableOpacity onPress={contacts.retry} style={styles.permissionShareButton} accessibilityRole="button">
+                                <Text style={styles.permissionShareButtonText}>Réessayer</Text>
+                            </TouchableOpacity>
+                        </> : <Text style={styles.emptyText}>Aucun contact trouvé</Text>}
                     </View>
                 }
+                ListFooterComponent={contacts.hasPrevious || contacts.hasNext ? <View style={styles.pagination}>
+                    <TouchableOpacity onPress={contacts.previous} disabled={!contacts.hasPrevious || contacts.loading}
+                        style={[styles.pageButton, (!contacts.hasPrevious || contacts.loading) && styles.disabled]} accessibilityRole="button">
+                        <Text style={styles.permissionShareButtonText}>Précédent</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.emptyText}>Page {contacts.pageNumber}</Text>
+                    <TouchableOpacity onPress={contacts.next} disabled={!contacts.hasNext || contacts.loading}
+                        style={[styles.pageButton, (!contacts.hasNext || contacts.loading) && styles.disabled]} accessibilityRole="button">
+                        <Text style={styles.permissionShareButtonText}>Suivant</Text>
+                    </TouchableOpacity>
+                </View> : null}
             />
         </SafeAreaView>
     );
@@ -257,7 +230,8 @@ export default function InviteScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.white },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 16 },
+    pageButton: { paddingVertical: 12, paddingHorizontal: 8 },
 
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] },
     backButton: { padding: 4, borderRadius: 20 },

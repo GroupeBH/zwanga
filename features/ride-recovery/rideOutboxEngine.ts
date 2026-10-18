@@ -115,6 +115,12 @@ export function createRideOutbox(deps: Dependencies) {
             const status = snapshot[entry.stage]?.status;
             if (snapshot.bookingId !== entry.bookingId || !['none', 'awaiting_other', 'ready', 'confirmed', 'disputed'].includes(status)) throw new Error('Invalid acknowledgement');
             snapshots.set(entry.bookingId, snapshot);
+            // Reconcile a ready dual receipt using its SAME key, never invent the other vote.
+            if (entry.state === 'received' && entry.decision === 'confirm' && status === 'ready' &&
+                snapshot.pickup.status !== 'disputed' && snapshot.dropoff.status !== 'disputed') {
+              await update(userId, entry.eventId, { state: 'queued', nextAttemptAt: 0, message: 'Confirmation reçue. Validation du serveur en cours…' });
+              continue;
+            }
             await update(userId, entry.eventId, { state: status === 'confirmed' ? 'confirmed' : status === 'disputed' ? 'disputed' : 'received', nextAttemptAt: deps.now() + 60_000, message: undefined });
           } catch (error) {
             if (deps.userId() !== userId) {

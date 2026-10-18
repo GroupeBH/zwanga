@@ -58,6 +58,7 @@ test('typing is debounced, moving the map does not restart search and stale resu
   t.mock.timers.tick(1);
   assert.equal(app.calls.search.length, 1);
   app.render().setQuery('Lemba'); app.render();
+  assert.equal(app.calls.search[0][3].aborted, true);
   old.resolve([suggestion]); await flush();
   assert.deepEqual(app.render().suggestions, []);
   app.render().choose({ ...place, latitude: -4.4 }); app.render();
@@ -95,6 +96,7 @@ test('a place lookup cannot replace a favorite selected while the network was sl
   const pending = app.render().resolvePlace({ ...suggestion, coordinates: { latitude: null, longitude: null } });
   assert.equal(app.render().resolving, true);
   app.render().choose({ ...place, title: 'Maison', latitude: -4.4 });
+  assert.equal(app.calls.details[0][1].aborted, true);
   detail.resolve(suggestion); await pending;
   assert.equal(app.render().selection.title, 'Maison');
   assert.equal(app.calls.geocode.length, 0);
@@ -112,7 +114,7 @@ test('map selection is committed before its address resolves and confirmation wo
   assert.equal(app.render().addressLoading, true);
   app.render().confirm();
   assert.equal(app.calls.selected[0].latitude, next.latitude);
-  assert.equal(app.calls.selected[0].address, '-4.40000, 15.40000');
+  assert.equal(app.calls.selected[0].address, 'Position exacte enregistrée sur la carte');
   app.calls.reverse[0].reject(Error('offline')); await flush();
 });
 
@@ -127,6 +129,95 @@ test('an old reverse-geocode result cannot move or rename a new selected point',
   old.resolve({ formattedAddress: 'Ancienne adresse' }); await flush();
   assert.notEqual(app.render().selection.title, 'Ancienne adresse');
   assert.equal(app.render().selection.latitude, -4.42);
+});
+
+test('tapping selects immediately, cancels slow GPS and resolves only the latest tapped address', async t => {
+  const app = pickerApp(t);
+  const { pointSelection } = app.load('features/location-picker/locationPickerModel.ts');
+  const permission = deferred(); app.io.permission = () => permission.promise;
+  const gps = app.render().locate();
+  app.render().choose(pointSelection({ latitude: -4.4, longitude: 15.4 }), true);
+  app.render(); t.mock.timers.tick(400);
+  const old = app.calls.reverse[0], last = { latitude: -4.42, longitude: 15.42 };
+  app.render().choose(pointSelection(last), true); app.render();
+  assert.deepEqual(app.render().cameraTarget, last);
+  assert.equal(app.render().locating, false);
+  assert.equal(old.aborted, true);
+  old.resolve({ formattedAddress: 'Ancienne adresse' });
+  permission.resolve({ status: 'granted' }); await gps; await flush();
+  assert.equal(app.render().selection.latitude, last.latitude);
+  assert.notEqual(app.render().selection.title, 'Ancienne adresse');
+  t.mock.timers.tick(400);
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], pointSelection(last), 'confirmation needs no network response');
+  app.calls.reverse[1].reject(Error('offline')); await flush();
+});
+
+test('taps retain route snapping and reject points outside RDC', t => {
+  const route = [{ latitude: -4.3, longitude: 15.3 }, { latitude: -4.3, longitude: 15.4 }];
+  const app = pickerApp(t, { routeCoordinates: route });
+  const { pointSelection } = app.load('features/location-picker/locationPickerModel.ts');
+  app.render().choose(pointSelection({ latitude: -4.5, longitude: 15.35 }), true);
+  assert.equal(app.render().selection.latitude, -4.3);
+  assert.equal(app.render().cameraTarget.latitude, -4.3);
+  const selected = app.render().selection;
+  app.render().choose(pointSelection({ latitude: 48, longitude: 2 }), true);
+  assert.deepEqual(app.render().selection, selected);
+  assert.match(app.render().notice, /République démocratique du Congo/);
+});
+
+test('reverse geocoding resolves a readable label, caches it and never moves the selected point', async t => {
+  const app = pickerApp(t);
+  const next = { latitude: -4.38, longitude: 15.32 };
+  app.render().settleMap(next); app.render(); t.mock.timers.tick(400);
+  assert.deepEqual(app.calls.reverse[0].args, { lat: next.latitude, lng: next.longitude, language: 'fr', region: 'cd' });
+  app.calls.reverse[0].resolve({
+    formattedAddress: 'J83F+5G4, Av. Bakole 1, Kinshasa', lat: -4.39, lng: 15.33,
+    addressComponents: [{ longName: 'Av. Bakole 1', types: ['route'] }],
+  });
+  await flush();
+  assert.deepEqual(app.render().selection, { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa' });
+  app.render().settleMap(point); app.render();
+  app.render().settleMap(next); app.render();
+  t.mock.timers.tick(400);
+  assert.equal(app.calls.reverse.length, 1, 'cached names need no further geocoding call');
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa' });
+});
+
+test('historical selections and favorite labels are cleaned when entering the picker', t => {
+  const app = pickerApp(t, { initialLocation: { ...point, title: 'J83F+5G4', address: 'J83F+5G4, Av. Bakole 1, Kinshasa' } });
+  assert.equal(app.render().selection.title, 'Av. Bakole 1');
+  app.render().choose({ ...point, title: 'Maison', address: 'HF6ZT7E, Av. Bakole 1, Kinshasa' });
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], { ...point, title: 'Maison', address: 'Av. Bakole 1, Kinshasa' });
+  assert.equal(app.calls.reverse.length, 0);
+});
+
+test('a neighborhood-first reverse address submits the avenue to the parent form', async t => {
+  const app = pickerApp(t);
+  const next = { latitude: -4.45, longitude: 15.26 };
+  app.render().settleMap(next); app.render(); t.mock.timers.tick(400);
+  app.calls.reverse[0].resolve({
+    formattedAddress: 'Q/Mazamba Domicile, 3b Av Matadi, Kinshasa, RDC',
+    addressComponents: [{ longName: 'Q/Mazamba Domicile', types: ['premise'] }],
+  });
+  await flush();
+  app.render().confirm();
+  assert.deepEqual(app.calls.selected[0], {
+    ...next, title: '3b Av Matadi', address: '3b Av Matadi, Q/Mazamba Domicile, Kinshasa, RDC',
+  });
+  assert.equal(app.calls.reverse.length, 1);
+});
+
+test('a late address must not overwrite a favorite just selected at the same coordinate', async t => {
+  const app = pickerApp(t);
+  const next = { latitude: -4.38, longitude: 15.32 };
+  app.render().settleMap(next); app.render(); t.mock.timers.tick(400);
+  app.render().choose({ ...next, title: 'Maison', address: 'Av. Bakole 1, Kinshasa' });
+  app.calls.reverse[0].resolve({ formattedAddress: 'J83F+5G4, Ancienne avenue, Kinshasa' });
+  await flush();
+  assert.equal(app.render().selection.title, 'Maison');
 });
 
 test('denied and slow GPS never block manual map selection; repeated taps make one location request', async t => {
@@ -272,10 +363,11 @@ test('the modal mounts its session only when visible and its map only after the 
 
 test('search overlays the map without resizing it and preserves its props; footer confirmation waits for a selected result', () => {
   let hooks = hookHarness();
+  const mapSelections = [];
   const state = {
     selection: place, cameraTarget: point, route: [], query: '', searchOpen: false, suggestions: [],
     searching: false, resolving: false, locating: false, panning: false, addressLoading: false,
-    choose() {}, close() {}, locate() {}, resolvePlace() {}, startPanning() {}, settleMap() {}, confirm() {},
+    choose: (...args) => mapSelections.push(args), close() {}, locate() {}, resolvePlace() {}, startPanning() {}, settleMap() {}, confirm() {},
   };
   const react = { ...React, ...Object.fromEntries(Object.keys(hooks.react).map(key => [key, (...args) => hooks.react[key](...args)])) };
   const load = loader({
@@ -294,6 +386,8 @@ test('search overlays the map without resizing it and preserves its props; foote
   const render = () => hooks.render(() => content.type(content.props));
   const normal = render();
   const map = nodes(normal).find(node => node.type === 'PickerMap');
+  map.props.onPress(point);
+  assert.deepEqual(mapSelections, [[{ ...point, title: 'Point sélectionné', address: 'Position exacte enregistrée sur la carte' }, true]]);
   state.query = 'Gombe'; state.searchOpen = true;
   const searching = render();
   assert.equal(searching.type, 'KeyboardAvoidingView');

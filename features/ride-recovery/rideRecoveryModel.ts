@@ -35,6 +35,7 @@ export function rideRetry(error: unknown, attempts: number, now: number) {
   if (status === 401) return { state: 'queued' as const, nextAttemptAt: now + 60_000, message: 'Reconnectez-vous à votre compte pour transmettre votre confirmation.' };
   if (data?.code === 'RIDE_ACCOUNT_CHANGED') return { state: 'queued' as const, nextAttemptAt: now + 60_000, message: 'Reconnectez-vous au compte utilisé pour cette confirmation.' };
   const preciseMessages: Record<string, string> = {
+    RIDE_DECLARATION_REQUIRED: 'Actualisez le trajet et utilisez son bouton de confirmation. Chacun doit valider de son côté.',
     RIDE_EVENT_TIME: 'La date de cette confirmation ne peut pas être validée. Vérifiez l’heure du téléphone puis contactez l’assistance.',
     RIDE_STATE_CHANGED: 'Le trajet a changé depuis votre action. Actualisez son détail ou contactez l’assistance.',
     RIDE_ALREADY_CONFIRMED: 'Cette étape est déjà validée. Contactez l’assistance pour signaler votre désaccord.',
@@ -55,6 +56,7 @@ export function rideEntryMessage(entry?: RideOutboxEntry, status?: RideStageStat
   if (entry?.state === 'sending') return 'Confirmation enregistrée sur ce téléphone. Envoi en cours…';
   if (entry?.state === 'blocked') return entry.message ?? 'Actualisez le trajet ou contactez l’assistance.';
   if (entry?.state === 'queued') return entry.message ?? 'Enregistré sur ce téléphone. En attente de connexion.';
+  if (status === 'ready') return 'Confirmation reçue. Validation du serveur en cours…';
   if (entry?.state === 'received' || status === 'awaiting_other') return 'Reçu par le serveur. En attente de l’autre personne.';
   return 'L’automatisme reste actif. Confirmez seulement ce qui s’est réellement passé.';
 }

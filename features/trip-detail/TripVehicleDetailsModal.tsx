@@ -2,7 +2,8 @@ import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, Modal, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import type { Trip } from '@/types';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 

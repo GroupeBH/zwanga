@@ -2,6 +2,7 @@ import { getTabBarMetrics } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
 import { selectUnreadMessagesCount } from '@/store/selectors';
+import { selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
 import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
@@ -14,6 +15,7 @@ type TabIconName = keyof typeof Ionicons.glyphMap;
 
 export default function TabLayout() {
   const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
+  const usesServices = useAppSelector(selectUsesServicesTab);
   const insets = useSafeAreaInsets();
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
 
@@ -53,15 +55,18 @@ export default function TabLayout() {
   return (
     <>
       <Tabs
+        initialRouteName="index"
+        backBehavior="initialRoute"
         detachInactiveScreens={Platform.OS !== 'android'}
         screenOptions={{
           tabBarActiveTintColor: Colors.primary,
           tabBarInactiveTintColor: Colors.gray[600],
           headerShown: false,
+          lazy: true,
           freezeOnBlur: Platform.OS !== 'android',
           tabBarStyle: [
             styles.tabBar,
-            Platform.OS === 'ios' ? styles.tabBarIOS : styles.tabBarAndroid,
+            Platform.OS === 'ios' && styles.tabBarIOS,
             tabBarMetrics,
           ],
           tabBarLabelStyle: styles.tabBarLabel,
@@ -73,6 +78,7 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'Accueil',
+            freezeOnBlur: false,
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
                 activeIcon: 'home',
@@ -85,13 +91,13 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="search"
+          name="discover"
           options={{
-            title: 'Recherche',
+            title: usesServices ? 'Services' : 'Recherche',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'search',
-                inactiveIcon: 'search-outline',
+                activeIcon: usesServices ? 'briefcase' : 'search',
+                inactiveIcon: usesServices ? 'briefcase-outline' : 'search-outline',
                 color,
                 focused,
                 size,
@@ -118,6 +124,7 @@ export default function TabLayout() {
           name="messages"
           options={{
             title: 'Messages',
+            freezeOnBlur: false,
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
                 activeIcon: 'chatbubbles',
@@ -167,12 +174,6 @@ const styles = StyleSheet.create({
   },
   tabBarIOS: {
     position: 'absolute',
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
-  },
-  tabBarAndroid: {
-    borderTopLeftRadius: BorderRadius.xxl,
-    borderTopRightRadius: BorderRadius.xxl,
   },
   tabBarLabel: {
     fontSize: FontSizes.xs,

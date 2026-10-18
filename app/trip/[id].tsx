@@ -9,9 +9,9 @@ import { TripEditModal } from '../../features/trip-detail/TripEditModal';
 import { TripBookingSuccessModal } from '../../features/trip-detail/TripBookingSuccessModal';
 import { TripMapModal } from '../../features/trip-detail/TripMapModal';
 import { TripBookingModal } from '../../features/trip-detail/TripBookingModal';
-import { TripRelativesModal } from '../../features/trip-detail/TripRelativesModal';
 import { TripSosModal } from '../../features/trip-detail/TripSosModal';
 import { TripVehicleDetailsModal } from '../../features/trip-detail/TripVehicleDetailsModal';
+import { TripUnavailableState } from '@/features/trip-detail/TripUnavailableState';
 import { styles } from '../../features/screen-styles/app/trip/detail/index';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
@@ -20,43 +20,19 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function TripDetailsScreen() {
   const model = useTripDetailController();
 
   // Early return AFTER all hooks to avoid hook order violation
-  if (model.data.tripLoading && !model.data.trip) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
-        <View style={styles.emptyStateContainer}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.emptyStateTitle}>Chargement du trajet...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (!model.data.trip && !model.data.tripLoading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Colors.white }]}>
-        <View style={styles.emptyStateContainer}>
-          <View style={styles.emptyStateIcon}>
-            <Ionicons name="car-sport" size={32} color={Colors.primary} />
-          </View>
-          <Text style={styles.emptyStateTitle}>Trajet introuvable</Text>
-          <Text style={styles.emptyStateText}>
-            Ce trajet n&apos;existe plus ou a été supprimé par son propriétaire.
-          </Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={model.data.goHome}>
-            <Ionicons name="arrow-back" size={16} color={Colors.white} />
-            <Text style={styles.primaryButtonText}>Retour</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  if (!model.data.trip) return <TripUnavailableState feedback={model.data.tripFeedback}
+    loading={model.data.tripLoading} fetching={model.data.tripFetching}
+    onRetry={() => { if (model.data.tripId && model.data.isScreenActive && !model.data.tripFetching) void model.data.refetchTrip(); }}
+    onHome={model.data.goHome} />;
 
   return (
+    <RideOverlayScope scopeKey={`trip-detail:${model.data.tripId}`} active={model.data.isScreenActive}>
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View
@@ -80,18 +56,6 @@ export default function TripDetailsScreen() {
             Détails du trajet
           </Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={model.safety.openTripSecurityModal}
-              style={[styles.shareButton, !model.access.canAccessTripSecurity && styles.shareButtonDisabled]}
-              disabled={!model.access.canAccessTripSecurity}
-              activeOpacity={0.85}
-            >
-              <Ionicons
-                name="shield-checkmark-outline"
-                size={22}
-                color={model.access.canAccessTripSecurity ? Colors.primary : Colors.gray[400]}
-              />
-            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => void model.contact.handleShareTrip()}
               style={[
@@ -153,7 +117,7 @@ export default function TripDetailsScreen() {
             routeMapCoordinates={model.mapPresentation.routeMapCoordinates}
             hasDetailedRouteMapCoordinates={model.mapPresentation.hasDetailedRouteMapCoordinates}
             departureCoordinate={model.route.departureCoordinate}
-            trip={model.data.trip}
+            routeLabels={model.presentation.routeLabels}
             arrivalCoordinate={model.route.arrivalCoordinate}
             passengerDestinationMarkers={model.mapPresentation.passengerDestinationMarkers}
           />
@@ -204,14 +168,6 @@ export default function TripDetailsScreen() {
         insets={model.data.insets}
       />
 
-      <TripRelativesModal
-        securityModalVisible={model.bookingState.securityModalVisible}
-        closeTripSecurityModal={model.safety.closeTripSecurityModal}
-        insets={model.data.insets}
-        trip={model.data.trip}
-        tripSecurityRole={model.access.tripSecurityRole}
-        tripSecurityBookingId={model.access.tripSecurityBookingId}
-      />
 
       <TripBookingModal
         bookingModalVisible={model.bookingState.bookingModalVisible}
@@ -314,10 +270,9 @@ export default function TripDetailsScreen() {
       <TripContactModal
         contactModalVisible={model.bookingState.contactModalVisible}
         setContactModalVisible={model.bookingState.setContactModalVisible}
-        insets={model.data.insets}
         trip={model.data.trip}
         driverPhone={model.data.driverPhone}
-        showDialog={model.data.showDialog}
+        bookingId={model.activity.activeBooking?.id}
       />
 
       <TripEditModal
@@ -384,6 +339,6 @@ export default function TripDetailsScreen() {
         }}
       />
     </SafeAreaView>
+    </RideOverlayScope>
   );
 }
-

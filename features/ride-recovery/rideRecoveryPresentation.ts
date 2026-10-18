@@ -1,12 +1,13 @@
 import type { Booking } from '@/types';
 import type { RideOutboxEntry, RideSnapshot, RideStage } from './rideRecoveryModel';
+import { rideEntryMessage } from './rideRecoveryModel';
 
 type RideActor = 'driver' | 'passenger';
 const STAGES: RideStage[] = ['pickup', 'dropoff'];
 
 export function rideActionLabel(actor: RideActor, stage: RideStage) {
   if (actor === 'passenger') return stage === 'pickup' ? 'Je suis à bord' : 'Je suis arrivé';
-  return stage === 'pickup' ? 'Confirmer l’embarquement' : 'Confirmer la dépose';
+  return stage === 'pickup' ? 'Le passager est à bord' : 'Le passager est descendu';
 }
 
 /** Share the existing sheet's availability rules with its entry-point label. */
@@ -19,19 +20,33 @@ export function rideBookingStages(item: Booking, snapshot: RideSnapshot | undefi
     const status = (stage === 'pickup' ? item.pickedUp : item.droppedOff) ? 'confirmed' as const : serverStage?.status;
     return {
       stage, entry, status, canArrive,
-      unavailable: Boolean(entry || serverStage?.[actor] || status === 'confirmed' || status === 'disputed' || (stage === 'dropoff' && !canArrive)),
+      unavailable: Boolean(item.status !== 'accepted' || item.droppedOff || item.droppedOffAt || entry || serverStage?.[actor] || status === 'confirmed' || status === 'disputed' || (stage === 'dropoff' && !canArrive)),
+      own: serverStage?.[actor],
       other: serverStage?.[actor === 'driver' ? 'passenger' : 'driver'],
       label: rideActionLabel(actor, stage),
     };
   });
 }
 
+/** Never describe the other person's receipt as the current user's confirmation. */
+export function rideStageMessage(stage: ReturnType<typeof rideBookingStages>[number], actor: RideActor) {
+  const { entry, status, own, other } = stage;
+  if (status === 'awaiting_other' && !entry && !own && other === 'confirm') {
+    return `${actor === 'driver' ? 'Le passager' : 'Le conducteur'} a confirmé. Votre validation est attendue.`;
+  }
+  if (!['confirmed', 'disputed', 'ready'].includes(status ?? '') &&
+      (entry?.state === 'received' || (!entry && own === 'confirm'))) {
+    return `Votre validation est reçue. En attente ${actor === 'driver' ? 'du passager' : 'du conducteur'}.`;
+  }
+  return rideEntryMessage(entry, status);
+}
+
 export function rideRecoveryTrigger(actor: RideActor, availableStages: RideStage[]) {
   const pickup = availableStages.includes('pickup');
   const dropoff = availableStages.includes('dropoff');
   if (pickup && dropoff) return {
-    label: 'Embarquement ou dépose',
-    accessibilityLabel: 'Confirmer un embarquement ou une dépose',
+    label: 'Gérer les passagers',
+    accessibilityLabel: 'Confirmer un embarquement ou une arrivée à destination',
     icon: 'people-outline' as const,
   };
   if (pickup || dropoff) {

@@ -13,7 +13,7 @@ const TRIP_SORT_OPTIONS: readonly SortOption[] = [
 ];
 const REQUEST_SORT_OPTIONS: readonly SortOption[] = [
   { value: 'nearby', label: 'Plus proches' },
-  { value: 'cheap', label: 'Meilleur budget' },
+  { value: 'cheap', label: 'Prix le plus élevé' },
   { value: 'early', label: 'Plus tôt' },
 ];
 

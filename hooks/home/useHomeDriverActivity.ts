@@ -1,118 +1,89 @@
-import { EMPTY_HOME_BOOKINGS, EMPTY_HOME_TRIPS, hasUpcomingDeparture, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS } from '@/features/home/homeModel';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import { EMPTY_HOME_BOOKINGS, EMPTY_HOME_TRIPS, HOME_ACTIVE_BOOKINGS_POLL_MS, HOME_ACTIVE_TRIP_POLL_MS, HOME_ACTIVITY_POLL_MS } from '@/features/home/homeModel';
+import { useGetTripBookingsQuery, useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
 import {
-  useGetMyTripsQuery,
+  useGetMyActivityTripsQuery as useGetMyTripsQuery,
   useGetTripByIdQuery
 } from '@/store/api/tripApi';
-import type { Trip } from '@/types';
+import { getDriverTripReservationCounts, rankDriverUpcomingTrips } from '@/features/home/homeDriverTripPriority';
 import { useMemo } from 'react';
+import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
+import { sharedTripsOptions as sharedActivityQueryOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
+import { findOngoingPassengerBooking, ownsTrip } from '@/features/activity/tripParticipation';
+import { EMPTY_HIDDEN_HOME_PRIORITIES, homePriorityKeys, type HiddenHomePriorities } from '@/features/home/homePriorityDismissal';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'>;
-export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo }: Props) {
+type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'> & { hiddenHomePriorities?: HiddenHomePriorities };
+export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
+  const enabled = useDisplayReadsEnabled(isFocused);
+  const { data: myBookings } = useGetMyActivityBookingsQuery(undefined, {
+    ...sharedBookingsOptions, skip: !enabled || !currentUser?.id,
+  });
+  const ongoingPassengerBooking = useMemo(
+    () => findOngoingPassengerBooking(myBookings, currentUser?.id), [myBookings, currentUser?.id],
+  );
   const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
-    skip: !isDriver,
-    pollingInterval: isFocused ? HOME_ACTIVITY_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...sharedActivityQueryOptions,
+    skip: !enabled || !isDriver,
   });
 
   const listedOngoingDriverTrip = useMemo(
     () =>
       myDriverTrips.find(
-        (trip) => trip.status === 'ongoing' && (!currentUser?.id || trip.driverId === currentUser.id),
+        (trip) => trip.status === 'ongoing' && ownsTrip(trip, currentUser?.id),
       ) ?? null,
     [currentUser?.id, myDriverTrips],
   );
 
-  const driverTripLookupId =
-    (trackedTripInfo?.role === 'driver' ? trackedTripInfo.tripId : null) ??
-    listedOngoingDriverTrip?.id ??
-    '';
+  // Tracking is a lookup hint only; the returned trip must still prove ownership.
+  const driverTripLookupId = ongoingPassengerBooking ? '' :
+    (trackedTripInfo?.role === 'driver' ? trackedTripInfo.tripId : null) ?? listedOngoingDriverTrip?.id ?? '';
 
   const { data: refreshedDriverTrip } = useGetTripByIdQuery(driverTripLookupId, {
-    skip: !isDriver || !driverTripLookupId,
-    pollingInterval: isFocused ? HOME_ACTIVE_TRIP_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && isDriver && Boolean(driverTripLookupId), HOME_ACTIVE_TRIP_POLL_MS),
   });
 
   const ongoingDriverTrip = useMemo(() => {
-    if (refreshedDriverTrip) {
+    if (!isDriver || !currentUser?.id || ongoingPassengerBooking) return null;
+    if (refreshedDriverTrip?.id === driverTripLookupId && ownsTrip(refreshedDriverTrip, currentUser.id)) {
       return refreshedDriverTrip.status === 'ongoing' ? refreshedDriverTrip : null;
     }
 
     return listedOngoingDriverTrip;
-  }, [listedOngoingDriverTrip, refreshedDriverTrip]);
+  }, [currentUser?.id, driverTripLookupId, isDriver, listedOngoingDriverTrip, refreshedDriverTrip, ongoingPassengerBooking]);
 
   const {
     data: ongoingDriverBookings = EMPTY_HOME_BOOKINGS,
-    refetch: refetchOngoingDriverBookings,
+    refetch: rawRefetchOngoingDriverBookings,
   } = useGetTripBookingsQuery(ongoingDriverTrip?.id ?? '', {
-    skip: !ongoingDriverTrip?.id,
-    pollingInterval: isFocused && ongoingDriverTrip ? HOME_ACTIVE_BOOKINGS_POLL_MS : 0,
-    skipPollingIfUnfocused: true,
-    refetchOnFocus: isFocused,
-    refetchOnReconnect: false,
+    ...displayReadOptions(enabled && Boolean(ongoingDriverTrip?.id), HOME_ACTIVE_BOOKINGS_POLL_MS),
   });
+  const refetchOngoingDriverBookings = useDisplayRefetch(enabled && Boolean(ongoingDriverTrip?.id),
+    ongoingDriverTrip?.id ?? '', rawRefetchOngoingDriverBookings);
 
   const driverReservationHighlightTrip = useMemo(() => {
-    if (!isDriver || !currentUser?.id || ongoingDriverTrip) {
+    if (!isDriver || !currentUser?.id || ongoingDriverTrip || ongoingPassengerBooking) {
       return null;
     }
 
-    const getDepartureTime = (trip: Trip) => {
-      const timestamp = new Date(trip.departureTime).getTime();
-      return Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER;
-    };
-
-    return [...myDriverTrips]
-      .filter(
-        (trip) =>
-          trip.driverId === currentUser.id &&
-          (trip.status === 'upcoming' || trip.status === 'ongoing') &&
-          hasUpcomingDeparture(trip),
-      )
-      .sort((a, b) => {
-        const pendingPassengerCountA =
-          a.passengers?.filter((passenger) => passenger.bookingStatus === 'pending').length ?? 0;
-        const pendingPassengerCountB =
-          b.passengers?.filter((passenger) => passenger.bookingStatus === 'pending').length ?? 0;
-        const passengerCountA = a.passengers?.length ?? 0;
-        const passengerCountB = b.passengers?.length ?? 0;
-        const hasPassengersA = passengerCountA > 0;
-        const hasPassengersB = passengerCountB > 0;
-
-        if (pendingPassengerCountA !== pendingPassengerCountB) {
-          return pendingPassengerCountB - pendingPassengerCountA;
-        }
-
-        if (hasPassengersA !== hasPassengersB) {
-          return hasPassengersA ? -1 : 1;
-        }
-
-        if (passengerCountA !== passengerCountB) {
-          return passengerCountB - passengerCountA;
-        }
-
-        return getDepartureTime(a) - getDepartureTime(b);
-      })[0] ?? null;
-  }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip]);
+    const visibleTrips = myDriverTrips.filter(trip => {
+      const all = getDriverTripReservationCounts(trip);
+      const visible = getDriverTripReservationCounts(trip, hiddenHomePriorities);
+      if (visible.pending) return true; // A hidden trip must not hide a new booking action.
+      if (hiddenHomePriorities[homePriorityKeys.upcomingTrip(trip)]) return false;
+      return !all.pending || visible.accepted > 0;
+    });
+    return rankDriverUpcomingTrips(visibleTrips, currentUser.id, hiddenHomePriorities)[0] ?? null;
+  }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip, ongoingPassengerBooking, hiddenHomePriorities]);
 
   const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS } = useGetTripBookingsQuery(
     driverReservationHighlightTrip?.id ?? '',
     {
-      skip: !isFocused || !driverReservationHighlightTrip?.id || Boolean(ongoingDriverTrip),
-      pollingInterval: isFocused && driverReservationHighlightTrip && !ongoingDriverTrip ? HOME_ACTIVITY_POLL_MS : 0,
-      skipPollingIfUnfocused: true,
-      refetchOnFocus: isFocused,
-      refetchOnReconnect: false,
+      ...displayReadOptions(enabled && Boolean(driverReservationHighlightTrip?.id) && !ongoingDriverTrip, HOME_ACTIVITY_POLL_MS),
     },
   );
   return {
     ongoingDriverTrip,
+    ongoingPassengerBooking,
     driverReservationHighlightTrip,
     driverReservationHighlightBookings,
     myDriverTrips,

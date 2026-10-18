@@ -1,3 +1,5 @@
+import { readableLocation, UNKNOWN_LOCATION_ADDRESS } from '@/utils/readableLocation';
+
 export type PickerCoordinate = { latitude: number; longitude: number };
 export type MapLocationSelection = PickerCoordinate & { title: string; address: string };
 export const DEFAULT_PICKER_LOCATION: MapLocationSelection = {
@@ -17,7 +19,11 @@ export const samePickerPoint = (a: PickerCoordinate, b: PickerCoordinate) =>
   Math.abs(a.latitude - b.latitude) < 0.0001 && Math.abs(a.longitude - b.longitude) < 0.0001;
 
 export function pointSelection(point: PickerCoordinate, title = 'Point sélectionné'): MapLocationSelection {
-  return { ...point, title, address: `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}` };
+  return { ...point, title, address: UNKNOWN_LOCATION_ADDRESS };
+}
+
+export function readableSelection(value: MapLocationSelection): MapLocationSelection {
+  return { ...value, ...readableLocation({ name: value.title, formattedAddress: value.address }) };
 }
 
 /** Only the rendered line is sampled. Snapping always uses the complete validated route. */

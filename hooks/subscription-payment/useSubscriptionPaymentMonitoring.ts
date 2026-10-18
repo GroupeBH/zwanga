@@ -113,7 +113,7 @@ export function useSubscriptionPaymentMonitoring({
         setMessage(
           getPaymentStatusMessage(
             response.payment.message,
-            options?.pendingMessage || 'Paiement en attente chez FlexPay. Nous continuons le suivi.',
+            options?.pendingMessage || 'Paiement en attente chez le prestataire. Nous continuons le suivi.',
           ),
         );
         return 'pending';

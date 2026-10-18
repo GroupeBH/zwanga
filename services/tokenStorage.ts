@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
+import { enqueueTokenWrite, getTokenSessionVersion, invalidateTokenSession } from './tokenSession';
+import { clearLogoutIntent, hasLogoutIntent, markLogoutIntent } from './logoutIntent';
 
 /**
  * Service de gestion des tokens JWT avec SecureStore
@@ -40,7 +42,7 @@ let fcmTokenCache: string | null = null;
 let fcmCacheHydrated = false;
 let fcmHydrationPromise: Promise<string | null> | null = null;
 
-const readSecureItem = async (key: string, label: string): Promise<string | null> => {
+const readSecureItem = async (key: string, label: string, strict = false): Promise<string | null> => {
   try {
     return await SecureStore.getItemAsync(key);
   } catch (error: any) {
@@ -48,6 +50,7 @@ const readSecureItem = async (key: string, label: string): Promise<string | null
       return null;
     }
     console.error(`Erreur lors de la récupération de ${label}:`, error);
+    if (strict) throw new Error('Le stockage sécurisé est temporairement indisponible.');
     return null;
   }
 };
@@ -58,14 +61,26 @@ const hydrateTokensCache = async (): Promise<TokenPair> => {
   }
 
   if (!tokensHydrationPromise) {
+    const version = getTokenSessionVersion();
     tokensHydrationPromise = (async () => {
+      // A failed cleanup must never restore the former account after process death.
+      if (await hasLogoutIntent()) {
+        await enqueueTokenWrite(async () => {
+          if (version !== getTokenSessionVersion()) return;
+          const deleted = await deleteStoredTokens();
+          if (deleted) await clearLogoutIntent();
+        });
+        return { accessToken: null, refreshToken: null };
+      }
       const [accessToken, refreshToken] = await Promise.all([
-        readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token'),
-        readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token'),
+        readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token', true),
+        readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token', true),
       ]);
 
-      tokenCache = { accessToken, refreshToken };
-      tokensCacheHydrated = true;
+      if (version === getTokenSessionVersion()) {
+        tokenCache = { accessToken, refreshToken };
+        tokensCacheHydrated = true;
+      }
       return tokenCache;
     })().finally(() => {
       tokensHydrationPromise = null;
@@ -97,21 +112,26 @@ const hydrateFcmCache = async (): Promise<string | null> => {
  * Stocke le jeton d'accès de manière sécurisée
  */
 export async function storeAccessToken(token: string): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
-    tokenCache.accessToken = token;
-    tokensCacheHydrated = true;
-  } catch (error) {
-    console.error('Erreur lors du stockage de l\'access token:', error);
-    throw error;
-  }
+  const version = invalidateTokenSession();
+  await enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion()) return;
+    try {
+      await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
+      if (version !== getTokenSessionVersion()) return;
+      tokenCache.accessToken = token;
+      tokensCacheHydrated = true;
+    } catch (error) {
+      console.error('Erreur lors du stockage de l\'access token:', error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Récupère le jeton d'accès depuis le stockage sécurisé
  */
 export async function getAccessToken(): Promise<string | null> {
-  const { accessToken } = await hydrateTokensCache();
+  const { accessToken } = await getTokens();
   return accessToken;
 }
 
@@ -119,50 +139,68 @@ export async function getAccessToken(): Promise<string | null> {
  * Stocke le jeton d'actualisation de manière sécurisée
  */
 export async function storeRefreshToken(token: string): Promise<void> {
-  try {
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
-    tokenCache.refreshToken = token;
-    tokensCacheHydrated = true;
-  } catch (error) {
-    console.error('Erreur lors du stockage du refresh token:', error);
-    throw error;
-  }
+  const version = invalidateTokenSession();
+  await enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion()) return;
+    try {
+      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+      if (version !== getTokenSessionVersion()) return;
+      tokenCache.refreshToken = token;
+      tokensCacheHydrated = true;
+    } catch (error) {
+      console.error('Erreur lors du stockage du refresh token:', error);
+      throw error;
+    }
+  });
 }
 
 /**
  * Récupère le jeton d'actualisation depuis le stockage sécurisé
  */
 export async function getRefreshToken(): Promise<string | null> {
-  const { refreshToken } = await hydrateTokensCache();
+  const { refreshToken } = await getTokens();
   return refreshToken;
 }
 
 /**
  * Stocke les deux tokens (access et refresh)
  */
-export async function storeTokens(accessToken: string, refreshToken: string): Promise<void> {
-  try {
-    await Promise.all([
+export async function storeTokens(accessToken: string, refreshToken: string, expectedVersion?: number): Promise<boolean> {
+  const version = expectedVersion ?? invalidateTokenSession();
+  if (expectedVersion === undefined) {
+    tokenCache = { accessToken: null, refreshToken: null };
+    tokensCacheHydrated = true;
+  }
+  return enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion()) return false;
+    // Only a complete new login may supersede a durable logout intent.
+    if (expectedVersion !== undefined && await hasLogoutIntent()) return false;
+    // Await both native writes even if one fails, so a queued logout runs last.
+    const writes = await Promise.allSettled([
       SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
       SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
     ]);
+    const failed = writes.find(result => result.status === 'rejected');
+    if (failed?.status === 'rejected') throw failed.reason;
 
+    if (version !== getTokenSessionVersion()) return false;
+    if (expectedVersion === undefined) await clearLogoutIntent();
+    if (version !== getTokenSessionVersion()) return false;
     tokenCache = { accessToken, refreshToken };
     tokensCacheHydrated = true;
-  } catch (error) {
-    console.error('Erreur lors du stockage des tokens:', error);
-    throw error;
-  }
+    return true;
+  });
 }
 
 /**
  * Récupère les deux jetons (accès et actualisation)
  */
-export async function getTokens(): Promise<TokenPair> {
+export async function getTokens(options?: { throwOnError?: boolean }): Promise<TokenPair> {
   try {
     return await hydrateTokensCache();
   } catch (error: any) {
     console.error('Erreur lors de la récupération des tokens:', error);
+    if (options?.throwOnError) throw error;
     return { accessToken: null, refreshToken: null };
   }
 }
@@ -171,15 +209,15 @@ export async function getTokens(): Promise<TokenPair> {
  * Supprime le jeton d'accès du stockage sécurisé
  */
 export async function removeAccessToken(): Promise<void> {
+  invalidateTokenSession();
+  tokenCache.accessToken = null;
+  tokensCacheHydrated = true;
   try {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
+    await enqueueTokenWrite(() => SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY));
   } catch (error: any) {
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression de l\'access token:', error);
     }
-  } finally {
-    tokenCache.accessToken = null;
-    tokensCacheHydrated = true;
   }
 }
 
@@ -187,15 +225,15 @@ export async function removeAccessToken(): Promise<void> {
  * Supprime le jeton d'actualisation du stockage sécurisé
  */
 export async function removeRefreshToken(): Promise<void> {
+  invalidateTokenSession();
+  tokenCache.refreshToken = null;
+  tokensCacheHydrated = true;
   try {
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+    await enqueueTokenWrite(() => SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY));
   } catch (error: any) {
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression du refresh token:', error);
     }
-  } finally {
-    tokenCache.refreshToken = null;
-    tokensCacheHydrated = true;
   }
 }
 
@@ -203,22 +241,27 @@ export async function removeRefreshToken(): Promise<void> {
  * Supprime tous les jetons du stockage sécurisé
  * Vide completement le SecureStore (access token, refresh token, FCM token)
  */
-export async function clearTokens(): Promise<void> {
-  try {
-    await Promise.all([
-      removeAccessToken(),
-      removeRefreshToken(),
-      removeFcmToken(),
-    ]);
-    console.log('Tous les jetons ont été supprimés du SecureStore');
-  } catch (error) {
-    console.error('Erreur lors de la suppression des tokens:', error);
-  } finally {
-    tokenCache = { accessToken: null, refreshToken: null };
-    tokensCacheHydrated = true;
-    fcmTokenCache = null;
-    fcmCacheHydrated = true;
-  }
+export async function clearTokens(expectedVersion?: number): Promise<boolean> {
+  if (expectedVersion !== undefined && expectedVersion !== getTokenSessionVersion()) return false;
+  const version = invalidateTokenSession();
+  tokenCache = { accessToken: null, refreshToken: null };
+  tokensCacheHydrated = true;
+  fcmTokenCache = null;
+  fcmCacheHydrated = true;
+  await enqueueTokenWrite(async () => {
+    let marked = false;
+    try { await markLogoutIntent(); marked = true; } catch { /* Still try native deletion. */ }
+    const deleted = await deleteStoredTokens();
+    if (!deleted && !marked) throw new Error('Déconnexion locale non sécurisée : stockage indisponible. Réessayez.');
+    if (deleted && marked) await clearLogoutIntent();
+  });
+  return version === getTokenSessionVersion();
+}
+
+async function deleteStoredTokens(): Promise<boolean> {
+  const results = await Promise.allSettled([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY]
+    .map(key => SecureStore.deleteItemAsync(key)));
+  return results.every(result => result.status === 'fulfilled');
 }
 
 /**

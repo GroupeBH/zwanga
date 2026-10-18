@@ -2,7 +2,8 @@ import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Image, Modal, TouchableOpacity, View } from 'react-native';
+import { Image, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 
 interface TripImageModalProps {
   imageModalVisible: boolean;

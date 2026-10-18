@@ -13,6 +13,10 @@ type Echo = {
   coordinates?: [number, number] | null;
   updatedAt?: string | null;
 };
+type LocationAck = {
+  success?: boolean; ok?: boolean; status?: 'accepted' | 'superseded';
+  tripId?: string; bookingId?: string; recordedAt?: string;
+};
 
 /** The deployed gateway echoes locations but older versions don't acknowledge emits. */
 export function sendConfirmedTrackingLocation(socket: Socket, payload: Payload) {
@@ -49,8 +53,13 @@ export function sendConfirmedTrackingLocation(socket: Socket, payload: Payload) 
     socket.on(echoEvent, onEcho);
     socket.on('disconnect', onDisconnect);
     try {
-      // Server echoes support current gateways; positive acknowledgements support future ones.
-      socket.timeout(2500).emit(event, payload, (error: Error | null, ack?: { success?: boolean; ok?: boolean }) => {
+      // The callback belongs to this emit. A positive ack confirms processing even
+      // when the server corrected recordedAt or already holds a newer sample.
+      // Legacy gateways may only echo; keep the strict timestamp check above.
+      socket.timeout(2500).emit(event, payload, (error: Error | null, ack?: LocationAck) => {
+        if (ack?.tripId !== undefined && ack.tripId !== payload.tripId) return;
+        if (ack?.bookingId !== undefined && ack.bookingId !== payload.bookingId) return;
+        if (ack?.recordedAt !== undefined && ack.recordedAt !== payload.recordedAt) return;
         if (!error && (ack?.success === true || ack?.ok === true)) finish();
         else if (!error && (ack?.success === false || ack?.ok === false)) finish(new Error('La position n’a pas pu être enregistrée.'));
       });

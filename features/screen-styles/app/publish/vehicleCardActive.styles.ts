@@ -224,59 +224,6 @@ export const styles = StyleSheet.create({
     color: Colors.gray[700],
     fontWeight: FontWeights.semibold,
   },
-  // Step Indicator Styles
-  stepIndicatorContainer: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xs,
-    paddingBottom: Spacing.sm,
-    backgroundColor: '#EEF2F6',
-  },
-  stepIndicatorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing.md,
-  },
-  stepDot: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.gray[300],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepDotActive: {
-    backgroundColor: Colors.primary,
-  },
-  stepDotCompleted: {
-    backgroundColor: Colors.success,
-  },
-  stepLine: {
-    flex: 1,
-    height: 3,
-    backgroundColor: Colors.gray[200],
-    marginHorizontal: Spacing.xs,
-    borderRadius: BorderRadius.sm,
-  },
-  stepLineActive: {
-    backgroundColor: Colors.success,
-  },
-  stepLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: Spacing.sm,
-  },
-  stepLabel: {
-    fontSize: FontSizes.xs,
-    fontWeight: FontWeights.medium,
-    color: Colors.gray[500],
-    textAlign: 'center',
-    flex: 1,
-  },
-  stepLabelActive: {
-    color: Colors.primary,
-    fontWeight: FontWeights.bold,
-  },
   // Route Card Styles (from request.tsx)
   publishMapPreview: {
     height: 238,

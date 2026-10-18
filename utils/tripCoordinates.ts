@@ -53,6 +53,10 @@ export function normalizeTripMapCoordinate(
   latitudeValue: unknown,
   longitudeValue: unknown,
 ): MapCoordinate | null {
+  // Number(null), Number('') and Number(false) are zero, not valid GPS measurements.
+  const isNumeric = (value: unknown) => typeof value === 'number'
+    || (typeof value === 'string' && value.trim().length > 0);
+  if (!isNumeric(latitudeValue) || !isNumeric(longitudeValue)) return null;
   const latitude = Number(latitudeValue);
   const longitude = Number(longitudeValue);
 
