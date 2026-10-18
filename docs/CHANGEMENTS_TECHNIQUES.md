@@ -1,5 +1,32 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Version de l’application Android et iOS : 1.0.17
+
+- **Demande et périmètre :** incrémenter la version Expo pour les prochaines
+  livraisons Android et iOS. La branche actuelle utilisait encore 1.0.16.
+- **Solution appliquée :** passage à **1.0.17** dans `app.config.js`,
+  `package.json`, les deux métadonnées racine de `package-lock.json`,
+  `android/app/build.gradle` (`versionName`) et les deux configurations Xcode
+  de `ios/zwanga.xcodeproj/project.pbxproj` (`MARKETING_VERSION`). Le plist
+  continue de lire les variables de build Xcode, sans valeur dupliquée.
+- **Comportements conservés :** SDK Expo 54 et versions de toutes les
+  dépendances inchangés, correctif CocoaPods précédent conservé, identifiants
+  des applications et profils EAS inchangés. `appVersionSource: remote` et
+  `production.autoIncrement: true` restent actifs : les prochains builds de
+  production incrémenteront leurs compteurs Android/iOS côté EAS. Les anciens
+  compteurs locaux ne sont pas utilisés pour réinitialiser les compteurs
+  distants ; leur prochaine valeur n’a pas été inventée ni modifiée à distance.
+- **Vérifications :** `node --test tests/appVersions.test.js
+  tests/iosDeploymentTarget.test.js tests/iosCrashlytics.test.js
+  tests/androidBuildPerformance.test.js` : **18 tests réussis, 1 test Ruby
+  ignoré** (Ruby absent sous Windows), dont les 5 contrôles de cohérence des
+  versions. `git diff --check` validé. Aucun build natif ni test sur appareil.
+- **Livraison :** modifications locales sur `rollback/production-155-20261015`,
+  sans fusion de `master`, sans commit/push, build ou publication déclenchés.
+  Les versions déjà installées restent inchangées jusqu’à une nouvelle livraison.
+  Le prochain numéro de build et l’acceptation par les stores restent à vérifier
+  lors de cette livraison. [Gestion des versions EAS](https://docs.expo.dev/build-reference/app-versions/).
+
 ## 2026-10-18 — Build iOS : minimum de déploiement des bundles CocoaPods
 
 - **Périmètre et constat réel :** le journal Xcode du build `46bce993` contient
