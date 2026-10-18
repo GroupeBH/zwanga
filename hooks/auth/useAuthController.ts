@@ -260,7 +260,6 @@ export function useAuthController() {
     googleProfileName: form.googleProfileName,
     router,
     pin: form.pin,
-    email: form.email,
     profilePicture: form.profilePicture,
     register: form.register,
   });

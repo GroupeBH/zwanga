@@ -1,5 +1,64 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Connexion Apple : finalisation du profil et API de production
+
+- **Périmètre et constat :** le refus App Review du 12 octobre, build 138,
+  comporte une capture `property email should not exist` sur le formulaire de
+  profil. Cela établit un rejet du contrat HTTP lors de cet essai, pas une panne
+  démontrée de la feuille native Apple. Le code actuel possède déjà une liste
+  explicite de champs pour `/auth/apple/mobile` et le backend ignore l’ancien
+  champ `email` sans l’utiliser comme preuve d’identité.
+- **Vérification distante effectuée :** sur l’API AWS actuelle, deux requêtes
+  synthétiques avec un jeton volontairement invalide ont donné : `401` avec
+  l’ancien champ `email`, sans l’erreur de whitelist ; `400` avec un autre champ
+  inconnu, rejeté par la validation. Aucun compte créé, aucun identifiant Apple
+  réel utilisé, aucun paramètre serveur modifié. Cela vérifie la compatibilité
+  de cette API, pas l’adresse réellement embarquée dans le build refusé ni une
+  connexion Apple complète sur appareil.
+- **Correction de destination :** `config/env.ts` utilisait encore l’ancienne API
+  Render quand aucune URL explicite n’était fournie. Le secours pointe désormais
+  vers l’API AWS vérifiée, également fixée dans `eas.json` pour le profil de
+  production. Les URL explicites de développement restent prioritaires et les
+  autres profils restent inchangés. L’IPA refusé n’a pas été inspecté : son
+  utilisation de l’ancienne API reste une hypothèse, pas une mesure.
+- **Correction du formulaire :** `app/auth.tsx` conserve maintenant les champs
+  de nom préremplis et modifiables aussi pour Apple, et l’accès à leur correction
+  depuis l’étape KYC conducteur. Auparavant ces champs étaient cachés pour Apple
+  alors que la validation les exigeait, ce qui bloquait une inscription si le
+  nom n’était plus fourni après réinstallation. `useSignupProfileActions.ts`
+  et `useRegistrationActions.ts` indiquent de compléter le formulaire ; ils
+  n’exigent plus de retirer l’autorisation Apple ou de changer de connexion.
+  Le nom fourni par Apple ou son cache continue de préremplir les champs.
+- **Contrat d’inscription :** `hooks/auth/useRegistrationActions.ts` ne transmet
+  plus non plus l’ancien champ `email` dans le formulaire téléphonique, y compris
+  s’il reste dans un brouillon social. Le paramètre devenu inutile est retiré
+  de `hooks/auth/useAuthController.ts`. Le corps Apple existant reste limité aux
+  champs attendus ; l’adresse d’identité vient du jeton vérifié par le backend.
+- **Précautions :** vérification du jeton/nonce Apple, validation stricte du
+  backend, cache natif limité au même identifiant Apple, sauvegarde de session,
+  verrou anti-double-envoi, reprise de finalisation sans recréer de compte,
+  inscription Google/téléphone, rôle conducteur, véhicule et KYC conservés.
+  Pas de changement de SDK, capacité Apple, identifiant d’application ou base.
+- **Tests réalisés :** **75 tests JavaScript réussis** avec `node --test`
+  sur `appleRegistration`, `authSubmissionLoading`, `authFlowDraft`,
+  `googleAuthFlow`, `authInternationalPhone`, `vehiclePlate`,
+  `profilePhotoSelection` et `appVersions` (fichiers `tests/<nom>.test.js`).
+  Le nouveau test contrôle l’URL de production et son secours, le filtrage des
+  champs HTTP Apple, l’absence de nom après réinstallation et le cache par
+  compte. Les tests de finalisation couvrent la saisie du nom manquant et
+  l’absence de `email` résiduel. Backend : **58 tests réussis**, détaillés dans
+  son journal. `tsc --noEmit`, ESLint ciblé et `git diff --check` validés ;
+  contrôle de taille : 1 096 sources, aucun dépassement des 400 lignes.
+- **Livraison et limites :** aucun build EAS, envoi TestFlight, réponse App Store
+  Connect ou déploiement déclenché. Fournir un nouveau build iOS, puis essayer
+  sur iPhone et iPad : première autorisation, connexion existante, masquage
+  d’adresse, réinstallation avec nom absent, création du profil et arrivée dans
+  l’application, ainsi que mise à jour depuis la version précédente. Les tests
+  JavaScript et les requêtes avec jeton invalide ne remplacent pas ces essais
+  natifs et ne garantissent pas l’acceptation d’Apple.
+- **Références :** [comportement des informations Apple](https://developer.apple.com/documentation/signinwithapple/authenticating-users-with-sign-in-with-apple),
+  [journal technique backend](../../zwanga-backend/docs/CHANGEMENTS_TECHNIQUES.md#18-octobre-2026--vérification-du-contrat-apple-email-app-review).
+
 ## 2026-10-18 — Positions anciennes autorisées pour les commandes hors trajet
 
 - **Demande et problème :** accepter la dernière position du conducteur même

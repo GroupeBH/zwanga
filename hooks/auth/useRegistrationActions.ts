@@ -47,7 +47,6 @@ interface Params {
   googleProfileName: string | null;
   router: Router;
   pin: string;
-  email: string;
   profilePicture: string | null;
   register: ReturnType<typeof useRegisterMutation>[0];
 }
@@ -78,7 +77,6 @@ export function useRegistrationActions({
   googleProfileName,
   router,
   pin,
-  email,
   profilePicture,
   register,
 }: Params) {
@@ -150,9 +148,9 @@ export function useRegistrationActions({
         setStep('profile');
         showDialog({
           variant: 'warning',
-          title: isAppleSignupFlow ? 'Nom Apple indisponible' : 'Nom légal requis',
+          title: isAppleSignupFlow ? 'Complétez votre nom' : 'Nom légal requis',
           message: isAppleSignupFlow
-            ? 'Apple n’a pas transmis votre nom. Reconnectez votre compte Apple après avoir retiré Zwanga des apps utilisant votre identifiant Apple, ou choisissez une autre méthode d’inscription.'
+            ? 'Apple n’a pas communiqué votre nom complet. Renseignez vos prénom(s) et votre nom dans le formulaire pour continuer.'
             : 'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité. Le post-nom est facultatif.',
         });
         return;
@@ -239,7 +237,6 @@ export function useRegistrationActions({
         formData.append('vehicle[color]', vehicleColor.trim());
         formData.append('vehicle[licensePlate]', normalizeVehiclePlate(vehiclePlate));
       }
-      if (email) formData.append('email', email.trim());
 
       if (profilePicture) {
         formData.append('profilePicture', { uri: profilePicture, name: `pp-${Date.now()}.jpg`, type: 'image/jpeg' } as any);

@@ -16,7 +16,7 @@ interface EnvConfig {
   chottuLinkDomain: string;
 }
 
-const DEFAULT_API_URL = 'https://zwanga-api.onrender.com/api/v1';
+const DEFAULT_API_URL = 'https://compute-api.zwanga-app.com/api/v1';
 
 /**
  * Récupère la configuration depuis les variables d'environnement
