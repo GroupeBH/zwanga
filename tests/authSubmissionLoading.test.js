@@ -11,8 +11,8 @@ function signupFixture(method = 'phone', extra = {}) {
   const hooks = hookHarness(), dialogs = [], calls = [];
   const request = deferred(), storage = deferred(), kyc = deferred(), notification = deferred();
   const io = { readReferral: async () => null, consumeReferral: async () => {}, analytics: async () => {},
-    storage: () => storage.promise, notification: () => notification.promise };
-  const mutation = provider => () => ({ unwrap: () => { calls.push(provider); return request.promise; } });
+    storage: () => storage.promise, notification: () => notification.promise, requests: [] };
+  const mutation = provider => body => ({ unwrap: () => { calls.push(provider); io.requests.push({ provider, body }); return request.promise; } });
   const props = { firstName: 'Test', lastName: 'Example', role: 'passenger', gender: null,
     vehicleType: 'car', vehicleBrand: 'Test', vehicleModel: 'Test', vehicleColor: 'Bleu', vehiclePlate: '0000AA00',
     phone: '+243000000000', pin: '1234', email: '', legacyReferralCode: '', profilePicture: null,
@@ -95,6 +95,33 @@ test('validation and backend rejection release signup for correction/retry', asy
   await app.render().handleFinalRegister();
   assert.equal(app.calls.filter(call => call === 'phone').length, 2);
   assert.equal(app.render().isRegistrationPending, true);
+  app.hooks.unmount();
+});
+
+test('Apple signup with no name after reinstall can be completed directly in the profile form', async () => {
+  const app = signupFixture('apple', { firstName: '', lastName: '', isAppleSignupFlow: true,
+    appleNonce: 'test-nonce', email: 'relay@example.invalid' });
+  await app.render().handleFinalRegister();
+  assert.deepEqual(app.calls, ['step']);
+  assert.match(app.dialogs[0].message, /formulaire/);
+  assert.doesNotMatch(app.dialogs[0].message, /retiré|autre méthode|Reconnectez/);
+  app.props.firstName = '  Test  '; app.props.lastName = '  Example  ';
+  app.request.resolve(tokens); app.storage.resolve(true); app.notification.resolve();
+  await app.render().handleFinalRegister();
+  assert.equal(app.io.requests.length, 1);
+  assert.deepEqual(app.io.requests[0], { provider: 'apple', body: { idToken: 'test-id-token', phone: '+243000000000',
+    nonce: 'test-nonce', firstName: 'Test', lastName: 'Example', gender: undefined, role: 'passenger', vehicle: undefined } });
+  assert.equal(app.calls.at(-1), 'redirect');
+  app.hooks.unmount();
+});
+
+test('phone signup never sends an obsolete email remaining in a saved social form', async () => {
+  const app = signupFixture('phone', { email: 'stale@example.invalid' });
+  app.request.resolve(tokens); app.storage.resolve(true); app.notification.resolve();
+  await app.render().handleFinalRegister();
+  const [{ provider, body }] = app.io.requests;
+  assert.equal(provider, 'phone'); assert.equal(body.get('email'), null);
+  assert.equal(body.get('firstName'), 'Test'); assert.equal(body.get('phone'), '+243000000000');
   app.hooks.unmount();
 });
 
@@ -194,7 +221,8 @@ test('screen uses finalization state for profile/KYC and locks header even after
       '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
       '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
       '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false },
-        form: { mode: 'signup', step, role: 'driver', firstName: 'Test', lastName: 'Example', isRegistering: false, isStartingDiditKyc: false },
+        form: { mode: 'signup', step, role: 'driver', firstName: 'Test', lastName: 'Example', isAppleSignupFlow: true,
+          setStep: step => calls.push(step), isRegistering: false, isStartingDiditKyc: false },
         navigation: { handleModeChange: () => calls.push('mode'), handlePreviousStep: () => calls.push('back') },
         social: { isGoogleLoading: false, isSocialAuthInFlight: () => false },
         phoneActions: { isPinLoginPending: false, isPinLoginInFlight: () => false }, profileActions: {}, registration,
@@ -203,6 +231,9 @@ test('screen uses finalization state for profile/KYC and locks header even after
     const tree = nodes(Screen()), header = tree.find(node => node.type === 'AuthHeader');
     assert.equal(header.props.disabled, true);
     assert.equal(tree.find(node => node.type === (step === 'profile' ? 'ProfileStep' : 'KycStep')).props.isLoading, true);
+    if (step === 'profile') assert.notEqual(tree.find(node => node.type === 'ProfileStep').props.showNameFields, false,
+      'Apple names remain visible/editable without requiring a new authorization');
+    else assert.equal(typeof tree.find(node => node.type === 'KycStep').props.onEditIdentity, 'function');
     header.props.onBack(); header.props.onModeChange('login'); assert.deepEqual(calls, []);
     registration.isRegistrationPending = false;
     assert.equal(nodes(Screen()).find(node => node.type === 'AuthHeader').props.disabled, true);
