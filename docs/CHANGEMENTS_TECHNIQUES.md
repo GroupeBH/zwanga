@@ -1,5 +1,27 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Nouvelle commande : diffusion serveur et notification de secours
+
+- **Périmètre :** absence de push simple signalée, avec diffusion souhaitée à
+  tous les conducteurs éligibles à 5 km. Le backend possédait déjà les lots de
+  diffusion ; son filtre d’inscription à la sonnerie pouvait néanmoins exclure
+  des destinataires ayant un jeton push valide.
+- **Solution :** correctif préparé dans le dépôt voisin `zwanga-backend` :
+  séparation de la sélection géographique et de la capacité sonore, push
+  ordinaire visible en secours pour les clients non enregistrés/anciens,
+  conservation des alertes sonores pour les clients compatibles. Aucun fichier
+  fonctionnel mobile, statut du conducteur ou choix de son n’est changé par
+  cette intervention complémentaire. Le mécanisme Android de sonnerie du
+  téléphone reste celui de `DriverAlertModule.java` et de son canal v3.
+- **Vérifications et limites :** 99 tests unitaires serveur et 39 tests sur
+  PostgreSQL/PostGIS local jetable réussis ; compilation serveur validée,
+  contrôles AWS en lecture seule, essais SQL isolés documentés côté backend.
+  Aucun envoi push réel ou déploiement. La réception et le volume sur téléphone
+  ne sont pas déduits des tests serveur. Les filtres de rôle, KYC, véhicule,
+  disponibilité réelle et fraîcheur de position sont conservés.
+- **Détail des fichiers, tests et précautions :**
+  [journal technique backend](../../zwanga-backend/docs/CHANGEMENTS_TECHNIQUES.md#18-octobre-2026--diffusion-à-tous-les-conducteurs-proches-et-push-de-secours).
+
 ## 2026-10-18 — Alertes conducteur automatiques et retrait du badge de disponibilité
 
 - **Demande et périmètre :** absence de notification/sonnerie signalée dans le
