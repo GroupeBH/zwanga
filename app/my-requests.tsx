@@ -1,8 +1,10 @@
 import { styles } from '../features/screen-styles/app/my-requests/index';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
+import { displayReadOptions, useDisplayReadData, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
 import { Colors } from '@/constants/styles';
-import { useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import { useGetMyRequestPageQuery } from '@/store/api/tripRequestApi';
+import { useHistoryCursor } from '@/hooks/useHistoryCursor';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { TripRequest } from '@/types';
@@ -17,17 +19,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function MyTripRequestsScreen() {
   const isScreenActive = useScreenIsActive();
   const userId = useAppSelector(selectUser)?.id;
-  const enabled = useDisplayReadsEnabled(isScreenActive);
+  const enabled = useDisplayReadsEnabled(isScreenActive && Boolean(userId));
   const router = useRouter();
+  const cursor = useHistoryCursor(userId ?? '');
   const {
-    data: tripRequests = [],
+    currentData,
     isLoading,
     isFetching,
+    isError,
     refetch: rawRefetch,
-  } = useGetMyTripRequestsQuery(undefined, {
+  } = useGetMyRequestPageQuery({ before: cursor.before, limit: 20 }, {
     ...displayReadOptions(enabled, 60_000),
   });
-  const refetch = useDisplayRefetch(enabled, 'my-requests', rawRefetch);
+  const scope = `${userId}:${cursor.before ?? ''}`;
+  const requestPage = useDisplayReadData(scope, currentData);
+  const refetch = useDisplayRefetch(enabled, scope, rawRefetch);
+  const tripRequests = useMemo(() => requestPage?.data ?? [], [requestPage]);
+  const pagination = <HistoryPagination page={cursor.page} busy={!enabled || isFetching} error={isError}
+    hasNext={Boolean(requestPage?.nextCursor)} onPrevious={cursor.previous}
+    onNext={() => cursor.next(requestPage?.nextCursor)} onRetry={() => { void refetch(); }} />;
 
   const handleRequestPress = useCallback((requestId: string) => {
     router.push(getTripRequestDetailHref(requestId));
@@ -112,9 +122,9 @@ export default function MyTripRequestsScreen() {
       {sortedTripRequests.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="document-text-outline" size={64} color={Colors.gray[400]} />
-          <Text style={styles.emptyTitle}>Aucune commande</Text>
+          <Text style={styles.emptyTitle}>{isError ? 'Chargement impossible' : 'Aucune commande sur cette page'}</Text>
           <Text style={styles.emptyText}>
-            Vous n&apos;avez pas encore commandé de trajet. Commandez-en un pour recevoir les propositions des conducteurs.
+            {isError ? 'Vérifiez votre connexion puis réessayez.' : 'Vous pouvez commander un trajet pour recevoir les propositions des conducteurs.'}
           </Text>
           <TouchableOpacity
             style={styles.createRequestButton}
@@ -129,6 +139,7 @@ export default function MyTripRequestsScreen() {
           initialNumToRender={6}
           maxToRenderPerBatch={6}
           windowSize={5}
+          ListFooterComponent={pagination}
           data={sortedTripRequests}
           keyExtractor={(item) => item.id}
           renderItem={renderTripRequestCard}
@@ -143,6 +154,7 @@ export default function MyTripRequestsScreen() {
           }
         />
       )}
+      {sortedTripRequests.length === 0 && pagination}
     </SafeAreaView>
   );
 }

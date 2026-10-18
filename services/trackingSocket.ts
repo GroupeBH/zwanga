@@ -2,6 +2,8 @@ import { DriverLocationPayload, PassengerLocationPayload, TrackingLocationMetada
 import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
+import { socketConnectionOptions } from './socketConnectionPolicy';
+import { subscribeConnectionRecovery } from './networkRecovery';
 import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
 import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
 import { isDriverLocation, isPassengerLocation, readPassengerLocations } from './socketPayloads';
@@ -26,6 +28,7 @@ class TrackingSocketClient {
   private socket: Socket | null = null;
   private connecting: Promise<Socket> | null = null;
   private generation = 0;
+  private stopRecovery: (() => void) | null = null;
   private idleTimeout: ReturnType<typeof setTimeout> | null = null;
   private tripJoinCounts = new Map<string, number>();
   private locationListeners = new Set<LocationListener>();
@@ -127,6 +130,9 @@ class TrackingSocketClient {
   }
 
   private async connect(): Promise<Socket> {
+    this.stopRecovery ??= subscribeConnectionRecovery(() => {
+      if (this.tripJoinCounts.size > 0 && !this.socket?.connected) void this.connect().catch(() => undefined);
+    });
     if (this.connecting) {
       return this.connecting;
     }
@@ -136,6 +142,10 @@ class TrackingSocketClient {
     const connection = (async () => {
       const token = await getValidAccessToken();
       if (generation !== this.generation) throw new Error('Session de suivi fermée');
+      if (!token) {
+        this.socket?.disconnect();
+        throw new Error('Connexion de suivi en attente de votre session');
+      }
       if (this.socket) {
         const socket = this.socket;
         socket.auth = { token };
@@ -143,12 +153,12 @@ class TrackingSocketClient {
       }
       const baseUrl = resolveSocketBaseUrl();
       const socket = io(`${baseUrl}/tracking`, {
-        transports: ['websocket'],
+        ...socketConnectionOptions,
         auth: { token },
         autoConnect: false,
       });
       this.socket = socket;
-      socket.on('session_expired', () => { void handle401Error(); });
+      socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
 
       socket.on('connect', () => {
         this.notifyConnectionState(true);
@@ -269,6 +279,8 @@ class TrackingSocketClient {
   }
 
   disconnect(clearListeners = true) {
+    this.stopRecovery?.();
+    this.stopRecovery = null;
     this.generation += 1;
     if (this.idleTimeout) clearTimeout(this.idleTimeout);
     this.idleTimeout = null;
@@ -287,10 +299,14 @@ class TrackingSocketClient {
   }
 
   refreshAuthentication() {
-    if (!this.socket) return;
+    if (!this.socket) {
+      if (this.tripJoinCounts.size > 0) void this.connect().catch(() => undefined);
+      return;
+    }
     const generation = this.generation;
     void getValidAccessToken().then((token) => {
       if (!this.socket || generation !== this.generation) return;
+      if (!token) { this.socket.disconnect(); return; }
       this.socket.auth = { token };
       this.socket.disconnect().connect();
     }).catch(() => undefined);

@@ -9,7 +9,10 @@ import {
 import type { RecurringTripTemplate } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { getApiErrorMessage } from '@/utils/errorHelpers';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -25,6 +28,7 @@ const WEEKDAY_LABELS: Record<number, string> = {
 
 const formatDateTimeLabel = (value?: string | null) => {
   if (!value) return 'Aucune publication prévue pour le moment';
+  if (!Number.isFinite(Date.parse(value))) return 'Date indisponible';
   return new Intl.DateTimeFormat('fr-FR', {
     weekday: 'short',
     day: 'numeric',
@@ -37,6 +41,7 @@ const formatDateTimeLabel = (value?: string | null) => {
 const formatDateLabel = (value?: string | null) => {
   if (!value) return 'Sans fin';
   const [year, month, day] = value.split('-').map((item) => Number(item));
+  if (!Number.isFinite(new Date(year, month - 1, day).getTime())) return 'Date indisponible';
   return new Intl.DateTimeFormat('fr-FR', {
     day: 'numeric',
     month: 'short',
@@ -73,14 +78,22 @@ const statusConfig = (status: RecurringTripTemplate['status']) => {
 };
 
 export default function RecurringTripsScreen() {
+  const active = useScreenIsActive();
+  const [actionError, setActionError] = useState('');
+  const lock = useRef(false);
+  const mounted = useRef(true);
+  const view = useRef({ active, epoch: 0 });
+  if (view.current.active !== active) view.current = { active, epoch: view.current.epoch + 1 };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const router = useRouter();
   const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
   const {
     data: recurringTrips = [],
     isLoading,
     isFetching,
+    isError,
     refetch,
-  } = useGetMyRecurringTripsQuery();
+  } = useGetMyRecurringTripsQuery(undefined, { skip: !active, refetchOnMountOrArgChange: 30 });
   const [pauseRecurringTrip] = usePauseRecurringTripMutation();
   const [resumeRecurringTrip] = useResumeRecurringTripMutation();
 
@@ -94,7 +107,12 @@ export default function RecurringTripsScreen() {
   );
 
   const handleToggleStatus = async (template: RecurringTripTemplate) => {
-    if (pendingTemplateId) return;
+    if (!active || lock.current) return;
+    lock.current = true;
+    const version = getTokenSessionVersion();
+    const epoch = view.current.epoch;
+    const current = () => mounted.current && version === getTokenSessionVersion();
+    setActionError('');
 
     try {
       setPendingTemplateId(template.id);
@@ -102,22 +120,27 @@ export default function RecurringTripsScreen() {
         await resumeRecurringTrip(template.id).unwrap();
         void trackEvent('recurring_trip_resumed', {
           recurring_trip_id: template.id,
-        });
+        }).catch(() => undefined);
       } else {
         await pauseRecurringTrip(template.id).unwrap();
         void trackEvent('recurring_trip_paused', {
           recurring_trip_id: template.id,
-        });
+        }).catch(() => undefined);
+      }
+    } catch (error) {
+      if (current() && view.current.active && view.current.epoch === epoch) {
+        setActionError(getApiErrorMessage(error, 'Modification non confirmée. Vérifiez votre connexion puis réessayez.'));
       }
     } finally {
-      setPendingTemplateId(null);
+      lock.current = false;
+      if (current()) setPendingTemplateId(null);
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/trips')}>
           <Ionicons name="arrow-back" size={22} color={Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.headerContent}>
@@ -184,7 +207,12 @@ export default function RecurringTripsScreen() {
           </Text>
         </View>
 
-        {isLoading ? (
+        {actionError ? <Text accessibilityRole="alert" style={{ color: Colors.danger }}>{actionError}</Text> : null}
+        {isError ? (
+          <TouchableOpacity style={styles.infoCard} onPress={() => { if (active) void refetch(); }} accessibilityRole="button">
+            <Text style={styles.infoText}>Impossible de charger les trajets. Appuyez pour réessayer.</Text>
+          </TouchableOpacity>
+        ) : isLoading ? (
           <View style={styles.loaderCard}>
             <ActivityIndicator color={Colors.primary} />
             <Text style={styles.loaderText}>Chargement des trajets récurrents...</Text>

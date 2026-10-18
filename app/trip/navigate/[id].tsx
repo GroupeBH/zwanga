@@ -43,7 +43,7 @@ function DriverNavigationScreen() {
     return (
       <View style={styles.loadingContainer}>
         <Ionicons name="warning" size={48} color={Colors.warning} />
-        <Text style={styles.loadingText}>Coordonnées du trajet invalides</Text>
+        <Text style={styles.loadingText}>L’adresse du trajet est introuvable.</Text>
         <TouchableOpacity
           style={styles.backButtonAlt}
           onPress={model.session.foundation.exitActions.navigateBackSafely}
@@ -89,7 +89,7 @@ function DriverNavigationScreen() {
             </View>
             <Text style={styles.preStartTitle}>
               {model.session.foundation.data.trip?.status === 'upcoming'
-                ? 'Trajet pas encore démarré'
+                ? model.session.foundation.data.trip.startedAt ? 'Trajet en pause' : 'Prêt à partir ?'
                 : model.session.foundation.data.trip?.status === 'completed'
                   ? 'Trajet terminé'
                   : model.session.foundation.data.trip?.status === 'cancelled'
@@ -98,8 +98,8 @@ function DriverNavigationScreen() {
             </Text>
             <Text style={styles.preStartText}>
               {model.session.foundation.data.trip?.status === 'upcoming'
-                ? 'Le trajet doit être demarré avant d\'activer la navigation en direct.'
-                : 'La navigation en direct est disponible uniquement pour un trajet en cours.'}
+                ? 'Appuyez sur le bouton pour partir et suivre la carte.'
+                : 'Vous pouvez revenir au trajet.'}
             </Text>
             <View style={styles.preStartActions}>
               <TouchableOpacity
@@ -115,7 +115,7 @@ function DriverNavigationScreen() {
                   <ActivityIndicator size="small" color={Colors.white} />
                 ) : (
                   <Text style={styles.preStartButtonPrimaryText}>
-                    {model.presentation.canRestartTripFromOverlay ? 'Redemarrer' : 'Actualiser'}
+                    {model.presentation.canRestartTripFromOverlay ? model.session.foundation.data.trip?.startedAt ? 'Reprendre le trajet' : 'Démarrer le trajet' : 'Actualiser'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -123,7 +123,7 @@ function DriverNavigationScreen() {
                 style={[styles.preStartButton, styles.preStartButtonSecondary]}
                 onPress={model.handleExitNavigation}
               >
-                <Text style={styles.preStartButtonSecondaryText}>Fermer</Text>
+                <Text style={styles.preStartButtonSecondaryText}>Retour au trajet</Text>
               </TouchableOpacity>
             </View>
           </View>

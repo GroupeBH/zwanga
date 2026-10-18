@@ -68,6 +68,8 @@ export function useHomeTripSelection({
 
     const baseTrips = Array.from(tripsById.values());
     const eligibleTrips = baseTrips.filter((trip) => {
+      // Personal passenger reservations remain useful even for a driver account.
+      if (isDriver && !bookedTripIds.has(trip.id)) return false;
       if (trip.status !== 'upcoming' && trip.status !== 'ongoing') return false;
       if (!hasUpcomingDeparture(trip)) {
         return false;
@@ -93,6 +95,7 @@ export function useHomeTripSelection({
     activeBookings,
     bookedTripIds,
     currentUser?.id,
+    isDriver,
     completedBookingTripIds,
     latitude,
     longitude,

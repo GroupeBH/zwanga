@@ -17,12 +17,12 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { getNotificationHref, handleNotificationNavigation } from '@/utils/notificationNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
 import {
   ActivityIndicator,
   FlatList,
   type ListRenderItem,
-  Modal,
   Platform,
   RefreshControl,
   Text,
@@ -61,6 +61,11 @@ export default function NotificationsScreen() {
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [disableNotifications] = useDisableNotificationsMutation();
   const [selected, setSelectedNotification] = useState<Notification | null>(null);
+  const afterDismiss = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!isScreenActive) { afterDismiss.current = null; setSelectedNotification(null); }
+    return () => { afterDismiss.current = null; };
+  }, [isScreenActive]);
   const selectedNotification = selected && canShowRequestNotification(selected.data, currentUser) ? selected : null;
 
   const notifications = useMemo(() => notificationsData
@@ -297,7 +302,9 @@ export default function NotificationsScreen() {
         />
       )}
 
-      <Modal animationType="fade" transparent visible={selectedNotification !== null}>
+      <Modal inApp animationType="fade" transparent visible={isScreenActive && selectedNotification !== null}
+        onRequestClose={() => setSelectedNotification(null)}
+        onDismiss={() => { const action = afterDismiss.current; afterDismiss.current = null; if (isScreenActive) action?.(); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -322,8 +329,8 @@ export default function NotificationsScreen() {
                       <TouchableOpacity
                         style={[styles.modalButton, styles.modalSecondaryButton]}
                         onPress={() => {
+                          afterDismiss.current = () => handleNotificationNavigation(data, router, currentUser);
                           setSelectedNotification(null);
-                          handleNotificationNavigation(data, router, currentUser);
                         }}
                       >
                         <Text style={styles.modalSecondaryText}>Voir</Text>

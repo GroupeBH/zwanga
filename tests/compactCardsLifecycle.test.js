@@ -94,6 +94,7 @@ for (const platform of ['ios', 'android']) {
 
 test('HomeMap is shallow-memoized without a custom comparator that could suppress GPS or marker updates', () => {
   const { HomeMap } = loader({ 'react-native': native,
+    '@/assets/images/map-markers/home-position-dot.png': 1,
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker', Callout: 'Callout' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/components/TrackingMapMarkers': { PassengerTrackingMarker: 'Passenger', VehicleTrackingMarker: 'Vehicle' },

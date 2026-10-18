@@ -172,6 +172,7 @@ function inbox(data) {
     'expo-router': { useRouter: () => ({ push: href => routes.push(href), back() {} }) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/features/navigation/RideModal': { RideModal: 'Modal' },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: { id: 'passenger' } }) },
     '@/store/api/notificationApi': {
       useGetNotificationPagesInfiniteQuery: () => ({ data: { pages: [{ notifications: [notification], unreadCount: 1 }] } }),

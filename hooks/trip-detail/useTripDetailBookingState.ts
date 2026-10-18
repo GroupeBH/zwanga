@@ -5,7 +5,7 @@ import {
   useCreateBookingMutation,
   useInitiateBookingPaymentMutation,
 } from '@/store/api/bookingApi';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetAverageRatingQuery, useGetReviewPageQuery } from '@/store/api/reviewApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
 import { useGetKycStatusQuery } from '@/store/api/userApi';
 import type { TripPaymentMode } from '@/types';
@@ -75,7 +75,7 @@ export function useTripDetailBookingState({
   const { refetch: refetchKycStatus } = useGetKycStatusQuery(undefined, {
     skip: !isScreenActive,
   });
-  const { data: driverReviews } = useGetReviewsQuery(trip?.driverId ?? '', {
+  const { currentData: reviewPage } = useGetReviewPageQuery({ userId: trip?.driverId ?? '', limit: 1 }, {
     skip: !isScreenActive || !trip?.driverId,
   });
   const { data: driverAverageData } = useGetAverageRatingQuery(trip?.driverId ?? '', {
@@ -116,7 +116,8 @@ export function useTripDetailBookingState({
   return {
     setRefreshing,
     refetchKycStatus,
-    driverReviews,
+    driverReviews: reviewPage?.data,
+    driverReviewTotal: reviewPage?.total ?? 0,
     driverAverageData,
     shouldShowTripGuide,
     setTripGuideVisible,

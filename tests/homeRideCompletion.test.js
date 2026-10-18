@@ -50,7 +50,10 @@ test('Home immediately unlocks after dropoff, independent of stale tracking and 
     const result = render();
     assert.equal(result.isHomeSheetLockedRetracted, false);
     assert.equal(result.ongoingBookedTrip, null);
-    assert.deepEqual(result.homeMapTrips.map(t => t.id), ['nearby']);
+    assert.deepEqual(result.homeMapTrips, [], 'driver discovery stays client-only after dropoff');
+    props.isDriver = false;
+    assert.deepEqual(render().homeMapTrips.map(t => t.id), ['nearby'], 'passengers still discover published trips');
+    props.isDriver = true;
   }
   hooks.unmount();
 });

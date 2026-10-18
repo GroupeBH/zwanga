@@ -25,7 +25,6 @@ interface Params {
   captureRatingSession: ReturnType<typeof useRatingLifecycle>['captureRatingSession'];
   successReturnTimeoutRef: React.RefObject<NodeJS.Timeout | null>;
   goBackSafely: () => void;
-  reportReason: string;
 }
 
 export function useRatingActions({
@@ -46,7 +45,6 @@ export function useRatingActions({
   captureRatingSession,
   successReturnTimeoutRef,
   goBackSafely,
-  reportReason,
 }: Params) {
   const toggleTag = (tagId: string) => {
     if (selectedTags.includes(tagId)) {
@@ -156,28 +154,6 @@ export function useRatingActions({
     }
   };
 
-  const handleSubmitReport = () => {
-    const session = captureRatingSession();
-    if (!session.canPresent()) return;
-    if (!reportReason) {
-      showDialog({
-        variant: 'warning',
-        title: 'Raison requise',
-        message: 'Veuillez sélectionner une raison avant de signaler ce trajet.',
-      });
-      return;
-    }
-
-    showDialog({
-      variant: 'info',
-      title: 'Signalement envoyé',
-      message:
-        'Nous examinerons votre signalement. Merci pour votre contribution à la sécurité de la communauté.',
-      actions: [{ label: 'Fermer', variant: 'primary', onPress: () => {
-        if (session.canPresent()) goBackSafely();
-      } }],
-    });
-  };
 
   const getRatingText = () => {
     if (rating === 5) return 'Excellent !';
@@ -191,6 +167,5 @@ export function useRatingActions({
     getRatingText,
     toggleTag,
     handleSubmitRating,
-    handleSubmitReport,
   };
 }

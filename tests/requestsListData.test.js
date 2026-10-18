@@ -44,15 +44,16 @@ function fixture() {
   const own = { data: [request('mine', { passengerId: 'driver' })], isFetching: false, isError: false, isLoading: false };
   const query = (name, value) => (_arg, options) => {
     calls.push({ name, options });
-    return { isUninitialized: false, ...value, refetch: () => refreshes.push(name) };
+    return { isUninitialized: false, ...value, currentData: name === 'profile' || !value.data ? undefined
+      : { data: value.data, total: value.data.length, nextCursor: null }, refetch: () => refreshes.push(name) };
   };
   const { useRequestsData } = loader({ react: hooks.react,
     '@/hooks/useAppIsActive': { useScreenIsActive: () => state.active },
     '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: state.online } } }) },
     '@/store/selectors': { selectUserCoordinates: () => { state.coordinateReads++; return state.coordinates; } },
     '@/store/api/userApi': { useGetCurrentUserQuery: query('profile', profile) },
-    '@/store/api/tripRequestApi': { useGetAvailableTripRequestsQuery: query('available', available),
-      useGetMyTripRequestsQuery: query('own', own) },
+    '@/store/api/tripRequestApi': { useGetAvailableRequestPageQuery: query('available', available),
+      useGetMyRequestPageQuery: query('own', own) },
   })('hooks/requests/useRequestsData.ts');
   return { state, calls, refreshes, profile, available, own, hooks,
     render: () => hooks.render(() => useRequestsData(state.tab)),

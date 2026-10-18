@@ -190,6 +190,8 @@ export function useWalletController() {
   });
 
   const { handleTransfer } = useWalletTransfer({
+    userId: user?.id,
+    captureScope,
     transferAmount,
     transferRecipient,
     showDialog,

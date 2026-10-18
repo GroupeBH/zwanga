@@ -141,6 +141,25 @@ function selection(initial = {}, mocks = {}) {
   return { props, hooks, render };
 }
 
+test('driver Home excludes other public trips from cached selection but preserves own rides and passenger reservations', () => {
+  const reserved = trip('reserved'), own = trip('own', { driverId: 'me' });
+  const h = selection({ isDriver: true, remoteTrips: undefined, storedTrips: [trip('public'), own],
+    myDriverTrips: [own], bookedTripIds: new Set(['reserved']),
+    activeBookings: [{ id: 'booking', passengerId: 'me', status: 'accepted', trip: reserved, tripId: reserved.id }] });
+  assert.deepEqual(ids(h.render().latestTrips), ['reserved']);
+  assert.equal(h.render().featuredPassengerTrip.id, 'reserved');
+  assert.equal(h.render().featuredDriverUpcomingTrip.id, 'own');
+  assert.deepEqual(ids(h.render().homeMapTrips), ['reserved']);
+  h.props.isDriver = false;
+  assert.deepEqual(ids(h.render().latestTrips), ['reserved', 'public']);
+  h.props.isDriver = true;
+  assert.deepEqual(ids(h.render().latestTrips), ['reserved']);
+  h.props.ongoingDriverTrip = { ...own, status: 'ongoing' };
+  assert.deepEqual(ids(h.render().homeMapTrips), ['own']);
+  assert.equal(h.render().activeHomeTrip.id, 'own');
+  h.hooks.unmount();
+});
+
 test('Home explains wider suggestions, hides the hint again for nearby trips and keeps bookings', () => {
   const h = selection({ remoteTrips: [trip('later', { departureTime: later(36 * 3600000) })] });
   assert.match(h.render().suggestionScopeLabel, /10 km.*48 h/);

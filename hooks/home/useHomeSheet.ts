@@ -1,8 +1,7 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { Spacing } from '@/constants/styles';
-import type { HomeSheetMode } from '@/features/home/homeTypes';
 import { HOME_MAP_PADDING } from '@/features/home/homeMapAppearance';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Platform, type LayoutChangeEvent,
 } from 'react-native';
@@ -58,23 +57,6 @@ export function useHomeSheet({
   hasMapPriorities = false,
 }: Props) {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
-
-  const [homeSheetMode, setHomeSheetMode] = useState<HomeSheetMode>(isDriver ? 'requests' : 'trips');
-  const previousDriverRole = useRef(isDriver);
-  useEffect(() => {
-    if (previousDriverRole.current === isDriver) return;
-    previousDriverRole.current = isDriver;
-    setHomeSheetMode(isDriver ? 'requests' : 'trips');
-  }, [isDriver]);
-
-  useEffect(() => {
-    if (!isHomeSheetLockedRetracted) {
-      return;
-    }
-
-    // Temporarily retract during a ride without losing the user's open/closed choice.
-    setHomeSheetMode('trips');
-  }, [isHomeSheetLockedRetracted]);
 
   const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
 
@@ -149,7 +131,8 @@ export function useHomeSheet({
 
   const tripCardWidth = Math.min(width - 40, 354);
 
-  const isRequestsSheetMode = homeSheetMode === 'requests' && isDriver;
+  // Driver discovery is always clients, including after returning from a ride.
+  const isRequestsSheetMode = isDriver;
 
   const sheetTitle = isHomeSheetLockedRetracted
     ? 'Trajet en cours'
@@ -199,7 +182,6 @@ export function useHomeSheet({
     sheetTitle,
     openSheetIndex,
     isRequestsSheetMode,
-    setHomeSheetMode,
     sheetLoading,
     sheetError,
     refetchSheetContent,

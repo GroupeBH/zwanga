@@ -1,6 +1,6 @@
 import { runDiditNativeVerification, getDiditSdkFailureError } from '../features/identity/diditSdk';
+import { useKycFlowScope } from './identity/useKycFlowScope';
 
-export type { DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 import { asStringParam, getKycStatusFromDiditStatus, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
 import { QueryParams, DiditKycFlowOutcome, StartDiditKycOptions, UseDiditKycFlowOptions, KycFlowStage } from '../features/identity/diditFlowTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -13,8 +13,10 @@ import type { VerificationResult } from '@didit-protocol/sdk-react-native';
 import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+
+export type { DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -35,6 +37,10 @@ export function useDiditKycFlow({
   const [syncDiditKycSession, { isLoading: isSyncingDiditKycSession }] =
     useSyncDiditKycSessionMutation();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
+  const flowInProgress = useRef(false);
+  const confirmation = useRef<((confirmed: boolean) => void) | null>(null);
+  const cancelConfirmation = useCallback(() => { confirmation.current?.(false); confirmation.current = null; }, []);
+  const captureScope = useKycFlowScope(cancelConfirmation);
 
   const confirmLegalIdentity = useCallback(
     (firstNameValue?: string | null, lastNameValue?: string | null) => {
@@ -42,9 +48,12 @@ export function useDiditKycFlow({
       const lastName = normalizeLegalName(lastNameValue);
 
       return new Promise<boolean>((resolve) => {
+        const scope = captureScope();
+        const finish = (confirmed: boolean) => { confirmation.current = null; resolve(confirmed); };
+        confirmation.current = finish;
         const editIdentity = () => {
-          resolve(false);
-          router.push('/edit-profile');
+          finish(false);
+          if (scope.canLaunch()) router.push('/edit-profile');
         };
 
         if (!hasCompleteLegalIdentity(firstName, lastName)) {
@@ -82,13 +91,13 @@ export function useDiditKycFlow({
             {
               label: 'Confirmer et continuer',
               variant: 'primary',
-              onPress: () => resolve(true),
+              onPress: () => finish(scope.canLaunch()),
             },
           ],
         });
       });
     },
-    [router, showDialog],
+    [captureScope, router, showDialog],
   );
 
   const startDiditKyc = useCallback(
@@ -96,6 +105,10 @@ export function useDiditKycFlow({
       showResultDialog = true,
       skipLegalIdentityConfirmation = false,
     }: StartDiditKycOptions = {}): Promise<DiditKycFlowOutcome | null> => {
+      // State updates do not protect against two taps in the same render.
+      const scope = captureScope();
+      if (flowInProgress.current || !scope.canLaunch()) return null;
+      flowInProgress.current = true;
       setIsBrowserOpen(true);
       let flowStage: KycFlowStage = 'loading_user';
       let sessionId: string | null = null;
@@ -105,12 +118,13 @@ export function useDiditKycFlow({
         if (!skipLegalIdentityConfirmation) {
           flowStage = 'loading_user';
           const currentUser = await getCurrentUser().unwrap();
+          if (!scope.canLaunch()) return null;
           flowStage = 'confirming_identity';
           const isConfirmed = await confirmLegalIdentity(
             currentUser.firstName,
             currentUser.lastName,
           );
-          if (!isConfirmed) {
+          if (!isConfirmed || !scope.canLaunch()) {
             return null;
           }
         }
@@ -122,16 +136,25 @@ export function useDiditKycFlow({
           language: 'fr',
           source: sourceScreen,
         }).unwrap();
+        if (!scope.canLaunch()) return null;
 
+        if (Platform.OS !== 'web' && !session.sessionToken?.trim()) {
+          throw new KycUserFacingError({
+            category: 'service_unavailable',
+            code: 'KYC_SDK_TOKEN_MISSING',
+            title: 'Validation indisponible',
+            message: "Le service n’a pas fourni de session pour la validation dans l’application. Réessayez plus tard ou contactez le support.",
+          });
+        }
         if (!session.sessionToken && !session.url) {
           throw new Error("Le backend n'a pas retourné de token SDK ni d'URL Didit.");
         }
 
-        await trackEvent('kyc_didit_session_started', {
+        void trackEvent('kyc_didit_session_started', {
           source_screen: sourceScreen,
           didit_session_id: session.sessionId,
           didit_status: session.status,
-        });
+        }).catch(() => undefined);
 
         sessionId = session.sessionId || null;
         let diditStatus = session.status ?? null;
@@ -144,7 +167,7 @@ export function useDiditKycFlow({
             didit_session_id: cancelledSessionId ?? sessionId,
           });
 
-          if (showResultDialog) {
+          if (showResultDialog && scope.canLaunch()) {
             showDialog({
               variant: 'info',
               title: "Validation d'identité interrompue",
@@ -154,10 +177,11 @@ export function useDiditKycFlow({
           }
         };
 
-        if (session.sessionToken) {
+        if (Platform.OS !== 'web' && session.sessionToken) {
           try {
             flowStage = 'opening_native_sdk';
             const sdkResult = await runDiditNativeVerification(session.sessionToken);
+            if (!scope.current()) return null;
             sdkResultType = sdkResult.type;
 
             if (sdkResult.session?.sessionId) {
@@ -193,11 +217,12 @@ export function useDiditKycFlow({
               throw sdkError;
             }
 
-            console.warn(
-              '[DiditKyc] SDK natif indisponible, bascule temporaire vers WebBrowser:',
-              sdkError,
-            );
-            launchMode = 'web_browser';
+            throw new KycUserFacingError({
+              category: 'service_unavailable',
+              code: 'KYC_NATIVE_MODULE_UNAVAILABLE',
+              title: 'Module de validation indisponible',
+              message: "Cette installation ne contient pas le module de vérification requis. Installez la dernière version complète de Zwanga puis réessayez.",
+            });
           }
         } else {
           launchMode = 'web_browser';
@@ -212,6 +237,7 @@ export function useDiditKycFlow({
           }
 
           const browserResult = await WebBrowser.openAuthSessionAsync(session.url, callbackUrl);
+          if (!scope.current()) return null;
           browserResultType = browserResult.type;
 
           if (browserResult.type === 'cancel' || browserResult.type === 'dismiss') {
@@ -236,9 +262,11 @@ export function useDiditKycFlow({
           sessionId,
           status: diditStatus,
         }).unwrap();
+        if (!scope.current()) return null;
 
         flowStage = 'refreshing_status';
         await onStatusRefresh?.();
+        if (!scope.current()) return null;
 
         flowStage = 'handling_result';
         const status = getEffectiveKycStatus(kyc) ?? getKycStatusFromDiditStatus(diditStatus);
@@ -257,10 +285,10 @@ export function useDiditKycFlow({
             source_screen: sourceScreen,
             didit_session_id: sessionId,
           });
-          await onApproved?.(outcome);
+          if (scope.canLaunch()) await onApproved?.(outcome);
         }
 
-        if (showResultDialog) {
+        if (showResultDialog && scope.canLaunch()) {
           if (status === 'approved') {
             showDialog({
               variant: 'success',
@@ -293,6 +321,7 @@ export function useDiditKycFlow({
 
         return outcome;
       } catch (error: any) {
+        if (!scope.canLaunch()) return null;
         const presentation = getKycErrorPresentation(error, flowStage);
         const rawMessage =
           error instanceof KycUserFacingError
@@ -335,11 +364,13 @@ export function useDiditKycFlow({
         });
         return null;
       } finally {
-        setIsBrowserOpen(false);
+        flowInProgress.current = false;
+        if (scope.canUpdate()) setIsBrowserOpen(false);
       }
     },
     [
       approvedMessage,
+      captureScope,
       confirmLegalIdentity,
       createDiditKycSession,
       getCurrentUser,

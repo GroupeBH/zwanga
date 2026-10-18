@@ -26,7 +26,7 @@ export const NavigationPassengerRow = memo(function NavigationPassengerRow({ ite
         <View style={styles.actions}>
           <TouchableOpacity style={styles.detailButton} onPress={() => onSelect(item.waypoint)}
             accessibilityRole="button" accessibilityLabel={`Voir le point d’arrêt de ${item.name}, ${labels.status}, ${labels.seats}`}>
-            <Text style={styles.detailText}>Voir le point d’arrêt</Text>
+            <Text style={styles.detailText}>Voir l’adresse</Text>
             <Ionicons name="chevron-forward" size={18} color={Colors.gray[700]} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.reportButton} onPress={() => onReport(item.waypoint)}

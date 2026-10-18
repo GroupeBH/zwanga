@@ -97,7 +97,7 @@ test('covered trip detail suspends identity and driver-review subscriptions', ()
       useLazyListConversationsQuery: mutation,
     },
     '@/store/api/reviewApi': {
-      useGetReviewsQuery: (_, options) => { calls.reviews.push(options); return {}; },
+      useGetReviewPageQuery: (args, options) => { assert.equal(args.limit, 1); calls.reviews.push(options); return {}; },
       useGetAverageRatingQuery: (_, options) => { calls.average.push(options); return {}; },
     },
     '@/store/api/trackingApi': { useCreateTripShareLinkMutation: mutation },

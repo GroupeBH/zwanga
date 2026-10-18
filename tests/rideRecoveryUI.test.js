@@ -67,6 +67,39 @@ test('one passenger tap saves pickup directly, then reports its result without a
   h.hooks.unmount();
 });
 
+test('driver navigation names its next action and keeps contact actions beside the passenger list', async () => {
+  for (const stage of ['pickup', 'dropoff']) {
+    const h = setup(); h.state.auth.user.id = 'driver'; h.state.rideRecovery.userId = 'driver';
+    const next = { ...h.booking, pickedUp: stage === 'dropoff' };
+    h.props({ tripId: 'trip', bookings: [next, { ...next, id: 'other' }], actor: 'driver',
+      condensed: true, driverNavigation: true, preferredBookingId: next.id, preferredStage: stage,
+      secondaryActions: React.createElement('ContactActions') });
+    h.render();
+    assert.match(words(h.tree()), stage === 'pickup' ? /Appuyez quand le passager est monté/ : /Appuyez quand le passager est descendu/);
+    assert.ok(all(h.tree()).some(node => node.type === 'ContactActions'));
+    assert.ok(all(h.tree()).some(node => node.type === 'Button' && words(node) === 'Passagers'));
+    h.trigger().props.onPress(); h.trigger().props.onPress();
+    await new Promise(resolve => setImmediate(resolve)); h.render();
+    assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage, decision: 'confirm' }]);
+    assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, false);
+    h.hooks.unmount();
+  }
+});
+
+test('an incoming reservation cannot label another passenger one-tap confirmation as its own', () => {
+  const h = setup(); h.state.auth.user.id = 'driver'; h.state.rideRecovery.userId = 'driver';
+  const props = { tripId: 'trip', bookings: [h.booking], actor: 'driver', condensed: true, driverNavigation: true,
+    preferredBookingId: 'booking', preferredStage: 'pickup' };
+  h.props({ ...props, driverOverviewOnly: true }); h.render();
+  assert.equal(words(h.trigger()), 'Mes passagers');
+  h.trigger().props.onPress(); h.render();
+  assert.equal(h.sent.length, 0, 'overview never declares boarding for the incoming request');
+  assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true);
+  h.props({ ...props, driverOverviewOnly: false }); h.render();
+  assert.equal(words(h.trigger()), 'Le passager est à bord');
+  h.hooks.unmount();
+});
+
 test('condensed passenger controls retain both confirmations and the offline receipt', async () => {
   for (const stage of ['pickup', 'dropoff']) {
     const h = setup();

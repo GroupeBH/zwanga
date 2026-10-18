@@ -1,5 +1,82 @@
 # Journal des changements techniques
 
+## 2026-10-18 — Correctifs de fiabilité de l’audit mobile et préparation backend
+
+Signalements réellement envoyés, transferts protégés contre les doubles appuis et
+reprises ambiguës, délai de restauration de session, lancement KYC lié au cycle de
+vie de l’écran, reconnexions socket bornées, avis et listes de commandes paginés,
+modales intégrées et erreurs des trajets réguliers prises en charge.
+Le backend voisin comprend les pages authentifiées et l’idempotence transactionnelle
+des transferts, avec une migration d’index préparée mais non exécutée.
+
+Suite mobile complète : 1 959 tests réussis ; 44 tests ciblés repassés après les
+derniers garde-fous de reprise de transfert/KYC. Backend : 64 tests ciblés réussis.
+Typage mobile/backend et contrôles réseau/taille validés. Aucun déploiement ni
+essai physique : pas de promesse de suppression des crashs natifs. Certaines
+lectures de commandes de l’accueil/recherche globale et les compteurs du profil
+restent à convertir sans perdre les actions prioritaires.
+
+Solutions, fichiers, compatibilité, ordre de livraison, tests et limites dans
+[Correctifs de l’audit de fiabilité](AUDIT_CORRECTIFS_FIABILITE_2026_10_18.md).
+
+## 2026-10-18 — Accueil clients et commandes conducteur directement accessibles
+
+À la demande de l’utilisateur, l’accueil conducteur montre uniquement les clients
+dans les suggestions, sans onglet Trajets ni remplacement par des trajets publics
+lorsqu’il n’y a pas de client. Ses activités personnelles restent prioritaires.
+Ajout de Chercher un trajet pour voyager comme passager via la recherche existante ;
+Publier et Commander restent disponibles. Les deux lectures de découverte de
+trajets publics sont suspendues sur cet accueil, sans modifier la recherche.
+
+Dans la navigation, Arrêter le trajet **et** Partager le trajet sont directement
+visibles, avec Ma position et Plus. Cette demande remplace le rangement précédent
+de l’arrêt et du partage dans Plus ; le réglage du son y reste accessible. Les
+confirmations d’arrêt, les règles de pause et l’accord des passagers ne changent pas.
+
+206 tests JavaScript ciblés réussis, typage validé, lint ciblé sans erreur ni
+avertissement ; aperçus Web 320/390 px inspectés. Aucun essai natif ni déploiement,
+aucune mesure de gain de performance. Fichiers, contrôles et limites dans
+[Accueil conducteur centré sur les clients](ACCUEIL_CONDUCTEUR_CLIENTS.md) et
+[Navigation conducteur simple](NAVIGATION_CONDUCTEUR_SIMPLE.md).
+
+## 2026-10-18 — KYC Didit natif sur Android et iOS
+
+- **Demande :** conserver Didit et utiliser son SDK, sans redirection web sur mobile.
+- **Solution appliquée :** `hooks/useDiditKycFlow.ts` exige un `sessionToken` sur
+  Android/iOS et ne bascule plus vers `WebBrowser` après une erreur native. Un
+  module absent demande une installation complète ; un jeton absent signale
+  une session indisponible. Un verrou synchrone empêche deux créations de session
+  sur double appui et se libère aussi après erreur/annulation.
+- **Compatibilité :** endpoints, confirmation des noms, annulation, synchronisation
+  backend et gestion du résultat conservés. Le navigateur reste disponible pour
+  la cible Web. Aucun changement des clés ni bascule vers AWS.
+- **Configuration backend attendue :** fournisseur Didit et mode de lancement
+  natif. Un backend encore forcé en mode hébergé ne fournit pas de jeton SDK :
+  cette nouvelle application affiche alors une erreur au lieu d'ouvrir le web.
+- **Vérifications :** `node --test tests/diditNativeFlow.test.js
+  tests/identityQueryLifecycle.test.js` : 14 tests réussis ; compilation
+  TypeScript mobile sans émission réussie. Modules natifs simulés dans ces tests,
+  pas de session Didit payante, ni essai caméra/selfie sur appareil.
+- **Avant livraison :** tester une build native complète sur Android et iOS
+  (pas Expo Go), avec le backend prévu. Une application déjà distribuée garde
+  son ancien comportement tant que son code n'a pas été mis à jour.
+
+## 2026-10-18 — Navigation conducteur : une prochaine action lisible
+
+Réorganisation de la navigation autour du prochain passager, de son adresse et
+du bouton « Le passager est à bord » ou « Le passager est descendu ». Contacter
+et SOS restent visibles ; Ma position, Son et Plus remplacent la rangée ambiguë
+incluant « Arrêter ». Pause, arrêt avant l’arrivée, partage et autres options
+restent accessibles. Les nouvelles réservations gardent Accepter/Refuser sans
+mélanger leur identité avec la confirmation d’un passager déjà pris en charge.
+
+158 tests JavaScript ciblés réussis, typage et contrôles réseau/taille réussis,
+lint sans erreur avec trois avertissements préexistants. Aperçus Web à données
+fictives inspectés aux formats 390 × 760 et 320 × 568 ; pas de validation native
+ou de test avec des chauffeurs pour cette modification. Aucune intervention
+backend, aucun build ou déploiement. Détails, fichiers et limites dans
+[Navigation conducteur simple](NAVIGATION_CONDUCTEUR_SIMPLE.md).
+
 ## 2026-10-18 — Reprise du trajet et chargement illustré de la navigation
 
 Correction d'un démarrage refusé après pause avant embarquement : le backend

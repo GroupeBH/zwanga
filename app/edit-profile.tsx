@@ -11,12 +11,22 @@ import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { RideModal as Modal } from '@/features/navigation/RideModal';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 import { isDriverAccount } from '@/utils/accountRole';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function EditProfileScreen() {
+  const active = useScreenIsActive();
+  const mounted = useRef(true);
+  const view = useRef({ active, epoch: 0 });
+  if (view.current.active !== active) view.current = { active, epoch: view.current.epoch + 1 };
+  const saving = useRef(false);
+  const leaveAfterDismiss = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { data: profileSummary, isLoading: summaryLoading, refetch } = useGetProfileSummaryQuery();
@@ -39,6 +49,9 @@ export default function EditProfileScreen() {
 
   const previousProfile = useRef<typeof user>(undefined);
   useEffect(() => {
+    if (!active) { leaveAfterDismiss.current = false; setFeedback(previous => ({ ...previous, visible: false })); }
+  }, [active]);
+  useEffect(() => {
     if (!user) return;
     const previous = previousProfile.current;
     const sameAccount = previous?.id === user.id;
@@ -53,6 +66,11 @@ export default function EditProfileScreen() {
   const isCurrentlyDriver = isDriverAccount(user);
 
   const handleSave = async () => {
+    if (!active || saving.current) return;
+    const version = getTokenSessionVersion();
+    const epoch = view.current.epoch;
+    const current = () => mounted.current && version === getTokenSessionVersion();
+    const canPresent = () => current() && view.current.active && view.current.epoch === epoch;
     const legalFirstName = normalizeLegalName(firstName);
     const legalLastName = normalizeLegalName(lastName);
 
@@ -64,6 +82,7 @@ export default function EditProfileScreen() {
       });
       return;
     }
+    saving.current = true;
     try {
       const formData = new FormData();
       if (!isLegalIdentityLocked) {
@@ -74,6 +93,7 @@ export default function EditProfileScreen() {
       if (gender) formData.append('gender', gender);
       // Editing personal information never requests or changes a driver role.
       const updated = await updateUserMutation(formData).unwrap();
+      if (!current()) return;
       dispatch(
         updateUserAction({
           id: updated.id,
@@ -88,18 +108,20 @@ export default function EditProfileScreen() {
         }),
       );
       void refetch();
+      if (!canPresent()) return;
       setFeedback({
         visible: true,
         success: true,
         message: 'Profil mis à jour avec succès.',
       });
     } catch (error: any) {
+      if (!canPresent()) return;
       setFeedback({
         visible: true,
         success: false,
         message: getApiErrorMessage(error, 'Impossible de sauvegarder les informations.'),
       });
-    }
+    } finally { saving.current = false; }
   };
 
   const handleChangePhoto = async () => {
@@ -268,7 +290,13 @@ export default function EditProfileScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={feedback.visible} transparent animationType="fade">
+      <Modal inApp visible={active && feedback.visible} transparent animationType="fade"
+        onRequestClose={() => setFeedback(previous => ({ ...previous, visible: false }))}
+        onDismiss={() => {
+          if (!leaveAfterDismiss.current) return;
+          leaveAfterDismiss.current = false;
+          if (active) { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/profile'); }
+        }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View
@@ -288,10 +316,8 @@ export default function EditProfileScreen() {
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => {
+                leaveAfterDismiss.current = feedback.success;
                 setFeedback((prev) => ({ ...prev, visible: false }));
-                if (feedback.success) {
-                  router.back();
-                }
               }}
             >
               <Text style={styles.modalButtonText}>OK</Text>

@@ -66,8 +66,11 @@ export function RideOverlayScope({ scopeKey, active, children }: {
     return () => store?.setScope(scopeKey, false);
   }, [store, scopeKey, active]);
   return <RideOverlayScopeContext.Provider value={value}>
-    <View style={styles.fill}>
-      <View style={styles.fill} pointerEvents={overlay ? 'none' : 'auto'}
+    {/* Keep both native parents stable when the input shield changes. Fabric
+        flattening on dismissal can reparent children still held by an Android
+        screen transition, causing addViewAt / "child already has a parent". */}
+    <View collapsable={false} style={styles.fill}>
+      <View collapsable={false} style={styles.fill} pointerEvents={overlay ? 'none' : 'auto'}
         accessibilityElementsHidden={Boolean(overlay)} importantForAccessibility={overlay ? 'no-hide-descendants' : 'auto'}>
         {children}
       </View>

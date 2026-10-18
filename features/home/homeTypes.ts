@@ -30,8 +30,6 @@ export type TripVehicleMapMarkerProps = {
   trip: Trip;
 };
 
-export type HomeSheetMode = 'trips' | 'requests';
-
 export type UserLocationMarkerState = {
   address: string;
   coordinate: MapCoordinate;

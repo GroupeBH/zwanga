@@ -270,7 +270,7 @@ test("public search stays unambiguous and the home search links are unchanged", 
   );
   assert.ok(fs.existsSync(path.join(__dirname, "../app/search.tsx")));
   for (const filename of [
-    "components/home/HomeHeader.tsx",
+    "components/home/HomeTripsSheet.tsx",
     "hooks/home/useHomeSheet.ts",
   ]) {
     assert.match(

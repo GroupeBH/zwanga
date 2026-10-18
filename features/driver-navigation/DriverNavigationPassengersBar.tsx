@@ -5,7 +5,7 @@ import { DriverInterruptionPrompt } from './DriverInterruptionPrompt';
 import { DriverPendingBookingPrompt } from './DriverPendingBookingPrompt';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { Booking } from '@/types';
 
 interface DriverNavigationPassengersBarProps {
@@ -17,7 +17,6 @@ interface DriverNavigationPassengersBarProps {
 
 export function DriverNavigationPassengersBar({
   foundation,
-  passengerPresentation,
   bookingActions,
   onContact,
 }: DriverNavigationPassengersBarProps) {
@@ -49,47 +48,28 @@ export function DriverNavigationPassengersBar({
   }
   const { waypoints, currentWaypointIndex } = foundation.mapState;
   const next = waypoints[currentWaypointIndex];
-  const stats = passengerPresentation.passengerStats;
   const showNext = next && !next.completed;
   const allStopsCompleted = waypoints.every(point => point.completed);
-  const nextLabel = next?.type === 'pickup' ? 'Aller chercher' : 'Déposer le passager';
+  const nextLabel = next?.type === 'pickup' ? 'Allez chercher le passager' : 'Emmenez le passager à l’arrivée';
   return (
     <View style={compact.bar}>
-      {waypoints.length > 0 && <View style={compact.row}>
-        {showNext ? <TouchableOpacity style={compact.stop} activeOpacity={0.8}
-          accessibilityRole="button" accessibilityLabel={`${nextLabel} : ${next.passenger.name || 'Passager'}. ${next.address || 'Point sur la carte'}`}
-          accessibilityHint="Affiche le détail du prochain arrêt. Ne valide pas l’étape."
-          onPress={() => {
-            foundation.refs.waypointModalVisibleRef.current = true;
-            foundation.mapState.setActiveWaypoint(next);
-            foundation.mapState.setWaypointModalVisible(true);
-          }}>
-          <Text style={compact.eyebrow}>{nextLabel}</Text>
-          <Text style={compact.name} numberOfLines={1}>{next.passenger.name || 'Passager'}</Text>
-          <Text style={compact.address} numberOfLines={1}>{next.address || 'Voir le point sur la carte'}</Text>
-        </TouchableOpacity> : <View style={compact.finished}>
-          <Ionicons name={allStopsCompleted ? 'checkmark-circle-outline' : 'list-outline'} size={22} color={allStopsCompleted ? Colors.successDark : Colors.gray[600]} />
-          <Text style={compact.name}>{allStopsCompleted ? 'Arrêts effectués' : 'Vos arrêts'}</Text>
-        </View>}
-        <TouchableOpacity style={compact.passengers} accessibilityRole="button"
-          accessibilityLabel={`Voir les ${stats.totalPassengers} passagers, ${stats.inVehicle} à bord, ${stats.pendingPickups} à récupérer`}
-          onPress={() => foundation.mapState.setPassengersPanelVisible(true)}>
-          <View style={compact.count}>
-            <Ionicons name="people-outline" size={18} color={Colors.primaryDark} />
-            <Text style={compact.countText}>{stats.totalPassengers}</Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.gray[500]} />
-          </View>
-          <Text style={compact.caption}>Passagers</Text>
-          {stats.inVehicle > 0 && <Text style={compact.caption}>{stats.inVehicle} à bord</Text>}
-        </TouchableOpacity>
-      </View>}
+      <View style={compact.row}>
+        <Text style={compact.eyebrow} accessibilityRole="header">{showNext ? nextLabel
+          : allStopsCompleted ? 'Allez à l’arrivée du trajet' : 'Vérifiez le prochain passager'}</Text>
+      </View>
+      {showNext ? <View style={compact.stop}>
+        <Text style={compact.name}>{next.passenger.name || 'Passager'}</Text>
+        <Text style={compact.address}>{next.address || 'Contactez le passager pour connaître le lieu.'}</Text>
+      </View> : allStopsCompleted ? <Text style={compact.address}>
+        {foundation.data.trip?.arrival?.address || foundation.data.trip?.arrival?.name || 'Suivez la carte jusqu’à l’arrivée.'}
+      </Text> : <Text style={compact.address}>Dans « Plus », ouvrez « Les arrêts ».</Text>}
 
       {foundation.passengers.activeDriverInterruptionRequest && (
         <View style={styles.driverInterruptionStatusCard}>
           <Ionicons name="hourglass-outline" size={19} color={Colors.warning} />
           <View style={styles.driverInterruptionStatusCopy}>
             <Text style={styles.driverInterruptionStatusTitle}>
-              Arrêt du trajet demandé
+              Les passagers doivent répondre
             </Text>
             <Text style={styles.driverInterruptionStatusText}>
               {foundation.passengers.activeDriverInterruptionConfirmedCount}/{foundation.passengers.activeDriverInterruptionRequiredCount} passager(s) ont confirmé.
@@ -102,15 +82,10 @@ export function DriverNavigationPassengersBar({
 }
 
 const compact = StyleSheet.create({
-  bar: { gap: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: 16, padding: 8, gap: 8 },
-  stop: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: 'center', gap: 2, paddingHorizontal: 4 },
-  eyebrow: { color: Colors.primaryDark, fontSize: 12, fontWeight: '600' },
-  name: { color: Colors.gray[900], fontSize: 15, fontWeight: '700', flexShrink: 1 },
-  address: { color: Colors.gray[600], fontSize: 12 },
-  passengers: { minWidth: 80, maxWidth: '45%', minHeight: 44, padding: 4, borderLeftWidth: 1, borderLeftColor: Colors.gray[200], alignItems: 'center', gap: 2 },
-  count: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  countText: { color: Colors.primaryDark, fontSize: 15, fontWeight: '700' },
-  caption: { color: Colors.gray[600], fontSize: 11, textAlign: 'center' },
-  finished: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 4 },
+  bar: { gap: 4 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 8 },
+  stop: { minWidth: 0, gap: 3 },
+  eyebrow: { color: Colors.primaryDark, fontSize: 14, lineHeight: 20, fontWeight: '700', flexShrink: 1 },
+  name: { color: Colors.gray[900], fontSize: 22, lineHeight: 27, fontWeight: '700' },
+  address: { color: Colors.gray[700], fontSize: 16, lineHeight: 22 },
 });

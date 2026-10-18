@@ -59,19 +59,25 @@ test('passenger search, publish and order actions retain their existing destinat
   assert.doesNotMatch(text(tree), /Demander/);
 });
 
-test('driver dashboard keeps publishing, ordering, clients, revenue and the trip feed accessible', () => {
+test('driver dashboard keeps publishing, ordering, clients and revenue without public trip discovery', () => {
   const modes = [], calls = [];
   const tree = HomeTripsSheet.type({ ...base, isDriver: true, isRequestsSheetMode: true, isScreenActive: true,
     router: { push: path => calls.push(path) }, setHomeSheetMode: mode => modes.push(mode), openSheetIndex: () => calls.push('all') });
   const elements = nodes(tree);
-  for (const label of ['Publier un trajet', 'Commander', 'Voir tout', 'Trajets']) {
+  for (const label of ['Publier un trajet', 'Commander', 'Chercher un trajet', 'Voir tout']) {
     elements.find(node => node.type === 'Button' && text(node) === label).props.onPress();
   }
   elements.find(node => node.props.accessibilityLabel === '0 clients disponibles').props.onPress();
   elements.find(node => node.type === 'HomeDriverStatus').props.onPress();
   elements.find(node => node.type === 'HomeDriverEarnings').props.onPress();
-  assert.deepEqual(modes, ['trips', 'requests']);
-  assert.deepEqual(calls, ['/publish', { pathname: '/request-create' }, 'all', '/driver-availability', '/driver-earnings']);
+  assert.deepEqual(modes, []);
+  assert.deepEqual(calls, ['/publish', { pathname: '/request-create' }, '/search',
+    'all', 'all', '/driver-availability', '/driver-earnings']);
+  const searchButton = elements.find(node => node.props.accessibilityLabel === 'Chercher un trajet');
+  assert.ok(flatten(searchButton.props.style).minHeight >= 44);
+  assert.match(searchButton.props.accessibilityHint, /voyager comme passager/);
+  assert.equal(elements.some(node => node.props.accessibilityRole === 'tab'), false);
+  assert.equal(elements.some(node => node.type === 'Button' && text(node) === 'Trajets'), false);
   assert.equal(elements.some(node => node.type === 'HomeDestinationShortcuts'), false);
   assert.equal(elements.find(node => node.type === 'HomeDriverEarnings').props.active, true);
 });
@@ -126,6 +132,17 @@ test('passengers never get clients and dismissed requests do not reappear throug
     hiddenHomePriorities: { [homePriorityKeys.nearbyRequest(request)]: true } };
   assert.equal(nodes(HomeTripsSheet.type(props)).some(node => node.type === HomeSuggestionCard), false);
   assert.equal(nodes(HomeTripsSheet.type({ ...props, isDriver: true })).some(node => node.type === HomeSuggestionCard), false);
+});
+
+test('no clients never falls back to public trip cards on driver Home', () => {
+  for (const state of [{}, { sheetLoading: true }, { sheetError: true }]) {
+    const tree = HomeTripsSheet.type({ ...base, ...state, isDriver: true, isRequestsSheetMode: false,
+      latestTrips: [trip], availableDriverRequests: [] });
+    assert.equal(nodes(tree).some(node => node.type === HomeSuggestionCard), false);
+    assert.equal(nodes(tree).some(node => node.props.accessibilityRole === 'tab'), false);
+    assert.ok(nodes(tree).some(node => node.props.accessibilityLabel === 'Voir tous les clients'));
+    if (!state.sheetLoading && !state.sheetError) assert.match(text(tree), /Aucun nouveau client/);
+  }
 });
 
 test('wider departures have an honest scope hint only in the expanded passenger trip feed', () => {
@@ -187,7 +204,7 @@ test('bounded dashboard scrolls vertically and collapse unmounts its content', (
   assert.equal(nodes(closed).some(node => node.props.testID === 'home-discovery-actions'), false);
 });
 
-test('discovery controls scroll above suggestions, without fixed footer, for either role and feed', () => {
+test('discovery follows the role even with an obsolete feed mode, without tabs or a fixed footer', () => {
   for (const isDriver of [true, false]) {
     for (const isRequestsSheetMode of [true, false]) {
       for (const state of [{}, { sheetLoading: true }, { sheetError: true }]) {
@@ -208,7 +225,9 @@ test('discovery controls scroll above suggestions, without fixed footer, for eit
         assert.ok(cards.every(card => elements.indexOf(controls) < elements.indexOf(card)), 'longer lists cannot push controls below the suggestions');
         assert.equal(flatten(tree.props.style).height, base.sheetHeight, 'map space is preserved');
         const buttons = nodes(controls).filter(node => node.type === 'Button');
-        assert.equal(buttons.length, isDriver ? 3 : 1);
+        assert.equal(buttons.length, 1);
+        assert.equal(cards.length, 1);
+        assert.equal(cards[0].props.kind, isDriver ? 'request' : 'trip');
         for (const button of buttons) {
           assert.ok(flatten(button.props.style).minHeight >= 44);
           button.props.onPress();
@@ -218,21 +237,17 @@ test('discovery controls scroll above suggestions, without fixed footer, for eit
           }
         }
         assert.deepEqual(calls, ['all']);
-        assert.deepEqual(modes, isDriver ? ['requests', 'trips'] : []);
+        assert.deepEqual(modes, []);
         assert.equal(text(buttons.at(-1)), 'Voir tout');
-        assert.equal(buttons.at(-1).props.accessibilityLabel, isDriver && isRequestsSheetMode ? 'Voir tous les clients' : 'Voir tous les trajets');
+        assert.equal(buttons.at(-1).props.accessibilityLabel, isDriver ? 'Voir tous les clients' : 'Voir tous les trajets');
         const tabs = buttons.filter(button => button.props.accessibilityRole === 'tab');
-        assert.equal(tabs.length, isDriver ? 2 : 0);
-        if (isDriver) {
-          assert.equal(tabs[0].props.accessibilityState.selected, isRequestsSheetMode);
-          assert.equal(tabs[1].props.accessibilityState.selected, !isRequestsSheetMode);
-        }
+        assert.equal(tabs.length, 0);
       }
     }
   }
 });
 
-test('driver can order from either feed without changing role; both primary actions share one row', () => {
+test('driver can still order without changing role; both primary actions share one row', () => {
   for (const isRequestsSheetMode of [true, false]) {
     const calls = [];
     const tree = HomeTripsSheet.type({ ...base, isDriver: true, isRequestsSheetMode,

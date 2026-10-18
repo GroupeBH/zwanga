@@ -42,6 +42,48 @@ function modalFixture(os = 'ios', sharedStore, id = 'modal') {
   return { store, hooks, scope: RideOverlayScopeContext, render: props => hooks.render(() => RideModal(props)) };
 }
 
+for (const os of ['android', 'ios']) test(`${os}: closing a cancellation dialog keeps the navigation's native parents stable`, () => {
+  const hooks = hookHarness();
+  const react = { ...hooks.react, createContext: value => ({ value }), useContext: context => context.value,
+    useSyncExternalStore: (_subscribe, snapshot) => snapshot() };
+  const load = loader({ react, 'react-native': { Platform: { OS: os }, View: 'View',
+    StyleSheet: { create: value => value, absoluteFillObject: {} } },
+    '@/hooks/useAppIsActive': { useAppIsActive: () => true },
+    './RideNoticeBanner': { RideNoticeBanner: 'Notice' },
+  });
+  const { RideOverlayScope } = load('features/navigation/RideOverlayProvider.tsx');
+  const { RideOverlayContext } = load('features/navigation/rideOverlayContext.ts');
+  const store = createRideOverlayStore(); RideOverlayContext.value = store;
+  const children = { type: 'PassengerNavigation', props: {} };
+  const render = (active = true) => hooks.render(() => RideOverlayScope({ scopeKey: 'passenger:test', active, children }));
+  const assertStableParents = (tree, blocked) => {
+    const container = tree.props.children;
+    const shield = container.props.children[0];
+    assert.equal(container.type, 'View'); assert.equal(shield.type, 'View');
+    assert.equal(container.props.collapsable, false, 'the host must not reparent the screen or its overlays');
+    assert.equal(shield.props.collapsable, false, 'closing the dialog must not flatten its input shield in Fabric');
+    assert.equal(shield.props.children, children, 'navigation content remains mounted in the same slot');
+    assert.equal(shield.props.pointerEvents, blocked ? 'none' : 'auto');
+    assert.equal(shield.props.accessibilityElementsHidden, blocked);
+    assert.equal(shield.props.importantForAccessibility, blocked ? 'no-hide-descendants' : 'auto');
+  };
+  assertStableParents(render(), false);
+  for (let i = 0; i < 100; i++) {
+    store.put({ id: 'confirmation', scope: 'global', priority: 80, children: 'cancel?' });
+    assertStableParents(render(), true);
+    store.remove('confirmation');
+    assertStableParents(render(), false);
+    // Both success and failure feedback use the same parents; no native reparenting on result dismissal.
+    store.put({ id: 'result', scope: 'global', priority: 75, children: i % 2 ? 'success' : 'error' });
+    assertStableParents(render(), true);
+    store.remove('result');
+    assertStableParents(render(), false);
+  }
+  assertStableParents(render(false), false);
+  hooks.unmount();
+  assert.equal(store.isBusy(), false);
+});
+
 for (const scopeKey of ['profile', 'my-trips']) test(`iOS ${scopeKey}: form plus global feedback never stack UIKit modals`, () => {
   const store = createRideOverlayStore(); store.setScope(scopeKey, true);
   const form = modalFixture('ios', store, 'form'), feedback = modalFixture('ios', store, 'feedback');

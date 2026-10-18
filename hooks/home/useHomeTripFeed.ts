@@ -23,6 +23,7 @@ type Props =
     | 'storedTrips'
     | 'dispatch'
     | 'currentUser'
+    | 'isDriver'
   > & Pick<ReturnType<typeof useHomePassengerActivity>, 'bookedTripIds' | 'completedBookingTripIds'>;
 export function useHomeTripFeed({
   lastKnownLocation,
@@ -30,10 +31,11 @@ export function useHomeTripFeed({
   storedTrips,
   dispatch,
   currentUser,
+  isDriver,
   bookedTripIds = EMPTY_TRIP_IDS,
   completedBookingTripIds = EMPTY_TRIP_IDS,
 }: Props) {
-  const enabled = useDisplayReadsEnabled(isFocused);
+  const enabled = useDisplayReadsEnabled(isFocused && !isDriver);
   const latitude = lastKnownLocation?.coords?.latitude;
   const longitude = lastKnownLocation?.coords?.longitude;
   const roundedLatitude = typeof latitude === 'number' && Number.isFinite(latitude) ? roundCoordinate(latitude) : null;
@@ -80,6 +82,7 @@ export function useHomeTripFeed({
   });
   // Only fall back after the nearby response; never download both full feeds on mount.
   const remoteTrips = useMemo(() => {
+    if (isDriver) return undefined;
     if (!nearbyTripsPayload) return general.currentData;
     if (!useGeneral) return nearby.currentData;
     if (!general.currentData) return nearby.currentData?.length ? nearby.currentData : undefined;
@@ -91,7 +94,7 @@ export function useHomeTripFeed({
     const trips = new Map(earlier.map(trip => [trip.id, trip]));
     latest.forEach(trip => trips.set(trip.id, trip));
     return Array.from(trips.values());
-  }, [useGeneral, general.currentData, nearby.currentData, general.fulfilledTimeStamp, nearby.fulfilledTimeStamp, nearbyTripsPayload]);
+  }, [isDriver, useGeneral, general.currentData, nearby.currentData, general.fulfilledTimeStamp, nearby.fulfilledTimeStamp, nearbyTripsPayload]);
   const selected = useGeneral ? general : nearby;
   const discoveryUpdatedAt = Math.max(nearby.fulfilledTimeStamp ?? 0, useGeneral ? general.fulfilledTimeStamp ?? 0 : 0);
   const hasDisplayableTrips = useMemo(() => {
@@ -105,8 +108,8 @@ export function useHomeTripFeed({
     // Same freshness signals as selection: no new polling or per-render scan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteTrips, storedTrips, nearbyTripsPayload, currentUser?.id, completedBookingTripIds, bookedTripIds, discoveryUpdatedAt, enabled]);
-  const tripsLoading = Boolean(selected.isFetching && !hasDisplayableTrips);
-  const tripsError = Boolean(selected.isError && !hasDisplayableTrips);
+  const tripsLoading = Boolean(enabled && selected.isFetching && !hasDisplayableTrips);
+  const tripsError = Boolean(enabled && selected.isError && !hasDisplayableTrips);
   const refetchNearby = useDisplayRefetch(enabled && Boolean(nearbyTripsPayload) && !nearby.isUninitialized,
     JSON.stringify(nearbyTripsPayload), nearby.refetch);
   const refetchGeneral = useDisplayRefetch(enabled && useGeneral && !general.isUninitialized,

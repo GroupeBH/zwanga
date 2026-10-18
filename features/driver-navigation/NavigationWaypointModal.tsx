@@ -66,7 +66,7 @@ export function NavigationWaypointModal({
 
           {/* Titre */}
           <Text style={styles.waypointModalTitle}>
-            {activeWaypoint?.type === 'pickup' ? 'Lieu de prise en charge' : 'Arrivée à destination'}
+            {activeWaypoint?.type === 'pickup' ? 'Où prendre le passager' : 'Où déposer le passager'}
           </Text>
 
           {/* Nom du passager */}
@@ -85,8 +85,8 @@ export function NavigationWaypointModal({
           {activeWaypoint && (
             <Text style={styles.waypointModalWaitingText}>
               {activeWaypoint.type === 'pickup'
-                ? `Retrouvez ${activeWaypoint.passenger.name || 'ce passager'} au point de récupération indiqué. L’embarquement est suivi automatiquement.`
-                : `Voici la destination prévue pour ${activeWaypoint.passenger.name || 'ce passager'}. L’arrivée à destination est suivie automatiquement.`}
+                ? 'Retrouvez le passager à cette adresse.'
+                : 'Déposez le passager à cette adresse.'}
             </Text>
           )}
 

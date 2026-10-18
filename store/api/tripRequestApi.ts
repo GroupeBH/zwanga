@@ -27,6 +27,7 @@ import type { BaseEndpointBuilder } from './types';
 
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import { getTokenSessionVersion } from '@/services/tokenSession';
+import { buildRequestPageEndpoints } from './trip-request/pageEndpoints';
 
 export type { RecommendTripRequestPricePayload } from './trip-request/contracts';
 export type { TripRequestPriceRecommendation } from './trip-request/contracts';
@@ -36,6 +37,7 @@ export type { TripRequestVehicleOptions } from './trip-request/contracts';
 export const tripRequestApi = baseApi.injectEndpoints({
   overrideExisting: true,
   endpoints: (builder: BaseEndpointBuilder) => ({
+    ...buildRequestPageEndpoints(builder),
     // Créer une demande de trajet
     createTripRequest: builder.mutation<TripRequest, CreateTripRequestPayload>({
       query: (payload: CreateTripRequestPayload) => ({
@@ -315,6 +317,9 @@ export const tripRequestApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetAvailableRequestPageQuery,
+  useGetMyRequestPageQuery,
+  useGetMyOfferPageQuery,
     useCreateTripRequestMutation,
     useTripRequestVehicleOptionsQuery,
   useRecommendTripRequestPriceMutation,

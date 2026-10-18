@@ -77,8 +77,6 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       highlightedDriverRequest={home.highlightedDriverRequest}
       prioritiesEnabled={home.isScreenActive}
       dismissPriority={home.dismissPriority}
-      isRequestsSheetMode={home.isRequestsSheetMode}
-      setHomeSheetMode={home.setHomeSheetMode}
       availableDriverRequests={home.availableDriverRequests}
       sheetLoading={home.sheetLoading}
       sheetError={home.sheetError}

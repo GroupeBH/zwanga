@@ -4,13 +4,13 @@ const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
-const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
+const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children), ...all(node.props?.secondaryActions)];
 const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join('') : node?.props ? words(node.props.children) : '';
 const flatStyle = style => Object.assign({}, ...(Array.isArray(style) ? style.flat(Infinity) : [style]).filter(Boolean));
 const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner',
   StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width: 320, height: 700 }) };
 const insets = { top: 47, bottom: 34, left: 0, right: 0 };
-const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openSos() {} };
+const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openContact() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/components/trip/TripShareAction': { TripShareAction: 'ShareAction' },
   './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
@@ -45,7 +45,7 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   const tree = DriverNavigationTopPanel({ model, assistance });
   assert.equal(flatStyle(tree.props.style).top, 55);
   const header = tree.props.children[0];
-  assert.match(words(header), /37 min.*En direct.*12,6 km.*Arrivée à 06:50/);
+  assert.match(words(header), /Trajet en cours.*Connecté.*37 min.*12,6 km/);
   assert.equal(all(header).find(node => node.type === 'Recovery'), undefined);
   for (const text of all(header).filter(node => node.type === 'Text')) assert.equal(text.props.numberOfLines, undefined);
   const recovery = all(tree).find(node => node.type === 'Recovery');
@@ -57,19 +57,28 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(recovery.props.fix.recordedAt, 123); assert.equal(recovery.props.fix.accuracy, 10);
   const confirmation = all(tree).find(node => node.props?.children === recovery);
   const confirmationStyle = flatStyle(confirmation.props.style);
-  assert.equal(confirmationStyle.backgroundColor, '#FFFFFF');
-  assert.ok(confirmationStyle.padding >= 8);
-  assert.ok(confirmationStyle.borderRadius > 0);
+  assert.equal(confirmationStyle.flexShrink, 0);
+  assert.equal(recovery.props.driverNavigation, true);
   assert.equal(confirmationStyle.height, undefined, 'allow confirmation and its hint to wrap with larger text');
   const buttons = all(tree).find(node => node.type === 'AssistanceButtons');
   assert.equal(buttons.props.role, 'driver'); assert.equal(buttons.props.onSos, assistance.openSos);
   assert.equal(buttons.props.onContact, assistance.openContacts);
+  const contacted = [];
+  model.session.foundation.mapState.waypoints[0].booking.passengerId = 'next-holder';
+  const normal = all(DriverNavigationTopPanel({ model, assistance: { ...assistance, openContact: id => contacted.push(id) } })).find(n => n.type === 'Recovery');
+  normal.props.secondaryActions.props.onContact();
+  assert.deepEqual(contacted, ['next-holder']);
+  model.session.foundation.passengers.activePendingBooking = { id: 'new-request' };
+  const incoming = all(DriverNavigationTopPanel({ model, assistance })).find(n => n.type === 'Recovery');
+  assert.equal(incoming.props.driverOverviewOnly, true);
+  assert.equal(incoming.props.secondaryActions.props.onContact, assistance.openContacts);
+  model.session.foundation.passengers.activePendingBooking = undefined;
   const scroll = all(tree).find(node => node.type === 'ScrollView');
   assert.equal(all(scroll).find(node => node.type === 'Recovery'), undefined, 'keep confirmations outside the bounded details');
   assert.equal(all(tree).find(node => node.type === 'DropoffReceipts'), undefined, 'in-progress gains stay in Options');
   assert.equal(flatStyle(scroll.props.style).flexGrow, 0); assert.equal(flatStyle(scroll.props.style).flexShrink, 1);
-  assert.equal(flatStyle(scroll.props.style).minHeight, 44, 'the next stop never collapses to zero height');
-  assert.ok(flatStyle(tree.props.style).maxHeight <= 300, 'the ordinary top panel leaves map space');
+  assert.equal(flatStyle(scroll.props.style).minHeight, 64, 'the next stop never collapses to zero height');
+  assert.ok(flatStyle(tree.props.style).maxHeight <= 340, 'the ordinary top panel leaves map space');
   model.session.foundation.mapState.waypoints[0].completed = true;
   const completedStop = all(DriverNavigationTopPanel({ model, assistance })).find(node => node.type === 'Recovery');
   assert.equal(completedStop.props.preferredBookingId, undefined);
@@ -80,7 +89,7 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(receipts.props.bookings, model.session.foundation.data.bookings);
   assert.equal(receipts.props.active, true);
   model.session.foundation.data.offlineTrip = true;
-  assert.match(words(DriverNavigationTopPanel({ model, assistance })), /Hors connexion/);
+  assert.match(words(DriverNavigationTopPanel({ model, assistance })), /Sans connexion/);
 });
 
 test('driver header retains passenger actions without permanent route selection buttons', () => {
@@ -136,70 +145,83 @@ test('passenger map top offset follows actual header height, including larger te
   hooks.unmount();
 });
 
-test('driver labels the map controls and keeps my position in options', () => {
+test('stop and sharing are directly visible with location and Plus, retaining guards and touch bounds', () => {
   const hooks = hookHarness(); const calls = [];
   const { DriverNavigationControls } = loader({ ...defaults, react: { ...React, ...hooks.react },
     '../screen-styles/app/trip/navigate/detail/index': { styles: {} },
     './navigationBooking': { normalizeDriverLocationObject: value => value },
   })('features/driver-navigation/DriverNavigationControls.tsx');
-  const model = driverModel(); const foundation = model.session.foundation;
-  foundation.mapState.setSecurityModalVisible = () => calls.push('security');
+  const foundation = driverModel().session.foundation;
   foundation.passengers.passengerMapLocations = [{}];
+  foundation.mapState.setPassengersPanelVisible = value => calls.push(['stops', value]);
   foundation.focusMapOnCoordinates = (...args) => calls.push(args);
   const props = { foundation, forceRecalculateRoute: () => calls.push('recalculate'), voice: { toggleVoiceGuidance: () => calls.push('voice') },
     tripActions: { handleEditTripFromNavigation: () => calls.push('edit'), handlePauseTripFromNavigation: () => calls.push('pause'), handleShareTrip: async () => calls.push('share') },
-    passengerPresentation: { fitVehicleAndPassengers: () => calls.push('passengers') } };
+    passengerPresentation: { passengerStats: { inVehicle: 0 }, fitVehicleAndPassengers: () => calls.push('passengers') } };
   let tree; const render = () => { tree = hooks.render(() => DriverNavigationControls(props)); };
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
-  render(); assert.equal(all(tree).filter(node => node.type === 'Button').length, 4);
-  const rerouteLabel = 'Recalculer l’itinéraire';
-  assert.equal(words(button(rerouteLabel)), 'Actualiser', 'the icon also has a visible action label');
-  assert.equal(all(button(rerouteLabel)).find(node => node.type === 'Icon').props.name, 'refresh');
-  assert.equal(button('Recentrer sur ma position'), undefined);
-  assert.equal(button('Ma position'), undefined);
-  button('Demander une interruption du trajet').props.onPress();
-  button('Activer le guidage vocal').props.onPress();
-  for (const [label, result] of [['Modifier le trajet', 'edit'], ['Partager le trajet', 'share'], ['Voir les passagers', 'passengers']]) {
-    button('Options de navigation').props.onPress(); render(); button(label).props.onPress(); render();
+  const open = () => { (button('Options de navigation') ?? button('Fermer les options')).props.onPress(); render(); };
+  render();
+  assert.equal(all(tree).filter(node => node.type === 'Button').length, 4);
+  assert.match(words(tree), /Ma position.*Partager le trajet.*Arrêter le trajet.*Plus/);
+  const directButtons = all(tree).filter(node => node.type === 'Button');
+  const directStyles = directButtons.map(button => flatStyle(button.props.style));
+  assert.ok(directStyles.every(style => style.width >= 44 && style.minHeight >= 44));
+  assert.equal(directStyles.reduce((sum, style) => sum + style.width, 0) + 3 * 8, flatStyle(tree.props.style).width);
+  assert.ok(flatStyle(tree.props.style).width + flatStyle(tree.props.style).right <= 320 - 16);
+  assert.equal(button('Mettre le trajet en pause'), undefined);
+  assert.equal(button('Actualiser la route'), undefined);
+  assert.equal(button('Activer le son'), undefined);
+  button('Arrêter le trajet').props.onPress(); render();
+  assert.equal(calls.pop(), 'pause', 'stop is directly available without opening Plus');
+  button('Partager le trajet').props.onPress(); render();
+  assert.equal(calls.pop(), 'share', 'sharing is directly available without opening Plus');
+  open(); button('Activer le son').props.onPress(); render();
+  button('Ma position').props.onPress();
+  assert.equal(calls[0], 'voice');
+  assert.deepEqual(calls[1][0], [{ latitude: -4.3, longitude: 15.2 }]);
+  assert.equal(calls[1][1].logContext, 'recenter-driver');
+  for (const [label, result] of [['Modifier le trajet', 'edit'],
+    ['Passagers sur la carte', 'passengers'], ['Actualiser la route', 'recalculate']]) {
+    open(); button(label).props.onPress(); render();
     assert.equal(calls.at(-1), result); assert.equal(button(label), undefined);
   }
-  assert.deepEqual(calls.slice(0, 2), ['pause', 'voice']);
-  assert.equal(button('Prévenir mes proches'), undefined);
-  button(rerouteLabel).props.onPress(); render(); assert.equal(calls.at(-1), 'recalculate');
-  button('Options de navigation').props.onPress(); render(); button('Ma position').props.onPress(); render();
-  assert.deepEqual(calls.at(-1)[0], [{ latitude: -4.3, longitude: 15.2 }]);
-  assert.equal(calls.at(-1)[1].logContext, 'recenter-driver');
+  open(); button('Les arrêts').props.onPress(); render(); assert.deepEqual(calls.at(-1), ['stops', true]);
+  props.passengerPresentation.passengerStats.inVehicle = 1;
+  render(); assert.equal(button('Mettre le trajet en pause'), undefined);
+  button('Arrêter le trajet').props.onPress(); render(); assert.equal(calls.at(-1), 'pause');
+  foundation.passengers.activeDriverInterruptionRequest = { id: 'request' };
+  render(); assert.ok(button('Voir la demande d’arrêt'));
+  assert.match(words(button('Voir la demande d’arrêt')), /Arrêt demandé/);
   foundation.data.isCreatingTripShareLink = true; foundation.mapState.isLoadingRoute = true;
-  foundation.data.isRequestingDriverInterruption = true; button('Options de navigation').props.onPress(); render();
-  const popup = tree.props.children[0];
-  const popupStyle = flatStyle(popup.props.style); const frame = flatStyle(tree.props.style);
+  foundation.data.isRequestingDriverInterruption = true;
+  open();
+  const popup = tree.props.children[0], popupStyle = flatStyle(popup.props.style), frame = flatStyle(tree.props.style);
   assert.ok(frame.width >= popupStyle.width + popupStyle.right);
-  assert.ok(frame.minHeight >= popupStyle.maxHeight);
-  assert.equal(button('Partager le trajet').props.disabled, true);
-  assert.equal(button(rerouteLabel).props.disabled, true);
-  assert.equal(button(rerouteLabel).props.accessibilityState.busy, true);
-  assert.ok(all(button(rerouteLabel)).find(node => node.type === 'Spinner'));
-  const loadingCount = calls.length;
-  button(rerouteLabel).props.onPress(); assert.equal(calls.length, loadingCount);
-  assert.ok(!button('Ma position').props.disabled);
-  const latestPosition = { coords: { latitude: -4.31, longitude: 15.21 } };
-  foundation.refs.currentLocationRef.current = latestPosition;
+  assert.ok(frame.minHeight >= popupStyle.maxHeight + popupStyle.bottom);
+  for (const label of ['Partager le trajet', 'Actualiser la route', 'Voir la demande d’arrêt']) {
+    assert.equal(button(label).props.disabled, true);
+    const count = calls.length; button(label).props.onPress(); assert.equal(calls.length, count);
+  }
+  assert.equal(button('Actualiser la route').props.accessibilityState.busy, true);
+  assert.ok(all(button('Actualiser la route')).find(node => node.type === 'Spinner'));
+  const latest = { coords: { latitude: -4.31, longitude: 15.21 } };
+  foundation.refs.currentLocationRef.current = latest;
   button('Ma position').props.onPress(); render();
-  assert.equal(button('Ma position'), undefined);
   assert.deepEqual(calls.at(-1)[0], [{ latitude: -4.31, longitude: 15.21 }]);
-  assert.equal(calls.at(-1)[1].logContext, 'recenter-driver');
   const count = calls.length;
   foundation.refs.currentLocationRef.current = null; foundation.mapState.currentLocation = null;
-  button('Options de navigation').props.onPress(); render();
-  button('Ma position').props.onPress(); render(); assert.equal(calls.length, count);
-  foundation.refs.currentLocationRef.current = latestPosition;
-  assert.equal(button('Demander une interruption du trajet').props.disabled, true);
-  button('Options de navigation').props.onPress(); render();
+  button('Ma position').props.onPress(); assert.equal(calls.length, count);
   const staleRecenter = button('Ma position').props.onPress;
-  foundation.mapState.isLoadingRoute = false;
-  foundation.data.isScreenActive = false; render(); render(); assert.equal(button('Partager le trajet'), undefined);
-  assert.equal(button(rerouteLabel).props.disabled, true);
-  button(rerouteLabel).props.onPress(); staleRecenter(); assert.equal(calls.length, count);
+  const staleReroute = button('Actualiser la route').props.onPress;
+  const staleStop = button('Voir la demande d’arrêt').props.onPress;
+  const staleShare = button('Partager le trajet').props.onPress;
+  foundation.refs.currentLocationRef.current = latest; foundation.mapState.isLoadingRoute = false;
+  foundation.data.isScreenActive = false; render(); render();
+  assert.equal(button('Partager le trajet').props.disabled, true);
+  assert.equal(button('Ma position').props.disabled, true);
+  assert.equal(button('Voir la demande d’arrêt').props.disabled, true);
+  staleRecenter(); staleReroute(); staleStop(); staleShare(); assert.equal(calls.length, count);
   hooks.unmount();
 });
 
@@ -215,21 +237,21 @@ test('driver can still access receipts through Options after hiding the banner, 
   const find = type => all(render()).find(node => node.type === type);
   const button = label => all(render()).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   button('Options de navigation').props.onPress();
-  assert.equal(button('Gains des passagers'), undefined, 'no entry before the first dropoff');
+  assert.equal(button('Mes gains'), undefined, 'no entry before the first dropoff');
   foundation.data.bookings = [{ id: 'completed', tripId: 'trip', status: 'completed' },
     { id: 'pending', tripId: 'trip', status: 'accepted' }, { id: 'elsewhere', tripId: 'other', status: 'completed' }];
   assert.equal(find('ReceiptsSheet'), undefined);
-  button('Gains des passagers').props.onPress();
-  assert.equal(button('Gains des passagers'), undefined, 'the options popup closes before opening the sheet');
+  button('Mes gains').props.onPress();
+  assert.equal(button('Mes gains'), undefined, 'the options popup closes before opening the sheet');
   assert.equal(find('Modal').props.inApp, true);
   assert.equal(find('Modal').props.visible, true);
   assert.deepEqual(find('ReceiptsSheet').props.bookings.map(value => value.id), ['completed']);
   find('ReceiptsSheet').props.onClose(); assert.equal(find('ReceiptsSheet'), undefined);
-  button('Options de navigation').props.onPress(); button('Gains des passagers').props.onPress();
+  button('Options de navigation').props.onPress(); button('Mes gains').props.onPress();
   foundation.data.isScreenActive = false;
   assert.equal(find('ReceiptsSheet'), undefined);
   foundation.data.isScreenActive = true; assert.equal(find('ReceiptsSheet'), undefined);
-  button('Options de navigation').props.onPress(); button('Gains des passagers').props.onPress();
+  button('Options de navigation').props.onPress(); button('Mes gains').props.onPress();
   foundation.data.tripId = 'other';
   assert.equal(find('ReceiptsSheet'), undefined);
   foundation.data.tripId = 'trip'; assert.equal(find('ReceiptsSheet'), undefined);

@@ -19,7 +19,7 @@ for (const os of ['ios', 'android']) test(`${os}: rating is a regular screen, no
 });
 
 test('the rating screen registers an active route scope for in-app dialogs and keeps keyboard taps usable', () => {
-  const state = { active: true, ratingScopeKey: 'rating:driver:trip', activeTab: 'rate', rating: 0 };
+  const state = { active: true, ratingScopeKey: 'rating:driver:trip', activeTab: 'rate', rating: 0, passengers: [] };
   const Screen = loader({ react: React,
     'react-native': { View: 'View', ScrollView: 'ScrollView', Text: 'Text', TouchableOpacity: 'Button' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
@@ -30,6 +30,7 @@ test('the rating screen registers an active route scope for in-app dialogs and k
     '../../features/rating/RatingParticipantSelector': { RatingParticipantSelector: 'Participants' },
     '../../hooks/rating/useRatingData': { useRatingData: () => state },
     '../../hooks/rating/useRatingActions': { useRatingActions: () => ({}) },
+    '../../hooks/rating/useRatingReport': { useRatingReport: () => ({}) },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'Scope' },
   })('app/rate/[id].tsx').default;
   assert.equal(Screen().type, 'Scope'); assert.equal(Screen().props.scopeKey, state.ratingScopeKey);

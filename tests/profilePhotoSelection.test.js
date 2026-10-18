@@ -144,6 +144,8 @@ test('changing the profile photo does not overwrite unsaved fields when the summ
   const hooks = hookHarness();
   let user = { id: 'test-user', firstName: 'Test', lastName: 'Example', phone: '+243000000000', gender: null };
   const Screen = loader({ react: { ...React, ...hooks.react },
+    '@/features/navigation/RideModal': { RideModal: 'Modal' },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '../features/screen-styles/app/edit-profile/index': { styles: {} },
     '@/hooks/useProfilePhoto': { useProfilePhoto: () => ({ changeProfilePhoto: async () => true }) },
     '@/store/api/userApi': { useGetProfileSummaryQuery: () => ({ data: { user }, refetch() {} }),

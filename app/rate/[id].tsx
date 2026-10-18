@@ -1,6 +1,7 @@
 import { useRatingData } from '../../hooks/rating/useRatingData';
 import { RatingParticipantSelector } from '../../features/rating/RatingParticipantSelector';
 import { useRatingActions } from '../../hooks/rating/useRatingActions';
+import { useRatingReport } from '../../hooks/rating/useRatingReport';
 import { styles } from '../../features/screen-styles/app/rate/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,7 @@ import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 export default function RateScreen() {
   const { active, ratingScopeKey, selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, captureRatingSession, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
 
-  const { getRatingText, toggleTag, handleSubmitRating, handleSubmitReport } = useRatingActions({
+  const { getRatingText, toggleTag, handleSubmitRating } = useRatingActions({
     selectedTags,
     setSelectedTags,
     submitInFlightRef,
@@ -31,7 +32,12 @@ export default function RateScreen() {
     captureRatingSession,
     successReturnTimeoutRef,
     goBackSafely,
-    reportReason,
+  });
+  const { handleSubmitReport, isSendingReport, reportSent } = useRatingReport({
+    scopeKey: ratingScopeKey,
+    targetId: rateTargetType === 'driver' ? trip?.driverId
+      : passengers.find(passenger => passenger.id === selectedPassenger)?.id,
+    tripId, reason: reportReason, description: comment, captureRatingSession,
   });
 
   return (
@@ -227,18 +233,13 @@ export default function RateScreen() {
               </View>
             </View>
 
-            {/* Info conducteur */}
-            <View style={styles.driverCard}>
-              <View style={styles.driverInfo}>
-                <View style={styles.driverAvatar} />
-                <View style={styles.driverDetails}>
-                  <Text style={styles.driverName}>{trip?.driverName ?? 'Conducteur'}</Text>
-                  <Text style={styles.driverTrip}>
-                    Trajet: {trip?.departure?.name ?? 'Départ'} → {trip?.arrival?.name ?? 'Arrivée'}
-                  </Text>
-                </View>
-              </View>
-            </View>
+            <RatingParticipantSelector
+              isTripDriver={isTripDriver} rateTargetType={rateTargetType} trip={trip}
+              selectedPassenger={selectedPassenger} passengers={passengers}
+              isTripPassenger={isTripPassenger} setRateTargetType={setRateTargetType}
+              setSelectedPassenger={setSelectedPassenger} bookingsLoading={bookingsLoading}
+              bookingsError={bookingsError} refetchBookings={refetchBookings}
+            />
 
             {/* Raisons */}
             <View style={styles.reasonsContainer}>
@@ -301,9 +302,11 @@ export default function RateScreen() {
             <TouchableOpacity
               style={[styles.submitButton, reportReason ? styles.submitButtonDanger : styles.submitButtonDisabled]}
               onPress={handleSubmitReport}
-              disabled={!reportReason}
+              disabled={!reportReason || isSendingReport || reportSent}
             >
-              <Text style={styles.submitButtonText}>Envoyer le signalement</Text>
+              <Text style={styles.submitButtonText}>
+                {reportSent ? 'Signalement envoyé' : isSendingReport ? 'Envoi…' : 'Envoyer le signalement'}
+              </Text>
             </TouchableOpacity>
           </Animated.View>
         )}

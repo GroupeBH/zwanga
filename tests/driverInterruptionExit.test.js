@@ -59,9 +59,9 @@ test('without onboard passengers: one confirmation pauses and leaves, with no su
   assert.equal(app.mutations.length, 0, 'opening the confirmation is not consent to interrupt');
   assert.equal(app.dialogs.length, 1);
   const dialog = app.dialogs[0];
-  assert.match(dialog.message, /gestion/);
+  assert.match(dialog.message, /reprendre ce trajet plus tard/);
   assert.equal(dialog.actions.find(a => a.label === 'Annuler').onPress, undefined);
-  const interruptAction = dialog.actions.find(a => a.label === 'Interrompre et quitter');
+  const interruptAction = dialog.actions.find(a => a.label === 'Mettre en pause');
   assert.equal(interruptAction.variant, 'danger', 'the interruption action uses the red danger style');
   await interruptAction.onPress();
   assert.deepEqual(app.mutations, [{ type: 'pause', id: 'trip-1' }]);
@@ -78,8 +78,8 @@ for (const [label, reason] of [['Urgence', 'emergency'], ['Autre raison', 'other
     const app = environment({ bookingsRef: { current: [{ status: 'accepted', pickedUp: true }] } });
     app.render().handlePauseTripFromNavigation();
     const dialog = app.dialogs[0];
-    assert.match(dialog.message, /confirmation de tous les passagers/);
-    assert.match(dialog.message, /quitter la navigation/);
+    assert.match(dialog.message, /passagers à bord doivent tous accepter/);
+    assert.match(dialog.message, /reviendrez à l’écran du trajet/);
     await dialog.actions.find(a => a.label === label).onPress();
     assert.equal(app.mutations.length, 1);
     assert.equal(app.mutations[0].type, 'request');
@@ -211,7 +211,7 @@ test('an existing interruption request offers direct exit without creating anoth
   const app = environment({ activeDriverInterruptionRequest: { id: 'request', status: 'pending' },
     activeDriverInterruptionConfirmedCount: 1, activeDriverInterruptionRequiredCount: 2 });
   app.render().handlePauseTripFromNavigation();
-  app.dialogs[0].actions.find(a => a.label === 'Quitter la navigation').onPress();
+  app.dialogs[0].actions.find(a => a.label === 'Revenir au trajet').onPress();
   assert.equal(app.dialogs.length, 1);
   assert.equal(app.mutations.length, 0);
   assert.deepEqual(app.events, ['exit']);

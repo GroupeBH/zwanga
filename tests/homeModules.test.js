@@ -120,6 +120,40 @@ test('trip feed keeps nearby precedence without a parallel general request, poll
   app.hooks.unmount();
 });
 
+test('driver Home skips both public feeds, their loading errors and manual refresh even with cached responses', async () => {
+  const calls = [], dispatches = [], refreshes = [];
+  const query = name => (args, options) => {
+    calls.push({ name, options });
+    return { currentData: [trip('public')], isFetching: true, isError: true, isUninitialized: false,
+      refetch: async () => { refreshes.push(name); return { data: [] }; } };
+  };
+  const app = environment({ '@/store/api/tripApi': {
+    useGetTripsQuery: query('general'), useGetTripsByCoordinatesQuery: query('nearby'),
+  } });
+  const { useHomeTripFeed } = app.load('hooks/home/useHomeTripFeed.ts');
+  const props = { isDriver: true, isFocused: true, storedTrips: [trip('cached')],
+    dispatch: action => dispatches.push(action), lastKnownLocation: null };
+  const render = () => app.hooks.render(() => useHomeTripFeed(props));
+  for (const location of [null, { coords: departure.coordinates }]) {
+    props.lastKnownLocation = location;
+    const result = render();
+    assert.equal(result.remoteTrips, undefined);
+    assert.equal(result.tripsLoading, false); assert.equal(result.tripsError, false);
+    assert.equal(result.showInitialHomeLoader, false);
+    assert.ok(calls.slice(-2).every(call => call.options.skip && call.options.pollingInterval === 0));
+    await result.refetchTrips();
+  }
+  assert.deepEqual(dispatches, []); assert.deepEqual(refreshes, []);
+  props.isDriver = false; render();
+  assert.equal(calls.at(-2).options.skip, false, 'passenger discovery resumes immediately');
+  assert.ok(dispatches.length > 0);
+  const actionCount = dispatches.length;
+  props.isDriver = true; render();
+  assert.ok(calls.slice(-2).every(call => call.options.skip));
+  assert.equal(dispatches.length, actionCount);
+  app.hooks.unmount();
+});
+
 test('a cached feed remains visible when both network queries fail', () => {
   const app = environment({ '@/store/api/tripApi': {
     useGetTripsQuery: () => ({ isFetching: false, isLoading: false, isError: true }),
@@ -506,7 +540,7 @@ test('passenger tracking only presents progress for the active passenger booking
   app.hooks.unmount();
 });
 
-test('sheet switches between trips/requests, keeps stable actions and retracts during an active trip', () => {
+test('sheet follows the role immediately and stays on clients after a driver ride', () => {
   const app = environment();
   const { useHomeSheet } = app.load('hooks/home/useHomeSheet.ts');
   const routes = [], refreshes = [];
@@ -515,15 +549,24 @@ test('sheet switches between trips/requests, keeps stable actions and retracts d
   const toggle = render().toggleTripsSheet;
   assert.equal(render().toggleTripsSheet, toggle);
   assert.equal(render().effectiveTripsSheetOpen, true);
-  render().setHomeSheetMode('requests');
   render().openSheetIndex(); render().refetchSheetContent();
   assert.deepEqual(routes, ['/requests']);
   assert.deepEqual(refreshes, ['requests']);
   props.isHomeSheetLockedRetracted = true; render();
   render().toggleTripsSheet();
   assert.equal(render().effectiveTripsSheetOpen, false);
-  assert.equal(render().isRequestsSheetMode, false);
+  assert.equal(render().isRequestsSheetMode, true);
+  assert.equal(render().sheetTitle, 'Trajet en cours');
+  props.isHomeSheetLockedRetracted = false;
+  assert.equal(render().sheetTitle, 'Clients');
+  render().openSheetIndex();
+  assert.deepEqual(routes, ['/requests', '/requests']);
   props.isHomeSheetLockedRetracted = false; props.isDriver = false; render();
   assert.equal(render().isRequestsSheetMode, false);
+  render().openSheetIndex(); render().refetchSheetContent();
+  assert.equal(routes.at(-1), '/search');
+  assert.equal(refreshes.at(-1), 'trips');
+  props.isDriver = true;
+  assert.equal(render().sheetTitle, 'Clients');
   app.hooks.unmount();
 });

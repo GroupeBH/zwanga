@@ -99,7 +99,7 @@ test('panel explains seat counts, uses content height and preserves priority gat
   const tree = render();
   const list = all(tree).find(n => n.type === 'List');
   assert.match(words(list.props.ListHeaderComponent), /2\s+réservations.*4\s+places/);
-  assert.match(words(list.props.ListHeaderComponent), /À récupérer.*À bord.*Arrivées à destination/);
+  assert.match(words(list.props.ListHeaderComponent), /À prendre.*À bord.*Descendus/);
   assert.equal(list.props.initialNumToRender, 8);
   assert.equal(list.props.removeClippedSubviews, false);
   assert.equal(styles.sheet.height, undefined, 'no forced 85% empty sheet');
@@ -124,10 +124,10 @@ test('opening a point detail does not claim the driver has already arrived', () 
   for (const waypoint of stops('a')) {
     const tree = NavigationWaypointModal({ waypointModalVisible: true, activeWaypoint: waypoint, insets: { bottom: 0 } });
     assert.doesNotMatch(words(tree), /Vous êtes arrivé|Nous sommes arrivés/);
-    assert.match(words(tree), /suivi[e]? automatiquement/);
+    assert.match(words(tree), /à cette adresse/);
     if (waypoint.type === 'dropoff') {
-      assert.match(words(tree), /Arrivée à destination.*destination prévue.*L’arrivée à destination est suivie automatiquement/);
-      assert.doesNotMatch(words(tree), /dépos/i);
+      assert.match(words(tree), /Où déposer le passager.*Déposez le passager à cette adresse/);
+      assert.doesNotMatch(words(tree), /a été déposé/i);
     }
   }
 });

@@ -2,6 +2,8 @@ import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import type { Message } from '@/types';
 import { io, Socket } from 'socket.io-client';
+import { socketConnectionOptions } from './socketConnectionPolicy';
+import { subscribeConnectionRecovery } from './networkRecovery';
 import { deliverSocketEvent, isChatMessage } from './socketPayloads';
 
 type MessageListener = (message: Message) => void;
@@ -12,18 +14,28 @@ class ChatSocketClient {
   private rooms = new Map<string, number>();
   private connecting: Promise<Socket> | null = null;
   private generation = 0;
+  private stopRecovery: (() => void) | null = null;
 
   private async connect(): Promise<Socket> {
+    this.stopRecovery ??= subscribeConnectionRecovery(() => {
+      if ((this.rooms.size > 0 || this.listeners.size > 0) && !this.socket?.connected) {
+        void this.connect().catch(() => undefined);
+      }
+    });
     if (this.connecting) return this.connecting;
     const generation = this.generation;
     const connection = (async () => {
       const token = await getValidAccessToken();
       if (generation !== this.generation) throw new Error('Session de messagerie fermée');
+      if (!token) {
+        this.socket?.disconnect();
+        throw new Error('Messagerie en attente de votre session');
+      }
       if (!this.socket) {
         const baseUrl = API_BASE_URL.replace(/\/(?:api\/)?v1\/?$/, '');
-        const socket = io(`${baseUrl}/chat`, { transports: ['websocket'], auth: { token }, autoConnect: false });
+        const socket = io(`${baseUrl}/chat`, { ...socketConnectionOptions, auth: { token } });
         this.socket = socket;
-        socket.on('session_expired', () => { void handle401Error(); });
+        socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
         socket.on('connect', () => {
           this.rooms.forEach((_count, bookingId) => socket.emit('join_booking', { bookingId }));
         });
@@ -49,7 +61,6 @@ class ChatSocketClient {
 
   async joinBookingRoom(bookingId: string) {
     if (!bookingId) return;
-    const generation = this.generation;
     const count = this.rooms.get(bookingId) ?? 0;
     this.rooms.set(bookingId, count + 1);
     try {
@@ -58,7 +69,7 @@ class ChatSocketClient {
         socket.emit('join_booking', { bookingId });
       }
     } catch (error) {
-      if (generation === this.generation) this.releaseRoom(bookingId);
+      // Keep the room until its owner leaves, including during an auth/network outage.
       throw error;
     }
   }
@@ -100,6 +111,8 @@ class ChatSocketClient {
 
   /** Also invalidates a connection still waiting for secure storage. */
   disconnect(clearListeners = true) {
+    this.stopRecovery?.();
+    this.stopRecovery = null;
     this.generation += 1;
     this.socket?.disconnect();
     this.socket?.removeAllListeners();
@@ -111,9 +124,11 @@ class ChatSocketClient {
 
   refreshAuthentication() {
     if (this.rooms.size === 0 && this.listeners.size === 0) return;
+    if (!this.socket) { void this.connect().catch(() => undefined); return; }
     const generation = this.generation;
     void getValidAccessToken().then((token) => {
       if (generation !== this.generation || !this.socket) return;
+      if (!token) { this.socket.disconnect(); return; }
       this.socket.auth = { token };
       this.socket.disconnect().connect();
     }).catch(() => undefined);

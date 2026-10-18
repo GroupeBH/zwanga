@@ -23,7 +23,7 @@ type Props =
   Pick<ReturnType<typeof useHomeSheet>,
     'firstName' | 'sheetBottomOffset' | 'sheetHeight' | 'onSheetLayout'
     | 'effectiveTripsSheetOpen' | 'toggleTripsSheet' | 'sheetTitle' | 'openSheetIndex'
-    | 'isRequestsSheetMode' | 'setHomeSheetMode' | 'sheetLoading' | 'sheetError'
+    | 'sheetLoading' | 'sheetError'
     | 'refetchSheetContent' | 'sheetEmpty'>
   & Pick<ReturnType<typeof useHomeTripSelection>, 'isHomeSheetLockedRetracted' | 'latestTrips' | 'suggestionScopeLabel' | 'featuredPassengerTrip'>
   & Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isScreenActive' | 'router'>
@@ -38,11 +38,11 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   effectiveTripsSheetOpen, toggleTripsSheet, isHomeSheetLockedRetracted, sheetTitle,
   openSheetIndex, isDriver, isScreenActive, highlightedDriverRequest,
   dismissPriority, hiddenHomePriorities, prioritiesEnabled,
-  isRequestsSheetMode, setHomeSheetMode, availableDriverRequests, sheetLoading,
+  availableDriverRequests, sheetLoading,
   sheetError, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
   openTripDetail, router, recentDestinations, featuredPassengerTrip,
 }: Props) {
-  const showRequests = isDriver && isRequestsSheetMode;
+  const showRequests = isDriver;
   const clientCount = availableDriverRequests.length;
   const clientCountLabel = clientCount >= RECENT_TRIPS_LIMIT ? `${RECENT_TRIPS_LIMIT}+` : String(clientCount);
   const suggestionTrip = latestTrips.find(trip => !bookedTripIds.has(trip.id))
@@ -82,10 +82,19 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
                   <Text style={styles.driverOrderText}>Commander</Text>
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+                accessibilityLabel="Chercher un trajet"
+                accessibilityHint="Trouver un trajet publié pour voyager comme passager."
+                style={styles.driverSearchButton}
+                onPress={() => router.push('/search')}>
+                <Ionicons name="search-outline" size={20} color={HOME_DASHBOARD_COLORS.blue} accessible={false} />
+                <Text style={styles.driverSearchText}>Chercher un trajet</Text>
+                <Ionicons name="chevron-forward" size={16} color={HOME_DASHBOARD_COLORS.blue} accessible={false} />
+              </TouchableOpacity>
               <View style={styles.metricsRow}>
                 <TouchableOpacity activeOpacity={0.8} style={styles.metricCard} accessibilityRole="button"
                   accessibilityLabel={`${clientCountLabel} clients disponibles`}
-                  onPress={() => setHomeSheetMode('requests')}>
+                  onPress={openSheetIndex}>
                   <Text style={styles.metricLabel}>Clients près de vous</Text>
                   <Text style={styles.metricValue}>{clientCountLabel}</Text>
                   <Text style={styles.metricHint}>commandes</Text>
@@ -115,26 +124,9 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
             </>
           )}
           <View testID="home-discovery-actions" style={styles.feedHeading}>
-            {isDriver ? (
-              <View style={styles.feedTabs} accessibilityRole="tablist" accessibilityLabel="Suggestions">
-                <TouchableOpacity activeOpacity={0.8} accessibilityRole="tab"
-                  accessibilityLabel="Clients" accessibilityState={{ selected: showRequests }}
-                  style={[styles.feedTab, showRequests && styles.feedTabSelected]}
-                  onPress={() => setHomeSheetMode('requests')}>
-                  <Text style={[styles.feedTabText, showRequests && styles.feedTabTextSelected]}>Clients</Text>
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={0.8} accessibilityRole="tab"
-                  accessibilityLabel="Trajets" accessibilityState={{ selected: !showRequests }}
-                  style={[styles.feedTab, !showRequests && styles.feedTabSelected]}
-                  onPress={() => setHomeSheetMode('trips')}>
-                  <Text style={[styles.feedTabText, !showRequests && styles.feedTabTextSelected]}>Trajets</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={styles.feedTitle} accessibilityRole="header">
-                {suggestionScopeLabel ? 'Trajets pour vous' : 'Trajets près de vous'}
-              </Text>
-            )}
+            <Text style={styles.feedTitle} accessibilityRole="header">
+              {isDriver ? 'Clients' : suggestionScopeLabel ? 'Trajets pour vous' : 'Trajets près de vous'}
+            </Text>
             <TouchableOpacity style={styles.seeAllButton} activeOpacity={0.8}
               accessibilityRole="button" accessibilityLabel={showRequests ? 'Voir tous les clients' : 'Voir tous les trajets'}
               accessibilityHint="Ouvrir la liste complète." onPress={openSheetIndex}>

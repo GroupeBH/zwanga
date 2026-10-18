@@ -118,16 +118,8 @@ test('another trip/account and unmount reject old feedback without unlocking a n
 test('inactive actions cannot submit, show validation dialogs or navigate; a deep link still returns Home', async t => {
   const env = fixture(t);
   env.state.active = false; const inactive = env.render();
-  await inactive.handleSubmitRating(); inactive.handleSubmitReport(); inactive.goBackSafely();
+  await inactive.handleSubmitRating(); inactive.goBackSafely();
   assert.deepEqual(env.calls, []); assert.deepEqual(env.dialogs, []); assert.deepEqual(env.events, []);
   env.state.active = true; env.state.canGoBack = false; env.render().goBackSafely();
   assert.deepEqual(env.events, ['/(tabs)']);
-});
-
-test('a report dialog action from before blur cannot close a newly focused screen', t => {
-  const env = fixture(t);
-  env.render().setReportReason('rude'); env.render().handleSubmitReport();
-  const action = env.dialogs[0].actions[0].onPress;
-  env.state.active = false; env.render(); env.state.active = true; env.render();
-  action(); assert.deepEqual(env.events, []);
 });

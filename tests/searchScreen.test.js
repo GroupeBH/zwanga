@@ -123,6 +123,18 @@ function screenApp() {
   return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
 }
 
+test('opening search as a driver starts with published trips to travel as a passenger', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  const tree = app.render();
+  assert.equal(app.toolbar(tree).props.searchMode, 'trips');
+  assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
+  assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).options.skip, false);
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
+  assert.equal(app.isDriver, true, 'searching never changes account role');
+  app.hooks.unmount();
+});
+
 test('passenger search exposes only published trips and never subscribes to the available orders feed', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = screenApp(); app.isDriver = false;

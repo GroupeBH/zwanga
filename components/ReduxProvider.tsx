@@ -32,7 +32,7 @@ const restoreSession = async () => {
   await store.dispatch(initializeAuth()).unwrap();
   if (selectHasAuthenticatedSession(store.getState())) {
     // An optional draft must never block a valid session from reaching Home.
-    await clearAuthFlowDraft().catch(() => {});
+    void clearAuthFlowDraft().catch(() => {});
   } else {
     await restoreAuthFlowDraft();
   }
@@ -58,7 +58,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
             <Text style={styles.brand}>ZWANGA</Text>
             {status === 'error' ? <>
               <Text style={styles.error} accessibilityRole="alert">
-                Votre session n’a pas pu être restaurée. Déverrouillez votre téléphone, puis réessayez.
+                L’ouverture prend trop de temps ou a échoué. Vérifiez votre connexion et déverrouillez votre téléphone, puis réessayez.
               </Text>
               <TouchableOpacity style={styles.retry} accessibilityRole="button" onPress={retry}>
                 <Text style={styles.retryText}>Réessayer</Text>

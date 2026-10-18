@@ -1,6 +1,6 @@
 import type { setupListeners } from '@reduxjs/toolkit/query';
 import { AppState } from 'react-native';
-import { observeNetworkConnection } from './networkRecovery';
+import { observeNetworkConnection, notifyConnectionRecovery } from './networkRecovery';
 
 /** Bridge native lifecycle signals into RTK Query without duplicate refetch events. */
 export const nativeQueryListeners: NonNullable<Parameters<typeof setupListeners>[1]> = (dispatch, actions) => {
@@ -33,6 +33,7 @@ export const nativeQueryListeners: NonNullable<Parameters<typeof setupListeners>
     if (active !== focused) {
       focused = active;
       dispatch(active ? actions.onFocus() : actions.onFocusLost());
+      if (active) notifyConnectionRecovery();
     }
     if (active) refreshNetwork();
   };

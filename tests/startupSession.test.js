@@ -136,6 +136,29 @@ test('unmounted startup ignores late responses and removes its listeners', async
   assert.equal(e.render().status, 'loading'); assert.equal(e.listeners.size, 0);
 });
 
+test('startup deadline unlocks retry without duplicating a hanging native restoration', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const e = bootstrapFixture(t);
+  assert.equal(e.render().status, 'loading');
+  t.mock.timers.tick(8000);
+  assert.equal(e.render().status, 'error');
+  e.render().retry(); e.render();
+  assert.equal(e.requests.length, 1, 'reuse the unresolved native call');
+  e.requests[0].resolve({}); await flush();
+  assert.equal(e.render().status, 'ready');
+});
+
+test('a response arriving after the startup deadline does not silently replace the retry UI', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const e = bootstrapFixture(t); e.render(); t.mock.timers.tick(8000);
+  e.requests[0].resolve({}); await flush();
+  assert.equal(e.render().status, 'error');
+  e.render().retry(); e.render();
+  assert.equal(e.requests.length, 2);
+  e.requests[1].resolve({}); await flush();
+  assert.equal(e.render().status, 'ready');
+});
+
 for (const authenticated of [false, true]) {
   test(authenticated ? 'the global guard leaves an authenticated auth/KYC screen to its own redirect policy' :
     'the global guard does not race the initial empty route with an auth-entry redirect', async t => {

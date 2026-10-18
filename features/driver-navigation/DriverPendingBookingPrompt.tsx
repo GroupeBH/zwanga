@@ -22,11 +22,21 @@ interface Props {
 /** Only the copy scrolls: accepting/refusing must never be below a clipped list. */
 export function DriverPendingBookingPrompt(props: Props) {
   return <View style={styles.card}>
-    <ScrollView style={styles.body} contentContainerStyle={styles.copy} bounces={false}
-      showsVerticalScrollIndicator key={props.booking.id}>
+    <View style={styles.heading}>
+      <View style={styles.identity}>
       <Text style={styles.eyebrow}>Nouvelle réservation{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
       <Text style={styles.name} numberOfLines={1}>{props.booking.passengerName || 'Passager'}</Text>
       <Text style={styles.meta}>{formatSeatCount(props.booking.numberOfSeats)} · {formatPendingBookingPayment(props.booking, props.tripPrice)}</Text>
+      </View>
+      <TouchableOpacity style={[styles.contact, props.busy && styles.disabled]}
+        accessibilityRole="button" accessibilityLabel={`Contacter ${props.booking.passengerName || 'le passager'} avant d’accepter`}
+        disabled={props.busy} onPress={() => props.onContact(props.booking.passengerId)}>
+        <Ionicons name="call-outline" size={18} color={Colors.primaryDark} />
+        <Text style={[styles.buttonText, styles.contactText]}>Contacter</Text>
+      </TouchableOpacity>
+    </View>
+    <ScrollView style={styles.body} contentContainerStyle={styles.copy} bounces={false}
+      showsVerticalScrollIndicator key={props.booking.id}>
       <View style={styles.routeRow}>
         <View style={[styles.dot, styles.pickupDot]} />
         <Text style={styles.routeLabel} numberOfLines={2} accessibilityLabel={`Départ : ${props.pickupLabel}`}>{props.pickupLabel}</Text>
@@ -36,12 +46,6 @@ export function DriverPendingBookingPrompt(props: Props) {
         <Text style={styles.routeLabel} numberOfLines={2} accessibilityLabel={`Destination : ${props.dropoffLabel}`}>{props.dropoffLabel}</Text>
       </View>
     </ScrollView>
-    <TouchableOpacity style={[styles.contact, props.busy && styles.disabled]}
-      accessibilityRole="button" accessibilityLabel={`Contacter ${props.booking.passengerName || 'le passager'} avant d’accepter`}
-      disabled={props.busy} onPress={() => props.onContact(props.booking.passengerId)}>
-      <Ionicons name="call-outline" size={18} color={Colors.primaryDark} />
-      <Text style={[styles.buttonText, styles.contactText]}>Contacter avant d’accepter</Text>
-    </TouchableOpacity>
     <View style={styles.actions}>
       <TouchableOpacity style={[styles.button, styles.reject, props.busy && styles.disabled]}
         accessibilityRole="button" accessibilityLabel="Refuser la réservation"
@@ -65,6 +69,8 @@ const styles = StyleSheet.create({
   card: { flexShrink: 1, minHeight: 0, padding: 12, gap: 10, backgroundColor: Colors.white,
     borderWidth: 1, borderColor: '#FFD8C6', borderRadius: 18 },
   body: { flexGrow: 0, flexShrink: 1, maxHeight: 150 },
+  heading: { flexDirection: 'row', alignItems: 'center', flexShrink: 0, gap: 8 },
+  identity: { flex: 1, minWidth: 0, gap: 3 },
   copy: { gap: 4, paddingBottom: 2 },
   eyebrow: { color: Colors.primaryDark, fontSize: 12, fontWeight: '700' },
   name: { color: Colors.gray[900], fontSize: 16, fontWeight: '700' },

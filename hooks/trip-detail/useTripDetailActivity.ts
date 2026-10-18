@@ -11,6 +11,7 @@ interface Params {
   refetchTripBookings: ReturnType<typeof useTripDetailData>['refetchTripBookings'];
   refetchKycStatus: ReturnType<typeof useTripDetailBookingState>['refetchKycStatus'];
   driverReviews: Review[] | undefined;
+  driverReviewTotal: number;
   driverAverageData: { userId: string; averageRating: number; } | undefined;
   trip: Trip | undefined;
   presentedTripDetailAutoProgressKeysRef: React.RefObject<Set<string>>;
@@ -35,7 +36,7 @@ export function useTripDetailActivity({
   refetchMyBookings,
   refetchTripBookings,
   refetchKycStatus,
-  driverReviews,
+  driverReviewTotal,
   driverAverageData,
   trip,
   presentedTripDetailAutoProgressKeysRef,
@@ -67,12 +68,10 @@ export function useTripDetailActivity({
       setRefreshing(false);
     }
   }, [refetchTrip, refetchMyBookings, refetchTripBookings, refetchKycStatus, setRefreshing]);
-  const driverReviewCount = driverReviews?.length ?? 0;
+  const driverReviewCount = driverReviewTotal;
   const rawDriverReviewAverage =
     driverAverageData?.averageRating ??
-    (driverReviewCount && driverReviews
-      ? driverReviews.reduce((sum, review) => sum + review.rating, 0) / driverReviewCount
-      : trip?.driverRating ?? 0);
+    trip?.driverRating ?? 0;
   const parsedDriverReviewAverage = Number(rawDriverReviewAverage);
   const driverReviewAverage = Number.isFinite(parsedDriverReviewAverage)
     ? parsedDriverReviewAverage

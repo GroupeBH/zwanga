@@ -147,9 +147,11 @@ test('booking panel switches without delayed reopening and ignores actions after
 test('trip detail native modals share the route overlay and booking panels support Android back', () => {
   const source = fs.readFileSync('app/trip/[id].tsx', 'utf8');
   assert.match(source, /<RideOverlayScope[^>]+active=\{model.data.isScreenActive\}/);
-  for (const name of ['TripBookingSuccessModal', 'TripImageModal', 'TripMapModal', 'TripReviewsModal', 'TripVehicleDetailsModal']) {
+  for (const name of ['TripBookingSuccessModal', 'TripImageModal', 'TripMapModal', 'TripVehicleDetailsModal']) {
     assert.match(fs.readFileSync(`features/trip-detail/${name}.tsx`, 'utf8'), /RideModal as Modal/);
   }
+  assert.match(fs.readFileSync('features/trip-detail/TripReviewsModal.tsx', 'utf8'), /<ProfileReviewsModal/);
+  assert.match(fs.readFileSync('components/profile/ProfileReviewsModal.tsx', 'utf8'), /RideModal as Modal/);
   assert.match(fs.readFileSync('features/trip-detail/TripBookingSuccessModal.tsx', 'utf8'), /onRequestClose=\{closeBookingSuccessModal\}/);
   assert.match(fs.readFileSync('features/trip-detail/TripBookingModal.tsx', 'utf8'), /onRequestClose=\{closeBookingModal\}/);
   assert.doesNotMatch(fs.readFileSync('hooks/trip-detail/useTripBookingWizard.ts', 'utf8'), /setTimeout/);

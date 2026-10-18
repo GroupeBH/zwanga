@@ -4,7 +4,7 @@ const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
-const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
+const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children), ...all(node.props?.secondaryActions)];
 const words = node => typeof node === 'string' ? node : typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(words).join('') : words(node?.props?.children ?? '');
 const flat = style => Object.assign({}, ...(Array.isArray(style) ? style.flat(Infinity) : [style]).filter(Boolean));
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollView: 'Scroll', ActivityIndicator: 'Spinner',
@@ -105,9 +105,11 @@ test('map controls use one row for pending booking and preserve their actions an
   assert.equal(flat(tree.props.style).flexDirection, 'row');
   const buttons = all(tree).filter(n => n.type === 'Button');
   assert.equal(buttons.length, 4);
-  buttons[0].props.onPress(); buttons[1].props.onPress(); buttons[3].props.onPress();
-  assert.deepEqual(calls, ['pause', 'voice', 'reroute']);
-  buttons[2].props.onPress(); tree = render();
+  buttons[2].props.onPress();
+  assert.deepEqual(calls, ['pause']);
+  assert.equal(buttons[2].props.accessibilityLabel, 'Arrêter le trajet');
+  assert.equal(buttons[1].props.accessibilityLabel, 'Partager le trajet');
+  buttons[3].props.onPress(); tree = render();
   const popup = tree.props.children[0]; const popupStyle = flat(popup.props.style); const frame = flat(tree.props.style);
   assert.ok(popupStyle.bottom >= 48);
   assert.ok(frame.minHeight >= popupStyle.maxHeight + popupStyle.bottom);

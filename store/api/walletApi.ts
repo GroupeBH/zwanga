@@ -23,7 +23,8 @@ type InitiateWalletTopUpPayload = {
   declineUrl?: string;
 };
 
-type TransferWalletPointsPayload = {
+export type TransferWalletPointsPayload = {
+  idempotencyKey?: string;
   amount: number;
   recipientUserId?: string;
   recipientPhone?: string;

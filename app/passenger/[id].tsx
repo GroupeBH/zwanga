@@ -1,7 +1,9 @@
 import { styles } from '../../features/screen-styles/app/passenger/detail/index';
 import { Colors } from '@/constants/styles';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { useGetAverageRatingQuery, useGetReviewsQuery } from '@/store/api/reviewApi';
+import { useGetAverageRatingQuery } from '@/store/api/reviewApi';
+import { usePublicReviewPage } from '@/hooks/usePublicReviewPage';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,9 +30,7 @@ export default function PassengerDetailsScreen() {
     skip: !passengerId || !active,
   });
 
-  const { data: reviews, refetch: refetchReviews } = useGetReviewsQuery(passengerId, {
-    skip: !passengerId || !active,
-  });
+  const { reviews, total: reviewCount, refetch: refetchReviews, pagination } = usePublicReviewPage(passengerId, active);
 
   const { data: avgRatingData, refetch: refetchAvgRating } = useGetAverageRatingQuery(passengerId, {
     skip: !passengerId || !active,
@@ -54,17 +54,12 @@ export default function PassengerDetailsScreen() {
     }
   }, [active, refetchPassenger, refetchReviews, refetchAvgRating]);
 
-  const reviewCount = reviews?.length ?? 0;
   const averageRating = useMemo(() => {
     if (avgRatingData?.averageRating !== undefined) {
       return avgRatingData.averageRating;
     }
-    if (reviews && reviews.length > 0) {
-      const sum = reviews.reduce((acc, review) => acc + review.rating, 0);
-      return sum / reviews.length;
-    }
     return passenger?.rating ?? 0;
-  }, [avgRatingData, reviews, passenger?.rating]);
+  }, [avgRatingData, passenger?.rating]);
 
   const passengerName = useMemo(() => {
     if (!passenger) return '';
@@ -212,7 +207,7 @@ export default function PassengerDetailsScreen() {
         <View style={styles.section}>
           <View style={styles.reviewsCard}>
             <Text style={styles.sectionTitle}>AVIS ({reviewCount})</Text>
-            {reviewCount === 0 ? (
+            {reviewCount === 0 && !pagination.busy && !pagination.error ? (
               <Text style={styles.emptyReviewsText}>
                 Pas encore d’avis pour ce passager
               </Text>
@@ -245,6 +240,7 @@ export default function PassengerDetailsScreen() {
                 ))}
               </View>
             )}
+            <HistoryPagination {...pagination} />
           </View>
         </View>
       </ScrollView>

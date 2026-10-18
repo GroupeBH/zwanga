@@ -2,6 +2,7 @@ import { useRequestCards } from '@/hooks/requests/useRequestCards';
 import { useRequestsData } from '@/hooks/requests/useRequestsData';
 import { styles } from '@/features/screen-styles/app/requests';
 import { RequestsListState } from '@/features/requests/RequestsListState';
+import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { filterRequestIndex, indexRequests, type RequestTab } from '@/features/requests/requestsListModel';
 import { Colors } from '@/constants/styles';
 import type { TripRequest } from '@/types';
@@ -23,7 +24,7 @@ export default function TripRequestsScreen() {
   const listRef = useRef<FlatList<TripRequest>>(null);
   const [requestedTab, setActiveTab] = useState<RequestTab>('available');
   const [search, setSearch] = useState('');
-  const { activeTab, requests, isDriver, isLoading, isFetching, isError, hasData, proximityAvailable, refresh } = useRequestsData(requestedTab);
+  const { activeTab, requests, isDriver, isLoading, isFetching, isError, hasData, proximityAvailable, refresh, pagination } = useRequestsData(requestedTab, search);
   const index = useMemo(() => indexRequests(requests), [requests]);
   const filteredRequests = useMemo(() => filterRequestIndex(index, search), [index, search]);
   const searching = Boolean(search.trim());
@@ -47,8 +48,8 @@ export default function TripRequestsScreen() {
   const count = filteredRequests.length;
   const listDescription = searching ? `${count} résultat${count > 1 ? 's' : ''}`
     : `${count} commande${count > 1 ? 's' : ''}`;
-  const sortDescription = activeTab === 'my-requests' ? 'Réponses en premier'
-    : proximityAvailable ? 'Plus proches en premier' : 'Plus tôt en premier';
+  const sortDescription = activeTab === 'my-requests' ? 'Réponses en premier sur cette page'
+    : proximityAvailable ? 'Commandes récentes · plus proches sur cette page' : 'Commandes récentes · plus tôt sur cette page';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -107,6 +108,7 @@ export default function TripRequestsScreen() {
         ListEmptyComponent={<RequestsListState loading={Boolean(isLoading)}
           error={Boolean(isError)} searching={searching} busy={Boolean(isFetching)} tab={activeTab}
           onRetry={refresh} onClearSearch={() => changeSearch('')} />}
+        ListFooterComponent={<HistoryPagination {...pagination} />}
       />
 
       {activeTab === 'my-requests' && <View style={styles.footer}>

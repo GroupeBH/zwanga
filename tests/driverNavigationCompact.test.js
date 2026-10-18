@@ -49,7 +49,7 @@ test('guidance preserves full directions in a bounded scroll region above the ho
   assert.equal(DriverNavigationGuidance({ ...props, step: undefined }), null);
 });
 
-test('next pickup or destination and the complete passenger list have distinct accessible actions', () => {
+test('next stop is readable without opening a modal or confirming anything', () => {
   const { DriverNavigationPassengersBar } = load('features/driver-navigation/DriverNavigationPassengersBar.tsx');
   for (const type of ['pickup', 'dropoff']) {
     const calls = [];
@@ -60,24 +60,22 @@ test('next pickup or destination and the complete passenger list have distinct a
         setActiveWaypoint: value => calls.push(['waypoint', value.id]), setWaypointModalVisible: value => calls.push(['open', value]) } };
     const props = { foundation, bookingActions: {}, passengerPresentation: { passengerStats: { totalPassengers: 3, inVehicle: 1, pendingPickups: 2 } } };
     const tree = DriverNavigationPassengersBar(props);
-    assert.match(words(tree), type === 'pickup' ? /Aller chercher/ : /Déposer le passager/);
-    assert.match(words(tree), /Passager test.*Adresse du point de rendez-vous.*Passagers.*1\s+à bord/);
+    assert.match(words(tree), type === 'pickup' ? /Allez chercher/ : /Emmenez le passager/);
+    assert.match(words(tree), /Passager test.*Adresse du point de rendez-vous/);
     assert.doesNotMatch(words(tree), /Suivi actif/);
     const buttons = all(tree).filter(n => n.type === 'Button');
-    assert.equal(buttons.length, 2);
-    for (const button of buttons) { assert.ok(flat(button.props.style).minHeight >= 44); button.props.onPress(); }
-    assert.match(buttons[0].props.accessibilityHint, /Ne valide pas l’étape/);
-    assert.match(buttons[1].props.accessibilityLabel, /3 passagers, 1 à bord, 2 à récupérer/);
-    assert.deepEqual(calls, [['waypoint', 'stop'], ['open', true], ['passengers', true]]);
-    assert.equal(foundation.refs.waypointModalVisibleRef.current, true);
+    assert.equal(buttons.length, 0, 'context does not open an intermediate screen');
+    assert.ok(all(tree).filter(n => n.type === 'Text').every(n => !n.props.numberOfLines), 'full names and addresses stay readable');
+    assert.deepEqual(calls, []);
+    assert.equal(foundation.refs.waypointModalVisibleRef.current, false);
     waypoint.completed = true;
-    assert.match(words(DriverNavigationPassengersBar(props)), /Arrêts effectués/);
-    assert.equal(all(DriverNavigationPassengersBar(props)).filter(n => n.type === 'Button').length, 1);
+    assert.match(words(DriverNavigationPassengersBar(props)), /Allez à l’arrivée/);
+    assert.equal(all(DriverNavigationPassengersBar(props)).filter(n => n.type === 'Button').length, 0);
     waypoint.completed = false;
     foundation.mapState.currentWaypointIndex = 1;
     const noCurrent = DriverNavigationPassengersBar(props);
-    assert.match(words(noCurrent), /Vos arrêts/);
-    assert.equal(all(noCurrent).find(n => n.type === 'Icon').props.name, 'list-outline');
+    assert.match(words(noCurrent), /Vérifiez le prochain passager/);
+    assert.match(words(noCurrent), /Les arrêts/);
     foundation.mapState.waypoints = [];
     assert.equal(all(DriverNavigationPassengersBar(props)).filter(n => n.type === 'Button').length, 0);
   }

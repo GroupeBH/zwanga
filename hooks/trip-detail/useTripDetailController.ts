@@ -40,6 +40,7 @@ export function useTripDetailController() {
     refetchTripBookings: data.refetchTripBookings,
     refetchKycStatus: bookingState.refetchKycStatus,
     driverReviews: bookingState.driverReviews,
+    driverReviewTotal: bookingState.driverReviewTotal,
     driverAverageData: bookingState.driverAverageData,
     trip: data.trip,
     presentedTripDetailAutoProgressKeysRef: data.presentedTripDetailAutoProgressKeysRef,

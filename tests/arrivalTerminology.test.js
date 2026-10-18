@@ -26,19 +26,23 @@ test('passenger copy distinguishes travel, pending confirmation and confirmed ar
   assert.match(render({}), /En route vers votre destination/);
   assert.doesNotMatch(render({}), /Arrivée à destination confirmée|Trajet terminé/);
   const pending = render({ droppedOffConfirmedByPassenger: true });
-  assert.match(pending, /Confirmation de l’arrivée à destination en cours/);
+  assert.match(pending, /Votre arrivée est enregistrée/);
   assert.doesNotMatch(pending, /Arrivée à destination confirmée|Trajet terminé/);
   const confirmed = render({ droppedOff: true, droppedOffConfirmedByPassenger: true });
-  assert.match(confirmed, /Arrivée à destination confirmée/);
+  assert.match(confirmed, /Vous êtes arrivé/);
   assert.doesNotMatch(confirmed, /en cours|Trajet terminé|dépose/i);
   hooks.unmount();
 });
 
-test('in-progress ride presentation no longer uses the old arrival terminology', () => {
+test('passenger-facing arrival labels avoid driver jargon; the driver waypoint uses plain language', () => {
   const scopes = ['driver-navigation', 'passenger-navigation', 'ride-recovery', 'driver-payments'];
   for (const scope of scopes) {
     const folder = path.join(process.cwd(), 'features', scope);
     for (const file of fs.readdirSync(folder).filter(file => /\.tsx?$/.test(file))) {
+      if (scope === 'driver-navigation' && file === 'NavigationWaypointModal.tsx') {
+        assert.match(fs.readFileSync(path.join(folder, file), 'utf8'), /Où déposer le passager/);
+        continue;
+      }
       assert.doesNotMatch(fs.readFileSync(path.join(folder, file), 'utf8'), /\bd[ée]pos[ée]/iu, `${scope}/${file}`);
     }
   }
