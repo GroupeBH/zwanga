@@ -62,7 +62,9 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       }
       // A new reservation must not replace the driver's current screen. Its
       // notification and the existing passenger cards already expose the actions.
-      if (invitation.kind === 'booking' && !pressed) return;
+      // Entry routing owns automatic presentation after checking ongoing rides.
+      // A delivery alone must not steal a payment, chat or navigation screen.
+      if (!pressed) return;
       if (!disposed) {
         const href = invitationHref(invitation);
         router.navigate({ ...href, params: { ...href.params, ...(pressed ? { actionEvent: String(Date.now()) } : {}) } });

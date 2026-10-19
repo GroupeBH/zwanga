@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
+const { ENTRY_LOAD_TIMEOUT_MS } = loader()('services/entryRecovery.ts');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((ok, no) => { resolve = ok; reject = no; }); return { promise, resolve, reject }; };
 const trip = (overrides = {}) => ({ id: 'trip', driverId: 'driver', status: 'ongoing', ...overrides });
@@ -43,11 +44,11 @@ test('empty fresh discovery releases the cover without waiting for the timeout',
   app.render(); assert.equal(app.render().visible, false); assert.deepEqual(app.reads, []);
 });
 
-test('slow discovery exposes retry and an escape after eight seconds; a late reply cannot hijack Home', async t => {
+test('slow discovery exposes retry after the entry budget; a late reply cannot hijack Home', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise });
   assert.equal(app.render().failed, false);
-  t.mock.timers.tick(7999); assert.equal(app.render().failed, false);
+  t.mock.timers.tick(ENTRY_LOAD_TIMEOUT_MS - 1); assert.equal(app.render().failed, false);
   t.mock.timers.tick(1); const stalled = app.render();
   assert.equal(stalled.visible, true); assert.equal(stalled.failed, true);
   stalled.dismiss(); assert.equal(app.render().visible, false);
@@ -102,15 +103,31 @@ test('the initial Home stays covered before the navigator is ready, without navi
   assert.deepEqual(app.calls, ['/trip/navigate/trip']);
 });
 
-test('profile loading shares the same eight-second recovery instead of an endless second loader', t => {
+test('profile loading shares the entry recovery budget instead of an endless second loader', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = fixture(t, { trips: { isSuccess: false }, bookings: { isSuccess: false },
     homeRole: { ready: false, failed: false, retry: async () => {} } });
   app.render();
   app.options.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, fulfilledTimeStamp: Date.now() };
   app.render(); assert.equal(app.render().visible, true);
-  t.mock.timers.tick(8000); assert.equal(app.render().failed, true);
+  t.mock.timers.tick(ENTRY_LOAD_TIMEOUT_MS); assert.equal(app.render().failed, true);
   app.options.homeRole.ready = true; assert.equal(app.render().visible, false);
+});
+
+test('ongoing ride Retry cancels a stuck verification and ignores its late completion', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const old = deferred(); let calls = 0, signal;
+  const app = fixture(t, { readTrip: (_id, attemptSignal) => { calls++; if (calls === 1) { signal = attemptSignal; return old.promise; } return Promise.resolve(trip()); } });
+  app.render(); t.mock.timers.tick(ENTRY_LOAD_TIMEOUT_MS); assert.equal(app.render().failed, true);
+  assert.equal(signal.aborted, true); app.render().retry(); app.render(); await flush();
+  assert.equal(calls, 2); old.resolve(trip()); await flush(); assert.deepEqual(app.calls, ['/trip/navigate/trip']);
+});
+
+test('a thrown ongoing ride redirect remains retryable instead of being silently consumed', async t => {
+  const app = fixture(t); let fail = true;
+  app.options.replace = path => { if (fail) throw new Error('router unavailable'); app.calls.push(path); };
+  app.render(); await flush(); assert.equal(app.render().failed, true);
+  fail = false; app.render().retry(); app.render(); await flush(); assert.deepEqual(app.calls, ['/trip/navigate/trip']);
 });
 
 test('driver entry verifies the server, resumes once, and a voluntary Home return stays on Home', async t => {

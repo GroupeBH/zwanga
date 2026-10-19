@@ -20,7 +20,6 @@ export function ProtectedAppStack() {
       }}
     >
       <Stack.Protected guard={allowStartup}>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="splash" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="background-location-disclosure" options={{ headerShown: false }} />
@@ -28,6 +27,9 @@ export function ProtectedAppStack() {
       <Stack.Screen name="auth-entry" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
       <Stack.Screen name="app-update" options={{ headerShown: false }} />
+      {/* Warm root links (including the dev client) still target index after startup.
+          It only redirects using session state; private screens keep their guard. */}
+      <Stack.Screen name="index" options={{ headerShown: false }} />
 
       <Stack.Protected guard={hasSession}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

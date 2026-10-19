@@ -321,7 +321,7 @@ test('server extra-seat rejection overrides stale approved identity without repl
   app.hooks.unmount();
 });
 
-test('submission prevents double taps, omits unspecified seats and waits for the success navigation choice', async () => {
+test('submission prevents double taps, omits unspecified seats and opens tracking without another confirmation', async () => {
   const pending = deferred();
   const calls = [];
   const app = submissionHarness({ create: (args) => { calls.push(args); return pending.promise; } });
@@ -335,8 +335,8 @@ test('submission prevents double taps, omits unspecified seats and waits for the
   pending.resolve({ id: 'new-request' });
   await first;
   const success = app.render();
-  assert.equal(success.isRequestSuccessVisible, true);
-  assert.deepEqual(app.routes, []);
+  assert.equal(success.isRequestSuccessVisible, false);
+  assert.deepEqual(app.routes, ['/request/new-request']);
   success.goToRequestSuccessDetail();
   assert.deepEqual(app.routes, ['/request/new-request']);
   assert.deepEqual(app.dialogs, []);
@@ -357,7 +357,7 @@ test('confirmation sends the displayed recommendation per seat, not a new estima
   assert.equal(payload.maxPricePerSeat, 2000);
   assert.equal(payload.maxPricePerSeat * payload.numberOfSeats, 4000);
   app.render().goHomeAfterRequestSuccess();
-  assert.deepEqual(app.routes, ['/(tabs)']);
+  assert.deepEqual(app.routes, ['/request/created']);
   app.hooks.unmount();
 });
 
@@ -437,7 +437,8 @@ test('ambiguous creation reconciles by reading requests, without replaying the P
   assert.equal(creates, 1);
   assert.equal(reads, 1);
   assert.equal(app.render().createdRequestId, 'recovered');
-  assert.deepEqual(app.routes, []);
+  assert.deepEqual(app.routes, ['/request/recovered']);
+  assert.equal(app.render().isRequestSuccessVisible, false, 'open tracking without an extra success modal');
   app.hooks.unmount();
 });
 

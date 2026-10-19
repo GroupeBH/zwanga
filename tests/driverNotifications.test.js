@@ -111,7 +111,7 @@ test('new native binaries use the bundled channel for booking and dispatch and s
     assert.equal(f.displays[0].android.actions.length, 2);
     f.appState.currentState = 'active';
     await f.loaded.dismissDriverDecision(driverId, payload.type === 'new_booking' ? 'booking' : 'dispatch', id);
-    assert.deepEqual(f.cancelled, [f.displays[0].id]);
+    assert.deepEqual(f.cancelled, [f.displays[0].id, `ride-handoff-${f.displays[0].id}`]);
   }
 });
 
@@ -166,7 +166,7 @@ test('a confirmed decision cancels only this account invitation without replayin
   f.displays.push({ id: 'foreign', data: { ...data, driverId: '00000000-0000-4000-8000-000000000099' } });
   f.appState.currentState = 'active';
   await f.loaded.dismissDriverDecision(driverId, 'dispatch', id);
-  assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`]);
+  assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`, `ride-handoff-driver-dispatch-${id}`]);
   f.appState.currentState = 'background';
   await f.loaded.displayDriverInvitation(data);
   assert.equal(f.displays.length, 3, 'dismissed notification must not ring on redelivery');
@@ -231,7 +231,7 @@ test('foreground bookings use one silent Android banner with direct actions, not
   assert.deepEqual(f.displays[0].android.actions.map(action => action.pressAction.id), ['driver-decline', 'driver-accept']);
   assert.equal(f.storage.size, 0, 'delivery does not create a decision');
   await f.loaded.dismissDriverDecision(driverId, 'booking', id);
-  assert.ok(f.cancelled.every(value => value === `driver-booking-${id}`));
+  assert.ok(f.cancelled.every(value => [`driver-booking-${id}`, `ride-handoff-driver-booking-${id}`].includes(value)));
   f.appState.currentState = 'background'; await f.loaded.displayDriverInvitation(payload);
   assert.equal(f.displays.length, 1, 'acknowledged receipt must not start ringing later');
   const ios = service('ios'); ios.appState.currentState = 'active';

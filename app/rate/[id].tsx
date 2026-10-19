@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 
 export default function RateScreen() {
-  const { active, ratingScopeKey, selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, captureRatingSession, successReturnTimeoutRef, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
+  const { active, ratingScopeKey, selectedTags, setSelectedTags, submitInFlightRef, isSubmittingReview, setSubmitSuccessMessage, rating, showDialog, trip, tripId, rateTargetType, selectedPassenger, passengers, comment, createReview, captureRatingSession, goHomeAfterRating, goBackSafely, reportReason, isTripDriver, isTripPassenger, activeTab, setActiveTab, setRateTargetType, setSelectedPassenger, bookingsLoading, bookingsError, refetchBookings, setRating, rateTags, setComment, submitSuccessMessage, reportReasons, setReportReason } = useRatingData();
 
   const { getRatingText, toggleTag, handleSubmitRating } = useRatingActions({
     selectedTags,
@@ -30,8 +30,7 @@ export default function RateScreen() {
     comment,
     createReview,
     captureRatingSession,
-    successReturnTimeoutRef,
-    goBackSafely,
+    goHomeAfterRating,
   });
   const { handleSubmitReport, isSendingReport, reportSent } = useRatingReport({
     scopeKey: ratingScopeKey,

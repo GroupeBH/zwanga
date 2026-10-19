@@ -2,17 +2,23 @@ import { RequestRouteMapData } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { getRouteCoordinates } from '@/utils/routeApi';
 
 export type CollapsibleRouteMapProps = {
   arrivalName: string;
   departureName: string;
   mapData: RequestRouteMapData | null;
   routeCoordinates: LatLng[];
+  variant?: 'dark' | 'light';
+  initiallyExpanded?: boolean;
+  summary?: ReactNode;
+  expandLabel?: string;
+  toggleAppearance?: 'button' | 'text';
 };
 
 export function CollapsibleRouteMap({
@@ -20,15 +26,34 @@ export function CollapsibleRouteMap({
   departureName,
   mapData,
   routeCoordinates,
+  variant = 'dark',
+  initiallyExpanded = false,
+  summary,
+  expandLabel = 'Carte',
+  toggleAppearance = 'button',
 }: CollapsibleRouteMapProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const mapRef = useRef<MapView>(null);
+  const active = useScreenIsActive();
+  const [loadedRoute, setLoadedRoute] = useState<LatLng[]>([]);
+  const fromLat = mapData?.departureCoordinate.latitude, fromLng = mapData?.departureCoordinate.longitude;
+  const toLat = mapData?.arrivalCoordinate.latitude, toLng = mapData?.arrivalCoordinate.longitude;
+  const suppliedRoute = routeCoordinates.length > 1;
+  useEffect(() => {
+    if (!isExpanded || !active || suppliedRoute || fromLat === undefined || fromLng === undefined || toLat === undefined || toLng === undefined) return;
+    let current = true;
+    setLoadedRoute([]);
+    void getRouteCoordinates({ latitude: fromLat, longitude: fromLng }, { latitude: toLat, longitude: toLng })
+      .then(coordinates => { if (current) setLoadedRoute(coordinates ?? []); }).catch(() => {});
+    return () => { current = false; };
+  }, [isExpanded, active, suppliedRoute, fromLat, fromLng, toLat, toLng]);
+  const displayedCoordinates = suppliedRoute ? routeCoordinates : loadedRoute;
 
   const fitMapToRoute = useCallback(() => {
     if (!mapData) return;
 
     const visibleCoordinates =
-      routeCoordinates.length > 1 ? routeCoordinates : mapData.fallbackCoordinates;
+      displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates;
 
     requestAnimationFrame(() => {
       mapRef.current?.fitToCoordinates(visibleCoordinates, {
@@ -36,7 +61,7 @@ export function CollapsibleRouteMap({
         animated: false,
       });
     });
-  }, [mapData, routeCoordinates]);
+  }, [mapData, displayedCoordinates]);
 
   useEffect(() => {
     if (isExpanded) {
@@ -47,43 +72,51 @@ export function CollapsibleRouteMap({
   const toggleMap = useCallback(() => {
     setIsExpanded((currentValue) => !currentValue);
   }, []);
+  const textToggle = variant === 'light' && toggleAppearance === 'text';
 
   if (!mapData) {
-    return (
+    const unavailable = (
       <View
         accessibilityLabel="Carte indisponible pour ce trajet"
-        style={[styles.driverMapIconButton, styles.driverMapIconButtonDisabled]}
+        style={[styles.driverMapIconButton, variant === 'light' && light.button,
+          styles.driverMapIconButtonDisabled, textToggle && light.textToggle]}
       >
         <Ionicons name="map-outline" size={16} color={Colors.gray[400]} />
+        {textToggle && <Text style={light.textToggleLabel}>Carte indisponible</Text>}
       </View>
     );
+    return summary ? <View style={light.summaryRow}>{summary}{unavailable}</View> : unavailable;
   }
 
-  return (
-    <>
-      <Pressable
+  const toggle = <Pressable
         accessibilityRole="button"
-        accessibilityLabel={isExpanded ? 'Masquer la carte du trajet' : 'Afficher la carte du trajet'}
+        accessibilityLabel={isExpanded ? 'Masquer la carte du trajet' : expandLabel === 'Carte' ? 'Afficher la carte du trajet' : expandLabel}
         accessibilityState={{ expanded: isExpanded }}
         onPress={toggleMap}
         style={({ pressed }) => [
           styles.driverMapIconButton,
-          isExpanded && styles.driverMapIconButtonActive,
+          variant === 'light' && light.button,
+          textToggle && light.textToggle,
+          isExpanded && !textToggle && styles.driverMapIconButtonActive,
           pressed && styles.driverMapIconButtonPressed,
         ]}
       >
         <Ionicons
           name={isExpanded ? 'map' : 'map-outline'}
           size={20}
-          color={isExpanded ? Colors.white : Colors.primaryLight}
+          color={textToggle ? Colors.gray[600] : isExpanded ? Colors.white : Colors.primaryLight}
         />
-      </Pressable>
+        {variant === 'light' && <Text style={[{ flexShrink: 1, color: isExpanded ? Colors.white : Colors.gray[800] },
+          textToggle && light.textToggleLabel]}>{isExpanded ? 'Masquer la carte' : expandLabel}</Text>}
+        {textToggle && <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.gray[500]} />}
+      </Pressable>;
 
-      {isExpanded && (
-        <Animated.View
-          entering={FadeInDown.duration(220)}
-          exiting={FadeOutUp.duration(160)}
-          style={styles.driverInlineMapFrame}
+  return (
+    <>
+      {summary ? <View style={light.summaryRow}>{summary}{toggle}</View> : toggle}
+      {isExpanded && active && (
+        <View
+          style={[styles.driverInlineMapFrame, variant === 'light' && light.frame]}
         >
           <MapView
             ref={mapRef}
@@ -96,10 +129,10 @@ export function CollapsibleRouteMap({
             pitchEnabled={false}
           >
             <Polyline
-              coordinates={routeCoordinates.length > 0 ? routeCoordinates : mapData.fallbackCoordinates}
+              coordinates={displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates}
               strokeColor={Colors.primary}
               strokeWidth={5}
-              lineDashPattern={routeCoordinates.length > 0 ? undefined : [4, 4]}
+              lineDashPattern={displayedCoordinates.length > 2 ? undefined : [4, 4]}
             />
             <Marker
               coordinate={mapData.departureCoordinate}
@@ -122,10 +155,20 @@ export function CollapsibleRouteMap({
           </MapView>
           <View pointerEvents="none" style={styles.driverMapCaption}>
             <Ionicons name="navigate" size={12} color={Colors.primaryDark} />
-            <Text style={styles.driverMapCaptionText}>Itinéraire demandé</Text>
+            <Text style={styles.driverMapCaptionText}>{displayedCoordinates.length > 2 ? 'Itinéraire demandé' : 'Départ et destination'}</Text>
           </View>
-        </Animated.View>
+        </View>
       )}
     </>
   );
 }
+const light = StyleSheet.create({
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  button: { position: 'relative', top: 0, right: 0, width: undefined, height: undefined, minHeight: 44,
+    flexDirection: 'row', gap: 8, paddingHorizontal: 14, alignSelf: 'flex-end', backgroundColor: '#F5F7FA', borderColor: '#E1E5EB' },
+  textToggle: { alignSelf: 'stretch', maxWidth: '100%', paddingHorizontal: 0, paddingVertical: 6,
+    borderWidth: 0, borderTopWidth: StyleSheet.hairlineWidth, borderColor: Colors.gray[200], borderRadius: 0,
+    backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
+  textToggleLabel: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '500', color: Colors.gray[700] },
+  frame: { height: 154, borderRadius: 16, marginTop: 4, marginHorizontal: 0, marginBottom: 8 },
+});

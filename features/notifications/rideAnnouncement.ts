@@ -1,6 +1,6 @@
 import type { RideAlert } from './rideAlert';
 
-const locationLabel = (value: unknown) => {
+export const rideSpeechLocationLabel = (value: unknown) => {
   if (typeof value !== 'string') return '';
   const label = value.slice(0, 240).replace(/<[^>]*>/g, ' ')
     .replace(/[^\p{L}\p{N} ,.'’/()-]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
@@ -13,8 +13,8 @@ export function buildRideAnnouncement(alert: RideAlert): string | null {
   if (alert.kind === 'response') return null;
   const parts = [alert.kind === 'booking' ? 'Nouvelle réservation sur votre trajet.' : 'Nouvelle commande près de vous.'];
   if (alert.data.rideSpeechVersion === '1') {
-    const departure = locationLabel(alert.data.rideDeparture);
-    const arrival = locationLabel(alert.data.rideArrival);
+    const departure = rideSpeechLocationLabel(alert.data.rideDeparture);
+    const arrival = rideSpeechLocationLabel(alert.data.rideArrival);
     if (departure) parts.push(`Départ : ${departure}.`);
     if (arrival) parts.push(`Arrivée : ${arrival}.`);
     const rawSeats = alert.data.rideSeats;

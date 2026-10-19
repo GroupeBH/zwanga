@@ -96,6 +96,14 @@ function coordinator({ authenticated = true, signingOut = false, role = 'driver'
     deactivate: () => { active = false; appState.currentState = 'background'; } };
 }
 
+test('presence never navigates on its own, even with a cached offer offline or an ongoing ride', async t => {
+  for (const activeRide of [true, false]) {
+    const app = coordinator({ activeRide }); t.after(() => app.hooks.unmount());
+    app.state.pendingOfferId = 'offer'; app.setOnline(false); app.render(); await tick();
+    app.setOnline(true); app.render(); await tick(); assert.deepEqual(app.routes, []);
+  }
+});
+
 test('fresh authorized GPS is sent automatically, without a vehicle selection or permission prompt', async () => {
   const app = coordinator(); app.render(); await tick();
   assert.deepEqual(app.calls.slice(0, 2), ['permission', 'gps']);

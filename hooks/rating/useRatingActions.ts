@@ -23,8 +23,7 @@ interface Params {
   comment: string;
   createReview: ReturnType<typeof useCreateReviewMutation>[0];
   captureRatingSession: ReturnType<typeof useRatingLifecycle>['captureRatingSession'];
-  successReturnTimeoutRef: React.RefObject<NodeJS.Timeout | null>;
-  goBackSafely: () => void;
+  goHomeAfterRating: () => void;
 }
 
 export function useRatingActions({
@@ -43,8 +42,7 @@ export function useRatingActions({
   comment,
   createReview,
   captureRatingSession,
-  successReturnTimeoutRef,
-  goBackSafely,
+  goHomeAfterRating,
 }: Params) {
   const toggleTag = (tagId: string) => {
     if (selectedTags.includes(tagId)) {
@@ -129,18 +127,6 @@ export function useRatingActions({
         rating,
         ...(reviewComment ? { comment: reviewComment } : {}),
       }).unwrap();
-
-      if (!session.canUpdate()) return;
-      // Keep a successful result on returning to this screen without replaying the POST.
-      setSubmitSuccessMessage('Évaluation envoyée. Merci pour votre retour.');
-      if (!session.canPresent()) return;
-      Keyboard.dismiss();
-      successReturnTimeoutRef.current = setTimeout(() => {
-        successReturnTimeoutRef.current = null;
-        if (session.canPresent()) {
-          goBackSafely();
-        }
-      }, 650);
     } catch (error: any) {
       if (!session.canUpdate()) return;
       submitInFlightRef.current = false;
@@ -151,7 +137,16 @@ export function useRatingActions({
         title: 'Erreur',
         message: getApiErrorMessage(error, 'Impossible de soumettre votre avis pour le moment.'),
       });
+      return;
     }
+
+    if (!session.canUpdate()) return;
+    // Keep success if saved while inactive, without navigating behind another screen.
+    // Navigation errors must not unlock a review that the server already saved.
+    setSubmitSuccessMessage('Évaluation envoyée. Merci pour votre retour.');
+    if (!session.canPresent()) return;
+    Keyboard.dismiss();
+    goHomeAfterRating();
   };
 
 

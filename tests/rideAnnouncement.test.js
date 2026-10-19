@@ -34,7 +34,7 @@ test('labels, dates, seats and unknown payload versions cannot create unbounded 
 function fixture(t) {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   const io = { active: true, ready: true, device: true, version: 0, busy: false, pending: [alert()],
-    spoken: [], pauses: 0, resumes: 0, stops: 0, loads: 0,
+    spoken: [], pauses: 0, resumes: 0, stops: 0, loads: 0, allowed: true,
     voices: async () => [{ language: 'fr-FR', identifier: 'french' }] };
   const speech = { getAvailableVoicesAsync: () => { io.loads++; return io.voices(); },
     isSpeakingAsync: async () => io.busy,
@@ -43,6 +43,7 @@ function fixture(t) {
     'react-native': { Platform: { OS: 'android' } }, 'expo-speech': speech,
     './appActivity': { isAppActive: () => io.active },
     './foregroundRideSound': { isForegroundRideSoundReady: () => io.ready,
+      canPlayForegroundRideAudio: async () => io.allowed,
       pauseForegroundRideSoundForSpeech: () => { io.pauses++; return () => { io.resumes++; }; } },
     './tokenSession': { getTokenSessionVersion: () => io.version },
     './rideAlertSession': { pendingRideAlerts: user => io.pending.filter(item => item.recipientId === user) },
@@ -144,6 +145,56 @@ test('engine failures and missing French voices fall back to the ringtone withou
   assert.equal(f.io.spoken.length, 0); assert.equal(f.io.loads, 1); assert.equal(f.io.pauses, 0);
 });
 
+test('temporary TTS failure is retried after backoff and never poisons future entry sessions', async t => {
+  const f = fixture(t); f.io.voices = async () => { throw Error('temporary'); };
+  f.run(); await tick(); assert.equal(f.io.loads, 1);
+  f.io.voices = async () => [{ language: 'fr-FR', identifier: 'recovered' }];
+  await f.advance(5001); f.run(); await tick();
+  assert.equal(f.io.loads, 2); assert.equal(f.io.spoken.length, 1);
+  assert.equal(f.io.spoken[0].options.voice, 'recovered'); f.clearRideAnnouncementSession();
+});
+
+test('entry timeout suppresses its old backlog but allows newly received foreground alerts', async t => {
+  const f = fixture(t); const { registry, source, token } = entry(f);
+  registry.publishRideEntrySource(token, { ...source, ready: false });
+  f.run(); await tick(); await f.advance(31000); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 0);
+  f.io.pending.push(alert('fresh-after-timeout')); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1); f.clearRideAnnouncementSession();
+});
+
+test('refetching unchanged priority does not cut the sentence, but a real decision does', async t => {
+  const f = fixture(t); const { registry, source, token } = entry(f);
+  await f.advance(); f.run(); await tick();
+  registry.publishRideEntrySource(token, { ...source, ready: false }); f.run(); await tick();
+  assert.equal(f.io.stops, 0);
+  registry.publishRideEntrySource(token, { ...source, ready: true }); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1);
+  registry.publishRideEntrySource(token, { ...source, message: null }); f.run(); await tick();
+  assert.equal(f.io.stops, 1);
+});
+
+test('GPS owns the ringtone pause until completion even when entry cleanup releases its lease', async t => {
+  const f = fixture(t);
+  const focus = f.load('services/rideAudioFocus.ts');
+  const { NavigationSpeech } = f.load('utils/navigationSpeech.ts');
+  f.run(); await tick(); NavigationSpeech.speak('Tournez à droite.'); await tick();
+  assert.equal(focus.isRideAudioHeld(), true);
+  f.io.spoken.at(-1).options.onDone(); assert.equal(focus.isRideAudioHeld(), false);
+  NavigationSpeech.speak('Continuez.'); await NavigationSpeech.stop();
+  assert.equal(focus.isRideAudioHeld(), false);
+});
+
+test('notification detail entry waits for verified screen data and describes it once', async t => {
+  const f = fixture(t); const path = '/request-details/request';
+  const { registry, token, source } = entry(f, path, 'Un client cherche un véhicule. Acceptez sa commande.');
+  registry.publishRideEntrySource(token, { ...source, ready: false });
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 0);
+  registry.publishRideEntrySource(token, source); await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1); assert.match(f.io.spoken[0].text, /Acceptez sa commande/);
+  f.clearRideAnnouncementSession();
+});
+
 test('does not read French route descriptions using an unrelated fallback voice', async t => {
   const f = fixture(t); f.io.voices = async () => [{ language: 'en-US', identifier: 'english' }];
   f.run(); await tick(); assert.equal(f.io.spoken.length, 0); assert.equal(f.io.pauses, 0);
@@ -164,4 +215,82 @@ test('changing account/session or logging out prevents late speech and releases 
   finish([{ language: 'fr-FR', identifier: 'french' }]); await tick(); assert.equal(f.io.spoken.length, 0);
   f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
   f.reconcileRideAnnouncement('other'); await tick(); assert.equal(f.io.stops, 1);
+});
+
+function entry(f, path = '/', text = 'Une réservation vous attend. Acceptez ou refusez.') {
+  const registry = f.load('services/rideEntryAnnouncement.ts');
+  const token = {};
+  registry.beginRideSpeechEntry(userId);
+  registry.setRideSpeechEntryGate({ userId, path, blocked: false });
+  const source = { userId, path, ready: true, message: { key: 'priority', text } };
+  registry.publishRideEntrySource(token, source);
+  return { registry, source, token };
+}
+
+test('entry waits for role/ride resolution, speaks one screen priority without a push, and does not drain the backlog', async t => {
+  const f = fixture(t); f.io.ready = false;
+  const { registry } = entry(f);
+  registry.setRideSpeechEntryGate({ userId, path: '/', blocked: true });
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.loads, 0);
+  registry.setRideSpeechEntryGate({ userId, path: '/', blocked: false });
+  f.run(); await tick(); assert.equal(f.io.loads, 0, 'allow the screen selection to settle');
+  await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1); assert.match(f.io.spoken[0].text, /Une réservation vous attend/);
+  f.io.spoken[0].options.onDone(); f.io.ready = true;
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
+  f.io.pending.push(alert('fresh')); f.run(); await tick(); assert.equal(f.io.spoken.length, 2, 'new foreground events remain supported');
+});
+
+test('a verified navigation screen wins over Home and pending nearby pushes, using the role in the ride', async t => {
+  const f = fixture(t); f.io.pending = [alert('nearby', 'nearby')];
+  const { registry } = entry(f);
+  const path = '/booking/navigate/booking';
+  registry.setRideSpeechEntryGate({ userId, path, blocked: false });
+  registry.publishRideEntrySource({}, { userId, path, ready: true,
+    message: { key: 'passenger', text: 'Votre conducteur vous attend. Retrouvez-le au point de départ.' } });
+  await f.advance(); f.run(); await tick();
+  assert.match(f.io.spoken[0].text, /Votre conducteur/); assert.equal(f.io.spoken.length, 1);
+  f.io.spoken[0].options.onDone(); f.io.pending.push(alert('late'));
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
+});
+
+test('entry is silent with denied audio, no event, unresolved data or an expired resolution window', async t => {
+  const f = fixture(t); const { registry, source, token } = entry(f);
+  registry.publishRideEntrySource(token, { ...source, ready: false });
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.loads, 0);
+  await f.advance(30001); f.run(); await tick(); assert.equal(f.io.loads, 0);
+  registry.beginRideSpeechEntry(userId); registry.publishRideEntrySource(token, { ...source, message: null });
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.loads, 0);
+  registry.beginRideSpeechEntry(userId); registry.publishRideEntrySource(token, source); f.io.allowed = false;
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.loads, 0);
+  assert.equal(registry.hasPendingRideSpeechEntry(userId), false);
+});
+
+test('late engine initialization cannot speak an old priority or cross an account change', async t => {
+  const f = fixture(t); const { registry, source, token } = entry(f); let finish;
+  f.io.voices = () => new Promise(resolve => { finish = resolve; });
+  await f.advance(); f.run(); await tick();
+  registry.publishRideEntrySource(token, { ...source, message: { key: 'new', text: 'La réservation a changé.' } });
+  finish([{ language: 'fr-FR', identifier: 'french' }]); await tick(); assert.equal(f.io.spoken.length, 0);
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.at(-1).text, 'La réservation a changé.');
+  registry.beginRideSpeechEntry('other'); f.run(); await tick(); assert.equal(f.io.stops, 1);
+});
+
+test('entry voice stops in background, a real new entry can describe it again, and GPS can interrupt it', async t => {
+  const f = fixture(t); f.io.pending = [];
+  const { registry } = entry(f); await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
+  f.io.active = false; f.stopRideAnnouncement(); await tick(); assert.equal(f.io.stops, 1);
+  f.io.active = true; registry.beginRideSpeechEntry(userId);
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 2);
+  f.load('utils/navigationSpeech.ts').NavigationSpeech.speak('Tournez à droite.'); await tick();
+  assert.equal(f.io.stops, 2); assert.equal(f.io.spoken.at(-1).text, 'Tournez à droite.');
+  assert.equal(f.io.spoken.at(-1).options.useApplicationAudioSession, true, 'restore GPS audio session after standalone entry voice');
+  f.io.active = false; f.stopRideAnnouncement(); assert.equal(f.io.stops, 2);
+});
+
+test('restored notifications never trigger a second FIFO announcement after the entry priority', async t => {
+  const f = fixture(t); f.io.pending = []; entry(f);
+  await f.advance(); f.run(); await tick(); f.io.spoken[0].options.onDone();
+  f.io.pending.push(alert('restored')); f.silenceRestoredRideAnnouncement('driver-booking-restored');
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
 });

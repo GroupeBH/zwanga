@@ -17,6 +17,8 @@ import { RequestPassengerContact } from '@/features/request-detail/RequestPassen
 import { useAppDispatch } from '@/store/hooks';
 import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 import { IncomingBookingRedirect } from '@/features/notifications/IncomingBookingRedirect';
+import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -77,28 +79,33 @@ function IncomingDriverContent() {
     seats: booking.data.numberOfSeats, pricePerSeat: booking.data.trip?.price ?? 0,
     paymentMode: booking.data.paymentMode || 'cash',
   } : null;
+  useRideEntryAnnouncement(user?.id, active, Boolean(!loading && authorized && details),
+    actionable && details ? { key: `dispatch:${id}`, text:
+      `Un client cherche un véhicule. Départ : ${details.departure}. Arrivée : ${details.arrival}. Acceptez ou refusez à l’écran.` } : null);
 
   const answer = useCallback(async (decision: DriverDecision) => {
-    if (!invitation || !actionable || inFlight.current || done) return;
+    if (!invitation || !actionable || !current.current.active || current.current.userId !== invitation.driverId || inFlight.current || done) return;
     inFlight.current = true; setBusy(true); setError('');
-    void dismissDriverInvitation(invitation).catch(() => {});
+    const version = getTokenSessionVersion();
     try {
       if (invitation.kind === 'dispatch') {
         const result = await respond({ id, decision }).unwrap();
-        if (mounted.current && current.current.active && current.current.userId === invitation.driverId &&
+        if (version === getTokenSessionVersion() && mounted.current && current.current.active && current.current.userId === invitation.driverId &&
           decision === 'accept' && result.status === 'accepted') {
           openAcceptedRequest(result.requestId);
         }
       }
       else await respondBooking({ id, accept: decision === 'accept' }).unwrap();
+      if (version !== getTokenSessionVersion() || current.current.userId !== invitation.driverId) return;
       if (mounted.current) setDone(decision);
       void dismissDriverInvitation(invitation).catch(() => {});
+      if (decision === 'decline' && mounted.current && current.current.active) router.replace('/(tabs)');
     } catch (cause) {
       if (mounted.current) setError(getApiErrorMessage(cause, 'Votre réponse n’a pas pu être confirmée. Vérifiez la connexion puis réessayez.'));
       // Reconcile an ambiguous result; never queue a later automatic acceptance.
       if (kind === 'dispatch') void refetchOffer(); else void refetchBooking();
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
-  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest]);
+  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest, router]);
 
   // Also recover a confirmed native-notification acceptance after a cold start.
   useEffect(() => {
@@ -124,20 +131,17 @@ function IncomingDriverContent() {
   const failedRead = Boolean(kind === 'dispatch' ? offer.error : booking.error);
   return <SafeAreaView style={styles.screen}>
     <View style={styles.top}>
-      <Text style={styles.eyebrow}>{kind === 'dispatch' ? 'PROPOSITION À PROXIMITÉ' : 'NOUVELLE RÉSERVATION'}</Text>
+      <Text style={styles.eyebrow}>{kind === 'dispatch' ? 'CLIENT À PROXIMITÉ' : 'NOUVELLE RÉSERVATION'}</Text>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer la proposition" disabled={busy} style={styles.close}
         onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)'); }}>
         <Ionicons name="close" size={26} color={Colors.gray[700]} />
       </TouchableOpacity>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
-      <View style={[styles.icon, done === 'accept' && styles.successIcon]}>
-        <Ionicons name={done === 'accept' ? 'checkmark' : done === 'decline' ? 'close' : 'car-outline'} size={42} color={done === 'accept' ? Colors.successDark : Colors.primary} />
-      </View>
-      <Text style={styles.title}>{done === 'accept' ? 'C’est confirmé !' : done === 'decline' ? 'Proposition refusée' : 'Un passager vous attend'}</Text>
+      <Text style={styles.title}>{done === 'accept' ? 'Ouverture du trajet…' : done === 'decline' ? 'Retour à l’accueil…' : 'Pouvez-vous le prendre ?'}</Text>
       <Text style={styles.copy}>{done === 'accept' ? 'Le passager a été informé. Retrouvez la prise en charge dans les détails.'
         : done === 'decline' ? kind === 'dispatch' ? 'La recherche peut continuer avec un autre conducteur.' : 'Le passager sera informé de votre réponse.'
-        : kind === 'dispatch' ? 'Acceptez uniquement si vous pouvez assurer cette prise en charge.' : 'Votre réponse concerne uniquement cette réservation.'}</Text>
+        : kind === 'dispatch' ? 'Vérifiez le trajet, puis acceptez ou refusez.' : 'Votre réponse concerne uniquement cette réservation.'}</Text>
       {loading && !details ? <ActivityIndicator size="large" color={Colors.primary} /> : null}
       {authorized && details && <>
         <Text style={styles.passenger}>{details.passengerName} · {details.seats} place{details.seats > 1 ? 's' : ''}</Text>
@@ -181,15 +185,14 @@ function IncomingDriverContent() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.white }, top: { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12 },
   eyebrow: { flex: 1, fontSize: 12, fontWeight: '800', letterSpacing: 1, color: Colors.primary }, close: { padding: 8 },
-  content: { padding: 24, gap: 20 }, icon: { alignSelf: 'flex-start', padding: 22, borderRadius: 28, backgroundColor: '#FFF0E9' },
-  successIcon: { backgroundColor: '#ECFAF1' }, title: { fontSize: 32, fontWeight: '800', color: Colors.gray[900] },
+  content: { padding: 20, gap: 14 }, title: { fontSize: 26, fontWeight: '800', color: Colors.gray[900] },
   copy: { fontSize: 15, lineHeight: 22, color: Colors.gray[600], fontWeight: '400' }, passenger: { fontSize: 20, fontWeight: '700', color: Colors.gray[900] },
   route: { padding: 20, backgroundColor: Colors.gray[50], borderRadius: 20, gap: 8 }, routeLabel: { fontSize: 11, letterSpacing: 1, color: Colors.gray[600], fontWeight: '700' },
   address: { color: Colors.gray[900], fontSize: 18, lineHeight: 26, fontWeight: '600' }, separator: { height: 16, borderLeftWidth: 2, borderColor: Colors.gray[300], marginLeft: 4 },
   fare: { gap: 4 }, amount: { color: Colors.gray[900], fontSize: 25, fontWeight: '800' }, countdown: { color: Colors.primaryDark, fontSize: 17, fontWeight: '700' },
   error: { color: Colors.danger, fontSize: 15, lineHeight: 23 }, retry: { padding: 16, backgroundColor: Colors.gray[100], borderRadius: 12 },
   footer: { flexDirection: 'row', gap: 12, padding: 20, borderTopWidth: 1, borderColor: Colors.gray[100] },
-  accept: { flex: 1, padding: 18, minHeight: 56, backgroundColor: Colors.primary, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  accept: { flex: 1, padding: 18, minHeight: 56, backgroundColor: '#12813C', borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   decline: { flex: 1, padding: 18, minHeight: 56, backgroundColor: Colors.gray[100], borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   acceptText: { color: Colors.white, fontSize: 17, fontWeight: '700' }, declineText: { color: Colors.gray[800], fontSize: 17, fontWeight: '700' }, disabled: { opacity: 0.45 },
 });

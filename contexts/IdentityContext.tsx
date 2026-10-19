@@ -1,7 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetKycStatusQuery } from '@/store/api/userApi';
-import { useAppSelector } from '@/store/hooks';
-import { selectUser } from '@/store/selectors';
+import { useAccountIdentityStatus } from '@/hooks/identity/useAccountIdentityStatus';
 import type { KycDocument } from '@/types';
 import { EXTRA_SEATS_IDENTITY_MESSAGE } from '@/utils/passengerSeats';
 import { useRouter } from 'expo-router';
@@ -52,7 +50,9 @@ interface IdentityContextValue {
   kycStatus: KycDocument['status'] | undefined;
   kycDocument: KycDocument | null | undefined;
   isChecking: boolean;
-  refreshKycStatus: () => void;
+  isIdentityStatusKnown: boolean;
+  hasIdentityReadError: boolean;
+  refreshKycStatus: () => Promise<void>;
   checkIdentity: (action?: IdentityAction, options?: { force?: boolean }) => boolean;
 }
 
@@ -61,27 +61,23 @@ const IdentityContext = createContext<IdentityContextValue | undefined>(undefine
 export function IdentityProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { showDialog } = useDialog();
-  const user = useAppSelector(selectUser);
-  const {
-    data: kycStatusData,
-    isFetching,
-    refetch,
-  } = useGetKycStatusQuery(undefined, {
-    skip: !user,
-    // Pas de polling : le statut KYC change rarement (seulement après upload/validation)
-    // RTK Query invalide automatiquement le cache via les tags après les mutations KYC
-    refetchOnMountOrArgChange: true, // Refetch seulement au montage ou si les args changent
-  });
-
-  // Utiliser uniquement le statut KYC de l'API comme source de vérité
-  // Ne pas se baser sur user?.status car cela peut être obsolète
-  const isKycApproved = kycStatusData?.status === 'approved';
-  const isIdentityVerified = Boolean(isKycApproved);
+  const identity = useAccountIdentityStatus();
+  const { isIdentityVerified, isChecking, isIdentityStatusKnown, hasIdentityReadError, refreshKycStatus } = identity;
 
   const checkIdentity = useCallback(
     (action: IdentityAction = 'book', options?: { force?: boolean }) => {
       if (isIdentityVerified && !options?.force) {
         return true;
+      }
+
+      if (isChecking || !isIdentityStatusKnown || hasIdentityReadError) {
+        showDialog({ variant: 'info',
+          title: isChecking ? 'Mise à jour de votre profil' : 'Statut indisponible',
+          message: isChecking ? 'Nous vérifions votre validation. Patientez un instant, puis continuez.'
+            : 'Impossible de vérifier votre validation. Vérifiez votre connexion puis réessayez. Ne recommencez pas votre vérification d’identité.',
+          actions: isChecking ? undefined : [{ label: 'Réessayer', onPress: refreshKycStatus }],
+        });
+        return false;
       }
 
       const { actionText, message } = getIdentityRequirementCopy(action);
@@ -106,25 +102,17 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
 
       return false;
     },
-    [isIdentityVerified, router, showDialog],
+    [isIdentityVerified, isChecking, isIdentityStatusKnown, hasIdentityReadError, refreshKycStatus, router, showDialog],
   );
 
   const value = useMemo<IdentityContextValue>(
     () => ({
-      isIdentityVerified,
-      // Utiliser uniquement le statut KYC de l'API, pas user?.status
-      kycStatus: kycStatusData?.status,
-      kycDocument: kycStatusData,
-      isChecking: isFetching,
-      refreshKycStatus: refetch,
+      ...identity,
       checkIdentity,
     }),
     [
       checkIdentity,
-      isFetching,
-      isIdentityVerified,
-      kycStatusData,
-      refetch,
+      identity,
     ],
   );
 

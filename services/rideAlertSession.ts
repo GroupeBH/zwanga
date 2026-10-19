@@ -8,7 +8,9 @@ const listeners = new Set<() => void>();
 let session = getTokenSessionVersion();
 let recipient: string | undefined;
 let pathname = '';
-function changed() { listeners.forEach(listener => listener()); }
+let revision = 0;
+export const getRideAlertsRevision = () => revision;
+function changed() { revision++; listeners.forEach(listener => listener()); }
 function checkSession() {
   if (session === getTokenSessionVersion()) return;
   session = getTokenSessionVersion(); alerts.clear(); acknowledged.clear(); recipient = undefined;

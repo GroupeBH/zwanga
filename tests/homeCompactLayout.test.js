@@ -40,6 +40,40 @@ test('map header keeps only initial, notifications and truthful active-trip feed
   assert.doesNotMatch(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'driver' } })), /en cours/);
 });
 
+test('Home identity uses the signed-in first name for both roles, never an available photo or a fake city name', () => {
+  for (const isDriver of [true, false]) {
+    const hooks = hookHarness();
+    const { useHomeSheet } = loader({ react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
+    const props = { isDriver, width: 390, height: 844, insets: { bottom: 34 }, latestTrips: [], availableDriverRequests: [] };
+    for (const [currentUser, expected] of [
+      [{ firstName: '  élise  ', name: 'Nom différent', profilePicture: 'photo-test', avatar: 'avatar-test' }, 'élise'],
+      [{ firstName: ' \t ', name: '  Alex   Exemple ' }, 'Alex'],
+      [{ firstName: '', name: ' ' }, ''],
+      [undefined, ''],
+      [{ firstName: 'Béatrice', profilePicture: 'autre-photo-test' }, 'Béatrice'],
+    ]) {
+      props.currentUser = currentUser;
+      const result = hooks.render(() => useHomeSheet(props));
+      assert.equal(result.firstName, expected);
+      assert.equal(Object.hasOwn(result, 'avatarUri'), false);
+    }
+    hooks.unmount();
+  }
+});
+
+test('profile button renders only one uppercase initial even when photo props exist, and still opens the profile', () => {
+  const calls = [];
+  for (const [firstName, initial] of [['  élise  ', 'É'], ['Alex Marie', 'A'], ['', '?'], ['   ', '?']]) {
+    const tree = HomeHeader.type({ firstName, insets: { top: 20 }, unreadNotifications: 0,
+      avatarUri: 'photo-test', profilePicture: 'photo-test', router: { push: path => calls.push(path) } });
+    const button = nodes(tree).find(node => node.props.accessibilityLabel === 'Ouvrir le profil');
+    assert.equal(text(button), initial);
+    assert.deepEqual(nodes(button).map(node => node.type), ['Button', 'Text']);
+    button.props.onPress();
+  }
+  assert.deepEqual(calls, Array(4).fill('/profile'));
+});
+
 test('passenger search, publish and order actions retain their existing destinations', () => {
   const calls = [];
   const tree = HomeTripsSheet.type({ ...base, router: { push: route => calls.push(route) } });

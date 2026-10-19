@@ -59,7 +59,7 @@ export function useDriverNavigationData() {
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isOwner = trip?.id === tripId && ownsTrip(trip, driverId);
   const isTripOngoing = isOwner && trip?.status === 'ongoing';
-  const { data: liveBookings, error: bookingsError, isLoading: bookingsLoading, refetch: refetchBookings } = useGetTripBookingsQuery(
+  const { data: liveBookings, error: bookingsError, isLoading: bookingsLoading, isFetching: bookingsFetching, refetch: refetchBookings } = useGetTripBookingsQuery(
     tripId,
     {
       skip: !tripId || !isOwner,
@@ -185,6 +185,8 @@ export function useDriverNavigationData() {
   ]);
 
   return {
+    driverId,
+    bookingsFetching,
     tripId,
     focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,
     isScreenActive,

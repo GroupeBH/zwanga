@@ -11,6 +11,8 @@ import { getGeoPointCoordinate, getTripLocationCoordinate } from '@/utils/tripCo
 import { useCallback, useMemo } from 'react';
 import { useAppDispatch } from '@/store/hooks';
 import { applyDriverBookingDecision } from '@/store/api/booking/driverDecisionCache';
+import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
+import { buildManageTripEntry } from '@/features/notifications/detailEntryAnnouncement';
 
 
 
@@ -18,6 +20,9 @@ export function useManageTripController() {
   const state = useManageTripState();
   const dispatch = useAppDispatch();
   const trip = state.trip;
+  useRideEntryAnnouncement(state.userId, state.isScreenActive,
+    Boolean(trip && state.bookings && state.isOwner && !state.tripLoading && !state.tripFetching && !state.bookingsFetching),
+    buildManageTripEntry(state.userId, trip, state.bookings));
 
   const refreshAll = useCallback(async () => {
     state.setRefreshing(true);

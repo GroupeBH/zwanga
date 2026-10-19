@@ -179,6 +179,7 @@ export async function consumeDriverAction(invitation: DriverInvitation, userId: 
 export async function dismissDriverInvitation(invitation: DriverAlert) {
   acknowledgeDelivery(invitation);
   await notifee.cancelNotification(invitationNotificationId(invitation));
+  if (Platform.OS === 'android') await notifee.cancelNotification(`ride-handoff-${invitationNotificationId(invitation)}`);
   // iOS remote identifiers differ from the Notifee local id.
   const presented = await Notifications.getPresentedNotificationsAsync();
   await Promise.all(presented.filter(item => {

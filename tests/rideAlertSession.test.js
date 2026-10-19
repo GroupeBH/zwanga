@@ -104,14 +104,55 @@ test('acknowledgement during async audio initialization cannot start a late ring
   assert.equal(f.io.plays, 0);
 });
 
-test('voice pause resumes only the same foreground player and cannot resurrect audio after stop/background', async () => {
+test('voice ownership covers a replacement player but cannot resurrect removed audio in background', async () => {
   const f = audioFixture(); await f.startForegroundRideSound();
   const resume = f.pauseForegroundRideSoundForSpeech(); resume(); assert.equal(f.io.plays, 2);
   const staleResume = f.pauseForegroundRideSoundForSpeech(); f.stopForegroundRideSound();
   await f.startForegroundRideSound(); const before = f.io.plays; staleResume();
+  assert.equal(f.io.plays, before + 1, 'replacement waits for the still-active voice to finish');
   f.io.active = false; const inactiveResume = f.pauseForegroundRideSoundForSpeech(); inactiveResume();
   assert.equal(f.isForegroundRideSoundReady(), false);
-  assert.equal(f.io.plays, before);
+  assert.equal(f.io.plays, before + 1);
+  f.stopForegroundRideSound();
+});
+
+test('a transient audio initialization error retries with backoff, at most three times per episode', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const f = audioFixture(); let calls = 0;
+  f.io.settings = async () => { calls++; throw Error('temporary'); };
+  await f.startForegroundRideSound(); await f.startForegroundRideSound(); assert.equal(calls, 1);
+  t.mock.timers.tick(5001); await f.startForegroundRideSound(); assert.equal(calls, 2);
+  t.mock.timers.tick(15001); await f.startForegroundRideSound(); assert.equal(calls, 3);
+  t.mock.timers.tick(60000); await f.startForegroundRideSound(); assert.equal(calls, 3);
+  f.stopForegroundRideSound();
+  f.io.settings = async () => ({ authorizationStatus: 1 });
+  await f.startForegroundRideSound(); assert.equal(f.io.plays, 1); f.stopForegroundRideSound();
+});
+
+test('new Android bridge owns notification-volume playback without initializing a media player', async () => {
+  const calls = []; const native = { startForegroundSound: async (...args) => { calls.push(['start', ...args]); return true; },
+    pauseForegroundSound: (...args) => calls.push(['pause', ...args]), stopForegroundSound: token => calls.push(['stop', token]),
+    canPlayForegroundRingtone: async () => true };
+  const load = loader({ 'react-native': { Platform: { OS: 'android' }, NativeModules: { ZwangaDriverAlerts: native }, Vibration: { vibrate() { assert.fail('native owns vibration'); }, cancel() {} } },
+    '@notifee/react-native': { getNotificationSettings: async () => ({ authorizationStatus: 1 }), getChannel: async () => ({ sound: 'driver_ring', importance: 4 }) },
+    './driverAlertChannel': { getDriverAlertChannel: async () => 'zwanga-ride-ring-v4' }, './appActivity': { isAppActive: () => true },
+    'expo-audio': { createAudioPlayer: () => assert.fail('no media stream on new Android') } });
+  const sound = load('services/foregroundRideSound.ts');
+  const focus = load('services/rideAudioFocus.ts');
+  const finish = focus.holdRideAudio(); await sound.startForegroundRideSound();
+  assert.equal(calls[0][3], true, 'native player starts paused while voice owns audio');
+  finish(); assert.equal(calls.at(-1)[2], false);
+  sound.stopForegroundRideSound(); assert.equal(calls.at(-1)[0], 'stop');
+});
+
+test('an entry voice pauses a ringtone still initializing, without starting it underneath the sentence', async () => {
+  const f = audioFixture(); let release;
+  f.io.modeReady = () => new Promise(resolve => { release = resolve; });
+  const starting = f.startForegroundRideSound(); await tick();
+  const resume = f.pauseForegroundRideSoundForSpeech();
+  release(); await starting; assert.equal(f.io.plays, 0);
+  resume(); assert.equal(f.io.plays, 1);
+  resume(); assert.equal(f.io.plays, 1, 'completion is idempotent');
   f.stopForegroundRideSound();
 });
 

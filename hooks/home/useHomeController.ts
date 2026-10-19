@@ -12,6 +12,8 @@ import { useHomeTripSelection } from './useHomeTripSelection';
 import { useHomeUserLocation } from './useHomeUserLocation';
 import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 import { useHomePriorityDismissals } from './useHomePriorityDismissals';
+import { buildHomeEntryAnnouncement } from '@/features/notifications/homeEntryAnnouncement';
+import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 
 export function useHomeController(context: ReturnType<typeof useHomeContext>) {
   const priorities = useHomePriorityDismissals(context.currentUser?.id);
@@ -43,6 +45,12 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
     || (passengerActivity.activeTripRequest && passengerActivity.activeRequestStatus),
   );
   const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed, hasMapPriorities });
+  useRideEntryAnnouncement(context.currentUser?.id, context.isScreenActive,
+    context.isHomeRoleReady && driverActivity.driverAnnouncementReady && passengerActivity.passengerAnnouncementReady && !tripSelection.activeHomeTrip &&
+      (Boolean(tripSelection.featuredDriverReservation || tripSelection.featuredDriverUpcomingTrip || tripSelection.featuredPassengerTrip) || passengerActivity.driverRequestsAnnouncementReady),
+    context.currentUser && hasMapPriorities ? buildHomeEntryAnnouncement({
+      userId: context.currentUser.id, isDriver: context.isDriver, ...tripSelection, ...passengerActivity, ...requestHighlight,
+    }) : null);
   return {
     ...context,
     ...priorities,

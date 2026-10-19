@@ -2,14 +2,14 @@ import { getLocationCoordinates } from '../../features/request-detail/requestLoc
 import { TRIP_REQUEST_VEHICLE_LABELS } from '../../features/request-detail/requestDetailModel';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { hasTripRequestExpired } from '@/features/trip-request/requestExpiration';
+import { hasTripRequestExpired, isRequestUnassigned } from '@/features/trip-request/requestExpiration';
 import { useTripStartTransition } from '@/hooks/navigation/useTripStartTransition';
 import { useStartTripMutation } from '@/store/api/tripApi';
 import {
   useAcceptTripRequestMutation,
   useStartTripFromRequestMutation,
 } from '@/store/api/tripRequestApi';
-import type { TripRequest, TripRequestVehicleType, Vehicle } from '@/types';
+import type { Trip, TripRequest, TripRequestVehicleType, Vehicle } from '@/types';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
@@ -21,8 +21,11 @@ import {
 import React from 'react';
 import type { Router } from 'expo-router';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
+import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
 
 interface Params {
+  userId?: string;
+  assignedTrip?: Trip;
   tripRequest: TripRequest | undefined;
   id: string | undefined;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
@@ -48,6 +51,8 @@ interface Params {
 }
 
 export function useRequestDriverActions({
+  userId,
+  assignedTrip,
   tripRequest,
   id,
   showDialog,
@@ -71,7 +76,29 @@ export function useRequestDriverActions({
   isCurrentDriverAssigned,
   showDirectAcceptModal,
 }: Params) {
-  const transition = useTripStartTransition(id, router, showDirectAcceptModal);
+  const transition = useTripStartTransition(`${userId ?? ''}:${id ?? ''}`, router, showDirectAcceptModal);
+  const accepted = React.useRef(false);
+  React.useEffect(() => { accepted.current = false; }, [id, userId]);
+  const handleDeclineTripRequest = () => {
+    if (accepted.current || !userId || !tripRequest || tripRequest.passengerId === userId || tripRequest.immediateDispatch ||
+      !isRequestUnassigned(tripRequest) || !transition.begin()) return;
+    // Broadcast refusal belongs to this driver only; never cancel the passenger's order.
+    // Acknowledgement is synchronous; OS cleanup must not delay leaving this screen.
+    acknowledgeRideAlerts(alert => alert.recipientId === userId && alert.kind === 'nearby' && alert.id === tripRequest.id);
+    void import('@/services/driverNotifications').then(service => service.dismissDriverDecision(userId, 'nearby', tripRequest.id)).catch(() => {});
+    router.replace('/(tabs)');
+  };
+  const handleGoPickup = async () => {
+    if (!assignedTrip || !userId || assignedTrip.driverId !== userId || assignedTrip.id !== tripRequest?.tripId ||
+      !['upcoming', 'ongoing'].includes(assignedTrip.status) || !transition.begin()) return;
+    try {
+      const trip = assignedTrip.status === 'ongoing' ? assignedTrip : await startTrip(assignedTrip.id).unwrap();
+      transition.openNavigation(trip);
+    } catch (error) {
+      if (transition.isCurrent()) showDialog({ title: 'Départ non confirmé',
+        message: getApiErrorMessage(error, 'Impossible de démarrer. Réessayez ou ouvrez la gestion de la course.'), variant: 'warning' });
+    } finally { transition.finish(); }
+  };
   const handleStartTripFromRequest = async () => {
     if (!tripRequest || !id || !transition.isCurrent()) return;
 
@@ -113,8 +140,8 @@ export function useRequestDriverActions({
     });
   };
 
-  const handleDirectAcceptTripRequest = async (startImmediately: boolean) => {
-    if (!tripRequest || !id || !directAcceptDepartureDate || !transition.isCurrent()) return;
+  const handleDirectAcceptTripRequest = async (startImmediately: boolean, stayOnRequest = false) => {
+    if (accepted.current || !tripRequest || !id || !directAcceptDepartureDate || !transition.isCurrent()) return;
     if (!canAcceptRequest || hasTripRequestExpired(tripRequest)) {
       setShowDirectAcceptModal(false);
       showDialog({
@@ -178,6 +205,8 @@ export function useRequestDriverActions({
         tripRequestId: id,
         payload,
       }).unwrap();
+      if (!transition.isCurrent()) return;
+      accepted.current = true;
       if (transition.isCurrent()) setShowDirectAcceptModal(false);
 
       if (startImmediately) {
@@ -217,7 +246,8 @@ export function useRequestDriverActions({
       }
 
       // The shared contact invitation replaces the redundant success dialog.
-      transition.openManagement(result.trip);
+      if (stayOnRequest) { void refetch(); }
+      else transition.openManagement(result.trip);
     } catch (error: any) {
       if (!transition.isCurrent()) return;
       setShowDirectAcceptModal(false);
@@ -282,6 +312,8 @@ export function useRequestDriverActions({
   };
 
   return {
+    handleGoPickup,
+    handleDeclineTripRequest,
     onDirectAcceptModalDismiss: transition.onModalDismiss,
     handleViewTrip,
     handleStartTripFromRequest,

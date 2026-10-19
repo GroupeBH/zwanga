@@ -3,20 +3,25 @@ import type { Booking, Trip } from '@/types';
 import { canResumeRideFromPath, findRideToResume, isRideNavigationPath, isRideResumeEntryTransition, verifyRideToResume } from '@/features/navigation/activeRideResume';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import type { AccountActivity } from '@/store/api/accountActivityApi';
+import type { ReconciledActivity } from '@/services/activityReadiness';
+import { isEntryActivityListReady } from '@/features/navigation/entryActivityReadiness';
+import { ENTRY_LOAD_TIMEOUT_MS, reportEntryFailure, type EntryStage } from '@/services/entryRecovery';
+import { ENTRY_CACHE_MAX_AGE_MS } from '@/features/navigation/entryFreshness';
 
 interface ActivityRead<T> { data?: T[]; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number }
 interface Options {
   userId?: string; active: boolean; online: boolean; ready: boolean; path: string; overlayBusy: boolean;
   trips: ActivityRead<Trip>; bookings: ActivityRead<Booking>;
-  activity?: { data?: AccountActivity; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number };
-  readTrip: (id: string) => Promise<Trip>; readBooking: (id: string) => Promise<Booking>;
-  replace: (path: `/trip/navigate/${string}` | `/booking/navigate/${string}`) => void;
+  activity?: { data?: AccountActivity; isSuccess: boolean; isFetching?: boolean; isError?: boolean; fulfilledTimeStamp?: number };
+  reconciled?: ReconciledActivity | null;
+  readTrip: (id: string, signal?: AbortSignal) => Promise<Trip>; readBooking: (id: string, signal?: AbortSignal) => Promise<Booking>;
+  replace: (path: `/trip/navigate/${string}` | `/booking/navigate/${string}`) => void | boolean;
   refreshActivity?: () => Promise<unknown>;
   homeRole?: { ready: boolean; failed: boolean; retry: () => Promise<unknown> };
 }
 
 function getEntryActivity(options: Options, since: number) {
-  return options.activity?.isSuccess && !options.activity.isFetching &&
+  return options.activity?.isSuccess && !options.activity.isFetching && !options.activity.isError &&
     options.activity.data?.userId === options.userId && (options.activity.fulfilledTimeStamp ?? 0) >= since
     ? options.activity.data : undefined;
 }
@@ -25,8 +30,9 @@ function getEntryActivity(options: Options, since: number) {
 export function useActiveRideResume(options: Options) {
   const { userId, active } = options;
   const [, advance] = useState(0);
-  const entry = useMemo(() => ({ userId, active, since: Date.now(), consumed: false, pending: false,
+  const entry = useMemo(() => ({ userId, active, since: Date.now() - ENTRY_CACHE_MAX_AGE_MS, consumed: false, pending: false,
     mounted: true, path: null as string | null, attempt: '', failed: false, redirecting: false,
+    controller: undefined as AbortController | undefined, generation: 0, stage: 'activity' as EntryStage,
     rejectedTrips: new Set<string>(), rejectedBookings: new Set<string>() }), [userId, active]);
   const latest = useRef({ entry, options });
   latest.current = { entry, options };
@@ -37,7 +43,7 @@ export function useActiveRideResume(options: Options) {
   }, [entry]);
   useEffect(() => {
     entry.mounted = true;
-    return () => { entry.mounted = false; };
+    return () => { entry.mounted = false; entry.controller?.abort(); };
   }, [entry]);
 
   useEffect(() => {
@@ -65,11 +71,9 @@ export function useActiveRideResume(options: Options) {
     if (!candidate) {
       // Lists fetched before the live summary may still describe the pre-start
       // state. Wait for reconciliation instead of prematurely declaring no ride.
-      const since = summary ? options.activity!.fulfilledTimeStamp! : entry.since;
-      const tripsReady = summary?.trips?.count === 0 || (options.trips.isSuccess && !options.trips.isFetching &&
-        (options.trips.fulfilledTimeStamp ?? 0) >= since);
-      const bookingsReady = summary?.bookings?.count === 0 || (options.bookings.isSuccess && !options.bookings.isFetching &&
-        (options.bookings.fulfilledTimeStamp ?? 0) >= since);
+      const discovery = { userId, since: entry.since, summary, summaryTime: options.activity?.fulfilledTimeStamp, reconciled: options.reconciled };
+      const tripsReady = isEntryActivityListReady('trips', options.trips, discovery);
+      const bookingsReady = isEntryActivityListReady('bookings', options.bookings, discovery);
       if (tripsReady && bookingsReady) finishEntry();
       return;
     }
@@ -82,11 +86,16 @@ export function useActiveRideResume(options: Options) {
     entry.attempt = attempt;
     entry.pending = true;
     entry.failed = false;
+    const generation = ++entry.generation;
+    const controller = new AbortController(); entry.controller = controller;
+    const startedAt = Date.now();
+    entry.stage = candidate.role === 'driver' ? 'trip-detail' : 'booking-detail';
     advance(value => value + 1);
     const version = getTokenSessionVersion();
-    void verifyRideToResume(candidate, userId, { trip: options.readTrip, booking: options.readBooking }).then(path => {
+    void verifyRideToResume(candidate, userId, { trip: id => options.readTrip(id, controller.signal),
+      booking: id => options.readBooking(id, controller.signal) }).then(path => {
       const current = latest.current;
-      if (!entry.mounted || current.entry !== entry || entry.consumed || version !== getTokenSessionVersion() ||
+      if (!entry.mounted || current.entry !== entry || entry.consumed || generation !== entry.generation || controller.signal.aborted || version !== getTokenSessionVersion() ||
         !current.options.active || !current.options.online || !current.options.ready || current.options.path !== entry.path) return;
       if (current.options.overlayBusy) { entry.attempt = ''; return; }
       const currentSummary = getEntryActivity(current.options, entry.since);
@@ -99,15 +108,21 @@ export function useActiveRideResume(options: Options) {
       if (path && (latestCandidate?.role !== candidate.role || latestCandidate.tripId !== candidate.tripId ||
         latestCandidate.bookingId !== candidate.bookingId)) return;
       if (path) {
-        entry.consumed = true;
+        entry.stage = 'navigation';
         entry.redirecting = true;
-        current.options.replace(path);
+        if (current.options.replace(path) === false) entry.redirecting = false;
+        entry.consumed = true;
       } else if (candidate.bookingId) entry.rejectedBookings.add(candidate.bookingId);
       else entry.rejectedTrips.add(candidate.tripId);
-    }).catch(() => {
+    }).catch(error => {
       // Do not retry on every render. A new discovery snapshot, foreground or reconnect can retry.
-      if (entry.mounted && latest.current.entry === entry && version === getTokenSessionVersion() && !entry.consumed) entry.failed = true;
+      if (entry.mounted && latest.current.entry === entry && generation === entry.generation &&
+        !controller.signal.aborted && version === getTokenSessionVersion() && !entry.consumed) {
+        entry.redirecting = false; entry.failed = true;
+        reportEntryFailure(entry.stage, entry.stage === 'navigation' ? 'navigation' : 'read', startedAt, error);
+      }
     }).finally(() => {
+      if (generation !== entry.generation) return;
       entry.pending = false;
       // Discovery may have finished while the verification was pending.
       if (entry.mounted && latest.current.entry === entry && version === getTokenSessionVersion()) {
@@ -117,6 +132,7 @@ export function useActiveRideResume(options: Options) {
   }, [active, userId, entry, options, finishEntry]);
 
   const waitingForHomeRole = (options.path === '/' || options.path === '/(tabs)') && options.homeRole?.ready === false;
+  if (!entry.pending && !entry.redirecting) entry.stage = waitingForHomeRole ? 'profile' : 'activity';
   // Cover Home from its first render, even before the router key is available;
   // the effect above still waits for navigation readiness before replacing it.
   const pending = Boolean(userId &&
@@ -127,16 +143,20 @@ export function useActiveRideResume(options: Options) {
   useEffect(() => {
     if (!visible || failed) return;
     // A missing/slow discovery response must not leave an unescapable splash.
+    const startedAt = Date.now();
     const timer = setTimeout(() => {
       if (!entry.mounted || latest.current.entry !== entry) return;
+      reportEntryFailure(entry.stage, 'timeout', startedAt);
+      entry.generation++; entry.controller?.abort(); entry.pending = false;
       entry.failed = true;
       advance(value => value + 1);
-    }, 8000);
+    }, ENTRY_LOAD_TIMEOUT_MS);
     return () => clearTimeout(timer);
   }, [visible, failed, entry]);
 
   const retry = useCallback(() => {
     if (!entry.mounted || latest.current.entry !== entry || !latest.current.options.active || !latest.current.options.online) return;
+    entry.generation++; entry.controller?.abort(); entry.pending = false;
     if (entry.redirecting) { entry.redirecting = false; entry.consumed = false; }
     entry.failed = false;
     entry.attempt = '';
@@ -157,6 +177,7 @@ export function useActiveRideResume(options: Options) {
     });
   }, [entry]);
   const dismiss = useCallback(() => {
+    entry.generation++; entry.controller?.abort(); entry.pending = false;
     entry.redirecting = false;
     entry.consumed = true;
     advance(value => value + 1);

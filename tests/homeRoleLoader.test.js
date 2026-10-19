@@ -15,6 +15,7 @@ function fixture() {
     '@/features/navigation/appEntryContext': { useAppEntryPending: () => Boolean(state.entryPending) },
     '@/components/home/HomeDashboard': { HomeDashboard: 'Dashboard' },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'RoleLoader' },
+    '@/components/home/HomeEntryPlaceholder': { HomeEntryPlaceholder: 'RoleLoader' },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/services/ongoingTripNotification': { getCurrentTripInfo: () => null },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => profile },
@@ -75,7 +76,7 @@ for (const role of ['driver', 'passenger', 'both']) {
     const waiting = app.render();
     assert.equal(waiting.type, 'RoleLoader');
     assert.equal(waiting.props.failed, false);
-    assert.equal(waiting.props.active, true);
+    assert.equal(waiting.props.fetching, true);
     assert.equal(waiting.props.children, undefined, 'dashboard/map/work hooks are not mounted behind the loader');
     Object.assign(app.profile, { data: { id: 'me', role }, isFetching: false, isSuccess: true });
     const ready = app.render();
@@ -140,7 +141,7 @@ test('profile retries pause out of focus, in the background, before subscription
   app.profile.isFetching = false;
   for (const field of ['focused', 'active']) {
     app.state[field] = false;
-    assert.equal(app.render().props.active, false);
+    assert.equal(app.context().isScreenActive, false);
     await app.context().retryHomeRole();
     app.state[field] = true;
   }

@@ -6,7 +6,7 @@ const ts = require('typescript');
 const root = path.resolve(__dirname, '../..');
 
 // Exercise the actual TypeScript modules with native I/O mocked, not copies of their logic.
-function loader(mocks = {}) {
+function loader(mocks = {}, options = {}) {
   const cache = new Map();
   function load(relative) {
     const filename = path.resolve(root, relative);
@@ -27,7 +27,7 @@ function loader(mocks = {}) {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
       fileName: filename,
     }).outputText;
-    new Function('require', 'module', 'exports', '__DEV__', 'console', output)(requireModule, module, module.exports, false, { log() {}, warn() {}, error() {} });
+    new Function('require', 'module', 'exports', '__DEV__', 'console', output)(requireModule, module, module.exports, false, options.console ?? { log() {}, warn() {}, error() {} });
     return module.exports;
   }
   return load;

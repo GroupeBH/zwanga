@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useSyncExternalStore } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useStore } from 'react-redux';
 import type { RootState } from '@/store';
 import { usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
@@ -18,6 +18,18 @@ import { getTokenSessionVersion } from '@/services/tokenSession';
 import { isAppActive } from '@/services/appActivity';
 import { HomeRoleLoader } from '@/components/home/HomeRoleLoader';
 import { StyleSheet, View } from 'react-native';
+import { setRideSpeechEntryGate } from '@/services/rideEntryAnnouncement';
+import { findRideToResume, isRideNavigationPath, isRideResumeEntryTransition } from '@/features/navigation/activeRideResume';
+import { tripRequestApi } from '@/store/api/tripRequestApi';
+import { driverDispatchApi } from '@/store/api/driverDispatchApi';
+import { useRequestEntryResume } from '@/hooks/navigation/useRequestEntryResume';
+import { getRideAlertsRevision, pendingRideAlerts, subscribeRideAlerts } from '@/services/rideAlertSession';
+import { isDriverAccount } from '@/utils/accountRole';
+import { getActivityReadiness, subscribeActivityReadiness } from '@/services/activityReadiness';
+import { readEntryQuery, reportEntryFailure } from '@/services/entryRecovery';
+import { freshEntryData } from '@/features/navigation/entryFreshness';
+import { useEntryPresentation } from '@/hooks/navigation/useEntryPresentation';
+import { EntrySyncBanner } from '@/components/home/EntrySyncBanner';
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
@@ -39,54 +51,106 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   // Observe the shared discovery cache; do not add list subscriptions or a polling loop.
   const trips = tripApi.endpoints.getMyActivityTrips.useQueryState(undefined);
   const bookings = bookingApi.endpoints.getMyActivityBookings.useQueryState(undefined);
+  const requests = tripRequestApi.endpoints.getMyTripRequests.useQueryState(undefined);
   const activity = accountActivityApi.endpoints.getAccountActivity.useQueryState(userId ?? '');
+  const reconciled = useSyncExternalStore(subscribeActivityReadiness, getActivityReadiness, getActivityReadiness);
   // Home owns the existing profile subscription. Observe it without a second fetch.
   const profile = userApi.endpoints.getCurrentUser.useQueryState(undefined);
+  const dispatchStatus = driverDispatchApi.endpoints.driverDispatchStatus.useQueryState(undefined);
   const homeRoleReady = isHomeProfileReady(profile.data?.id === userId ? profile.data : undefined);
-  const readTrip = useCallback(async (id: string) => {
+  useEffect(() => {
+    if (active && authenticated && profile.isError && !profile.isFetching)
+      reportEntryFailure('profile', 'read', profile.startedTimeStamp ?? Date.now(), profile.error);
+  }, [active, authenticated, profile.isError, profile.isFetching, profile.error, profile.startedTimeStamp]);
+  const alertRevision = useSyncExternalStore(subscribeRideAlerts, getRideAlertsRevision, getRideAlertsRevision);
+  // Revision/focus invalidates the snapshot even when its owner is unchanged.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const alerts = useMemo(() => userId ? pendingRideAlerts(userId) : [], [userId, alertRevision, active]);
+  const currentRead = useCallback(() => {
     const version = getTokenSessionVersion();
-    const pending = dispatch(tripApi.util.getRunningQueryThunk('getTripById', id));
-    if (pending) await pending;
-    if (version !== getTokenSessionVersion() || !isAppActive() || selectEntryUserId(reduxStore.getState()) !== userId) {
-      throw new Error('Stale ride entry');
-    }
-    return dispatch(tripApi.endpoints.getTripById.initiate(id, { subscribe: false, forceRefetch: true })).unwrap();
-  }, [dispatch, reduxStore, userId]);
-  const readBooking = useCallback(async (id: string) => {
-    const version = getTokenSessionVersion();
-    const pending = dispatch(bookingApi.util.getRunningQueryThunk('getBookingById', id));
-    if (pending) await pending;
-    if (version !== getTokenSessionVersion() || !isAppActive() || selectEntryUserId(reduxStore.getState()) !== userId) {
-      throw new Error('Stale ride entry');
-    }
-    return dispatch(bookingApi.endpoints.getBookingById.initiate(id, { subscribe: false, forceRefetch: true })).unwrap();
-  }, [dispatch, reduxStore, userId]);
+    return () => Boolean(userId && version === getTokenSessionVersion() && isAppActive() && selectEntryUserId(reduxStore.getState()) === userId);
+  }, [reduxStore, userId]);
+  const readRequest = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
+    stage: 'request-detail', signal, current: currentRead(),
+    reuse: () => freshEntryData(tripRequestApi.endpoints.getTripRequestById.select(id)(reduxStore.getState())),
+    running: () => dispatch(tripRequestApi.util.getRunningQueryThunk('getTripRequestById', id)),
+    start: () => dispatch(tripRequestApi.endpoints.getTripRequestById.initiate(id, { subscribe: false, forceRefetch: true })),
+  }), [dispatch, currentRead, reduxStore]);
+  const readDispatch = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
+    stage: 'dispatch-detail', signal, current: currentRead(),
+    start: () => dispatch(driverDispatchApi.endpoints.getDispatchOffer.initiate(id, { subscribe: false, forceRefetch: true })),
+  }), [dispatch, currentRead]);
+  const readTrip = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
+    stage: 'trip-detail', signal, current: currentRead(),
+    reuse: () => freshEntryData(tripApi.endpoints.getTripById.select(id)(reduxStore.getState())),
+    running: () => dispatch(tripApi.util.getRunningQueryThunk('getTripById', id)),
+    start: () => dispatch(tripApi.endpoints.getTripById.initiate(id, { subscribe: false, forceRefetch: true })),
+  }), [dispatch, currentRead, reduxStore]);
+  const readBooking = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
+    stage: 'booking-detail', signal, current: currentRead(),
+    reuse: () => freshEntryData(bookingApi.endpoints.getBookingById.select(id)(reduxStore.getState())),
+    running: () => dispatch(bookingApi.util.getRunningQueryThunk('getBookingById', id)),
+    start: () => dispatch(bookingApi.endpoints.getBookingById.initiate(id, { subscribe: false, forceRefetch: true })),
+  }), [dispatch, currentRead, reduxStore]);
   const refreshActivity = useCallback(async () => {
     if (!userId || !isAppActive() || selectEntryUserId(reduxStore.getState()) !== userId) return;
-    await dispatch(accountActivityApi.endpoints.getAccountActivity.initiate(userId, { subscribe: false, forceRefetch: true })).unwrap();
-  }, [dispatch, reduxStore, userId]);
+    await readEntryQuery({ stage: 'activity', current: currentRead(),
+      start: () => dispatch(accountActivityApi.endpoints.getAccountActivity.initiate(userId, { subscribe: false, forceRefetch: true })) });
+  }, [dispatch, reduxStore, userId, currentRead]);
   const retryProfile = useCallback(async () => {
     if (!userId || !isAppActive() || selectEntryUserId(reduxStore.getState()) !== userId) return;
-    await dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { subscribe: false, forceRefetch: true })).unwrap();
-  }, [dispatch, reduxStore, userId]);
+    await readEntryQuery({ stage: 'profile', current: currentRead(),
+      start: () => dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { subscribe: false, forceRefetch: true })) });
+  }, [dispatch, reduxStore, userId, currentRead]);
+  const entryNavigationReady = Boolean(navigation?.key && segments[0] && !STARTUP_ROUTES.has(segments[0]));
+  const freshActivity = freshEntryData(activity);
+  const presentation = useEntryPresentation({ userId: authenticated ? userId : undefined, active, path,
+    ready: entryNavigationReady && !isRideResumeEntryTransition(path), replace: router.replace,
+    fastHome: Boolean(homeRoleReady && freshActivity && freshActivity.userId === userId && !freshActivity.hasLiveActivity &&
+      !alerts.length && !dispatchStatus.data?.pendingOfferId),
+  });
   const resume = useActiveRideResume({ userId: authenticated ? userId : undefined, active, online, path,
     // '/' can still be the startup Redirect. Let it finish before replacing the route,
     // otherwise its own Home redirect can overwrite a successful ride resume.
-    ready: Boolean(navigation?.key && segments[0] && !STARTUP_ROUTES.has(segments[0])),
-    overlayBusy, trips, bookings, activity, readTrip, readBooking,
-    replace: router.replace, refreshActivity,
+    ready: entryNavigationReady,
+    overlayBusy, trips, bookings, activity, reconciled, readTrip, readBooking,
+    replace: presentation.replace, refreshActivity,
     homeRole: { ready: homeRoleReady, failed: !profile.isFetching && (profile.isError || profile.isSuccess), retry: retryProfile } });
+  const requestResume = useRequestEntryResume({ userId: authenticated ? userId : undefined, active, online, path,
+    ready: entryNavigationReady, overlayBusy, ridePending: resume.pending,
+    hasOngoingRide: Boolean((typeof presentation.proposal === 'string' && isRideNavigationPath(presentation.proposal)) ||
+      (resume.pending && userId && findRideToResume(userId, trips.data, bookings.data))),
+    driver: homeRoleReady && isDriverAccount(profile.data), profileReady: homeRoleReady,
+    pendingDispatchId: dispatchStatus.isSuccess && !dispatchStatus.isFetching && !dispatchStatus.isError && dispatchStatus.data?.enabled
+      ? dispatchStatus.data.pendingOfferId : null,
+    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readDispatch, replace: presentation.replace, refresh: refreshActivity });
+  const entryPending = resume.pending || requestResume.pending;
+  const failed = resume.pending ? resume.failed : requestResume.failed;
+  const blocking = entryPending && !presentation.released && !failed && online;
+  const { reveal } = presentation;
+  useEffect(() => {
+    if (entryNavigationReady && !isRideResumeEntryTransition(path) && (!entryPending || failed || !online)) reveal();
+  }, [entryNavigationReady, path, entryPending, failed, online, reveal]);
+  const retry = () => { if (resume.pending) resume.retry(); else requestResume.retry(); };
+  const onHome = path === '/' || path === '/(tabs)';
+  const proposal = presentation.proposal;
+  const actionLabel = proposal ? typeof proposal === 'string' && /\/(trip|booking)\/navigate\//.test(proposal)
+    ? 'Reprendre mon trajet' : 'Voir la demande' : undefined;
+  useEffect(() => {
+    if (authenticated && userId) setRideSpeechEntryGate({ userId, path,
+      blocked: !active || !entryNavigationReady || isRideResumeEntryTransition(path) || entryPending || overlayBusy });
+  }, [authenticated, userId, path, active, entryNavigationReady, entryPending, overlayBusy]);
   // A sibling above the mounted navigator, not a native modal or a replacement
   // navigator: route changes can complete without revealing the Home in between.
-  return <AppEntryContext.Provider value={resume.pending}>
+  return <AppEntryContext.Provider value={blocking}>
     {children}
-    {resume.visible && <View style={styles.cover} accessibilityViewIsModal testID="active-ride-entry">
-      <HomeRoleLoader failed={resume.failed} retrying={false} active={active} onRetry={resume.retry}
-        loadingLabel="Ouverture de Zwanga"
-        errorLabel="Impossible d’ouvrir votre espace"
-        errorHint="Vérifiez votre connexion, puis réessayez."
-        onContinue={homeRoleReady ? () => { resume.dismiss(); router.replace('/(tabs)'); } : undefined} />
+    {blocking && active && !overlayBusy && <View style={styles.cover} accessibilityViewIsModal testID="active-ride-entry">
+      <HomeRoleLoader failed={false} retrying={false} active={active}
+        onRetry={retry}
+        loadingLabel="Ouverture de Zwanga" />
     </View>}
+    {!blocking && active && authenticated && homeRoleReady && onHome && !overlayBusy && (entryPending || proposal) &&
+      <EntrySyncBanner failed={failed} offline={!online} actionLabel={actionLabel} onAction={proposal ? presentation.open : retry} />}
   </AppEntryContext.Provider>;
 }
 

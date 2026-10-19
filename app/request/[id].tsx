@@ -1,7 +1,9 @@
 import { useRequestDetailController } from '../../hooks/request-detail/useRequestDetailController';
 import { buildRequestDetailPresentation } from '../../features/request-detail/requestPresentation';
 import { RequestDriverSummary } from '../../features/request-detail/RequestDriverSummary';
-import { RequestPassengerSummary } from '../../features/request-detail/RequestPassengerSummary';
+import { RequestPassengerTicket, RequestPassengerActions } from '@/features/request-detail/RequestPassengerTicket';
+import { RequestDriverCourse, RequestCourseActions } from '@/features/request-detail/RequestDriverCourse';
+import { requestSummaryStyles } from '@/features/request-detail/requestSummaryStyles';
 import { RequestEditModal } from '../../features/request-detail/RequestEditModal';
 import { RequestAcceptModal } from '../../features/request-detail/RequestAcceptModal';
 import { styles } from '../../features/screen-styles/app/request/detail/index';
@@ -13,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RequestDriverDecision, RequestDecisionActions } from '@/features/request-detail/RequestDriverDecision';
+import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
@@ -105,46 +109,38 @@ export default function TripRequestDetailsScreen() {
     compatibleActiveVehicles: model.compatibleActiveVehicles,
     requestedVehicleType: model.requestedVehicleType,
   });
+  const showDecision = !model.isOwner && model.isDriverAccount && !model.tripRequest.immediateDispatch &&
+    isRequestUnassigned(model.tripRequest) && isTripRequestWithinAcceptanceWindow(model.tripRequest);
+  const showCourse = !model.isOwner && (model.canOpenAssignedTrip || model.canStartAssignedTrip);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={model.goHome} style={styles.backButton}>
+    <SafeAreaView style={[styles.container, model.isOwner ? requestSummaryStyles.passengerScreen : requestSummaryStyles.driverScreen]}>
+      <View style={[styles.header, requestSummaryStyles.header]}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={[styles.backButton, requestSummaryStyles.back]}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{model.isOwner ? 'Votre commande' : 'Commande de trajet'}</Text>
-        <View style={styles.headerSpacer} />
+        <Text style={requestSummaryStyles.headerTitle}>{model.isOwner ? 'Votre commande' : showDecision ? 'Nouvelle demande' : 'Course'}</Text>
+        {model.isOwner && <View style={[requestSummaryStyles.badge, { backgroundColor: presentation.statusConfig.bg }]}>
+          <View style={[requestSummaryStyles.dot, { backgroundColor: presentation.statusConfig.color }]} />
+          <Text style={requestSummaryStyles.badgeText}>{presentation.statusConfig.label}</Text>
+        </View>}
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.content, !model.isOwner && styles.driverContent]}
+        style={showDecision ? requestSummaryStyles.decisionScroll : undefined}
+        contentContainerStyle={[requestSummaryStyles.content, showDecision && requestSummaryStyles.decisionContent]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl refreshing={model.refreshing} onRefresh={model.onRefresh} tintColor={Colors.primary} />
         }
       >
         {/* En-tête avec statut */}
         {model.isOwner ? (
-          <RequestPassengerSummary
-            statusConfig={presentation.statusConfig}
-            pendingOffersCount={presentation.pendingOffersCount}
-            tripRequest={model.tripRequest}
-            ownerHero={presentation.ownerHero}
-            requestRouteMapData={presentation.requestRouteMapData}
-            displayedRouteCoordinates={presentation.displayedRouteCoordinates}
-            requestedVehicleType={model.requestedVehicleType}
-            ownerDisplayedBudget={presentation.ownerDisplayedBudget}
-            heroStepIndex={presentation.heroStepIndex}
-            heroSteps={presentation.heroSteps}
-            handleViewTrip={model.handleViewTrip}
-            ownerHeroHintMessage={presentation.ownerHeroHintMessage}
-            canEdit={model.canEdit}
-            canCancel={model.canCancel}
-            handleOpenEditForm={model.handleOpenEditForm}
-            isCancelling={model.isCancelling}
-            handleCancelRequest={model.handleCancelRequest}
-          />
-        ) : (
+          <RequestPassengerTicket model={model} presentation={presentation} />
+        ) : showDecision ? <RequestDriverDecision model={model} presentation={presentation} />
+          : showCourse ? <RequestDriverCourse model={model} presentation={presentation} /> : (
           <RequestDriverSummary
             driverHero={presentation.driverHero}
             myOffer={model.myOffer}
@@ -246,7 +242,7 @@ export default function TripRequestDetailsScreen() {
           </View>
         )}
 
-        {model.tripRequest && (
+        {model.tripRequest && !showDecision && (
           <RequestAcceptModal
             cashAmount={model.tripRequest.paymentMode === 'cash' ? Number(model.tripRequest.maxPricePerSeat ?? 0) * model.tripRequest.numberOfSeats : undefined}
             showDirectAcceptModal={model.showDirectAcceptModal}
@@ -364,6 +360,9 @@ export default function TripRequestDetailsScreen() {
         />
 
       </ScrollView>
+      {model.isOwner && <RequestPassengerActions model={model} />}
+      {showDecision && <RequestDecisionActions model={model} />}
+      {showCourse && <RequestCourseActions model={model} />}
     </SafeAreaView>
   );
 }

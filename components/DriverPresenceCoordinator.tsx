@@ -1,6 +1,5 @@
 import * as Location from 'expo-location';
-import { useEffect, useRef } from 'react';
-import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated } from '@/store/selectors';
@@ -18,8 +17,6 @@ import { getTokenSessionVersion } from '@/services/tokenSession';
 
 /** Automatic discovery, with OS background authorization and a persistent opt-out. */
 export function DriverPresenceCoordinator() {
-  const router = useRouter();
-  const shownOffer = useRef<string | null>(null);
   const authenticated = useAppSelector(selectIsAuthenticated);
   const signingOut = useAppSelector(state => Boolean(state.auth.logoutRequestId));
   const active = useAppIsActive();
@@ -36,12 +33,8 @@ export function DriverPresenceCoordinator() {
       void pauseNearbyDriverLocation().catch(() => undefined);
     }
   }, [authenticated, driver, state?.enabled, user]);
-  useEffect(() => {
-    const id = state?.pendingOfferId;
-    if (!active || !authenticated || signingOut || !user?.id || !id || shownOffer.current === id) return;
-    shownOffer.current = id;
-    router.navigate({ pathname: '/incoming-driver', params: { kind: 'dispatch', id, driverId: user.id } });
-  }, [active, authenticated, signingOut, router, state?.pendingOfferId, user?.id]);
+  // Entry routing observes this cache and verifies offers after ongoing rides.
+  // Presence/GPS must never navigate independently of that arbitration.
   useEffect(() => {
     if (!readsEnabled || !automatic || !driver || !userId) return;
     const controller = new AbortController();

@@ -16,6 +16,7 @@ import {
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
+import { reportEntryFailure } from '@/services/entryRecovery';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -50,7 +51,7 @@ export function useRequestDetailData() {
   // État pour le polling interval dynamique
   const [pollingInterval, setPollingInterval] = useState(45_000);
 
-  const { currentData: liveRequest, isLoading, isFetching: isFetchingRequest, error, refetch: rawRefetch, isError } = useGetTripRequestByIdQuery(id || '', {
+  const { currentData: liveRequest, isLoading, isFetching: isFetchingRequest, error, startedTimeStamp, refetch: rawRefetch, isError } = useGetTripRequestByIdQuery(id || '', {
     ...displayReadOptions(readsEnabled && Boolean(id) && !isCreateRouteAlias, pollingInterval),
   });
   const cachedRequest = useDisplayReadData(id ?? '', liveRequest);
@@ -90,10 +91,10 @@ export function useRequestDetailData() {
   }, [tripRequest?.status]);
 
   useEffect(() => {
-    if (__DEV__ && error) {
-      console.warn('[TripRequestDetails] Chargement de la commande impossible:', error);
+    if (readsEnabled && error && !isFetchingRequest) {
+      reportEntryFailure('request-detail', 'read', startedTimeStamp ?? Date.now(), error);
     }
-  }, [error]);
+  }, [readsEnabled, error, isFetchingRequest, startedTimeStamp]);
   const { data: vehicles = [] } = useGetVehiclesQuery(undefined, {
     ...displayReadOptions(readsEnabled && isDriverAccount),
   });
@@ -134,6 +135,7 @@ export function useRequestDetailData() {
   }, [refetch]);
 
   return {
+    isScreenActive,
     tripRequest,
     compatibleActiveVehicles,
     currentUser,

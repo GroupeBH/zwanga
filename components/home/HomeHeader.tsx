@@ -18,12 +18,14 @@ type Props =
 export const HomeHeader = React.memo(function HomeHeader({
   insets, router, firstName, ongoingDriverTrip, ongoingBookedTrip, unreadNotifications,
 }: Props) {
+  // Always identify the signed-in user by their first initial, never a trip's driver photo.
+  const profileInitial = firstName.trim().slice(0, 1).toUpperCase() || '?';
   return (
     <View style={[styles.topOverlay, { top: insets.top + Spacing.lg }]} pointerEvents="box-none">
       <View style={styles.mapHeader} pointerEvents="box-none">
         <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Ouvrir le profil"
           style={styles.profileButton} onPress={() => router.push('/profile')}>
-          <Text style={styles.userAvatarText}>{firstName.trim().slice(0, 1).toUpperCase() || 'Z'}</Text>
+          <Text style={styles.userAvatarText}>{profileInitial}</Text>
         </TouchableOpacity>
         <TouchableOpacity activeOpacity={0.8} style={styles.notificationButton} accessibilityRole="button"
           accessibilityLabel={`Notifications${unreadNotifications ? ', ' + unreadNotifications + ' non lues' : ''}`}

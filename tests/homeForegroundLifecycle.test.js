@@ -29,7 +29,7 @@ function controllerFixture() {
     '@/hooks/useAppIsActive': {
       useAppIsActive: () => state.active, useScreenIsActive: () => state.focused && state.active,
     },
-    'expo-router': { useRouter: () => router },
+    'expo-router': { useRouter: () => router, usePathname: () => '/' },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog }) },
     '@/services/ongoingTripNotification': { getCurrentTripInfo: () => trackedTripInfo },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },

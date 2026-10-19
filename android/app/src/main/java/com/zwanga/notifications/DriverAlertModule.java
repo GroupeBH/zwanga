@@ -15,15 +15,34 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
-/** No player/service, volume override or work at application startup. Android owns playback. */
+/** Channel setup and lazy foreground audio; no service or global volume override. */
 public final class DriverAlertModule extends ReactContextBaseJavaModule {
   static final String LEGACY_CHANNEL = "booking-ring-v2";
   static final String PHONE_CHANNEL = "driver-phone-ring-v3";
   static final String BUNDLED_CHANNEL = "zwanga-ride-ring-v4";
+  private ForegroundAlertPlayer foreground;
 
   public DriverAlertModule(ReactApplicationContext context) { super(context); }
 
   @Override public String getName() { return "ZwangaDriverAlerts"; }
+
+  @ReactMethod
+  public void startForegroundSound(String token, String channelId, boolean paused, Promise promise) {
+    if (foreground == null) foreground = new ForegroundAlertPlayer(getReactApplicationContext());
+    foreground.start(token, channelId, paused, promise);
+  }
+  @ReactMethod
+  public void pauseForegroundSound(String token, boolean paused) {
+    if (foreground != null) foreground.pause(token, paused);
+  }
+  @ReactMethod
+  public void stopForegroundSound(String token) {
+    if (foreground != null) foreground.stop(token);
+  }
+  @Override public void invalidate() {
+    if (foreground != null) { foreground.destroy(); foreground = null; }
+    super.invalidate();
+  }
 
   @ReactMethod
   public void ensureBundledChannel(Promise promise) {

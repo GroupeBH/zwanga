@@ -20,7 +20,7 @@ export function useRatingData() {
   const tripId = typeof params.id === 'string' ? params.id : '';
   const passengerIdParam = typeof params.passengerId === 'string' ? params.passengerId : null;
   const ratingScopeKey = `rating:${user?.id ?? ''}:${tripId}`;
-  const { captureRatingSession, beginLeaving, successReturnTimeoutRef } = useRatingLifecycle(ratingScopeKey, active);
+  const { captureRatingSession, beginLeaving } = useRatingLifecycle(ratingScopeKey, active);
   const submitInFlightRef = useRef(false);
   const hasInitializedTargetRef = useRef(false);
   const { data: trip } = useGetTripByIdQuery(tripId, { skip: !tripId || !active });
@@ -60,7 +60,18 @@ export function useRatingData() {
   const { showDialog } = useDialog();
   const [createReview, { isLoading: isSubmittingReview }] = useCreateReviewMutation();
 
+  const goHomeAfterRating = useCallback(() => {
+    if (!beginLeaving()) return;
+    // Never return to a completed ride panel, regardless of how rating was opened.
+    router.replace('/(tabs)');
+  }, [beginLeaving, router]);
+
   const goBackSafely = useCallback(() => {
+    // A review saved while inactive is retained; closing it later also goes Home.
+    if (submitSuccessMessage) {
+      goHomeAfterRating();
+      return;
+    }
     if (!beginLeaving()) return;
     if (router.canGoBack()) {
       router.back();
@@ -68,7 +79,7 @@ export function useRatingData() {
     }
 
     router.replace('/(tabs)');
-  }, [beginLeaving, router]);
+  }, [beginLeaving, goHomeAfterRating, router, submitSuccessMessage]);
 
   useEffect(() => {
     submitInFlightRef.current = false;
@@ -221,7 +232,7 @@ export function useRatingData() {
     comment,
     createReview,
     captureRatingSession,
-    successReturnTimeoutRef,
+    goHomeAfterRating,
     goBackSafely,
     reportReason,
     isTripDriver,

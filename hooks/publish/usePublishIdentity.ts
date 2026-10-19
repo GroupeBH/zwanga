@@ -1,23 +1,14 @@
 import { useDiditKycFlow } from '@/hooks/useDiditKycFlow';
-import { useGetKycStatusQuery } from '@/store/api/userApi';
+import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useEffect, useState } from 'react';
 
-interface Params {
-  isIdentityVerified: boolean;
-}
-
-export function usePublishIdentity({
-  isIdentityVerified,
-}: Params) {
+export function usePublishIdentity() {
+  const identity = useIdentityCheck();
   const [kycModalVisible, setKycModalVisible] = useState(false);
-  const [kycApprovedInForm, setKycApprovedInForm] = useState(false);
-
-  const { data: kycStatusData, refetch: refetchKycStatus } = useGetKycStatusQuery();
-  const isPublishIdentityVerified =
-    isIdentityVerified || kycApprovedInForm || kycStatusData?.status === 'approved';
-  const { startDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
+  const isPublishIdentityVerified = identity.isIdentityVerified;
+  const { startDiditKyc: launchDiditKyc, isStartingDiditKyc } = useDiditKycFlow({
     sourceScreen: 'publish',
-    onStatusRefresh: refetchKycStatus,
+    onStatusRefresh: identity.refreshKycStatus,
     approvedMessage:
       "Votre identité a été vérifiée avec succès. Vous pouvez maintenant publier vos trajets.",
     pendingMessage:
@@ -25,15 +16,24 @@ export function usePublishIdentity({
   });
 
   useEffect(() => {
-    if (kycStatusData?.status !== 'approved') {
+    if (!isPublishIdentityVerified) {
       return;
     }
 
-    setKycApprovedInForm(true);
     setKycModalVisible(false);
-  }, [kycStatusData?.status]);
+  }, [isPublishIdentityVerified]);
 
-  const openKycModal = () => setKycModalVisible(true);
+  const awaitingStatus = identity.isChecking || !identity.isIdentityStatusKnown || identity.hasIdentityReadError;
+  const openKycModal = () => {
+    if (isPublishIdentityVerified) return;
+    if (awaitingStatus) { identity.checkIdentity('publish'); return; }
+    setKycModalVisible(true);
+  };
+  const startDiditKyc = () => {
+    if (isPublishIdentityVerified) return Promise.resolve(null);
+    if (awaitingStatus) { identity.checkIdentity('publish'); return Promise.resolve(null); }
+    return launchDiditKyc();
+  };
   const closeKycModal = () => {
     if (isStartingDiditKyc) {
       return;
@@ -54,8 +54,11 @@ export function usePublishIdentity({
     openKycModal,
     setKycModalVisible,
     startDiditKyc,
-    setKycApprovedInForm,
-    kycModalVisible,
+    isCheckingIdentity: identity.isChecking,
+    isIdentityStatusKnown: identity.isIdentityStatusKnown,
+    hasIdentityReadError: identity.hasIdentityReadError,
+    refreshIdentity: identity.refreshKycStatus,
+    kycModalVisible: kycModalVisible && !isPublishIdentityVerified && !awaitingStatus,
     closeKycModal,
     kycChecklist,
     isKycBusy,
