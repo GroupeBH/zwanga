@@ -15,10 +15,12 @@ import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
+import { useMainScreenReady } from '@/hooks/useMainScreenReady';
 
 export default function PassengerNavigationScreen() {
   const { height } = useWindowDimensions();
   const model = usePassengerNavigationController();
+  const reportLayout = useMainScreenReady(model.data.isScreenActive && Boolean(model.data.booking && model.data.trip), 'passenger_navigation');
   const assistance = useNavigationAssistance({ role: 'passenger', trip: model.data.trip,
     booking: model.data.booking, isScreenActive: model.data.isScreenActive });
 
@@ -44,7 +46,7 @@ export default function PassengerNavigationScreen() {
   return (
     <RideOverlayScope scopeKey={`passenger:${model.data.bookingId}`} active={model.data.isScreenActive}>
     <RideActionResult actor="passenger" tripId={model.data.tripId} bookingId={model.data.bookingId} active={model.data.isScreenActive} />
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={reportLayout}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView style={{ maxHeight: height * 0.4, flexGrow: 0 }} showsVerticalScrollIndicator>
         <PassengerNavigationHeader model={model} assistance={assistance} />

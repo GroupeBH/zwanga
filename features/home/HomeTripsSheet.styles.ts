@@ -51,21 +51,21 @@ export const styles = StyleSheet.create({
   publishButton: {
     flex: 1.4, minWidth: 0, minHeight: 56, paddingHorizontal: 10, paddingVertical: 12,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderRadius: 17, backgroundColor: c.orange,
+    borderRadius: 17, backgroundColor: c.blue,
   },
   publishButtonText: { flexShrink: 1, color: '#FFFFFF', fontSize: 16, lineHeight: 21, fontWeight: '700', textAlign: 'center' },
   driverOrderButton: {
     flex: 1, minWidth: 0, minHeight: 56, paddingHorizontal: 8, paddingVertical: 12,
-    borderRadius: 17, borderWidth: 1, borderColor: c.orange, backgroundColor: '#FFFFFF',
+    borderRadius: 17, borderWidth: 1, borderColor: c.orange, backgroundColor: c.orange,
     alignItems: 'center', justifyContent: 'center',
   },
-  driverOrderText: { color: c.orange, fontSize: 16, lineHeight: 21, fontWeight: '600', textAlign: 'center' },
+  driverOrderText: { color: '#FFFFFF', fontSize: 16, lineHeight: 21, fontWeight: '600', textAlign: 'center' },
   driverSearchButton: {
     minHeight: 44, paddingHorizontal: 12, paddingVertical: 10,
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: 14, borderWidth: 1, borderColor: c.line, backgroundColor: '#FFFFFF',
+    borderRadius: 14, borderWidth: 1, borderColor: c.green, backgroundColor: c.green,
   },
-  driverSearchText: { flex: 1, color: c.blue, fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  driverSearchText: { flex: 1, color: '#FFFFFF', fontSize: 15, lineHeight: 20, fontWeight: '600' },
   metricsRow: { flexDirection: 'row', gap: 10 },
   metricCard: {
     flex: 1, minHeight: 88, paddingHorizontal: 12, paddingVertical: 12,

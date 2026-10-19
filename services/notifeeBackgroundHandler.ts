@@ -63,76 +63,82 @@ if (notifee && EventTypeEnum) {
       void respondToDriverNotification(invitation, detail.pressAction?.id).catch(() => {});
   });
   notifee.onBackgroundEvent(async ({ type, detail }) => {
-    console.log('[NotifeeBackgroundHandler] Background event:', type);
+    try {
+      console.log('[NotifeeBackgroundHandler] Background event:', type);
 
-    const { notification, pressAction } = detail;
+      const { notification, pressAction } = detail;
 
-    // Gérer les pressions sur les notifications
-    if (type === EventTypeEnum!.PRESS || type === EventTypeEnum!.ACTION_PRESS) {
-      const data = notification?.data || {};
-      const nearby = parseNearbyPhoneAlert(data);
-      if (nearby) {
-        if (pressAction?.id === 'driver-ignore-nearby') { await dismissDriverInvitation(nearby); return; }
-        await openAppDeepLink(`zwanga://request-details/${nearby.id}`);
-        return;
-      }
-      const invitation = parseDriverInvitation(data);
-      if (invitation) {
-        if (type === EventTypeEnum!.ACTION_PRESS && notificationDecision(pressAction?.id)) {
-          await respondToDriverNotification(invitation, pressAction?.id);
+      // Gérer les pressions sur les notifications
+      if (type === EventTypeEnum!.PRESS || type === EventTypeEnum!.ACTION_PRESS) {
+        const data = notification?.data || {};
+        const nearby = parseNearbyPhoneAlert(data);
+        if (nearby) {
+          if (pressAction?.id === 'driver-ignore-nearby') { await dismissDriverInvitation(nearby); return; }
+          await openAppDeepLink(`zwanga://request-details/${nearby.id}`);
           return;
         }
-        await openAppDeepLink(`zwanga://incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}&actionEvent=${Date.now()}`);
-        return;
-      }
-      
-      console.log('[NotifeeBackgroundHandler] Notification pressée en background');
+        const invitation = parseDriverInvitation(data);
+        if (invitation) {
+          if (type === EventTypeEnum!.ACTION_PRESS && notificationDecision(pressAction?.id)) {
+            await respondToDriverNotification(invitation, pressAction?.id);
+            return;
+          }
+          await openAppDeepLink(`zwanga://incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}&actionEvent=${Date.now()}`);
+          return;
+        }
 
-      // Pour les notifications de trajet en cours
-      if (data.type === 'ongoing_trip' || notification?.id === ONGOING_TRIP_NOTIFICATION_ID) {
-        const href = getNotificationHref({ ...data, type: 'ongoing_trip' });
-        const deepLink = typeof href === 'string' ? `zwanga://${href.replace(/^\//, '')}` : 'zwanga://';
+        console.log('[NotifeeBackgroundHandler] Notification pressée en background');
+
+        // Pour les notifications de trajet en cours
+        if (data.type === 'ongoing_trip' || notification?.id === ONGOING_TRIP_NOTIFICATION_ID) {
+          const href = getNotificationHref({ ...data, type: 'ongoing_trip' });
+          const deepLink = typeof href === 'string' ? `zwanga://${href.replace(/^\//, '')}` : 'zwanga://';
+
+          console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
+
+          // Ouvrir l'app avec le deep link sans propager une erreur native.
+          await openAppDeepLink(deepLink);
+          return;
+        }
+
+        // Pour les autres types de notifications, utiliser navigateTo ou les données standard
+        const navigateTo = data.navigateTo as string | undefined;
+        const tripId = data.tripId as string | undefined;
+        const conversationId = data.conversationId as string | undefined;
+        const requestId = data.requestId as string | undefined;
+
+        let deepLink = 'zwanga://';
+
+        if (navigateTo) {
+          deepLink += navigateTo.startsWith('/') ? navigateTo.slice(1) : navigateTo;
+        } else if (requestId) {
+          deepLink += `request/${requestId}`;
+        } else if (tripId) {
+          // Déterminer si c'est un conducteur ou passager
+          const role = data.role as string | undefined;
+          if (role === 'driver') {
+            deepLink += `trip/manage/${tripId}`;
+          } else {
+            deepLink += `trip/${tripId}`;
+          }
+        } else if (conversationId) {
+          deepLink += `chat/${conversationId}`;
+        }
 
         console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
 
-        // Ouvrir l'app avec le deep link sans propager une erreur native.
         await openAppDeepLink(deepLink);
-        return;
       }
 
-      // Pour les autres types de notifications, utiliser navigateTo ou les données standard
-      const navigateTo = data.navigateTo as string | undefined;
-      const tripId = data.tripId as string | undefined;
-      const conversationId = data.conversationId as string | undefined;
-      const requestId = data.requestId as string | undefined;
-
-      let deepLink = 'zwanga://';
-
-      if (navigateTo) {
-        deepLink += navigateTo.startsWith('/') ? navigateTo.slice(1) : navigateTo;
-      } else if (requestId) {
-        deepLink += `request/${requestId}`;
-      } else if (tripId) {
-        // Déterminer si c'est un conducteur ou passager
-        const role = data.role as string | undefined;
-        if (role === 'driver') {
-          deepLink += `trip/manage/${tripId}`;
-        } else {
-          deepLink += `trip/${tripId}`;
-        }
-      } else if (conversationId) {
-        deepLink += `chat/${conversationId}`;
+      // Gérer les dismissals (optionnel)
+      if (type === EventTypeEnum!.DISMISSED) {
+        console.log('[NotifeeBackgroundHandler] Notification dismissed:', notification?.id);
+        // Pas d'action spéciale pour l'instant
       }
-
-      console.log('[NotifeeBackgroundHandler] Navigation via deep link:', deepLink);
-
-      await openAppDeepLink(deepLink);
-    }
-
-    // Gérer les dismissals (optionnel)
-    if (type === EventTypeEnum!.DISMISSED) {
-      console.log('[NotifeeBackgroundHandler] Notification dismissed:', notification?.id);
-      // Pas d'action spéciale pour l'instant
+    } catch {
+      // Storage, a native notification action or Linking can fail while waking.
+      // Do not reject the headless native callback or log its personal payload.
+      console.warn('[NotifeeBackgroundHandler] Action non traitée ; consultez le trajet dans l’application.');
     }
   });
 

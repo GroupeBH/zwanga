@@ -41,6 +41,7 @@ function fixture(t, passenger = false) {
     'react-native': { View: 'View', StyleSheet: { create: value => value, absoluteFillObject: { position: 'absolute' } } },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'EntryLoader' },
     '@/components/home/EntrySyncBanner': { EntrySyncBanner: 'SyncBanner' },
+    '@/features/navigation/homeEntryStatusContext': { HomeEntryStatusContext: { Provider: 'StatusProvider' } },
     '@/features/navigation/appEntryContext': { AppEntryContext: { Provider: 'EntryProvider' } },
     'react-redux': { useStore: () => store },
     'expo-router': { usePathname: () => env.path, useSegments: () => env.segments,
@@ -180,8 +181,8 @@ test('the entry loader covers the mounted navigator until verified guidance is d
 test('offline recovery leaves Home usable and shows no full-screen failure or competing payment overlay', t => {
   const f = fixture(t); f.env.segments = ['(tabs)']; f.env.state.zwangaApi.config.online = false;
   assert.equal(f.render(), null); assert.equal(f.wrapper().props.value, false);
-  assert.equal(f.wrapper().props.children[2].props.offline, true);
-  f.env.busy = true; assert.equal(f.render(), null); assert.equal(Boolean(f.wrapper().props.children[2]), false);
+  assert.equal(f.wrapper().props.children[0].props.value.offline, true);
+  f.env.busy = true; assert.equal(f.render(), null); assert.equal(Boolean(f.wrapper().props.children[0].props.value), false);
   assert.deepEqual(f.routes, []);
 });
 
@@ -198,7 +199,7 @@ test('one shared loader waits for both the Home role and the no-ride decision in
     assert.equal(f.wrapper().props.value, true, 'one result alone must not reveal Home');
     (first === 'profile' ? activityReady : profileReady)(); f.render(); f.render();
     const finished = f.wrapper(); assert.equal(finished.props.value, false);
-    assert.equal(finished.props.children[0], 'navigator', 'never unmount the routing tree');
+    assert.equal(finished.props.children[0].props.children, 'navigator', 'never unmount the routing tree');
     assert.equal(f.render(), null); await flush(); assert.deepEqual(f.routes, []);
   }
 });
@@ -223,7 +224,7 @@ test('a failed or foreign profile releases the cover for neutral Home, never a c
   f.env.profile = { data: { id: 'another', role: 'driver' }, isSuccess: true, isFetching: false };
   f.render(); f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, fulfilledTimeStamp: Date.now() };
   f.render(); assert.equal(f.render(), null); assert.equal(f.wrapper().props.value, false);
-  assert.equal(Boolean(f.wrapper().props.children[2]), false, 'no known-role banner on a foreign profile');
+  assert.equal(Boolean(f.wrapper().props.children[0].props.value), false, 'no known-role banner on a foreign profile');
   await flush(); assert.deepEqual(f.reads, []);
   f.env.profile = { data: { id: 'driver', role: 'driver' }, isSuccess: true }; f.render(); assert.equal(f.render(), null);
 });
@@ -233,12 +234,12 @@ test('slow entry releases Home after 2 seconds and proposes the result without n
   const f = fixture(t), pending = deferred(); f.env.segments = ['(tabs)']; f.env.pending = pending.promise;
   assert.ok(f.render()); t.mock.timers.tick(2000);
   assert.equal(f.render(), null); assert.equal(f.wrapper().props.value, false);
-  assert.equal(f.wrapper().props.children[2].type, 'SyncBanner');
+  assert.ok(f.wrapper().props.children[0].props.value, 'status is provided to the inline Home panel');
   pending.resolve(); await flush(); f.render(); await flush();
   assert.deepEqual(f.routes, []);
-  const banner = f.wrapper().props.children[2];
-  assert.equal(banner.props.actionLabel, 'Reprendre mon trajet');
-  banner.props.onAction(); assert.deepEqual(f.routes, ['/trip/navigate/trip']);
+  const banner = f.wrapper().props.children[0].props.value;
+  assert.equal(banner.actionLabel, 'Reprendre mon trajet');
+  banner.onAction(); assert.deepEqual(f.routes, ['/trip/navigate/trip']);
 });
 
 test('recent verified detail avoids an entry GET but still checks ownership and terminal status', async t => {
@@ -261,7 +262,7 @@ test('a proposed ongoing ride retains priority over a dispatch after Home is rev
   f.render(); t.mock.timers.tick(2000); f.render(); pending.resolve(); await flush();
   f.render(); await flush(); f.render(); await flush();
   assert.deepEqual(f.reads.map(read => read.name), ['getTripById']);
-  assert.equal(f.wrapper().props.children[2].props.actionLabel, 'Reprendre mon trajet');
+  assert.equal(f.wrapper().props.children[0].props.value.actionLabel, 'Reprendre mon trajet');
   assert.deepEqual(f.routes, []);
 });
 

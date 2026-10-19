@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import { AppState, Platform } from 'react-native';
 import { getStoredFcmToken, removeFcmToken, storeFcmToken } from './tokenStorage';
+import { createPushRegistrationAttempt } from './pushRegistrationAttempt';
 
 const DEFAULT_CHANNEL_ID = 'zwanga_default';
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -45,11 +46,13 @@ function getNotifeeRuntime(): {
 }
 
 let pendingPermission: Promise<boolean> | null = null;
+let pendingPrompt: ReturnType<typeof Notifications.requestPermissionsAsync> | null = null;
 let permissionPromptCompleted = false;
 
 async function resolvePushPermission(): Promise<boolean> {
+  const attempt = createPushRegistrationAttempt();
   try {
-    const permission = await Notifications.getPermissionsAsync();
+    const permission = await attempt.wait(() => Notifications.getPermissionsAsync());
     if (permission.status === 'granted') {
       return true;
     }
@@ -59,15 +62,23 @@ async function resolvePushPermission(): Promise<boolean> {
     if (permission.canAskAgain === false || permissionPromptCompleted || AppState.currentState !== 'active') {
       return false;
     }
-    const { status } = await Notifications.requestPermissionsAsync();
-    permissionPromptCompleted = true;
+    // Do not open a second OS dialog if the user is still deciding after timeout.
+    const prompt = pendingPrompt ?? (pendingPrompt = Notifications.requestPermissionsAsync());
+    const { status } = await attempt.wait(() => prompt.then(result => {
+      permissionPromptCompleted = true;
+      if (pendingPrompt === prompt) pendingPrompt = null;
+      return result;
+    }, error => {
+      if (pendingPrompt === prompt) pendingPrompt = null;
+      throw error;
+    }));
     return status === 'granted';
   } catch {
     // A native failure is not a user choice: the foreground registration loop
     // can try again without requiring a visit to a settings screen.
     console.warn('[Push] Autorisation non vérifiée ; nouvelle tentative différée.');
     return false;
-  }
+  } finally { attempt.finish(); }
 }
 
 export async function requestPushPermissions(): Promise<boolean> {

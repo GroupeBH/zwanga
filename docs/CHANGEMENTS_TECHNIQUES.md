@@ -1,5 +1,17 @@
 # Journal des changements techniques
 
+## 2026-10-19 — Correctifs audit mobile, notifications et actions conducteur
+
+Corrections appliquées aux rotations de jeton push et attentes natives bloquées,
+aux erreurs des actions de notification en arrière-plan, au bandeau Home,
+aux contrastes et à la mesure de disponibilité des écrans. Les trois actions
+conducteur utilisent bleu (publier), vert (chercher), orange (commander).
+Un contrôle qualité conditionne les deux builds du workflow de production.
+Périmètre, fichiers, comportements conservés, résultats et limites natives :
+[Correctifs de l’audit mobile du 19 octobre](AUDIT_CORRECTIFS_FIABILITE_2026_10_19.md).
+La résolution CocoaPods iOS et les validations sur appareils restent à effectuer ;
+aucune disparition de crash n’est annoncée.
+
 ## 2026-10-19 — Mise à jour du SDK Didit vers 4.9.1
 
 - **Périmètre et demande :** mettre à jour le SDK KYC Didit sans changer le

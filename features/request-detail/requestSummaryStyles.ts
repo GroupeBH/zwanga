@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { ACTION_COLORS } from '@/constants/actionColors';
 
 export const requestSummaryStyles = StyleSheet.create({
   passengerScreen: { backgroundColor: '#F2EEE9' }, driverScreen: { backgroundColor: '#EDF1F4' },
@@ -19,7 +20,7 @@ export const requestSummaryStyles = StyleSheet.create({
   amount: { fontSize: 24, fontWeight: '800', color: '#111827' },
   footer: { paddingHorizontal: 16, paddingVertical: 12, gap: 10 }, footerWhite: { backgroundColor: '#FFFFFF' },
   actionRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  primary: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F65B1C', borderRadius: 30, paddingHorizontal: 20, paddingVertical: 16, minHeight: 54 },
+  primary: { flex: 1, flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: ACTION_COLORS.orange, borderRadius: 30, paddingHorizontal: 20, paddingVertical: 16, minHeight: 54 },
   primaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', textAlign: 'center' },
   cancel: { backgroundColor: '#FFFFFF', minHeight: 54, paddingHorizontal: 16, paddingVertical: 16, borderRadius: 30, alignItems: 'center', justifyContent: 'center' },
   cancelText: { color: '#BF1B20', fontSize: 14, fontWeight: '700' },

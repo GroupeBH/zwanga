@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { ACTION_COLORS } from './actionColors';
 
 // Palette de couleurs ZWANGA
 export const Colors = {
@@ -116,7 +117,7 @@ export const CommonStyles = StyleSheet.create({
   
   // Buttons
   buttonPrimary: {
-    backgroundColor: Colors.primary,
+    backgroundColor: ACTION_COLORS.orange,
     paddingVertical: Spacing.lg,
     borderRadius: BorderRadius.md,
     alignItems: 'center',

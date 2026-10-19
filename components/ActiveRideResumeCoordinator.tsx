@@ -29,7 +29,7 @@ import { getActivityReadiness, subscribeActivityReadiness } from '@/services/act
 import { readEntryQuery, reportEntryFailure } from '@/services/entryRecovery';
 import { freshEntryData } from '@/features/navigation/entryFreshness';
 import { useEntryPresentation } from '@/hooks/navigation/useEntryPresentation';
-import { EntrySyncBanner } from '@/components/home/EntrySyncBanner';
+import { HomeEntryStatusContext } from '@/features/navigation/homeEntryStatusContext';
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
@@ -143,14 +143,15 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   // A sibling above the mounted navigator, not a native modal or a replacement
   // navigator: route changes can complete without revealing the Home in between.
   return <AppEntryContext.Provider value={blocking}>
-    {children}
+    <HomeEntryStatusContext.Provider value={!blocking && active && authenticated && homeRoleReady && onHome && !overlayBusy && (entryPending || proposal)
+      ? { failed, offline: !online, actionLabel, onAction: proposal ? presentation.open : retry } : null}>
+      {children}
+    </HomeEntryStatusContext.Provider>
     {blocking && active && !overlayBusy && <View style={styles.cover} accessibilityViewIsModal testID="active-ride-entry">
       <HomeRoleLoader failed={false} retrying={false} active={active}
         onRetry={retry}
         loadingLabel="Ouverture de Zwanga" />
     </View>}
-    {!blocking && active && authenticated && homeRoleReady && onHome && !overlayBusy && (entryPending || proposal) &&
-      <EntrySyncBanner failed={failed} offline={!online} actionLabel={actionLabel} onAction={proposal ? presentation.open : retry} />}
   </AppEntryContext.Provider>;
 }
 

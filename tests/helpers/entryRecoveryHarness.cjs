@@ -63,6 +63,7 @@ function entryRecoveryHarness(t) {
     '@/hooks/useAppIsActive': { useAppIsActive: () => env.active },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'EntryLoader' },
     '@/components/home/EntrySyncBanner': { EntrySyncBanner: 'SyncBanner' },
+    '@/features/navigation/homeEntryStatusContext': { HomeEntryStatusContext: { Provider: 'StatusProvider' } },
     '@/features/navigation/appEntryContext': { AppEntryContext: { Provider: 'EntryProvider' } },
     '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ store: {
       subscribe: () => () => {}, isBusy: () => env.busy,
@@ -76,7 +77,8 @@ function entryRecoveryHarness(t) {
   return Object.assign(env, {
     produce: () => { currentHooks = producerHooks; return producerHooks.render(Producer); },
     enter: () => { currentHooks = entryHooks; return entryHooks.render(() => Entry({ children: 'navigator' })).props.children[1] || null; },
-    banner: () => { currentHooks = entryHooks; return entryHooks.render(() => Entry({ children: 'navigator' })).props.children[2] || null; },
+    banner: () => { currentHooks = entryHooks; const status = entryHooks.render(() => Entry({ children: 'navigator' })).props.children[0].props.value;
+      return status ? { props: status } : null; },
     load,
   });
 }

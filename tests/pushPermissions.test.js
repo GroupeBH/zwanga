@@ -6,7 +6,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 function fixture(platform = 'android') {
   const calls = [];
   const io = { status: 'denied', canAskAgain: true, nextStatus: 'granted', active: 'active', fail: false,
-    receive: null, stored: null, request: null };
+    receive: null, stored: null, request: null, permissionWait: null };
   const service = loader({
     'expo-constants': { appOwnership: 'standalone', expoConfig: { extra: { eas: { projectId: 'test-project' } } } },
     'react-native': { Platform: { OS: platform }, AppState: { get currentState() { return io.active; } } },
@@ -15,7 +15,8 @@ function fixture(platform = 'android') {
       AndroidImportance: { MAX: 5 },
       setNotificationChannelAsync: async (id, config) => { calls.push(['channel', id, config]); },
       getPermissionsAsync: async () => {
-        calls.push(['permissions']); return { status: io.status, canAskAgain: io.canAskAgain };
+        calls.push(['permissions']); if (io.permissionWait) await io.permissionWait;
+        return { status: io.status, canAskAgain: io.canAskAgain };
       },
       requestPermissionsAsync: async () => {
         calls.push(['prompt']);
@@ -96,4 +97,25 @@ test('iOS preserves Expo push transport without creating Android channels', asyn
   assert.equal(await f.service.obtainFcmToken(), 'test-expo');
   assert.deepEqual(f.calls.map(call => call[0]), ['permissions', 'prompt', 'expo']);
   assert.deepEqual(f.calls[2][1], { projectId: 'test-project' });
+});
+
+test('an unresolved permission lookup expires and does not poison the next foreground attempt', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(); let release;
+  f.io.permissionWait = new Promise(resolve => { release = resolve; });
+  const first = f.service.requestPushPermissions(); await tick();
+  t.mock.timers.tick(30000); assert.equal(await first, false);
+  f.io.permissionWait = null;
+  assert.equal(await f.service.requestPushPermissions(), true);
+  release(); await tick(); assert.equal(f.prompts(), 1, 'expired lookup must not open a delayed prompt');
+});
+
+test('a long-lived OS dialog is shared across timeout retries rather than shown twice', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(); let release;
+  f.io.request = new Promise(resolve => { release = resolve; });
+  const first = f.service.requestPushPermissions(); await tick();
+  t.mock.timers.tick(30000); assert.equal(await first, false);
+  const retry = f.service.requestPushPermissions(); await tick(); assert.equal(f.prompts(), 1);
+  release(); assert.equal(await retry, true);
 });

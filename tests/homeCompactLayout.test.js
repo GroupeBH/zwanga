@@ -375,12 +375,12 @@ test('suggestion price distinguishes free from unknown and its action opens deta
   assert.equal(flatten(freeBadge.props.style).backgroundColor, c.paleGreen);
 });
 
-test('driver publish action uses orange without changing its destination', () => {
+test('driver publish action uses blue without changing its destination', () => {
   const { HOME_DASHBOARD_COLORS: c } = load('features/home/homeDashboardTheme.ts');
   const calls = [];
   const tree = HomeTripsSheet.type({ ...base, isDriver: true, router: { push: path => calls.push(path) } });
   const button = nodes(tree).find(node => node.type === 'Button' && text(node) === 'Publier un trajet');
-  assert.equal(flatten(button.props.style).backgroundColor, c.orange);
+  assert.equal(flatten(button.props.style).backgroundColor, c.blue);
   assert.equal(flatten(nodes(button).find(node => node.type === 'Text').props.style).color, '#FFFFFF');
   button.props.onPress(); assert.deepEqual(calls, ['/publish']);
 });

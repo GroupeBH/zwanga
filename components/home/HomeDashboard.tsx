@@ -8,10 +8,12 @@ import { HomeActivityCards } from '@/components/home/HomeActivityCards';
 import { styles } from '@/features/home/HomeScreen.styles';
 import { useHomeController } from '@/hooks/home/useHomeController';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMainScreenReady } from '@/hooks/useMainScreenReady';
 export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeContext> }) {
   const home = useHomeController(context);
+  const reportLayout = useMainScreenReady(home.isScreenActive && context.isHomeRoleReady, 'home');
   // Trip reads must never replace/remount the native map, including on a slow network.
-  return <SafeAreaView style={styles.container} edges={[]} onLayout={home.onHomeLayout}>
+  return <SafeAreaView style={styles.container} edges={[]} onLayout={event => { home.onHomeLayout(event); reportLayout(); }}>
     <HomeMap
       shouldRenderHomeMap={home.shouldRenderHomeMap}
       mapRef={home.mapRef}

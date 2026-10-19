@@ -17,9 +17,12 @@ import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequestDriverDecision, RequestDecisionActions } from '@/features/request-detail/RequestDriverDecision';
 import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
+import { useMainScreenReady } from '@/hooks/useMainScreenReady';
 
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
+  const reportLayout = useMainScreenReady(model.isScreenActive && Boolean(model.tripRequest) &&
+    !model.isLoading && !model.isOpeningAssignedTrip && !model.isError && !model.error, 'request_detail');
   const passengerTripId = model.passengerTripId;
 
   if (model.isLoading || (model.isFetchingRequest && !model.tripRequest) || model.isOpeningAssignedTrip) {
@@ -114,7 +117,7 @@ export default function TripRequestDetailsScreen() {
   const showCourse = !model.isOwner && (model.canOpenAssignedTrip || model.canStartAssignedTrip);
 
   return (
-    <SafeAreaView style={[styles.container, model.isOwner ? requestSummaryStyles.passengerScreen : requestSummaryStyles.driverScreen]}>
+    <SafeAreaView onLayout={reportLayout} style={[styles.container, model.isOwner ? requestSummaryStyles.passengerScreen : requestSummaryStyles.driverScreen]}>
       <View style={[styles.header, requestSummaryStyles.header]}>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={[styles.backButton, requestSummaryStyles.back]}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />

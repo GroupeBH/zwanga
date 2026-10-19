@@ -1,11 +1,21 @@
 name: Create Production Builds
 
 jobs:
+  quality:
+    name: Validate source and regressions
+    runs_on: linux-medium
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Release checks
+        run: npm run check:release
   build_android:
+    needs: [quality]
     type: build # This job type creates a production build for Android
     params:
       platform: android
   build_ios:
+    needs: [quality]
     type: build # This job type creates a production build for iOS
     params:
       platform: ios
