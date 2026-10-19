@@ -24,13 +24,13 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     ...displayReadOptions(enabled),
   });
 
-  const { data: myBookings, refetch: rawRefetchMyBookings } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, refetch: rawRefetchMyBookings, isSuccess: bookingsReady } = useGetMyBookingsQuery(undefined, {
     ...sharedBookingsOptions,
     skip: !enabled,
   });
   const refetchMyBookings = useDisplayRefetch(enabled, 'activity', rawRefetchMyBookings);
 
-  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS } = useGetMyTripRequestsQuery(undefined, {
+  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS, isSuccess: requestsReady } = useGetMyTripRequestsQuery(undefined, {
     ...sharedRequestsOptions,
     skip: !enabled || !currentUser?.id,
   });
@@ -38,6 +38,8 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
   const {
     data: availableTripRequests = EMPTY_HOME_TRIP_REQUESTS,
     isLoading: availableTripRequestsLoading,
+    isSuccess: availableReady,
+    isFetching: availableFetching,
     isError: availableTripRequestsError,
     refetch: rawRefetchAvailableTripRequests,
   } = useGetAvailableTripRequestsQuery(undefined, {
@@ -204,6 +206,8 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     return [...unique.values()];
   }, [myBookings, myTripRequests, currentUser?.id]);
   return {
+    passengerAnnouncementReady: bookingsReady && requestsReady,
+    driverRequestsAnnouncementReady: !isDriver || (availableReady && !availableFetching),
     recentDestinations,
     activeBookings,
     completedBookingTripIds,

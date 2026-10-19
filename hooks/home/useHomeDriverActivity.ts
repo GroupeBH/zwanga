@@ -21,7 +21,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
   const ongoingPassengerBooking = useMemo(
     () => findOngoingPassengerBooking(myBookings, currentUser?.id), [myBookings, currentUser?.id],
   );
-  const { data: myDriverTrips = EMPTY_HOME_TRIPS } = useGetMyTripsQuery(undefined, {
+  const { data: myDriverTrips = EMPTY_HOME_TRIPS, isSuccess: tripsReady } = useGetMyTripsQuery(undefined, {
     ...sharedActivityQueryOptions,
     skip: !enabled || !isDriver,
   });
@@ -75,13 +75,14 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
     return rankDriverUpcomingTrips(visibleTrips, currentUser.id, hiddenHomePriorities)[0] ?? null;
   }, [currentUser?.id, isDriver, myDriverTrips, ongoingDriverTrip, ongoingPassengerBooking, hiddenHomePriorities]);
 
-  const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS } = useGetTripBookingsQuery(
+  const { data: driverReservationHighlightBookings = EMPTY_HOME_BOOKINGS, isSuccess: highlightReady, isFetching: highlightFetching } = useGetTripBookingsQuery(
     driverReservationHighlightTrip?.id ?? '',
     {
       ...displayReadOptions(enabled && Boolean(driverReservationHighlightTrip?.id) && !ongoingDriverTrip, HOME_ACTIVITY_POLL_MS),
     },
   );
   return {
+    driverAnnouncementReady: !isDriver || (tripsReady && (!driverReservationHighlightTrip || (highlightReady && !highlightFetching))),
     ongoingDriverTrip,
     ongoingPassengerBooking,
     driverReservationHighlightTrip,

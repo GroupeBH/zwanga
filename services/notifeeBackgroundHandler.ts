@@ -11,6 +11,7 @@ import { notificationDecision, parseDriverInvitation } from '@/features/notifica
 import { respondToDriverNotification } from './driverNotificationResponse';
 import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
+import { dismissDriverInvitation } from './driverNotifications';
 
 // Types Notifee
 type NotifeeModule = typeof import('@notifee/react-native');
@@ -71,6 +72,7 @@ if (notifee && EventTypeEnum) {
       const data = notification?.data || {};
       const nearby = parseNearbyPhoneAlert(data);
       if (nearby) {
+        if (pressAction?.id === 'driver-ignore-nearby') { await dismissDriverInvitation(nearby); return; }
         await openAppDeepLink(`zwanga://request-details/${nearby.id}`);
         return;
       }

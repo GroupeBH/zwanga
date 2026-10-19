@@ -6,10 +6,10 @@ import { useRequestDetailData } from './useRequestDetailData';
 import { useRequestPassengerActions } from './useRequestPassengerActions';
 import { useRequestEditSchedule } from './useRequestEditSchedule';
 import { useRequestDriverActions } from './useRequestDriverActions';
-import { RouteOverridePickerTarget } from '../../features/request-detail/requestDetailModel';
-import { MapLocationSelection } from '@/components/LocationPickerModal';
+import { useRequestRouteOverridePicker } from './useRequestRouteOverridePicker';
 import { useCallback } from 'react';
-import { Keyboard, Platform } from 'react-native';
+import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
+import { buildRequestDetailEntry } from '@/features/notifications/detailEntryAnnouncement';
 
 export function useRequestDetailController() {
   const data = useRequestDetailData();
@@ -18,6 +18,7 @@ export function useRequestDetailController() {
   const form = useRequestDetailFormState();
 
   const availability = useRequestAvailability({
+    loadRoute: false, // The map owns this read only while actually displayed.
     setDirectAcceptRequiresPassengerKyc: form.setDirectAcceptRequiresPassengerKyc,
     tripRequest: data.tripRequest,
     compatibleActiveVehicles: data.compatibleActiveVehicles,
@@ -33,6 +34,11 @@ export function useRequestDetailController() {
     isAcceptingTripRequest: data.isAcceptingTripRequest,
     setShowDirectAcceptModal: form.setShowDirectAcceptModal,
   });
+
+  useRideEntryAnnouncement(data.currentUser?.id, data.isScreenActive,
+    Boolean(data.tripRequest && !data.isLoading && !data.isFetchingRequest && !data.isError && !data.isOpeningAssignedTrip),
+    buildRequestDetailEntry({ userId: data.currentUser?.id, request: data.tripRequest, isDriver: data.isDriverAccount,
+      canAccept: availability.canAcceptDirectly, assigned: Boolean(availability.isCurrentDriverAssigned) }));
 
   const validation = useRequestEditValidation({
     editAddressInputMode: form.editAddressInputMode,
@@ -56,46 +62,8 @@ export function useRequestDetailController() {
     setShowDirectAcceptModal(false);
   }, [setShowDirectAcceptModal]);
 
-  const openDirectRouteOverridePicker = (target: RouteOverridePickerTarget) => {
-    Keyboard.dismiss();
-    form.directPickerRestorePendingRef.current = false;
-    if (form.directPickerTransitionTimerRef.current) {
-      clearTimeout(form.directPickerTransitionTimerRef.current);
-    }
-    form.setShowDirectAcceptModal(false);
-    form.directPickerTransitionTimerRef.current = setTimeout(() => {
-      form.setRouteOverridePickerTarget(target);
-      form.directPickerTransitionTimerRef.current = null;
-    }, Platform.OS === 'ios' ? 350 : 80);
-  };
-
-  const restoreDirectAcceptModalAfterLocationPicker = () => {
-    if (form.directPickerRestorePendingRef.current) return;
-    form.directPickerRestorePendingRef.current = true;
-    if (form.directPickerTransitionTimerRef.current) {
-      clearTimeout(form.directPickerTransitionTimerRef.current);
-    }
-    form.setRouteOverridePickerTarget(null);
-    form.directPickerTransitionTimerRef.current = setTimeout(() => {
-      form.setShowDirectAcceptModal(true);
-      form.directPickerRestorePendingRef.current = false;
-      form.directPickerTransitionTimerRef.current = null;
-    }, Platform.OS === 'ios' ? 350 : 80);
-  };
-
-  const handleRouteOverrideSelected = (location: MapLocationSelection) => {
-    switch (form.routeOverridePickerTarget) {
-      case 'directDeparture':
-        form.setDirectAcceptDepartureLocation(location);
-        break;
-      case 'directArrival':
-        form.setDirectAcceptArrivalLocation(location);
-        break;
-      default:
-        break;
-    }
-    restoreDirectAcceptModalAfterLocationPicker();
-  };
+  const routeOverride = useRequestRouteOverridePicker(form, `${data.currentUser?.id}:${data.id}`,
+    availability.canAcceptDirectly && !data.isAcceptingTripRequest && !data.isStartingTrip && !data.isFetchingRequest);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
   const schedule = useRequestEditSchedule({
@@ -110,6 +78,8 @@ export function useRequestDetailController() {
   });
 
   const driverActions = useRequestDriverActions({
+    userId: data.currentUser?.id,
+    assignedTrip: data.assignedTrip,
     tripRequest: data.tripRequest,
     id: data.id,
     showDialog: data.showDialog,
@@ -194,6 +164,10 @@ export function useRequestDetailController() {
   });
 
   return {
+    userId: data.currentUser?.id,
+    assignedTrip: data.assignedTrip,
+    handleGoPickup: driverActions.handleGoPickup,
+    handleDeclineTripRequest: driverActions.handleDeclineTripRequest,
     isLoading: data.isLoading,
     isFetchingRequest: data.isFetchingRequest,
     tripRequest: data.tripRequest,
@@ -239,7 +213,7 @@ export function useRequestDetailController() {
     directAcceptVehicle: availability.directAcceptVehicle,
     areDirectOptionsExpanded: form.areDirectOptionsExpanded,
     setAreDirectOptionsExpanded: form.setAreDirectOptionsExpanded,
-    openDirectRouteOverridePicker,
+    openDirectRouteOverridePicker: routeOverride.openDirectRouteOverridePicker,
     directAcceptDepartureLocation: form.directAcceptDepartureLocation,
     directAcceptDepartureReference: form.directAcceptDepartureReference,
     setDirectAcceptDepartureReference: form.setDirectAcceptDepartureReference,
@@ -297,7 +271,7 @@ export function useRequestDetailController() {
     editDepartureLocation: form.editDepartureLocation,
     editArrivalLocation: form.editArrivalLocation,
     routeOverridePickerTarget: form.routeOverridePickerTarget,
-    restoreDirectAcceptModalAfterLocationPicker,
-    handleRouteOverrideSelected,
+    restoreDirectAcceptModalAfterLocationPicker: routeOverride.restoreDirectAcceptModalAfterLocationPicker,
+    handleRouteOverrideSelected: routeOverride.handleRouteOverrideSelected,
   };
 }

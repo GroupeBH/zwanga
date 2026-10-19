@@ -1,5 +1,969 @@
 # Journal des changements techniques
 
+## 2026-10-19 — Mise à jour du SDK Didit vers 4.9.1
+
+- **Périmètre et demande :** mettre à jour le SDK KYC Didit sans changer le
+  fournisseur, le parcours de vérification ou les autres dépendances. Version
+  précédente du wrapper React Native : `4.7.6`, avec SDK natifs `4.7.5`.
+  Consultation directe du [registre npm officiel](https://registry.npmjs.org/@didit-protocol/sdk-react-native/latest)
+  le 19 octobre 2026 : tag `latest` à `4.9.1`, versions natives iOS et Android
+  déclarées à `4.9.1`. Le registre est utilisé pour la version courante, les
+  pages web indexées pouvant afficher une version plus ancienne.
+- **Solution effectivement appliquée :** version exacte `4.9.1` dans
+  `package.json`, archive et intégrité correspondantes dans `package-lock.json`,
+  installation locale effectuée. Le diff du verrou npm ne change que Didit.
+  `ios/Podfile` pointe maintenant vers le podspec natif `4.9.1` pour éviter
+  un conflit avec l'exigence du wrapper. Android utilise la version exacte
+  déclarée par le paquet installé ; aucun changement du projet Gradle requis.
+  Les métadonnées publiques du
+  [podspec iOS](https://raw.githubusercontent.com/didit-protocol/sdk-ios/4.9.1/DiditSDK.podspec)
+  et du [module Android AutoDetection](https://raw.githubusercontent.com/didit-protocol/sdk-android/main/repository/me/didit/didit-sdk-autodetection/4.9.1/didit-sdk-autodetection-4.9.1.pom)
+  ont été récupérées et confirment la version publiée.
+- **Comportements conservés :** variante `autodetection` sans NFC sur les deux
+  plateformes, langue française, caméra arrière pour les documents et avant
+  pour le visage, confirmation de fermeture, import différé du SDK, session
+  créée par le backend, annulation et erreurs existantes. Le parcours mobile
+  reste natif, sans repli navigateur ; le parcours web reste inchangé. Expo,
+  React Native, les permissions et les versions de l'application ne sont pas
+  modifiés. Les protections inter-comptes et contre les lancements KYC tardifs
+  restent en place. Aucun appel réel de création de session KYC effectué.
+- **Vérifications :** `tests/diditSdkVersion.test.js` ajoute cinq contrôles :
+  cohérence manifeste/verrou/installation, alignement des versions natives et
+  variantes, application du plugin Expo en mémoire sans duplication ni perte
+  des réglages existants, analyse du TurboModule par le codegen React Native
+  installé, transmission des options Zwanga au vrai pont JS Didit avec module
+  natif simulé. Avec les suites `diditNativeFlow`, `identityQueryLifecycle`,
+  `accountIdentityRefresh`, `authSubmissionLoading`, `iosDeploymentTarget` et
+  `iosCrashlytics` : 57 tests JavaScript réussis, aucun échec, un test Ruby
+  ignoré car Ruby est absent sur cette machine. TypeScript `--noEmit`, ESLint
+  ciblé, `npm ls` et contrôle d'espacement passent. Le contrôle du correctif
+  de bornage GPS existant passe également après l'installation npm.
+- **Limites et mise en service :** aucune compilation Gradle/Xcode complète,
+  résolution CocoaPods ni vérification sur appareil physique effectuée dans
+  ce lot. `ios/Podfile.lock` n'a pas été réécrit manuellement ; il sera résolu
+  par CocoaPods sur macOS/EAS. Des builds natifs Android et iOS, y compris un
+  nouveau client de développement si utilisé, sont nécessaires pour embarquer
+  Didit 4.9.1 ; une OTA seule ne met pas à jour les modules natifs. Tester
+  autorisation caméra, capture document/visage, annulation, perte de réseau
+  et retour dans l'app sur les nouveaux binaires. Aucune amélioration de
+  performance ni disparition de crash n'est annoncée sans ces essais.
+  Aucun prebuild destructif, déploiement, soumission store ou modification
+  du backend n'a été réalisé.
+
+## 2026-10-19 — Initiale du compte connecté en haut de Home
+
+- **Périmètre et demande :** afficher uniquement la première lettre du prénom
+  du compte connecté dans le bouton de profil de l'accueil, pour les conducteurs
+  comme pour les passagers, même si une photo est disponible. L'en-tête local
+  utilisait déjà un texte ; une URL de photo inutilisée et un prénom de secours
+  correspondant à une ville subsistaient dans son alimentation.
+- **Solution appliquée :** `hooks/home/useHomeSheet.ts` retire l'URL d'avatar,
+  nettoie les espaces du prénom et conserve la compatibilité avec le premier
+  mot du champ historique `name`. Sans nom connu, aucune initiale n'est inventée.
+  `components/home/HomeHeader.tsx` affiche l'initiale en majuscule, ou `?` si elle
+  est absente. Le style de photo inutilisé est retiré de
+  `features/home/HomeHeader.styles.ts`. Aucun composant image ni chargement de
+  photo n'est ajouté à l'en-tête.
+- **Comportements conservés :** le profil provient toujours du compte identifié
+  par la session via `useHomeContext` ; l'appui ouvre toujours le profil. Position,
+  couleurs, notifications, tab bar et photos dans les autres écrans/cartes restent
+  inchangés. Aucun changement backend, natif ou de dépendance.
+- **Vérifications :** deux tests ajoutés dans `tests/homeCompactLayout.test.js`
+  couvrent les deux rôles, photo présente, espaces, accent, champ historique,
+  prénom absent et mise à jour du compte. Les suites Home compact, rôle, cycle de
+  vie et cartes compactes totalisent 45 tests JavaScript réussis. TypeScript
+  `--noEmit`, ESLint ciblé et contrôle d'espacement passent. Aucun essai visuel
+  sur appareil physique effectué dans ce lot.
+
+## 2026-10-19 — Entrée Home non bloquante et réutilisation des lectures récentes
+
+- **Périmètre et problème constaté :** le chargement plein écran dépendait de
+  deux phases successives de découverte et de vérification des trajets/demandes.
+  Une lecture lente ou en erreur pouvait donc rendre tout l'accueil inaccessible,
+  même avec un profil déjà connu. Les budgets réseau ne sont pas une durée
+  d'attente acceptable pour cette présentation. Ce lot concerne le mobile ;
+  il ne modifie ni le contrat backend ni l'infrastructure.
+- **Solution appliquée — présentation :**
+  `hooks/navigation/useEntryPresentation.ts` définit un budget visuel commun
+  de 2 secondes pour les deux phases, depuis la disponibilité du navigateur
+  après Auth/démarrage. `components/ActiveRideResumeCoordinator.tsx` libère
+  ensuite l'accueil et poursuit les contrôles en arrière-plan. Un profil
+  valide et un résumé récent sans activité permettent une ouverture immédiate.
+  Une erreur ou l'absence de réseau libère également la couverture. Le budget
+  de vérification de 25 secondes par phase et les délais HTTP restent inchangés :
+  la limite de 2 secondes est un timer JavaScript, pas une mesure native ni une
+  garantie de rendu en cas de blocage du thread JS.
+- **Résultats tardifs et rôle inconnu :** dès que l'accueil est révélé, une
+  destination trouvée tardivement devient une action volontaire dans
+  `components/home/EntrySyncBanner.tsx` (« Reprendre mon trajet » ou « Voir la
+  demande »), jamais une nouvelle redirection automatique. Une tentative
+  supplémentaire reste non bloquante. Le bandeau est limité à Home et masqué
+  pendant les dialogues prioritaires. `components/home/HomeEntryPlaceholder.tsx`
+  et `app/(tabs)/index.tsx` proposent un accueil neutre et défilable lorsque
+  le rôle est inconnu, avec accès aux trajets, au profil et au support, sans
+  supposer un rôle passager ni charger la carte. Le contexte
+  `features/navigation/appEntryContext.ts` représente désormais uniquement
+  l'attente visuelle, pas toute la durée des contrôles.
+- **Lectures réduites :** `features/navigation/entryFreshness.ts` fixe une
+  fenêtre de réutilisation de 30 secondes. `services/entryRecovery.ts` peut
+  reprendre un détail trajet/réservation/demande réussi, récent et non en
+  rafraîchissement, ou attendre un GET partagé déjà lancé et réutiliser son
+  résultat sans lancer un second GET. Une offre de dispatch reste vérifiée
+  par une lecture fraîche. `useActiveRideResume.ts` et
+  `useRequestEntryResume.ts` acceptent cette même fenêtre pour la découverte.
+  `AccountActivityCoordinator.tsx` évite le refetch systématique du résumé
+  à chaque remontage. Les réconciliations achevées sont conservées en mémoire
+  dans `services/activityReadiness.ts`, pour le même compte et la même session
+  uniquement ; `features/activity/activityReconciliation.ts` ne les réutilise
+  que si la révision et l'horodatage exact de la liste réussie correspondent.
+  Une révision modifiée ou une lecture en erreur entraîne une nouvelle lecture.
+  Aucun cache disque, abonnement supplémentaire ni polling plus fréquent.
+- **Comportements conservés et protections :** priorité au trajet en cours,
+  y compris lorsqu'il est proposé après le délai ; vérifications d'appartenance,
+  de rôle pendant le trajet, de statut et d'expiration ; règles des commandes
+  acceptées le jour même et des publications antérieures ; gardes des routes
+  privées et validations serveur lors des actions métier. Changement de compte,
+  de session, de route, suspension et démontage invalident les callbacks concernés.
+  Une navigation volontaire efface la proposition précédente. La réutilisation
+  peut présenter un état vieux de moins de 30 secondes ; elle ne constitue jamais
+  une autorisation d'accepter, d'annuler ou de démarrer. L'annulation de l'attente
+  n'interrompt toujours pas le GET RTK partagé. Le comportement de reprise
+  automatique hors connexion n'est pas étendu par ce lot.
+- **Vérifications :** suites JavaScript ciblées de reprise, réconciliation,
+  authentification, alertes et vues d'entrée ; nouveaux cas dans
+  `tests/entryPresentation.test.js` et `tests/entryViews.test.js`, compléments
+  dans `activityReadiness`, `entryRecoverySafety`, `activeRideResumeCoordinator`,
+  `entryActivityRecovery` et `homeRoleLoader`, avec adaptation du harnais
+  `tests/helpers/entryRecoveryHarness.cjs`. Les tests simulent notamment une
+  réponse dépassant 2 secondes, l'ouverture explicite ensuite, la priorité du
+  trajet en cours, les erreurs, la perte de réseau et les changements de session.
+  Validation finale : 321 tests JavaScript réussis, aucun échec ; TypeScript
+  `--noEmit` et ESLint ciblé réussis ; `git diff --check` sans erreur d'espacement
+  (un avertissement CRLF/LF sur un fichier préexistant non modifié par ce lot).
+  Contrôle de taille : 1 133 sources, aucune au-dessus de 400 lignes.
+- **Limites et suite différée :** pas d'essai sur appareil physique ni de
+  mesure comparative de mémoire, CPU ou temps réseau dans ce lot ; aucune
+  disparition de crash ou de chauffe annoncée. Vérifier avec réseau lent,
+  reprise après veille, compte conducteur/passager et grandes polices. À froid,
+  les lectures métier restent nécessaires. L'enrichissement de `/me/activity`
+  pour fournir directement l'activité prioritaire reste une piste backend
+  distincte, non appliquée ici. Aucun déploiement ni modification AWS.
+
+## 2026-10-19 — Réouverture Android et annulations des lectures d’entrée
+
+- **Signalement et périmètre :** avertissement `AppEntry activity:read` après
+  environ 20 secondes, `FETCH_ERROR / AbortError` dans le détail d’une commande,
+  puis navigation ignorée à la réouverture depuis le client de développement.
+  Ces messages ne constituent pas une trace de crash natif. Deux défauts ont
+  été reproduits en JavaScript avec les routeurs et RTK Query installés ; ils
+  ne prouvent pas à eux seuls la cause de chaque échec réseau observé.
+- **Route d’entrée conservée :** `components/ProtectedAppStack.tsx` déclare
+  désormais `index` hors du garde de fin de démarrage. Un lien racine peut donc
+  encore l’atteindre après le premier passage sur Home ou Auth. Cette route
+  reste le `StartupRedirect` existant, sans donnée privée : il choisit Home
+  ou Auth selon la session. Les autres routes de démarrage, les gardes des
+  écrans privés, le nettoyage de l’historique et le retour vers `auth-entry`
+  après déconnexion restent inchangés. Aucun contournement global des liens
+  profonds ni modification de dépendance. Le retrait d’une route par un garde
+  est également décrit dans la
+  [documentation Expo des routes protégées](https://docs.expo.dev/router/advanced/protected/).
+- **Annulation corrigée :** `services/entryRecovery.ts` invalide maintenant
+  l’attente du coordinateur sans appeler `abort()` sur le GET RTK partagé.
+  Même si le coordinateur lance la requête, un écran peut s’y abonner ensuite :
+  l’ancien comportement faisait échouer aussi cet écran lors d’une suspension
+  ou d’un dépassement du budget d’entrée. Cette correction remplace donc la
+  règle d’annulation des GET décrite dans l’entrée précédente du journal.
+  Le budget d’attente de 25 secondes, les délais HTTP existants, la protection
+  inter-comptes et l’interdiction de rediriger à partir d’un résultat invalidé
+  sont conservés. Le transport peut finir dans son propre délai et alimenter
+  son cache ; aucun GET supplémentaire ni mutation rejouée n’est ajouté.
+- **Diagnostic des échecs :** `entryRecovery.ts` distingue timeout explicite,
+  annulation, réseau, statut HTTP, réponse invalide et cause inconnue. Il ne
+  déduit pas un timeout de la seule durée. `AccountActivityCoordinator`,
+  `ActiveRideResumeCoordinator`, `activityReconciliation`, `useActiveRideResume`,
+  `useRequestEntryResume` et `useRequestDetailData` transmettent l’erreur au
+  classificateur, jamais au journal brut. Les observations des requêtes ignorent
+  l’ancienne erreur pendant un nouveau chargement. Les logs gardent uniquement
+  un code statique, la durée bornée, la catégorie et éventuellement le statut
+  HTTP ; limitation à une occurrence par étape/raison et par minute.
+- **Vérifications :** nouveaux tests dans `tests/homeBackNavigation.test.js`
+  et `tests/entryRecoverySafety.test.js`. Avant correction, le routeur refusait
+  le lien `index` à chaud et l’annulation du coordinateur interrompait le GET
+  rejoint par un écran. Après correction, les deux scénarios passent. Un test
+  avec le vrai `fetchBaseQuery` et un transport natif simulé confirme qu’un
+  timeout peut remonter sous `FETCH_ERROR / AbortError`, sans annulation du
+  coordinateur. 304 tests JavaScript ciblés passent, ainsi que TypeScript
+  `--noEmit`, ESLint ciblé et `git diff --check`. Contrôle de taille : 1 129
+  sources, aucune au-dessus de 400 lignes. Ce ne sont pas des essais physiques.
+- **Contrôles réseau ponctuels et limites :** depuis l’ordinateur, l’API locale
+  configurée a répondu HTTP 200 à sa liveness en 31 ms et à sa santé en 200 ms ;
+  l’activité sans authentification a répondu HTTP 401 en 35 ms, sans lecture de
+  compte. Ce sont des sondes ponctuelles, pas une mesure des lectures métier.
+  Une sonde HTTP brute via le shell de l’émulateur a retourné 400 : elle ne
+  valide pas le parcours réseau React Native. Aucun jeton n’a été extrait,
+  aucun état métier modifié et aucun déploiement effectué. La cause exacte des
+  20 secondes sur les requêtes authentifiées demeure à établir avec les
+  nouveaux diagnostics. Recharger Metro puis vérifier réouverture, veille et
+  retour, ouverture de commande et coupure/reprise réseau. Aucune disparition
+  de crash ou de chauffe n’est annoncée sans validation native.
+
+## 2026-10-19 — Fiabilité du chargement Home, reprises et restauration des alertes
+
+- **Périmètre et problèmes reproduits :** l’audit local a mis en évidence un
+  bouton Réessayer inopérant après une redirection de demande qui échoue ou
+  n’aboutit pas, des vérifications suspendues non invalidées par une nouvelle
+  tentative, une navigation concurrente depuis la présence conducteur et
+  l’abandon silencieux des notifications suivantes après un échec natif simulé.
+  Les 8 secondes du loader étaient également inférieures aux 20 secondes
+  accordées aux lectures HTTP. Ce sont des reproductions JavaScript, pas une
+  identification certaine de la cause observée sur un appareil physique.
+- **Reprise et navigation :** `hooks/navigation/useRequestEntryResume.ts` et
+  `hooks/navigation/useActiveRideResume.ts` ne consomment plus la reprise avant
+  l’appel au routeur. Une exception expose la récupération immédiatement ; une
+  redirection sans changement de route reste récupérable. Chaque vérification
+  possède une génération et un signal d’annulation. Délai dépassé, Réessayer,
+  sortie volontaire et démontage invalident l’ancienne tentative ; sa réponse
+  ou sa finalisation tardive ne peut plus modifier la nouvelle tentative.
+- **Délais et lectures :** `services/entryRecovery.ts` définit un budget de
+  25 secondes (20 secondes HTTP + marge) par phase d’entrée. Les lectures
+  successives de détail partagent le budget de leur hook ; la découverte du
+  trajet en cours et l’entrée secondaire sur une demande restent deux phases.
+  `components/ActiveRideResumeCoordinator.tsx` borne aussi les attentes des
+  lectures existantes et les GET de détail/profil/activité qu’il déclenche.
+  `components/AccountActivityCoordinator.tsx` utilise le même mécanisme pour
+  les listes et annule ses propres travaux lors de sa suspension. Une attente
+  annulée ne lance plus un GET tardif. Les lectures préexistantes appartenant à
+  un autre consommateur ne sont pas annulées ; aucun paiement, démarrage ou
+  autre mutation métier n’est rejoué par ce mécanisme.
+- **Arbitrage unique :** suppression de la redirection autonome dans
+  `components/DriverPresenceCoordinator.tsx`. Le coordinateur d’entrée observe
+  le statut dispatch déjà chargé, sans nouvel abonnement ni polling. Une offre
+  en cache n’est qu’un indice : son détail serveur doit confirmer le destinataire,
+  la validité et la possibilité d’agir. Trajet en cours, routeur prêt, rôle,
+  dialogue ouvert, réseau et navigation volontaire sont vérifiés par les mêmes
+  règles que les autres entrées. Aucun événement sonore artificiel n’est créé
+  à partir de ce statut. Les appuis explicites sur les notifications restent
+  distincts ; le GPS et ses cadences existantes sont conservés.
+- **Notifications :** `hooks/notifications/useRideRinging.ts` isole les erreurs
+  par source et par notification, borne les attentes natives avec le mécanisme
+  audio existant et journalise des codes statiques. Un élément défectueux
+  n’empêche plus les suivants d’être traités. Les restaurations sont sérialisées
+  avec au plus une reprise en attente ; une ancienne génération de premier
+  plan ne restaure pas ses résultats après veille, changement de session ou
+  démontage. La notification dont l’arrêt natif échoue n’est pas transférée
+  aveuglément au lecteur local, afin de ne pas superposer deux sonneries.
+- **Diagnostic et précautions :** `features/activity/activityReconciliation.ts`
+  conserve les données précédentes mais n’ignore plus l’échec sans diagnostic.
+  Les étapes profil, activité, listes, détails et navigation produisent un code
+  et une durée bornée via `entryRecovery.ts`, limités à un message par code et
+  par minute. Aucun identifiant de compte, trajet, coordonnées, texte de
+  notification, jeton, valeur de configuration ou erreur brute n’est ajouté
+  aux diagnostics. La carte différée, la protection inter-comptes, les priorités
+  de reprise et les écrans de paiement/conversation sont conservés.
+- **Vérifications :** tests de non-régression ajoutés dans
+  `tests/entryRecoverySafety.test.js`, `tests/rideAlertRestoration.test.js` et
+  les suites de reprise conducteur/demande, d’intégration du coordinateur et de
+  présence conducteur. L’horloge de `tests/requestEntryResume.test.js` est
+  désormais simulée, pour supprimer sa dépendance à la vitesse de compilation
+  de la machine. 237 tests JavaScript ciblés passent, avec réseau, routeur et
+  modules natifs simulés. TypeScript `--noEmit`, ESLint ciblé et
+  `git diff --check` passent ; aucun fichier source ne dépasse 400 lignes.
+- **Limites et recette restante :** pas de mesure de latence ou de mémoire sur
+  téléphone, pas de validation native de disparition d’un crash ou d’une chauffe.
+  Un appel natif non annulable peut encore se terminer après son délai ; ses
+  résultats périmés sont ignorés, ce qui ne constitue pas une annulation native.
+  Une lecture partagée suspendue reste soumise à son propriétaire. Vérifier sur
+  Android/iOS : entrée normale, retour après veille, réseau lent/coupé, Réessayer,
+  trajet en cours avec offre simultanée, notification invalide parmi plusieurs.
+  Aucun changement backend/AWS, dépendance, build, publication OTA ou déploiement.
+
+## 2026-10-19 — Reprise au premier plan : synchronisation de l’écran d’entrée
+
+- **Signalement et diagnostic vérifié :** au retour dans l’application, le
+  loader affiche « Impossible d’ouvrir votre espace » et invite à vérifier la
+  connexion. Deux scénarios JavaScript reproduits avant correction montrent une
+  attente injustifiée avec des réponses réseau simulées réussies : une liste
+  d’activité est réconciliée avant un nouveau résumé de même révision, ou juste
+  avant le montage du consommateur d’entrée. Le routage exigeait alors une date
+  de lecture plus récente, tandis que le coordinateur évitait volontairement de
+  relire une révision déjà appliquée. Aucune redirection ne se produisait ; le
+  délai de secours existant pouvait afficher l’erreur générique. Cette
+  reproduction établit un défaut du code, pas une preuve de la cause unique
+  rencontrée sur le téléphone : aucune trace réseau/native de cet essai n’a été
+  recueillie, et la capture seule ne démontre pas une panne de connexion.
+- **Correction appliquée :** `features/activity/activityReconciliation.ts`
+  annonce une révision seulement après réconciliation réussie.
+  `components/AccountActivityCoordinator.tsx` enregistre alors le compte, la
+  catégorie, la révision et la date exacte du cache effectivement rempli dans
+  `services/activityReadiness.ts`. Ces confirmations restent en mémoire, au
+  maximum une par catégorie, et sont effacées à l’arrêt du coordinateur
+  (arrière-plan, déconnexion, changement de compte ou de mode). Un ancien
+  propriétaire ne peut ni publier ni effacer les confirmations du nouveau.
+- **Consommation :** `components/ActiveRideResumeCoordinator.tsx` observe ce
+  petit état partagé et le transmet à `hooks/navigation/useActiveRideResume.ts`
+  et `hooks/navigation/useRequestEntryResume.ts`. La règle commune de
+  `features/navigation/entryActivityReadiness.ts` accepte une liste antérieure
+  au résumé uniquement si le résumé frais du même compte confirme sa révision
+  et si la date du cache correspond exactement à la confirmation enregistrée.
+  Une révision différente, un cache en erreur/en cours de lecture ou un autre
+  compte ne passent pas ce contrôle. Les listes réellement plus récentes et le
+  repli existant pour les anciens backends restent utilisables. Le contrôle
+  couvre trajets, réservations et demandes passager ; il remplace aussi la
+  mémorisation locale partielle des trajets du correctif précédent.
+- **Comportements conservés et disponibilité :** aucune mutation métier,
+  aucun nouvel abonnement HTTP ni sondage périodique. Priorité du trajet en
+  cours, conditions de reprise d’une demande acceptée du jour, rôle réel dans
+  le trajet, vérification des détails serveur, démarrage manuel, protections
+  contre les résultats tardifs et retour volontaire à l’accueil conservés.
+  Le délai de secours reste borné, avec Réessayer et accès à l’accueil quand le
+  profil le permet. En ligne, le texte devient « Votre espace n’est pas encore
+  prêt » / « Réessayez pour charger vos trajets » ; l’instruction réseau est
+  réservée à l’état hors ligne connu. Aucun contournement d’authentification.
+- **Vérifications :** les deux reproductions échouaient avant correction et
+  passent après. `tests/entryActivityRecovery.test.js` et son support
+  `tests/helpers/entryRecoveryHarness.cjs` font fonctionner le producteur et les
+  deux consommateurs sur les mêmes caches : ordre des réponses, vraie séquence
+  arrière-plan/premier plan simulée, nouvelle révision, échec de lecture, reprise
+  manuelle, demande passager et absence de relecture redondante.
+  `tests/activityReadiness.test.js` contrôle l’isolation, le nettoyage, les
+  notifications bornées et les confirmations exactes ; les tests de reprise
+  acceptée utilisent désormais la confirmation partagée. 200 tests JavaScript
+  ciblés passent, ainsi que TypeScript `--noEmit`, ESLint ciblé et
+  `git diff --check`. 1 128 sources contrôlées, aucune au-dessus de 400 lignes.
+- **Limites et recette restante :** tests avec horloge, réseau, cache et rendu
+  natif simulés ; pas d’essai physique, de mesure de latence native ou de preuve
+  de disparition de crash. Vérifier sur Android/iOS avec ce code : revenir sur
+  l’accueil après veille, avec/sans demande acceptée, puis avec coupure réseau
+  et Réessayer. Aucun changement AWS/backend, build ou déploiement effectué.
+
+## 2026-10-19 — Entrée conducteur sur la demande acceptée du jour
+
+- **Problème et périmètre :** une demande acceptée mais pas encore démarrée
+  ne devenait pas l’écran d’entrée du conducteur. Celui-ci souhaite retrouver
+  directement cette course le jour prévu, sauf si une publication part plus tôt.
+  Modification locale du routage mobile, sans changement du backend, du schéma,
+  des dépendances, de la configuration native ou de l’interface de la fiche.
+- **Règle appliquée :** `features/navigation/acceptedRequestEntry.ts` recherche
+  les trajets personnels à venir liés à une demande, non démarrés et non expirés,
+  prévus aujourd’hui selon le calendrier de Kinshasa. La demande relue doit
+  confirmer le conducteur sélectionné, les deux liens demande/trajet, son état
+  accepté et un départ souhaité aujourd’hui ; elle ne doit pas être expirée ou
+  annulée. Une publication personnelle non démarrée du même jour dont le départ
+  est strictement antérieur au départ souhaité (`departureDateMin`) bloque cette
+  priorité. Un départ égal ou plus tardif, une ancienne journée et un trajet
+  terminé, annulé ou expiré ne la bloquent pas. La comparaison utilise l’horaire
+  souhaité, pas l’heure éventuellement ajustée du trajet créé après acceptation.
+  Les candidats sont examinés par heure de départ, sans modifier les listes.
+- **Intégration :** `components/ActiveRideResumeCoordinator.tsx` transmet sa
+  liste partagée de trajets et sa lecture authentifiée au hook
+  `hooks/navigation/useRequestEntryResume.ts`. La recherche ne dépend pas de
+  `getMyTripRequests`, réservé aux demandes créées en tant que passager. Avant
+  d’ouvrir `/request-details/:id`, le hook attend les publications réconciliées,
+  relit le trajet puis sa demande et recontrôle la liste la plus récente. Il
+  mémorise seulement, pendant cette entrée, la révision des trajets déjà
+  réconciliée : un résumé périodique inchangé ne réclame pas une lecture de liste
+  que le coordinateur partagé évite volontairement. Une révision différente
+  exige sa réconciliation. Aucun nouveau sondage périodique ni abonnement de
+  liste ; uniquement les lectures de détail nécessaires à la vérification.
+- **Comportements conservés :** un trajet déjà en cours reste prioritaire,
+  avec navigation selon le rôle dans ce trajet. Si le trajet accepté est devenu
+  en cours lors de sa relecture, la navigation conducteur s’ouvre. Sinon, la
+  fiche confirmée conserve « Aller chercher le passager » : aucune mutation de
+  démarrage automatique. Une course acceptée éligible passe avant une nouvelle
+  sollicitation. Une seule redirection réussie par entrée/compte ; le retour
+  volontaire à l’accueil reste possible. Paiement, conversation, formulaire et
+  navigation explicite ne sont pas remplacés. Les résultats tardifs sont
+  invalidés à la sortie, au changement de session/compte ou devant un dialogue.
+  Le loader existant couvre la décision ; erreur réseau et chargement lent
+  gardent Réessayer et l’accès explicite à l’accueil, sans boucle de requêtes.
+- **Vérifications :** 190 tests JavaScript ciblés passent : politiques et hook
+  (`tests/acceptedRequestEntryPolicy.test.js`, `tests/acceptedRequestEntry.test.js`),
+  entrée existante (`tests/requestEntryResume.test.js`), intégration du
+  coordinateur (`tests/activeRideResumeCoordinator.test.js`), activité partagée,
+  trajets en cours, accueil, synthèse vocale d’entrée, expiration, fiche et
+  démarrage. Couverture des limites de journée de Kinshasa, départs antérieurs/
+  égaux/postérieurs, changement d’attribution/annulation, mises à jour pendant
+  la vérification, cache ancien, révisions identiques/différentes, erreur/reprise
+  et absence de démarrage implicite. Les 23 tests des deux nouvelles suites ont
+  aussi été relancés après renforcement du scénario de reprise réseau.
+  TypeScript `--noEmit`, ESLint ciblé et `git diff --check` passent ; 1 126 sources
+  contrôlées, aucune au-dessus de 400 lignes.
+- **Limites :** tests de logique et de composition avec réseau et composants
+  natifs simulés, pas d’essai sur téléphone Android/iOS ni de mesure de
+  performance native. Recette restante : fermer/rouvrir après acceptation pour
+  aujourd’hui, avec puis sans publication plus tôt, puis démarrer explicitement
+  la course et vérifier la navigation. Aucun build ou déploiement effectué.
+
+## 2026-10-19 — Fiche conducteur allégée : carte repliée à la demande
+
+- **Problème et choix utilisateur :** l’aperçu cartographique ouvert par défaut
+  rendait le détail de la demande moins compact et moins agréable à parcourir.
+  L’utilisateur a explicitement choisi « Carte repliée, fiche plus compacte ».
+  Cette entrée remplace donc le choix d’ouverture automatique décrit dans
+  l’entrée précédente, sans supprimer la possibilité de consulter l’itinéraire.
+- **Solution appliquée :** `features/request-detail/RequestDriverDecision.tsx`
+  conserve la synthèse passager/prix/horaire/adresses et remplace la carte ouverte
+  et sa légende redondante par une ligne « Voir le trajet sur la carte ».
+  `CollapsibleRouteMap.tsx` reçoit un libellé et une apparence texte optionnels :
+  fond transparent, séparation discrète, chevron, zone tactile de 44 points
+  minimum et texte pouvant revenir à la ligne. L’ouverture/fermeture reste dans
+  la fiche, sans modal ni animation déplaçant les actions principales. Sans
+  coordonnées utilisables, « Carte indisponible » est lisible sur fond clair.
+- **Comportements conservés :** véhicule et boutons Accepter/Refuser hors du
+  défilement, options intégrées, contrôles d’éligibilité, montants et appels
+  d’acceptation/refus inchangés. Après ouverture, points de départ/arrivée,
+  tracé routier, repli honnête en pointillés et cache existant sont conservés.
+  La carte native n’est pas montée et aucune lecture d’itinéraire n’est lancée
+  avant l’ouverture explicite. Les autres écrans conservent leur bouton de carte
+  habituel ; la course déjà confirmée garde son aperçu ouvert. Aucun changement
+  du backend, des dépendances, de la configuration ou de la tab bar.
+- **Vérifications :** 176 tests JavaScript ciblés passent ; les 24 tests des
+  suites de disposition/carte/synthèses ont aussi été relancés après l’ajustement
+  du fond de l’état indisponible. `tests/requestDecisionLayout.test.js` et
+  `tests/requestDecisionMap.test.js` couvrent le repli initial, le libellé, le
+  chargement seulement après appui, la fermeture, le style sans coordonnées et
+  les comportements par défaut des autres usages. TypeScript `--noEmit`, ESLint
+  ciblé et `git diff --check` passent ; 1 125 sources contrôlées, aucune au-dessus
+  de 400 lignes.
+- **Limites :** contrôles de structure et de logique avec composants natifs
+  simulés, sans validation visuelle sur appareil physique ni mesure de mémoire,
+  chauffe ou fluidité. À vérifier sur Android/iOS : premier écran compact,
+  ouverture/repli du trajet, texte agrandi et accès aux actions. Aucun build ou
+  déploiement effectué.
+
+## 2026-10-19 — Demande conducteur : réponse accessible, options intégrées et carte du trajet
+
+- **Problème et périmètre :** dans le détail d’une demande ouverte, le conducteur
+  devait défiler pour choisir son véhicule avant de répondre. « Autres options »
+  ouvrait encore l’ancien modal d’acceptation. L’utilisateur souhaite également
+  voir le trajet demandé sur la carte. Changements mobiles locaux uniquement,
+  sans backend, dépendance, configuration native, secret, build ou déploiement.
+- **Réponse compacte :** `features/request-detail/RequestDriverDecision.tsx`,
+  `RequestDecisionVehiclePicker.tsx`, `requestSummaryStyles.ts` et
+  `app/request/[id].tsx` regroupent le véhicule et les actions « Refuser » /
+  « Accepter » dans une zone non rétrécissable, hors du défilement des détails.
+  La synthèse conserve passager, places, horaire, lieux/repères, budget par place,
+  paiement, commission cash et accès au contact autorisé. Un seul véhicule reste
+  sélectionné par la logique existante ; plusieurs véhicules exigent un choix
+  explicite, avec liste immédiatement visible puis repliée après sélection et
+  action « Changer ». Pour une flotte longue, seule la liste des véhicules
+  défile, dans une hauteur limitée à 144 points ou 20 % de l’écran. Aucun véhicule
+  n’est retiré des choix et les noms/plaques ne sont pas tronqués.
+- **Options sans seconde acceptation :** `RequestDecisionOptions.tsx` déplie les
+  réglages dans la fiche : identité vérifiée du passager, points de rendez-vous
+  et repères. Même état de formulaire et même bouton principal d’acceptation,
+  contrôles bloqués pendant l’envoi. `useRequestDetailController.ts` délègue les
+  transitions de carte au nouveau `useRequestRouteOverridePicker.ts` : fermer ou
+  choisir un lieu depuis les options intégrées ne rouvre jamais le modal
+  d’acceptation. Seul le parcours historique parti d’un modal réellement ouvert
+  le restaure, avec les délais natifs existants et protection contre les doubles
+  fermetures. Les transitions en attente sont annulées à la sortie ou au
+  changement de compte/demande. `app/request/[id].tsx` ne monte plus
+  `RequestAcceptModal` dans le parcours de décision simplifié.
+- **Carte :** la fiche de décision réutilise `CollapsibleRouteMap`, ouverte par
+  défaut en aperçu compact et repliable. Elle présente le trajet demandé par le
+  passager, du départ vert à l’arrivée orange, avec libellé « Départ → Arrivée »,
+  noms des points et tracé routier obtenu par le service/cache existant.
+  Pas de nouvelle permission ni de suivi GPS. La carte reste dans les détails
+  défilants, indépendamment des boutons de réponse. Sans tracé routier, la ligne
+  reste en pointillés et porte « Départ et destination » ; aucun itinéraire
+  routier fictif n’est annoncé. Un changement de demande ou de coordonnées
+  réinitialise cet aperçu. `requestPresentation.ts` exclut désormais les points
+  absents, non numériques, non finis ou hors des bornes géographiques avant de
+  fournir une région à la carte native. La carte montre la demande d’origine ;
+  les ajustements facultatifs restent indiqués dans les champs des options.
+- **Comportements conservés :** validation d’identité conducteur, compatibilité
+  du véhicule, fenêtre d’acceptation, protection contre les doubles envois,
+  refus limité au conducteur concerné, montants et coordonnées transmis au
+  serveur. Accepter ne démarre pas automatiquement la course. Parcours passager,
+  modification de commande, course confirmée et tab bar inchangés. La carte
+  n’est montée et sa lecture n’est lancée que lorsque l’aperçu est déplié et
+  l’écran actif ; les réponses tardives après repli ne modifient pas son état.
+- **Vérifications :** 173 tests JavaScript passent dans les suites ciblées de
+  détail, choix de véhicule, options, carte, contact, prix, horaires, expiration,
+  création de commande et démarrage. Nouveaux tests :
+  `tests/requestDecisionLayout.test.js`, `requestDecisionOptions.test.js` et
+  `requestDecisionMap.test.js`. Ils exercent les composants/hooks réels avec
+  rendu et entrées/sorties natives simulés : petits écrans/flottes longues,
+  mutations bloquées pendant l’envoi, paramètres du tracé, panne du service,
+  coordonnées invalides, retour du sélecteur iOS/Android et suppression du modal
+  historique dans l’arbre de décision. TypeScript `--noEmit`, ESLint ciblé et
+  `git diff --check` passent ; 1 125 sources contrôlées, aucune au-dessus de
+  400 lignes. Un avertissement de durée du middleware Redux de développement a
+  été émis pendant les tests ; ce n’est pas une mesure de performance mobile.
+- **Limites et recette native restante :** aucun essai physique ou visuel
+  Android/iOS, aucune mesure de mémoire, chauffe ou fluidité. Vérifier sur petit
+  écran et avec texte agrandi : véhicules/actions accessibles, défilement de la
+  flotte, carte routière et points, sélection puis fermeture d’un lieu sans
+  retour à l’ancien modal, ouverture du clavier dans les repères, acceptation
+  et refus. Les tests JavaScript ne prouvent pas l’absence de crash natif.
+
+## 2026-10-19 — Retour direct à l’accueil après la notation d’un trajet
+
+- **Problème et périmètre :** après une notation réussie, le retour différé
+  utilisait `router.back()` lorsque l’historique existait. Le passager ou le
+  conducteur pouvait donc retrouver le détail ou la navigation du trajet terminé
+  au lieu de l’accueil. Correction mobile du parcours commun de notation.
+- **Solution appliquée :** `hooks/rating/useRatingData.ts` expose
+  `goHomeAfterRating`, qui remplace l’écran par `/(tabs)` avec une protection
+  contre les sorties multiples. `useRatingActions.ts` l’appelle immédiatement
+  après l’enregistrement serveur de l’avis et la fermeture du clavier, sans
+  temporisation ni confirmation supplémentaire. `app/rate/[id].tsx` transmet
+  cette action dédiée ; `useRatingLifecycle.ts` ne conserve plus le timer de
+  retour devenu inutile. La fermeture d’un avis déjà enregistré en arrière-plan
+  mène également à l’accueil lorsque l’utilisateur revient et ferme cet écran.
+- **Comportements conservés :** un échec d’envoi laisse l’utilisateur sur la
+  notation avec possibilité de réessayer. Pas de double POST, ni de redirection
+  tardive après départ de l’écran, arrière-plan ou changement de compte/trajet.
+  Fermer sans avoir enregistré d’avis conserve le retour précédent. Confirmation
+  d’arrivée, paiement, choix de la personne notée, signalement et étapes de fin
+  de trajet ne sont pas modifiés. Un passager arrivé peut revenir à l’accueil
+  après sa note sans attendre la fin du trajet pour les autres passagers.
+- **Vérifications :** 172 tests JavaScript passent dans les suites ciblées de
+  notation, historique d’accueil, reprise des trajets, navigation, paiement à
+  l’arrivée et overlays. `tests/ratingLifecycle.test.js` couvre les deux rôles
+  avec plateformes iOS/Android simulées, réussite immédiate, erreur/réessai,
+  double appui, lien direct et réponses tardives. Les deux nouveaux cas de
+  `tests/homeBackNavigation.test.js` utilisent le routeur installé et la politique
+  d’historique existante : après remplacement par l’accueil, Retour ne rouvre ni
+  la navigation passager/conducteur ni la notation. TypeScript `--noEmit`, ESLint
+  ciblé et `git diff --check` passent ; 1 122 sources contrôlées, aucune au-dessus
+  de 400 lignes.
+- **Limites :** pas d’essai sur appareil physique ni de build/déploiement.
+  À valider sur Android/iOS : arrivée passager puis notation, fin du trajet
+  conducteur puis notation, accueil obtenu directement et bouton Retour système.
+  Les tests ne démontrent aucune amélioration native de performance ou de crash.
+
+## 2026-10-19 — Commande prioritaire et détails passager « ticket » / conducteur
+
+- **Problème et périmètre :** après une commande, le passager devait retrouver
+  son suivi ; à l’entrée dans l’application, une alerte conducteur pouvait ouvrir
+  une interface avant la résolution du trajet en cours. Les détails de commande
+  ne correspondaient pas aux maquettes fournies. Modification mobile locale,
+  sans changement du backend, des dépendances, des secrets ou de la tab bar.
+- **Entrée dans l’application :** `features/navigation/priorityRequestEntry.ts`,
+  `hooks/navigation/useRequestEntryResume.ts` et
+  `components/ActiveRideResumeCoordinator.tsx` réutilisent les données d’activité
+  et les alertes existantes. Une commande personnelle encore en attente et non
+  attribuée est proposée comme écran d’entrée ; sinon, une alerte conducteur
+  valide peut ouvrir la demande concernée. Vérification authentifiée de son état
+  avant navigation, compte et destinataire contrôlés, offres expirées exclues.
+  Le trajet réellement en cours conserve la priorité, y compris pour un compte
+  conducteur voyageant comme passager. Un lien explicite, un formulaire, une
+  conversation ou une sortie volontaire ne sont pas écrasés. Une seule reprise
+  réussie par entrée au premier plan ; chargement borné à huit secondes avec
+  réessai ou accès à l’accueil. Aucun nouveau polling en arrière-plan.
+- **Création et notifications :** `hooks/trip-request/useRequestSubmission.ts`
+  ouvre directement le détail après confirmation serveur, y compris après la
+  réconciliation d’un envoi ambigu. Aucun rejeu automatique du POST ni écran de
+  succès supplémentaire. `services/rideAlertSession.ts` expose une révision
+  observable ; `hooks/notifications/useDriverNotifications.ts` laisse le
+  coordinateur choisir l’écran lors d’une simple réception, tout en conservant
+  les actions explicites sur notification. Les réponses tardives après sortie,
+  arrière-plan ou changement de compte ne déclenchent pas une redirection.
+- **Passager — variante C choisie :** `RequestPassengerTicket.tsx` et
+  `requestSummaryStyles.ts` dans `features/request-detail/`, intégrés dans
+  `app/request/[id].tsx`, présentent le ticket clair avec découpe visuelle,
+  horaires, adresses et repères, véhicule, places, budget **par place** et suivi
+  vertical. Dates et expiration viennent des données métier, pas des exemples
+  de la maquette. Le conducteur confirmé ne signifie pas que le départ a eu lieu.
+  Modifier, annuler, reprogrammer et consulter le trajet utilisent les actions
+  existantes et leurs confirmations/protections. Les commandes fermées affichent
+  leur état, sans recherche fictive toujours en cours.
+- **Conducteur :** `RequestDriverDecision.tsx` affiche les informations utiles,
+  le véhicule compatible et directement « Refuser » / « Accepter » pour une
+  demande ouverte. `RequestDriverCourse.tsx` présente la course confirmée, l’heure
+  de prise en charge, le contact autorisé, le parcours et « Aller chercher le
+  passager ». Dans `hooks/request-detail/useRequestDriverActions.ts`, accepter
+  depuis cette fiche ne démarre pas automatiquement le trajet ; le départ reste
+  explicite et protégé contre les doubles appuis. Refuser une alerte de proximité
+  acquitte uniquement cette alerte pour ce conducteur, sans annuler la commande
+  du passager. La course attribuée propose « Gérer ou annuler la course » via
+  l’écran existant, sans inventer une mutation de désistement. Autorisations KYC,
+  véhicule, paiement, contact et validations serveur conservées.
+- **Dispatch et voix :** `app/incoming-driver.tsx` conserve la réponse serveur
+  pour les offres de dispatch ; leur sonnerie n’est plus acquittée avant la
+  réussite de l’action. Présentation compacte et annonce d’entrée indiquant
+  l’action attendue via `services/rideEntryAnnouncement.ts` et
+  `features/notifications/detailEntryAnnouncement.ts`. Le parcours réservation
+  existant est conservé. Le résumé passager historique ne prétend plus que les
+  conducteurs sont contactés « un à la fois ».
+- **Carte et charge de travail :** `CollapsibleRouteMap.tsx`,
+  `useRequestAvailability.ts` et `useRequestDetailController.ts` n’effectuent plus
+  de lecture d’itinéraire pour une carte repliée. La carte du ticket est ouverte
+  à la demande ; celle de la course confirmée est initialement visible. Pas de
+  vue native de carte lorsque l’écran est inactif, réponses tardives ignorées,
+  cache d’itinéraire existant réutilisé. Le tracé de secours est distingué d’un
+  itinéraire routier. Pas d’animation d’insertion/retrait sur cet aperçu.
+- **Vérifications :** 387 tests JavaScript passent sur les suites ciblées de
+  commandes, reprise/navigation, identité et notifications/audio. Nouveaux tests
+  dans `tests/requestEntryResume.test.js` (12 cas) et
+  `tests/requestSummaryViews.test.js` (6 cas), extensions de
+  `activeRideResumeCoordinator.test.js`, `tripRequestForm.test.js` et
+  `tripStartNavigation.test.js`, adaptation du contrat vocal dans
+  `rideAudioReliability.test.js`. Les six tests de présentation ont été rejoués
+  après la finition visuelle du ticket. TypeScript `--noEmit`, ESLint ciblé,
+  contrôle de taille des sources et `git diff --check` vérifiés.
+- **Limites :** les tests simulent les interfaces natives et le serveur ; ils ne
+  constituent ni une recette visuelle, ni un essai audio/GPS sur appareil réel.
+  Aucun build, déploiement ou test physique Android/iOS effectué ici. À vérifier
+  sur appareil : petits écrans et grandes polices, nouvelle commande/réouverture,
+  arrivée d’alerte avec un trajet actif, acceptation/refus concurrent, navigation
+  et contact après attribution, retour réseau et expiration. Pas de mesure de
+  gain de performance, de chauffe ou de disparition de crashs revendiquée.
+
+## 2026-10-19 — Actualiser la validation administrateur à l’entrée dans l’application
+
+- **Problème et périmètre :** le contrôle global d’identité conservait son propre
+  cache `/users/kyc/status` sans reprise au premier plan, tandis que le profil
+  consultait `/users/me`. Une approbation manuelle pouvait donc apparaître dans
+  le profil sans lever l’invitation KYC du formulaire de publication. Ce formulaire
+  conservait aussi un booléen « approuvé » local sans prise en compte d’une
+  décision négative ultérieure. Lecture du backend local : la validation admin
+  approuve le dossier courant ; la validation au bureau crée un dossier approuvé.
+  Aucune vérification de l’état de production ou modification du backend effectuée.
+- **Synchronisation appliquée :** `hooks/identity/useAccountIdentityStatus.ts`
+  mutualise les deux endpoints existants pour le compte authentifié. Lectures à
+  l’entrée/au retour au premier plan, reprise lors du rétablissement du réseau,
+  aucun polling ni lecture périodique en arrière-plan. Les retours rapprochés
+  réutilisent au maximum 30 s de cache ; RTK Query partage les requêtes déjà en
+  vol avec les écrans. L’actualisation manuelle recharge les deux sources sans
+  abonnement impératif supplémentaire. Les callbacks périmés après changement
+  de compte, arrière-plan ou démontage sont neutralisés par `useDisplayRefetch`.
+- **Source de vérité :** `features/identity/accountIdentitySnapshot.ts` choisit le
+  résultat serveur connu le plus récemment reçu pour ce compte, avec priorité au
+  profil en cas d’égalité. Il utilise le contrat `profileState` existant et conserve
+  le support des anciens profils/documents. Le rôle conducteur, le JWT et les
+  anciens indicateurs locaux ne valent pas approbation KYC. Un statut négatif
+  plus récent remplace un ancien « approuvé » ; les données d’un autre compte
+  sont ignorées. Les contrôles d’autorisation du backend restent décisifs.
+- **Publication et information utilisateur :** `contexts/IdentityContext.tsx`
+  utilise ce statut commun. `hooks/publish/usePublishIdentity.ts` n’ajoute plus de
+  lecture KYC indépendante ni d’approbation locale persistante. L’invitation se
+  ferme dès qu’une approbation est connue ; ni ouverture du modal ni lancement
+  du SDK pendant un chargement ou une erreur de lecture. Adaptations dans
+  `usePublishController.ts`, `features/publish/PublishRouteStep.tsx` et
+  `app/publish.tsx` : « Mise à jour de votre profil… » pendant la vérification,
+  puis actualisation proposée si le statut est indisponible, sans demander de
+  refaire le KYC à cause d’une panne réseau. Les données du formulaire, les
+  obligations véhicule/rôle, la publication simple/récurrente et le parcours KYC
+  d’un compte réellement non validé sont conservés.
+- **Vérifications :** 121 tests JavaScript passent sur les suites identité,
+  profil, publication, session et reprise réseau. Les huit cas dédiés de
+  `tests/accountIdentityRefresh.test.js` couvrent approbation manuelle, cache
+  périmé, révocation, compte différent, chargement/erreur, regroupement des
+  lectures, reprise réseau et absence de doublons d’abonnements. Les endpoints
+  réels sont exercés avec Redux/RTK Query et un backend simulé ; les interactions
+  de composants sont simulées. TypeScript `--noEmit`, ESLint ciblé et
+  `git diff --check` passent ; 1 116 sources contrôlées, aucune au-dessus de
+  400 lignes.
+- **Limites :** aucun déploiement ni essai sur téléphone physique. La synchronisation
+  exige que le serveur renvoie effectivement l’approbation ; elle ne transforme
+  pas un simple changement de rôle en validation d’identité. Une reprise très
+  rapprochée peut réutiliser le cache pendant 30 s. Un dernier statut approuvé
+  déjà reçu reste affichable lors d’une panne réseau ; le serveur vérifie encore
+  l’autorisation au moment de publier. À valider en recette : décision admin
+  pendant que l’application est fermée/en veille, réouverture puis publication,
+  compte partagé, réseau lent et échec réseau. Aucune affirmation de disparition
+  des crashs ou de réduction mesurée de la chauffe.
+
+## 2026-10-19 — Correctifs de l’audit sonnerie et synthèse vocale
+
+- **Périmètre et constats :** corrections locales de sept défauts du parcours
+  audio : absence de relais après une mise en arrière-plan, volume multimédia
+  utilisé au premier plan Android, expiration de l’annonce d’entrée bloquant les
+  événements futurs, échec d’initialisation mémorisé définitivement, phrase coupée
+  par un simple rechargement des mêmes données, reprise de la sonnerie pendant le
+  guidage GPS et absence d’annonce sur deux écrans ouverts depuis les notifications.
+  Les constats JavaScript sont reproductibles avec des entrées/sorties natives
+  simulées ; ils ne constituent pas une mesure audio sur téléphone.
+- **Lecteur Android :** `ForegroundAlertPlayer.java`, exposé par
+  `DriverAlertModule.java`, charge uniquement à la demande le son du canal existant
+  (son Zwanga par défaut). Il utilise `USAGE_NOTIFICATION`, et non le volume
+  multimédia, respecte les notifications désactivées, le mode silencieux/DND et les
+  réglages du canal/groupe, y compris sa vibration. Préparation asynchrone limitée
+  à 5 s, libération à la sortie du premier plan/destruction, arrêt identifié par
+  tentative pour qu’un retour tardif ne coupe pas un nouveau lecteur. Aucun volume
+  système forcé, appel téléphonique simulé, service permanent ni verrou de veille.
+  `services/foregroundRideSound.ts` choisit ce pont uniquement s’il existe ; les
+  anciens binaires Android et iOS conservent leur lecteur compatible. Le volume
+  des anciens binaires Android n’est donc pas corrigé par une simple OTA.
+- **Relais arrière-plan Android :** `services/backgroundRideRinging.ts` et
+  `hooks/notifications/useRideRinging.ts` transmettent une alerte encore en attente
+  à une notification native, uniquement pendant le temps restant de son `ringUntil`
+  d’origine, au plus 30 s et sans dépasser son expiration métier. Une seule alerte
+  relayée, pas de minuterie JavaScript permanente en arrière-plan, nettoyage au
+  retour/à la réponse/déconnexion et invalidation des opérations tardives. Les
+  transitions concurrentes sont regroupées et les attentes natives bornées.
+  `services/driverNotifications.ts` retire aussi l’identifiant du relais lors d’une
+  décision. Les boutons accepter/refuser restent réservés aux événements qui les
+  autorisaient déjà ; une réponse destinée au passager n’en reçoit pas.
+- **Reprise après erreur et disponibilité :** `services/foregroundRideAnnouncement.ts`
+  ne conserve plus une promesse vocale rejetée ; sonnerie et initialisation vocale
+  ont des reprises limitées à trois tentatives, espacées de 5 puis 15 s. Les appels
+  audio potentiellement bloquants sont bornés par `services/rideAudioDiagnostics.ts`
+  (8 s par défaut, 3 s pour les arrêts ciblés), sans bloquer les actions de trajet.
+  Les diagnostics utilisent des codes statiques, sans charge utile ni donnée
+  personnelle, limités à une émission par minute/code et à 20 codes en mémoire.
+  Une absence persistante de moteur/voix française reste possible ; aucun
+  téléchargement de voix automatique ni remplacement par une voix non française.
+- **Priorité vocale :** `services/rideEntryAnnouncement.ts` distingue un changement
+  d’événement d’un simple changement `isFetching/ready`. Un rechargement de la même
+  priorité ne coupe plus la phrase ; un véritable changement de trajet, compte,
+  écran ou événement l’invalide toujours. La fenêtre d’entrée reste bornée à 30 s,
+  sans empêcher les nouvelles alertes ultérieures et sans lire l’ancien stock de
+  notifications. `services/rideAudioFocus.ts` et `utils/navigationSpeech.ts` gèrent
+  des suspensions indépendantes : le GPS prend la priorité avant d’interrompre
+  l’annonce, puis libère la sonnerie à la fin/arrêt de sa propre phrase.
+- **Écrans couverts :** `features/notifications/detailEntryAnnouncement.ts`,
+  `hooks/manage-trip/useManageTripController.ts`,
+  `hooks/request-detail/useRequestDetailController.ts` et `useRequestDetailData.ts`
+  décrivent aussi la réservation/commande et l’action permise dans la gestion du
+  trajet ou le détail de commande. Ils réutilisent les données déjà chargées et
+  vérifiées, sans nouvelle lecture réseau ni changement des autorisations métier.
+- **Comportements conservés :** au premier plan, le conducteur arrête l’alerte par
+  sa réponse métier ; le passager l’arrête en ouvrant le trajet concerné. Finir une
+  phrase ne vaut pas accepter/refuser. Pas d’annonce de commande en arrière-plan :
+  seules les consignes du trajet en cours y restent autorisées. Les limites sonores
+  natives iOS, la politique push, le backend et les fichiers d’environnement ne
+  sont pas modifiés. Les sons/permissions de l’utilisateur restent prioritaires.
+- **Vérifications :** 424 tests JavaScript passent sur les suites audio, notifications,
+  accueil, reprise et navigation. `tests/rideAudioReliability.test.js` couvre le
+  relais, ses courses asynchrones, les délais et diagnostics ; les suites
+  `rideAnnouncement.test.js`, `rideAlertSession.test.js` et
+  `driverNotifications.test.js` couvrent les reprises, l’arbitrage GPS et les décisions.
+  `tests/helpers/loadTypeScript.cjs` accepte une console de test facultative pour
+  mesurer la limitation des diagnostics. TypeScript `--noEmit` passe. ESLint ciblé :
+  aucune erreur, cinq avertissements préexistants (quatre dans le contrôleur de
+  gestion, un dans le helper de test). Contrôle de taille : 1 114 sources, aucun
+  fichier au-dessus de 400 lignes ; `git diff --check` passe. Compilation isolée
+  `javac` des deux classes Android réussie contre Android 36 / React Native 0.81.5,
+  avec avertissements d’annotations absentes du classpath minimal et API dépréciée.
+- **Limites et mise en service :** aucun APK/AAB/IPA complet produit, aucun déploiement
+  ni essai audio physique réalisé. Un nouveau build Android est nécessaire pour le
+  lecteur natif. Le relais reste soumis à l’exécution accordée par Android au
+  changement d’état ; une application tuée ou les restrictions constructeur ne
+  permettent pas de garantir une sonnerie continue. Recette requise Android/iPhone :
+  commande et réservation, réponse du passager, écran verrouillé, retour rapide,
+  plusieurs alertes, décision pendant l’initialisation, voix GPS, compte changé,
+  volume multimédia nul avec notifications audibles, notifications/silencieux/DND,
+  moteur vocal indisponible et retour réseau. Les tests simulés et la compilation
+  isolée ne prouvent ni le volume réellement entendu, ni l’absence de crash/chauffe.
+
+## 2026-10-19 — Une consigne vocale prioritaire à l’arrivée dans l’application
+
+- **Problème et périmètre :** les annonces lisaient les alertes dans leur ordre
+  d’arrivée et dépendaient de la présence d’une sonnerie. Elles ne décrivaient pas
+  nécessairement la priorité de l’accueil ou le rôle réel dans le trajet repris.
+- **Solution appliquée :** `features/notifications/homeEntryAnnouncement.ts` reprend
+  les événements déjà sélectionnés pour les cartes de l’accueil, dans le même ordre,
+  avec une description et une action simple. Réservation reçue : ouvrir puis accepter
+  ou refuser ; réservation personnelle : distinguer attente et acceptation ; commande
+  personnelle : attendre, examiner une proposition ou contacter le conducteur.
+  `navigationEntryAnnouncement.ts` décrit la situation du trajet effectivement ouvert :
+  réponse à une descente, réservation en attente, prochain passager, reprise ou attente
+  du départ. Aucun ordre d’embarquement avant d’être dans le véhicule, ni paiement
+  annoncé comme dû sans vérification du règlement.
+- **Intégration :** `hooks/home/useHomeController.ts`, `useHomeDriverActivity.ts` et
+  `useHomePassengerActivity.ts` exposent l’état des lectures existantes ; les contrôleurs
+  et hooks de données dans `hooks/driver-navigation/` et `hooks/passenger-navigation/`
+  publient leur priorité via `hooks/notifications/useNavigationEntryAnnouncement.ts`
+  et `useRideEntryAnnouncement.ts`. Aucun nouveau chargement réseau ni changement
+  des sélections de cartes, des autorisations métier ou des actions de trajet.
+- **Cycle de vie :** `services/rideEntryAnnouncement.ts` conserve uniquement en mémoire
+  la source de l’écran actif, son compte et sa révision. Le coordinateur
+  `components/ActiveRideResumeCoordinator.tsx` bloque l’annonce pendant le démarrage,
+  l’authentification, la résolution du rôle/trajet ou un overlay prioritaire.
+  Une seule annonce à l’arrivée initiale ou après un véritable arrière-plan ; un bref
+  passage `inactive` n’ouvre pas une nouvelle annonce. Stabilisation de 500 ms,
+  attente/reprises bornées à 30 s, arrêt des reprises une fois la priorité traitée.
+  Les formulaires, messages et autres écrans sans source dédiée ne provoquent pas
+  la lecture automatique d’un ancien push. Une priorité absente ou non vérifiée
+  reste silencieuse, sans bloquer l’interface.
+- **Audio et protections :** `services/foregroundRideAnnouncement.ts` et
+  `hooks/notifications/useRideRinging.ts` réutilisent le moteur vocal existant,
+  même sans push, sans démarrer une sonnerie pour cette seule annonce. Les cartes
+  de notifications restaurées ne sont pas lues ensuite en file. Les nouveaux événements
+  au premier plan restent pris en charge, hors navigation où le guidage prime.
+  `foregroundRideSound.ts` mutualise les contrôles audio existants et suspend aussi
+  un lecteur de sonnerie encore en initialisation pendant la phrase ; aucun volume
+  système forcé. La sonnerie reste en attente d’une réponse métier, indépendamment
+  de la fin de la phrase. Les retours asynchrones périmés sont invalidés ; le passage
+  en arrière-plan arrête cette annonce seulement, pas les instructions GPS.
+  Sur iOS, une annonce sans lecteur utilise une session vocale séparée ;
+  `utils/navigationSpeech.ts` rétablit explicitement le réglage normal du guidage,
+  car le SDK installé conserve ce paramètre sur son synthétiseur partagé.
+  Les libellés sont bornés/nettoyés par `rideAnnouncement.ts`, sans lecture des noms,
+  téléphones ou corps libres des notifications.
+- **Vérifications réalisées :** 394 tests JavaScript passent sur les suites voix,
+  sonnerie, notifications, reprise du trajet, accueil, navigation et confirmations.
+  Couverture dédiée dans `tests/rideEntryAnnouncement.test.js`,
+  `rideEntryCoordinator.test.js`, `rideAnnouncement.test.js`, `rideAlertSession.test.js` et
+  `activeRideResumeCoordinator.test.js` : priorité unique, absence de push, rôle
+  conducteur/passager, données incomplètes, compte différent, démarrage, overlays,
+  initialisation vocale tardive, retour au premier plan et interruption par le GPS.
+  Les fixtures ciblées de `driverManualReroute.test.js`, `homeForegroundLifecycle.test.js`
+  et `homeTripPriority.test.js` ont été adaptées sans supprimer leurs assertions.
+  TypeScript `--noEmit` et ESLint ciblé passent ; contrôle de taille : 1 110 sources,
+  aucun fichier au-dessus de 400 lignes ; `git diff --check` passe.
+- **Limites et recette restante :** aucun essai audio sur téléphone physique ni
+  nouveau build/déploiement effectué. Vérifier sur Android/iPhone : ouverture avec
+  plusieurs alertes, reprise comme passager d’un compte conducteur, voix GPS active,
+  retour après verrouillage, mode silencieux/DND et absence de voix française.
+  Ces réglages/permissions restent respectés et peuvent rendre l’annonce inaudible.
+  Le backend, les canaux natifs et la politique de sonnerie en arrière-plan ne sont
+  pas modifiés par ce changement. Aucune amélioration de crash/chauffe n’est revendiquée.
+
+## 2026-10-19 — Annonces vocales des commandes et réservations au premier plan
+
+- **Demande et périmètre :** décrire oralement les nouvelles commandes proches
+  et les réservations reçues par le conducteur, uniquement lorsque Zwanga est
+  ouverte au premier plan. La voix en arrière-plan reste réservée au parcours
+  de trajet en cours ; cette modification n'active aucune tâche vocale headless.
+- **Solution appliquée :** `features/notifications/rideAnnouncement.ts` construit
+  une phrase française courte : type d'alerte, départ, arrivée, places et date/heure
+  prévue si présentes (heure de Kinshasa). Seules les métadonnées structurées
+  versionnées sont lues, pas le corps libre du push, les noms ou les téléphones.
+  Les anciennes notifications ont une phrase générique, sans détails inventés.
+  Le libellé « Ma position actuelle » devient « point indiqué par le passager ».
+- **Cycle de vie :** `services/foregroundRideAnnouncement.ts` et
+  `hooks/notifications/useRideRinging.ts` n'annoncent que les alertes encore
+  présentes et destinées au compte courant. Une seule voix à la fois, une lecture
+  par alerte dans la session, historique limité à 100 clés, délai de 2 s entre
+  lectures, garde de 25 s contre une initialisation ou une fin de lecture bloquée.
+  Aucune lecture des réponses destinées au passager n'est ajoutée. L'arrière-plan,
+  la réponse, l'expiration ou la déconnexion interrompent uniquement la voix de
+  l'alerte possédée par ce service. Les reprises tardives après changement de
+  compte ou d'état de l'application sont invalidées.
+  `hooks/notifications/useDriverNotifications.ts` restaure aussi une alerte
+  fraîche lors du toucher du push, même si iOS a déjà retiré sa carte. Sur Android,
+  ce toucher passe d'abord par le transfert sonore idempotent existant ; il ne
+  crée pas une seconde sonnerie. Les anciens clics d'acceptation/refus ne sont
+  jamais rejoués au démarrage.
+- **Audio et priorité :** `services/foregroundRideSound.ts` suspend son propre
+  lecteur pendant la phrase et ne reprend que ce même lecteur toujours actif.
+  `services/navigationSpeechPriority.ts` et `utils/navigationSpeech.ts` donnent
+  la priorité aux instructions de navigation et empêchent un arrêt d'alerte
+  tardif de couper une instruction GPS. La politique existante de guidage au
+  premier plan/arrière-plan est conservée. La déconnexion passe aussi par
+  `store/middleware/rideAlertAcknowledgement.ts`.
+- **Performance et compatibilité :** réutilisation d'`expo-speech` déjà installé,
+  sans nouvelle dépendance, nouveau service distant ou permission microphone.
+  Initialisation à la demande, recherche de voix française mise en cache, sans
+  nouvelle lecture réseau de trajet ni polling supplémentaire. Sur Android,
+  l'initialisation TTS est attendue avant de soumettre une phrase : la file native
+  différée de la version installée ne serait pas vidée par `stop()` avant init.
+  Voix absente, erreur moteur, permissions/canal muets : repli sans modal ni boucle
+  de relance. La protection existante excluant les simulateurs est également
+  appliquée aux annonces. Aucun volume système n'est forcé ; le mode silencieux
+  iOS reste une limite documentée par [Expo Speech](https://docs.expo.dev/versions/latest/sdk/speech/).
+- **Backend préparé :** `src/notifications/ride-speech-data.ts`,
+  `transactional-notifications.subscriber.ts`,
+  `src/trip-requests/dispatch/dispatch.service.ts` et `scheduled-request-alert.ts`
+  dans le dépôt voisin ajoutent des champs scalaires bornés aux pushes existants.
+  `src/notifications/notifications.service.ts` transmet également la limite
+  `ringUntil` existante aux commandes programmées APNs/FCM v2, afin de distinguer
+  une ouverture fraîche d'un ancien push sans prolonger sa durée.
+  Les réservations utilisent les points du passager, sinon ceux du trajet.
+  Rayon, destinataires, transports, délais, acceptation et transactions inchangés.
+  Aucun changement de SQL, de schéma, de configuration AWS ou de données réelles.
+- **Vérifications réalisées :** 135 tests mobiles passent, dont les nouveaux
+  `tests/rideAnnouncement.test.js` et les tests de cycle de vie audio dans
+  `tests/rideAlertSession.test.js`, plus régressions sonnerie, push, navigation,
+  proximité et compte à rebours passager. 141 tests backend passent dans sept
+  suites (métadonnées, producteur immédiat, commandes programmées, subscriber,
+  transports, réponses sonores passager et réservations). TypeScript mobile et
+  backend sans émission réussis ; ESLint ciblé sans erreur ni avertissement ;
+  1 105 sources mobiles contrôlées, aucune au-dessus de 400 lignes.
+- **Limites et livraison :** tests JavaScript/TypeScript avec moteurs audio,
+  notifications et base simulés, pas de validation de voix/volume ni de stabilité
+  native sur téléphone. Aucun build, déploiement, migration ou push réel lancé.
+  Déployer le backend pour les détails vocaux et livrer le mobile ; le nouveau
+  build Android reste requis pour le correctif de sonnerie précédent. Recette
+  physique : réception téléphone verrouillé (sonnerie seule), ouverture pendant
+  une alerte fraîche (phrase unique), retour en veille (voix de l'alerte arrêtée),
+  réponse/expiration, plusieurs alertes, guidage en cours, compte différent,
+  mode silencieux et moteur français absent. Les délais de restauration des
+  alertes/sonnerie précédents ne sont pas prolongés pour faire parler un ancien push.
+
+## 2026-10-19 — Sonnerie Zwanga Android et arrêt après réponse
+
+- **Constat et périmètre :** sonnerie Android signalée comme absente alors que
+  celle d’iOS fonctionne. L’inspection confirme un canal utilisant la sonnerie
+  système, une extinction volontaire à chaque ouverture de l’application et
+  des alertes silencieuses au premier plan. Ce sont des comportements constatés
+  dans le code ; la cause exacte sur les téléphones du test interne n’a pas été
+  reproduite sur appareil.
+- **Android natif :** `DriverAlertModule.java` et `services/driverAlertChannel.ts`
+  ajoutent `zwanga-ride-ring-v4`, qui utilise le fichier embarqué `driver_ring`
+  (identique au PCM iOS de 29 secondes), avec vibration et usage notification.
+  Les anciens canaux explicitement personnalisés, abaissés ou coupés sont
+  conservés. Un ancien binaire revient au canal embarqué v2. La capacité de
+  transport v3 reste compatible avec le serveur actuel ; pas de migration SQL.
+  `hooks/auth/usePushRegistration.ts` reconnaît le nouveau canal.
+- **Application ouverte :** `services/foregroundRideSound.ts` charge à la demande
+  un seul lecteur `expo-audio` pour toutes les alertes, avec vibration. Aucun
+  lecteur n’est initialisé lors de la connexion. Permissions, canal désactivé,
+  mode silencieux Android et filtre Ne pas déranger sont contrôlés ; le volume
+  système n’est pas modifié. Une autorisation refusée n’est pas interrogée toutes
+  les secondes. Le lecteur est libéré à l’arrêt et en arrière-plan.
+- **Décisions :** `features/notifications/rideAlert.ts`, `services/rideAlertSession.ts`,
+  `hooks/notifications/useRideRinging.ts` et le middleware
+  `store/middleware/rideAlertAcknowledgement.ts` conservent l’alerte quand le
+  conducteur ouvre l’accueil ou consulte la réservation. Une réponse confirmée
+  depuis accueil, gestion ou navigation éteint seulement l’alerte concernée.
+  Les actions directes de notification arrêtent à l’appui comme auparavant,
+  ouvrent l’application et signalent un éventuel échec serveur sans rejouer la
+  décision. Une commande de proximité non exclusive peut être ignorée localement
+  depuis sa notification, sans refuser la commande pour les autres conducteurs.
+  Les listes de réservations résolues sont rapprochées des notifications en un
+  seul lot, sans une lecture native par réservation.
+- **Passager :** après acceptation d’une commande, ou acceptation/refus d’une
+  réservation publiée, l’arrêt au premier plan correspond à l’ouverture du
+  trajet, de sa navigation passager ou de la commande concernée. Ouvrir l’accueil
+  ne suffit pas. `services/passengerRideAlerts.ts` retire uniquement les
+  notifications du bon destinataire et du bon trajet. Le rôle est celui dans le
+  trajet, pas uniquement le rôle conducteur/passager du compte.
+- **Intégration et protections :** `services/driverNotifications.ts`,
+  `hooks/notifications/useDriverNotifications.ts`, `services/notifeeBackgroundHandler.ts`,
+  `components/NotificationHandler.tsx`, `app/incoming-driver.tsx` et
+  `features/notifications/IncomingBookingRedirect.tsx` assurent le relais depuis
+  la notification système sans second son simultané intentionnel. Fermer l’écran
+  ne vaut plus réponse. Identifiants stables, anti-doublons, expiration des
+  propositions, destinataire et génération de session restent contrôlés ; la
+  mémoire des alertes/accusés est plafonnée. Le minuteur de contrôle ne tourne
+  que pendant une alerte au premier plan. Texte de `app/driver-availability.tsx`
+  et déclaration `types/notifee.d.ts` adaptés. Aucun changement GPS, rayon de
+  recherche, attribution des courses ou montant des paiements.
+- **Backend préparé :** les réponses de réservation sont désormais typées
+  `booking_response` avec leur statut. Le transport ajoute destinataire passager,
+  échéance sonore et fichier audio pour les clients compatibles ; les anciens
+  clients gardent une notification visible. Voir le
+  [journal backend](../../zwanga-backend/docs/CHANGEMENTS_TECHNIQUES.md).
+- **Vérifications :** 98 tests mobiles ciblés passent (transport, inscription
+  push, session sonore, navigation, actions et assets) ; 101 tests backend de
+  notifications et réservations passent. TypeScript mobile et backend réussis,
+  lint sans erreur (deux avertissements préexistants dans le handler Notifee),
+  `git diff --check` réussi dans les deux dépôts ; 1102 sources mobiles contrôlées,
+  aucune au-dessus de 400 lignes.
+  Compilation Java isolée du module réussie avec les jars Android 36 / React
+  Native 0.81.5 ; trois avertissements d’annotations Kotlin/Infer absentes du
+  classpath réduit. Ce contrôle n’est ni une compilation Gradle complète, ni un
+  test audio natif. Aucun gain de volume réel ni disparition de crash mesuré.
+- **Limites et livraison :** en arrière-plan l’alerte reste bornée à 29–30 s,
+  ou à l’expiration plus courte de la proposition ; aucune sonnerie iOS infinie
+  n’est promise ([documentation Apple](https://developer.apple.com/documentation/usernotifications/unnotificationsound)).
+  À l’ouverture pendant cette fenêtre, le relais au premier plan continue jusqu’à
+  la réponse/consultation ou expiration. Un ancien push expiré ne recommence pas
+  à sonner au prochain lancement. Retour en arrière-plan : le lecteur applicatif
+  est arrêté, sans prolongation artificielle des notifications système.
+  Les réglages de volume et restrictions du téléphone restent déterminants.
+  Nouveau build Android et livraison du code mobile iOS nécessaires, avec backend
+  à déployer. Aucun build, déploiement, envoi de push réel ni publication effectué.
+  Recette physique restante : Android/iPhone, écran verrouillé, premier plan,
+  retour à l’accueil, accepter/refuser, réponse passager, mute/DND, déconnexion,
+  plusieurs alertes et expiration pendant la lecture.
+
 ## 2026-10-18 — Connexion Apple : finalisation du profil et API de production
 
 - **Périmètre et constat :** le refus App Review du 12 octobre, build 138,

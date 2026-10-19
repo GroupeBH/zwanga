@@ -36,6 +36,8 @@ function fixture(t, kind = 'request', platform = 'android') {
     '@/store/hooks': { useAppDispatch: () => store.dispatch },
     '@/store/api/tripApi': { tripApi: api },
     '@/services/analytics': { trackEvent: async () => {} },
+    '@/services/driverNotifications': { dismissDriverDecision: async (...args) => calls.push(['dismiss', ...args]) },
+    '@/services/rideAlertSession': { acknowledgeRideAlerts: match => calls.push(['acknowledge', match]) },
     '@/utils/errorHelpers': {
       getApiErrorMessage: (_error, fallback) => fallback,
       isDailyPublicationLimitError: () => false, isDriverRequiredError: () => false,
@@ -67,6 +69,45 @@ function fixture(t, kind = 'request', platform = 'android') {
     cached: () => api.endpoints.getTripById.select(started.id)(store.getState()).data,
   };
 }
+
+test('inline acceptance stays on the confirmed request, without a second modal or an automatic departure', async t => {
+  const app = fixture(t); app.props.refetch = () => { app.state.refreshes++; return Promise.resolve({}); };
+  await app.render().handleDirectAcceptTripRequest(false, true);
+  await app.render().handleDirectAcceptTripRequest(false, true);
+  assert.deepEqual(app.calls.map(call => call[0]), ['accept']);
+  assert.equal(app.state.refreshes, 1); assert.deepEqual(app.routes, []); assert.deepEqual(app.dialogs, []);
+});
+
+test('declining a nearby broadcast acknowledges only this driver/order, never a passenger cancellation', async t => {
+  const app = fixture(t); app.props.userId = 'driver'; app.props.tripRequest = { ...request, passengerId: 'passenger' };
+  const view = app.render(); view.handleDeclineTripRequest(); view.handleDeclineTripRequest();
+  await new Promise(resolve => setImmediate(resolve));
+  const predicate = app.calls.find(call => call[0] === 'acknowledge')[1];
+  assert.equal(predicate({ recipientId: 'driver', kind: 'nearby', id: 'request' }), true);
+  for (const alert of [{ recipientId: 'other', kind: 'nearby', id: 'request' }, { recipientId: 'driver', kind: 'booking', id: 'request' },
+    { recipientId: 'driver', kind: 'nearby', id: 'other' }]) assert.equal(predicate(alert), false);
+  assert.deepEqual(app.calls.filter(call => call[0] !== 'acknowledge'), [['dismiss', 'driver', 'nearby', 'request']]);
+  assert.deepEqual(app.routes, ['/(tabs)']);
+});
+
+test('pickup is an explicit single start for the assigned driver, with direct ongoing-navigation reuse', async t => {
+  for (const status of ['upcoming', 'ongoing']) {
+    const app = fixture(t); app.props.userId = 'driver';
+    app.props.tripRequest = { ...request, status: 'driver_selected', tripId: 'trip' };
+    app.props.assignedTrip = { ...started, driverId: 'driver', status };
+    const view = app.render(); await Promise.all([view.handleGoPickup(), view.handleGoPickup()]);
+    assert.deepEqual(app.calls, status === 'upcoming' ? [['start', 'trip']] : []);
+    assert.deepEqual(app.routes, ['/trip/navigate/trip']); assert.deepEqual(app.dialogs, []);
+  }
+});
+
+test('pickup refuses a wrong driver, wrong trip or closed course', async t => {
+  for (const patch of [{ driverId: 'other' }, { id: 'other' }, { status: 'completed' }, { status: 'cancelled' }]) {
+    const app = fixture(t); app.props.userId = 'driver'; app.props.tripRequest = { ...request, tripId: 'trip' };
+    app.props.assignedTrip = { ...started, driverId: 'driver', ...patch };
+    await app.render().handleGoPickup(); assert.deepEqual(app.routes, []); assert.deepEqual(app.calls, []);
+  }
+});
 
 for (const platform of ['ios', 'android']) {
   test(`${platform}: accept and start opens guidance after the acceptance modal closes, without another dialog or read`, async t => {

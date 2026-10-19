@@ -33,7 +33,7 @@ export default function DriverAvailabilityScreen() {
       <NearbyDriverLocationPermission available={available} />
       <Text style={styles.label}>Son des notifications</Text>
       <Text style={styles.copy}>Les alertes se préparent dès la connexion, après votre autorisation de notifications. Aucun réglage supplémentaire n’est nécessaire ici.</Text>
-      <Text style={styles.copy}>Une sonnerie jusqu’à 30 secondes, arrêtée à l’ouverture de Zwanga.</Text>
+      <Text style={styles.copy}>Une sonnerie Zwanga vous alerte. Dans l’application, acceptez ou refusez pour l’arrêter.</Text>
       <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={() => { void openDriverAlertSettings().catch(() => {}); }}>
         <Text style={styles.buttonText}>Personnaliser les alertes (facultatif)</Text>
       </TouchableOpacity>

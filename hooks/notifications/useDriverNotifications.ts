@@ -4,11 +4,13 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { invitationHref, notificationDecision, parseDriverInvitation, parseDriverResponseResult, readDriverPushData } from '@/features/notifications/driverInvitation';
-import { configureDriverNotifications, displayDriverInvitation, silenceDriverInvitations } from '@/services/driverNotifications';
+import { configureDriverNotifications, displayDriverInvitation, dismissDriverInvitation } from '@/services/driverNotifications';
 import { respondToDriverNotification } from '@/services/driverNotificationResponse';
 import { takePendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
+import { parseRideAlert } from '@/features/notifications/rideAlert';
+import { rememberRideAlert } from '@/services/rideAlertSession';
 
 export function useDriverNotifications(userId: string | undefined, driverAccount: boolean) {
   const router = useRouter();
@@ -30,6 +32,18 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       }
       const invitation = parseDriverInvitation(raw);
       const nearby = parseNearbyPhoneAlert(raw);
+      const rideAlert = parseRideAlert(raw);
+      // A body tap can remove the OS card before foreground restoration reads it.
+      // Preserve only a fresh pending alert; never replay an acceptance/refusal.
+      if (pressed && !disposed && !notificationDecision(action) && action !== 'driver-ignore-nearby' &&
+          rideAlert && rideAlert.kind !== 'response' && rideAlert.recipientId === userId) {
+        if (Platform.OS === 'android' && AppState.currentState === 'active' && (invitation || nearby)) {
+          void displayDriverInvitation(raw!).catch(() => {});
+        } else rememberRideAlert(rideAlert, true);
+      }
+      if (nearby?.driverId === userId && action === 'driver-ignore-nearby') {
+        await dismissDriverInvitation(nearby); return;
+      }
       if (nearby?.driverId === userId && pressed && !disposed) {
         router.navigate({ pathname: '/request-details/[id]', params: { id: nearby.id } });
         return;
@@ -48,16 +62,15 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       }
       // A new reservation must not replace the driver's current screen. Its
       // notification and the existing passenger cards already expose the actions.
-      if (invitation.kind === 'booking' && !pressed) return;
+      // Entry routing owns automatic presentation after checking ongoing rides.
+      // A delivery alone must not steal a payment, chat or navigation screen.
+      if (!pressed) return;
       if (!disposed) {
         const href = invitationHref(invitation);
         router.navigate({ ...href, params: { ...href.params, ...(pressed ? { actionEvent: String(Date.now()) } : {}) } });
       }
     };
     void configureDriverNotifications().catch(() => {});
-    const silenceOnOpen = () => { void silenceDriverInvitations(userId).catch(() => {}); };
-    if (AppState.currentState === 'active') silenceOnOpen();
-    const appState = AppState.addEventListener('change', state => { if (state === 'active') silenceOnOpen(); });
     const pendingOpen = takePendingDriverOpen(userId);
     if (pendingOpen) void open(pendingOpen, 'default', true).catch(() => {});
     const foreground = Notifications.addNotificationReceivedListener(notification => {
@@ -75,7 +88,8 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
         void open(detail.notification?.data, detail.pressAction?.id, true).catch(() => {});
     });
     void Notifications.getLastNotificationResponseAsync().then(async event => {
-      if (event && parseDriverInvitation(event.notification.request.content.data)) {
+      const alert = event && parseRideAlert(event.notification.request.content.data);
+      if (event && alert && alert.kind !== 'response') {
         await open(event.notification.request.content.data, event.actionIdentifier, true, true);
         if (!disposed) await Notifications.clearLastNotificationResponseAsync();
       }
@@ -83,6 +97,6 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
     if (Platform.OS === 'android') void notifee.getInitialNotification().then(event => {
       if (event) return open(event.notification.data, event.pressAction.id, true, true);
     }).catch(() => {});
-    return () => { disposed = true; appState.remove(); foreground.remove(); response.remove(); native(); };
+    return () => { disposed = true; foreground.remove(); response.remove(); native(); };
   }, [router, userId, driverAccount]);
 }

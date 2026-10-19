@@ -59,8 +59,9 @@ export function useRequestSubmission({
   const leaving = useRef(false);
   const lifetime = useRef({ mounted: true, version: getTokenSessionVersion() });
   useEffect(() => {
-    lifetime.current.mounted = true;
-    return () => { lifetime.current.mounted = false; };
+    const scope = lifetime.current;
+    scope.mounted = true;
+    return () => { scope.mounted = false; };
   }, []);
   const current = () => lifetime.current.mounted && !leaving.current && lifetime.current.version === getTokenSessionVersion();
 
@@ -76,6 +77,17 @@ export function useRequestSubmission({
 
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
+  const openCreatedRequest = (requestId: string) => {
+    if (!current()) return;
+    confirmed.current = true;
+    pendingAttempt.current = null;
+    setSubmissionRecoveryMessage(null);
+    setRequestSentWithoutDetail(false);
+    setCreatedRequestId(requestId);
+    leaving.current = true;
+    router.replace(getTripRequestDetailHref(requestId));
+  };
+
   const verifyPendingRequest = async () => {
     const attempt = pendingAttempt.current;
     if (!attempt || !current()) return;
@@ -84,7 +96,7 @@ export function useRequestSubmission({
     const id = await recoverRequest(attempt, () => getMyTripRequests(undefined, false).unwrap(), current);
     if (!current()) return;
     setSubmissionRecoveryMessage(null);
-    if (id) { confirmed.current = true; pendingAttempt.current = null; setCreatedRequestId(id); }
+    if (id) openCreatedRequest(id);
     else setRequestSentWithoutDetail(true);
   };
 
@@ -202,14 +214,6 @@ export function useRequestSubmission({
       departureDateMin: departureWindow.min.toISOString(), departureDateMax: departureWindow.max.toISOString(),
       seats: hasSpecifiedNumberOfSeats ? numberOfSeats : 1, price: confirmedPricePerSeat, vehicleType: selectedVehicleType };
 
-    const showRequestSuccess = (requestId: string) => {
-      confirmed.current = true;
-      pendingAttempt.current = null;
-      setSubmissionRecoveryMessage(null);
-      setRequestSentWithoutDetail(false);
-      setCreatedRequestId(requestId);
-    };
-
     try {
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
@@ -242,7 +246,7 @@ export function useRequestSubmission({
         flexibility_minutes: departureWindow.flex,
       });
       if (!current()) return;
-      if (createdRequest?.id) showRequestSuccess(String(createdRequest.id));
+      if (createdRequest?.id) openCreatedRequest(String(createdRequest.id));
       else await verifyPendingRequest();
     } catch (error: any) {
       if (!current()) return;
@@ -268,7 +272,7 @@ export function useRequestSubmission({
   };
 
   const isRequestSuccessVisible = Boolean(
-    createdRequestId || submissionRecoveryMessage || requestSentWithoutDetail,
+    !leaving.current && (createdRequestId || submissionRecoveryMessage || requestSentWithoutDetail),
   );
 
   const isResolvingSentRequest = Boolean(

@@ -8,7 +8,8 @@ const { getHomeRootState, STARTUP_ROUTES } = load('features/navigation/homeBackP
 // Exercise the installed routers as well as the app policy; no native BackHandler is mocked into the policy.
 const { StackRouter } = load('node_modules/@react-navigation/routers/src/StackRouter.tsx');
 const { TabRouter } = load('node_modules/@react-navigation/routers/src/TabRouter.tsx');
-const rootNames = [...STARTUP_ROUTES, 'auth-entry', 'auth', '(tabs)', 'wallet', 'trip/[id]', 'trip/navigate/[id]', 'request-create'];
+const rootNames = [...STARTUP_ROUTES, 'auth-entry', 'auth', '(tabs)', 'wallet', 'trip/[id]', 'trip/navigate/[id]',
+  'booking/navigate/[id]', 'rate/[id]', 'request-create'];
 const options = names => ({ routeNames: names, routeParamList: {}, routeGetIdList: {}, routeKeyChanges: [] });
 const rootOptions = options(rootNames);
 const stack = StackRouter({});
@@ -64,6 +65,16 @@ test('a later Home visit starts a fresh back chain while preserving the focused 
   assert.equal(after.routes[0], currentHome); assert.equal(after.routes[0].state, currentHome.state);
 });
 
+for (const screen of ['trip/navigate/[id]', 'booking/navigate/[id]']) {
+  test(`Home after rating clears ${screen} from the native Back chain`, () => {
+    const before = state([route('(tabs)', 'old-home'), route('trip/[id]'), route(screen), route('rate/[id]')]);
+    const replaced = stack.getStateForAction(before, { type: 'REPLACE', payload: { name: '(tabs)' } }, rootOptions);
+    const after = getHomeRootState(replaced, true);
+    assert.deepEqual(after.routes.map(item => item.name), ['(tabs)']);
+    assert.equal(back(after), null, 'Back cannot reopen the finished ride or send another review');
+  });
+}
+
 test('startup/onboarding and auth/PIN flows are not redirected and no Home is added without a session', () => {
   for (const name of [...STARTUP_ROUTES, 'auth', 'auth-entry']) {
     assert.equal(getHomeRootState(state([route(name)]), true), null);
@@ -86,13 +97,13 @@ test('every tab returns directly to Home, then delegates Back to the root instea
 });
 
 test('removing startup guards prunes splash history and logout falls back to auth-entry, not Home', () => {
-  const namesAfterStartup = rootNames.filter(name => !STARTUP_ROUTES.has(name));
+  const namesAfterStartup = [...rootNames.filter(name => !STARTUP_ROUTES.has(name)), 'index'];
   const home = state([route('splash'), route('(tabs)')]);
   const pruned = stack.getStateForRouteNamesChange(home, options(namesAfterStartup));
   assert.deepEqual(pruned.routes.map(item => item.name), ['(tabs)']);
-  const logout = stack.getStateForRouteNamesChange(pruned, options(['auth-entry', 'auth']));
+  const logout = stack.getStateForRouteNamesChange(pruned, options(['auth-entry', 'auth', 'index']));
   assert.deepEqual(logout.routes.map(item => item.name), ['auth-entry']);
-  assert.equal(back(logout, stack, options(['auth-entry', 'auth'])), null);
+  assert.equal(back(logout, stack, options(['auth-entry', 'auth', 'index'])), null);
 });
 
 function hookFixture(platform = 'android') {
@@ -157,5 +168,32 @@ test('ProtectedAppStack has independent startup/session guards and always retain
   session = false;
   assert.deepEqual(getGroups().map(group => group.props.guard), [false, false]);
   const publicScreens = ProtectedAppStack().props.children.filter(child => child.type === 'Screen');
-  assert.deepEqual(publicScreens.map(child => child.props.name), ['auth-entry', 'auth', 'app-update']);
+  assert.deepEqual(publicScreens.map(child => child.props.name), ['auth-entry', 'auth', 'app-update', 'index']);
+});
+
+test('a warm root link remains navigable after startup, with and without a session', () => {
+  for (const hasSession of [true, false]) {
+    const Stack = Object.assign(() => null, { Screen: 'Screen', Protected: 'Protected' });
+    const { ProtectedAppStack } = loader({ react: React,
+      '@/store/selectors': { selectHasAuthenticatedSession: () => hasSession },
+      '@/store/hooks': { useAppSelector: selector => selector() },
+      '@/hooks/navigation/useHomeRootNavigation': { useHomeRootNavigation: () => false },
+      'expo-router': { Stack }, 'react-native': { Platform: { OS: 'android' } },
+    })('components/ProtectedAppStack.tsx');
+    const names = ProtectedAppStack().props.children.flatMap(child => child.type === 'Screen'
+      ? [child.props.name] : child.props.guard ? child.props.children.map(screen => screen.props.name) : []);
+    const config = options(names);
+    const initial = stack.getInitialState(config);
+    for (const action of [
+      { type: 'NAVIGATE', payload: { name: 'index' } },
+      { type: 'RESET', payload: { index: 0, routes: [{ name: 'index' }] } },
+    ]) {
+      const next = stack.getStateForAction(initial, action, config);
+      assert.ok(next, 'root link must not be ignored by the installed router');
+      assert.equal(next.routes[next.index].name, 'index');
+    }
+    assert.equal(names.filter(name => name === 'index').length, 1);
+    assert.equal(names.includes('trip/navigate/[id]'), hasSession, 'private guard remains enforced');
+    assert.equal(names.includes('splash'), false);
+  }
 });

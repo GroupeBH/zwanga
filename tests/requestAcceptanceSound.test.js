@@ -62,7 +62,7 @@ test('acceptance opens the request or created trip without an accept/decline act
   assert.equal(getNotificationHref({ ...data, tripId: 'synthetic-trip' }), '/trip/synthetic-trip');
 });
 
-test('foreground scheduled alerts keep a visible banner but no ringtone on iOS and Android', async () => {
+test('foreground notification presentation leaves sound to the shared player and avoids duplicate banners', async () => {
   for (const platform of ['ios', 'android']) {
     const hooks = hookHarness(); let handler;
     let user = { id: nearby.driverId, role: 'driver' };
@@ -75,6 +75,7 @@ test('foreground scheduled alerts keep a visible banner but no ringtone on iOS a
         addNotificationReceivedListener: () => ({ remove() {} }), addNotificationResponseReceivedListener: () => ({ remove() {} }) },
       '../hooks/notifications/useOverdueRequestNotification': { useOverdueRequestNotification: () => ({}) },
       '@/hooks/notifications/useDriverNotifications': { useDriverNotifications() {} },
+      '@/hooks/notifications/useRideRinging': { useRideRinging() {} },
       '@/components/ui/DialogProvider': { useDialog: () => ({}) },
       '@/services/pushNotifications': {}, '@/services/backgroundNotificationTask': {},
       '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },

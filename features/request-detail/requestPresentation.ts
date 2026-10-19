@@ -1,7 +1,6 @@
 import { RequestRouteMapData, TRIP_REQUEST_VEHICLE_LABELS } from './requestDetailModel';
 import { Colors } from '@/constants/styles';
-import type { TripRequestVehicleType } from '@/types';
-import type { Vehicle, TripRequest, DriverOffer } from '@/types';
+import type { TripRequestVehicleType, Vehicle, TripRequest, DriverOffer } from '@/types';
 
 interface Params {
   tripRequest: TripRequest;
@@ -36,10 +35,10 @@ export function buildRequestDetailPresentation({
   let requestRouteMapData: RequestRouteMapData | null = null;
 
   if (
-    typeof departureLat === 'number' &&
-    typeof departureLng === 'number' &&
-    typeof arrivalLat === 'number' &&
-    typeof arrivalLng === 'number'
+    typeof departureLat === 'number' && Number.isFinite(departureLat) && Math.abs(departureLat) <= 90 &&
+    typeof departureLng === 'number' && Number.isFinite(departureLng) && Math.abs(departureLng) <= 180 &&
+    typeof arrivalLat === 'number' && Number.isFinite(arrivalLat) && Math.abs(arrivalLat) <= 90 &&
+    typeof arrivalLng === 'number' && Number.isFinite(arrivalLng) && Math.abs(arrivalLng) <= 180
   ) {
     const departureCoordinate = { latitude: departureLat, longitude: departureLng };
     const arrivalCoordinate = { latitude: arrivalLat, longitude: arrivalLng };

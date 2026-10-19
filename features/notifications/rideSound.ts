@@ -11,7 +11,8 @@ export function parseNearbyPhoneAlert(data: Record<string, unknown> | undefined)
 
 /** These alerts are already displayed by APNs/FCM (unlike headless driver invitations). */
 export function isRemoteRequestAcceptanceAlert(data: Record<string, unknown> | undefined): boolean {
-  return data?.type === 'trip_request_accepted' && data.ringAlert === 'request-accepted-v1';
+  return (data?.type === 'trip_request_accepted' && data.ringAlert === 'request-accepted-v1') ||
+    (data?.type === 'booking_response' && data.ringAlert === 'booking-response-v1');
 }
 
 /** Scheduled request family (remote v2, Android headless v3): never authorizes a decision. */

@@ -120,6 +120,9 @@ export default function PublishScreen() {
             showQuickLandmarks={model.form.showQuickLandmarks}
             setShowQuickLandmarks={model.form.setShowQuickLandmarks}
             isPublishIdentityVerified={model.identity.isPublishIdentityVerified}
+            isCheckingIdentity={model.identity.isCheckingIdentity}
+            isIdentityStatusUnavailable={!model.identity.isIdentityStatusKnown || model.identity.hasIdentityReadError}
+            refreshIdentity={model.identity.refreshIdentity}
             handleStartKyc={model.handleStartKyc}
           />
         )}

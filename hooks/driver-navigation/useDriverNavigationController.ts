@@ -14,11 +14,13 @@ import { useDriverNavigationExitPrompt } from './useDriverNavigationExitPrompt';
 import { useDriverBookingActions } from './useDriverBookingActions';
 import { useDriverBookingActionGuard } from './useDriverBookingActionGuard';
 import { useDriverRatingTransition } from './useDriverRatingTransition';
+import { useDriverEntryAnnouncement } from '@/hooks/notifications/useNavigationEntryAnnouncement';
 
 
 
 export function useDriverNavigationController() {
   const session = useDriverNavigationSession();
+  useDriverEntryAnnouncement(session.foundation);
   const beginBookingAction = useDriverBookingActionGuard({ tripId: session.foundation.data.tripId,
     active: session.foundation.data.isScreenActive, bookings: session.foundation.passengers.visibleBookings,
     setProcessingBookingId: session.foundation.mapState.setProcessingBookingId });

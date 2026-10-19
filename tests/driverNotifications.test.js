@@ -66,7 +66,7 @@ function service(platform = 'android', account = driverId, phoneChannel = false)
       getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => cancelled.push(id) },
     '@notifee/react-native': { __esModule: true, default: native, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, AndroidStyle: { BIGTEXT: 'BIGTEXT' } },
     'react-native': { Platform: { OS: platform }, AppState: appState,
-      NativeModules: phoneChannel ? { ZwangaDriverAlerts: { ensureChannel: async () => 'driver-phone-ring-v3' } } : {} },
+      NativeModules: phoneChannel ? { ZwangaDriverAlerts: { ensureBundledChannel: async () => 'zwanga-ride-ring-v4' } } : {} },
   })('services/driverNotifications.ts');
   return { loaded, displays, storage, channels, cancelled, appState, native, presented };
 }
@@ -90,10 +90,10 @@ test('headless Android uses one stable id, actions, expiry and private lockscree
   assert.equal(displays[0].android.channelId, 'booking-ring-v2');
   assert.equal(displays[0].android.sound, 'driver_ring');
   assert.equal(displays[0].android.loopSound, true);
-  assert.equal(displays[0].android.autoCancel, true);
+  assert.equal(displays[0].android.autoCancel, false);
   assert.equal(displays[0].android.ongoing, true);
   assert.equal(displays[0].android.lightUpScreen, true);
-  assert.ok(displays[0].android.actions.every(action => action.pressAction.launchActivity === undefined));
+  assert.ok(displays[0].android.actions.every(action => action.pressAction.launchActivity === 'default'));
   assert.deepEqual(displays[0].android.actions.map(a => a.pressAction.id), ['driver-decline', 'driver-accept']);
   assert.ok(displays[0].android.timeoutAfter > 0);
   assert.ok(displays[0].android.timeoutAfter <= 30000);
@@ -101,17 +101,17 @@ test('headless Android uses one stable id, actions, expiry and private lockscree
   assert.equal(displays.length, 1);
 });
 
-test('new native binaries use the phone channel for both booking and dispatch, without changing actions', async () => {
+test('new native binaries use the bundled channel for booking and dispatch and stop after a decision', async () => {
   for (const payload of [data, { ...data, type: 'new_booking', bookingId: id, expiresAt: undefined }]) {
     const f = service('android', driverId, true);
     await f.loaded.displayDriverInvitation(payload);
-    assert.equal(f.displays[0].android.channelId, 'driver-phone-ring-v3');
+    assert.equal(f.displays[0].android.channelId, 'zwanga-ride-ring-v4');
     assert.equal(f.displays[0].android.loopSound, true);
     assert.ok(f.displays[0].android.timeoutAfter <= 30000);
     assert.equal(f.displays[0].android.actions.length, 2);
     f.appState.currentState = 'active';
-    await f.loaded.silenceDriverInvitations(driverId);
-    assert.deepEqual(f.cancelled, [f.displays[0].id]);
+    await f.loaded.dismissDriverDecision(driverId, payload.type === 'new_booking' ? 'booking' : 'dispatch', id);
+    assert.deepEqual(f.cancelled, [f.displays[0].id, `ride-handoff-${f.displays[0].id}`]);
   }
 });
 
@@ -121,12 +121,12 @@ test('v3 scheduled orders ring once for at most 30s, without exclusive accept/de
   const f = service('android', driverId, true);
   await Promise.all([f.loaded.displayDriverInvitation(payload), f.loaded.displayDriverInvitation(payload)]);
   assert.equal(f.displays.length, 1);
-  assert.equal(f.displays[0].android.channelId, 'driver-phone-ring-v3');
-  assert.equal(f.displays[0].android.actions, undefined);
+  assert.equal(f.displays[0].android.channelId, 'zwanga-ride-ring-v4');
+  assert.deepEqual(f.displays[0].android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby']);
   assert.ok(f.displays[0].android.timeoutAfter <= 5000);
   f.appState.currentState = 'active';
-  await f.loaded.silenceDriverInvitations(driverId);
-  assert.deepEqual(f.cancelled, [`driver-nearby-${id}`]);
+  await f.loaded.dismissDriverDecision(driverId, 'nearby', id);
+  assert.ok(f.cancelled.includes(`driver-nearby-${id}`));
   f.appState.currentState = 'background';
   await f.loaded.displayDriverInvitation(payload);
   assert.equal(f.displays.length, 1);
@@ -149,46 +149,47 @@ test('booking sound stops after 30s without expiring the booking; late rings are
   assert.ok(f.displays[0].android.timeoutAfter > 0 && f.displays[0].android.timeoutAfter <= 30000);
 });
 
-test('foreground receipt stays silent even if a duplicate arrives after leaving the app', async () => {
+test('foreground dispatch uses an audio handoff banner without restarting on background duplicates', async () => {
   const f = service();
   f.appState.currentState = 'active';
   await f.loaded.displayDriverInvitation(data);
-  assert.equal(f.displays.length, 0);
+  assert.equal(f.displays.length, 1);
   f.appState.currentState = 'background';
   await f.loaded.displayDriverInvitation(data);
-  assert.equal(f.displays.length, 0);
+  assert.equal(f.displays.length, 1);
 });
 
-test('reopening by the launcher cancels only this account invitations without replaying duplicates', async () => {
+test('a confirmed decision cancels only this account invitation without replaying duplicates', async () => {
   const f = service();
   await f.loaded.displayDriverInvitation(data);
   f.displays.push({ id: 'chat', data: { type: 'message' } });
   f.displays.push({ id: 'foreign', data: { ...data, driverId: '00000000-0000-4000-8000-000000000099' } });
   f.appState.currentState = 'active';
-  await f.loaded.silenceDriverInvitations(driverId);
-  assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`]);
+  await f.loaded.dismissDriverDecision(driverId, 'dispatch', id);
+  assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`, `ride-handoff-driver-dispatch-${id}`]);
   f.appState.currentState = 'background';
   await f.loaded.displayDriverInvitation(data);
   assert.equal(f.displays.length, 3, 'dismissed notification must not ring on redelivery');
 });
 
-test('iOS opening dismisses only the matching remote alert, never messages or another booking', async () => {
+test('iOS decision dismisses only the matching remote alert, never messages or another booking', async () => {
   const f = service('ios');
   f.presented.push({ request: { identifier: 'apns-incoming', content: { data } } },
     { request: { identifier: 'apns-chat', content: { data: { type: 'message' } } } });
   f.appState.currentState = 'active';
-  await f.loaded.silenceDriverInvitations(driverId);
+  await f.loaded.dismissDriverDecision(driverId, 'dispatch', id);
   assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`, 'apns-incoming']);
 });
 
-test('opening the app while native display is pending immediately cancels it afterwards', async () => {
+test('opening while native display is pending hands off its sound to the foreground player', async () => {
   const f = service();
   f.native.displayNotification = async value => { f.displays.push(value); f.appState.currentState = 'active'; };
   await f.loaded.displayDriverInvitation(data);
   assert.deepEqual(f.cancelled, [`driver-dispatch-${id}`]);
+  assert.equal(f.displays.at(-1).android.channelId, 'driver-bookings-active-v1');
 });
 
-test('opening silences scheduled nearby alerts on either platform without touching other recipients or accepting', async () => {
+test('ignoring a scheduled nearby alert silences only this recipient without accepting', async () => {
   const nearby = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', driverId, tripRequestId: id };
   for (const platform of ['android', 'ios']) {
     const f = service(platform);
@@ -196,10 +197,8 @@ test('opening silences scheduled nearby alerts on either platform without touchi
       { id: 'foreign', data: { ...nearby, driverId: '00000000-0000-4000-8000-000000000099' } }];
     if (platform === 'android') f.displays.push(...cards);
     else f.presented.push(...cards.map(card => ({ request: { identifier: card.id, content: { data: card.data } } })));
-    await f.loaded.silenceDriverInvitations(driverId);
-    assert.deepEqual(f.cancelled, [], 'background receipt is not automatically silenced');
     f.appState.currentState = 'active';
-    await f.loaded.silenceDriverInvitations(driverId);
+    await f.loaded.dismissDriverDecision(driverId, 'nearby', id);
     assert.deepEqual(f.cancelled, ['nearby']);
     assert.equal(f.storage.size, 0, 'no accept/decline intent is created');
   }
@@ -231,8 +230,8 @@ test('foreground bookings use one silent Android banner with direct actions, not
   assert.equal(f.channels[0].sound, undefined); assert.equal(f.channels[0].vibration, false);
   assert.deepEqual(f.displays[0].android.actions.map(action => action.pressAction.id), ['driver-decline', 'driver-accept']);
   assert.equal(f.storage.size, 0, 'delivery does not create a decision');
-  await f.loaded.silenceDriverInvitations(driverId);
-  assert.deepEqual(f.cancelled, [`driver-booking-${id}`]);
+  await f.loaded.dismissDriverDecision(driverId, 'booking', id);
+  assert.ok(f.cancelled.every(value => [`driver-booking-${id}`, `ride-handoff-driver-booking-${id}`].includes(value)));
   f.appState.currentState = 'background'; await f.loaded.displayDriverInvitation(payload);
   assert.equal(f.displays.length, 1, 'acknowledged receipt must not start ringing later');
   const ios = service('ios'); ios.appState.currentState = 'active';
@@ -252,7 +251,7 @@ test('nearby Android foreground delivery remains visible, silent and deduplicate
   assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
   assert.equal(f.displays[0].android.loopSound, undefined);
   assert.equal(f.displays[0].android.sound, undefined);
-  assert.equal(f.displays[0].android.actions, undefined, 'nearby broadcast is not an exclusive offer');
+  assert.deepEqual(f.displays[0].android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby'], 'local ignore never accepts the order');
   assert.equal(f.channels[0].sound, undefined); assert.equal(f.channels[0].vibration, false);
   assert.equal(f.storage.size, 0);
   f.appState.currentState = 'background';
@@ -275,6 +274,21 @@ test('Android ignores an invitation belonging to a logged-out or different accou
     assert.equal(await f.loaded.displayDriverInvitation(data), true);
     assert.equal(f.displays.length, 0);
   }
+});
+
+test('a refreshed booking list stops resolved bookings in a single native read, preserving unrelated alerts', async () => {
+  const f = service();
+  const booking = { ...data, type: 'new_booking', bookingId: id, expiresAt: undefined };
+  await f.loaded.displayDriverInvitation(booking);
+  f.displays.push({ id: 'foreign', data: { ...booking, driverId: '00000000-0000-4000-8000-000000000099' } });
+  f.displays.push({ id: 'chat', data: { type: 'message' } });
+  let reads = 0;
+  f.native.getDisplayedNotifications = async () => { reads++; return f.displays.map(notification => ({ id: notification.id, notification })); };
+  await f.loaded.dismissResolvedDriverBookings(driverId, [id, ...Array.from({ length: 50 }, (_, i) => `unrelated-${i}`)]);
+  assert.equal(reads, 1);
+  assert.deepEqual(f.cancelled, [`driver-booking-${id}`]);
+  await f.loaded.displayDriverInvitation(booking);
+  assert.equal(f.displays.length, 3, 'a duplicate cannot ring after the server marks the booking as resolved');
 });
 test('a notification action is consumed once, bound to its recipient and never inferred from a link', async () => {
   const { loaded } = service();

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo } from 'react';
 import type { Trip, Vehicle, User, TripRequest } from '@/types';
 
 interface Params {
+  loadRoute?: boolean;
   setDirectAcceptRequiresPassengerKyc: React.Dispatch<React.SetStateAction<boolean>>;
   tripRequest: TripRequest | undefined;
   compatibleActiveVehicles: Vehicle[];
@@ -21,6 +22,7 @@ interface Params {
 }
 
 export function useRequestAvailability({
+  loadRoute: shouldLoadRoute = true,
   setDirectAcceptRequiresPassengerKyc,
   tripRequest,
   compatibleActiveVehicles,
@@ -38,7 +40,7 @@ export function useRequestAvailability({
 }: Params) {
   useEffect(() => {
     setDirectAcceptRequiresPassengerKyc(false);
-  }, [tripRequest?.id]);
+  }, [tripRequest?.id, setDirectAcceptRequiresPassengerKyc]);
 
   const directAcceptVehicle = useMemo(
     () =>
@@ -56,7 +58,7 @@ export function useRequestAvailability({
 
       return compatibleActiveVehicles.length === 1 ? compatibleActiveVehicles[0].id : '';
     });
-  }, [compatibleActiveVehicles]);
+  }, [compatibleActiveVehicles, setDirectAcceptVehicleId]);
 
   const directAcceptDepartureDate = useMemo(() => {
     if (!tripRequest) return null;
@@ -71,6 +73,7 @@ export function useRequestAvailability({
 
   // Charger les coordonnées de la route réelle
   useEffect(() => {
+    if (!shouldLoadRoute) return;
     const loadRoute = async () => {
       if (!tripRequest?.departure?.lat || !tripRequest?.departure?.lng || 
           !tripRequest?.arrival?.lat || !tripRequest?.arrival?.lng) {
@@ -114,7 +117,7 @@ export function useRequestAvailability({
     };
 
     loadRoute();
-  }, [tripRequest?.departure?.lat, tripRequest?.departure?.lng, tripRequest?.arrival?.lat, tripRequest?.arrival?.lng]);
+  }, [shouldLoadRoute, tripRequest?.departure?.lat, tripRequest?.departure?.lng, tripRequest?.arrival?.lat, tripRequest?.arrival?.lng, setIsLoadingRoute, setRouteCoordinates]);
 
   const isOwner = useMemo(
     () => tripRequest && currentUser && tripRequest.passengerId === currentUser.id,
@@ -221,7 +224,7 @@ export function useRequestAvailability({
       (tripRequest?.status === 'expired' || tripRequest?.status === 'cancelled')) {
       setShowDirectAcceptModal(false);
     }
-  }, [isAcceptingTripRequest, showDirectAcceptModal, tripRequest?.status]);
+  }, [isAcceptingTripRequest, showDirectAcceptModal, tripRequest?.status, setShowDirectAcceptModal]);
 
   return {
     directAcceptDepartureDate,

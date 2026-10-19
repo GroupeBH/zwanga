@@ -18,6 +18,7 @@ import { usePassengerNavigationInterruption } from './usePassengerNavigationInte
 import { usePassengerNavigationTripActions } from './usePassengerNavigationTripActions';
 import React, { useCallback } from 'react';
 import type { MapMarker } from 'react-native-maps';
+import { usePassengerEntryAnnouncement } from '@/hooks/notifications/useNavigationEntryAnnouncement';
 
 
 
@@ -276,6 +277,7 @@ export function usePassengerNavigationController() {
     rejectDriverTripInterruption: data.rejectDriverTripInterruption,
   });
 
+  usePassengerEntryAnnouncement(data, interruption);
   // État du trajet pour le passager
   const presentation = usePassengerNavigationPresentation({
     routeAnalysis: driverCamera.routeAnalysis,

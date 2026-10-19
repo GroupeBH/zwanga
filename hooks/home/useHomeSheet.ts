@@ -58,9 +58,7 @@ export function useHomeSheet({
 }: Props) {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
 
-  const firstName = currentUser?.firstName || currentUser?.name?.split(' ')[0] || 'Kinshasa';
-
-  const avatarUri = currentUser?.profilePicture || currentUser?.avatar;
+  const firstName = currentUser?.firstName?.trim() || currentUser?.name?.trim().split(/\s+/)[0] || '';
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
 
@@ -171,7 +169,6 @@ export function useHomeSheet({
     setTripsSheetOpen((current) => !current);
   }, [isHomeSheetLockedRetracted]);
   return {
-    avatarUri,
     firstName,
     unreadNotifications,
     sheetBottomOffset,

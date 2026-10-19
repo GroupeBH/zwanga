@@ -131,7 +131,7 @@ test('cold-start iOS body taps survive profile hydration, once and only for thei
   assert.equal(pending.takePendingDriverOpen(driverId), undefined);
 });
 
-test('cold start and every foreground return silence invitations without sending a decision', async () => {
+test('cold start and foreground return no longer acknowledge driver invitations', async () => {
   const hooks = hookHarness(), silenced = [], mutations = [], routes = [];
   let onState; let removed = false;
   const router = { navigate: path => routes.push(path) };
@@ -148,12 +148,58 @@ test('cold start and every foreground return silence invitations without sending
   });
   const useNotifications = load('hooks/notifications/useDriverNotifications.ts').useDriverNotifications;
   hooks.render(() => useNotifications(driverId)); await tick();
-  assert.deepEqual(silenced, [driverId]);
-  onState('background'); onState('inactive'); await tick();
-  assert.equal(silenced.length, 1);
-  onState('active'); await tick();
-  assert.deepEqual(silenced, [driverId, driverId]);
+  assert.deepEqual(silenced, []);
+  onState?.('background'); onState?.('inactive'); await tick();
+  onState?.('active'); await tick();
+  assert.deepEqual(silenced, []);
   assert.deepEqual(mutations, []);
   assert.deepEqual(routes, []);
-  hooks.unmount(); assert.equal(removed, true);
+  hooks.unmount(); assert.equal(removed, false, 'this hook no longer owns a silence-on-open listener');
+});
+
+function tappedNotificationFixture(data, action = 'default', platform = 'ios') {
+  const hooks = hookHarness(); const handoffs = [], actions = [];
+  const event = { notification: { data, request: { content: { data } } }, actionIdentifier: action, pressAction: { id: action } };
+  const load = loader({ react: hooks.react,
+    'expo-router': { useRouter: () => ({ navigate() {} }) },
+    'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active' } },
+    'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),
+      addNotificationResponseReceivedListener: () => ({ remove() {} }),
+      getLastNotificationResponseAsync: async () => platform === 'ios' ? event : null,
+      clearLastNotificationResponseAsync: async () => {} },
+    '@notifee/react-native': { onForegroundEvent: () => () => {}, getInitialNotification: async () => event, EventType: {} },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => {},
+      displayDriverInvitation: async value => handoffs.push(value) },
+    '@/services/driverNotificationResponse': { respondToDriverNotification: async value => actions.push(value) },
+  });
+  hooks.render(() => load('hooks/notifications/useDriverNotifications.ts').useDriverNotifications(driverId, true));
+  return { hooks, handoffs, actions, pending: () => load('services/rideAlertSession.ts').pendingRideAlerts(driverId) };
+}
+
+test('iOS body tap restores a fresh voice/ringing alert even when the OS already removed its notification', async () => {
+  for (const type of ['new_booking', 'driver_dispatch_offer', 'trip_request_nearby']) {
+    const data = { type, driverId, bookingId: id, offerId: id, tripRequestId: id,
+      actionProtocol: 'driver-v1', ringAlert: 'nearby-request-v1',
+      expiresAt: new Date(Date.now() + 20000).toISOString(), ringUntil: new Date(Date.now() + 20000).toISOString() };
+    const f = tappedNotificationFixture(data); await tick();
+    assert.equal(f.pending().length, 1, type); assert.deepEqual(f.actions, []); f.hooks.unmount();
+  }
+});
+
+test('Android body tap hands off OS ringing before the foreground voice can start', async () => {
+  const data = { type: 'new_booking', driverId, bookingId: id, actionProtocol: 'driver-v1',
+    ringUntil: new Date(Date.now() + 20000).toISOString() };
+  const f = tappedNotificationFixture(data, 'default', 'android'); await tick();
+  assert.deepEqual(f.handoffs, [data]); assert.equal(f.pending().length, 0, 'handoff service, not tap handler, owns remember');
+  assert.deepEqual(f.actions, []); f.hooks.unmount();
+});
+
+test('old taps, other recipients and past accept/refuse actions never restart speech on launch', async () => {
+  const data = { type: 'new_booking', driverId, bookingId: id, actionProtocol: 'driver-v1',
+    ringUntil: new Date(Date.now() + 20000).toISOString() };
+  for (const [patch, action] of [[{ ringUntil: new Date(0).toISOString() }, 'default'],
+    [{ driverId: id }, 'default'], [{}, 'driver-accept'], [{}, 'driver-decline']]) {
+    const f = tappedNotificationFixture({ ...data, ...patch }, action); await tick();
+    assert.equal(f.pending().length, 0); assert.deepEqual(f.actions, []); f.hooks.unmount();
+  }
 });

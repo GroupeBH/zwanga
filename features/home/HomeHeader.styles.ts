@@ -27,12 +27,6 @@ export const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     ...CommonStyles.shadowSm,
   },
-  userAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    backgroundColor: Colors.white,
-  },
   userAvatarText: {
     color: HOME_DASHBOARD_COLORS.rust,
     fontSize: 18,

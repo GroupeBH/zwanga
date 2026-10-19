@@ -15,7 +15,6 @@ import { usePublishLocationActions } from './usePublishLocationActions';
 import { usePublishScheduleActions } from './usePublishScheduleActions';
 import { PublishStep, PublicationSuccess, PUBLISH_STEP_ORDER } from '../../features/publish/publishModel';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import {
   useCreateRecurringTripMutation,
@@ -35,7 +34,6 @@ export function usePublishController() {
   const router = useRouter();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const insets = useSafeAreaInsets();
-  const { isIdentityVerified } = useIdentityCheck();
   const [step, setStep] = useState<PublishStep>('route');
   const stepNumber = useMemo(() => PUBLISH_STEP_ORDER.indexOf(step) + 1, [step]);
   const stepEntering = Platform.OS === 'android' ? undefined : FadeInDown.duration(180);
@@ -55,9 +53,7 @@ export function usePublishController() {
   const departureAutoFillStartedRef = useRef(false);
   const departureTouchedRef = useRef(false);
 
-  const identity = usePublishIdentity({
-    isIdentityVerified,
-  });
+  const identity = usePublishIdentity();
 
   // Driver and Vehicle Management
   const vehicle = usePublishVehicleState();
@@ -272,15 +268,16 @@ export function usePublishController() {
     return currentIndex > 0 ? PUBLISH_STEP_ORDER[currentIndex - 1] : null;
   }, [step]);
 
-  const footerPrimaryDisabled =
+  const footerPrimaryDisabled = (identity.isCheckingIdentity && !identity.isPublishIdentityVerified) || (
     step === 'route'
       ? !route.hasDepartureAddress || !route.hasArrivalAddress
       : step === 'confirm'
         ? schedule.isSubmittingTrip ||
           !identity.isPublishIdentityVerified
-        : false;
+        : false);
 
   const footerPrimaryLabel = (() => {
+    if (identity.isCheckingIdentity && !identity.isPublishIdentityVerified) return 'Mise à jour du profil…';
     if (step === 'route') {
       if (!route.hasDepartureAddress) return 'Indiquez le départ';
       if (!route.hasArrivalAddress) return "Indiquez l'arrivée";
@@ -305,7 +302,6 @@ export function usePublishController() {
     identity.setKycModalVisible(false);
     const outcome = await identity.startDiditKyc();
     if (outcome?.status === 'approved') {
-      identity.setKycApprovedInForm(true);
       if (step === 'route' && route.hasDepartureCoordinates && route.hasArrivalCoordinates) {
         navigation.goToStep('datetime');
       }

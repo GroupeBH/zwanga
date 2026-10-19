@@ -1,5 +1,7 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
 import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
+import { useRideRinging } from '@/hooks/notifications/useRideRinging';
+import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
@@ -40,6 +42,7 @@ export function NotificationHandler() {
   const [releaseOverdueDriver] = useReleaseOverdueDriverMutation();
   const currentUserRef = useRef(currentUser);
   useDriverNotifications(isAuthenticated ? currentUser?.id : undefined, isDriverAccount(currentUser));
+  useRideRinging(isAuthenticated ? currentUser?.id : undefined);
   const myTripRequestsRef = useRef(myTripRequests);
   const pathnameRef = useRef(pathname);
   const shownOverdueRequestsRef = useRef(new Set<string>());
@@ -134,7 +137,7 @@ export function NotificationHandler() {
 
         return {
           shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
-          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground && !incomingScreenOwnsSound,
+          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground && !incomingScreenOwnsSound && !parseRideAlert(notification.request.content.data),
           shouldSetBadge: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowBanner: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowList: !tripRevenueModalAlreadyOwnsForeground,

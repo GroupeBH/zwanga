@@ -1,4 +1,5 @@
 import type { AccountActivity, ActivityCategory } from '@/store/api/accountActivityApi';
+import { reportEntryFailure } from '@/services/entryRecovery';
 
 export const ACTIVITY_CATEGORIES: ActivityCategory[] = ['trips', 'bookings', 'requests'];
 
@@ -9,6 +10,8 @@ export function createActivityReconciliation(options: {
   load: (category: ActivityCategory) => Promise<unknown>;
   hasCachedItems: (category: ActivityCategory) => boolean;
   hasFailedRead?: (category: ActivityCategory) => boolean;
+  hasAppliedRevision?: (category: ActivityCategory, revision: string) => boolean;
+  onApplied?: (category: ActivityCategory, revision: string) => void;
 }) {
   let cancelled = false;
   const applied = new Map<ActivityCategory, string>();
@@ -26,11 +29,17 @@ export function createActivityReconciliation(options: {
         // Initial empty account: the existing one-time queries need no redundant refetch.
         const initiallyEmpty = !applied.has(category) && next.count === 0
           && !options.hasCachedItems(category) && !failedRead;
+        const retained = !failedRead && options.hasAppliedRevision?.(category, next.revision);
+        const startedAt = Date.now();
         try {
-          if (!initiallyEmpty) await options.load(category);
-        } catch { return; } // Never replace last known ride/payment state with empty on failure.
+          if (!initiallyEmpty && !retained) await options.load(category);
+        } catch (error) {
+          if (!cancelled) reportEntryFailure(category, 'read', startedAt, error);
+          return; // Never replace last known ride/payment state with empty on failure.
+        }
         if (cancelled) return;
         applied.set(category, next.revision);
+        options.onApplied?.(category, next.revision);
         // Retry a failed bootstrap only once per snapshot, never in a tight loop.
         if (desired.get(category)?.revision === next.revision) return;
       }

@@ -22,6 +22,7 @@ import homePriorityDismissalsReducer, { resetHomePriorityDismissals } from './sl
 import { setStoreAccessor } from './storeAccessor';
 import { createTripRequestExpirationMiddleware } from './middleware/tripRequestExpiration';
 import { createPassengerRideCompletionMiddleware } from './middleware/passengerRideCompletion';
+import { rideAlertAcknowledgement } from './middleware/rideAlertAcknowledgement';
 
 const apiQueryActionTypes = [
   `${zwangaApi.reducerPath}/executeQuery/fulfilled`,
@@ -121,7 +122,7 @@ export const store = configureStore({
         ignoredPaths: largeStatePaths,
       },
     })
-      .prepend(apiCacheIsolationMiddleware)
+      .prepend(apiCacheIsolationMiddleware, rideAlertAcknowledgement)
       .concat(zwangaApi.middleware, authRefreshApi.middleware, mapboxApi.middleware,
         createTripRequestExpirationMiddleware(), createPassengerRideCompletionMiddleware()),
 });

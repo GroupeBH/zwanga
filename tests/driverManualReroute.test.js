@@ -30,7 +30,8 @@ function setup() {
     useDriverBookingActions: () => ({}),
     useDriverBookingActionGuard: () => () => null,
   };
-  const mocks = { react: hooks.react };
+  const mocks = { react: hooks.react,
+    '@/hooks/notifications/useNavigationEntryAnnouncement': { useDriverEntryAnnouncement() {} } };
   for (const [name, implementation] of Object.entries(dependencies)) mocks[`./${name}`] = { [name]: implementation };
   const { useDriverNavigationController } = loader(mocks)('hooks/driver-navigation/useDriverNavigationController.ts');
   return { hooks, foundation, coordinate, calls, exits, prompts, tripActionsParams, render: () => hooks.render(useDriverNavigationController) };

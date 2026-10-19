@@ -39,7 +39,7 @@ export function usePassengerNavigationData() {
   const isScreenActive = isFocused && isAppActive;
 
   // Récupérer la réservation et le trajet
-  const { data: liveBooking, error: bookingError, isLoading: bookingLoading, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, {
+  const { data: liveBooking, error: bookingError, isLoading: bookingLoading, isFetching: bookingFetching, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, {
     skip: !bookingId,
     pollingInterval: isScreenActive && isOnline ? 60_000 : 0,
     refetchOnReconnect: isScreenActive,
@@ -48,7 +48,7 @@ export function usePassengerNavigationData() {
   const { data: booking, offline: offlineBooking } = useOfflineRideData(`booking:${bookingId}`, liveBooking, bookingError, liveBooking?.status === 'accepted');
   useSyncArrivedPaymentBooking(liveBooking, isScreenActive);
   const tripId = booking?.tripId || '';
-  const { data: liveTrip, error: tripError, isLoading: tripLoading, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
+  const { data: liveTrip, error: tripError, isLoading: tripLoading, isFetching: tripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
     skip: !tripId,
     pollingInterval: isScreenActive && isOnline ? 30_000 : 0,
     refetchOnReconnect: isScreenActive,
@@ -73,6 +73,9 @@ export function usePassengerNavigationData() {
     useCreateTripShareLinkMutation();
 
   return {
+    passengerId,
+    bookingFetching,
+    tripFetching,
     bookingId,
     isScreenActive,
     isOnline,

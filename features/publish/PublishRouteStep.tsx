@@ -46,6 +46,9 @@ interface PublishRouteStepProps {
   showQuickLandmarks: boolean;
   setShowQuickLandmarks: React.Dispatch<React.SetStateAction<boolean>>;
   isPublishIdentityVerified: boolean;
+  isCheckingIdentity?: boolean;
+  isIdentityStatusUnavailable?: boolean;
+  refreshIdentity?: () => unknown;
   handleStartKyc: () => Promise<void>;
 }
 
@@ -86,6 +89,9 @@ export function PublishRouteStep({
   showQuickLandmarks,
   setShowQuickLandmarks,
   isPublishIdentityVerified,
+  isCheckingIdentity,
+  isIdentityStatusUnavailable,
+  refreshIdentity,
   handleStartKyc,
 }: PublishRouteStepProps) {
   return (
@@ -198,14 +204,19 @@ export function PublishRouteStep({
       {!isPublishIdentityVerified && (
         <TouchableOpacity
           style={styles.inlineKycBanner}
-          onPress={handleStartKyc}
+          onPress={isIdentityStatusUnavailable ? refreshIdentity : handleStartKyc}
+          disabled={isCheckingIdentity}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: Boolean(isCheckingIdentity), busy: Boolean(isCheckingIdentity) }}
           activeOpacity={0.85}
         >
           <Ionicons name="shield-checkmark" size={20} color={Colors.primary} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.inlineKycTitle}>Vérifiez votre identité pour publier</Text>
+            <Text style={styles.inlineKycTitle}>{isCheckingIdentity ? 'Mise à jour de votre profil…'
+              : isIdentityStatusUnavailable ? 'Votre statut est indisponible' : 'Vérifiez votre identité pour publier'}</Text>
             <Text style={styles.inlineKycSubtitle}>
-              Vérifiez votre identité en moins de 5 min
+              {isCheckingIdentity ? 'Nous vérifions votre validation.' : isIdentityStatusUnavailable
+                ? 'Touchez pour actualiser. Inutile de refaire votre vérification.' : 'Vérifiez votre identité en moins de 5 min'}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.primary} />

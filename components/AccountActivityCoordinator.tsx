@@ -9,6 +9,9 @@ import { tripApi, useGetMyActivityTripsQuery } from '@/store/api/tripApi';
 import { bookingApi, useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
 import { tripRequestApi, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
 import { createActivityReconciliation } from '@/features/activity/activityReconciliation';
+import { beginActivityReadiness, getActivityReadiness } from '@/services/activityReadiness';
+import { readEntryQuery, reportEntryFailure } from '@/services/entryRecovery';
+import { ENTRY_CACHE_MAX_AGE_MS } from '@/features/navigation/entryFreshness';
 
 const EMPTY_SELECTION = {};
 const selectNothing = () => EMPTY_SELECTION;
@@ -32,7 +35,7 @@ export function AccountActivityCoordinator() {
     pollingInterval: hasLiveActivity ? 30_000 : 60_000,
     skipPollingIfUnfocused: true,
     // Re-enable once on foreground/reconnect; other consumers do not also refetch on focus.
-    refetchOnMountOrArgChange: true,
+    refetchOnMountOrArgChange: ENTRY_CACHE_MAX_AGE_MS / 1000,
     refetchOnFocus: false, refetchOnReconnect: false,
   });
 
@@ -48,16 +51,37 @@ export function AccountActivityCoordinator() {
   useEffect(() => {
     if (!isAuthenticated) setLegacyAccount(null);
     const error = summary.error;
+    if (enabled && error && !summary.isFetching) reportEntryFailure('activity', 'read', summary.startedTimeStamp ?? Date.now(), error);
     if (enabled && error && 'status' in error && [404, 405].includes(Number(error.status))) {
       setLegacyAccount(userId ?? null);
     }
-  }, [enabled, isAuthenticated, summary.error, userId]);
+  }, [enabled, isAuthenticated, summary.error, summary.isFetching, summary.startedTimeStamp, userId]);
 
   const reconciler = useRef<ReturnType<typeof createActivityReconciliation> | null>(null);
   useEffect(() => {
     if (!enabled || legacy || !userId) return;
     let active = true;
+    const controller = new AbortController();
+    const readiness = beginActivityReadiness(userId);
+    const listState = (category: ActivityCategory) => {
+      const state = reduxStore.getState();
+      if (category === 'trips') return tripApi.endpoints.getMyActivityTrips.select()(state);
+      if (category === 'bookings') return bookingApi.endpoints.getMyActivityBookings.select()(state);
+      return tripRequestApi.endpoints.getMyTripRequests.select()(state);
+    };
     const current = createActivityReconciliation({
+      hasAppliedRevision(category, revision) {
+        const saved = getActivityReadiness();
+        const receipt = saved?.userId === userId ? saved.reads[category] : undefined;
+        const read = listState(category);
+        return Boolean(receipt && receipt.revision === revision && read.isSuccess && !read.isError &&
+          read.fulfilledTimeStamp === receipt.fulfilledTimeStamp && Array.isArray(read.data));
+      },
+      onApplied(category, revision) {
+        if (!active || reduxStore.getState().auth.user?.id !== userId) return;
+        const read = listState(category);
+        if (read.isSuccess && !read.isError) readiness.record(category, revision, read.fulfilledTimeStamp);
+      },
       hasFailedRead(category) {
         const state = reduxStore.getState();
         if (category === 'trips') return tripApi.endpoints.getMyActivityTrips.select()(state).isError;
@@ -71,23 +95,24 @@ export function AccountActivityCoordinator() {
         return Boolean(tripRequestApi.endpoints.getMyTripRequests.select()(state).data?.length);
       },
       async load(category: ActivityCategory) {
-        const pending = category === 'trips'
+        const running = () => category === 'trips'
           ? dispatch(tripApi.util.getRunningQueryThunk('getMyActivityTrips', undefined))
           : category === 'bookings'
             ? dispatch(bookingApi.util.getRunningQueryThunk('getMyActivityBookings', undefined))
             : dispatch(tripRequestApi.util.getRunningQueryThunk('getMyTripRequests', undefined));
         // A read begun BEFORE the snapshot might still return old data. Do not mark
         // the new revision applied merely because RTK deduplicated against that read.
-        if (pending) await pending;
-        if (!active || reduxStore.getState().auth.user?.id !== userId) return;
         const options = { subscribe: false, forceRefetch: true };
-        if (category === 'trips') await dispatch(tripApi.endpoints.getMyActivityTrips.initiate(undefined, options)).unwrap();
-        else if (category === 'bookings') await dispatch(bookingApi.endpoints.getMyActivityBookings.initiate(undefined, options)).unwrap();
-        else await dispatch(tripRequestApi.endpoints.getMyTripRequests.initiate(undefined, options)).unwrap();
+        await readEntryQuery<unknown>({ stage: category, running, signal: controller.signal,
+          current: () => active && reduxStore.getState().auth.user?.id === userId,
+          start: () => category === 'trips' ? dispatch(tripApi.endpoints.getMyActivityTrips.initiate(undefined, options))
+            : category === 'bookings' ? dispatch(bookingApi.endpoints.getMyActivityBookings.initiate(undefined, options))
+              : dispatch(tripRequestApi.endpoints.getMyTripRequests.initiate(undefined, options)),
+        });
       },
     });
     reconciler.current = current;
-    return () => { active = false; current.dispose(); reconciler.current = null; };
+    return () => { active = false; controller.abort(); current.dispose(); readiness.dispose(); reconciler.current = null; };
   }, [dispatch, enabled, legacy, reduxStore, userId]);
 
   useEffect(() => {

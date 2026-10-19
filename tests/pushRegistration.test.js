@@ -46,13 +46,13 @@ for (const failure of ['setup', 'registered:false']) test(`interactive push retr
   assert.equal(f.io.registrations, count); assert.equal(f.io.resets, count); f.hooks.unmount();
 });
 
-test('v3 capability requires an installed phone channel on Android; iOS/legacy keep v2', async t => {
+test('v3 capability works with bundled/customized native channels on Android; iOS/legacy keep v2', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
-  for (const platform of ['android', 'ios']) for (const phone of [true, false]) {
+  for (const platform of ['android', 'ios']) for (const channel of ['zwanga-ride-ring-v4', 'driver-phone-ring-v3', 'booking-ring-v2']) {
     const f = fixture(platform); f.io.registered = true;
-    if (phone) f.io.channel = 'driver-phone-ring-v3';
+    f.io.channel = channel;
     f.render(); t.mock.timers.tick(1200); await tick();
-    assert.deepEqual(f.io.capabilities, [platform === 'android' && phone ? 3 : 2]);
+    assert.deepEqual(f.io.capabilities, [platform === 'android' && channel !== 'booking-ring-v2' ? 3 : 2]);
     f.hooks.unmount();
   }
 });
