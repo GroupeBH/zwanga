@@ -29,7 +29,7 @@ test('booking links open the existing passenger list directly, without an accept
     const f = fixture(); f.state.query.currentData = { ...booking, status };
     const tree = f.render(); f.render();
     assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: tripId, bookingId: id, section: 'passengers' } }]);
-    assert.equal(f.dismissals.length, 1);
+    assert.equal(f.dismissals.length, status === 'pending' ? 0 : 1);
     assert.doesNotMatch(words(tree), /Un passager vous attend|C’est confirmé|Voir les détails|Accepter|Refuser/);
     f.hooks.unmount();
   }
@@ -113,9 +113,10 @@ test('foreground nearby broadcasts reach the banner handler only for the driver;
   assert.deepEqual(displayed, [payload]); assert.deepEqual(routes, []);
   nativeListener({ type: 1, detail: { notification: { data: payload }, pressAction: { id: 'default' } } });
   assert.deepEqual(routes, [{ pathname: '/request-details/[id]', params: { id } }]);
+  assert.deepEqual(displayed, [payload, payload], 'body tap requests the idempotent foreground sound handoff');
   expoListener({ data: { ...payload, driverId: '00000000-0000-4000-8000-000000000099' } });
   hooks.render(() => useDriverNotifications(driverId, false));
   expoListener({ data: payload });
-  assert.equal(displayed.length, 1, 'no other-driver or passenger alerts');
+  assert.equal(displayed.length, 2, 'no other-driver or passenger alerts');
   hooks.unmount();
 });

@@ -136,6 +136,8 @@ declare module '@notifee/react-native' {
   ) => Promise<void>;
 
   interface NotifeeModule {
+    getNotificationSettings(): Promise<{ authorizationStatus: number; ios?: { sound: number } }>;
+    getChannel(channelId: string): Promise<(AndroidChannel & { blocked: boolean }) | null>;
     getDisplayedNotifications(): Promise<{ id: string; notification: Notification }[]>;
     getInitialNotification(): Promise<{ notification: Notification; pressAction: AndroidPressAction } | null>;
     requestPermission(): Promise<any>;

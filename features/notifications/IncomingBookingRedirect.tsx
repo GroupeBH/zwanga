@@ -27,7 +27,7 @@ export function IncomingBookingRedirect() {
   useEffect(() => {
     if (!enabled || !authorized || !booking || query.isFetching || query.isError || redirected.current) return;
     redirected.current = true;
-    void dismissDriverInvitation({ kind: 'booking', id: validId, driverId: userId! }).catch(() => {});
+    if (booking.status !== 'pending') void dismissDriverInvitation({ kind: 'booking', id: validId, driverId: userId! }).catch(() => {});
     // Ongoing rides already have an inline pending-booking panel. Future/past rides
     // open the existing passenger list, with the selected reservation first.
     router.replace({

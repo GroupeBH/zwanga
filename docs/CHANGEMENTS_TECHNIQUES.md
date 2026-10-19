@@ -1,5 +1,155 @@
 # Journal des changements techniques
 
+## 2026-10-19 — Annonces vocales des commandes et réservations au premier plan
+
+- **Demande et périmètre :** décrire oralement les nouvelles commandes proches
+  et les réservations reçues par le conducteur, uniquement lorsque Zwanga est
+  ouverte au premier plan. La voix en arrière-plan reste réservée au parcours
+  de trajet en cours ; cette modification n'active aucune tâche vocale headless.
+- **Solution appliquée :** `features/notifications/rideAnnouncement.ts` construit
+  une phrase française courte : type d'alerte, départ, arrivée, places et date/heure
+  prévue si présentes (heure de Kinshasa). Seules les métadonnées structurées
+  versionnées sont lues, pas le corps libre du push, les noms ou les téléphones.
+  Les anciennes notifications ont une phrase générique, sans détails inventés.
+  Le libellé « Ma position actuelle » devient « point indiqué par le passager ».
+- **Cycle de vie :** `services/foregroundRideAnnouncement.ts` et
+  `hooks/notifications/useRideRinging.ts` n'annoncent que les alertes encore
+  présentes et destinées au compte courant. Une seule voix à la fois, une lecture
+  par alerte dans la session, historique limité à 100 clés, délai de 2 s entre
+  lectures, garde de 25 s contre une initialisation ou une fin de lecture bloquée.
+  Aucune lecture des réponses destinées au passager n'est ajoutée. L'arrière-plan,
+  la réponse, l'expiration ou la déconnexion interrompent uniquement la voix de
+  l'alerte possédée par ce service. Les reprises tardives après changement de
+  compte ou d'état de l'application sont invalidées.
+  `hooks/notifications/useDriverNotifications.ts` restaure aussi une alerte
+  fraîche lors du toucher du push, même si iOS a déjà retiré sa carte. Sur Android,
+  ce toucher passe d'abord par le transfert sonore idempotent existant ; il ne
+  crée pas une seconde sonnerie. Les anciens clics d'acceptation/refus ne sont
+  jamais rejoués au démarrage.
+- **Audio et priorité :** `services/foregroundRideSound.ts` suspend son propre
+  lecteur pendant la phrase et ne reprend que ce même lecteur toujours actif.
+  `services/navigationSpeechPriority.ts` et `utils/navigationSpeech.ts` donnent
+  la priorité aux instructions de navigation et empêchent un arrêt d'alerte
+  tardif de couper une instruction GPS. La politique existante de guidage au
+  premier plan/arrière-plan est conservée. La déconnexion passe aussi par
+  `store/middleware/rideAlertAcknowledgement.ts`.
+- **Performance et compatibilité :** réutilisation d'`expo-speech` déjà installé,
+  sans nouvelle dépendance, nouveau service distant ou permission microphone.
+  Initialisation à la demande, recherche de voix française mise en cache, sans
+  nouvelle lecture réseau de trajet ni polling supplémentaire. Sur Android,
+  l'initialisation TTS est attendue avant de soumettre une phrase : la file native
+  différée de la version installée ne serait pas vidée par `stop()` avant init.
+  Voix absente, erreur moteur, permissions/canal muets : repli sans modal ni boucle
+  de relance. La protection existante excluant les simulateurs est également
+  appliquée aux annonces. Aucun volume système n'est forcé ; le mode silencieux
+  iOS reste une limite documentée par [Expo Speech](https://docs.expo.dev/versions/latest/sdk/speech/).
+- **Backend préparé :** `src/notifications/ride-speech-data.ts`,
+  `transactional-notifications.subscriber.ts`,
+  `src/trip-requests/dispatch/dispatch.service.ts` et `scheduled-request-alert.ts`
+  dans le dépôt voisin ajoutent des champs scalaires bornés aux pushes existants.
+  `src/notifications/notifications.service.ts` transmet également la limite
+  `ringUntil` existante aux commandes programmées APNs/FCM v2, afin de distinguer
+  une ouverture fraîche d'un ancien push sans prolonger sa durée.
+  Les réservations utilisent les points du passager, sinon ceux du trajet.
+  Rayon, destinataires, transports, délais, acceptation et transactions inchangés.
+  Aucun changement de SQL, de schéma, de configuration AWS ou de données réelles.
+- **Vérifications réalisées :** 135 tests mobiles passent, dont les nouveaux
+  `tests/rideAnnouncement.test.js` et les tests de cycle de vie audio dans
+  `tests/rideAlertSession.test.js`, plus régressions sonnerie, push, navigation,
+  proximité et compte à rebours passager. 141 tests backend passent dans sept
+  suites (métadonnées, producteur immédiat, commandes programmées, subscriber,
+  transports, réponses sonores passager et réservations). TypeScript mobile et
+  backend sans émission réussis ; ESLint ciblé sans erreur ni avertissement ;
+  1 105 sources mobiles contrôlées, aucune au-dessus de 400 lignes.
+- **Limites et livraison :** tests JavaScript/TypeScript avec moteurs audio,
+  notifications et base simulés, pas de validation de voix/volume ni de stabilité
+  native sur téléphone. Aucun build, déploiement, migration ou push réel lancé.
+  Déployer le backend pour les détails vocaux et livrer le mobile ; le nouveau
+  build Android reste requis pour le correctif de sonnerie précédent. Recette
+  physique : réception téléphone verrouillé (sonnerie seule), ouverture pendant
+  une alerte fraîche (phrase unique), retour en veille (voix de l'alerte arrêtée),
+  réponse/expiration, plusieurs alertes, guidage en cours, compte différent,
+  mode silencieux et moteur français absent. Les délais de restauration des
+  alertes/sonnerie précédents ne sont pas prolongés pour faire parler un ancien push.
+
+## 2026-10-19 — Sonnerie Zwanga Android et arrêt après réponse
+
+- **Constat et périmètre :** sonnerie Android signalée comme absente alors que
+  celle d’iOS fonctionne. L’inspection confirme un canal utilisant la sonnerie
+  système, une extinction volontaire à chaque ouverture de l’application et
+  des alertes silencieuses au premier plan. Ce sont des comportements constatés
+  dans le code ; la cause exacte sur les téléphones du test interne n’a pas été
+  reproduite sur appareil.
+- **Android natif :** `DriverAlertModule.java` et `services/driverAlertChannel.ts`
+  ajoutent `zwanga-ride-ring-v4`, qui utilise le fichier embarqué `driver_ring`
+  (identique au PCM iOS de 29 secondes), avec vibration et usage notification.
+  Les anciens canaux explicitement personnalisés, abaissés ou coupés sont
+  conservés. Un ancien binaire revient au canal embarqué v2. La capacité de
+  transport v3 reste compatible avec le serveur actuel ; pas de migration SQL.
+  `hooks/auth/usePushRegistration.ts` reconnaît le nouveau canal.
+- **Application ouverte :** `services/foregroundRideSound.ts` charge à la demande
+  un seul lecteur `expo-audio` pour toutes les alertes, avec vibration. Aucun
+  lecteur n’est initialisé lors de la connexion. Permissions, canal désactivé,
+  mode silencieux Android et filtre Ne pas déranger sont contrôlés ; le volume
+  système n’est pas modifié. Une autorisation refusée n’est pas interrogée toutes
+  les secondes. Le lecteur est libéré à l’arrêt et en arrière-plan.
+- **Décisions :** `features/notifications/rideAlert.ts`, `services/rideAlertSession.ts`,
+  `hooks/notifications/useRideRinging.ts` et le middleware
+  `store/middleware/rideAlertAcknowledgement.ts` conservent l’alerte quand le
+  conducteur ouvre l’accueil ou consulte la réservation. Une réponse confirmée
+  depuis accueil, gestion ou navigation éteint seulement l’alerte concernée.
+  Les actions directes de notification arrêtent à l’appui comme auparavant,
+  ouvrent l’application et signalent un éventuel échec serveur sans rejouer la
+  décision. Une commande de proximité non exclusive peut être ignorée localement
+  depuis sa notification, sans refuser la commande pour les autres conducteurs.
+  Les listes de réservations résolues sont rapprochées des notifications en un
+  seul lot, sans une lecture native par réservation.
+- **Passager :** après acceptation d’une commande, ou acceptation/refus d’une
+  réservation publiée, l’arrêt au premier plan correspond à l’ouverture du
+  trajet, de sa navigation passager ou de la commande concernée. Ouvrir l’accueil
+  ne suffit pas. `services/passengerRideAlerts.ts` retire uniquement les
+  notifications du bon destinataire et du bon trajet. Le rôle est celui dans le
+  trajet, pas uniquement le rôle conducteur/passager du compte.
+- **Intégration et protections :** `services/driverNotifications.ts`,
+  `hooks/notifications/useDriverNotifications.ts`, `services/notifeeBackgroundHandler.ts`,
+  `components/NotificationHandler.tsx`, `app/incoming-driver.tsx` et
+  `features/notifications/IncomingBookingRedirect.tsx` assurent le relais depuis
+  la notification système sans second son simultané intentionnel. Fermer l’écran
+  ne vaut plus réponse. Identifiants stables, anti-doublons, expiration des
+  propositions, destinataire et génération de session restent contrôlés ; la
+  mémoire des alertes/accusés est plafonnée. Le minuteur de contrôle ne tourne
+  que pendant une alerte au premier plan. Texte de `app/driver-availability.tsx`
+  et déclaration `types/notifee.d.ts` adaptés. Aucun changement GPS, rayon de
+  recherche, attribution des courses ou montant des paiements.
+- **Backend préparé :** les réponses de réservation sont désormais typées
+  `booking_response` avec leur statut. Le transport ajoute destinataire passager,
+  échéance sonore et fichier audio pour les clients compatibles ; les anciens
+  clients gardent une notification visible. Voir le
+  [journal backend](../../zwanga-backend/docs/CHANGEMENTS_TECHNIQUES.md).
+- **Vérifications :** 98 tests mobiles ciblés passent (transport, inscription
+  push, session sonore, navigation, actions et assets) ; 101 tests backend de
+  notifications et réservations passent. TypeScript mobile et backend réussis,
+  lint sans erreur (deux avertissements préexistants dans le handler Notifee),
+  `git diff --check` réussi dans les deux dépôts ; 1102 sources mobiles contrôlées,
+  aucune au-dessus de 400 lignes.
+  Compilation Java isolée du module réussie avec les jars Android 36 / React
+  Native 0.81.5 ; trois avertissements d’annotations Kotlin/Infer absentes du
+  classpath réduit. Ce contrôle n’est ni une compilation Gradle complète, ni un
+  test audio natif. Aucun gain de volume réel ni disparition de crash mesuré.
+- **Limites et livraison :** en arrière-plan l’alerte reste bornée à 29–30 s,
+  ou à l’expiration plus courte de la proposition ; aucune sonnerie iOS infinie
+  n’est promise ([documentation Apple](https://developer.apple.com/documentation/usernotifications/unnotificationsound)).
+  À l’ouverture pendant cette fenêtre, le relais au premier plan continue jusqu’à
+  la réponse/consultation ou expiration. Un ancien push expiré ne recommence pas
+  à sonner au prochain lancement. Retour en arrière-plan : le lecteur applicatif
+  est arrêté, sans prolongation artificielle des notifications système.
+  Les réglages de volume et restrictions du téléphone restent déterminants.
+  Nouveau build Android et livraison du code mobile iOS nécessaires, avec backend
+  à déployer. Aucun build, déploiement, envoi de push réel ni publication effectué.
+  Recette physique restante : Android/iPhone, écran verrouillé, premier plan,
+  retour à l’accueil, accepter/refuser, réponse passager, mute/DND, déconnexion,
+  plusieurs alertes et expiration pendant la lecture.
+
 ## 2026-10-18 — Connexion Apple : finalisation du profil et API de production
 
 - **Périmètre et constat :** le refus App Review du 12 octobre, build 138,

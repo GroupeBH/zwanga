@@ -4,7 +4,7 @@ import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { obtainFcmToken, subscribeToFcmRefresh } from '@/services/pushNotifications';
 import { configureDriverNotifications } from '@/services/driverNotifications';
-import { PHONE_DRIVER_CHANNEL } from '@/services/driverAlertChannel';
+import { BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL } from '@/services/driverAlertChannel';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { useUpdateFcmTokenMutation } from '@/store/api/userApi';
@@ -50,7 +50,7 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
         // Android data-only delivery needs the headless handler. iOS sound and
         // actions are delivered by APNs/Notifee, even with Background Refresh off.
         if (!current() || (Platform.OS === 'android' && !backgroundReady)) return;
-        const capability = Platform.OS === 'android' && channelId === PHONE_DRIVER_CHANNEL ? 3 : 2;
+        const capability = Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 3 : 2;
         const register = async (target: 2 | 3) => {
           const request = dispatch(driverDispatchApi.endpoints.registerDriverNotifications.initiate(target));
           try { return await request.unwrap(); } finally { request.reset(); }

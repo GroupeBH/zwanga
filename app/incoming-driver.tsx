@@ -65,10 +65,6 @@ function IncomingDriverContent() {
   const remaining = Math.max(0, Math.ceil((localDeadline - now) / 1000));
   const driverId = kind === 'dispatch' ? offer.data?.driverId : booking.data?.trip?.driverId;
   const invitation = useMemo<DriverInvitation | null>(() => kind && id && driverId ? { kind, id, driverId } : null, [kind, id, driverId]);
-  useEffect(() => {
-    if (!active || !invitation) return;
-    return () => { void dismissDriverInvitation(invitation).catch(() => {}); };
-  }, [active, invitation]);
   const loading = kind === 'dispatch' ? offer.isFetching : booking.isFetching;
   const authorized = Boolean(user?.id && driverId === user.id);
   const actionable = authorized && !loading && (kind === 'dispatch'
@@ -130,8 +126,7 @@ function IncomingDriverContent() {
     <View style={styles.top}>
       <Text style={styles.eyebrow}>{kind === 'dispatch' ? 'PROPOSITION À PROXIMITÉ' : 'NOUVELLE RÉSERVATION'}</Text>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer la proposition" disabled={busy} style={styles.close}
-        onPress={() => { if (invitation) void dismissDriverInvitation(invitation).catch(() => {});
-          if (router.canGoBack()) router.back(); else router.replace('/(tabs)'); }}>
+        onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)'); }}>
         <Ionicons name="close" size={26} color={Colors.gray[700]} />
       </TouchableOpacity>
     </View>
