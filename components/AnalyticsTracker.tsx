@@ -20,7 +20,8 @@ export function AnalyticsTracker() {
     const task = InteractionManager.runAfterInteractions(() => {
       if (hasReportedStartup.current) return;
       hasReportedStartup.current = true;
-      void trackEvent('app_first_screen_ready', { elapsed_ms: getStartupElapsedMs(), screen: screenTemplate });
+      // Route visibility is not readiness: a role/ride loader can still cover it.
+      void trackEvent('app_first_route_visible', { elapsed_ms: getStartupElapsedMs(), screen: screenTemplate });
     });
     return () => task.cancel();
   }, [screenTemplate]);

@@ -1,13 +1,11 @@
 import { HOME_DASHBOARD_COLORS as c } from '@/features/home/homeDashboardTheme';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Small, non-modal status; the rest of Home remains interactive. */
 export function EntrySyncBanner({ failed, offline, actionLabel, onAction }: {
   failed: boolean; offline: boolean; actionLabel?: string; onAction: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  return <View style={[styles.banner, { top: insets.top + 64 }]} testID="entry-sync-banner">
+  return <View style={styles.banner} testID="entry-sync-banner">
     {!failed && !offline && !actionLabel && <ActivityIndicator size="small" color={c.orange} />}
     <Text style={styles.text} accessibilityLiveRegion="polite">
       {actionLabel ? actionLabel === 'Reprendre mon trajet' ? 'Trajet en cours' : 'Une demande à consulter'
@@ -21,7 +19,7 @@ export function EntrySyncBanner({ failed, offline, actionLabel, onAction }: {
 }
 
 const styles = StyleSheet.create({
-  banner: { position: 'absolute', left: 16, right: 16, zIndex: 100, elevation: 6,
+  banner: {
     minHeight: 48, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 14,
     borderWidth: 1, borderColor: c.line, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', gap: 8 },
   text: { color: c.muted, fontSize: 13, flex: 1 },

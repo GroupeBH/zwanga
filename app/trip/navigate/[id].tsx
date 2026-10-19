@@ -20,6 +20,7 @@ import React from 'react';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
+import { useMainScreenReady } from '@/hooks/useMainScreenReady';
 import { ActivityIndicator, StatusBar, Text, TouchableOpacity, View } from 'react-native';
 
 export default function NavigationScreen() {
@@ -34,6 +35,9 @@ function DriverNavigationScreen() {
     isScreenActive: model.session.foundation.data.isScreenActive,
   });
   const assistanceOrSecurityVisible = assistance.isOpen || model.session.foundation.mapState.securityModalVisible;
+  const reportLayout = useMainScreenReady(model.session.foundation.data.isScreenActive &&
+    Boolean(model.session.foundation.data.trip) && model.presentation.hasValidTripCoordinates &&
+    !(model.session.foundation.data.bookingsLoading && !model.session.foundation.data.bookings), 'driver_navigation');
 
   if ((model.session.foundation.data.isLoading && !model.session.foundation.data.trip) || (model.session.foundation.data.bookingsLoading && !model.session.foundation.data.bookings) || !model.session.foundation.data.trip) {
     return <NavigationLoading onExit={model.session.foundation.exitActions.navigateBackSafely} />;
@@ -63,7 +67,7 @@ function DriverNavigationScreen() {
   return (
     <RideOverlayScope scopeKey={`driver:${model.session.foundation.data.tripId}`} active={model.session.foundation.data.isScreenActive}>
     <RideActionResult actor="driver" tripId={model.session.foundation.data.tripId} active={model.session.foundation.data.isScreenActive} />
-    <View style={styles.container}>
+    <View style={styles.container} onLayout={reportLayout}>
       <StatusBar barStyle="dark-content" />
       
       {/* La carte native est libérée avant les changements d'écran. */}

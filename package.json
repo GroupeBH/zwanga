@@ -16,6 +16,7 @@
     "validate:referrals": "node ./scripts/validate-referral-config.js",
     "check:network": "node ./scripts/check-network-boundaries.js",
     "check:source-size": "node ./scripts/check-source-size.cjs",
+    "check:release": "node ./scripts/check-release.cjs",
     "test:referrals": "node --test ./tests/referralAttributionPolicy.test.js ./tests/referralPersistence.test.js ./tests/referralQr.test.js ./tests/referralQrShare.test.js ./tests/referralQrModal.test.js",
     "test:performance": "node --test ./tests/performancePolicy.test.js ./tests/performanceGpsPlaces.test.js ./tests/boundedInboxPages.test.js ./tests/boundedInboxScreens.test.js",
     "test:audit-ux": "node --test ./tests/auditUsabilityFixes.test.js ./tests/requestPassengerContact.test.js ./tests/requestsListData.test.js ./tests/sharedScreenLocation.test.js ./tests/rideLocationStream.test.js ./tests/nearbyDriverPermission.test.js ./tests/nearbyDriverLocation.test.js ./tests/driverAvailability.test.js",

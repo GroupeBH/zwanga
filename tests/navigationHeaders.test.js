@@ -275,6 +275,7 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   };
   const components = ['DriverNavigationControls', 'DriverNavigationMap', 'NavigationLocationDisclosure', 'NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationSecurityModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal'];
   components.forEach(name => { mocked[`../../../features/driver-navigation/${name}`] = { [name]: name }; });
+  mocked['@/hooks/useMainScreenReady'] = { useMainScreenReady: () => () => {} };
   const screen = loader(mocked)('app/trip/navigate/[id].tsx').default;
   const guarded = screen();
   assert.equal(guarded.type, 'DriverAccessGuard');
@@ -309,6 +310,7 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true }; } },
     'react-native': { ...native, Modal: 'Modal' },
   };
+  mocked['@/hooks/useMainScreenReady'] = { useMainScreenReady: () => () => {} };
   const tree = loader(mocked)('app/booking/navigate/[id].tsx').default();
   assert.equal(received[0].role, 'passenger'); assert.equal(received[0].booking, model.data.booking);
   assert.ok(all(tree).find(node => node.type === 'Header')); assert.equal(all(tree).find(node => node.type === 'InfoCard'), undefined);

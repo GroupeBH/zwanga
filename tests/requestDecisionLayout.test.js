@@ -162,6 +162,7 @@ test('vehicle selection and both response buttons share the non-shrinking footer
 test('actual request screen keeps the decision footer outside the scrollable details', () => {
   const Screen = loader({ ...mocks,
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+    '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '../../hooks/request-detail/useRequestDetailController': { useRequestDetailController: () => model },
     '../../features/request-detail/requestPresentation': { buildRequestDetailPresentation: () => presentation },
     '../../features/request-detail/RequestDriverSummary': { RequestDriverSummary: 'LegacySummary' },

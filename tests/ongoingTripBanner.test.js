@@ -132,6 +132,7 @@ test('background notification taps use the same passenger route, including the q
     'react-native': { Linking: { openURL: async href => links.push(href) } },
     './ongoingTripNotification': { ONGOING_TRIP_NOTIFICATION_ID: 'ongoing' },
     './driverNotificationResponse': { respondToDriverNotification: async () => {} },
+    './driverNotifications': { dismissDriverInvitation: async () => {} },
     '@notifee/react-native': { default: { onBackgroundEvent: fn => { handler = fn; } }, EventType: { PRESS: 1, ACTION_PRESS: 2 } },
   })('services/notifeeBackgroundHandler.ts');
   for (const type of [1, 2]) await handler({ type, detail: { notification: {

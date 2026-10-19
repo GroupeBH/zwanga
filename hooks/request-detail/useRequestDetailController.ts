@@ -164,6 +164,7 @@ export function useRequestDetailController() {
   });
 
   return {
+    isScreenActive: data.isScreenActive,
     userId: data.currentUser?.id,
     assignedTrip: data.assignedTrip,
     handleGoPickup: driverActions.handleGoPickup,

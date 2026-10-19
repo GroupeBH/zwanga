@@ -43,7 +43,8 @@ test('sync status is a small non-modal banner, with an explicit action only when
   const tree = f.EntrySyncBanner({ failed: false, offline: false, onAction: () => { actions++; } });
   assert.equal(tree.props.testID, 'entry-sync-banner');
   assert.equal(tree.props.accessibilityViewIsModal, undefined);
-  assert.equal(tree.props.style[1].top, 96);
+  assert.equal(tree.props.style.position, undefined, 'status occupies layout space, never covers a map priority');
+  assert.equal(tree.props.style.zIndex, undefined);
   assert.equal(nodes(tree).filter(node => node.type === 'Progress').length, 1);
   assert.equal(nodes(tree).filter(node => node.type === 'Button').length, 0);
   const retry = nodes(f.EntrySyncBanner({ failed: true, offline: false, onAction: () => { actions++; } }));

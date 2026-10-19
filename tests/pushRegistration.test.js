@@ -4,19 +4,24 @@ const { Buffer } = require('node:buffer');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
+const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const jwt = account => `x.${Buffer.from(JSON.stringify({ sub: account })).toString('base64url')}.x`;
 
 function fixture(platform = 'android') {
   const hooks = hookHarness();
   const io = { enabled: true, account: 'a', token: 'device', registered: false, setupFails: false,
     updates: 0, registrations: 0, resets: 0, version: 0, receive: null, backgroundReady: true,
-    channel: 'booking-ring-v2', capabilities: [], rejectV3: null, permissionAttempts: [], tokenFails: false };
-  const update = () => ({ unwrap: async () => { io.updates++; } });
+    channel: 'booking-ring-v2', capabilities: [], rejectV3: null, permissionAttempts: [], tokenFails: false,
+    tokenWait: null, channelWait: null, updateWait: null, backgroundWait: null, registrationWait: null,
+    sent: [], aborted: 0, updateResets: 0 };
+  const update = args => ({ unwrap: async () => { io.updates++; io.sent.push(args.fcmToken); if (io.updateWait) await io.updateWait; },
+    abort: () => { io.aborted++; }, reset: () => { io.updateResets++; } });
   const dispatch = capability => ({ unwrap: async () => {
     io.capabilities.push(capability); io.registrations++;
+    if (io.registrationWait) await io.registrationWait;
     if (capability === 3 && io.rejectV3) throw { status: io.rejectV3 };
     return { registered: io.registered };
-  }, reset: () => { io.resets++; } });
+  }, abort: () => { io.aborted++; }, reset: () => { io.resets++; } });
   const { usePushRegistration } = loader({ react: hooks.react,
     'react-native': { Platform: { OS: platform } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => io.enabled },
@@ -26,10 +31,11 @@ function fixture(platform = 'android') {
     '@/store/api/driverDispatchApi': { driverDispatchApi: { endpoints: { registerDriverNotifications: { initiate: version => version } } } },
     '@/services/pushNotifications': { obtainFcmToken: async options => {
       io.permissionAttempts.push(options?.requestPermission !== false);
+      if (io.tokenWait) await io.tokenWait;
       return io.tokenFails ? null : io.token;
     }, subscribeToFcmRefresh: fn => { io.receive = fn; return () => { io.receive = null; }; } },
-    '@/services/driverNotifications': { configureDriverNotifications: async () => { if (io.setupFails) throw Error('not ready'); return io.channel; } },
-    '@/services/backgroundNotificationTask': { registerBackgroundNotificationTask: async () => io.backgroundReady },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => { if (io.channelWait) await io.channelWait; if (io.setupFails) throw Error('not ready'); return io.channel; } },
+    '@/services/backgroundNotificationTask': { registerBackgroundNotificationTask: async () => { if (io.backgroundWait) await io.backgroundWait; return io.backgroundReady; } },
     '@/services/tokenSession': { getTokenSessionVersion: () => io.version },
   })('hooks/auth/usePushRegistration.ts');
   return { io, hooks, render: () => hooks.render(() => usePushRegistration(Boolean(io.account), io.account ? jwt(io.account) : null)) };
@@ -105,4 +111,52 @@ test('automatic setup retries permission failures without a trip to a configurat
   assert.deepEqual(f.io.permissionAttempts, [true, true], 'permission service decides whether a prompt remains allowed');
   assert.equal(f.io.updates, 1); assert.equal(f.io.registrations, 1);
   f.hooks.unmount();
+});
+
+for (const platform of ['android', 'ios']) test(`${platform}: rotations while busy coalesce to the last token without another foreground`, async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const f = fixture(platform), gate = deferred(); f.io.registered = true; f.io.channelWait = gate.promise;
+  f.render(); t.mock.timers.tick(1200); await tick();
+  await f.io.receive('rotation-1'); await f.io.receive('rotation-2');
+  gate.resolve(); await tick();
+  assert.deepEqual(f.io.sent, ['device', 'rotation-2']);
+  assert.equal(f.io.registrations, 2); assert.equal(f.io.updateResets, 2);
+  t.mock.timers.tick(180000); await tick(); assert.equal(f.io.updates, 2);
+  f.hooks.unmount();
+});
+
+for (const stage of ['tokenWait', 'updateWait', 'channelWait', 'backgroundWait', 'registrationWait'])
+  test(`an unresolved ${stage} expires, retries and ignores its late rejection`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+    const f = fixture(), gate = deferred(); f.io.registered = true; f.io[stage] = gate.promise;
+    f.render(); t.mock.timers.tick(1200); await tick();
+    t.mock.timers.tick(30000); await tick();
+    if (stage === 'updateWait' || stage === 'registrationWait') assert.equal(f.io.aborted, 1);
+    f.io[stage] = null; t.mock.timers.tick(60000); await tick();
+    const count = f.io.registrations; assert.ok(count >= 1);
+    gate.reject(new Error('late native failure')); await tick();
+    t.mock.timers.tick(60000); await tick(); assert.equal(f.io.registrations, count);
+    f.hooks.unmount();
+  });
+
+test('foreground restart and account change do not wait for or accept a former native attempt', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const f = fixture(), gate = deferred(); f.io.tokenWait = gate.promise; f.io.registered = true;
+  f.render(); t.mock.timers.tick(1200); await tick();
+  f.io.enabled = false; f.render(); await tick();
+  f.io.tokenWait = null; f.io.enabled = true; f.io.account = 'b'; f.io.version++; f.render();
+  t.mock.timers.tick(1200); await tick(); assert.equal(f.io.updates, 1);
+  gate.resolve(); await tick(); assert.equal(f.io.updates, 1);
+  f.hooks.unmount();
+});
+
+test('a failed rotation retries even when the previous token was fully registered', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const f = fixture(), gate = deferred(); f.io.registered = true;
+  f.render(); t.mock.timers.tick(1200); await tick();
+  f.io.token = 'rotated'; f.io.updateWait = gate.promise;
+  const rotation = f.io.receive('rotated'); gate.reject(Error('offline')); await rotation;
+  f.io.updateWait = null; t.mock.timers.tick(60000); await tick();
+  assert.deepEqual(f.io.sent, ['device', 'rotated', 'rotated']);
+  assert.equal(f.io.registrations, 2); f.hooks.unmount();
 });
