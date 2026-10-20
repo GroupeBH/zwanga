@@ -52,14 +52,17 @@ test('fresh earlier publication prevents the accepted request from replacing Hom
   assert.deepEqual(f.routes, []); assert.equal(f.render().pending, false);
 });
 
-test('accepted course precedes new nearby/dispatch alerts and own waiting passenger requests', async t => {
+test('a ringing nearby/dispatch request precedes an accepted but unstarted course and own waiting requests', async t => {
   clock(t);
   for (const kind of ['nearby', 'dispatch']) {
     const f = fixture(t); f.options.alerts = [{ key: 'incoming', id: 'new', kind, recipientId: 'driver', expiresAt: at('09:00') }];
     f.options.activity.data.requests.count = 1;
     f.options.requests.data = [{ id: 'own', passengerId: 'driver', status: 'pending', departureDateMax: at('11:00') }];
-    f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
-    assert.deepEqual(f.reads, [['trip', 'ride'], ['request', 'order']]);
+    f.options.readRequest = async id => { f.reads.push(['request', id]); return { id, passengerId: 'passenger', status: 'pending', departureDateMax: at('11:00') }; };
+    f.options.readDispatch = async id => { f.reads.push(['dispatch', id]); return { id, driverId: 'driver', actionable: true, serverNow: at('08:00'), expiresAt: at('09:00') }; };
+    f.render(); await flush(); assert.deepEqual(f.routes, kind === 'nearby' ? ['/request-details/new']
+      : [{ pathname: '/incoming-driver', params: { id: 'new', kind: 'dispatch', driverId: 'driver' } }]);
+    assert.deepEqual(f.reads, [[kind === 'nearby' ? 'request' : 'dispatch', 'new']], 'no unrelated accepted-trip read before the response');
   }
 });
 

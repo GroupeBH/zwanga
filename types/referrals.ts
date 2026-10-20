@@ -26,6 +26,8 @@ export interface ReferralSummary {
     payoutCurrency: string;
   };
   withdrawal: {
+    enabled?: boolean;
+    blocked?: boolean;
     kycApproved: boolean;
     minimumTokens: number;
     moneyPerToken: number;

@@ -1,6 +1,7 @@
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRideResponseOpen } from '@/features/notifications/rideAlert';
 import { getTokenSessionVersion } from './tokenSession';
+import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
 
 const alerts = new Map<string, RideAlert>();
 const acknowledged = new Set<string>();
@@ -20,7 +21,8 @@ export function subscribeRideAlerts(listener: () => void) {
 }
 export function rememberRideAlert(alert: RideAlert, restoring = false) {
   checkSession();
-  if (acknowledged.has(alert.key) || (recipient && alert.recipientId !== recipient)) return;
+  if (isSelfDriverAlert(alert.data, alert.recipientId) ||
+      acknowledged.has(alert.key) || (recipient && alert.recipientId !== recipient)) return;
   if (alert.expiresAt && (!Number.isFinite(Date.parse(alert.expiresAt)) || Date.parse(alert.expiresAt) <= Date.now())) return;
   // Never start yesterday's sound on launch. An already-playing foreground
   // session, however, remains pending until a decision (or the offer expires).

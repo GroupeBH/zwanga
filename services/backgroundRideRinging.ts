@@ -1,9 +1,11 @@
 import { AppState, Platform } from 'react-native';
-import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
 import { getDriverAlertChannel } from './driverAlertChannel';
 import { pendingRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
+import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
+import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 
 export const BACKGROUND_RIDE_RING_PREFIX = 'ride-handoff-';
 let running: Promise<void> | undefined;
@@ -51,21 +53,23 @@ async function handOff(userId: string, version: number) {
   let cancelled = false;
   const valid = () => !cancelled && inBackground() && deadline > Date.now() && pending().some(item => item.key === alert.key);
   const channelId = await getDriverAlertChannel();
+  const lightUpScreen = await shouldLightUpRideAlertScreen(channelId);
   if (!valid()) return;
   const id = `${BACKGROUND_RIDE_RING_PREFIX}${alert.key}`;
   const record = { id, key: alert.key, userId, version, deadline };
   audible = record;
-  const actions = alert.kind === 'booking' || alert.kind === 'dispatch'
-    ? [{ title: 'Refuser', pressAction: { id: 'driver-decline', launchActivity: 'default' } },
-      { title: 'Accepter', pressAction: { id: 'driver-accept', launchActivity: 'default' } }]
-    : undefined;
+  const driverKind = alert.kind === 'booking' || alert.kind === 'dispatch' || alert.kind === 'nearby' ? alert.kind : null;
+  const actions = driverKind ? driverNotificationActions(driverKind, alert.data) : undefined;
+  const card = driverKind ? driverNotificationCard(driverKind, alert.data) : {
+    title: 'Une réponse pour votre trajet', body: 'Ouvrez le trajet pour voir les détails.',
+  };
   try {
     const display = notifee.displayNotification({ id,
-      title: alert.kind === 'response' ? 'Une réponse pour votre trajet' : alert.kind === 'booking' ? 'Nouvelle réservation' : 'Commande à proximité',
-      body: 'Ouvrez le trajet pour voir les détails.',
+      ...card,
       data: Object.fromEntries(Object.entries(alert.data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       android: { channelId, importance: AndroidImportance.HIGH, visibility: AndroidVisibility.PRIVATE,
-        sound: 'driver_ring', loopSound: true, onlyAlertOnce: true, autoCancel: false,
+        style: { type: AndroidStyle.BIGTEXT, text: card.body },
+        sound: 'driver_ring', loopSound: true, lightUpScreen, onlyAlertOnce: true, autoCancel: false,
         timeoutAfter: Math.max(1, deadline - Date.now()),
         pressAction: { id: 'default', launchActivity: 'default' }, actions },
     }).then(async () => {

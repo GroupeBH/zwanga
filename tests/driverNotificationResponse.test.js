@@ -154,7 +154,7 @@ test('cold start and foreground return no longer acknowledge driver invitations'
   assert.deepEqual(silenced, []);
   assert.deepEqual(mutations, []);
   assert.deepEqual(routes, []);
-  hooks.unmount(); assert.equal(removed, false, 'this hook no longer owns a silence-on-open listener');
+  hooks.unmount(); assert.equal(removed, true, 'the read-only pending-open listener is removed, without acknowledging alerts');
 });
 
 function tappedNotificationFixture(data, action = 'default', platform = 'ios') {
@@ -162,7 +162,7 @@ function tappedNotificationFixture(data, action = 'default', platform = 'ios') {
   const event = { notification: { data, request: { content: { data } } }, actionIdentifier: action, pressAction: { id: action } };
   const load = loader({ react: hooks.react,
     'expo-router': { useRouter: () => ({ navigate() {} }) },
-    'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active' } },
+    'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),
       addNotificationResponseReceivedListener: () => ({ remove() {} }),
       getLastNotificationResponseAsync: async () => platform === 'ios' ? event : null,

@@ -49,7 +49,7 @@ export function useRequestEntryResume(options: Options) {
   const [, advance] = useState(0);
   const entry = useMemo(() => ({ userId: options.userId, active: options.active, since: Date.now() - ENTRY_CACHE_MAX_AGE_MS, path: null as string | null, mounted: true,
     done: false, checked: false, pending: false, redirecting: false, failed: false, attempt: '',
-    controller: undefined as AbortController | undefined, generation: 0, stage: 'activity' as EntryStage,
+    controller: undefined as AbortController | undefined, generation: 0, deadline: 0, stage: 'activity' as EntryStage,
     rejected: new Set<string>() }), [options.userId, options.active]);
   const latest = useRef({ entry, options }); latest.current = { entry, options };
   useEffect(() => { entry.mounted = true; return () => { entry.mounted = false; entry.controller?.abort(); }; }, [entry]);
@@ -63,19 +63,26 @@ export function useRequestEntryResume(options: Options) {
     }
     entry.path = options.path;
     if (!options.online) { entry.attempt = ''; return; }
-    if (options.ridePending || options.hasOngoingRide || options.overlayBusy || !options.profileReady || entry.pending) return;
+    if (options.ridePending || options.hasOngoingRide || options.overlayBusy || !options.profileReady) return;
     const userId = options.userId;
+    // A ringing request needs an answer before a confirmed but unstarted course.
+    // Ongoing navigation above still has absolute priority.
+    const alert = options.driver ? selectRequestAlert(options.alerts, userId, entry.rejected) : undefined;
+    const dispatchId = alert?.kind === 'dispatch' ? alert.id : !alert && options.driver &&
+      options.pendingDispatchId && !entry.rejected.has(`dispatch:${options.pendingDispatchId}`) ? options.pendingDispatchId : undefined;
+    const incomingKey = alert?.key ?? (dispatchId ? `dispatch:${dispatchId}` : undefined);
+    if (entry.pending) {
+      if (!incomingKey || entry.attempt === incomingKey) return;
+      // Do not keep a ringing offer behind a slow lower-priority detail read.
+      entry.generation++; entry.controller?.abort(); entry.pending = false; entry.attempt = '';
+    }
     const summary = entrySummary(options, entry.since);
     const driverTrips = driverEntryTrips(options, entry);
     // Wait for fresh publications before deciding that none starts earlier.
     // Once this entry has settled, later normal activity must not hijack Home.
-    if (!entry.checked && driverTrips === undefined) return;
-    const accepted = options.driver && !entry.checked
+    if (!alert && !dispatchId && !entry.checked && driverTrips === undefined) return;
+    const accepted = !alert && !dispatchId && options.driver && !entry.checked
       ? selectAcceptedRequestTrip(driverTrips ?? [], userId, entry.rejected) : undefined;
-    const alert = !accepted && options.driver ? selectRequestAlert(options.alerts, userId, entry.rejected) : undefined;
-    // A status hint is not a sound event. Verify it without manufacturing a ringtone.
-    const dispatchId = alert?.kind === 'dispatch' ? alert.id : !accepted && !alert && options.driver &&
-      options.pendingDispatchId && !entry.rejected.has(`dispatch:${options.pendingDispatchId}`) ? options.pendingDispatchId : undefined;
     const requestsReady = summary?.hasLiveActivity === false || isEntryActivityListReady('requests', options.requests, {
       userId, since: entry.since, summary, summaryTime: options.activity.fulfilledTimeStamp, reconciled: options.reconciled,
     });
@@ -94,6 +101,7 @@ export function useRequestEntryResume(options: Options) {
     const generation = ++entry.generation;
     const controller = new AbortController(); entry.controller = controller;
     const startedAt = Date.now();
+    entry.deadline = startedAt + ENTRY_LOAD_TIMEOUT_MS;
     entry.stage = accepted ? 'trip-detail' : dispatchId ? 'dispatch-detail' : 'request-detail';
     const version = getTokenSessionVersion();
     const current = () => {
@@ -101,6 +109,7 @@ export function useRequestEntryResume(options: Options) {
       return entry.mounted && next.entry === entry && generation === entry.generation && !controller.signal.aborted &&
         !entry.done && version === getTokenSessionVersion() &&
         next.options.userId === userId && next.options.active && next.options.online && next.options.ready &&
+        next.options.profileReady && (!(alert || dispatchId || accepted) || next.options.driver) &&
         next.options.path === entry.path && !next.options.ridePending && !next.options.hasOngoingRide && !next.options.overlayBusy;
     };
     const releaseAttempt = () => { if (generation === entry.generation) entry.attempt = ''; };
@@ -135,6 +144,11 @@ export function useRequestEntryResume(options: Options) {
           : isOwnWaitingRequest(detail, userId))) destination = `/request-details/${detail.id}`;
       }
       if (!current()) { releaseAttempt(); return; }
+      if (!alert && !dispatchId && latest.current.options.driver &&
+        (selectRequestAlert(latest.current.options.alerts, userId, entry.rejected) ||
+          (latest.current.options.pendingDispatchId && !entry.rejected.has(`dispatch:${latest.current.options.pendingDispatchId}`)))) {
+        releaseAttempt(); return;
+      }
       if (dispatchId && !alert && latest.current.options.pendingDispatchId !== dispatchId) { entry.rejected.add(key); return; }
       if (alert && !latest.current.options.alerts.some(item => item.key === key &&
         (!item.expiresAt || Date.parse(item.expiresAt) > Date.now()))) { entry.rejected.add(key); return; }
@@ -163,22 +177,26 @@ export function useRequestEntryResume(options: Options) {
   const pending = Boolean(options.userId && !isRideResumeEntryTransition(options.path) && canResumeRequestFromPath(options.path) &&
     !options.hasOngoingRide && (entry.redirecting || (!entry.done && (!entry.checked || entry.pending || entry.failed))));
   const failed = entry.failed || !options.online;
+  const attemptGeneration = entry.generation;
   useEffect(() => {
     if (!pending || !options.active || options.ridePending || options.overlayBusy || failed) return;
     const startedAt = Date.now();
+    entry.deadline ||= startedAt + ENTRY_LOAD_TIMEOUT_MS;
+    const generation = entry.generation;
     const timer = setTimeout(() => {
+      if (!entry.mounted || latest.current.entry !== entry || entry.generation !== generation) return;
       reportEntryFailure(entry.stage, 'timeout', startedAt);
       entry.generation++; entry.controller?.abort(); entry.pending = false;
       entry.failed = true; touch();
-    }, ENTRY_LOAD_TIMEOUT_MS);
+    }, Math.max(0, entry.deadline - Date.now()));
     return () => clearTimeout(timer);
-  }, [entry, pending, options.active, options.ridePending, options.overlayBusy, failed, touch]);
+  }, [entry, attemptGeneration, pending, options.active, options.ridePending, options.overlayBusy, failed, touch]);
   const retry = useCallback(() => {
     if (!entry.mounted || latest.current.entry !== entry || !latest.current.options.active || !latest.current.options.online ||
       (entry.done && !entry.redirecting)) return;
     entry.generation++; entry.controller?.abort(); entry.pending = false;
     if (entry.redirecting) { entry.done = false; entry.redirecting = false; }
-    entry.failed = false; entry.attempt = ''; entry.rejected.clear(); touch();
+    entry.failed = false; entry.attempt = ''; entry.deadline = 0; entry.rejected.clear(); touch();
     const version = getTokenSessionVersion();
     void Promise.resolve().then(() => {
       if (entry.mounted && latest.current.entry === entry && latest.current.options.active &&

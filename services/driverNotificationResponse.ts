@@ -5,6 +5,8 @@ import { getTokenSessionVersion } from './tokenSession';
 import { decodeJWT } from '@/utils/jwt';
 import { notificationDecision, type DriverInvitation } from '@/features/notifications/driverInvitation';
 import { dismissDriverInvitation } from './driverNotifications';
+import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
+import { boundedRideAudio } from './rideAudioDiagnostics';
 
 const inFlight = new Map<string, Promise<void>>();
 const completed = new Set<string>();
@@ -22,14 +24,14 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
   const work = (async () => {
     let message: string;
     let success = false;
-    // Stop the local notification sound at the tap, even on a slow network.
-    await dismissDriverInvitation(invitation).catch(() => {});
     try {
-      const { accessToken } = await getTokens({ throwOnError: true });
+      const { accessToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
       const payload = accessToken ? decodeJWT(accessToken) : null;
       const userId = payload?.sub ?? payload?.userId;
-      if (!userId || userId !== invitation.driverId || sessionVersion !== getTokenSessionVersion())
-        throw new Error('session');
+      if (!userId || userId !== invitation.driverId || sessionVersion !== getTokenSessionVersion()) return;
+      // A matching deliberate decision stops its alert before waiting for HTTP.
+      await boundedRideAudio(dismissDriverInvitation(invitation), 3000).catch(() => {});
+      if (invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) throw new Error('expired');
       // RTK Query restores/refreshed credentials through SecureStore even without a mounted UI.
       // Both endpoints enforce ownership, deadline, status and idempotency on the server.
       const [{ store }, { driverDispatchApi }] = await Promise.all([import('@/store'), import('@/store/api/driverDispatchApi')]);
@@ -58,16 +60,21 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
       if (sessionVersion !== getTokenSessionVersion()) return;
       message = 'Votre réponse n’est pas confirmée. Ouvrez la commande pour vérifier son état ou réessayer.';
     }
+    // Navigation must not wait for feedback-channel creation on a waking phone.
+    if (sessionVersion === getTokenSessionVersion()) rememberPendingDriverOpen({
+      type: 'driver_action_result', kind: invitation.kind, id: invitation.id, driverId: invitation.driverId,
+    });
     try {
-      if (Platform.OS === 'android') await notifee.createChannel({ id: RESULT_CHANNEL, name: 'Réponses aux trajets', importance: AndroidImportance.LOW });
+      if (Platform.OS === 'android') await boundedRideAudio(notifee.createChannel({ id: RESULT_CHANNEL, name: 'Réponses aux trajets', importance: AndroidImportance.LOW }), 3000);
+      if (sessionVersion !== getTokenSessionVersion()) return;
       const navigateTo = `/incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}`;
-      await notifee.displayNotification({ id: `driver-result-${invitation.kind}-${invitation.id}`,
+      await boundedRideAudio(notifee.displayNotification({ id: `driver-result-${invitation.kind}-${invitation.id}`,
         title: success ? 'Réponse enregistrée' : 'Réponse à vérifier', body: message,
         data: { type: 'driver_action_result', navigateTo, kind: invitation.kind, id: invitation.id, driverId: invitation.driverId },
         android: { channelId: RESULT_CHANNEL, importance: AndroidImportance.LOW, visibility: AndroidVisibility.PRIVATE,
           onlyAlertOnce: true, autoCancel: true, pressAction: { id: 'default', launchActivity: 'default' } },
         ios: { foregroundPresentationOptions: { sound: false, badge: false, banner: true, list: true } },
-      });
+      }), 3000);
     } catch { /* Delivery of feedback cannot undo a server-confirmed response. */ }
   })();
   inFlight.set(key, work);

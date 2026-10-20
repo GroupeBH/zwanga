@@ -123,7 +123,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
     driver: homeRoleReady && isDriverAccount(profile.data), profileReady: homeRoleReady,
     pendingDispatchId: dispatchStatus.isSuccess && !dispatchStatus.isFetching && !dispatchStatus.isError && dispatchStatus.data?.enabled
       ? dispatchStatus.data.pendingOfferId : null,
-    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readDispatch, replace: presentation.replace, refresh: refreshActivity });
+    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readDispatch, replace: presentation.replaceRequest, refresh: refreshActivity });
   const entryPending = resume.pending || requestResume.pending;
   const failed = resume.pending ? resume.failed : requestResume.failed;
   const blocking = entryPending && !presentation.released && !failed && online;

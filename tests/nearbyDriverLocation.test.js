@@ -50,6 +50,7 @@ function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map()
   if (savedOwner && !disk.has(OWNER_KEY)) disk.set(OWNER_KEY, savedOwner);
   let version = 0, trip = null, passenger = null, running = initialRunning, permission = true;
   let waitStart, waitPermission, waitRead, account = 'driver';
+  let foregroundService = { killServiceOnDestroy: true };
   const starts = [], stops = [], sends = [], definitions = [], permissionReads = [], publications = [];
   const appState = { currentState: 'active' };
   const load = loader({
@@ -64,12 +65,13 @@ function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map()
       hasServicesEnabledAsync: async () => true,
       hasStartedLocationUpdatesAsync: async () => running,
       startLocationUpdatesAsync: async (name, options) => {
-        starts.push({ name, options }); if (waitStart) await waitStart; running = true; interval = options.timeInterval;
+        starts.push({ name, options }); if (waitStart) await waitStart;
+        running = true; interval = options.timeInterval; foregroundService = options.foregroundService;
       },
       stopLocationUpdatesAsync: async () => { stops.push('stop'); running = false; },
     },
     'expo-task-manager': { isAvailableAsync: async () => true, isTaskDefined: () => false,
-      getTaskOptionsAsync: async () => ({ timeInterval: interval, deferredUpdatesInterval: interval }),
+      getTaskOptionsAsync: async () => ({ timeInterval: interval, deferredUpdatesInterval: interval, foregroundService }),
       defineTask: (name, handler) => definitions.push({ name, handler }) },
     './driverBackgroundLocationSession': { getActiveDriverBackgroundTripSession: async () => trip },
     './background/passengerTaskLifecycle': { getActiveTrackingSession: async () => passenger },
@@ -116,7 +118,7 @@ test('balanced profile is started once, with visible indicator and Android foreg
   const options = f.starts[0].options;
   assert.equal(options.accuracy, 3); assert.equal(options.timeInterval, 180000);
   assert.equal(options.deferredUpdatesInterval, 180000); assert.equal(options.showsBackgroundLocationIndicator, true);
-  assert.equal(options.foregroundService.killServiceOnDestroy, true);
+  assert.equal(options.foregroundService.killServiceOnDestroy, false);
   assert.equal(options.distanceInterval, 0); assert.equal(options.pausesUpdatesAutomatically, false);
   const ios = fixture({ platform: 'ios' }); await ios.api.ensureNearbyDriverLocation('driver');
   assert.equal(ios.starts[0].options.foregroundService, undefined);
@@ -266,4 +268,47 @@ test('100 foreground callbacks share one permission lookup and publish usable ma
   await f.api.setNearbyDriverLocationEnabled('driver', false);
   await f.api.handleNearbyDriverLocations([fix(Date.now())]);
   assert.equal(f.publications.length, 101, 'opt-out is immediate, never delayed by the permission cache');
+});
+
+test('Android migrates the former stop-on-removal profile once, even at the same cadence', async () => {
+  const f = fixture({ initialRunning: true });
+  await f.api.ensureNearbyDriverLocation('driver');
+  await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.starts.length, 1); assert.equal(f.stops.length, 1);
+  assert.equal(f.starts[0].options.foregroundService.killServiceOnDestroy, false);
+});
+
+test('a silent registration is recovered on foreground after two missed intervals, not on every check', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const f = fixture();
+  await f.api.ensureNearbyDriverLocation('driver');
+  t.mock.timers.tick(180000); await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.starts.length, 1);
+  t.mock.timers.tick(180000); await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.starts.length, 2);
+  await f.api.ensureNearbyDriverLocation('driver'); assert.equal(f.starts.length, 2);
+  t.mock.timers.tick(180000); await f.api.handleNearbyDriverLocations([fix(Date.now())]);
+  t.mock.timers.tick(180000); await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.starts.length, 2, 'healthy native observations do not restart GPS');
+  f.appState.currentState = 'background';
+  t.mock.timers.tick(360000); await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.starts.length, 2, 'never attempt a foreground-service restart from background');
+});
+
+test('a newer unusable fix does not hide a valid fix in the native batch', async () => {
+  const f = fixture(); await f.api.ensureNearbyDriverLocation('driver');
+  const valid = fix(Date.now() - 1000);
+  await f.api.handleNearbyDriverLocations([valid, { ...fix(Date.now()), mocked: true }, null]);
+  assert.equal(f.sends.length, 1); assert.equal(f.sends[0][1], valid);
+});
+
+test('re-enabling after a long pause starts a new recovery grace period', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const f = fixture(); await f.api.ensureNearbyDriverLocation('driver');
+  await f.api.setNearbyDriverLocationEnabled('driver', false);
+  t.mock.timers.tick(3_600_000);
+  await f.api.setNearbyDriverLocationEnabled('driver', true);
+  await f.api.ensureNearbyDriverLocation('driver');
+  await f.api.ensureNearbyDriverLocation('driver');
+  assert.equal(f.starts.length, 2);
 });

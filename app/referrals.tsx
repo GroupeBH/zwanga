@@ -1,5 +1,6 @@
 import { formatNumber, formatDate, rewardLabel } from '../features/referrals/referralModel';
 import { useReferralActions } from '../hooks/referrals/useReferralActions';
+import { validateReferralWithdrawal } from '../features/referrals/referralWithdrawalValidation';
 import { ReferralQrAction } from '@/features/referrals/ReferralQrAction';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors } from '@/constants/styles';
@@ -37,6 +38,7 @@ export default function ReferralsScreen() {
   const recentRewards = feed.rewardsQuery.currentData?.data ?? [];
   const recentWithdrawals = feed.withdrawalsQuery.currentData?.data ?? [];
   const [requestWithdrawal, { isLoading: isWithdrawing }] = useRequestReferralWithdrawalMutation();
+  const withdrawalValidation = validateReferralWithdrawal(withdrawalTokens, summary);
 
   const { handleShare, handleWithdrawal } = useReferralActions({
     isSharing,
@@ -89,6 +91,9 @@ export default function ReferralsScreen() {
             <Text style={styles.heroText}>
               Votre ami n’a aucun code à saisir. Le lien reconnait automatiquement
               votre invitation après son installation et son inscription.
+            </Text>
+            <Text style={styles.heroText}>
+              Aucun bonus à l’inscription ou au rattachement. Vous gagnez des commissions uniquement sur les abonnements éligibles payés et les trajets terminés et payés de vos filleuls. Un abonnement payé avec un bonus Zwanga ne rapporte aucune commission.
             </Text>
             <View style={styles.heroActions}>
               <TouchableOpacity
@@ -178,6 +183,12 @@ export default function ReferralsScreen() {
               placeholderTextColor={Colors.gray[400]}
               style={styles.input}
             />
+            <Text style={styles.legalHint}>Disponible pour ce retrait : {formatNumber(summary?.balances.availableTokens)} jetons de parrainage.</Text>
+            {withdrawalTokens.trim() && !withdrawalValidation.valid ? (
+              <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: Colors.warningDark }}>
+                {withdrawalValidation.message}
+              </Text>
+            ) : null}
             <TouchableOpacity
               disabled={isWithdrawing}
               onPress={handleWithdrawal}
@@ -193,7 +204,7 @@ export default function ReferralsScreen() {
               )}
             </TouchableOpacity>
             <Text style={styles.legalHint}>
-              Retirez ici vos jetons de parrainage et les commissions de vos filleuls. Les commissions restent en attente {summary?.rules.holdDays ?? 7} jours. Les jetons achetés se retirent depuis le portefeuille ; les jetons de fidélité ne sont pas retirables.
+              Seuls vos jetons de parrainage disponibles sont retirables ici. Les commissions restent en attente {summary?.rules.holdDays ?? 7} jours. Les jetons réservés à un retrait ne peuvent pas être réutilisés. Les jetons achetés et les bonus du portefeuille ne sont pas retirables en argent.
             </Text>
           </View>
 

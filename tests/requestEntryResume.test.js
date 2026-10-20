@@ -180,3 +180,59 @@ test('a cancelled, foreign or removed status offer cannot open the driver screen
   wait.resolve({ id: 'offer', driverId: 'user', actionable: true, expiresAt: iso(30000), serverNow: iso(0) });
   await flush(); assert.deepEqual(f.routes, []);
 });
+
+test('a ringing request does not wait for unrelated driver publications once ongoing recovery is resolved', async t => {
+  const f = fixture(t); f.options.driver = true;
+  f.options.trips = { isSuccess: false, isFetching: true };
+  f.options.activity.data.trips = { count: 2 };
+  f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+  f.options.readRequest = async id => request(id, 'passenger');
+  f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/nearby']);
+});
+
+test('a ringing request preempts a slow lower-priority detail; its stale result cannot navigate', async t => {
+  const f = fixture(t), old = deferred(); let signal;
+  f.options.driver = true;
+  f.options.readRequest = (id, candidateSignal) => {
+    if (id === 'order') { signal = candidateSignal; return old.promise; }
+    return Promise.resolve(request(id, 'passenger'));
+  };
+  f.render();
+  f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+  f.render(); await flush(); assert.equal(signal.aborted, true);
+  assert.deepEqual(f.routes, ['/request-details/nearby']);
+  old.resolve(request()); await flush(); assert.equal(f.routes.length, 1);
+});
+
+test('driver role or profile loss during verification cannot open an incoming request', async t => {
+  for (const patch of [{ driver: false }, { profileReady: false }]) {
+    const f = fixture(t), wait = deferred(); f.options.driver = true;
+    f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+    f.options.readRequest = () => wait.promise; f.render();
+    Object.assign(f.options, patch); f.render(); wait.resolve(request('nearby', 'passenger'));
+    await flush(); assert.deepEqual(f.routes, []);
+  }
+});
+
+test('a new ringing attempt has its own deadline instead of inheriting the previous slow read', async t => {
+  const f = fixture(t), old = deferred(), incoming = deferred(); let signal;
+  f.options.driver = true;
+  f.options.readRequest = (id, attemptSignal) => {
+    if (id === 'order') return old.promise;
+    signal = attemptSignal; return incoming.promise;
+  };
+  f.render(); t.mock.timers.tick(ENTRY_LOAD_TIMEOUT_MS - 1000);
+  f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+  f.render(); t.mock.timers.tick(2000);
+  assert.equal(f.render().failed, false); assert.equal(signal.aborted, false);
+  incoming.resolve(request('nearby', 'passenger')); await flush();
+  assert.deepEqual(f.routes, ['/request-details/nearby']);
+  old.resolve(request()); await flush(); assert.equal(f.routes.length, 1);
+});
+
+test('an own-request alert cannot outrank the passenger view of the driver’s own order', async t => {
+  const f = fixture(t); f.options.driver = true;
+  f.options.alerts = [{ key: 'self', kind: 'nearby', id: 'order', recipientId: 'user',
+    data: { type: 'trip_request_nearby', driverId: 'user', passengerId: 'user' } }];
+  f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
+});

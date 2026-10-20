@@ -38,6 +38,8 @@ export const getActiveTrackingSession = (forceRead = false): Promise<PassengerTr
       bookingId,
       tripId: typeof parsed.tripId === 'string' ? parsed.tripId.trim() || null : null,
       waitForActiveTrip: parsed.waitForActiveTrip === true,
+      departureTimeMs: typeof parsed.departureTimeMs === 'number' && Number.isFinite(parsed.departureTimeMs)
+        ? parsed.departureTimeMs : null,
     };
   } catch {
     console.warn('[PassengerBackgroundLocation] Session enregistrée invalide');

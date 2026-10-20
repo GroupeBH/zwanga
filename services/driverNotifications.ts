@@ -12,6 +12,9 @@ import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert, type NearbyPhoneAler
 import { getDriverAlertChannel, LEGACY_DRIVER_CHANNEL } from './driverAlertChannel';
 import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { acknowledgeRideAlerts, rememberRideAlert } from './rideAlertSession';
+import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
+import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
+import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
 const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
@@ -38,20 +41,22 @@ function acknowledgeDelivery(invitation: DriverAlert) {
 
 export async function configureDriverNotifications() {
   if (Platform.OS === 'web') return DRIVER_CHANNEL;
-  await Notifications.setNotificationCategoryAsync('driver-offer-v1', [
+  // Android uses Notifee actions, not APNs categories. Do not make a sleeping
+  // phone initialize two unrelated Expo categories before displaying its alert.
+  if (Platform.OS === 'ios') await boundedRideAudio(Notifications.setNotificationCategoryAsync('driver-offer-v1', [
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
-  ]);
-  await Notifications.setNotificationCategoryAsync('driver-offer-v2', [
+  ]));
+  if (Platform.OS === 'ios') await boundedRideAudio(Notifications.setNotificationCategoryAsync('driver-offer-v2', [
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
-  ]);
+  ]));
   // Resolve before creating v2 so a new install does not look like a legacy install.
   const channelId = await getDriverAlertChannel();
-  if (Platform.OS === 'android') await notifee.createChannel({ id: DRIVER_CHANNEL,
+  if (Platform.OS === 'android') await boundedRideAudio(notifee.createChannel({ id: DRIVER_CHANNEL,
     name: 'Réservations et commandes acceptées', importance: AndroidImportance.HIGH,
     sound: 'driver_ring', vibration: true, vibrationPattern: [400, 300, 700, 300, 700, 300],
-    visibility: AndroidVisibility.PRIVATE });
+    visibility: AndroidVisibility.PRIVATE }));
   return channelId;
 }
 
@@ -63,7 +68,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     if (Platform.OS === 'android') {
       await displayForegroundAlert(invitation, data);
     } else {
-      const { refreshToken } = await getTokens();
+      const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
       if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
       const alert = parseRideAlert(data);
       if (alert) rememberRideAlert(alert);
@@ -73,33 +78,32 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   if (invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) return true;
   if (Platform.OS !== 'android') return true; // iOS remote alert/category is already displayed by APNs.
   const version = getTokenSessionVersion();
-  const { refreshToken } = await getTokens();
+  const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
   if (version !== getTokenSessionVersion()) return true;
   const key = deliveryKey(invitation);
   if (deliveries.has(key)) return true;
   const deadline = driverRingDeadline(invitation);
-  if (deadline <= Date.now()) return true;
+  if (deadline <= Date.now()) { reportRideAudioFailure('DRIVER_ALERT_ARRIVED_TOO_LATE'); return true; }
   const delivery = rememberDelivery(key);
   try {
     const channelId = await configureDriverNotifications();
+    const lightUpScreen = await shouldLightUpRideAlertScreen(channelId);
     if (delivery.cancelled || version !== getTokenSessionVersion() || deadline <= Date.now()) return true;
     if (isAppActive()) { await displayForegroundAlert(invitation, data); return true; }
     const safeData = Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
-    const body = typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800) : 'Une proposition vous attend. Accepter ou refuser ?';
+    const { title, body } = driverNotificationCard(invitation.kind, data);
     await notifee.displayNotification({ id: invitationNotificationId(invitation),
-      title: invitation.kind === 'booking' ? 'Nouvelle réservation' : 'Commande à proximité',
+      title,
       body, data: safeData,
       android: { channelId, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, pressAction: { id: 'default', launchActivity: 'default' },
         onlyAlertOnce: true, autoCancel: false, ongoing: true,
-        loopSound: true, lightUpScreen: true,
+        loopSound: true, lightUpScreen,
         sound: 'driver_ring', style: { type: AndroidStyle.BIGTEXT, text: body },
         // Native timeout: works without a living JS timer while the phone sleeps.
         timeoutAfter: Math.max(1, deadline - Date.now()),
-        actions: invitation.kind === 'nearby' ? [{ title: 'Ignorer', pressAction: { id: 'driver-ignore-nearby', launchActivity: 'default' } }]
-          : [{ title: 'Refuser', pressAction: { id: 'driver-decline', launchActivity: 'default' } },
-          { title: 'Accepter', pressAction: { id: 'driver-accept', launchActivity: 'default' } }],
+        actions: driverNotificationActions(invitation.kind, data),
       },
     });
     if (delivery.cancelled || version !== getTokenSessionVersion()) {
@@ -117,7 +121,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
 async function displayForegroundAlert(invitation: DriverAlert, data: Record<string, unknown>) {
   if (invitation.kind === 'nearby' && driverRingDeadline(invitation) <= Date.now()) return;
   const version = getTokenSessionVersion();
-  const { refreshToken } = await getTokens();
+  const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId ||
     version !== getTokenSessionVersion() || !isAppActive()) return;
   const key = deliveryKey(invitation);
@@ -130,16 +134,14 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
     if (delivery.cancelled || version !== getTokenSessionVersion() || !isAppActive()) { delivery.foreground = false; return; }
     await notifee.cancelNotification(invitationNotificationId(invitation));
     if (delivery.cancelled || version !== getTokenSessionVersion() || !isAppActive()) { delivery.foreground = false; return; }
-    await notifee.displayNotification({ id: invitationNotificationId(invitation),
-      title: invitation.kind === 'nearby' ? 'Commande à proximité' : 'Nouvelle réservation',
-      body: typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800)
-        : invitation.kind === 'nearby' ? 'Un client cherche un véhicule près de vous.' : 'Un passager souhaite vous rejoindre.',
+    const { title, body } = driverNotificationCard(invitation.kind, data);
+    await notifee.displayNotification({ id: invitationNotificationId(invitation), title, body,
       data: Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       android: { channelId: FOREGROUND_BOOKING_CHANNEL, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, autoCancel: false, onlyAlertOnce: true,
         pressAction: { id: 'default', launchActivity: 'default' },
-        actions: invitation.kind === 'nearby' ? [{ title: 'Ignorer', pressAction: { id: 'driver-ignore-nearby' } }] : [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
-          { title: 'Accepter', pressAction: { id: 'driver-accept' } }],
+        style: { type: AndroidStyle.BIGTEXT, text: body },
+        actions: driverNotificationActions(invitation.kind, data),
       },
     });
     if (delivery.cancelled || version !== getTokenSessionVersion()) {

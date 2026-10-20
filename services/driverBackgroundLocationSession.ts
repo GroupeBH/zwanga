@@ -111,7 +111,9 @@ async function readSession() {
     return cachedSession;
   } catch (error) {
     console.warn('[DriverBackgroundLocationSession] Lecture impossible:', error);
-    return null;
+    // Unknown storage state is not proof that the trip ended. Native callbacks
+    // must retry rather than stop an otherwise healthy background registration.
+    throw error;
   }
 }
 

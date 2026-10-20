@@ -28,6 +28,17 @@ test('dispatch and bookings are distinct; unknown payloads cannot become actions
   assert.equal(policy.notificationDecision('driver-decline'), 'decline');
   assert.equal(policy.notificationDecision('default'), null);
 });
+
+test('own request cannot be parsed as a nearby ring or an actionable driver invitation', () => {
+  const sound = load('features/notifications/rideSound.ts');
+  const nearby = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', driverId, passengerId: driverId,
+    tripRequestId: id, delivery: 'driver-phone-v3', ringUntil: new Date(Date.now() + 30000).toISOString() };
+  assert.equal(sound.isRemoteNearbyRequestAlert(nearby), false);
+  assert.equal(sound.parseNearbyPhoneAlert(nearby), null);
+  assert.equal(policy.parseDriverInvitation({ ...data, passengerId: driverId }), null);
+  assert.equal(policy.parseDriverInvitation({ ...data, passengerId: id }).kind, 'dispatch');
+  assert.equal(sound.parseNearbyPhoneAlert({ ...nearby, passengerId: id }).kind, 'nearby');
+});
 test('SDK54 raw and dataString headless payloads are decoded without affecting other pushes', () => {
   assert.deepEqual(policy.readDriverPushData({ notification: null, data }), data);
   const nativeData = { ...data, dataString: 'Consultez la proposition' };
@@ -55,6 +66,7 @@ function service(platform = 'android', account = driverId, phoneChannel = false)
   const storage = new Map();
   const displays = [];
   const channels = [];
+  const categories = [];
   const cancelled = [], presented = [];
   const appState = { currentState: 'background' };
   const native = { createChannel: async value => channels.push(value), displayNotification: async value => displays.push(value),
@@ -62,23 +74,54 @@ function service(platform = 'android', account = driverId, phoneChannel = false)
   const loaded = loader({
     './tokenStorage': { getTokens: async () => ({ refreshToken: account ? `x.${Buffer.from(JSON.stringify({ sub: account, exp: Date.now()/1000+3600 })).toString('base64url')}.x` : null }) },
     '@react-native-async-storage/async-storage': { getItem: async key => storage.get(key), setItem: async (key, value) => storage.set(key, value), removeItem: async key => storage.delete(key) },
-    'expo-notifications': { setNotificationCategoryAsync: async () => {},
+    'expo-notifications': { setNotificationCategoryAsync: async id => { categories.push(id); },
       getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => cancelled.push(id) },
     '@notifee/react-native': { __esModule: true, default: native, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, AndroidStyle: { BIGTEXT: 'BIGTEXT' } },
     'react-native': { Platform: { OS: platform }, AppState: appState,
-      NativeModules: phoneChannel ? { ZwangaDriverAlerts: { ensureBundledChannel: async () => 'zwanga-ride-ring-v4' } } : {} },
+      NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => true,
+        ...(phoneChannel ? { ensureBundledChannel: async () => 'zwanga-ride-ring-v4' } : {}) } } },
   })('services/driverNotifications.ts');
-  return { loaded, displays, storage, channels, cancelled, appState, native, presented };
+  return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented };
 }
 
+test('own incoming requests stay silent in foreground and headless delivery on both platforms', async () => {
+  for (const platform of ['android', 'ios']) for (const state of ['active', 'background']) {
+    const f = service(platform); f.appState.currentState = state;
+    for (const push of [{ ...data, passengerId: driverId },
+      { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+        driverId, passengerId: driverId, tripRequestId: id, ringUntil: new Date(Date.now() + 30000).toISOString() }]) {
+      assert.equal(await f.loaded.displayDriverInvitation(push), false);
+    }
+    assert.deepEqual(f.displays, []); assert.deepEqual(f.channels, []); assert.equal(f.storage.size, 0);
+  }
+});
+
 test('long-ring channel is configured independently of recipient role before capability registration', async () => {
-  const { loaded, channels } = service('android', null);
+  const { loaded, channels, categories } = service('android', null);
   await loaded.configureDriverNotifications();
   assert.equal(channels.length, 1);
   assert.equal(channels[0].id, 'booking-ring-v2');
   assert.equal(channels[0].sound, 'driver_ring');
   assert.equal(channels[0].importance, 4);
   assert.equal(channels[0].vibration, true);
+  assert.deepEqual(categories, [], 'Android background alerts do not wait for APNs category initialization');
+});
+
+test('iOS still registers both actionable notification categories', async () => {
+  const f = service('ios', null); await f.loaded.configureDriverNotifications();
+  assert.deepEqual(f.categories, ['driver-offer-v1', 'driver-offer-v2']);
+});
+
+test('a new background request still lights the screen after the previous request was dismissed', async () => {
+  const f = service(); await f.loaded.displayDriverInvitation(data);
+  await f.loaded.dismissDriverInvitation(policy.parseDriverInvitation(data));
+  await f.loaded.displayDriverInvitation(data);
+  await f.loaded.displayDriverInvitation({ ...data, offerId: '00000000-0000-4000-8000-000000000003' });
+  assert.equal(f.displays.length, 2, 'only the distinct second event may ring/wake again');
+  for (const notification of f.displays) {
+    assert.equal(notification.android.lightUpScreen, true);
+    assert.equal(notification.android.fullScreenAction, undefined);
+  }
 });
 test('headless Android uses one stable id, actions, expiry and private lockscreen content', async () => {
   const { loaded, displays } = service();
@@ -99,6 +142,21 @@ test('headless Android uses one stable id, actions, expiry and private lockscree
   assert.ok(displays[0].android.timeoutAfter <= 30000);
   await loaded.displayDriverInvitation({ ...data, expiresAt: new Date(0).toISOString() });
   assert.equal(displays.length, 1);
+});
+
+test('foreground and background cards carry the same price/destination and launchable actions without additional reads', async () => {
+  for (const state of ['active', 'background']) {
+    const f = service(); f.appState.currentState = state;
+    await f.loaded.displayDriverInvitation({ ...data, ridePricePerSeat: '5600', ridePriceKind: 'budget',
+      rideDeparture: 'Place centrale', rideArrival: 'Gare', rideSeats: '2' });
+    const card = f.displays[0];
+    assert.match(card.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 5 600 FC \/ place/);
+    assert.match(card.body, /Place centrale → Gare/);
+    assert.equal(card.android.style.text, card.body);
+    assert.equal(card.data.ridePricePerSeat, '5600');
+    assert.equal(card.android.visibility, 0, 'retain private lock-screen content');
+    assert.ok(card.android.actions.every(a => a.pressAction.launchActivity === 'default'));
+  }
 });
 
 test('new native binaries use the bundled channel for booking and dispatch and stop after a decision', async () => {
@@ -122,7 +180,7 @@ test('v3 scheduled orders ring once for at most 30s, without exclusive accept/de
   await Promise.all([f.loaded.displayDriverInvitation(payload), f.loaded.displayDriverInvitation(payload)]);
   assert.equal(f.displays.length, 1);
   assert.equal(f.displays[0].android.channelId, 'zwanga-ride-ring-v4');
-  assert.deepEqual(f.displays[0].android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby']);
+  assert.deepEqual(f.displays[0].android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby', 'driver-review-nearby']);
   assert.ok(f.displays[0].android.timeoutAfter <= 5000);
   f.appState.currentState = 'active';
   await f.loaded.dismissDriverDecision(driverId, 'nearby', id);
@@ -251,7 +309,7 @@ test('nearby Android foreground delivery remains visible, silent and deduplicate
   assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
   assert.equal(f.displays[0].android.loopSound, undefined);
   assert.equal(f.displays[0].android.sound, undefined);
-  assert.deepEqual(f.displays[0].android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby'], 'local ignore never accepts the order');
+  assert.deepEqual(f.displays[0].android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby', 'driver-review-nearby'], 'local ignore/review never accepts the order');
   assert.equal(f.channels[0].sound, undefined); assert.equal(f.channels[0].vibration, false);
   assert.equal(f.storage.size, 0);
   f.appState.currentState = 'background';

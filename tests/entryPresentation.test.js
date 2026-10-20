@@ -83,3 +83,42 @@ test('entry cache reuse requires a healthy, completed and recent read, never a p
     assert.equal(freshEntryData({ ...read, ...patch }, 100001), undefined);
   }
 });
+
+test('verified requests open directly after the visual deadline, without extending the cover', t => {
+  const f = fixture(t); f.render(); t.mock.timers.tick(3000);
+  assert.equal(f.render().released, true);
+  assert.equal(f.render().replaceRequest('/request-details/order'), true);
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  assert.equal(f.render().proposal, null); assert.equal(f.render().released, true);
+});
+
+test('a late ringing dispatch opens automatically even after a fresh empty Home was revealed', t => {
+  const f = fixture(t); f.env.fastHome = true; f.render(); t.mock.timers.tick(5000);
+  const offer = { pathname: '/incoming-driver', params: { id: 'offer', kind: 'dispatch', driverId: 'driver' } };
+  assert.equal(f.render().replaceRequest(offer), true); assert.deepEqual(f.routes, [offer]);
+});
+
+test('request automation cannot override deliberate navigation, including leaving and returning to fast Home', t => {
+  const f = fixture(t); f.env.fastHome = true; const initial = f.render();
+  f.env.path = '/publish'; f.render(); f.env.path = '/'; f.render();
+  assert.equal(initial.replaceRequest('/request-details/order'), false);
+  assert.deepEqual(f.routes, []);
+});
+
+test('request automation cannot bypass the normal policy for a trip, payment or unrelated destination', t => {
+  const f = fixture(t); f.render(); t.mock.timers.tick(3000);
+  for (const destination of ['/trip/navigate/ride', '/wallet', '/incoming-driver',
+    { pathname: '/incoming-driver', params: { kind: 'booking' } }]) {
+    assert.equal(f.render().replaceRequest(destination), false);
+  }
+  assert.deepEqual(f.routes, []);
+});
+
+test('late request callbacks cannot survive backgrounding, signout or account changes', t => {
+  const f = fixture(t);
+  for (const change of [() => { f.env.active = false; }, () => { f.env.userId = 'other'; }, () => { f.env.version++; }]) {
+    f.env.active = true; const initial = f.render(); t.mock.timers.tick(3000);
+    change(); f.render(); assert.throws(() => initial.replaceRequest('/request-details/order'), /STALE/);
+  }
+  assert.deepEqual(f.routes, []);
+});

@@ -72,7 +72,8 @@ function fixture(t, passenger = false) {
   const Component = load('components/ActiveRideResumeCoordinator.tsx').ActiveRideResumeCoordinator;
   t.after(() => hooks.unmount());
   const wrapper = () => hooks.render(() => Component({ children: 'navigator' }));
-  return { env, trip, reads, routes, observed, wrapper, speechEntry: load('services/rideEntryAnnouncement.ts'), render: () => wrapper().props.children[1] || null };
+  return { env, trip, reads, routes, observed, wrapper, alerts: load('services/rideAlertSession.ts'),
+    speechEntry: load('services/rideEntryAnnouncement.ts'), render: () => wrapper().props.children[1] || null };
 }
 
 test('a status-only offer is verified by entry, but cannot replace ongoing guidance', async t => {
@@ -284,4 +285,34 @@ test('queued verification after an existing read never leaks into a different se
     f.render(); pending.resolve(); await flush();
     assert.deepEqual(f.reads, [], change); assert.deepEqual(f.routes, [], change);
   }
+});
+
+test('a passenger waiting request replaces Home automatically even when its verification exceeds two seconds', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t, true), pending = deferred(); f.env.segments = ['(tabs)'];
+  f.env.bookings.data = []; f.env.pending = pending.promise;
+  Object.assign(f.env.activity.data, { passengerTrackingBookingId: null, trips: { count: 0 }, bookings: { count: 0 }, requests: { count: 1 } });
+  f.env.request = { id: 'order', passengerId: 'passenger', status: 'pending', departureDateMax: new Date(200000).toISOString() };
+  f.env.requests.data = [f.env.request];
+  f.render(); f.render(); t.mock.timers.tick(3000); assert.equal(f.render(), null, 'the cover remains bounded');
+  pending.resolve(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order'], 'no intermediate Voir la demande action');
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
+  f.env.path = '/request-details/order'; f.render(); f.env.path = '/'; f.render(); await flush();
+  assert.equal(f.routes.length, 1, 'the user can still deliberately return Home');
+});
+
+test('a ringing nearby request restored after fast Home opens its decision screen without acknowledging the sound', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
+  f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, fulfilledTimeStamp: Date.now() };
+  f.render(); t.mock.timers.tick(3000); f.render(); assert.deepEqual(f.routes, []);
+  f.env.request = { id: 'nearby', passengerId: 'passenger', status: 'pending', departureDateMax: new Date(200000).toISOString() };
+  f.alerts.rememberRideAlert({ key: 'driver-nearby-nearby', id: 'nearby', kind: 'nearby', recipientId: 'driver',
+    data: { ringUntil: new Date(130000).toISOString() } }, true);
+  f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/nearby']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
+  f.env.path = '/request-details/nearby'; f.render();
+  assert.equal(f.alerts.pendingRideAlerts('driver').length, 1, 'opening is not accepting or refusing');
 });

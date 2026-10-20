@@ -61,9 +61,7 @@ test('changed revisions and failed reconciliation cannot certify the old cache, 
   assert.equal(error.failed, true);
   app.fail = undefined; error.onAction(); await flush();
   app.produce(); app.enter(); await flush(); app.enter(); app.enter(); await flush();
-  assert.deepEqual(app.routes, [], 'retry does not steal the revealed Home');
-  assert.equal(app.banner().props.actionLabel, 'Voir la demande');
-  app.banner().props.onAction(); assert.deepEqual(app.routes, ['/request-details/request']);
+  assert.deepEqual(app.routes, ['/request-details/request'], 'retry opens the verified request without a second tap');
 });
 
 test('a request-detail failure can be retried with the same revision without another list read', async t => {
@@ -75,7 +73,6 @@ test('a request-detail failure can be retried with the same revision without ano
   assert.deepEqual(app.routes, []); assert.equal(app.enter(), null); assert.equal(app.banner().props.failed, true);
   t.mock.timers.tick(25); app.fail = undefined; app.banner().props.onAction(); await flush();
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, []); app.banner().props.onAction();
   assert.deepEqual(app.routes, ['/request-details/request']);
   assert.equal(app.reads.filter(name => name === 'getMyActivityTrips').length, 1);
 });

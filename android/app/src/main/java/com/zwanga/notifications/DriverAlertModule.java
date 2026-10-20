@@ -39,6 +39,11 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
   public void stopForegroundSound(String token) {
     if (foreground != null) foreground.stop(token);
   }
+  @ReactMethod
+  public void getForegroundSoundState(String token, Promise promise) {
+    if (foreground == null) promise.resolve("stopped");
+    else foreground.state(token, promise);
+  }
   @Override public void invalidate() {
     if (foreground != null) { foreground.destroy(); foreground = null; }
     super.invalidate();
@@ -101,6 +106,32 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       promise.resolve(audio != null && audio.getRingerMode() == AudioManager.RINGER_MODE_NORMAL &&
           audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION) > 0 && notifications != null &&
           notifications.getCurrentInterruptionFilter() == NotificationManager.INTERRUPTION_FILTER_ALL);
+    } catch (Exception ignored) { promise.resolve(false); }
+  }
+
+  @ReactMethod
+  public void canLightUpAlertScreen(String channelId, Promise promise) {
+    try {
+      Context context = getReactApplicationContext();
+      NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+      AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+      if (manager == null || !manager.areNotificationsEnabled() || audio == null ||
+          audio.getRingerMode() != AudioManager.RINGER_MODE_NORMAL ||
+          audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION) == 0 ||
+          manager.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) {
+        promise.resolve(false); return;
+      }
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        NotificationChannel channel = manager.getNotificationChannel(channelId);
+        if (channel == null || channel.getImportance() < NotificationManager.IMPORTANCE_HIGH || channel.getSound() == null) {
+          promise.resolve(false); return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && channel.getGroup() != null) {
+          NotificationChannelGroup group = manager.getNotificationChannelGroup(channel.getGroup());
+          if (group != null && group.isBlocked()) { promise.resolve(false); return; }
+        }
+      }
+      promise.resolve(true);
     } catch (Exception ignored) { promise.resolve(false); }
   }
 

@@ -15,6 +15,7 @@ import { selectRideTracking } from '@/features/activity/rideTrackingSelection';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
 import { useEffect, useMemo, useRef } from 'react';
+import { retryGpsStart } from '@/services/background/retryGpsStart';
 import { sharedTripsOptions, sharedBookingsOptions } from '@/features/activity/activityQueryOptions';
 import { useActivityTrackingSignal } from '@/hooks/useActivityTrackingSignal';
 import { usePathname } from 'expo-router';
@@ -108,13 +109,15 @@ export function ActiveRideLocationCoordinator() {
     if (!isAppActive) return;
     const requestMissingPermissions = driverPermissionAttemptRef.current !== driverTripId;
     driverPermissionAttemptRef.current = driverTripId;
-    void startDriverBackgroundLocationTracking(driverTripId, {
-      arrivalCoordinate: driverArrivalCoordinate,
-      requestMissingPermissions,
-    }).then(() => {
+    return retryGpsStart(async attempt => {
+      const started = await startDriverBackgroundLocationTracking(driverTripId, {
+        arrivalCoordinate: driverArrivalCoordinate,
+        requestMissingPermissions: attempt === 0 && requestMissingPermissions,
+      });
       if (activeDriverTripIdRef.current !== driverTripId) {
         void stopDriverBackgroundLocationTracking(driverTripId);
       }
+      return started;
     });
   }, [
     areTripsLoaded,
@@ -146,16 +149,19 @@ export function ActiveRideLocationCoordinator() {
     // Foreground resume forces a native health check, even with unchanged ride data.
     if (!isAppActive) return;
 
-    const startPromise = startPassengerBackgroundLocationTracking(passengerBookingId, {
-      requestMissingPermissions: true,
-      tripId: passengerTripId,
-      waitForActiveTrip: passengerTripStatus !== 'ongoing',
-    });
-    passengerStartRef.current = startPromise;
-    void startPromise.then(() => {
+    return retryGpsStart(async attempt => {
+      const startPromise = startPassengerBackgroundLocationTracking(passengerBookingId, {
+        requestMissingPermissions: attempt === 0,
+        tripId: passengerTripId,
+        waitForActiveTrip: passengerTripStatus !== 'ongoing',
+        departureTimeMs: new Date(activePassengerBooking?.trip?.departureTime ?? '').getTime(),
+      });
+      passengerStartRef.current = startPromise;
+      const started = await startPromise;
       if (activePassengerBookingIdRef.current !== passengerBookingId) {
         void stopPassengerBackgroundLocationTracking(passengerBookingId);
       }
+      return started;
     });
   }, [
     areBookingsLoaded,
@@ -164,6 +170,7 @@ export function ActiveRideLocationCoordinator() {
     passengerBookingId,
     passengerTripId,
     passengerTripStatus,
+    activePassengerBooking?.trip?.departureTime,
   ]);
 
   useEffect(() => {

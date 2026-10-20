@@ -1,4 +1,5 @@
 import { isInvitationId } from './driverInvitation';
+import { isSelfDriverAlert } from './requestOwnership';
 
 export type NearbyPhoneAlert = { kind: 'nearby'; id: string; driverId: string; ringUntil: string; expiresAt?: string };
 
@@ -18,5 +19,5 @@ export function isRemoteRequestAcceptanceAlert(data: Record<string, unknown> | u
 /** Scheduled request family (remote v2, Android headless v3): never authorizes a decision. */
 export function isRemoteNearbyRequestAlert(data: Record<string, unknown> | undefined): boolean {
   return data?.type === 'trip_request_nearby' && data.ringAlert === 'nearby-request-v1' &&
-    isInvitationId(data.driverId) && isInvitationId(data.tripRequestId);
+    isInvitationId(data.driverId) && isInvitationId(data.tripRequestId) && !isSelfDriverAlert(data);
 }

@@ -1,4 +1,5 @@
 import { WalletSheetModal } from './WalletSheetModal';
+import { tokenQuote } from '../arrival-payment/tokenQuote';
 import { TOP_UP_METHOD_OPTIONS, normalizePhone } from './walletModel';
 import { WalletAction, TopUpStage, AUTO_CHECK_MAX_ATTEMPTS } from './walletTypes';
 import { styles } from '../screen-styles/app/wallet/index';
@@ -9,6 +10,8 @@ import React from 'react';
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface WalletTopUpModalProps {
+  moneyPerToken?: number;
+  paymentCurrency?: string;
   setActiveModal: React.Dispatch<React.SetStateAction<WalletAction | null>>;
   activeModal: WalletAction | null;
   topUpMethod: SubscriptionPaymentMethod;
@@ -33,6 +36,8 @@ interface WalletTopUpModalProps {
 }
 
 export function WalletTopUpModal({
+  moneyPerToken,
+  paymentCurrency,
   setActiveModal,
   activeModal,
   topUpMethod,
@@ -55,6 +60,8 @@ export function WalletTopUpModal({
   topUpAutoCheckAttempt,
   handleCheckTopUpStatus,
 }: WalletTopUpModalProps) {
+  const currency = paymentCurrency ?? 'CDF';
+  const rate = tokenQuote(currency, undefined, moneyPerToken, paymentCurrency).purchaseValue;
   return (
     <WalletSheetModal
       icon="flash-outline"
@@ -108,7 +115,9 @@ export function WalletTopUpModal({
         style={styles.input}
         value={topUpAmount}
       />
-      <Text style={styles.helperText}>1 jeton = 100 FC.</Text>
+      <Text style={styles.helperText}>{rate === null
+        ? 'Le tarif sera confirmé avant le paiement.'
+        : `Tarif actuel : 1 jeton = ${rate.toLocaleString('fr-FR')} ${currency === 'CDF' ? 'FC' : currency}.`}</Text>
       {isTopUpPhoneRequired ? (
         <TextInput
           keyboardType="phone-pad"

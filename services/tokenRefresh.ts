@@ -18,9 +18,9 @@ async function forceLocalLogout(version: number): Promise<void> {
 }
 
 /** Offline context is NOT permission to send an authenticated request. */
-export async function hasRecoverableSession(): Promise<boolean> {
+export async function hasRecoverableSession(options?: { throwOnError?: boolean }): Promise<boolean> {
   const version = getTokenSessionVersion();
-  const { accessToken, refreshToken } = await getTokens();
+  const { accessToken, refreshToken } = await getTokens(options);
   return version === getTokenSessionVersion() && Boolean(accessToken && refreshToken && !isTokenExpired(refreshToken));
 }
 

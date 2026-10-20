@@ -112,6 +112,19 @@ final class ForegroundAlertPlayer implements LifecycleEventListener {
     else vibrator.vibrate(pattern, 0);
   }
   void stop(String token) { main.post(() -> { if (token.equals(owner)) release(); }); }
+  // JS probes only while a foreground alert is pending. A released MediaPlayer
+  // must not leave a permanently "ready" JS handle after an asynchronous error.
+  void state(String token, Promise promise) {
+    main.post(() -> {
+      if (!token.equals(owner) || player == null || !ready) {
+        promise.resolve("stopped"); return;
+      }
+      try {
+        if (!allowed()) { release(); promise.resolve("stopped"); return; }
+        promise.resolve(paused ? "paused" : player.isPlaying() ? "playing" : "stopped");
+      } catch (Exception ignored) { release(); promise.resolve("stopped"); }
+    });
+  }
   private void release() {
     main.removeCallbacks(timeout);
     MediaPlayer previous = player; player = null; owner = null; ready = false;

@@ -250,6 +250,11 @@ test('top-up keeps its payment and monitoring controls within the same corrected
     setTopUpAmount: () => sent.push('amount'), setTopUpPhone: () => sent.push('phone'),
     handleTopUp: () => sent.push('top-up'), handleCheckTopUpStatus: () => sent.push('status'), setActiveModal() {} };
   const tree = WalletTopUpModal(props); assert.equal(tree.type, 'Sheet'); assert.equal(tree.props.visible, true);
+  const copy = root => elements(root).filter(node => node.type === 'Text').map(node => node.props.children).join(' ');
+  assert.match(copy(tree), /1 jeton = 10 FC/);
+  assert.match(copy(WalletTopUpModal({ ...props, moneyPerToken: 25, paymentCurrency: 'CDF' })), /1 jeton = 25 FC/);
+  assert.match(copy(WalletTopUpModal({ ...props, moneyPerToken: 10, paymentCurrency: 'CDF' })), /1 jeton = 10 FC/);
+  assert.doesNotMatch(copy(WalletTopUpModal({ ...props, paymentCurrency: 'USD' })), /1 jeton = 10/);
   elements(tree).filter(node => node.type === 'Input').forEach(input => input.props.onChangeText('10'));
   assert.deepEqual(sent, ['amount', 'phone']);
   const buttons = elements(tree).filter(node => node.type === 'Button');

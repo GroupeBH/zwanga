@@ -18,9 +18,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { RequestDriverDecision, RequestDecisionActions } from '@/features/request-detail/RequestDriverDecision';
 import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 import { useMainScreenReady } from '@/hooks/useMainScreenReady';
+import { SharedTripPanel } from '@/features/request-detail/SharedTripPanel';
+import { useSharedTripContextQuery } from '@/store/api/sharedTripApi';
+import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
+import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
 
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
+  const readsEnabled = useDisplayReadsEnabled(model.isScreenActive);
+  const requestOpen = Boolean(model.tripRequest && isRequestUnassigned(model.tripRequest));
+  const { currentData: sharedContext } = useSharedTripContextQuery(model.tripRequest?.id ?? '',
+    displayReadOptions(readsEnabled && requestOpen && model.isDriverAccount && !model.isOwner, 15_000));
+  const sharing = sharedContext?.hasOngoingTrip === true;
   const reportLayout = useMainScreenReady(model.isScreenActive && Boolean(model.tripRequest) &&
     !model.isLoading && !model.isOpeningAssignedTrip && !model.isError && !model.error, 'request_detail');
   const passengerTripId = model.passengerTripId;
@@ -105,14 +114,14 @@ export default function TripRequestDetailsScreen() {
     routeCoordinates: model.routeCoordinates,
     canOpenAssignedTrip: model.canOpenAssignedTrip,
     canStartAssignedTrip: model.canStartAssignedTrip,
-    canAcceptDirectly: model.canAcceptDirectly,
+    canAcceptDirectly: model.canAcceptDirectly && !sharing,
     myOffer: model.myOffer,
     isDriverAccount: model.isDriverAccount,
     isIdentityVerified: model.isIdentityVerified,
     compatibleActiveVehicles: model.compatibleActiveVehicles,
     requestedVehicleType: model.requestedVehicleType,
   });
-  const showDecision = !model.isOwner && model.isDriverAccount && !model.tripRequest.immediateDispatch &&
+  const showDecision = !sharing && !model.isOwner && model.isDriverAccount && !model.tripRequest.immediateDispatch &&
     isRequestUnassigned(model.tripRequest) && isTripRequestWithinAcceptanceWindow(model.tripRequest);
   const showCourse = !model.isOwner && (model.canOpenAssignedTrip || model.canStartAssignedTrip);
 
@@ -156,7 +165,7 @@ export default function TripRequestDetailsScreen() {
             canStartAssignedTrip={model.canStartAssignedTrip}
             handleStartTripFromRequest={model.handleStartTripFromRequest}
             isStartingTripFromRequest={model.isStartingTripFromRequest}
-            canAcceptDirectly={model.canAcceptDirectly}
+            canAcceptDirectly={model.canAcceptDirectly && !sharing}
             handleOpenDirectAcceptModal={model.handleOpenDirectAcceptModal}
             isAcceptingTripRequest={model.isAcceptingTripRequest}
             isStartingTrip={model.isStartingTrip}
@@ -168,6 +177,16 @@ export default function TripRequestDetailsScreen() {
             contactBlocked={model.showDirectAcceptModal}
           />
         )}
+
+        {requestOpen && <SharedTripPanel requestId={model.tripRequest.id} isOwner={Boolean(model.isOwner)}
+          readsEnabled={readsEnabled} context={sharedContext} seats={model.tripRequest.numberOfSeats}
+          hasPendingOffer={model.myOffer?.status === 'pending'} refresh={model.refetch}
+          onProposed={() => {
+            if (!model.userId) return;
+            const userId = model.userId, requestId = model.tripRequest!.id;
+            acknowledgeRideAlerts(alert => alert.recipientId === userId && alert.kind === 'nearby' && alert.id === requestId);
+            void import('@/services/driverNotifications').then(service => service.dismissDriverDecision(userId, 'nearby', requestId)).catch(() => {});
+          }} />}
 
         {false && (
           <View style={styles.section}>

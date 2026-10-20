@@ -1,12 +1,15 @@
+import { isSelfDriverAlert } from './requestOwnership';
+
 export type DriverInvitation = {
   kind: 'booking' | 'dispatch'; id: string; driverId: string; expiresAt?: string; ringUntil?: string;
 };
 export type DriverDecision = 'accept' | 'decline';
+export type DriverNotificationTarget = { kind: 'booking' | 'dispatch' | 'nearby'; id: string; driverId: string };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isInvitationId = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
 
 export function parseDriverInvitation(data: Record<string, unknown> | undefined): DriverInvitation | null {
-  if (!data || data.actionProtocol !== 'driver-v1' || !isInvitationId(data.driverId)) return null;
+  if (!data || data.actionProtocol !== 'driver-v1' || !isInvitationId(data.driverId) || isSelfDriverAlert(data)) return null;
   const kind = data.type === 'new_booking' ? 'booking' : data.type === 'driver_dispatch_offer' ? 'dispatch' : null;
   const id = kind === 'booking' ? data.bookingId : data.offerId;
   if (!kind || !isInvitationId(id)) return null;
@@ -21,13 +24,14 @@ export function notificationDecision(actionId: string | undefined): DriverDecisi
 }
 
 /** Read-only result navigation must never be parsed as another incoming invitation. */
-export function parseDriverResponseResult(data: Record<string, unknown> | undefined): DriverInvitation | null {
+export function parseDriverResponseResult(data: Record<string, unknown> | undefined): DriverNotificationTarget | null {
   if (data?.type !== 'driver_action_result' || !isInvitationId(data.id) || !isInvitationId(data.driverId) ||
-      (data.kind !== 'booking' && data.kind !== 'dispatch')) return null;
+      (data.kind !== 'booking' && data.kind !== 'dispatch' && data.kind !== 'nearby')) return null;
   return { kind: data.kind, id: data.id, driverId: data.driverId };
 }
 
-export function invitationHref(invitation: DriverInvitation) {
+export function invitationHref(invitation: DriverNotificationTarget) {
+  if (invitation.kind === 'nearby') return { pathname: '/request-details/[id]' as const, params: { id: invitation.id } };
   return { pathname: '/incoming-driver' as const, params: { kind: invitation.kind, id: invitation.id, driverId: invitation.driverId } };
 }
 

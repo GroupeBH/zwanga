@@ -67,7 +67,7 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
   driverLocationRequestInFlight = true;
 
   try {
-    if (!(await hasRecoverableSession())) {
+    if (!(await hasRecoverableSession({ throwOnError: true }))) {
       await stopDriverGpsProfile(tripId);
       return false;
     }

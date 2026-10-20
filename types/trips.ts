@@ -135,6 +135,7 @@ export interface Booking {
   paymentMode?: TripPaymentMode | null;
   paymentStatus?: TripPaymentStatus | null;
   paymentAmount?: number | string | null;
+  cashCommissionTokenValue?: number | string | null;
   paymentCurrency?: string | null;
   paymentReference?: string | null;
   paymentTransactionId?: string | null;

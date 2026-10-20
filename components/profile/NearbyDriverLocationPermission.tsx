@@ -9,6 +9,7 @@ import { ensureNearbyDriverLocation, isNearbyDriverLocationEnabled,
   setNearbyDriverLocationEnabled } from '@/services/nearbyDriverLocation';
 import { Colors } from '@/constants/styles';
 import { isDriverAccount } from '@/utils/accountRole';
+import { getNearbyDriverLocationHealth, subscribeNearbyDriverHealth } from '@/services/nearbyDriverLocationHealth';
 
 /** Disclosure precedes the OS permission prompt; no extra availability/vehicle workflow. */
 export function NearbyDriverLocationPermission({ available }: { available: boolean }) {
@@ -23,11 +24,30 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
   const [message, setMessage] = useState('');
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [deliveryMessage, setDeliveryMessage] = useState('');
   const mounted = useRef(true);
   const inFlight = useRef(false);
   const identity = useRef(userId);
   identity.current = userId;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    setDeliveryMessage('');
+    if (!active || !userId || !driver) return;
+    const refresh = () => {
+      const health = getNearbyDriverLocationHealth(userId);
+      if (health.lastSentAt === null) { setDeliveryMessage('En attente d’un envoi de position confirmé.'); return; }
+      const minutes = Math.max(0, Math.floor((Date.now() - health.lastSentAt) / 60_000));
+      const oldPosition = health.lastSentFixAt === null || Date.now() - health.lastSentFixAt > 6 * 60_000;
+      setDeliveryMessage(oldPosition
+        ? 'La dernière position envoyée est ancienne. Vérifiez le GPS et votre connexion pour l’actualiser.'
+        : minutes === 0 ? 'Position envoyée au serveur il y a moins d’une minute.'
+          : `Dernier envoi confirmé : il y a ${minutes} min.`);
+    };
+    refresh();
+    const unsubscribe = subscribeNearbyDriverHealth(refresh);
+    const timer = setInterval(refresh, 30_000);
+    return () => { unsubscribe(); clearInterval(timer); };
+  }, [active, driver, userId]);
   useEffect(() => { setBusy(false); setEnabled(true); setPermission(false); setLoaded(false); setMessage(''); }, [userId]);
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +91,9 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
       const saved = await isNearbyDriverLocationEnabled(userId);
       if (!current()) return;
       setEnabled(saved); setPermission(true);
-      if (AppState.currentState === 'active') await ensureNearbyDriverLocation(userId);
+      if (AppState.currentState === 'active' && !(await ensureNearbyDriverLocation(userId)) && current()) {
+        setMessage('Suivi en veille non démarré. Réessayez hors trajet avec le GPS activé.');
+      }
     } catch {
       if (current()) setMessage('Localisation indisponible. Vérifiez les autorisations et réessayez.');
     } finally {
@@ -89,7 +111,9 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
     <Text accessibilityLiveRegion="polite" style={styles.status}>{loadError ? 'Impossible de vérifier les autorisations.' : !loaded ? 'Vérification des autorisations…' : !enabled
       ? 'Désactivé dans Zwanga. Votre choix reste mémorisé.' : permission
         ? 'Suivi automatique autorisé, sans activation supplémentaire.'
-        : 'Autorisation du téléphone nécessaire. Seule votre position récente dans l’app est utilisée.'}</Text>
+        : 'Autorisation du téléphone nécessaire. Votre dernière position connue reste utilisée.'}</Text>
+    {loaded && enabled && permission && deliveryMessage
+      ? <Text accessibilityLiveRegion="polite" style={styles.copy}>{deliveryMessage}</Text> : null}
     {loadError ? <TouchableOpacity accessibilityRole="button" style={styles.button}
       onPress={() => { setLoadError(false); setAttempt(value => value + 1); }}>
       <Text style={styles.buttonText}>Réessayer</Text>

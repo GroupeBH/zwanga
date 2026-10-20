@@ -12,14 +12,14 @@ const remoteItem = id => ({ request: { identifier: id, content: { data: alert(id
 function fixture(t, clock = true) {
   if (clock) t.mock.timers.enable({ apis: ['Date', 'setTimeout', 'setInterval'], now: 100000 });
   const hooks = hookHarness(), remembered = [], logs = [];
-  const io = { native: [nativeItem('first'), nativeItem('second')], remote: [remoteItem('remote')], reads: 0, cancels: [], version: 0 };
+  const io = { native: [nativeItem('first'), nativeItem('second')], remote: [remoteItem('remote')], reads: 0, cancels: [], remoteCancels: [], version: 0 };
   let change;
   const app = { currentState: 'active', addEventListener: (_event, listener) => { change = listener; return { remove: noop }; } };
   const load = loader({ react: hooks.react, 'expo-router': { usePathname: () => '/' },
     'react-native': { Platform: { OS: 'android' }, AppState: app },
     'expo-notifications': {
       getPresentedNotificationsAsync: async () => io.remote,
-      dismissNotificationAsync: async id => { if (io.failRemote === id) throw new Error('fake private native error'); },
+      dismissNotificationAsync: async id => { io.remoteCancels.push(id); if (io.failRemote === id) throw new Error('fake private native error'); },
       addNotificationReceivedListener: () => ({ remove: noop }),
     },
     '@notifee/react-native': {
@@ -53,6 +53,16 @@ test('one failed native notification does not discard later native or remote ale
 test('a failed native provider leaves remote restoration available', async t => {
   const f = fixture(t); f.io.failRead = true; f.render(); await flush();
   assert.deepEqual(f.remembered, ['remote']); assert.equal(f.logs[0][1], 'RESTORE_ANDROID_READ_FAILED');
+});
+
+test('restoration dismisses own incoming OS alerts without replaying sound, speech or routing', async t => {
+  const f = fixture(t), data = { type: 'trip_request_nearby', driverId: 'driver', passengerId: 'driver' };
+  f.io.native.unshift({ id: 'own-native', notification: { data, android: {} } });
+  f.io.remote.unshift({ request: { identifier: 'own-remote', content: { data } } });
+  f.render(); await flush();
+  assert.deepEqual(f.remembered, ['first', 'second', 'remote']);
+  assert.ok(f.io.cancels.includes('own-native'));
+  assert.ok(f.io.remoteCancels.includes('own-remote'));
 });
 
 test('a synchronous bridge exception is isolated from the other provider too', async t => {
