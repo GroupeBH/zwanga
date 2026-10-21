@@ -1,5 +1,73 @@
 # Journal des changements techniques
 
+## 2026-10-21 — Refus Apple : stabilisation de la compilation iOS après le crash UIScene
+
+- **Périmètre / problème constaté :** les trois rapports Apple fournis pour
+  la version 1.0.17, build 153, montrent un `EXC_BREAKPOINT / SIGTRAP` sur le
+  thread principal dans
+  `___UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption_block_invoke`,
+  sous iPadOS 27.0.1, environ 74 à 356 ms après le lancement. Le projet actuel
+  utilise Expo SDK 54 / React Native 0.81.5, une fenêtre créée dans AppDelegate
+  et aucun manifeste de scènes. L’image EAS iOS `latest` pouvait changer la
+  version de Xcode indépendamment du code. Le log de compilation du build 153
+  n’a pas été fourni : son image EAS exacte n’est pas certifiée par ce diagnostic.
+  Ces rapports ne démontrent ni une surcharge de Home ni la cause des crashs Android.
+- **Solution effectivement appliquée :** `eas.json` fixe l’image iOS
+  `macos-sequoia-15.6-xcode-26.0` pour `production` et `dev` ; `dev-device`
+  l’hérite de `dev`. Cette image est référencée pour SDK 54 dans
+  [l’infrastructure Expo](https://docs.expo.dev/build-reference/infrastructure/).
+  Il s’agit d’une mesure de compatibilité de compilation, **pas d’une migration
+  UIScene** ni d’un correctif JavaScript OTA. Les exigences Apple publiées à la
+  date de ce changement acceptent Xcode 26 / SDK iOS 26 ou ultérieurs ; cette
+  politique devra être réévaluée lors d’une prochaine exigence de soumission.
+- **Protection contre une récidive :** `scripts/validate-ios-toolchain.cjs`,
+  sans dépendance npm, valide tous les profils iOS et leur héritage. Les alias
+  mouvants, images différentes, parents absents et cycles d’héritage échouent.
+  Sur macOS, il interroge les outils réellement sélectionnés avec
+  `xcodebuild -version` et `xcrun --sdk iphoneos --show-sdk-version` et exige
+  Xcode 26.x / SDK 26.x. Outils absents, sortie illisible, échec, signal ou timeout
+  bloquent le contrôle ; chaque commande est bornée à 15 s et 64 Ko de sortie,
+  sans shell. Une clé de manifeste ajoutée isolément n’autorise pas Xcode 27.
+- **Intégration :** `package.json` lance ce garde-fou avant installation EAS,
+  puis après installation avant les contrôles des pods et de release existants.
+  Le contrôle natif précède aussi `npm run ios`. `npm run check:ios-toolchain`
+  ne vérifie que la configuration, donc fonctionne sous Windows et le précise
+  dans son résultat. Les hooks ignorent explicitement Android sans lancer Xcode.
+  Un appel direct à Xcode ou `npx expo run:ios` contourne le wrapper npm : lancer
+  aussi `node scripts/validate-ios-toolchain.cjs` sur le Mac dans ce cas.
+- **Comportements conservés :** aucun changement de dépendance, d’AppDelegate,
+  de Podfile/lock, de cible minimale iOS 15.1, d’authentification, de notification,
+  de géolocalisation, de liens profonds, de Home ou du backend. Android reste
+  inchangé. L’incrémentation distante automatique EAS est conservée ; aucun
+  numéro de build local n’a été inventé. Aucun secret ni fichier `.env` modifié.
+- **Vérifications réalisées :** contrôle statique des images valide ; TypeScript,
+  ESLint global/ciblé, frontières réseau, taille des sources et `git diff --check`
+  valides. Les tests ciblés `iosToolchain`, `iosCrashlytics`, `iosDeploymentTarget`,
+  `releaseAuditFixes` et `androidBuildPerformance` comptent 32 réussites,
+  zéro échec et un test Ruby ignoré (Ruby absent sous Windows).
+  L’ancien test Android exigeait aussi `production.ios.image = latest` : seule
+  cette attente a été remplacée par l’image iOS figée ; les vérifications de
+  cache, d’image, d’architectures et de tâches Android sont conservées.
+  Les versions Xcode/SDK, erreurs des commandes et chemins EAS sont simulés dans
+  les tests JavaScript ; aucune exécution de Xcode réelle ici. La passe globale
+  lancée avant la mise à jour de l’attente `latest` compte 2 454 réussites sur
+  2 456 tests, un ignoré et un échec : précisément cette ancienne attente.
+  Cet échec est corrigé et le fichier concerné repasse dans les 32 tests ciblés
+  ci-dessus. Pas de seconde passe globale après cette seule correction de test.
+- **Limites et suite avant soumission :** le contrôle existant
+  `node scripts/validate-ios-crashlytics.cjs` signale toujours les pods
+  Crashlytics/Didit absents ou incompatibles dans le lock local. Régénérer avec
+  CocoaPods sur macOS et valider, sans fabriquer le lock. Produire un nouveau
+  build natif avec l’image figée, vérifier l’image/outillage dans les logs EAS,
+  puis tester un démarrage à froid, une mise à jour, la connexion et les retours
+  par notification/lien sur iPhone et iPad sous iOS/iPadOS 27, avant resoumission.
+  Aucun build, déploiement, essai physique ou disparition de crash certifiée.
+  La migration Expo/UIScene complète reste différée et nécessitera notamment
+  la validation des événements d’application et des liens profonds.
+- **Sources :** [migration UIScene Apple](https://developer.apple.com/documentation/technotes/tn3187-migrating-to-the-uikit-scene-based-life-cycle),
+  [exigences Apple](https://developer.apple.com/news/upcoming-requirements/),
+  [hooks EAS](https://docs.expo.dev/build-reference/npm-hooks/).
+
 ## 2026-10-21 — Correctifs de l’audit global : carte, GPS, activité et builds
 
 - **Périmètre / constats :** le recentrage de la carte repliable pouvait être
