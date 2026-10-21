@@ -1,5 +1,57 @@
 # Journal des changements techniques
 
+## 2026-10-21 — Post-install EAS : lecture des pods Didit et test du compte à rebours
+
+- **Périmètre / problèmes constatés :** le log iOS copié confirme Xcode 26.x /
+  SDK iOS 26.x, puis échoue dans `validate-ios-crashlytics.cjs` sur Didit. Le
+  validateur lisait toutes les lignes à deux espaces de `Podfile.lock` : les
+  déclarations `DEPENDENCIES` avec `(from ...)` écrasaient les versions résolues
+  de `PODS` dans la même Map. Un lock complet compatible est ainsi refusé ;
+  ce faux négatif a été reproduit avec une fixture réaliste. Le lock produit
+  sur le worker concerné n'a pas été fourni : ses versions réelles ne sont pas
+  certifiées ici. Le fichier de log joint montre un autre échec, plus loin dans
+  le contrôle release : 2 455 tests réussis, un échec `passengerCountdown`
+  (`69 !== 9`), sans test ignoré. Ne pas confondre ces deux exécutions.
+- **Correction appliquée — pods :** `scripts/validate-ios-crashlytics.cjs`
+  limite désormais la lecture aux entrées installées de premier niveau de
+  `PODS`, avant toute autre section. Les dépendances imbriquées, sources et
+  contraintes déclarées ne servent plus de preuve d'installation. Cette lecture
+  est partagée par les contrôles Didit et Crashlytics. Les versions du bridge
+  React Native et du SDK iOS sont comparées séparément aux métadonnées du paquet,
+  avec la variante configurée. Le diagnostic indique les versions attendues et
+  installées sans recopier de chemin ou URL arbitraire du lock.
+- **Correction appliquée — test uniquement :** l'ancien
+  `tests/passengerCountdown.test.js` échoue aussi localement sous Node 20.19.4,
+  mais passe sous Node 24.11.0. Un reproducer indépendant, sans code Zwanga,
+  montre que les minuteries expérimentales simulées de Node 20 réexécutent un
+  intervalle annulé dans son callback : cinq appels au lieu d'un sur cinq secondes
+  simulées, contre un sous Node 24. Le test utilise maintenant une horloge
+  contrôlée explicitement et vérifie également qu'aucun intervalle ne subsiste
+  hors écran, à l'expiration, pour une date invalide ou après démontage. Aucun
+  changement du hook de navigation ni affaiblissement des assertions existantes.
+- **Précautions / comportements conservés :** `tests/iosCrashlytics.test.js`
+  couvre un lock complet avec sources externes, LF/CRLF et BOM, les pods absents,
+  les quatre variantes Didit, les deux versions indépendantes, les contraintes
+  imbriquées et les diagnostics sans chemins. Les garde-fous Xcode, Didit,
+  Crashlytics et release restent actifs. Aucun changement de SDK, Podfile/lock,
+  dépendance npm, écran, sonnerie, backend ou `.env`. Aucun pull/merge de master.
+- **Vérifications réalisées :** les nouveaux tests pods échouaient avant la
+  correction et passent après. Sous Node 20.19.4, les six fichiers de régression
+  ciblés comptent 37 réussites, zéro échec, un test Ruby ignoré (Ruby absent sous
+  Windows). Sous Node 24.11.0, les deux fichiers modifiés comptent neuf réussites,
+  zéro échec. Contrôle release complet sous Node 20.19.4 réussi : TypeScript,
+  ESLint global, frontières réseau, taille des sources et 2 459 tests réussis
+  sur 2 460, zéro échec, un test Ruby ignoré (Ruby absent). La suite de tests
+  a pris environ 426 s sur cette machine ; ce n'est pas une mesure de performance
+  de l'application. `git diff --check` et ESLint ciblé sont également valides.
+- **Limites :** tests JavaScript et fixtures, pas de compilation Xcode/CocoaPods
+  ni d'essai iPhone/iPad/Android physique. Le lock local, non régénéré sur cette
+  machine Windows, reste refusé car les pods Didit/Crashlytics y sont absents ;
+  ce refus est attendu et n'est pas contourné. Aucun lock fabriqué manuellement.
+  Relancer EAS avec ces modifications pour valider le lock réellement généré
+  après installation des pods, puis la compilation et le lancement natifs.
+  Aucun build distant ou déploiement lancé ; aucune disparition de crash certifiée.
+
 ## 2026-10-21 — Refus Apple : stabilisation de la compilation iOS après le crash UIScene
 
 - **Périmètre / problème constaté :** les trois rapports Apple fournis pour

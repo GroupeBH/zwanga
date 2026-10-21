@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { validateIosCrashlytics, validateIosDidit } = require('../scripts/validate-ios-crashlytics.cjs');
 const { ensureCrashlyticsPhase } = require('../plugins/withIosCrashlytics');
 const xcode = require('xcode');
-const lock = '  - RNFBCrashlytics (23.8.8):\n  - FirebaseCrashlytics (12.10.0):';
+const lock = 'PODS:\n  - RNFBCrashlytics (23.8.8):\n  - FirebaseCrashlytics (12.10.0):';
 const phase = 'name = "[RNFB] Crashlytics Configuration"; shellScript = "${PODS_ROOT}/FirebaseCrashlytics/run";';
 test('iOS build guard requires installed pods AND the native symbol-upload phase', () => {
   assert.deepEqual(validateIosCrashlytics(lock, phase, ''), []);
@@ -27,6 +27,56 @@ test('iOS guard also rejects a missing, outdated or wrong-variant Didit native S
   }
   assert.equal(validateIosDidit(lock, {}, 'autodetection').length, 1);
   assert.equal(validateIosDidit(lock, pkg, 'invalid').length, 1);
+});
+
+test('Didit guard reads installed versions, not external source declarations in a full CocoaPods lock', () => {
+  const pkg = { version: '4.9.1', diditNativeSdkVersions: { ios: '4.9.1' } };
+  const resolved = 'PODS:\n  - DiditSDK/AutoDetection (4.9.1)\n  - SdkReactNative (4.9.1):\n    - DiditSDK/AutoDetection (= 4.9.1)\n';
+  const declarations = '\nDEPENDENCIES:\n  - DiditSDK/AutoDetection (from `https://example.invalid/DiditSDK.podspec`)\n' +
+    '  - SdkReactNative (from `../node_modules/@didit-protocol/sdk-react-native`)\n' +
+    '\nEXTERNAL SOURCES:\n  SdkReactNative:\n    :path: "../node_modules/@didit-protocol/sdk-react-native"\n' +
+    '\nSPEC CHECKSUMS:\n  SdkReactNative: fixture\n\nCOCOAPODS: 1.16.2\n';
+  for (const newline of ['\n', '\r\n']) {
+    for (const bom of ['', '\uFEFF']) {
+      const fullLock = bom + (resolved + declarations).replaceAll('\n', newline);
+      assert.deepEqual(validateIosDidit(fullLock, pkg, 'autodetection'), []);
+    }
+  }
+  assert.equal(validateIosDidit(declarations, pkg, 'autodetection').length, 1);
+  assert.equal(validateIosDidit(resolved.replaceAll('4.9.1', '4.8.0') + declarations, pkg, 'autodetection').length, 1);
+});
+
+test('installed pod checks reject declarations and nested dependency constraints without installed entries', () => {
+  const pkg = { version: '4.9.1', diditNativeSdkVersions: { ios: '4.9.1' } };
+  const entries = '  - SdkReactNative (4.9.1)\n  - DiditSDK/AutoDetection (4.9.1)\n' +
+    '  - RNFBCrashlytics (23.8.8)\n  - FirebaseCrashlytics (12.10.0)\n';
+  for (const invalid of [entries, 'DEPENDENCIES:\n' + entries,
+    'PODS:\n  - Other (1.0.0)\n\nDEPENDENCIES:\n' + entries,
+    'PODS:\n  - Other (1.0.0):\n' + entries.replaceAll('  - ', '    - ')]) {
+    assert.equal(validateIosDidit(invalid, pkg, 'autodetection').length, 1);
+    assert.equal(validateIosCrashlytics(invalid, phase, '').length, 1);
+  }
+});
+
+test('Didit guard uses independent bridge/native versions and supports each configured variant', () => {
+  const pkg = { version: '4.9.2', diditNativeSdkVersions: { ios: '4.9.1' } };
+  for (const [variant, subspec] of Object.entries({ all: 'All', core: 'Core', autodetection: 'AutoDetection', nfc: 'NFC' })) {
+    const installed = `PODS:\n  - SdkReactNative (4.9.2):\n  - DiditSDK/${subspec} (4.9.1):\n`;
+    assert.deepEqual(validateIosDidit(installed, pkg, variant), []);
+    assert.equal(validateIosDidit(installed.replace('4.9.2', '4.8.0'), pkg, variant).length, 1);
+    assert.equal(validateIosDidit(installed.replace('4.9.1', '4.8.0'), pkg, variant).length, 1);
+  }
+});
+
+test('Didit diagnostics identify version mismatches without logging arbitrary lock contents', () => {
+  const pkg = { version: '4.9.1', diditNativeSdkVersions: { ios: '4.9.1' } };
+  const installed = 'PODS:\n  - SdkReactNative (4.9.0)\n  - DiditSDK/AutoDetection (4.8.0)\n';
+  const [error] = validateIosDidit(installed, pkg, 'autodetection');
+  assert.match(error, /SdkReactNative installé=4\.9\.0, attendu=4\.9\.1/);
+  assert.match(error, /DiditSDK\/AutoDetection installé=4\.8\.0, attendu=4\.9\.1/);
+  const [unsafeValue] = validateIosDidit(installed.replace('4.9.0', 'from `https://example.invalid/private`'), pkg, 'autodetection');
+  assert.match(unsafeValue, /SdkReactNative installé=absente ou illisible/);
+  assert.doesNotMatch(unsafeValue, /example\.invalid|private/);
 });
 
 test('native iOS project and regenerated prebuild retain one Crashlytics phase attached to the app', () => {
