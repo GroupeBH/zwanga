@@ -96,7 +96,7 @@ function coordinator() {
     },
     '@/store/api/tripApi': { tripApi: api('trips', 'getMyActivityTrips'), useGetMyActivityTripsQuery: (_, options) => fallback.push({ key: 'trips', ...options }) },
     '@/store/api/bookingApi': { bookingApi: api('bookings', 'getMyActivityBookings'), useGetMyActivityBookingsQuery: (_, options) => fallback.push({ key: 'bookings', ...options }) },
-    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyTripRequests'), useGetMyTripRequestsQuery: (_, options) => fallback.push({ key: 'requests', ...options }) },
+    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyActivityRequests'), useGetMyActivityRequestsQuery: (_, options) => fallback.push({ key: 'requests', ...options }) },
   })('components/AccountActivityCoordinator.tsx');
   return Object.assign(env, { hooks, render: () => hooks.render(AccountActivityCoordinator) });
 }

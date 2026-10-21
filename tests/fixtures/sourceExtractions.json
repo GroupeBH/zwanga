@@ -199,6 +199,7 @@
       "getTripRequestVehicleOptions": "afb33c05eb31e67338cb3aecdc20352c77609ebc7c6cf9c5dc7d3e0e3f8100d3",
       "getAvailableTripRequests": "4dab933356429dd643af6d689809a533db043e23dbdfef9e58f426070eb1c463",
       "getMyTripRequests": "3497b6ca1266d364fd281a13be04189220f0837db698716c14fff92bb5614ef6",
+      "getMyActivityRequests": "beec60fb77f8facc3986e6b4bf24f20dd6ef0fc191314eafc96338a8d69f0656",
       "getTripRequestById": "59fddab115f95eafa643c13405d8498b612ebea4dbe001535e1b38c9d92506dc",
       "getTripRequestPassengerContact": "52ca623ed1b045b2398596b7e38eab25f84e3b86e769a7549f594ce8821a7a7a",
       "updateTripRequest": "96921f02da7b1e7847d1c7f40e9a57628da0808de0bc9b86b9b65fcc2846386c",
@@ -209,7 +210,7 @@
       "acceptDriverOffer": "be740e7d27541380d59242311cdf774fee01c9c22e49d99e9c0a51ad203ab9b4",
       "rejectDriverOffer": "58ef702131933192b65cd0b1562152ffbfac418fba4a506d139774cb34c1be50",
       "startTripFromRequest": "857d4966408630693775f57cdf8c79b278e09d4bb657da0e69cab96dc1fff53b",
-      "acceptTripRequest": "8acef8768809a5d1c31116c54ee785cf64d0f45e659368240f34fc47aed280f8"
+      "acceptTripRequest": "a3fc7a6154b5c18ec260b9ec29711e9202c40c96428644dd4099ae0822ee7f2f"
     },
     "store/api/safetyApi.ts": {
       "createEmergencyContact": "5e83fa346bfc7d927f0c807ec41b5412d8ed1d0f513df644e61721005a12c080",

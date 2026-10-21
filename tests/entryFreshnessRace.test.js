@@ -46,7 +46,7 @@ test('real RTK dedup: pre-foreground empty response cannot consume entry; coordi
       useGetAccountActivityQuery: () => ({ ...select(), currentData: select().data, isFetching: select().isLoading }) },
     '@/store/api/tripApi': { tripApi: list('getMyActivityTrips'), useGetMyActivityTripsQuery: () => ({}) },
     '@/store/api/bookingApi': { bookingApi: list('getMyActivityBookings'), useGetMyActivityBookingsQuery: () => ({}) },
-    '@/store/api/tripRequestApi': { tripRequestApi: list('getMyTripRequests'), useGetMyTripRequestsQuery: () => ({}) },
+    '@/store/api/tripRequestApi': { tripRequestApi: list('getMyActivityRequests'), useGetMyActivityRequestsQuery: () => ({}) },
   })('components/AccountActivityCoordinator.tsx');
   const produce = () => producer.render(AccountActivityCoordinator);
   t.after(() => { producer.unmount(); consumer.unmount(); store.dispatch(api.util.resetApiState()); });

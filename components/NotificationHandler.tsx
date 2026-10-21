@@ -12,7 +12,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
-import { useGetMyTripRequestsQuery, useReleaseOverdueDriverMutation } from '@/store/api/tripRequestApi';
+import { useGetMyActivityRequestsQuery, useReleaseOverdueDriverMutation } from '@/store/api/tripRequestApi';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
 import { selectIsAuthenticated } from '@/store/selectors';
@@ -35,7 +35,7 @@ export function NotificationHandler() {
   const {
     data: myTripRequests = [],
     refetch: refetchMyTripRequests,
-  } = useGetMyTripRequestsQuery(undefined, {
+  } = useGetMyActivityRequestsQuery(undefined, {
     ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
   });

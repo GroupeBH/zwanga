@@ -68,7 +68,7 @@ test('passenger activity removes completed transport but preserves another reser
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: rows }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: (id, options) => { queries.push({ id, ...options }); return {}; } },
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({}) },
-    '@/store/api/tripRequestApi': { useGetAvailableTripRequestsQuery: () => ({}), useGetMyTripRequestsQuery: () => ({}) },
+    '@/store/api/tripRequestApi': { useGetAvailableTripRequestsQuery: () => ({}), useGetMyActivityRequestsQuery: () => ({}) },
   })('hooks/home/useHomePassengerActivity.ts');
   const render = () => hooks.render(() => useHomePassengerActivity({ isFocused: true, currentUser: { id: 'rider' }, isDriver: true }));
   assert.equal(render().activePassengerBooking, booking);

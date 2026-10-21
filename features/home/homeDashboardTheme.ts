@@ -5,7 +5,7 @@ const ACTION_ORANGE = ACTION_COLORS.orange;
 
 export const HOME_DASHBOARD_COLORS = {
   ink: '#201D1A', muted: '#625D58', rust: ACTION_ORANGE, orange: ACTION_ORANGE,
-  green: ACTION_COLORS.green, greenInk: '#185B35', paleGreen: '#E7F5ED',
+  green: ACTION_COLORS.green, greenInk: '#2F6B4F', paleGreen: '#E7F5ED',
   blue: ACTION_COLORS.blue, line: '#E7E1DB', warm: '#FFFBF7', pale: '#F3F0EB', price: '#FFEDD5',
   positionOrange: '#FF6B35',
 };

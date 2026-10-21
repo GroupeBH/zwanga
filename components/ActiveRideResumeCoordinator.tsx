@@ -57,7 +57,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   // Observe the shared discovery cache; do not add list subscriptions or a polling loop.
   const trips = tripApi.endpoints.getMyActivityTrips.useQueryState(undefined);
   const bookings = bookingApi.endpoints.getMyActivityBookings.useQueryState(undefined);
-  const requests = tripRequestApi.endpoints.getMyTripRequests.useQueryState(undefined);
+  const requests = tripRequestApi.endpoints.getMyActivityRequests.useQueryState(undefined);
   const activity = accountActivityApi.endpoints.getAccountActivity.useQueryState(userId ?? '');
   const reconciled = useSyncExternalStore(subscribeActivityReadiness, getActivityReadiness, getActivityReadiness);
   // Home owns the existing profile subscription. Observe it without a second fetch.

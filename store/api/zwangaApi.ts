@@ -126,6 +126,7 @@ export {
   useCreateTripRequestMutation,
   useGetAvailableTripRequestsQuery,
   useGetMyTripRequestsQuery,
+  useGetMyActivityRequestsQuery,
   useGetTripRequestByIdQuery,
   useCancelTripRequestMutation,
   useCreateDriverOfferMutation,

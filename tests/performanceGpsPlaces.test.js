@@ -12,7 +12,10 @@ function picker(t) {
   const permission = { value: Promise.resolve({ status: 'granted' }) };
   const { useLocationPicker } = loader({ react: hooks.react, 'react-native': { Keyboard: { dismiss: noop } },
     'expo-location': { Accuracy: { Balanced: 3 }, requestForegroundPermissionsAsync: () => permission.value,
-      getLastKnownPositionAsync: async () => null, getCurrentPositionAsync: options => { reads.push(options); return pending.promise; } },
+      getLastKnownPositionAsync: async () => null, watchPositionAsync: async (options, callback) => {
+        const watch = { options, removed: false, remove() { this.removed = true; } };
+        reads.push(watch); void pending.promise.then(callback); return watch;
+      } },
     '@/utils/googleMapsPlaces': { searchGoogleMapsPlaces: async () => [], getGoogleMapsPlaceDetails: async () => null },
     '@/store': { store: {} },
     '@/store/api/googleMapsApi': { useGeocodeMutation: () => [noop], useReverseGeocodeMutation: () => [noop] },
@@ -23,15 +26,16 @@ function picker(t) {
   return { hooks, reads, pending, permission, render };
 }
 
-test('three picker timeouts share ONE native fix and a late fix cannot change a manual choice', async t => {
+test('three picker timeouts stop their watches before retrying and late fixes cannot change a manual choice', async t => {
   const f = picker(t);
   for (let i = 0; i < 3; i++) {
     const work = f.render().locate(); await tick();
     t.mock.timers.tick(10_000); await work;
     assert.equal(f.render().locating, false);
     assert.match(f.render().notice, /indisponible/);
+    assert.ok(f.reads.every(watch => watch.removed), 'no previous acquisition stays alive between retries');
   }
-  assert.equal(f.reads.length, 1);
+  assert.equal(f.reads.length, 3);
   f.render().choose({ latitude: -4.4, longitude: 15.4, title: 'Choix manuel' });
   f.pending.resolve({ coords: { latitude: -4.31, longitude: 15.31 } }); await tick();
   assert.equal(f.render().selection.title, 'Choix manuel');
@@ -41,6 +45,7 @@ test('closing the picker immediately releases a native GPS waiter', async t => {
   const f = picker(t), work = f.render().locate(); await tick();
   f.render().close(); f.hooks.unmount(); await work;
   assert.equal(f.reads.length, 1);
+  assert.equal(f.reads[0].removed, true);
   f.pending.resolve({ coords: { latitude: -4.31, longitude: 15.31 } }); await tick();
 });
 

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateIosCrashlytics } = require('../scripts/validate-ios-crashlytics.cjs');
+const { validateIosCrashlytics, validateIosDidit } = require('../scripts/validate-ios-crashlytics.cjs');
 const { ensureCrashlyticsPhase } = require('../plugins/withIosCrashlytics');
 const xcode = require('xcode');
 const lock = '  - RNFBCrashlytics (23.8.8):\n  - FirebaseCrashlytics (12.10.0):';
@@ -15,6 +15,18 @@ test('iOS build guard requires installed pods AND the native symbol-upload phase
 });
 test('EAS validates the iOS native integration after CocoaPods installation', () => {
   assert.match(require('../package.json').scripts['eas-build-post-install'], /validate-ios-crashlytics\.cjs --eas/);
+});
+
+test('iOS guard also rejects a missing, outdated or wrong-variant Didit native SDK', () => {
+  const pkg = { version: '4.9.1', diditNativeSdkVersions: { ios: '4.9.1' } };
+  const lock = 'PODS:\n  - SdkReactNative (4.9.1):\n  - DiditSDK/AutoDetection (4.9.1):';
+  assert.deepEqual(validateIosDidit(lock, pkg, 'autodetection'), []);
+  for (const stale of ['', lock.replaceAll('4.9.1', '4.8.0'), lock.replace('AutoDetection', 'Core'),
+    lock.replace('SdkReactNative', 'Other'), lock.replace('DiditSDK', 'Other')]) {
+    assert.equal(validateIosDidit(stale, pkg, 'autodetection').length, 1);
+  }
+  assert.equal(validateIosDidit(lock, {}, 'autodetection').length, 1);
+  assert.equal(validateIosDidit(lock, pkg, 'invalid').length, 1);
 });
 
 test('native iOS project and regenerated prebuild retain one Crashlytics phase attached to the app', () => {

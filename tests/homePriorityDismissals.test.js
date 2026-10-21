@@ -182,7 +182,7 @@ test('hiding a personal request affects only its priority, not the request feed 
     '@/store/api/notificationApi': { useGetNotificationsQuery: () => ({}) },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
-    '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: () => ({ data: [a, b] }),
+    '@/store/api/tripRequestApi': { useGetMyActivityRequestsQuery: () => ({ data: [a, b] }),
       useGetAvailableTripRequestsQuery: () => ({ data: available }) },
   })('hooks/home/useHomePassengerActivity.ts');
   const props = { currentUser: { id: 'driver' }, isDriver: true, isFocused: true };

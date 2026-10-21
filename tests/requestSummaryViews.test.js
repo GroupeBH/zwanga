@@ -77,21 +77,23 @@ test('driver confirmed course uses authorized contact and its actual pickup time
 });
 
 test('route preview mounts no native map or route request until expanded and active', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(); let active = true, calls = 0;
   t.after(() => hooks.unmount());
-  const { CollapsibleRouteMap } = loader({ 'react-native': native, react: { ...React, ...hooks.react },
+  const { CollapsibleRouteMap } = loader({ 'react-native': { ...native, Platform: { OS: 'android' },
+    InteractionManager: { runAfterInteractions: callback => { callback(); return { cancel() {} }; } } }, react: { ...React, ...hooks.react },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker', Polyline: 'Polyline' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => active },
+    '@/assets/images/map-markers/trip-detail-marker-departure.png': 'departure-image',
+    '@/assets/images/map-markers/trip-detail-marker-arrival.png': 'arrival-image',
     '@/utils/routeApi': { getRouteCoordinates: async () => { calls++; return []; } },
   })('features/request-detail/CollapsibleRouteMap.tsx');
   const mapData = { departureCoordinate: { latitude: -4, longitude: 15 }, arrivalCoordinate: { latitude: -4.1, longitude: 15.1 }, fallbackCoordinates: [], initialRegion: {} };
   const render = () => hooks.render(() => CollapsibleRouteMap({ variant: 'light', mapData, routeCoordinates: [], departureName: 'Départ', arrivalName: 'Arrivée' }));
   let tree = render(); assert.equal(calls, 0); assert.equal(elements(tree).some(item => item.type === 'MapView'), false);
   elements(tree).find(item => item.type === 'Pressable').props.onPress();
-  // fitToCoordinates uses one animation frame once expanded; no UI animation loop.
-  const previous = global.requestAnimationFrame; global.requestAnimationFrame = callback => { callback(); return 1; };
-  t.after(() => { global.requestAnimationFrame = previous; });
+  render(); t.mock.timers.tick(1); // Native map mounting waits until interactions finish.
   tree = render(); await Promise.resolve(); assert.equal(calls, 1); assert.equal(elements(tree).some(item => item.type === 'MapView'), true);
   active = false; tree = render(); assert.equal(elements(tree).some(item => item.type === 'MapView'), false); assert.equal(calls, 1);
 });

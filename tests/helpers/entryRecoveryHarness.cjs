@@ -27,7 +27,7 @@ function entryRecoveryHarness(t) {
     if (env.active && !wasActive) foregroundSince = Date.now();
     wasActive = env.active;
   };
-  const listNames = { getMyActivityTrips: 'trips', getMyActivityBookings: 'bookings', getMyTripRequests: 'requests' };
+  const listNames = { getMyActivityTrips: 'trips', getMyActivityBookings: 'bookings', getMyActivityRequests: 'requests' };
   const dispatch = action => {
     if (action.running) return undefined;
     env.reads.push(action.name);
@@ -60,7 +60,7 @@ function entryRecoveryHarness(t) {
     '@/store/selectors': { selectIsAuthenticated: state => state.auth.isAuthenticated },
     '@/store/api/tripApi': { tripApi: api('trips', 'getMyActivityTrips', 'getTripById'), useGetMyActivityTripsQuery: () => ({}) },
     '@/store/api/bookingApi': { bookingApi: api('bookings', 'getMyActivityBookings', 'getBookingById'), useGetMyActivityBookingsQuery: () => ({}) },
-    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyTripRequests', 'getTripRequestById'), useGetMyTripRequestsQuery: () => ({}) },
+    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyActivityRequests', 'getTripRequestById'), useGetMyActivityRequestsQuery: () => ({}) },
     '@/store/api/accountActivityApi': { accountActivityApi: { endpoints: { getAccountActivity: endpoint('getAccountActivity', 'activity') },
       util: { getRunningQueryThunk: () => ({ running: true }) } },
       useGetAccountActivityQuery: () => env.activity },

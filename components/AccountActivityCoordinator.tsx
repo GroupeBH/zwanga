@@ -7,7 +7,7 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { accountActivityApi, useGetAccountActivityQuery, type ActivityCategory } from '@/store/api/accountActivityApi';
 import { tripApi, useGetMyActivityTripsQuery } from '@/store/api/tripApi';
 import { bookingApi, useGetMyActivityBookingsQuery } from '@/store/api/bookingApi';
-import { tripRequestApi, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import { tripRequestApi, useGetMyActivityRequestsQuery } from '@/store/api/tripRequestApi';
 import { createActivityReconciliation } from '@/features/activity/activityReconciliation';
 import { beginActivityReadiness, getActivityReadiness } from '@/services/activityReadiness';
 import { readEntryQuery, reportEntryFailure } from '@/services/entryRecovery';
@@ -51,7 +51,7 @@ export function AccountActivityCoordinator() {
     skipPollingIfUnfocused: true, selectFromResult: selectNothing };
   useGetMyActivityTripsQuery(undefined, fallbackOptions);
   useGetMyActivityBookingsQuery(undefined, { ...fallbackOptions, pollingInterval: active ? 45_000 : 0 });
-  useGetMyTripRequestsQuery(undefined, fallbackOptions);
+  useGetMyActivityRequestsQuery(undefined, fallbackOptions);
 
   // forceRefetch is still deduplicated by RTK against an old in-flight GET.
   // Once that GET settles, replace it once. Never use its stale empty snapshot
@@ -100,7 +100,7 @@ export function AccountActivityCoordinator() {
       const state = reduxStore.getState();
       if (category === 'trips') return tripApi.endpoints.getMyActivityTrips.select()(state);
       if (category === 'bookings') return bookingApi.endpoints.getMyActivityBookings.select()(state);
-      return tripRequestApi.endpoints.getMyTripRequests.select()(state);
+      return tripRequestApi.endpoints.getMyActivityRequests.select()(state);
     };
     const current = createActivityReconciliation({
       hasAppliedRevision(category, revision) {
@@ -119,20 +119,20 @@ export function AccountActivityCoordinator() {
         const state = reduxStore.getState();
         if (category === 'trips') return tripApi.endpoints.getMyActivityTrips.select()(state).isError;
         if (category === 'bookings') return bookingApi.endpoints.getMyActivityBookings.select()(state).isError;
-        return tripRequestApi.endpoints.getMyTripRequests.select()(state).isError;
+        return tripRequestApi.endpoints.getMyActivityRequests.select()(state).isError;
       },
       hasCachedItems(category) {
         const state = reduxStore.getState();
         if (category === 'trips') return Boolean(tripApi.endpoints.getMyActivityTrips.select()(state).data?.length);
         if (category === 'bookings') return Boolean(bookingApi.endpoints.getMyActivityBookings.select()(state).data?.length);
-        return Boolean(tripRequestApi.endpoints.getMyTripRequests.select()(state).data?.length);
+        return Boolean(tripRequestApi.endpoints.getMyActivityRequests.select()(state).data?.length);
       },
       async load(category: ActivityCategory) {
         const running = () => category === 'trips'
           ? dispatch(tripApi.util.getRunningQueryThunk('getMyActivityTrips', undefined))
           : category === 'bookings'
             ? dispatch(bookingApi.util.getRunningQueryThunk('getMyActivityBookings', undefined))
-            : dispatch(tripRequestApi.util.getRunningQueryThunk('getMyTripRequests', undefined));
+            : dispatch(tripRequestApi.util.getRunningQueryThunk('getMyActivityRequests', undefined));
         // A read begun BEFORE the snapshot might still return old data. Do not mark
         // the new revision applied merely because RTK deduplicated against that read.
         const options = { subscribe: false, forceRefetch: true };
@@ -140,7 +140,7 @@ export function AccountActivityCoordinator() {
           current: () => active && reduxStore.getState().auth.user?.id === userId,
           start: () => category === 'trips' ? dispatch(tripApi.endpoints.getMyActivityTrips.initiate(undefined, options))
             : category === 'bookings' ? dispatch(bookingApi.endpoints.getMyActivityBookings.initiate(undefined, options))
-              : dispatch(tripRequestApi.endpoints.getMyTripRequests.initiate(undefined, options)),
+              : dispatch(tripRequestApi.endpoints.getMyActivityRequests.initiate(undefined, options)),
         });
       },
     });

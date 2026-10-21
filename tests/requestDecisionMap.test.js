@@ -13,20 +13,57 @@ const mapData = { departureCoordinate: departure, arrivalCoordinate: arrival, fa
   initialRegion: { latitude: -4.35, longitude: 15.35, latitudeDelta: 0.15, longitudeDelta: 0.15 } };
 
 function preview(t, getRoute = async () => road) {
-  const hooks = hookHarness(), calls = [];
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const hooks = hookHarness(), calls = [], camera = [];
   const f = { active: true, props: { arrivalName: 'Arrivée test', departureName: 'Départ test', mapData,
     routeCoordinates: [], variant: 'light', initiallyExpanded: true } };
-  const original = global.requestAnimationFrame;
-  global.requestAnimationFrame = callback => { callback(); return 1; };
-  t.after(() => { hooks.unmount(); global.requestAnimationFrame = original; });
-  const { CollapsibleRouteMap } = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+  t.after(() => hooks.unmount());
+  const { CollapsibleRouteMap } = loader({ react: { ...React, ...hooks.react }, 'react-native': { ...native,
+    Platform: { OS: 'android' }, InteractionManager: { runAfterInteractions: callback => { callback(); return { cancel() {} }; } } },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker', Polyline: 'Polyline' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => f.active },
+    '@/assets/images/map-markers/trip-detail-marker-departure.png': 'departure-image',
+    '@/assets/images/map-markers/trip-detail-marker-arrival.png': 'arrival-image',
     '@/utils/routeApi': { getRouteCoordinates: (...args) => { calls.push(args); return getRoute(...args); } },
   })('features/request-detail/CollapsibleRouteMap.tsx');
-  return { f, calls, render: () => hooks.render(() => CollapsibleRouteMap(f.props)), unmount: () => hooks.unmount() };
+  return { f, calls, camera, render: () => {
+    hooks.render(() => CollapsibleRouteMap(f.props)); t.mock.timers.tick(500);
+    const tree = hooks.render(() => CollapsibleRouteMap(f.props));
+    const map = elements(tree).find(item => item.type === 'MapView');
+    if (map) map.props.ref.current = { fitToCoordinates: (...args) => camera.push(args) };
+    return tree;
+  }, unmount: () => hooks.unmount() };
 }
+
+test('camera waits for native ready AND valid layout; static markers never track child views', t => {
+  const f = preview(t); f.f.props.routeCoordinates = road;
+  const tree = f.render(), map = elements(tree).find(item => item.type === 'MapView');
+  assert.equal(f.camera.length, 0);
+  map.props.onMapReady(); f.render(); assert.equal(f.camera.length, 0);
+  map.props.onLayout({ nativeEvent: { layout: { width: 0, height: 154 } } });
+  f.render(); assert.equal(f.camera.length, 0);
+  map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 154 } } });
+  f.render(); assert.equal(f.camera.length, 1); assert.deepEqual(f.camera[0][0], road);
+  f.render(); assert.equal(f.camera.length, 1, 'ordinary renders do not recenter');
+  for (const marker of elements(tree).filter(item => item.type === 'Marker')) {
+    assert.equal(marker.props.tracksViewChanges, false);
+    assert.ok(marker.props.image); assert.equal(marker.props.children, undefined);
+  }
+  f.f.active = false; f.render();
+  map.props.onMapReady(); map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 154 } } });
+  f.f.active = true; f.render(); assert.equal(f.camera.length, 1, 'stale ready events cannot target the reopened map');
+});
+
+test('changing endpoints discards the old route while the new lookup is pending', async t => {
+  let call = 0;
+  const f = preview(t, () => ++call === 1 ? Promise.resolve(road) : new Promise(() => {}));
+  f.render(); await Promise.resolve(); f.render();
+  const next = { latitude: -4.5, longitude: 15.6 };
+  f.f.props.mapData = { ...mapData, arrivalCoordinate: next, fallbackCoordinates: [departure, next] };
+  const line = elements(f.render()).find(item => item.type === 'Polyline');
+  assert.deepEqual(line.props.coordinates, [departure, next]);
+});
 
 test('discreet route action starts collapsed, loads on demand and can close without a modal', async t => {
   const f = preview(t);

@@ -1,5 +1,107 @@
 # Journal des changements techniques
 
+## 2026-10-21 — Correctifs de l’audit global : carte, GPS, activité et builds
+
+- **Périmètre / constats :** le recentrage de la carte repliable pouvait être
+  envoyé avant son layout natif, ses marqueurs enfants restaient suivis en continu,
+  et une lecture GPS ponctuelle bloquée était réutilisée après chaque timeout.
+  L’ouverture chargeait aussi tout l’historique des demandes personnelles. Les
+  erreurs d’entrée ne laissaient qu’un log console. Le workflow de production
+  avait déjà une étape qualité, mais pas les builds EAS lancés directement.
+- **Carte — solution appliquée :** `features/request-detail/CollapsibleRouteMap.tsx`
+  réutilise `hooks/navigation/useNavigationMapLifecycle.ts` : montage après les
+  interactions, attente du chargement ET d’un layout valide avant recentrage,
+  invalidation des callbacks d’une ancienne carte. Suppression du recentrage via
+  `requestAnimationFrame`. Les marqueurs utilisent les images locales existantes,
+  sans enfants React et avec `tracksViewChanges={false}`. Une route chargée pour
+  d’autres coordonnées ne peut plus apparaître pendant la lecture suivante.
+  L’ouverture/repli, les dimensions, le trajet fourni et le repli pointillé en cas
+  d’échec du service d’itinéraire sont conservés.
+- **GPS — solution appliquée :** `services/currentLocationRequest.ts` remplace
+  `getCurrentPositionAsync` par une écoute temporaire partagée par précision.
+  Elle s’arrête au premier point valide, à l’erreur ou lorsque le dernier appelant
+  annule/atteint son délai. Une écoute enregistrée tardivement est supprimée.
+  Une inscription native encore bloquée n’en autorise pas une deuxième en parallèle.
+  Les lectures de cache restent bornées à 2 s, l’attente GPS à 10 s par appelant,
+  avec le repli historique existant sauf `fallback: false`. Aucun changement du
+  suivi des trajets en cours, de la présence conducteur toutes les trois minutes
+  ni des autorisations. Si l’inscription elle-même ne répond jamais côté natif,
+  ce garde-fou évite l’accumulation mais ne répare pas le pont natif ; à vérifier
+  sur appareil. L’écoute temporaire ne devient pas un service d’arrière-plan.
+- **Activité — solution appliquée :** `store/api/tripRequestApi.ts` ajoute
+  `getMyActivityRequests` sur `GET /trip-requests/my-requests?scope=activity`, dans
+  un cache distinct de l’historique. Les coordinateurs `AccountActivityCoordinator`
+  et `ActiveRideResumeCoordinator`, `NotificationHandler`, `useHomePassengerActivity`
+  et le type de `useOverdueRequestNotification` l’utilisent. Export ajouté dans
+  `store/api/zwangaApi.ts`. Les tags de mutation, le résultat confirmé d’acceptation
+  et `store/middleware/tripRequestExpiration.ts` mettent à jour les deux caches.
+  Pas de polling supplémentaire. La récupération après publication ambiguë et
+  les compteurs historiques du profil continuent à utiliser l’historique complet.
+  Les raccourcis de destinations sur Home restent issus des activités disponibles,
+  désormais limitées à cette fenêtre pour les demandes.
+- **Backend préparé, non déployé :** dans `../zwanga-backend`,
+  `src/common/activity-read-policy.ts` définit `activeRequestWhere` partagé par
+  `src/activity/activity.service.ts` et `src/trip-requests/trip-requests.service.ts`.
+  Le contrôleur lit le scope facultatif. Toutes les demandes pending,
+  offers_received et driver_selected, plus les demandes modifiées depuis 48 h,
+  restent incluses, sans limite arbitraire de nombre. Chaque branche OR est
+  restreinte au compte authentifié ; contacts/offres gardent leur sérialisation
+  existante. Sans scope, le comportement historique est conservé. Un ancien
+  serveur ignorant le paramètre reste compatible mais n’apporte pas le gain de
+  volume. Les recommandations PostgreSQL ont guidé la restriction au propriétaire
+  et le filtre avant hydratation ; aucune migration, connexion à la base,
+  modification de données ni mesure EXPLAIN n’a été réalisée.
+- **Diagnostic — solution appliquée :** `services/entryRecovery.ts` et
+  `services/diagnostics.ts` transmettent à Crashlytics, en release et s’il est
+  disponible, des codes statiques, durées bornées et statuts HTTP uniquement.
+  Limitation à une remontée par étape/motif/minute. Les erreurs réseau et HTTP 4xx
+  laissent une trace, sans créer un rapport non fatal ; les timeouts, erreurs
+  serveur ou de navigation sont regroupés par code stable. Les attentes annulées
+  ou obsolètes ne remontent pas d’erreur. Un AbortError natif sur une lecture encore
+  courante est remonté comme « aborted », sans présumer sa cause. Aucun contenu
+  de réponse, jeton, coordonnées ou identifiant utilisateur n’est ajouté.
+  Une panne du diagnostic ne bloque jamais l’ouverture.
+- **Builds — solution appliquée :** le hook `eas-build-post-install` de
+  `package.json` lance aussi `scripts/check-release.cjs` après les contrôles
+  natifs, y compris hors workflow. `scripts/validate-ios-crashlytics.cjs` vérifie
+  aussi les pods Didit (version du bridge et version/variante du SDK natif).
+  Le hook iOS s’exécute après CocoaPods, conformément aux
+  [hooks EAS](https://docs.expo.dev/build-reference/npm-hooks/).
+  Le lock iOS n’a pas été fabriqué ou modifié manuellement : il reste à régénérer
+  avec `pod install` sur macOS puis à vérifier avec le script et une archive iOS.
+- **Vérifications :** 22 tests backend ciblés réussis (politiques de filtre,
+  contrôleur/service, disponibilité et construction SQL TypeORM sans base), et
+  TypeScript backend `--noEmit --incremental false -p tsconfig.build.json` valide.
+  Tests JS ajoutés sur GPS concurrent/timeout/reprise/annulation/inscription tardive,
+  carte/layout/callbacks anciens, diagnostics sans données privées, cache activité,
+  compatibilité ancien serveur, expiration et acceptation. Contrôles Android
+  Crashlytics et patch de lots GPS valides. Contrôle mobile global : TypeScript,
+  ESLint, frontières réseau et limite de 400 lignes (1 163 sources) valides ;
+  2 442 tests réussis sur 2 444, un ignoré et un échec de contraste lié au thème
+  modifié en parallèle. Les doubles GPS/carte ont été adaptés aux nouvelles
+  interfaces ; seuls les deux contrats intentionnellement modifiés ont été mis
+  à jour dans `tests/fixtures/sourceExtractions.json`, après tests comportementaux
+  de cache séparé et d’acceptation confirmée. Aucun seuil de test n’a été abaissé.
+- **Couleur après retour utilisateur :** l’utilisateur demande un vert plus moderne
+  et moins agressif. `features/home/homeDashboardTheme.ts` remplace le texte vert
+  clair par un jade `#2F6B4F`, sur le fond pâle existant `#E7F5ED`. Les boutons,
+  dimensions et comportements restent identiques. Contraste calculé : 5,60:1.
+  Après cet ajustement, les 219 tests ciblés Home et correctifs de release passent,
+  dont le test de contraste qui était le seul échec de la passe globale précédente.
+  La suite globale complète n’a pas été relancée après cette seule modification
+  de couleur. Le test ignoré lors de la passe globale nécessite Ruby, absent de
+  cet environnement Windows.
+- **Limites / précautions :** pas de build ni test iPhone/Android physique, pas de
+  mesure de mémoire, batterie, FPS ou latence réseau. Le contrôle natif iOS échoue
+  encore localement sur les pods Crashlytics/Didit manquants dans le lock : il doit
+  être résolu sur macOS avant diffusion. Vérifier ouverture/repli rapide de carte,
+  rotation, arrière-plan/retour, GPS indisponible puis rétabli, connexion lente,
+  demande prioritaire et navigation conducteur/passager sur des builds release.
+  Aucune disparition de crash ou de chauffe n’est certifiée. Aucun changement
+  de branche, fusion de master ou déploiement ; la couleur a été ajustée seulement
+  après le retour utilisateur. Les modifications d’abonnements apparues en
+  parallèle ne sont pas écrasées par ces correctifs.
+
 ## 2026-10-21 — Correctifs de l’audit : priorité, disponibilité et affichage des réservations
 
 - **Périmètre et problèmes constatés :** l’audit a reproduit en JavaScript une

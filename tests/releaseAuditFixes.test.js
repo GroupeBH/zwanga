@@ -75,6 +75,8 @@ test('release gate fails closed and both production builds depend on it', () => 
   const workflow = require('yaml').parse(fs.readFileSync('.eas/workflows/create-production-builds.yml', 'utf8'));
   for (const job of ['build_android', 'build_ios']) assert.deepEqual(workflow.jobs[job].needs, ['quality']);
   assert.equal(workflow.jobs.quality.steps.at(-1).run, 'npm run check:release');
+  assert.match(require('../package.json').scripts['eas-build-post-install'], /&& node \.\/scripts\/check-release\.cjs$/,
+    'direct EAS builds must run the same gate, even outside the production workflow');
 });
 
 test('a native failure in a background notification action cannot reject the headless callback', async () => {

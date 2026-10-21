@@ -88,5 +88,5 @@ test('passenger waiting-request discovery uses the same receipts, not HTTP respo
   app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
   assert.deepEqual(app.routes, ['/request-details/request']);
-  assert.equal(app.reads.filter(name => name === 'getMyTripRequests').length, 1);
+  assert.equal(app.reads.filter(name => name === 'getMyActivityRequests').length, 1);
 });

@@ -53,7 +53,7 @@ function fixture(t, passenger = false) {
     '@/store/selectors': { selectIsAuthenticated: state => state.auth.isAuthenticated },
     '@/store/api/tripApi': { tripApi: api('trips', 'getMyActivityTrips', 'getTripById') },
     '@/store/api/bookingApi': { bookingApi: api('bookings', 'getMyActivityBookings', 'getBookingById') },
-    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyTripRequests', 'getTripRequestById') },
+    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyActivityRequests', 'getTripRequestById') },
     '@/store/api/driverDispatchApi': { driverDispatchApi: { endpoints: { driverDispatchStatus: { useQueryState: () => env.dispatchStatus }, getDispatchOffer: {
       initiate: (id, options) => ({ name: 'getDispatchOffer', id, options }),
     } } } },

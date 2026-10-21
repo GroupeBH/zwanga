@@ -2,8 +2,9 @@ import { DEFAULT_API_TIMEOUT_MS } from '@/constants/network';
 
 // Budget shared by successive detail reads within each entry phase.
 export const ENTRY_LOAD_TIMEOUT_MS = DEFAULT_API_TIMEOUT_MS + 5000;
-export type EntryStage = 'profile' | 'activity' | 'trips' | 'bookings' | 'requests'
-  | 'trip-detail' | 'booking-detail' | 'request-detail' | 'dispatch-detail' | 'navigation';
+const ENTRY_STAGES = ['profile', 'activity', 'trips', 'bookings', 'requests',
+  'trip-detail', 'booking-detail', 'request-detail', 'dispatch-detail', 'navigation'] as const;
+export type EntryStage = typeof ENTRY_STAGES[number];
 const reported = new Map<string, number>();
 
 /** Do not infer a timeout from duration alone: native fetch can also return AbortError. */
@@ -21,13 +22,24 @@ function failureDetails(error: unknown) {
 
 /** Static labels, HTTP status and elapsed time only; never payloads or raw errors. */
 export function reportEntryFailure(stage: EntryStage, reason: 'read' | 'timeout' | 'navigation', startedAt: number, error?: unknown) {
+  if (!ENTRY_STAGES.includes(stage) || !['read', 'timeout', 'navigation'].includes(reason)) return;
   const code = `${stage}:${reason}`;
   if (Date.now() - (reported.get(code) ?? -Infinity) < 60_000) return;
   reported.set(code, Date.now());
-  console.warn('[AppEntry]', code, {
-    elapsedMs: Math.max(0, Math.min(300_000, Date.now() - startedAt)),
+  const details: { elapsedMs: number; failure?: string; httpStatus?: number } = {
+    elapsedMs: Number.isFinite(startedAt) ? Math.max(0, Math.min(300_000, Date.now() - startedAt)) : 0,
     ...(reason === 'read' ? failureDetails(error) : {}),
-  });
+  };
+  console.warn('[AppEntry]', code, details);
+  // Optional, lazy, bounded and scrubbed: no account ids, routes, tokens, payloads or raw errors.
+  const failure = details.failure ?? reason;
+  // Cancelled/stale entry waiters never reach this function. A native AbortError
+  // on a still-current read can be a transport timeout; retain it as "aborted".
+  const nonfatal = failure !== 'network' &&
+    (details.httpStatus === undefined || details.httpStatus >= 500);
+  void import('./diagnostics').then(({ reportEntryDiagnostic }) => {
+    reportEntryDiagnostic(`${code}:${failure}`, JSON.stringify(details), nonfatal);
+  }).catch(() => undefined);
 }
 
 type ReadHandle<T> = { unwrap: () => Promise<T> };
