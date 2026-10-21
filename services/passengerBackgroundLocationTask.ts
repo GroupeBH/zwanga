@@ -13,17 +13,20 @@ import { Platform } from 'react-native';
 import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 import { publishNativeRideLocation } from './rideLocationStream';
 
-import { ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS, PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS } from '@/constants/rideProgress';
+import { ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS } from '@/constants/rideProgress';
 import { hasRecoverableSession, handle401Error } from '@/services/tokenRefresh';
 import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
 
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation';
+import { passengerWaitingInterval } from './background/passengerWaitingPolicy';
 export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
 let lastTripStatusCheckAt = 0;
+let lastCheckedBookingId: string | null = null;
+let readinessFlight: { key: string; promise: Promise<PassengerTrackingReadiness> } | null = null;
 let passengerLocationRequestInFlight = false;
 let passengerLocationBackoffUntil = 0;
 
@@ -35,11 +38,12 @@ type StartOptions = {
   requestMissingPermissions?: boolean;
   tripId?: string | null;
   waitForActiveTrip?: boolean;
+  departureTimeMs?: number | null;
 };
 
 const stopTrackingSession = stopPassengerGpsProfile;
 
-const getPassengerTrackingReadiness = async (
+const readPassengerTrackingReadiness = async (
   session: PassengerTrackingSession,
 ): Promise<PassengerTrackingReadiness> => {
   if (!session.waitForActiveTrip) {
@@ -47,13 +51,16 @@ const getPassengerTrackingReadiness = async (
   }
 
   const now = Date.now();
-  if (now - lastTripStatusCheckAt < PASSENGER_TRIP_STATUS_CHECK_INTERVAL_MS) {
+  if (!(await applyPassengerGpsProfile(session))) return 'waiting';
+  if (lastCheckedBookingId === session.bookingId &&
+    now - lastTripStatusCheckAt < passengerWaitingInterval(session.departureTimeMs, now)) {
     return 'waiting';
   }
   lastTripStatusCheckAt = now;
+  lastCheckedBookingId = session.bookingId;
 
   try {
-    if (!(await hasRecoverableSession())) return 'terminal';
+    if (!(await hasRecoverableSession({ throwOnError: true }))) return 'terminal';
 
     const bookingResult = await getBookingSnapshot(session.bookingId);
     const bookingErrorStatus = getRtkErrorStatus(bookingResult.error);
@@ -111,6 +118,17 @@ const getPassengerTrackingReadiness = async (
   }
 };
 
+const getPassengerTrackingReadiness = (session: PassengerTrackingSession) => {
+  const key = `${session.bookingId}:${session.waitForActiveTrip}`;
+  if (readinessFlight?.key === key) return readinessFlight.promise;
+  const flight = { key, promise: readPassengerTrackingReadiness(session) };
+  readinessFlight = flight;
+  void flight.promise.finally(() => {
+    if (readinessFlight === flight) readinessFlight = null;
+  }).catch(() => undefined);
+  return flight.promise;
+};
+
 async function putPassengerLocation(
   bookingId: string,
   location: Location.LocationObject,
@@ -136,7 +154,7 @@ async function putPassengerLocation(
   passengerLocationRequestInFlight = true;
 
   try {
-    if (!(await hasRecoverableSession())) {
+    if (!(await hasRecoverableSession({ throwOnError: true }))) {
       await stopTrackingSession(bookingId);
       return false;
     }
@@ -327,6 +345,8 @@ export async function startPassengerBackgroundLocationTracking(
       bookingId,
       tripId: options.tripId?.trim() || null,
       waitForActiveTrip: options.waitForActiveTrip === true,
+      departureTimeMs: typeof options.departureTimeMs === 'number' && Number.isFinite(options.departureTimeMs)
+        ? options.departureTimeMs : null,
     };
     if (previousSession?.bookingId !== bookingId) {
       lastSentAt = 0;

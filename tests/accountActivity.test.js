@@ -76,7 +76,7 @@ test('activity response is validated and account-scoped, without replacing faile
 function coordinator() {
   const hooks = hookHarness(), reads = [], poll = [], fallback = [];
   const state = { auth: { user: { id: 'user' }, isAuthenticated: true }, zwangaApi: { config: { online: true } } };
-  const env = { active: true, summary: { currentData: snapshot(), fulfilledTimeStamp: 1, isFetching: false, isError: false }, state, reads, poll, fallback };
+  const env = { active: true, summary: { currentData: snapshot(), startedTimeStamp: 1, fulfilledTimeStamp: 1, isFetching: false, isError: false }, state, reads, poll, fallback };
   const reduxStore = { getState: () => state };
   const dispatch = action => {
     if (action.running) return env.running;
@@ -88,14 +88,15 @@ function coordinator() {
     'react-redux': { useStore: () => reduxStore },
     '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: selector => selector(state) },
     '@/store/selectors': { selectIsAuthenticated: s => s.auth.isAuthenticated },
-    '@/hooks/useAppIsActive': { useAppIsActive: () => env.active },
+    '@/hooks/useAppIsActive': { useAppIsActive: () => env.active, useAppIsForeground: () => env.foreground ?? env.active },
+    '@/services/appActivity': { getAppActiveSince: () => 0, isAppForeground: () => env.foreground ?? env.active },
     '@/store/api/accountActivityApi': {
       accountActivityApi: { endpoints: { getAccountActivity: { useQueryState: () => ({ hasLiveActivity: env.summary.currentData?.hasLiveActivity ?? false }) } } },
       useGetAccountActivityQuery: (id, options) => { poll.push({ id, ...options }); return env.summary; },
     },
     '@/store/api/tripApi': { tripApi: api('trips', 'getMyActivityTrips'), useGetMyActivityTripsQuery: (_, options) => fallback.push({ key: 'trips', ...options }) },
     '@/store/api/bookingApi': { bookingApi: api('bookings', 'getMyActivityBookings'), useGetMyActivityBookingsQuery: (_, options) => fallback.push({ key: 'bookings', ...options }) },
-    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyTripRequests'), useGetMyTripRequestsQuery: (_, options) => fallback.push({ key: 'requests', ...options }) },
+    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyActivityRequests'), useGetMyActivityRequestsQuery: (_, options) => fallback.push({ key: 'requests', ...options }) },
   })('components/AccountActivityCoordinator.tsx');
   return Object.assign(env, { hooks, render: () => hooks.render(AccountActivityCoordinator) });
 }
@@ -103,8 +104,9 @@ function coordinator() {
 test('one coordinator polls at 60s idle / 30s live, pauses offline/background and validates account changes', async () => {
   const app = coordinator(); app.render(); await flush();
   assert.equal(app.poll.at(-1).pollingInterval, 60_000);
+  assert.equal(app.poll.at(-1).refetchOnMountOrArgChange, true, 'one fresh summary even on a quick return');
   assert.ok(app.fallback.every(options => options.skip)); assert.deepEqual(app.reads, []);
-  app.summary = { ...app.summary, currentData: snapshot({ hasLiveActivity: true, bookings: revision('b', 1) }), fulfilledTimeStamp: 2 };
+  app.summary = { ...app.summary, currentData: snapshot({ hasLiveActivity: true, bookings: revision('b', 1) }), startedTimeStamp: 2, fulfilledTimeStamp: 2 };
   app.render(); await flush(); assert.equal(app.poll.at(-1).pollingInterval, 30_000); assert.deepEqual(app.reads, ['bookings']);
   app.active = false; app.render(); assert.equal(app.poll.at(-1).skip, true);
   app.active = true; app.state.zwangaApi.config.online = false; app.render(); assert.equal(app.poll.at(-1).skip, true);
@@ -141,8 +143,18 @@ test('global selectors ignore fetch-only transitions while retaining business up
   const data = [{ id: 'a' }];
   for (const option of Object.values(options)) {
     assert.equal(option.pollingInterval, 0); assert.equal(option.refetchOnFocus, false);
-    const initial = { data, isSuccess: true, isLoading: false, isFetching: false, fulfilledTimeStamp: 1 };
-    assert.deepEqual(option.selectFromResult(initial), option.selectFromResult({ ...initial, isFetching: true, fulfilledTimeStamp: 2 }));
+    const initial = { data, isSuccess: true, isLoading: false, isFetching: false, startedTimeStamp: 1, fulfilledTimeStamp: 1 };
+    assert.deepEqual(option.selectFromResult(initial), option.selectFromResult({ ...initial, isFetching: true, startedTimeStamp: 2, fulfilledTimeStamp: 2 }));
     assert.notDeepEqual(option.selectFromResult(initial), option.selectFromResult({ ...initial, data: [] }));
   }
+});
+
+test('an inactive interruption keeps discovery subscribed, pauses polling and does not reconcile again', async () => {
+  const app = coordinator(); app.foreground = true;
+  app.summary = { ...app.summary, currentData: snapshot({ bookings: revision('b', 1) }) };
+  app.render(); await flush(); assert.deepEqual(app.reads, ['bookings']);
+  app.active = false; app.render(); await flush();
+  assert.equal(app.poll.at(-1).skip, false); assert.equal(app.poll.at(-1).pollingInterval, 0);
+  app.active = true; app.render(); await flush();
+  assert.deepEqual(app.reads, ['bookings']); app.hooks.unmount();
 });

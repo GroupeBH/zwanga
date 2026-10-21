@@ -47,6 +47,7 @@ test('acceptance removes only the confirmed request while refetch is pending', a
   await ctx.put('getAvailableTripRequests', [first, other]);
   await ctx.put('getTripRequestById', first, 'a');
   await ctx.put('getMyTripRequests', [first]);
+  await ctx.put('getMyActivityRequests', [first]);
   const action = ctx.store.dispatch(ctx.api.endpoints.acceptTripRequest.initiate({ tripRequestId: 'a', payload: {} }));
   assert.deepEqual(ctx.read('getAvailableTripRequests'), [first, other]);
   const accepted = { ...first, status: 'driver_selected', tripId: 'trip' };
@@ -55,6 +56,7 @@ test('acceptance removes only the confirmed request while refetch is pending', a
   assert.deepEqual(ctx.read('getAvailableTripRequests'), [other]);
   assert.deepEqual(ctx.read('getTripRequestById', 'a'), accepted);
   assert.deepEqual(ctx.read('getMyTripRequests'), [accepted]);
+  assert.deepEqual(ctx.read('getMyActivityRequests'), [accepted]);
 });
 
 for (const outcome of ['failure', 'new-session']) {

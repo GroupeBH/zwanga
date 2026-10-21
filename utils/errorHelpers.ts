@@ -37,7 +37,7 @@ function getKnownBusinessErrorMessage(error: any): string | null {
   }
 
   if (message.includes('pin') && (message.includes('invalid') || message.includes('incorrect'))) {
-    return 'Le PIN saisi est incorrect.';
+    return 'Le mot de passe à quatre chiffres est incorrect.';
   }
 
   if (message.includes('phone') && (message.includes('invalid') || message.includes('required'))) {

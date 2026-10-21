@@ -110,6 +110,14 @@ export const tripRequestApi = baseApi.injectEndpoints({
           : [myTripRequestsListTag],
     }),
 
+    // Separate cache from history. Old servers ignore scope and still return a complete list.
+    getMyActivityRequests: builder.query<TripRequest[], void>({
+      query: () => ({ url: '/trip-requests/my-requests', params: { scope: 'activity' } }),
+      transformResponse: (response: ServerTripRequest[]) => response.map(mapServerTripRequestToClient),
+      providesTags: result => [myTripRequestsListTag,
+        ...(result ?? []).map(({ id }) => ({ type: 'TripRequest' as const, id }))],
+    }),
+
     // Récupérer une demande de trajet par ID
     getTripRequestById: builder.query<TripRequest, string>({
       query: (id: string) => `/trip-requests/${id}`,
@@ -296,10 +304,12 @@ export const tripRequestApi = baseApi.injectEndpoints({
           dispatch(tripRequestApi.util.updateQueryData('getAvailableTripRequests', undefined,
             requests => requests.filter(request => request.id !== tripRequestId)));
           dispatch(tripRequestApi.util.updateQueryData('getTripRequestById', tripRequestId, () => data.tripRequest));
-          dispatch(tripRequestApi.util.updateQueryData('getMyTripRequests', undefined, requests => {
-            const index = requests.findIndex(request => request.id === tripRequestId);
-            if (index >= 0) requests[index] = data.tripRequest;
-          }));
+          for (const endpoint of ['getMyTripRequests', 'getMyActivityRequests'] as const) {
+            dispatch(tripRequestApi.util.updateQueryData(endpoint, undefined, requests => {
+              const index = requests.findIndex(request => request.id === tripRequestId);
+              if (index >= 0) requests[index] = data.tripRequest;
+            }));
+          }
         } catch { /* Failed or ambiguous acceptance remains subject to server reconciliation. */ }
       },
       invalidatesTags: (_result, _error, { tripRequestId }: { tripRequestId: string }) => [
@@ -326,6 +336,7 @@ export const {
   useGetTripRequestVehicleOptionsMutation,
   useGetAvailableTripRequestsQuery,
   useGetMyTripRequestsQuery,
+  useGetMyActivityRequestsQuery,
   useLazyGetMyTripRequestsQuery,
   useGetTripRequestByIdQuery,
   useGetTripRequestPassengerContactMutation,

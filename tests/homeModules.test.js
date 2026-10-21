@@ -301,7 +301,7 @@ test('passenger activity excludes own, linked and expired requests and preserves
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [], refetch() {} }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
-      useGetMyTripRequestsQuery: () => ({ data: [request('foreign-cache'), request('own', { passengerId: 'me' })] }),
+      useGetMyActivityRequestsQuery: () => ({ data: [request('foreign-cache'), request('own', { passengerId: 'me' })] }),
       useGetAvailableTripRequestsQuery: (_args, options) => { calls.push(options); return { data: requests }; },
     },
   });

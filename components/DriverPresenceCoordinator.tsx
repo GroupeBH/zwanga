@@ -11,7 +11,7 @@ import { AppState } from 'react-native';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { ensureNearbyDriverLocation, hasActiveRideLocationSession, pauseNearbyDriverLocation,
   subscribeNearbyDriverLocation } from '@/services/nearbyDriverLocation';
-import { sendNearbyDriverPosition } from '@/services/nearbyDriverPositionDelivery';
+import { needsNearbyDriverPosition, sendNearbyDriverPosition } from '@/services/nearbyDriverPositionDelivery';
 import { NEARBY_DRIVER_INTERVAL_MS } from '@/services/nearbyDriverLocationPolicy';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 
@@ -41,25 +41,36 @@ export function DriverPresenceCoordinator() {
     const version = getTokenSessionVersion();
     const current = () => !controller.signal.aborted && AppState.currentState === 'active' && version === getTokenSessionVersion();
     let busy = false;
-    const refresh = async () => {
+    let nativeCheckedAt = -Infinity;
+    const refresh = async (forceNativeCheck = false) => {
       if (busy || controller.signal.aborted || AppState.currentState !== 'active') return;
+      const checkNative = forceNativeCheck || Date.now() - nativeCheckedAt >= NEARBY_DRIVER_INTERVAL_MS;
+      // This lightweight foreground clock only reads in-memory delivery state.
+      // Native/HTTP work remains paced; an acknowledgement arriving a few
+      // milliseconds late must not accidentally defer the next send to six minutes.
+      if (!checkNative && !needsNearbyDriverPosition(userId)) return;
       busy = true;
       try {
         // The mutation returns the authoritative status; no extra GET before every fix.
         if (await hasActiveRideLocationSession() || !current()) return;
-        const nativeRunning = await ensureNearbyDriverLocation(userId).catch(() => false);
-        if (nativeRunning || !current()) return;
+        if (checkNative) {
+          nativeCheckedAt = Date.now();
+          await ensureNearbyDriverLocation(userId).catch(() => false);
+        }
+        // Send a first fresh fix immediately and recover missed native delivery.
+        // A healthy recent acknowledgement avoids an additional one-shot GPS read.
+        if (!current() || !needsNearbyDriverPosition(userId)) return;
         const permission = await Location.getForegroundPermissionsAsync();
         if (!permission.granted || !current()) return;
         const position = await requestCurrentLocation(true, controller.signal, { maxAge: 15000, requiredAccuracy: 250, fallback: false });
         if (!position || !current() || await hasActiveRideLocationSession()) return;
         await sendNearbyDriverPosition(userId, position, current);
-      } catch { /* No optimistic extension. The server lease expires if GPS/network fails. */ }
+      } catch { /* Preserve the true observation date; retry on the next heartbeat. */ }
       finally { busy = false; }
     };
     void refresh();
-    const unsubscribe = subscribeNearbyDriverLocation(() => { void refresh(); });
-    const timer = setInterval(() => { void refresh(); }, NEARBY_DRIVER_INTERVAL_MS);
+    const unsubscribe = subscribeNearbyDriverLocation(() => { void refresh(true); });
+    const timer = setInterval(() => { void refresh(); }, 15_000);
     return () => { clearInterval(timer); unsubscribe(); controller.abort(); };
   }, [readsEnabled, automatic, driver, userId]);
   return null;

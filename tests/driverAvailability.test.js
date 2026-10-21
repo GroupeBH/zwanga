@@ -56,10 +56,11 @@ test('profile entry explains its purpose, honors the server flag and skips reads
 
 
 function coordinator({ authenticated = true, signingOut = false, role = 'driver', permission = async () => ({ granted: true }),
-  nativeRunning = false, activeRide = false, nativeError = false,
+  nativeRunning = false, acknowledged = false, activeRide = false, nativeError = false,
   position = async () => ({ timestamp: Date.now(), coords: { latitude: 1, longitude: 2, accuracy: 20 } }) } = {}) {
   const hooks = hookHarness(), calls = [], routes = [];
   let active = true, online = true;
+  let sentAt = acknowledged ? Date.now() : -Infinity;
   const user = { id: 'driver', role };
   const state = { enabled: true, automatic: true, pendingOfferId: null };
   const appState = { currentState: 'active' };
@@ -85,10 +86,15 @@ function coordinator({ authenticated = true, signingOut = false, role = 'driver'
       ensureNearbyDriverLocation: async () => { if (nativeError) throw new Error('native unavailable'); return nativeRunning; },
       pauseNearbyDriverLocation: async () => {}, subscribeNearbyDriverLocation: () => () => {},
     },
-    '@/services/nearbyDriverPositionDelivery': { sendNearbyDriverPosition: async (_id, location) => {
-      if (isUsableNearbyDriverPosition(location)) await renew({ latitude: location.coords.latitude,
+    '@/services/nearbyDriverPositionDelivery': {
+      needsNearbyDriverPosition: () => Date.now() - sentAt >= 180000,
+      sendNearbyDriverPosition: async (_id, location) => {
+      if (isUsableNearbyDriverPosition(location)) {
+        await renew({ latitude: location.coords.latitude,
         longitude: location.coords.longitude, accuracy: location.coords.accuracy,
         recordedAt: new Date(location.timestamp).toISOString() }).unwrap();
+        sentAt = Date.now();
+      }
     } },
   })('components/DriverPresenceCoordinator.tsx').DriverPresenceCoordinator;
   return { hooks, state, calls, routes, render: () => hooks.render(Screen),
@@ -157,7 +163,7 @@ test('foreground GPS is aborted on background and cannot publish a delayed fix',
 });
 
 test('3-minute foreground refreshes stop when the app leaves the foreground', async t => {
-  t.mock.timers.enable({ apis: ['setInterval'] });
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'] });
   const app = coordinator(); app.render(); await tick();
   t.mock.timers.tick(180000); await tick();
   assert.equal(app.calls.filter(value => typeof value === 'object').length, 2);
@@ -167,8 +173,8 @@ test('3-minute foreground refreshes stop when the app leaves the foreground', as
   app.hooks.unmount();
 });
 
-test('native discovery or an active ride never adds a foreground GPS reader', async () => {
-  for (const options of [{ nativeRunning: true }, { activeRide: true }]) {
+test('recently acknowledged native discovery or an active ride never adds a foreground GPS reader', async () => {
+  for (const options of [{ nativeRunning: true, acknowledged: true }, { activeRide: true }]) {
     const app = coordinator(options); app.render(); await tick();
     assert.deepEqual(app.calls, []); app.hooks.unmount();
   }
@@ -207,7 +213,7 @@ test('settings explain last-known positions while remaining compatible with lega
     }) },
   })('app/driver-availability.tsx').default;
   let tree = hooks.render(Screen);
-  assert.match(text(tree), /automatiquement/);
+  assert.match(text(tree), /Aucun réglage supplémentaire n’est nécessaire/);
   assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
   assert.doesNotMatch(text(tree), /Places proposées|Avec quel véhicule|Me rendre disponible/);
   assert.match(text(tree), /dès la connexion/);

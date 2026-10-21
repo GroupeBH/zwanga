@@ -164,12 +164,40 @@ test('acceptance modal keeps the vehicle actions, protected footer and disabled 
 });
 
 test('native location disclosure still requires consent and Android back declines it', () => {
-  const answers = [];
-  const { NavigationLocationDisclosure } = loader(mocks)('features/driver-navigation/NavigationLocationDisclosure.tsx');
-  const tree = NavigationLocationDisclosure({ backgroundDisclosureVisible: true, resolveBackgroundDisclosure: value => answers.push(value) });
+  const answers = [], hooks = hookHarness();
+  const { NavigationLocationDisclosure } = loader({
+    ...mocks, react: { ...React, ...hooks.react },
+    '@/components/location/BackgroundLocationConsent': { BackgroundLocationConsent: 'Consent' },
+  })('features/driver-navigation/NavigationLocationDisclosure.tsx');
+  const render = (visible = true) => hooks.render(() => NavigationLocationDisclosure({
+    backgroundDisclosureVisible: visible, resolveBackgroundDisclosure: value => answers.push(value),
+  }));
+  const tree = render();
   assert.equal(tree.props.visible, true);
+  assert.match(text(tree), /serveur/);
+  assert.ok(elements(tree).some(node => node.type === 'ScrollView'));
   tree.props.onRequestClose();
-  const actions = elements(tree).filter(node => node.type === 'TouchableOpacity');
-  actions.forEach(node => node.props.onPress());
-  assert.deepEqual(answers, [false, false, true]);
+  const primary = value => elements(value).find(node => node.type === 'TouchableOpacity' && /Autoriser/.test(text(node)));
+  assert.equal(primary(tree).props.disabled, true);
+  primary(tree).props.onPress(); assert.deepEqual(answers, [false]);
+  elements(render()).find(node => node.type === 'Consent').props.onChange(true);
+  const checked = render(); assert.equal(primary(checked).props.disabled, false);
+  primary(checked).props.onPress(); assert.deepEqual(answers, [false, true]);
+  render(false); render(); assert.equal(primary(render()).props.disabled, true);
+  elements(render()).find(node => node.type === 'TouchableOpacity' && /Pas maintenant/.test(text(node)))
+    .props.onPress();
+  assert.deepEqual(answers, [false, true, false]); hooks.unmount();
+});
+
+test('the consent control exposes an accessible unchecked checkbox and respects disabled state', () => {
+  const changes = [];
+  const { BackgroundLocationConsent } = loader(mocks)('components/location/BackgroundLocationConsent.tsx');
+  const unchecked = BackgroundLocationConsent({ checked: false, onChange: value => changes.push(value) });
+  assert.equal(unchecked.props.accessibilityRole, 'checkbox');
+  assert.deepEqual(unchecked.props.accessibilityState, { checked: false, disabled: false });
+  unchecked.props.onPress(); assert.deepEqual(changes, [true]);
+  const checked = BackgroundLocationConsent({ checked: true, onChange: value => changes.push(value) });
+  checked.props.onPress(); assert.deepEqual(changes, [true, false]);
+  const disabled = BackgroundLocationConsent({ checked: false, disabled: true, onChange: value => changes.push(value) });
+  disabled.props.onPress(); assert.deepEqual(changes, [true, false]);
 });

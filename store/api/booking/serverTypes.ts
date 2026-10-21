@@ -11,6 +11,7 @@ export type ServerUser = {
 };
 
 export type ServerBooking = {
+  cashCommissionTokenValue?: number | string | null;
   cashReceivedAt?: string | null;
   cashReceivedByDriverId?: string | null;
   cashReceivedAmount?: number | string | null;

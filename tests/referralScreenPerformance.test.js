@@ -70,6 +70,11 @@ test('referral screen virtualizes the page while preserving QR, withdrawal input
   assert.equal(list.props.keyExtractor(people[3]), 'synthetic-3');
   assert.equal(list.props.renderItem({ item: people[0] }).props.referral, people[0]);
   assert.equal(nodes(list.props.ListHeaderComponent).find(node => node.type === 'QRAction').props.summary, summary);
+  const ruleText = nodes(list.props.ListHeaderComponent).filter(node => node.type === 'Text')
+    .map(node => node.props.children).join(' ');
+  assert.match(ruleText, /Aucun bonus à l’inscription ou au rattachement/);
+  assert.match(ruleText, /trajets terminés et payés/);
+  assert.match(ruleText, /bonus Zwanga ne rapporte aucune commission/);
   assert.equal(nodes(list.props.ListFooterComponent).filter(node => node.type === 'PageControls').length, 3);
   const footerType = list.props.ListFooterComponent.type;
   nodes(list.props.ListFooterComponent).find(node => node.type === 'Input').props.onChangeText('12');

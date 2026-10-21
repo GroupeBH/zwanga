@@ -4,6 +4,8 @@ import { handleIncomingNotification } from './pushNotifications';
 import { parseDriverInvitation, readDriverPushData } from '@/features/notifications/driverInvitation';
 import { displayDriverInvitation } from './driverNotifications';
 import { isRemoteRequestAcceptanceAlert, isRemoteNearbyRequestAlert, parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
+import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
+import { reportRideAudioFailure } from './rideAudioDiagnostics';
 
 /**
  * Nom de la tâche de fond pour les notifications push
@@ -49,6 +51,9 @@ if (TaskManager) {
     }
 
     const driverData = readDriverPushData(data);
+    // Reject before classification: otherwise a rejected invitation could fall
+    // through to a generic local notification with the default sound.
+    if (isSelfDriverAlert(driverData)) return;
     if (driverData && parseNearbyPhoneAlert(driverData)) {
       await displayDriverInvitation(driverData);
       return;
@@ -99,8 +104,8 @@ if (TaskManager) {
     } else {
       console.warn('Format de notification non reconnu:', taskData);
     }
-  } catch (error) {
-    console.error('Erreur lors du traitement de la notification en arrière-plan:', error);
+  } catch {
+    reportRideAudioFailure('BACKGROUND_NOTIFICATION_FAILED');
     // Ne pas propager l'erreur pour éviter de bloquer le système de notifications
   }
   });

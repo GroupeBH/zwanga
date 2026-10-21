@@ -1,8 +1,10 @@
 import { isDriverAccount } from '@/utils/accountRole';
+import { isSelfDriverAlert } from './requestOwnership';
 
 type Recipient = { id?: string; role?: unknown } | null | undefined;
 
 export function canShowRequestNotification(data: Record<string, unknown> | null | undefined, user: Recipient): boolean {
+  if (isSelfDriverAlert(data, user?.id)) return false;
   if (!['trip_request', 'new_trip_request', 'trip_request_nearby', 'driver_dispatch_offer'].includes(String(data?.type))) return true;
   return isDriverAccount(user) && Boolean(user?.id) && (!data?.driverId || data.driverId === user?.id);
 }

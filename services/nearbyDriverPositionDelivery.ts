@@ -2,7 +2,8 @@ import type { LocationObject } from 'expo-location';
 import { getTokens } from './tokenStorage';
 import { getTokenSessionVersion } from './tokenSession';
 import { decodeJWT } from '@/utils/jwt';
-import { shouldSendNearbyDriverPosition } from './nearbyDriverLocationPolicy';
+import { NEARBY_DRIVER_INTERVAL_MS, shouldSendNearbyDriverPosition } from './nearbyDriverLocationPolicy';
+import { recordNearbyDriverHealth } from './nearbyDriverLocationHealth';
 import { getRtkErrorStatus } from './background/driverTrackingErrors';
 import { getActiveDriverBackgroundTripSession } from './driverBackgroundLocationSession';
 import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
@@ -13,6 +14,14 @@ let sentAt = -Infinity;
 let retryAt = -Infinity;
 let failures = 0;
 let busy = false;
+
+/** Foreground watchdog: a registration alone does not prove successful delivery. */
+export function needsNearbyDriverPosition(userId: string, now = Date.now()) {
+  if (busy) return false;
+  if (scope !== `${getTokenSessionVersion()}:${userId}`) return true;
+  return now >= retryAt && (!previous ||
+    Math.max(now - sentAt, now - previous.timestamp) >= NEARBY_DRIVER_INTERVAL_MS);
+}
 
 /** Shared by foreground and native callbacks. No disk queue or location history. */
 export async function sendNearbyDriverPosition(userId: string, position: LocationObject,
@@ -49,6 +58,7 @@ export async function sendNearbyDriverPosition(userId: string, position: Locatio
       if (!current()) return 'skipped';
       if (!data.enabled || !data.automatic) return 'stop';
       previous = position; sentAt = Date.now(); failures = 0; retryAt = -Infinity;
+      recordNearbyDriverHealth(userId, { lastSentAt: sentAt, lastSentFixAt: position.timestamp }, version);
       return 'sent';
     } finally { request.reset(); }
   } catch (error) {

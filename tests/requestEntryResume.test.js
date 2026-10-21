@@ -15,9 +15,9 @@ function fixture(t) {
   const env = { version: 0 };
   const options = { userId: 'user', active: true, online: true, ready: true, path: '/', overlayBusy: false,
     ridePending: false, hasOngoingRide: false, driver: false, profileReady: true,
-    requests: { data: [request()], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
-    trips: { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
-    activity: { data: { userId: 'user', hasLiveActivity: true, requests: { count: 1 } }, isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
+    requests: { data: [request()], isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
+    trips: { data: [], isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
+    activity: { data: { userId: 'user', hasLiveActivity: true, requests: { count: 1 } }, isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
     alerts: [], readRequest: async id => { reads.push(id); return request(id); },
     readTrip: async () => { throw new Error('No accepted trip in this fixture'); },
     readDispatch: async id => { reads.push(id); return { id, driverId: 'user', actionable: true, serverNow: iso(0), expiresAt: iso(30000) }; },
@@ -45,6 +45,14 @@ test('the most recently created active order wins; foreign, expired and assigned
     { ...request('cancelled'), status: 'cancelled' }, { ...request('expired'), departureDateMax: iso(-86400000) },
     { ...request('assigned'), selectedDriverId: 'driver' }];
   f.render(); await flush(); assert.deepEqual(f.reads, ['new']); assert.deepEqual(f.routes, ['/request-details/new']);
+});
+
+test('fresh legacy lists can recover an own request after the summary fails with retained old data', async t => {
+  const f = fixture(t);
+  f.options.activity = { data: { userId: 'user', hasLiveActivity: false }, isSuccess: false,
+    isError: true, startedTimeStamp: Date.now() - 1000, fulfilledTimeStamp: Date.now() - 1000 };
+  f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order']);
 });
 
 test('ongoing ride discovery, role resolution, overlays, offline and startup block request verification', async t => {
@@ -78,7 +86,7 @@ test('immediate dispatch verifies the attributed offer and preserves its authent
 });
 
 test('foreign, expired, passenger-only and already answered alerts cannot force a driver screen', async t => {
-  for (const alert of [{ kind: 'nearby', recipientId: 'other' }, { kind: 'nearby', expiresAt: iso(-1) }, { kind: 'response' }, { kind: 'booking' }]) {
+  for (const alert of [{ kind: 'nearby', recipientId: 'other' }, { kind: 'nearby', expiresAt: iso(-1) }, { kind: 'response' }]) {
     const f = fixture(t); f.options.driver = true;
     f.options.alerts = [{ key: 'alert', id: 'alert-id', recipientId: 'user', ...alert }];
     f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
@@ -179,4 +187,60 @@ test('a cancelled, foreign or removed status offer cannot open the driver screen
   f.render(); f.options.pendingDispatchId = null; f.render();
   wait.resolve({ id: 'offer', driverId: 'user', actionable: true, expiresAt: iso(30000), serverNow: iso(0) });
   await flush(); assert.deepEqual(f.routes, []);
+});
+
+test('a ringing request does not wait for unrelated driver publications once ongoing recovery is resolved', async t => {
+  const f = fixture(t); f.options.driver = true;
+  f.options.trips = { isSuccess: false, isFetching: true };
+  f.options.activity.data.trips = { count: 2 };
+  f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+  f.options.readRequest = async id => request(id, 'passenger');
+  f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/nearby']);
+});
+
+test('a ringing request preempts a slow lower-priority detail; its stale result cannot navigate', async t => {
+  const f = fixture(t), old = deferred(); let signal;
+  f.options.driver = true;
+  f.options.readRequest = (id, candidateSignal) => {
+    if (id === 'order') { signal = candidateSignal; return old.promise; }
+    return Promise.resolve(request(id, 'passenger'));
+  };
+  f.render();
+  f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+  f.render(); await flush(); assert.equal(signal.aborted, true);
+  assert.deepEqual(f.routes, ['/request-details/nearby']);
+  old.resolve(request()); await flush(); assert.equal(f.routes.length, 1);
+});
+
+test('driver role or profile loss during verification cannot open an incoming request', async t => {
+  for (const patch of [{ driver: false }, { profileReady: false }]) {
+    const f = fixture(t), wait = deferred(); f.options.driver = true;
+    f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+    f.options.readRequest = () => wait.promise; f.render();
+    Object.assign(f.options, patch); f.render(); wait.resolve(request('nearby', 'passenger'));
+    await flush(); assert.deepEqual(f.routes, []);
+  }
+});
+
+test('a new ringing attempt has its own deadline instead of inheriting the previous slow read', async t => {
+  const f = fixture(t), old = deferred(), incoming = deferred(); let signal;
+  f.options.driver = true;
+  f.options.readRequest = (id, attemptSignal) => {
+    if (id === 'order') return old.promise;
+    signal = attemptSignal; return incoming.promise;
+  };
+  f.render(); t.mock.timers.tick(ENTRY_LOAD_TIMEOUT_MS - 1000);
+  f.options.alerts = [{ key: 'ring', kind: 'nearby', id: 'nearby', recipientId: 'user' }];
+  f.render(); t.mock.timers.tick(2000);
+  assert.equal(f.render().failed, false); assert.equal(signal.aborted, false);
+  incoming.resolve(request('nearby', 'passenger')); await flush();
+  assert.deepEqual(f.routes, ['/request-details/nearby']);
+  old.resolve(request()); await flush(); assert.equal(f.routes.length, 1);
+});
+
+test('an own-request alert cannot outrank the passenger view of the driver’s own order', async t => {
+  const f = fixture(t); f.options.driver = true;
+  f.options.alerts = [{ key: 'self', kind: 'nearby', id: 'order', recipientId: 'user',
+    data: { type: 'trip_request_nearby', driverId: 'user', passengerId: 'user' } }];
+  f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
 });

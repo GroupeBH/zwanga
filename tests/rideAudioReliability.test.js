@@ -6,12 +6,13 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function background(t, kind = 'booking') {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
-  const io = { version: 0, platform: 'android', state: 'background', pending: [], displayed: [], cancelled: [], channel: async () => 'ring', display: async () => {} };
+  const io = { version: 0, platform: 'android', state: 'background', pending: [], displayed: [], cancelled: [], channel: async () => 'ring', display: async () => {}, wake: true };
   const alert = { key: `driver-${kind}-one`, kind, recipientId: 'driver', id: 'one',
     data: { ringUntil: new Date(Date.now() + 30000).toISOString(), type: kind === 'booking' ? 'new_booking' : 'booking_response' } };
   io.pending.push(alert);
-  const load = loader({ 'react-native': { Platform: { get OS() { return io.platform; } }, AppState: { get currentState() { return io.state; } } },
-    '@notifee/react-native': { __esModule: true, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, default: {
+  const load = loader({ 'react-native': { Platform: { get OS() { return io.platform; } }, AppState: { get currentState() { return io.state; } },
+    NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => io.wake } } },
+    '@notifee/react-native': { __esModule: true, AndroidStyle: { BIGTEXT: 1 }, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, default: {
       displayNotification: async n => { io.displayed.push(n); await io.display(); }, cancelNotification: async id => io.cancelled.push(id) } },
     './driverAlertChannel': { getDriverAlertChannel: () => io.channel() }, './rideAlertSession': { pendingRideAlerts: () => io.pending },
     './tokenSession': { getTokenSessionVersion: () => io.version } });
@@ -25,6 +26,8 @@ test('background handoff is deduplicated and preserves original remaining ring t
   const notification = f.io.displayed[0];
   assert.equal(notification.android.timeoutAfter, 18000);
   assert.equal(notification.android.loopSound, true);
+  assert.equal(notification.android.lightUpScreen, true, 'wake the lock screen without a call/full-screen activity');
+  assert.equal(notification.android.fullScreenAction, undefined);
   assert.deepEqual(notification.android.actions.map(a => a.pressAction.id), ['driver-decline', 'driver-accept']);
   f.io.pending = []; await f.reconcileBackgroundRideRinging('driver');
   assert.deepEqual(f.io.cancelled, [notification.id]);
@@ -35,6 +38,23 @@ test('a passenger response hands back to Android but has no driver decision butt
   assert.equal(f.io.displayed.length, 1); assert.equal(f.io.displayed[0].android.actions, undefined);
   f.io.state = 'active'; await f.reconcileBackgroundRideRinging('driver');
   assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
+});
+
+test('background handoff preserves nearby price/destination and its two safe action buttons', async t => {
+  const f = background(t, 'nearby');
+  Object.assign(f.alert.data, { ridePricePerSeat: '1000', ridePriceKind: 'budget', rideArrival: 'Gare' });
+  await f.reconcileBackgroundRideRinging('driver');
+  const notification = f.io.displayed[0];
+  assert.match(notification.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 1 000 FC \/ place/);
+  assert.match(notification.body, /Destination : Gare/);
+  assert.equal(notification.android.style.text, notification.body);
+  assert.deepEqual(notification.android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby', 'driver-review-nearby']);
+});
+
+test('a DND or muted-channel decision suppresses screen wake without discarding the notification', async t => {
+  const f = background(t); f.io.wake = false; await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed.length, 1);
+  assert.equal(f.io.displayed[0].android.lightUpScreen, false);
 });
 
 test('handoff cannot start after expiry, a decision, a foreground return or a changed account during initialization', async t => {
@@ -144,4 +164,19 @@ test('audio diagnostics throttle repeated static codes without logging event pay
   assert.deepEqual(warn.mock.calls[0].arguments, ['[RideAudio]', 'RING_INITIALIZATION_FAILED']);
   t.mock.timers.tick(60000); reportRideAudioFailure('RING_INITIALIZATION_FAILED');
   assert.equal(warn.mock.callCount(), 2);
+});
+
+test('release diagnostics forward only throttled static unexpected failures, never payloads or mute choices', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const errors = [];
+  const { reportRideAudioFailure } = loader({ './diagnostics': {
+    reportUnexpectedError: error => errors.push(error.message),
+  } })('services/rideAudioDiagnostics.ts');
+  reportRideAudioFailure('RING_PLAYBACK_LOST'); reportRideAudioFailure('RING_PLAYBACK_LOST');
+  reportRideAudioFailure('RING_CHANNEL_DISABLED');
+  reportRideAudioFailure('private user data');
+  await tick();
+  assert.deepEqual(errors, ['RideAudio:RING_PLAYBACK_LOST']);
+  t.mock.timers.tick(60000); reportRideAudioFailure('RING_PLAYBACK_LOST'); await tick();
+  assert.equal(errors.length, 2);
 });

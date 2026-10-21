@@ -6,13 +6,17 @@ function fixture(t, platform = 'ios') {
   t.mock.timers.enable({ apis: ['Date'], now: 100_000 });
   let stored = null, running = false, task, reads = 0, pauseRead, booking = { status: 'accepted', trip: { status: 'pending' } };
   const starts = [], sent = [], published = [];
+  let failStart = false, authError = false, bookingWait;
   const io = { storage: 0, availability: 0, native: 0 };
   const location = { Accuracy: { High: 4, Balanced: 3 }, ActivityType: { Other: 1, AutomotiveNavigation: 2 },
     PermissionStatus: { GRANTED: 'granted' },
     getForegroundPermissionsAsync: async () => ({ status: 'granted' }),
     getBackgroundPermissionsAsync: async () => ({ status: 'granted' }), hasServicesEnabledAsync: async () => true,
     hasStartedLocationUpdatesAsync: async () => { io.native++; return running; },
-    startLocationUpdatesAsync: async (_name, options) => { starts.push(options); running = true; },
+    startLocationUpdatesAsync: async (_name, options) => {
+      if (failStart) throw new Error('native start failed');
+      starts.push(options); running = true;
+    },
     stopLocationUpdatesAsync: async () => { running = false; },
   };
   const load = loader({
@@ -24,8 +28,12 @@ function fixture(t, platform = 'ios') {
     }, setItem: async (_key, value) => { stored = value; }, removeItem: async () => { stored = null; } },
     'react-native': { Platform: { OS: platform } }, 'expo-location': location,
     'expo-task-manager': { isAvailableAsync: async () => { io.availability++; return true; }, isTaskDefined: () => false, defineTask: (_key, fn) => { task = fn; } },
-    './background/passengerTrackingReads': { getBookingSnapshot: async () => { reads++; return { data: booking }; }, getTripSnapshot: async () => ({}) },
-    '@/services/tokenRefresh': { hasRecoverableSession: async () => true },
+    './background/passengerTrackingReads': { getBookingSnapshot: async () => { reads++; if (bookingWait) await bookingWait; return { data: booking }; }, getTripSnapshot: async () => ({}) },
+    '@/services/tokenRefresh': { hasRecoverableSession: async options => {
+      assert.equal(options?.throwOnError, true);
+      if (authError) throw new Error('storage temporarily unavailable');
+      return true;
+    } },
     './rideLocationStream': { publishNativeRideLocation: (...args) => published.push(args) },
     './locationDelivery': { isLocationDeliveryPending: () => false, wasLocationDeliveredRecently: () => false, recordLocationDelivery() {} },
     '@/store': { store: { dispatch: payload => { sent.push(payload); return Object.assign(Promise.resolve({ data: {} }), { reset() {}, abort() {} }); } } },
@@ -38,9 +46,60 @@ function fixture(t, platform = 'ios') {
     loseNativeTask: () => { running = false; },
     reads: () => reads, session: () => stored && JSON.parse(stored),
     pauseNextRead: value => { pauseRead = value; },
+    failStart: value => { failStart = value; }, authError: value => { authError = value; },
+    bookingWait: value => { bookingWait = value; },
     booking: value => { booking = value; }, running: () => running,
     sample: () => task({ data: { locations: [{ timestamp: Date.now(), coords: { latitude: -4.3, longitude: 15.3, accuracy: 5 } }] } }) };
 }
+
+test('failed native start clears the phantom session and a later retry starts normally', async t => {
+  const f = fixture(t, 'android'); f.failStart(true);
+  assert.equal(await f.module.startPassengerBackgroundLocationTracking('booking'), false);
+  assert.equal(f.session(), null); assert.equal(f.running(), false);
+  f.failStart(false);
+  assert.equal(await f.module.startPassengerBackgroundLocationTracking('booking'), true);
+  assert.equal(f.session().bookingId, 'booking'); assert.equal(f.running(), true);
+});
+
+test('failed promotion keeps waiting state and never uploads a coarse batch', async t => {
+  const f = fixture(t); await f.module.startPassengerBackgroundLocationTracking('booking', { waitForActiveTrip: true });
+  f.booking({ status: 'accepted', trip: { status: 'ongoing' } }); f.failStart(true);
+  await f.sample(); assert.equal(f.session().waitForActiveTrip, true); assert.equal(f.sent.length, 0);
+  f.failStart(false); t.mock.timers.tick(30000);
+  await f.sample(); assert.equal(f.session().waitForActiveTrip, false); assert.equal(f.sent.length, 0);
+  await f.sample(); assert.equal(f.sent.length, 1);
+});
+
+test('storage failure preserves both waiting and active passenger GPS until recovery', async t => {
+  const f = fixture(t); await f.module.startPassengerBackgroundLocationTracking('booking', { waitForActiveTrip: true });
+  f.authError(true); await f.sample();
+  assert.equal(f.running(), true); assert.ok(f.session());
+  await f.module.startPassengerBackgroundLocationTracking('booking');
+  await f.sample(); assert.equal(f.running(), true); assert.ok(f.session()); assert.equal(f.sent.length, 0);
+  f.authError(false); t.mock.timers.tick(30000); await f.sample();
+  assert.equal(f.sent.length, 1);
+});
+
+test('distant departures use a three-minute waiting profile, then retain the fast in-ride cadence', async t => {
+  const f = fixture(t);
+  await f.module.startPassengerBackgroundLocationTracking('booking', { waitForActiveTrip: true, departureTimeMs: Date.now() + 60 * 60000 });
+  assert.equal(f.starts[0].timeInterval, 180000); assert.equal(f.starts[0].deferredUpdatesInterval, 180000);
+  await f.sample(); assert.equal(f.reads(), 1);
+  t.mock.timers.tick(30000); await f.sample(); assert.equal(f.reads(), 1);
+  t.mock.timers.tick(150000); f.booking({ status: 'accepted', trip: { status: 'ongoing' } });
+  await f.sample(); assert.equal(f.reads(), 2);
+  assert.equal(f.starts.at(-1).timeInterval, 8000); assert.equal(f.starts.at(-1).deferredUpdatesInterval, 2000);
+});
+
+test('overlapping waiting callbacks share one status request', async t => {
+  const f = fixture(t); await f.module.startPassengerBackgroundLocationTracking('booking', { waitForActiveTrip: true });
+  let release; f.bookingWait(new Promise(resolve => { release = resolve; }));
+  const first = f.sample(); await new Promise(resolve => setImmediate(resolve));
+  t.mock.timers.tick(30000);
+  const second = f.sample(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.reads(), 1);
+  release(); await Promise.all([first, second]);
+});
 
 for (const field of ['droppedOffAt', 'droppedOffConfirmedAt']) test(`prearmed background task stops on ${field} without a boolean flag`, async t => {
   const f = fixture(t);

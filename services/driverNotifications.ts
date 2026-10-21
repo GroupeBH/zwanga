@@ -12,6 +12,10 @@ import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert, type NearbyPhoneAler
 import { getDriverAlertChannel, LEGACY_DRIVER_CHANNEL } from './driverAlertChannel';
 import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { acknowledgeRideAlerts, rememberRideAlert } from './rideAlertSession';
+import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
+import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
+import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
+import { dismissDriverAlertFallback } from './driverAlertFallback';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
 const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
@@ -20,7 +24,7 @@ const actionKey = (invitation: DriverInvitation) => `driver-action-v1:${invitati
 export const invitationNotificationId = (invitation: DriverAlert) => `driver-${invitation.kind}-${invitation.id}`;
 // Foreground delivery and the headless task can receive the same push. Never
 // restart its native timeout, including after an action dismissed the card.
-type Delivery = { cancelled: boolean; foreground?: boolean };
+type Delivery = { cancelled: boolean; foreground?: boolean; attempt?: object };
 const deliveries = new Map<string, Delivery>();
 const deliveryKey = (invitation: DriverAlert) => `${getTokenSessionVersion()}:${invitation.driverId}:${invitationNotificationId(invitation)}`;
 function rememberDelivery(key: string, cancelled = false): Delivery {
@@ -38,20 +42,22 @@ function acknowledgeDelivery(invitation: DriverAlert) {
 
 export async function configureDriverNotifications() {
   if (Platform.OS === 'web') return DRIVER_CHANNEL;
-  await Notifications.setNotificationCategoryAsync('driver-offer-v1', [
+  // Android uses Notifee actions, not APNs categories. Do not make a sleeping
+  // phone initialize two unrelated Expo categories before displaying its alert.
+  if (Platform.OS === 'ios') await boundedRideAudio(Notifications.setNotificationCategoryAsync('driver-offer-v1', [
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
-  ]);
-  await Notifications.setNotificationCategoryAsync('driver-offer-v2', [
+  ]));
+  if (Platform.OS === 'ios') await boundedRideAudio(Notifications.setNotificationCategoryAsync('driver-offer-v2', [
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
-  ]);
+  ]));
   // Resolve before creating v2 so a new install does not look like a legacy install.
   const channelId = await getDriverAlertChannel();
-  if (Platform.OS === 'android') await notifee.createChannel({ id: DRIVER_CHANNEL,
+  if (Platform.OS === 'android') await boundedRideAudio(notifee.createChannel({ id: DRIVER_CHANNEL,
     name: 'Réservations et commandes acceptées', importance: AndroidImportance.HIGH,
     sound: 'driver_ring', vibration: true, vibrationPattern: [400, 300, 700, 300, 700, 300],
-    visibility: AndroidVisibility.PRIVATE });
+    visibility: AndroidVisibility.PRIVATE }));
   return channelId;
 }
 
@@ -63,95 +69,136 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     if (Platform.OS === 'android') {
       await displayForegroundAlert(invitation, data);
     } else {
-      const { refreshToken } = await getTokens();
+      const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
       if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
       const alert = parseRideAlert(data);
       if (alert) rememberRideAlert(alert);
+      return true;
     }
-    return true;
+    // If the phone went to sleep during foreground setup, continue with the
+    // same event below; do not depend on another push to show/wake its card.
+    if (isAppActive()) return true;
   }
   if (invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) return true;
   if (Platform.OS !== 'android') return true; // iOS remote alert/category is already displayed by APNs.
   const version = getTokenSessionVersion();
-  const { refreshToken } = await getTokens();
+  const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
   if (version !== getTokenSessionVersion()) return true;
   const key = deliveryKey(invitation);
   if (deliveries.has(key)) return true;
   const deadline = driverRingDeadline(invitation);
-  if (deadline <= Date.now()) return true;
+  if (deadline <= Date.now() && data.alertDelivery !== 'native-backup-v4') { reportRideAudioFailure('DRIVER_ALERT_ARRIVED_TOO_LATE'); return true; }
   const delivery = rememberDelivery(key);
+  const attempt = {};
+  delivery.attempt = attempt;
+  let published = false;
+  const current = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
+    !delivery.cancelled && version === getTokenSessionVersion();
   try {
-    const channelId = await configureDriverNotifications();
-    if (delivery.cancelled || version !== getTokenSessionVersion() || deadline <= Date.now()) return true;
+    let fresh = deadline > Date.now();
+    let channelId = fresh ? await configureDriverNotifications() : await quietChannel();
+    const lightUpScreen = fresh && await shouldLightUpRideAlertScreen(channelId);
+    if (!current()) return true;
+    if (deadline <= Date.now()) {
+      if (invitation.kind === 'dispatch') return true;
+      fresh = false; channelId = await quietChannel();
+    }
+    if (!current()) return true;
     if (isAppActive()) { await displayForegroundAlert(invitation, data); return true; }
     const safeData = Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
-    const body = typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800) : 'Une proposition vous attend. Accepter ou refuser ?';
-    await notifee.displayNotification({ id: invitationNotificationId(invitation),
-      title: invitation.kind === 'booking' ? 'Nouvelle réservation' : 'Commande à proximité',
+    const { title, body } = driverNotificationCard(invitation.kind, data);
+    const display = notifee.displayNotification({ id: invitationNotificationId(invitation),
+      title,
       body, data: safeData,
       android: { channelId, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, pressAction: { id: 'default', launchActivity: 'default' },
-        onlyAlertOnce: true, autoCancel: false, ongoing: true,
-        loopSound: true, lightUpScreen: true,
-        sound: 'driver_ring', style: { type: AndroidStyle.BIGTEXT, text: body },
-        // Native timeout: works without a living JS timer while the phone sleeps.
-        timeoutAfter: Math.max(1, deadline - Date.now()),
-        actions: invitation.kind === 'nearby' ? [{ title: 'Ignorer', pressAction: { id: 'driver-ignore-nearby', launchActivity: 'default' } }]
-          : [{ title: 'Refuser', pressAction: { id: 'driver-decline', launchActivity: 'default' } },
-          { title: 'Accepter', pressAction: { id: 'driver-accept', launchActivity: 'default' } }],
+        onlyAlertOnce: true, autoCancel: false,
+        // A single bundled 29s clip ends without removing a pending booking.
+        // Only exclusive offers have a short business expiry.
+        loopSound: false, lightUpScreen: fresh && lightUpScreen,
+        ...(fresh ? { sound: 'driver_ring' } : {}),
+        style: { type: AndroidStyle.BIGTEXT, text: body },
+        ...(invitation.kind === 'dispatch' ? { timeoutAfter: Math.max(1, deadline - Date.now()) } : {}),
+        actions: driverNotificationActions(invitation.kind, data),
       },
+    }).then(async () => {
+      if (!current() && (!deliveries.has(key) || (deliveries.get(key) === delivery && delivery.attempt === attempt))) {
+        await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
+      }
     });
-    if (delivery.cancelled || version !== getTokenSessionVersion()) {
-      await notifee.cancelNotification(invitationNotificationId(invitation));
-    } else if (isAppActive()) {
+    await boundedRideAudio(display);
+    if (!current()) return true;
+    published = true;
+    await dismissDriverAlertFallback(data);
+    if (current() && isAppActive()) {
       await displayForegroundAlert(invitation, data);
     }
   } catch (error) {
-    if (!delivery.cancelled) deliveries.delete(key);
+    if (!delivery.cancelled && deliveries.get(key) === delivery && delivery.attempt === attempt) deliveries.delete(key);
     throw error;
+  } finally {
+    if (!published && !delivery.cancelled && deliveries.get(key) === delivery && delivery.attempt === attempt) deliveries.delete(key);
   }
   return true;
 }
 
 async function displayForegroundAlert(invitation: DriverAlert, data: Record<string, unknown>) {
-  if (invitation.kind === 'nearby' && driverRingDeadline(invitation) <= Date.now()) return;
+  if (invitation.kind === 'nearby' && driverRingDeadline(invitation) <= Date.now() && data.alertDelivery !== 'native-backup-v4') return;
   const version = getTokenSessionVersion();
-  const { refreshToken } = await getTokens();
+  const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId ||
     version !== getTokenSessionVersion() || !isAppActive()) return;
   const key = deliveryKey(invitation);
   if (deliveries.get(key)?.cancelled || deliveries.get(key)?.foreground) return;
   const delivery = deliveries.get(key) ?? rememberDelivery(key);
+  const attempt = {};
+  delivery.attempt = attempt;
   delivery.foreground = true;
+  let published = false;
+  const current = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
+    !delivery.cancelled && version === getTokenSessionVersion() && isAppActive();
   try {
-    await notifee.createChannel({ id: FOREGROUND_BOOKING_CHANNEL, name: 'Réservations et commandes dans l’application',
-      importance: AndroidImportance.HIGH, vibration: false, sound: undefined });
-    if (delivery.cancelled || version !== getTokenSessionVersion() || !isAppActive()) { delivery.foreground = false; return; }
-    await notifee.cancelNotification(invitationNotificationId(invitation));
-    if (delivery.cancelled || version !== getTokenSessionVersion() || !isAppActive()) { delivery.foreground = false; return; }
-    await notifee.displayNotification({ id: invitationNotificationId(invitation),
-      title: invitation.kind === 'nearby' ? 'Commande à proximité' : 'Nouvelle réservation',
-      body: typeof data.invitationText === 'string' ? data.invitationText.slice(0, 800)
-        : invitation.kind === 'nearby' ? 'Un client cherche un véhicule près de vous.' : 'Un passager souhaite vous rejoindre.',
+    await quietChannel();
+    if (!current()) { delivery.foreground = false; return; }
+    await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
+    if (!current()) { delivery.foreground = false; return; }
+    const { title, body } = driverNotificationCard(invitation.kind, data);
+    const display = notifee.displayNotification({ id: invitationNotificationId(invitation), title, body,
       data: Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       android: { channelId: FOREGROUND_BOOKING_CHANNEL, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, autoCancel: false, onlyAlertOnce: true,
         pressAction: { id: 'default', launchActivity: 'default' },
-        actions: invitation.kind === 'nearby' ? [{ title: 'Ignorer', pressAction: { id: 'driver-ignore-nearby' } }] : [{ title: 'Refuser', pressAction: { id: 'driver-decline' } },
-          { title: 'Accepter', pressAction: { id: 'driver-accept' } }],
+        style: { type: AndroidStyle.BIGTEXT, text: body },
+        actions: driverNotificationActions(invitation.kind, data),
       },
+    }).then(async () => {
+      // Late completion must not revive an acknowledged/old-account card.
+      // Do not cancel a newer attempt that owns the same stable identifier.
+      if (!current() && (!deliveries.has(key) || (deliveries.get(key) === delivery && delivery.attempt === attempt))) {
+        await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
+      }
     });
-    if (delivery.cancelled || version !== getTokenSessionVersion()) {
-      await notifee.cancelNotification(invitationNotificationId(invitation));
-    } else {
+    await boundedRideAudio(display);
+    if (current()) {
+      published = true;
       const alert = parseRideAlert(data);
       if (alert) rememberRideAlert(alert);
+      await dismissDriverAlertFallback(data);
     }
   } catch (error) {
-    if (!delivery.cancelled) deliveries.delete(key);
+    if (!delivery.cancelled && deliveries.get(key) === delivery) deliveries.delete(key);
     throw error;
+  } finally {
+    if (!published && !delivery.cancelled && deliveries.get(key) === delivery && delivery.attempt === attempt) deliveries.delete(key);
   }
+}
+
+async function quietChannel() {
+  await boundedRideAudio(notifee.createChannel({ id: FOREGROUND_BOOKING_CHANNEL,
+    name: 'Réservations et commandes dans l’application',
+    importance: AndroidImportance.HIGH, vibration: false, sound: undefined }));
+  return FOREGROUND_BOOKING_CHANNEL;
 }
 
 // Only native notification actions write this intent. A deep link never authorizes a mutation.
@@ -178,6 +225,7 @@ export async function consumeDriverAction(invitation: DriverInvitation, userId: 
 
 export async function dismissDriverInvitation(invitation: DriverAlert) {
   acknowledgeDelivery(invitation);
+  await dismissDriverAlertFallback({ fallbackTag: `ride-backup-${invitation.kind}-${invitation.id}` });
   await notifee.cancelNotification(invitationNotificationId(invitation));
   if (Platform.OS === 'android') await notifee.cancelNotification(`ride-handoff-${invitationNotificationId(invitation)}`);
   // iOS remote identifiers differ from the Notifee local id.

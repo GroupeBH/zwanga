@@ -26,10 +26,10 @@ export const getMotivationalMessage = (step: AuthStep, mode: AuthMode): string =
   const messages: Record<AuthStep, string> = {
     phone: '',
     sms: '🚀 Vérification en cours...',
-    pin: mode === 'login' ? '🔐 Entrez votre code PIN' : '🔐 Créez votre code PIN',
+    pin: mode === 'login' ? 'Entrez votre mot de passe à quatre chiffres' : 'Créez votre mot de passe à quatre chiffres',
     profile: '✨ Créez votre identité unique !',
     kyc: '🔒 Vérification d\'identité',
-    resetPin: '🔑 Réinitialisation du PIN',
+    resetPin: 'Nouveau mot de passe',
   };
   return messages[step];
 };

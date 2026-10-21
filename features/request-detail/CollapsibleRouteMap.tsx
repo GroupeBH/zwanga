@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
 import { getRouteCoordinates } from '@/utils/routeApi';
 
 export type CollapsibleRouteMapProps = {
@@ -35,39 +36,37 @@ export function CollapsibleRouteMap({
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const mapRef = useRef<MapView>(null);
   const active = useScreenIsActive();
-  const [loadedRoute, setLoadedRoute] = useState<LatLng[]>([]);
+  const [loadedRoute, setLoadedRoute] = useState<{ key: string; coordinates: LatLng[] } | null>(null);
   const fromLat = mapData?.departureCoordinate.latitude, fromLng = mapData?.departureCoordinate.longitude;
   const toLat = mapData?.arrivalCoordinate.latitude, toLng = mapData?.arrivalCoordinate.longitude;
+  const routeKey = `${fromLat}:${fromLng}:${toLat}:${toLng}`;
+  const { shouldRenderMap, isMapReady, onMapReady, onMapLayout, runMapCommand } = useNavigationMapLifecycle({
+    screenKey: routeKey, enabled: isExpanded && active && !!mapData, mapRef,
+  });
   const suppliedRoute = routeCoordinates.length > 1;
   useEffect(() => {
     if (!isExpanded || !active || suppliedRoute || fromLat === undefined || fromLng === undefined || toLat === undefined || toLng === undefined) return;
     let current = true;
-    setLoadedRoute([]);
     void getRouteCoordinates({ latitude: fromLat, longitude: fromLng }, { latitude: toLat, longitude: toLng })
-      .then(coordinates => { if (current) setLoadedRoute(coordinates ?? []); }).catch(() => {});
+      .then(coordinates => { if (current) setLoadedRoute({ key: routeKey, coordinates: coordinates ?? [] }); }).catch(() => {});
     return () => { current = false; };
-  }, [isExpanded, active, suppliedRoute, fromLat, fromLng, toLat, toLng]);
-  const displayedCoordinates = suppliedRoute ? routeCoordinates : loadedRoute;
+  }, [isExpanded, active, suppliedRoute, fromLat, fromLng, toLat, toLng, routeKey]);
+  const displayedCoordinates = suppliedRoute ? routeCoordinates : loadedRoute?.key === routeKey ? loadedRoute.coordinates : undefined;
 
-  const fitMapToRoute = useCallback(() => {
-    if (!mapData) return;
+  useEffect(() => {
+    if (!isMapReady || !mapData) return;
 
     const visibleCoordinates =
-      displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates;
+      displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates;
 
-    requestAnimationFrame(() => {
-      mapRef.current?.fitToCoordinates(visibleCoordinates, {
+    if (visibleCoordinates.length < 2) return;
+    runMapCommand(map => {
+      map.fitToCoordinates(visibleCoordinates, {
         edgePadding: { top: 34, right: 34, bottom: 34, left: 34 },
         animated: false,
       });
     });
-  }, [mapData, displayedCoordinates]);
-
-  useEffect(() => {
-    if (isExpanded) {
-      fitMapToRoute();
-    }
-  }, [fitMapToRoute, isExpanded]);
+  }, [mapData, displayedCoordinates, isMapReady, runMapCommand]);
 
   const toggleMap = useCallback(() => {
     setIsExpanded((currentValue) => !currentValue);
@@ -118,44 +117,43 @@ export function CollapsibleRouteMap({
         <View
           style={[styles.driverInlineMapFrame, variant === 'light' && light.frame]}
         >
-          <MapView
+          {shouldRenderMap && <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.driverInlineMap}
             mapType="standard"
             initialRegion={mapData.initialRegion}
-            onMapReady={fitMapToRoute}
+            onMapReady={onMapReady}
+            onLayout={onMapLayout}
             rotateEnabled={false}
             pitchEnabled={false}
           >
             <Polyline
-              coordinates={displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates}
+              coordinates={displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates}
               strokeColor={Colors.primary}
               strokeWidth={5}
-              lineDashPattern={displayedCoordinates.length > 2 ? undefined : [4, 4]}
+              lineDashPattern={displayedCoordinates && displayedCoordinates.length > 2 ? undefined : [4, 4]}
             />
             <Marker
               coordinate={mapData.departureCoordinate}
               title="Départ"
               description={departureName}
-            >
-              <View style={[styles.driverMapMarker, styles.driverMapMarkerDeparture]}>
-                <View style={styles.driverMapMarkerCore} />
-              </View>
-            </Marker>
+              image={require('@/assets/images/map-markers/trip-detail-marker-departure.png')}
+              anchor={{ x: 0.5, y: 0.86 }}
+              tracksViewChanges={false}
+            />
             <Marker
               coordinate={mapData.arrivalCoordinate}
               title="Destination"
               description={arrivalName}
-            >
-              <View style={[styles.driverMapMarker, styles.driverMapMarkerArrival]}>
-                <Ionicons name="flag" size={13} color={Colors.white} />
-              </View>
-            </Marker>
-          </MapView>
+              image={require('@/assets/images/map-markers/trip-detail-marker-arrival.png')}
+              anchor={{ x: 0.5, y: 0.86 }}
+              tracksViewChanges={false}
+            />
+          </MapView>}
           <View pointerEvents="none" style={styles.driverMapCaption}>
             <Ionicons name="navigate" size={12} color={Colors.primaryDark} />
-            <Text style={styles.driverMapCaptionText}>{displayedCoordinates.length > 2 ? 'Itinéraire demandé' : 'Départ et destination'}</Text>
+            <Text style={styles.driverMapCaptionText}>{displayedCoordinates && displayedCoordinates.length > 2 ? 'Itinéraire demandé' : 'Départ et destination'}</Text>
           </View>
         </View>
       )}

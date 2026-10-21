@@ -44,6 +44,7 @@ function setup(t) {
     endpoints: builder => ({
       getAvailableTripRequests: builder.query({ query: () => '/requests' }),
       getMyTripRequests: builder.query({ query: () => '/mine' }),
+      getMyActivityRequests: builder.query({ query: () => '/mine?scope=activity' }),
       getTripRequestById: builder.query({ query: id => `/requests/${id}` }),
       unrelated: builder.query({ query: () => '/unrelated' }),
     }),
@@ -72,6 +73,14 @@ test('unaccepted requests expire three hours after departureDateMax, inclusively
   assert.equal(policy.hasTripRequestExpired(item, NOW), true);
   assert.equal(policy.isTripRequestWithinAcceptanceWindow(item, NOW), false);
   assert.equal(policy.getTripRequestExpirationAt(request('invalid', 0, { departureDateMax: 'invalid' })), null);
+});
+
+test('the activity-only cache expires at the same deadline without changing linked rides', async t => {
+  const ctx = setup(t), item = request('activity', 1000);
+  await ctx.put('getMyActivityRequests', [item]);
+  t.mock.timers.tick(1000);
+  assert.equal(ctx.read('getMyActivityRequests')[0].status, 'expired');
+  assert.equal(ctx.queries(), 0);
 });
 
 test('selected driver, linked trip and accepted offer give two hours from departureDateMax, not selectedAt', () => {

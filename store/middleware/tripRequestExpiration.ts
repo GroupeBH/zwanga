@@ -3,7 +3,7 @@ import { getTripRequestExpirationAt, hasTripRequestExpired } from '@/features/tr
 import { tripRequestApi } from '../api/tripRequestApi';
 
 const requestEndpoints = [
-  'getAvailableTripRequests', 'getMyTripRequests', 'getTripRequestById',
+  'getAvailableTripRequests', 'getMyTripRequests', 'getMyActivityRequests', 'getTripRequestById',
 ];
 type ExpirationState = { [tripRequestApi.reducerPath]: ReturnType<typeof tripRequestApi.reducer> };
 // A single local wake-up for all cached screens, without any HTTP polling.
@@ -44,16 +44,18 @@ export function createTripRequestExpirationMiddleware(): Middleware<
           }
         }
 
-        const mine = api.endpoints.getMyTripRequests.select()(state).data;
-        if (mine) {
-          const expiredIds = new Set(mine.filter(request => inspect(request) && request.status !== 'expired')
-            .map(request => request.id));
-          if (expiredIds.size) {
-            store.dispatch(api.util.updateQueryData('getMyTripRequests', undefined, draft => {
-              for (const request of draft) {
-                if (expiredIds.has(request.id)) request.status = 'expired';
-              }
-            }));
+        for (const endpoint of ['getMyTripRequests', 'getMyActivityRequests'] as const) {
+          const mine = api.endpoints[endpoint].select()(state).data;
+          if (mine) {
+            const expiredIds = new Set(mine.filter(request => inspect(request) && request.status !== 'expired')
+              .map(request => request.id));
+            if (expiredIds.size) {
+              store.dispatch(api.util.updateQueryData(endpoint, undefined, draft => {
+                for (const request of draft) {
+                  if (expiredIds.has(request.id)) request.status = 'expired';
+                }
+              }));
+            }
           }
         }
 

@@ -16,7 +16,7 @@ import { useArrivalPaymentRefresh } from './useArrivalPaymentRefresh';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ZWANGA_POINT_VALUE_CDF } from '@/constants/paymentFeatures';
+import { tokenQuote } from '@/features/arrival-payment/tokenQuote';
 import {
   useGetMyActivityBookingsQuery as useGetMyBookingsQuery,
   useInitiateBookingPaymentMutation,
@@ -136,15 +136,17 @@ export function useArrivalPaymentState() {
   const paymentAmount = normalizeAmount(arrivalBooking?.paymentAmount);
   const paymentCurrency = arrivalBooking?.paymentCurrency ?? 'CDF';
   const walletBalance = Math.max(0, (normalizeAmount(wallet?.account.balance) ?? 0) - (normalizeAmount(wallet?.account.reservedCashCommissionBalance) ?? 0));
-  const requiredPoints = paymentAmount === null
+  const quote = tokenQuote(paymentCurrency, arrivalBooking?.cashCommissionTokenValue,
+    wallet?.withdrawal?.moneyPerToken, wallet?.withdrawal?.currency);
+  const requiredPoints = paymentAmount === null || quote.bookingValue === null || quote.purchaseValue === null
     ? null
-    : roundMoney(paymentAmount / ZWANGA_POINT_VALUE_CDF);
+    : roundMoney(paymentAmount / quote.bookingValue);
   const pointsUsed = requiredPoints === null ? 0 : Math.min(walletBalance, requiredPoints);
   const missingPoints = requiredPoints === null
     ? 0
     : roundMoney(Math.max(0, requiredPoints - pointsUsed));
-  const amountCoveredByPoints = roundMoney(pointsUsed * ZWANGA_POINT_VALUE_CDF);
-  const moneyComplement = roundMoney(missingPoints * ZWANGA_POINT_VALUE_CDF);
+  const amountCoveredByPoints = roundMoney(pointsUsed * (quote.bookingValue ?? 0));
+  const moneyComplement = roundMoney(missingPoints * (quote.purchaseValue ?? 0));
   const pointsCoveragePercentage =
     paymentAmount && paymentAmount > 0
       ? Math.min(100, Math.round((amountCoveredByPoints / paymentAmount) * 100))

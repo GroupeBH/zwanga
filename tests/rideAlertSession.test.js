@@ -12,6 +12,23 @@ const booking = () => ({ type: 'new_booking', actionProtocol: 'driver-v1', booki
 const response = () => ({ type: 'booking_response', bookingId: id, tripId, passengerId: userId,
   status: 'rejected', ringAlert: 'booking-response-v1', ringUntil: new Date(Date.now() + 30000).toISOString() });
 
+test('self invitations cannot enter sound or speech sessions, but responses to own orders still do', () => {
+  const load = loader(), session = load('services/rideAlertSession.ts');
+  const { parseRideAlert } = load('features/notifications/rideAlert.ts');
+  session.setRideAlertScreen(userId, '/');
+  for (const data of [{ ...booking(), passengerId: userId },
+    { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', driverId: userId, passengerId: userId, tripRequestId: id },
+    { ...booking(), type: 'driver_dispatch_offer', offerId: id, passengerId: userId, expiresAt: new Date(Date.now() + 30000).toISOString() }]) {
+    assert.equal(parseRideAlert(data), null);
+    session.rememberRideAlert({ key: data.type, id, kind: 'nearby', recipientId: userId, data });
+  }
+  assert.deepEqual(session.pendingRideAlerts(userId), []);
+  const accepted = parseRideAlert({ type: 'trip_request_accepted', tripRequestId: id, passengerId: userId,
+    driverId: otherId, ringAlert: 'request-accepted-v1', ringUntil: new Date(Date.now() + 30000).toISOString() });
+  session.rememberRideAlert(accepted); session.rememberRideAlert(parseRideAlert(response()));
+  assert.equal(session.pendingRideAlerts(userId).length, 2);
+});
+
 test('Home and booking consultation preserve the driver alert; a matching decision stops it once', () => {
   const load = loader(); const session = load('services/rideAlertSession.ts');
   const { parseRideAlert } = load('features/notifications/rideAlert.ts');
@@ -158,13 +175,13 @@ test('an entry voice pauses a ringtone still initializing, without starting it u
 
 test('coordinator keeps ringing on Home and stops on the passenger trip, with cleanup on background', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] });
-  const hooks = hookHarness(); const io = { path: '/home', plays: 0, stops: 0, receive: null, state: null };
+  const hooks = hookHarness(); const io = { path: '/home', plays: 0, stops: 0, receive: null, state: null, episodes: [] };
   const app = { currentState: 'active', addEventListener: (_event, fn) => { io.state = fn; return { remove() {} }; } };
   const load = loader({ react: hooks.react, 'expo-router': { usePathname: () => io.path },
     'react-native': { Platform: { OS: 'ios' }, AppState: app },
     'expo-notifications': { getPresentedNotificationsAsync: async () => [], addNotificationReceivedListener: fn => { io.receive = fn; return { remove() {} }; } },
     '@notifee/react-native': { getDisplayedNotifications: async () => [] },
-    '@/services/foregroundRideSound': { startForegroundRideSound: async () => { io.plays++; }, stopForegroundRideSound: () => { io.stops++; } },
+    '@/services/foregroundRideSound': { startForegroundRideSound: async key => { io.plays++; io.episodes.push(key); }, stopForegroundRideSound: () => { io.stops++; } },
     '@/services/foregroundRideAnnouncement': { reconcileRideAnnouncement() {}, stopRideAnnouncement() {}, clearRideAnnouncementSession() {} },
     '@/services/driverNotifications': { displayDriverInvitation: async () => {} },
     '@/services/passengerRideAlerts': { dismissOpenedRideResponses: async () => {} },
@@ -174,6 +191,7 @@ test('coordinator keeps ringing on Home and stops on the passenger trip, with cl
   render(); await tick();
   io.receive({ request: { content: { data: response() } } });
   assert.ok(io.plays > 0);
+  assert.ok(io.episodes.every(key => key === load('features/notifications/rideAlert.ts').parseRideAlert(response()).key));
   io.path = `/trip/${otherId}`; render();
   assert.equal(load('services/rideAlertSession.ts').pendingRideAlerts(userId).length, 1);
   io.path = `/booking/navigate/${id}`; render();

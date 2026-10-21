@@ -24,6 +24,18 @@ test('own command lifecycle notifications and published-trip bookings remain vis
   assert.deepEqual(getNotificationHref({ type: 'trip_request_reopened', requestId: 'order' }, user), { pathname: '/request-details/[id]', params: { id: 'order' } });
 });
 
+test('a driver ordering as passenger never sees its own request as incoming work', () => {
+  const user = { id: 'driver', role: 'driver' };
+  for (const type of ['trip_request', 'new_trip_request', 'trip_request_nearby', 'driver_dispatch_offer', 'new_booking']) {
+    assert.equal(canShowRequestNotification({ type, passengerId: user.id, driverId: user.id }, user), false);
+    assert.equal(getNotificationHref({ type, passengerId: user.id, driverId: user.id, tripRequestId: 'order' }, user), null);
+    assert.equal(canShowRequestNotification({ type, passengerId: 'another', driverId: user.id }, user), true);
+  }
+  for (const type of ['trip_request_accepted', 'booking_response', 'driver_offer', 'trip_request_expired']) {
+    assert.equal(canShowRequestNotification({ type, passengerId: user.id, driverId: user.id }, user), true);
+  }
+});
+
 test('old order notification text is updated without renaming payment, support or technical types', () => {
   const data = { type: 'trip_request_accepted' };
   assert.equal(orderNotificationText('Demande acceptée. Vos demandes sont visibles.', data), 'Commande acceptée. Vos commandes sont visibles.');

@@ -79,7 +79,7 @@ export function ProfilePinModal({
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.pinModalOverlay}>
       <Animated.View entering={FadeInDown} style={styles.pinModalCard}>
         <View style={styles.pinModalHeader}>
-          <Text style={styles.pinModalTitle}>Modifier le code PIN</Text>
+          <Text style={styles.pinModalTitle}>Modifier le mot de passe</Text>
           <TouchableOpacity onPress={() => setPinModalVisible(false)}>
             <Ionicons name="close" size={24} color={Colors.gray[500]} />
           </TouchableOpacity>
@@ -93,10 +93,10 @@ export function ProfilePinModal({
           {pinStep === 'oldPin' ? (
             <>
               <Text style={styles.pinModalSubtitle}>
-                Entrez votre mot de passe PIN actuel pour confirmer votre identité
+                Saisissez votre mot de passe actuel à quatre chiffres.
               </Text>
               <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>Mot de passe PIN actuel</Text>
+                <Text style={styles.inputLabel}>Mot de passe actuel</Text>
                 <View style={styles.inputWrapper}>
                   <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
                   <TextInput
@@ -107,7 +107,7 @@ export function ProfilePinModal({
                     secureTextEntry
                     value={oldPin}
                     onChangeText={handleOldPinChange}
-                    placeholder="Entrez votre PIN actuel (4 chiffres)"
+                    placeholder="Votre mot de passe à quatre chiffres"
                     placeholderTextColor={Colors.gray[400]}
                   />
                 </View>
@@ -123,7 +123,7 @@ export function ProfilePinModal({
                 <Text style={styles.pinModalButtonText}>Continuer</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.pinModalForgotButton} onPress={handleForgotPin}>
-                <Text style={styles.pinModalForgotText}>{"J'ai oublié mon PIN"}</Text>
+                <Text style={styles.pinModalForgotText}>Mot de passe oublié ?</Text>
               </TouchableOpacity>
               <Text style={[styles.inputLabelSmall, { color: Colors.gray[700] }]}>
                 {otpDeliveryCopy.forgotPinHint}
@@ -169,9 +169,9 @@ export function ProfilePinModal({
             </>
           ) : (
             <>
-              <Text style={styles.pinModalSubtitle}>Créez un nouveau mot de passe PIN à 4 chiffres</Text>
+              <Text style={styles.pinModalSubtitle}>Choisissez un nouveau mot de passe à quatre chiffres.</Text>
               <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>Nouveau mot de passe PIN</Text>
+                <Text style={styles.inputLabel}>Nouveau mot de passe</Text>
                 <View style={styles.inputWrapper}>
                   <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
                   <TextInput
@@ -182,13 +182,13 @@ export function ProfilePinModal({
                     secureTextEntry
                     value={newPin}
                     onChangeText={handleNewPinChange}
-                    placeholder="Créez un nouveau PIN (4 chiffres)"
+                    placeholder="Quatre chiffres"
                     placeholderTextColor={Colors.gray[400]}
                   />
                 </View>
               </View>
               <View style={styles.formSection}>
-                <Text style={styles.inputLabel}>Confirmer le nouveau mot de passe PIN</Text>
+                <Text style={styles.inputLabel}>Confirmer le mot de passe</Text>
                 <View style={styles.inputWrapper}>
                   <Ionicons name="lock-closed" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
                   <TextInput
@@ -199,7 +199,7 @@ export function ProfilePinModal({
                     secureTextEntry
                     value={newPinConfirm}
                     onChangeText={handleNewPinConfirmChange}
-                    placeholder="Confirmez votre nouveau PIN (4 chiffres)"
+                    placeholder="Saisissez les mêmes quatre chiffres"
                     placeholderTextColor={Colors.gray[400]}
                   />
                 </View>
@@ -219,7 +219,7 @@ export function ProfilePinModal({
                 {isUpdatingPin || isUpdatingPinWithOtp ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={styles.pinModalButtonText}>Modifier le PIN</Text>
+                  <Text style={styles.pinModalButtonText}>Enregistrer le mot de passe</Text>
                 )}
               </TouchableOpacity>
             </>

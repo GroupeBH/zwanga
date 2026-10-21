@@ -15,6 +15,7 @@ import { clearRideAnnouncementSession, reconcileRideAnnouncement, silenceRestore
 import { beginRideSpeechEntry, clearRideSpeechEntry, hasPendingRideSpeechEntry, subscribeRideSpeechEntry } from '@/services/rideEntryAnnouncement';
 import { BACKGROUND_RIDE_RING_PREFIX, clearBackgroundRideRinging, reconcileBackgroundRideRinging } from '@/services/backgroundRideRinging';
 import { boundedRideAudio, reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
+import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
 
 /** Restores an alert at app entry, then acknowledges passenger responses only
  * on the matching trip. Driver responses are acknowledged by mutation results. */
@@ -38,9 +39,12 @@ export function useRideRinging(userId: string | undefined) {
         stopRideAnnouncement(); stopForegroundRideSound();
         if (current()) void reconcileBackgroundRideRinging(userId);
       } else {
-        if (!pendingRideAlerts(userId).length) stopForegroundRideSound();
+        const pending = pendingRideAlerts(userId);
+        if (!pending.length) stopForegroundRideSound();
         reconcileRideAnnouncement(userId);
-        if (pendingRideAlerts(userId).length) void startForegroundRideSound().then(() => { if (current()) reconcileRideAnnouncement(userId); });
+        if (pending.length) void startForegroundRideSound(pending[pending.length - 1].key)
+          .then(() => { if (current()) reconcileRideAnnouncement(userId); })
+          .catch(() => reportRideAudioFailure('RING_RECONCILE_FAILED'));
       }
     };
     let restoring = false, restoreAgain = false, restoreEpoch = 0;
@@ -59,6 +63,9 @@ export function useRideRinging(userId: string | undefined) {
         for (const item of native) {
           if (!canRestore()) return;
           try {
+            if (isSelfDriverAlert(item.notification.data, userId)) {
+              await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
+            }
             const alert = parseRideAlert(item.notification.data);
             if (!alert || alert.recipientId !== userId) continue;
             silenceRestoredRideAnnouncement(alert.key);
@@ -81,6 +88,9 @@ export function useRideRinging(userId: string | undefined) {
         for (const item of remote) {
           if (!canRestore()) return;
           try {
+            if (isSelfDriverAlert(item.request.content.data, userId)) {
+              await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
+            }
             const alert = parseRideAlert(item.request.content.data);
             if (!alert || alert.recipientId !== userId) continue;
             silenceRestoredRideAnnouncement(alert.key);

@@ -1,120 +1,104 @@
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import * as Location from 'expo-location';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { getTokenSessionVersion } from '@/services/tokenSession';
-import { ensureNearbyDriverLocation, isNearbyDriverLocationEnabled,
-  setNearbyDriverLocationEnabled } from '@/services/nearbyDriverLocation';
+import { useNearbyLocationPermission } from '@/hooks/profile/useNearbyLocationPermission';
+import { BackgroundLocationConsent } from '@/components/location/BackgroundLocationConsent';
 import { Colors } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { isDriverAccount } from '@/utils/accountRole';
+import { getNearbyDriverLocationHealth, subscribeNearbyDriverHealth } from '@/services/nearbyDriverLocationHealth';
 
-/** Disclosure precedes the OS permission prompt; no extra availability/vehicle workflow. */
+/** Explicit choice first, followed by the real system permission. */
 export function NearbyDriverLocationPermission({ available }: { available: boolean }) {
   const user = useAppSelector(selectUser);
   const userId = user?.id;
   const driver = isDriverAccount(user);
   const active = useScreenIsActive();
-  const [enabled, setEnabled] = useState(true);
-  const [permission, setPermission] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [loadError, setLoadError] = useState(false);
-  const [attempt, setAttempt] = useState(0);
-  const mounted = useRef(true);
-  const inFlight = useRef(false);
-  const identity = useRef(userId);
-  identity.current = userId;
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => { setBusy(false); setEnabled(true); setPermission(false); setLoaded(false); setMessage(''); }, [userId]);
+  const flow = useNearbyLocationPermission({ userId, driver, active, available });
+  const [deliveryMessage, setDeliveryMessage] = useState('');
   useEffect(() => {
-    let cancelled = false;
-    if (active && userId) {
-      setLoaded(false); setLoadError(false); setMessage('');
-      void Promise.all([isNearbyDriverLocationEnabled(userId), Location.getBackgroundPermissionsAsync()])
-        .then(([setting, result]) => {
-          if (!cancelled) { setEnabled(setting); setPermission(result.granted); setLoaded(true); }
-        }).catch(() => { if (!cancelled) setLoadError(true); });
-    }
-    return () => { cancelled = true; };
-  }, [active, userId, attempt]);
-
-  const toggle = async (disableOnly = false) => {
-    const canDisable = enabled && (permission || disableOnly);
-    if (!userId || !driver || !active || !loaded || inFlight.current || (!canDisable && !available)) return;
-    inFlight.current = true; setBusy(true); setMessage('');
-    const version = getTokenSessionVersion();
-    const current = () => mounted.current && identity.current === userId && version === getTokenSessionVersion();
-    try {
-      if (canDisable) {
-        await setNearbyDriverLocationEnabled(userId, false, version);
-        if (current()) setEnabled(false);
-        return;
-      }
-      let foreground = await Location.getForegroundPermissionsAsync();
-      if (!current()) return;
-      if (!foreground.granted) foreground = await Location.requestForegroundPermissionsAsync();
-      if (!current()) return;
-      if (!foreground.granted) { setMessage('Autorisez la localisation dans les réglages du téléphone.'); return; }
-      let background = await Location.getBackgroundPermissionsAsync();
-      if (!current()) return;
-      if (!background.granted) background = await Location.requestBackgroundPermissionsAsync();
-      if (!current()) return;
-      if (!background.granted) {
-        setMessage('Choisissez « Toujours autoriser » dans les réglages. Les commandes restent accessibles dans l’app.');
-        return;
-      }
-      await setNearbyDriverLocationEnabled(userId, true, version);
-      if (!current()) return;
-      const saved = await isNearbyDriverLocationEnabled(userId);
-      if (!current()) return;
-      setEnabled(saved); setPermission(true);
-      if (AppState.currentState === 'active') await ensureNearbyDriverLocation(userId);
-    } catch {
-      if (current()) setMessage('Localisation indisponible. Vérifiez les autorisations et réessayez.');
-    } finally {
-      inFlight.current = false;
-      if (current()) setBusy(false);
-    }
-  };
+    setDeliveryMessage('');
+    if (!active || !userId || !driver || !flow.enabled || !flow.permission) return;
+    const refresh = () => {
+      const health = getNearbyDriverLocationHealth(userId);
+      if (health.lastSentAt === null) { setDeliveryMessage('En attente du premier envoi de votre position.'); return; }
+      const minutes = Math.max(0, Math.floor((Date.now() - health.lastSentAt) / 60_000));
+      const oldPosition = health.lastSentFixAt === null || Date.now() - health.lastSentFixAt > 6 * 60_000;
+      setDeliveryMessage(oldPosition
+        ? 'Votre position est ancienne. Vérifiez le GPS et votre connexion.'
+        : minutes === 0 ? 'Position envoyée il y a moins d’une minute.'
+          : `Dernier envoi : il y a ${minutes} min.`);
+    };
+    refresh();
+    const unsubscribe = subscribeNearbyDriverHealth(refresh);
+    const timer = setInterval(refresh, 30_000);
+    return () => { unsubscribe(); clearInterval(timer); };
+  }, [active, driver, userId, flow.enabled, flow.permission]);
 
   if (!driver) return null;
-  const canDisable = enabled && permission;
-  const disabled = busy || !loaded || (!available && !canDisable);
+  const authorized = flow.loaded && flow.enabled && flow.permission;
+  const disabled = flow.busy || !flow.loaded || (!authorized && (!available || !flow.consent));
+  const settingsChoice = Platform.OS === 'ios' ? '« Toujours »' : '« Toujours autoriser »';
   return <View style={styles.section}>
-    <Text style={styles.title}>Recevoir aussi en veille</Text>
-    <Text style={styles.copy}>Avec votre autorisation, Zwanga actualise votre position environ toutes les 3 minutes, même en veille, pour recevoir les commandes proches. Le téléphone peut retarder ces mises à jour.</Text>
-    <Text accessibilityLiveRegion="polite" style={styles.status}>{loadError ? 'Impossible de vérifier les autorisations.' : !loaded ? 'Vérification des autorisations…' : !enabled
-      ? 'Désactivé dans Zwanga. Votre choix reste mémorisé.' : permission
-        ? 'Suivi automatique autorisé, sans activation supplémentaire.'
-        : 'Autorisation du téléphone nécessaire. Seule votre position récente dans l’app est utilisée.'}</Text>
-    {loadError ? <TouchableOpacity accessibilityRole="button" style={styles.button}
-      onPress={() => { setLoadError(false); setAttempt(value => value + 1); }}>
+    <Text style={styles.title}>Recevoir les demandes près de vous</Text>
+    <Text style={styles.copy}>Même quand l’écran est éteint ou que vous utilisez une autre application.</Text>
+    <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes pour trouver les demandes proches. Le téléphone peut retarder ces envois.</Text>
+    {authorized ? <>
+      <View style={styles.authorized}>
+        <View style={styles.dot} />
+        <Text accessibilityLiveRegion="polite" style={styles.authorizedText}>Autorisé sur ce téléphone</Text>
+      </View>
+      {deliveryMessage ? <Text accessibilityLiveRegion="polite" style={styles.status}>{deliveryMessage}</Text> : null}
+    </> : flow.loaded && !flow.loadError ? <>
+      {!flow.enabled && <Text style={styles.status}>Vous avez désactivé cette option. Vous pouvez la réactiver ici.</Text>}
+      <BackgroundLocationConsent checked={flow.consent} disabled={flow.busy || !available}
+        onChange={flow.setConsent} />
+      <Text style={styles.step}>{flow.permission ? 'Il reste à valider' : 'Puis, sur le téléphone'}</Text>
+      <Text style={styles.copy}>{flow.permission
+        ? 'Le téléphone a déjà donné son autorisation. Validez pour relancer l’envoi de position hors trajet.'
+        : flow.settingsRequired
+        ? `Dans les réglages de Zwanga, ouvrez « Autorisations » ou « Position », puis choisissez ${settingsChoice}. Revenez ensuite dans Zwanga.`
+        : `Autorisez d’abord votre position si le téléphone le demande, puis choisissez ${settingsChoice}. La case seule ne donne pas cette autorisation.`}</Text>
+      {!available && <Text style={styles.status}>Le service est momentanément indisponible. Vous pourrez réessayer plus tard.</Text>}
+    </> : <Text accessibilityLiveRegion="polite" style={styles.status}>{flow.loadError
+      ? 'Impossible de vérifier les autorisations.' : 'Vérification des autorisations…'}</Text>}
+    {flow.loadError ? <TouchableOpacity accessibilityRole="button" style={styles.button} onPress={flow.retry}>
       <Text style={styles.buttonText}>Réessayer</Text>
-    </TouchableOpacity> : <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled, busy }}
-      disabled={disabled} onPress={() => { void toggle(); }}
-      style={[styles.button, canDisable && styles.secondary]}>
-      {busy ? <ActivityIndicator color={canDisable ? Colors.primary : Colors.white} />
-        : <Text style={[styles.buttonText, canDisable && styles.secondaryText]}>{canDisable
-          ? 'Désactiver la localisation en veille' : permission ? 'Réactiver le suivi en veille' : 'Autoriser la localisation en veille'}</Text>}
+    </TouchableOpacity> : <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled, busy: flow.busy }}
+      disabled={disabled} onPress={() => { void (authorized ? flow.disable()
+        : flow.settingsRequired ? flow.openSettings() : flow.authorize()); }}
+      style={[styles.button, authorized && styles.secondary, disabled && styles.disabled]}>
+      {flow.busy ? <View style={styles.progress}>
+        <ActivityIndicator color={authorized ? Colors.gray[700] : Colors.white} />
+        <Text style={[styles.buttonText, authorized && styles.secondaryText]}>Un instant…</Text>
+      </View> : <Text style={[styles.buttonText, authorized && styles.secondaryText]}>{authorized
+        ? 'Désactiver hors trajet' : flow.settingsRequired ? 'Ouvrir les réglages'
+          : flow.permission ? 'Activer et continuer' : 'Autoriser et continuer'}</Text>}
     </TouchableOpacity>}
-    {loaded && enabled && !permission ? <TouchableOpacity accessibilityRole="button"
-      disabled={busy} accessibilityState={{ disabled: busy }} style={styles.optOut}
-      onPress={() => { void toggle(true); }}>
-      <Text style={styles.optOutText}>Désactiver le suivi automatique</Text>
+    {!authorized || flow.busy ? <TouchableOpacity accessibilityRole="button" style={styles.optOut}
+      onPress={flow.defer}>
+      <Text style={styles.optOutText}>Pas maintenant</Text>
     </TouchableOpacity> : null}
-    {message ? <Text accessibilityLiveRegion="polite" style={styles.copy}>{message}</Text> : null}
+    <Text style={styles.footnote}>Facultatif. Vous pouvez utiliser l’application sans cette autorisation et changer d’avis ici à tout moment.</Text>
+    {flow.message ? <Text accessibilityLiveRegion="polite" style={styles.copy}>{flow.message}</Text> : null}
   </View>;
 }
 const styles = StyleSheet.create({
-  section: { gap: 12 }, title: { fontSize: 17, fontWeight: '600', color: Colors.gray[900] },
-  copy: { fontSize: 14, lineHeight: 20, color: Colors.gray[700] },
-  status: { fontSize: 13, lineHeight: 19, color: Colors.gray[600] },
-  button: { padding: 16, borderRadius: 14, backgroundColor: Colors.primary },
-  secondary: { backgroundColor: Colors.gray[100] }, secondaryText: { color: Colors.primary },
+  section: { gap: 14 }, title: { fontSize: 21, lineHeight: 28, fontWeight: '700', color: Colors.gray[900] },
+  copy: { fontSize: 15, lineHeight: 22, color: Colors.gray[700] },
+  status: { fontSize: 14, lineHeight: 20, color: Colors.gray[600] },
+  step: { fontSize: 14, fontWeight: '700', color: Colors.gray[900] },
+  authorized: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ACTION_COLORS.green },
+  authorizedText: { fontSize: 15, fontWeight: '600', color: Colors.gray[900] },
+  button: { minHeight: 54, padding: 16, borderRadius: 16, justifyContent: 'center', backgroundColor: ACTION_COLORS.orange },
+  secondary: { backgroundColor: Colors.gray[100] }, secondaryText: { color: Colors.gray[700] },
+  disabled: { opacity: 0.45 },
+  progress: { flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center' },
   optOut: { minHeight: 44, justifyContent: 'center' },
-  optOutText: { textAlign: 'center', fontSize: 14, color: Colors.gray[700] },
-  buttonText: { textAlign: 'center', fontSize: 14, fontWeight: '700', color: Colors.white },
+  optOutText: { textAlign: 'center', fontSize: 15, color: Colors.gray[700] },
+  buttonText: { textAlign: 'center', fontSize: 16, fontWeight: '700', color: Colors.white },
+  footnote: { fontSize: 13, lineHeight: 19, color: Colors.gray[600] },
 });

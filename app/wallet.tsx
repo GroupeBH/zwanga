@@ -206,6 +206,8 @@ export default function WalletScreen() {
       />
 
       <WalletTopUpModal
+        moneyPerToken={wallet.walletSummary?.withdrawal?.moneyPerToken}
+        paymentCurrency={wallet.walletSummary?.withdrawal?.currency}
         setActiveModal={wallet.setActiveModal}
         activeModal={wallet.activeModal}
         topUpMethod={wallet.topUpMethod}

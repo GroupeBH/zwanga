@@ -53,3 +53,19 @@ export function reportUnexpectedError(error: Error, componentStack?: string | nu
 }
 
 export const getStartupElapsedMs = () => Date.now() - startedAt;
+
+/** Callers supply only allow-listed entry labels and numeric measurements. */
+export function reportEntryDiagnostic(code: string, measurements: string, nonfatal: boolean) {
+  try {
+    const reporter = getReporter();
+    if (!reporter) return;
+    const instance = reporter.getCrashlytics();
+    reporter.log(instance, `[AppEntry] ${code} ${measurements}`);
+    // Ordinary offline/auth failures leave a breadcrumb, not a crash report.
+    if (nonfatal) {
+      const error = new Error(code);
+      error.name = 'AppEntryError';
+      reporter.recordError(instance, error);
+    }
+  } catch { /* Never block entry on a missing native reporter. */ }
+}

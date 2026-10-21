@@ -79,7 +79,7 @@ test('foreground notification presentation leaves sound to the shared player and
       '@/components/ui/DialogProvider': { useDialog: () => ({}) },
       '@/services/pushNotifications': {}, '@/services/backgroundNotificationTask': {},
       '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },
-      '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: () => ({ data: [] }), useReleaseOverdueDriverMutation: () => [() => {}] },
+      '@/store/api/tripRequestApi': { useGetMyActivityRequestsQuery: () => ({ data: [] }), useReleaseOverdueDriverMutation: () => [() => {}] },
       '@/store/hooks': { useAppDispatch: () => () => {}, useAppSelector: () => true },
       '@/store/selectors': { selectIsAuthenticated() {} }, '@/store/api/baseApi': {},
     });

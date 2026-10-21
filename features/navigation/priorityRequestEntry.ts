@@ -1,6 +1,7 @@
 import type { TripRequest } from '@/types';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
+import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
 
 // Explicit detail links, forms, chat, payment and navigation keep their own flow.
 export function canResumeRequestFromPath(path: string) {
@@ -18,6 +19,7 @@ export function selectWaitingRequest(requests: readonly TripRequest[], userId: s
 
 export function selectRequestAlert(alerts: readonly RideAlert[], userId: string, excluded: Set<string>) {
   return alerts.find(alert => alert.recipientId === userId && !excluded.has(alert.key) &&
+    !isSelfDriverAlert(alert.data, userId) &&
     (alert.kind === 'nearby' || alert.kind === 'dispatch') &&
     (!alert.expiresAt || Date.parse(alert.expiresAt) > Date.now()));
 }

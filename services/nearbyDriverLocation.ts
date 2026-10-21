@@ -10,6 +10,7 @@ import { decodeJWT } from '@/utils/jwt';
 import { isUsableNearbyDriverPosition, NEARBY_DRIVER_INTERVAL_MS } from './nearbyDriverLocationPolicy';
 import { sendNearbyDriverPosition } from './nearbyDriverPositionDelivery';
 import { invalidateNativeRideLocation, publishNativeRideLocation } from './rideLocationStream';
+import { getNearbyDriverLocationHealth, needsNearbyDriverNativeRecovery, recordNearbyDriverHealth } from './nearbyDriverLocationHealth';
 
 export const NEARBY_DRIVER_LOCATION_TASK = 'zwanga-nearby-driver-location-v1';
 // Keep the former key for native callbacks from an already registered installation.
@@ -50,6 +51,7 @@ export async function hasActiveRideLocationSession() {
 }
 async function stopNative() {
   permissionCheck = undefined;
+  if (owner) recordNearbyDriverHealth(owner, { nativeStartedAt: null });
   if (owner) invalidateNativeRideLocation(`nearby:${owner}`);
   if (Platform.OS !== 'web' && await TaskManager.isAvailableAsync() &&
     await Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK)) {
@@ -75,14 +77,15 @@ export function clearNearbyDriverLocation({ endSession = true }: { endSession?: 
   });
 }
 
-export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean, version = getTokenSessionVersion()) {
-  if (version !== getTokenSessionVersion()) return Promise.resolve();
+export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean, version = getTokenSessionVersion(),
+  allowed: () => boolean = () => true) {
+  if (version !== getTokenSessionVersion() || !allowed()) return Promise.resolve();
   const generation = ++revision;
   return serial(async () => {
-    if (generation !== revision || version !== getTokenSessionVersion()) return;
+    if (generation !== revision || version !== getTokenSessionVersion() || !allowed()) return;
     const { accessToken } = await getTokens({ throwOnError: true });
     const claims = accessToken ? decodeJWT(accessToken) : null;
-    if (generation !== revision || version !== getTokenSessionVersion() ||
+    if (generation !== revision || version !== getTokenSessionVersion() || !allowed() ||
       (claims?.sub ?? claims?.userId) !== userId) return;
     if (!enabled) {
       if (owner) invalidateNativeRideLocation(`nearby:${owner}`);
@@ -93,7 +96,13 @@ export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean,
         finally { await stopNative(); changed(); }
       }
     } else {
+      const wasEnabled = await readEnabled(userId);
+      if (generation !== revision || version !== getTokenSessionVersion() || !allowed()) return;
       await AsyncStorage.removeItem(disabledKey(userId));
+      // A native storage call cannot be aborted. Restore an earlier opt-out if
+      // the UI cancelled while the write was in flight, before queued work runs.
+      if (!allowed() && !wasEnabled) await AsyncStorage.setItem(disabledKey(userId), '1');
+      if (!allowed()) return;
       if (generation !== revision || version !== getTokenSessionVersion()) return;
       preference = { userId, disabled: false }; changed();
     }
@@ -114,10 +123,10 @@ function callbackPermission(version: number, generation: number) {
 }
 
 /** Automatic for authorized drivers unless explicitly disabled; never requests OS permission. */
-export function ensureNearbyDriverLocation(userId: string) {
+export function ensureNearbyDriverLocation(userId: string, allowed: () => boolean = () => true) {
   const generation = revision, version = getTokenSessionVersion();
   return serial(async () => {
-    const current = () => generation === revision && version === getTokenSessionVersion() && version !== stoppedSessionVersion;
+    const current = () => allowed() && generation === revision && version === getTokenSessionVersion() && version !== stoppedSessionVersion;
     if (!current() || Platform.OS === 'web' || AppState.currentState !== 'active') return false;
     if (!(await readEnabled(userId)) || await hasActiveRideLocationSession()) {
       await stopNative(); return false;
@@ -144,7 +153,9 @@ export function ensureNearbyDriverLocation(userId: string) {
       // without registering another GPS task or restarting from the background.
       const options = await TaskManager.getTaskOptionsAsync<Location.LocationTaskOptions | null>(NEARBY_DRIVER_LOCATION_TASK);
       if (options?.timeInterval !== NEARBY_DRIVER_INTERVAL_MS ||
-          options?.deferredUpdatesInterval !== NEARBY_DRIVER_INTERVAL_MS) {
+          options?.deferredUpdatesInterval !== NEARBY_DRIVER_INTERVAL_MS ||
+          (Platform.OS === 'android' && options?.foregroundService?.killServiceOnDestroy !== false) ||
+          needsNearbyDriverNativeRecovery(userId)) {
         if (!current() || AppState.currentState !== 'active') return false;
         await stopNative(); running = false;
       }
@@ -162,11 +173,14 @@ export function ensureNearbyDriverLocation(userId: string) {
         foregroundService: Platform.OS === 'android' ? {
           notificationTitle: 'Commandes proches de vous',
           notificationBody: 'Position actualisée pour recevoir les commandes. Réglages dans Profil → Alertes conducteur.',
-          notificationColor: '#FF6B35', killServiceOnDestroy: true,
+          notificationColor: '#FF6B35', killServiceOnDestroy: false,
         } : undefined,
       });
     }
     if (!current()) { await stopNative(); return false; }
+    if (!running || getNearbyDriverLocationHealth(userId).nativeStartedAt === null) {
+      recordNearbyDriverHealth(userId, { nativeStartedAt: Date.now() }, version);
+    }
     return true;
   });
 }
@@ -174,7 +188,8 @@ export function ensureNearbyDriverLocation(userId: string) {
 export async function handleNearbyDriverLocations(locations: Location.LocationObject[]) {
   let latest: Location.LocationObject | undefined;
   for (const location of locations) {
-    if (Number.isFinite(location?.timestamp) && (!latest || location.timestamp > latest.timestamp)) latest = location;
+    if (location?.coords && isUsableNearbyDriverPosition(location) &&
+      (!latest || location.timestamp > latest.timestamp)) latest = location;
   }
   if (!latest || !isUsableNearbyDriverPosition(latest)) return;
   const version = getTokenSessionVersion(), generation = revision;
@@ -190,6 +205,9 @@ export async function handleNearbyDriverLocations(locations: Location.LocationOb
     return;
   }
   if (!current()) return;
+  recordNearbyDriverHealth(userId, {
+    lastFixAt: Math.max(latest.timestamp, getNearbyDriverLocationHealth(userId).lastFixAt ?? 0),
+  }, version);
   // Feed the map before any network wait; its independent freshness check still
   // rejects old fixes. Discovery can send them without presenting them as live GPS.
   publishNativeRideLocation(`nearby:${userId}`, latest);

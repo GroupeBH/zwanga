@@ -137,8 +137,8 @@ export function useProfilePin({
     if (oldPin.length !== 4) {
       showDialog({
         variant: 'danger',
-        title: 'PIN incomplet',
-        message: 'Veuillez entrer votre code PIN actuel (4 chiffres)',
+        title: 'Mot de passe incomplet',
+        message: 'Saisissez votre mot de passe actuel à quatre chiffres.',
       });
       return;
     }
@@ -164,8 +164,8 @@ export function useProfilePin({
     if (newPin.length !== 4) {
       showDialog({
         variant: 'danger',
-        title: 'PIN incomplet',
-        message: 'Veuillez entrer un PIN à 4 chiffres',
+        title: 'Mot de passe incomplet',
+        message: 'Saisissez un mot de passe à quatre chiffres.',
       });
       return;
     }
@@ -174,7 +174,7 @@ export function useProfilePin({
       showDialog({
         variant: 'danger',
         title: 'Confirmation incomplète',
-        message: 'Veuillez confirmer votre PIN',
+        message: 'Saisissez les mêmes quatre chiffres une deuxième fois.',
       });
       return;
     }
@@ -182,8 +182,8 @@ export function useProfilePin({
     if (newPin !== newPinConfirm) {
       showDialog({
         variant: 'danger',
-        title: 'PIN non correspondant',
-        message: 'Les deux codes PIN ne correspondent pas',
+        title: 'Chiffres différents',
+        message: 'Les deux mots de passe doivent être identiques.',
       });
       setNewPinConfirm('');
       pinConfirmInputRef.current?.focus();
@@ -193,8 +193,8 @@ export function useProfilePin({
     if (!forgotPinMode && oldPin === newPin) {
       showDialog({
         variant: 'danger',
-        title: 'PIN identique',
-        message: "Le nouveau PIN doit être différent de l'ancien PIN",
+        title: 'Même mot de passe',
+        message: 'Choisissez un mot de passe différent de l’ancien.',
       });
       return;
     }
@@ -230,8 +230,8 @@ export function useProfilePin({
 
       showDialog({
         variant: 'success',
-        title: 'PIN modifié',
-        message: 'Votre code PIN a été modifié. Connectez-vous avec votre nouveau PIN.',
+        title: 'Mot de passe modifié',
+        message: 'Connectez-vous avec votre nouveau mot de passe à quatre chiffres.',
       });
     } catch (error: any) {
       showDialog({
@@ -239,7 +239,7 @@ export function useProfilePin({
         title: 'Erreur',
         message: getApiErrorMessage(error, forgotPinMode
           ? otpDeliveryCopy.resetNotConfirmed
-          : 'Impossible de modifier le PIN pour le moment.'),
+          : 'Impossible de modifier le mot de passe pour le moment.'),
       });
       // A reset proof may already be consumed, including after a timeout.
       setOldPin('');

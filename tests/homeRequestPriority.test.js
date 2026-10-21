@@ -73,7 +73,7 @@ test('Home ranks the complete eligible list by driver position before applying i
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({ data: [] }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
-      useGetMyTripRequestsQuery: () => ({ data: [] }),
+      useGetMyActivityRequestsQuery: () => ({ data: [] }),
       useGetAvailableTripRequestsQuery: () => ({ data: requests }),
     },
   });

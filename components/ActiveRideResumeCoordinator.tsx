@@ -15,7 +15,7 @@ import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useActiveRideResume } from '@/hooks/navigation/useActiveRideResume';
 import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
 import { getTokenSessionVersion } from '@/services/tokenSession';
-import { isAppActive } from '@/services/appActivity';
+import { getAppActiveSince, isAppActive } from '@/services/appActivity';
 import { HomeRoleLoader } from '@/components/home/HomeRoleLoader';
 import { StyleSheet, View } from 'react-native';
 import { setRideSpeechEntryGate } from '@/services/rideEntryAnnouncement';
@@ -30,6 +30,7 @@ import { readEntryQuery, reportEntryFailure } from '@/services/entryRecovery';
 import { freshEntryData } from '@/features/navigation/entryFreshness';
 import { useEntryPresentation } from '@/hooks/navigation/useEntryPresentation';
 import { HomeEntryStatusContext } from '@/features/navigation/homeEntryStatusContext';
+import { primePendingBookingTrip } from '@/store/api/booking/entrySnapshot';
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
@@ -42,6 +43,11 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   const userId = useAppSelector(selectEntryUserId);
   const online = useAppSelector(state => state.zwangaApi.config.online);
   const active = useAppIsActive();
+  const sessionVersion = getTokenSessionVersion();
+  // Shared native timestamp, not the mount time of each child: a summary may
+  // already have finished when profile hydration lets entry render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const since = useMemo(() => getAppActiveSince(), [active, userId, sessionVersion]);
   const path = usePathname();
   const segments = useSegments();
   const navigation = useRootNavigationState();
@@ -51,7 +57,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   // Observe the shared discovery cache; do not add list subscriptions or a polling loop.
   const trips = tripApi.endpoints.getMyActivityTrips.useQueryState(undefined);
   const bookings = bookingApi.endpoints.getMyActivityBookings.useQueryState(undefined);
-  const requests = tripRequestApi.endpoints.getMyTripRequests.useQueryState(undefined);
+  const requests = tripRequestApi.endpoints.getMyActivityRequests.useQueryState(undefined);
   const activity = accountActivityApi.endpoints.getAccountActivity.useQueryState(userId ?? '');
   const reconciled = useSyncExternalStore(subscribeActivityReadiness, getActivityReadiness, getActivityReadiness);
   // Home owns the existing profile subscription. Observe it without a second fetch.
@@ -72,29 +78,30 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   }, [reduxStore, userId]);
   const readRequest = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
     stage: 'request-detail', signal, current: currentRead(),
-    reuse: () => freshEntryData(tripRequestApi.endpoints.getTripRequestById.select(id)(reduxStore.getState())),
+    reuse: () => freshEntryData(tripRequestApi.endpoints.getTripRequestById.select(id)(reduxStore.getState()), Date.now(), since),
     running: () => dispatch(tripRequestApi.util.getRunningQueryThunk('getTripRequestById', id)),
     start: () => dispatch(tripRequestApi.endpoints.getTripRequestById.initiate(id, { subscribe: false, forceRefetch: true })),
-  }), [dispatch, currentRead, reduxStore]);
+  }), [dispatch, currentRead, reduxStore, since]);
   const readDispatch = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
     stage: 'dispatch-detail', signal, current: currentRead(),
     start: () => dispatch(driverDispatchApi.endpoints.getDispatchOffer.initiate(id, { subscribe: false, forceRefetch: true })),
   }), [dispatch, currentRead]);
   const readTrip = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
     stage: 'trip-detail', signal, current: currentRead(),
-    reuse: () => freshEntryData(tripApi.endpoints.getTripById.select(id)(reduxStore.getState())),
+    reuse: () => freshEntryData(tripApi.endpoints.getTripById.select(id)(reduxStore.getState()), Date.now(), since),
     running: () => dispatch(tripApi.util.getRunningQueryThunk('getTripById', id)),
     start: () => dispatch(tripApi.endpoints.getTripById.initiate(id, { subscribe: false, forceRefetch: true })),
-  }), [dispatch, currentRead, reduxStore]);
+  }), [dispatch, currentRead, reduxStore, since]);
   const readBooking = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
     stage: 'booking-detail', signal, current: currentRead(),
-    reuse: () => freshEntryData(bookingApi.endpoints.getBookingById.select(id)(reduxStore.getState())),
+    reuse: () => freshEntryData(bookingApi.endpoints.getBookingById.select(id)(reduxStore.getState()), Date.now(), since),
     running: () => dispatch(bookingApi.util.getRunningQueryThunk('getBookingById', id)),
     start: () => dispatch(bookingApi.endpoints.getBookingById.initiate(id, { subscribe: false, forceRefetch: true })),
-  }), [dispatch, currentRead, reduxStore]);
+  }), [dispatch, currentRead, reduxStore, since]);
   const refreshActivity = useCallback(async () => {
     if (!userId || !isAppActive() || selectEntryUserId(reduxStore.getState()) !== userId) return;
     await readEntryQuery({ stage: 'activity', current: currentRead(),
+      running: () => dispatch(accountActivityApi.util.getRunningQueryThunk('getAccountActivity', userId)),
       start: () => dispatch(accountActivityApi.endpoints.getAccountActivity.initiate(userId, { subscribe: false, forceRefetch: true })) });
   }, [dispatch, reduxStore, userId, currentRead]);
   const retryProfile = useCallback(async () => {
@@ -103,27 +110,30 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
       start: () => dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { subscribe: false, forceRefetch: true })) });
   }, [dispatch, reduxStore, userId, currentRead]);
   const entryNavigationReady = Boolean(navigation?.key && segments[0] && !STARTUP_ROUTES.has(segments[0]));
-  const freshActivity = freshEntryData(activity);
-  const presentation = useEntryPresentation({ userId: authenticated ? userId : undefined, active, path,
+  const freshActivity = freshEntryData(activity, Date.now(), since);
+  const presentation = useEntryPresentation({ userId: authenticated ? userId : undefined, active, path, since,
     ready: entryNavigationReady && !isRideResumeEntryTransition(path), replace: router.replace,
     fastHome: Boolean(homeRoleReady && freshActivity && freshActivity.userId === userId && !freshActivity.hasLiveActivity &&
       !alerts.length && !dispatchStatus.data?.pendingOfferId),
   });
-  const resume = useActiveRideResume({ userId: authenticated ? userId : undefined, active, online, path,
+  const resume = useActiveRideResume({ userId: authenticated ? userId : undefined, active, online, path, since,
     // '/' can still be the startup Redirect. Let it finish before replacing the route,
     // otherwise its own Home redirect can overwrite a successful ride resume.
     ready: entryNavigationReady,
     overlayBusy, trips, bookings, activity, reconciled, readTrip, readBooking,
     replace: presentation.replace, refreshActivity,
     homeRole: { ready: homeRoleReady, failed: !profile.isFetching && (profile.isError || profile.isSuccess), retry: retryProfile } });
-  const requestResume = useRequestEntryResume({ userId: authenticated ? userId : undefined, active, online, path,
+  const requestResume = useRequestEntryResume({ userId: authenticated ? userId : undefined, active, online, path, since,
     ready: entryNavigationReady, overlayBusy, ridePending: resume.pending,
     hasOngoingRide: Boolean((typeof presentation.proposal === 'string' && isRideNavigationPath(presentation.proposal)) ||
       (resume.pending && userId && findRideToResume(userId, trips.data, bookings.data))),
     driver: homeRoleReady && isDriverAccount(profile.data), profileReady: homeRoleReady,
     pendingDispatchId: dispatchStatus.isSuccess && !dispatchStatus.isFetching && !dispatchStatus.isError && dispatchStatus.data?.enabled
       ? dispatchStatus.data.pendingOfferId : null,
-    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readDispatch, replace: presentation.replace, refresh: refreshActivity });
+    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readBooking, readDispatch,
+    verifyPriority: resume.verifyPriority,
+    prepareBookingEntry: snapshot => { if (userId) dispatch(primePendingBookingTrip(snapshot, userId)); },
+    replace: presentation.replaceRequest, refresh: refreshActivity });
   const entryPending = resume.pending || requestResume.pending;
   const failed = resume.pending ? resume.failed : requestResume.failed;
   const blocking = entryPending && !presentation.released && !failed && online;
@@ -135,7 +145,8 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   const onHome = path === '/' || path === '/(tabs)';
   const proposal = presentation.proposal;
   const actionLabel = proposal ? typeof proposal === 'string' && /\/(trip|booking)\/navigate\//.test(proposal)
-    ? 'Reprendre mon trajet' : 'Voir la demande' : undefined;
+    ? 'Reprendre mon trajet' : typeof proposal === 'object' && proposal.pathname === '/trip/manage/[id]'
+      ? 'Voir la réservation' : 'Voir la demande' : undefined;
   useEffect(() => {
     if (authenticated && userId) setRideSpeechEntryGate({ userId, path,
       blocked: !active || !entryNavigationReady || isRideResumeEntryTransition(path) || entryPending || overlayBusy });

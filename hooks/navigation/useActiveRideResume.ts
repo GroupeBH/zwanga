@@ -5,14 +5,15 @@ import { getTokenSessionVersion } from '@/services/tokenSession';
 import type { AccountActivity } from '@/store/api/accountActivityApi';
 import type { ReconciledActivity } from '@/services/activityReadiness';
 import { isEntryActivityListReady } from '@/features/navigation/entryActivityReadiness';
+import { isEntryReadFresh } from '@/features/navigation/entryFreshness';
 import { ENTRY_LOAD_TIMEOUT_MS, reportEntryFailure, type EntryStage } from '@/services/entryRecovery';
-import { ENTRY_CACHE_MAX_AGE_MS } from '@/features/navigation/entryFreshness';
 
 interface ActivityRead<T> { data?: T[]; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number }
 interface Options {
   userId?: string; active: boolean; online: boolean; ready: boolean; path: string; overlayBusy: boolean;
+  since?: number;
   trips: ActivityRead<Trip>; bookings: ActivityRead<Booking>;
-  activity?: { data?: AccountActivity; isSuccess: boolean; isFetching?: boolean; isError?: boolean; fulfilledTimeStamp?: number };
+  activity?: { data?: AccountActivity; isSuccess: boolean; isFetching?: boolean; isError?: boolean; startedTimeStamp?: number; fulfilledTimeStamp?: number };
   reconciled?: ReconciledActivity | null;
   readTrip: (id: string, signal?: AbortSignal) => Promise<Trip>; readBooking: (id: string, signal?: AbortSignal) => Promise<Booking>;
   replace: (path: `/trip/navigate/${string}` | `/booking/navigate/${string}`) => void | boolean;
@@ -22,7 +23,7 @@ interface Options {
 
 function getEntryActivity(options: Options, since: number) {
   return options.activity?.isSuccess && !options.activity.isFetching && !options.activity.isError &&
-    options.activity.data?.userId === options.userId && (options.activity.fulfilledTimeStamp ?? 0) >= since
+    options.activity.data?.userId === options.userId && isEntryReadFresh(options.activity, since)
     ? options.activity.data : undefined;
 }
 
@@ -30,10 +31,13 @@ function getEntryActivity(options: Options, since: number) {
 export function useActiveRideResume(options: Options) {
   const { userId, active } = options;
   const [, advance] = useState(0);
-  const entry = useMemo(() => ({ userId, active, since: Date.now() - ENTRY_CACHE_MAX_AGE_MS, consumed: false, pending: false,
+  const entryBoundary = options.since ?? active;
+  const entry = useMemo(() => ({ userId, since: options.since ?? Date.now(), consumed: false, pending: false,
     mounted: true, path: null as string | null, attempt: '', failed: false, redirecting: false,
     controller: undefined as AbortController | undefined, generation: 0, stage: 'activity' as EntryStage,
-    rejectedTrips: new Set<string>(), rejectedBookings: new Set<string>() }), [userId, active]);
+    // An inactive iOS interruption pauses verification without creating a visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    rejectedTrips: new Set<string>(), rejectedBookings: new Set<string>() }), [userId, entryBoundary]);
   const latest = useRef({ entry, options });
   latest.current = { entry, options };
   const finishEntry = useCallback(() => {
@@ -41,6 +45,13 @@ export function useActiveRideResume(options: Options) {
     entry.consumed = true;
     advance(value => value + 1);
   }, [entry]);
+
+  useEffect(() => {
+    if (active || entry.consumed) return;
+    // The native foreground guard can reject before React receives inactive.
+    // Clear that attempt too, even if its promise has already settled.
+    entry.generation++; entry.controller?.abort(); entry.pending = false; entry.attempt = ''; entry.failed = false;
+  }, [active, entry]);
   useEffect(() => {
     entry.mounted = true;
     return () => { entry.mounted = false; entry.controller?.abort(); };
@@ -69,6 +80,9 @@ export function useActiveRideResume(options: Options) {
       options.trips.data?.filter(trip => !entry.rejectedTrips.has(trip.id)),
       options.bookings.data?.filter(booking => !entry.rejectedBookings.has(booking.id)));
     if (!candidate) {
+      // Do not settle from old empty lists while this foreground's summary is
+      // still pending. An ongoing ride may have started on the other phone.
+      if (options.activity?.isFetching || (options.activity?.data && !options.activity.isError && !summary)) return;
       // Lists fetched before the live summary may still describe the pre-start
       // state. Wait for reconciliation instead of prematurely declaring no ride.
       const discovery = { userId, since: entry.since, summary, summaryTime: options.activity?.fulfilledTimeStamp, reconciled: options.reconciled };
@@ -182,5 +196,34 @@ export function useActiveRideResume(options: Options) {
     entry.consumed = true;
     advance(value => value + 1);
   }, [entry]);
-  return { pending, visible, failed, retry, dismiss };
+  // Secondary entry may still be verifying a reservation after our initial
+  // discovery settled. Recheck only at that handoff, never on settled Home.
+  const verifyPriority = useCallback(async (signal: AbortSignal) => {
+    const version = getTokenSessionVersion();
+    const valid = () => entry.mounted && latest.current.entry === entry && !signal.aborted &&
+      version === getTokenSessionVersion() && latest.current.options.active && latest.current.options.online &&
+      latest.current.options.ready && !latest.current.options.overlayBusy && latest.current.options.path === entry.path;
+    const select = () => findRideToResume(userId!,
+      latest.current.options.trips.data?.filter(trip => !entry.rejectedTrips.has(trip.id)),
+      latest.current.options.bookings.data?.filter(booking => !entry.rejectedBookings.has(booking.id)));
+    while (userId && valid()) {
+      const candidate = select();
+      if (!candidate) return null;
+      const reads = latest.current.options;
+      const destination = await verifyRideToResume(candidate, userId, {
+        trip: id => reads.readTrip(id, signal), booking: id => reads.readBooking(id, signal),
+      });
+      if (!valid()) throw new Error('STALE_ENTRY_PRIORITY');
+      if (!destination) {
+        if (candidate.bookingId) entry.rejectedBookings.add(candidate.bookingId);
+        else entry.rejectedTrips.add(candidate.tripId);
+        continue;
+      }
+      const current = select();
+      if (current?.role === candidate.role && current.tripId === candidate.tripId && current.bookingId === candidate.bookingId)
+        return destination;
+    }
+    throw new Error('STALE_ENTRY_PRIORITY');
+  }, [entry, userId]);
+  return { pending, visible, failed, retry, dismiss, verifyPriority };
 }

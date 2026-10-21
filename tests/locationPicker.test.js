@@ -31,7 +31,9 @@ function pickerApp(t, extra = {}) {
     '@/store': { store: {} },
     'expo-location': {
       Accuracy: { Balanced: 3 }, requestForegroundPermissionsAsync: () => { calls.permissions++; return io.permission(); },
-      getLastKnownPositionAsync: () => io.cached(), getCurrentPositionAsync: () => { calls.positions++; return io.position(); },
+      getLastKnownPositionAsync: () => io.cached(), watchPositionAsync: async (_options, callback, error) => {
+        calls.positions++; void io.position().then(callback, error); return { remove() {} };
+      },
     },
     '@/utils/googleMapsPlaces': {
       searchGoogleMapsPlaces: (...args) => { calls.search.push(args); return io.search(...args); },

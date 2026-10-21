@@ -8,23 +8,30 @@ import { tripApi } from '@/store/api/tripApi';
 import { MAX_ACCEPTABLE_GPS_ACCURACY_METERS } from '@/utils/navigation/routeProgress';
 import { DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS, DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS, DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS, DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS, evaluateDestinationAutoComplete, evaluateDestinationPassage } from '@/utils/navigation/tripCompletion';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { getTokenSessionVersion } from '../tokenSession';
 
 const BACKGROUND_LOCATION_FETCH_TIMEOUT_MS = 18_000;
 const BACKGROUND_COMPLETE_FAILURE_BACKOFF_MS = 45_000;
+export const TRIP_END_LOCATION_MAX_AGE_MS = 30_000;
 let completeTripRequestInFlight = false;
 let completeTripBackoffUntil = 0;
+let lastTrustedFix: { scope: string; timestamp: number; coordinate: { latitude: number; longitude: number } } | null = null;
 
-export async function completeTripFromBackground(tripId: string) {
+export async function completeTripFromBackground(tripId: string, observation: Location.LocationObject) {
   if (completeTripRequestInFlight || Date.now() < completeTripBackoffUntil) {
     return false;
   }
 
   completeTripRequestInFlight = true;
+  const version = getTokenSessionVersion();
 
   try {
-    if (!(await hasRecoverableSession())) {
+    if (!(await hasRecoverableSession({ throwOnError: true }))) {
       return false;
     }
+    const session = await getActiveDriverBackgroundTripSession();
+    if (version !== getTokenSessionVersion() || session?.tripId !== tripId ||
+      !Number.isFinite(getLocationEventTimeMs(observation))) return false;
 
     const send = async () => {
       const request = store.dispatch(tripApi.endpoints.completeTrip.initiate(tripId));
@@ -43,6 +50,7 @@ export async function completeTripFromBackground(tripId: string) {
 
     let result = await send();
     if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+      if (version !== getTokenSessionVersion() || !Number.isFinite(getLocationEventTimeMs(observation))) return false;
       result = await send();
     }
 
@@ -69,18 +77,21 @@ export async function completeTripFromBackground(tripId: string) {
 }
 
 export const isLocationAccurateEnoughForTripEnd = (location: Location.LocationObject) => {
-  const accuracy = location.coords.accuracy;
+  const accuracy = location?.coords?.accuracy;
   return (
-    typeof accuracy !== 'number' ||
-    !Number.isFinite(accuracy) ||
+    typeof accuracy === 'number' &&
+    Number.isFinite(accuracy) &&
+    accuracy >= 0 &&
     accuracy <= MAX_ACCEPTABLE_GPS_ACCURACY_METERS
   );
 };
 
 export const getLocationEventTimeMs = (location: Location.LocationObject) => {
-  const timestamp = Number(location.timestamp);
+  const timestamp = location?.timestamp;
   const now = Date.now();
-  return Number.isFinite(timestamp) && timestamp > 0 && timestamp <= now ? timestamp : now;
+  // Never turn an invalid/future timestamp into a fresh observation.
+  return Number.isFinite(timestamp) && timestamp > 0 && timestamp <= now &&
+    now - timestamp <= TRIP_END_LOCATION_MAX_AGE_MS ? timestamp : NaN;
 };
 
 export async function evaluateBackgroundTripEnd(
@@ -93,17 +104,22 @@ export async function evaluateBackgroundTripEnd(
   }
 
   let nearDestinationSinceMs = session.nearDestinationSinceMs ?? null;
-  let previousDriverCoordinate = session.lastDriverCoordinate ?? null;
+  const scope = `${getTokenSessionVersion()}:${tripId}`;
+  // A durable checkpoint has no reliable observation time in older installs.
+  // Never infer a crossing from an arbitrarily old saved coordinate.
+  let previousDriverCoordinate = lastTrustedFix?.scope === scope &&
+    Date.now() - lastTrustedFix.timestamp <= TRIP_END_LOCATION_MAX_AGE_MS
+    ? lastTrustedFix.coordinate : null;
   let lastDistanceMeters: number | null = null;
   const sortedLocations = locations
-    .filter((location) => typeof location?.timestamp === 'number')
+    .filter((location) => location?.mocked !== true &&
+      isLocationAccurateEnoughForTripEnd(location) &&
+      Number.isFinite(getLocationEventTimeMs(location)))
     .sort((a, b) => a.timestamp - b.timestamp);
+  if (sortedLocations.length === 0) return false;
 
   for (const location of sortedLocations) {
-    if (!isLocationAccurateEnoughForTripEnd(location)) {
-      continue;
-    }
-
+    if (lastTrustedFix?.scope === scope && location.timestamp <= lastTrustedFix.timestamp) continue;
     const driverCoordinate = normalizeTripMapCoordinate(
       location.coords.latitude,
       location.coords.longitude,
@@ -111,6 +127,7 @@ export async function evaluateBackgroundTripEnd(
     if (!driverCoordinate) {
       continue;
     }
+    lastTrustedFix = { scope, timestamp: location.timestamp, coordinate: driverCoordinate };
 
     const évaluation = evaluateDestinationAutoComplete({
       destinationCoordinate: session.arrivalCoordinate,
@@ -137,7 +154,7 @@ export async function evaluateBackgroundTripEnd(
       continue;
     }
 
-    const completed = await completeTripFromBackground(tripId);
+    const completed = await completeTripFromBackground(tripId, location);
     if (completed) {
       console.log('[DriverBackgroundLocation] Trajet finalise en arrière-plan:', {
         tripId,

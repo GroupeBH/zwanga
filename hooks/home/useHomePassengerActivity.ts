@@ -6,7 +6,7 @@ import {
 } from '@/store/api/tripApi';
 import {
   useGetAvailableTripRequestsQuery,
-  useGetMyTripRequestsQuery,
+  useGetMyActivityRequestsQuery,
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
 import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch } from '@/hooks/useDisplayReads';
@@ -30,7 +30,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
   });
   const refetchMyBookings = useDisplayRefetch(enabled, 'activity', rawRefetchMyBookings);
 
-  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS, isSuccess: requestsReady } = useGetMyTripRequestsQuery(undefined, {
+  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS, isSuccess: requestsReady } = useGetMyActivityRequestsQuery(undefined, {
     ...sharedRequestsOptions,
     skip: !enabled || !currentUser?.id,
   });

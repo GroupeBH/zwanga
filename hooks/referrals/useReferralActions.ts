@@ -2,10 +2,11 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { useGetMyReferralSummaryQuery, useRequestReferralWithdrawalMutation } from '@/store/api/referralApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { copyReferralLink, shareReferralLink } from '@/utils/shareReferralLink';
-import React from 'react';
+import React, { useRef } from 'react';
 import { Keyboard } from 'react-native';
 import type { ReferralSummary } from '@/types';
 import { formatNumber } from '@/features/referrals/referralModel';
+import { validateReferralWithdrawal } from '@/features/referrals/referralWithdrawalValidation';
 
 interface Params {
   isSharing: boolean;
@@ -30,6 +31,7 @@ export function useReferralActions({
   setWithdrawalTokens,
   refreshAll,
 }: Params) {
+  const withdrawalInFlight = useRef(false);
   const handleShare = async () => {
     if (isSharing) return;
     setIsSharing(true);
@@ -69,56 +71,50 @@ export function useReferralActions({
   };
 
   const handleWithdrawal = async () => {
+    if (withdrawalInFlight.current) return;
     Keyboard.dismiss();
-    const tokens = Number(withdrawalTokens.replace(',', '.'));
-    if (!summary || !Number.isFinite(tokens) || tokens <= 0) {
-      showDialog({
-        variant: 'warning',
-        title: 'Montant invalide',
-        message: 'Entrez le nombre de jetons à retirer.',
-      });
+    const validation = validateReferralWithdrawal(withdrawalTokens, summary);
+    if (!validation.valid) {
+      showDialog({ variant: 'warning', title: validation.title, message: validation.message });
       return;
     }
-    if (tokens < summary.withdrawal.minimumTokens) {
-      showDialog({
-        variant: 'warning',
-        title: 'Minimum non atteint',
-        message: `Le retrait minimum est de ${formatNumber(summary.withdrawal.minimumTokens)} jetons.`,
-      });
-      return;
-    }
-    if (tokens > summary.balances.availableTokens) {
-      showDialog({
-        variant: 'warning',
-        title: 'Solde insuffisant',
-        message: 'Votre solde disponible ne couvre pas ce retrait.',
-      });
-      return;
-    }
-    if (!summary.withdrawal.kycApproved) {
-      showDialog({
-        variant: 'warning',
-        title: 'Vérification requise',
-        message: 'Vérifiez votre identité avant de retirer vos gains.',
-      });
-      return;
-    }
-
+    withdrawalInFlight.current = true;
     try {
-      const withdrawal = await requestWithdrawal({ tokens }).unwrap();
+      let currentSummary: ReferralSummary;
+      try {
+        currentSummary = await refetchSummary().unwrap();
+      } catch {
+        showDialog({ variant: 'warning', title: 'Solde indisponible', message: 'Impossible de vérifier votre solde disponible. Aucun retrait n’a été envoyé. Réessayez après actualisation.' });
+        return;
+      }
+      const freshValidation = validateReferralWithdrawal(withdrawalTokens, currentSummary);
+      if (!freshValidation.valid) {
+        showDialog({ variant: 'warning', title: freshValidation.title, message: freshValidation.message });
+        return;
+      }
+      const withdrawal = await requestWithdrawal({ tokens: freshValidation.tokens }).unwrap();
       setWithdrawalTokens('');
-      await refreshAll();
+      await refreshAll().catch(() => undefined);
+      if (withdrawal.status === 'failed' || withdrawal.status === 'cancelled') {
+        showDialog({ variant: 'danger', title: 'Retrait non abouti', message: withdrawal.failureReason || 'Le versement n’a pas abouti. Consultez l’historique et votre solde disponible avant de réessayer.' });
+        return;
+      }
       showDialog({
         variant: 'success',
-        title: 'Retrait transmis',
-        message: `Le prestataire traite le versement de ${formatNumber(withdrawal.amount)} ${withdrawal.currency} vers votre numéro Mobile Money.`,
+        title: withdrawal.status === 'succeeded' ? 'Retrait effectué' : 'Retrait transmis',
+        message: withdrawal.status === 'succeeded'
+          ? `Le versement de ${formatNumber(withdrawal.amount)} ${withdrawal.currency} a été confirmé.`
+          : `Le prestataire traite le versement de ${formatNumber(withdrawal.amount)} ${withdrawal.currency} vers votre numéro Mobile Money.`,
       });
     } catch (error) {
+      await refreshAll().catch(() => undefined);
       showDialog({
         variant: 'danger',
         title: 'Retrait impossible',
-        message: getApiErrorMessage(error, 'Impossible de lancer ce retrait pour le moment.'),
+        message: getApiErrorMessage(error, 'La confirmation du retrait n’a pas été reçue. Vérifiez l’historique avant de réessayer pour éviter un double retrait.'),
       });
+    } finally {
+      withdrawalInFlight.current = false;
     }
   };
 

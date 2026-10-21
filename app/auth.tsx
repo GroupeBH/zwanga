@@ -45,7 +45,7 @@ export default function AuthScreen() {
       />
 
       {form.isResumingProfile && form.step === 'pin' && <Text style={{ paddingHorizontal: 20, paddingVertical: 8 }}>
-        Votre profil a été conservé. Par sécurité, saisissez de nouveau votre PIN pour poursuivre.
+        Votre profil a été conservé. Saisissez de nouveau votre mot de passe à quatre chiffres pour poursuivre.
       </Text>}
       <KeyboardAvoidingView
         // Android already resizes this activity (adjustResize); avoid a second inset.
@@ -132,6 +132,9 @@ export default function AuthScreen() {
             <PinStep
               keyboardVisible={keyboard.keyboardVisible}
               mode={form.mode}
+              error={phoneActions.pinLoginError}
+              phone={form.phone}
+              onChangePhone={() => { if (!phoneActions.isPinLoginInFlight()) navigation.handlePreviousStep(); }}
               pin={form.pin}
               pinConfirm={form.pinConfirm}
               pinInputRef={form.pinInputRef}

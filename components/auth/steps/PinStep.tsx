@@ -8,6 +8,7 @@ import { AuthMode } from '../types';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { AuthCodeHeading } from '../AuthCodeHeading';
 import { authCodeStyles as codeStyles } from '@/features/auth/authCode.styles';
+import { PasswordCodeInput } from '../PasswordCodeInput';
 
 interface PinStepProps {
   mode: AuthMode;
@@ -21,6 +22,9 @@ interface PinStepProps {
   onForgotPin?: () => void;
   isLoading: boolean;
   keyboardVisible?: boolean;
+  error?: string | null;
+  phone?: string;
+  onChangePhone?: () => void;
 }
 
 export function PinStep({
@@ -35,12 +39,14 @@ export function PinStep({
   onForgotPin,
   isLoading,
   keyboardVisible = false,
+  error,
+  phone,
+  onChangePhone,
 }: PinStepProps) {
   const isLoginValid = mode === 'login' && pin.length === 4;
   const isSignupValid = mode === 'signup' && pin.length === 4 && pinConfirm.length === 4;
   const isValid = mode === 'login' ? isLoginValid : isSignupValid;
   const isSignup = mode === 'signup';
-  const pinSlots = [0, 1, 2, 3];
 
   const renderPinInput = (
     value: string,
@@ -49,48 +55,9 @@ export function PinStep({
     accessibilityLabel: string,
     compact = false
   ) => (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      style={styles.pinEntryContainer}
-      onPress={() => inputRef.current?.focus()}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      disabled={isLoading}
-    >
-      <TextInput
-        ref={inputRef}
-        style={styles.pinHiddenInput}
-        keyboardType="number-pad"
-        maxLength={4}
-        secureTextEntry
-        value={value}
-        onChangeText={onChangeText}
-        textContentType="password"
-        autoComplete="off"
-        editable={!isLoading}
-      />
-      <View style={[styles.pinCodeContainer, compact && styles.pinCodeContainerCompact, !isSignup && codeStyles.pinRow]} pointerEvents="none">
-        {pinSlots.map((slot) => (
-          <View
-            key={`${accessibilityLabel}-${slot}`}
-            style={[
-              styles.pinInput,
-              compact && styles.pinInputCompact,
-              !isSignup && codeStyles.pinBox,
-              value[slot] ? styles.pinInputFilled : null,
-            ]}
-          >
-            <Text style={[
-              styles.pinDot,
-              compact && styles.pinDotCompact,
-              value[slot] ? styles.pinDotFilled : styles.pinDotEmpty,
-            ]}>
-              •
-            </Text>
-          </View>
-        ))}
-      </View>
-    </TouchableOpacity>
+    <PasswordCodeInput value={value} inputRef={inputRef} onChange={onChangeText}
+      label={accessibilityLabel} compact={compact} login={!isSignup} disabled={isLoading}
+      error={!isSignup ? error : null} />
   );
 
   return (
@@ -108,18 +75,26 @@ export function PinStep({
           </View>
         </View>
         <Text style={[styles.heroTitle, styles.pinSignupTitle]}>
-          Créez votre mot de passe PIN
+          Créez votre mot de passe
         </Text>
         <Text style={[styles.heroSubtitle, styles.pinSignupSubtitle]}>
-          Choisissez 4 chiffres, puis confirmez-les.
+          Choisissez quatre chiffres, puis saisissez-les à nouveau.
         </Text>
-      </View> : <AuthCodeHeading title="Votre code PIN" subtitle="La connexion démarre dès la saisie des 4 chiffres."
+      </View> : <AuthCodeHeading title="Votre mot de passe" subtitle="Quatre chiffres. La connexion démarre au dernier chiffre."
         icon="lock-closed-outline" keyboardVisible={keyboardVisible} />}
 
       {mode === 'login' ? (
         // Mode login : un seul champ PIN
         <>
-          {renderPinInput(pin, pinInputRef, onPinChange, 'Code PIN à 4 chiffres')}
+          {phone && <View>
+            <Text style={codeStyles.phone}>{phone}</Text>
+            {onChangePhone && <TouchableOpacity style={codeStyles.changePhone} onPress={onChangePhone}
+              disabled={isLoading} accessibilityRole="button" accessibilityState={{ disabled: isLoading }}>
+              <Text style={codeStyles.secondaryText}>Changer de numéro</Text>
+            </TouchableOpacity>}
+          </View>}
+          {renderPinInput(pin, pinInputRef, onPinChange, 'Mot de passe à quatre chiffres')}
+          {error && <Text style={codeStyles.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
 
           <View style={codeStyles.actions}>
             <TouchableOpacity
@@ -142,8 +117,8 @@ export function PinStep({
             </TouchableOpacity>
             {onForgotPin && (
               <TouchableOpacity style={[codeStyles.action, codeStyles.secondaryAction]} onPress={onForgotPin} disabled={isLoading}
-                accessibilityRole="button" accessibilityLabel="J’ai oublié mon PIN" accessibilityState={{ disabled: isLoading }}>
-                <Text style={codeStyles.secondaryText}>PIN oublié ?</Text>
+                accessibilityRole="button" accessibilityLabel="J’ai oublié mon mot de passe" accessibilityState={{ disabled: isLoading }}>
+                <Text style={codeStyles.secondaryText}>Mot de passe oublié ?</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -153,13 +128,13 @@ export function PinStep({
         // Mode signup : deux champs PIN (création et confirmation)
         <View style={styles.pinSignupForm}>
           <View style={[styles.formSection, styles.pinSignupField]}>
-            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Mot de passe PIN</Text>
-            {renderPinInput(pin, pinInputRef, onPinChange, 'Nouveau code PIN à 4 chiffres', true)}
+            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Mot de passe à quatre chiffres</Text>
+            {renderPinInput(pin, pinInputRef, onPinChange, 'Nouveau mot de passe à quatre chiffres', true)}
           </View>
 
           <View style={[styles.formSection, styles.pinSignupField]}>
-            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Confirmer le PIN</Text>
-            {renderPinInput(pinConfirm, pinConfirmInputRef, onPinConfirmChange, 'Confirmation du code PIN à 4 chiffres', true)}
+            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Saisissez les mêmes chiffres</Text>
+            {renderPinInput(pinConfirm, pinConfirmInputRef, onPinConfirmChange, 'Confirmation du mot de passe à quatre chiffres', true)}
           </View>
 
           <TouchableOpacity
@@ -169,7 +144,7 @@ export function PinStep({
               isValid ? styles.mainButtonActive : styles.mainButtonDisabled,
             ]}
             onPress={onSubmit}
-            disabled={!isValid}
+            disabled={!isValid || isLoading}
           >
             <Text style={styles.mainButtonText}>Continuer</Text>
             <Ionicons name="arrow-forward" size={20} color="white" />

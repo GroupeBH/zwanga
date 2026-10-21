@@ -11,7 +11,7 @@ function fixture(overrides = {}, options = {}) {
   const AppState = { currentState: 'active', addEventListener: (_event, callback) => {
     listeners.add(callback); return { remove: () => listeners.delete(callback) };
   } };
-  const state = { permission: { status: 'granted', canAskAgain: true }, cached: fix, enabled: true };
+  const state = { permission: { status: 'granted', canAskAgain: true }, cached: fix, fresh: fix, enabled: true };
   const location = {
     Accuracy: { Balanced: 'balanced', High: 'high' }, PermissionStatus: { GRANTED: 'granted' },
     getForegroundPermissionsAsync: async () => { calls.push('get-permission'); return state.permission; },
@@ -19,7 +19,9 @@ function fixture(overrides = {}, options = {}) {
     hasServicesEnabledAsync: async () => state.enabled,
     watchPositionAsync: async (options, callback) => {
       const subscription = { options, callback, removed: false, remove() { this.removed = true; } };
-      watches.push(subscription); return subscription;
+      watches.push(subscription);
+      if (options.timeInterval === 1000 && state.fresh) queueMicrotask(() => callback(state.fresh));
+      return subscription;
     },
     getLastKnownPositionAsync: async options => { calls.push(['cached', options]); return state.cached; },
     getCurrentPositionAsync: async options => { calls.push(['current', options]); return fix; },
@@ -183,43 +185,45 @@ test('manual position in publication/request forms keeps cached, fresh and offli
   for (const cached of [true, false]) {
     const app = fixture({}, { autoRequest: false }); app.state.cached = cached ? fix : null;
     assert.equal(await app.render().getCurrentLocation(), fix);
-    assert.equal(app.watches.length, 0);
-    assert.equal(app.calls.some(call => call[0] === 'current'), !cached);
+    assert.equal(app.watches.length, cached ? 0 : 1);
+    assert.ok(app.watches.every(watch => watch.removed));
+    assert.equal(app.calls.some(call => call[0] === 'current'), false);
     assert.equal(app.calls.includes('request-permission'), false);
     app.hooks.unmount();
   }
   let cachedReads = 0;
-  const app = fixture({ getCurrentPositionAsync: async () => { throw new Error('GPS timeout'); },
+  const app = fixture({ watchPositionAsync: async () => { throw new Error('GPS unavailable'); },
     getLastKnownPositionAsync: async () => ++cachedReads === 1 ? null : fix }, { autoRequest: false });
   assert.equal(await app.render().getCurrentLocation(), fix);
   assert.equal(cachedReads, 2);
   app.hooks.unmount();
 });
 
-test('manual GPS timeout releases the caller and retries share the still-pending native request', async t => {
+test('manual GPS timeout stops its watch; retry can obtain a fresh position', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  const pending = deferred(); let nativeReads = 0;
-  const app = fixture({ getCurrentPositionAsync: () => { nativeReads++; return pending.promise; } }, { autoRequest: false });
-  app.state.cached = null;
+  const app = fixture({}, { autoRequest: false });
+  app.state.cached = null; app.state.fresh = null;
   const api = app.render();
   const first = api.getCurrentLocation();
   assert.equal(api.getCurrentLocation(), first, 'double tap shares the entire request');
   await tick(); t.mock.timers.tick(10_000); await tick();
   assert.equal(await first, null);
+  assert.equal(app.watches[0].removed, true);
+  app.state.fresh = fix;
   const second = api.getCurrentLocation();
-  await tick(); t.mock.timers.tick(10_000); await tick();
-  assert.equal(await second, null);
-  assert.equal(nativeReads, 1);
-  pending.resolve(fix); await tick();
-  assert.equal(app.actions.some(action => action.type === 'location/setLastKnownLocation'), false);
+  await tick();
+  assert.equal(await second, fix);
+  assert.equal(app.watches.length, 2);
+  assert.ok(app.watches.every(watch => watch.removed));
   app.hooks.unmount(); assert.equal(app.listeners.size, 0);
 });
 
 test('manual GPS timeout preserves the offline cached-position fallback', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let cachedReads = 0;
-  const app = fixture({ getCurrentPositionAsync: () => new Promise(() => {}),
+  const app = fixture({
     getLastKnownPositionAsync: async () => ++cachedReads === 1 ? null : fix }, { autoRequest: false });
+  app.state.fresh = null;
   const request = app.render().getCurrentLocation(); await tick();
   t.mock.timers.tick(10_000); await tick();
   assert.equal(await request, fix);
@@ -236,16 +240,15 @@ test('manual cached reads are also bounded if the native cache never answers', a
 });
 
 for (const leave of ['unmount', 'background', 'blur']) test(`manual lookup ignores late GPS after ${leave}`, async () => {
-  const pending = deferred();
-  const app = fixture({ getCurrentPositionAsync: () => pending.promise });
-  app.state.cached = null;
+  const app = fixture();
+  app.state.cached = null; app.state.fresh = null;
   const api = app.render(); await tick();
   const request = api.getCurrentLocation(); await tick();
   if (leave === 'unmount') app.hooks.unmount();
   else if (leave === 'background') app.setAppState('background');
   else { app.props.autoRequest = false; app.render(); }
   assert.equal(await request, null);
-  pending.resolve(fix); await tick();
+  app.watches.at(-1).callback(fix); await tick();
   assert.equal(app.actions.some(action => action.type === 'location/setLastKnownLocation'), false);
   if (leave !== 'unmount') app.hooks.unmount();
   assert.equal(app.listeners.size, 0);

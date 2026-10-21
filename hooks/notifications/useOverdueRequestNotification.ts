@@ -1,5 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetMyTripRequestsQuery, useReleaseOverdueDriverMutation } from '@/store/api/tripRequestApi';
+import { useGetMyActivityRequestsQuery, useReleaseOverdueDriverMutation } from '@/store/api/tripRequestApi';
 import type { TripRequest } from '@/types';
 import { extractTripRequestId } from '@/utils/notificationNavigation';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
@@ -16,7 +16,7 @@ interface Params {
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   currentUserRef: React.RefObject<User | undefined>;
   shownOverdueRequestsRef: React.RefObject<Set<string>>;
-  refetchMyTripRequests: ReturnType<typeof useGetMyTripRequestsQuery>['refetch'];
+  refetchMyTripRequests: ReturnType<typeof useGetMyActivityRequestsQuery>['refetch'];
 }
 
 export function useOverdueRequestNotification({

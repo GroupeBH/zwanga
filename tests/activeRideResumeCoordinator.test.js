@@ -7,25 +7,28 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 
 function fixture(t, passenger = false) {
   const hooks = hookHarness(), reads = [], routes = [], observed = [];
+  let foregroundSince = Date.now(), wasActive = true;
   const userId = passenger ? 'passenger' : 'driver';
   const trip = { id: 'trip', driverId: 'driver', status: 'ongoing' };
   const booking = { id: 'booking', tripId: trip.id, passengerId: 'passenger', status: 'accepted', trip };
   const env = { active: true, busy: false, segments: ['index'], path: '/', navigation: { key: 'root' },
     state: { auth: { isAuthenticated: true, user: { id: userId } }, zwangaApi: { config: { online: true } } },
-    trips: { data: passenger ? [] : [trip], isSuccess: true, fulfilledTimeStamp: 1 },
-    bookings: { data: passenger ? [booking] : [], isSuccess: true, fulfilledTimeStamp: 1 },
-    requests: { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
+    trips: { data: passenger ? [] : [trip], isSuccess: true, startedTimeStamp: 1, fulfilledTimeStamp: 1 },
+    bookings: { data: passenger ? [booking] : [], isSuccess: true, startedTimeStamp: 1, fulfilledTimeStamp: 1 },
+    requests: { data: [], isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
     profile: { data: { id: userId, role: passenger ? 'passenger' : 'driver' }, isSuccess: true },
     activity: { data: { userId, hasLiveActivity: true, passengerTrackingBookingId: passenger ? booking.id : null },
-      isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
+      isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
     request: undefined, pending: undefined, version: 0, dispatchStatus: {}, offer: undefined };
   const router = { replace: path => routes.push(path) };
   const store = { getState: () => env.state };
   const dispatch = action => {
+    if (typeof action === 'function') return action(dispatch, store.getState);
+    if (action.seed) { env.seeds = [...(env.seeds ?? []), ...action.seed]; return; }
     if (action.running) return env.pending;
     reads.push(action);
-    return { unwrap: async () => action.name === 'getTripById' ? trip : action.name === 'getTripRequestById' ? env.request
-      : action.name === 'getDispatchOffer' ? env.offer : booking };
+    return { unwrap: async () => action.name === 'getTripById' ? env.tripDetails?.[action.id] ?? trip : action.name === 'getTripRequestById' ? env.request
+      : action.name === 'getDispatchOffer' ? env.offer : env.bookingDetails?.[action.id] ?? booking };
   };
   // No query subscription functions: the coordinator must only observe existing
   // activity caches and verify one authenticated detail, never add discovery polls.
@@ -34,7 +37,7 @@ function fixture(t, passenger = false) {
       [listName]: { useQueryState: arg => { observed.push([category, arg]); return env[category]; } },
       [detailName]: { select: () => () => env.detailCache?.[detailName] ?? {}, initiate: (id, options) => ({ name: detailName, id, options }) },
     },
-    util: { getRunningQueryThunk: () => ({ running: true }) },
+    util: { getRunningQueryThunk: () => ({ running: true }), upsertQueryEntries: entries => ({ seed: entries }) },
   });
   const load = loader({
     react: { ...hooks.react, useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot() },
@@ -50,7 +53,7 @@ function fixture(t, passenger = false) {
     '@/store/selectors': { selectIsAuthenticated: state => state.auth.isAuthenticated },
     '@/store/api/tripApi': { tripApi: api('trips', 'getMyActivityTrips', 'getTripById') },
     '@/store/api/bookingApi': { bookingApi: api('bookings', 'getMyActivityBookings', 'getBookingById') },
-    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyTripRequests', 'getTripRequestById') },
+    '@/store/api/tripRequestApi': { tripRequestApi: api('requests', 'getMyActivityRequests', 'getTripRequestById') },
     '@/store/api/driverDispatchApi': { driverDispatchApi: { endpoints: { driverDispatchStatus: { useQueryState: () => env.dispatchStatus }, getDispatchOffer: {
       initiate: (id, options) => ({ name: 'getDispatchOffer', id, options }),
     } } } },
@@ -67,13 +70,88 @@ function fixture(t, passenger = false) {
       subscribe: () => () => {}, isBusy: () => env.busy,
     } }) },
     '@/services/tokenSession': { getTokenSessionVersion: () => env.version },
-    '@/services/appActivity': { isAppActive: () => env.active },
+    '@/services/appActivity': { isAppActive: () => env.active, getAppActiveSince: () => foregroundSince },
   });
   const Component = load('components/ActiveRideResumeCoordinator.tsx').ActiveRideResumeCoordinator;
   t.after(() => hooks.unmount());
-  const wrapper = () => hooks.render(() => Component({ children: 'navigator' }));
-  return { env, trip, reads, routes, observed, wrapper, speechEntry: load('services/rideEntryAnnouncement.ts'), render: () => wrapper().props.children[1] || null };
+  const wrapper = () => {
+    if (env.active && !wasActive) foregroundSince = Date.now();
+    wasActive = env.active;
+    return hooks.render(() => Component({ children: 'navigator' }));
+  };
+  return { env, trip, booking, reads, routes, observed, wrapper, alerts: load('services/rideAlertSession.ts'),
+    speechEntry: load('services/rideEntryAnnouncement.ts'), render: () => wrapper().props.children[1] || null };
 }
+
+test('a new reservation opens trip management with the passenger first, without a notification or extra discovery', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)'];
+  Object.assign(f.trip, { status: 'upcoming', departureTime: new Date(200000).toISOString(),
+    reservationSummary: { pendingBookingIds: ['booking'], acceptedCount: 0 } });
+  f.booking.status = 'pending'; f.env.trips.fulfilledTimeStamp = 101000;
+  Object.assign(f.env.activity.data, { trips: { count: 1 }, bookings: { count: 0 }, requests: { count: 0 } });
+  f.render(); f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
+  assert.deepEqual(f.reads, [{ name: 'getBookingById', id: 'booking', options: { subscribe: false, forceRefetch: true } }]);
+  f.env.path = '/trip/manage/trip'; assert.equal(f.render(), null);
+  f.env.path = '/'; f.render(); await flush(); assert.equal(f.routes.length, 1, 'can leave management voluntarily');
+});
+
+test('an ongoing driver or passenger ride always wins over an incoming booking alert', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  for (const passenger of [false, true]) {
+    const f = fixture(t, passenger); f.env.segments = ['(tabs)'];
+    f.env.profile.data.role = 'driver';
+    f.alerts.rememberRideAlert({ key: 'new-booking', kind: 'booking', id: 'new', recipientId: passenger ? 'passenger' : 'driver',
+      data: { type: 'new_booking', passengerId: 'someone-else' } });
+    f.render(); await flush(); f.render(); await flush();
+    assert.deepEqual(f.routes, [passenger ? '/booking/navigate/booking' : '/trip/navigate/trip']);
+    assert.deepEqual(f.reads.map(item => item.id), [passenger ? 'booking' : 'trip']);
+  }
+});
+
+test('an ongoing ride discovered DURING reservation verification wins for driver and passenger participation', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  for (const passenger of [false, true]) {
+    const f = fixture(t); f.env.segments = ['(tabs)'];
+    Object.assign(f.trip, { status: 'upcoming', departureTime: new Date(200000).toISOString(),
+      reservationSummary: { pendingBookingIds: ['booking'], acceptedCount: 0 } });
+    f.booking.status = 'pending'; f.env.trips.fulfilledTimeStamp = 101000;
+    Object.assign(f.env.activity.data, { trips: { count: 1 }, bookings: { count: 0 }, requests: { count: 0 } });
+    const slow = deferred(); f.env.pending = slow.promise;
+    f.render(); f.render(); await flush();
+    const live = { id: 'live', driverId: passenger ? 'other-driver' : 'driver', status: 'ongoing' };
+    if (passenger) {
+      const participation = { id: 'participation', passengerId: 'driver', tripId: live.id, status: 'accepted', trip: live };
+      f.env.bookings = { data: [participation], isSuccess: true, fulfilledTimeStamp: 101001 };
+      f.env.bookingDetails = { participation }; f.env.activity.data.bookings.count = 1;
+      f.env.activity.data.passengerTrackingBookingId = 'participation';
+    } else {
+      f.env.trips.data = [f.trip, live]; f.env.tripDetails = { live }; f.env.activity.data.trips.count = 2;
+    }
+    f.render(); slow.resolve(); await flush(); f.render(); await flush();
+    assert.deepEqual(f.routes, [passenger ? '/booking/navigate/participation' : '/trip/navigate/live']);
+    assert.equal(f.env.seeds, undefined, 'do not seed the lower priority destination');
+    f.env.path = passenger ? '/booking/navigate/participation' : '/trip/navigate/live'; f.render();
+    f.env.path = '/'; f.render(); await flush();
+    assert.equal(f.routes.length, 1, 'a voluntary Home return must remain possible');
+  }
+});
+
+test('the handoff checks the server and rejects a newly discovered but already completed ride', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)'];
+  Object.assign(f.trip, { status: 'upcoming', reservationSummary: { pendingBookingIds: ['booking'] } });
+  f.booking.status = 'pending'; f.env.trips.fulfilledTimeStamp = 101000;
+  Object.assign(f.env.activity.data, { trips: { count: 1 }, bookings: { count: 0 }, requests: { count: 0 } });
+  const slow = deferred(); f.env.pending = slow.promise; f.render(); f.render(); await flush();
+  const stale = { id: 'stale', driverId: 'driver', status: 'ongoing' };
+  f.env.trips.data = [f.trip, stale]; f.env.tripDetails = { stale: { ...stale, status: 'completed' } };
+  f.env.activity.data.trips.count = 2; f.render(); slow.resolve(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
+  assert.equal(f.reads.filter(read => read.id === 'stale').length, 1);
+  assert.equal(f.env.seeds[0].value.id, 'trip');
+});
 
 test('a status-only offer is verified by entry, but cannot replace ongoing guidance', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
@@ -193,7 +271,7 @@ test('one shared loader waits for both the Home role and the no-ride decision in
     f.env.trips = { isSuccess: false }; f.env.bookings = { isSuccess: false };
     assert.equal(f.wrapper().props.value, true);
     const profileReady = () => { f.env.profile = { data: { id: 'driver', role: 'driver' }, isSuccess: true }; };
-    const activityReady = () => { f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, fulfilledTimeStamp: Date.now() }; };
+    const activityReady = () => { f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() }; };
     (first === 'profile' ? profileReady : activityReady)();
     assert.equal(f.render().props.children.props.loadingLabel, 'Ouverture de Zwanga'); f.render();
     assert.equal(f.wrapper().props.value, true, 'one result alone must not reveal Home');
@@ -222,38 +300,36 @@ test('the authenticated token identity blocks Home while the profile is still hy
 test('a failed or foreign profile releases the cover for neutral Home, never a cached-role bypass', async t => {
   const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips = { isSuccess: false }; f.env.bookings = { isSuccess: false };
   f.env.profile = { data: { id: 'another', role: 'driver' }, isSuccess: true, isFetching: false };
-  f.render(); f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, fulfilledTimeStamp: Date.now() };
+  f.render(); f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   f.render(); assert.equal(f.render(), null); assert.equal(f.wrapper().props.value, false);
   assert.equal(Boolean(f.wrapper().props.children[0].props.value), false, 'no known-role banner on a foreign profile');
   await flush(); assert.deepEqual(f.reads, []);
   f.env.profile = { data: { id: 'driver', role: 'driver' }, isSuccess: true }; f.render(); assert.equal(f.render(), null);
 });
 
-test('slow entry releases Home after 2 seconds and proposes the result without navigating late', async t => {
+test('slow entry releases Home after 2 seconds, then opens the verified ongoing ride automatically', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   const f = fixture(t), pending = deferred(); f.env.segments = ['(tabs)']; f.env.pending = pending.promise;
   assert.ok(f.render()); t.mock.timers.tick(2000);
   assert.equal(f.render(), null); assert.equal(f.wrapper().props.value, false);
   assert.ok(f.wrapper().props.children[0].props.value, 'status is provided to the inline Home panel');
   pending.resolve(); await flush(); f.render(); await flush();
-  assert.deepEqual(f.routes, []);
-  const banner = f.wrapper().props.children[0].props.value;
-  assert.equal(banner.actionLabel, 'Reprendre mon trajet');
-  banner.onAction(); assert.deepEqual(f.routes, ['/trip/navigate/trip']);
+  assert.deepEqual(f.routes, ['/trip/navigate/trip']);
+  f.env.path = '/trip/navigate/trip'; assert.equal(f.render(), null);
 });
 
 test('recent verified detail avoids an entry GET but still checks ownership and terminal status', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   for (const patch of [{}, { driverId: 'other' }, { status: 'completed' }]) {
     const f = fixture(t); f.env.segments = ['(tabs)'];
-    f.env.detailCache = { getTripById: { data: { ...f.trip, ...patch }, isSuccess: true, fulfilledTimeStamp: 99999 } };
+    f.env.detailCache = { getTripById: { data: { ...f.trip, ...patch }, isSuccess: true, startedTimeStamp: 100000, fulfilledTimeStamp: 100000 } };
     f.render(); await flush();
     assert.deepEqual(f.reads, []);
     assert.deepEqual(f.routes, Object.keys(patch).length ? [] : ['/trip/navigate/trip']);
   }
 });
 
-test('a proposed ongoing ride retains priority over a dispatch after Home is revealed', async t => {
+test('late ongoing guidance retains priority over a dispatch after Home is revealed', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   const f = fixture(t), pending = deferred(); f.env.segments = ['(tabs)']; f.env.pending = pending.promise;
   f.env.dispatchStatus = { isSuccess: true, data: { enabled: true, pendingOfferId: 'offer' } };
@@ -262,8 +338,7 @@ test('a proposed ongoing ride retains priority over a dispatch after Home is rev
   f.render(); t.mock.timers.tick(2000); f.render(); pending.resolve(); await flush();
   f.render(); await flush(); f.render(); await flush();
   assert.deepEqual(f.reads.map(read => read.name), ['getTripById']);
-  assert.equal(f.wrapper().props.children[0].props.value.actionLabel, 'Reprendre mon trajet');
-  assert.deepEqual(f.routes, []);
+  assert.deepEqual(f.routes, ['/trip/navigate/trip']);
 });
 
 test('a signed-out or not-yet-mounted navigator cannot start ride verification', async t => {
@@ -284,4 +359,79 @@ test('queued verification after an existing read never leaks into a different se
     f.render(); pending.resolve(); await flush();
     assert.deepEqual(f.reads, [], change); assert.deepEqual(f.routes, [], change);
   }
+});
+
+test('a passenger waiting request replaces Home automatically even when its verification exceeds two seconds', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t, true), pending = deferred(); f.env.segments = ['(tabs)'];
+  f.env.bookings.data = []; f.env.pending = pending.promise;
+  Object.assign(f.env.activity.data, { passengerTrackingBookingId: null, trips: { count: 0 }, bookings: { count: 0 }, requests: { count: 1 } });
+  f.env.request = { id: 'order', passengerId: 'passenger', status: 'pending', departureDateMax: new Date(200000).toISOString() };
+  f.env.requests.data = [f.env.request];
+  f.render(); f.render(); t.mock.timers.tick(3000); assert.equal(f.render(), null, 'the cover remains bounded');
+  pending.resolve(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order'], 'no intermediate Voir la demande action');
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
+  f.env.path = '/request-details/order'; f.render(); f.env.path = '/'; f.render(); await flush();
+  assert.equal(f.routes.length, 1, 'the user can still deliberately return Home');
+});
+
+test('a ringing nearby request restored after fast Home opens its decision screen without acknowledging the sound', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
+  f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.render(); t.mock.timers.tick(3000); f.render(); assert.deepEqual(f.routes, []);
+  f.env.request = { id: 'nearby', passengerId: 'passenger', status: 'pending', departureDateMax: new Date(200000).toISOString() };
+  f.alerts.rememberRideAlert({ key: 'driver-nearby-nearby', id: 'nearby', kind: 'nearby', recipientId: 'driver',
+    data: { ringUntil: new Date(130000).toISOString() } }, true);
+  f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/nearby']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
+  f.env.path = '/request-details/nearby'; f.render();
+  assert.equal(f.alerts.pendingRideAlerts('driver').length, 1, 'opening is not accepting or refusing');
+});
+
+test('a quick return rechecks a cached empty account and opens newly ongoing driver or passenger guidance', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  for (const passenger of [false, true]) {
+    const f = fixture(t, passenger); f.env.segments = ['(tabs)'];
+    const userId = f.env.state.auth.user.id;
+    const currentTrips = f.env.trips.data, currentBookings = f.env.bookings.data;
+    f.env.trips.data = []; f.env.bookings.data = [];
+    f.env.activity = { data: { userId, hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+    f.render(); f.render(); await flush(); assert.deepEqual(f.routes, []);
+    f.env.active = false; f.render(); t.mock.timers.tick(1000);
+    f.env.active = true; f.render(); f.render(); await flush();
+    assert.deepEqual(f.routes, [], 'old empty summary must not settle the new entry');
+    f.env.activity = { data: { userId, hasLiveActivity: true, trips: { count: passenger ? 0 : 1 },
+      bookings: { count: passenger ? 1 : 0 }, requests: { count: 0 },
+      passengerTrackingBookingId: passenger ? 'booking' : null }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+    f.env.trips = { data: currentTrips, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+    f.env.bookings = { data: currentBookings, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+    f.render(); await flush(); f.render(); await flush();
+    assert.deepEqual(f.routes, [passenger ? '/booking/navigate/booking' : '/trip/navigate/trip']);
+  }
+});
+
+test('returning after publishing an order opens that order even from a driver account with a recent empty cache', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
+  f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.render(); f.render(); f.env.active = false; f.render(); t.mock.timers.tick(1000);
+  f.env.active = true; f.render(); f.render(); await flush();
+  f.env.request = { id: 'order', passengerId: 'driver', status: 'pending', departureDateMax: new Date(200000).toISOString() };
+  f.env.requests = { data: [f.env.request], isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.env.activity = { data: { userId: 'driver', hasLiveActivity: true, trips: { count: 0 }, bookings: { count: 0 },
+    requests: { count: 1 } }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.render(); f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order']);
+});
+
+test('an upcoming detail cached before foreground cannot hide a just-started trip', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)'];
+  f.env.detailCache = { getTripById: { data: { ...f.trip, status: 'upcoming' }, isSuccess: true, startedTimeStamp: 99999, fulfilledTimeStamp: 99999 } };
+  f.render(); await flush();
+  assert.deepEqual(f.routes, ['/trip/navigate/trip']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripById']);
 });

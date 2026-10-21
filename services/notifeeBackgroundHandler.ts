@@ -11,7 +11,8 @@ import { notificationDecision, parseDriverInvitation } from '@/features/notifica
 import { respondToDriverNotification } from './driverNotificationResponse';
 import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
-import { dismissDriverInvitation } from './driverNotifications';
+import { handleNearbyNotificationAction, isNearbyNotificationAction } from './nearbyNotificationAction';
+import { reportRideAudioFailure } from './rideAudioDiagnostics';
 
 // Types Notifee
 type NotifeeModule = typeof import('@notifee/react-native');
@@ -60,7 +61,9 @@ if (notifee && EventTypeEnum) {
     if (type === EventTypeEnum!.PRESS) rememberPendingDriverOpen(data);
     const invitation = parseDriverInvitation(data);
     if (invitation && type === EventTypeEnum!.ACTION_PRESS && notificationDecision(detail.pressAction?.id))
-      void respondToDriverNotification(invitation, detail.pressAction?.id).catch(() => {});
+      void respondToDriverNotification(invitation, detail.pressAction?.id).catch(() => reportRideAudioFailure('DRIVER_ALERT_ACTION_FAILED'));
+    if (type === EventTypeEnum!.ACTION_PRESS && isNearbyNotificationAction(detail.pressAction?.id))
+      void handleNearbyNotificationAction(data, detail.pressAction?.id).catch(() => reportRideAudioFailure('DRIVER_ALERT_ACTION_FAILED'));
   });
   notifee.onBackgroundEvent(async ({ type, detail }) => {
     try {
@@ -73,7 +76,9 @@ if (notifee && EventTypeEnum) {
         const data = notification?.data || {};
         const nearby = parseNearbyPhoneAlert(data);
         if (nearby) {
-          if (pressAction?.id === 'driver-ignore-nearby') { await dismissDriverInvitation(nearby); return; }
+          if (isNearbyNotificationAction(pressAction?.id)) {
+            await handleNearbyNotificationAction(data, pressAction?.id); return;
+          }
           await openAppDeepLink(`zwanga://request-details/${nearby.id}`);
           return;
         }

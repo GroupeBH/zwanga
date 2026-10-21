@@ -23,7 +23,9 @@ function fixture() {
       recordDriverPosition: { initiate: body => body },
     } } },
   });
-  return { send: load('services/nearbyDriverPositionDelivery.ts').sendNearbyDriverPosition, calls, resets,
+  const delivery = load('services/nearbyDriverPositionDelivery.ts');
+  return { send: delivery.sendNearbyDriverPosition, needsFix: delivery.needsNearbyDriverPosition,
+    health: load('services/nearbyDriverLocationHealth.ts').getNearbyDriverLocationHealth, calls, resets,
     account: value => { account = value; version++; }, fail: value => { fail = value; },
     wait: value => { wait = value; }, waitTokens: value => { waitTokens = value; },
     enabled: value => { enabled = value; }, online: () => online, cancel: () => { online = false; },
@@ -43,6 +45,31 @@ test('foreground/background delivery is single flight and resets RTK mutation en
   t.mock.timers.tick(60000); assert.equal(await f.send('driver', fix()), 'skipped');
   t.mock.timers.tick(60000); assert.equal(await f.send('driver', fix()), 'sent');
   assert.equal(f.calls.length, 2);
+});
+
+test('foreground recovery observes successful delivery, backoff and session isolation', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const f = fixture();
+  assert.equal(f.needsFix('driver'), true);
+  await f.send('driver', fix());
+  assert.equal(f.needsFix('driver'), false);
+  assert.equal(f.health('driver').lastSentAt, Date.now());
+  t.mock.timers.tick(179999); assert.equal(f.needsFix('driver'), false);
+  t.mock.timers.tick(1); assert.equal(f.needsFix('driver'), true);
+  f.fail({ status: 'FETCH_ERROR' }); await f.send('driver', fix());
+  assert.equal(f.needsFix('driver'), false, 'no one-shot GPS storm during network backoff');
+  t.mock.timers.tick(30000); assert.equal(f.needsFix('driver'), true);
+  f.account('other'); assert.equal(f.health('other').lastSentAt, null);
+  assert.equal(f.needsFix('other'), true);
+});
+
+test('HTTP acknowledgement latency does not postpone the foreground watchdog for another three minutes', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const f = fixture(); let release; f.wait(new Promise(resolve => { release = resolve; }));
+  const sending = f.send('driver', fix()); await tick();
+  assert.equal(f.needsFix('driver'), false, 'no duplicate while the request is pending');
+  t.mock.timers.tick(10000); release(); await sending;
+  t.mock.timers.tick(170000); assert.equal(f.needsFix('driver'), true);
 });
 
 test('network errors back off exponentially with no queued coordinates or replay', async t => {

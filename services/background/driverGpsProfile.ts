@@ -41,7 +41,7 @@ export function startDriverGpsProfile(tripId: string, generation: number,
         nearDestinationSinceMs: previous?.nearDestinationSinceMs ?? null,
       });
       if (!stored || !isCurrent()) return false;
-      await pauseNearbyDriverLocation().catch(() => undefined);
+      await pauseNearbyDriverLocation();
       if (!isCurrent()) return false;
       const running = await hasStartedDriverBackgroundLocationUpdates();
       if (!isCurrent()) return false;
