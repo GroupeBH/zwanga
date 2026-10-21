@@ -81,7 +81,7 @@ test('production Android caches computations without changing the runner tier or
   assert.equal(production.autoIncrement, true);
   assert.equal(production.env.EAS_USE_CACHE, undefined, 'cache must remain Android-only');
   assert.equal(production.cache, undefined);
-  assert.deepEqual(production.ios, { image: 'latest', simulator: false });
+  assert.deepEqual(production.ios, { image: 'macos-sequoia-15.6-xcode-26.0', simulator: false });
   assert.equal(build.dev.android.image, 'latest');
   assert.equal(build.dev.developmentClient, true);
   assert.equal(build['dev-device'].extends, 'dev');
