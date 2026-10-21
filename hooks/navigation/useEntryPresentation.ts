@@ -3,19 +3,22 @@ import type { Href } from 'expo-router';
 import { ENTRY_COVER_MAX_MS } from '@/features/navigation/entryFreshness';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { canResumeRequestFromPath } from '@/features/navigation/priorityRequestEntry';
+import { canResumeRideFromPath, isRideNavigationPath } from '@/features/navigation/activeRideResume';
 
-/** Keep the short cover budget. Verified requests may still open automatically
+/** Keep the short cover budget. Verified rides/requests may still open automatically
  * on the untouched entry screen; deliberate navigation always wins. */
 export function useEntryPresentation(options: {
-  userId?: string; active: boolean; ready: boolean; path: string; fastHome: boolean;
+  userId?: string; active: boolean; since?: number; ready: boolean; path: string; fastHome: boolean;
   replace: (path: Href) => void;
 }) {
   const [, update] = useState(0);
   const version = getTokenSessionVersion();
+  const entryBoundary = options.since ?? options.active;
   const entry = useMemo(() => ({ version, userId: options.userId, active: options.active,
     mounted: true, path: '', navigated: false, startedAt: null as number | null,
     released: false, proposal: null as Href | null,
-  }), [version, options.userId, options.active]); // Path changes must not reopen the cover.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [version, options.userId, entryBoundary]); // Interruptions/path changes do not reopen the cover.
   const latest = useRef({ entry, options }); latest.current = { entry, options };
   const current = useCallback(() => entry.mounted && latest.current.entry === entry &&
     getTokenSessionVersion() === entry.version && latest.current.options.active &&
@@ -44,9 +47,12 @@ export function useEntryPresentation(options: {
   const replace = useCallback((destination: Href, priorityRequest = false): boolean => {
     if (!current()) throw new Error('STALE_ENTRY_PRESENTATION');
     const requestDestination = typeof destination === 'string' ? /^\/request-details\/[^/]+$/.test(destination)
-      : destination.pathname === '/incoming-driver' && destination.params?.kind === 'dispatch';
-    if (priorityRequest && requestDestination && !entry.navigated &&
-      latest.current.options.path === entry.path && canResumeRequestFromPath(entry.path)) {
+      : (destination.pathname === '/incoming-driver' && destination.params?.kind === 'dispatch') ||
+        (destination.pathname === '/trip/manage/[id]' && Boolean(destination.params?.id) &&
+          Boolean(destination.params?.bookingId) && destination.params?.section === 'passengers');
+    const automaticDestination = (priorityRequest && requestDestination && canResumeRequestFromPath(entry.path)) ||
+      (typeof destination === 'string' && isRideNavigationPath(destination) && canResumeRideFromPath(entry.path));
+    if (automaticDestination && !entry.navigated && latest.current.options.path === entry.path) {
       latest.current.options.replace(destination);
       entry.proposal = null;
       return true;

@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { Colors } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 
 /** PIN/login and recovery use the available viewport for fields, not illustration. */
 export const authCodeStyles = StyleSheet.create({
@@ -20,6 +21,12 @@ export const authCodeStyles = StyleSheet.create({
   keyboardCodeInput: { minHeight: 48, paddingVertical: 6 },
   pinRow: { gap: 12, marginTop: 0, marginBottom: 0 },
   pinBox: { width: 52, height: 'auto', minHeight: 52, paddingVertical: 6, borderRadius: 14 },
+  nativePasswordInput: { width: '100%', height: '100%' },
+  passwordBoxFocused: { borderColor: ACTION_COLORS.orange, borderWidth: 2 },
+  passwordBoxError: { borderColor: Colors.dangerDark },
+  error: { color: Colors.dangerDark, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  phone: { color: Colors.gray[700], fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  changePhone: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 8 },
   action: { flexGrow: 1, flexBasis: 120, minWidth: 120, minHeight: 48, height: 'auto', marginTop: 0, marginBottom: 0, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14 },
   actionText: { flexShrink: 1, fontSize: 16, lineHeight: 21, textAlign: 'center' },

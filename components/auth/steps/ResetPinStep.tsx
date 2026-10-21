@@ -56,8 +56,8 @@ export function ResetPinStep({
     <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp}
       style={[styles.stepContainer, codeStyles.step, keyboardVisible && codeStyles.keyboardStep]}>
       <AuthCodeHeading icon="key-outline" keyboardVisible={keyboardVisible}
-        title={resetPinStep === 'otp' ? 'Réinitialiser le PIN' : 'Choisir un nouveau PIN'}
-        subtitle={resetPinStep === 'otp' ? `Numéro à vérifier : ${phone}` : '4 chiffres, puis confirmez-les.'} />
+        title={resetPinStep === 'otp' ? 'Mot de passe oublié' : 'Nouveau mot de passe'}
+        subtitle={resetPinStep === 'otp' ? `Numéro à vérifier : ${phone}` : 'Choisissez quatre chiffres, puis saisissez-les à nouveau.'} />
 
       {resetPinStep === 'otp' ? (
         <>
@@ -106,7 +106,7 @@ export function ResetPinStep({
         <>
           <View style={codeStyles.fields}>
             <View style={codeStyles.field}>
-              <Text style={codeStyles.label}>Nouveau PIN</Text>
+              <Text style={codeStyles.label}>Nouveau mot de passe</Text>
               <View style={[styles.inputWrapper, codeStyles.inputWrapper]}>
                 <TextInput
                   ref={pinInputRef}
@@ -117,7 +117,7 @@ export function ResetPinStep({
                   value={newPin}
                   onChangeText={onPinChange}
                   placeholder="4 chiffres"
-                  accessibilityLabel="Nouveau code PIN à 4 chiffres"
+                  accessibilityLabel="Nouveau mot de passe à quatre chiffres"
                   editable={!isLoading}
                   placeholderTextColor={Colors.gray[400]}
                 />
@@ -135,7 +135,7 @@ export function ResetPinStep({
                   value={newPinConfirm}
                   onChangeText={onPinConfirmChange}
                   placeholder="4 chiffres"
-                  accessibilityLabel="Confirmation du code PIN à 4 chiffres"
+                  accessibilityLabel="Confirmation du mot de passe à quatre chiffres"
                   editable={!isLoading}
                   placeholderTextColor={Colors.gray[400]}
                 />
@@ -151,14 +151,14 @@ export function ResetPinStep({
             onPress={onResetPin}
             disabled={!isPinValid || isLoading}
             accessibilityRole="button"
-            accessibilityLabel={isLoading ? 'Réinitialisation en cours' : 'Réinitialiser le PIN'}
+            accessibilityLabel={isLoading ? 'Enregistrement en cours' : 'Enregistrer le mot de passe'}
             accessibilityState={{ disabled: !isPinValid || isLoading, busy: isLoading }}
           >
             {isLoading ? (
               <ActivityIndicator color="white" />
             ) : (
               <>
-                <Text style={[styles.mainButtonText, codeStyles.actionText]}>Réinitialiser le PIN</Text>
+                <Text style={[styles.mainButtonText, codeStyles.actionText]}>Enregistrer le mot de passe</Text>
                 <Ionicons name="checkmark-circle-outline" size={24} color="white" />
               </>
             )}

@@ -18,7 +18,7 @@ function fixture(t) {
     requests: { data: [], isSuccess: true, fulfilledTimeStamp: now + 1000 },
     trips: { data: [acceptedTrip()], isSuccess: true, fulfilledTimeStamp: now + 1000 },
     activity: { data: { userId: 'driver', hasLiveActivity: true, trips: { count: 1, revision: 'trips-v1' }, requests: { count: 0 } },
-      isSuccess: true, fulfilledTimeStamp: now + 1000 }, alerts: [],
+      isSuccess: true, startedTimeStamp: now + 1000, fulfilledTimeStamp: now + 1000 }, alerts: [],
     readTrip: async id => { reads.push(['trip', id]); return acceptedTrip(); },
     readRequest: async id => { reads.push(['request', id]); return acceptedRequest(); },
     readDispatch: async () => { throw new Error('Accepted course must precede new dispatch offers'); },

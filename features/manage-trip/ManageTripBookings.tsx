@@ -2,6 +2,7 @@ import { useManageTripState } from '../../hooks/manage-trip/useManageTripState';
 import { BOOKING_STATUS_CONFIG, hasPassengerBoarded } from './manageTripModel';
 import { styles as baseStyles } from '../screen-styles/app/trip/manage/detail/index';
 import { bookingStyles } from './ManageTripBookings.styles';
+import { ManageTripBookingsReadState } from './ManageTripBookingsReadState';
 import { CompactCardAvatar } from '@/components/trip/CompactCardAvatar';
 import { ConfirmCashReceipt } from '@/features/driver-payments/ConfirmCashReceipt';
 import { homeDepartureLabel } from '@/features/home/homeCardPresentation';
@@ -38,7 +39,9 @@ export function ManageTripBookings({
         <View>
           <Text style={styles.sectionTitle}>Passagers</Text>
           <Text style={styles.sectionSubtitle}>
-            {homeDepartureLabel(trip.departureTime)} · {bookings.length} réservation{bookings.length > 1 ? 's' : ''}
+            {homeDepartureLabel(trip.departureTime)}
+            {state.bookingsPartial ? ' · Réservation sélectionnée' : tracking.visibleBookings
+              ? ` · ${bookings.length} réservation${bookings.length > 1 ? 's' : ''}` : ''}
           </Text>
         </View>
         {(trip.status === 'upcoming' || trip.status === 'ongoing') && (
@@ -53,6 +56,9 @@ export function ManageTripBookings({
         )}
       </View>
 
+      <ManageTripBookingsReadState loading={state.bookingsLoading || state.bookingsFetching}
+        failed={state.bookingsError} offline={state.bookingsOffline} partial={state.bookingsPartial}
+        canRetry={state.canRetryBookings} onRetry={state.refetchBookings} />
       {tracking.visibleBookings && tracking.visibleBookings.length > 0 ? (
         bookings.map((booking) => (
           <View key={booking.id} style={styles.bookingCard}>
@@ -206,14 +212,14 @@ export function ManageTripBookings({
             <ConfirmCashReceipt booking={booking} />
           </View>
         ))
-      ) : (
+      ) : tracking.visibleBookings && !state.bookingsLoading && !state.bookingsFetching && !state.bookingsError && !state.bookingsOffline ? (
         <View style={{ alignItems: 'center', padding: Spacing.xl }}>
           <Ionicons name="people-outline" size={48} color={Colors.gray[300]} />
           <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
             Aucune réservation pour le moment.
           </Text>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

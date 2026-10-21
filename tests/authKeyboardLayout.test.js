@@ -82,6 +82,7 @@ for (const os of ['android', 'ios']) {
 function loadUI() {
   return loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     '../OtpCodeInput': { OtpCodeInput: 'OtpInput' },
+    '../PasswordCodeInput': { PasswordCodeInput: 'PasswordInput' },
     '@/utils/reanimated': { __esModule: true, default: { View: 'View' }, FadeInDown: { springify() {} }, FadeOutUp: {} },
   });
 }
@@ -142,7 +143,7 @@ test('new PIN fields share a wrapping row, stay labeled and keep secure entry/bu
       assert.equal(input.props.secureTextEntry, true);
       assert.equal(input.props.maxLength, 4);
       assert.equal(input.props.editable, !isLoading);
-      assert.match(input.props.accessibilityLabel, /code PIN à 4 chiffres/);
+      assert.match(input.props.accessibilityLabel, /mot de passe à quatre chiffres/);
       assert.equal(flatten(input.props.style).height, 'auto');
     }
     assert.equal(all.find(n => n.type === 'Button').props.disabled, isLoading);
@@ -169,5 +170,5 @@ test('login PIN uses compact boxes/actions without changing signup layout', () =
   assert.equal(nodes(actions).filter(n => n.type === 'Button').length, 2);
   const signup = nodes(PinStep({ mode: 'signup', pin: '', pinConfirm: '', isLoading: false }));
   assert.equal(signup.some(n => typeof n.type === 'function' && n.type.name === 'AuthCodeHeading'), false);
-  assert.equal(signup.filter(n => n.type === 'Input').length, 2);
+  assert.equal(signup.filter(n => n.type === 'PasswordInput').length, 2);
 });

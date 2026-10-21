@@ -1,11 +1,12 @@
 import { parseDriverInvitation, parseDriverResponseResult } from './driverInvitation';
+import { isRemoteNearbyRequestAlert } from './rideSound';
 
 // iOS can emit PRESS before authentication/profile hydration mounts the navigation hook.
 // Keep only a read-only destination in memory; never a decision or a deferred mutation.
 let pending: Record<string, unknown> | undefined;
 const listeners = new Set<() => void>();
 export function rememberPendingDriverOpen(data: Record<string, unknown> | undefined) {
-  if (!parseDriverInvitation(data) && !parseDriverResponseResult(data)) return;
+  if (!parseDriverInvitation(data) && !parseDriverResponseResult(data) && !isRemoteNearbyRequestAlert(data)) return;
   pending = data;
   if (parseDriverResponseResult(data)) for (const listener of listeners) listener();
 }

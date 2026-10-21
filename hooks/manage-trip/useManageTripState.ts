@@ -6,6 +6,7 @@ import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { ownsTrip } from '@/features/activity/tripParticipation';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import {
+  bookingApi,
   useAcceptBookingMutation,
   useCancelBookingMutation,
   useGetTripBookingsQuery,
@@ -23,8 +24,10 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import type { Booking } from '@/types';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { manageBookingPreview } from '@/features/manage-trip/manageBookingPreview';
+import { ENTRY_CACHE_MAX_AGE_MS } from '@/features/navigation/entryFreshness';
 
 
 
@@ -38,7 +41,12 @@ export function useManageTripState() {
   const { id, bookingId, section } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const tripId = typeof id === 'string' ? id : '';
+  const focusBookingId = typeof bookingId === 'string' ? bookingId : undefined;
   const user = useAppSelector(selectUser);
+  const online = useAppSelector(state => state.zwangaApi.config.online);
+  const selectFocus = useMemo(() => focusBookingId
+    ? bookingApi.endpoints.getBookingById.select(focusBookingId) : () => undefined, [focusBookingId]);
+  const focusedBooking = useAppSelector(selectFocus);
   const { isIdentityVerified } = useIdentityCheck();
 
   // Polling intelligent basé sur le statut du trajet
@@ -51,27 +59,24 @@ export function useManageTripState() {
     refetch: rawRefetchTrip,
   } = useGetTripByIdQuery(tripId, { 
     ...displayReadOptions(readsEnabled && Boolean(tripId), pollingInterval),
+    // Entry/ownership guard may have just verified this detail. Keep the normal
+    // subscription and polling, without an immediate duplicate read.
+    refetchOnMountOrArgChange: ENTRY_CACHE_MAX_AGE_MS / 1000,
   });
   const trip = useDisplayReadData(tripId, liveTrip);
+  const tripStatus = trip?.status;
   const refetchTrip = useDisplayRefetch(readsEnabled && Boolean(tripId), tripId, rawRefetchTrip);
 
   // Mettre à jour l'intervalle de polling en fonction du statut du trajet
   // Note: polling réduit car la navigation gère le temps réel via WebSocket
   useEffect(() => {
-    if (!trip) {
-      setPollingInterval(0);
-      return;
-    }
-    
     // Polling léger - la navigation gère le temps réel pour les trajets en cours
-    if (trip.status === 'ongoing') {
-      setPollingInterval(60000); // 60 secondes - juste pour sync occasionnel
-    } else if (trip.status === 'upcoming') {
+    if (tripStatus === 'ongoing' || tripStatus === 'upcoming') {
       setPollingInterval(60000); // 60 secondes pour les trajets à venir
     } else {
       setPollingInterval(0); // Pas de polling pour les trajets terminés/annulés
     }
-  }, [trip?.status]);
+  }, [tripStatus]);
 
   const isOwner = trip?.id === tripId && ownsTrip(trip, user?.id);
   const { lastKnownLocation } = useUserLocation({
@@ -81,13 +86,19 @@ export function useManageTripState() {
   });
   const {
     currentData: liveBookings,
-    isLoading: bookingsLoading,
     isFetching: bookingsFetching,
+    isError: bookingsError,
+    fulfilledTimeStamp: bookingsTime,
     refetch: rawRefetchBookings,
   } = useGetTripBookingsQuery(tripId, { 
     ...displayReadOptions(readsEnabled && Boolean(tripId && isOwner), trip?.status === 'upcoming' ? 60000 : 0),
   });
-  const bookings = useDisplayReadData(tripId, liveBookings);
+  const snapshot = useMemo(() => liveBookings === undefined ? undefined
+    : { data: liveBookings, fulfilledTimeStamp: bookingsTime }, [liveBookings, bookingsTime]);
+  const list = useDisplayReadData(`${user?.id}:${tripId}`, snapshot);
+  const { bookings, partial: bookingsPartial } = useMemo(() =>
+    manageBookingPreview(trip, user?.id, focusBookingId, focusedBooking, list),
+  [trip, user?.id, focusBookingId, focusedBooking, list]);
   const refetchBookings = useDisplayRefetch(readsEnabled && Boolean(tripId && isOwner), tripId, rawRefetchBookings);
   const [acceptBooking, { isLoading: isAccepting }] = useAcceptBookingMutation();
   const [rejectBooking, { isLoading: isRejecting }] = useRejectBookingMutation();
@@ -142,7 +153,7 @@ export function useManageTripState() {
     highestManageAutoProgressPriorityRef,
     lastManageDriverLocationSentAtRef,
     tripId,
-    focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,
+    focusBookingId,
     passengersFirst: section === 'passengers',
     isOwner,
     trip,
@@ -174,6 +185,11 @@ export function useManageTripState() {
     tripFetching,
     isIdentityVerified,
     bookingsFetching,
+    bookingsLoading: !bookings && readsEnabled && !bookingsError,
+    bookingsError,
+    bookingsPartial,
+    bookingsOffline: !online,
+    canRetryBookings: readsEnabled && Boolean(isOwner) && !bookingsFetching,
     feedback,
     refreshing,
     isAccepting,

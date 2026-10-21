@@ -1,9 +1,11 @@
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { BackgroundLocationConsent } from '@/components/location/BackgroundLocationConsent';
 
 interface NavigationLocationDisclosureProps {
   backgroundDisclosureVisible: boolean;
@@ -14,54 +16,68 @@ export function NavigationLocationDisclosure({
   backgroundDisclosureVisible,
   resolveBackgroundDisclosure,
 }: NavigationLocationDisclosureProps) {
+  const [consent, setConsent] = useState(false);
+  useEffect(() => { setConsent(false); }, [backgroundDisclosureVisible]);
+  const resolve = (accepted: boolean) => {
+    if (accepted && !consent) return;
+    setConsent(false);
+    resolveBackgroundDisclosure(accepted);
+  };
   return (
     <Modal
       visible={backgroundDisclosureVisible}
       transparent
       animationType="fade"
-      onRequestClose={() => resolveBackgroundDisclosure(false)}
+      onRequestClose={() => resolve(false)}
     >
       <View style={styles.backgroundDisclosureOverlay}>
-        <View style={styles.backgroundDisclosureCard}>
+        <ScrollView style={local.card} contentContainerStyle={styles.backgroundDisclosureCard}>
           <View style={styles.backgroundDisclosureIcon}>
             <Ionicons name="location" size={24} color={Colors.primary} />
           </View>
           <Text style={styles.backgroundDisclosureTitle}>
-            Autorisation de localisation en arrière-plan
+            Rester visible pendant le trajet
           </Text>
           <Text style={styles.backgroundDisclosureText}>
-            {"Zwanga collecte votre position même quand l'application est en arrière-plan pendant un trajet actif."}
+            Même si l’écran s’éteint, Zwanga collecte et envoie votre position au serveur pour que vos passagers puissent vous suivre.
           </Text>
-          <View style={styles.backgroundDisclosureList}>
-            <Text style={styles.backgroundDisclosureItem}>
-              - Suivre votre trajet en continu pour la navigation GPS.
-            </Text>
-            <Text style={styles.backgroundDisclosureItem}>
-              - Envoyer votre position au serveur et aux passagers du trajet en cours.
-            </Text>
-            <Text style={styles.backgroundDisclosureItem}>
-              - Arreter automatiquement le suivi à la fin du trajet.
-            </Text>
-          </View>
+          <Text style={styles.backgroundDisclosureText}>Le partage avec vos passagers s’arrête à la fin du trajet.</Text>
+          <BackgroundLocationConsent checked={consent} onChange={setConsent} />
+          <Text style={styles.backgroundDisclosureText}>
+            {`Ensuite, confirmez sur le téléphone en choisissant ${Platform.OS === 'ios' ? '« Toujours »' : '« Toujours autoriser »'}.`}
+          </Text>
           <Text style={styles.backgroundDisclosureFootnote}>
-            {"Vous pouvez continuer sans cette autorisation. Dans ce cas, le suivi fonctionne uniquement quand l'application est ouverte."}
+            Vous pouvez refuser et continuer. Le suivi fonctionnera seulement quand l’application est ouverte.
           </Text>
-          <View style={styles.backgroundDisclosureActions}>
+          <View style={local.actions}>
             <TouchableOpacity
-              style={styles.backgroundDisclosureSecondaryButton}
-              onPress={() => resolveBackgroundDisclosure(false)}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !consent }}
+              disabled={!consent}
+              style={[local.primary, !consent && local.disabled]}
+              onPress={() => resolve(true)}
+            >
+              <Text style={styles.backgroundDisclosurePrimaryButtonText}>Autoriser et continuer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              style={local.decline}
+              onPress={() => resolve(false)}
             >
               <Text style={styles.backgroundDisclosureSecondaryButtonText}>Pas maintenant</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.backgroundDisclosurePrimaryButton}
-              onPress={() => resolveBackgroundDisclosure(true)}
-            >
-              <Text style={styles.backgroundDisclosurePrimaryButtonText}>Continuer</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </View>
     </Modal>
   );
 }
+
+const local = StyleSheet.create({
+  card: { maxHeight: '90%', flexGrow: 0, width: '100%', borderRadius: 24, backgroundColor: Colors.white },
+  actions: { gap: 8 },
+  primary: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: ACTION_COLORS.orange,
+    justifyContent: 'center', alignItems: 'center' },
+  disabled: { opacity: 0.45 },
+  decline: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+});

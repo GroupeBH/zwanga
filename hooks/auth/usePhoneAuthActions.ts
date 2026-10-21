@@ -64,7 +64,6 @@ export function usePhoneAuthActions({
   pin,
   login,
   dispatch,
-  pinInputRef,
   pinConfirm,
   pinConfirmInputRef,
   setResetPinStep,
@@ -81,7 +80,7 @@ export function usePhoneAuthActions({
 }: Params) {
   const pinReset = usePinResetFlow(phone, step === 'resetPin' && mode === 'login');
   const pinLogin = usePinLogin({ active: mode === 'login' && step === 'pin', phone, login, dispatch,
-    setPin, showDialog, onRetry: () => focusAfterInteractions(pinInputRef) });
+    setPin });
   const handlePhoneSubmit = async () => {
     const normalizedPhone = phone.trim();
     if (!isAuthPhoneValid(normalizedPhone)) {
@@ -133,6 +132,7 @@ export function usePhoneAuthActions({
   // PIN Handlers
   const handlePinChange = (value: string) => {
     if (pinLogin.isInFlight()) return;
+    pinLogin.clearError();
     const nextPin = value.replace(/\D/g, '').slice(0, 4);
     setPin(nextPin);
     // Use the new input directly: the React state still contains the previous digit.
@@ -144,18 +144,18 @@ export function usePhoneAuthActions({
   const handlePinSubmit = async () => {
     if (pinLogin.isInFlight()) return;
     if (pin.length !== 4) {
-      showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
+      showDialog({ variant: 'danger', title: 'Mot de passe incomplet', message: 'Saisissez votre mot de passe à quatre chiffres.' });
       return;
     }
     if (mode === 'login') {
       await pinLogin.submit(pin);
     } else {
       if (pinConfirm.length !== 4) {
-        showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Veuillez confirmer votre PIN' });
+        showDialog({ variant: 'danger', title: 'Confirmation incomplète', message: 'Saisissez les mêmes quatre chiffres une deuxième fois.' });
         return;
       }
       if (pin !== pinConfirm) {
-        showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
+        showDialog({ variant: 'danger', title: 'Chiffres différents', message: 'Les deux mots de passe doivent être identiques.' });
         setPinConfirm('');
         pinConfirmInputRef.current?.focus();
         return;
@@ -206,17 +206,17 @@ export function usePhoneAuthActions({
 
   const handleResetPinSubmit = async () => {
     if (resetNewPin.length !== 4 || resetNewPinConfirm.length !== 4) {
-      showDialog({ variant: 'danger', title: 'PIN incomplet', message: 'Veuillez entrer un PIN à 4 chiffres' });
+      showDialog({ variant: 'danger', title: 'Mot de passe incomplet', message: 'Saisissez votre mot de passe à quatre chiffres.' });
       return;
     }
     if (resetNewPin !== resetNewPinConfirm) {
-      showDialog({ variant: 'danger', title: 'PIN non correspondant', message: 'Les deux codes PIN ne correspondent pas' });
+      showDialog({ variant: 'danger', title: 'Chiffres différents', message: 'Les deux mots de passe doivent être identiques.' });
       setResetNewPinConfirm('');
       return;
     }
     try {
       if (!await pinReset.confirmPin(resetNewPin)) return;
-      showDialog({ variant: 'success', title: 'PIN réinitialisé', message: 'Connectez-vous avec votre nouveau PIN.' });
+      showDialog({ variant: 'success', title: 'Mot de passe modifié', message: 'Connectez-vous avec votre nouveau mot de passe à quatre chiffres.' });
       setStep('pin');
       setResetPinStep('otp');
       setResetOtpCode(emptyPinResetOtp());
@@ -233,6 +233,7 @@ export function usePhoneAuthActions({
   };
 
   return {
+    pinLoginError: pinLogin.error,
     isPinLoginPending: pinLogin.isPending,
     isPinLoginInFlight: pinLogin.isInFlight,
     isResettingPin: pinReset.isBusy,

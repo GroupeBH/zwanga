@@ -40,9 +40,13 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       const invitation = parseDriverInvitation(raw);
       const nearby = parseNearbyPhoneAlert(raw);
       const rideAlert = parseRideAlert(raw);
+      // Remote iOS alerts and Android local cards share the same read-only route.
+      // Only the v3 parser above authorizes native nearby action handling.
+      const nearbyTarget = rideAlert?.kind === 'nearby'
+        ? { kind: 'nearby' as const, id: rideAlert.id, driverId: rideAlert.recipientId } : null;
       // Native background callbacks own the mutation. Initial notifications are
       // read-only: open their details without replaying a past accept/refuse.
-      const target = invitation ?? nearby;
+      const target = invitation ?? nearbyTarget;
       if (initial && target?.driverId === userId && (notificationDecision(action) || isNearbyNotificationAction(action))) {
         await open({ type: 'driver_action_result', kind: target.kind, id: target.id, driverId: userId }, 'default', true, false, true);
         return;
@@ -59,8 +63,12 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
         seen.current.delete(`result:nearby:${nearby.id}`);
         await handleNearbyNotificationAction(raw, action); return;
       }
-      if (nearby?.driverId === userId && pressed && !disposed) {
-        router.navigate({ pathname: '/request-details/[id]', params: { id: nearby.id } });
+      if (nearbyTarget?.driverId === userId && pressed && !disposed) {
+        const key = `nearby:${nearbyTarget.id}:open`;
+        if ((initial || automatic) && seen.current.has(key)) return;
+        seen.current.add(key);
+        if (seen.current.size > 100) seen.current.delete(seen.current.values().next().value!);
+        router.navigate(invitationHref(nearbyTarget));
         return;
       }
       if (!invitation || invitation.driverId !== userId || disposed) return;
@@ -73,7 +81,9 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
         return;
       }
       const key = `${invitation.kind}:${invitation.id}:${action ?? 'received'}`;
-      if (seen.current.has(key)) return;
+      // Replayed startup events are coalesced; a new deliberate tap must always
+      // reopen the request, even after the driver previously went back Home.
+      if ((!pressed || initial || automatic) && seen.current.has(key)) return;
       seen.current.add(key);
       if (seen.current.size > 100) seen.current.delete(seen.current.values().next().value!);
       // A new reservation must not replace the driver's current screen. Its

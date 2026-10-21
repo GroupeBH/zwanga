@@ -23,7 +23,6 @@ export default function DriverAvailabilityScreen() {
     </TouchableOpacity>
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.title}>Alertes conducteur</Text>
-      <Text style={styles.copy}>Vos réservations et les commandes proches vous sont proposées automatiquement.</Text>
       {isLoading ? <ActivityIndicator color={Colors.primary} /> : isError
         ? <TouchableOpacity accessibilityRole="button" disabled={!enabled || isFetching}
           onPress={() => { if (enabled && !isFetching) void refetch(); }}>

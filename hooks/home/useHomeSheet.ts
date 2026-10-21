@@ -59,6 +59,9 @@ export function useHomeSheet({
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
 
   const firstName = currentUser?.firstName?.trim() || currentUser?.name?.trim().split(/\s+/)[0] || '';
+  // `name` is the account's display name in the current API (no separate username).
+  const accountName = (currentUser?.name?.trim() || currentUser?.firstName?.trim() || '').normalize('NFC');
+  const profileInitial = Array.from(Array.from(accountName)[0]?.toUpperCase() || '?')[0];
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
 
@@ -170,6 +173,7 @@ export function useHomeSheet({
   }, [isHomeSheetLockedRetracted]);
   return {
     firstName,
+    profileInitial,
     unreadNotifications,
     sheetBottomOffset,
     sheetHeight,

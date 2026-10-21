@@ -85,10 +85,36 @@ function app(options = {}) {
   const event = (data, action) => ({ type: 2, detail: { notification: { data }, pressAction: { id: action } } });
   return { io, load, hooks, mount: () => hooks.render(() => hook(driverId, true)),
     foreground: (data, action) => { for (const listener of nativeListeners) listener(event(data, action)); },
+    body: data => { for (const listener of nativeListeners) listener({ ...event(data, 'default'), type: 1 }); },
     background: (data, action) => background(event(data, action)),
     resume: () => { io.state = 'active'; for (const listener of stateListeners) listener('active'); },
   };
 }
+
+test('nearby body taps before profile hydration open that request once, without an accept/refuse mutation', async () => {
+  for (const delivery of ['driver-phone-v3', undefined]) {
+    const data = { ...push('nearby'), delivery };
+    const f = app({ initial: { notification: { data }, pressAction: { id: 'default' } } });
+    f.body(data); // Only the root listener exists; profile/navigation hook not mounted.
+    assert.deepEqual(f.io.routes, []);
+    f.mount(); await tick();
+    assert.deepEqual(f.io.routes, [{ pathname: '/request-details/[id]', params: { id: requestId } }]);
+    assert.equal(f.io.mutations.length, 0);
+    f.hooks.unmount();
+  }
+});
+
+test('a new body tap reopens the same invitation after returning Home, without replaying a decision', async () => {
+  for (const kind of ['nearby', 'dispatch', 'booking']) {
+    const f = app(); f.mount(); await tick();
+    f.body(push(kind)); await tick();
+    f.body(push(kind)); await tick();
+    assert.equal(f.io.routes.length, 2, kind);
+    assert.equal(f.io.mutations.length, 0);
+    assert.equal(f.io.dismissed.length, 0, 'opening is not an answer');
+    f.hooks.unmount();
+  }
+});
 
 test('a foreground action received by both native listeners mutates and opens its details only once', async () => {
   for (const kind of ['dispatch', 'booking']) {
@@ -175,4 +201,19 @@ test('nearby actions open the request, refuse only locally and never pick a vehi
       f.hooks.unmount();
     }
   }
+});
+
+test('a new deliberate nearby Accept tap opens again, while concurrent native events coalesce', async () => {
+  const f = app(); f.mount(); await tick();
+  const data = push('nearby');
+  f.foreground(data, 'driver-review-nearby');
+  await tick(); await tick();
+  assert.equal(f.io.routes.length, 1);
+  // Back without confirming the vehicle, then tap the same notification again.
+  f.foreground(data, 'driver-review-nearby');
+  await tick(); await tick();
+  assert.equal(f.io.routes.length, 2);
+  assert.equal(f.io.mutations.length, 0);
+  assert.equal(f.io.dismissed.length, 0);
+  f.hooks.unmount();
 });

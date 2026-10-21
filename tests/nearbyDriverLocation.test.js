@@ -49,14 +49,15 @@ const disabledKey = id => `zwanga.nearbyDriverLocationDisabled.v1:${id}`;
 function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map(), initialRunning = false, interval = 180000 } = {}) {
   if (savedOwner && !disk.has(OWNER_KEY)) disk.set(OWNER_KEY, savedOwner);
   let version = 0, trip = null, passenger = null, running = initialRunning, permission = true;
-  let waitStart, waitPermission, waitRead, account = 'driver';
+  let waitStart, waitPermission, waitRead, waitRemove, account = 'driver';
   let foregroundService = { killServiceOnDestroy: true };
   const starts = [], stops = [], sends = [], definitions = [], permissionReads = [], publications = [];
   const appState = { currentState: 'active' };
   const load = loader({
     '@react-native-async-storage/async-storage': {
       getItem: async key => { if (waitRead) await waitRead; return disk.get(key) ?? null; },
-      setItem: async (key, value) => { disk.set(key, value); }, removeItem: async key => { disk.delete(key); },
+      setItem: async (key, value) => { disk.set(key, value); },
+      removeItem: async key => { if (waitRemove) await waitRemove; disk.delete(key); },
     },
     'react-native': { Platform: { OS: platform }, AppState: appState },
     'expo-location': {
@@ -87,8 +88,28 @@ function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map()
     setAccount: value => { account = value; version++; },
     waitStart: value => { waitStart = value; }, waitPermission: value => { waitPermission = value; },
     waitRead: value => { waitRead = value; },
+    waitRemove: value => { waitRemove = value; },
   };
 }
+
+test('cancelled queued activation keeps opt-out, including a native storage write finishing late', async () => {
+  for (const blocked of ['read', 'write']) {
+    const f = fixture({ disk: new Map([[disabledKey('driver'), '1']]) }), pending = deferred();
+    let allowed = true;
+    if (blocked === 'read') f.waitRead(pending.promise); else f.waitRemove(pending.promise);
+    const task = f.api.setNearbyDriverLocationEnabled('driver', true, 0, () => allowed);
+    await tick(); allowed = false; pending.resolve(); await task;
+    assert.equal(await f.api.isNearbyDriverLocationEnabled('driver'), false);
+    assert.equal(f.disk.get(disabledKey('driver')), '1'); assert.equal(f.starts.length, 0);
+  }
+});
+
+test('cancelling a queued GPS activation stops it before native start', async () => {
+  const f = fixture(), pending = deferred(); let allowed = true; f.waitPermission(pending.promise);
+  const task = f.api.ensureNearbyDriverLocation('driver', () => allowed);
+  await tick(); allowed = false; pending.resolve(); assert.equal(await task, false);
+  assert.equal(f.starts.length, 0);
+});
 
 test('authorized drivers start by default without a profile opt-in, bound to the authenticated account', async () => {
   for (const savedOwner of [null, 'someone-else']) {

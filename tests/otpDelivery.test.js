@@ -12,6 +12,7 @@ function uiLoader(enabled = true, os = 'android') {
   const load = loader({
     react: { ...React, ...otpHooks.react },
     '../OtpCodeInput': otpComponent,
+    '../PasswordCodeInput': { PasswordCodeInput: 'PasswordInput' },
     '@/components/auth/OtpCodeInput': otpComponent,
     'expo-clipboard': { getStringAsync: async () => '' },
     'react-native': {
@@ -133,7 +134,7 @@ test('profile PIN recovery names WhatsApp and Didit, without claiming delivery b
     oldPin: '', newPin: '', newPinConfirm: '', otpCode: Array(6).fill(''),
     otpInputRefs: { current: [] }, isSendingOtp: true,
   };
-  assert.match(text(ProfilePinModal({ ...props, pinStep: 'oldPin' })), /WhatsApp via Didit/);
+  assert.match(text(ProfilePinModal({ ...props, pinStep: 'oldPin' })), /WhatsApp ou par SMS/);
   const tree = ProfilePinModal({ ...props, pinStep: 'otp' });
   assert.match(text(tree), /WhatsApp via Didit/);
   assert.match(text(tree), /SMS/);
@@ -148,7 +149,7 @@ test('profile PIN recovery names WhatsApp and Didit, without claiming delivery b
 test('login explains forgotten-PIN delivery; normal PIN creation does not promise an OTP', () => {
   const { PinStep } = uiLoader()('components/auth/steps/PinStep.tsx');
   const props = { pin: '', pinConfirm: '', pinInputRef: { current: null }, onForgotPin: noop };
-  assert.match(text(PinStep({ ...props, mode: 'login' })), /WhatsApp via Didit/);
+  assert.match(text(PinStep({ ...props, mode: 'login' })), /WhatsApp ou par SMS/);
   assert.doesNotMatch(text(PinStep({ ...props, mode: 'signup' })), /WhatsApp|Didit/);
   const { ResetPinStep } = uiLoader()('components/auth/steps/ResetPinStep.tsx');
   assert.doesNotMatch(text(ResetPinStep({ resetPinStep: 'newPin', otpCode: [], newPin: '', newPinConfirm: '' })), /WhatsApp|Didit/);
@@ -231,6 +232,6 @@ test('Didit send failures are not mislabeled as an incorrect OTP, in auth and pr
       assert.match(present({ status, data: { message } }, 'Erreur'), expected);
       assert.match(present({ data: { statusCode: status, message: [message] } }, 'Erreur'), expected);
     }
-    assert.equal(present({ status: 400, data: { message: 'PIN incorrect' } }, 'Erreur'), 'Le PIN saisi est incorrect.');
+    assert.equal(present({ status: 400, data: { message: 'PIN incorrect' } }, 'Erreur'), 'Le mot de passe à quatre chiffres est incorrect.');
   }
 });

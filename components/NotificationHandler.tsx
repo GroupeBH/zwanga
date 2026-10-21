@@ -232,7 +232,9 @@ export function NotificationHandler() {
       if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
         (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
       if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
-      if (parseDriverInvitation(data)) return;
+      // The dedicated hook also restores nearby taps received before hydration.
+      // Do not schedule a second delayed route that could overwrite its decision.
+      if (parseDriverInvitation(data) || isRemoteNearbyRequestAlert(data)) return;
       if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }

@@ -213,7 +213,7 @@ test('settings explain last-known positions while remaining compatible with lega
     }) },
   })('app/driver-availability.tsx').default;
   let tree = hooks.render(Screen);
-  assert.match(text(tree), /automatiquement/);
+  assert.match(text(tree), /Aucun réglage supplémentaire n’est nécessaire/);
   assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
   assert.doesNotMatch(text(tree), /Places proposées|Avec quel véhicule|Me rendre disponible/);
   assert.match(text(tree), /dès la connexion/);

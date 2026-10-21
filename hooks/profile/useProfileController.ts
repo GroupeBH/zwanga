@@ -207,7 +207,7 @@ export function useProfileController() {
   const menuItems = [
     {
       icon: 'lock-closed-outline',
-      label: 'Modifier le code PIN',
+      label: 'Modifier le mot de passe',
       route: null,
       onPress: handleOpenPinModal,
     },

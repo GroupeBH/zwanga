@@ -7,6 +7,7 @@ const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollV
   StyleSheet: { create: value => value }, Platform: { OS: 'ios', select: value => value.ios } };
 const parts = ['HomeDriverStatus', 'HomeDriverEarnings', 'HomeDestinationShortcuts', 'HomeSheetLoadingState', 'SwipeableHomePriority'];
 const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  './HomeBackgroundLocationButton': { HomeBackgroundLocationButton: 'LocationPermission' },
   ...Object.fromEntries(parts.map(name => [`./${name}`, { [name]: name }])) });
 const { HomeHeader } = load('components/home/HomeHeader.tsx');
 const { HomeTripsSheet } = load('components/home/HomeTripsSheet.tsx');
@@ -27,17 +28,42 @@ const base = { firstName: 'Alex', effectiveTripsSheetOpen: true, sheetHeight: 47
 const trip = { id: 'trip', departure: { name: 'Départ' }, arrival: { name: 'Arrivée' }, departureTime: '2026-12-02T12:00:00Z',
   driverName: 'Conducteur test', availableSeats: 2, vehicleType: 'car', price: 0 };
 
+test('free fare text keeps at least 4.5:1 contrast on its pale green background', () => {
+  const colors = load('features/home/homeDashboardTheme.ts').HOME_DASHBOARD_COLORS;
+  const luminance = hex => hex.match(/[a-f\d]{2}/gi).map(c => parseInt(c, 16) / 255)
+    .map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+  const [light, dark] = [luminance(colors.greenInk), luminance(colors.paleGreen)].sort((a, b) => b - a);
+  assert.ok((light + 0.05) / (dark + 0.05) >= 4.5);
+});
+
 test('map header keeps only initial, notifications and truthful active-trip feedback', () => {
   const calls = [];
-  const props = { insets: { top: 20 }, firstName: 'Alex', unreadNotifications: 12, router: { push: path => calls.push(path) } };
+  const props = { insets: { top: 20 }, profileInitial: 'A', unreadNotifications: 12, router: { push: path => calls.push(path) } };
   const tree = HomeHeader.type(props);
-  assert.equal(text(tree), 'A9+');
+  assert.equal(text(tree), '9+A');
   const buttons = nodes(tree).filter(node => node.type === 'Button');
   assert.equal(buttons.length, 2); buttons.forEach(button => button.props.onPress());
-  assert.deepEqual(calls, ['/profile', '/notifications']);
+  assert.deepEqual(calls, ['/notifications', '/profile']);
+  assert.equal(buttons[1].props.accessibilityLabel, 'Ouvrir le profil', 'profile at the right, notifications still available');
   assert.match(text(HomeHeader.type({ ...props, ongoingDriverTrip: {} })), /Trajet en cours/);
   assert.match(text(HomeHeader.type({ ...props, ongoingBookedTrip: {} })), /Trajet en cours/);
   assert.doesNotMatch(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'driver' } })), /en cours/);
+});
+
+test('Home header inserts location permission between the bell and initial only for an identified driver', () => {
+  const base = { insets: { top: 20 }, profileInitial: 'A', unreadNotifications: 0 };
+  for (const extra of [{ isDriver: false, userId: 'passenger' }, { isDriver: true }]) {
+    assert.equal(nodes(HomeHeader.type({ ...base, ...extra })).some(n => n.type === 'LocationPermission'), false);
+  }
+  for (const isScreenActive of [true, false]) {
+    const tree = HomeHeader.type({ ...base, isDriver: true, userId: 'driver', isScreenActive });
+    const controls = nodes(tree).filter(n => ['Button', 'LocationPermission'].includes(n.type));
+    assert.deepEqual(controls.map(n => n.type), ['Button', 'LocationPermission', 'Button']);
+    assert.equal(controls[1].props.active, isScreenActive);
+    assert.equal(controls[1].props.userId, 'driver');
+    assert.equal(controls[1].key, 'driver');
+  }
 });
 
 test('Home identity uses the signed-in first name for both roles, never an available photo or a fake city name', () => {
@@ -45,16 +71,19 @@ test('Home identity uses the signed-in first name for both roles, never an avail
     const hooks = hookHarness();
     const { useHomeSheet } = loader({ react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
     const props = { isDriver, width: 390, height: 844, insets: { bottom: 34 }, latestTrips: [], availableDriverRequests: [] };
-    for (const [currentUser, expected] of [
-      [{ firstName: '  élise  ', name: 'Nom différent', profilePicture: 'photo-test', avatar: 'avatar-test' }, 'élise'],
-      [{ firstName: ' \t ', name: '  Alex   Exemple ' }, 'Alex'],
-      [{ firstName: '', name: ' ' }, ''],
-      [undefined, ''],
-      [{ firstName: 'Béatrice', profilePicture: 'autre-photo-test' }, 'Béatrice'],
+    for (const [currentUser, expected, initial] of [
+      [{ firstName: '  élise  ', name: 'Nom différent', profilePicture: 'photo-test', avatar: 'avatar-test' }, 'élise', 'N'],
+      [{ firstName: ' \t ', name: '  Alex   Exemple ' }, 'Alex', 'A'],
+      [{ firstName: '', name: ' ' }, '', '?'],
+      [undefined, '', '?'],
+      [{ firstName: 'Béatrice', profilePicture: 'autre-photo-test' }, 'Béatrice', 'B'],
+      [{ name: 'e\u0301lise' }, 'e\u0301lise', 'É'],
+      [{ name: 'ßurname' }, 'ßurname', 'S'],
     ]) {
       props.currentUser = currentUser;
       const result = hooks.render(() => useHomeSheet(props));
       assert.equal(result.firstName, expected);
+      assert.equal(result.profileInitial, initial);
       assert.equal(Object.hasOwn(result, 'avatarUri'), false);
     }
     hooks.unmount();
@@ -63,8 +92,8 @@ test('Home identity uses the signed-in first name for both roles, never an avail
 
 test('profile button renders only one uppercase initial even when photo props exist, and still opens the profile', () => {
   const calls = [];
-  for (const [firstName, initial] of [['  élise  ', 'É'], ['Alex Marie', 'A'], ['', '?'], ['   ', '?']]) {
-    const tree = HomeHeader.type({ firstName, insets: { top: 20 }, unreadNotifications: 0,
+  for (const initial of ['É', 'A', '?', 'B']) {
+    const tree = HomeHeader.type({ profileInitial: initial, insets: { top: 20 }, unreadNotifications: 0,
       avatarUri: 'photo-test', profilePicture: 'photo-test', router: { push: path => calls.push(path) } });
     const button = nodes(tree).find(node => node.props.accessibilityLabel === 'Ouvrir le profil');
     assert.equal(text(button), initial);

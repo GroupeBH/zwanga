@@ -77,14 +77,15 @@ export function clearNearbyDriverLocation({ endSession = true }: { endSession?: 
   });
 }
 
-export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean, version = getTokenSessionVersion()) {
-  if (version !== getTokenSessionVersion()) return Promise.resolve();
+export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean, version = getTokenSessionVersion(),
+  allowed: () => boolean = () => true) {
+  if (version !== getTokenSessionVersion() || !allowed()) return Promise.resolve();
   const generation = ++revision;
   return serial(async () => {
-    if (generation !== revision || version !== getTokenSessionVersion()) return;
+    if (generation !== revision || version !== getTokenSessionVersion() || !allowed()) return;
     const { accessToken } = await getTokens({ throwOnError: true });
     const claims = accessToken ? decodeJWT(accessToken) : null;
-    if (generation !== revision || version !== getTokenSessionVersion() ||
+    if (generation !== revision || version !== getTokenSessionVersion() || !allowed() ||
       (claims?.sub ?? claims?.userId) !== userId) return;
     if (!enabled) {
       if (owner) invalidateNativeRideLocation(`nearby:${owner}`);
@@ -95,7 +96,13 @@ export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean,
         finally { await stopNative(); changed(); }
       }
     } else {
+      const wasEnabled = await readEnabled(userId);
+      if (generation !== revision || version !== getTokenSessionVersion() || !allowed()) return;
       await AsyncStorage.removeItem(disabledKey(userId));
+      // A native storage call cannot be aborted. Restore an earlier opt-out if
+      // the UI cancelled while the write was in flight, before queued work runs.
+      if (!allowed() && !wasEnabled) await AsyncStorage.setItem(disabledKey(userId), '1');
+      if (!allowed()) return;
       if (generation !== revision || version !== getTokenSessionVersion()) return;
       preference = { userId, disabled: false }; changed();
     }
@@ -116,10 +123,10 @@ function callbackPermission(version: number, generation: number) {
 }
 
 /** Automatic for authorized drivers unless explicitly disabled; never requests OS permission. */
-export function ensureNearbyDriverLocation(userId: string) {
+export function ensureNearbyDriverLocation(userId: string, allowed: () => boolean = () => true) {
   const generation = revision, version = getTokenSessionVersion();
   return serial(async () => {
-    const current = () => generation === revision && version === getTokenSessionVersion() && version !== stoppedSessionVersion;
+    const current = () => allowed() && generation === revision && version === getTokenSessionVersion() && version !== stoppedSessionVersion;
     if (!current() || Platform.OS === 'web' || AppState.currentState !== 'active') return false;
     if (!(await readEnabled(userId)) || await hasActiveRideLocationSession()) {
       await stopNative(); return false;

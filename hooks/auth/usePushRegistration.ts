@@ -4,6 +4,7 @@ import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { obtainFcmToken, subscribeToFcmRefresh } from '@/services/pushNotifications';
 import { configureDriverNotifications } from '@/services/driverNotifications';
+import { configureDriverAlertFallback } from '@/services/driverAlertFallback';
 import { BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL } from '@/services/driverAlertChannel';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
 import { getTokenSessionVersion } from '@/services/tokenSession';
@@ -60,8 +61,10 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
         // Android data-only delivery needs the headless handler. iOS sound and
         // actions are delivered by APNs/Notifee, even with Background Refresh off.
         if (!current() || (Platform.OS === 'android' && !backgroundReady)) return;
-        const capability = Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 3 : 2;
-        const register = async (target: 2 | 3) => {
+        const capability = Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 4 : 2;
+        if (capability === 4) await attempt.wait(() => configureDriverAlertFallback());
+        if (!current()) return;
+        const register = async (target: 2 | 3 | 4) => {
           const request = dispatch(driverDispatchApi.endpoints.registerDriverNotifications.initiate(target));
           try { return await attempt.wait(() => request.unwrap(), () => request.abort()); }
           finally { request.reset(); }
@@ -71,8 +74,13 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
           if (current() && result.registered) registration.capabilityKey = key;
         } catch (error) {
           // A staged rollout against a v2 backend must retain ordinary/actionable push.
-          if (capability !== 3 || (error as { status?: unknown })?.status !== 400 || !current()) throw error;
-          const result = await register(2);
+          if (capability !== 4 || (error as { status?: unknown })?.status !== 400 || !current()) throw error;
+          let result;
+          try { result = await register(3); }
+          catch (fallbackError) {
+            if ((fallbackError as { status?: unknown })?.status !== 400 || !current()) throw fallbackError;
+            result = await register(2);
+          }
           if (current() && result.registered) registration.capabilityKey = key;
         }
       } catch {

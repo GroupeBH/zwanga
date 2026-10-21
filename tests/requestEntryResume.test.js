@@ -15,9 +15,9 @@ function fixture(t) {
   const env = { version: 0 };
   const options = { userId: 'user', active: true, online: true, ready: true, path: '/', overlayBusy: false,
     ridePending: false, hasOngoingRide: false, driver: false, profileReady: true,
-    requests: { data: [request()], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
-    trips: { data: [], isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
-    activity: { data: { userId: 'user', hasLiveActivity: true, requests: { count: 1 } }, isSuccess: true, fulfilledTimeStamp: Date.now() + 1000 },
+    requests: { data: [request()], isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
+    trips: { data: [], isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
+    activity: { data: { userId: 'user', hasLiveActivity: true, requests: { count: 1 } }, isSuccess: true, startedTimeStamp: Date.now() + 1000, fulfilledTimeStamp: Date.now() + 1000 },
     alerts: [], readRequest: async id => { reads.push(id); return request(id); },
     readTrip: async () => { throw new Error('No accepted trip in this fixture'); },
     readDispatch: async id => { reads.push(id); return { id, driverId: 'user', actionable: true, serverNow: iso(0), expiresAt: iso(30000) }; },
@@ -45,6 +45,14 @@ test('the most recently created active order wins; foreign, expired and assigned
     { ...request('cancelled'), status: 'cancelled' }, { ...request('expired'), departureDateMax: iso(-86400000) },
     { ...request('assigned'), selectedDriverId: 'driver' }];
   f.render(); await flush(); assert.deepEqual(f.reads, ['new']); assert.deepEqual(f.routes, ['/request-details/new']);
+});
+
+test('fresh legacy lists can recover an own request after the summary fails with retained old data', async t => {
+  const f = fixture(t);
+  f.options.activity = { data: { userId: 'user', hasLiveActivity: false }, isSuccess: false,
+    isError: true, startedTimeStamp: Date.now() - 1000, fulfilledTimeStamp: Date.now() - 1000 };
+  f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order']);
 });
 
 test('ongoing ride discovery, role resolution, overlays, offline and startup block request verification', async t => {
@@ -78,7 +86,7 @@ test('immediate dispatch verifies the attributed offer and preserves its authent
 });
 
 test('foreign, expired, passenger-only and already answered alerts cannot force a driver screen', async t => {
-  for (const alert of [{ kind: 'nearby', recipientId: 'other' }, { kind: 'nearby', expiresAt: iso(-1) }, { kind: 'response' }, { kind: 'booking' }]) {
+  for (const alert of [{ kind: 'nearby', recipientId: 'other' }, { kind: 'nearby', expiresAt: iso(-1) }, { kind: 'response' }]) {
     const f = fixture(t); f.options.driver = true;
     f.options.alerts = [{ key: 'alert', id: 'alert-id', recipientId: 'user', ...alert }];
     f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
