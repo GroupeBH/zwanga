@@ -1,5 +1,85 @@
 # Journal des changements techniques
 
+## 2026-10-22 — Pause des alertes de proximité après quatre demandes sans suite
+
+- **Périmètre / demande :** suspendre pendant 24 heures les sollicitations sonores
+  de proximité après **quatre demandes distinctes** ignorées ou refusées par un
+  conducteur. Un simple compteur local ne couvre ni l'application fermée, ni une
+  réinstallation, ni les renvois du serveur. Le dépôt voisin `zwanga-backend` a été
+  modifié avec autorisation, sans déploiement ni accès à la base de production.
+- **Règle appliquée :** compteur commun aux alertes `trip_request_nearby` et
+  `driver_dispatch_offer`. Les refus et absences de réponse se cumulent, sans
+  obligation d'être consécutifs ; une acceptation ne remet pas le compteur à zéro.
+  À la quatrième demande comptée, pause de 24 heures, non prolongée par un doublon.
+  Après expiration, le compteur repart à zéro au prochain contrôle. Les anciennes
+  alertes en attente ne réactivent pas une pause terminée. La sélection des
+  conducteurs et la livraison/reprise des push vérifient toutes deux la pause.
+- **Définition d'une absence de réponse :** notification enregistrée `sent` par
+  le backend, délai de réponse dépassé et demande encore disponible, sans réponse
+  métier du conducteur. La fenêtre est plafonnée à 60 secondes et aux échéances
+  `expiresAt` / `alertExpiresAt` existantes (dispatch généralement plus court).
+  Les demandes déjà attribuées, annulées ou auxquelles le conducteur a répondu
+  ne sont pas comptées comme ignorées. Les envois encore en attente ou déjà en
+  échec ne comptent pas. Un refus explicite est dédupliqué par conducteur/demande.
+- **Mobile :** ajout de `services/nearbyRequestRefusal.ts` et de la mutation RTK
+  Query dans `store/api/driverDispatchApi.ts`. Les refus de
+  `services/nearbyNotificationAction.ts` et
+  `hooks/request-detail/useRequestDriverActions.ts` signalent désormais la
+  décision au serveur authentifié, sans retarder l'arrêt local de la sonnerie ni
+  la navigation. Contrôle du propriétaire de la session, coalescence des appels
+  simultanés, délai HTTP de 10 secondes et libération de la mutation. Aucune
+  décision hors ligne n'est rejouée ; si la synchronisation échoue, le contrôle
+  serveur pourra constater l'absence de réponse à l'échéance.
+- **Backend :** `notifications/nearby-request-cooldown.ts` centralise le compteur,
+  le refus et la réconciliation. `notifications.service.ts` protège les deux
+  transports et ajoute un contrôle toutes les minutes, sans chevauchement local.
+  Le travail est borné à 100 conducteurs par passage et 100 événements par
+  conducteur ; chaque nouvel envoi refait également le contrôle. La route
+  `PUT /driver-dispatch/nearby-requests/:id/decline` utilise l'identité authentifiée
+  et ne peut pas annuler la commande du passager. Les refus dispatch existants
+  sont reconnus avant tout nouvel envoi, même avant leur échéance. Les anciens
+  payloads ne contenant qu'un `offerId` restent pris en charge.
+- **Persistance / performance :** migration additive
+  `1780000087000-NearbyRequestRingingCooldown.ts`, enregistrée dans le registre
+  backend : deux tables, clé unique conducteur/demande, dates `timestamptz`,
+  index partiel des événements non traités. Le guide PostgreSQL a orienté les
+  transactions courtes, l'ordre de verrouillage état → événements, la mise à jour
+  groupée et l'absence d'appel push sous verrou. Pas de nouveau minuteur mobile,
+  polling, service natif, changement GPS ou dépendance ajoutée.
+- **Comportements conservés :** réservations des trajets publiés, réponses aux
+  passagers et événements des trajets en cours inchangés. La pause ne déconnecte
+  pas le conducteur, ne désactive pas sa présence et n'empêche pas de consulter
+  manuellement les demandes. Les nouveaux push de proximité sont suspendus,
+  pas remplacés par un push silencieux. Le rayon et les critères métier existants
+  sont conservés.
+- **Vérifications réalisées :** 105 tests JavaScript mobiles ciblés réussis,
+  TypeScript mobile sans émission, ESLint des quatre fichiers mobiles modifiés,
+  frontière réseau RTK Query et limite de taille des sources validés. Côté
+  backend : 54 tests ciblés réussis, dont **9 tests sur PostgreSQL 17 réellement
+  exécutés dans une base temporaire isolée**, et 119 autres tests unitaires de
+  non-régression réussis. Les tests couvrent seuil, mélange refus/absence,
+  concurrence, doublons, reprise après 24 heures, comptes distincts, anciennes
+  invitations et nouvelles tentatives après échec d'envoi.
+  Les suites dispatch/partage PostgreSQL 18/PostGIS ont également réussi
+  (**75 tests**, incluant leurs tests de politique purs), avec les vraies entités
+  du backend et un scénario d'exclusion/réintégration après pause. Compilation
+  TypeScript de production backend sans émission et ESLint des nouveaux fichiers
+  de politique/migration validés. La compilation globale
+  incluant toutes les anciennes fixtures de tests présente des erreurs de types
+  dans des fichiers hors de ce correctif ; ce contrôle global n'est pas annoncé vert.
+- **Limites / mise en service :** `sent` confirme l'acceptation du push par le
+  transport, pas son affichage ou son audition sur le téléphone. Un échec de reçu
+  Expo arrivé après le comptage n'annule pas rétroactivement ce comptage. Un push
+  déjà en vol au déclenchement de la pause ne peut pas être rappelé. La
+  réconciliation périodique peut être différée sous charge ou en cas de panne ;
+  le contrôle avant envoi reste actif. Aucun essai physique Android/iOS, aucune
+  mesure de batterie/chauffe ou de charge production : aucune garantie native
+  déduite de ces tests. La migration doit être appliquée **avant** le backend qui
+  l'utilise, puis la version mobile doit être distribuée. Ces opérations n'ont
+  pas été effectuées. Aucun historique antérieur n'est reconstitué et les
+  anciennes applications ne signalent pas immédiatement le refus des alertes
+  de proximité : elles restent couvertes par le délai serveur.
+
 ## 2026-10-21 — Post-install EAS : lecture des pods Didit et test du compte à rebours
 
 - **Périmètre / problèmes constatés :** le log iOS copié confirme Xcode 26.x /

@@ -25,8 +25,18 @@ export interface DispatchOffer {
     seats: number; pricePerSeat: number; paymentMode: string; vehicleType: string };
 }
 
+export interface NearbyRingingStatus {
+  missedCount: number;
+  mutedUntil: string | null;
+  serverNow: string;
+}
+
 export const driverDispatchApi = baseApi.injectEndpoints({
   endpoints: builder => ({
+    declineNearbyRequest: builder.mutation<NearbyRingingStatus, string>({
+      query: id => ({ url: `/driver-dispatch/nearby-requests/${id}/decline`, method: 'PUT', timeout: 10000 }),
+      invalidatesTags: ['DriverDispatch'],
+    }),
     respondToBookingInvitation: builder.mutation<unknown, { id: string; accept: boolean }>({
       query: ({ id, accept }) => ({ url: `/bookings/${id}/respond-invitation`, method: 'PUT', body: { accept }, timeout: 10000 }),
       invalidatesTags: ['Booking', 'Trip', 'MyTrips', 'AccountActivity'],

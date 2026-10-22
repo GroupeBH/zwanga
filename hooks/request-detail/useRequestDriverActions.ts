@@ -22,6 +22,8 @@ import React from 'react';
 import type { Router } from 'expo-router';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
+import { reportNearbyRequestRefusal } from '@/services/nearbyRequestRefusal';
+import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
 
 interface Params {
   userId?: string;
@@ -86,6 +88,7 @@ export function useRequestDriverActions({
     // Acknowledgement is synchronous; OS cleanup must not delay leaving this screen.
     acknowledgeRideAlerts(alert => alert.recipientId === userId && alert.kind === 'nearby' && alert.id === tripRequest.id);
     void import('@/services/driverNotifications').then(service => service.dismissDriverDecision(userId, 'nearby', tripRequest.id)).catch(() => {});
+    void reportNearbyRequestRefusal(userId, tripRequest.id).catch(() => reportRideAudioFailure('NEARBY_REFUSAL_SYNC_FAILED'));
     router.replace('/(tabs)');
   };
   const handleGoPickup = async () => {

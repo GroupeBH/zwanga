@@ -78,6 +78,7 @@ function app(options = {}) {
     '@/store/api/driverDispatchApi': { driverDispatchApi: { endpoints: {
       respondToDispatchOffer: { initiate: body => ({ kind: 'dispatch', body }) },
       respondToBookingInvitation: { initiate: body => ({ kind: 'booking', body }) },
+      declineNearbyRequest: { initiate: id => ({ kind: 'nearby-refusal', id }) },
     } } },
   });
   load('services/notifeeBackgroundHandler.ts');
@@ -187,7 +188,7 @@ test('wrong account and a changed session cannot answer, dismiss another driver 
   assert.equal(f.io.routes.length, 0); assert.equal(f.io.displayed.length, 0); f.hooks.unmount();
 });
 
-test('nearby actions open the request, refuse only locally and never pick a vehicle or bypass passenger consent', async () => {
+test('nearby actions open the request, report refusal to the server and never pick a vehicle or bypass passenger consent', async () => {
   for (const action of ['driver-ignore-nearby', 'driver-review-nearby']) {
     for (const mode of ['foreground', 'background']) {
       const f = app(); f.mount(); await tick();
@@ -196,7 +197,7 @@ test('nearby actions open the request, refuse only locally and never pick a vehi
       else { f.io.state = 'background'; await f.background(data, action); f.resume(); }
       await tick(); await tick();
       assert.deepEqual(f.io.routes, [{ pathname: '/request-details/[id]', params: { id: requestId } }]);
-      assert.equal(f.io.mutations.length, 0);
+      assert.deepEqual(f.io.mutations, action === 'driver-ignore-nearby' ? [{ kind: 'nearby-refusal', id: requestId }] : []);
       assert.equal(f.io.dismissed.length, action === 'driver-ignore-nearby' ? 1 : 0);
       f.hooks.unmount();
     }

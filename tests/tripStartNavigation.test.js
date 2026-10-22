@@ -37,6 +37,7 @@ function fixture(t, kind = 'request', platform = 'android') {
     '@/store/api/tripApi': { tripApi: api },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/services/driverNotifications': { dismissDriverDecision: async (...args) => calls.push(['dismiss', ...args]) },
+    '@/services/nearbyRequestRefusal': { reportNearbyRequestRefusal: async (...args) => calls.push(['report-refusal', ...args]) },
     '@/services/rideAlertSession': { acknowledgeRideAlerts: match => calls.push(['acknowledge', match]) },
     '@/utils/errorHelpers': {
       getApiErrorMessage: (_error, fallback) => fallback,
@@ -86,7 +87,8 @@ test('declining a nearby broadcast acknowledges only this driver/order, never a 
   assert.equal(predicate({ recipientId: 'driver', kind: 'nearby', id: 'request' }), true);
   for (const alert of [{ recipientId: 'other', kind: 'nearby', id: 'request' }, { recipientId: 'driver', kind: 'booking', id: 'request' },
     { recipientId: 'driver', kind: 'nearby', id: 'other' }]) assert.equal(predicate(alert), false);
-  assert.deepEqual(app.calls.filter(call => call[0] !== 'acknowledge'), [['dismiss', 'driver', 'nearby', 'request']]);
+  assert.deepEqual(app.calls.filter(call => call[0] === 'dismiss'), [['dismiss', 'driver', 'nearby', 'request']]);
+  assert.deepEqual(app.calls.filter(call => call[0] === 'report-refusal'), [['report-refusal', 'driver', 'request']]);
   assert.deepEqual(app.routes, ['/(tabs)']);
 });
 
