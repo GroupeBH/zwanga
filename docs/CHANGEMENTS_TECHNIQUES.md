@@ -1,5 +1,29 @@
 # Journal des changements techniques
 
+## 2026-10-22 — Autorisations conducteur proposées au bon moment
+
+Remplacement du raccourci de localisation clignotant sur l'accueil par des modals
+contextuels : première publication réussie observée sur l'installation, ou visite
+suivante après 15 secondes au premier plan. Localisation puis plein écran Android,
+sans empilement de fenêtres natives ni requête HTTP supplémentaire. Report par
+autorisation de 24 heures et priorité conservée aux trajets/demandes/paiements.
+Fichiers, tests exécutés et limites dans
+[Autorisations contextuelles](DEMANDES_ENTRANTES_LOOPS_2026-10-22.md#autorisations-contextuelles--22-octobre-2026).
+
+## 2026-10-22 — Activation des alertes natives pour les builds de test
+
+Profil EAS `ride-alerts-test`, application effective du manifeste Android versionné
+et consentement plein écran avec relecture de l'autorisation système au retour.
+Fichiers, précautions, commandes et résultats dans
+[Activation pour les tests](DEMANDES_ENTRANTES_LOOPS_2026-10-22.md#activation-pour-les-tests--22-octobre-2026).
+Le profil production reste inchangé ; aucun build distant ni déploiement lancé.
+
+## 2026-10-22 — Demandes entrantes Android/iOS : intégration par boucles
+
+Contrat, modifications, résultats exécutés et limites natives sont suivis dans
+[Demandes entrantes — boucles de validation](DEMANDES_ENTRANTES_LOOPS_2026-10-22.md).
+Périmètre : mobile et backend voisin autorisé, sans déploiement.
+
 ## 2026-10-22 — Pause des alertes de proximité après quatre demandes sans suite
 
 - **Périmètre / demande :** suspendre pendant 24 heures les sollicitations sonores

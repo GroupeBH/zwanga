@@ -13,14 +13,19 @@ import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { rememberRideAlert } from '@/services/rideAlertSession';
 import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
+import { useRideRealtime } from './useRideRealtime';
+import { subscribeIosFirebaseMessages } from '@/services/iosFirebaseMessaging';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 export function useDriverNotifications(userId: string | undefined, driverAccount: boolean) {
+  useRideRealtime(userId, driverAccount);
   const router = useRouter();
   const seen = useRef(new Set<string>());
   useEffect(() => {
     seen.current.clear();
     if (!userId || Platform.OS === 'web') return;
     let disposed = false;
+    const sessionVersion = getTokenSessionVersion();
     const allowed = (data: Record<string, unknown> | undefined) => canShowRequestNotification(data, {
       id: userId, role: driverAccount ? 'driver' : 'passenger',
     });
@@ -111,6 +116,14 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       void displayDriverInvitation(data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
       void open(data).catch(() => reportRideAudioFailure('DRIVER_ALERT_OPEN_FAILED'));
     });
+    const firebase = subscribeIosFirebaseMessages(data => {
+      if (disposed || sessionVersion !== getTokenSessionVersion() || AppState.currentState !== 'active' || !allowed(data)) return;
+      const alert = parseRideAlert(data);
+      if (alert?.recipientId !== userId) return;
+      // Share the same acknowledgement/deduplication as Expo foreground delivery.
+      if (alert.kind === 'response') { rememberRideAlert(alert); return; }
+      void displayDriverInvitation(data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
+    });
     const response = Notifications.addNotificationResponseReceivedListener(event => {
       void open(event.notification.request.content.data, event.actionIdentifier, true).catch(() => reportRideAudioFailure('DRIVER_ALERT_ACTION_FAILED'));
     });
@@ -129,6 +142,6 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
     if (Platform.OS === 'android') void notifee.getInitialNotification().then(event => {
       if (event) return open(event.notification.data, event.pressAction.id, true, true);
     }).catch(() => reportRideAudioFailure('DRIVER_ALERT_INITIAL_OPEN_FAILED'));
-    return () => { disposed = true; foreground.remove(); response.remove(); native(); pendingSubscription(); resume.remove(); };
+    return () => { disposed = true; firebase(); foreground.remove(); response.remove(); native(); pendingSubscription(); resume.remove(); };
   }, [router, userId, driverAccount]);
 }

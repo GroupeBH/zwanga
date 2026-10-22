@@ -4,6 +4,7 @@ import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
+import { recordDriverPublication } from '@/services/driverPermissionOnboarding';
 import {
   useCreateRecurringTripMutation,
   useCreateTripMutation,
@@ -11,7 +12,7 @@ import {
   useLazyGetMyTripsQuery,
 } from '@/store/api/tripApi';
 import { useGetProfileSummaryQuery } from '@/store/api/userApi';
-import type { Vehicle, TripPaymentMode } from '@/types';
+import type { User, Vehicle, TripPaymentMode } from '@/types';
 import {
   createBecomeDriverAction,
   createSubscribeToZwangaProAction,
@@ -21,7 +22,6 @@ import {
 } from '@/utils/errorHelpers';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
 import React from 'react';
-import type { User } from '@/types';
 import type { Router } from 'expo-router';
 import type { DriverFinanceSummary } from '@/store/api/driverFinanceApi';
 import { estimateCashCommission } from '@/utils/cashCommission';
@@ -264,6 +264,7 @@ export function usePublishSubmission({
       // MapView can crash during the publication transition, so the feedback is
       // rendered as an in-screen overlay instead of a React Native Modal.
       setPublicationSuccess({ recurring: isRecurringTrip });
+      void recordDriverPublication(user?.id);
     } catch (error: any) {
       if (isPublicationPhotoRequired(error)) {
         showDialog(publicationPhotoDialog(router));
@@ -304,6 +305,7 @@ export function usePublishSubmission({
 
       if (recoveredPublication) {
         setPublicationSuccess({ recurring: isRecurringTrip });
+        void recordDriverPublication(user?.id);
         return;
       }
 

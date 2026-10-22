@@ -5,12 +5,15 @@ import { io, Socket } from 'socket.io-client';
 import { socketConnectionOptions } from './socketConnectionPolicy';
 import { subscribeConnectionRecovery } from './networkRecovery';
 import { deliverSocketEvent, isChatMessage } from './socketPayloads';
+import { parseRideRealtimeEvent, type RideRealtimeEvent } from '@/features/notifications/rideRealtime';
 
 type MessageListener = (message: Message) => void;
 
 class ChatSocketClient {
   private socket: Socket | null = null;
   private listeners = new Set<MessageListener>();
+  private rideListeners = new Set<(event: RideRealtimeEvent) => void>();
+  private hasConsumers() { return this.rooms.size > 0 || this.listeners.size > 0 || this.rideListeners.size > 0; }
   private rooms = new Map<string, number>();
   private connecting: Promise<Socket> | null = null;
   private generation = 0;
@@ -18,7 +21,7 @@ class ChatSocketClient {
 
   private async connect(): Promise<Socket> {
     this.stopRecovery ??= subscribeConnectionRecovery(() => {
-      if ((this.rooms.size > 0 || this.listeners.size > 0) && !this.socket?.connected) {
+      if (this.hasConsumers() && !this.socket?.connected) {
         void this.connect().catch(() => undefined);
       }
     });
@@ -38,6 +41,11 @@ class ChatSocketClient {
         socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
         socket.on('connect', () => {
           this.rooms.forEach((_count, bookingId) => socket.emit('join_booking', { bookingId }));
+          deliverSocketEvent(this.rideListeners, { kind: 'reconnected' });
+        });
+        socket.on('ride_alert', (raw: unknown) => {
+          const event = parseRideRealtimeEvent(raw);
+          if (event) deliverSocketEvent(this.rideListeners, event);
         });
         socket.on('new_message', (message: Message) => {
           if (isChatMessage(message)) deliverSocketEvent(this.listeners, message);
@@ -81,7 +89,7 @@ class ChatSocketClient {
       this.rooms.delete(bookingId);
       if (this.socket?.connected) this.socket.emit('leave_booking', { bookingId });
     }
-    if (this.rooms.size === 0 && this.listeners.size === 0) this.disconnect(false);
+    if (!this.hasConsumers()) this.disconnect(false);
   }
 
   async leaveBookingRoom(bookingId: string) { this.releaseRoom(bookingId); }
@@ -105,8 +113,14 @@ class ChatSocketClient {
     });
     return () => {
       this.listeners.delete(listener);
-      if (this.listeners.size === 0 && this.rooms.size === 0) this.disconnect(false);
+      if (!this.hasConsumers()) this.disconnect(false);
     };
+  }
+
+  subscribeToRideAlerts(listener: (event: RideRealtimeEvent) => void) {
+    this.rideListeners.add(listener);
+    void this.connect().catch(() => undefined);
+    return () => { this.rideListeners.delete(listener); if (!this.hasConsumers()) this.disconnect(false); };
   }
 
   /** Also invalidates a connection still waiting for secure storage. */
@@ -119,11 +133,11 @@ class ChatSocketClient {
     this.socket = null;
     this.connecting = null;
     this.rooms.clear();
-    if (clearListeners) this.listeners.clear();
+    if (clearListeners) { this.listeners.clear(); this.rideListeners.clear(); }
   }
 
   refreshAuthentication() {
-    if (this.rooms.size === 0 && this.listeners.size === 0) return;
+    if (!this.hasConsumers()) return;
     if (!this.socket) { void this.connect().catch(() => undefined); return; }
     const generation = this.generation;
     void getValidAccessToken().then((token) => {

@@ -86,6 +86,7 @@ test('publication photo refusal unlocks submission, keeps the draft and does not
   const { usePublishSubmission } = loader({
     '../../features/publish/publishModel': { getLocationCoordinates: () => [15, -4], isUserDriver: () => true },
     '@/services/analytics': { trackEvent() { throw Error('must not record success'); } },
+    '@/services/driverPermissionOnboarding': { recordDriverPublication() { throw Error('must not start permission onboarding'); } },
     '@/utils/mutationReconciliation': { reconcileAmbiguousMutation() { throw Error('must not reconcile a definitive refusal'); } },
   })('hooks/publish/usePublishSubmission.ts');
   const ref = { current: false };

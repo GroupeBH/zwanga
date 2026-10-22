@@ -13,6 +13,7 @@ import { driverDispatchApi } from '@/store/api/driverDispatchApi';
 import { useAppDispatch } from '@/store/hooks';
 import { getUserIdFromToken } from '@/utils/jwt';
 import { createPushRegistrationAttempt } from '@/services/pushRegistrationAttempt';
+import { usesIosFirebaseMessaging } from '@/services/iosFirebaseMessaging';
 
 /** Ordinary push and interactive capability have independent success states. */
 export function usePushRegistration(hasSession: boolean, accessToken: string | null) {
@@ -61,10 +62,11 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
         // Android data-only delivery needs the headless handler. iOS sound and
         // actions are delivered by APNs/Notifee, even with Background Refresh off.
         if (!current() || (Platform.OS === 'android' && !backgroundReady)) return;
-        const capability = Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 4 : 2;
+        const capability = Platform.OS === 'ios' && usesIosFirebaseMessaging() ? 5
+          : Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 4 : 2;
         if (capability === 4) await attempt.wait(() => configureDriverAlertFallback());
         if (!current()) return;
-        const register = async (target: 2 | 3 | 4) => {
+        const register = async (target: 2 | 3 | 4 | 5) => {
           const request = dispatch(driverDispatchApi.endpoints.registerDriverNotifications.initiate(target));
           try { return await attempt.wait(() => request.unwrap(), () => request.abort()); }
           finally { request.reset(); }

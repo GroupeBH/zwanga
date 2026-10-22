@@ -124,6 +124,7 @@ for (const recurring of [false, true]) {
     const { usePublishSubmission } = loader({
       '../../features/publish/publishModel': { getLocationCoordinates: () => [15, -4], isUserDriver: () => true },
       '@/services/analytics': { trackEvent() {} },
+      '@/services/driverPermissionOnboarding': { recordDriverPublication() {} },
     })('hooks/publish/usePublishSubmission.ts');
     const create = payload => { payloads.push(payload); return { unwrap: async () => ({ id: 'test-trip' }) }; };
     const props = {

@@ -7,7 +7,7 @@
     "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs && node ./scripts/patch-expo-location-batches.cjs",
     "eas-build-pre-install": "node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-referral-config.js && node ./scripts/validate-android-crashlytics.js",
     "eas-build-on-success": "node ./scripts/validate-android-native.cjs --eas",
-    "eas-build-post-install": "node ./scripts/patch-expo-location-batches.cjs --check && node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-ios-crashlytics.cjs --eas && node ./scripts/check-release.cjs",
+    "eas-build-post-install": "node ./scripts/configure-ride-alert-build.cjs --eas && node ./scripts/patch-expo-location-batches.cjs --check && node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-ios-crashlytics.cjs --eas && node ./scripts/check-release.cjs",
     "check:ios-toolchain": "node ./scripts/validate-ios-toolchain.cjs --config-only",
     "check:ios-crashlytics": "node ./scripts/validate-ios-crashlytics.cjs",
     "check:android-native": "node ./scripts/validate-android-native.cjs",
@@ -57,6 +57,7 @@
     "@react-native-firebase/analytics": "^23.8.8",
     "@react-native-firebase/app": "^23.8.8",
     "@react-native-firebase/crashlytics": "23.8.8",
+    "@react-native-firebase/messaging": "23.8.8",
     "@react-native-google-signin/google-signin": "^16.1.1",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
@@ -132,7 +133,12 @@
   "expo": {
     "autolinking": {
       "android": {
-        "buildFromSource": ["expo-location", "expo-task-manager", "unimodules-app-loader"]
+        "exclude": ["@react-native-firebase/messaging"],
+        "buildFromSource": [
+          "expo-location",
+          "expo-task-manager",
+          "unimodules-app-loader"
+        ]
       }
     }
   },

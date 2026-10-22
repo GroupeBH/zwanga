@@ -53,6 +53,8 @@ function app(options = {}) {
   const router = { navigate: value => io.routes.push(value) };
   const load = loader({
     react: hooks.react, 'expo-router': { useRouter: () => router },
+    './useRideRealtime': { useRideRealtime() {} },
+    '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
     'react-native': { Platform: { OS: 'android' }, Linking: { openURL: async () => assert.fail('native action launchActivity opens the app') },
       AppState: { get currentState() { return io.state; }, addEventListener: (_event, callback) => {
         stateListeners.add(callback); return { remove: () => stateListeners.delete(callback) };

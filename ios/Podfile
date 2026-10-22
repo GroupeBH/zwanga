@@ -98,6 +98,7 @@ target 'zwanga' do
       'RNFBApp',
       'RNFBAnalytics',
       'RNFBCrashlytics',
+      'RNFBMessaging',
     ]
 
     installer.pods_project.targets.each do |target|

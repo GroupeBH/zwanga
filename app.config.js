@@ -151,7 +151,7 @@ module.exports = {
 
     autolinking: {
       android: {
-        exclude: HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'],
+        exclude: ['@react-native-firebase/messaging', ...(HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'])],
       },
       ios: {
         exclude: HAS_META_APP_EVENTS ? [] : ['react-native-fbsdk-next'],
@@ -160,6 +160,8 @@ module.exports = {
 
     // ✅ EXTRA — version fusionnée et corrigée
     extra: {
+      // Coordinated rollout: enable after the v5 backend and Firebase APNs setup.
+      iosFirebaseMessaging: process.env.EXPO_PUBLIC_IOS_FCM_ENABLED === 'true',
       // project ID pour EAS (obligatoire)
       eas: {
         projectId: "164a67a3-04b8-4c34-9616-576391669e76"
@@ -196,6 +198,7 @@ module.exports = {
     },
 
     plugins: [
+      ['./plugins/withIncomingRideAlerts', { enabled: process.env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED === 'true' }],
       'expo-router',
       'expo-dev-client',
       'expo-apple-authentication',

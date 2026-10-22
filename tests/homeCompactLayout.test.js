@@ -51,7 +51,7 @@ test('map header keeps only initial, notifications and truthful active-trip feed
   assert.doesNotMatch(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'driver' } })), /en cours/);
 });
 
-test('Home header inserts location permission between the bell and initial only for an identified driver', () => {
+test('Home header has no permission button; contextual onboarding replaces the blinking shortcut', () => {
   const base = { insets: { top: 20 }, profileInitial: 'A', unreadNotifications: 0 };
   for (const extra of [{ isDriver: false, userId: 'passenger' }, { isDriver: true }]) {
     assert.equal(nodes(HomeHeader.type({ ...base, ...extra })).some(n => n.type === 'LocationPermission'), false);
@@ -59,10 +59,7 @@ test('Home header inserts location permission between the bell and initial only 
   for (const isScreenActive of [true, false]) {
     const tree = HomeHeader.type({ ...base, isDriver: true, userId: 'driver', isScreenActive });
     const controls = nodes(tree).filter(n => ['Button', 'LocationPermission'].includes(n.type));
-    assert.deepEqual(controls.map(n => n.type), ['Button', 'LocationPermission', 'Button']);
-    assert.equal(controls[1].props.active, isScreenActive);
-    assert.equal(controls[1].props.userId, 'driver');
-    assert.equal(controls[1].key, 'driver');
+    assert.deepEqual(controls.map(n => n.type), ['Button', 'Button']);
   }
 });
 
