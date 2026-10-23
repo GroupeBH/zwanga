@@ -6,9 +6,10 @@ const fix = (latitude = 0) => ({ timestamp: Date.now(), coords: { latitude, long
 
 function fixture() {
   let version = 0, account = 'driver', fail, wait, waitTokens, enabled = true, online = true;
-  let driverRide = null, passengerRide = null;
+  let driverRide = null, passengerRide = null, localEnabled = true;
   const calls = [], resets = [];
   const load = loader({
+    './nearbyDriverLocation': { isNearbyDriverLocationEnabled: async () => localEnabled },
     './tokenStorage': { getTokens: async () => { if (waitTokens) await waitTokens; return { accessToken: 'test' }; } },
     './tokenSession': { getTokenSessionVersion: () => version },
     './driverBackgroundLocationSession': { getActiveDriverBackgroundTripSession: async () => driverRide },
@@ -30,8 +31,16 @@ function fixture() {
     wait: value => { wait = value; }, waitTokens: value => { waitTokens = value; },
     enabled: value => { enabled = value; }, online: () => online, cancel: () => { online = false; },
     driverRide: value => { driverRide = value; }, passengerRide: value => { passengerRide = value; },
+    localEnabled: value => { localEnabled = value; },
   };
 }
+
+test('delivery enforces local opt-out even when credentials were already being read', async () => {
+  const f = fixture(); let release;
+  f.waitTokens(new Promise(resolve => { release = resolve; }));
+  const sending = f.send('driver', fix()); await tick();
+  f.localEnabled(false); release(); assert.equal(await sending, 'stop'); assert.equal(f.calls.length, 0);
+});
 
 test('foreground/background delivery is single flight and resets RTK mutation entries', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 1000000 });

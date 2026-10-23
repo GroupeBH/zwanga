@@ -6,6 +6,7 @@ import { PASSENGER_BACKGROUND_LOCATION_TASK } from './passengerTaskName';
 import type { PassengerTrackingSession } from './passengerTrackingTypes';
 import { pauseNearbyDriverLocation } from '../nearbyDriverLocation';
 import { passengerWaitingInterval } from './passengerWaitingPolicy';
+import { readLocationNative, mutateLocationNative } from '../locationNativeDeadline';
 
 let work: Promise<unknown> = Promise.resolve();
 let appliedProfile: string | null = null;
@@ -32,12 +33,12 @@ async function applyCurrentProfile(current: PassengerTrackingSession, forceCheck
   const now = Date.now();
   if (!forceCheck && appliedProfile === key && now >= nativeCheckedAt
     && now - nativeCheckedAt < NATIVE_CHECK_INTERVAL_MS) return true;
-  if (await hasStartedUpdates() && appliedProfile === key) {
+  if (await readLocationNative(hasStartedUpdates()) && appliedProfile === key) {
     nativeCheckedAt = now;
     return true;
   }
-  await Location.startLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK,
-    passengerGpsOptions(current.waitForActiveTrip, current.departureTimeMs));
+  await mutateLocationNative(PASSENGER_BACKGROUND_LOCATION_TASK, () => Location.startLocationUpdatesAsync(PASSENGER_BACKGROUND_LOCATION_TASK,
+    passengerGpsOptions(current.waitForActiveTrip, current.departureTimeMs)), stopRegisteredTask);
   appliedProfile = key;
   nativeCheckedAt = now;
   return true;
@@ -46,7 +47,7 @@ async function applyCurrentProfile(current: PassengerTrackingSession, forceCheck
 export function startPassengerGpsProfile(session: PassengerTrackingSession, revision: number) {
   return serialize(async () => {
     if (revision !== startRevision || requestedBooking !== session.bookingId) return false;
-    await saveTrackingSession(session);
+    await mutateLocationNative('passenger-session', () => saveTrackingSession(session), clearTrackingSession);
     try {
       await pauseNearbyDriverLocation();
       if (revision !== startRevision || requestedBooking !== session.bookingId) return false;
@@ -56,8 +57,8 @@ export function startPassengerGpsProfile(session: PassengerTrackingSession, revi
       // phantom ride blocking discovery. A later queued start remains intact.
       appliedProfile = null;
       nativeCheckedAt = -Infinity;
-      try { await stopRegisteredTask(); }
-      finally { await clearTrackingSession(); }
+      try { await mutateLocationNative(PASSENGER_BACKGROUND_LOCATION_TASK, stopRegisteredTask); }
+      finally { await mutateLocationNative('passenger-session', clearTrackingSession); }
       throw error;
     }
   });
@@ -66,9 +67,9 @@ export function startPassengerGpsProfile(session: PassengerTrackingSession, revi
 /** A background response may update only the session which is still current. */
 export function updatePassengerGpsProfile(session: PassengerTrackingSession) {
   return serialize(async () => {
-    const current = await getActiveTrackingSession();
+    const current = await readLocationNative(getActiveTrackingSession());
     if (current?.bookingId !== session.bookingId) return false;
-    await saveTrackingSession(session);
+    await mutateLocationNative('passenger-session', () => saveTrackingSession(session), () => saveTrackingSession(current));
     try {
       return await applyCurrentProfile(session, true);
     } catch (error) {
@@ -76,7 +77,7 @@ export function updatePassengerGpsProfile(session: PassengerTrackingSession) {
       // coarse waiting fixes as precise in-ride samples on the next callback.
       appliedProfile = null;
       nativeCheckedAt = -Infinity;
-      await saveTrackingSession(current);
+      await mutateLocationNative('passenger-session', () => saveTrackingSession(current));
       throw error;
     }
   });
@@ -105,7 +106,7 @@ export function passengerGpsOptions(waiting: boolean, departureTimeMs?: number |
 /** Update the existing native task, without stopping/restarting its location manager. */
 export function applyPassengerGpsProfile(session: PassengerTrackingSession) {
   return serialize(async () => {
-    const current = await getActiveTrackingSession();
+    const current = await readLocationNative(getActiveTrackingSession());
     if (current?.bookingId !== session.bookingId) return false;
     return applyCurrentProfile(current);
   });
@@ -117,10 +118,10 @@ export function stopPassengerGpsProfile(bookingId?: string | null) {
     requestedBooking = null;
   }
   return serialize(async () => {
-    const current = await getActiveTrackingSession(true);
+    const current = await readLocationNative(getActiveTrackingSession(true));
     if (bookingId && current?.bookingId && current.bookingId !== bookingId) return;
-    await clearTrackingSession();
-    await stopRegisteredTask();
+    await mutateLocationNative('passenger-session', clearTrackingSession);
+    await mutateLocationNative(PASSENGER_BACKGROUND_LOCATION_TASK, stopRegisteredTask);
     appliedProfile = null;
     nativeCheckedAt = -Infinity;
   });
@@ -129,8 +130,8 @@ export function stopPassengerGpsProfile(bookingId?: string | null) {
 /** A callback captured before a new session was saved must not stop that new session. */
 export function stopPassengerGpsIfIdle() {
   return serialize(async () => {
-    if (await getActiveTrackingSession(true)) return;
-    await stopRegisteredTask();
+    if (await readLocationNative(getActiveTrackingSession(true))) return;
+    await mutateLocationNative(PASSENGER_BACKGROUND_LOCATION_TASK, stopRegisteredTask);
     appliedProfile = null;
     nativeCheckedAt = -Infinity;
   });

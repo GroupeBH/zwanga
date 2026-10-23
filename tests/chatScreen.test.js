@@ -66,9 +66,11 @@ function screenFixture() {
     '@/store/selectors': { selectUser() {} },
     '@/services/analytics': { trackEvent() {} }, '@/utils/phoneHelpers': { openWhatsApp() {} },
     '@/services/chatSocket': { chatSocket: {
+      subscribeToReconnect: () => () => {},
       subscribeToMessages: () => { socketCalls.push('subscribe'); return () => socketCalls.push('unsubscribe'); },
       joinBookingRoom: async () => {}, leaveBookingRoom: async () => {},
     } },
+    '@/store/api/baseApi': { baseApi: { util: { invalidateTags: tags => ({ refresh: tags }) } } },
     '@/store/api/messageApi': {
       useGetConversationQuery: (_args, options) => { queryCalls.push(options); return { data: conversation, refetch }; },
       useGetConversationMessagePagesInfiniteQuery: (_args, options) => {

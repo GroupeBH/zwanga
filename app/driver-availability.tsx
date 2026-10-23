@@ -9,6 +9,7 @@ import { useDriverDispatchStatusQuery } from '@/store/api/driverDispatchApi';
 import { NearbyDriverLocationPermission } from '@/components/profile/NearbyDriverLocationPermission';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { openDriverAlertSettings } from '@/services/driverAlertChannel';
+import { DriverFullScreenPreference } from '@/components/profile/DriverFullScreenPreference';
 
 export default function DriverAvailabilityScreen() {
   const router = useRouter();
@@ -30,6 +31,7 @@ export default function DriverAvailabilityScreen() {
         </TouchableOpacity>
         : <Text style={styles.hint}>{available ? 'Commandes proches : service disponible' : 'Commandes proches : service indisponible'}</Text>}
       <NearbyDriverLocationPermission available={available} />
+      <DriverFullScreenPreference />
       <Text style={styles.label}>Son des notifications</Text>
       <Text style={styles.copy}>Les alertes se préparent dès la connexion, après votre autorisation de notifications. Aucun réglage supplémentaire n’est nécessaire ici.</Text>
       <Text style={styles.copy}>Une sonnerie Zwanga vous alerte. Dans l’application, acceptez ou refusez pour l’arrêter.</Text>

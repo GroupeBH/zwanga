@@ -11,10 +11,16 @@ import type {
 import { baseApi } from "./baseApi";
 import type { BaseEndpointBuilder } from "./types";
 import type { HistoryArgs, HistoryPage } from './financeHistoryPage';
+import type { RootState } from '@/store';
+import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { runWalletTopUpIntent, recoverWalletTopUpIntent } from '@/features/wallet/topUpIntent';
 
 export type WalletLedgerPage = HistoryPage<WalletLedgerEntry> & { limited?: boolean };
 
-type InitiateWalletTopUpPayload = {
+export type InitiateWalletTopUpPayload = {
+  idempotencyKey?: string;
+  /** Local isolation only; not sent to the backend. */
+  intentScope?: string;
   amount: number;
   method: SubscriptionPaymentMethod;
   phone?: string;
@@ -286,13 +292,42 @@ export const walletApi = baseApi.injectEndpoints({
       WalletPaymentResponse,
       InitiateWalletTopUpPayload
     >({
-      query: (body) => ({
-        url: "/wallet/topups",
-        method: "POST",
-        body,
-      }),
-      transformResponse: (response: RawWalletPaymentResponse) =>
-        mapWalletPaymentResponse(response),
+      async queryFn({ intentScope = 'wallet', ...payload }, api, _options, baseQuery) {
+        const userId = (api.getState() as RootState).auth.user?.id;
+        const isCurrent = () => !api.signal.aborted && Boolean(userId) &&
+          (api.getState() as RootState).auth.isAuthenticated && (api.getState() as RootState).auth.user?.id === userId;
+        try {
+          const data = await runWalletTopUpIntent(userId ?? '', intentScope, payload, async body => {
+            const result = await baseQuery({ url: '/wallet/topups', method: 'POST', body });
+            if (result.error) throw result.error;
+            return mapWalletPaymentResponse(result.data as RawWalletPaymentResponse);
+          }, isCurrent);
+          return { data };
+        } catch (error) {
+          if (error && typeof error === 'object' && 'status' in error) return { error: error as FetchBaseQueryError };
+          return { error: { status: 'CUSTOM_ERROR', error: error instanceof Error ? error.message :
+            'Recharge à vérifier. Ne payez pas une seconde fois.', data: { message: error instanceof Error ? error.message :
+              'Recharge à vérifier. Ne payez pas une seconde fois.' } } };
+        }
+      },
+      invalidatesTags: [walletTag, paymentHistoryTag],
+    }),
+    recoverWalletTopUp: builder.mutation<WalletPaymentResponse, { intentScope: string }>({
+      async queryFn({ intentScope }, api, _options, baseQuery) {
+        const userId = (api.getState() as RootState).auth.user?.id;
+        const isCurrent = () => !api.signal.aborted && Boolean(userId) &&
+          (api.getState() as RootState).auth.isAuthenticated && (api.getState() as RootState).auth.user?.id === userId;
+        try {
+          return { data: await recoverWalletTopUpIntent(userId ?? '', intentScope, async body => {
+            const result = await baseQuery({ url: '/wallet/topups/recover', method: 'POST', body });
+            if (result.error) throw result.error;
+            return mapWalletPaymentResponse(result.data as RawWalletPaymentResponse);
+          }, isCurrent) };
+        } catch (error) {
+          if (error && typeof error === 'object' && 'status' in error) return { error: error as FetchBaseQueryError };
+          return { error: { status: 'CUSTOM_ERROR', error: 'Paiement à vérifier. Contactez l’aide de Zwanga.' } };
+        }
+      },
       invalidatesTags: [walletTag, paymentHistoryTag],
     }),
     checkWalletTopUpStatus: builder.query<WalletPaymentResponse, string>({
@@ -335,6 +370,7 @@ export const {
   useGetWalletLedgerQuery,
   useGetWalletLedgerPageQuery,
   useInitiateWalletTopUpMutation,
+  useRecoverWalletTopUpMutation,
   useLazyCheckWalletTopUpStatusQuery,
   useTransferWalletPointsMutation,
   useGetWalletWithdrawalsQuery,

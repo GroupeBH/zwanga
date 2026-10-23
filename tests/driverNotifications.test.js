@@ -9,6 +9,8 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const driverId = '00000000-0000-4000-8000-000000000001';
 const id = '00000000-0000-4000-8000-000000000002';
 const data = { actionProtocol: 'driver-v1', type: 'driver_dispatch_offer', driverId, offerId: id, expiresAt: new Date(Date.now() + 30000).toISOString() };
+// Keep each fixture's original deadline, independent of the whole suite duration.
+test.beforeEach(() => { data.expiresAt = new Date(Date.now() + 30000).toISOString(); });
 
 test('ring deadline is bounded, keeps business expiry and fails silent for invalid timing', () => {
   const invitation = { kind: 'booking', id, driverId };
@@ -63,7 +65,7 @@ test('nearby alert fields survive the plain body copied into dataString by Expo 
   assert.equal(load('features/notifications/rideSound.ts').parseNearbyPhoneAlert(policy.readDriverPushData({ data: malformed })), null);
 });
 
-function service(platform = 'android', account = driverId, phoneChannel = false) {
+function service(platform = 'android', account = driverId, phoneChannel = false, fullScreen = false) {
   const storage = new Map();
   const displays = [];
   const channels = [];
@@ -79,11 +81,23 @@ function service(platform = 'android', account = driverId, phoneChannel = false)
       getPresentedNotificationsAsync: async () => presented, dismissNotificationAsync: async id => cancelled.push(id) },
     '@notifee/react-native': { __esModule: true, default: native, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, AndroidStyle: { BIGTEXT: 'BIGTEXT' } },
     'react-native': { Platform: { OS: platform }, AppState: appState,
-      NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => true,
+      NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => true, canPresentFullScreen: async () => fullScreen,
         ...(phoneChannel ? { ensureBundledChannel: async () => 'zwanga-ride-ring-v4' } : {}) } } },
   })('services/driverNotifications.ts');
   return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented };
 }
+
+test('simultaneous socket and push share one card, deadline and acknowledgement', async () => {
+  const f = service();
+  const expiresAt = new Date(Date.now() + 20000).toISOString();
+  const payload = { ...data, expiresAt, ringUntil: expiresAt };
+  await Promise.all([f.loaded.displayDriverInvitation(payload), f.loaded.displayDriverInvitation({ ...payload })]);
+  assert.equal(f.displays.length, 1);
+  assert.equal(f.displays[0].data.expiresAt, expiresAt);
+  await f.loaded.dismissDriverInvitation(policy.parseDriverInvitation(payload));
+  await f.loaded.displayDriverInvitation(payload);
+  assert.equal(f.displays.length, 1, 'a delayed duplicate never revives an answered card');
+});
 
 for (const operation of ['createChannel', 'cancelNotification', 'displayNotification']) {
   test(`foreground ${operation} timeout releases the invitation for a retry`, async t => {
@@ -133,7 +147,7 @@ test('foreground initialization interrupted by sleep does not suppress backgroun
   assert.equal(f.displays[0].android.lightUpScreen, true);
 });
 
-test('sleeping Android requests screen wake for every fresh booking or nearby request, never a full-screen activity', async () => {
+test('sleeping Android without fullscreen consent keeps screen wake and the usual notification', async () => {
   for (const payload of [
     { type: 'new_booking', actionProtocol: 'driver-v1', bookingId: id, driverId },
     { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
@@ -142,6 +156,24 @@ test('sleeping Android requests screen wake for every fresh booking or nearby re
     const f = service(); await f.loaded.displayDriverInvitation(payload);
     assert.equal(f.displays[0].android.lightUpScreen, true);
     assert.equal(f.displays[0].android.fullScreenAction, undefined);
+  }
+});
+
+test('eligible Android test builds attach the private full-screen action only to fresh background alerts', async () => {
+  for (const payload of [
+    { ...data, expiresAt: new Date(Date.now() + 30000).toISOString() },
+    { type: 'new_booking', actionProtocol: 'driver-v1', bookingId: id, driverId },
+    { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+      tripRequestId: id, driverId, ringUntil: new Date(Date.now() + 30000).toISOString() },
+  ]) {
+    for (const appState of ['active', 'background']) {
+      const f = service('android', driverId, true, true); f.appState.currentState = appState;
+      await f.loaded.displayDriverInvitation(payload);
+      assert.equal(f.displays.length, 1);
+      assert.equal(f.displays[0].android.fullScreenAction?.launchActivity,
+        appState === 'background' ? 'com.zwanga.notifications.IncomingRideActivity' : undefined);
+      assert.equal(f.displays[0].android.visibility, 0);
+    }
   }
 });
 
@@ -185,9 +217,9 @@ test('long-ring channel is configured independently of recipient role before cap
   assert.deepEqual(categories, [], 'Android background alerts do not wait for APNs category initialization');
 });
 
-test('iOS still registers both actionable notification categories', async () => {
+test('iOS registers reservation/dispatch and nearby actionable notification categories', async () => {
   const f = service('ios', null); await f.loaded.configureDriverNotifications();
-  assert.deepEqual(f.categories, ['driver-offer-v1', 'driver-offer-v2']);
+  assert.deepEqual(f.categories, ['driver-offer-v1', 'driver-offer-v2', 'driver-nearby-v1']);
 });
 
 test('a new background request still lights the screen after the previous request was dismissed', async () => {

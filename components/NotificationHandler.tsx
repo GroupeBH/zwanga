@@ -8,6 +8,7 @@ import { canShowRequestNotification } from '@/features/notifications/requestVisi
 import { isDriverAccount } from '@/utils/accountRole';
 import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
+import { notificationEffects } from '@/features/notifications/notificationEffects';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
@@ -168,10 +169,6 @@ export function NotificationHandler() {
     ): boolean => {
       const type = data.type;
 
-      if (type === 'driver_trip_revenue' || type === 'driver_booking_earning_confirmed') {
-        dispatch(baseApi.util.invalidateTags([{ type: 'DriverSettlement', id: 'ME' }]));
-      }
-
       if (type === 'driver_trip_revenue') {
         // L'écran de navigation possède son propre modal, alimenté par Socket.IO
         // avec un repli REST. Ne pas ouvrir deux modals pour la même clôture.
@@ -229,9 +226,7 @@ export function NotificationHandler() {
       fallbackBody?: string | null,
     ) => {
       if (!canShowRequestNotification(data, currentUserRef.current)) return;
-      if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
-        (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
-      if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
+      dispatch(baseApi.util.invalidateTags(notificationEffects(data).tags));
       // The dedicated hook also restores nearby taps received before hydration.
       // Do not schedule a second delayed route that could overwrite its decision.
       if (parseDriverInvitation(data) || isRemoteNearbyRequestAlert(data)) return;
@@ -252,15 +247,12 @@ export function NotificationHandler() {
     };
 
     const foregroundListener = Notifications.addNotificationReceivedListener((notification) => {
-      dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       const content = notification.request.content;
       const data = (content.data || {}) as Record<string, any>;
-      if (data.type === 'wallet_transfer_in' || data.type === 'wallet_transfer_out' ||
-        (data.type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus')) dispatch(baseApi.util.invalidateTags(['Wallet']));
+      dispatch(baseApi.util.invalidateTags(notificationEffects(data).tags));
       if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
-      if (data.type === 'app_update') dispatch(baseApi.util.invalidateTags(['AppUpdate']));
       if (data.type === 'trip_request_driver_overdue') {
         void handlePassengerOverdueNotification(data, content.body);
       } else {
@@ -269,7 +261,6 @@ export function NotificationHandler() {
     });
 
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
-      dispatch(baseApi.util.invalidateTags(['AccountActivity']));
       console.log('[NotificationHandler] Notification pressed from background.');
       const data = response.notification.request.content.data || {};
       void handleNotificationPress(data, response.notification.request.content.body);

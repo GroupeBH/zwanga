@@ -95,6 +95,8 @@ test('result payload opens its details only on tap, never on delivery or as an a
   let native;
   const result = { type: 'driver_action_result', ...invitation };
   const load = loader({ react: hooks.react,
+    './useRideRealtime': { useRideRealtime() {} },
+    '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
     'expo-router': { useRouter: () => ({ navigate: path => routes.push(path) }) },
     'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' } },
     'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),
@@ -136,6 +138,8 @@ test('cold start and foreground return no longer acknowledge driver invitations'
   let onState; let removed = false;
   const router = { navigate: path => routes.push(path) };
   const load = loader({ react: hooks.react,
+    './useRideRealtime': { useRideRealtime() {} },
+    '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
     'expo-router': { useRouter: () => router },
     'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active',
       addEventListener: (_event, handler) => { onState = handler; return { remove: () => { removed = true; } }; } } },
@@ -161,6 +165,8 @@ function tappedNotificationFixture(data, action = 'default', platform = 'ios') {
   const hooks = hookHarness(); const handoffs = [], actions = [];
   const event = { notification: { data, request: { content: { data } } }, actionIdentifier: action, pressAction: { id: action } };
   const load = loader({ react: hooks.react,
+    './useRideRealtime': { useRideRealtime() {} },
+    '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
     'expo-router': { useRouter: () => ({ navigate() {} }) },
     'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),

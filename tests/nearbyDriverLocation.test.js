@@ -55,7 +55,7 @@ function fixture({ savedOwner = 'driver', platform = 'android', disk = new Map()
   const appState = { currentState: 'active' };
   const load = loader({
     '@react-native-async-storage/async-storage': {
-      getItem: async key => { if (waitRead) await waitRead; return disk.get(key) ?? null; },
+      getItem: async key => { const value = disk.get(key) ?? null; if (waitRead) await waitRead; return value; },
       setItem: async (key, value) => { disk.set(key, value); },
       removeItem: async key => { if (waitRemove) await waitRemove; disk.delete(key); },
     },
@@ -109,6 +109,27 @@ test('cancelling a queued GPS activation stops it before native start', async ()
   const task = f.api.ensureNearbyDriverLocation('driver', () => allowed);
   await tick(); allowed = false; pending.resolve(); assert.equal(await task, false);
   assert.equal(f.starts.length, 0);
+});
+
+test('stuck permission read expires, releases the nearby queue and does not run a late start', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(), pending = deferred(); f.waitPermission(pending.promise);
+  const start = assert.rejects(f.api.ensureNearbyDriverLocation('driver'), /LOCATION_NATIVE_TIMEOUT/);
+  await tick(); const stopped = f.api.pauseNearbyDriverLocation();
+  t.mock.timers.tick(8000); await start; await stopped;
+  pending.resolve(); await tick(); assert.equal(f.starts.length, 0);
+  f.waitPermission(null); assert.equal(await f.api.ensureNearbyDriverLocation('driver'), true);
+});
+
+test('timed-out nearby start is stopped when native completes before another profile can take over', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(), pending = deferred(); f.waitStart(pending.promise);
+  const start = assert.rejects(f.api.ensureNearbyDriverLocation('driver'), /LOCATION_NATIVE_TIMEOUT/);
+  await tick(); t.mock.timers.tick(8000); await start;
+  let stopped = false;
+  const stop = f.api.pauseNearbyDriverLocation().then(() => { stopped = true; }); await tick();
+  assert.equal(stopped, false); pending.resolve(); await stop;
+  assert.equal(f.running(), false); assert.equal(f.starts.length, 1);
 });
 
 test('authorized drivers start by default without a profile opt-in, bound to the authenticated account', async () => {
@@ -244,6 +265,16 @@ test('re-enabling only removes the opt-out; system permission is still necessary
   assert.equal(await f.api.isNearbyDriverLocationEnabled('driver'), true);
   assert.equal(await f.api.ensureNearbyDriverLocation('driver'), false);
   f.setPermission(true); assert.equal(await f.api.ensureNearbyDriverLocation('driver'), true);
+});
+
+test('a stale disk read cannot undo an opt-out completed in the same revision', async () => {
+  const f = fixture(), pending = deferred(); f.waitRead(pending.promise);
+  const disable = f.api.setNearbyDriverLocationEnabled('driver', false);
+  const read = f.api.isNearbyDriverLocationEnabled('driver');
+  await disable; pending.resolve();
+  assert.equal(await read, false);
+  assert.equal(await f.api.isNearbyDriverLocationEnabled('driver'), false);
+  assert.equal(f.disk.get(disabledKey('driver')), '1');
 });
 
 test('opt-out racing a delayed native start cannot be undone by automatic reconciliation', async () => {

@@ -68,6 +68,8 @@ test('foreground booking delivery does not open a screen; pressing it opens the 
   const payload = { type: 'new_booking', actionProtocol: 'driver-v1', bookingId: id, driverId };
   const router = { navigate: path => routes.push(path) };
   const { useDriverNotifications } = loader({ react: hooks.react,
+    './useRideRealtime': { useRideRealtime() {} },
+    '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
     'expo-router': { useRouter: () => router },
     'react-native': { Platform: { OS: 'android' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     'expo-notifications': { addNotificationReceivedListener: fn => { expoListener = fn; return { remove() {} }; },
@@ -96,6 +98,8 @@ test('foreground nearby broadcasts reach the banner handler only for the driver;
     tripRequestId: id, driverId, ringUntil: new Date(Date.now() + 30000).toISOString(), dataString: 'Un client près de vous' };
   const router = { navigate: path => routes.push(path) };
   const { useDriverNotifications } = loader({ react: hooks.react,
+    './useRideRealtime': { useRideRealtime() {} },
+    '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
     'expo-router': { useRouter: () => router },
     'react-native': { Platform: { OS: 'android' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     'expo-notifications': { addNotificationReceivedListener: fn => { expoListener = fn; return { remove() {} }; },

@@ -87,23 +87,33 @@ test('unmount and loss of foreground cancel delayed exit instead of popping anot
 
 function realtimeFixture() {
   const hooks = hookHarness(), subscriptions = [], calls = [], messages = [], actions = [];
+  let reconnect;
   let current = true;
   const props = { enabled: true, conversationId: 'chat', bookingId: 'booking', userId: 'me',
     isCurrent: () => current, dispatch: action => actions.push(action) };
   const { useChatRealtime } = loader({ react: hooks.react,
     '@/services/chatSocket': { chatSocket: {
+      subscribeToReconnect: callback => { reconnect = callback; return () => { reconnect = undefined; }; },
       subscribeToMessages: callback => { subscriptions.push(callback); calls.push('subscribe'); return () => calls.push('unsubscribe'); },
       joinBookingRoom: () => { calls.push('join'); return new Promise(() => {}); },
       leaveBookingRoom: async () => { calls.push('leave'); },
     } },
+    '@/store/api/baseApi': { baseApi: { util: { invalidateTags: tags => ({ refresh: tags }) } } },
     '@/store/api/messageApi': { messageApi: { util: { updateQueryData: (endpoint, args, recipe) => {
       if (endpoint === 'getConversationMessages') recipe(messages); return args;
     } } } },
     '@/store/slices/messagesSlice': { addMessage: payload => payload },
   })('hooks/chat/useChatRealtime.ts');
-  return { hooks, props, calls, subscriptions, messages, actions, stopCurrent: () => { current = false; },
+  return { hooks, props, calls, subscriptions, messages, actions, reconnect: () => reconnect?.(), stopCurrent: () => { current = false; },
     render: () => hooks.render(() => useChatRealtime(props)) };
 }
+
+test('chat refreshes saved messages after reconnect without changing another conversation cache', () => {
+  const app = realtimeFixture(); app.render(); app.reconnect();
+  assert.deepEqual(app.actions[0], { refresh: [{ type: 'Message', id: 'chat' }, { type: 'Conversation', id: 'chat' }] });
+  app.stopCurrent(); app.reconnect(); assert.equal(app.actions.length, 1);
+  app.hooks.unmount(); app.reconnect(); assert.equal(app.actions.length, 1);
+});
 
 test('chat subscribes before joining, rejects unrelated/invalid events and deduplicates message echoes', () => {
   const app = realtimeFixture(); app.render();

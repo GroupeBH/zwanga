@@ -29,6 +29,13 @@
         "simulator": false
       }
     },
+    "ride-alerts-test": {
+      "extends": "production",
+      "env": {
+        "ZWANGA_DRIVER_FULL_SCREEN_ENABLED": "true",
+        "EXPO_PUBLIC_IOS_FCM_ENABLED": "true"
+      }
+    },
     "production": {
       "distribution": "store",
       "environment": "production",

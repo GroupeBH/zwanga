@@ -160,6 +160,11 @@ export async function obtainFcmToken(options?: { requestPermission?: boolean }):
       }
     }
 
+    if (Platform.OS === 'ios') {
+      const { obtainIosFirebaseToken } = await import('./iosFirebaseMessaging');
+      const firebaseToken = await obtainIosFirebaseToken();
+      if (firebaseToken) { await storeFcmToken(firebaseToken); return firebaseToken; }
+    }
     const projectId = await getExpoProjectId();
     const expoPushTokenResponse = await Notifications.getExpoPushTokenAsync(
       projectId ? { projectId } : undefined,
@@ -200,7 +205,12 @@ export function subscribeToFcmRefresh(
       });
   });
 
-  return () => subscription.remove();
+  let disposed = false;
+  let stopFirebase = () => {};
+  if (Platform.OS === 'ios') void import('./iosFirebaseMessaging').then(module => {
+    if (!disposed) stopFirebase = module.subscribeIosFirebaseToken(onTokenRefresh);
+  }).catch(() => {});
+  return () => { disposed = true; stopFirebase(); subscription.remove(); };
 }
 
 export async function clearStoredFcmToken(): Promise<void> {

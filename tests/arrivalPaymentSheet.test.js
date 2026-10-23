@@ -23,14 +23,20 @@ test('one payment modal keeps the same content component from selection through 
     isBeforeArrival: false, paymentAlreadySucceeded: false, completionSummary: null, paymentHistory: [],
     setCompletionSummary: noop, deferPayment: noop, deferEarlyPayment: noop, acknowledgeBooking: noop };
   let submitting = false;
+  let recoveryMessage;
+  let verification = { phase: 'idle', message: '' };
   const done = () => {};
   const { PassengerArrivalPaymentCoordinator } = loader({ ...mocks, react: { ...React, ...hooks.react },
     'expo-web-browser': { maybeCompleteAuthSession: noop }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     '@/store/hooks': { useAppSelector: fn => fn() }, '@/store/selectors': { selectUser: () => ({ id: 'passenger' }), selectIsAuthenticated: () => true },
     '../hooks/arrival-payment/useArrivalPaymentState': { useArrivalPaymentState: () => state },
+    '../hooks/arrival-payment/useMixedCashPayment': { useMixedCashPayment: () => ({ supported: false, cashSelected: false, pending: false, isLoading: false }) },
     '../hooks/arrival-payment/useArrivalPaymentCompletion': { useArrivalPaymentCompletion: () => ({ showCompletionSummary: noop }) },
     '../hooks/arrival-payment/useArrivalPaymentProvider': { useArrivalPaymentProvider: () => ({}) },
-    '../hooks/arrival-payment/useArrivalPaymentMonitoring': { useArrivalPaymentMonitoring: () => ({ verification: { phase: 'idle' } }) },
+    '../hooks/arrival-payment/useArrivalPaymentMonitoring': { useArrivalPaymentMonitoring: () => ({ verification }) },
+    '../hooks/arrival-payment/useArrivalPaymentRecovery': { useArrivalPaymentRecovery: () => ({ isWorking: false, run: noop, message: recoveryMessage }) },
+    '../hooks/arrival-payment/useTokenCashFallback': { useTokenCashFallback: () => ({ canSwitch: false, isWorking: false, run: noop }) },
+    '../features/arrival-payment/ArrivalPaymentRecovery': { ArrivalPaymentRecovery: 'Recovery' },
     '../hooks/arrival-payment/useArrivalPaymentSubmission': { useArrivalPaymentSubmission: () => ({ handlePayment: noop, isSubmitting: submitting }) },
     '../hooks/arrival-payment/useArrivalPaymentNavigation': { useArrivalPaymentNavigation: () => ({ handleDismissSummary: done }) },
     '../features/arrival-payment/ArrivalPaymentFields': { ArrivalPaymentFields: 'Fields' },
@@ -43,6 +49,25 @@ test('one payment modal keeps the same content component from selection through 
   const render = () => hooks.render(() => session.type());
   const find = (tree, type) => all(tree).find(node => node.type === type);
   let tree = render(); assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
+  state.hasPendingProviderPayment = true;
+  assert.ok(find(render(), 'Recovery')); assert.equal(find(render(), 'Fields'), undefined);
+  assert.equal(find(render(), 'Actions'), undefined, 'no disabled form or competing footer while waiting');
+  const hasRecoveryViewport = tree => all(tree).some(node => Array.isArray(node.props?.style) &&
+    node.props.style.some(style => style?.height === '82%'));
+  assert.equal(hasRecoveryViewport(render()), true, 'a maxHeight-only sheet collapses flex recovery content in Yoga');
+  state.interruptionChoice = { requestId: 'interruption', bookingId: 'booking' };
+  assert.equal(hasRecoveryViewport(render()), false, 'the higher-priority interruption choice keeps its own layout');
+  state.interruptionChoice = null;
+  verification = { phase: 'paused', message: 'Le service ne répond pas. Vérifiez à nouveau.' };
+  assert.equal(find(render(), 'Recovery').props.message, verification.message, 'do not hide a failed verification behind a generic operator wait');
+  recoveryMessage = 'Résultat encore inconnu. Ne payez pas en espèces.';
+  assert.equal(find(render(), 'Recovery').props.message, recoveryMessage);
+  state.hasPendingProviderPayment = false;
+  state.canChangeFailedPaymentMode = true;
+  state.paymentError = 'Paiement refusé.';
+  assert.equal(find(render(), 'Recovery').props.message, 'Paiement refusé.', 'a previous wait notice must not contradict the cash action after a refusal');
+  state.canChangeFailedPaymentMode = false;
+  assert.equal(hasRecoveryViewport(render()), false, 'ordinary selection and receipts keep their existing layout');
   assert.equal(find(tree, 'Modal').props.visible, true); assert.equal(find(tree, 'Fields').props.completionSummary, null);
   submitting = true; tree = render(); assert.equal(find(tree, 'Actions').props.isBusy, true); assert.equal(find(tree, 'Fields').props.isBusy, true);
   submitting = false; state.paymentAlreadySucceeded = true; state.arrivalBooking = { ...booking, paymentStatus: 'succeeded', paymentReference: 'REF-TEST' };

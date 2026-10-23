@@ -1,74 +1,167 @@
-/* global __dirname */
-// Actual React components, synthetic bookings, browser-only layout preview.
+/* Local visual fixture: real coordinator/recovery components, synthetic data,
+ * React Native Web instead of native Yoga. Never connects to an API or pays. */
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { spawn } = require('node:child_process');
+const { Buffer } = require('node:buffer');
 const React = require('react');
 const { renderToStaticMarkup } = require('react-dom/server');
-const native = require('react-native-web');
+const web = require('react-native-web');
 const { loader } = require('../tests/helpers/loadTypeScript.cjs');
-const h = React.createElement, noop = () => {};
-const load = loader({ 'react-native': native,
-  'expo-linking': { createURL: () => 'zwanga://payment' },
-  '@/constants/paymentFeatures': { ELECTRONIC_PAYMENTS_ENABLED: true },
-  '@expo/vector-icons': { Ionicons: ({ name, size, color }) => h('span', { style: { fontSize: size, color } },
-    name === 'checkmark-circle' || name === 'checkmark' ? '✓' : name === 'ellipse-outline' ? '○' : name.includes('wallet') ? '▤' : '◇') },
-});
-const { ArrivalPaymentFields } = load('features/arrival-payment/ArrivalPaymentFields.tsx');
-const { ArrivalPaymentActions } = load('features/arrival-payment/ArrivalPaymentActions.tsx');
-const { styles } = load('features/screen-styles/components/PassengerArrivalPaymentCoordinator/index.ts');
-const booking = { id: 'preview', numberOfSeats: 3, paymentMode: 'electronic', paymentAmount: 3000, status: 'completed',
-  passengerDestination: 'Destination de démonstration' };
-const defaults = { arrivalBooking: booking, destination: booking.passengerDestination, paymentAmount: 3000, paymentCurrency: 'CDF',
-  selectedMode: 'electronic', selectedChannel: 'mpesa', paymentAlreadySucceeded: false, paymentPhone: '+243000000000',
-  setSelectedMode: noop, setSelectedChannel: noop, setPaymentPhone: noop, setPaymentError: noop, setStatusMessage: noop,
-  walletBalance: 20, pointsUsed: 20, amountCoveredByPoints: 2000, moneyComplement: 1000, needsMobileMoneyPhone: true };
-const receipt = { bookingId: 'preview', mode: 'points', amount: 3000, currency: 'CDF', numberOfSeats: 3,
-  walletBalance: 10, earnedPoints: 2, earnedPointsKnown: true, paymentReference: 'ZW-DEMONSTRATION-2026', invoiceUrl: '/payment-history',
-  driverNotice: 'Le paiement est confirmé. Le conducteur peut consulter son état dans le trajet.' };
-const cases = [
-  { name: 'Mobile Money', width: 360, height: 780, fields: {}, actions: { actionLabel: 'Payer par M-Pesa' } },
-  { name: 'Jetons + complément', width: 360, height: 780, fields: { selectedMode: 'points' }, actions: { actionLabel: 'Ajouter 1.000 FC et payer' } },
-  { name: 'Espèces', width: 320, height: 640, fields: { selectedMode: 'cash', needsMobileMoneyPhone: false }, actions: { actionLabel: 'Terminer · paiement en espèces' } },
-  { name: 'Paiement confirmé', width: 360, height: 780, fields: { completionSummary: receipt }, actions: { completionSummary: receipt } },
-  { name: 'Clavier simulé', width: 320, height: 640, keyboard: 260, fields: {}, actions: { actionLabel: 'Payer par M-Pesa' } },
-  { name: 'Texte agrandi · attente', width: 320, height: 720, scale: 1.5, fields: { hasPendingProviderPayment: true },
-    actions: { hasPendingProviderPayment: true, verification: { phase: 'paused', message: 'Vérification indisponible. Votre paiement reste en attente.' } } },
-];
-function phone(item) {
-  const props = { ...defaults, ...item.fields };
-  return h('section', { 'data-case': item.name, 'data-scale': item.scale ?? 1, style: { width: item.width, margin: 12, flexShrink: 0 } },
-    h('p', null, item.name),
-    h(native.View, { testID: 'phone', style: { width: item.width, height: item.height, backgroundColor: '#DDE1E6', overflow: 'hidden' } },
-      h(native.View, { style: { flex: 1, justifyContent: 'flex-end', minHeight: 0 } },
-        h(native.View, { testID: 'sheet', style: [styles.sheet, { maxHeight: '94%', paddingBottom: 16 }] },
-          h(native.View, { style: styles.handle }),
-          h(ArrivalPaymentFields, props),
-          h(native.View, { testID: 'footer', style: { flexShrink: 0 } }, h(ArrivalPaymentActions, { ...props,
-            verification: { phase: 'idle', message: '' }, onPay: noop, onRetry: noop, onClose: noop, onDone: noop, onInvoice: noop, ...item.actions })))),
-      item.keyboard ? h(native.View, { style: { height: item.keyboard, justifyContent: 'center', alignItems: 'center', backgroundColor: '#CBD0D8' } },
-        h(native.Text, null, 'Clavier simulé')) : null));
+const noop = () => {};
+
+function renderFixture({ pending = true, busy = false, textScale = 1, card = false, width = 390, tokenCash = false } = {}) {
+  const state = {
+    user: { id: 'preview-only' }, arrivalBooking: { id: 'preview-booking', passengerDestination: 'Destination de démonstration' },
+    isAppActive: true, isResumeReady: true, insets: { bottom: 0 }, isBeforeArrival: false,
+    hasPendingProviderPayment: pending, canChangeFailedPaymentMode: !pending, isBusy: busy, isMutatingPayment: busy,
+    selectedMode: 'electronic', paymentAmount: 4500, paymentCurrency: 'CDF', hasCardPaymentToResume: card,
+    deferPayment: noop, setSelectedMode: noop,
+  };
+  const native = { ...web, Platform: { OS: 'android', select: o => o.android ?? o.default },
+    StyleSheet: { ...web.StyleSheet, create: styles => web.StyleSheet.create(Object.fromEntries(
+      Object.entries(styles).map(([key, value]) => [key, { ...value,
+        ...(value.fontSize ? { fontSize: value.fontSize * textScale } : {}),
+        ...(value.lineHeight ? { lineHeight: value.lineHeight * textScale } : {}),
+      }]))),
+    },
+  };
+  const { PassengerArrivalPaymentCoordinator } = loader({
+    'react-native': native,
+    '@expo/vector-icons': { Ionicons: ({ name, size, color }) => React.createElement('span', {
+      'aria-hidden': true, style: { fontSize: size, color, width: size, textAlign: 'center' },
+    }, name === 'close' ? '×' : name === 'time-outline' ? '◷' : '!') },
+    'expo-linking': { createURL: () => 'zwanga://preview' },
+    'expo-web-browser': { maybeCompleteAuthSession: noop },
+    '@/components/forms/FormLayout': { FormModal: ({ visible, children }) => visible ? React.createElement(web.View, { style: { flex: 1 } }, children) : null },
+    '@/store/hooks': { useAppSelector: fn => fn() },
+    '@/store/selectors': { selectUser: () => state.user, selectIsAuthenticated: () => true },
+    '../hooks/arrival-payment/useArrivalPaymentState': { useArrivalPaymentState: () => state },
+    '../hooks/arrival-payment/useMixedCashPayment': { useMixedCashPayment: () => ({ pending: false }) },
+    '../hooks/arrival-payment/useArrivalPaymentCompletion': { useArrivalPaymentCompletion: () => ({}) },
+    '../hooks/arrival-payment/useArrivalPaymentProvider': { useArrivalPaymentProvider: () => ({}) },
+    '../hooks/arrival-payment/useArrivalPaymentMonitoring': { useArrivalPaymentMonitoring: () => ({ verification: { phase: 'waiting' }, retryVerification: noop }) },
+    '../hooks/arrival-payment/useArrivalPaymentRecovery': { useArrivalPaymentRecovery: () => ({}) },
+    '../hooks/arrival-payment/useTokenCashFallback': { useTokenCashFallback: () => ({ canSwitch: tokenCash, run: noop }) },
+    '../hooks/arrival-payment/useArrivalPaymentSubmission': { useArrivalPaymentSubmission: () => ({ payCash: noop }) },
+    '../hooks/arrival-payment/useArrivalPaymentNavigation': { useArrivalPaymentNavigation: () => ({ handleResumeCardPayment: noop }) },
+    '../features/arrival-payment/ArrivalPaymentFields': { ArrivalPaymentFields: () => null },
+    '../features/arrival-payment/ArrivalPaymentActions': { ArrivalPaymentActions: () => null },
+    '@/components/trip/PassengerInterruptionChoice': { PassengerInterruptionChoice: () => null },
+    '@/features/arrival-payment/PendingPaymentReminder': { PendingPaymentReminder: () => null },
+    '@/store/slices/tripsSlice': { openInterruptionChoice: noop },
+    '@/store/api/driverFinanceApi': { useBookingPaymentOptionsQuery: () => ({ currentData: {
+      acceptedPaymentModes: ['cash'], availablePaymentModes: ['cash'],
+    } }) },
+  })('components/PassengerArrivalPaymentCoordinator.tsx');
+  const html = renderToStaticMarkup(React.createElement(PassengerArrivalPaymentCoordinator));
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>${web.StyleSheet.getSheet().textContent}
+    html,body{margin:0;height:100%;background:#f5f4f0}#root{display:flex;width:${width}px;max-width:100%;margin:auto;height:calc(100% - 48px);padding-top:24px;flex-direction:column}
+    </style></head><body><main id="root">${html}</main><output id="layout-report" hidden></output>
+    <script>addEventListener('load',()=>{
+      const close=document.querySelector('[aria-label="Fermer le paiement pour le moment"]');
+      const header=close.parentElement, sheet=header.parentElement.parentElement;
+      const frame=document.getElementById('root').getBoundingClientRect();
+      const inside=el=>{const r=el.getBoundingClientRect();return r.height>0&&r.top>=frame.top&&r.bottom<=frame.bottom&&r.left>=frame.left&&r.right<=frame.right};
+      const buttons=[...document.querySelectorAll('[role="button"]')];
+      const initial=buttons.every(inside);
+      const reachable=buttons.every(button=>{button.scrollIntoView({block:'nearest'});return inside(button)});
+      document.querySelectorAll('*').forEach(el=>{if(el.scrollTop)el.scrollTop=0});
+      document.getElementById('layout-report').textContent=JSON.stringify({viewportWidth:innerWidth,viewportHeight:innerHeight,contentWidth:frame.width,height:sheet.getBoundingClientRect().height,
+        closeVisible:inside(close),headerVisible:inside(header),allActionsInitiallyVisible:initial,allActionsReachable:reachable});
+    });</script></body></html>`;
 }
-function measure() {
-  document.querySelectorAll('[data-scale]').forEach(section => {
-    const scale = Number(section.getAttribute('data-scale'));
-    if (scale === 1) return;
-    [...section.querySelectorAll('[dir="auto"], input')].forEach(el => {
-      const css = getComputedStyle(el), size = parseFloat(css.fontSize), line = parseFloat(css.lineHeight);
-      el.style.fontSize = `${size * scale}px`;
-      if (Number.isFinite(line)) el.style.lineHeight = `${line * scale}px`;
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function chromium(browser, directory) {
+  const profile = path.join(directory, 'browser-profile');
+  const child = spawn(browser, ['--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions',
+    '--disable-background-networking', '--disable-component-update', '--remote-debugging-port=0',
+    `--user-data-dir=${profile}`, 'about:blank'], { windowsHide: true, stdio: 'ignore' });
+  let launchError;
+  child.on('error', error => { launchError = error; });
+  let socket;
+  try {
+    const portFile = path.join(profile, 'DevToolsActivePort');
+    const deadline = Date.now() + 20000;
+    while (!fs.existsSync(portFile)) {
+      if (launchError || child.exitCode !== null || Date.now() > deadline) throw Error('Local browser could not start.');
+      await delay(100);
+    }
+    const [port, endpoint] = fs.readFileSync(portFile, 'utf8').trim().split(/\r?\n/);
+    socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('Local browser connection timed out')), 5000);
+      socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+      socket.addEventListener('error', () => { clearTimeout(timer); reject(Error('Local browser connection failed')); }, { once: true });
     });
-  });
-  const results = [...document.querySelectorAll('[data-case]')].map(section => {
-    const sheet = section.querySelector('[data-testid="sheet"]'), footer = section.querySelector('[data-testid="footer"]');
-    return { name: section.dataset.case, horizontalOverflow: sheet.scrollWidth - sheet.clientWidth,
-      footerInsideSheet: footer.getBoundingClientRect().bottom <= sheet.getBoundingClientRect().bottom + 1,
-      primaryVisible: footer.getBoundingClientRect().top >= sheet.getBoundingClientRect().top };
-  });
-  document.getElementById('measurements').textContent = JSON.stringify(results, null, 2);
+    let id = 0;
+    const waiting = new Map();
+    socket.addEventListener('message', event => {
+      const message = JSON.parse(event.data), request = waiting.get(message.id);
+      if (!request) return;
+      waiting.delete(message.id); clearTimeout(request.timer);
+      if (message.error) request.reject(Error(message.error.message)); else request.resolve(message.result);
+    });
+    const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
+      const requestId = ++id;
+      const timer = setTimeout(() => { waiting.delete(requestId); reject(Error(`Browser timed out: ${method}`)); }, 10000);
+      waiting.set(requestId, { resolve, reject, timer });
+      socket.send(JSON.stringify({ id: requestId, method, params, sessionId }));
+    });
+    return { send, close: async () => {
+      await send('Browser.close').catch(() => {});
+      for (const request of waiting.values()) clearTimeout(request.timer);
+      socket.close(); child.kill();
+    } };
+  } catch (error) { socket?.close(); child.kill(); throw error; }
 }
-const markup = renderToStaticMarkup(h('main', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' } }, ...cases.map(phone)));
-const directory = path.resolve(__dirname, '../.expo/arrival-payment-preview');
-fs.mkdirSync(directory, { recursive: true });
-fs.writeFileSync(path.join(directory, 'index.html'), `<!doctype html><html lang="fr"><meta charset="utf-8"><style>${native.StyleSheet.getSheet().textContent}
-body{margin:0;background:#edf0f3;font-family:Arial,sans-serif}p{font-size:13px}</style>${markup}<pre id="measurements"></pre><script>(${measure.toString()})();</script></html>`);
-console.log(path.join(directory, 'index.html'));
+
+async function runPreview() {
+  const browser = process.argv[2];
+  if (!browser || !fs.existsSync(browser)) throw Error('Supply the path to a local Chromium/Edge executable.');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'zwanga-payment-preview-'));
+  const scenarios = [
+    { name: 'pending', width: 390, height: 844 },
+    { name: 'checking', width: 390, height: 844, busy: true },
+    { name: 'cash', width: 390, height: 844, pending: false },
+    { name: 'token-cash', width: 390, height: 844, tokenCash: true },
+    { name: 'token-cash-small', width: 320, height: 568, textScale: 1.5, tokenCash: true },
+    { name: 'small-large-text', width: 320, height: 568, textScale: 1.5, card: true },
+    { name: 'landscape', width: 844, height: 390, card: true },
+  ];
+  const browserSession = await chromium(browser, directory);
+  try { for (const scenario of scenarios) {
+    const file = path.join(directory, `${scenario.name}.html`);
+    fs.writeFileSync(file, renderFixture(scenario));
+    const { targetId } = await browserSession.send('Target.createTarget', { url: 'about:blank' });
+    const { sessionId } = await browserSession.send('Target.attachToTarget', { targetId, flatten: true });
+    const send = (method, params) => browserSession.send(method, params, sessionId);
+    // Device emulation, not window-size: Windows can clamp the headless window
+    // width and capture a different viewport from the one used by dump-dom.
+    await send('Emulation.setDeviceMetricsOverride', { width: scenario.width, height: scenario.height, deviceScaleFactor: 1, mobile: true });
+    await send('Page.navigate', { url: pathToFileURL(file).href });
+    let report;
+    const deadline = Date.now() + 10000;
+    while (!report && Date.now() < deadline) {
+      const evaluation = await send('Runtime.evaluate', { expression: "document.getElementById('layout-report')?.textContent", returnByValue: true });
+      report = evaluation.result?.value;
+      if (!report) await delay(50);
+    }
+    if (!report) throw Error(`Preview failed: ${scenario.name}`);
+    const geometry = JSON.parse(report);
+    console.log(scenario.name, geometry);
+    const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    fs.writeFileSync(path.join(directory, `${scenario.name}.png`), Buffer.from(screenshot.data, 'base64'));
+    if (!geometry.closeVisible || !geometry.headerVisible || !geometry.allActionsReachable ||
+      geometry.viewportWidth !== scenario.width || geometry.viewportHeight !== scenario.height ||
+      (scenario.height === 844 && !geometry.allActionsInitiallyVisible)) throw Error(`Clipped controls: ${scenario.name}`);
+    await browserSession.send('Target.closeTarget', { targetId });
+  } } finally { await browserSession.close(); }
+  console.log(`Synthetic previews only (not native validation): ${directory}`);
+}
+if (require.main === module) void runPreview().catch(error => { console.error(error.message); process.exitCode = 1; });
+module.exports = { renderFixture };

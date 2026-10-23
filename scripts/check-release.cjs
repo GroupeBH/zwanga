@@ -16,6 +16,7 @@ function runGate(run = spawnSync) {
   const tests = testFiles();
   if (!tests.length) throw new Error('No regression tests found');
   const checks = [
+    ['Native source parity', ['scripts/check-native-sources.cjs']],
     ['TypeScript', ['node_modules/typescript/bin/tsc', '--noEmit']],
     ['ESLint (errors)', ['node_modules/eslint/bin/eslint.js', '.', '--quiet']],
     ['Network boundaries', ['scripts/check-network-boundaries.js']],

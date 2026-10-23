@@ -43,6 +43,9 @@ function CashReceiptSession({ booking }: { booking: Booking }) {
     } finally { busy.current = false; }
   };
   return <View style={styles.box}>
+    {booking.mixedPaymentAt && <Text style={styles.hint}>
+      Déjà réglé en jetons : {formatMoney(Number(booking.mixedTokenAmount), booking.paymentCurrency)}. Reste en espèces : {formatMoney(amount, booking.paymentCurrency)}.
+    </Text>}
     {confirming && <Text style={styles.hint}>Confirmez uniquement si vous avez reçu {formatMoney(amount, booking.paymentCurrency)} du passager. Aucun montant ne sera ajouté au solde de revenus.</Text>}
     {Boolean(error) && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
     <View style={styles.actions}>

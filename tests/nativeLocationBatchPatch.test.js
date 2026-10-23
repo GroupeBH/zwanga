@@ -4,9 +4,18 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { marker, patchTaskManager, patchLocationConsumer } = require('../scripts/patch-expo-location-batches.cjs');
+const { marker, patchTaskManager, patchLocationConsumer, patchLocationNumbers } = require('../scripts/patch-expo-location-batches.cjs');
 const javaSource = () => fs.readFileSync('node_modules/expo-task-manager/android/src/main/java/expo/modules/taskManager/TaskManagerUtils.java', 'utf8');
 const kotlinSource = () => fs.readFileSync('node_modules/expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt', 'utf8');
+
+test('restored interval coerces Integer or Long through Number and the patch remains idempotent', () => {
+  const source = fs.readFileSync('node_modules/expo-location/android/src/main/java/expo/modules/location/records/LocationArguments.kt', 'utf8');
+  assert.match(source, /timeInterval = \(map\["timeInterval"\] as\? Number\)\?\.toLong\(\)/);
+  assert.equal(patchLocationNumbers(source), source);
+  const original = source.replace('(map["timeInterval"] as? Number)?.toLong()', 'map["timeInterval"] as? Long');
+  assert.equal(patchLocationNumbers(original), source);
+  assert.throws(() => patchLocationNumbers('unknown upstream'), /source changed/);
+});
 
 test('native GPS patch is installed, idempotent and rejects changed upstream sources', () => {
   assert(javaSource().includes(marker)); assert(kotlinSource().includes(marker));

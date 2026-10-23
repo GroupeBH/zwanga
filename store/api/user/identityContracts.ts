@@ -9,6 +9,7 @@ export interface DiditKycSession {
   sessionId: string;
   sessionNumber?: number | null;
   sessionToken?: string | null;
+  launchMode?: 'native' | 'hosted';
   url: string;
   status?: string | null;
   vendorData?: string | null;
@@ -44,6 +45,7 @@ export const mapDiditKycSession = (session: RawDiditKycSession): DiditKycSession
   sessionId: session.sessionId ?? session.session_id ?? '',
   sessionNumber: session.sessionNumber ?? session.session_number ?? null,
   sessionToken: session.sessionToken ?? session.session_token ?? null,
+  launchMode: session.launchMode,
   url: session.url ?? session.session_url ?? session.verification_url ?? '',
   status: session.status ?? null,
   vendorData: session.vendorData ?? session.vendor_data ?? null,

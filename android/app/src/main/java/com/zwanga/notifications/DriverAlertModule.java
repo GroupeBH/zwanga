@@ -4,6 +4,10 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationChannelGroup;
 import android.app.NotificationManager;
+import android.app.KeyguardManager;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.provider.Settings;
 import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioManager;
@@ -11,6 +15,8 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
@@ -25,6 +31,66 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
   public DriverAlertModule(ReactApplicationContext context) { super(context); }
 
   @Override public String getName() { return "ZwangaDriverAlerts"; }
+
+  // No permission is declared in the default production manifest. An explicitly
+  // reviewed build may enable it through withIncomingRideAlerts; never via OTA.
+  static boolean fullScreenBuildEnabled(Context context) {
+    try {
+      android.os.Bundle meta = context.getPackageManager().getApplicationInfo(
+          context.getPackageName(), PackageManager.GET_META_DATA).metaData;
+      return meta != null && meta.getBoolean("com.zwanga.RIDE_FULL_SCREEN_ENABLED", false);
+    } catch (Exception ignored) { return false; }
+  }
+  @ReactMethod public void getFullScreenOptIn(String userId, Promise promise) {
+    Context context = getReactApplicationContext();
+    promise.resolve(fullScreenBuildEnabled(context) ?
+        context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false) : null);
+  }
+  @ReactMethod public void getFullScreenStatus(String userId, Promise promise) {
+    try {
+      Context context = getReactApplicationContext();
+      if (!fullScreenBuildEnabled(context) || userId == null || userId.isEmpty() || userId.length() > 64) {
+        promise.resolve(null); return;
+      }
+      NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+      WritableMap status = Arguments.createMap();
+      status.putBoolean("optIn", context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false));
+      status.putBoolean("allowed", context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+          manager != null && (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));
+      status.putBoolean("notificationsAllowed", manager != null && manager.areNotificationsEnabled());
+      promise.resolve(status);
+    } catch (Exception ignored) { promise.resolve(null); }
+  }
+  @ReactMethod public void setFullScreenOptIn(String userId, boolean enabled, Promise promise) {
+    Context context = getReactApplicationContext();
+    if (!fullScreenBuildEnabled(context) || userId == null || userId.isEmpty() || userId.length() > 64) { promise.resolve(false); return; }
+    android.app.Activity activity = getCurrentActivity();
+    if (enabled && (activity == null || activity.isFinishing() || activity.isDestroyed())) { promise.resolve(false); return; }
+    if (enabled && Build.VERSION.SDK_INT >= 34) {
+      NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+      if (manager == null) { promise.resolve(false); return; }
+      if (!manager.canUseFullScreenIntent()) {
+        try {
+          activity.startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+              Uri.parse("package:" + context.getPackageName())));
+        } catch (Exception ignored) { promise.resolve(false); return; }
+      }
+    }
+    context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).edit().putBoolean(userId, enabled).apply();
+    promise.resolve(true);
+  }
+  @ReactMethod public void canPresentFullScreen(String userId, Promise promise) {
+    try {
+      Context context = getReactApplicationContext();
+      NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+      KeyguardManager keyguard = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+      promise.resolve(fullScreenBuildEnabled(context) && userId != null &&
+          context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false) &&
+          context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+          manager != null && manager.areNotificationsEnabled() && keyguard != null && keyguard.isKeyguardLocked() &&
+          (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));
+    } catch (Exception ignored) { promise.resolve(false); }
+  }
 
   @ReactMethod
   public void startForegroundSound(String token, String channelId, boolean paused, Promise promise) {

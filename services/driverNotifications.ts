@@ -16,6 +16,7 @@ import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics
 import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 import { dismissDriverAlertFallback } from './driverAlertFallback';
+import { rideAlertFullScreenAction } from './rideAlertFullScreen';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
 const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
@@ -51,6 +52,10 @@ export async function configureDriverNotifications() {
   if (Platform.OS === 'ios') await boundedRideAudio(Notifications.setNotificationCategoryAsync('driver-offer-v2', [
     { identifier: 'driver-accept', buttonTitle: 'Accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
     { identifier: 'driver-decline', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
+  ]));
+  if (Platform.OS === 'ios') await boundedRideAudio(Notifications.setNotificationCategoryAsync('driver-nearby-v1', [
+    { identifier: 'driver-review-nearby', buttonTitle: 'Voir et accepter', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
+    { identifier: 'driver-ignore-nearby', buttonTitle: 'Refuser', options: { opensAppToForeground: true, isAuthenticationRequired: true } },
   ]));
   // Resolve before creating v2 so a new install does not look like a legacy install.
   const channelId = await getDriverAlertChannel();
@@ -99,6 +104,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     let fresh = deadline > Date.now();
     let channelId = fresh ? await configureDriverNotifications() : await quietChannel();
     const lightUpScreen = fresh && await shouldLightUpRideAlertScreen(channelId);
+    const fullScreenAction = lightUpScreen ? await rideAlertFullScreenAction(invitation.driverId) : undefined;
     if (!current()) return true;
     if (deadline <= Date.now()) {
       if (invitation.kind === 'dispatch') return true;
@@ -117,6 +123,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
         // A single bundled 29s clip ends without removing a pending booking.
         // Only exclusive offers have a short business expiry.
         loopSound: false, lightUpScreen: fresh && lightUpScreen,
+        ...(fresh && fullScreenAction ? { fullScreenAction } : {}),
         ...(fresh ? { sound: 'driver_ring' } : {}),
         style: { type: AndroidStyle.BIGTEXT, text: body },
         ...(invitation.kind === 'dispatch' ? { timeoutAfter: Math.max(1, deadline - Date.now()) } : {}),

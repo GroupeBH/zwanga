@@ -47,7 +47,7 @@ function findArtifacts(root) {
 if (require.main === module) {
   try {
     const args = process.argv.slice(2);
-    if (args.includes('--eas') && (process.env.EAS_BUILD_PLATFORM !== 'android' || process.env.EAS_BUILD_PROFILE !== 'production')) process.exit(0);
+    if (args.includes('--eas') && (process.env.EAS_BUILD_PLATFORM !== 'android' || !['production', 'ride-alerts-test'].includes(process.env.EAS_BUILD_PROFILE))) process.exit(0);
     const auto = args.includes('--eas') || args.includes('--auto');
     const files = auto ? findArtifacts('android/app/build/outputs').filter(filename => /[\\/]release[\\/]/i.test(filename)) : args.filter(arg => !arg.startsWith('--abis='));
     if (!files.length) throw new Error('Indiquez un AAB/APK de production à contrôler. Aucun artefact release trouvé.');

@@ -6,7 +6,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture(t) {
   const h = hookHarness(), appState = { currentState: 'active' }, sent = [];
-  const state = { auth: {}, activeRide: false, permission: true, fixes: 0, ensure: 0, fail: false };
+  const state = { auth: {}, activeRide: false, permission: true, enabled: true, fixes: 0, ensure: 0, fail: false, waitFix: null };
   const load = loader({
     react: h.react, 'react-native': { AppState: appState },
     '@/hooks/useAppIsActive': { useAppIsActive: () => appState.currentState === 'active' },
@@ -20,13 +20,16 @@ function fixture(t) {
       driverDispatchApi: { endpoints: { recordDriverPosition: { initiate: value => value } } },
     },
     '@/services/nearbyDriverLocation': {
+      isNearbyDriverLocationEnabled: async () => state.enabled,
       ensureNearbyDriverLocation: async () => { state.ensure++; return true; },
       hasActiveRideLocationSession: async () => state.activeRide,
       subscribeNearbyDriverLocation: () => () => {},
     },
+    './nearbyDriverLocation': { isNearbyDriverLocationEnabled: async () => state.enabled },
     'expo-location': { getForegroundPermissionsAsync: async () => ({ granted: state.permission }) },
     '@/services/currentLocationRequest': { requestCurrentLocation: async () => {
-      state.fixes++; return { timestamp: Date.now(), coords: { latitude: 0, longitude: 0, accuracy: 10 } };
+      state.fixes++; if (state.waitFix) await state.waitFix;
+      return { timestamp: Date.now(), coords: { latitude: 0, longitude: 0, accuracy: 10 } };
     } },
     './tokenStorage': { getTokens: async () => ({ accessToken: 'synthetic' }) },
     '@/utils/jwt': { decodeJWT: () => ({ sub: 'driver' }) },
@@ -52,6 +55,16 @@ test('stationary foreground driver sends immediately and every three minutes eve
   t.mock.timers.tick(180000); await tick(); assert.equal(f.sent.length, 3);
   assert.equal(f.sent[0].latitude, f.sent[2].latitude);
   assert.notEqual(f.sent[0].recordedAt, f.sent[2].recordedAt);
+});
+
+test('persistent opt-out blocks foreground GPS and disable during a pending fix blocks delivery', async t => {
+  const f = fixture(t); f.state.enabled = false;
+  f.render(); await tick(); assert.equal(f.state.fixes, 0); assert.equal(f.sent.length, 0);
+  f.appState.currentState = 'background'; f.render();
+  f.state.enabled = true; f.appState.currentState = 'active';
+  let release; f.state.waitFix = new Promise(resolve => { release = resolve; });
+  f.render(); await tick(); assert.equal(f.state.fixes, 1);
+  f.state.enabled = false; release(); await tick(); assert.equal(f.sent.length, 0);
 });
 
 test('a recent native acknowledgement avoids a duplicate foreground GPS read', async t => {

@@ -17,8 +17,12 @@ import { useGetMyWalletQuery, useInitiateWalletTopUpMutation } from '@/store/api
 import type { Booking, BookingPaymentResponse, TripPaymentMode } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
+import { acknowledgeWalletTopUpIntent } from '@/features/wallet/topUpIntent';
 
 interface Params {
+  userId?: string;
+  pendingTopUp?: string;
+  payTokensCash?: () => Promise<void>;
   acknowledgeCash?: (bookingId: string) => void;
   isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
@@ -39,7 +43,7 @@ interface Params {
   settleWithPoints: (bookingId: string) => Promise<boolean>;
   mobileMoneyPhone: string | undefined;
   initiateWalletTopUp: ReturnType<typeof useInitiateWalletTopUpMutation>[0];
-  persistBookingState: (bookingId: string, patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => void;
+  persistBookingState: (bookingId: string, patch: Partial<Record<keyof StoredBookingPaymentState, string | null>>) => void | Promise<boolean>;
   refetchWallet: ReturnType<typeof useGetMyWalletQuery>['refetch'];
   moneyComplement: number;
   paymentCurrency: string;
@@ -49,6 +53,9 @@ interface Params {
 }
 
 export function useArrivalPaymentSubmission({
+  userId,
+  pendingTopUp,
+  payTokensCash,
   acknowledgeCash,
   isSessionCurrent,
   arrivalBooking,
@@ -77,10 +84,13 @@ export function useArrivalPaymentSubmission({
   handleCompletedBookingPayment,
 }: Params) {
   const submissionInFlight = useRef(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const submitPayment = useCallback(async () => {
-    if (!isSessionCurrent() || !arrivalBooking || !selectedMode || paymentAmount === null || isBusy || hasPendingProviderPayment) return;
-    if (!hasPassengerArrived(arrivalBooking) && selectedMode === 'cash') return;
+  const [submissionKind, setSubmissionKind] = useState<'payment' | 'cash' | null>(null);
+  const isSubmitting = submissionKind !== null;
+  const submitPayment = useCallback(async (recoverTopUp = false, modeOverride?: 'cash') => {
+    const mode = modeOverride ?? selectedMode;
+    if (!isSessionCurrent() || !arrivalBooking || !mode || paymentAmount === null || isBusy ||
+        (hasPendingProviderPayment && !(recoverTopUp && pendingTopUp))) return;
+    if (!hasPassengerArrived(arrivalBooking) && mode === 'cash' && !recoverTopUp) return;
 
     setPaymentError('');
     setStatusMessage('');
@@ -94,7 +104,7 @@ export function useArrivalPaymentSubmission({
     }
 
     try {
-      if (selectedMode === 'cash') {
+      if (mode === 'cash' && !recoverTopUp) {
         // Continuing an existing cash booking is not a change of mode or a cash receipt.
         // In particular the server rejects changing a mode after the driver received cash.
         if (arrivalBooking.paymentMode === 'cash') {
@@ -118,15 +128,23 @@ export function useArrivalPaymentSubmission({
         return;
       }
 
-      if (selectedMode === 'points') {
-        if (requiredPoints === null || isWalletFetching) return;
+      if (selectedMode === 'points' || recoverTopUp) {
+        if (!recoverTopUp && (requiredPoints === null || isWalletFetching)) return;
 
-        if (missingPoints <= 0) {
+        if (!recoverTopUp && payTokensCash && missingPoints > 0) {
+          await payTokensCash();
+          return;
+        }
+
+        if (!recoverTopUp && missingPoints <= 0) {
           await settleWithPoints(arrivalBooking.id);
           return;
         }
 
-        const phone = mobileMoneyPhone;
+        const intent: { amount: number; phone?: string } = recoverTopUp && pendingTopUp
+          ? JSON.parse(pendingTopUp) : { amount: missingPoints, phone: mobileMoneyPhone };
+        if (!Number.isFinite(intent.amount) || intent.amount <= 0) throw new Error('Recharge à vérifier. Contactez le support avant de payer à nouveau.');
+        const phone = intent.phone;
         if (!phone || !DRC_PAYMENT_PHONE_REGEX.test(phone)) {
           setPaymentError(
             'Un numéro congolais valide est nécessaire dans votre profil pour payer le complément.',
@@ -135,15 +153,20 @@ export function useArrivalPaymentSubmission({
         }
 
         setStatusMessage(
-          `Recharge de ${formatPoints(missingPoints)} pour compléter le paiement...`,
+          `Vérification du complément de ${formatPoints(intent.amount)}…`,
         );
+        const saved = await persistBookingState(arrivalBooking.id, { walletTopUpIntent: JSON.stringify(intent) });
+        if (saved === false || !isSessionCurrent()) return;
         const response = await initiateWalletTopUp({
-          amount: missingPoints,
+          intentScope: `booking:${arrivalBooking.id}`,
+          amount: intent.amount,
           method: 'mobile_money',
           phone,
         }).unwrap();
 
         if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+          await acknowledgeWalletTopUpIntent(userId, `booking:${arrivalBooking.id}`, response);
+          persistBookingState(arrivalBooking.id, { walletTopUpIntent: null });
           if (isSessionCurrent()) {
             setStatusMessage('');
             setPaymentError(getPaymentFailureMessage(response.payment.message));
@@ -154,6 +177,7 @@ export function useArrivalPaymentSubmission({
         if (response.payment.status !== 'succeeded' && response.payment.orderNumber) {
           persistBookingState(arrivalBooking.id, {
             walletTopUpOrderNumber: response.payment.orderNumber,
+            walletTopUpIntent: null,
           });
         }
         if (!isSessionCurrent()) return;
@@ -164,7 +188,10 @@ export function useArrivalPaymentSubmission({
         }
 
         if (response.payment.status === 'succeeded') {
-          await settleWithPoints(arrivalBooking.id);
+          if (await settleWithPoints(arrivalBooking.id)) {
+            await acknowledgeWalletTopUpIntent(userId, `booking:${arrivalBooking.id}`, response);
+            persistBookingState(arrivalBooking.id, { walletTopUpIntent: null });
+          }
           return;
         }
 
@@ -255,11 +282,14 @@ export function useArrivalPaymentSubmission({
         ),
       );
     } catch (error: any) {
-      if (isSessionCurrent()) setPaymentError(getApiErrorMessage(error, selectedMode === 'cash'
+      if (isSessionCurrent()) setPaymentError(getApiErrorMessage(error, mode === 'cash'
         ? 'Impossible d’enregistrer le paiement cash. Vérifiez votre connexion, puis réessayez.'
         : "Le paiement n'a pas pu être effectué."));
     }
   }, [
+    userId,
+    pendingTopUp,
+    payTokensCash,
     acknowledgeCash,
     isSessionCurrent,
     setPaymentError,
@@ -288,16 +318,22 @@ export function useArrivalPaymentSubmission({
     updatePaymentMode,
   ]);
 
-  const handlePayment = useCallback(async () => {
+  const runPayment = useCallback(async (recoverTopUp = false, modeOverride?: 'cash') => {
     if (submissionInFlight.current) return;
     submissionInFlight.current = true;
-    setIsSubmitting(true);
-    try { await submitPayment(); }
-    finally { submissionInFlight.current = false; setIsSubmitting(false); }
-  }, [submitPayment]);
+    setSubmissionKind(modeOverride === 'cash' ? 'cash' : 'payment');
+    try { await submitPayment(recoverTopUp, modeOverride); }
+    finally { submissionInFlight.current = false; if (isSessionCurrent()) setSubmissionKind(null); }
+  }, [isSessionCurrent, submitPayment]);
+  const handlePayment = useCallback(() => runPayment(), [runPayment]);
+  const payCash = useCallback(() => runPayment(false, 'cash'), [runPayment]);
+  const retryTopUp = useCallback(() => { void runPayment(true); }, [runPayment]);
 
   return {
     handlePayment,
+    payCash,
+    isSubmittingCash: submissionKind === 'cash',
+    retryTopUp,
     isSubmitting,
   };
 }

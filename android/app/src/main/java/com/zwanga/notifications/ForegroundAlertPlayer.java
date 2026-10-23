@@ -28,6 +28,16 @@ final class ForegroundAlertPlayer implements LifecycleEventListener {
   private Promise preparing;
   private boolean ready, paused, vibrating;
   private final Runnable timeout = () -> release();
+  // JS checks the pending queue every second and probes this player every 5s.
+  // A stalled JS thread must not leave native audio/vibration looping forever.
+  // Renew only through a token-scoped health probe, never from playback itself.
+  private final Runnable heartbeatTimeout = () -> release();
+  private static final long HEARTBEAT_TIMEOUT_MS = 15_000;
+
+  private void renewHeartbeat() {
+    main.removeCallbacks(heartbeatTimeout);
+    main.postDelayed(heartbeatTimeout, HEARTBEAT_TIMEOUT_MS);
+  }
 
   ForegroundAlertPlayer(ReactApplicationContext context) {
     this.context = context;
@@ -75,6 +85,7 @@ final class ForegroundAlertPlayer implements LifecycleEventListener {
             main.removeCallbacks(timeout); ready = true;
             if (!allowed()) { release(); return; }
             applyPause();
+            if (player == mp) renewHeartbeat();
             Promise pending = preparing; preparing = null;
             if (pending != null) pending.resolve(player == mp);
           } catch (Exception ignored) { release(); }
@@ -121,12 +132,14 @@ final class ForegroundAlertPlayer implements LifecycleEventListener {
       }
       try {
         if (!allowed()) { release(); promise.resolve("stopped"); return; }
+        renewHeartbeat();
         promise.resolve(paused ? "paused" : player.isPlaying() ? "playing" : "stopped");
       } catch (Exception ignored) { release(); promise.resolve("stopped"); }
     });
   }
   private void release() {
     main.removeCallbacks(timeout);
+    main.removeCallbacks(heartbeatTimeout);
     MediaPlayer previous = player; player = null; owner = null; ready = false;
     try { vibrate(false); } catch (Exception ignored) { vibrating = false; }
     try { if (previous != null) previous.release(); } catch (Exception ignored) { /* Already released. */ }

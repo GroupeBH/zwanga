@@ -98,6 +98,8 @@ export interface WalletWithdrawal {
 }
 
 export interface WalletPaymentResponse {
+  /** Local recovery identity; never supplied by the payment provider. */
+  clientIntentKey?: string;
   account: WalletAccount;
   payment: SubscriptionPayment;
 }

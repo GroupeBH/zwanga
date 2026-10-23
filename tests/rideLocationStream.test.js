@@ -4,7 +4,7 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture(t, pending = false) {
-  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: 100_000 });
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 100_000 });
   let active = true, activityListener;
   const watches = [], subscriptions = [];
   const stream = loader({
@@ -111,6 +111,7 @@ test('backgrounding stops foreground GPS and timers; returning and unmounting cl
 test('late watcher initialization cannot survive unmount or native takeover', async t => {
   const env = fixture(t, true);
   const sub = env.subscribe('driver:trip', () => assert.fail('late GPS callback'));
+  await flush();
   env.publishNativeRideLocation('passenger:other', env.fix());
   assert.equal(env.watches[0].removed, 0);
   sub.remove();
@@ -120,11 +121,26 @@ test('late watcher initialization cannot survive unmount or native takeover', as
   env.watches[0].callback(env.fix());
   let updates = 0;
   env.subscribe('driver:new', () => updates++);
+  await flush();
   env.publishNativeRideLocation('driver:new', env.fix());
   env.watches[1].resolve();
   await flush();
   assert.equal(env.watches[1].removed, 1);
   assert.equal(updates, 1);
+});
+
+test('timed-out watcher cannot start duplicate native subscriptions and a late handle is removed', async t => {
+  const env = fixture(t, true); let updates = 0;
+  env.subscribe('driver:trip', () => updates++); await flush();
+  t.mock.timers.tick(8000); await flush();
+  env.watches[0].callback(env.fix()); assert.equal(updates, 0);
+  t.mock.timers.tick(16000); await flush();
+  assert.equal(env.watches.length, 1, 'retry waits behind the unfinished native registration');
+  env.watches[0].resolve(); await flush();
+  assert.equal(env.watches[0].removed, 1);
+  assert.equal(env.watches.length, 2, 'retry starts only after native completion and cleanup');
+  env.watches[1].resolve(); await flush();
+  env.watches[1].callback(env.fix()); assert.equal(updates, 1);
 });
 
 test('stale, future and invalid native samples never shut down the working fallback', async t => {

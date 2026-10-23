@@ -118,6 +118,11 @@ export interface Passenger {
 }
 
 export interface Booking {
+  tokenCashFallbackAt?: string | null;
+  /** In a mixed payment paymentAmount is the cash remainder; their sum is the original passenger fare. */
+  mixedTokenAmount?: number;
+  mixedTokenQuantity?: number;
+  mixedPaymentAt?: string | null;
   cashReceivedAt?: string | null;
   cashReceivedByDriverId?: string | null;
   cashReceivedAmount?: number | string | null;

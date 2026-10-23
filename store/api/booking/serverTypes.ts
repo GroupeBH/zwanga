@@ -11,6 +11,10 @@ export type ServerUser = {
 };
 
 export type ServerBooking = {
+  mixedTokenAmount?: number | string;
+  mixedTokenQuantity?: number | string;
+  mixedPaymentAt?: string | null;
+  tokenCashFallbackAt?: string | null;
   cashCommissionTokenValue?: number | string | null;
   cashReceivedAt?: string | null;
   cashReceivedByDriverId?: string | null;

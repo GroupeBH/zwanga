@@ -7,7 +7,7 @@ import { ACTION_COLORS } from '@/constants/actionColors';
 type Props = {
   visible: boolean; busy: boolean; loaded: boolean; loadError: boolean;
   permission: boolean; foregroundPermission: boolean; settingsRequired: boolean; message: string;
-  onConfirm: () => void; onClose: () => void;
+  onConfirm: () => void; onClose: () => void; priority?: number;
 };
 
 /** In-app validation, not an imitation of the OS permission dialog. */
@@ -16,7 +16,7 @@ export function BackgroundLocationApproval(props: Props) {
   const blocked = busy || (!loaded && !loadError);
   const choice = Platform.OS === 'ios' ? 'Toujours' : 'Toujours autoriser';
   const androidSettings = Platform.OS === 'android' && Number(Platform.Version) >= 30;
-  return <RideModal visible={visible} inApp transparent animationType="fade" onRequestClose={onClose}>
+  return <RideModal visible={visible} inApp transparent animationType="fade" priority={props.priority} onRequestClose={onClose}>
     <View style={styles.overlay}>
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.content} bounces={false}>

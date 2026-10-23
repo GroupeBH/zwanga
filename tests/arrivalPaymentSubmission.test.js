@@ -47,6 +47,26 @@ test('opening the form never charges tokens; double taps submit once while waiti
   assert.equal(env.props.arrivalBooking.paymentAmount, 5000);
 });
 
+test('insufficient tokens require an explicit tap and keep the same complement order without spending tokens early', async t => {
+  const env = app(t), topups = [];
+  env.props.requiredPoints = 450; env.props.missingPoints = 392; env.props.moneyComplement = 3920;
+  env.props.initiateWalletTopUp = input => {
+    topups.push(input);
+    return { unwrap: async () => ({ payment: { status: 'initiated', orderNumber: 'complement-order' } }) };
+  };
+  env.render(); assert.equal(topups.length + env.calls.points, 0);
+  const pay = env.render().handlePayment;
+  await Promise.all([pay(), pay()]);
+  assert.deepEqual(topups, [{ intentScope: 'booking:booking', amount: 392, method: 'mobile_money', phone: env.props.mobileMoneyPhone }]);
+  assert.equal(env.calls.points, 0);
+  assert.deepEqual(JSON.parse(env.calls.patches[0].patch.walletTopUpIntent), { amount: 392, phone: env.props.mobileMoneyPhone });
+  assert.deepEqual(env.calls.patches[1], { id: 'booking', patch: { walletTopUpOrderNumber: 'complement-order', walletTopUpIntent: null } });
+  env.props.hasPendingProviderPayment = true;
+  env.props.selectedMode = 'cash'; env.props.arrivalBooking.status = 'completed';
+  await env.render().handlePayment();
+  assert.equal(topups.length, 1); assert.equal(env.calls.cash + env.calls.summary + env.calls.points, 0);
+});
+
 test('cash mode selection is unavailable before arrival and shows instructions after arrival', async t => {
   const env = app(t, 'cash');
   await env.render().handlePayment();
@@ -130,6 +150,18 @@ test('failed cash mode update stays retryable and never presents a fictitious co
   assert.ok(env.calls.errors.at(-1)); assert.deepEqual(env.calls.failures, []);
 });
 
+test('the recovery cash action registers cash directly from the old mode, but never bypasses a pending transaction', async t => {
+  const e = app(t, 'electronic');
+  e.props.arrivalBooking = { ...e.props.arrivalBooking, status: 'completed', droppedOff: true };
+  e.props.updatePaymentMode = payload => { e.calls.cash++; assert.equal(payload.paymentMode, 'cash');
+    return { unwrap: async () => ({ ...e.props.arrivalBooking, paymentMode: 'cash' }) }; };
+  e.props.hasPendingProviderPayment = true;
+  await e.render().payCash(); assert.equal(e.calls.cash, 0);
+  e.props.hasPendingProviderPayment = false;
+  await e.render().payCash(); assert.equal(e.calls.cash, 1); assert.equal(e.calls.electronic, 0);
+  assert.equal(e.calls.summary, 1);
+});
+
 test('cash switching rejects inconsistent replies and ignores a late response after logout', async t => {
   const env = app(t, 'points');
   env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed' };
@@ -190,7 +222,8 @@ for (const status of ['failed', 'cancelled']) test(`${status} top-up immediately
   } }) });
   await env.render().handlePayment();
   assert.deepEqual(env.calls.failures, ['booking']);
-  assert.deepEqual(env.calls.patches, []);
+  assert.ok(env.calls.patches[0].patch.walletTopUpIntent);
+  assert.deepEqual(env.calls.patches[1], { id: 'booking', patch: { walletTopUpIntent: null } });
   assert.equal(env.calls.points + env.calls.urls, 0);
 });
 
@@ -213,4 +246,54 @@ test('a submission transport error is not reported as confirmed payment failure'
   env.props.initiateWalletTopUp = () => ({ unwrap: async () => { throw { status: 502 }; } });
   await env.render().handlePayment();
   assert.deepEqual(env.calls.failures, []);
+});
+
+for (const fallback of ['cash', 'tokens_cash']) test(`failed Mobile Money complement can switch to ${fallback} without another recharge`, async t => {
+  const env = app(t), topups = [], stored = {};
+  let mixed = 0;
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true };
+  env.props.missingPoints = 392; env.props.moneyComplement = 3920;
+  env.props.persistBookingState = (_id, patch) => { Object.assign(stored, patch); };
+  env.props.initiateWalletTopUp = payload => {
+    topups.push(payload); return { unwrap: async () => ({ payment: { status: 'failed', orderNumber: 'declined' } }) };
+  };
+  await env.render().handlePayment();
+  assert.equal(stored.walletTopUpIntent, null);
+  assert.equal(stored.walletTopUpOrderNumber, undefined);
+  assert.deepEqual(env.calls.failures, ['booking']);
+  if (fallback === 'cash') {
+    env.props.selectedMode = 'cash';
+    env.props.updatePaymentMode = payload => {
+      env.calls.cash++; assert.deepEqual(payload, { bookingId: 'booking', paymentMode: 'cash' });
+      return { unwrap: async () => ({ ...env.props.arrivalBooking, paymentMode: 'cash', paymentStatus: 'not_required' }) };
+    };
+  } else env.props.payTokensCash = async () => { mixed++; };
+  await env.render().handlePayment();
+  assert.equal(topups.length, 1);
+  assert.equal(env.calls.points + env.calls.electronic, 0);
+  assert.equal(env.calls.cash, fallback === 'cash' ? 1 : 0);
+  assert.equal(mixed, fallback === 'tokens_cash' ? 1 : 0);
+  assert.equal(env.props.arrivalBooking.cashReceivedAt, undefined, 'cash collection still needs the driver confirmation');
+});
+
+test('lost complement response blocks other modes and retries the original amount after a wallet change', async t => {
+  const e = app(t), sent = [];
+  e.props.missingPoints = 392;
+  e.props.initiateWalletTopUp = input => { sent.push(input); return { unwrap: async () => { throw { status: 'FETCH_ERROR' }; } }; };
+  await e.render().handlePayment();
+  e.props.pendingTopUp = e.calls.patches[0].patch.walletTopUpIntent;
+  e.props.hasPendingProviderPayment = true;
+  e.props.selectedMode = 'cash'; e.props.arrivalBooking.status = 'completed';
+  e.props.missingPoints = 10;
+  await e.render().handlePayment(); assert.equal(e.calls.cash, 0); assert.equal(sent.length, 1);
+  e.render().retryTopUp(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]); assert.equal(sent[1].amount, 392);
+});
+
+test('failed durable recording prevents any complement initiation', async t => {
+  const e = app(t); let sent = 0;
+  e.props.missingPoints = 392;
+  e.props.persistBookingState = async () => false;
+  e.props.initiateWalletTopUp = () => { sent++; throw Error('must not send'); };
+  await e.render().handlePayment(); assert.equal(sent, 0);
 });

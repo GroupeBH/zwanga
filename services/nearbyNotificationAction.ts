@@ -2,7 +2,8 @@ import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
 import { getUserIdFromToken } from '@/utils/jwt';
 import { getTokenSessionVersion } from './tokenSession';
-import { boundedRideAudio } from './rideAudioDiagnostics';
+import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
+import { reportNearbyRequestRefusal } from './nearbyRequestRefusal';
 
 export const isNearbyNotificationAction = (id?: string) =>
   id === 'driver-ignore-nearby' || id === 'driver-review-nearby';
@@ -24,6 +25,10 @@ export async function handleNearbyNotificationAction(data: Record<string, unknow
     if (action === 'driver-ignore-nearby') {
       const { dismissDriverInvitation } = await import('./driverNotifications');
       await boundedRideAudio(dismissDriverInvitation(invitation), 3000).catch(() => {});
+      if (version === getTokenSessionVersion()) {
+        void reportNearbyRequestRefusal(invitation.driverId, invitation.id)
+          .catch(() => reportRideAudioFailure('NEARBY_REFUSAL_SYNC_FAILED'));
+      }
     }
     if (version !== getTokenSessionVersion()) return;
     rememberPendingDriverOpen({ type: 'driver_action_result', kind: 'nearby', id: invitation.id, driverId: invitation.driverId });

@@ -19,6 +19,7 @@ import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 import { IncomingBookingRedirect } from '@/features/notifications/IncomingBookingRedirect';
 import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 import { getTokenSessionVersion } from '@/services/tokenSession';
+import { offerRemaining, type OfferDeadline } from '@/features/notifications/offerDeadline';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -34,7 +35,9 @@ function IncomingDriverContent() {
   const { data: user } = useGetCurrentUserQuery();
   const id = isInvitationId(params.id) ? params.id : '';
   const kind = params.kind === 'booking' ? 'booking' : params.kind === 'dispatch' ? 'dispatch' : null;
-  const offer = useGetDispatchOfferQuery(id, { skip: !id || kind !== 'dispatch' || !active, refetchOnMountOrArgChange: true });
+  const [resolved, setResolved] = useState(false);
+  const offer = useGetDispatchOfferQuery(id, { skip: !id || kind !== 'dispatch' || !active,
+    refetchOnMountOrArgChange: true, pollingInterval: active && !resolved ? 5000 : 0, skipPollingIfUnfocused: true });
   const booking = useGetBookingByIdQuery(id, { skip: !id || kind !== 'booking' || !active, refetchOnMountOrArgChange: true });
   const refetchOffer = offer.refetch;
   const refetchBooking = booking.refetch;
@@ -43,7 +46,8 @@ function IncomingDriverContent() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<DriverDecision | null>(null);
   const [error, setError] = useState('');
-  const [now, setNow] = useState(Date.now());
+  const [, setTick] = useState(0);
+  const deadline = useRef<OfferDeadline | undefined>(undefined);
   const inFlight = useRef(false);
   const navigatedAfterAcceptance = useRef(false);
   const openAcceptedRequest = useCallback((requestId: string) => {
@@ -58,19 +62,24 @@ function IncomingDriverContent() {
   current.current = { active, userId: user?.id };
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    if (!active || resolved) return;
+    setTick(value => value + 1);
+    const timer = setInterval(() => setTick(value => value + 1), 1000);
     return () => clearInterval(timer);
-  }, [active]);
-  const localDeadline = useMemo(() => offer.data ? Date.now() + Date.parse(offer.data.expiresAt) - Date.parse(offer.data.serverNow) : 0, [offer.data]);
-  const remaining = Math.max(0, Math.ceil((localDeadline - now) / 1000));
+  }, [active, resolved]);
+  if (offer.data?.localDeadline) {
+    const next = offer.data.localDeadline;
+    deadline.current = deadline.current ? { wall: Math.min(deadline.current.wall, next.wall),
+      monotonic: Math.min(deadline.current.monotonic, next.monotonic) } : next;
+  }
+  const localDeadline = deadline.current?.wall ?? 0;
+  const remaining = offerRemaining(deadline.current);
   const driverId = kind === 'dispatch' ? offer.data?.driverId : booking.data?.trip?.driverId;
   const invitation = useMemo<DriverInvitation | null>(() => kind && id && driverId ? { kind, id, driverId } : null, [kind, id, driverId]);
   const loading = kind === 'dispatch' ? offer.isFetching : booking.isFetching;
   const authorized = Boolean(user?.id && driverId === user.id);
   const actionable = authorized && !loading && (kind === 'dispatch'
-    ? offer.data?.actionable && remaining > 0
+    ? !offer.isError && offer.data?.actionable && remaining > 0
     : booking.data?.status === 'pending');
   const details = kind === 'dispatch' && offer.data ? offer.data.request : booking.data ? {
     passengerName: booking.data.passengerName || 'Un passager',
@@ -90,6 +99,8 @@ function IncomingDriverContent() {
     try {
       if (invitation.kind === 'dispatch') {
         const result = await respond({ id, decision }).unwrap();
+        if (result.status !== (decision === 'accept' ? 'accepted' : 'declined'))
+          throw new Error('Votre réponse doit être vérifiée. Réessayez.');
         if (version === getTokenSessionVersion() && mounted.current && current.current.active && current.current.userId === invitation.driverId &&
           decision === 'accept' && result.status === 'accepted') {
           openAcceptedRequest(result.requestId);
@@ -101,11 +112,20 @@ function IncomingDriverContent() {
       void dismissDriverInvitation(invitation).catch(() => {});
       if (decision === 'decline' && mounted.current && current.current.active) router.replace('/(tabs)');
     } catch (cause) {
+      if (version !== getTokenSessionVersion() || current.current.userId !== invitation.driverId) return;
       if (mounted.current) setError(getApiErrorMessage(cause, 'Votre réponse n’a pas pu être confirmée. Vérifiez la connexion puis réessayez.'));
       // Reconcile an ambiguous result; never queue a later automatic acceptance.
-      if (kind === 'dispatch') void refetchOffer(); else void refetchBooking();
+      if (kind === 'dispatch') void refetchOffer().catch(() => {}); else void refetchBooking().catch(() => {});
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
   }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest, router]);
+
+  useEffect(() => {
+    if (!active || !authorized || !invitation || kind !== 'dispatch' || !offer.currentData) return;
+    if ((deadline.current && remaining <= 0) || (!offer.isFetching && !offer.isError && !offer.currentData.actionable)) {
+      setResolved(true);
+      void dismissDriverInvitation(invitation).catch(() => {});
+    }
+  }, [active, authorized, invitation, kind, remaining, offer.currentData, offer.isError, offer.isFetching]);
 
   // Also recover a confirmed native-notification acceptance after a cold start.
   useEffect(() => {
@@ -131,14 +151,17 @@ function IncomingDriverContent() {
   const failedRead = Boolean(kind === 'dispatch' ? offer.error : booking.error);
   return <SafeAreaView style={styles.screen}>
     <View style={styles.top}>
-      <Text style={styles.eyebrow}>{kind === 'dispatch' ? 'CLIENT À PROXIMITÉ' : 'NOUVELLE RÉSERVATION'}</Text>
+      <Text style={styles.eyebrow}>ZWANGA · {kind === 'dispatch' ? 'CLIENT À PROXIMITÉ' : 'RÉSERVATION'}</Text>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer la proposition" disabled={busy} style={styles.close}
         onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)'); }}>
         <Ionicons name="close" size={26} color={Colors.gray[700]} />
       </TouchableOpacity>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{done === 'accept' ? 'Ouverture du trajet…' : done === 'decline' ? 'Retour à l’accueil…' : 'Pouvez-vous le prendre ?'}</Text>
+      <Text style={styles.title}>{done === 'accept' ? 'Ouverture du trajet…' : done === 'decline' ? 'Retour à l’accueil…' : 'Nouvelle demande de trajet'}</Text>
+      {!done && kind === 'dispatch' && authorized && <Text style={styles.countdown}>
+        {remaining > 0 && offer.data?.actionable ? `${remaining} s pour répondre` : offer.isError ? 'Vérification nécessaire' : 'Cette proposition n’est plus disponible'}
+      </Text>}
       <Text style={styles.copy}>{done === 'accept' ? 'Le passager a été informé. Retrouvez la prise en charge dans les détails.'
         : done === 'decline' ? kind === 'dispatch' ? 'La recherche peut continuer avec un autre conducteur.' : 'Le passager sera informé de votre réponse.'
         : kind === 'dispatch' ? 'Vérifiez le trajet, puis acceptez ou refusez.' : 'Votre réponse concerne uniquement cette réservation.'}</Text>
@@ -151,18 +174,17 @@ function IncomingDriverContent() {
           <View style={styles.separator} />
           <Text style={styles.routeLabel}>DESTINATION</Text><Text style={styles.address}>{details.arrival}</Text>
         </View>
-        <View style={styles.fare}><Text style={styles.amount}>{Number(details.pricePerSeat).toLocaleString('fr-FR')} FC <Text style={styles.copy}>/ place</Text></Text>
+        <View style={styles.fare}><Text style={styles.amount}>{details.pricePerSeat == null ? 'Montant indisponible' : <>{Number(details.pricePerSeat).toLocaleString('fr-FR')} FC <Text style={styles.copy}>/ place</Text></>}</Text>
           <Text style={styles.copy}>{details.paymentMode === 'cash' ? 'Cash à l’arrivée' : details.paymentMode === 'tokens' ? 'Jetons Zwanga' : 'Paiement électronique'}</Text>
         </View>
         {kind === 'booking' && booking.data?.trip?.departureTime && <Text style={styles.copy}>Départ : {new Date(booking.data.trip.departureTime).toLocaleString('fr-FR')}</Text>}
-        {details.paymentMode === 'cash' && done !== 'decline' && <CashCommissionNotice
+        {details.paymentMode === 'cash' && details.pricePerSeat != null && done !== 'decline' && <CashCommissionNotice
           amount={kind === 'booking' ? Number(booking.data?.paymentAmount ?? Number(details.pricePerSeat) * details.seats) : Number(details.pricePerSeat) * details.seats}
           confirmed={done === 'accept'} />}
       </>}
-      {!done && kind === 'dispatch' && authorized && <Text style={styles.countdown} accessibilityLiveRegion="polite">{remaining > 0 && offer.data?.actionable ? `${remaining} s pour répondre` : 'Cette proposition n’est plus disponible'}</Text>}
       {!done && kind === 'dispatch' && authorized && offer.data && actionable &&
         <RequestPassengerContact requestId={offer.data.requestId} enabled={!busy} validUntil={localDeadline} />}
-      {failedRead && <TouchableOpacity style={styles.retry} onPress={() => { if (kind === 'dispatch') void offer.refetch(); else void booking.refetch(); }}>
+      {failedRead && <TouchableOpacity style={styles.retry} onPress={() => { if (kind === 'dispatch') void offer.refetch().catch(() => {}); else void booking.refetch().catch(() => {}); }}>
         <Text style={styles.copy}>Impossible de vérifier la proposition. Touchez pour réessayer.</Text>
       </TouchableOpacity>}
       {!loading && !failedRead && (!authorized || !kind || !id) && <Text style={styles.error}>Cette proposition n’est pas disponible pour votre compte.</Text>}
@@ -185,9 +207,9 @@ function IncomingDriverContent() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.white }, top: { flexDirection: 'row', alignItems: 'center', padding: 20, gap: 12 },
   eyebrow: { flex: 1, fontSize: 12, fontWeight: '800', letterSpacing: 1, color: Colors.primary }, close: { padding: 8 },
-  content: { padding: 20, gap: 14 }, title: { fontSize: 26, fontWeight: '800', color: Colors.gray[900] },
+  content: { paddingHorizontal: 20, paddingBottom: 20, gap: 10 }, title: { fontSize: 26, fontWeight: '800', color: Colors.gray[900] },
   copy: { fontSize: 15, lineHeight: 22, color: Colors.gray[600], fontWeight: '400' }, passenger: { fontSize: 20, fontWeight: '700', color: Colors.gray[900] },
-  route: { padding: 20, backgroundColor: Colors.gray[50], borderRadius: 20, gap: 8 }, routeLabel: { fontSize: 11, letterSpacing: 1, color: Colors.gray[600], fontWeight: '700' },
+  route: { padding: 16, backgroundColor: Colors.gray[50], borderRadius: 16, gap: 4 }, routeLabel: { fontSize: 11, letterSpacing: 1, color: Colors.gray[600], fontWeight: '700' },
   address: { color: Colors.gray[900], fontSize: 18, lineHeight: 26, fontWeight: '600' }, separator: { height: 16, borderLeftWidth: 2, borderColor: Colors.gray[300], marginLeft: 4 },
   fare: { gap: 4 }, amount: { color: Colors.gray[900], fontSize: 25, fontWeight: '800' }, countdown: { color: Colors.primaryDark, fontSize: 17, fontWeight: '700' },
   error: { color: Colors.danger, fontSize: 15, lineHeight: 23 }, retry: { padding: 16, backgroundColor: Colors.gray[100], borderRadius: 12 },

@@ -1,5 +1,499 @@
 # Journal des changements techniques
 
+## 2026-10-23 — Retrait du bandeau de synchronisation sur l’accueil
+
+- **Problème :** le message « Mise à jour indisponible » était confondu avec une
+  mise à jour de l’application et encombrait l’accueil.
+- **Solution/fichiers :** `components/home/EntrySyncBanner.tsx` ne rend plus
+  les états de synchronisation seuls (chargement, échec, hors connexion), ni leur
+  bouton « Réessayer ». Aucun espace vide ne remplace le bandeau.
+- **Conservé :** vérifications serveur, diagnostics et redirections automatiques
+  inchangés. Les actions vers une activité vérifiée (« Reprendre mon trajet »,
+  « Voir la réservation », « Voir la demande ») restent accessibles. Aucun ajout
+  de requête, de minuterie ou de relance automatique ; aucun changement natif
+  ou backend. Le retrait du message ne corrige pas la cause d’un échec réseau.
+- **Vérifications :** 48 tests JavaScript ciblés réussis (`entryViews`,
+  `entryPresentation`, `rideEntryCoordinator`, `requestEntryResume`), dont absence
+  du bandeau pour les quatre combinaisons échec/hors connexion et maintien des
+  trois actions utiles. TypeScript sans émission, ESLint ciblé et contrôle des
+  espaces du diff réussis. Pas d’essai sur appareil Android/iOS ; suite globale
+  non relancée.
+
+## 2026-10-23 — Passage aux espèces pendant un complément Mobile Money bloqué
+
+- **Problème :** attente du complément d’un paiement en jetons empêchant tout
+  choix cash, même quand le passager n’avait pas validé l’opération Mobile Money.
+- **Appliqué :** bouton cash explicite avec montant total, commande serveur
+  idempotente, choix cash durable et protection contre un débit de jetons tardif.
+  Les recharges restent suivies et créditables dans le portefeuille, sans repayer
+  le trajet. Fichiers, migration préparée et limites dans
+  [Bascule jetons vers espèces](PAIEMENT_BASCULE_JETONS_ESPECES_2026-10-23.md).
+- **Conservé :** règles de commission/parrainage cash, confirmation d’encaissement
+  par le conducteur, paiement mixte existant, protection des collectes directes
+  encore indéterminées. Aucun déploiement ni modification de base existante.
+- **Vérifications :** 136 tests JS ciblés et 155 tests backend réussis, dont
+  PostgreSQL isolé et commissions réelles ; trois cas de compatibilité ignorés.
+  TypeScript, ESLint ciblé et contrôles statiques réussis ; sept aperçus web
+  validés. Pas d’essai natif ni paiement opérateur réel, suites globales non relancées.
+
+## 2026-10-23 — Fenêtre de paiement lisible et fermable pendant la vérification
+
+- **Problème :** capture avec accueil assombri, panneau replié et seul bouton
+  « Un instant… » ; enfant flexible dans une feuille sans hauteur définie et
+  action de changement de paiement qui ne faisait que revérifier le résultat.
+- **Solution/fichiers :** hauteur explicite et plafonnée dans
+  `components/PassengerArrivalPaymentCoordinator.tsx`, fiche recentrée sur le
+  montant/état/action dans `features/arrival-payment/ArrivalPaymentRecovery.tsx`,
+  fermeture toujours accessible et actions défilables. Détails et précautions :
+  [Récupération des paiements](PAIEMENT_RECUPERATION_MOBILE_MONEY.md#2026-10-23--correction-de-la-fenêtre-repliée-et-des-actions-ambiguës).
+- **Conservé :** pas de second paiement si le résultat est inconnu, espèces
+  soumises au serveur, références conservées à la fermeture, reçus et interruptions
+  inchangés. Aucun changement backend/natif ni déploiement.
+- **Vérifications :** 103 tests ciblés réussis, TypeScript/ESLint ciblé et contrôles
+  statiques réussis. Cinq aperçus avec composants réels et données fictives,
+  moteur React Native Web : fermeture visible et actions accessibles, y compris
+  petit écran, grandes polices et paysage. Cela ne valide pas le rendu natif ;
+  essais Android/iOS physiques encore nécessaires. Suite globale non relancée.
+
+## 2026-10-23 — Correctifs après audit des modifications natives Android/iOS
+
+- **Périmètre :** arrêt du GPS conducteur malgré échec d'effacement disque,
+  surveillance native de la sonnerie, relais plein écran soumis aux autorisations,
+  conservation des sources Android et des réglages iOS à la régénération Expo.
+- **Solution et fichiers :** voir
+  [Correctifs de fiabilité native](CORRECTIFS_FIABILITE_NATIVE_2026-10-23.md),
+  incluant les précautions entre trajets et les tests de non-régression.
+- **Vérifications :** `node scripts/check-release.cjs` réussi : concordance native,
+  TypeScript, ESLint, frontières réseau, taille des sources et 2 615 tests réussis,
+  aucun échec, un test Ruby ignoré (outil absent sur cet environnement Windows).
+  Le lecteur Java a été compilé/exécuté avec substituts Android/RN, pas sur appareil.
+  Contrôle du patch GPS, configuration de toolchain iOS et `git diff --check` réussis.
+  La référence de styles du paiement a été actualisée pour le seul style espèces
+  ajouté précédemment, après vérification que les 84 anciens styles sont inchangés.
+- **Limites :** Pods iOS non résolus sur Windows, lock non fabriqué ; commande
+  macOS `npm run prepare:ios-native` renforcée. Nouveau binaire Android nécessaire.
+  Le contrôle des Pods reste en échec attendu : Didit/Crashlytics absents du lock local.
+  Aucun déploiement ni validation de crash/chauffe sur appareils physiques.
+
+## 2026-10-23 — Cohérence avec le backend : retraits, chat, sockets et notifications
+
+- **Problème :** absence de clé durable sur les retraits de parrainage,
+  `server_restart` ignoré, messages HTTP non diffusés par le backend et
+  notifications financières/KYC sans rafraîchissement ni destination adaptée.
+- **Retraits :** `services/referralWithdrawalIntent.ts`,
+  `hooks/referrals/useReferralActions.ts`, `store/api/referralApi.ts` et
+  `types/referrals.ts` conservent par compte une intention AsyncStorage avant
+  tout POST. Une réponse perdue reprend le même UUID, montant et destinataire,
+  même si le solde a déjà été réservé. Après obtention de l'ID, la vérification
+  lit le retrait existant. Seul un résultat terminal cohérent ou un premier
+  refus de validation explicite libère l'intention. Le bouton de `app/referrals.tsx`
+  devient « Vérifier mon retrait » tant qu'elle subsiste, sans changement de style.
+  Aucune nouvelle tentative automatique de versement au montage de l'écran.
+- **Temps réel :** `services/socketRestartRecovery.ts` est partagé entre chat
+  et tracking : reprises temporisées, backoff/jitter, cinq tentatives maximum
+  par épisode, nettoyage à la fermeture et arrêt sur révocation de session.
+  Les rooms existantes sont rejointes à nouveau. `useChatRealtime` recharge
+  les messages sauvegardés après reconnexion et conserve la déduplication.
+- **Notifications :** `features/notifications/notificationEffects.ts` centralise
+  les tags REST et destinations utilisés par `NotificationHandler` et la boîte
+  de notifications. Retraits, ajustements administratifs, commissions, paiements,
+  décisions KYC et anciens push de chat sont pris en compte. Les statuts/rôles
+  KYC restent issus de REST, jamais d'un rôle annoncé dans une notification.
+- **Didit :** `identityContracts`, `diditLaunchPolicy` et `useDiditKycFlow`
+  acceptent le champ additif `launchMode` du backend. Le SDK demeure prioritaire
+  en mode normal ; seul `hosted` explicite autorise le navigateur natif. L'URL
+  HTTPS Didit est contrôlée. Aucun second KYC créé sur erreur/expiration du SDK.
+- **Compatibilité :** aucun changement de style, de règle financière, de CI/CD,
+  d'infrastructure, ni publication. Les anciens appels mobiles orphelins sont
+  conservés ; leur suppression exige une validation séparée pour ne pas casser
+  un contrat hérité. Les correctifs de handlers nécessitent une version mobile
+  mise à jour ; les versions déjà installées ne changent pas avec le backend seul.
+- **Vérifications :** 494 tests JavaScript réussis dans 45 fichiers ciblant reprises après fermeture/coupure,
+  clés stables, stockage indisponible, changement de compte, notifications réelles
+  des handlers, SDK/repli explicite et nettoyage des sockets ; TypeScript sans
+  émission réussi. Deux fixtures de chat ont été complétées pour simuler le
+  nouvel abonnement de reconnexion et l'invalidation du cache ; la réexécution
+  élargie est entièrement verte. Aucune opération financière réelle ni recette sur appareils
+  Android/iOS physiques ; les tests simulés ne prouvent pas les performances natives.
+
+## 2026-10-23 — Paiement bloqué : parcours court et reprise serveur
+
+- **Problème :** le formulaire grisé après une réponse Mobile Money perdue
+  n'expliquait pas quoi faire. Une recharge sans référence pouvait rester
+  bloquée et un ancien refus empêchait aussi le paiement mixte côté serveur.
+- **Solution appliquée :** une fiche courte remplace le formulaire pendant la
+  vérification. Après un refus confirmé, elle propose directement « Payer
+  [montant] en espèces » si le trajet l'autorise, ou un autre moyen de paiement.
+  La reprise utilise un nouvel endpoint authentifié dans `zwanga-backend`,
+  sans nouvelle demande de débit. Une tentative jamais envoyée est clôturée
+  avec sa clé originale ; un paiement réellement en attente reste protégé.
+- **Fichiers, précautions, recette et livraison :**
+  [Paiement : récupération après réponse perdue](PAIEMENT_RECUPERATION_MOBILE_MONEY.md).
+  La composition courte, sans nouvelle animation, suit `frontend-skill` ;
+  l'arbitrage par référence unique et l'absence d'appel fournisseur sous verrou
+  suivent `supabase-postgres-best-practices`.
+- **Vérifications :** 95 tests JavaScript mobiles ciblés, 158 tests serveur
+  unitaires/services et 11 tests PostgreSQL isolés réussis. Les contrôles
+  TypeScript mobile et build backend, lint mobile ciblé, frontière réseau,
+  taille des sources et diff sont détaillés dans la fiche liée. Les tests
+  n'attestent pas d'un paiement réel ni du rendu sur appareil.
+- **Livraison :** correctifs locaux uniquement. Livrer le backend avant le
+  mobile ; pas de nouvelle migration pour cette reprise. Aucun déploiement,
+  paiement prestataire réel, changement de `.env` ou accès à la production.
+  La migration mixte antérieure demeure un prérequis si elle n'est pas livrée.
+
+## 2026-10-23 — Proposer les espèces après un échec Mobile Money
+
+- **Constat et périmètre :** dans le règlement d'un trajet, le choix des espèces
+  existait mais n'était pas mis en avant après un refus Mobile Money. Le signal
+  d'échec en mémoire disparaissait à la réouverture, même si la réservation
+  portait encore un statut serveur `failed` ou `cancelled`. Une lecture des
+  moyens de paiement échouée invitait à fermer puis rouvrir la fiche.
+- **Solution appliquée :** `features/arrival-payment/ArrivalPaymentFields.tsx`
+  place le choix « Payer en espèces » en premier après un échec confirmé, avec
+  le montant total à remettre au conducteur et l'instruction de valider en bas.
+  Pour un complément en jetons, le choix existant devient explicitement
+  « Compléter en espèces ». Le choix ne déclenche aucun paiement : la validation
+  reste explicite. Les styles sont dans
+  `features/screen-styles/components/PassengerArrivalPaymentCoordinator/compact.styles.ts`.
+- **Reprise et disponibilité :** `hooks/arrival-payment/useBookingPaymentMode.ts`
+  restaure la suggestion à partir d'un échec serveur à la réouverture, sans
+  remplacer le choix du passager. La fiche permet de réessayer sa lecture des
+  moyens de paiement sur place ; un cache dont la dernière lecture a échoué
+  n'autorise pas un nouveau choix, y compris pour le complément en espèces.
+- **Précautions conservées :** seuls les moyens acceptés/disponibles renvoyés
+  par le backend sont proposés. Les espèces restent indisponibles avant
+  l'arrivée. Une référence de paiement, une recharge ou un règlement mixte
+  non résolu verrouille toujours le changement ; un timeout ou une erreur HTTP
+  n'est pas une preuve de refus. Un paiement confirmé ne peut pas être changé.
+  Le choix intégral en espèces ne débite pas les jetons ; le choix mixte utilise
+  le circuit existant. La confirmation de réception du cash par le conducteur
+  et le calcul du parrainage sur la part espèces sont inchangés.
+- **Vérifications :** tests comportementaux dans
+  `tests/arrivalPaymentCashFallback.test.js`, `tests/arrivalPaymentModeRecovery.test.js`
+  et `tests/arrivalPaymentSubmission.test.js` : ordre/texte des choix, absence
+  de débit au simple choix, reprise après refus, complément mixte sans seconde
+  recharge, paiement en attente, état déjà payé, absence d'éligibilité,
+  lecture échouée puis reprise. **82 tests JavaScript ciblés réussis, zéro échec**
+  avec les suites de reprise, de suivi, de stockage et d'idempotence.
+  TypeScript sans émission, ESLint ciblé, frontière réseau, limite de taille
+  des sources et `git diff --check` vérifiés sans erreur.
+- **Limites :** pas de paiement réel, de test visuel sur appareil Android/iOS
+  ni de build natif exécuté pour ce changement. Le refus opérateur puis le
+  règlement cash restent à valider sur téléphone. Aucun changement backend,
+  déploiement, migration ou modification de `.env` dans cette intervention.
+
+## 2026-10-23 — Correctifs après l'audit global : reprises de paiement et contrôles de livraison
+
+- **Constats :** les initiations de recharge (portefeuille et complément d'un
+  trajet en jetons) n'envoyaient pas la clé d'idempotence déjà acceptée par le
+  backend. Une réponse perdue permettait une seconde initiation indépendante.
+  Les lectures/écritures du stockage des paiements n'avaient pas de délai maximal.
+  Le contrat de test de `bookingApi` ne recensait pas le nouveau paiement mixte.
+- **Protection appliquée :** `features/wallet/topUpIntent.ts` conserve une
+  intention par compte et contexte avant tout POST. `store/api/walletApi.ts`
+  transmet le même UUID sur reprise ; le champ local `intentScope` n'est pas
+  envoyé au serveur. Une intention incertaine n'est ni remplacée par un autre
+  montant/téléphone ni supprimée sur timeout. Seul un résultat terminal corrélé
+  à la clé ou à la référence permet sa libération. Le contrôle serveur existant
+  dans `zwanga-backend/src/payments/topup-payment-claim.ts` reste indispensable ;
+  aucun nouveau déploiement serveur, migration ou paiement réel n'est effectué.
+- **Parcours mobile :** `useArrivalPaymentSubmission`, `useArrivalPaymentState`,
+  `useArrivalPaymentMonitoring`, `useBookingPaymentMode`, `PassengerArrivalPaymentCoordinator` et
+  `paymentTypes` retiennent le complément sans référence reçu, verrouillent les
+  autres paiements et proposent la reprise explicite du montant original.
+  `useWalletTopUpActions`, `useWalletTopUpMonitoring`, `useWalletController`,
+  `useWalletTopUpIntentRecovery` et `WalletTopUpModal` protègent les doubles
+  appuis, restaurent les paramètres et indiquent « Vérifier la recharge ».
+  Aucun débit n'est lancé automatiquement à l'ouverture de ces écrans.
+- **Stockage borné :** `paymentStorage.ts`, `paymentRetention.ts`,
+  `usePaymentPersistence` et `useWalletTopUpStorage` bornent l'attente à huit
+  secondes et conservent les verrous des opérations natives non terminées.
+  Une lecture échouée/corrompue ne devient pas un cache vide permettant un
+  nouveau paiement. La fiche propose une nouvelle vérification ou la fermeture.
+  Les écritures sont regroupées sur le dernier état ; les reprises ne font pas
+  concourir une ancienne écriture avec une nouvelle. Un pont natif définitivement
+  bloqué peut encore nécessiter un redémarrage : le délai JavaScript ne répare
+  pas le stockage natif.
+- **Contrats et iOS :** référence `tests/fixtures/sourceExtractions.json`
+  complétée pour `payTokensCash`, avec test explicite du corps HTTP, du mapping,
+  du délai et des invalidations dans `mixedCashPayment.test.js`.
+  `scripts/prepare-ios-native.cjs` / `npm run prepare:ios-native` enchaînent,
+  uniquement sur macOS, le contrôle Xcode, `pod install`, puis le contrôle des
+  Pods Didit/Crashlytics. Aucun `Podfile.lock` n'est fabriqué à la main, et le
+  contrôle EAS n'est pas désactivé. Le lock local reste à régénérer sur macOS.
+- **Comportements conservés :** paiement intégral en jetons, carte, espèces,
+  complément jetons + espèces, confirmation conducteur séparée et parrainage
+  calculé sur la part espèces uniquement. Les changements déjà présents dans
+  le dépôt ont été conservés. Aucun changement de `.env`, de secrets ou de base.
+- **Vérifications :** nouveaux tests de coupure/réouverture, identité du compte,
+  double appui, restauration des paramètres, délais et écritures natives tardives,
+  ainsi que tests du contrat RTK Query et du script macOS avec commandes simulées.
+  Suite mobile complète : **2 542 réussis, zéro échec, un ignoré** (Ruby absent),
+  299 fichiers de tests. Après le dernier ajustement de restauration du mode
+  jetons et l'ajout du cas de remontage pendant une écriture native, nouvelle
+  exécution ciblée : **114 réussis, zéro échec**. Backend non modifié pendant ce
+  correctif : **53 tests réussis** dans `topup-payment-claim`, `wallet-topup-proof`
+  et `wallet-topup-decline`, sans base ni fournisseur réels. TypeScript sans
+  émission, ESLint mobile (erreurs), frontière réseau, taille des sources et
+  `git diff --check` contrôlés. Ces tests JavaScript ne certifient pas un paiement
+  prestataire réel ni l'absence de crash/chauffe sur appareil.
+- **Limites différées :** le lint global du backend n'a pas été reformatté en
+  masse (15 511 erreurs relevées à l'audit, dont beaucoup de formatage). La
+  synchronisation CocoaPods et les essais release sur iPhone/Android restent
+  nécessaires ; un fournisseur sans référence exploitable demande encore une
+  réconciliation serveur avant de libérer une recharge incertaine.
+
+## 2026-10-22 — Complément espèces d'un paiement en jetons
+
+Le paiement mixte est préparé dans l'application et `zwanga-backend` : après
+l'arrivée, choix explicite du complément espèces, débit atomique des jetons,
+reliquat à remettre au conducteur et confirmation cash séparée. Reprise
+idempotente après coupure ; aucun appel Mobile Money dans ce nouveau parcours.
+Le parrainage reste calculé uniquement sur les espèces confirmées, selon le
+choix de l'utilisateur. Les paiements existants et leurs contrôles sont conservés.
+
+Contrat, fichiers, précautions, résultats de tests, migration additive et limites
+détaillés dans [Paiement mixte jetons et espèces](PAIEMENT_MIXTE_JETONS_ESPECES.md).
+Aucun déploiement ni modification de base de production ; validation sur
+téléphones Android/iOS et environnement de test encore nécessaire.
+
+## 2026-10-22 — Vérification du complément Mobile Money d'un paiement en jetons
+
+- **Signalement / constat :** après sélection du mode jetons avec solde
+  insuffisant, la fenêtre présente « Vérification indisponible ». Dans le code,
+  la sélection seule ne débite rien ; une validation explicite lance l'achat des
+  jetons manquants, puis le règlement du trajet après confirmation. L'inspection
+  du backend a identifié un contrôle exigeant une preuve complète de crédit
+  même pour une réponse FlexPay non finale correctement corrélée à la recharge.
+  L'absence de numéro de commande dans cette réponse pouvait produire une erreur
+  HTTP 400 et interrompre la vérification mobile. La capture ne contient pas la
+  réponse HTTP réelle : ce défaut est identifié et testé, mais son occurrence
+  exacte sur le téléphone signalé n'est pas prouvée.
+- **Backend autorisé, sans déploiement :** dans le dépôt voisin,
+  `src/payments/wallet-topup-check-evidence.ts` et `payments.service.ts`
+  distinguent réussite, refus et attente. Une attente doit toujours correspondre
+  à la référence ou au numéro de commande existant et ne peut ni créditer les
+  jetons ni devenir un refus. Les montants/devises présents restent contrôlés.
+  La preuve complète obligatoire pour réussir et créditer une recharge est
+  inchangée. Pas de migration, modification de solde ou appel réel au prestataire.
+- **Mobile :** `hooks/arrival-payment/useArrivalPaymentMonitoring.ts` distingue
+  « complément Mobile Money en attente » de « recharge confirmée, règlement du
+  trajet à vérifier ». Un échec du règlement après recharge confirmée n'est plus
+  présenté comme une indisponibilité de vérification de la recharge.
+  `features/arrival-payment/ArrivalPaymentFields.tsx` affiche « Jetons à utiliser »
+  au lieu de laisser croire que le débit est déjà effectué.
+- **Protections conservées :** même référence lors de la reprise, double appui
+  bloqué, aucun nouveau débit déclenché par l'ouverture du formulaire,
+  vérification bornée à deux minutes avec lectures espacées, conservation de
+  l'ordre sur timeout/erreur réseau et interdiction de passer au cash tant que
+  le résultat Mobile Money est incertain. Un refus confirmé peut libérer ce
+  verrou. Le mode cash actuel porte sur tout le trajet : aucun nouveau paiement
+  mixte jetons/espèces ni déduction partielle n'est introduit.
+- **Vérifications :** 52 tests mobiles `arrivalPayment*.test.js` et 164 tests
+  backend ciblés réussis (9 suites : recharge, preuve, prestataire, rapprochement,
+  portefeuille, reçus cash et paiement avant arrivée). Régressions ajoutées dans
+  `tests/arrivalPaymentSubmission.test.js`, `tests/arrivalPaymentVerification.test.js`
+  et `src/payments/wallet-topup-decline.spec.ts`. TypeScript mobile et compilation
+  backend de production sans émission validés ; ESLint mobile ciblé, frontières
+  réseau, taille des sources et `git diff --check` validés. Le lint backend n'est
+  pas globalement vert : comparaison avec HEAD sur les trois fichiers concernés,
+  119 diagnostics préexistants dans `payments.service.ts`, 8 dans l'ancienne
+  fixture de test, zéro dans le helper, aucun diagnostic ajouté par ce correctif.
+- **Limites / livraison :** tests unitaires avec prestataire, stockage et base
+  simulés ; aucun débit réel, essai sur appareil ou déploiement. Le backend
+  corrigé doit être déployé pour modifier la réponse serveur, puis l'application
+  mise à jour pour les nouveaux libellés. Une véritable panne du prestataire ou
+  une réponse incohérente continue volontairement de bloquer une seconde tentative
+  de paiement. Ne pas supprimer manuellement une référence pour contourner ce verrou.
+
+## 2026-10-22 — Correctifs de l'audit GPS, temps réel et confirmations de navigation
+
+- **Périmètre / problèmes constatés :** la présence conducteur au premier plan
+  ne relisait pas la désactivation locale avant l'envoi GPS. Des appels natifs
+  sans échéance pouvaient immobiliser une file de travail ou un abonnement de
+  secours. À la restauration Android, le cast `timeInterval as? Long` ne
+  conservait pas les valeurs numériques restaurées sous forme d'`Integer`.
+  Les événements socket dupliqués invalidaient largement les caches, et le
+  contrôle des bibliothèques Android ne couvrait pas le profil `ride-alerts-test`.
+  L'utilisateur demande également de remplacer les modals de résultat des
+  confirmations manuelles d'embarquement et d'arrivée par des toasts.
+- **Consentement GPS :** `components/DriverPresenceCoordinator.tsx`,
+  `services/nearbyDriverLocation.ts` et `services/nearbyDriverPositionDelivery.ts`
+  vérifient le choix local avant la collecte de présence et avant l'envoi.
+  Une lecture disque devenue obsolète ne peut plus écraser une désactivation
+  récente, y compris lorsqu'elle se termine dans la même génération de travail.
+  La lecture du choix local n'attend plus la file des mutations natives.
+- **Appels natifs bornés :** `services/locationNativeDeadline.ts` introduit une
+  échéance de 8 secondes par attente, utilisée dans les services ci-dessus,
+  `services/background/driverGpsProfile.ts`,
+  `services/background/passengerGpsProfile.ts` et `services/rideLocationStream.ts`.
+  Un démarrage ou une écriture expirés gardent leur verrou jusqu'à leur véritable
+  fin et leur nettoyage compensatoire ; une nouvelle tentative ne lance pas de
+  mutation concurrente sur la même ressource. Un abonnement de secours créé
+  tardivement est supprimé et ses callbacks obsolètes sont ignorés. L'échéance
+  est celle d'une attente, pas une garantie de durée globale du parcours.
+- **Cadence Android restaurée :**
+  `scripts/patch-expo-location-batches.cjs` corrige la conversion en
+  `(map["timeInterval"] as? Number)?.toLong()` dans `LocationArguments.kt` de
+  l'Expo Location installé. Le patch est idempotent, appliqué par le postinstall
+  existant, et refuse une source amont non reconnue. Le contrôle `--check`
+  couvre aussi ce fichier. Le profil de proximité reste à trois minutes et
+  les profils plus rapides pendant le trajet restent inchangés.
+- **Temps réel :** `hooks/notifications/useRideRealtime.ts` déduplique les
+  événements entrants par identifiant pendant 60 secondes, avec 256 entrées au
+  maximum. `features/notifications/rideRealtimeRefresh.ts` cible les listes et
+  détails concernés ; les invalidations sont regroupées sur une seconde.
+  L'affichage de l'invitation et l'arrêt d'une alerte terminée restent immédiats ;
+  la reconnexion conserve une relecture plus large. Aucun polling ajouté.
+- **Navigation passager et conducteur :**
+  `features/ride-recovery/RideActionResult.tsx` affiche désormais
+  `RideActionResultToast.tsx`. L'ancien `RideActionResultModal.tsx` et ses styles
+  dédiés sont retirés (récupérables dans Git). Le toast se ferme automatiquement
+  après 5 secondes, ou 8 secondes pour une erreur, avec fermeture manuelle
+  facultative. Il n'occupe pas la file des overlays et ne retarde pas paiement
+  ou SOS. Une sauvegarde locale, une réponse reçue et une étape confirmée par
+  le serveur restent trois états distincts ; aucun paiement n'est déduit de
+  l'embarquement ou de l'arrivée.
+- **Garde-fous conservés :** refus des doubles appuis, persistance hors ligne,
+  identité du compte et de la réservation, validations des deux participants,
+  désaccords, contrôles serveur et permissions système. Les confirmations
+  d'annulation, de sécurité et de paiement ne sont pas supprimées. Aucun
+  changement des horaires GPS métier, du backend ou des secrets de configuration.
+- **Build Android :** `scripts/validate-android-native.cjs` contrôle maintenant
+  les artefacts EAS `ride-alerts-test` comme ceux de `production`. Un artefact
+  manquant ou incomplet ne peut plus être ignoré par ce profil de test.
+- **Vérifications exécutées :** suite complète Node avec concurrence limitée à
+  deux : **2 514 tests réussis, zéro échec, un ignoré** (Ruby absent pour le test
+  d'exécution de la politique CocoaPods). Après la dernière protection contre
+  la lecture GPS obsolète, **48 tests ciblés réussis**, incluant ce nouveau cas,
+  les toasts, leurs cycles de vie et les abonnements GPS retardés. Les tests
+  dédiés couvrent aussi échéance native, nettoyage tardif, absence de mutation
+  concurrente, consentement, rafales socket, patch numérique et profil EAS.
+  TypeScript sans émission, ESLint global en mode erreurs, contrôle des frontières
+  réseau, contrôle de taille des sources, patch natif installé et
+  `git diff --check` validés. Ces résultats sont des contrôles automatisés locaux :
+  les tests de hooks simulent les bridges ; le test Java des buffers utilise un
+  substitut de Bundle, pas un appareil Android.
+- **Limites et reste à faire :** le contrôle iOS échoue encore réellement sur
+  le `ios/Podfile.lock` versionné : pods Crashlytics et Didit 4.9.1 absents.
+  Ce verrou n'est pas fabriqué manuellement et le contrôle bloquant est conservé.
+  Sur macOS, exécuter `pod install` dans `ios`, puis
+  `npm run check:ios-crashlytics` à la racine et conserver le lock généré après
+  vérification. Un nouveau build Android est nécessaire pour embarquer le patch
+  Kotlin ; aucune OTA seule ne le remplace. Aucun build distant, déploiement,
+  mesure de batterie ou essai physique Android/iOS effectué dans ce correctif.
+  Un bridge natif définitivement bloqué ne peut pas être annulé depuis JavaScript :
+  les appels suivants échouent avec délai borné au lieu de se superposer, mais
+  la récupération native reste nécessaire. Tester sur appareils le retour de
+  veille, les changements de compte, la désactivation GPS, l'embarquement et
+  l'arrivée hors ligne puis reconnectés. Aucune disparition des crashs ou de la
+  chauffe n'est certifiée par ces tests.
+
+## 2026-10-22 — Autorisations conducteur proposées au bon moment
+
+Remplacement du raccourci de localisation clignotant sur l'accueil par des modals
+contextuels : première publication réussie observée sur l'installation, ou visite
+suivante après 15 secondes au premier plan. Localisation puis plein écran Android,
+sans empilement de fenêtres natives ni requête HTTP supplémentaire. Report par
+autorisation de 24 heures et priorité conservée aux trajets/demandes/paiements.
+Fichiers, tests exécutés et limites dans
+[Autorisations contextuelles](DEMANDES_ENTRANTES_LOOPS_2026-10-22.md#autorisations-contextuelles--22-octobre-2026).
+
+## 2026-10-22 — Activation des alertes natives pour les builds de test
+
+Profil EAS `ride-alerts-test`, application effective du manifeste Android versionné
+et consentement plein écran avec relecture de l'autorisation système au retour.
+Fichiers, précautions, commandes et résultats dans
+[Activation pour les tests](DEMANDES_ENTRANTES_LOOPS_2026-10-22.md#activation-pour-les-tests--22-octobre-2026).
+Le profil production reste inchangé ; aucun build distant ni déploiement lancé.
+
+## 2026-10-22 — Demandes entrantes Android/iOS : intégration par boucles
+
+Contrat, modifications, résultats exécutés et limites natives sont suivis dans
+[Demandes entrantes — boucles de validation](DEMANDES_ENTRANTES_LOOPS_2026-10-22.md).
+Périmètre : mobile et backend voisin autorisé, sans déploiement.
+
+## 2026-10-22 — Pause des alertes de proximité après quatre demandes sans suite
+
+- **Périmètre / demande :** suspendre pendant 24 heures les sollicitations sonores
+  de proximité après **quatre demandes distinctes** ignorées ou refusées par un
+  conducteur. Un simple compteur local ne couvre ni l'application fermée, ni une
+  réinstallation, ni les renvois du serveur. Le dépôt voisin `zwanga-backend` a été
+  modifié avec autorisation, sans déploiement ni accès à la base de production.
+- **Règle appliquée :** compteur commun aux alertes `trip_request_nearby` et
+  `driver_dispatch_offer`. Les refus et absences de réponse se cumulent, sans
+  obligation d'être consécutifs ; une acceptation ne remet pas le compteur à zéro.
+  À la quatrième demande comptée, pause de 24 heures, non prolongée par un doublon.
+  Après expiration, le compteur repart à zéro au prochain contrôle. Les anciennes
+  alertes en attente ne réactivent pas une pause terminée. La sélection des
+  conducteurs et la livraison/reprise des push vérifient toutes deux la pause.
+- **Définition d'une absence de réponse :** notification enregistrée `sent` par
+  le backend, délai de réponse dépassé et demande encore disponible, sans réponse
+  métier du conducteur. La fenêtre est plafonnée à 60 secondes et aux échéances
+  `expiresAt` / `alertExpiresAt` existantes (dispatch généralement plus court).
+  Les demandes déjà attribuées, annulées ou auxquelles le conducteur a répondu
+  ne sont pas comptées comme ignorées. Les envois encore en attente ou déjà en
+  échec ne comptent pas. Un refus explicite est dédupliqué par conducteur/demande.
+- **Mobile :** ajout de `services/nearbyRequestRefusal.ts` et de la mutation RTK
+  Query dans `store/api/driverDispatchApi.ts`. Les refus de
+  `services/nearbyNotificationAction.ts` et
+  `hooks/request-detail/useRequestDriverActions.ts` signalent désormais la
+  décision au serveur authentifié, sans retarder l'arrêt local de la sonnerie ni
+  la navigation. Contrôle du propriétaire de la session, coalescence des appels
+  simultanés, délai HTTP de 10 secondes et libération de la mutation. Aucune
+  décision hors ligne n'est rejouée ; si la synchronisation échoue, le contrôle
+  serveur pourra constater l'absence de réponse à l'échéance.
+- **Backend :** `notifications/nearby-request-cooldown.ts` centralise le compteur,
+  le refus et la réconciliation. `notifications.service.ts` protège les deux
+  transports et ajoute un contrôle toutes les minutes, sans chevauchement local.
+  Le travail est borné à 100 conducteurs par passage et 100 événements par
+  conducteur ; chaque nouvel envoi refait également le contrôle. La route
+  `PUT /driver-dispatch/nearby-requests/:id/decline` utilise l'identité authentifiée
+  et ne peut pas annuler la commande du passager. Les refus dispatch existants
+  sont reconnus avant tout nouvel envoi, même avant leur échéance. Les anciens
+  payloads ne contenant qu'un `offerId` restent pris en charge.
+- **Persistance / performance :** migration additive
+  `1780000087000-NearbyRequestRingingCooldown.ts`, enregistrée dans le registre
+  backend : deux tables, clé unique conducteur/demande, dates `timestamptz`,
+  index partiel des événements non traités. Le guide PostgreSQL a orienté les
+  transactions courtes, l'ordre de verrouillage état → événements, la mise à jour
+  groupée et l'absence d'appel push sous verrou. Pas de nouveau minuteur mobile,
+  polling, service natif, changement GPS ou dépendance ajoutée.
+- **Comportements conservés :** réservations des trajets publiés, réponses aux
+  passagers et événements des trajets en cours inchangés. La pause ne déconnecte
+  pas le conducteur, ne désactive pas sa présence et n'empêche pas de consulter
+  manuellement les demandes. Les nouveaux push de proximité sont suspendus,
+  pas remplacés par un push silencieux. Le rayon et les critères métier existants
+  sont conservés.
+- **Vérifications réalisées :** 105 tests JavaScript mobiles ciblés réussis,
+  TypeScript mobile sans émission, ESLint des quatre fichiers mobiles modifiés,
+  frontière réseau RTK Query et limite de taille des sources validés. Côté
+  backend : 54 tests ciblés réussis, dont **9 tests sur PostgreSQL 17 réellement
+  exécutés dans une base temporaire isolée**, et 119 autres tests unitaires de
+  non-régression réussis. Les tests couvrent seuil, mélange refus/absence,
+  concurrence, doublons, reprise après 24 heures, comptes distincts, anciennes
+  invitations et nouvelles tentatives après échec d'envoi.
+  Les suites dispatch/partage PostgreSQL 18/PostGIS ont également réussi
+  (**75 tests**, incluant leurs tests de politique purs), avec les vraies entités
+  du backend et un scénario d'exclusion/réintégration après pause. Compilation
+  TypeScript de production backend sans émission et ESLint des nouveaux fichiers
+  de politique/migration validés. La compilation globale
+  incluant toutes les anciennes fixtures de tests présente des erreurs de types
+  dans des fichiers hors de ce correctif ; ce contrôle global n'est pas annoncé vert.
+- **Limites / mise en service :** `sent` confirme l'acceptation du push par le
+  transport, pas son affichage ou son audition sur le téléphone. Un échec de reçu
+  Expo arrivé après le comptage n'annule pas rétroactivement ce comptage. Un push
+  déjà en vol au déclenchement de la pause ne peut pas être rappelé. La
+  réconciliation périodique peut être différée sous charge ou en cas de panne ;
+  le contrôle avant envoi reste actif. Aucun essai physique Android/iOS, aucune
+  mesure de batterie/chauffe ou de charge production : aucune garantie native
+  déduite de ces tests. La migration doit être appliquée **avant** le backend qui
+  l'utilise, puis la version mobile doit être distribuée. Ces opérations n'ont
+  pas été effectuées. Aucun historique antérieur n'est reconstitué et les
+  anciennes applications ne signalent pas immédiatement le refus des alertes
+  de proximité : elles restent couvertes par le délai serveur.
+
 ## 2026-10-21 — Post-install EAS : lecture des pods Didit et test du compte à rebours
 
 - **Périmètre / problèmes constatés :** le log iOS copié confirme Xcode 26.x /

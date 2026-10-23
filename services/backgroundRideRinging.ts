@@ -5,6 +5,7 @@ import { pendingRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
 import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
+import { rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 
 export const BACKGROUND_RIDE_RING_PREFIX = 'ride-handoff-';
@@ -54,11 +55,15 @@ async function handOff(userId: string, version: number) {
   const valid = () => !cancelled && inBackground() && deadline > Date.now() && pending().some(item => item.key === alert.key);
   const channelId = await getDriverAlertChannel();
   const lightUpScreen = await shouldLightUpRideAlertScreen(channelId);
+  const driverKind = alert.kind === 'booking' || alert.kind === 'dispatch' || alert.kind === 'nearby' ? alert.kind : null;
+  // Same opt-in/build/system checks as a fresh push. Never show a driver's
+  // lock-screen activity for a passenger response, or extend the offer.
+  const fullScreenAction = driverKind && lightUpScreen
+    ? await rideAlertFullScreenAction(userId) : undefined;
   if (!valid()) return;
   const id = `${BACKGROUND_RIDE_RING_PREFIX}${alert.key}`;
   const record = { id, key: alert.key, userId, version, deadline };
   audible = record;
-  const driverKind = alert.kind === 'booking' || alert.kind === 'dispatch' || alert.kind === 'nearby' ? alert.kind : null;
   const actions = driverKind ? driverNotificationActions(driverKind, alert.data) : undefined;
   const card = driverKind ? driverNotificationCard(driverKind, alert.data) : {
     title: 'Une réponse pour votre trajet', body: 'Ouvrez le trajet pour voir les détails.',
@@ -70,6 +75,7 @@ async function handOff(userId: string, version: number) {
       android: { channelId, importance: AndroidImportance.HIGH, visibility: AndroidVisibility.PRIVATE,
         style: { type: AndroidStyle.BIGTEXT, text: card.body },
         sound: 'driver_ring', loopSound: true, lightUpScreen, onlyAlertOnce: true, autoCancel: false,
+        ...(fullScreenAction ? { fullScreenAction } : {}),
         timeoutAfter: Math.max(1, deadline - Date.now()),
         pressAction: { id: 'default', launchActivity: 'default' }, actions },
     }).then(async () => {

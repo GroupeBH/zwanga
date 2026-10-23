@@ -2,6 +2,7 @@ import { baseApi } from './baseApi';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 import type { RootState } from '@/store';
+import { offerClock, offerDeadline, type OfferDeadline } from '@/features/notifications/offerDeadline';
 
 export interface DriverDispatchStatus {
   enabled: boolean;
@@ -20,13 +21,24 @@ export type PresenceInput = { available: false } | {
 export interface DispatchOffer {
   id: string; driverId: string; requestId: string; status: string; expiresAt: string;
   serverNow: string; actionable: boolean;
+  localDeadline?: OfferDeadline;
   vehicleName?: string | null;
   request: { id: string; passengerName: string; departure: string; arrival: string;
-    seats: number; pricePerSeat: number; paymentMode: string; vehicleType: string };
+    seats: number; pricePerSeat: number | null; paymentMode: string; vehicleType: string };
+}
+
+export interface NearbyRingingStatus {
+  missedCount: number;
+  mutedUntil: string | null;
+  serverNow: string;
 }
 
 export const driverDispatchApi = baseApi.injectEndpoints({
   endpoints: builder => ({
+    declineNearbyRequest: builder.mutation<NearbyRingingStatus, string>({
+      query: id => ({ url: `/driver-dispatch/nearby-requests/${id}/decline`, method: 'PUT', timeout: 10000 }),
+      invalidatesTags: ['DriverDispatch'],
+    }),
     respondToBookingInvitation: builder.mutation<unknown, { id: string; accept: boolean }>({
       query: ({ id, accept }) => ({ url: `/bookings/${id}/respond-invitation`, method: 'PUT', body: { accept }, timeout: 10000 }),
       invalidatesTags: ['Booking', 'Trip', 'MyTrips', 'AccountActivity'],
@@ -35,7 +47,7 @@ export const driverDispatchApi = baseApi.injectEndpoints({
       query: () => '/driver-dispatch/status', keepUnusedDataFor: 15,
       providesTags: ['DriverDispatch'],
     }),
-    registerDriverNotifications: builder.mutation<{ registered: boolean }, 2 | 3 | 4 | void>({
+    registerDriverNotifications: builder.mutation<{ registered: boolean }, 2 | 3 | 4 | 5 | void>({
       query: (version = 2) => ({ url: '/driver-dispatch/notifications', method: 'POST', body: { version } }),
     }),
     setDriverPresence: builder.mutation<DriverDispatchStatus, PresenceInput>({
@@ -61,7 +73,14 @@ export const driverDispatchApi = baseApi.injectEndpoints({
       },
     }),
     getDispatchOffer: builder.query<DispatchOffer, string>({
-      query: id => `/driver-dispatch/offers/${id}`, keepUnusedDataFor: 0,
+      async queryFn(id, _api, _extra, baseQuery) {
+        const started = offerClock();
+        const result = await baseQuery(`/driver-dispatch/offers/${id}`);
+        if (result.error) return { error: result.error };
+        const data = result.data as DispatchOffer;
+        return { data: { ...data, localDeadline: offerDeadline(data.expiresAt, data.serverNow, started) } };
+      },
+      keepUnusedDataFor: 0,
       providesTags: ['DriverDispatch'],
     }),
     respondToDispatchOffer: builder.mutation<{ status: string; requestId: string }, { id: string; decision: 'accept' | 'decline' }>({

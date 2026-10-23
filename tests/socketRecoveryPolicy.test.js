@@ -20,6 +20,54 @@ function fixture(kind) {
   return { state, sockets, options, client, join, recovery: load('services/networkRecovery.ts') };
 }
 for (const kind of ['chat', 'tracking']) {
+  test(`${kind}: explicit temporary server disconnect reconnects once and rejoins owned rooms`, async t => {
+    t.mock.method(Math, 'random', () => 0);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture(kind); f.state.token = 'synthetic'; await f.join();
+    const socket = f.sockets[0];
+    socket.sent.length = 0;
+    socket.emit('server_restart', { reconnect: true, retryAfterSeconds: 5 });
+    socket.emit('server_restart', { reconnect: true, retryAfterSeconds: 5 });
+    socket.connected = false; socket.emit('disconnect', 'io server disconnect');
+    t.mock.timers.tick(4999); await flush(); assert.equal(socket.connected, false);
+    t.mock.timers.tick(1); await flush(); assert.equal(socket.connected, true);
+    assert.equal(socket.sent.filter(([name]) => name.startsWith('join_')).length, 1);
+    assert.equal(f.sockets.length, 1);
+    f.client.disconnect();
+  });
+  test(`${kind}: logout or session revocation cancels scheduled recovery`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    for (const revoked of [true, false]) {
+      const f = fixture(kind); f.state.token = 'synthetic'; await f.join();
+      const socket = f.sockets[0];
+      socket.emit('server_restart', { reconnect: true, retryAfterSeconds: 5 });
+      socket.connected = false;
+      if (revoked) socket.emit('session_expired'); else f.client.disconnect();
+      t.mock.timers.tick(60_000); await flush();
+      assert.equal(socket.connected, false);
+      f.client.disconnect();
+    }
+  });
+  test(`${kind}: malformed restart hints do not restart a server-disconnected socket`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture(kind); f.state.token = 'synthetic'; await f.join();
+    const socket = f.sockets[0]; socket.connected = false;
+    for (const value of [null, {}, { reconnect: 'true' }, { reconnect: false }]) socket.emit('server_restart', value);
+    t.mock.timers.tick(60_000); await flush(); assert.equal(socket.connected, false);
+    f.client.disconnect();
+  });
+  test(`${kind}: repeated dependency failures use a bounded retry burst`, async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture(kind); f.state.token = 'synthetic'; await f.join();
+    const socket = f.sockets[0];
+    for (let attempt = 0; attempt < 6; attempt++) {
+      socket.emit('server_restart', { reconnect: true, retryAfterSeconds: 5 });
+      socket.connected = false; socket.emit('disconnect', 'io server disconnect');
+      t.mock.timers.tick(61_000); await flush();
+      assert.equal(socket.connected, attempt < 5);
+    }
+    f.client.disconnect();
+  });
   test(`${kind}: no socket without token, recovery retains the room and caps reconnects`, async () => {
     const f = fixture(kind); await assert.rejects(f.join(), /session/);
     assert.equal(f.sockets.length, 0);

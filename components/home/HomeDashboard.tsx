@@ -35,9 +35,6 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       insets={home.insets}
       router={home.router}
       profileInitial={home.profileInitial}
-      userId={home.currentUser?.id}
-      isDriver={home.isDriver}
-      isScreenActive={home.isScreenActive}
       ongoingDriverTrip={home.ongoingDriverTrip}
       ongoingBookedTrip={home.ongoingBookedTrip}
       unreadNotifications={home.unreadNotifications}

@@ -1,30 +1,4 @@
-const { withAndroidManifest, withGradleProperties, withPodfile, withXcodeProject, AndroidConfig } = require('@expo/config-plugins');
-
-const withIOSModularHeaders = (config) => {
-  return withPodfile(config, async (config) => {
-    const podfileContent = config.modResults.contents;
-    
-    // Only add if not already present
-    if (!podfileContent.includes('use_modular_headers!')) {
-      // Insert after platform declaration but before use_react_native!
-      const lines = podfileContent.split('\n');
-      const newLines = [];
-      let inserted = false;
-      
-      for (const line of lines) {
-        newLines.push(line);
-        // Insert after platform line and before react native
-        if (!inserted && line.trim().startsWith('platform :ios')) {
-          newLines.push('use_modular_headers!');
-          inserted = true;
-        }
-      }
-      
-      config.modResults.contents = newLines.join('\n');
-    }
-    return config;
-  });
-};
+const { withAndroidManifest, withGradleProperties, withXcodeProject, AndroidConfig } = require('@expo/config-plugins');
 
 const withAndroidLocationPermissions = (config) => {
   return withAndroidManifest(config, async (config) => {
@@ -99,42 +73,14 @@ const withIOSUserScriptSandboxingDisabled = (config) => {
   });
 };
 
-const withReactNativeMapsFix = (config) => {
-  return withPodfile(config, async (config) => {
-    let content = config.modResults.contents;
-
-    const mapsBuildSettings = `
-    # react-native-maps imports React headers while built as a framework.
-    # Xcode 26 treats those imports as errors unless this is explicitly allowed.
-    installer.pods_project.targets.each do |target|
-      if ['react-native-maps', 'react-native-google-maps'].include?(target.name)
-        target.build_configurations.each do |build_config|
-          build_config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
-        end
-      end
-    end`;
-
-    if (!content.includes('CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES')) {
-      content = content.replace(
-        /(react_native_post_install\([\s\S]*?\n\s*\))/,
-        `$1\n${mapsBuildSettings}`,
-      );
-      config.modResults.contents = content;
-    }
-
-    return config;
-  });
-};
-
 module.exports = (config) => {
   config = require('./plugins/withPatchedReactAndroid')(config);
-  config = withIOSModularHeaders(config);
   config = withAndroidLocationPermissions(config);
   config = withAndroidLargeScreenCompatibility(config);
   config = withModernEdgeToEdgeGradleProperties(config);
   config = withIOSUserScriptSandboxingDisabled(config);
   config = require('./plugins/withIosCrashlytics')(config);
-  config = withReactNativeMapsFix(config);
+  config = require('./plugins/withIosBridgeSettings')(config);
   config = require('./plugins/withIosDeploymentTargetFloor')(config);
   return config;
 };

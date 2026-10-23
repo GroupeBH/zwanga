@@ -4,6 +4,7 @@ import { ARRIVAL_PAYMENT_CHECK_TIMEOUT_MS, ARRIVAL_PAYMENT_MONITOR_WINDOW_MS, AR
 import type { useArrivalPaymentState } from './useArrivalPaymentState';
 import type { useArrivalPaymentProvider } from './useArrivalPaymentProvider';
 import type { useArrivalPaymentCompletion } from './useArrivalPaymentCompletion';
+import { acknowledgeWalletTopUpIntent } from '@/features/wallet/topUpIntent';
 
 type Params = { state: ReturnType<typeof useArrivalPaymentState>;
   provider: ReturnType<typeof useArrivalPaymentProvider>;
@@ -12,6 +13,8 @@ export type PaymentVerification = { phase: 'idle' | 'checking' | 'waiting' | 'pa
 const IDLE: PaymentVerification = { phase: 'idle', message: '' };
 const UNAVAILABLE = 'Vérification indisponible. Ne payez pas une seconde fois. Vérifiez à nouveau ou fermez cette fenêtre.';
 const PENDING = 'Le paiement attend une confirmation. Ne payez pas une seconde fois. Vous pouvez fermer cette fenêtre et reprendre plus tard.';
+const TOP_UP_PENDING = 'Complément Mobile Money en attente. Confirmez-le sur votre téléphone si ce n’est pas encore fait. Ne payez pas une seconde fois. Vous pouvez fermer cette fenêtre et reprendre plus tard.';
+const SETTLEMENT_PENDING = 'Recharge confirmée. Le règlement du trajet reste à vérifier. Ne rechargez pas et ne payez pas une seconde fois. Vérifiez à nouveau ou reprenez plus tard.';
 
 export function useArrivalPaymentMonitoring({ state, provider, completion }: Params) {
   const latest = useRef({ state, provider, completion });
@@ -23,6 +26,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
   const persistBookingState = state.persistBookingState;
   const hasBlockingOverlay = Boolean(state.completionSummary || state.interruptionChoice);
   const serverPaymentSucceeded = state.arrivalBooking?.paymentStatus === 'succeeded';
+  const cashFallback = Boolean(state.arrivalBooking?.tokenCashFallbackAt);
   const orderKey = JSON.stringify([bookingId, walletOrder, bookingOrder]);
   const [progress, setProgress] = useState<{ key: string; value: PaymentVerification }>({ key: '', value: IDLE });
   const pausedOrder = useRef<string | null>(null);
@@ -46,7 +50,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
   }, [bookingId, requiredActionAt, persistBookingState]);
 
   useEffect(() => {
-    if (!state.isAuthenticated || !state.isAppActive || !state.isResumeReady || state.isPaymentDeferred ||
+    if (cashFallback || !state.isAuthenticated || !state.isAppActive || !state.isResumeReady || state.isPaymentDeferred ||
         hasBlockingOverlay || !bookingId || (!walletOrder && !bookingOrder)) return;
     let cancelled = false;
     let inFlight = false;
@@ -82,10 +86,12 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
 
     const check = async () => {
       if (cancelled || stopped || inFlight) return;
-      if (Date.now() >= deadline) { pause(PENDING); return; }
+      const pendingMessage = walletOrder ? TOP_UP_PENDING : PENDING;
+      if (Date.now() >= deadline) { pause(pendingMessage); return; }
       inFlight = true;
       publish({ phase: 'checking', message: 'Vérification du paiement en cours…' });
       let finished = false;
+      let topUpConfirmed = false;
       try {
         const booking = latest.current.state.arrivalBooking;
         if (booking?.id !== bookingId) return;
@@ -98,12 +104,15 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
           const response = await read(latest.current.state.checkWalletTopUpStatus(walletOrder));
           if (cancelled) return;
           if (response.payment.status === 'succeeded') {
+            topUpConfirmed = true;
             latest.current.state.setStatusMessage('Recharge confirmée. Paiement de la course en cours…');
             finished = await latest.current.provider.settleWithPoints(bookingId);
+            if (finished) await acknowledgeWalletTopUpIntent(latest.current.state.user?.id, `booking:${bookingId}`, response);
             if (!cancelled && finished) latest.current.state.persistBookingState(bookingId, { walletTopUpOrderNumber: null });
             // A confirmed top-up must not trigger automatic repeated settlement mutations.
-            if (!cancelled && !finished) pause(PENDING);
+            if (!cancelled && !finished) pause(SETTLEMENT_PENDING);
           } else if (response.payment.status === 'failed' || response.payment.status === 'cancelled') {
+            await acknowledgeWalletTopUpIntent(latest.current.state.user?.id, `booking:${bookingId}`, response);
             latest.current.state.setStatusMessage('');
             latest.current.state.persistBookingState(bookingId, { walletTopUpOrderNumber: null });
             latest.current.state.setPaymentError(getPaymentFailureMessage(response.payment.message));
@@ -121,16 +130,16 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
         if (finished) {
           stopped = true;
           publish({ phase: 'complete', message: '' });
-        } else if (Date.now() >= deadline) pause(PENDING);
+        } else if (Date.now() >= deadline) pause(pendingMessage);
         else {
-          publish({ phase: 'waiting', message: PENDING });
+          publish({ phase: 'waiting', message: pendingMessage });
           // Delay from response completion, not a fixed interval during slow reads.
           timer = setTimeout(() => void check(), Math.min(ARRIVAL_PAYMENT_STATUS_REFRESH_MS, deadline - Date.now()));
         }
       } catch {
         if (!cancelled) {
           latest.current.state.setStatusMessage('');
-          pause(UNAVAILABLE); // An unavailable status is not a failed or cancelled payment.
+          pause(topUpConfirmed ? SETTLEMENT_PENDING : UNAVAILABLE); // Neither is proof of a failed payment.
         }
       } finally {
         inFlight = false;
@@ -157,7 +166,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
       setChecking(false);
     };
   }, [state.isAuthenticated, state.isAppActive, state.isResumeReady, state.isPaymentDeferred,
-    hasBlockingOverlay, serverPaymentSucceeded, bookingId, walletOrder, bookingOrder,
+    cashFallback, hasBlockingOverlay, serverPaymentSucceeded, bookingId, walletOrder, bookingOrder,
     orderKey, state.setIsCheckingPayment]);
 
   return { verification: progress.key === orderKey ? progress.value : IDLE, retryVerification };

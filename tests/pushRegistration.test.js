@@ -10,7 +10,7 @@ const jwt = account => `x.${Buffer.from(JSON.stringify({ sub: account })).toStri
 function fixture(platform = 'android') {
   const hooks = hookHarness();
   const io = { enabled: true, account: 'a', token: 'device', registered: false, setupFails: false,
-    updates: 0, registrations: 0, resets: 0, version: 0, receive: null, backgroundReady: true,
+    updates: 0, registrations: 0, resets: 0, version: 0, receive: null, backgroundReady: true, iosFirebase: false,
     channel: 'booking-ring-v2', capabilities: [], rejectV3: null, rejectV4: null, permissionAttempts: [], tokenFails: false,
     tokenWait: null, channelWait: null, updateWait: null, backgroundWait: null, registrationWait: null,
     sent: [], aborted: 0, updateResets: 0, fallbackFails: false };
@@ -24,6 +24,7 @@ function fixture(platform = 'android') {
     return { registered: io.registered };
   }, abort: () => { io.aborted++; }, reset: () => { io.resets++; } });
   const { usePushRegistration } = loader({ react: hooks.react,
+    '@/services/iosFirebaseMessaging': { usesIosFirebaseMessaging: () => io.iosFirebase },
     'react-native': { Platform: { OS: platform } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => io.enabled },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: value => value && io.enabled },
@@ -111,6 +112,15 @@ test('native token rotation re-registers ordinary and interactive notifications'
   const f = fixture(); f.io.registered = true; f.render(); t.mock.timers.tick(1200); await tick();
   f.io.token = 'rotated-device'; await f.io.receive(f.io.token);
   assert.equal(f.io.updates, 2); assert.equal(f.io.registrations, 2); f.hooks.unmount();
+});
+
+test('iOS Firebase binary registers capability v5 while Expo keeps v2', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  for (const enabled of [false, true]) {
+    const f = fixture('ios'); f.io.iosFirebase = enabled; f.io.registered = true;
+    f.render(); t.mock.timers.tick(1200); await tick();
+    assert.deepEqual(f.io.capabilities, [enabled ? 5 : 2]); f.hooks.unmount();
+  }
 });
 
 test('automatic setup retries permission failures without a trip to a configuration screen', async t => {

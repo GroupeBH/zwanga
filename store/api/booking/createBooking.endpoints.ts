@@ -103,6 +103,20 @@ initiateBookingPayment: builder.mutation<
         paymentHistoryTag,
       ],
     }),
+payTokensCash: builder.mutation<Booking, { bookingId: string; expectedAmount: number; expectedTokenAmount: number; tokenQuantity: number; currency: string }>({
+      query: ({ bookingId, ...body }) => ({ url: `/bookings/${bookingId}/pay-tokens-cash`, method: 'POST', body, timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (_result, _error, { bookingId }) => [
+        { type: 'Booking', id: bookingId }, bookingListTag, walletTag, driverSettlementTag, paymentHistoryTag,
+      ],
+    }),
+switchTokenPaymentToCash: builder.mutation<Booking, string>({
+      query: (bookingId) => ({ url: `/bookings/${bookingId}/token-cash-fallback`, method: 'POST', timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: (_result, _error, bookingId) => [
+        { type: 'Booking', id: bookingId }, bookingListTag, walletTag, driverSettlementTag, paymentHistoryTag,
+      ],
+    }),
 updateBookingPaymentMode: builder.mutation<Booking, { bookingId: string; paymentMode: TripPaymentMode }>({
       query: ({ bookingId, paymentMode }) => ({
         url: `/bookings/${bookingId}/payment-mode`,

@@ -1,5 +1,6 @@
 import { runDiditNativeVerification, getDiditSdkFailureError } from '../features/identity/diditSdk';
 import { useKycFlowScope } from './identity/useKycFlowScope';
+import { isSafeDiditHostedUrl } from '@/features/identity/diditLaunchPolicy';
 
 import { asStringParam, getKycStatusFromDiditStatus, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
 import { QueryParams, DiditKycFlowOutcome, StartDiditKycOptions, UseDiditKycFlowOptions, KycFlowStage } from '../features/identity/diditFlowTypes';
@@ -138,7 +139,8 @@ export function useDiditKycFlow({
         }).unwrap();
         if (!scope.canLaunch()) return null;
 
-        if (Platform.OS !== 'web' && !session.sessionToken?.trim()) {
+        const hosted = session.launchMode === 'hosted';
+        if (Platform.OS !== 'web' && !hosted && !session.sessionToken?.trim()) {
           throw new KycUserFacingError({
             category: 'service_unavailable',
             code: 'KYC_SDK_TOKEN_MISSING',
@@ -177,7 +179,7 @@ export function useDiditKycFlow({
           }
         };
 
-        if (Platform.OS !== 'web' && session.sessionToken) {
+        if (Platform.OS !== 'web' && !hosted && session.sessionToken) {
           try {
             flowStage = 'opening_native_sdk';
             const sdkResult = await runDiditNativeVerification(session.sessionToken);
@@ -230,7 +232,7 @@ export function useDiditKycFlow({
 
         if (launchMode === 'web_browser') {
           flowStage = 'opening_web_browser';
-          if (!session.url) {
+          if (!isSafeDiditHostedUrl(session.url)) {
             throw new Error(
               "Le SDK natif Didit est indisponible et aucune URL de secours n'a été retournée.",
             );
