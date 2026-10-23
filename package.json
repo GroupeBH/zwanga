@@ -10,6 +10,8 @@
     "eas-build-post-install": "node ./scripts/configure-ride-alert-build.cjs --eas && node ./scripts/patch-expo-location-batches.cjs --check && node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-ios-crashlytics.cjs --eas && node ./scripts/check-release.cjs",
     "check:ios-toolchain": "node ./scripts/validate-ios-toolchain.cjs --config-only",
     "check:ios-crashlytics": "node ./scripts/validate-ios-crashlytics.cjs",
+    "prepare:ios-native": "node ./scripts/prepare-ios-native.cjs",
+    "check:native-sources": "node ./scripts/check-native-sources.cjs",
     "check:android-native": "node ./scripts/validate-android-native.cjs",
     "check:android-crashlytics": "node ./scripts/validate-android-crashlytics.js",
     "test:android-crashlytics": "node --test ./tests/androidCrashlytics.test.js",

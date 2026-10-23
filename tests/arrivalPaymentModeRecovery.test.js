@@ -31,7 +31,7 @@ test('pending references, busy state and confirmed payment lock mode changes; fa
   let booking = { id: 'a', paymentMode: 'electronic', paymentStatus: 'pending' }, stored, busy = false;
   const render = () => hooks.render(() => useBookingPaymentMode(booking, stored, busy));
   render().reportPaymentFailure('a');
-  for (const reference of ['bookingPaymentOrderNumber', 'walletTopUpOrderNumber']) {
+  for (const reference of ['bookingPaymentOrderNumber', 'walletTopUpOrderNumber', 'walletTopUpIntent']) {
     stored = { [reference]: 'existing-order' };
     assert.equal(render().canChangeFailedPaymentMode, false);
     render().setSelectedMode('cash');
@@ -50,6 +50,14 @@ test('pending references, busy state and confirmed payment lock mode changes; fa
   render().reportPaymentFailure('a');
   assert.equal(render().canChangeFailedPaymentMode, false, 'late failure cannot reset another booking');
   hooks.unmount();
+});
+
+test('an unknown complement restores points mode even if the server has not saved a mode yet', () => {
+  const h = hookHarness();
+  const { useBookingPaymentMode } = loader({ react: h.react })('hooks/arrival-payment/useBookingPaymentMode.ts');
+  const render = () => h.render(() => useBookingPaymentMode({ id: 'booking', paymentMode: null }, { walletTopUpIntent: 'retained' }));
+  assert.equal(render().selectedMode, 'points'); render().setSelectedMode('cash');
+  assert.equal(render().selectedMode, 'points'); h.unmount();
 });
 
 test('completion reports failed/cancelled payments only, never pending or succeeded, and ignores inactive sessions', async () => {
@@ -128,7 +136,7 @@ test('a confirmed decline unlocks direct selection once its pending reference is
   hooks.unmount();
 });
 
-test('a decline reveals selectable mode cards directly, with no new button, payment or repeated scrolling', () => {
+test('a decline puts the cash choice first, without a new screen, payment or repeated scrolling', () => {
   const hooks = hookHarness(), scrolls = [], choices = [];
   const native = { ScrollView: 'Scroll', View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button',
     ActivityIndicator: 'Spinner', Keyboard: { dismiss() {} }, StyleSheet: { create: value => value } };
@@ -155,13 +163,38 @@ test('a decline reveals selectable mode cards directly, with no new button, paym
   const cards = flatten(failedForm).filter(child => child.props.accessibilityRole === 'radio');
   assert.ok(cards.length >= 2);
   assert.ok(cards.every(card => !card.props.disabled));
-  const cash = cards.find(card => card.props.accessibilityLabel === 'Espèces');
+  const cash = cards.find(card => card.props.accessibilityLabel === 'Payer en espèces');
+  assert.equal(cards[0], cash);
+  assert.equal(cash.props.accessibilityState.checked, false, 'suggesting cash does not select it automatically');
   cash.props.onPress(); assert.deepEqual(choices, ['cash']);
   for (let i = 0; i < 100; i++) render();
   assert.equal(scrolls.length, 1, 'store rerenders do not drive another scroll');
   props.isBeforeArrival = true;
   assert.equal(flatten(render()).some(child => child.props.accessibilityLabel === 'Espèces'), false);
   hooks.unmount();
+});
+
+test('reopening a server-confirmed failed payment offers another mode, but never overrides an unresolved payment', () => {
+  for (const status of ['failed', 'cancelled']) {
+    const hooks = hookHarness();
+    const { useBookingPaymentMode } = loader({ react: hooks.react })('hooks/arrival-payment/useBookingPaymentMode.ts');
+    const booking = { id: 'booking', paymentMode: 'electronic', paymentStatus: status };
+    let stored;
+    const render = () => hooks.render(() => useBookingPaymentMode(booking, stored));
+    assert.equal(render().canChangeFailedPaymentMode, true);
+    assert.equal(render().selectedMode, 'electronic');
+    for (const key of ['walletTopUpOrderNumber', 'walletTopUpIntent', 'bookingPaymentOrderNumber', 'mixedCashIntent']) {
+      stored = { [key]: 'unresolved' };
+      assert.equal(render().canChangeFailedPaymentMode, false);
+      render().setSelectedMode('cash');
+      assert.notEqual(render().selectedMode, 'cash');
+    }
+    stored = undefined;
+    render().setSelectedMode('cash');
+    assert.equal(render().selectedMode, 'cash');
+    assert.equal(render().canChangeFailedPaymentMode, false, 'the suggestion disappears after an explicit choice');
+    hooks.unmount();
+  }
 });
 
 test('a confirmed cash receipt overrides an unsent points draft without authorizing another payment', () => {

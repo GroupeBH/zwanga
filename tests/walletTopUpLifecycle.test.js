@@ -3,6 +3,24 @@ const assert=require('node:assert/strict');
 const {loader}=require('./helpers/loadTypeScript.cjs');
 const {hookHarness}=require('./helpers/hookHarness.cjs');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
+
+test('wallet double tap initiates once; a lost reply is uncertain, not a confirmed failure', async () => {
+  const h = hookHarness(), stages = [], dialogs = []; let reject, sent = 0;
+  const { useWalletTopUpActions } = loader({ react: h.react, 'expo-linking': { createURL: () => '' },
+    'react-native': { Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: x => x } }, 'expo-web-browser': {},
+    '@/utils/safeExternalUrl': { openExternalUrlSafely: async () => {} },
+  })('hooks/wallet/useWalletTopUpActions.ts');
+  const noop = () => {};
+  const props = { captureScope: () => () => true, setTopUpStage: x => stages.push(x), setTopUpStatusMessage: noop,
+    topUpOrderNumber: null, topUpMethod: 'mobile_money', topUpAmount: '392', showDialog: x => dialogs.push(x),
+    isTopUpPhoneRequired: true, topUpPhone: '+243891234567', setTopUpPhone: noop, stopTopUpAutoCheck: noop,
+    setTopUpAutoCheckAttempt: noop, initiateWalletTopUp: () => { sent++; return { unwrap: () => new Promise((_yes, no) => { reject = no; }) }; } };
+  const api = h.render(() => useWalletTopUpActions(props));
+  const first = api.handleTopUp(); await api.handleTopUp(); assert.equal(sent, 1);
+  reject({ status: 'FETCH_ERROR' }); await first;
+  assert.equal(stages.at(-1), 'waiting_long'); assert.equal(stages.includes('failed'), false);
+  assert.equal(dialogs.at(-1).title, 'Recharge à vérifier'); h.unmount();
+});
 function environment() {
   const h=hookHarness(),requests=[],dialogs=[],events=[];
   let active=true,user='account-a';

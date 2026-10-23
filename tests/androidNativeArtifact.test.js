@@ -54,6 +54,18 @@ test('checks production core libraries for each ABI, including ELF architecture,
   assert.throws(() => validateArtifact(filename, ['arm64-v8a']), /ZIP/);
 });
 
+test('EAS production and ride-alerts-test both fail closed when no release artifact exists', t => {
+  const { spawnSync } = require('node:child_process');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'zwanga-eas-validator-'));
+  t.after(() => fs.rmdirSync(directory));
+  for (const profile of ['production', 'ride-alerts-test', 'development']) {
+    const result = spawnSync(process.execPath, [path.resolve('scripts/validate-android-native.cjs'), '--eas'], {
+      cwd: directory, encoding: 'utf8', env: { ...process.env, EAS_BUILD_PLATFORM: 'android', EAS_BUILD_PROFILE: profile },
+    });
+    assert.equal(result.status, profile === 'development' ? 0 : 1, result.stderr);
+  }
+});
+
 test('validates every third-party ELF, duplicate entries and stored APK zip alignment', t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'zwanga-native-test-'));
   const filename = path.join(directory, 'test.apk');

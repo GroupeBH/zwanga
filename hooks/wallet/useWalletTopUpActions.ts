@@ -20,7 +20,7 @@ import type { SubscriptionPaymentMethod, WalletPaymentResponse } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { openExternalUrlSafely } from '@/utils/safeExternalUrl';
 import * as WebBrowser from 'expo-web-browser';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Keyboard } from 'react-native';
 
 interface Params {
@@ -72,6 +72,7 @@ export function useWalletTopUpActions({
   handleFailedTopUp,
   refreshAll,
 }: Params) {
+  const submitting = useRef(false);
   const openTopUpCardPaymentUrl = useCallback(
     async (
       paymentUrl: string,
@@ -135,7 +136,7 @@ export function useWalletTopUpActions({
     [captureScope, checkTopUpByOrderNumber, startTopUpAutoCheck, setTopUpStage, setTopUpStatusMessage],
   );
 
-  const handleTopUp = async () => {
+  const submitTopUp = async () => {
     const isCurrent = captureScope();
     if (!isCurrent()) return;
     Keyboard.dismiss();
@@ -258,11 +259,12 @@ export function useWalletTopUpActions({
       }
     } catch (error) {
       if (!isCurrent()) return;
-      setTopUpStage('failed');
+      setTopUpStage('waiting_long');
+      setTopUpStatusMessage('Recharge à vérifier. Réessayez pour reprendre la même opération. Ne payez pas une seconde fois.');
       showDialog({
-        variant: 'danger',
-        title: 'Recharge impossible',
-        message: getApiErrorMessage(error, 'Impossible de lancer la recharge pour le moment.'),
+        variant: 'warning',
+        title: 'Recharge à vérifier',
+        message: getApiErrorMessage(error, 'La réponse n’est pas arrivée. Réessayez pour vérifier la même recharge, sans payer une seconde fois.'),
       });
     }
   };
@@ -280,7 +282,11 @@ export function useWalletTopUpActions({
   };
 
   return {
-    handleTopUp,
+    handleTopUp: async () => {
+      if (submitting.current) return;
+      submitting.current = true;
+      try { await submitTopUp(); } finally { submitting.current = false; }
+    },
     handleCheckTopUpStatus,
   };
 }

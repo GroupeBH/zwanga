@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import { isAppActive, subscribeAppActivity } from './appActivity';
 import { BOARDING_LOCATION_MAX_AGE_MS } from '@/constants/rideProgress';
 import { warnThrottled } from '@/utils/throttledWarning';
+import { mutateLocationNative } from './locationNativeDeadline';
 
 type Listener = (location: Location.LocationObject) => void;
 type Channel = {
@@ -58,9 +59,14 @@ function reconcile(key: string, channel: Channel) {
   if (channel.fallback || channel.starting || Date.now() < channel.retryAt) return;
   channel.starting = true;
   const generation = ++channel.generation;
-  void Location.watchPositionAsync(channel.options, (location) => {
-    if (channels.get(key) === channel && channel.generation === generation) deliver(channel, location);
-  }).then((subscription) => {
+  let lateSubscription: Location.LocationSubscription | undefined;
+  void mutateLocationNative(`watch:${key}`, async () => {
+    const subscription = await Location.watchPositionAsync(channel.options, (location) => {
+      if (channels.get(key) === channel && channel.generation === generation) deliver(channel, location);
+    });
+    lateSubscription = subscription;
+    return subscription;
+  }, async () => { lateSubscription?.remove(); }).then((subscription) => {
     if (channels.get(key) !== channel || generation !== channel.generation || !isAppActive()) {
       subscription.remove();
       return;
@@ -69,6 +75,7 @@ function reconcile(key: string, channel: Channel) {
     channel.fallback = subscription;
   }).catch((error) => {
     if (channels.get(key) !== channel || generation !== channel.generation) return;
+    channel.generation += 1; // Late native callbacks from a timed-out watcher are ignored.
     channel.starting = false;
     channel.retryAt = Date.now() + 15_000;
     warnThrottled('[RideLocation] Suivi GPS de secours indisponible :', error);

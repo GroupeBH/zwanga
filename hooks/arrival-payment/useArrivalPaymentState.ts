@@ -12,6 +12,8 @@ import { useNearArrivalPayment } from './useNearArrivalPayment';
 import { getPassengerInterruptionChoice } from '@/features/trip/interruptionChoice';
 import { usePaymentPersistence } from './usePaymentPersistence';
 import { useBookingPaymentMode } from './useBookingPaymentMode';
+import { restoreMixedCashReceipt } from '@/features/arrival-payment/mixedCashReceipt';
+import { restoreTokenCashFallback } from '@/features/arrival-payment/tokenCashFallback';
 import { useArrivalPaymentRefresh } from './useArrivalPaymentRefresh';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,7 +46,8 @@ export function useArrivalPaymentState() {
   const insets = useSafeAreaInsets();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
-  const { storedState, isStoredStateLoaded, persistBookingState, isSessionCurrent } = usePaymentPersistence(user?.id, isAuthenticated);
+  const { storedState, isStoredStateLoaded, persistBookingState, isSessionCurrent,
+    storageError, isStorageLoading, retryPaymentStorage } = usePaymentPersistence(user?.id, isAuthenticated);
   const [deferredBookingId, setDeferredBookingId] = useState<string | null>(null);
   const [selectedChannel, setSelectedChannel] = useState<PaymentChannel>('mpesa');
   const [paymentPhone, setPaymentPhone] = useState('');
@@ -64,7 +67,8 @@ export function useArrivalPaymentState() {
     ...sharedActivityQueryOptions,
     skip: !isAuthenticated,
   });
-  const bookings = useMemo(() => activityBookings.filter(booking => booking.passengerId === user?.id), [activityBookings, user?.id]);
+  const bookings = useMemo(() => activityBookings.filter(booking => booking.passengerId === user?.id)
+    .map(booking => restoreTokenCashFallback(restoreMixedCashReceipt(booking, storedState[booking.id]), storedState[booking.id])), [activityBookings, user?.id, storedState]);
 
   const isResumeReady = useArrivalPaymentRefresh(isAuthenticated && isAppActive, refetchBookings);
   const earlyBooking = useNearArrivalPayment(bookings, user?.id, isAuthenticated && isResumeReady && isStoredStateLoaded, storedState);
@@ -127,6 +131,7 @@ export function useArrivalPaymentState() {
     useInitiateWalletTopUpMutation();
   const [checkWalletTopUpStatus] = useLazyCheckWalletTopUpStatusQuery();
 
+  const isMutatingPayment = isUpdatingPaymentMode || isInitiatingBookingPayment || isInitiatingWalletTopUp;
   const isBusy =
     isUpdatingPaymentMode ||
     isInitiatingBookingPayment ||
@@ -158,8 +163,8 @@ export function useArrivalPaymentState() {
   const activeStoredState = arrivalBooking ? storedState[arrivalBooking.id] : undefined;
   const { selectedMode, setSelectedMode, reportPaymentFailure, canChangeFailedPaymentMode } =
     useBookingPaymentMode(arrivalBooking, activeStoredState, isBusy);
-  const hasPendingProviderPayment = Boolean(
-    activeStoredState?.bookingPaymentOrderNumber || activeStoredState?.walletTopUpOrderNumber,
+  const hasPendingProviderPayment = !arrivalBooking?.tokenCashFallbackAt && Boolean(
+    activeStoredState?.bookingPaymentOrderNumber || activeStoredState?.walletTopUpOrderNumber || activeStoredState?.walletTopUpIntent,
   );
   const hasCardPaymentToResume = Boolean(
     activeStoredState?.bookingPaymentOrderNumber &&
@@ -176,6 +181,8 @@ export function useArrivalPaymentState() {
         bookingPaymentOrderNumber: null,
         bookingPaymentUrl: null,
         walletTopUpOrderNumber: null,
+        walletTopUpIntent: null,
+        mixedCashIntent: null,
       });
       // Do not chain unrelated historical confirmations after closing this one.
       const next = selectArrivedPaymentBooking(bookings, {
@@ -192,6 +199,8 @@ export function useArrivalPaymentState() {
   const presentedBookingId = completionSummary?.bookingId ?? arrivalBooking?.id;
 
   return {
+    isMutatingPayment,
+    storageError, isStorageLoading, retryPaymentStorage,
     isResumeReady,
     isSessionCurrent,
     isPaymentDeferred: Boolean(presentedBookingId && presentedBookingId === deferredBookingId),

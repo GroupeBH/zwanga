@@ -10,7 +10,8 @@ import { requestCurrentLocation } from '@/services/currentLocationRequest';
 import { AppState } from 'react-native';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { ensureNearbyDriverLocation, hasActiveRideLocationSession, pauseNearbyDriverLocation,
-  subscribeNearbyDriverLocation } from '@/services/nearbyDriverLocation';
+  subscribeNearbyDriverLocation, isNearbyDriverLocationEnabled } from '@/services/nearbyDriverLocation';
+import { readLocationNative } from '@/services/locationNativeDeadline';
 import { needsNearbyDriverPosition, sendNearbyDriverPosition } from '@/services/nearbyDriverPositionDelivery';
 import { NEARBY_DRIVER_INTERVAL_MS } from '@/services/nearbyDriverLocationPolicy';
 import { getTokenSessionVersion } from '@/services/tokenSession';
@@ -52,18 +53,18 @@ export function DriverPresenceCoordinator() {
       busy = true;
       try {
         // The mutation returns the authoritative status; no extra GET before every fix.
-        if (await hasActiveRideLocationSession() || !current()) return;
+        if (!await isNearbyDriverLocationEnabled(userId) || await hasActiveRideLocationSession() || !current()) return;
         if (checkNative) {
           nativeCheckedAt = Date.now();
-          await ensureNearbyDriverLocation(userId).catch(() => false);
+          await ensureNearbyDriverLocation(userId, current).catch(() => false);
         }
         // Send a first fresh fix immediately and recover missed native delivery.
         // A healthy recent acknowledgement avoids an additional one-shot GPS read.
         if (!current() || !needsNearbyDriverPosition(userId)) return;
-        const permission = await Location.getForegroundPermissionsAsync();
+        const permission = await readLocationNative(Location.getForegroundPermissionsAsync());
         if (!permission.granted || !current()) return;
         const position = await requestCurrentLocation(true, controller.signal, { maxAge: 15000, requiredAccuracy: 250, fallback: false });
-        if (!position || !current() || await hasActiveRideLocationSession()) return;
+        if (!position || !current() || !await isNearbyDriverLocationEnabled(userId) || await hasActiveRideLocationSession()) return;
         await sendNearbyDriverPosition(userId, position, current);
       } catch { /* Preserve the true observation date; retry on the next heartbeat. */ }
       finally { busy = false; }

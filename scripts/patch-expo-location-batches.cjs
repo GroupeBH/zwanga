@@ -87,10 +87,11 @@ function patchLocationConsumer(input) {
 }
 
 function apply(root = process.cwd(), check = false) {
-  // Validate both sources before writing either. A dependency upgrade must fail loudly.
+  // Validate all sources before writing any. A dependency upgrade must fail loudly.
   const patches = [
     ['expo-task-manager/android/src/main/java/expo/modules/taskManager/TaskManagerUtils.java', patchTaskManager],
     ['expo-location/android/src/main/java/expo/modules/location/taskConsumers/LocationTaskConsumer.kt', patchLocationConsumer],
+    ['expo-location/android/src/main/java/expo/modules/location/records/LocationArguments.kt', patchLocationNumbers],
   ].map(([file, patch]) => {
     const target = path.join(root, 'node_modules', file);
     const before = fs.readFileSync(target, 'utf8');
@@ -101,8 +102,13 @@ function apply(root = process.cwd(), check = false) {
     if (!check && before !== after) fs.writeFileSync(target, after);
   }
 }
+function patchLocationNumbers(input) {
+  const fixed = 'timeInterval = (map["timeInterval"] as? Number)?.toLong()';
+  if (input.includes(fixed)) return input;
+  return replaceOnce(input, 'timeInterval = map["timeInterval"] as? Long', fixed);
+}
 if (require.main === module) {
   apply(process.cwd(), process.argv.includes('--check'));
-  console.log('[location-patch] Native GPS buffers and pending jobs bounded to 64 samples.');
+  console.log('[location-patch] GPS buffers bounded to 64 samples; restored numeric interval preserved.');
 }
-module.exports = { marker, patchTaskManager, patchLocationConsumer, apply };
+module.exports = { marker, patchTaskManager, patchLocationConsumer, patchLocationNumbers, apply };

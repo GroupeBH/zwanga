@@ -89,7 +89,7 @@ function resultHost() {
   const { RideActionResult } = loader({ react: { ...React, ...hooks.react, memo: component => component },
     '@/store/hooks': { useAppDispatch: () => dispatch, useAppSelector: fn => fn(state) },
     '@/store/api/rideRecoveryApi': { rideRecoveryApi: { endpoints: { getRideDeclarations: { select: () => () => ({ data: [] }) } } } },
-    './RideActionResultModal': { RideActionResultModal: 'ResultModal' },
+    './RideActionResultToast': { RideActionResultToast: 'ResultToast' },
   })('features/ride-recovery/RideActionResult.tsx');
   const props = { ...target, active: true };
   const render = () => hooks.render(() => RideActionResult(props));
@@ -98,7 +98,7 @@ function resultHost() {
 
 test('a result survives button removal, updates in place, and closing never writes another declaration', () => {
   const h = resultHost(); h.dispatch(slice.showRideActionResult(result));
-  const tree = h.render(); assert.equal(tree.type, 'ResultModal'); const key = tree.key;
+  const tree = h.render(); assert.equal(tree.type, 'ResultToast'); const key = tree.key;
   h.dispatch(slice.rideOutboxLoaded({ userId: 'passenger', entries: [{ ...entry, state: 'blocked', message: 'Le trajet a changé.' }] }));
   assert.equal(h.render().key, key); assert.equal(h.render().props.entry.state, 'blocked');
   tree.props.onClose(); assert.equal(h.render(), null); assert.equal(h.state.rideRecovery.entries[0].state, 'blocked');
@@ -120,15 +120,15 @@ test('blur, account change and route cleanup remove results without affecting an
   assert.ok(hidden.state.rideRecovery.actionResult, 'an inactive duplicate route must not dismiss the visible route result');
 });
 
-test('result overlay pauses payment, but never masks SOS or an important confirmation', () => {
-  const { createRideOverlayStore, RIDE_OVERLAY_PRIORITY: priority } = load('features/navigation/rideOverlayStore.ts');
-  const store = createRideOverlayStore(); store.setScope('passenger:booking', true);
-  const put = (id, p, scope = 'passenger:booking') => store.put({ id, priority: p, scope, children: id });
-  put('payment', priority.payment, 'global'); put('result', priority.result);
-  assert.equal(store.getActive().id, 'result'); put('confirm', priority.confirmation); assert.equal(store.getActive().id, 'confirm');
-  put('sos', priority.sos); assert.equal(store.getActive().id, 'sos');
-  store.remove('sos'); store.remove('confirm'); assert.equal(store.getActive().id, 'result');
-  store.remove('result'); assert.equal(store.getActive().id, 'payment');
+test('results never register a blocking overlay or delay payment and SOS', () => {
+  const fs = require('node:fs');
+  for (const file of ['RideActionResult.tsx', 'RideActionResultToast.tsx']) {
+    const source = fs.readFileSync(`features/ride-recovery/${file}`, 'utf8');
+    assert.doesNotMatch(source, /RideOverlay|registerOverlay|\bModal\b/);
+  }
+  const h = resultHost(); h.dispatch(slice.showRideActionResult(result));
+  assert.equal(h.render().type, 'ResultToast');
+  h.hooks.unmount();
 });
 
 test('both navigation routes host the result outside the disappearing recovery button', () => {

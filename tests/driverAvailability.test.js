@@ -83,6 +83,7 @@ function coordinator({ authenticated = true, signingOut = false, role = 'driver'
     '@/services/currentLocationRequest': { requestCurrentLocation: (...args) => { calls.push('gps'); return position(...args); } },
     '@/services/nearbyDriverLocation': {
       hasActiveRideLocationSession: async () => activeRide,
+      isNearbyDriverLocationEnabled: async () => true,
       ensureNearbyDriverLocation: async () => { if (nativeError) throw new Error('native unavailable'); return nativeRunning; },
       pauseNearbyDriverLocation: async () => {}, subscribeNearbyDriverLocation: () => () => {},
     },

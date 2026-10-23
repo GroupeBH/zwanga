@@ -10,6 +10,7 @@ export interface DriverFinanceSummary {
     moneyPerToken: number; coverageAmount: number; blocked: boolean; purchasedTokensOnly: boolean };
 }
 export interface TripPaymentOptions {
+  mixedCashSupported?: boolean;
   acceptedPaymentModes: TripPaymentMode[]; availablePaymentModes: TripPaymentMode[];
   cashUnavailableReason: string | null; commissionRate: number;
 }

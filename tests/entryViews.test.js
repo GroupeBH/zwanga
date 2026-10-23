@@ -38,25 +38,31 @@ test('neutral Home keeps retry inline and disables it during an existing read', 
   assert.equal(nodes(f.HomeEntryPlaceholder({ ...props, fetching: true })).filter(node => node.type === 'Button').at(-1).props.disabled, true);
 });
 
-test('sync status is a small non-modal banner, with an explicit action only when needed', () => {
+test('Home hides background sync progress, failure and offline status without reserving space', () => {
   const f = fixture(); let actions = 0;
-  const tree = f.EntrySyncBanner({ failed: false, offline: false, onAction: () => { actions++; } });
-  assert.equal(tree.props.testID, 'entry-sync-banner');
-  assert.equal(tree.props.accessibilityViewIsModal, undefined);
-  assert.equal(tree.props.style.position, undefined, 'status occupies layout space, never covers a map priority');
-  assert.equal(tree.props.style.zIndex, undefined);
-  assert.equal(nodes(tree).filter(node => node.type === 'Progress').length, 1);
-  assert.equal(nodes(tree).filter(node => node.type === 'Button').length, 0);
-  const retry = nodes(f.EntrySyncBanner({ failed: true, offline: false, onAction: () => { actions++; } }));
-  assert.equal(retry.some(node => node.type === 'Progress'), false);
-  retry.find(node => node.type === 'Button').props.onPress(); assert.equal(actions, 1);
+  for (const failed of [false, true]) for (const offline of [false, true]) {
+    assert.equal(f.EntrySyncBanner({ failed, offline, onAction: () => { actions++; } }), null);
+  }
+  assert.equal(actions, 0, 'hiding a status must not trigger a retry or navigation');
 });
 
-test('offline status cannot retry a network read but can open an already proposed trip', () => {
-  const f = fixture();
-  const props = { failed: true, offline: true, onAction() {} };
-  assert.equal(nodes(f.EntrySyncBanner(props)).find(node => node.type === 'Button').props.disabled, true);
-  const resume = nodes(f.EntrySyncBanner({ ...props, actionLabel: 'Reprendre mon trajet' }));
-  assert.equal(resume.find(node => node.type === 'Button').props.disabled, false);
-  assert.ok(resume.some(node => node.type === 'Text' && node.props.children === 'Trajet en cours'));
+test('verified activities remain accessible, including after an offline or failed sync', () => {
+  const f = fixture(); let actions = 0;
+  for (const actionLabel of ['Reprendre mon trajet', 'Voir la réservation', 'Voir la demande']) {
+    const tree = f.EntrySyncBanner({ failed: true, offline: true, actionLabel, onAction: () => { actions++; } });
+    assert.equal(tree.props.testID, 'entry-sync-banner');
+    assert.equal(tree.props.accessibilityViewIsModal, undefined);
+    assert.equal(tree.props.style.position, undefined, 'activity never covers a map priority');
+    assert.equal(tree.props.style.zIndex, undefined);
+    const rendered = nodes(tree);
+    assert.equal(rendered.some(node => node.type === 'Progress'), false);
+    const buttons = rendered.filter(node => node.type === 'Button');
+    assert.equal(buttons.length, 1);
+    assert.notEqual(buttons[0].props.disabled, true);
+    buttons[0].props.onPress();
+    assert.ok(rendered.some(node => node.type === 'Text' && node.props.children === actionLabel));
+    assert.ok(rendered.some(node => node.type === 'Text' && node.props.children ===
+      (actionLabel === 'Reprendre mon trajet' ? 'Trajet en cours' : 'Une demande à consulter')));
+  }
+  assert.equal(actions, 3);
 });

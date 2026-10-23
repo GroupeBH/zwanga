@@ -7,11 +7,11 @@ export function useBookingPaymentMode(booking: Booking | null, stored?: StoredBo
   const [draft, setDraft] = useState<{ bookingId: string; mode: TripPaymentMode | null } | null>(null);
   const [failedBookingId, setFailedBookingId] = useState<string | null>(null);
   const reportPaymentFailure = useCallback((bookingId: string) => setFailedBookingId(bookingId), []);
-  const isLocked = isBusy || Boolean(stored?.bookingPaymentOrderNumber || stored?.walletTopUpOrderNumber)
+  const isLocked = isBusy || Boolean(booking?.tokenCashFallbackAt || stored?.bookingPaymentOrderNumber || stored?.walletTopUpOrderNumber || stored?.walletTopUpIntent || stored?.mixedCashIntent || booking?.mixedPaymentAt)
     || booking?.paymentStatus === 'succeeded' || Boolean(booking?.cashReceivedAt);
-  const confirmedMode = (booking?.paymentStatus === 'succeeded' || booking?.cashReceivedAt) ? booking.paymentMode : null;
-  const selectedMode = stored?.bookingPaymentOrderNumber ? 'electronic'
-    : stored?.walletTopUpOrderNumber ? 'points'
+  const confirmedMode = (booking?.paymentStatus === 'succeeded' || booking?.cashReceivedAt || booking?.mixedPaymentAt) ? booking.paymentMode : null;
+  const selectedMode = booking?.tokenCashFallbackAt ? 'cash' : stored?.bookingPaymentOrderNumber ? 'electronic'
+    : stored?.walletTopUpOrderNumber || stored?.walletTopUpIntent ? 'points'
     : confirmedMode ? confirmedMode
     : draft?.bookingId === booking?.id && draft ? draft.mode : booking?.paymentMode ?? null;
   const setSelectedMode = useCallback((next: SetStateAction<TripPaymentMode | null>) => {
@@ -19,6 +19,10 @@ export function useBookingPaymentMode(booking: Booking | null, stored?: StoredBo
     setDraft({ bookingId: booking.id, mode: typeof next === 'function' ? next(selectedMode) : next });
     setFailedBookingId(current => current === booking.id ? null : current);
   }, [booking?.id, selectedMode, isLocked]);
+  // Restore a confirmed provider failure when reopening the form. A local choice
+  // dismisses this suggestion; an unresolved order always takes precedence.
+  const restoredFailure = (booking?.paymentStatus === 'failed' || booking?.paymentStatus === 'cancelled')
+    && draft?.bookingId !== booking?.id;
   return { selectedMode, setSelectedMode, reportPaymentFailure,
-    canChangeFailedPaymentMode: Boolean(booking && failedBookingId === booking.id && !isLocked) };
+    canChangeFailedPaymentMode: Boolean(booking && (failedBookingId === booking.id || restoredFailure) && !isLocked) };
 }

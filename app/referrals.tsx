@@ -40,7 +40,7 @@ export default function ReferralsScreen() {
   const [requestWithdrawal, { isLoading: isWithdrawing }] = useRequestReferralWithdrawalMutation();
   const withdrawalValidation = validateReferralWithdrawal(withdrawalTokens, summary);
 
-  const { handleShare, handleWithdrawal } = useReferralActions({
+  const { handleShare, handleWithdrawal, pendingWithdrawal, withdrawalBusy } = useReferralActions({
     isSharing,
     setIsSharing,
     summary,
@@ -184,22 +184,22 @@ export default function ReferralsScreen() {
               style={styles.input}
             />
             <Text style={styles.legalHint}>Disponible pour ce retrait : {formatNumber(summary?.balances.availableTokens)} jetons de parrainage.</Text>
-            {withdrawalTokens.trim() && !withdrawalValidation.valid ? (
+            {!pendingWithdrawal && withdrawalTokens.trim() && !withdrawalValidation.valid ? (
               <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ color: Colors.warningDark }}>
                 {withdrawalValidation.message}
               </Text>
             ) : null}
             <TouchableOpacity
-              disabled={isWithdrawing}
+              disabled={isWithdrawing || withdrawalBusy}
               onPress={handleWithdrawal}
-              style={[styles.withdrawButton, isWithdrawing && styles.disabled]}
+              style={[styles.withdrawButton, (isWithdrawing || withdrawalBusy) && styles.disabled]}
             >
-              {isWithdrawing ? (
+              {isWithdrawing || withdrawalBusy ? (
                 <ActivityIndicator color={Colors.white} />
               ) : (
                 <>
                   <Ionicons name="phone-portrait-outline" size={18} color={Colors.white} />
-                  <Text style={styles.withdrawButtonText}>Retirer par FlexPay</Text>
+                  <Text style={styles.withdrawButtonText}>{pendingWithdrawal ? 'Vérifier mon retrait' : 'Retirer par FlexPay'}</Text>
                 </>
               )}
             </TouchableOpacity>

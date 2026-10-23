@@ -10,7 +10,7 @@ function configure(manifest, enabled) {
   manifest['uses-permission'] = (manifest['uses-permission'] || []).filter(item => item.$['android:name'] !== 'android.permission.USE_FULL_SCREEN_INTENT');
   if (enabled) manifest['uses-permission'].push({ $: { 'android:name': 'android.permission.USE_FULL_SCREEN_INTENT' } });
 }
-module.exports = (config, { enabled = false } = {}) => withAndroidManifest(config, mod => {
+module.exports = (config, { enabled = false } = {}) => withAndroidManifest(require('./withDriverAlertSources')(config), mod => {
   configure(mod.modResults.manifest, enabled === true); return mod;
 });
 module.exports.configure = configure;

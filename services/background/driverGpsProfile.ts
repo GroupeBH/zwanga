@@ -6,6 +6,7 @@ import { clearActiveDriverBackgroundTripId, getActiveDriverBackgroundTripSession
 import { hasStartedDriverBackgroundLocationUpdates, stopRegisteredDriverBackgroundLocationTask } from './driverTaskLifecycle';
 import { DRIVER_BACKGROUND_LOCATION_TASK } from './driverTaskName';
 import { pauseNearbyDriverLocation } from '../nearbyDriverLocation';
+import { readLocationNative, mutateLocationNative } from '../locationNativeDeadline';
 import { DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS, DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS } from '@/utils/navigation/tripCompletion';
 
 let work: Promise<unknown> = Promise.resolve();
@@ -28,24 +29,24 @@ export function startDriverGpsProfile(tripId: string, generation: number,
   return serialize(async () => {
     const isCurrent = () => generation === revision && requestedTrip === tripId;
     if (!isCurrent()) return false;
-    const existing = await getActiveDriverBackgroundTripSession();
+    const existing = await readLocationNative(getActiveDriverBackgroundTripSession());
     if (!isCurrent()) return false;
     // Never inherit another trip's destination or completion checkpoint.
     const previous = existing?.tripId === tripId ? existing : null;
     try {
-      const stored = await setActiveDriverBackgroundTripId(tripId, {
+      const stored = await mutateLocationNative('driver-session', () => setActiveDriverBackgroundTripId(tripId, {
         arrivalCoordinate: options.arrivalCoordinate ?? previous?.arrivalCoordinate ?? null,
         lastDriverCoordinate: options.lastDriverCoordinate ?? previous?.lastDriverCoordinate ?? null,
         autoCompleteDistanceMeters: options.autoCompleteDistanceMeters ?? previous?.autoCompleteDistanceMeters ?? DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
         autoCompleteDwellMs: options.autoCompleteDwellMs ?? previous?.autoCompleteDwellMs ?? DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
         nearDestinationSinceMs: previous?.nearDestinationSinceMs ?? null,
-      });
+      }), () => clearActiveDriverBackgroundTripId(tripId));
       if (!stored || !isCurrent()) return false;
       await pauseNearbyDriverLocation();
       if (!isCurrent()) return false;
-      const running = await hasStartedDriverBackgroundLocationUpdates();
+      const running = await readLocationNative(hasStartedDriverBackgroundLocationUpdates());
       if (!isCurrent()) return false;
-      if (!running) await Location.startLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK, {
+      if (!running) await mutateLocationNative(DRIVER_BACKGROUND_LOCATION_TASK, () => Location.startLocationUpdatesAsync(DRIVER_BACKGROUND_LOCATION_TASK, {
         accuracy: Location.Accuracy.High,
         timeInterval: ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS,
         deferredUpdatesInterval: 2000,
@@ -58,11 +59,11 @@ export function startDriverGpsProfile(tripId: string, generation: number,
           notificationBody: 'Votre position est partagée pendant le trajet.',
           notificationColor: '#FF6B35', killServiceOnDestroy: false,
         } : undefined,
-      });
+      }), stopRegisteredDriverBackgroundLocationTask);
       return isCurrent();
     } catch (error) {
-      await clearActiveDriverBackgroundTripId(tripId);
-      await stopRegisteredDriverBackgroundLocationTask();
+      try { await mutateLocationNative('driver-session', () => clearActiveDriverBackgroundTripId(tripId)); }
+      finally { await mutateLocationNative(DRIVER_BACKGROUND_LOCATION_TASK, stopRegisteredDriverBackgroundLocationTask); }
       throw error;
     }
   });
@@ -75,14 +76,24 @@ export function stopDriverGpsProfile(tripId?: string | null) {
     requestedTrip = null;
   }
   return serialize(async () => {
-    if (!(await clearActiveDriverBackgroundTripId(tripId))) return;
-    await stopRegisteredDriverBackgroundLocationTask();
+    // A global stop (logout) is unconditional. A scoped stop must first prove
+    // ownership, including after a cold start: never stop another trip's GPS.
+    let shouldStop = !tripId;
+    try {
+      const cleared = await mutateLocationNative('driver-session', () =>
+        clearActiveDriverBackgroundTripId(tripId, () => { shouldStop = true; }));
+      shouldStop ||= cleared;
+    } finally {
+      // Disk removal may fail or time out AFTER scope validation. Native stop
+      // must still run; the disk mutation retains its lock for any late result.
+      if (shouldStop) await mutateLocationNative(DRIVER_BACKGROUND_LOCATION_TASK, stopRegisteredDriverBackgroundLocationTask);
+    }
   });
 }
 
 export function stopDriverGpsIfIdle() {
   return serialize(async () => {
-    if (await getActiveDriverBackgroundTripSession()) return;
-    await stopRegisteredDriverBackgroundLocationTask();
+    if (await readLocationNative(getActiveDriverBackgroundTripSession())) return;
+    await mutateLocationNative(DRIVER_BACKGROUND_LOCATION_TASK, stopRegisteredDriverBackgroundLocationTask);
   });
 }

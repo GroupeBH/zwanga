@@ -3,6 +3,7 @@ import type { User } from '@/types';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { invitationHref, parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
+import { notificationEffects } from '@/features/notifications/notificationEffects';
 
 type NotificationData = Record<string, any>;
 
@@ -82,6 +83,8 @@ export const getTripUrl = (
 export function getNotificationHref(input: NotificationData, currentUser?: User): Href | null {
   const data = normalizeData(input);
   if (currentUser && !canShowRequestNotification(data, currentUser)) return null;
+  const effectHref = notificationEffects(data).href;
+  if (effectHref) return effectHref;
   const type = getType(data);
   if (type === 'app_update') return '/app-update';
   if (type === 'driver_location_stale') {

@@ -90,6 +90,22 @@ test('missing native module explains the need for a complete binary, without a b
   assert.equal(f.calls.includes('browser'), false);
   assert.match(f.dialogs.at(-1).message, /dernière version complète/);
 });
+
+for (const platform of ['android', 'ios']) test(`${platform}: explicit hosted mode opens the same owned session without a second creation`, async () => {
+  const f = fixture({ platform, session: { launchMode: 'hosted', sessionToken: null } });
+  assert.equal((await f.start()).launchMode, 'web_browser');
+  assert.deepEqual(f.calls, ['create', 'browser', ['sync', 'owned-session']]);
+  f.hooks.unmount();
+});
+
+for (const url of ['https://evil.invalid/session/test', 'http://verify.didit.me/session/test',
+  'https://user:pass@verify.didit.me/session/test', 'https://verify.didit.me:444/session/test']) {
+  test(`hosted launch rejects an untrusted URL ${url}`, async () => {
+    const f = fixture({ session: { launchMode: 'hosted', sessionToken: null, url } });
+    assert.equal(await f.start(), null);
+    assert.deepEqual(f.calls, ['create']); f.hooks.unmount();
+  });
+}
 test('SDK expiration does not create a second paid session or launch the browser', async () => {
   const f = fixture({ result: { type: 'failed', error: { type: 'sessionExpired', message: 'synthetic expiration' } } });
   assert.equal(await f.start(), null);

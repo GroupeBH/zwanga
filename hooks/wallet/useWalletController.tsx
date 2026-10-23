@@ -1,4 +1,5 @@
 import { useWalletTopUpRecovery } from './useWalletTopUpRecovery';
+import { useWalletTopUpIntentRecovery } from './useWalletTopUpIntentRecovery';
 import { useWalletTopUpActions } from './useWalletTopUpActions';
 import { useWalletTopUpMonitoring } from './useWalletTopUpMonitoring';
 import { useWalletTopUpStorage } from './useWalletTopUpStorage';
@@ -103,7 +104,8 @@ export function useWalletController() {
   );
   const isRefreshing = isWalletFetching || isLedgerFetching || isCashDebtFetching;
   const isTopUpPhoneRequired = topUpMethod === 'mobile_money';
-  const isTopUpBusy = isStartingTopUp || isCheckingTopUp || isAutoCheckingTopUp;
+  const isTopUpBusy = isStartingTopUp || isCheckingTopUp || isAutoCheckingTopUp || topUpStage === 'preparing';
+  useWalletTopUpIntentRecovery(user?.id, { setTopUpAmount, setTopUpMethod, setTopUpPhone, setTopUpStage, setTopUpStatusMessage });
   const topUpStatusTitle =
     topUpStage === 'success'
       ? 'Recharge confirmée'
@@ -147,6 +149,7 @@ export function useWalletController() {
   });
 
   const { checkTopUpByOrderNumber, startTopUpAutoCheck, finishSuccessfulTopUp, handleFailedTopUp } = useWalletTopUpMonitoring({
+    userId: user?.id,
     captureScope,
     stopTopUpAutoCheck,
     clearStoredTopUp,

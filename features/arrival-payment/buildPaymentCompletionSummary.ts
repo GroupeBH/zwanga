@@ -14,17 +14,24 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
   const cashReceived = mode === 'cash' && Boolean(booking.cashReceivedAt);
   const cashInstructions = mode === 'cash' && !cashReceived && booking.paymentStatus !== 'succeeded' && normalizeAmount(booking.paymentAmount) !== 0;
   return {
+    mixedTokenAmount: Number(booking.mixedTokenAmount ?? 0),
+    mixedTokenQuantity: Number(booking.mixedTokenQuantity ?? 0),
+    cashRemainder: booking.mixedPaymentAt ? normalizeAmount(booking.paymentAmount) ?? 0 : undefined,
     destination: booking.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' : booking.passengerDestination ?? booking.trip?.arrival?.address ?? booking.trip?.arrival?.name,
     numberOfSeats: booking.numberOfSeats,
     bookingId: booking.id, beforeArrival: !hasPassengerArrived(booking), mode, channel: options.channel,
-    amount: normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0,
+    amount: (normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0) + Number(booking.mixedTokenAmount ?? 0),
     currency: booking.paymentCurrency ?? payment?.currency ?? 'CDF',
     walletBalance: normalizeAmount(wallet?.account.balance), earnedPoints: getLedgerEntryAmount(reward),
     earnedPointsKnown: Boolean(reward), paymentHistoryId: payment?.id ?? null,
     invoiceUrl: payment?.id ? '/payment-history?paymentId=' + payment.id : null,
     paymentReference: booking.paymentReference ?? payment?.reference ?? options.paymentReference ?? null,
     cashInstructions,
-    driverNotice: cashInstructions
+    driverNotice: booking.mixedPaymentAt && cashInstructions
+      ? 'Les jetons sont réglés. Remettez uniquement le complément en espèces au conducteur ; il confirmera sa réception.'
+      : booking.tokenCashFallbackAt && cashInstructions
+      ? 'Remettez ce montant au conducteur. Vos jetons restent dans votre portefeuille. Si Mobile Money est confirmé plus tard, la recharge y restera aussi.'
+      : cashInstructions
       ? 'Le mode cash est enregistré. Remettez le montant au conducteur si ce n’est pas encore fait.'
       : cashReceived ? 'Le conducteur a confirmé la réception du cash. Vous n’avez rien à payer de nouveau.'
       : 'Le paiement est confirmé. Le conducteur peut consulter son état dans le trajet.',

@@ -178,12 +178,19 @@ export async function updateActiveDriverBackgroundTripSession(
   });
 }
 
-export async function clearActiveDriverBackgroundTripId(tripId?: string | null) {
+export async function clearActiveDriverBackgroundTripId(tripId?: string | null, onInvalidated?: () => void) {
   return serial(async () => {
     try {
       const activeTripId = (await readSession())?.tripId;
       if (!tripId || !activeTripId || activeTripId === tripId) {
-        await persistSession(null);
+        // An explicit stop is not a failed background read. Invalidate the local
+        // session before disk I/O so callbacks cannot keep uploading for it.
+        // Keep persistedValue until removal succeeds, allowing a later retry.
+        cachedSession = null;
+        loaded = true;
+        onInvalidated?.();
+        try { await persistSession(null); }
+        catch { console.warn('[DriverBackgroundLocationSession] Effacement à réessayer ; session locale arrêtée.'); }
         return true;
       }
 

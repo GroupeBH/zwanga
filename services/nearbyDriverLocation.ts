@@ -11,6 +11,7 @@ import { isUsableNearbyDriverPosition, NEARBY_DRIVER_INTERVAL_MS } from './nearb
 import { sendNearbyDriverPosition } from './nearbyDriverPositionDelivery';
 import { invalidateNativeRideLocation, publishNativeRideLocation } from './rideLocationStream';
 import { getNearbyDriverLocationHealth, needsNearbyDriverNativeRecovery, recordNearbyDriverHealth } from './nearbyDriverLocationHealth';
+import { readLocationNative, mutateLocationNative } from './locationNativeDeadline';
 
 export const NEARBY_DRIVER_LOCATION_TASK = 'zwanga-nearby-driver-location-v1';
 // Keep the former key for native callbacks from an already registered installation.
@@ -34,28 +35,36 @@ export function subscribeNearbyDriverLocation(listener: () => void) {
 }
 
 async function readOwner() {
-  if (owner === undefined) owner = await AsyncStorage.getItem(OWNER_KEY);
+  if (owner === undefined) owner = await readLocationNative(AsyncStorage.getItem(OWNER_KEY));
   return owner;
 }
 async function readEnabled(userId: string) {
   if (preference?.userId !== userId) {
-    preference = { userId, disabled: await AsyncStorage.getItem(disabledKey(userId)) === '1' };
+    const generation = revision;
+    const disabled = await readLocationNative(AsyncStorage.getItem(disabledKey(userId))) === '1';
+    if (generation !== revision) return readEnabled(userId);
+    // A queued opt-out may update memory while this disk read is in flight,
+    // without another revision bump. Never replace that newer choice.
+    if (preference?.userId !== userId) preference = { userId, disabled };
   }
   return !preference.disabled;
 }
 export function isNearbyDriverLocationEnabled(userId: string) {
-  return serial(() => readEnabled(userId));
+  return readEnabled(userId);
 }
 export async function hasActiveRideLocationSession() {
-  return Boolean(await getActiveDriverBackgroundTripSession() || await getActiveTrackingSession());
+  return Boolean(await readLocationNative(getActiveDriverBackgroundTripSession()) || await readLocationNative(getActiveTrackingSession()));
 }
 async function stopNative() {
   permissionCheck = undefined;
   if (owner) recordNearbyDriverHealth(owner, { nativeStartedAt: null });
   if (owner) invalidateNativeRideLocation(`nearby:${owner}`);
-  if (Platform.OS !== 'web' && await TaskManager.isAvailableAsync() &&
-    await Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK)) {
-    await Location.stopLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK);
+  if (Platform.OS !== 'web' && await readLocationNative(TaskManager.isAvailableAsync())) {
+    await mutateLocationNative(NEARBY_DRIVER_LOCATION_TASK, async () => {
+      if (await readLocationNative(Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK))) {
+        await Location.stopLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK);
+      }
+    });
   }
 }
 
@@ -72,7 +81,7 @@ export function clearNearbyDriverLocation({ endSession = true }: { endSession?: 
   if (endSession) stoppedSessionVersion = getTokenSessionVersion();
   return serial(async () => {
     owner = null;
-    try { await AsyncStorage.removeItem(OWNER_KEY); }
+    try { await mutateLocationNative('nearby-storage', () => AsyncStorage.removeItem(OWNER_KEY)); }
     finally { await stopNative(); changed(); }
   });
 }
@@ -83,25 +92,26 @@ export function setNearbyDriverLocationEnabled(userId: string, enabled: boolean,
   const generation = ++revision;
   return serial(async () => {
     if (generation !== revision || version !== getTokenSessionVersion() || !allowed()) return;
-    const { accessToken } = await getTokens({ throwOnError: true });
+    const { accessToken } = await readLocationNative(getTokens({ throwOnError: true }));
     const claims = accessToken ? decodeJWT(accessToken) : null;
     if (generation !== revision || version !== getTokenSessionVersion() || !allowed() ||
       (claims?.sub ?? claims?.userId) !== userId) return;
     if (!enabled) {
       if (owner) invalidateNativeRideLocation(`nearby:${owner}`);
       preference = { userId, disabled: true }; owner = null;
-      try { await AsyncStorage.setItem(disabledKey(userId), '1'); }
+      try { await mutateLocationNative('nearby-storage', () => AsyncStorage.setItem(disabledKey(userId), '1')); }
       finally {
-        try { await AsyncStorage.removeItem(OWNER_KEY); }
+        try { await mutateLocationNative('nearby-storage', () => AsyncStorage.removeItem(OWNER_KEY)); }
         finally { await stopNative(); changed(); }
       }
     } else {
       const wasEnabled = await readEnabled(userId);
       if (generation !== revision || version !== getTokenSessionVersion() || !allowed()) return;
-      await AsyncStorage.removeItem(disabledKey(userId));
+      await mutateLocationNative('nearby-storage', () => AsyncStorage.removeItem(disabledKey(userId)),
+        () => wasEnabled ? Promise.resolve() : AsyncStorage.setItem(disabledKey(userId), '1'));
       // A native storage call cannot be aborted. Restore an earlier opt-out if
       // the UI cancelled while the write was in flight, before queued work runs.
-      if (!allowed() && !wasEnabled) await AsyncStorage.setItem(disabledKey(userId), '1');
+      if (!allowed() && !wasEnabled) await mutateLocationNative('nearby-storage', () => AsyncStorage.setItem(disabledKey(userId), '1'));
       if (!allowed()) return;
       if (generation !== revision || version !== getTokenSessionVersion()) return;
       preference = { userId, disabled: false }; changed();
@@ -116,7 +126,7 @@ function callbackPermission(version: number, generation: number) {
     return permissionCheck.promise;
   }
   const entry = { revision: generation, version, until: Date.now() + 30_000,
-    promise: Location.getBackgroundPermissionsAsync().then(result => result.granted) };
+    promise: readLocationNative(Location.getBackgroundPermissionsAsync()).then(result => result.granted) };
   permissionCheck = entry;
   void entry.promise.catch(() => { if (permissionCheck === entry) permissionCheck = undefined; });
   return entry.promise;
@@ -131,27 +141,27 @@ export function ensureNearbyDriverLocation(userId: string, allowed: () => boolea
     if (!(await readEnabled(userId)) || await hasActiveRideLocationSession()) {
       await stopNative(); return false;
     }
-    const { accessToken } = await getTokens({ throwOnError: true });
+    const { accessToken } = await readLocationNative(getTokens({ throwOnError: true }));
     const claims = accessToken ? decodeJWT(accessToken) : null;
     if (!current()) return false;
     if ((claims?.sub ?? claims?.userId) !== userId) { await stopNative(); return false; }
-    const permission = await Location.getBackgroundPermissionsAsync();
-    if (!permission.granted || !(await Location.hasServicesEnabledAsync())) {
+    const permission = await readLocationNative(Location.getBackgroundPermissionsAsync());
+    if (!permission.granted || !(await readLocationNative(Location.hasServicesEnabledAsync()))) {
       await stopNative(); return false;
     }
-    if (!current() || AppState.currentState !== 'active' || !(await TaskManager.isAvailableAsync())) return false;
+    if (!current() || AppState.currentState !== 'active' || !(await readLocationNative(TaskManager.isAvailableAsync()))) return false;
     if (await readOwner() !== userId) {
       await stopNative();
       if (!current()) return false;
-      await AsyncStorage.setItem(OWNER_KEY, userId);
-      if (!current()) { await AsyncStorage.removeItem(OWNER_KEY); return false; }
+      await mutateLocationNative('nearby-storage', () => AsyncStorage.setItem(OWNER_KEY, userId), () => AsyncStorage.removeItem(OWNER_KEY));
+      if (!current()) { await mutateLocationNative('nearby-storage', () => AsyncStorage.removeItem(OWNER_KEY)); return false; }
       owner = userId;
     }
-    let running = await Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK);
+    let running = await readLocationNative(Location.hasStartedLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK));
     if (running) {
       // Native registrations survive JS/OTA updates. Apply the new cadence once,
       // without registering another GPS task or restarting from the background.
-      const options = await TaskManager.getTaskOptionsAsync<Location.LocationTaskOptions | null>(NEARBY_DRIVER_LOCATION_TASK);
+      const options = await readLocationNative(TaskManager.getTaskOptionsAsync<Location.LocationTaskOptions | null>(NEARBY_DRIVER_LOCATION_TASK));
       if (options?.timeInterval !== NEARBY_DRIVER_INTERVAL_MS ||
           options?.deferredUpdatesInterval !== NEARBY_DRIVER_INTERVAL_MS ||
           (Platform.OS === 'android' && options?.foregroundService?.killServiceOnDestroy !== false) ||
@@ -162,7 +172,7 @@ export function ensureNearbyDriverLocation(userId: string, allowed: () => boolea
     }
     if (!running) {
       if (!current() || AppState.currentState !== 'active') return false;
-      await Location.startLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK, {
+      await mutateLocationNative(NEARBY_DRIVER_LOCATION_TASK, () => Location.startLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK, {
         accuracy: Location.Accuracy.Balanced,
         timeInterval: NEARBY_DRIVER_INTERVAL_MS,
         deferredUpdatesInterval: NEARBY_DRIVER_INTERVAL_MS,
@@ -175,7 +185,7 @@ export function ensureNearbyDriverLocation(userId: string, allowed: () => boolea
           notificationBody: 'Position actualisée pour recevoir les commandes. Réglages dans Profil → Alertes conducteur.',
           notificationColor: '#FF6B35', killServiceOnDestroy: false,
         } : undefined,
-      });
+      }), () => Location.stopLocationUpdatesAsync(NEARBY_DRIVER_LOCATION_TASK));
     }
     if (!current()) { await stopNative(); return false; }
     if (!running || getNearbyDriverLocationHealth(userId).nativeStartedAt === null) {

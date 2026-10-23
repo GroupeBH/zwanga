@@ -13,6 +13,7 @@ export const styles = StyleSheet.create({
   option: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10,
     borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white },
   optionTitle: { color: Colors.gray[800], fontSize: FontSizes.sm, fontWeight: FontWeights.semibold },
+  cashFallbackOption: { borderColor: Colors.primary, backgroundColor: `${Colors.primary}08` },
   pointsCard: { marginTop: 12, paddingVertical: 8 },
   breakdownRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
   breakdownLabel: { flex: 1, color: Colors.gray[600], fontSize: FontSizes.sm },

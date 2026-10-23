@@ -4,6 +4,9 @@ import type { SubscriptionPaymentMethod, TripPaymentMode } from '@/types';
 export type PaymentChannel = 'mpesa' | 'airtel' | 'orange' | 'card';
 
 export type StoredBookingPaymentState = {
+  tokenCashFallbackReceipt?: string;
+  mixedCashIntent?: string;
+  mixedCashReceipt?: string;
   settledAt?: string;
   requiredActionAt?: string;
   acknowledgedAt?: string;
@@ -13,6 +16,7 @@ export type StoredBookingPaymentState = {
   bookingPaymentChannel?: PaymentChannel;
   bookingPaymentUrl?: string;
   walletTopUpOrderNumber?: string;
+  walletTopUpIntent?: string;
 };
 
 export type StoredPaymentState = Record<string, StoredBookingPaymentState>;
@@ -32,6 +36,9 @@ export type ElectronicPaymentChannel = {
 };
 
 export type PaymentCompletionSummary = {
+  mixedTokenAmount?: number;
+  mixedTokenQuantity?: number;
+  cashRemainder?: number;
   destination?: string;
   numberOfSeats?: number;
   cashInstructions?: boolean;

@@ -146,7 +146,7 @@ export function WalletTopUpModal({
                 ? topUpMethod === 'card' && topUpPaymentUrl
                   ? 'Rouvrir le paiement'
                   : 'Actualiser la recharge'
-                : 'Recharger'}
+                : topUpStage === 'waiting_long' ? 'Vérifier la recharge' : 'Recharger'}
             </Text>
           </>
         )}

@@ -33,6 +33,17 @@ function environment(kind = 'wallet') {
   return Object.assign(env, { hooks, provider, render: () => hooks.render(() => useArrivalPaymentMonitoring({ state, provider, completion })) });
 }
 
+test('a server cash fallback stops top-up settlement on reopen and ignores a late status response', async t => {
+  const env = environment(), request = deferred(); env.response = () => request.promise;
+  env.render();
+  env.state.arrivalBooking = { ...env.state.arrivalBooking, paymentMode: 'cash', tokenCashFallbackAt: '2026-10-23T17:00:00Z' };
+  env.render(); request.resolve({ payment: { status: 'succeeded' } }); await flush();
+  assert.equal(env.settlements, 0); assert.equal(env.aborted, 1);
+  env.state.isAppActive = false; env.render(); env.state.isAppActive = true; env.render();
+  assert.equal(env.checks.length, 1); assert.equal(env.state.activeStoredState.walletTopUpOrderNumber, 'existing-order');
+  env.hooks.unmount();
+});
+
 test('502 pauses checks, releases busy state and retains payment references despite rerenders and foregrounding', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   for (const kind of ['wallet', 'booking']) {
@@ -76,6 +87,8 @@ test('pending reads are spaced from response completion and stop after two minut
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   const env = environment(); env.render(); await flush();
   assert.equal(env.render().verification.phase, 'waiting'); assert.equal(env.busy, false);
+  assert.match(env.render().verification.message, /Complément Mobile Money en attente/);
+  assert.equal(env.settlements, 0);
   for (let i = 0; i < 10; i++) { t.mock.timers.tick(12000); await flush(); env.render(); }
   assert.equal(env.render().verification.phase, 'paused'); assert.equal(env.checks.length, 10);
   t.mock.timers.tick(600000); await flush(); assert.equal(env.checks.length, 10);
@@ -123,6 +136,8 @@ test('failed points settlement pauses instead of automatically repeating the fin
   const env = environment(); env.response = async () => ({ payment: { status: 'succeeded' } });
   env.provider.settleWithPoints = async () => { env.settlements++; throw { status: 502 }; };
   env.render(); await flush(); assert.equal(env.render().verification.phase, 'paused');
+  assert.match(env.render().verification.message, /Recharge confirmée.*règlement du trajet reste à vérifier/);
+  assert.doesNotMatch(env.render().verification.message, /Vérification indisponible/);
   t.mock.timers.tick(600000); await flush(); assert.equal(env.settlements, 1);
   assert.equal(env.state.activeStoredState.walletTopUpOrderNumber, 'existing-order'); env.hooks.unmount();
 });

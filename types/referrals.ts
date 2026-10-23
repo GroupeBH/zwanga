@@ -103,6 +103,7 @@ export interface ReferralLedgerEntry {
 
 export interface ReferralWithdrawal {
   id: string;
+  idempotencyKey?: string | null;
   tokens: number | string;
   amount: number | string;
   currency: string;

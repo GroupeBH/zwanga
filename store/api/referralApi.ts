@@ -94,7 +94,7 @@ export const referralApi = baseApi.injectEndpoints({
     }),
     requestReferralWithdrawal: builder.mutation<
       ReferralWithdrawal,
-      { tokens: number; phone?: string }
+      { tokens: number; phone?: string; idempotencyKey: string }
     >({
       query: (body) => ({
         url: '/referrals/me/withdrawals',
@@ -106,6 +106,10 @@ export const referralApi = baseApi.injectEndpoints({
     checkReferralWithdrawalStatus: builder.query<ReferralWithdrawal, string>({
       query: (orderNumber) =>
         `/referrals/withdrawals/${encodeURIComponent(orderNumber)}/status`,
+      providesTags: [referralTag],
+    }),
+    getMyReferralWithdrawal: builder.query<ReferralWithdrawal, string>({
+      query: id => `/referrals/me/withdrawals/${encodeURIComponent(id)}`,
       providesTags: [referralTag],
     }),
   }),
@@ -125,4 +129,5 @@ export const {
   useGetMyReferralWithdrawalsQuery,
   useRequestReferralWithdrawalMutation,
   useLazyCheckReferralWithdrawalStatusQuery,
+  useLazyGetMyReferralWithdrawalQuery,
 } = referralApi;

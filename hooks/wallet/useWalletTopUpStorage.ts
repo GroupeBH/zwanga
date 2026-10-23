@@ -4,6 +4,7 @@ import type { SubscriptionPaymentMethod } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback } from 'react';
 import type { User } from '@/types';
+import { serializePaymentStorage, waitForPaymentStorage } from '@/features/arrival-payment/paymentStorage';
 
 interface Params {
   pollingRunIdRef: React.RefObject<number>;
@@ -43,7 +44,7 @@ export function useWalletTopUpStorage({
     if (!storageKey) return;
 
     try {
-      await AsyncStorage.removeItem(storageKey);
+      await serializePaymentStorage(storageKey, () => AsyncStorage.removeItem(storageKey));
     } catch (error) {
       console.warn('[WalletTopUp] Impossible de supprimer la référence locale:', error);
     }
@@ -61,7 +62,7 @@ export function useWalletTopUpStorage({
       };
 
       try {
-        await AsyncStorage.setItem(storageKey, JSON.stringify(storedPayment));
+        await serializePaymentStorage(storageKey, () => AsyncStorage.setItem(storageKey, JSON.stringify(storedPayment)));
       } catch (error) {
         console.warn('[WalletTopUp] Impossible de garder la référence locale:', error);
       }
@@ -73,12 +74,12 @@ export function useWalletTopUpStorage({
     if (!storageKey) return null;
 
     try {
-      const rawValue = await AsyncStorage.getItem(storageKey);
+      const rawValue = await waitForPaymentStorage(AsyncStorage.getItem(storageKey));
       const storedPayment = parseStoredTopUp(rawValue);
       const userId = user?.id ?? walletSummary?.account.userId;
 
       if (!storedPayment || (userId && storedPayment.userId !== userId)) {
-        if (rawValue) await AsyncStorage.removeItem(storageKey);
+        if (rawValue) await serializePaymentStorage(storageKey, () => AsyncStorage.removeItem(storageKey));
         return null;
       }
 

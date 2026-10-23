@@ -7,6 +7,7 @@ import { recordNearbyDriverHealth } from './nearbyDriverLocationHealth';
 import { getRtkErrorStatus } from './background/driverTrackingErrors';
 import { getActiveDriverBackgroundTripSession } from './driverBackgroundLocationSession';
 import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
+import { readLocationNative } from './locationNativeDeadline';
 
 let scope = '';
 let previous: LocationObject | null = null;
@@ -36,7 +37,7 @@ export async function sendNearbyDriverPosition(userId: string, position: Locatio
   busy = true;
   const current = () => isCurrent() && version === getTokenSessionVersion();
   try {
-    const { accessToken } = await getTokens({ throwOnError: true });
+    const { accessToken } = await readLocationNative(getTokens({ throwOnError: true }));
     if (!current()) return 'skipped';
     const claims = accessToken ? decodeJWT(accessToken) : null;
     if ((claims?.sub ?? claims?.userId) !== userId) return 'stop';
@@ -45,9 +46,12 @@ export async function sendNearbyDriverPosition(userId: string, position: Locatio
     // A ride may have started while credentials or transport were loading.
     // Last-known discovery fixes must never be submitted as live ride tracking.
     const [driverRide, passengerRide] = await Promise.all([
-      getActiveDriverBackgroundTripSession(), getActiveTrackingSession(),
+      readLocationNative(getActiveDriverBackgroundTripSession()), readLocationNative(getActiveTrackingSession()),
     ]);
     if (driverRide || passengerRide) return 'skipped';
+    // Shared guard for foreground and native sends, including disable while a fix was pending.
+    const { isNearbyDriverLocationEnabled } = await import('./nearbyDriverLocation');
+    if (!await isNearbyDriverLocationEnabled(userId)) return 'stop';
     if (!current() || !shouldSendNearbyDriverPosition(previous, position, sentAt)) return 'skipped';
     const request = store.dispatch(driverDispatchApi.endpoints.recordDriverPosition.initiate({
       latitude: position.coords.latitude, longitude: position.coords.longitude,

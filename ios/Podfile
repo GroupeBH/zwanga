@@ -89,9 +89,9 @@ target 'zwanga' do
     end
     # @generated end zwanga-ios-deployment-target-floor
 
-    # Some React Native pods import React headers while built as frameworks.
-    # Keep modules enabled for dependencies that use @import, but avoid treating
-    # these bridge pods as public Clang modules during archive builds.
+    # @generated begin zwanga-ios-bridge-settings
+    # React Native bridge pods import React headers as frameworks. Preserve
+    # @import support without exporting these bridges as public Clang modules.
     react_native_bridge_targets = [
       'react-native-maps',
       'react-native-google-maps',
@@ -100,7 +100,6 @@ target 'zwanga' do
       'RNFBCrashlytics',
       'RNFBMessaging',
     ]
-
     installer.pods_project.targets.each do |target|
       if react_native_bridge_targets.include?(target.name)
         target.build_configurations.each do |build_config|
@@ -110,5 +109,6 @@ target 'zwanga' do
         end
       end
     end
+    # @generated end zwanga-ios-bridge-settings
   end
 end

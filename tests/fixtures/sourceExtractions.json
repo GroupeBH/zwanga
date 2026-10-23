@@ -117,8 +117,8 @@
       "sha256": "e4c1a1cdadb65cdbbabcb6214de7ae8791c0b1bd160a745b348bf0c1462ba301"
     },
     "features/screen-styles/components/PassengerArrivalPaymentCoordinator/index.ts": {
-      "keys": 84,
-      "sha256": "1f5ebce2c02cfddecab068e58f9b4476f1950f8cf1e5a99f5413b8eb6cba4471"
+      "keys": 85,
+      "sha256": "f9989686804272c951599590facb4fdf40c96ec422ac45b730e9e9b996582155"
     },
     "features/screen-styles/components/support/supportStyles/index.ts": {
       "keys": 81,
@@ -165,6 +165,8 @@
       "setDriverEmergencyContacts": "f8091a488815b85cbda4611b791389c876e7fb9981c189f8dd0bb5e6bf2fc08c"
     },
     "store/api/bookingApi.ts": {
+        "switchTokenPaymentToCash": "0a4ff3183d30ecac259ada6c19f2c5507f312dc4117b756e901ff136ed55c61f",
+      "payTokensCash": "5fb13a12eb213ac5328f10ac5f2cf961c0cce73a57165f6eb8f0705d7e459178",
       "createBooking": "a07187a1d3937ecadf08dee9213e61457aa7c1d3113ffedfb5e6b259a4b2a3fc",
       "getMyBookings": "e7eee3710ab82b20aaf5f903ad2090578f13c0a2ebe61529e1a76d02cb7d06a6",
       "getMyActivityBookings": "183b1eacab4b43af84061ec6e87f57fbca1c03ad9cce1e0461d8b65e8e2cf572",

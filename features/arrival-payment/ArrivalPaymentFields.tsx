@@ -18,6 +18,10 @@ import { getInterruptionDistanceLabel } from './interruptionSettlement';
 import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 
 interface ArrivalPaymentFieldsProps {
+  cashComplementAvailable?: boolean;
+  cashComplementSelected?: boolean;
+  onSelectCashComplement?: (cash: boolean) => void;
+  cashRemainder?: number;
   arrivalBooking: Booking | null;
   completionSummary?: PaymentCompletionSummary | null;
   isBeforeArrival?: boolean;
@@ -61,11 +65,19 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
   const scrollRef = useRef<ScrollView>(null);
   const modePickerY = useRef(0);
   const complete = Boolean(receipt || paymentAlreadySucceeded);
-  const { currentData: paymentOptions, isError: optionsError } = useBookingPaymentOptionsQuery(arrivalBooking?.id ?? '', {
+  const { currentData: paymentOptions, isError: optionsError, isFetching: optionsFetching,
+    refetch: refetchPaymentOptions } = useBookingPaymentOptionsQuery(arrivalBooking?.id ?? '', {
     skip: !arrivalBooking?.id || complete, refetchOnMountOrArgChange: true,
   });
   const locked = isBusy || hasPendingProviderPayment;
+  const modeSelectionLocked = locked || optionsError || !paymentOptions;
   const beforeArrival = receipt?.beforeArrival ?? isBeforeArrival;
+  const offerCashFallback = hasPaymentFailure && !locked && !beforeArrival && !complete &&
+    selectedMode !== 'cash' && !optionsError &&
+    Boolean(paymentOptions?.acceptedPaymentModes.includes('cash') && paymentOptions.availablePaymentModes.includes('cash'));
+  const paymentChoices = offerCashFallback
+    ? [...PAYMENT_OPTIONS.filter(option => option.id === 'cash'), ...PAYMENT_OPTIONS.filter(option => option.id !== 'cash')]
+    : PAYMENT_OPTIONS;
   const cash = receipt?.cashInstructions || (!complete && selectedMode === 'cash');
   const seats = receipt?.numberOfSeats ?? arrivalBooking?.numberOfSeats ?? 1;
   const amount = receipt?.amount ?? paymentAmount;
@@ -99,7 +111,8 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       <Text style={styles.amountLabel}>{seats > 1 ? `Total pour ${seats} places` : 'Montant du trajet'}</Text>
       <Text style={styles.amountValue}>{amount === null ? 'Calcul en cours…' : formatMoney(amount, currency)}</Text>
       <Text style={styles.amountHint}>
-        {cash ? 'À remettre au conducteur. Aucun prélèvement dans l’application.'
+        {receipt?.mixedTokenAmount ? 'Le prix est partagé entre vos jetons et le complément en espèces.'
+          : cash ? 'À remettre au conducteur. Aucun prélèvement dans l’application.'
           : complete ? 'Rien à payer de nouveau.'
           : hasPendingProviderPayment ? 'Paiement en cours : ne payez pas une seconde fois.'
           : beforeArrival ? 'Vous pouvez payer maintenant ; le trajet continue jusqu’à votre destination.'
@@ -114,22 +127,38 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
         if (selectedMode === null || hasPaymentFailure) scrollRef.current?.scrollTo({ y: modePickerY.current, animated: false });
       }}>
         <Text style={styles.sectionTitle}>Moyen de paiement</Text>
-        {!paymentOptions && <Text style={styles.amountHint}>{optionsError ? 'Modes de paiement indisponibles. Rouvrez cet écran pour réessayer.' : 'Vérification des modes de paiement…'}</Text>}
+        {(!paymentOptions || optionsError) && <Text style={styles.amountHint}>{optionsError
+          ? 'Impossible de vérifier les moyens de paiement. Réessayez ici.' : 'Vérification des modes de paiement…'}</Text>}
+        {optionsError && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualiser les moyens de paiement"
+          disabled={locked || optionsFetching} accessibilityState={{ disabled: locked || optionsFetching }}
+          style={styles.resumePaymentButton} onPress={async () => {
+            if (locked || optionsFetching) return;
+            try { await refetchPaymentOptions(); } catch { /* The query keeps the visible error; do not assume cash is allowed. */ }
+          }}>
+          <Text style={styles.resumePaymentText}>{optionsFetching ? 'Vérification…' : 'Actualiser les moyens de paiement'}</Text>
+        </TouchableOpacity>}
         {paymentOptions?.cashUnavailableReason && <Text style={styles.amountHint}>{paymentOptions.cashUnavailableReason}</Text>}
-        {hasPaymentFailure && <Text style={styles.amountHint}>Vous pouvez réessayer ou choisir un autre moyen de paiement.</Text>}
+        {hasPaymentFailure && <Text style={styles.amountHint} accessibilityLiveRegion="polite">{offerCashFallback
+          ? 'Le paiement n’a pas abouti. Vous pouvez réessayer ou choisir les espèces ci-dessous.'
+          : 'Vous pouvez réessayer ou choisir un autre moyen de paiement.'}</Text>}
         <View style={styles.options}>
-          {PAYMENT_OPTIONS.filter(option => (!beforeArrival || option.id !== 'cash') &&
+          {paymentChoices.filter(option => (!beforeArrival || option.id !== 'cash') &&
             (option.id !== 'electronic' || ELECTRONIC_PAYMENTS_ENABLED) &&
             (!paymentOptions || paymentOptions.acceptedPaymentModes.includes(option.id) || arrivalBooking?.paymentMode === option.id)).map(option => {
             const selected = selectedMode === option.id;
-            const disabled = locked || !paymentOptions || !paymentOptions.availablePaymentModes.includes(option.id);
-            return <TouchableOpacity key={option.id} accessibilityRole="radio" accessibilityLabel={option.title}
+            const disabled = modeSelectionLocked || !paymentOptions?.availablePaymentModes.includes(option.id);
+            const cashFallback = option.id === 'cash' && offerCashFallback;
+            const title = cashFallback ? 'Payer en espèces' : option.title;
+            return <TouchableOpacity key={option.id} accessibilityRole="radio" accessibilityLabel={title}
               accessibilityState={{ checked: selected, disabled }} activeOpacity={0.85} disabled={disabled}
               onPress={() => { if (disabled) return; setSelectedMode(option.id); setPaymentError(''); setStatusMessage(''); }}
-              style={[styles.option, selected && styles.optionSelected, disabled && { opacity: 0.5 }]}>
+              style={[styles.option, cashFallback && styles.cashFallbackOption, selected && styles.optionSelected, disabled && { opacity: 0.5 }]}>
               <Ionicons name={option.icon} size={20} color={selected ? Colors.primary : Colors.gray[600]} />
               <View style={styles.optionCopy}>
-                <Text style={[styles.optionTitle, selected && styles.optionTitleSelected]}>{option.title}</Text>
+                <Text style={[styles.optionTitle, selected && styles.optionTitleSelected]}>{title}</Text>
+                {cashFallback && <Text style={styles.optionDescription}>
+                  {amount === null ? 'Montant à vérifier' : formatMoney(amount, currency)} à remettre au conducteur. Validez ensuite en bas.
+                </Text>}
                 {option.id === 'points' && arePointsRecommended &&
                   <Text style={styles.optionDescription}>{pointsCoveragePercentage} % couvert par vos jetons</Text>}
               </View>
@@ -139,19 +168,39 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
         </View>
       </View>
       {selectedMode === 'points' && <View style={styles.pointsCard}>
+        {moneyComplement > 0 && props.cashComplementAvailable && <>
+          <Text style={styles.paymentFieldLabel}>Comment compléter ?</Text>
+          <View style={styles.channelGrid}>
+            {[{ cash: false, label: 'Mobile Money', icon: 'phone-portrait-outline' as const },
+              { cash: true, label: 'Espèces', icon: 'cash-outline' as const }].map(option => (
+              <TouchableOpacity key={option.label} accessibilityRole="radio" accessibilityLabel={`Compléter en ${option.label}`}
+                accessibilityState={{ checked: Boolean(props.cashComplementSelected) === option.cash, disabled: modeSelectionLocked }}
+                disabled={modeSelectionLocked} onPress={() => {
+                  if (modeSelectionLocked) return;
+                  props.onSelectCashComplement?.(option.cash); setSelectedMode('points'); setPaymentError(''); setStatusMessage('');
+                }}
+                style={[styles.channelOption, Boolean(props.cashComplementSelected) === option.cash && styles.channelOptionSelected]}>
+                <Ionicons name={option.icon} size={20} color={Colors.primary} />
+                <Text style={styles.channelTitle}>{option.cash && hasPaymentFailure ? 'Compléter en espèces' : option.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>}
         <View style={styles.breakdownRow}>
           <Text style={styles.breakdownLabel}>Jetons disponibles</Text>
           <Text style={styles.breakdownValue}>{isWalletFetching ? 'Actualisation…' : formatPoints(walletBalance)}</Text>
         </View>
         <View style={styles.breakdownRow}>
-          <Text style={styles.breakdownLabel}>Jetons utilisés</Text>
+          <Text style={styles.breakdownLabel}>Jetons à utiliser</Text>
           <Text style={styles.breakdownValue}>{formatPoints(pointsUsed)} · {formatMoney(amountCoveredByPoints, currency)}</Text>
         </View>
         <View style={styles.breakdownRow}>
-          <Text style={styles.breakdownLabel}>Complément Mobile Money</Text>
-          <Text style={styles.breakdownValue}>{formatMoney(moneyComplement, currency)}</Text>
+          <Text style={styles.breakdownLabel}>{props.cashComplementSelected ? 'À remettre en espèces' : 'Complément Mobile Money'}</Text>
+          <Text style={styles.breakdownValue}>{formatMoney(props.cashComplementSelected ? props.cashRemainder ?? 0 : moneyComplement, currency)}</Text>
         </View>
-        {moneyComplement > 0 && <Text style={styles.pointsHint}>Le complément recharge les jetons manquants, puis règle ce trajet avec vos jetons actuels.</Text>}
+        {moneyComplement > 0 && <Text style={styles.pointsHint}>{props.cashComplementSelected
+          ? 'Seuls les jetons affichés seront débités. Remettez le reste au conducteur : aucune recharge Mobile Money ne sera lancée.'
+          : 'Le complément recharge les jetons manquants, puis règle ce trajet avec vos jetons actuels.'}</Text>}
       </View>}
       {selectedMode === 'electronic' && ELECTRONIC_PAYMENTS_ENABLED && <View style={styles.electronicCard}>
         <Text style={styles.paymentFieldLabel}>Opérateur ou carte</Text>

@@ -66,25 +66,43 @@ test('keeps the 1000-token minimum, KYC and provider policy checks', () => {
   assert.equal(validateReferralWithdrawal('1000').title, 'Solde indisponible');
 });
 
-function fixture(t) {
+function fixture(t, storage = new Map()) {
   const hooks = hookHarness(), dialogs = [], calls = [], cleared = [];
-  let fresh = summary(2000), refreshError, requestError, refetchError;
+  const state = { user: { id: 'user', phone: '+243891234567' }, version: 0 };
+  const events = [], reads = [];
+  let fresh = summary(2000), refreshError, requestError, refetchError, storageError;
+  let beforeRefresh = async () => {};
+  let lastIntent;
+  let uuidCounter = 0;
   let response = { amount: 10000, currency: 'CDF', status: 'initiated' };
+  const resolved = () => ({ id: '00000000-0000-4000-8000-000000000099', ...lastIntent, ...response });
   const { useReferralActions } = loader({
     react: { ...React, ...hooks.react },
     'react-native': { Keyboard: { dismiss() {} } },
     '@/utils/shareReferralLink': {},
+    '@/store/hooks': { useAppSelector: selector => selector({ auth: { user: state.user } }) },
+    '@/store/selectors': { selectUser: state => state.auth.user },
+    '@/services/tokenSession': { getTokenSessionVersion: () => state.version },
+    '@/store/api/referralApi': { useLazyGetMyReferralWithdrawalQuery: () => [id => ({ unwrap: async () => {
+      reads.push(id); return resolved();
+    } })] },
+    '@react-native-async-storage/async-storage': { getItem: async key => storage.get(key) ?? null,
+      setItem: async (key, value) => { if (storageError) throw storageError; events.push('persist'); storage.set(key, value); },
+      removeItem: async key => storage.delete(key) },
+    'expo-crypto': { randomUUID: () => `00000000-0000-4000-8000-${String(++uuidCounter).padStart(12, '0')}` },
     '@/utils/errorHelpers': { getApiErrorMessage: (error, fallback) => error?.data?.message || fallback },
   })('hooks/referrals/useReferralActions.ts');
   const props = {
     isSharing: false, setIsSharing() {}, summary: summary(2000), withdrawalTokens: '1000',
     showDialog: dialog => dialogs.push(dialog), setWithdrawalTokens: value => cleared.push(value),
-    refetchSummary: () => ({ unwrap: async () => { if (refetchError) throw refetchError; return fresh; } }),
-    requestWithdrawal: payload => ({ unwrap: async () => { calls.push(payload); if (requestError) throw requestError; return response; } }),
+    refetchSummary: () => ({ unwrap: async () => { await beforeRefresh(); if (refetchError) throw refetchError; return fresh; } }),
+    requestWithdrawal: payload => ({ unwrap: async () => { events.push('post'); calls.push(payload); lastIntent = payload; if (requestError) throw requestError; return resolved(); } }),
     refreshAll: async () => { if (refreshError) throw refreshError; },
   };
   t.after(() => hooks.unmount());
-  return { props, dialogs, calls, cleared, render: () => hooks.render(() => useReferralActions(props)),
+  return { props, dialogs, calls, cleared, storage, events, reads, state, hooks,
+    render: () => hooks.render(() => useReferralActions(props)), setBeforeRefresh: fn => { beforeRefresh = fn; },
+    setStorageError: value => { storageError = value; },
     setFresh: value => { fresh = value; }, setRefreshError: value => { refreshError = value; },
     setRequestError: value => { requestError = value; }, setRefetchError: value => { refetchError = value; },
     setResponse: value => { response = value; },
@@ -101,7 +119,75 @@ test('does not send when the current balance cannot be fetched', async t => {
 test('blocks a double tap during the same submission', async t => {
   const f = fixture(t), actions = f.render();
   await Promise.all([actions.handleWithdrawal(), actions.handleWithdrawal()]);
-  assert.deepEqual(f.calls, [{ tokens: 1000 }]); assert.equal(f.dialogs[0].title, 'Retrait transmis');
+  assert.deepEqual(f.calls, [{ tokens: 1000, phone: '+243891234567', idempotencyKey: '00000000-0000-4000-8000-000000000001' }]);
+  assert.equal(f.dialogs[0].title, 'Retrait transmis');
+  assert.deepEqual(f.events.slice(0, 2), ['persist', 'post']);
+});
+
+test('a lost response survives app recreation and reuses the original key, amount and phone even with zero balance', async t => {
+  const first = fixture(t); first.setRequestError({ status: 'TIMEOUT_ERROR' });
+  await first.render().handleWithdrawal(); first.hooks.unmount();
+  const next = fixture(t, first.storage); next.props.summary = summary(0); next.setFresh(summary(0));
+  next.props.withdrawalTokens = '1800'; next.state.user.phone = '+243891234568';
+  await next.render().handleWithdrawal();
+  assert.deepEqual(next.calls, first.calls);
+  assert.equal(next.render().pendingWithdrawal.withdrawalId, '00000000-0000-4000-8000-000000000099');
+});
+
+test('a known pending withdrawal is read by ID, never resent, and a terminal result releases the intent', async t => {
+  const f = fixture(t); await f.render().handleWithdrawal();
+  f.props.summary = summary(0); f.props.withdrawalTokens = '';
+  f.setResponse({ status: 'succeeded', amount: 10000, currency: 'CDF' });
+  await f.render().handleWithdrawal();
+  assert.equal(f.calls.length, 1); assert.equal(f.reads.length, 1);
+  assert.equal(f.storage.size, 0); assert.equal(f.render().pendingWithdrawal, null);
+  assert.equal(f.dialogs.at(-1).title, 'Retrait effectué');
+});
+
+test('storage failure prevents the POST and corrupt state never creates a new payout key', async t => {
+  const f = fixture(t); f.setStorageError(new Error('storage unavailable'));
+  await f.render().handleWithdrawal(); assert.equal(f.calls.length, 0);
+  f.setStorageError(null); f.storage.set('referral-withdrawal-intent:v1:user', '{corrupt');
+  await f.render().handleWithdrawal(); assert.equal(f.calls.length, 0);
+});
+
+test('unmount or account switch during balance refresh prevents submission', async t => {
+  for (const accountSwitch of [true, false]) {
+    const f = fixture(t);
+    f.setBeforeRefresh(async () => {
+      if (accountSwitch) { f.state.version++; f.state.user = { id: 'other', phone: '+243891234568' }; f.render(); }
+      else f.hooks.unmount();
+    });
+    await f.render().handleWithdrawal();
+    assert.equal(f.calls.length, 0); assert.equal(f.storage.size, 0);
+  }
+});
+
+test('a mismatched response retains the persisted intent rather than announcing success', async t => {
+  const f = fixture(t); f.setResponse({ idempotencyKey: '00000000-0000-4000-8000-000000000077', status: 'succeeded' });
+  await f.render().handleWithdrawal();
+  assert.equal(f.storage.size, 1); assert.equal(f.cleared.length, 0);
+  assert.equal(f.dialogs.at(-1).variant, 'danger');
+});
+
+test('an initial definitive validation refusal clears its key, but a refusal during uncertain recovery does not', async t => {
+  const first = fixture(t); first.setRequestError({ status: 400 });
+  await first.render().handleWithdrawal(); assert.equal(first.storage.size, 0);
+  const uncertain = fixture(t); uncertain.setRequestError({ status: 'TIMEOUT_ERROR' });
+  await uncertain.render().handleWithdrawal();
+  uncertain.setRequestError({ status: 400 }); await uncertain.render().handleWithdrawal();
+  assert.equal(uncertain.storage.size, 1);
+  assert.equal(uncertain.calls[0].idempotencyKey, uncertain.calls[1].idempotencyKey);
+});
+
+test('a different account cannot resume the previous account withdrawal', async t => {
+  const first = fixture(t); first.setRequestError({ status: 'TIMEOUT_ERROR' });
+  await first.render().handleWithdrawal();
+  const next = fixture(t, first.storage); next.state.user.id = 'other';
+  next.props.summary = summary(0); next.setFresh(summary(0));
+  await next.render().handleWithdrawal();
+  assert.equal(next.calls.length, 0); assert.equal(next.reads.length, 0);
+  assert.equal(first.storage.size, 1);
 });
 test('shows server rejection without clearing the entered amount or retrying POST', async t => {
   const f = fixture(t); f.setRequestError({ data: { message: 'Solde de parrainage disponible insuffisant' } });

@@ -13,8 +13,10 @@ import { useLazyCheckWalletTopUpStatusQuery } from '@/store/api/walletApi';
 import type { SubscriptionPaymentMethod, WalletPaymentResponse } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useCallback, useEffect, useRef } from 'react';
+import { acknowledgeWalletTopUpIntent } from '@/features/wallet/topUpIntent';
 
 interface Params {
+  userId?: string;
   captureScope: () => () => boolean;
   stopTopUpAutoCheck: () => void;
   clearStoredTopUp: () => Promise<void>;
@@ -33,6 +35,7 @@ interface Params {
 }
 
 export function useWalletTopUpMonitoring({
+  userId,
   captureScope,
   stopTopUpAutoCheck,
   clearStoredTopUp,
@@ -68,6 +71,7 @@ export function useWalletTopUpMonitoring({
       const isCurrent = captureScope();
       if (!isCurrent()) return false;
       stopTopUpAutoCheck();
+      await acknowledgeWalletTopUpIntent(userId, 'wallet', response);
       await clearStoredTopUp();
       if (!isCurrent()) return false;
       setTopUpOrderNumber(null);
@@ -91,7 +95,7 @@ export function useWalletTopUpMonitoring({
 
       return true;
     },
-    [captureScope, clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck, setActiveModal,
+    [userId, captureScope, clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck, setActiveModal,
       setTopUpAutoCheckAttempt, setTopUpOrderNumber, setTopUpPaymentUrl, setTopUpStage, setTopUpStatusMessage],
   );
 
@@ -103,6 +107,7 @@ export function useWalletTopUpMonitoring({
       const isCurrent = captureScope();
       if (!isCurrent()) return false;
       stopTopUpAutoCheck();
+      await acknowledgeWalletTopUpIntent(userId, 'wallet', response);
       await clearStoredTopUp();
       if (!isCurrent()) return false;
       setTopUpOrderNumber(null);
@@ -126,7 +131,7 @@ export function useWalletTopUpMonitoring({
 
       return true;
     },
-    [captureScope, clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck,
+    [userId, captureScope, clearStoredTopUp, refreshAll, showDialog, stopTopUpAutoCheck,
       setTopUpAutoCheckAttempt, setTopUpOrderNumber, setTopUpPaymentUrl, setTopUpStage, setTopUpStatusMessage],
   );
 

@@ -6,12 +6,13 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function background(t, kind = 'booking') {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
-  const io = { version: 0, platform: 'android', state: 'background', pending: [], displayed: [], cancelled: [], channel: async () => 'ring', display: async () => {}, wake: true };
+  const io = { version: 0, platform: 'android', state: 'background', pending: [], displayed: [], cancelled: [], channel: async () => 'ring', display: async () => {}, wake: true, fullscreen: false, fullScreenCalls: [] };
   const alert = { key: `driver-${kind}-one`, kind, recipientId: 'driver', id: 'one',
-    data: { ringUntil: new Date(Date.now() + 30000).toISOString(), type: kind === 'booking' ? 'new_booking' : 'booking_response' } };
+    data: { driverId: 'driver', ringUntil: new Date(Date.now() + 30000).toISOString(), type: kind === 'booking' ? 'new_booking' : 'booking_response' } };
   io.pending.push(alert);
   const load = loader({ 'react-native': { Platform: { get OS() { return io.platform; } }, AppState: { get currentState() { return io.state; } },
-    NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => io.wake } } },
+    NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => io.wake,
+      canPresentFullScreen: async id => { io.fullScreenCalls.push(id); return io.fullscreen; } } } },
     '@notifee/react-native': { __esModule: true, AndroidStyle: { BIGTEXT: 1 }, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, default: {
       displayNotification: async n => { io.displayed.push(n); await io.display(); }, cancelNotification: async id => io.cancelled.push(id) } },
     './driverAlertChannel': { getDriverAlertChannel: () => io.channel() }, './rideAlertSession': { pendingRideAlerts: () => io.pending },
@@ -34,10 +35,38 @@ test('background handoff is deduplicated and preserves original remaining ring t
 });
 
 test('a passenger response hands back to Android but has no driver decision buttons', async t => {
-  const f = background(t, 'response'); await f.reconcileBackgroundRideRinging('driver');
+  const f = background(t, 'response'); f.io.fullscreen = true; await f.reconcileBackgroundRideRinging('driver');
   assert.equal(f.io.displayed.length, 1); assert.equal(f.io.displayed[0].android.actions, undefined);
+  assert.equal(f.io.displayed[0].android.fullScreenAction, undefined); assert.deepEqual(f.io.fullScreenCalls, []);
   f.io.state = 'active'; await f.reconcileBackgroundRideRinging('driver');
   assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
+});
+
+test('locking during a driver alert preserves the same opt-in fullscreen eligibility and deadline as a fresh push', async t => {
+  for (const kind of ['booking', 'dispatch', 'nearby']) {
+    const f = background(t, kind); f.io.fullscreen = true; t.mock.timers.tick(12000);
+    await f.reconcileBackgroundRideRinging('driver');
+    assert.equal(f.io.displayed[0].android.fullScreenAction.launchActivity, 'com.zwanga.notifications.IncomingRideActivity');
+    assert.equal(f.io.displayed[0].android.timeoutAfter, 18000);
+    assert.deepEqual(f.io.fullScreenCalls, ['driver']);
+    t.mock.timers.reset();
+  }
+});
+
+test('fullscreen eligibility errors preserve the ordinary handoff notification', async t => {
+  const f = background(t);
+  f.io.fullscreen = Promise.reject(Error('synthetic native failure'));
+  await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed.length, 1);
+  assert.equal(f.io.displayed[0].android.fullScreenAction, undefined);
+});
+
+test('an alert expiring while fullscreen eligibility resolves cannot wake the phone afterwards', async t => {
+  const f = background(t); let finish;
+  f.io.fullscreen = new Promise(resolve => { finish = resolve; });
+  const work = f.reconcileBackgroundRideRinging('driver'); await tick();
+  t.mock.timers.tick(31000); finish(true); await work;
+  assert.equal(f.io.displayed.length, 0);
 });
 
 test('background handoff preserves nearby price/destination and its two safe action buttons', async t => {
@@ -52,9 +81,10 @@ test('background handoff preserves nearby price/destination and its two safe act
 });
 
 test('a DND or muted-channel decision suppresses screen wake without discarding the notification', async t => {
-  const f = background(t); f.io.wake = false; await f.reconcileBackgroundRideRinging('driver');
+  const f = background(t); f.io.wake = false; f.io.fullscreen = true; await f.reconcileBackgroundRideRinging('driver');
   assert.equal(f.io.displayed.length, 1);
   assert.equal(f.io.displayed[0].android.lightUpScreen, false);
+  assert.deepEqual(f.io.fullScreenCalls, []);
 });
 
 test('handoff cannot start after expiry, a decision, a foreground return or a changed account during initialization', async t => {

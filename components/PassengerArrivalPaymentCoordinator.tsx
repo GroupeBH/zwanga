@@ -1,7 +1,11 @@
 import { useArrivalPaymentState } from '../hooks/arrival-payment/useArrivalPaymentState';
+import { useMixedCashPayment } from '../hooks/arrival-payment/useMixedCashPayment';
 import { useArrivalPaymentMonitoring } from '../hooks/arrival-payment/useArrivalPaymentMonitoring';
 import { ArrivalPaymentFields } from '../features/arrival-payment/ArrivalPaymentFields';
 import { ArrivalPaymentActions } from '../features/arrival-payment/ArrivalPaymentActions';
+import { ArrivalPaymentRecovery } from '../features/arrival-payment/ArrivalPaymentRecovery';
+import { useArrivalPaymentRecovery } from '../hooks/arrival-payment/useArrivalPaymentRecovery';
+import { useTokenCashFallback } from '../hooks/arrival-payment/useTokenCashFallback';
 import { useArrivalPaymentNavigation } from '../hooks/arrival-payment/useArrivalPaymentNavigation';
 import { useArrivalPaymentProvider } from '../hooks/arrival-payment/useArrivalPaymentProvider';
 import { useArrivalPaymentSubmission } from '../hooks/arrival-payment/useArrivalPaymentSubmission';
@@ -41,7 +45,7 @@ function ArrivalPaymentSession() {
   const state = useArrivalPaymentState();
   const interruptionChoice = state.interruptionChoice;
   // Already paid/free bookings open their receipt immediately, not another confirmation step.
-  const receipt = useMemo(() => state.completionSummary ?? (state.arrivalBooking && state.paymentAlreadySucceeded
+  const receipt = useMemo(() => state.completionSummary ?? (state.arrivalBooking && (state.paymentAlreadySucceeded || state.arrivalBooking.mixedPaymentAt || state.arrivalBooking.tokenCashFallbackAt)
     ? buildPaymentCompletionSummary(state.arrivalBooking, state.wallet, state.paymentHistory, {}) : null),
   [state.completionSummary, state.arrivalBooking, state.paymentAlreadySucceeded, state.wallet, state.paymentHistory]);
 
@@ -72,15 +76,24 @@ function ArrivalPaymentSession() {
     showCompletionSummary: completion.showCompletionSummary,
   });
 
-  const monitoring = useArrivalPaymentMonitoring({ state, provider, completion });
+  const recovery = useArrivalPaymentRecovery(state, provider, completion);
+  const cashFallback = useTokenCashFallback(state, completion);
+  const monitoring = useArrivalPaymentMonitoring({
+    state: { ...state, isPaymentDeferred: state.isPaymentDeferred || recovery.isWorking || cashFallback.isWorking }, provider, completion,
+  });
+  const mixed = useMixedCashPayment(state, completion);
+  const paymentPending = state.hasPendingProviderPayment || mixed.pending || Boolean(state.storageError);
 
   const submission = useArrivalPaymentSubmission({
+    userId: state.user?.id,
+    pendingTopUp: state.activeStoredState?.walletTopUpIntent,
+    payTokensCash: mixed.cashSelected ? mixed.submit : undefined,
     acknowledgeCash: state.acknowledgeBooking,
     isSessionCurrent: state.isSessionCurrent,
     arrivalBooking: state.arrivalBooking,
     paymentAmount: state.paymentAmount,
-    isBusy: state.isBusy,
-    hasPendingProviderPayment: state.hasPendingProviderPayment,
+    isBusy: state.isBusy || Boolean(state.storageError) || state.isStorageLoading,
+    hasPendingProviderPayment: paymentPending,
     reportPaymentFailure: state.reportPaymentFailure,
     setPaymentError: state.setPaymentError,
     setStatusMessage: state.setStatusMessage,
@@ -132,7 +145,8 @@ function ArrivalPaymentSession() {
       ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Terminer · paiement en espèces'
       : state.selectedMode === 'points'
         ? state.missingPoints > 0
-          ? `Ajouter ${formatMoney(state.moneyComplement, state.paymentCurrency)} et payer`
+          ? mixed.cashSelected ? `Utiliser ${formatPoints(state.pointsUsed)} + espèces`
+            : `Ajouter ${formatMoney(state.moneyComplement, state.paymentCurrency)} et payer`
           : `Payer avec ${formatPoints(state.requiredPoints ?? 0)}`
         : state.selectedChannel === 'card'
           ? 'Payer par carte'
@@ -140,17 +154,22 @@ function ArrivalPaymentSession() {
   const needsMobileMoneyPhone =
     !state.paymentAlreadySucceeded &&
     ((state.selectedMode === 'electronic' && state.selectedChannel !== 'card') ||
-      (state.selectedMode === 'points' && state.moneyComplement > 0));
+      (state.selectedMode === 'points' && state.moneyComplement > 0 && !mixed.cashSelected));
   const isPaymentPhoneInvalid =
     needsMobileMoneyPhone && (!state.mobileMoneyPhone || !DRC_PAYMENT_PHONE_REGEX.test(state.mobileMoneyPhone));
   const isPayButtonDisabled =
-    state.isBusy || submission.isSubmitting ||
+    state.isBusy || submission.isSubmitting || mixed.isLoading ||
     !state.selectedMode ||
-    state.hasPendingProviderPayment ||
+    paymentPending ||
     state.paymentAmount === null ||
     (state.isBeforeArrival && state.selectedMode === 'cash') ||
     isPaymentPhoneInvalid ||
     (state.selectedMode === 'points' && state.isWalletFetching);
+  const recoveryVisible = !receipt && Boolean(state.arrivalBooking) &&
+    (paymentPending || state.canChangeFailedPaymentMode || recovery.isWorking || cashFallback.isWorking || submission.isSubmittingCash);
+  const retryPayment = state.storageError ? state.retryPaymentStorage
+    : state.activeStoredState?.walletTopUpIntent ? () => { void recovery.run(); }
+    : mixed.pending ? () => { void mixed.submit(); } : monitoring.retryVerification;
 
   return (
     <>
@@ -172,7 +191,11 @@ function ArrivalPaymentSession() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.keyboardAvoidingView, { flex: 1 }]}
         >
-          <View style={[styles.sheet, { paddingBottom: Math.max(state.insets.bottom, Spacing.lg) + Spacing.md }]}>
+          <View style={[styles.sheet,
+            // A flex/scroll recovery panel needs a bounded, non-zero viewport.
+            // maxHeight alone lets Yoga collapse it to its footer on Android.
+            recoveryVisible && !interruptionChoice && { height: '82%', maxHeight: 540 },
+            { paddingBottom: Math.max(state.insets.bottom, Spacing.lg) + Spacing.md }]}>
             <View style={styles.handle} />
             {interruptionChoice ? (
               <PassengerInterruptionChoice
@@ -183,9 +206,28 @@ function ArrivalPaymentSession() {
                   state.dispatch(openInterruptionChoice(null));
                 }}
               />
+            ) : recoveryVisible && state.arrivalBooking ? (
+              <ArrivalPaymentRecovery bookingId={state.arrivalBooking.id} pending={paymentPending}
+                busy={(cashFallback.canSwitch ? state.isMutatingPayment : state.isBusy) || submission.isSubmitting || recovery.isWorking || cashFallback.isWorking || state.isStorageLoading || mixed.isLoading}
+                pendingCashAllowed={cashFallback.canSwitch && !state.storageError}
+                savingCash={submission.isSubmittingCash || cashFallback.isWorking}
+                beforeArrival={state.isBeforeArrival}
+                amount={state.paymentAmount} currency={state.paymentCurrency} destination={destination}
+                message={cashFallback.message ?? (!paymentPending ? state.paymentError : cashFallback.canSwitch ? undefined : recovery.message ?? (state.storageError ? 'Impossible de retrouver votre paiement sur ce téléphone. Réessayez ou contactez l’aide.'
+                  : mixed.pending ? 'Le règlement jetons + espèces doit être confirmé. Vérifiez avant de payer à nouveau.'
+                  : monitoring.verification.phase === 'paused' ? monitoring.verification.message : undefined))}
+                onVerify={retryPayment}
+                onChange={() => { if (!paymentPending) state.setSelectedMode(null); }}
+                onCash={cashFallback.canSwitch ? cashFallback.run : submission.payCash} onClose={state.deferPayment}
+                onResumeCard={state.hasCardPaymentToResume ? navigation.handleResumeCardPayment : undefined}
+                onHelp={() => { state.deferPayment(); state.router.push('/support'); }} />
             ) : state.arrivalBooking || receipt ? (
               <>
                 <ArrivalPaymentFields
+                  cashComplementAvailable={mixed.supported}
+                  cashComplementSelected={mixed.cashSelected}
+                  onSelectCashComplement={mixed.selectCash}
+                  cashRemainder={mixed.cashRemainder}
                   completionSummary={receipt}
                   arrivalBooking={state.arrivalBooking}
                   isBeforeArrival={state.isBeforeArrival}
@@ -194,8 +236,8 @@ function ArrivalPaymentSession() {
                   paymentCurrency={state.paymentCurrency}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   arePointsRecommended={state.arePointsRecommended}
-                  isBusy={state.isBusy || submission.isSubmitting}
-                  hasPendingProviderPayment={state.hasPendingProviderPayment}
+                  isBusy={state.isBusy || submission.isSubmitting || mixed.isLoading || state.isStorageLoading}
+                  hasPendingProviderPayment={paymentPending}
                   setSelectedMode={state.setSelectedMode}
                   setPaymentError={state.setPaymentError}
                   setStatusMessage={state.setStatusMessage}
@@ -204,8 +246,8 @@ function ArrivalPaymentSession() {
                   hasPaymentFailure={state.canChangeFailedPaymentMode}
                   isWalletFetching={state.isWalletFetching}
                   walletBalance={state.walletBalance}
-                  pointsUsed={state.pointsUsed}
-                  amountCoveredByPoints={state.amountCoveredByPoints}
+                  pointsUsed={mixed.pending ? mixed.displayedPoints : state.pointsUsed}
+                  amountCoveredByPoints={mixed.pending ? mixed.displayedTokenAmount : state.amountCoveredByPoints}
                   moneyComplement={state.moneyComplement}
                   selectedChannel={state.selectedChannel}
                   setSelectedChannel={state.setSelectedChannel}
@@ -220,19 +262,21 @@ function ArrivalPaymentSession() {
                 />
 
                 <ArrivalPaymentActions
-                  isBusy={state.isBusy || submission.isSubmitting}
+                  isBusy={state.isBusy || submission.isSubmitting || mixed.isLoading || state.isStorageLoading}
                   completionSummary={receipt}
                   onDone={navigation.handleDismissSummary}
                   onInvoice={navigation.handleOpenInvoice}
-                  hasPendingProviderPayment={state.hasPendingProviderPayment}
+                  hasPendingProviderPayment={paymentPending}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   selectedMode={state.selectedMode}
                   actionLabel={actionLabel}
                   isPayButtonDisabled={isPayButtonDisabled}
-                  verification={monitoring.verification}
+                  verification={state.storageError ? { phase: 'paused', message: state.storageError }
+                    : state.activeStoredState?.walletTopUpIntent ? { phase: 'paused', message: 'Complément à vérifier. Ne payez pas une seconde fois. Reprenez la même recharge ici.' }
+                    : mixed.pending ? { phase: 'paused', message: mixed.message } : monitoring.verification}
                   paymentError={state.paymentError}
                   onPay={submission.handlePayment}
-                  onRetry={monitoring.retryVerification}
+                  onRetry={retryPayment}
                   onClose={state.isBeforeArrival && !state.isBusy && !submission.isSubmitting && !state.hasPendingProviderPayment ? state.deferEarlyPayment : state.deferPayment}
                   closeLabel={state.isBeforeArrival ? 'Payer à l’arrivée' : 'Fermer et reprendre plus tard'}
                 />

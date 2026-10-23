@@ -3,6 +3,7 @@ import { API_BASE_URL } from '@/config/env';
 import { getValidAccessToken, handle401Error } from '@/services/tokenRefresh';
 import { io, Socket } from 'socket.io-client';
 import { socketConnectionOptions } from './socketConnectionPolicy';
+import { bindSocketRestartRecovery } from './socketRestartRecovery';
 import { subscribeConnectionRecovery } from './networkRecovery';
 import { isLocationDeliveryPending, wasLocationDeliveredRecently } from './locationDelivery';
 import { sendConfirmedTrackingLocation } from './trackingLocationDelivery';
@@ -29,6 +30,7 @@ class TrackingSocketClient {
   private connecting: Promise<Socket> | null = null;
   private generation = 0;
   private stopRecovery: (() => void) | null = null;
+  private stopRestartRecovery: (() => void) | null = null;
   private idleTimeout: ReturnType<typeof setTimeout> | null = null;
   private tripJoinCounts = new Map<string, number>();
   private locationListeners = new Set<LocationListener>();
@@ -158,6 +160,8 @@ class TrackingSocketClient {
         autoConnect: false,
       });
       this.socket = socket;
+      this.stopRestartRecovery = bindSocketRestartRecovery(socket, () => this.connect(),
+        () => this.socket === socket && this.tripJoinCounts.size > 0);
       socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
 
       socket.on('connect', () => {
@@ -279,6 +283,8 @@ class TrackingSocketClient {
   }
 
   disconnect(clearListeners = true) {
+    this.stopRestartRecovery?.();
+    this.stopRestartRecovery = null;
     this.stopRecovery?.();
     this.stopRecovery = null;
     this.generation += 1;
