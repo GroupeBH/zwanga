@@ -1,0 +1,45 @@
+plugins { id 'com.android.application' version '8.11.0' }
+def repo = rootDir.toPath().resolve('../../..').normalize().toFile()
+repositories {
+    google(); mavenCentral()
+    maven { url new File(repo, 'node_modules/@notifee/react-native/android/libs') }
+}
+android {
+    namespace 'com.zwanga.audit'
+    compileSdk 36
+    defaultConfig { applicationId 'com.zwanga.audit'; minSdk 26; targetSdk 36; versionCode 1; versionName 'local-audit' }
+    buildDir = new File(repo, '.expo/ride-alert-audit-build')
+    sourceSets.main.java.srcDir new File(buildDir, 'audit-native')
+    sourceSets.main.res.srcDir new File(buildDir, 'audit-res')
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+tasks.register('copyAuditNative', Copy) {
+    from(new File(repo, 'native/android/notifications')) {
+        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'IncomingRideActivity.java'
+    }
+    into new File(buildDir, 'audit-native/com/zwanga/notifications')
+}
+tasks.register('copyAuditSound', Copy) {
+    from new File(repo, 'assets/sounds/driver_ring.wav')
+    into new File(buildDir, 'audit-res/raw')
+}
+tasks.named('preBuild').configure { dependsOn 'copyAuditNative', 'copyAuditSound' }
+configurations.configureEach {
+    resolutionStrategy.eachDependency { detail ->
+        if (detail.requested.group == 'org.jetbrains.kotlin' && detail.requested.name.startsWith('kotlin-stdlib')) detail.useVersion('2.1.20')
+        if (detail.requested.group == 'androidx.lifecycle') detail.useVersion('2.9.0')
+    }
+}
+dependencies {
+    // Match the app's cached Kotlin generation; no download during this audit.
+    implementation 'androidx.tracing:tracing:1.2.0'
+    implementation 'androidx.core:core:1.16.0'
+    implementation 'androidx.startup:startup-runtime:1.1.1'
+    implementation 'androidx.arch.core:core-runtime:2.2.0'
+    implementation 'app.notifee:core:202108261754'
+    implementation 'com.google.guava:guava:33.3.1-android'
+    implementation 'androidx.concurrent:concurrent-futures:1.1.0'
+    implementation 'androidx.work:work-runtime:2.8.0'
+    implementation 'org.greenrobot:eventbus:3.3.1'
+    implementation 'androidx.lifecycle:lifecycle-process:2.9.0'
+}

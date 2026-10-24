@@ -51,7 +51,7 @@ export function useOverdueRequestNotification({
       activeOverdueAccountIdRef.current = null;
       activeOverdueRequestIdRef.current = null;
       try {
-        await releaseOverdueDriver(requestId).unwrap();
+        await releaseOverdueDriver({ id: requestId, searchNow: !editSchedule }).unwrap();
         router.push(
           getTripRequestDetailHref(requestId, {
             editSchedule,
@@ -105,7 +105,7 @@ export function useOverdueRequestNotification({
             },
           },
           {
-            label: 'Autre conducteur',
+            label: 'Relancer pour 30 min',
             variant: 'secondary',
             onPress: () => releaseDriverAndOpenRequest(request.id, false),
           },

@@ -1,8 +1,9 @@
 import { runDiditNativeVerification, getDiditSdkFailureError } from '../features/identity/diditSdk';
 import { useKycFlowScope } from './identity/useKycFlowScope';
+import { clearDiditRecovery, readDiditRecovery, saveDiditRecovery } from '@/services/diditSessionRecovery';
 import { isSafeDiditHostedUrl } from '@/features/identity/diditLaunchPolicy';
 
-import { asStringParam, getKycStatusFromDiditStatus, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
+import { asStringParam, getRawKycErrorMessage, KycUserFacingError, getKycErrorPresentation } from '../features/identity/diditErrors';
 import { QueryParams, DiditKycFlowOutcome, StartDiditKycOptions, UseDiditKycFlowOptions, KycFlowStage } from '../features/identity/diditFlowTypes';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
@@ -114,12 +115,15 @@ export function useDiditKycFlow({
       let flowStage: KycFlowStage = 'loading_user';
       let sessionId: string | null = null;
       let launchMode: DiditKycFlowOutcome['launchMode'] = 'native_sdk';
+      let recoveryUserId: string | null = null;
 
       try {
+        const currentUser = await getCurrentUser().unwrap();
+        if (!scope.canLaunch()) return null;
+        recoveryUserId = currentUser.id;
+        if (!recoveryUserId) throw new Error('Compte introuvable pour reprendre la vérification.');
         if (!skipLegalIdentityConfirmation) {
           flowStage = 'loading_user';
-          const currentUser = await getCurrentUser().unwrap();
-          if (!scope.canLaunch()) return null;
           flowStage = 'confirming_identity';
           const isConfirmed = await confirmLegalIdentity(
             currentUser.firstName,
@@ -130,13 +134,47 @@ export function useDiditKycFlow({
           }
         }
 
+        // A previous SDK submission may have succeeded while its sync reply was
+        // lost. Ask the backend first, including after process death/remount.
+        // Failure here must not create another paid verification session.
+        flowStage = 'syncing_session';
+        const existing = await syncDiditKycSession({}).unwrap();
+        if (!scope.canLaunch()) return null;
+        const recovery = await readDiditRecovery(recoveryUserId);
+        if (!scope.canLaunch()) return null;
+        const existingStatus = getEffectiveKycStatus(existing);
+        const sameSession = recovery?.session.sessionId === existing?.diditSessionId;
+        const needsUser = existing?.provider === 'didit' &&
+          ['not started', 'in progress', 'resubmitted', 'awaiting user'].includes(String(existing.diditSessionStatus).trim().toLowerCase());
+        const submittedAwaitingDecision = sameSession && recovery?.submitted && existing?.status === 'pending' &&
+          existing.diditSessionStatus !== 'Resubmitted';
+        if (existingStatus === 'approved' || submittedAwaitingDecision || (existingStatus === 'pending' && !needsUser)) {
+          if (existingStatus === 'approved') {
+            try { await clearDiditRecovery(recoveryUserId); } catch { /* The confirmed state is authoritative. */ }
+          }
+          const outcome: DiditKycFlowOutcome = { kyc: existing, status: existingStatus === 'approved' ? 'approved' : 'pending',
+            sessionId: existing?.diditSessionId ?? null, diditStatus: existing?.diditSessionStatus };
+          try { await onStatusRefresh?.(); } catch { /* The confirmed decision remains valid. */ }
+          if (!scope.current()) return null;
+          if (existingStatus === 'approved' && scope.canLaunch()) await onApproved?.(outcome);
+          if (showResultDialog && scope.canLaunch()) showDialog({
+            variant: existingStatus === 'approved' ? 'success' : 'info',
+            title: existingStatus === 'approved' ? 'Identité vérifiée !' : 'Vérification déjà en cours',
+            message: existingStatus === 'approved' ? approvedMessage : pendingMessage,
+          });
+          return outcome;
+        }
+
         flowStage = 'creating_session';
         const callbackUrl = ExpoLinking.createURL(DIDIT_KYC_RETURN_PATH);
-        const session = await createDiditKycSession({
+        const session = sameSession && recovery && !recovery.submitted &&
+          recovery.launchUntil > Date.now() && existing?.status === 'pending' ? recovery.session : await createDiditKycSession({
           callbackUrl,
           language: 'fr',
           source: sourceScreen,
         }).unwrap();
+        if (!scope.canLaunch()) return null;
+        await saveDiditRecovery(recoveryUserId, session);
         if (!scope.canLaunch()) return null;
 
         const hosted = session.launchMode === 'hosted';
@@ -259,6 +297,8 @@ export function useDiditKycFlow({
           }
         }
 
+        await saveDiditRecovery(recoveryUserId, session, true);
+        if (!scope.current()) return null;
         flowStage = 'syncing_session';
         const kyc = await syncDiditKycSession({
           sessionId,
@@ -267,11 +307,15 @@ export function useDiditKycFlow({
         if (!scope.current()) return null;
 
         flowStage = 'refreshing_status';
-        await onStatusRefresh?.();
+        try { await onStatusRefresh?.(); } catch { /* Do not turn a confirmed result into a failed verification. */ }
         if (!scope.current()) return null;
 
         flowStage = 'handling_result';
-        const status = getEffectiveKycStatus(kyc) ?? getKycStatusFromDiditStatus(diditStatus);
+        // The SDK callback is a sync hint, not the authoritative account state.
+        const status = getEffectiveKycStatus(kyc) ?? 'pending';
+        if (status === 'approved' || status === 'rejected') {
+          try { await clearDiditRecovery(recoveryUserId); } catch { /* Cleanup must not reverse the decision. */ }
+        }
         const outcome: DiditKycFlowOutcome = {
           kyc,
           status,
@@ -325,6 +369,9 @@ export function useDiditKycFlow({
       } catch (error: any) {
         if (!scope.canLaunch()) return null;
         const presentation = getKycErrorPresentation(error, flowStage);
+        if (presentation.category === 'session_expired' && recoveryUserId) {
+          try { await clearDiditRecovery(recoveryUserId); } catch { /* Preserve the original error. */ }
+        }
         const rawMessage =
           error instanceof KycUserFacingError
             ? error.technicalMessage || error.message

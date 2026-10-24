@@ -17,7 +17,9 @@ test('notification card shows destination, seats and explicit budget/fare, never
   const { driverNotificationCard: card } = loader()('features/notifications/driverNotificationCard.ts');
   const data = { rideDeparture: 'Place centrale', rideArrival: 'Gare', rideSeats: '2', ridePricePerSeat: '2500.50', ridePriceKind: 'budget' };
   const view = card('dispatch', data);
-  assert.equal(view.title, 'Commande à proximité');
+  assert.equal(view.title, 'Zwanga · Demande près de vous');
+  assert.equal(card('booking', {}).title, 'Zwanga · Nouvelle réservation');
+  assert.match(view.body, /Ouvrez Zwanga pour répondre\.$/);
   assert.match(view.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 2 500,5 FC \/ place/);
   assert.match(view.body, /Place centrale → Gare\n2 places/);
   assert.match(card('booking', { ...data, ridePricePerSeat: '0', ridePriceKind: 'fare' }).body, /^Gratuit/);
@@ -90,6 +92,7 @@ function app(options = {}) {
     foreground: (data, action) => { for (const listener of nativeListeners) listener(event(data, action)); },
     body: data => { for (const listener of nativeListeners) listener({ ...event(data, 'default'), type: 1 }); },
     background: (data, action) => background(event(data, action)),
+    backgroundBody: data => background({ ...event(data, 'default'), type: 1 }),
     resume: () => { io.state = 'active'; for (const listener of stateListeners) listener('active'); },
   };
 }
@@ -115,6 +118,19 @@ test('a new body tap reopens the same invitation after returning Home, without r
     assert.equal(f.io.routes.length, 2, kind);
     assert.equal(f.io.mutations.length, 0);
     assert.equal(f.io.dismissed.length, 0, 'opening is not an answer');
+    f.hooks.unmount();
+  }
+});
+
+test('a delayed background body tap after resume is consumed without a second app opening or mutation', async () => {
+  for (const kind of ['nearby', 'dispatch', 'booking']) {
+    const f = app(); f.mount(); await tick();
+    // Reproduce OS ordering: AppState active first, headless PRESS afterwards.
+    // Linking is intentionally unavailable; the mounted coordinator must route.
+    await f.backgroundBody(push(kind)); await tick();
+    assert.equal(f.io.routes.length, 1, kind);
+    assert.equal(f.io.mutations.length, 0);
+    f.resume(); await tick(); assert.equal(f.io.routes.length, 1);
     f.hooks.unmount();
   }
 });

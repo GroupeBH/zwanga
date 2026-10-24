@@ -1,7 +1,7 @@
 import { authRefreshApi } from '../store/api/authRefreshApi';
 import { getStoreDispatch } from '../store/storeAccessor';
 import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
-import { clearTokens, getTokens, storeTokens } from './tokenStorage';
+import { clearTokens, getTokens, getRefreshAttemptId, storeTokens } from './tokenStorage';
 import { getTokenSessionVersion } from './tokenSession';
 import { hasUsableNewAuthSession } from '../features/auth/sessionPolicy';
 import { getNetworkRecoveryEpoch } from './networkRecovery';
@@ -44,7 +44,9 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
   inFlight = run;
   run.promise = (async () => {
     try {
-      const request = getStoreDispatch()(authRefreshApi.endpoints.refreshSession.initiate({ refreshToken }));
+      const requestId = await getRefreshAttemptId(refreshToken, version);
+      if (!requestId || version !== getTokenSessionVersion()) return null;
+      const request = getStoreDispatch()(authRefreshApi.endpoints.refreshSession.initiate({ refreshToken, requestId }));
       let data: { accessToken: string; refreshToken: string };
       try { data = await request.unwrap(); } finally { request.reset(); }
       if (version !== getTokenSessionVersion()) return null;

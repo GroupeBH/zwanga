@@ -16,6 +16,7 @@ function loader(mocks = {}, options = {}) {
     const localRequire = createRequire(filename);
     const requireModule = (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === 'expo-crypto') return { randomUUID: require('node:crypto').randomUUID };
       if (name.startsWith('@/') || name.startsWith('.')) {
         const base = name.startsWith('@/') ? path.join(root, name.slice(2)) : path.resolve(path.dirname(filename), name);
         const target = [base, `${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')].find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());

@@ -14,6 +14,7 @@ import android.media.AudioManager;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.PowerManager;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.WritableMap;
@@ -84,10 +85,12 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       Context context = getReactApplicationContext();
       NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
       KeyguardManager keyguard = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+      PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
       promise.resolve(fullScreenBuildEnabled(context) && userId != null &&
           context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false) &&
           context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
-          manager != null && manager.areNotificationsEnabled() && keyguard != null && keyguard.isKeyguardLocked() &&
+          manager != null && manager.areNotificationsEnabled() &&
+          ((keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive())) &&
           (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));
     } catch (Exception ignored) { promise.resolve(false); }
   }

@@ -163,16 +163,17 @@ export const tripRequestApi = baseApi.injectEndpoints({
       ],
     }),
 
-    releaseOverdueDriver: builder.mutation<TripRequest, string>({
-      query: (id: string) => ({
-        url: `/trip-requests/${id}/release-driver`,
+    releaseOverdueDriver: builder.mutation<TripRequest, string | { id: string; searchNow: boolean }>({
+      query: (arg) => ({
+        url: `/trip-requests/${typeof arg === 'string' ? arg : arg.id}/release-driver`,
         method: 'PUT',
+        body: { searchNow: typeof arg === 'string' ? true : arg.searchNow },
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTripRequest) =>
         mapServerTripRequestToClient(response),
-      invalidatesTags: (_result, _error, id: string) => [
-        { type: 'TripRequest', id },
+      invalidatesTags: (_result, _error, arg) => [
+        { type: 'TripRequest', id: typeof arg === 'string' ? arg : arg.id },
         tripRequestListTag,
         myTripRequestsListTag,
         driverOfferListTag,

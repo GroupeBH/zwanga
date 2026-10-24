@@ -2,7 +2,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { API_BASE_URL } from '../../config/env';
 import { DEFAULT_API_TIMEOUT_MS } from '../../constants/network';
 
-export type RefreshSessionPayload = { refreshToken: string };
+export type RefreshSessionPayload = { refreshToken: string; requestId?: string };
 export type RefreshSessionResponse = { accessToken: string; refreshToken: string };
 
 /**

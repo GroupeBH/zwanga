@@ -3,8 +3,8 @@ import { AppState, Platform } from 'react-native';
 import { usePathname } from 'expo-router';
 import * as Notifications from 'expo-notifications';
 import notifee from '@notifee/react-native';
-import { parseRideAlert, isRideResponseOpen } from '@/features/notifications/rideAlert';
-import { readDriverPushData } from '@/features/notifications/driverInvitation';
+import { parseRideAlert, isRideResponseOpen, type RideAlert } from '@/features/notifications/rideAlert';
+import { parseDriverInvitation, readDriverPushData } from '@/features/notifications/driverInvitation';
 import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { clearRideAlertSession, pendingRideAlerts, rememberRideAlert, setRideAlertScreen, subscribeRideAlerts } from '@/services/rideAlertSession';
 import { startForegroundRideSound, stopForegroundRideSound } from '@/services/foregroundRideSound';
@@ -54,55 +54,75 @@ export function useRideRinging(userId: string | undefined) {
       restoring = true;
       const epoch = restoreEpoch;
       const canRestore = () => current() && AppState.currentState === 'active' && epoch === restoreEpoch;
+      const restoreDriver = async (alert: RideAlert) => {
+        if (!(Date.parse(String(alert.data.ringUntil ?? '')) > Date.now())) {
+          if (canRestore()) rememberRideAlert(alert, true);
+          return;
+        }
+        await boundedRideAudio(displayDriverInvitation(alert.data));
+        // The handoff service alone owns fresh Android audio, including when
+        // Expo and Notifee both find this card while cancellation is in flight.
+        // Only restore the silent entry candidate here once its sound is old.
+        if (canRestore() && !(Date.parse(String(alert.data.ringUntil ?? '')) > Date.now())) rememberRideAlert(alert, true);
+      };
       try {
-        const [native, remote] = await Promise.all([
-          boundedRideAudio(Promise.resolve().then(() => notifee.getDisplayedNotifications())).catch(() => { reportRideAudioFailure('RESTORE_ANDROID_READ_FAILED'); return []; }),
-          boundedRideAudio(Promise.resolve().then(() => Notifications.getPresentedNotificationsAsync())).catch(() => { reportRideAudioFailure('RESTORE_EXPO_READ_FAILED'); return []; }),
-        ]);
-        if (!canRestore()) return;
-        for (const item of native) {
-          if (!canRestore()) return;
-          try {
-            if (isSelfDriverAlert(item.notification.data, userId)) {
-              await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
-            }
-            const alert = parseRideAlert(item.notification.data);
-            if (!alert || alert.recipientId !== userId) continue;
-            silenceRestoredRideAnnouncement(alert.key);
-            if (item.id.startsWith(BACKGROUND_RIDE_RING_PREFIX)) {
-              await boundedRideAudio(notifee.cancelNotification(item.id));
+        // Process each provider as soon as it is ready. One slow native read
+        // must not consume the other provider's remaining sound window.
+        const nativeRead = Platform.OS === 'ios' ? Promise.resolve([]) :
+          boundedRideAudio(Promise.resolve().then(() => notifee.getDisplayedNotifications())).catch(() => { reportRideAudioFailure('RESTORE_ANDROID_READ_FAILED'); return []; });
+        const remoteRead = boundedRideAudio(Promise.resolve().then(() => Notifications.getPresentedNotificationsAsync()))
+          .catch(() => { reportRideAudioFailure('RESTORE_EXPO_READ_FAILED'); return []; });
+        await Promise.all([nativeRead.then(async native => {
+          for (const item of native) {
+            if (!canRestore()) return;
+            try {
+              if (isSelfDriverAlert(item.notification.data, userId)) {
+                await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
+              }
+              const alert = parseRideAlert(item.notification.data);
+              if (!alert || alert.recipientId !== userId) continue;
+              silenceRestoredRideAnnouncement(alert.key);
+              if (item.id.startsWith(BACKGROUND_RIDE_RING_PREFIX)) {
+                await boundedRideAudio(notifee.cancelNotification(item.id));
+                if (canRestore()) rememberRideAlert(alert, true);
+                continue;
+              }
+              if (isRideResponseOpen(alert, path.current)) {
+                await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
+              }
+              if (alert.kind === 'response') {
+                await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag));
+                if (canRestore()) rememberRideAlert(alert, true);
+              }
+              else if (item.notification.android?.channelId !== 'driver-bookings-active-v1') {
+                await restoreDriver(alert);
+              }
+              else rememberRideAlert(alert, true);
+            } catch { reportRideAudioFailure('RESTORE_ANDROID_ITEM_FAILED'); }
+          }
+        }), remoteRead.then(async remote => {
+          for (const item of remote) {
+            if (!canRestore()) return;
+            try {
+              if (isSelfDriverAlert(item.request.content.data, userId)) {
+                await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
+              }
+              const alert = parseRideAlert(item.request.content.data);
+              if (!alert || alert.recipientId !== userId) continue;
+              silenceRestoredRideAnnouncement(alert.key);
+              if (isRideResponseOpen(alert, path.current)) {
+                await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
+              }
+              if (Platform.OS === 'android' && (parseDriverInvitation(alert.data) || parseNearbyPhoneAlert(alert.data))) {
+                await restoreDriver(alert); continue;
+              }
+              // End the OS-owned sound before handing it to the foreground player.
+              // Driver cards stay available through the trip's inline actions.
+              if (alert.kind === 'response') await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier));
               if (canRestore()) rememberRideAlert(alert, true);
-              continue;
-            }
-            if (isRideResponseOpen(alert, path.current)) {
-              await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
-            }
-            if (alert.kind === 'response') {
-              await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag));
-              if (canRestore()) rememberRideAlert(alert, true);
-            }
-            else if (item.notification.android?.channelId !== 'driver-bookings-active-v1') await boundedRideAudio(displayDriverInvitation(alert.data));
-            else rememberRideAlert(alert, true);
-          } catch { reportRideAudioFailure('RESTORE_ANDROID_ITEM_FAILED'); }
-        }
-        for (const item of remote) {
-          if (!canRestore()) return;
-          try {
-            if (isSelfDriverAlert(item.request.content.data, userId)) {
-              await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
-            }
-            const alert = parseRideAlert(item.request.content.data);
-            if (!alert || alert.recipientId !== userId) continue;
-            silenceRestoredRideAnnouncement(alert.key);
-            if (isRideResponseOpen(alert, path.current)) {
-              await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
-            }
-            // End the OS-owned sound before handing it to the foreground player.
-            // Driver cards stay available through the trip's inline actions.
-            if (alert.kind === 'response') await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier));
-            if (canRestore()) rememberRideAlert(alert, true);
-          } catch { reportRideAudioFailure('RESTORE_EXPO_ITEM_FAILED'); }
-        }
+            } catch { reportRideAudioFailure('RESTORE_EXPO_ITEM_FAILED'); }
+          }
+        })]);
         if (canRestore()) reconcile();
       } finally {
         restoring = false;
@@ -123,7 +143,13 @@ export function useRideRinging(userId: string | undefined) {
       if (state === 'background') backgrounded = true;
       if (state !== 'active') restoreEpoch++;
       if (state === 'active' && backgrounded) { backgrounded = false; beginRideSpeechEntry(userId); }
-      if (state === 'active') { void reconcileBackgroundRideRinging(userId); void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED')); }
+      if (state === 'active') {
+        // Resume already-known alerts immediately after unlock or an iOS
+        // interruption; native notification reads must not gate the player.
+        if (Platform.OS === 'ios') reconcile();
+        void reconcileBackgroundRideRinging(userId);
+        void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED'));
+      }
       else { stopRideAnnouncement(); stopForegroundRideSound(); }
       if (state === 'background') void reconcileBackgroundRideRinging(userId);
       updateExpiry();
@@ -138,6 +164,7 @@ export function useRideRinging(userId: string | undefined) {
     const unsubscribeExpiry = subscribeRideAlerts(updateExpiry);
     const unsubscribeEntry = subscribeRideSpeechEntry(() => { reconcile(); updateExpiry(); });
     updateExpiry();
+    if (Platform.OS === 'ios') reconcile();
     void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED'));
     return () => { disposed = true; clearInterval(expiry); unsubscribeEntry(); unsubscribeExpiry(); unsubscribe(); appState.remove(); foreground.remove();
       clearRideSpeechEntry(); clearRideAnnouncementSession(); clearRideAlertSession(); stopForegroundRideSound(); void clearBackgroundRideRinging(); };

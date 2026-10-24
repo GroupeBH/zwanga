@@ -24,10 +24,9 @@ export function driverNotificationCard(kind: DriverCardKind, data: Record<string
   })}` : '';
   const legacy = label(data.invitationText, 800);
   return {
-    title: kind === 'booking' ? 'Nouvelle réservation' : 'Commande à proximité',
+    title: kind === 'booking' ? 'Zwanga · Nouvelle réservation' : 'Zwanga · Demande près de vous',
     // Older pushes may carry their fare only in the body. Keep it without guessing.
-    body: [price, route, [seats, schedule].filter(Boolean).join(' · '), !price ? legacy : ''].filter(Boolean).join('\n').slice(0, 1000)
-      || 'Une proposition vous attend. Consultez les détails.',
+    body: `${[price, route, [seats, schedule].filter(Boolean).join(' · '), !price ? legacy : ''].filter(Boolean).join('\n').slice(0, 900)}\nOuvrez Zwanga pour répondre.`.trim(),
   };
 }
 

@@ -11,12 +11,13 @@ import { driverRingDeadline } from '@/features/notifications/driverRinging';
 import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert, type NearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { getDriverAlertChannel, LEGACY_DRIVER_CHANNEL } from './driverAlertChannel';
 import { parseRideAlert } from '@/features/notifications/rideAlert';
-import { acknowledgeRideAlerts, rememberRideAlert } from './rideAlertSession';
+import { acknowledgeRideAlerts, pendingRideAlerts, rememberRideAlert } from './rideAlertSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
 import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 import { dismissDriverAlertFallback } from './driverAlertFallback';
 import { rideAlertFullScreenAction } from './rideAlertFullScreen';
+import { reconcileBackgroundRideRinging } from './backgroundRideRinging';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
 const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
@@ -59,7 +60,7 @@ export async function configureDriverNotifications() {
   ]));
   // Resolve before creating v2 so a new install does not look like a legacy install.
   const channelId = await getDriverAlertChannel();
-  if (Platform.OS === 'android') await boundedRideAudio(notifee.createChannel({ id: DRIVER_CHANNEL,
+  if (Platform.OS === 'android' && channelId === DRIVER_CHANNEL) await boundedRideAudio(notifee.createChannel({ id: DRIVER_CHANNEL,
     name: 'Réservations et commandes acceptées', importance: AndroidImportance.HIGH,
     sound: 'driver_ring', vibration: true, vibrationPattern: [400, 300, 700, 300, 700, 300],
     visibility: AndroidVisibility.PRIVATE }));
@@ -83,6 +84,12 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     // If the phone went to sleep during foreground setup, continue with the
     // same event below; do not depend on another push to show/wake its card.
     if (isAppActive()) return true;
+    // Once foreground audio owns this event, the existing handoff owns its
+    // return to sleep. Do not ring twice via two different notification IDs.
+    if (Date.parse(String(data.ringUntil ?? '')) > Date.now() &&
+        pendingRideAlerts(invitation.driverId).some(alert => alert.key === invitationNotificationId(invitation))) {
+      await reconcileBackgroundRideRinging(invitation.driverId); return true;
+    }
   }
   if (invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) return true;
   if (Platform.OS !== 'android') return true; // iOS remote alert/category is already displayed by APNs.
@@ -103,8 +110,9 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   try {
     let fresh = deadline > Date.now();
     let channelId = fresh ? await configureDriverNotifications() : await quietChannel();
-    const lightUpScreen = fresh && await shouldLightUpRideAlertScreen(channelId);
-    const fullScreenAction = lightUpScreen ? await rideAlertFullScreenAction(invitation.driverId) : undefined;
+    const [lightUpScreen, fullScreenAction] = fresh ? await Promise.all([
+      shouldLightUpRideAlertScreen(channelId), rideAlertFullScreenAction(invitation.driverId),
+    ]) : [false, undefined];
     if (!current()) return true;
     if (deadline <= Date.now()) {
       if (invitation.kind === 'dispatch') return true;
@@ -123,7 +131,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
         // A single bundled 29s clip ends without removing a pending booking.
         // Only exclusive offers have a short business expiry.
         loopSound: false, lightUpScreen: fresh && lightUpScreen,
-        ...(fresh && fullScreenAction ? { fullScreenAction } : {}),
+        ...(fresh && lightUpScreen && fullScreenAction ? { fullScreenAction } : {}),
         ...(fresh ? { sound: 'driver_ring' } : {}),
         style: { type: AndroidStyle.BIGTEXT, text: body },
         ...(invitation.kind === 'dispatch' ? { timeoutAfter: Math.max(1, deadline - Date.now()) } : {}),
@@ -163,13 +171,23 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
   delivery.attempt = attempt;
   delivery.foreground = true;
   let published = false;
+  let registered = false;
   const current = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
     !delivery.cancelled && version === getTokenSessionVersion() && isAppActive();
   try {
-    await quietChannel();
-    if (!current()) { delivery.foreground = false; return; }
+    // Card preparation is independent of the sound transfer. Always wait for
+    // OS cancellation before starting app audio, never for a slow replacement UI.
+    const channelReady = quietChannel();
+    void channelReady.catch(() => undefined);
     await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
     if (!current()) { delivery.foreground = false; return; }
+    const alert = parseRideAlert(data);
+    if (alert) {
+      rememberRideAlert(alert);
+      registered = pendingRideAlerts(invitation.driverId).some(item => item.key === alert.key);
+    }
+    await channelReady;
+    if (!current()) return;
     const { title, body } = driverNotificationCard(invitation.kind, data);
     const display = notifee.displayNotification({ id: invitationNotificationId(invitation), title, body,
       data: Object.fromEntries(Object.entries(data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
@@ -189,15 +207,19 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
     await boundedRideAudio(display);
     if (current()) {
       published = true;
-      const alert = parseRideAlert(data);
-      if (alert) rememberRideAlert(alert);
       await dismissDriverAlertFallback(data);
     }
   } catch (error) {
     if (!delivery.cancelled && deliveries.get(key) === delivery) deliveries.delete(key);
     throw error;
   } finally {
-    if (!published && !delivery.cancelled && deliveries.get(key) === delivery && delivery.attempt === attempt) deliveries.delete(key);
+    // Legacy payloads without a sound deadline cannot use the background
+    // handoff. Release their in-flight delivery so the original push can finish.
+    const handoffReady = registered && Date.parse(String(data.ringUntil ?? '')) > Date.now();
+    if (!published && deliveries.get(key) === delivery && delivery.attempt === attempt) {
+      delivery.foreground = false;
+      if (!handoffReady && !delivery.cancelled) deliveries.delete(key);
+    }
   }
 }
 

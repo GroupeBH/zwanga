@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
+import * as Crypto from 'expo-crypto';
 import { enqueueTokenWrite, getTokenSessionVersion, invalidateTokenSession } from './tokenSession';
 import { clearLogoutIntent, hasLogoutIntent, markLogoutIntent } from './logoutIntent';
 
@@ -32,6 +33,24 @@ const sanitizeKey = (raw: string | undefined, fallback: string) => {
 const ACCESS_TOKEN_KEY = sanitizeKey(secureStoreKeys.access, 'zwanga_accessToken');
 const REFRESH_TOKEN_KEY = sanitizeKey(secureStoreKeys.refresh, 'zwanga_refreshToken');
 const FCM_TOKEN_KEY = sanitizeKey(secureStoreKeys.fcm, 'zwanga_fcmToken');
+const REFRESH_ATTEMPT_KEY = 'zwanga_refreshAttempt';
+
+/** Persist before the request so process death/network loss reuses the same proof. */
+export async function getRefreshAttemptId(refreshToken: string, version: number): Promise<string | null> {
+  return enqueueTokenWrite(async () => {
+    if (version !== getTokenSessionVersion() || await hasLogoutIntent()) return null;
+    const stored = await SecureStore.getItemAsync(REFRESH_ATTEMPT_KEY);
+    if (stored) {
+      let attempt: { refreshToken?: string; requestId?: string } | null = null;
+      try { attempt = JSON.parse(stored); } catch { /* Invalid metadata is not a reusable proof. */ }
+      if (attempt?.refreshToken === refreshToken && typeof attempt.requestId === 'string' &&
+          /^[0-9a-f-]{36}$/i.test(attempt.requestId)) return attempt.requestId;
+    }
+    const requestId = Crypto.randomUUID();
+    await SecureStore.setItemAsync(REFRESH_ATTEMPT_KEY, JSON.stringify({ refreshToken, requestId }));
+    return version === getTokenSessionVersion() ? requestId : null;
+  });
+}
 
 // In-memory cache to avoid repeated SecureStore decryptions.
 let tokenCache: TokenPair = { accessToken: null, refreshToken: null };
@@ -259,7 +278,7 @@ export async function clearTokens(expectedVersion?: number): Promise<boolean> {
 }
 
 async function deleteStoredTokens(): Promise<boolean> {
-  const results = await Promise.allSettled([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY]
+  const results = await Promise.allSettled([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY, REFRESH_ATTEMPT_KEY]
     .map(key => SecureStore.deleteItemAsync(key)));
   return results.every(result => result.status === 'fulfilled');
 }

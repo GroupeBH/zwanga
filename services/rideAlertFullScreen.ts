@@ -8,6 +8,9 @@ export async function rideAlertFullScreenAction(driverId: string) {
     const bridge = NativeModules?.ZwangaDriverAlerts;
     if (typeof bridge?.canPresentFullScreen !== 'function' ||
         !await boundedRideAudio(bridge.canPresentFullScreen(driverId), 1500)) return undefined;
-    return { id: 'ride-full-screen', launchActivity: 'com.zwanga.notifications.IncomingRideActivity' };
+    // Notifee 9.1.8 only attaches the notification Bundle to this intent
+    // when mainComponent is set. Use Expo's existing root (MainActivity),
+    // not a new/fictitious React component. The target remains native.
+    return { id: 'ride-full-screen', launchActivity: 'com.zwanga.notifications.IncomingRideActivity', mainComponent: 'main' };
   } catch { return undefined; }
 }

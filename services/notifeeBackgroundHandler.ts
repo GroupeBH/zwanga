@@ -74,6 +74,10 @@ if (notifee && EventTypeEnum) {
       // Gérer les pressions sur les notifications
       if (type === EventTypeEnum!.PRESS || type === EventTypeEnum!.ACTION_PRESS) {
         const data = notification?.data || {};
+        // A lock-screen tap may remove the iOS card before the mounted hooks
+        // can restore it. Keep the payload, not just a route, through unlock.
+        // Native decision buttons still belong exclusively to their handler.
+        if (type === EventTypeEnum!.PRESS) rememberPendingDriverOpen(data);
         const nearby = parseNearbyPhoneAlert(data);
         if (nearby) {
           if (isNearbyNotificationAction(pressAction?.id)) {

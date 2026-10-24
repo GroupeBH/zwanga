@@ -101,7 +101,12 @@ export async function startForegroundRideSound(episodeKey?: string) {
       await boundedRideAudio(audio.setAudioModeAsync({ playsInSilentMode: false, shouldPlayInBackground: false, interruptionMode: 'duckOthers' }));
       if (attempt !== generation || !isAppActive()) return;
       const next = audio.createAudioPlayer(require('../assets/sounds/driver_ring.wav'));
-      player = next; next.loop = true; next.volume = 1;
+      // Expo playback can stop asynchronously (interruption/media reset).
+      // Keep a health probe just like the Android bridge, not a stale handle
+      // that makes every later start look successful while nothing plays.
+      player = { play: () => next.play(), pause: () => next.pause(), remove: () => next.remove(),
+        state: async () => next.isLoaded === false ? 'stopped' : next.playing ? 'playing' : 'paused' };
+      next.loop = true; next.volume = 1;
       if (!isRideAudioHeld()) next.play();
       vibratesInJS = true; Vibration.vibrate([0, 500, 300, 500, 1200], true);
     }
