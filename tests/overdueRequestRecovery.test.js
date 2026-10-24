@@ -3,6 +3,26 @@ const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
+test('release-driver API preserves schedule-only intent and supports legacy immediate searches', () => {
+  const builder = { query: value => value, mutation: value => value };
+  const { tripRequestApi } = loader({
+    './baseApi': { baseApi: { injectEndpoints: config => ({ endpoints: config.endpoints(builder) }) } },
+    './tripApi': {},
+  })('store/api/tripRequestApi.ts');
+  const endpoint = tripRequestApi.endpoints.releaseOverdueDriver;
+  for (const [arg, searchNow] of [
+    ['request', true],
+    [{ id: 'request', searchNow: true }, true],
+    [{ id: 'request', searchNow: false }, false],
+  ]) {
+    const request = endpoint.query(arg);
+    assert.equal(request.url, '/trip-requests/request/release-driver');
+    assert.equal(request.method, 'PUT');
+    assert.deepEqual(request.body, { searchNow });
+    assert.deepEqual(endpoint.invalidatesTags(undefined, undefined, arg)[0], { type: 'TripRequest', id: 'request' });
+  }
+});
+
 test('overdue actions distinguish a thirty-minute search from schedule editing', async () => {
   const hooks = hookHarness(), dialogs = [], requests = [], routes = [];
   const load = loader({ react: hooks.react, '@/store/api/tripRequestApi': {},

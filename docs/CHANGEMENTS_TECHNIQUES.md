@@ -1,5 +1,51 @@
 # Journal des changements techniques
 
+## 2026-10-24 — Barre de recherche du conducteur en contour vert
+
+- **Demande :** le fond vert plein de « Chercher un trajet » donnait l'apparence
+  d'un bouton d'action, au lieu d'une barre de recherche.
+- **Appliqué :** fond blanc, bordure verte, texte sombre, loupe et chevron verts
+  dans `features/home/HomeTripsSheet.styles.ts` et `components/home/HomeTripsSheet.tsx`.
+  Dimensions, position, zone tactile, libellé accessible et ouverture de `/search`
+  conservés ; boutons de publication et de commande inchangés.
+- **Vérifications :** contrôle existant adapté dans `tests/releaseAuditFixes.test.js`
+  pour le contour vert et le contraste du texte. Les 36 tests JavaScript ciblés
+  passent, dont les contrôles de navigation et de taille tactile ; ESLint ciblé
+  et `git diff --check` réussis. Validation native visuelle non réalisée.
+
+## 2026-10-24 — Déblocage du contrôle EAS de taille du parcours Didit
+
+- **Problème :** le post-install EAS échouait au contrôle de taille :
+  `hooks/useDiditKycFlow.ts` comptait 440 lignes pour une limite de 400.
+- **Solution appliquée :** extraction de la confirmation des noms légaux dans
+  `hooks/identity/useKycLegalIdentityConfirmation.ts` (74 lignes). Le hook
+  `hooks/useDiditKycFlow.ts` conserve l'orchestration KYC en 377 lignes ; aucune
+  exclusion ni augmentation de la limite du contrôle.
+- **Comportements conservés :** confirmation obligatoire des noms, accès à la
+  modification du profil, verrou contre les doubles lancements, annulation de
+  l'attente à la sortie de l'écran et protections contre les callbacks tardifs.
+  La reprise de session Didit, le choix SDK/navigateur et la décision KYC
+  faisant autorité côté serveur restent inchangés. Aucun fichier natif,
+  paramètre de plein écran, version de SDK ou fichier d'environnement modifié.
+- **Vérifications :** 51 tests JavaScript ciblés réussis, dont sept nouveaux cas
+  dans `tests/diditNativeFlow.test.js` couvrant confirmation, modification du
+  profil, double clic, démontage, perte de focus, changement de compte et arrière-plan.
+  Le contrôle de taille passe sur 1 192 sources, sans dépassement.
+- **Second blocage détecté :** le premier contrôle global a ensuite signalé une
+  référence de test périmée pour `releaseOverdueDriver`. Le changement `searchNow`
+  était déjà présent dans le code, mais pas dans `tests/fixtures/sourceExtractions.json`.
+  Seule cette référence est actualisée après revue du changement existant ; un
+  test dans `tests/overdueRequestRecovery.test.js` vérifie les requêtes avec
+  `searchNow: false`, `true` et l'ancien argument chaîne, ainsi que l'invalidation
+  de la bonne demande. Les neuf tests concernés passent ; aucun endpoint modifié.
+- **Contrôle global final :** `node scripts/check-release.cjs` termine avec le
+  code 0 : parité des sources natives, TypeScript, ESLint, frontières réseau et
+  taille des sources valides ; 2 676 tests réussis, zéro échec et un test Ruby
+  ignoré faute de Ruby installé sur cette machine Windows. Le style de recherche
+  demandé pendant cette exécution a aussi été revérifié séparément (entrée ci-dessus).
+- **Limites :** SDK, navigation et cycle de vie simulés dans les tests JavaScript ;
+  aucune session Didit réelle, compilation native ou exécution EAS distante.
+
 ## 2026-10-24 — Reprises de session/KYC et changement de conducteur
 
 - **Session après réponse perdue :** `services/tokenStorage.ts` conserve dans

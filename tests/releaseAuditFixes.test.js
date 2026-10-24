@@ -9,15 +9,18 @@ const luminance = color => color.slice(1).match(/../g).map(x => parseInt(x, 16) 
   .map(x => x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)
   .reduce((total, value, i) => total + value * [0.2126, 0.7152, 0.0722][i], 0);
 
-test('driver actions are blue/green/orange and shared filled actions have readable white labels', () => {
+test('driver search uses a green outline and all action labels remain readable', () => {
   const load = loader({ 'react-native': { StyleSheet: { create: x => x } } });
   const { ACTION_COLORS: colors } = load('constants/actionColors.ts');
   const { styles } = load('features/home/HomeTripsSheet.styles.ts');
   assert.equal(styles.publishButton.backgroundColor, colors.blue);
-  assert.equal(styles.driverSearchButton.backgroundColor, colors.green);
+  assert.equal(styles.driverSearchButton.backgroundColor, '#FFFFFF');
+  assert.equal(styles.driverSearchButton.borderColor, colors.green);
+  assert.ok(styles.driverSearchButton.borderWidth > 0);
+  assert.ok(1.05 / (luminance(styles.driverSearchText.color) + 0.05) >= 4.5);
   assert.equal(styles.driverOrderButton.backgroundColor, colors.orange);
   for (const color of Object.values(colors)) assert.ok(1.05 / (luminance(color) + 0.05) >= 4.5);
-  for (const label of ['publishButtonText', 'driverSearchText', 'driverOrderText']) assert.equal(styles[label].color, '#FFFFFF');
+  for (const label of ['publishButtonText', 'driverOrderText']) assert.equal(styles[label].color, '#FFFFFF');
   const summary = load('features/request-detail/requestSummaryStyles.ts').requestSummaryStyles;
   assert.equal(summary.primary.backgroundColor, colors.orange);
   assert.equal(load('constants/styles.ts').CommonStyles.buttonPrimary.backgroundColor, colors.orange);

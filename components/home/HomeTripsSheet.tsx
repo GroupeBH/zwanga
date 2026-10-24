@@ -87,9 +87,9 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
                 accessibilityHint="Trouver un trajet publié pour voyager comme passager."
                 style={styles.driverSearchButton}
                 onPress={() => router.push('/search')}>
-                <Ionicons name="search-outline" size={20} color="#FFFFFF" accessible={false} />
+                <Ionicons name="search-outline" size={20} color={HOME_DASHBOARD_COLORS.green} accessible={false} />
                 <Text style={styles.driverSearchText}>Chercher un trajet</Text>
-                <Ionicons name="chevron-forward" size={16} color="#FFFFFF" accessible={false} />
+                <Ionicons name="chevron-forward" size={16} color={HOME_DASHBOARD_COLORS.green} accessible={false} />
               </TouchableOpacity>
               <View style={styles.metricsRow}>
                 <TouchableOpacity activeOpacity={0.8} style={styles.metricCard} accessibilityRole="button"
