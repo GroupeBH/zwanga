@@ -14,6 +14,7 @@ export interface DiditKycSession {
   status?: string | null;
   vendorData?: string | null;
   workflowId?: string | null;
+  expiresAt?: string | null;
 }
 
 export type RawDiditKycSession = DiditKycSession & {
@@ -24,6 +25,7 @@ export type RawDiditKycSession = DiditKycSession & {
   verification_url?: string;
   vendor_data?: string | null;
   workflow_id?: string | null;
+  expires_at?: string | null;
 };
 
 export type DiditKycSyncPayload = {
@@ -50,6 +52,7 @@ export const mapDiditKycSession = (session: RawDiditKycSession): DiditKycSession
   status: session.status ?? null,
   vendorData: session.vendorData ?? session.vendor_data ?? null,
   workflowId: session.workflowId ?? session.workflow_id ?? null,
+  expiresAt: session.expiresAt ?? session.expires_at ?? null,
 });
 
 export const mapDiditKycSyncResponse = (response: RawDiditKycSyncResponse): KycDocument | null => {

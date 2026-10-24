@@ -6,9 +6,12 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 function fixture(options = {}) {
   const calls = [], dialogs = [];
   const hooks = hookHarness();
+  const disk = options.disk ?? new Map();
   const state = { focused: true, app: 'active', version: 0 };
   const load = loader({
     react: hooks.react,
+    'expo-secure-store': { getItemAsync: async key => disk.get(key) ?? null,
+      setItemAsync: async (key, value) => { disk.set(key, value); }, deleteItemAsync: async key => { disk.delete(key); } },
     '@react-navigation/native': { useIsFocused: () => state.focused },
     '@/services/tokenSession': { getTokenSessionVersion: () => state.version },
     'react-native': { Platform: { OS: options.platform ?? 'android' }, AppState: { get currentState() { return state.app; } } },
@@ -29,7 +32,7 @@ function fixture(options = {}) {
       },
     },
     '@/store/api/userApi': {
-      useLazyGetCurrentUserQuery: () => [() => ({ unwrap: async () => ({}) })],
+      useLazyGetCurrentUserQuery: () => [() => ({ unwrap: async () => ({ id: 'synthetic-user' }) })],
       useCreateDiditKycSessionMutation: () => [() => ({ unwrap: async () => {
         calls.push('create');
         if (options.sessionBlock) await options.sessionBlock;
@@ -37,7 +40,10 @@ function fixture(options = {}) {
           url: 'https://verify.didit.me/session/synthetic-token', ...options.session };
       } }), { isLoading: false }],
       useSyncDiditKycSessionMutation: () => [args => ({ unwrap: async () => {
-        calls.push(['sync', args.sessionId]); return { status: 'pending' };
+        if (!args.sessionId) return options.preflight ? await options.preflight() : null;
+        calls.push(['sync', args.sessionId]);
+        if (options.syncError) throw options.syncError;
+        return Object.hasOwn(options, 'syncResult') ? options.syncResult : { status: 'pending' };
       } }), { isLoading: false }],
     },
   });
@@ -50,12 +56,61 @@ function fixture(options = {}) {
 for (const exit of ['unmount', 'blur', 'account', 'background']) test(`late KYC session never opens SDK after ${exit}`, async () => {
   let release; const sessionBlock = new Promise(resolve => { release = resolve; });
   const f = fixture({ sessionBlock }); const task = f.start();
+  await new Promise(resolve => setImmediate(resolve));
   if (exit === 'unmount') f.hooks.unmount();
   if (exit === 'blur') { f.state.focused = false; f.render(); }
   if (exit === 'account') f.state.version++;
   if (exit === 'background') f.state.app = 'background';
   release(); assert.equal(await task, null);
   assert.deepEqual(f.calls, ['create']); assert.deepEqual(f.dialogs, []);
+  f.hooks.unmount();
+});
+
+test('retry after failed sync resumes server state instead of creating a second session', async () => {
+  let checks = 0;
+  const f = fixture({ syncError: { status: 503 },
+    preflight: () => ++checks === 1 ? null : { status: 'pending', diditSessionId: 'owned-session' } });
+  assert.equal(await f.start(), null);
+  assert.equal((await f.start()).status, 'pending');
+  assert.equal(f.calls.filter(call => call === 'create').length, 1);
+  f.hooks.unmount();
+});
+
+test('preflight outage never creates a session', async () => {
+  const f = fixture({ preflight: () => { throw { status: 503 }; } });
+  assert.equal(await f.start(), null); assert.deepEqual(f.calls, []);
+  f.hooks.unmount();
+});
+
+test('unfinished SDK session resumes after remount without creating another session', async () => {
+  const disk = new Map();
+  const first = fixture({ disk, result: { type: 'cancelled' } });
+  await first.start(); first.hooks.unmount();
+  const next = fixture({ disk, preflight: () => ({ status: 'pending', provider: 'didit',
+    diditSessionStatus: 'In Progress', diditSessionId: 'owned-session' }) });
+  await next.start();
+  assert(!next.calls.includes('create'));
+  assert(next.calls.some(call => Array.isArray(call) && call[0] === 'sdk'));
+  next.hooks.unmount();
+});
+
+for (const providerStatus of ['In Progress', 'Not Started']) test(`submitted SDK session resumes after restart with delayed ${providerStatus} decision`, async () => {
+  const disk = new Map();
+  const first = fixture({ disk, syncError: { status: 503 } });
+  await first.start(); first.hooks.unmount();
+  assert(!JSON.stringify([...disk.values()]).includes('synthetic-token'));
+  const next = fixture({ disk, preflight: () => ({ status: 'pending', provider: 'didit',
+    diditSessionStatus: providerStatus, diditSessionId: 'owned-session' }) });
+  assert.equal((await next.start()).status, 'pending');
+  assert.deepEqual(next.calls, []);
+  next.hooks.unmount();
+});
+
+test('SDK approval with a null server decision never displays approval', async () => {
+  const f = fixture({ syncResult: null, result: { type: 'completed',
+    session: { sessionId: 'owned-session', status: 'Approved' } } });
+  assert.equal((await f.start()).status, 'pending');
+  assert(!f.dialogs.some(dialog => dialog.title === 'Identité vérifiée !'));
   f.hooks.unmount();
 });
 test('a native SDK camera background transition does not discard a valid result', async () => {

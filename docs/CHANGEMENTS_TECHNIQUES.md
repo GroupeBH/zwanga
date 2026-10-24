@@ -1,5 +1,38 @@
 # Journal des changements techniques
 
+## 2026-10-24 — Reprises de session/KYC et changement de conducteur
+
+- **Session après réponse perdue :** `services/tokenStorage.ts` conserve dans
+  SecureStore un identifiant UUID de tentative, repris par `tokenRefresh.ts`
+  après coupure ou redémarrage et supprimé à la déconnexion. Le backend vérifie
+  un reçu chiffré limité à deux minutes et l'état courant du compte. Les erreurs
+  réseau ne sont toujours pas assimilées à une révocation. Aucun contournement
+  d'un changement de PIN, d'une suspension ou d'une déconnexion.
+- **Didit :** `hooks/useDiditKycFlow.ts` synchronise le dossier serveur avant de
+  créer une session. Les parcours interrompus peuvent reprendre la session SDK
+  correspondante conservée dans SecureStore par `services/diditSessionRecovery.ts`
+  (fenêtre locale de lancement limitée à dix minutes et à l'expiration fournisseur).
+  Après soumission SDK, seul le contexte de reprise est conservé, sans token ni
+  URL. Une reprise après échec de synchronisation attend la décision existante au
+  lieu de recréer une session. Une réponse serveur nulle ne devient jamais une
+  approbation à partir du statut SDK. Le rafraîchissement secondaire de l'écran
+  ne transforme plus une décision confirmée en échec KYC. Pas de bascule web
+  automatique ni de modification de fournisseur.
+- **Conducteur en retard :** `useOverdueRequestNotification.ts` propose
+  « Relancer pour 30 min » (`searchNow: true`). « Modifier date/heure » envoie
+  `searchNow: false` : le conducteur est libéré, sans recherche avant la validation
+  des nouveaux horaires. Navigation et style existants conservés.
+- **Vérifications :** 441 tests JavaScript ciblés/44 fichiers et TypeScript sans
+  émission. Tests ajoutés pour changement d'horaires, réponse perdue, persistance
+  après rechargement, session SDK interrompue et dossier soumis avec synchronisation
+  indisponible. Simulation couplée aux vrais services backend réussie : deux
+  requêtes, une rotation, aucune déconnexion. Stockage et SDK simulés ; aucun test
+  natif, prestataire payant ni mesure de chauffe/fluidité sur téléphone.
+- **Ordre requis :** déployer d'abord le backend acceptant `requestId` et `searchNow`,
+  puis cette version mobile. Les anciens clients restent acceptés par le nouveau
+  backend, mais ne bénéficient pas de la reprise de renouvellement. Aucun `.env`,
+  dépendance, profil EAS, manifeste, CI/CD, infrastructure ou publication modifié.
+
 ## 2026-10-24 — Correction du plein écran et tests du backend local
 
 - **Problème :** l'activité plein écran s'ouvrait sans le Bundle Notifee attendu

@@ -94,6 +94,31 @@ test('parallel refresh calls share one RTK mutation', async () => {
   assert.equal(e.actions.filter(a=>a.type==='auth/setTokens').length,1);
 });
 
+test('lost response and reconnect reuse the persisted attempt ID', async () => {
+  const e = environment(), network = e.load('services/networkRecovery.ts');
+  const token = jwt('a'); await e.storage.storeTokens(jwt('a', true), token);
+  network.observeNetworkConnection(false);
+  const first = e.api.refreshAccessToken(token); await flush();
+  e.requests[0].reject({ status: 'TIMEOUT_ERROR' }); await first;
+  const attempt = e.actions.find(a => a.type === 'refresh').body.requestId;
+  assert.match(attempt, /^[0-9a-f-]{36}$/i);
+  network.observeNetworkConnection(true);
+  const retry = e.api.refreshAccessToken(token); await flush();
+  assert.equal(e.actions.filter(a => a.type === 'refresh')[1].body.requestId, attempt);
+  e.requests[1].resolve({ accessToken: jwt('a'), refreshToken: jwt('a') }); await retry;
+  assert(!e.actions.some(a => a.type === 'auth/logout'));
+});
+
+test('attempt ID survives module reload and disappears at logout', async () => {
+  const e = environment(); const token = jwt('a'); await e.storage.storeTokens(jwt('a'), token);
+  const first = await e.storage.getRefreshAttemptId(token, e.session.getTokenSessionVersion());
+  const reloaded = environment();
+  for (const [key, value] of e.disk) reloaded.disk.set(key, value);
+  assert.equal(await reloaded.storage.getRefreshAttemptId(token, reloaded.session.getTokenSessionVersion()), first);
+  await reloaded.storage.clearTokens();
+  assert.equal(reloaded.disk.has('zwanga_refreshAttempt'), false);
+});
+
 test('a genuine reconnect releases transient cooldown, shares concurrent retries and limits flapping', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
   const e = environment(), network = e.load('services/networkRecovery.ts');
