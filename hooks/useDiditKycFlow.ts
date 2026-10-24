@@ -1,5 +1,5 @@
 import { runDiditNativeVerification, getDiditSdkFailureError } from '../features/identity/diditSdk';
-import { useKycFlowScope } from './identity/useKycFlowScope';
+import { useKycLegalIdentityConfirmation } from './identity/useKycLegalIdentityConfirmation';
 import { clearDiditRecovery, readDiditRecovery, saveDiditRecovery } from '@/services/diditSessionRecovery';
 import { isSafeDiditHostedUrl } from '@/features/identity/diditLaunchPolicy';
 
@@ -10,11 +10,9 @@ import { trackEvent } from '@/services/analytics';
 import { useCreateDiditKycSessionMutation, useLazyGetCurrentUserQuery, useSyncDiditKycSessionMutation } from '@/store/api/userApi';
 
 import { getEffectiveKycStatus } from '@/utils/kycStatus';
-import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import type { VerificationResult } from '@didit-protocol/sdk-react-native';
 import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import { useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
@@ -32,7 +30,6 @@ export function useDiditKycFlow({
   pendingMessage = 'Votre vérification Didit est en cours. Nous mettrons votre statut à jour dès que Didit confirme la décision.',
 }: UseDiditKycFlowOptions) {
   const { showDialog } = useDialog();
-  const router = useRouter();
   const [getCurrentUser] = useLazyGetCurrentUserQuery();
   const [createDiditKycSession, { isLoading: isCreatingDiditKycSession }] =
     useCreateDiditKycSessionMutation();
@@ -40,67 +37,7 @@ export function useDiditKycFlow({
     useSyncDiditKycSessionMutation();
   const [isBrowserOpen, setIsBrowserOpen] = useState(false);
   const flowInProgress = useRef(false);
-  const confirmation = useRef<((confirmed: boolean) => void) | null>(null);
-  const cancelConfirmation = useCallback(() => { confirmation.current?.(false); confirmation.current = null; }, []);
-  const captureScope = useKycFlowScope(cancelConfirmation);
-
-  const confirmLegalIdentity = useCallback(
-    (firstNameValue?: string | null, lastNameValue?: string | null) => {
-      const firstName = normalizeLegalName(firstNameValue);
-      const lastName = normalizeLegalName(lastNameValue);
-
-      return new Promise<boolean>((resolve) => {
-        const scope = captureScope();
-        const finish = (confirmed: boolean) => { confirmation.current = null; resolve(confirmed); };
-        confirmation.current = finish;
-        const editIdentity = () => {
-          finish(false);
-          if (scope.canLaunch()) router.push('/edit-profile');
-        };
-
-        if (!hasCompleteLegalIdentity(firstName, lastName)) {
-          showDialog({
-            variant: 'warning',
-            title: 'Noms légaux requis',
-            message:
-              'Renseignez vos prénom(s) et votre nom exactement comme sur votre pièce d’identité avant de lancer Didit. Le post-nom est facultatif.',
-            dismissible: false,
-            actions: [
-              {
-                label: 'Compléter mon profil',
-                variant: 'primary',
-                onPress: editIdentity,
-              },
-            ],
-          });
-          return;
-        }
-
-        showDialog({
-          variant: 'info',
-          icon: 'id-card-outline',
-          title: 'Confirmez vos noms légaux',
-          message:
-            `Prénom(s) : ${firstName}\nNom : ${lastName}\n\n` +
-            'Didit comparera ces informations à votre pièce d’identité. Corrigez-les avant de continuer si elles ne sont pas identiques.',
-          dismissible: false,
-          actions: [
-            {
-              label: 'Modifier mes noms',
-              variant: 'secondary',
-              onPress: editIdentity,
-            },
-            {
-              label: 'Confirmer et continuer',
-              variant: 'primary',
-              onPress: () => finish(scope.canLaunch()),
-            },
-          ],
-        });
-      });
-    },
-    [captureScope, router, showDialog],
-  );
+  const { captureScope, confirmLegalIdentity } = useKycLegalIdentityConfirmation();
 
   const startDiditKyc = useCallback(
     async ({

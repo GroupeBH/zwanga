@@ -63,9 +63,9 @@ export const styles = StyleSheet.create({
   driverSearchButton: {
     minHeight: 44, paddingHorizontal: 12, paddingVertical: 10,
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    borderRadius: 14, borderWidth: 1, borderColor: c.green, backgroundColor: c.green,
+    borderRadius: 14, borderWidth: 1, borderColor: c.green, backgroundColor: '#FFFFFF',
   },
-  driverSearchText: { flex: 1, color: '#FFFFFF', fontSize: 15, lineHeight: 20, fontWeight: '600' },
+  driverSearchText: { flex: 1, color: c.ink, fontSize: 15, lineHeight: 20, fontWeight: '600' },
   metricsRow: { flexDirection: 'row', gap: 10 },
   metricCard: {
     flex: 1, minHeight: 88, paddingHorizontal: 12, paddingVertical: 12,

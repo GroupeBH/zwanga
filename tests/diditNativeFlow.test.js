@@ -15,7 +15,7 @@ function fixture(options = {}) {
     '@react-navigation/native': { useIsFocused: () => state.focused },
     '@/services/tokenSession': { getTokenSessionVersion: () => state.version },
     'react-native': { Platform: { OS: options.platform ?? 'android' }, AppState: { get currentState() { return state.app; } } },
-    'expo-router': { useRouter: () => ({ push() {} }) },
+    'expo-router': { useRouter: () => ({ push: route => calls.push(['route', route]) }) },
     'expo-linking': { createURL: () => 'zwanga://kyc/didit-return', parse: () => ({ queryParams: {} }) },
     'expo-web-browser': { maybeCompleteAuthSession() {}, openAuthSessionAsync: async () => {
       calls.push('browser'); return { type: 'success', url: 'zwanga://kyc/didit-return' };
@@ -32,7 +32,7 @@ function fixture(options = {}) {
       },
     },
     '@/store/api/userApi': {
-      useLazyGetCurrentUserQuery: () => [() => ({ unwrap: async () => ({ id: 'synthetic-user' }) })],
+      useLazyGetCurrentUserQuery: () => [() => ({ unwrap: async () => ({ id: 'synthetic-user', ...options.identity }) })],
       useCreateDiditKycSessionMutation: () => [() => ({ unwrap: async () => {
         calls.push('create');
         if (options.sessionBlock) await options.sessionBlock;
@@ -50,8 +50,53 @@ function fixture(options = {}) {
   const useFlow = load('hooks/useDiditKycFlow.ts').useDiditKycFlow;
   const render = () => hooks.render(() => useFlow({ sourceScreen: 'profile' }));
   render();
-  return { calls, dialogs, hooks, state, render, start: () => render().startDiditKyc({ skipLegalIdentityConfirmation: true }) };
+  return { calls, dialogs, hooks, state, render, start: (startOptions = {}) => render().startDiditKyc({ skipLegalIdentityConfirmation: true, ...startOptions }) };
 }
+
+test('identity confirmation preserves names and blocks duplicate starts until the explicit answer', async () => {
+  const f = fixture({ identity: { firstName: ' Prénom Test ', lastName: ' Nom Test ' } });
+  const task = f.start({ skipLegalIdentityConfirmation: false });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(f.calls, []);
+  assert.equal(f.dialogs[0].title, 'Confirmez vos noms légaux');
+  assert.equal(f.dialogs[0].dismissible, false);
+  assert.match(f.dialogs[0].message, /Prénom\(s\) : Prénom Test\nNom : Nom Test/);
+  assert.equal(await f.start({ skipLegalIdentityConfirmation: false }), null);
+  assert.equal(f.dialogs.length, 1);
+  f.dialogs[0].actions[1].onPress();
+  assert.equal((await task).status, 'pending');
+  assert.deepEqual(f.calls, ['create', ['sdk', 'synthetic-token', 'fr'], ['sync', 'owned-session']]);
+  assert.equal(f.render().isStartingDiditKyc, false);
+  f.hooks.unmount();
+});
+
+for (const complete of [false, true]) test(`editing legal identity exits without creating a session (complete=${complete})`, async () => {
+  const f = fixture({ identity: complete ? { firstName: 'Prénom Test', lastName: 'Nom Test' } : {} });
+  const task = f.start({ skipLegalIdentityConfirmation: false });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.dialogs[0].title, complete ? 'Confirmez vos noms légaux' : 'Noms légaux requis');
+  f.dialogs[0].actions[0].onPress();
+  assert.equal(await task, null);
+  assert.deepEqual(f.calls, [['route', '/edit-profile']]);
+  assert.equal(f.render().isStartingDiditKyc, false);
+  f.hooks.unmount();
+});
+
+for (const exit of ['unmount', 'blur', 'account', 'background']) test(`pending identity confirmation cannot launch or navigate after ${exit}`, async () => {
+  const f = fixture({ identity: { firstName: 'Prénom Test', lastName: 'Nom Test' } });
+  const task = f.start({ skipLegalIdentityConfirmation: false });
+  await new Promise(resolve => setImmediate(resolve));
+  const dialog = f.dialogs[0];
+  if (exit === 'unmount') f.hooks.unmount();
+  if (exit === 'blur') { f.state.focused = false; f.render(); }
+  if (exit === 'account') f.state.version++;
+  if (exit === 'background') f.state.app = 'background';
+  dialog.actions[1].onPress();
+  assert.equal(await task, null);
+  dialog.actions[0].onPress();
+  assert.deepEqual(f.calls, []);
+  f.hooks.unmount();
+});
 
 for (const exit of ['unmount', 'blur', 'account', 'background']) test(`late KYC session never opens SDK after ${exit}`, async () => {
   let release; const sessionBlock = new Promise(resolve => { release = resolve; });
