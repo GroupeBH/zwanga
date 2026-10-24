@@ -418,7 +418,7 @@ test('nearby Android foreground delivery remains visible, silent and deduplicate
   const nativePayload = policy.readDriverPushData({ data: { ...payload, dataString: 'Un client près de vous' } });
   await Promise.all([f.loaded.displayDriverInvitation(nativePayload), f.loaded.displayDriverInvitation(nativePayload)]);
   assert.equal(f.displays.length, 1);
-  assert.equal(f.displays[0].title, 'Commande à proximité');
+  assert.equal(f.displays[0].title, 'Zwanga · Demande près de vous');
   assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
   assert.equal(f.displays[0].android.loopSound, undefined);
   assert.equal(f.displays[0].android.sound, undefined);

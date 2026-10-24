@@ -78,6 +78,23 @@ test('a late native alert restored on Home is opened after an empty account disc
   f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/nearby']);
 });
 
+test('a silent retained request is verified before entry and an already assigned request never becomes the main screen', async t => {
+  for (const assigned of [false, true]) {
+    const f = fixture(t); f.options.driver = true;
+    f.options.activity.data.hasLiveActivity = false; f.options.activity.data.requests.count = 0;
+    const session = loader()('services/rideAlertSession.ts');
+    session.rememberRideAlert({ key: 'driver-nearby-retained', kind: 'nearby', id: 'retained', recipientId: 'user',
+      data: { ringUntil: iso(-1000) } }, true);
+    f.options.alerts = session.pendingRideEntryAlerts('user');
+    f.options.readRequest = async id => { f.reads.push(id); return { ...request(id, 'passenger'),
+      ...(assigned ? { selectedDriverId: 'another-driver' } : {}) }; };
+    f.render(); await flush();
+    assert.deepEqual(f.reads, ['retained']);
+    assert.deepEqual(f.routes, assigned ? [] : ['/request-details/retained']);
+    assert.deepEqual(session.pendingRideAlerts('user'), []);
+  }
+});
+
 test('immediate dispatch verifies the attributed offer and preserves its authenticated response endpoint', async t => {
   const f = fixture(t); f.options.driver = true;
   f.options.alerts = [{ key: 'dispatch-a', kind: 'dispatch', id: 'offer', recipientId: 'user', expiresAt: iso(30000) }];

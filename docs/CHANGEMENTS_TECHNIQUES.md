@@ -1,5 +1,92 @@
 # Journal des changements techniques
 
+## 2026-10-24 — Correction du plein écran et tests du backend local
+
+- **Problème :** l'activité plein écran s'ouvrait sans le Bundle Notifee attendu
+  puis se fermait ; essais backend désormais autorisés par l'utilisateur.
+- **Solution :** action Notifee utilisant la racine Expo existante `main`,
+  remplacement d'invitation via `onNewIntent` et protection des anciens callbacks
+  de déverrouillage. Sources, comportement préservé et recette détaillés dans
+  [Correction plein écran et tests locaux](PLEIN_ECRAN_CORRECTION_TESTS_2026-10-24.md).
+- **Tests :** 197 tests backend réussis, dont suites PostgreSQL/PostGIS jetables,
+  aucun push réel. Les 21 scénarios Android passent, dont les boutons du plein
+  écran. Contrôle global réussi : 2 659 tests réussis, zéro échec, un test Ruby
+  iOS ignoré ; TypeScript, lint et parité native réussis. Détails dans le rapport.
+- **Précautions :** aucun backend métier, `.env`, compte réel, manifeste de
+  production, profil EAS ou déploiement modifié. Le banc Android n'est pas
+  le client React Native complet ; iOS et téléphones physiques non testés.
+
+## 2026-10-24 — Audit local et banc Android des alertes conducteur
+
+- **Périmètre/problème :** vérifier sonnerie, réveil, carte, plein écran et entrée
+  dans l'application pour demandes proches/réservations, après les retours terrain.
+  L'utilisateur a limité l'audit aux simulations locales.
+- **Appliqué :** banc séparé sans Internet `tests/android/ride-alert-harness/`,
+  runner `scripts/audit-android-alerts.cjs` et
+  [rapport détaillé](AUDIT_ALERTES_EMULATEUR_2026-10-24.md). Aucun correctif
+  fonctionnel de l'application dans cette intervention.
+- **Résultat :** gate global réussi, 2 655 tests réussis et un test Ruby ignoré.
+  Les essais Android natifs reproduisent une activité plein écran recevant un
+  intent sans données, puis se fermant. Le réveil et le lecteur natif fonctionnent
+  dans le banc ; le relais JS et la fiche y sont des adaptateurs de test.
+- **Conservé/limites :** aucune demande ou décision réelle, aucun accès serveur,
+  aucune modification de l'APK Zwanga installé ni des travaux précédents. Aucun
+  essai iOS ou téléphone physique, aucune certification de disponibilité ni
+  de disparition des crashs. Résultats et précautions détaillés dans le rapport.
+
+## 2026-10-24 — Réduire les attentes du relais sonore Android à l'ouverture
+
+- **Problème :** retour terrain avec écran restant éteint, son interrompu au
+  déverrouillage et carte aperçue tardivement dans l'application. Le code attendait
+  les deux lecteurs de notifications puis la présentation de la carte avant de
+  transmettre l'alerte au lecteur sonore applicatif ; cause matérielle non établie.
+- **Appliqué :** traitement indépendant des lecteurs, reprise après annulation du
+  son système sans attendre la carte, suppression d'une création de canal inutile,
+  contrôles de réveil/plein écran parallèles et relais unique lors d'un retour en
+  veille. Détails et fichiers dans
+  [Relais sonore Android](SONNERIE_ANDROID_RELAIS_2026-10-24.md).
+- **Conservé :** comptes, décisions, consentements, canaux personnalisés,
+  confidentialité, échéances sonores et priorité serveur avant navigation.
+  Aucun changement natif, backend, configuration ou déploiement dans ce complément.
+- **Vérifications :** 247 tests ciblés réussis, TypeScript, ESLint ciblé, parité
+  native, taille des sources et `git diff --check` réussis. Modules réels avec
+  entrées/sorties natives simulées ; tests Java isolés existants également relancés.
+  Pas de push réel, de build complet ni d'essai sur téléphone. Le réveil de l'écran
+  et la continuité sonore sur le modèle signalé restent à valider.
+
+## 2026-10-24 — Parcours alerte conducteur identifiable, de la veille à la demande
+
+- **Problème :** origine de la sonnerie peu explicite, plein écran générique,
+  contexte d'entrée perdu après la fenêtre sonore ou lors d'un toucher tardif.
+- **Appliqué :** cartes identifiées Zwanga, candidats de navigation séparés des
+  alertes sonores, traitement du toucher après reprise, récapitulatif natif après
+  déverrouillage et protection des doubles appuis. Fichiers et recette dans
+  [Parcours alerte conducteur](PARCOURS_ALERTE_CONDUCTEUR_2026-10-24.md).
+- **Conservé :** contrôle serveur avant redirection, priorité aux trajets en cours,
+  décisions explicites, confidentialité sur écran verrouillé, consentement plein
+  écran et échéances. Aucun backend, flag de production ou déploiement modifié.
+- **Vérifications :** 217 tests ciblés réussis, TypeScript/ESLint/parité native et
+  contrôles statiques réussis. Activité Java compilée contre le SDK Android avec
+  pont substitué ; méthodes testées avec services simulés, sans build Gradle ni
+  téléphone physique. Nouveau build Android requis ; le réveil de tous les modèles
+  n'est pas garanti et le cas terrain n'est pas déclaré résolu.
+
+## 2026-10-23 — Relais sonore iOS au déverrouillage et écran éteint Android
+
+- **Problème :** sonnerie signalée comme définitivement coupée à l’ouverture
+  d’une notification iOS ; absence de réveil sur certains Android.
+- **Appliqué :** conservation du toucher en arrière-plan, reprise immédiate des
+  alertes iOS connues, surveillance du lecteur Expo et prise en compte de l’écran
+  Android éteint sans verrouillage. Fichiers et précautions dans
+  [Reprise après veille](SONNERIE_REPRISE_VEILLE_2026-10-23.md).
+- **Conservé :** décisions explicites, délais d’expiration, permissions, consentement,
+  silencieux/Ne pas déranger et absence de sonnerie iOS applicative en arrière-plan.
+  Aucun backend ni déploiement modifié ; nouveau binaire requis pour le Java Android.
+- **Vérifications :** 160 tests ciblés réussis (dont méthode Java compilée avec
+  substituts), TypeScript, parité native et contrôles statiques réussis. ESLint sans erreur,
+  deux avertissements préexistants. Pas d’essai natif sur les appareils concernés,
+  ni garantie de réveil universel ; suite globale non relancée.
+
 ## 2026-10-23 — Retrait du bandeau de synchronisation sur l’accueil
 
 - **Problème :** le message « Mise à jour indisponible » était confondu avec une

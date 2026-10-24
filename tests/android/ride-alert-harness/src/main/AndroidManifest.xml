@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- No backend, Firebase, telemetry or account data can leave this harness. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <application android:name=".AuditApplication" android:label="Zwanga · TEST LOCAL" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
+        <meta-data android:name="com.zwanga.RIDE_FULL_SCREEN_ENABLED" android:value="true" />
+        <provider android:name="app.notifee.core.InitProvider" android:authorities="${applicationId}.notifee-init-provider" android:exported="false" android:initOrder="-100" />
+        <activity android:name=".AuditActivity" android:exported="true" android:launchMode="singleTask">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+        <activity android:name="com.zwanga.notifications.IncomingRideActivity" android:exported="false" android:excludeFromRecents="true" android:launchMode="singleTop" />
+        <!-- ADB/system-only injection; never included in the production application. -->
+        <receiver android:name=".AuditReceiver" android:exported="true" android:permission="android.permission.DUMP" />
+    </application>
+</manifest>

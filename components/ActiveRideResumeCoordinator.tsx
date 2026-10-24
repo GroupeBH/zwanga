@@ -23,7 +23,7 @@ import { findRideToResume, isRideNavigationPath, isRideResumeEntryTransition } f
 import { tripRequestApi } from '@/store/api/tripRequestApi';
 import { driverDispatchApi } from '@/store/api/driverDispatchApi';
 import { useRequestEntryResume } from '@/hooks/navigation/useRequestEntryResume';
-import { getRideAlertsRevision, pendingRideAlerts, subscribeRideAlerts } from '@/services/rideAlertSession';
+import { getRideAlertsRevision, pendingRideEntryAlerts, subscribeRideAlerts } from '@/services/rideAlertSession';
 import { isDriverAccount } from '@/utils/accountRole';
 import { getActivityReadiness, subscribeActivityReadiness } from '@/services/activityReadiness';
 import { readEntryQuery, reportEntryFailure } from '@/services/entryRecovery';
@@ -71,7 +71,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   const alertRevision = useSyncExternalStore(subscribeRideAlerts, getRideAlertsRevision, getRideAlertsRevision);
   // Revision/focus invalidates the snapshot even when its owner is unchanged.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const alerts = useMemo(() => userId ? pendingRideAlerts(userId) : [], [userId, alertRevision, active]);
+  const alerts = useMemo(() => userId ? pendingRideEntryAlerts(userId) : [], [userId, alertRevision, active]);
   const currentRead = useCallback(() => {
     const version = getTokenSessionVersion();
     return () => Boolean(userId && version === getTokenSessionVersion() && isAppActive() && selectEntryUserId(reduxStore.getState()) === userId);
