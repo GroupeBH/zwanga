@@ -1,5 +1,64 @@
 # Journal des changements techniques
 
+## 2026-10-26 — Carte de notification avant le son et réveil Android borné
+
+- **Problème :** sonnerie signalée en veille sans réveil et carte tardive. Le
+  relais au premier plan pouvait démarrer le lecteur avant publication de la
+  carte ; le réveil Notifee utilisait des verrous sans délai maximal.
+- **Appliqué :** carte silencieuse publiée avant le lecteur de l'app, ancienne
+  carte conservée pendant la préparation du canal, réveil natif après publication
+  avec verrou d'écran limité à 1,5 seconde. Sources, tests et limites dans
+  [Carte visible et réveil Android](ALERTE_VISIBLE_ANDROID_2026-10-26.md).
+- **Conservé :** décisions, expiration, compte, mode silencieux, confidentialité
+  et autorisation plein écran. Backend, iOS et profils EAS inchangés.
+- **Vérifications :** contrôle global réussi, code 0 : 2 713 tests réussis,
+  zéro échec et un test Ruby ignoré sur Windows ; TypeScript, ESLint, frontières
+  réseau, taille et parité native valides. Les méthodes de réveil compilent
+  contre le SDK Android 36 ; comportement vérifié avec services simulés.
+  Nouveau build Android requis ; aucun essai sur appareil ni garantie de réveil
+  universel. Résultats et recette détaillés dans la fiche.
+
+## 2026-10-26 — Autorisations contextuelles plein écran et localisation
+
+- **Problème :** proposition plein écran absente et confirmation de localisation
+  observée hors application sur iOS. Le profil EAS détermine la présence du plein
+  écran Android ; iOS peut différer sa propre confirmation de localisation.
+- **Appliqué :** étapes d'autorisation indépendantes, historique enregistré après
+  affichage réel, une relance bornée de lecture native, contrôle du premier plan
+  juste avant les demandes système et attente sérialisée entre flux de trajet.
+  Fichiers, précautions, limites système et recette dans
+  [Autorisations contextuelles](AUTORISATIONS_CONTEXTUELLES_2026-10-26.md).
+- **Conservé :** consentement explicite, première visite silencieuse, déclencheurs
+  publication/retour de 15 secondes, rappels de 24 heures, suivi natif et cadence
+  des trajets. Aucun profil EAS, fichier natif ou backend modifié.
+- **Vérifications :** contrôle global final `check-release.cjs` réussi, code 0 :
+  2 708 tests réussis, zéro échec, un test Ruby ignoré sur Windows. TypeScript,
+  ESLint, frontières réseau, taille des sources et parité native valides ;
+  `git diff --check` réussi. Les essais exécutent les modules JavaScript avec
+  entrées/sorties natives simulées. Aucun essai sur téléphone physique ni nouveau
+  build pendant cette intervention.
+
+## 2026-10-26 — Reprise de sonnerie Android au déverrouillage
+
+- **Problème :** sonnerie signalée comme interrompue au déverrouillage ou à
+  l'ouverture. Tests reproduisant la perte d'un relais lors d'une transition
+  d'état, d'une annulation lente et d'une lecture native défaillante.
+- **Appliqué :** relais temporaire en mémoire avant annulation, reprise bornée
+  sans nouvelle notification et reprise des alertes connues indépendante des
+  lectures natives. Fichiers, protections et recette dans
+  [Reprise Android du 26 octobre](SONNERIE_REPRISE_ANDROID_2026-10-26.md).
+- **Conservé :** expiration métier, décisions explicites, contrôles de compte,
+  permissions et mode silencieux ; aucun backend, fichier natif ou réglage modifié.
+- **Vérifications :** 37 tests ciblés réussis avec modules JavaScript réels et
+  entrées/sorties Android simulées, plus quatre tests temps réel. Le contrôle
+  global final `check-release.cjs` termine avec le code 0 : 2 690 tests réussis,
+  zéro échec, un test Ruby ignoré sur Windows ; TypeScript, ESLint, frontières
+  réseau, taille et parité des sources natives valides. Le premier passage avait
+  révélé dix échecs dus à une simulation de session incomplète dans
+  `tests/rideAlertRestoration.test.js` ; cette simulation est adaptée et les dix
+  tests passent. Aucun téléphone/émulateur connecté ; la continuité sonore sur
+  les appareils concernés reste à valider physiquement.
+
 ## 2026-10-24 — Barre de recherche du conducteur en contour vert
 
 - **Demande :** le fond vert plein de « Chercher un trajet » donnait l'apparence

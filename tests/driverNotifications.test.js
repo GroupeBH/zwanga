@@ -70,7 +70,7 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
   const displays = [];
   const channels = [];
   const categories = [];
-  const cancelled = [], presented = [];
+  const cancelled = [], presented = [], wakes = [];
   const appState = { currentState: 'background' };
   const native = { createChannel: async value => channels.push(value), displayNotification: async value => displays.push(value),
     cancelNotification: async id => cancelled.push(id), getDisplayedNotifications: async () => displays.map(notification => ({ id: notification.id, notification })) };
@@ -82,9 +82,13 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
     '@notifee/react-native': { __esModule: true, default: native, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, AndroidStyle: { BIGTEXT: 'BIGTEXT' } },
     'react-native': { Platform: { OS: platform }, AppState: appState,
       NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => true, canPresentFullScreen: async () => fullScreen,
+        wakeDisplayedAlert: async (id, channel, deadline) => {
+          assert.ok(displays.some(card => card.id === id), 'wake follows notification publication');
+          wakes.push({ id, channel, deadline }); return 'requested';
+        },
         ...(phoneChannel ? { ensureBundledChannel: async () => 'zwanga-ride-ring-v4' } : {}) } } },
   })('services/driverNotifications.ts');
-  return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented };
+  return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented, wakes };
 }
 
 test('simultaneous socket and push share one card, deadline and acknowledgement', async () => {
@@ -144,7 +148,8 @@ test('foreground initialization interrupted by sleep does not suppress backgroun
   assert.equal(f.displays.length, 1, 'the original event completes in background without a second push');
   await f.loaded.displayDriverInvitation(payload);
   assert.equal(f.displays.length, 1);
-  assert.equal(f.displays[0].android.lightUpScreen, true);
+  assert.equal(f.displays[0].android.lightUpScreen, false);
+  assert.equal(f.wakes.length, 1);
 });
 
 test('sleeping Android without fullscreen consent keeps screen wake and the usual notification', async () => {
@@ -154,7 +159,8 @@ test('sleeping Android without fullscreen consent keeps screen wake and the usua
       tripRequestId: id, driverId, ringUntil: new Date(Date.now() + 30000).toISOString() },
   ]) {
     const f = service(); await f.loaded.displayDriverInvitation(payload);
-    assert.equal(f.displays[0].android.lightUpScreen, true);
+    assert.equal(f.displays[0].android.lightUpScreen, false);
+    assert.equal(f.wakes.length, 1);
     assert.equal(f.displays[0].android.fullScreenAction, undefined);
   }
 });
@@ -222,19 +228,20 @@ test('iOS registers reservation/dispatch and nearby actionable notification cate
   assert.deepEqual(f.categories, ['driver-offer-v1', 'driver-offer-v2', 'driver-nearby-v1']);
 });
 
-test('a new background request still lights the screen after the previous request was dismissed', async () => {
+test('a new background request attempts screen wake after the previous request was dismissed', async () => {
   const f = service(); await f.loaded.displayDriverInvitation(data);
   await f.loaded.dismissDriverInvitation(policy.parseDriverInvitation(data));
   await f.loaded.displayDriverInvitation(data);
   await f.loaded.displayDriverInvitation({ ...data, offerId: '00000000-0000-4000-8000-000000000003' });
   assert.equal(f.displays.length, 2, 'only the distinct second event may ring/wake again');
   for (const notification of f.displays) {
-    assert.equal(notification.android.lightUpScreen, true);
+    assert.equal(notification.android.lightUpScreen, false);
     assert.equal(notification.android.fullScreenAction, undefined);
   }
+  assert.deepEqual(f.wakes.map(wake => wake.id), f.displays.map(card => card.id));
 });
 test('headless Android uses one stable id, actions, expiry and private lockscreen content', async () => {
-  const { loaded, displays } = service();
+  const { loaded, displays, wakes } = service();
   await Promise.all([loaded.displayDriverInvitation(data), loaded.displayDriverInvitation(data)]);
   assert.equal(displays.length, 1, 'duplicate delivery must not restart the native timeout');
   assert.equal(displays[0].id, `driver-dispatch-${id}`);
@@ -245,7 +252,8 @@ test('headless Android uses one stable id, actions, expiry and private lockscree
   assert.equal(displays[0].android.loopSound, false);
   assert.equal(displays[0].android.autoCancel, false);
   assert.equal(displays[0].android.ongoing, undefined);
-  assert.equal(displays[0].android.lightUpScreen, true);
+  assert.equal(displays[0].android.lightUpScreen, false);
+  assert.equal(wakes.length, 1);
   assert.ok(displays[0].android.actions.every(action => action.pressAction.launchActivity === 'default'));
   assert.deepEqual(displays[0].android.actions.map(a => a.pressAction.id), ['driver-decline', 'driver-accept']);
   assert.ok(displays[0].android.timeoutAfter > 0);

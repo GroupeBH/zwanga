@@ -44,6 +44,7 @@ test('foreground access is explained before background; Android 10 and iOS still
   assert.doesNotMatch(words(old.render()), /Android peut ouvrir/);
   const ios = fixture('ios');
   assert.match(words(ios.render()), /« Toujours »/); assert.doesNotMatch(words(ios.render()), /Android/);
+  assert.match(words(ios.render()), /plus tard, même après avoir quitté Zwanga/);
 });
 
 test('a blocked system grant shows exact steps and requires a distinct settings action, never auto-navigation', () => {

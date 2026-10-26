@@ -20,7 +20,7 @@ export function useDriverPermissionPrompt(options: Options) {
   const [stayed, setStayed] = useState(false);
   const [selected, setSelected] = useState<DriverPermissionKind | null>(null);
   const handled = useRef(new Set<DriverPermissionKind>());
-  const selecting = useRef(false);
+  const presentation = useRef<{ kind: DriverPermissionKind; shown: boolean } | null>(null);
   const latest = useRef(options); latest.current = options;
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -41,22 +41,28 @@ export function useDriverPermissionPrompt(options: Options) {
   useEffect(() => { handled.current.clear(); }, [visit]);
   const eligible = Boolean(history && isDriverPermissionVisitEligible(history, visit, stayed));
   useEffect(() => {
-    if (selecting.current || !history || !eligible || !active || !safe || overlayBusy || selected || !locationReady) return;
+    if (!history || !eligible || !active || !safe || overlayBusy || selected) return;
     const kind = (['location', 'fullScreen'] as const).find(value =>
-      !handled.current.has(value) && (value === 'location' ? locationNeeded : fullScreenNeeded) &&
+      !handled.current.has(value) && (value === 'location' ? locationReady && locationNeeded : fullScreenNeeded) &&
       isDriverPermissionPromptDue(history, value, Date.now()));
     if (!kind) return;
-    selecting.current = true;
     handled.current.add(kind);
-    void driverPermissionRepository.prompted(userId, visit, kind, Date.now()).then(value => {
-      if (!mounted.current || !isAppActive() || version !== getTokenSessionVersion() || getAppActiveSince() !== visit ||
-          latest.current.userId !== userId || !latest.current.safe || latest.current.overlayBusy ||
-          !(kind === 'location' ? latest.current.locationNeeded : latest.current.fullScreenNeeded)) return;
-      setHistory(value);
-      setSelected(kind);
-    }).catch(() => { /* Fail closed, without blocking Home or retrying in a loop. */ })
-      .finally(() => { selecting.current = false; });
+    presentation.current = { kind, shown: false };
+    setSelected(kind);
   }, [active, eligible, fullScreenNeeded, history, locationNeeded, locationReady, overlayBusy, safe, selected, userId, version, visit]);
+  // RideModal reports actual presentation, including overlay priority arbitration.
+  // A lock, incoming ride or route change before onShow must not consume 24 hours.
+  const onShown = (kind: DriverPermissionKind) => {
+    const step = presentation.current;
+    if (!step || step.kind !== kind || step.shown || !mounted.current || !isAppActive() ||
+        !latest.current.safe || latest.current.userId !== userId || version !== getTokenSessionVersion()) return;
+    step.shown = true;
+    const now = Date.now();
+    setHistory(value => value ? { ...value, promptedAt: { ...value.promptedAt, [kind]: now } } : value);
+    void driverPermissionRepository.prompted(userId, visit, kind, now).catch(() => {
+      // The in-memory guard still prevents a loop during this mounted session.
+    });
+  };
   const close = () => { if (mounted.current && getTokenSessionVersion() === version) setSelected(null); };
-  return { selected, close, eligible };
+  return { selected, close, eligible, onShown };
 }

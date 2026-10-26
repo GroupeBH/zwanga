@@ -49,7 +49,7 @@ export function createDriverPermissionRepository(storage: Storage, bound: Bound)
       await save(userId, value);
       return true;
     }),
-    // Reserve before presentation: a crash/remount must not cause a prompt loop.
+    // Record actual presentation, not a step that may still be hidden by an overlay.
     prompted: (userId: string, visit: number, kind: DriverPermissionKind, now: number) => serial(userId, async () => {
       const value = await read(userId, visit);
       if (!timestamp(now)) throw new Error('Invalid permission prompt time');

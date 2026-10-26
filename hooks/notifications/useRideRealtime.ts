@@ -5,7 +5,7 @@ import { baseApi } from '@/store/api/baseApi';
 import { chatSocket } from '@/services/chatSocket';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { displayDriverInvitation, dismissDriverInvitation } from '@/services/driverNotifications';
-import { pendingRideAlerts } from '@/services/rideAlertSession';
+import { pendingRideAlertHandoffs, pendingRideAlerts } from '@/services/rideAlertSession';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
 import { rideRealtimeTags } from '@/features/notifications/rideRealtimeRefresh';
@@ -45,7 +45,9 @@ export function useRideRealtime(userId: string | undefined, driverAccount: boole
         // Uses the exact push path and its existing delivery/acknowledgement keys.
         void displayDriverInvitation(event.data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
       } else if (event.kind === 'changed' && event.terminal) {
-        const matches = pendingRideAlerts(userId).filter(alert => alert.kind !== 'response' &&
+        const candidates = new Map([...pendingRideAlerts(userId),
+          ...pendingRideAlertHandoffs(userId).map(item => item.alert)].map(alert => [alert.key, alert]));
+        const matches = [...candidates.values()].filter(alert => alert.kind !== 'response' &&
           ((event.bookingId && alert.kind === 'booking' && alert.id === event.bookingId) ||
            (event.requestId && (alert.data.tripRequestId === event.requestId || (alert.kind === 'nearby' && alert.id === event.requestId)))));
         for (const alert of matches) if (alert.kind !== 'response')

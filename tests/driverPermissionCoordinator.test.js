@@ -21,7 +21,7 @@ function fixture() {
     retry: () => calls.push(['retry']), defer: () => { location.consent = false; calls.push(['defer']); } };
   const fullScreen = { permission: { allowed: false, optIn: false, notificationsAllowed: true }, busy: false, error: false,
     setOptIn: async v => calls.push(['fullScreen', v]) };
-  const prompt = { selected: 'location', close: () => calls.push(['close']) };
+  const prompt = { selected: 'location', close: () => calls.push(['close']), onShown: kind => calls.push(['shown', kind]) };
   let policyOptions, locationOptions;
   const api = (endpoint, type) => ({ endpoints: { [endpoint]: { useQueryState: () => queries[type] } } });
   const module = loader({ react: { ...hooks.react, useContext: () => ({ subscribe: () => () => {}, isBusy: () => context.busy }),
@@ -116,6 +116,15 @@ test('an overlay prevents starting, but the permission modal does not block itse
   const modal = f.render().find(n => n.type === 'LocationApproval');
   assert.equal(f.policy().overlayBusy, true); assert.equal(modal.props.visible, true);
   modal.props.onClose(); assert.ok(f.calls.some(c => c[0] === 'defer')); assert.ok(f.calls.some(c => c[0] === 'close'));
+  f.hooks.unmount();
+});
+
+test('actual modal presentation acknowledges the matching permission step', () => {
+  const f = fixture();
+  f.render().find(n => n.type === 'LocationApproval').props.onShow();
+  f.prompt.selected = 'fullScreen';
+  f.render().find(n => n.type === 'FullScreenApproval').props.onShow();
+  assert.deepEqual(f.calls.filter(c => c[0] === 'shown'), [['shown', 'location'], ['shown', 'fullScreen']]);
   f.hooks.unmount();
 });
 

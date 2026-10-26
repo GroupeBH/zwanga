@@ -58,7 +58,11 @@ function fixture(t, { returning = false, published = false } = {}) {
       getDriverPublicationRevision: () => revision, subscribeDriverPublication: () => () => {} },
   })('hooks/notifications/useDriverPermissionPrompt.ts').useDriverPermissionPrompt;
   const render = () => hooks.render(() => usePrompt(options));
-  const settle = async () => { render(); await tick(); render(); await tick(); return render(); };
+  const settle = async ({ show = true } = {}) => {
+    render(); await tick(); const state = render();
+    if (show && state.selected && options.active && options.safe) state.onShown(state.selected);
+    await tick(); return render();
+  };
   const ready = (async () => {
     if (returning) { await memory.repo.visit('driver', 500); }
     if (published) { await memory.repo.published('driver', visit); }
@@ -103,11 +107,14 @@ test('already allowed permissions and unavailable full screen do not prompt', as
   t.mock.timers.tick(15_000); assert.equal((await f.settle()).selected, null);
 });
 
-test('in-flight history reservation cannot display over an incoming trip or after logout', async t => {
+test('selection interrupted before presentation does not consume the daily reminder', async t => {
   const f = fixture(t, { returning: true }); await f.ready;
   t.mock.timers.tick(15_000); f.render();
-  f.options.safe = false; f.version(2); f.render(); await tick();
-  assert.equal(f.render().selected, null);
+  f.options.safe = false;
+  const step = await f.settle({ show: false }); step.onShown('location');
+  assert.deepEqual((await f.repo.visit('driver', 1000)).promptedAt, {});
+  f.options.safe = true; assert.equal((await f.settle()).selected, 'location');
+  assert.ok((await f.repo.visit('driver', 1000)).promptedAt.location);
 });
 
 test('settings interruption preserves the chosen step without adding a second prompt', async t => {
@@ -118,24 +125,39 @@ test('settings interruption preserves the chosen step without adding a second pr
   assert.equal((await f.settle()).selected, 'location');
 });
 
-test('a late full-screen status read does not cancel the location step being reserved', async t => {
+test('a late full-screen status read does not cancel the selected location step', async t => {
   const f = fixture(t); await f.ready;
-  let release;
-  const original = f.repo.prompted;
-  f.repo.prompted = async (...args) => { await new Promise(resolve => { release = resolve; }); return original(...args); };
-  f.options.fullScreenNeeded = false; await f.publish(); await f.settle();
+  f.options.fullScreenNeeded = false; await f.publish(); await f.settle({ show: false });
   f.options.fullScreenNeeded = true; f.render();
-  release(); await tick();
   assert.equal((await f.settle()).selected, 'location');
 });
 
-test('unmount while reserving a prompt cannot present late native UI', async t => {
+test('a stale onShow after logout or unmount never records a prompt', async t => {
   const f = fixture(t); await f.ready;
-  let release;
-  const original = f.repo.prompted;
-  f.repo.prompted = async (...args) => { await new Promise(resolve => { release = resolve; }); return original(...args); };
-  await f.publish(); await f.settle(); f.hooks.unmount(); release(); await tick();
-  assert.equal(f.render().selected, null);
+  await f.publish(); const step = await f.settle({ show: false });
+  f.version(2); step.onShown('location');
+  assert.deepEqual((await f.repo.visit('driver', 1000)).promptedAt, {});
+  f.version(1); f.hooks.unmount(); step.onShown('location');
+  assert.deepEqual((await f.repo.visit('driver', 1000)).promptedAt, {});
+});
+
+test('full-screen remains eligible when location permission inspection is unavailable', async t => {
+  const f = fixture(t, { returning: true }); await f.ready;
+  f.options.locationReady = false;
+  t.mock.timers.tick(15_000);
+  assert.equal((await f.settle()).selected, 'fullScreen');
+  const history = await f.repo.visit('driver', 1000);
+  assert.equal(history.promptedAt.location, undefined); assert.ok(history.promptedAt.fullScreen);
+});
+
+test('returning from settings does not record a visible step twice', async t => {
+  const f = fixture(t, { published: true }); await f.ready;
+  await f.settle();
+  let writes = 0; const original = f.repo.prompted;
+  f.repo.prompted = (...args) => { writes++; return original(...args); };
+  (await f.settle()).close(); await f.settle(); assert.equal(writes, 1);
+  f.options.active = false; f.render(); f.visit(2000); f.options.active = true;
+  await f.settle(); assert.equal(writes, 1);
 });
 
 test('a failed optional publication marker never rejects trip success', async () => {

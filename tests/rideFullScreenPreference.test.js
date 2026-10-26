@@ -27,6 +27,7 @@ function fixture({ platform = 'android', native = true, permission, set, get } =
   };
   const Component = loader({ react: hooks.react,
     'react-native': { View: 'View', Text: 'Text', Switch: 'Switch', TouchableOpacity: 'Button',
+      AppState: { get currentState() { return active ? 'active' : 'background'; } },
       Alert: { alert: (...args) => dialogs.push(args) }, Platform: { OS: platform, Version: 34 },
       NativeModules: native ? { ZwangaDriverAlerts: bridge } : {} },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => active },

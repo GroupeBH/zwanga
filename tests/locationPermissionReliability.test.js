@@ -9,8 +9,9 @@ function fixture(t) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), calls = [];
   const env = { read: null, prompt: null, save: null, active: true, enabled: false, granted: false };
+  const appState = { currentState: 'active' };
   const { useNearbyLocationPermission } = loader({ react: hooks.react,
-    'react-native': { AppState: { currentState: 'active' }, Linking: { openSettings: async () => {} } },
+    'react-native': { AppState: appState, Linking: { openSettings: async () => {} } },
     '@/services/tokenSession': { getTokenSessionVersion: () => 0 },
     'expo-location': {
       getForegroundPermissionsAsync: async () => { if (env.read) await env.read; return { granted: true }; },
@@ -26,7 +27,7 @@ function fixture(t) {
     },
   })('hooks/profile/useNearbyLocationPermission.ts');
   t.after(() => hooks.unmount());
-  return { env, calls, render: () => hooks.render(() => useNearbyLocationPermission({
+  return { env, calls, appState, render: () => hooks.render(() => useNearbyLocationPermission({
     userId: 'driver', driver: true, available: true, active: env.active,
   })) };
 }
@@ -37,6 +38,18 @@ test('a stalled initial native read exposes retry after 8 seconds and ignores it
   assert.equal(f.render().loaded, false); f.env.read = null;
   f.render().retry(); f.render(); await tick(); assert.equal(f.render().loaded, true);
   old.resolve(); await tick(); assert.equal(f.render().loadError, false); assert.deepEqual(f.calls, []);
+});
+
+test('leaving the app during a permission read never starts a delayed OS dialog', async t => {
+  const f = fixture(t); f.render(); await tick(); f.render().setConsent(true);
+  const read = deferred(); f.env.read = read.promise;
+  const task = f.render().authorize();
+  // Native state can change before React gets to render the new active prop.
+  f.appState.currentState = 'background'; read.resolve(); await task;
+  assert.deepEqual(f.calls, []); assert.equal(f.render().busy, false);
+  assert.match(f.render().message, /Revenez dans Zwanga/);
+  f.appState.currentState = 'active'; f.env.read = null; await f.render().authorize();
+  assert.deepEqual(f.calls, ['prompt', 'save', 'saved', 'GPS']);
 });
 
 test('a stalled authorization read releases busy and cannot later open an OS prompt', async t => {

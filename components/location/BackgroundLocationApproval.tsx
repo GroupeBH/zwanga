@@ -7,7 +7,7 @@ import { ACTION_COLORS } from '@/constants/actionColors';
 type Props = {
   visible: boolean; busy: boolean; loaded: boolean; loadError: boolean;
   permission: boolean; foregroundPermission: boolean; settingsRequired: boolean; message: string;
-  onConfirm: () => void; onClose: () => void; priority?: number;
+  onConfirm: () => void; onClose: () => void; onShow?: () => void; priority?: number;
 };
 
 /** In-app validation, not an imitation of the OS permission dialog. */
@@ -16,7 +16,7 @@ export function BackgroundLocationApproval(props: Props) {
   const blocked = busy || (!loaded && !loadError);
   const choice = Platform.OS === 'ios' ? 'Toujours' : 'Toujours autoriser';
   const androidSettings = Platform.OS === 'android' && Number(Platform.Version) >= 30;
-  return <RideModal visible={visible} inApp transparent animationType="fade" priority={props.priority} onRequestClose={onClose}>
+  return <RideModal visible={visible} inApp transparent animationType="fade" priority={props.priority} onRequestClose={onClose} onShow={props.onShow}>
     <View style={styles.overlay}>
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.content} bounces={false}>
@@ -38,6 +38,9 @@ export function BackgroundLocationApproval(props: Props) {
                 : androidSettings
                   ? `Android peut ouvrir les autorisations de Zwanga. Choisissez « ${choice} », puis revenez ici.`
                   : `Dans la fenêtre du téléphone, choisissez « ${choice} ».`}</Text>}
+          {Platform.OS === 'ios' && !permission && !settingsRequired && <Text style={styles.copy}>
+            L’iPhone peut demander de confirmer « Toujours » plus tard, même après avoir quitté Zwanga.
+          </Text>}
           {message ? <Text accessibilityLiveRegion="polite" style={styles.feedback}>{message}</Text> : null}
           <TouchableOpacity accessibilityRole="button" disabled={blocked}
             accessibilityState={{ disabled: blocked, busy }} onPress={onConfirm}

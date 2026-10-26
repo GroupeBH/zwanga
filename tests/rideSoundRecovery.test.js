@@ -170,7 +170,7 @@ test('screen wake is bounded, fails closed on old binaries and never affects iOS
 
 test('native screen-wake eligibility preserves permissions, silent mode, DND and channel choices', () => {
   const source = fs.readFileSync('android/app/src/main/java/com/zwanga/notifications/DriverAlertModule.java', 'utf8');
-  const method = source.slice(source.indexOf('void canLightUpAlertScreen('), source.indexOf('private boolean canMigrate'));
+  const method = source.slice(source.indexOf('private static boolean allowsAlertScreenWake('), source.indexOf('private boolean canMigrate'));
   for (const fragment of ['manager.areNotificationsEnabled()', 'RINGER_MODE_NORMAL', 'STREAM_NOTIFICATION',
     'INTERRUPTION_FILTER_ALL', 'IMPORTANCE_HIGH', 'channel.getSound() == null', 'group.isBlocked()']) {
     assert.ok(method.includes(fragment), fragment);

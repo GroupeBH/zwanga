@@ -29,7 +29,7 @@ function fixture(t, clock = true) {
     },
     '@/features/notifications/rideAlert': { parseRideAlert: data => data, isRideResponseOpen: () => false },
     '@/services/rideAlertSession': { clearRideAlertSession: noop, pendingRideAlerts: () => [], rememberRideAlert: a => remembered.push(a.id),
-      setRideAlertScreen: noop, subscribeRideAlerts: () => noop },
+      setRideAlertScreen: noop, subscribeRideAlerts: () => noop, pendingRideAlertHandoffs: () => [] },
     '@/services/foregroundRideSound': { startForegroundRideSound: async () => {}, stopForegroundRideSound: noop },
     '@/services/foregroundRideAnnouncement': { clearRideAnnouncementSession: noop, reconcileRideAnnouncement: noop, silenceRestoredRideAnnouncement: noop, stopRideAnnouncement: noop },
     '@/services/driverNotifications': { displayDriverInvitation: async () => {} },
