@@ -29,7 +29,21 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
   static final String BUNDLED_CHANNEL = "zwanga-ride-ring-v4";
   private ForegroundAlertPlayer foreground;
 
-  public DriverAlertModule(ReactApplicationContext context) { super(context); }
+  public DriverAlertModule(ReactApplicationContext context) { super(context); NativeRideDelivery.attach(context); }
+
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  public int bindNativeRideAccount(String user, double expires, String channel) {
+    return NativeRideDelivery.bind(getReactApplicationContext(), user, expires, channel);
+  }
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  public boolean clearNativeRideAccount() { NativeRideDelivery.clear(getReactApplicationContext()); return true; }
+  @ReactMethod public void getNativeRideReceipts(String user, Promise promise) {
+    promise.resolve(NativeRideDelivery.pendingReceipts(getReactApplicationContext(), user));
+  }
+  @ReactMethod public void recordNativeRideReceipt(String user, String id, boolean displayed, String card) {
+    if (RideNotificationBundle.uuid(user) && RideNotificationBundle.uuid(id))
+      NativeRideDelivery.receipt(getReactApplicationContext(), user, id, displayed, card);
+  }
 
   @Override public String getName() { return "ZwangaDriverAlerts"; }
 
@@ -220,7 +234,7 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
     catch (Exception ignored) { promise.resolve("unavailable"); }
   }
 
-  private static boolean allowsAlertScreenWake(Context context, String channelId) {
+  static boolean allowsAlertScreenWake(Context context, String channelId) {
     try {
       NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
       AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);

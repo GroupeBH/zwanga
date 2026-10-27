@@ -72,3 +72,19 @@ suppression de la carte locale. Le serveur, le choix du véhicule, la reprise du
 trajet réel, les restrictions constructeurs, Doze profond et iOS restent hors de
 ce banc. Se référer au journal technique pour les résultats observés, y compris
 les éventuels échecs.
+
+## Extension du 26 octobre : publieur de production et reprise
+
+`NativeCardProbe` peut d?sormais injecter un payload synth?tique dans
+`RideCardDelivery`, observer son re?u sans republier, d?clencher uniquement
+WorkManager ou simuler un ?chec explicite de Notifee. L?ADB receiver reste limit?
+? la permission syst?me DUMP et n?est jamais compil? dans l?application r?elle.
+
+`node scripts/audits/test-native-ride-delivery.cjs` (depuis la racine, avec
+`RIDE_AUDIT_ADB` pointant sur adb et un `RIDE_AUDIT_SERIAL=emulator-?`) ex?cute les
+sc?narios natifs. Le backend peut aussi utiliser ce banc depuis son test PostgreSQL
+avec ces m?mes variables et `DISPATCH_TEST_POSTGRES_BIN` ; aucun .env n?est lu.
+
+Ce parcours ne reproduit pas le transport FCM/APNs r?el ni l?authentification et
+le rendu React Native complets. Les re?us de publication ne mesurent pas
+l?audibilit?. Voir `docs/FIABILISATION_SONNERIE_INTEGRATION_2026-10-26.md`.

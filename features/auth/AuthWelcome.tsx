@@ -5,6 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthWelcomeHero } from './AuthWelcomeHero';
+import { UpdateAnnouncementsChoice } from '@/components/UpdateAnnouncementsChoice';
+import { GuestUpdateNotice } from '@/components/GuestUpdateNotice';
 import { welcomeStyles as styles, WELCOME_COLORS as c } from './authWelcomeStyles';
 
 const BENEFITS = [
@@ -93,6 +95,8 @@ export function AuthWelcome() {
             accessibilityLabel="Lire les conditions d’utilisation et la politique de confidentialité">
             <Text style={styles.legal}>En continuant, vous acceptez nos <Text style={styles.legalEmphasis}>conditions d’utilisation</Text> et notre <Text style={styles.legalEmphasis}>politique de confidentialité</Text>.</Text>
           </TouchableOpacity>
+          <UpdateAnnouncementsChoice />
+          <GuestUpdateNotice />
         </View>
       </View>
     </ScrollView>

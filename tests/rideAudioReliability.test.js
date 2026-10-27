@@ -36,6 +36,17 @@ test('background handoff is deduplicated and preserves original remaining ring t
   assert.deepEqual(f.io.cancelled, [notification.id]);
 });
 
+test('a 60-second alert can hand off after 30 seconds without renewing its deadline or shortening it to 30', async t => {
+  const f = background(t);
+  f.alert.data.ringUntil = new Date(Date.now() + 60000).toISOString();
+  await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed[0].android.timeoutAfter, 60000);
+  t.mock.timers.tick(35000); await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed.length, 1);
+  t.mock.timers.tick(26000); await f.reconcileBackgroundRideRinging('driver');
+  assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
+});
+
 test('a passenger response hands back to Android but has no driver decision buttons', async t => {
   const f = background(t, 'response'); f.io.fullscreen = true; await f.reconcileBackgroundRideRinging('driver');
   assert.equal(f.io.displayed.length, 1); assert.equal(f.io.displayed[0].android.actions, undefined);

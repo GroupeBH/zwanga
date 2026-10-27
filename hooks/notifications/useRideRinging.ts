@@ -1,3 +1,4 @@
+import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
 import { usePathname } from 'expo-router';
@@ -63,7 +64,7 @@ export function useRideRinging(userId: string | undefined) {
       const canRestore = () => current() && AppState.currentState === 'active' && epoch === restoreEpoch;
       const restoreDriver = async (alert: RideAlert) => {
         const handoffPending = pendingRideAlertHandoffs(userId).some(item => item.alert.key === alert.key);
-        if (!(Date.parse(String(alert.data.ringUntil ?? '')) > Date.now()) && !handoffPending) {
+        if (!(ridePlaybackDeadline(alert.data) > Date.now()) && !handoffPending) {
           if (canRestore()) rememberRideAlert(alert, true);
           return;
         }
@@ -71,7 +72,7 @@ export function useRideRinging(userId: string | undefined) {
         // The handoff service alone owns fresh Android audio, including when
         // Expo and Notifee both find this card while cancellation is in flight.
         // Only restore the silent entry candidate here once its sound is old.
-        if (canRestore() && !(Date.parse(String(alert.data.ringUntil ?? '')) > Date.now())) rememberRideAlert(alert, true);
+        if (canRestore() && !(ridePlaybackDeadline(alert.data) > Date.now())) rememberRideAlert(alert, true);
       };
       try {
         // Process each provider as soon as it is ready. One slow native read

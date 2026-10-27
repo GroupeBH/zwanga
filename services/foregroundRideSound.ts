@@ -4,6 +4,7 @@ import { getDriverAlertChannel } from './driverAlertChannel';
 import { isAppActive } from './appActivity';
 import { holdRideAudio, isRideAudioHeld, subscribeRideAudioFocus } from './rideAudioFocus';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
+import { legacyRideSound } from './legacyRideSound';
 
 type RidePlayer = { play(): void; pause(): void; remove(): void; state?(): Promise<string> };
 let player: RidePlayer | undefined;
@@ -26,7 +27,9 @@ function releasePlayer() {
 }
 function failed(code: string) {
   releasePlayer(); failures++;
-  retryAt = Date.now() + (failures === 1 ? 5000 : 15000);
+  // A temporary native failure must not silence the same pending request for
+  // the rest of the session. After three failures, cool down before trying again.
+  retryAt = Date.now() + (failures >= 3 ? 60000 : failures === 1 ? 5000 : 15000);
   reportRideAudioFailure(code);
 }
 async function checkPlayer() {
@@ -50,7 +53,7 @@ function syncSpeechPause() {
 }
 subscribeRideAudioFocus(syncSpeechPause);
 /** Same permission / silent-mode policy for an entry voice without a push. */
-export async function canPlayForegroundRideAudio() {
+export async function canPlayForegroundRideAudio(allowSystemNotification = false) {
   if (Platform.OS === 'web' || !isAppActive()) return false;
   const settings = await notifee.getNotificationSettings();
   if (settings.authorizationStatus < 1) { reportRideAudioFailure('RING_NOTIFICATIONS_DISABLED'); return false; }
@@ -59,7 +62,10 @@ export async function canPlayForegroundRideAudio() {
     if (!channel || channel.blocked || !channel.sound || (channel.importance ?? 0) < 3) {
       reportRideAudioFailure('RING_CHANNEL_DISABLED'); return false;
     }
-    const allowed = Boolean(await NativeModules.ZwangaDriverAlerts?.canPlayForegroundRingtone?.());
+    const policy = NativeModules.ZwangaDriverAlerts?.canPlayForegroundRingtone;
+    // Only the OS notification fallback is safe without a native audio-policy probe.
+    if (typeof policy !== 'function') return allowSystemNotification;
+    const allowed = Boolean(await policy());
     if (!allowed) reportRideAudioFailure('RING_SYSTEM_AUDIO_UNAVAILABLE');
     return allowed;
   }
@@ -75,16 +81,23 @@ export async function startForegroundRideSound(episodeKey?: string) {
     // Keep the existing backoff, including across a burst of different requests.
   }
   if (player && !starting) { await checkPlayer(); return; }
-  if (starting || failures >= 3 || Date.now() < retryAt) return;
+  if (starting || Date.now() < retryAt) return;
+  if (failures >= 3) failures = 0;
   starting = true;
   const attempt = ++generation;
   const bridge = NativeModules?.ZwangaDriverAlerts;
   const nativeToken = `${Date.now()}:${attempt}`;
   try {
-    const allowed = await boundedRideAudio(canPlayForegroundRideAudio());
+    const allowed = await boundedRideAudio(canPlayForegroundRideAudio(true));
     if (attempt !== generation || !isAppActive()) return;
-    if (!allowed) { retryAt = Date.now() + 30000; return; }
-    if (Platform.OS === 'android' && typeof bridge?.startForegroundSound === 'function') {
+    if (!allowed) { retryAt = Date.now() + 5000; return; }
+    if (Platform.OS === 'android' && (typeof bridge?.startForegroundSound !== 'function' ||
+        typeof bridge?.canPlayForegroundRingtone !== 'function')) {
+      const fallback = await boundedRideAudio(legacyRideSound(episodeKey, () => attempt === generation));
+      if (attempt !== generation || !isAppActive()) return;
+      player = fallback;
+      if (!isRideAudioHeld()) player.play();
+    } else if (Platform.OS === 'android') {
       const channel = await getDriverAlertChannel();
       if (attempt !== generation || !isAppActive()) return;
       player = { play: () => bridge.pauseForegroundSound(nativeToken, false),
@@ -95,7 +108,7 @@ export async function startForegroundRideSound(episodeKey?: string) {
       if (attempt !== generation || !isAppActive()) { bridge.stopForegroundSound(nativeToken); return; }
       if (!ready) throw new Error('NATIVE_RING_UNAVAILABLE');
     } else {
-      // iOS and older Android binaries retain their existing compatible player.
+      // iOS uses its compatible foreground player and respects silent mode.
       const audio = await boundedRideAudio(import('expo-audio'));
       if (attempt !== generation || !isAppActive()) return;
       await boundedRideAudio(audio.setAudioModeAsync({ playsInSilentMode: false, shouldPlayInBackground: false, interruptionMode: 'duckOthers' }));

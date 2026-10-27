@@ -1,6 +1,6 @@
 import type { DriverInvitation } from './driverInvitation';
 
-export const DRIVER_RING_DURATION_MS = 30_000;
+export const DRIVER_RING_DURATION_MS = 60_000;
 
 /** Sound lifetime is separate from the server-side reservation lifetime. */
 export function driverRingDeadline(invitation: Pick<DriverInvitation, 'ringUntil' | 'expiresAt'>, now = Date.now()): number {

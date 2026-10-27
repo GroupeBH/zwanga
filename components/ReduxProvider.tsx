@@ -24,6 +24,7 @@ import { Provider } from 'react-redux';
 import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
 import { ReferralAttributionHandler } from './ReferralAttributionHandler';
+import { InstallationUpdatesCoordinator } from './InstallationUpdatesCoordinator';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -70,6 +71,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
           <View style={styles.appContent}>
             <DialogProvider>
               <ReferralAttributionHandler />
+              <InstallationUpdatesCoordinator />
               <AccountActivityCoordinator />
               <DriverPresenceCoordinator />
               <AppUpdateCoordinator />

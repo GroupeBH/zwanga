@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppUpdate } from '@/hooks/useAppUpdate';
 import { STORE_URLS } from '@/features/app-updates/updatePolicy';
 import { Colors } from '@/constants/styles';
+import { UpdateAnnouncementsChoice } from '@/components/UpdateAnnouncementsChoice';
 
 export default function AppUpdateScreen() {
   const update = useAppUpdate(), router = useRouter();
@@ -36,6 +37,7 @@ export default function AppUpdateScreen() {
         {opening ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>{update.release ? 'Mettre à jour' : Platform.OS === 'ios' ? 'Ouvrir l’App Store' : 'Ouvrir Google Play'}</Text>}
       </TouchableOpacity>
       <TouchableOpacity accessibilityRole="button" style={styles.back} onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}><Text style={styles.copy}>Plus tard</Text></TouchableOpacity>
+      <UpdateAnnouncementsChoice />
     </ScrollView>
   </SafeAreaView>;
 }

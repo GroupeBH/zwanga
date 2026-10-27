@@ -120,7 +120,9 @@ test('audio handoff retries are capped, preserve the first receipt and never res
   assert.deepEqual(session.pendingRideAlerts(userId), []);
 });
 
-function audioFixture(platform = 'android') {
+// Expo's foreground player is used on iOS. Legacy Android now delegates audio
+// to the OS card (covered in rideDeliveryFixes); current Android has its bridge.
+function audioFixture(platform = 'ios') {
   const io = { active: true, permitted: true, sound: true, mode: true, blocked: false, plays: 0, removes: 0, vibration: 0,
     modeReady: async () => {}, settings: async () => ({ authorizationStatus: io.permitted ? 1 : 0, ios: { sound: io.sound ? 1 : 0 } }) };
   const player = { play() { io.plays++; }, pause() {}, remove() { io.removes++; } };
@@ -146,7 +148,7 @@ test('one lazy audio player loops the bundled sound and releases audio/vibration
 
 test('permissions, channel mute, silent/DND and inactive app prevent foreground audio', async () => {
   for (const field of ['active', 'permitted', 'sound', 'mode', 'blocked']) {
-    const f = audioFixture(); f.io[field] = field === 'blocked';
+    const f = audioFixture('android'); f.io[field] = field === 'blocked';
     await f.startForegroundRideSound(); assert.equal(f.io.plays, 0, field);
   }
   const ios = audioFixture('ios'); ios.io.sound = false;
@@ -173,16 +175,16 @@ test('voice ownership covers a replacement player but cannot resurrect removed a
   f.stopForegroundRideSound();
 });
 
-test('a transient audio initialization error retries with backoff, at most three times per episode', async t => {
+test('audio initialization retries three times, then waits a minute before allowing recovery', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
   const f = audioFixture(); let calls = 0;
   f.io.settings = async () => { calls++; throw Error('temporary'); };
   await f.startForegroundRideSound(); await f.startForegroundRideSound(); assert.equal(calls, 1);
   t.mock.timers.tick(5001); await f.startForegroundRideSound(); assert.equal(calls, 2);
   t.mock.timers.tick(15001); await f.startForegroundRideSound(); assert.equal(calls, 3);
-  t.mock.timers.tick(60000); await f.startForegroundRideSound(); assert.equal(calls, 3);
-  f.stopForegroundRideSound();
+  t.mock.timers.tick(59999); await f.startForegroundRideSound(); assert.equal(calls, 3);
   f.io.settings = async () => ({ authorizationStatus: 1 });
+  t.mock.timers.tick(1);
   await f.startForegroundRideSound(); assert.equal(f.io.plays, 1); f.stopForegroundRideSound();
 });
 

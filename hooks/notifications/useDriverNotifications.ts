@@ -128,7 +128,15 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       void open(event.notification.request.content.data, event.actionIdentifier, true).catch(() => reportRideAudioFailure('DRIVER_ALERT_ACTION_FAILED'));
     });
     const native = notifee.onForegroundEvent(({ type, detail }) => {
-      if (type === EventType.DELIVERED) void open(detail.notification?.data).catch(() => reportRideAudioFailure('DRIVER_ALERT_OPEN_FAILED'));
+      if (type === EventType.DELIVERED) {
+        const data = detail.notification?.data;
+        // A native card may finish publishing just AFTER the entry enumeration.
+        // Transfer that same card to the foreground player without waiting for another resume.
+        if (!disposed && sessionVersion === getTokenSessionVersion() && data?.nativeAlert === 'driver-v6' &&
+            data.driverId === userId && AppState.currentState === 'active')
+          void displayDriverInvitation(data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
+        void open(data).catch(() => reportRideAudioFailure('DRIVER_ALERT_OPEN_FAILED'));
+      }
       if (type === EventType.PRESS || type === EventType.ACTION_PRESS)
         void open(detail.notification?.data, detail.pressAction?.id, true).catch(() => reportRideAudioFailure('DRIVER_ALERT_ACTION_FAILED'));
     });

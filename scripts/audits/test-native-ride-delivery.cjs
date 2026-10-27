@@ -1,0 +1,55 @@
+const { execFileSync } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
+const { Buffer } = require('node:buffer');
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const adb=process.env.RIDE_AUDIT_ADB,serial=process.env.RIDE_AUDIT_SERIAL||'emulator-5554';
+if(!adb || !/^emulator-\d+$/.test(serial))throw Error('Set RIDE_AUDIT_ADB and use a local emulator only');
+const run=(...args)=>execFileSync(adb,['-s',serial,...args],{encoding:'utf8',windowsHide:true,timeout:15000});
+const shell=(...args)=>run('shell',...args);
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const report=[];
+const record=(name,detail={})=>{report.push({name,...detail});process.stdout.write(JSON.stringify(report.at(-1))+'\n');};
+const user='00000000-0000-4000-8000-000000000001';
+const fresh=(overrides={})=>({driverId:user,passengerId:'00000000-0000-4000-8000-000000000002',notificationId:randomUUID(),bookingId:randomUUID(),type:'new_booking',actionProtocol:'driver-v1',nativeAlert:'driver-v6',ringUntil:new Date(Date.now()+60000).toISOString(),rideArrival:'DESTINATION TEST LOCAL',ridePricePerSeat:'2500',ridePriceKind:'fare',...overrides});
+async function inject(data,{mode='deliver',failPrimary=false}={}){
+ shell('run-as','com.zwanga.audit','rm','-f','files/ride-audit-result.json');
+ shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','native-payload','--es','payload',Buffer.from(JSON.stringify(data)).toString('base64'),'--es','mode',mode,'--ez','failPrimary',String(failPrimary));
+ const until=Date.now()+12000;
+ while(Date.now()<until){
+  try {const result=JSON.parse(shell('run-as','com.zwanga.audit','cat','files/ride-audit-result.json'));if(result.notificationId===data.notificationId)return result;}catch{}
+  await sleep(200);
+ }
+ throw Error('Native probe did not return');
+}
+const valid=r=>{assert.equal(r.completed,true);assert.equal(r.count,1);assert.equal(r.actions,2);assert.equal(r.restorable,true);assert.equal(r.receipt.displayed,true);};
+(async()=>{
+ try {
+  shell('input','keyevent','KEYCODE_WAKEUP');shell('wm','dismiss-keyguard');shell('input','keyevent','KEYCODE_HOME');
+  const data=fresh(), first=await inject(data);valid(first);assert.match(first.title,/Zwanga/);assert.match(first.body,/DESTINATION TEST LOCAL/);assert.match(first.body,/2500/);record('background_visible_actionable');
+  const repeated=await inject(data);valid(repeated);assert.equal(repeated.soundUntil,first.soundUntil);assert.equal(repeated.receipt.displayedAt,first.receipt.displayedAt);record('duplicate_no_new_card_or_deadline');
+  const fallback=await inject(fresh(),{failPrimary:true});valid(fallback);assert.equal(fallback.receipt.failureCode,'NATIVE_CARD_FAILED');record('notifee_failure_platform_fallback');
+  const late=await inject(fresh({ringUntil:new Date(Date.now()-5000).toISOString()}));valid(late);assert.equal(late.channel,'ride-native-quiet-v1');assert.equal(late.soundUntil,undefined);record('late_booking_visible_silent');
+  const self=await inject(fresh({passengerId:user}));assert.equal(self.count,0);record('own_request_suppressed');
+  const expired=await inject(fresh({type:'driver_dispatch_offer',offerId:randomUUID(),expiresAt:new Date(Date.now()-1000).toISOString()}));assert.equal(expired.count,0);record('expired_offer_suppressed');
+  const queued=fresh();await inject(queued,{mode:'queue'});await sleep(8000);
+  const recovered=await inject(queued,{mode:'observe'});valid(recovered);record('workmanager_recovery_without_fcm_or_js');
+  shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','consent','--ez','enabled','false');
+  shell('input','keyevent','KEYCODE_SLEEP');await sleep(500);
+  const sleeping=await inject(fresh());valid(sleeping);
+  const woke=/mWakefulness=Awake/.test(shell('dumpsys','power'));record('sleep_visible_card',{screenWoke:woke});assert.equal(woke,true);
+  shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','clear');await sleep(2000);
+  shell('appops','set','com.zwanga.audit','USE_FULL_SCREEN_INTENT','allow');
+  shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','consent','--ez','enabled','true');
+  shell('input','keyevent','KEYCODE_SLEEP');await sleep(500);
+  const fullscreen=await inject(fresh());valid(fullscreen);await sleep(2000);
+  const visible=/topResumedActivity[^\n]*IncomingRideActivity|mResumedActivity[^\n]*IncomingRideActivity/.test(shell('dumpsys','activity','activities'));
+  record('sleep_fullscreen_with_permission',{visible,fullScreenIntent:fullscreen.fullScreenIntent});assert.equal(visible,true);
+ } finally {
+  shell('input','keyevent','KEYCODE_WAKEUP');shell('wm','dismiss-keyguard');
+  shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','clear');
+  shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','consent','--ez','enabled','false');
+  shell('appops','set','com.zwanga.audit','USE_FULL_SCREEN_INTENT','default');
+  fs.mkdirSync('.expo/ride-hardening-20261026',{recursive:true});fs.writeFileSync('.expo/ride-hardening-20261026/native-matrix.json',JSON.stringify(report,null,2)+'\n');
+ }
+})().catch(error=>{process.stderr.write(String(error.stack)+'\n');process.exitCode=1;});

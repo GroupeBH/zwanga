@@ -5,6 +5,9 @@ import { EXTRA_SEATS_IDENTITY_MESSAGE } from '@/utils/passengerSeats';
 
 function getKnownBusinessErrorMessage(error: any): string | null {
   const code = error?.data?.code ?? error?.data?.error?.code ?? error?.error?.code ?? error?.code;
+  if (code === 'DRIVER_EARNING_RECONCILIATION_REQUIRED') {
+    return 'Ce paiement nécessite une vérification. Actualisez le trajet. Si le problème persiste, contactez l’assistance.';
+  }
   if (code === 'TRIP_REQUEST_PRICE_LOCKED') {
     return 'Le prix de ce trajet a déjà été validé par le passager et ne peut plus être modifié.';
   }
@@ -23,6 +26,10 @@ function getKnownBusinessErrorMessage(error: any): string | null {
   }
 
   const message = getErrorMessageText(error).toLowerCase();
+  // Compatibility with older servers: never expose their internal booking ID.
+  if (message.startsWith('le gain conducteur existant est incoh')) {
+    return 'Ce paiement nécessite une vérification. Actualisez le trajet. Si le problème persiste, contactez l’assistance.';
+  }
 
   if (message.includes('otp') || message.includes('one-time password')) {
     const status = getErrorStatus(error);

@@ -1,3 +1,4 @@
+import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
@@ -10,6 +11,7 @@ import { notificationDecision, parseDriverInvitation, type DriverDecision, type 
 import { driverRingDeadline } from '@/features/notifications/driverRinging';
 import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert, type NearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { getDriverAlertChannel, LEGACY_DRIVER_CHANNEL } from './driverAlertChannel';
+import { reportRideNotificationReceipt } from './rideNotificationReceipt';
 import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { acknowledgeRideAlerts, beginRideAlertHandoff, completeRideAlertHandoff, pendingRideAlertHandoffs, pendingRideAlerts, rememberRideAlert } from './rideAlertSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
@@ -70,6 +72,7 @@ export async function configureDriverNotifications() {
 export async function displayDriverInvitation(data: Record<string, unknown>): Promise<boolean> {
   const invitation = parseDriverInvitation(data) ?? parseNearbyPhoneAlert(data);
   if (!invitation) return false;
+  void reportRideNotificationReceipt(data, 'received');
   // A quiet banner is paired with the single foreground audio player.
   if (isAppActive()) {
     if (Platform.OS === 'android') {
@@ -86,7 +89,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     if (isAppActive()) return true;
     // Once foreground audio owns this event, the existing handoff owns its
     // return to sleep. Do not ring twice via two different notification IDs.
-    if (Date.parse(String(data.ringUntil ?? '')) > Date.now() &&
+    if (ridePlaybackDeadline(data) > Date.now() &&
         pendingRideAlerts(invitation.driverId).some(alert => alert.key === invitationNotificationId(invitation))) {
       await reconcileBackgroundRideRinging(invitation.driverId); return true;
     }
@@ -128,7 +131,8 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
       android: { channelId, importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PRIVATE, pressAction: { id: 'default', launchActivity: 'default' },
         onlyAlertOnce: true, autoCancel: false,
-        // A single bundled 29s clip ends without removing a pending booking.
+        // Android's bundled 60s clip ends without removing a pending booking.
+        // iOS keeps its separate 29s notification asset and OS-owned delivery.
         // Only exclusive offers have a short business expiry.
         // Wake after publication through our bounded bridge. Notifee's legacy
         // lightUpScreen acquires unbounded locks before posting the card.
@@ -147,6 +151,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     await boundedRideAudio(display);
     if (!current()) return true;
     published = true;
+    void reportRideNotificationReceipt(data, 'displayed');
     if (fresh && lightUpScreen && !isAppActive()) {
       void wakeDisplayedRideAlert(invitationNotificationId(invitation), channelId, deadline);
     }
@@ -220,6 +225,7 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
     register();
     if (current()) {
       published = true;
+      void reportRideNotificationReceipt(data, 'displayed');
       await dismissDriverAlertFallback(data);
     }
   } catch (error) {
@@ -228,7 +234,7 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
   } finally {
     // Legacy payloads without a sound deadline cannot use the background
     // handoff. Release their in-flight delivery so the original push can finish.
-    const handoffReady = registered && Date.parse(String(data.ringUntil ?? '')) > Date.now();
+    const handoffReady = registered && ridePlaybackDeadline(data) > Date.now();
     if (!published && deliveries.get(key) === delivery && delivery.attempt === attempt) {
       delivery.foreground = false;
       if (!handoffReady && !delivery.cancelled) deliveries.delete(key);

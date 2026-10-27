@@ -58,7 +58,7 @@ public final class IncomingRideActivity extends Activity {
     notificationId = notification.getString("id");
     if (notificationId == null || currentNotification() == null) { finish(); return; }
     // Presentation ends even if JS cannot run. It never extends the server offer.
-    closesAt = System.currentTimeMillis() + 30_000;
+    closesAt = System.currentTimeMillis() + 60_000;
     Bundle data = notification.getBundle("data");
     if (data == null) { finish(); return; }
     String driverId = data.getString("driverId");
@@ -66,7 +66,7 @@ public final class IncomingRideActivity extends Activity {
     try {
       java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US);
       format.setTimeZone(java.util.TimeZone.getTimeZone("UTC")); format.setLenient(false);
-      String until = data.getString("ringUntil");
+      String until = data.getString("nativeSoundUntil", data.getString("ringUntil"));
       if (until == null) { finish(); return; }
       closesAt = Math.min(closesAt, format.parse(until).getTime());
       if (closesAt <= System.currentTimeMillis()) { finish(); return; }

@@ -1,7 +1,7 @@
 /* global __dirname */
 const fs = require('node:fs');
 const path = require('node:path');
-const { sourceFiles, sourceDirectory, outputDirectory, registration } = require('../plugins/withDriverAlertSources');
+const { sourceFiles, sourceDirectory, outputDirectory, registration, androidSoundSource, androidSoundOutput, registerNativeDependencies } = require('../plugins/withDriverAlertSources');
 const { applyBridgeSettings } = require('../plugins/withIosBridgeSettings');
 const normalize = text => text.replace(/\r\n/g, '\n');
 
@@ -16,8 +16,14 @@ function checkNativeSources(root = path.resolve(__dirname, '..')) {
     }
   }
   if (fs.existsSync(path.join(root, 'android'))) {
+    const source = path.join(root, androidSoundSource), output = path.join(root, 'android', androidSoundOutput);
+    if (!fs.existsSync(source) || !fs.existsSync(output) || !fs.readFileSync(source).equals(fs.readFileSync(output)))
+      errors.push('Android ringtone differs from its canonical Android sound asset.');
     const main = read('android/app/src/main/java/com/zwanga/MainApplication.kt');
     if (!main || main.split(registration).length !== 2) errors.push('Android DriverAlertPackage registration missing or duplicated.');
+    const gradle = read('android/app/build.gradle');
+    try { if (gradle && registerNativeDependencies(gradle) !== gradle) errors.push('Android native ride receiver dependencies missing.'); }
+    catch (error) { errors.push(error.message); }
   }
   const podfile = read('ios/Podfile');
   if (podfile !== null) {

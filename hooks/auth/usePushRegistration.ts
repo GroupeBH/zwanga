@@ -14,6 +14,8 @@ import { useAppDispatch } from '@/store/hooks';
 import { getUserIdFromToken } from '@/utils/jwt';
 import { createPushRegistrationAttempt } from '@/services/pushRegistrationAttempt';
 import { usesIosFirebaseMessaging } from '@/services/iosFirebaseMessaging';
+import { bindNativeRideDelivery } from '@/services/nativeRideDelivery';
+import { flushNativeRideReceipts } from '@/services/rideNotificationReceipt';
 
 /** Ordinary push and interactive capability have independent success states. */
 export function usePushRegistration(hasSession: boolean, accessToken: string | null) {
@@ -55,18 +57,21 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
           registration.tokenKey = key;
           registration.capabilityKey = '';
         }
-        if (registration.capabilityKey === key) return;
         const channelId = await attempt.wait(() => configureDriverNotifications());
         if (!current()) return;
+        const nativeReady = await attempt.wait(() => bindNativeRideDelivery(account, channelId));
+        if (!current()) return;
+        void flushNativeRideReceipts(account);
+        if (registration.capabilityKey === key) return;
         const backgroundReady = await attempt.wait(() => registerBackgroundNotificationTask());
         // Android data-only delivery needs the headless handler. iOS sound and
         // actions are delivered by APNs/Notifee, even with Background Refresh off.
-        if (!current() || (Platform.OS === 'android' && !backgroundReady)) return;
-        const capability = Platform.OS === 'ios' && usesIosFirebaseMessaging() ? 5
+        if (!current() || (Platform.OS === 'android' && !backgroundReady && !nativeReady)) return;
+        const capability = nativeReady ? 6 : Platform.OS === 'ios' && usesIosFirebaseMessaging() ? 5
           : Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 4 : 2;
-        if (capability === 4) await attempt.wait(() => configureDriverAlertFallback());
+        if (capability === 4 || capability === 6) await attempt.wait(() => configureDriverAlertFallback());
         if (!current()) return;
-        const register = async (target: 2 | 3 | 4 | 5) => {
+        const register = async (target: 2 | 3 | 4 | 5 | 6) => {
           const request = dispatch(driverDispatchApi.endpoints.registerDriverNotifications.initiate(target));
           try { return await attempt.wait(() => request.unwrap(), () => request.abort()); }
           finally { request.reset(); }
@@ -76,14 +81,17 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
           if (current() && result.registered) registration.capabilityKey = key;
         } catch (error) {
           // A staged rollout against a v2 backend must retain ordinary/actionable push.
-          if (capability !== 4 || (error as { status?: unknown })?.status !== 400 || !current()) throw error;
-          let result;
-          try { result = await register(3); }
-          catch (fallbackError) {
-            if ((fallbackError as { status?: unknown })?.status !== 400 || !current()) throw fallbackError;
-            result = await register(2);
+          if (![4, 6].includes(capability) || (error as { status?: unknown })?.status !== 400 || !current()) throw error;
+          if (!backgroundReady) throw error;
+          for (const fallback of (capability === 6 ? [4, 3, 2] : [3, 2]) as (2 | 3 | 4)[]) {
+            try {
+              const result = await register(fallback);
+              if (current() && result.registered) registration.capabilityKey = key;
+              break;
+            } catch (fallbackError) {
+              if ((fallbackError as { status?: unknown })?.status !== 400 || !current() || fallback === 2) throw fallbackError;
+            }
           }
-          if (current() && result.registered) registration.capabilityKey = key;
         }
       } catch {
         // Login stays usable; retry only while foregrounded and connected.

@@ -15,7 +15,9 @@ test.beforeEach(() => { data.expiresAt = new Date(Date.now() + 30000).toISOStrin
 test('ring deadline is bounded, keeps business expiry and fails silent for invalid timing', () => {
   const invitation = { kind: 'booking', id, driverId };
   const now = Date.now();
-  assert.equal(driverRingDeadline(invitation, now), now + 30000);
+  assert.equal(driverRingDeadline(invitation, now), now + 60000);
+  assert.equal(driverRingDeadline({ ...invitation, ringUntil: new Date(now + 60000).toISOString() }, now + 45000), now + 60000,
+    'delayed delivery retains the remaining window without renewing it');
   assert.equal(driverRingDeadline({ ...invitation, ringUntil: new Date(now + 5000).toISOString() }, now), now + 5000);
   assert.equal(driverRingDeadline({ ...invitation, expiresAt: new Date(now + 1000).toISOString(),
     ringUntil: new Date(now + 60000).toISOString() }, now), now + 1000);

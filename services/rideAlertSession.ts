@@ -1,3 +1,4 @@
+import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRideResponseOpen } from '@/features/notifications/rideAlert';
 import { getTokenSessionVersion } from './tokenSession';
@@ -39,7 +40,7 @@ function storeRideAlert(alert: RideAlert, restoring = false, handedOff = false) 
   if (!canRemember(alert)) return;
   // Never start yesterday's sound on launch. An already-playing foreground
   // session, however, remains pending until a decision (or the offer expires).
-  const ringUntil = Date.parse(String(alert.data.ringUntil ?? ''));
+  const ringUntil = ridePlaybackDeadline(alert.data);
   if (alert.data.ringUntil !== undefined && !Number.isFinite(ringUntil)) return;
   if (!handedOff && !alerts.has(alert.key) && (!Number.isFinite(ringUntil) ? restoring : ringUntil <= Date.now())) {
     if (restoring && alert.kind !== 'response' && !entryOnlyAlerts.has(alert.key)) {
@@ -68,7 +69,7 @@ export function beginRideAlertHandoff(alert: RideAlert): RideAlertHandoff | unde
   if (!canRemember(alert)) return;
   let handoff = handoffs.get(alert.key);
   if (!handoff) {
-    const ringUntil = Date.parse(String(alert.data.ringUntil ?? ''));
+    const ringUntil = ridePlaybackDeadline(alert.data);
     if (!alerts.has(alert.key) && !(ringUntil > Date.now())) return;
     handoff = { alert, until: Date.now() + 30000, attempts: 0, retryAt: 0 };
     if (handoffs.size >= 50) handoffs.delete(handoffs.keys().next().value!);

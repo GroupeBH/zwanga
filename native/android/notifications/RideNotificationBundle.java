@@ -1,0 +1,112 @@
+package com.zwanga.notifications;
+
+import android.app.NotificationManager;
+import android.app.KeyguardManager;
+import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.PowerManager;
+import java.text.SimpleDateFormat;
+import java.util.Locale;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.regex.Pattern;
+
+/** Same IDs/actions as the JS card so unlocking transfers one existing alert. */
+final class RideNotificationBundle {
+  private static final Pattern UUID = Pattern.compile("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+  static boolean uuid(String s) { return s != null && UUID.matcher(s).matches(); }
+  static boolean channel(String c) { return DriverAlertModule.BUNDLED_CHANNEL.equals(c) ||
+      DriverAlertModule.PHONE_CHANNEL.equals(c) || DriverAlertModule.LEGACY_CHANNEL.equals(c); }
+  static long date(String s) {
+    try {
+      if (s == null || !s.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z")) return 0;
+      SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.US);
+      format.setLenient(false); return format.parse(s).getTime();
+    } catch (Exception e) { return 0; }
+  }
+  static String kind(Map<String,String> d) {
+    if ("new_booking".equals(d.get("type"))) return "booking";
+    if ("driver_dispatch_offer".equals(d.get("type"))) return "dispatch";
+    return "trip_request_nearby".equals(d.get("type")) ? "nearby" : null;
+  }
+  static String entity(Map<String,String> d, String kind) {
+    return d.get("booking".equals(kind) ? "bookingId" : "dispatch".equals(kind) ? "offerId" : "tripRequestId");
+  }
+  static boolean valid(Map<String,String> d, long now) {
+    String kind = kind(d);
+    return kind != null && uuid(entity(d, kind)) && uuid(d.get("notificationId")) && uuid(d.get("driverId")) &&
+        !d.get("driverId").equals(d.get("passengerId")) && date(d.get("ringUntil")) > 0 &&
+        date(d.get("ringUntil")) + 300000 > now &&
+        (!"dispatch".equals(kind) || date(d.get("expiresAt")) > now) &&
+        (d.get("alertExpiresAt") == null || date(d.get("alertExpiresAt")) > now);
+  }
+  static Bundle action(String id) {
+    Bundle b = new Bundle(); b.putString("id", id); b.putString("launchActivity", "default"); return b;
+  }
+  private static Bundle button(String title, String id) {
+    Bundle b = new Bundle(); b.putString("title", title); b.putBundle("pressAction", action(id)); return b;
+  }
+  private static String label(String s) {
+    return s == null ? "" : s.replaceAll("<[^>]*>", " ").replaceAll("[\\p{Cntrl}]", " ").trim();
+  }
+  static Bundle create(Context c, Map<String,String> d, String channel, boolean wake) {
+    String kind = kind(d), id = "driver-" + kind + "-" + entity(d, kind);
+    Bundle card = new Bundle(), data = new Bundle(), android = new Bundle();
+    // Exclude Expo fallback rendering instructions, retain business metadata.
+    for (Map.Entry<String,String> e : d.entrySet()) if (!"body".equals(e.getKey())) data.putString(e.getKey(), e.getValue());
+    long now = System.currentTimeMillis();
+    boolean fresh = date(d.get("ringUntil")) > now;
+    // A sound starts once within the admission window; reopening never resets it.
+    if (fresh) {
+      long until = now + 60000;
+      if (date(d.get("expiresAt")) > 0) until = Math.min(until, date(d.get("expiresAt")));
+      if (date(d.get("alertExpiresAt")) > 0) until = Math.min(until, date(d.get("alertExpiresAt")));
+      data.putString("nativeSoundStartedAt", iso(now)); data.putString("nativeSoundUntil", iso(until));
+    }
+    card.putString("id", id); card.putBundle("data", data);
+    card.putString("title", "booking".equals(kind) ? "Zwanga · Nouvelle réservation" : "Zwanga · Nouvelle demande");
+    String destination = label(d.get("rideArrival")), price = d.get("ridePricePerSeat");
+    String body = destination.isEmpty() ? "Un passager vous attend." : "Vers " + destination;
+    if (price != null && price.matches("[0-9]{1,10}(\\.[0-9]{1,2})?"))
+      body += " · " + ("budget".equals(d.get("ridePriceKind")) ? "Budget : " : "") + price + " FC / place";
+    card.putString("body", body + " · Acceptez ou refusez dans Zwanga.");
+    android.putString("channelId", fresh ? channel : quietChannel(c)); android.putInt("importance", 4); android.putInt("visibility", 0);
+    android.putString("smallIcon", "notification_icon");
+    android.putBundle("pressAction", action("default")); android.putBoolean("autoCancel", false);
+    android.putBoolean("onlyAlertOnce", true); android.putBoolean("loopSound", false);
+    if (fresh) android.putString("sound", "driver_ring");
+    ArrayList<Bundle> actions = new ArrayList<>();
+    actions.add(button("nearby".equals(kind) ? "Voir et accepter" : "Accepter", "nearby".equals(kind) ? "driver-review-nearby" : "driver-accept"));
+    actions.add(button("Refuser", "nearby".equals(kind) ? "driver-ignore-nearby" : "driver-decline"));
+    android.putParcelableArrayList("actions", actions);
+    if ("dispatch".equals(kind)) android.putDouble("timeoutAfter", Math.max(1, date(d.get("expiresAt")) - System.currentTimeMillis()));
+    NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
+    KeyguardManager keyguard = (KeyguardManager)c.getSystemService(Context.KEYGUARD_SERVICE);
+    PowerManager power = (PowerManager)c.getSystemService(Context.POWER_SERVICE);
+    boolean locked = (keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive());
+    if (fresh && wake && locked && DriverAlertModule.fullScreenBuildEnabled(c) &&
+        c.getSharedPreferences("ride-full-screen", 0).getBoolean(d.get("driverId"), false) &&
+        c.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+        manager != null && (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent())) {
+      Bundle full = action("ride-full-screen");
+      full.putString("launchActivity", "com.zwanga.notifications.IncomingRideActivity"); full.putString("mainComponent", "main");
+      android.putBundle("fullScreenAction", full);
+    }
+    card.putBundle("android", android); return card;
+  }
+  static String iso(long value) {
+    SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX", Locale.US);
+    format.setTimeZone(java.util.TimeZone.getTimeZone("UTC")); return format.format(new java.util.Date(value));
+  }
+  static String quietChannel(Context c) {
+    String id = "ride-native-quiet-v1";
+    if (Build.VERSION.SDK_INT >= 26) {
+      android.app.NotificationChannel quiet = new android.app.NotificationChannel(id, "Demandes à consulter", 3);
+      quiet.setSound(null, null); quiet.enableVibration(false);
+      ((NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(quiet);
+    }
+    return id;
+  }
+}

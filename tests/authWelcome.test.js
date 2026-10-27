@@ -13,6 +13,8 @@ function fixture(t) {
   const hooks = hookHarness(), routes = [], links = [];
   const state = { focused: true, width: 390, height: 844, fontScale: 1, failNavigation: false, failLegal: false };
   const { AuthWelcome } = loader({ react: { ...React, ...hooks.react },
+    '@/components/UpdateAnnouncementsChoice': { UpdateAnnouncementsChoice: 'AnnouncementsChoice' },
+    '@/components/GuestUpdateNotice': { GuestUpdateNotice: 'GuestUpdateNotice' },
     'react-native': { ...native, useWindowDimensions: () => ({ width: state.width, height: state.height, fontScale: state.fontScale }),
       Linking: { openURL: async url => { links.push(url); if (state.failLegal) throw Error('Native error'); } } },
     '@expo/vector-icons': { Ionicons: 'Icon' },

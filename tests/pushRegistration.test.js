@@ -13,7 +13,7 @@ function fixture(platform = 'android') {
     updates: 0, registrations: 0, resets: 0, version: 0, receive: null, backgroundReady: true, iosFirebase: false,
     channel: 'booking-ring-v2', capabilities: [], rejectV3: null, rejectV4: null, permissionAttempts: [], tokenFails: false,
     tokenWait: null, channelWait: null, updateWait: null, backgroundWait: null, registrationWait: null,
-    sent: [], aborted: 0, updateResets: 0, fallbackFails: false };
+    sent: [], aborted: 0, updateResets: 0, fallbackFails: false, nativeReady: false, rejectV6: null };
   const update = args => ({ unwrap: async () => { io.updates++; io.sent.push(args.fcmToken); if (io.updateWait) await io.updateWait; },
     abort: () => { io.aborted++; }, reset: () => { io.updateResets++; } });
   const dispatch = capability => ({ unwrap: async () => {
@@ -21,9 +21,12 @@ function fixture(platform = 'android') {
     if (io.registrationWait) await io.registrationWait;
     if (capability === 3 && io.rejectV3) throw { status: io.rejectV3 };
     if (capability === 4 && io.rejectV4) throw { status: io.rejectV4 };
+    if (capability === 6 && io.rejectV6) throw { status: io.rejectV6 };
     return { registered: io.registered };
   }, abort: () => { io.aborted++; }, reset: () => { io.resets++; } });
   const { usePushRegistration } = loader({ react: hooks.react,
+    '@/services/nativeRideDelivery': { bindNativeRideDelivery: async () => io.nativeReady },
+    '@/services/rideNotificationReceipt': { flushNativeRideReceipts: async () => {} },
     '@/services/iosFirebaseMessaging': { usesIosFirebaseMessaging: () => io.iosFirebase },
     'react-native': { Platform: { OS: platform } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => io.enabled },
@@ -53,6 +56,16 @@ for (const failure of ['setup', 'registered:false']) test(`interactive push retr
   assert.equal(f.io.registrations, failure === 'setup' ? 1 : 2);
   const count = f.io.registrations; t.mock.timers.tick(180000); await tick();
   assert.equal(f.io.registrations, count); assert.equal(f.io.resets, count); f.hooks.unmount();
+});
+
+test('native v6 can register without a headless task and downgrades only on validation rejection', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  for (const reject of [null, 400, 500]) {
+    const f = fixture(); f.io.registered = true; f.io.nativeReady = true; f.io.rejectV6 = reject;
+    f.io.channel = 'zwanga-ride-ring-v4'; f.io.backgroundReady = reject !== null;
+    f.render(); t.mock.timers.tick(1200); await tick();
+    assert.deepEqual(f.io.capabilities, reject === 400 ? [6, 4] : [6]); f.hooks.unmount();
+  }
 });
 
 test('v4 capability works with bundled/customized native channels on Android; iOS/legacy keep v2', async t => {

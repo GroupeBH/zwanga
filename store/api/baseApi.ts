@@ -8,6 +8,8 @@ import { getTokenSessionVersion } from '../../services/tokenSession';
 import { isTokenExpired } from '../../utils/jwt';
 
 const fetchQuery = fetchBaseQuery({ baseUrl: API_BASE_URL, timeout: DEFAULT_API_TIMEOUT_MS });
+/** Explicit public endpoints only: no account lookup, token or refresh dependency. */
+export const publicBaseQuery = fetchQuery;
 const unavailable = (message: string): { error: FetchBaseQueryError } =>
   ({ error: { status: 'FETCH_ERROR', error: message } });
 

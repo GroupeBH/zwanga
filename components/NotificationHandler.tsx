@@ -225,6 +225,8 @@ export function NotificationHandler() {
       data: Record<string, any>,
       fallbackBody?: string | null,
     ) => {
+      // Public update coordinator also restores cold-start taps before login.
+      if (data.type === 'app_update') return;
       if (!canShowRequestNotification(data, currentUserRef.current)) return;
       dispatch(baseApi.util.invalidateTags(notificationEffects(data).tags));
       // The dedicated hook also restores nearby taps received before hydration.

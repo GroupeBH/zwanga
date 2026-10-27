@@ -15,12 +15,13 @@ android {
 }
 tasks.register('copyAuditNative', Copy) {
     from(new File(repo, 'native/android/notifications')) {
-        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'IncomingRideActivity.java'
+        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'IncomingRideActivity.java',
+            'NativeRideDelivery.java', 'RideNotificationBundle.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'
     }
     into new File(buildDir, 'audit-native/com/zwanga/notifications')
 }
 tasks.register('copyAuditSound', Copy) {
-    from new File(repo, 'assets/sounds/driver_ring.wav')
+    from new File(repo, 'assets/sounds/android/driver_ring.wav')
     into new File(buildDir, 'audit-res/raw')
 }
 tasks.named('preBuild').configure { dependsOn 'copyAuditNative', 'copyAuditSound' }

@@ -1,3 +1,4 @@
+import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import { AppState, Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
 import { getDriverAlertChannel } from './driverAlertChannel';
@@ -7,6 +8,7 @@ import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics
 import { shouldLightUpRideAlertScreen, wakeDisplayedRideAlert } from './rideAlertScreenWake';
 import { rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
+import { DRIVER_RING_DURATION_MS } from '@/features/notifications/driverRinging';
 
 export const BACKGROUND_RIDE_RING_PREFIX = 'ride-handoff-';
 let running: Promise<void> | undefined;
@@ -47,9 +49,9 @@ async function handOff(userId: string, version: number) {
     await cancel(previous.id);
   }
   if (!inBackground() || audible) return;
-  const alert = pending().find(item => Date.parse(String(item.data.ringUntil ?? '')) > Date.now());
+  const alert = pending().find(item => ridePlaybackDeadline(item.data) > Date.now());
   if (!alert) return;
-  const deadline = Math.min(Date.parse(String(alert.data.ringUntil)), Date.now() + 30000,
+  const deadline = Math.min(ridePlaybackDeadline(alert.data), Date.now() + DRIVER_RING_DURATION_MS,
     alert.expiresAt ? Date.parse(alert.expiresAt) : Infinity);
   let cancelled = false;
   const valid = () => !cancelled && inBackground() && deadline > Date.now() && pending().some(item => item.key === alert.key);

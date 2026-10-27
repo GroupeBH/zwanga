@@ -120,6 +120,7 @@ test('update modal ignores stale storage reads after backgrounding and respects 
 test('store action is allowlisted and double-tap safe, with a local failure message', async () => {
   const h = hookHarness(); let reject, calls = [];
   const { default: Screen } = loader({ react: h.react,
+    '@/components/UpdateAnnouncementsChoice': { UpdateAnnouncementsChoice: 'AnnouncementsChoice' },
     'react-native': { ...native, Linking: { openURL: url => { calls.push(url); return new Promise((_, fail) => { reject = fail; }); } } },
     'react-native-safe-area-context': { SafeAreaView: 'Safe' },
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-router': { useRouter: () => ({}) },
