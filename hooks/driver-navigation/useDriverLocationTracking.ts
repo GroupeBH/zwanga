@@ -20,6 +20,9 @@ import {
 import * as Location from 'expo-location';
 import { subscribeBootstrappedRideLocation } from '@/services/rideLocationBootstrap';
 import { useEffect } from 'react';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { isAppActive } from '@/services/appActivity';
+import { requestLocationPermission } from '@/services/locationPermissionWait';
 
 interface Params {
   data: ReturnType<typeof useDriverNavigationData>;
@@ -38,6 +41,7 @@ export function useDriverLocationTracking({
   promptBackgroundDisclosure,
   sendDriverLocationToTracking,
 }: Params) {
+  const active = useAppIsActive();
   useEffect(() => {
     if (!data.isFocused || !data.tripId || !data.isTripOngoing) {
       if (mapState.locationSubscription.current) {
@@ -50,12 +54,17 @@ export function useDriverLocationTracking({
       }
       return;
     }
+    if (!active) return;
 
     let locationEffectCancelled = false;
+    const current = () => !locationEffectCancelled && mapState.isMountedRef.current && !refs.isExitingRef.current && isAppActive();
     (async () => {
       try {
-        const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
-        if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
+        let permission = await Location.getForegroundPermissionsAsync();
+        if (!current()) return;
+        if (permission.status !== 'granted') permission = await requestLocationPermission(() => Location.requestForegroundPermissionsAsync(), current, true);
+        const { status: foregroundStatus } = permission;
+        if (!current()) return;
         if (foregroundStatus !== 'granted') {
           data.showDialog({
             title: 'Permission refusée',
@@ -73,15 +82,15 @@ export function useDriverLocationTracking({
         // Cette permission n'est pas toujours disponible/configurée
         try {
           const { status: backgroundPermissionStatus } = await Location.getBackgroundPermissionsAsync();
-          if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
+          if (!current()) return;
 
           if (backgroundPermissionStatus !== 'granted') {
             const acceptedDisclosure = await promptBackgroundDisclosure();
-            if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
+            if (!current()) return;
 
             if (acceptedDisclosure) {
-              const { status: requestedBackgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-              if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
+              const { status: requestedBackgroundStatus } = await requestLocationPermission(() => Location.requestBackgroundPermissionsAsync(), current, true);
+              if (!current()) return;
               if (requestedBackgroundStatus !== 'granted') {
                 if (__DEV__) {
                   console.log('Permission de localisation en arrière-plan non accordee - mode premier plan uniquement');
@@ -101,7 +110,7 @@ export function useDriverLocationTracking({
         }
 
         const hasServicesEnabled = await Location.hasServicesEnabledAsync();
-        if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
+        if (!current()) return;
         if (!hasServicesEnabled) {
           data.showDialog({
             title: 'Localisation désactivée',
@@ -140,6 +149,7 @@ export function useDriverLocationTracking({
       mapState.locationSubscription.current?.remove();
       mapState.locationSubscription.current = subscription;
       } catch (error) {
+        if (!current()) return;
         console.error('Erreur lors de l\'initialisation de la localisation:', error);
         if (locationEffectCancelled || !mapState.isMountedRef.current || refs.isExitingRef.current) return;
         data.showDialog({
@@ -163,6 +173,7 @@ export function useDriverLocationTracking({
       }
     };
   }, [
+    active,
     data.tripId,
     data.isFocused,
     data.isTripOngoing,

@@ -89,14 +89,14 @@ export function useNearbyLocationPermission(options: {
   }, [entry, current, touch, confirm, finish, options.active, options.driver, attempt]);
 
   const authorize = async (allowSettingsRedirect = false) => {
-    if (!current() || !latest.current.options.active || !latest.current.options.available ||
+    if (AppState.currentState !== 'active' || !current() || !latest.current.options.active || !latest.current.options.available ||
       !entry.loaded || !entry.consent || entry.action) return;
     entry.readEpoch++; entry.read?.abort(); entry.checkAfterAction = false;
     const controller = new AbortController(); entry.action = controller;
     const valid = () => current() && entry.action === controller && !controller.signal.aborted;
     entry.busy = true; entry.message = ''; touch();
     const settings = async () => {
-      if (!valid()) return;
+      if (!valid() || !latest.current.options.active || AppState.currentState !== 'active') return;
       entry.settingsRequired = true;
       if (!allowSettingsRedirect) { entry.message = 'Le téléphone demande de terminer dans les autorisations de Zwanga.'; return; }
       entry.pendingSettings = true;
@@ -109,7 +109,8 @@ export function useNearbyLocationPermission(options: {
       entry.foregroundPermission = foreground.granted;
       if (!foreground.granted) entry.permission = false;
       if (!foreground.granted && foreground.canAskAgain === false) { await settings(); return; }
-      if (!foreground.granted) foreground = await wait(requestLocationPermission(() => Location.requestForegroundPermissionsAsync()), controller.signal, null);
+      if (!foreground.granted) foreground = await wait(requestLocationPermission(() => Location.requestForegroundPermissionsAsync(),
+        () => valid() && latest.current.options.active), controller.signal, null);
       if (!valid()) return;
       entry.foregroundPermission = foreground.granted;
       if (!foreground.granted) {
@@ -120,7 +121,8 @@ export function useNearbyLocationPermission(options: {
       if (!valid()) return;
       entry.permission = background.granted;
       if (!background.granted && background.canAskAgain === false) { await settings(); return; }
-      if (!background.granted) background = await wait(requestLocationPermission(() => Location.requestBackgroundPermissionsAsync()), controller.signal, null);
+      if (!background.granted) background = await wait(requestLocationPermission(() => Location.requestBackgroundPermissionsAsync(),
+        () => valid() && latest.current.options.active), controller.signal, null);
       if (!valid()) return;
       entry.permission = background.granted;
       if (!background.granted) {
@@ -129,7 +131,9 @@ export function useNearbyLocationPermission(options: {
       }
       await confirm(controller);
     } catch (error) {
-      if (valid()) entry.message = error instanceof Error && error.message === 'LOCATION_PERMISSION_PROMPT_PENDING'
+      if (valid()) entry.message = error instanceof Error && error.message === 'LOCATION_PERMISSION_DEFERRED'
+        ? 'Revenez dans Zwanga, puis touchez « Autoriser ».'
+        : error instanceof Error && error.message === 'LOCATION_PERMISSION_PROMPT_PENDING'
         ? 'Fermez d’abord la fenêtre d’autorisation du téléphone, puis réessayez.'
         : 'Impossible de terminer. Vérifiez les réglages du téléphone, puis réessayez.';
     } finally { finish(controller); }

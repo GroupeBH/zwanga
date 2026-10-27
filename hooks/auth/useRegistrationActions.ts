@@ -13,7 +13,7 @@ import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
 import type { TripRequestVehicleType, UserGender } from '@/types';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
-import { consumePendingReferralAttribution, getPendingReferralAttribution } from '@/utils/referralAttribution';
+import { getPendingReferralAttribution } from '@/utils/referralAttribution';
 import React from 'react';
 import { Platform } from 'react-native';
 import { AuthStep } from '@/components/auth';
@@ -109,13 +109,14 @@ export function useRegistrationActions({
     }
   };
 
-  const completeRegistration = async (result: AuthResponse, method: 'phone' | SocialAuthProvider, referralToken: string | undefined, userName: string) => {
+  const completeRegistration = async (result: AuthResponse, method: 'phone' | SocialAuthProvider, userName: string) => {
     if (mounted.current) setHasCreatedAccount(true);
     resumeFinalization.current = async () => {
       const saved = await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
       if (!saved) throw new Error('La session n’a pas pu être confirmée.');
       // Optional side effects must not turn a created account into a failed signup.
-      if (referralToken) await consumePendingReferralAttribution(referralToken).catch(() => undefined);
+      // The durable referral coordinator consumes the invitation only after the
+      // attachment endpoint confirms it. A successful signup alone is not proof.
       if (role === 'driver' && mounted.current) {
         try {
           await startDiditKyc({ skipLegalIdentityConfirmation: true });
@@ -215,7 +216,7 @@ export function useRegistrationActions({
               vehicle: signupVehicle,
               ...referralSignupPayload,
             }).unwrap();
-        await completeRegistration(result, authMethod, pendingAttribution?.token, legalFirstName || googleProfileName || '');
+        await completeRegistration(result, authMethod, legalFirstName || googleProfileName || '');
         return;
       }
       
@@ -243,7 +244,7 @@ export function useRegistrationActions({
       }
 
       const result = await register(formData).unwrap();
-      await completeRegistration(result, 'phone', pendingAttribution?.token, legalFirstName);
+      await completeRegistration(result, 'phone', legalFirstName);
     } catch (error: any) {
       if (!mounted.current) return;
       showDialog(resumeFinalization.current

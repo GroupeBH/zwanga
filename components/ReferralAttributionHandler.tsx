@@ -47,6 +47,7 @@ export function ReferralAttributionHandler() {
   const queue = useRef<Promise<void>>(Promise.resolve());
   const lastProcessedEvent = useRef<{ token: string; processedAt: number } | null>(null);
   const lastRetryNoticeToken = useRef<string | null>(null);
+  const retryNeeded = useRef(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -96,6 +97,7 @@ export function ReferralAttributionHandler() {
           message: getApiErrorMessage(error, 'Ce compte possède déjà un parrain ou cette invitation ne peut plus être utilisée.'),
         });
       } else {
+        retryNeeded.current = true;
         notifyRetry(pending.token);
       }
     }
@@ -103,6 +105,7 @@ export function ReferralAttributionHandler() {
 
   const processReferral = useCallback(async (payload?: ChottuLinkReferralPayload, capturedOwner?: string | null) => {
     if (!mounted.current) return;
+    retryNeeded.current = false;
     const owner = payload ? capturedOwner ?? null : current.current.isAuthenticated ? current.current.userId ?? null : null;
     let candidate: PendingReferralAttribution | null = null;
     try {
@@ -160,6 +163,7 @@ export function ReferralAttributionHandler() {
         router.replace({ pathname: '/auth', params: { mode: 'signup', referralToken: selected.token } });
       }
     } catch (error) {
+      retryNeeded.current = !isDefinitiveAuthenticatedAttributionError(error);
       void trackEvent('referral_attribution_failed', {
         status: getReferralErrorStatus(error) ?? 'network', phase: 'link_resolution',
       }).catch(() => undefined);
@@ -206,6 +210,14 @@ export function ReferralAttributionHandler() {
   useEffect(() => {
     if (online && active) void enqueue();
   }, [active, online, isAuthenticated, userId, enqueue]);
+
+  // A server timeout does not necessarily produce a connectivity event.
+  // Retry only unresolved work, only in foreground, at most once per minute.
+  useEffect(() => {
+    if (!online || !active) return;
+    const timer = setInterval(() => { if (retryNeeded.current) void enqueue(); }, 60_000);
+    return () => clearInterval(timer);
+  }, [online, active, enqueue]);
 
   return null;
 }

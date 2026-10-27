@@ -6,12 +6,13 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function background(t, kind = 'booking') {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
-  const io = { version: 0, platform: 'android', state: 'background', pending: [], displayed: [], cancelled: [], channel: async () => 'ring', display: async () => {}, wake: true, fullscreen: false, fullScreenCalls: [] };
+  const io = { version: 0, platform: 'android', state: 'background', pending: [], displayed: [], cancelled: [], wakes: [], channel: async () => 'ring', display: async () => {}, wake: true, fullscreen: false, fullScreenCalls: [] };
   const alert = { key: `driver-${kind}-one`, kind, recipientId: 'driver', id: 'one',
     data: { driverId: 'driver', ringUntil: new Date(Date.now() + 30000).toISOString(), type: kind === 'booking' ? 'new_booking' : 'booking_response' } };
   io.pending.push(alert);
   const load = loader({ 'react-native': { Platform: { get OS() { return io.platform; } }, AppState: { get currentState() { return io.state; } },
     NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => io.wake,
+      wakeDisplayedAlert: async id => { io.wakes.push(id); return 'requested'; },
       canPresentFullScreen: async id => { io.fullScreenCalls.push(id); return io.fullscreen; } } } },
     '@notifee/react-native': { __esModule: true, AndroidStyle: { BIGTEXT: 1 }, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, default: {
       displayNotification: async n => { io.displayed.push(n); await io.display(); }, cancelNotification: async id => io.cancelled.push(id) } },
@@ -27,11 +28,23 @@ test('background handoff is deduplicated and preserves original remaining ring t
   const notification = f.io.displayed[0];
   assert.equal(notification.android.timeoutAfter, 18000);
   assert.equal(notification.android.loopSound, true);
-  assert.equal(notification.android.lightUpScreen, true, 'wake the lock screen without a call/full-screen activity');
+  assert.equal(notification.android.lightUpScreen, false, 'avoid Notifee unbounded wake locks');
+  assert.deepEqual(f.io.wakes, [notification.id]);
   assert.equal(notification.android.fullScreenAction, undefined);
   assert.deepEqual(notification.android.actions.map(a => a.pressAction.id), ['driver-decline', 'driver-accept']);
   f.io.pending = []; await f.reconcileBackgroundRideRinging('driver');
   assert.deepEqual(f.io.cancelled, [notification.id]);
+});
+
+test('a 60-second alert can hand off after 30 seconds without renewing its deadline or shortening it to 30', async t => {
+  const f = background(t);
+  f.alert.data.ringUntil = new Date(Date.now() + 60000).toISOString();
+  await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed[0].android.timeoutAfter, 60000);
+  t.mock.timers.tick(35000); await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed.length, 1);
+  t.mock.timers.tick(26000); await f.reconcileBackgroundRideRinging('driver');
+  assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
 });
 
 test('a passenger response hands back to Android but has no driver decision buttons', async t => {
@@ -84,7 +97,8 @@ test('a DND or muted-channel decision suppresses screen wake without discarding 
   const f = background(t); f.io.wake = false; f.io.fullscreen = true; await f.reconcileBackgroundRideRinging('driver');
   assert.equal(f.io.displayed.length, 1);
   assert.equal(f.io.displayed[0].android.lightUpScreen, false);
-  assert.deepEqual(f.io.fullScreenCalls, []);
+  assert.equal(f.io.displayed[0].android.fullScreenAction, undefined);
+  assert.deepEqual(f.io.wakes, []);
 });
 
 test('handoff cannot start after expiry, a decision, a foreground return or a changed account during initialization', async t => {
@@ -117,8 +131,18 @@ test('a late native display is cancelled after a decision or foreground return',
     const queued = f.reconcileBackgroundRideRinging('driver');
     finish(); await Promise.all([work, queued]);
     assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
+    assert.deepEqual(f.io.wakes, [], 'a cancelled or foreground card must not wake the screen');
     t.mock.timers.reset();
   }
+});
+
+test('background screen wake waits for card publication without holding the card on a slow wake bridge', async t => {
+  const f = background(t); let finish;
+  f.io.display = () => new Promise(resolve => { finish = resolve; });
+  const work = f.reconcileBackgroundRideRinging('driver'); await tick();
+  assert.deepEqual(f.io.wakes, []);
+  finish(); await work;
+  assert.deepEqual(f.io.wakes, [f.io.displayed[0].id]);
 });
 
 test('cleanup invalidates an initializing handoff without needing a token rotation', async t => {

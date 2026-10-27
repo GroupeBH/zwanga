@@ -139,15 +139,18 @@ test('driver signup stays busy throughout Didit; a KYC failure cannot replay acc
   app.hooks.unmount();
 });
 
-test('referral consumption, notification and analytics failures do not undo successful signup', async () => {
+test('signup retains its referral for explicit attachment acknowledgement; optional failures cannot undo account creation', async () => {
   const app = signupFixture();
+  let consumed = 0;
   const fail = async () => { throw new Error('optional service unavailable'); };
-  app.io.consumeReferral = fail; app.io.notification = fail; app.io.analytics = fail;
+  app.io.readReferral = async () => ({ token: 'abcdefghijklmnop1234', provider: 'chottulink', capturedAt: new Date().toISOString() });
+  app.io.consumeReferral = async () => { consumed++; }; app.io.notification = fail; app.io.analytics = fail;
   app.request.resolve(tokens); app.storage.resolve(true);
   await app.render().handleFinalRegister(); await tick();
   assert.deepEqual(app.dialogs, []);
   assert.equal(app.calls.at(-1), 'redirect');
   assert.equal(app.render().isRegistrationPending, true);
+  assert.equal(consumed, 0, 'signup success alone cannot consume the durable invitation');
   app.hooks.unmount();
 });
 

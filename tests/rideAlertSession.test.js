@@ -80,7 +80,49 @@ test('foreground booking continues beyond the initial push window, while a dispa
   assert.deepEqual(session.pendingRideAlerts(userId).map(a => a.kind), ['booking']);
 });
 
-function audioFixture(platform = 'android') {
+for (const boundary of ['decision', 'logout', 'cleanup', 'business-expiry']) test(`an in-flight audio handoff cannot cross ${boundary}`, t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  let version = 0;
+  const load = loader({ './tokenSession': { getTokenSessionVersion: () => version } });
+  const session = load('services/rideAlertSession.ts');
+  const alert = load('features/notifications/rideAlert.ts').parseRideAlert({ ...booking(),
+    ...(boundary === 'business-expiry' ? { expiresAt: new Date(Date.now() + 2000).toISOString() } : {}) });
+  session.setRideAlertScreen(userId, '/home');
+  const handoff = session.beginRideAlertHandoff(alert);
+  assert.ok(handoff);
+  assert.deepEqual(session.pendingRideAlerts(userId), [], 'a staged handoff has no audio authority');
+  if (boundary === 'decision') session.acknowledgeRideAlerts(a => a.key === alert.key);
+  if (boundary === 'logout') version++;
+  if (boundary === 'cleanup') session.clearRideAlertSession();
+  if (boundary === 'business-expiry') t.mock.timers.tick(2001);
+  session.completeRideAlertHandoff(handoff);
+  assert.deepEqual(session.pendingRideAlerts(userId), []);
+  assert.deepEqual(session.pendingRideAlertHandoffs(userId), []);
+});
+
+test('audio handoff retries are capped, preserve the first receipt and never resurrect stale cards', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const load = loader(); const session = load('services/rideAlertSession.ts');
+  const alert = load('features/notifications/rideAlert.ts').parseRideAlert({ ...booking(), ringUntil: new Date(105000).toISOString() });
+  const first = session.beginRideAlertHandoff(alert);
+  assert.equal(session.beginRideAlertHandoff(alert), undefined);
+  for (let i = 0; i < 2; i++) {
+    t.mock.timers.tick(3000);
+    assert.equal(session.beginRideAlertHandoff(alert), first);
+  }
+  t.mock.timers.tick(3000);
+  assert.equal(session.beginRideAlertHandoff(alert), undefined);
+  assert.equal(session.pendingRideAlertHandoffs(userId)[0].attempts, 3);
+  t.mock.timers.tick(30000);
+  assert.deepEqual(session.pendingRideAlertHandoffs(userId), []);
+  assert.equal(session.beginRideAlertHandoff(alert), undefined);
+  session.completeRideAlertHandoff(first);
+  assert.deepEqual(session.pendingRideAlerts(userId), []);
+});
+
+// Expo's foreground player is used on iOS. Legacy Android now delegates audio
+// to the OS card (covered in rideDeliveryFixes); current Android has its bridge.
+function audioFixture(platform = 'ios') {
   const io = { active: true, permitted: true, sound: true, mode: true, blocked: false, plays: 0, removes: 0, vibration: 0,
     modeReady: async () => {}, settings: async () => ({ authorizationStatus: io.permitted ? 1 : 0, ios: { sound: io.sound ? 1 : 0 } }) };
   const player = { play() { io.plays++; }, pause() {}, remove() { io.removes++; } };
@@ -106,7 +148,7 @@ test('one lazy audio player loops the bundled sound and releases audio/vibration
 
 test('permissions, channel mute, silent/DND and inactive app prevent foreground audio', async () => {
   for (const field of ['active', 'permitted', 'sound', 'mode', 'blocked']) {
-    const f = audioFixture(); f.io[field] = field === 'blocked';
+    const f = audioFixture('android'); f.io[field] = field === 'blocked';
     await f.startForegroundRideSound(); assert.equal(f.io.plays, 0, field);
   }
   const ios = audioFixture('ios'); ios.io.sound = false;
@@ -133,16 +175,16 @@ test('voice ownership covers a replacement player but cannot resurrect removed a
   f.stopForegroundRideSound();
 });
 
-test('a transient audio initialization error retries with backoff, at most three times per episode', async t => {
+test('audio initialization retries three times, then waits a minute before allowing recovery', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 100000 });
   const f = audioFixture(); let calls = 0;
   f.io.settings = async () => { calls++; throw Error('temporary'); };
   await f.startForegroundRideSound(); await f.startForegroundRideSound(); assert.equal(calls, 1);
   t.mock.timers.tick(5001); await f.startForegroundRideSound(); assert.equal(calls, 2);
   t.mock.timers.tick(15001); await f.startForegroundRideSound(); assert.equal(calls, 3);
-  t.mock.timers.tick(60000); await f.startForegroundRideSound(); assert.equal(calls, 3);
-  f.stopForegroundRideSound();
+  t.mock.timers.tick(59999); await f.startForegroundRideSound(); assert.equal(calls, 3);
   f.io.settings = async () => ({ authorizationStatus: 1 });
+  t.mock.timers.tick(1);
   await f.startForegroundRideSound(); assert.equal(f.io.plays, 1); f.stopForegroundRideSound();
 });
 

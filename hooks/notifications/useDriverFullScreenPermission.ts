@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NativeModules, Platform } from 'react-native';
+import { AppState, NativeModules, Platform } from 'react-native';
 import { boundedRideAudio } from '@/services/rideAudioDiagnostics';
 
 export type DriverFullScreenPermission = { optIn: boolean; allowed: boolean; notificationsAllowed: boolean };
@@ -23,23 +23,34 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
   useEffect(() => {
     const lifecycle = generation;
     const epoch = ++lifecycle.current;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     mounted.current = true;
     inFlight.current = false; setBusy(false); setError(false); setStatus(null);
     if (active && Platform.OS === 'android' && driverId && bridge?.getFullScreenStatus) {
-      void boundedRideAudio(Promise.resolve().then(() => bridge.getFullScreenStatus(driverId)), 1500).then(value => {
-        if (generation.current !== epoch || owner.current !== driverId) return;
-        const permission = parseState(value);
-        setStatus(permission ? { owner: driverId, permission } : null);
-      }).catch(() => { if (generation.current === epoch) setError(true); });
+      const read = (attempt: number) => {
+        if (generation.current !== epoch || AppState.currentState !== 'active') return;
+        void boundedRideAudio(Promise.resolve().then(() => bridge.getFullScreenStatus(driverId)), 1500).then(value => {
+          if (generation.current !== epoch || owner.current !== driverId) return;
+          const permission = parseState(value);
+          if (value !== null && !permission) throw new Error('Invalid full-screen permission status');
+          setStatus(permission ? { owner: driverId, permission } : null);
+          setError(false);
+        }).catch(() => {
+          if (generation.current !== epoch) return;
+          setError(true);
+          if (attempt === 0) retry = setTimeout(() => read(1), 2000);
+        });
+      };
+      read(0);
     }
-    return () => { ++lifecycle.current; mounted.current = false; };
+    return () => { clearTimeout(retry); ++lifecycle.current; mounted.current = false; };
   }, [active, bridge, driverId]);
 
   const setOptIn = async (value: boolean) => {
-    if (Platform.OS !== 'android' || !driverId || !mounted.current || !foreground.current ||
+    if (AppState.currentState !== 'active' || Platform.OS !== 'android' || !driverId || !mounted.current || !foreground.current ||
         owner.current !== driverId || inFlight.current || !bridge?.setFullScreenOptIn) return;
     const epoch = generation.current;
-    const current = () => mounted.current && generation.current === epoch && owner.current === driverId && foreground.current;
+    const current = () => mounted.current && generation.current === epoch && owner.current === driverId && foreground.current && AppState.currentState === 'active';
     inFlight.current = true; setBusy(true); setError(false);
     try {
       const saved = await boundedRideAudio(Promise.resolve().then(() => current() ? bridge.setFullScreenOptIn(driverId, value) : false), 2000);
@@ -51,7 +62,11 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
         else setError(true);
       }
     } catch { if (current()) setError(true); }
-    finally { if (current()) { inFlight.current = false; setBusy(false); } }
+    finally {
+      if (mounted.current && generation.current === epoch && owner.current === driverId) {
+        inFlight.current = false; setBusy(false);
+      }
+    }
   };
   return { permission: Platform.OS === 'android' && active && status?.owner === driverId ? status?.permission : null,
     busy, error, setOptIn };

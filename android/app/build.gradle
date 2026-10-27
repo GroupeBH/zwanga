@@ -106,7 +106,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 137
-        versionName "1.0.17"
+        versionName "1.0.18"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -166,6 +166,11 @@ android {
 }
 
 dependencies {
+    implementation('com.google.guava:guava:33.3.1-android')
+    // Zwanga native ride receiver: same libraries already provided by Expo/Notifee.
+    implementation('com.google.firebase:firebase-messaging:24.0.1')
+    implementation('app.notifee:core:202108261754')
+    implementation('androidx.work:work-runtime:2.8.0')
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 

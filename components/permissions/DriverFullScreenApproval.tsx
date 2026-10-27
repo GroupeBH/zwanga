@@ -5,11 +5,11 @@ import { RideModal } from '@/features/navigation/RideModal';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import { ACTION_COLORS } from '@/constants/actionColors';
 
-type Props = { visible: boolean; busy: boolean; error: boolean; onConfirm(): void; onClose(): void };
+type Props = { visible: boolean; busy: boolean; error: boolean; onConfirm(): void; onClose(): void; onShow?(): void };
 
-export function DriverFullScreenApproval({ visible, busy, error, onConfirm, onClose }: Props) {
+export function DriverFullScreenApproval({ visible, busy, error, onConfirm, onClose, onShow }: Props) {
   return <RideModal visible={visible} inApp transparent animationType="fade"
-    priority={RIDE_OVERLAY_PRIORITY.information} onRequestClose={onClose}>
+    priority={RIDE_OVERLAY_PRIORITY.information} onRequestClose={onClose} onShow={onShow}>
     <View style={styles.overlay}>
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <ScrollView bounces={false} contentContainerStyle={styles.content}>

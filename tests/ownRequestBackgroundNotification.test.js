@@ -37,3 +37,9 @@ test('another passenger still rings and responses to the author keep their remot
   await f.deliver({ type: 'trip_request_accepted', ringAlert: 'request-accepted-v1', passengerId: driverId, tripRequestId: id });
   assert.equal(f.displayed.length, 1); assert.deepEqual(f.fallback, []);
 });
+
+test('an update announcement keeps its remote card without a duplicate local notification or ringtone', async () => {
+  const f = fixture();
+  await f.deliver({ type: 'app_update', installationId: id, releaseId: '1' });
+  assert.deepEqual(f.displayed, []); assert.deepEqual(f.fallback, []);
+});

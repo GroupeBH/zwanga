@@ -83,12 +83,14 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
   const dismiss = () => { if (selected === 'location') location.defer(); close(); };
   return <>
     <BackgroundLocationApproval {...location} visible={selected === 'location' && safe}
+      onShow={() => prompt.onShown('location')}
       priority={RIDE_OVERLAY_PRIORITY.information} onClose={dismiss} onConfirm={() => {
         if (!safeRef.current) return;
         if (location.loadError) location.retry();
         else { location.setConsent(true); void (location.settingsRequired ? location.openSettings() : location.authorize()); }
       }} />
     <DriverFullScreenApproval visible={selected === 'fullScreen' && safe} busy={fullScreen.busy} error={fullScreen.error}
+      onShow={() => prompt.onShown('fullScreen')}
       onClose={dismiss} onConfirm={() => { if (safeRef.current) void fullScreen.setOptIn(true); }} />
   </>;
 }

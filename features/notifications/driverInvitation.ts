@@ -1,3 +1,4 @@
+import { ridePlaybackDeadline } from './ridePlaybackDeadline';
 import { isSelfDriverAlert } from './requestOwnership';
 
 export type DriverInvitation = {
@@ -16,7 +17,7 @@ export function parseDriverInvitation(data: Record<string, unknown> | undefined)
   if (kind === 'dispatch' && (typeof data.expiresAt !== 'string' || !Number.isFinite(Date.parse(data.expiresAt)))) return null;
   return { kind, id, driverId: data.driverId,
     ...(typeof data.expiresAt === 'string' ? { expiresAt: data.expiresAt } : {}),
-    ...(typeof data.ringUntil === 'string' ? { ringUntil: data.ringUntil } : {}) };
+    ...(typeof data.ringUntil === 'string' ? { ringUntil: Number.isFinite(ridePlaybackDeadline(data)) ? new Date(ridePlaybackDeadline(data)).toISOString() : data.ringUntil } : {}) };
 }
 
 export function notificationDecision(actionId: string | undefined): DriverDecision | null {

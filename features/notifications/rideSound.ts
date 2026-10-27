@@ -1,3 +1,4 @@
+import { ridePlaybackDeadline } from './ridePlaybackDeadline';
 import { isInvitationId } from './driverInvitation';
 import { isSelfDriverAlert } from './requestOwnership';
 
@@ -6,8 +7,9 @@ export type NearbyPhoneAlert = { kind: 'nearby'; id: string; driverId: string; r
 /** Only v3 Android data-only pushes are locally displayed; never replay a remote v2 alert. */
 export function parseNearbyPhoneAlert(data: Record<string, unknown> | undefined): NearbyPhoneAlert | null {
   if (!isRemoteNearbyRequestAlert(data) || data?.delivery !== 'driver-phone-v3' ||
-      typeof data.ringUntil !== 'string' || !Number.isFinite(Date.parse(data.ringUntil))) return null;
-  return { kind: 'nearby', id: data.tripRequestId as string, driverId: data.driverId as string, ringUntil: data.ringUntil };
+      typeof data.ringUntil !== 'string' || !Number.isFinite(ridePlaybackDeadline(data))) return null;
+  return { kind: 'nearby', id: data.tripRequestId as string, driverId: data.driverId as string, ringUntil: new Date(ridePlaybackDeadline(data)).toISOString(),
+    ...(typeof data.alertExpiresAt === 'string' ? { expiresAt: data.alertExpiresAt } : {}) };
 }
 
 /** These alerts are already displayed by APNs/FCM (unlike headless driver invitations). */

@@ -25,7 +25,8 @@ test('foreground subscription coalesces refresh, ignores foreign sessions and re
     '@/services/chatSocket': { chatSocket: { subscribeToRideAlerts: fn => { receive = fn; return () => { stops++; }; } } },
     '@/services/tokenSession': { getTokenSessionVersion: () => state.session },
     '@/services/driverNotifications': { displayDriverInvitation: async data => displayed.push(data), dismissDriverInvitation: async data => dismissed.push(data) },
-    '@/services/rideAlertSession': { pendingRideAlerts: () => [{ kind: 'dispatch', id: id(4), recipientId: id(1), data: incoming.data }] },
+    '@/services/rideAlertSession': { pendingRideAlertHandoffs: () => [],
+      pendingRideAlerts: () => [{ kind: 'dispatch', key: 'dispatch', id: id(4), recipientId: id(1), data: incoming.data }] },
     '@/services/rideAudioDiagnostics': { reportRideAudioFailure() {} },
   })('hooks/notifications/useRideRealtime.ts');
   hooks.render(() => useRideRealtime(id(1), true));
@@ -47,4 +48,34 @@ test('normal realtime changes target the affected details and lists, reconnect r
   assert(tags.some(tag => tag.type === 'MyTripRequests' && tag.id === 'LIST'));
   assert(!tags.some(tag => tag.type === 'Booking' || tag.type === 'TripRequest' && !tag.id));
   assert(rideRealtimeTags({ kind: 'reconnected' }).some(tag => tag.type === 'Booking' && !tag.id));
+});
+
+test('server cancellation clears a staged handoff before its native callback can resume sound', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const hooks = hookHarness(); let receive, session;
+  const load = loader({ react: hooks.react,
+    '@/hooks/useAppIsActive': { useAppIsActive: () => true },
+    '@/store/hooks': { useAppDispatch: () => () => {} },
+    '@/store/api/baseApi': { baseApi: { util: { invalidateTags: tags => tags } } },
+    '@/services/chatSocket': { chatSocket: { subscribeToRideAlerts: fn => { receive = fn; return () => {}; } } },
+    '@/services/driverNotifications': { dismissDriverInvitation: async target => {
+      session.acknowledgeRideAlerts(alert => alert.kind === target.kind && alert.id === target.id);
+    } },
+  });
+  session = load('services/rideAlertSession.ts');
+  const parse = load('features/notifications/rideAlert.ts').parseRideAlert;
+  const useRealtime = load('hooks/notifications/useRideRealtime.ts').useRideRealtime;
+  hooks.render(() => useRealtime(id(1), true));
+  for (const data of [
+    { type: 'trip_request_nearby', driverId: id(1), tripRequestId: id(5), ringAlert: 'nearby-request-v1' },
+    { type: 'new_booking', driverId: id(1), bookingId: id(6), actionProtocol: 'driver-v1' },
+  ]) {
+    const handoff = session.beginRideAlertHandoff(parse({ ...data, ringUntil: new Date(Date.now() + 30000).toISOString() }));
+    assert.ok(handoff);
+    receive({ kind: 'changed', recipientId: id(1), requestId: data.tripRequestId, bookingId: data.bookingId, terminal: true });
+    session.completeRideAlertHandoff(handoff);
+    assert.deepEqual(session.pendingRideAlerts(id(1)), []);
+    assert.deepEqual(session.pendingRideAlertHandoffs(id(1)), []);
+  }
+  hooks.unmount();
 });

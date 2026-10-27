@@ -10,6 +10,7 @@ public final class ReactApplicationContext extends ContextWrapper {
     private final HashSet<LifecycleEventListener> listeners = new HashSet<>();
     public ReactApplicationContext(Context context) { super(context); }
     public LifecycleState getLifecycleState() { return state; }
+    public Activity getCurrentActivity() { return activity; }
     public void addLifecycleEventListener(LifecycleEventListener listener) { listeners.add(listener); }
     public void removeLifecycleEventListener(LifecycleEventListener listener) { listeners.remove(listener); }
     public void resume(Activity value) { activity = value; state = LifecycleState.RESUMED; for (var l : new HashSet<>(listeners)) l.onHostResume(); }

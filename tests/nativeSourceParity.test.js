@@ -82,6 +82,8 @@ test('release source parity guard detects missing classes, drift and missing reg
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   fs.mkdirSync(path.join(temp, sourceDirectory), { recursive: true });
   for (const name of sourceFiles) fs.copyFileSync(path.join(sourceDirectory, name), path.join(temp, sourceDirectory, name));
+  fs.mkdirSync(path.join(temp, 'assets/sounds/android'), { recursive: true });
+  fs.copyFileSync('assets/sounds/android/driver_ring.wav', path.join(temp, 'assets/sounds/android/driver_ring.wav'));
   assert.deepEqual(checkNativeSources(temp), [], 'prebuild has not generated android yet');
   installSources(temp, path.join(temp, 'android'));
   assert(checkNativeSources(temp).some(error => error.includes('registration')));
@@ -89,4 +91,23 @@ test('release source parity guard detects missing classes, drift and missing reg
   assert.deepEqual(checkNativeSources(temp), []);
   fs.appendFileSync(path.join(temp, 'android', outputDirectory, sourceFiles[0]), '// drift');
   assert(checkNativeSources(temp).some(error => error.includes(sourceFiles[0])));
+  fs.writeFileSync(path.join(temp, 'android/app/src/main/res/raw/driver_ring.wav'), 'broken');
+  assert(checkNativeSources(temp).some(error => error.includes('ringtone')));
+});
+
+test('clean prebuild mod order retains Android long sound after Expo copies the iOS-compatible sound', async t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'zwanga-sound-prebuild-'));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(temp, sourceDirectory), { recursive: true });
+  for (const name of sourceFiles) fs.copyFileSync(path.join(sourceDirectory, name), path.join(temp, sourceDirectory, name));
+  fs.mkdirSync(path.join(temp, 'assets/sounds/android'), { recursive: true });
+  for (const name of ['driver_ring.wav', 'android/driver_ring.wav'])
+    fs.copyFileSync(path.join('assets/sounds', name), path.join(temp, 'assets/sounds', name));
+  const { withNotificationSounds } = require('expo-notifications/plugin/build/withNotificationsAndroid');
+  const config = withNotificationSounds(require('../plugins/withDriverAlertSources')({ name: 'Sound test', slug: 'sound-test' }),
+    { sounds: ['./assets/sounds/driver_ring.wav'] });
+  await config.mods.android.dangerous({ ...config, modResults: {}, modRequest: { projectRoot: temp, platformProjectRoot: path.join(temp, 'android') } });
+  const actual = fs.readFileSync(path.join(temp, 'android/app/src/main/res/raw/driver_ring.wav'));
+  assert.equal(actual.readUInt32LE(40) / actual.readUInt32LE(28), 60);
+  assert.deepEqual(actual, fs.readFileSync('assets/sounds/android/driver_ring.wav'));
 });

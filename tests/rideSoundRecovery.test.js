@@ -49,15 +49,16 @@ test('an asynchronously lost native player is detected and restarted, with no ne
   assert.deepEqual(f.io.logs, [['[RideAudio]', 'RING_PLAYBACK_LOST']]);
 });
 
-test('after three failures a distinct alert can recover, but duplicates and queue reorder cannot reset the budget', async t => {
+test('three native failures impose a bounded cooldown, then the same pending alert can recover', async t => {
   const f = fixture(t); f.io.fails = true;
   await f.startForegroundRideSound('first');
   t.mock.timers.tick(5000); await f.startForegroundRideSound('first');
   t.mock.timers.tick(15000); await f.startForegroundRideSound('first');
   f.io.fails = false;
-  t.mock.timers.tick(3600000); await f.startForegroundRideSound('first');
+  t.mock.timers.tick(59000); await f.startForegroundRideSound('first');
   assert.equal(f.io.starts, 3);
-  await f.startForegroundRideSound('second'); assert.equal(f.io.starts, 4);
+  await f.startForegroundRideSound('second'); assert.equal(f.io.starts, 3, 'a new alert cannot bypass cooldown');
+  t.mock.timers.tick(1000); await f.startForegroundRideSound('first'); assert.equal(f.io.starts, 4);
   // Even brief successful starts do not erase an episode's interruption budget.
   for (let i = 0; i < 3; i++) {
     f.io.state = 'stopped'; t.mock.timers.tick(5000);
@@ -65,9 +66,9 @@ test('after three failures a distinct alert can recover, but duplicates and queu
     t.mock.timers.tick(15000); await f.startForegroundRideSound('second');
   }
   const count = f.io.starts;
-  t.mock.timers.tick(60000); await f.startForegroundRideSound('first');
+  t.mock.timers.tick(5000); await f.startForegroundRideSound('first');
   await f.startForegroundRideSound('second'); assert.equal(f.io.starts, count);
-  await f.startForegroundRideSound('third'); assert.equal(f.io.starts, count + 1);
+  t.mock.timers.tick(60000); await f.startForegroundRideSound('second'); assert.equal(f.io.starts, count + 1);
   assert.equal(JSON.stringify(f.io.logs).includes('private'), false);
 });
 
@@ -170,7 +171,7 @@ test('screen wake is bounded, fails closed on old binaries and never affects iOS
 
 test('native screen-wake eligibility preserves permissions, silent mode, DND and channel choices', () => {
   const source = fs.readFileSync('android/app/src/main/java/com/zwanga/notifications/DriverAlertModule.java', 'utf8');
-  const method = source.slice(source.indexOf('void canLightUpAlertScreen('), source.indexOf('private boolean canMigrate'));
+  const method = source.slice(source.indexOf('static boolean allowsAlertScreenWake('), source.indexOf('private boolean canMigrate'));
   for (const fragment of ['manager.areNotificationsEnabled()', 'RINGER_MODE_NORMAL', 'STREAM_NOTIFICATION',
     'INTERRUPTION_FILTER_ALL', 'IMPORTANCE_HIGH', 'channel.getSound() == null', 'group.isBlocked()']) {
     assert.ok(method.includes(fragment), fragment);

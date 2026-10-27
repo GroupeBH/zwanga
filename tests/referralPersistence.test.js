@@ -236,3 +236,34 @@ test('attachment business rejection is consumed once, without overriding the ser
   assert.equal(await f.storage.getPendingReferralAttribution(), null);
   assert.equal(f.dialogs.at(-1).variant, 'warning'); f.unmount();
 });
+
+test('a lost attachment response survives restart and an idempotent server acknowledgement consumes it', async () => {
+  const first = fixture({ authenticated: false }), payload = invitation();
+  first.render(); await first.receive(payload);
+  first.state.auth = { isAuthenticated: true, user: { id: 'account-a' } };
+  let serverAttached = false;
+  first.io.attach = async () => { serverAttached = true; throw { status: 'FETCH_ERROR' }; };
+  first.render(); await flush();
+  assert.ok(serverAttached); assert.ok(await first.storage.getPendingReferralAttribution()); first.unmount();
+  const next = fixture({ disk: first.disk });
+  next.io.attach = async () => ({ newlyAttached: false, referrer: { firstName: 'Test' } });
+  next.render(); await flush();
+  assert.equal(next.attachments.length, 1);
+  assert.equal(await next.storage.getPendingReferralAttribution(), null);
+  assert.equal(next.dialogs.at(-1).title, 'Parrainage déjà enregistré'); next.unmount();
+});
+
+test('a transient server error retries without requiring a connectivity toggle, then stops after acknowledgement', async t => {
+  const intervals = new Map(); let id = 0;
+  t.mock.method(global, 'setInterval', (callback, ms) => { intervals.set(++id, { callback, ms }); return id; });
+  t.mock.method(global, 'clearInterval', value => intervals.delete(value));
+  const f = fixture(); t.after(() => f.unmount());
+  f.io.attach = async () => { throw { status: 503 }; };
+  f.render(); await flush(); await f.receive(invitation());
+  const retry = [...intervals.values()].find(timer => timer.ms === 60000);
+  assert.ok(retry); assert.equal(f.attachments.length, 1);
+  f.io.attach = async () => ({ newlyAttached: true, referrer: { firstName: 'Test' } });
+  retry.callback(); await flush(); assert.equal(f.attachments.length, 2);
+  retry.callback(); await flush(); assert.equal(f.attachments.length, 2);
+  f.io.active = false; f.render(); assert.equal(intervals.size, 0);
+});

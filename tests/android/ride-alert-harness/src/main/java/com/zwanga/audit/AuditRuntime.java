@@ -27,6 +27,23 @@ public final class AuditRuntime {
     };
     AuditRuntime(Context context) { this.context = new ReactApplicationContext(context); bridge = new DriverAlertModule(this.context); }
     static void log(String message) { Log.i("ZwangaAudit", message); }
+    public void nativeCard(Runnable done) {
+        bridge.ensureBundledChannel(channel -> {
+            Bundle card = com.zwanga.notifications.NativeCardProbe.create(context, (String)channel);
+            card.getBundle("android").putString("smallIcon", "ic_stat_zwanga_audit");
+            Notifee.getInstance().displayNotification(card, (error, unused) -> {
+                if (error != null) log("NATIVE_CARD_PROBE_FAILED " + error.getClass().getSimpleName());
+                else {
+                    for (var n : context.getSystemService(NotificationManager.class).getActiveNotifications()) {
+                        if (n.getId() == card.getString("id").hashCode()) {
+                            log("NATIVE_CARD_PROBE_OK actions=" + n.getNotification().actions.length + " channel=" + n.getNotification().getChannelId());
+                        }
+                    }
+                }
+                done.run();
+            });
+        });
+    }
     static String iso(long time) {
         var format = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
         format.setTimeZone(TimeZone.getTimeZone("UTC")); return format.format(new Date(time));

@@ -1,12 +1,14 @@
+import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import { AppState, Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
 import { getDriverAlertChannel } from './driverAlertChannel';
 import { pendingRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
-import { shouldLightUpRideAlertScreen } from './rideAlertScreenWake';
+import { shouldLightUpRideAlertScreen, wakeDisplayedRideAlert } from './rideAlertScreenWake';
 import { rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
+import { DRIVER_RING_DURATION_MS } from '@/features/notifications/driverRinging';
 
 export const BACKGROUND_RIDE_RING_PREFIX = 'ride-handoff-';
 let running: Promise<void> | undefined;
@@ -47,19 +49,19 @@ async function handOff(userId: string, version: number) {
     await cancel(previous.id);
   }
   if (!inBackground() || audible) return;
-  const alert = pending().find(item => Date.parse(String(item.data.ringUntil ?? '')) > Date.now());
+  const alert = pending().find(item => ridePlaybackDeadline(item.data) > Date.now());
   if (!alert) return;
-  const deadline = Math.min(Date.parse(String(alert.data.ringUntil)), Date.now() + 30000,
+  const deadline = Math.min(ridePlaybackDeadline(alert.data), Date.now() + DRIVER_RING_DURATION_MS,
     alert.expiresAt ? Date.parse(alert.expiresAt) : Infinity);
   let cancelled = false;
   const valid = () => !cancelled && inBackground() && deadline > Date.now() && pending().some(item => item.key === alert.key);
   const channelId = await getDriverAlertChannel();
-  const lightUpScreen = await shouldLightUpRideAlertScreen(channelId);
   const driverKind = alert.kind === 'booking' || alert.kind === 'dispatch' || alert.kind === 'nearby' ? alert.kind : null;
   // Same opt-in/build/system checks as a fresh push. Never show a driver's
   // lock-screen activity for a passenger response, or extend the offer.
-  const fullScreenAction = driverKind && lightUpScreen
-    ? await rideAlertFullScreenAction(userId) : undefined;
+  const [lightUpScreen, fullScreenAction] = await Promise.all([
+    shouldLightUpRideAlertScreen(channelId), driverKind ? rideAlertFullScreenAction(userId) : undefined,
+  ]);
   if (!valid()) return;
   const id = `${BACKGROUND_RIDE_RING_PREFIX}${alert.key}`;
   const record = { id, key: alert.key, userId, version, deadline };
@@ -74,8 +76,8 @@ async function handOff(userId: string, version: number) {
       data: Object.fromEntries(Object.entries(alert.data).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
       android: { channelId, importance: AndroidImportance.HIGH, visibility: AndroidVisibility.PRIVATE,
         style: { type: AndroidStyle.BIGTEXT, text: card.body },
-        sound: 'driver_ring', loopSound: true, lightUpScreen, onlyAlertOnce: true, autoCancel: false,
-        ...(fullScreenAction ? { fullScreenAction } : {}),
+        sound: 'driver_ring', loopSound: true, lightUpScreen: false, onlyAlertOnce: true, autoCancel: false,
+        ...(lightUpScreen && fullScreenAction ? { fullScreenAction } : {}),
         timeoutAfter: Math.max(1, deadline - Date.now()),
         pressAction: { id: 'default', launchActivity: 'default' }, actions },
     }).then(async () => {
@@ -86,6 +88,7 @@ async function handOff(userId: string, version: number) {
       }
     });
     await boundedRideAudio(display);
+    if (valid() && lightUpScreen) void wakeDisplayedRideAlert(id, channelId, deadline);
   } catch {
     cancelled = true;
     if (audible === record) { audible = undefined; await cancel(id); }

@@ -1,6 +1,7 @@
 import { useSettingsAccountActions } from '../hooks/settings/useSettingsAccountActions';
 import { styles } from '../features/screen-styles/app/settings/index';
 import { IdentityVerification } from '@/components/IdentityVerification';
+import { UpdateAnnouncementsChoice } from '@/components/UpdateAnnouncementsChoice';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { Colors, Spacing } from '@/constants/styles';
@@ -153,6 +154,7 @@ export default function SettingsScreen() {
         </Animated.View>
 
         {/* Notifications */}
+        <UpdateAnnouncementsChoice />
         <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
           <Text style={styles.sectionLabel}>NOTIFICATIONS</Text>
           <View style={styles.card}>

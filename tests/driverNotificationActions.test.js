@@ -48,7 +48,7 @@ test('both actions open the app; nearby/shared requests do not pretend to be exc
 
 function app(options = {}) {
   const hooks = hookHarness();
-  const io = { owner: driverId, version: 1, state: 'active', routes: [], mutations: [], dismissed: [], displayed: [],
+  const io = { owner: driverId, version: 1, state: 'active', routes: [], mutations: [], dismissed: [], displayed: [], handoffs: [],
     perform: async () => ({ status: 'accepted', requestId }), initial: null, ...options };
   const nativeListeners = new Set(), stateListeners = new Set();
   let background;
@@ -69,7 +69,8 @@ function app(options = {}) {
     }, AndroidImportance: { LOW: 2 }, AndroidVisibility: { PRIVATE: 0 }, EventType: { PRESS: 1, ACTION_PRESS: 2, DELIVERED: 3 } },
     'expo-notifications': { addNotificationReceivedListener: () => ({ remove() {} }),
       addNotificationResponseReceivedListener: () => ({ remove() {} }), getLastNotificationResponseAsync: async () => null },
-    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async () => {} },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async data => io.handoffs.push(data) },
+    '@/services/tokenSession': { getTokenSessionVersion: () => io.version },
     './driverNotifications': { dismissDriverInvitation: async v => io.dismissed.push(v) },
     './tokenStorage': { getTokens: async () => ({ accessToken: 'synthetic' }) },
     './tokenSession': { getTokenSessionVersion: () => io.version },
@@ -91,11 +92,22 @@ function app(options = {}) {
   return { io, load, hooks, mount: () => hooks.render(() => hook(driverId, true)),
     foreground: (data, action) => { for (const listener of nativeListeners) listener(event(data, action)); },
     body: data => { for (const listener of nativeListeners) listener({ ...event(data, 'default'), type: 1 }); },
+    delivered: data => { for (const listener of nativeListeners) listener({ ...event(data, 'default'), type: 3 }); },
     background: (data, action) => background(event(data, action)),
     backgroundBody: data => background({ ...event(data, 'default'), type: 1 }),
     resume: () => { io.state = 'active'; for (const listener of stateListeners) listener('active'); },
   };
 }
+
+test('a native card delivered after entry enumeration transfers audio without another unlock or a decision', async () => {
+  const f = app(); f.mount(); await tick();
+  const data = { ...push('booking'), nativeAlert: 'driver-v6' };
+  f.delivered(data); await tick();
+  assert.deepEqual(f.io.handoffs, [data]); assert.equal(f.io.mutations.length, 0);
+  f.io.state = 'background'; f.delivered(data); await tick(); assert.equal(f.io.handoffs.length, 1);
+  f.io.state = 'active'; f.io.version++; f.delivered(data); await tick(); assert.equal(f.io.handoffs.length, 1);
+  f.hooks.unmount();
+});
 
 test('nearby body taps before profile hydration open that request once, without an accept/refuse mutation', async () => {
   for (const delivery of ['driver-phone-v3', undefined]) {

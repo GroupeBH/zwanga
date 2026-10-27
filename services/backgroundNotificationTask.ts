@@ -51,6 +51,9 @@ if (TaskManager) {
     }
 
     const driverData = readDriverPushData(data);
+    // Update announcements already carry a remote visible notification. Never
+    // duplicate it with a second local card when a background task also wakes.
+    if (driverData?.type === 'app_update') return;
     // Reject before classification: otherwise a rejected invitation could fall
     // through to a generic local notification with the default sound.
     if (isSelfDriverAlert(driverData)) return;

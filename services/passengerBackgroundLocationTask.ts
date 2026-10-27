@@ -9,6 +9,7 @@ import { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskNa
 import { getRtkErrorStatus, getRtkErrorMessage, shouldBackOffAfterBackgroundResponse, isInactiveTripResponse, isTerminalPassengerTrackingResponse } from './background/passengerTrackingErrors';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { requestLocationPermission } from './locationPermissionWait';
 import { Platform } from 'react-native';
 import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 import { publishNativeRideLocation } from './rideLocationStream';
@@ -310,7 +311,7 @@ export async function startPassengerBackgroundLocationTracking(
       foregroundStatus !== Location.PermissionStatus.GRANTED &&
       options.requestMissingPermissions
     ) {
-      foregroundStatus = (await Location.requestForegroundPermissionsAsync()).status;
+      foregroundStatus = (await requestLocationPermission(() => Location.requestForegroundPermissionsAsync(), undefined, true)).status;
     }
     if (foregroundStatus !== Location.PermissionStatus.GRANTED) return false;
 
@@ -327,7 +328,7 @@ export async function startPassengerBackgroundLocationTracking(
       ) {
         return false;
       }
-      backgroundStatus = (await Location.requestBackgroundPermissionsAsync()).status;
+      backgroundStatus = (await requestLocationPermission(() => Location.requestBackgroundPermissionsAsync(), undefined, true)).status;
     }
     if (backgroundStatus !== Location.PermissionStatus.GRANTED) {
       lastBackgroundPermissionDeniedAt = Date.now();

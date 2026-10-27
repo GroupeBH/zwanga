@@ -1,5 +1,240 @@
 # Journal des changements techniques
 
+## 2026-10-27 — Version de l’application Android et iOS : 1.0.18
+
+- **Périmètre et problème :** la version actuelle est déjà en production selon
+  l’utilisateur ; préparer une nouvelle version pour les prochains builds.
+- **Solution appliquée :** passage de `1.0.17` à `1.0.18` dans `app.config.js`,
+  `package.json`, les deux métadonnées racine de `package-lock.json`,
+  `android/app/build.gradle` (`versionName`) et les deux configurations Xcode de
+  `ios/zwanga.xcodeproj/project.pbxproj` (`MARKETING_VERSION`). `Info.plist`
+  continue de lire les variables Xcode.
+- **Comportements conservés :** SDK Expo, dépendances, identifiants et profils
+  de build inchangés. `appVersionSource: remote` et `production.autoIncrement:
+  true` restent actifs dans `eas.json`. Les compteurs locaux historiques ne
+  réinitialisent pas les compteurs distants ; aucun numéro distant n’a été
+  consulté, inventé ou modifié.
+- **Vérifications :** les cinq tests existants de `tests/appVersions.test.js`
+  passent ; `node scripts/check-native-sources.cjs` et `git diff --check` passent.
+  La configuration Expo est évaluée par les tests sans lecture de `.env`.
+- **Limites :** aucun build natif, essai sur appareil, envoi EAS ou publication
+  déclenché. Les numéros de build définitifs seront attribués lors des prochains
+  builds de production EAS ; l’acceptation par les stores reste à vérifier.
+
+## 2026-10-26 ? Correctifs de livraison et tests d?int?gration des sonneries
+
+- **P?rim?tre/probl?me :** suite aux constats F1?F6 de l?audit : diffusion partielle,
+  transport bloquant, ?checs d?affichage natif, perte de r?servations tardives,
+  rupture de reprise au d?verrouillage et absence de reprise apr?s un push accept?.
+- **Appliqu? :** lots urgents corrig?s, HTTP Firebase born?, reprise native
+  WorkManager et carte de secours, restauration avec d?lai enregistr?, re?us
+  enrichis et une seule reprise serveur Android v6. Migration locale pr?par?e,
+  sources Android et plugin synchronis?s. D?tails/fichiers dans
+  [le rapport de fiabilisation et d?int?gration](FIABILISATION_SONNERIE_INTEGRATION_2026-10-26.md).
+- **Conserv? :** ciblage m?tier et exclusion de l?auteur, premi?re acceptation
+  gagnante, dates d?expiration, pr?f?rences syst?me, compatibilit? des anciens
+  clients et sonneries existantes. Aucun d?ploiement ni contact de vrais utilisateurs.
+- **V?rifi? :** 2 745 tests mobiles (un Ruby ignor?), deux nouveaux tests de re?us,
+  136 tests backend dont PostgreSQL et parcours HTTP ? ?mulateur ? HTTP ; neuf
+  sc?narios natifs et compilation Java Android r?elle r?ussis. Typage des sources
+  backend de production r?ussi ; erreurs anciennes dans le typage global des tests.
+- **Limites :** transport Firebase simul?, authentification de test, aucun appareil
+  iOS physique. Le plein ?cran est observ? sur une invitation isol?e, pas garanti
+  pendant une rafale. Les preuves et limites restantes sont d?taill?es dans le rapport.
+
+
+## 2026-10-26 — Audit des derniers correctifs de livraison des sonneries
+
+- **Périmètre :** diffusion serveur, réception Android v6, restauration sonore,
+  compatibilité iOS, ressources marimba et reçus. Audit demandé pour fiabilité,
+  robustesse et cohérence ; aucun changement fonctionnel ni déploiement.
+- **Constats :** arrêt du traitement rapide après cinq destinataires, capacité
+  bloquée par des envois lents, absence de secours sur erreur native, réservation
+  encore valide rejetée après la fenêtre sonore, durées incohérentes et limites
+  des reçus. Priorités, fichiers et solutions proposées dans
+  [l'audit de fiabilité](AUDIT_FIABILITE_SONNERIE_2026-10-26.md).
+- **Appliqué :** rapport et script `scripts/audits/audit-ride-delivery.cjs`, sans
+  réseau ni base, exécutant les méthodes existantes avec entrées/sorties simulées.
+  Ciblage, préférences système, actions et code applicatif conservés.
+- **Validation :** 157 tests mobiles ciblés et 64 tests backend unitaires réussis ;
+  trois scénarios problématiques confirmés par les sondes ; ESLint du script
+  sans erreur. Les sondes terminées ne certifient pas une livraison fiable.
+  Aucun essai physique, nouvelle compilation native ou envoi FCM/APNs réel.
+
+## 2026-10-26 — Livraison des sonneries, diffusion proche et marimba léger
+
+- **Problème :** absence de notifications signalée sur plusieurs comptes ; audit
+  montrant des pertes possibles entre sélection, reprise serveur et affichage
+  Android dépendant de JavaScript. Son actuel jugé trop agressif.
+- **Appliqué :** broadcast immédiat par lots à 5 km, claim push renouvelable et
+  protégé, reprise socket sur 60 secondes, récepteur Android/Notifee natif v6,
+  reçus authentifiés réception/affichage, repli système des anciens Android et
+  motif de marimba original plus doux. Fichiers, compatibilité, mesures et limites :
+  [Correctifs de livraison et marimba](CORRECTIFS_LIVRAISON_SONNERIE_2026-10-26.md).
+- **Conservé :** exclusion de l'auteur, refus par demande, une seule acceptation
+  gagnante, autorisations et silence/DND, échéances d'origine, ancien transport et
+  iOS. Aucun déploiement ni envoi à des utilisateurs réels.
+- **Validation :** compilation Java de l'application Android réussie ; 148 tests
+  backend ciblés couverts sur les derniers passages, dont 71 sur PostgreSQL/PostGIS
+  temporaire. Contrôle complet mobile : **2 741 tests réussis**, un test Ruby ignoré
+  sous Windows, TypeScript/ESLint/parité/frontières réseau/taille conformes.
+  Carte native publiée sur émulateur local avec deux actions, sans FCM ni compte réel.
+  Dernière demande intégrée : marimba continu, notes prolongées et superposées sans
+  pause. Mesures WAV : 29/60 s, crête 0,7400, RMS 0,2489 ; 12 tests WAV/parité réussis
+  après cette régénération. Aucun essai physique ni compilation iOS.
+
+## 2026-10-26 — Audit : absence de notification et de sonnerie en production
+
+- **Signalement :** aucune notification visible sur plusieurs téléphones avec
+  des comptes conducteurs distincts. Aucun journal de cet incident disponible.
+- **Audit :** reprise de claim push à 120 secondes pour une invitation de
+  60 secondes, reprise temps réel encore limitée à 30 secondes, distribution
+  immédiate unitaire, secours Android silencieux dépendant du relais JavaScript,
+  repli incomplet sans pont audio et reçu serveur non appelé par le mobile.
+  Analyse, références, hypothèses de production et chemins des sons dans
+  [Audit de l'absence de sonnerie](AUDIT_ABSENCE_SONNERIE_2026-10-26.md).
+- **Vérifications :** 111 tests mobiles et 46 tests backend ciblés réussis,
+  cinq sondes de caractérisation et parité native réussies. Durée des WAV
+  mesurée : 60 secondes Android, 29 secondes iOS ; copies Android identiques.
+- **Portée :** documentation et sondes locales uniquement. Aucun changement
+  fonctionnel, correctif appliqué, push réel, essai physique ni déploiement.
+  Les défauts constatés dans le code ne prouvent pas la cause unique de l'incident.
+
+## 2026-10-26 — Suppression de la suspension des sonneries après demandes ignorées/refusées
+
+- **Constat :** la règle des quatre demandes ignorées/refusées suspendait les
+  sonneries pendant 24 heures, y compris pour un conducteur proche. L'utilisateur
+  demande désormais de supprimer cette règle.
+- **Appliqué :** retrait du filtre de suspension à la sélection et à l'envoi,
+  neutralisation des anciennes suspensions au prochain traitement, sans
+  modification globale de la base. Détail et fichiers dans
+  [Sonneries sans suspension](SONNERIE_SANS_SUSPENSION_2026-10-26.md).
+- **Conservé :** refus limité à la demande concernée, déduplication, échéances,
+  critères d'éligibilité, exclusion de l'auteur et réservations. Les compteurs
+  de compatibilité restent à zéro ; aucune nouvelle migration n'est nécessaire.
+- **Vérifications :** 139 tests backend réussis, dont PostgreSQL/PostGIS locaux,
+  avec plus de quatre demandes ignorées/refusées et une ancienne suspension
+  encore active ; cinq tests mobiles du refus et TypeScript de production valides.
+  ESLint ciblé valide ; 13 tests unitaires d'envoi relancés avec succès après
+  typage des doubles et résultats de tests.
+  Aucun push réel, essai sur téléphone ou déploiement. Cette suppression devient
+  effective après déploiement du backend ; aucune réinstallation mobile requise.
+
+## 2026-10-26 — Sonnerie Android de 60 secondes et reprise après erreurs
+
+- **Constat :** fenêtre serveur de 30 secondes consommée par les délais de
+  livraison, fichier Android de 29 secondes partagé avec iOS et blocage définitif
+  du lecteur d'un événement après trois erreurs natives. Causes possibles du
+  signalement, sans journal du téléphone permettant de les confirmer sur place.
+- **Appliqué :** fenêtre de 60 secondes, son Android spécifique de 60 secondes,
+  relais et plein écran alignés, retry après une pause d'une minute. Fichiers,
+  règles préservées et limites dans
+  [Durée et reprise de la sonnerie](SONNERIE_DUREE_REPRISE_2026-10-26.md).
+- **Conservé :** iOS 29 secondes en notification, permissions, silence/DND,
+  décisions, expirations métier et exclusion de l'auteur. La pause de 24 heures,
+  initialement conservée, est supprimée par le correctif ci-dessus.
+- **Vérifications :** 79 tests ciblés réussis, dont logique Java avec substituts
+  et copie des sons au prebuild ; 125 tests backend réussis, dont PostgreSQL/PostGIS
+  isolés, et compilation TypeScript de production valide.
+  Contrôle global mobile final réussi : 2 734 tests, zéro échec, un test Ruby
+  ignoré sous Windows ; parité native, types, lint et frontières réseau valides.
+  Aucun essai physique, déploiement ou push réel. Nouveau build Android requis.
+
+## 2026-10-26 — Annonces sans compte et parrainage résistant aux coupures
+
+- **Problème :** visiteurs sans compte non enregistrés pour les annonces ;
+  invitation de parrainage consommée trop tôt après inscription et retry
+  manquant après certaines réponses réseau perdues.
+- **Appliqué :** abonnement facultatif par installation, annonces automatiques
+  des versions déclarées disponibles et campagnes manuelles depuis l'admin,
+  conservation du parrainage jusqu'à confirmation et reprise au premier plan.
+  Périmètre, fichiers et mise en service dans
+  [Annonces et parrainage](ANNONCES_INSTALLATIONS_PARRAINAGE_2026-10-26.md).
+- **Conservé :** permissions système, refus des notifications, confidentialité
+  des comptes, validation serveur des invitations et règles financières.
+- **Vérifications :** contrôle global mobile réussi, 2 732 tests et un test Ruby
+  ignoré ; 64 tests backend distincts dont PostgreSQL isolé, TypeScript backend
+  de production et admin valides, deux tests admin réussis. Aucun push réel,
+  déploiement ni essai sur appareil. Migration backend préparée, non appliquée
+  hors des bases de test éphémères.
+
+## 2026-10-26 — Paiement en jetons après bonus ou descente anticipée
+
+- **Problème :** une subvention déjà créditée au conducteur en mode espèces
+  pouvait faire rejeter le paiement ultérieur en jetons comme gain incohérent.
+- **Appliqué :** transition comptable encadrée et transactionnelle dans
+  `zwanga-backend`, conservation du même gain et des montants déjà arrêtés,
+  message d'erreur compréhensible dans l'application. Fichiers et précautions
+  dans [Paiement après subvention](PAIEMENT_JETONS_SUBVENTION_2026-10-26.md).
+- **Conservé :** tarif réduit, bonus, commissions historiques, paiement mixte,
+  espèces et parrainage. Les incohérences réelles restent bloquantes ; aucun
+  double crédit du bonus, aucun changement de schéma ni modification native.
+- **Vérifications :** 211 tests backend et 17 tests PostgreSQL isolés réussis ;
+  compilation TypeScript de production backend valide. Contrôle global mobile
+  réussi : 2 715 tests, zéro échec et un test Ruby ignoré sur Windows.
+  Le contrôle TypeScript backend incluant tous les tests reste en échec dans
+  des spécifications non modifiées. Aucun déploiement, paiement réel ou essai
+  sur téléphone ; le correctif serveur doit encore être déployé.
+
+## 2026-10-26 — Carte de notification avant le son et réveil Android borné
+
+- **Problème :** sonnerie signalée en veille sans réveil et carte tardive. Le
+  relais au premier plan pouvait démarrer le lecteur avant publication de la
+  carte ; le réveil Notifee utilisait des verrous sans délai maximal.
+- **Appliqué :** carte silencieuse publiée avant le lecteur de l'app, ancienne
+  carte conservée pendant la préparation du canal, réveil natif après publication
+  avec verrou d'écran limité à 1,5 seconde. Sources, tests et limites dans
+  [Carte visible et réveil Android](ALERTE_VISIBLE_ANDROID_2026-10-26.md).
+- **Conservé :** décisions, expiration, compte, mode silencieux, confidentialité
+  et autorisation plein écran. Backend, iOS et profils EAS inchangés.
+- **Vérifications :** contrôle global réussi, code 0 : 2 713 tests réussis,
+  zéro échec et un test Ruby ignoré sur Windows ; TypeScript, ESLint, frontières
+  réseau, taille et parité native valides. Les méthodes de réveil compilent
+  contre le SDK Android 36 ; comportement vérifié avec services simulés.
+  Nouveau build Android requis ; aucun essai sur appareil ni garantie de réveil
+  universel. Résultats et recette détaillés dans la fiche.
+
+## 2026-10-26 — Autorisations contextuelles plein écran et localisation
+
+- **Problème :** proposition plein écran absente et confirmation de localisation
+  observée hors application sur iOS. Le profil EAS détermine la présence du plein
+  écran Android ; iOS peut différer sa propre confirmation de localisation.
+- **Appliqué :** étapes d'autorisation indépendantes, historique enregistré après
+  affichage réel, une relance bornée de lecture native, contrôle du premier plan
+  juste avant les demandes système et attente sérialisée entre flux de trajet.
+  Fichiers, précautions, limites système et recette dans
+  [Autorisations contextuelles](AUTORISATIONS_CONTEXTUELLES_2026-10-26.md).
+- **Conservé :** consentement explicite, première visite silencieuse, déclencheurs
+  publication/retour de 15 secondes, rappels de 24 heures, suivi natif et cadence
+  des trajets. Aucun profil EAS, fichier natif ou backend modifié.
+- **Vérifications :** contrôle global final `check-release.cjs` réussi, code 0 :
+  2 708 tests réussis, zéro échec, un test Ruby ignoré sur Windows. TypeScript,
+  ESLint, frontières réseau, taille des sources et parité native valides ;
+  `git diff --check` réussi. Les essais exécutent les modules JavaScript avec
+  entrées/sorties natives simulées. Aucun essai sur téléphone physique ni nouveau
+  build pendant cette intervention.
+
+## 2026-10-26 — Reprise de sonnerie Android au déverrouillage
+
+- **Problème :** sonnerie signalée comme interrompue au déverrouillage ou à
+  l'ouverture. Tests reproduisant la perte d'un relais lors d'une transition
+  d'état, d'une annulation lente et d'une lecture native défaillante.
+- **Appliqué :** relais temporaire en mémoire avant annulation, reprise bornée
+  sans nouvelle notification et reprise des alertes connues indépendante des
+  lectures natives. Fichiers, protections et recette dans
+  [Reprise Android du 26 octobre](SONNERIE_REPRISE_ANDROID_2026-10-26.md).
+- **Conservé :** expiration métier, décisions explicites, contrôles de compte,
+  permissions et mode silencieux ; aucun backend, fichier natif ou réglage modifié.
+- **Vérifications :** 37 tests ciblés réussis avec modules JavaScript réels et
+  entrées/sorties Android simulées, plus quatre tests temps réel. Le contrôle
+  global final `check-release.cjs` termine avec le code 0 : 2 690 tests réussis,
+  zéro échec, un test Ruby ignoré sur Windows ; TypeScript, ESLint, frontières
+  réseau, taille et parité des sources natives valides. Le premier passage avait
+  révélé dix échecs dus à une simulation de session incomplète dans
+  `tests/rideAlertRestoration.test.js` ; cette simulation est adaptée et les dix
+  tests passent. Aucun téléphone/émulateur connecté ; la continuité sonore sur
+  les appareils concernés reste à valider physiquement.
+
 ## 2026-10-24 — Barre de recherche du conducteur en contour vert
 
 - **Demande :** le fond vert plein de « Chercher un trajet » donnait l'apparence

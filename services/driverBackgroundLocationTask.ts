@@ -6,6 +6,7 @@ import { DRIVER_BACKGROUND_LOCATION_TASK } from './background/driverTaskName';
 import { getRtkErrorStatus, getRtkErrorMessage, shouldBackOffAfterBackgroundResponse, isTerminalDriverTrackingResponse } from './background/driverTrackingErrors';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { requestLocationPermission } from './locationPermissionWait';
 import { Platform } from 'react-native';
 import { isLocationDeliveryPending, recordLocationDelivery, wasLocationDeliveredRecently } from './locationDelivery';
 import { publishNativeRideLocation } from './rideLocationStream';
@@ -214,7 +215,7 @@ export async function startDriverBackgroundLocationTracking(
       foregroundStatus !== Location.PermissionStatus.GRANTED &&
       options.requestMissingPermissions
     ) {
-      const requestedForeground = await Location.requestForegroundPermissionsAsync();
+      const requestedForeground = await requestLocationPermission(() => Location.requestForegroundPermissionsAsync(), undefined, true);
       foregroundStatus = requestedForeground.status;
     }
 
@@ -237,7 +238,7 @@ export async function startDriverBackgroundLocationTracking(
         return false;
       }
 
-      const requestedBackground = await Location.requestBackgroundPermissionsAsync();
+      const requestedBackground = await requestLocationPermission(() => Location.requestBackgroundPermissionsAsync(), undefined, true);
       backgroundStatus = requestedBackground.status;
     }
 

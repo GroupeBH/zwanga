@@ -34,8 +34,8 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
-    <meta-data android:name="com.zwanga.RIDE_FULL_SCREEN_ENABLED" android:value="false" />
-    <activity android:name="com.zwanga.notifications.IncomingRideActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@style/AppTheme" />
+    <meta-data android:name="com.zwanga.RIDE_FULL_SCREEN_ENABLED" android:value="false"/>
+    <activity android:name="com.zwanga.notifications.IncomingRideActivity" android:exported="false" android:excludeFromRecents="true" android:theme="@style/AppTheme"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
@@ -56,5 +56,11 @@
       </intent-filter>
     </activity>
     <uses-library android:name="org.apache.http.legacy" android:required="false"/>
+    <service android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService" tools:node="remove"/>
+    <service android:name="com.zwanga.notifications.RideFirebaseMessagingService" android:exported="false">
+      <intent-filter android:priority="-1">
+        <action android:name="com.google.firebase.MESSAGING_EVENT"/>
+      </intent-filter>
+    </service>
   </application>
 </manifest>

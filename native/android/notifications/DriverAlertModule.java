@@ -29,7 +29,21 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
   static final String BUNDLED_CHANNEL = "zwanga-ride-ring-v4";
   private ForegroundAlertPlayer foreground;
 
-  public DriverAlertModule(ReactApplicationContext context) { super(context); }
+  public DriverAlertModule(ReactApplicationContext context) { super(context); NativeRideDelivery.attach(context); }
+
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  public int bindNativeRideAccount(String user, double expires, String channel) {
+    return NativeRideDelivery.bind(getReactApplicationContext(), user, expires, channel);
+  }
+  @ReactMethod(isBlockingSynchronousMethod = true)
+  public boolean clearNativeRideAccount() { NativeRideDelivery.clear(getReactApplicationContext()); return true; }
+  @ReactMethod public void getNativeRideReceipts(String user, Promise promise) {
+    promise.resolve(NativeRideDelivery.pendingReceipts(getReactApplicationContext(), user));
+  }
+  @ReactMethod public void recordNativeRideReceipt(String user, String id, boolean displayed, String card) {
+    if (RideNotificationBundle.uuid(user) && RideNotificationBundle.uuid(id))
+      NativeRideDelivery.receipt(getReactApplicationContext(), user, id, displayed, card);
+  }
 
   @Override public String getName() { return "ZwangaDriverAlerts"; }
 
@@ -180,28 +194,68 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void canLightUpAlertScreen(String channelId, Promise promise) {
+    promise.resolve(allowsAlertScreenWake(getReactApplicationContext(), channelId));
+  }
+
+  /** Best effort only: OEM/Android policy may deny the legacy wake request.
+   * The visible notification and consented full-screen intent remain primary.
+   * Unlike Notifee lightUpScreen, this runs AFTER publication, uses a timeout,
+   * and never takes an additional unbounded CPU wake lock. */
+  @SuppressWarnings("deprecation")
+  @ReactMethod
+  public void wakeDisplayedAlert(String notificationId, String channelId, double deadline, Promise promise) {
     try {
       Context context = getReactApplicationContext();
+      if (notificationId == null || channelId == null || Double.isNaN(deadline) || Double.isInfinite(deadline) ||
+          deadline <= System.currentTimeMillis()) { promise.resolve("expired"); return; }
+      if (!allowsAlertScreenWake(context, channelId)) { promise.resolve("settings"); return; }
+      PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+      if (power == null) { promise.resolve("unavailable"); return; }
+      if (power.isInteractive()) { promise.resolve("already-on"); return; }
+      NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+      boolean displayed = false;
+      if (manager != null) for (android.service.notification.StatusBarNotification item : manager.getActiveNotifications()) {
+        if (item.getTag() == null && item.getId() == notificationId.hashCode() &&
+            (Build.VERSION.SDK_INT < 26 || channelId.equals(item.getNotification().getChannelId()))) {
+          displayed = true; break;
+        }
+      }
+      if (!displayed || deadline <= System.currentTimeMillis()) { promise.resolve("not-displayed"); return; }
+      if (context.checkSelfPermission("android.permission.WAKE_LOCK") != PackageManager.PERMISSION_GRANTED) {
+        promise.resolve("permission"); return;
+      }
+      PowerManager.WakeLock lock = power.newWakeLock(
+          PowerManager.SCREEN_DIM_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
+          "Zwanga:ride-alert");
+      lock.setReferenceCounted(false);
+      lock.acquire(1500);
+      promise.resolve("requested"); // Not proof that SystemUI displayed the lock screen.
+    } catch (SecurityException ignored) { promise.resolve("permission"); }
+    catch (Exception ignored) { promise.resolve("unavailable"); }
+  }
+
+  static boolean allowsAlertScreenWake(Context context, String channelId) {
+    try {
       NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
       AudioManager audio = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
       if (manager == null || !manager.areNotificationsEnabled() || audio == null ||
           audio.getRingerMode() != AudioManager.RINGER_MODE_NORMAL ||
           audio.getStreamVolume(AudioManager.STREAM_NOTIFICATION) == 0 ||
           manager.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) {
-        promise.resolve(false); return;
+        return false;
       }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         NotificationChannel channel = manager.getNotificationChannel(channelId);
         if (channel == null || channel.getImportance() < NotificationManager.IMPORTANCE_HIGH || channel.getSound() == null) {
-          promise.resolve(false); return;
+          return false;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && channel.getGroup() != null) {
           NotificationChannelGroup group = manager.getNotificationChannelGroup(channel.getGroup());
-          if (group != null && group.isBlocked()) { promise.resolve(false); return; }
+          if (group != null && group.isBlocked()) return false;
         }
       }
-      promise.resolve(true);
-    } catch (Exception ignored) { promise.resolve(false); }
+      return true;
+    } catch (Exception ignored) { return false; }
   }
 
   private boolean canMigrate(Context context, NotificationManager manager, NotificationChannel channel) {
