@@ -1,5 +1,26 @@
 # Journal des changements techniques
 
+## 2026-10-27 — Version de l’application Android et iOS : 1.0.18
+
+- **Périmètre et problème :** la version actuelle est déjà en production selon
+  l’utilisateur ; préparer une nouvelle version pour les prochains builds.
+- **Solution appliquée :** passage de `1.0.17` à `1.0.18` dans `app.config.js`,
+  `package.json`, les deux métadonnées racine de `package-lock.json`,
+  `android/app/build.gradle` (`versionName`) et les deux configurations Xcode de
+  `ios/zwanga.xcodeproj/project.pbxproj` (`MARKETING_VERSION`). `Info.plist`
+  continue de lire les variables Xcode.
+- **Comportements conservés :** SDK Expo, dépendances, identifiants et profils
+  de build inchangés. `appVersionSource: remote` et `production.autoIncrement:
+  true` restent actifs dans `eas.json`. Les compteurs locaux historiques ne
+  réinitialisent pas les compteurs distants ; aucun numéro distant n’a été
+  consulté, inventé ou modifié.
+- **Vérifications :** les cinq tests existants de `tests/appVersions.test.js`
+  passent ; `node scripts/check-native-sources.cjs` et `git diff --check` passent.
+  La configuration Expo est évaluée par les tests sans lecture de `.env`.
+- **Limites :** aucun build natif, essai sur appareil, envoi EAS ou publication
+  déclenché. Les numéros de build définitifs seront attribués lors des prochains
+  builds de production EAS ; l’acceptation par les stores reste à vérifier.
+
 ## 2026-10-26 ? Correctifs de livraison et tests d?int?gration des sonneries
 
 - **P?rim?tre/probl?me :** suite aux constats F1?F6 de l?audit : diffusion partielle,
