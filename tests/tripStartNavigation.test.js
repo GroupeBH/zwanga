@@ -21,7 +21,7 @@ function fixture(t, kind = 'request', platform = 'android') {
   const calls = [], dialogs = [], routes = [], feedback = [];
   const state = { active: true, reads: 0, refreshes: 0, start: async () => started,
     accept: async () => ({ trip: { ...started, status: 'upcoming' } }),
-    requestStart: async () => ({ trip: started }) };
+    requestStart: async () => ({ trip: started }), refuse: async () => {} };
   const api = createApi({
     reducerPath: 'startTestApi', baseQuery: async () => { state.reads++; return { data: started }; },
     endpoints: builder => ({ getTripById: builder.query({ query: id => `/trips/${id}` }) }),
@@ -37,7 +37,9 @@ function fixture(t, kind = 'request', platform = 'android') {
     '@/store/api/tripApi': { tripApi: api },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/services/driverNotifications': { dismissDriverDecision: async (...args) => calls.push(['dismiss', ...args]) },
-    '@/services/nearbyRequestRefusal': { reportNearbyRequestRefusal: async (...args) => calls.push(['report-refusal', ...args]) },
+    '@/services/nearbyRequestRefusal': { reportNearbyRequestRefusal: async (...args) => {
+      calls.push(['report-refusal', ...args]); await state.refuse();
+    } },
     '@/services/rideAlertSession': { acknowledgeRideAlerts: match => calls.push(['acknowledge', match]) },
     '@/utils/errorHelpers': {
       getApiErrorMessage: (_error, fallback) => fallback,
@@ -280,3 +282,18 @@ for (const change of ['unmount', 'blur', 'different-trip']) {
     assert.equal(app.cached(), undefined);
   });
 }
+
+
+test('refusal waits for confirmation; a network failure stays retryable without stopping the alert', async t => {
+  const app = fixture(t); app.props.userId = 'driver'; app.props.tripRequest = { ...request, passengerId: 'passenger' };
+  app.state.refuse = async () => { throw Error('offline'); };
+  await app.render().handleDeclineTripRequest();
+  assert.deepEqual(app.routes, []); assert.equal(app.dialogs.length, 1);
+  assert.deepEqual(app.calls.map(c => c[0]), ['report-refusal']);
+  const pending = deferred(); app.state.refuse = () => pending.promise;
+  const work = app.render().handleDeclineTripRequest(); await app.render().handleDeclineTripRequest();
+  assert.deepEqual(app.routes, []);
+  pending.resolve(); await work;
+  assert.deepEqual(app.routes, ['/(tabs)']);
+  assert.equal(app.calls.filter(c => c[0] === 'report-refusal').length, 2);
+});

@@ -198,7 +198,9 @@ module.exports = {
     },
 
     plugins: [
-      ['./plugins/withIncomingRideAlerts', { enabled: process.env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED === 'true' }],
+      ['./plugins/withIncomingRideAlerts', {
+        enabled: [undefined, 'true'].includes(process.env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED),
+      }],
       'expo-router',
       'expo-dev-client',
       'expo-apple-authentication',

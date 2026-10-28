@@ -97,8 +97,9 @@ export function useDriverNotifications(userId: string | undefined, driverAccount
       // A delivery alone must not steal a payment, chat or navigation screen.
       if (!pressed) return;
       if (!disposed) {
-        const href = invitationHref(invitation);
-        router.navigate({ ...href, params: { ...href.params, ...(pressed ? { actionEvent: String(Date.now()) } : {}) } });
+        // This branch handles an unanswered booking/dispatch invitation, never a refusal result.
+        router.navigate({ pathname: '/incoming-driver', params: { kind: invitation.kind, id: invitation.id,
+          driverId: invitation.driverId, ...(pressed ? { actionEvent: String(Date.now()) } : {}) } });
       }
     };
     void configureDriverNotifications().catch(() => reportRideAudioFailure('DRIVER_ALERT_CONFIGURATION_FAILED'));

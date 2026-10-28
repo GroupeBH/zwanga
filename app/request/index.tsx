@@ -1,6 +1,7 @@
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { FormScreen } from '@/components/forms/FormLayout';
 import { RequestBudgetFields } from '@/components/trip-request/RequestBudgetFields';
+import { RequestDriverPicker } from '@/components/trip-request/RequestDriverPicker';
 import { Colors } from '@/constants/styles';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
 import Animated, { FadeIn } from '@/utils/reanimated';
@@ -134,6 +135,9 @@ export default function RequestTripScreen() {
                   description={form.description}
                   setDescription={form.setDescription}
                 />
+                <RequestDriverPicker departure={form.departureLocation} vehicleType={form.selectedVehicleType}
+                  seats={form.hasSpecifiedNumberOfSeats ? form.numberOfSeats : 1} selected={form.targetDriver}
+                  onSelect={form.setTargetDriver} disabled={form.isCreating} />
               </View>
             </Animated.View>
           )}

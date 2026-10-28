@@ -8,7 +8,8 @@ function fixture(t, os = 'android') {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), calls = [];
   const appState = { currentState: 'active' };
-  const env = { active: true, owner: 'driver', failure: false,
+  const env = { active: true, owner: 'driver', failure: false, settings: async () => {},
+    bound: promise => promise,
     status: { optIn: false, allowed: false, notificationsAllowed: true } };
   const bridge = {
     getFullScreenStatus: async id => {
@@ -18,7 +19,10 @@ function fixture(t, os = 'android') {
   };
   const hook = loader({ react: hooks.react,
     'react-native': { AppState: appState, Platform: { OS: os }, NativeModules: { ZwangaDriverAlerts: bridge } },
-    '@/services/rideAudioDiagnostics': { boundedRideAudio: promise => promise },
+    '@/services/rideAudioDiagnostics': { boundedRideAudio: (promise, ms) => env.bound(promise, ms) },
+    '@/services/driverAlertChannel': { openDriverAlertSettings: async options => {
+      calls.push(['notifications', options]); await env.settings(options);
+    } },
   })('hooks/notifications/useDriverFullScreenPermission.ts').useDriverFullScreenPermission;
   t.after(() => hooks.unmount());
   return { env, appState, calls, render: () => hooks.render(() => hook(env.owner, env.active)) };
@@ -46,16 +50,58 @@ test('a disabled build does not offer unsupported full-screen permission or trig
 
 test('iOS never calls the Android permission bridge', async t => {
   const f = fixture(t, 'ios'); f.render(); await tick(); await f.render().setOptIn(true);
+  await f.render().openNotifications();
   assert.deepEqual(f.calls, []); assert.equal(f.render().permission, null);
 });
 
 test('native background state blocks a stale tap before React updates, as well as the retry', async t => {
   const f = fixture(t); f.env.failure = true; f.render(); await tick();
   f.appState.currentState = 'background'; await f.render().setOptIn(true);
+  await f.render().openNotifications(); f.render().retry(); f.render();
   t.mock.timers.tick(2000); await tick();
   assert.deepEqual(f.calls, [['read', 'driver']]);
   f.env.active = false; f.render(); f.env.failure = false;
   f.appState.currentState = 'active'; f.env.active = true; f.render(); await tick();
   assert.deepEqual(f.render().permission, f.env.status);
   await f.render().setOptIn(true); assert.ok(f.calls.some(c => c[0] === 'set'));
+});
+
+test('opening settings is single-flight and does not infer notification permission', async t => {
+  const f = fixture(t); f.env.status.notificationsAllowed = false; f.render(); await tick();
+  let release; f.env.settings = () => new Promise(resolve => { release = resolve; });
+  const first = f.render().openNotifications(); await f.render().openNotifications();
+  assert.equal(f.calls.filter(c => c[0] === 'notifications').length, 1);
+  assert.equal(f.render().busy, true); assert.equal(f.render().permission.notificationsAllowed, false);
+  const action = f.calls.find(c => c[0] === 'notifications')[1];
+  assert.equal(action.application, true); assert.equal(action.current(), true);
+  release(); await first; assert.equal(action.current(), false);
+  assert.equal(f.render().busy, false); assert.equal(f.render().permission.notificationsAllowed, false);
+  f.env.active = false; f.render();
+  f.env.status = { ...f.env.status, notificationsAllowed: true }; f.env.active = true; f.render(); await tick();
+  assert.equal(f.render().permission.notificationsAllowed, true);
+  assert.equal(f.calls.some(c => c[0] === 'set'), false);
+});
+
+test('a delayed settings action cannot open after timeout or changing accounts', async t => {
+  const f = fixture(t); f.render(); await tick();
+  f.env.settings = () => new Promise(() => {});
+  f.env.bound = (promise, ms) => ms === 2000 ? Promise.reject(Error('timeout')) : promise;
+  await f.render().openNotifications();
+  const expired = f.calls.find(c => c[0] === 'notifications')[1];
+  assert.equal(expired.current(), false); assert.equal(f.render().error, true);
+  assert.equal(f.render().busy, false);
+  f.env.bound = promise => promise;
+  let release; f.env.settings = () => new Promise(resolve => { release = resolve; });
+  const pending = f.render().openNotifications();
+  const stale = f.calls.filter(c => c[0] === 'notifications').at(-1)[1];
+  f.env.owner = 'other'; f.render(); await tick(); assert.equal(stale.current(), false);
+  release(); await pending; assert.equal(f.render().error, false);
+});
+
+test('manual retry rechecks without granting or opening settings', async t => {
+  const f = fixture(t); f.env.failure = true; f.render(); await tick();
+  f.env.failure = false; f.render().retry(); f.render(); await tick();
+  assert.equal(f.render().error, false); assert.deepEqual(f.render().permission, f.env.status);
+  assert.deepEqual(f.calls, [['read', 'driver'], ['read', 'driver']]);
+  t.mock.timers.tick(3000); await tick(); assert.equal(f.calls.length, 2);
 });

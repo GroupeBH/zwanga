@@ -1,5 +1,8 @@
 const { withAndroidManifest } = require('@expo/config-plugins');
 
+// Native capability only; each driver still opts in and Android checks special access.
+const isFullScreenBuildEnabled = value => value === undefined || value === 'true';
+
 function configure(manifest, enabled) {
   const app = manifest.application[0];
   app['meta-data'] = (app['meta-data'] || []).filter(item => item.$['android:name'] !== 'com.zwanga.RIDE_FULL_SCREEN_ENABLED');
@@ -14,3 +17,4 @@ module.exports = (config, { enabled = false } = {}) => withAndroidManifest(requi
   configure(mod.modResults.manifest, enabled === true); return mod;
 });
 module.exports.configure = configure;
+module.exports.isFullScreenBuildEnabled = isFullScreenBuildEnabled;

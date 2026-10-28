@@ -1,5 +1,164 @@
 # Journal des changements techniques
 
+## 2026-10-28 — Autorisations guidées dès la connexion, sans passage par Profil
+
+- **Demande :** proposer localisation et plein écran avec des modales simples et des boutons vers les réglages utiles.
+- **Appliqué :** localisation puis notifications/plein écran Android dès la première connexion conducteur, sans délai de 15 secondes ; après succès demande/réservation pour la localisation passager. Textes raccourcis, notifications application traitées avant l’accès spécial Android 14+, relecture au retour et protection contre les actions tardives.
+- **Build :** capacité plein écran activée dans le manifeste source et la configuration locale de la prochaine build Android, dont le profil EAS production. Consentement conducteur et accord système restent indispensables. Nouvelle build native et déclaration Play Console nécessaires ; aucun build, envoi GitHub ou déploiement réalisé.
+- **Conservé :** style, Plus tard, rappel maximal quotidien par type, priorité aux trajets/alertes en cours, suivi GPS existant et notifications normales en repli. Pas d’équivalent plein écran ajouté sur iOS ni changement backend/AWS.
+- **Compatibilité :** préparation EAS et Expo alignées ; ancien refus Android réévalué avant redirection ; contrôle de permission plein écran adapté aux Android antérieurs à 10 sans supprimer le consentement.
+- **Vérifications :** 61 tests ciblés puis suite complète séparée : 2 821 réussis, 1 ignoré (Ruby absent), aucun échec. Après le dernier ajustement Android ancien : 15 contrôles plein écran/build réussis, dont méthode Java exécutée avec services système simulés. TypeScript, parité native, frontières réseau/taille et lint ciblé sans erreur validés. Le contrôle global reste bloqué par une erreur de lint préexistante hors périmètre. [Résultats et recette appareil](LOCALISATION_AUTORISATIONS_2026-10-28.md). Aucun essai sur téléphone physique ni APK compilé dans cette intervention.
+
+## 2026-10-28 — Autorisation de localisation après demande/réservation et première connexion conducteur
+
+- **Problème :** le rappel conducteur ignorait la première visite et les créations de demandes/réservations ne proposaient pas ce parcours explicatif.
+- **Appliqué :** rappel passager après succès serveur (y compris demande retrouvée après timeout), modal existant adapté au rôle, rappel conducteur dès la première connexion sur un écran sûr. Parcours natif Android/iOS, relecture au retour des réglages, repli Réglages pour le refus silencieux iOS de « Toujours ».
+- **Conservé :** style, bouton Plus tard, réservation/demande non bloquée, fréquence et tâches GPS existantes, permissions déjà accordées, opt-out conducteur et délai anti-répétition de 24 heures. Aucun nouveau suivi permanent passager, appel HTTP, changement backend, Terraform, CI/CD ou déploiement.
+- **Vérifications :** 306 tests JavaScript ciblés réussis ; TypeScript sans émission, ESLint ciblé sans avertissement, frontières réseau, taille des sources et diff vérifiés. Ce ne sont pas des essais natifs Android/iOS.
+- **Détail et recette appareil :** [Localisation arrière-plan : parcours d’autorisation](LOCALISATION_AUTORISATIONS_2026-10-28.md).
+
+## 2026-10-28 — Véhicules individuels à leur dernière position connue
+
+- **Problème/périmètre :** la nouvelle carte d’attente regroupait les conducteurs par zone ; elle ne montrait pas chaque véhicule à sa dernière position enregistrée, comme demandé.
+- **Appliqué :** un repère voiture/moto/tricycle par conducteur éligible, aux coordonnées enregistrées non arrondies, avec ancienneté au toucher. Les positions anciennes restent visibles tant que leur utilisation est autorisée ; elles sont atténuées à partir de dix minutes. Contrat backend enrichi et lecture mobile adaptés ; aucun véhicule fictif ajouté pour un ancien serveur.
+- **Conservé :** rayon de 5 km autour du départ, compatibilité véhicule/places, audience ciblée, refus, contrôle propriétaire, arrêt de la découverte après attribution, halo du passager et navigation après réservation acceptée. Aucun changement de sonnerie, de dispatch, de collecte GPS ou de base de production.
+- **Vérifications :** 109 tests JavaScript mobiles ciblés, 10 tests unitaires backend et 3 scénarios PostgreSQL/PostGIS locaux isolés réussis. TypeScript mobile/backend, ESLint mobile ciblé, frontières réseau et taille des sources validés.
+- **Limites :** 500 véhicules les plus proches au maximum, avec indication si la limite est atteinte ; aucune mesure de charge production ni validation native sur appareils. Backend préparé sans déploiement. Fichiers, contrat, compatibilité et précautions dans [la mise à jour du dossier carte](CARTE_RECHERCHE_DEMANDE_2026-10-28.md#précision--véhicules-individuels-et-dernières-positions-connues).
+
+## 2026-10-28 — Carte de recherche après publication d’une demande
+
+- **Problème/périmètre :** le passager voyait le ticket de sa demande plutôt que les conducteurs proches, puis devait passer par le détail du trajet avant sa navigation.
+- **Appliqué :** écran de recherche cartographique sur la route existante, positions réelles approximatives regroupées dans un rayon de 5 km, halo du passager, maintien des actions Modifier/Annuler et des propositions partagées. Nouvel endpoint propriétaire dans le backend voisin ; navigation directe dès qu’une réservation acceptée est disponible. Fichiers, protections et précisions dans [le document spécialisé](CARTE_RECHERCHE_DEMANDE_2026-10-28.md).
+- **Conservé :** attribution/refus, audience ciblée, consentement au partage, sonnerie, contrôles KYC, paiement et reprise de demande à l’ouverture. Aucune carte dans la notification, aucune migration ni modification de production.
+- **Vérifications :** 125 tests JavaScript mobiles ciblés réussis, puis 15 contrôles de navigation/sortie de carte réussis après ajout d’un test de transition ignorée (126 cas distincts). 8 tests backend unitaires et 3 scénarios PostgreSQL/PostGIS isolés réussis. TypeScript mobile/backend, lint ciblé, frontières réseau et limite de 400 lignes validés ; lint de navigation relancé après le dernier ajout.
+- **Limites :** backend préparé, non déployé. Nouveau rendu et transitions non validés sur appareils Android/iOS ; aucune garantie de performance ou d’absence de crash natif. Le détail distingue les tests exécutés des vérifications restantes.
+
+## 2026-10-28 — Audit de cohérence des notifications avec prix
+
+- **Périmètre :** dernière présentation texte des demandes/réservations, plein écran Android, Notifee, APNs/Expo et compatibilité avec le mobile de référence.
+- **Constats :** prix absent du résumé plein écran, horaire/places absents de la nouvelle présentation serveur, transport Expo non harmonisé et contrôle de compatibilité cassé par un module non autorisé. Un écart préexistant des boutons partagés est également relevé.
+- **Travail effectué :** ajout du banc local `scripts/audits/audit-driver-card-text.cjs` et du [rapport d’audit](AUDIT_NOTIFICATIONS_PRIX_2026-10-28.md). Aucun correctif métier appliqué ; comportement de l’application conservé.
+- **Vérifications :** 55 tests mobiles, 50 tests backend et 54 combinaisons de contenu réussis ; une injection native sur émulateur confirme titre, corps et boutons. Le contrôle officiel de compatibilité échoue ; ses 20 assertions passent après autorisation du seul module manquant dans une exécution diagnostique en mémoire, sans modification du script.
+- **Limites :** pas de push réel, de téléphone physique ou de rendu iOS. Mesures de formatage sur le poste uniquement. Détails, fichiers concernés, reproductions et corrections recommandées dans le rapport ; aucun déploiement.
+
+## 2026-10-27 — Prix visible dans la notification conducteur, sans carte
+
+- **Périmètre et problème :** le montant pouvait être masqué par la destination dans la notification compacte. La demande initiale d’aperçu cartographique a été retirée par l’utilisateur pendant le travail.
+- **Appliqué :** montant connu dans le titre (`Budget` pour une demande, tarif pour une réservation), départ et destination en texte, et détail Android dépliable en texte. Fichiers mobiles : `features/notifications/driverNotificationCard.ts`, `native/android/notifications/RideNotificationBundle.java` et sa copie générée Android. Backend : `src/notifications/ride-card-content.ts`, `android-driver-backup.ts`, `ios-driver-push.ts`. Le prix reste par place, conformément aux données existantes ; aucun total n’est inventé. Un montant absent ou invalide ne devient pas « Gratuit ».
+- **Conservé :** actions Accepter/Refuser, destinataire, confidentialité sur écran verrouillé, déduplication, durée et transfert de sonnerie, navigation vers la demande. Les limites de taille du push sont conservées et le texte secondaire est raccourci si nécessaire.
+- **Carte retirée :** aucun téléchargement d’image, endpoint cartographique, cache d’image ou permission supplémentaire n’est ajouté au résultat final. Aucun changement de base de données ni déploiement.
+- **Vérifications :** 55 tests JavaScript mobiles et 47 tests backend réussis ; compilation de l’APK natif de test réussie ; 9 scénarios locaux sur émulateur Android réussis (prix dans le titre, boutons, doublon, secours Android, expiration, récupération du travail persistant, veille et plein écran autorisé). Parité des sources natives et TypeScript backend de production validés. Tests concernés : `tests/driverNotificationActions.test.js`, `scripts/audits/test-native-ride-delivery.cjs`, son `NativeCardProbe.java`, et `src/notifications/ride-card-content.spec.ts` côté backend.
+- **Limites :** tests Android dans l’application isolée `com.zwanga.audit`, notifications synthétiques, aucun push réel ni essai sur téléphone physique/iOS. Les tests APNs vérifient le contenu du message, pas son rendu sur un iPhone. Nouveau build Android nécessaire pour la présentation native ; backend préparé, non déployé. Ces résultats ne certifient pas l’absence de crashs en production.
+
+## 2026-10-27 — Tests locaux intégrés du relais et des notifications mobiles
+
+- **Demande :** vérifier ensemble les ajouts backend et mobile sans solliciter les utilisateurs réels.
+- **Ajout :** deux parcours croisés exécutant l'API NestJS, PostgreSQL/PostGIS, Redis, le transport de push local, le publieur Android natif et les gestionnaires TypeScript du mobile. Le véritable cron a relayé une demande ignorée après 41,164 secondes mesurées.
+- **Banc :** horloge synthétique alignée sur celle de l'émulateur et dossiers de résultats séparés ; aucune modification de la logique de production. Les fichiers et comportements conservés sont détaillés dans le rapport.
+- **Vérifications :** 106 tests d'intégration backend, 51 tests de contrats, 129 tests mobiles et 30 scénarios natifs Android réussis ; contrôle TypeScript du build réussi. Le contrôle TypeScript global a relevé 40 erreurs de tests préexistantes.
+- **Limites :** fournisseur Firebase simulé, application Android de test séparée, pas de recette complète React Native ni d'essai physique/iOS. Aucun déploiement.
+- **Rapport et reproduction :** [tests d'intégration locaux](TESTS_INTEGRATION_RELAIS_2026-10-27.md).
+
+## 2026-10-27 — Réception mobile et préparation du backend pour Android 176
+
+- Audit du push, du relais natif/JavaScript, des actions et de l'expiration ; cible déclarée Play Store 1.0.18 (176).
+- Backend : identifiant de secours cohérent avec le mobile, TTL borné par l'invitation, Redis de test préparé dans le pipeline. Aucun changement du code mobile d'exécution.
+- 45 tests serveur, 88 tests mobiles et 20 contrôles croisés de contrats réussis ; TypeScript backend et YAML vérifiés. Correspondance exacte du binaire du store et essais physiques restant à vérifier.
+- Aucun déploiement, push réel ni migration de production ; l'utilisateur déploiera le backend. [Analyse, fichiers et limites](AUDIT_RECEPTION_SONNERIE_BACKEND_2026-10-27.md).
+
+## 2026-10-27 — Correctifs du relais et des réponses aux demandes
+
+- **Problèmes :** attente Redis non bornée, acceptation interrompue bloquant la
+  file et contre-proposition rendue inacceptable après le délai conducteur.
+- **Appliqué :** délais Redis, étapes conducteur/passager/confirmation distinctes,
+  finalisation transactionnelle et reprise des trajets provisoires ; compte à
+  rebours dans la fiche mobile. Migration backend 98 préparée.
+- **Conservé :** fenêtre initiale de 40 secondes côté serveur, ciblage privé,
+  règles de paiement et réservations sur trajets publiés. Aucun changement natif.
+- **Vérifié :** 186 tests distincts réussis, TypeScript et contrôles ciblés ;
+  services de test isolés et push simulés, aucun déploiement.
+- **Fichiers, détails et limites :** [rapport des correctifs](CORRECTIFS_RELAIS_DEMANDES_2026-10-27.md).
+
+## 2026-10-27 — Audit du relais Redis et du délai de réponse
+
+- **Périmètre :** détection des 40 secondes, refus, acceptation, panne Redis et
+  cohérence de la fiche conducteur. Aucun correctif métier ni déploiement dans cet audit.
+- **Constats :** commandes Redis sans délai maximal, acceptation provisoire pouvant
+  bloquer le relais, contre-proposition encore en attente mais devenue inacceptable ;
+  délai consommé avant affichage et peu visible dans la fiche programmée.
+- **Vérifications :** 14 cas existants, un délai réellement écoulé et sept assertions
+  reproduisant les défauts. Relais local mesuré à 40,578 secondes ; push simulés.
+- **Résultats et suites recommandées :** voir
+  [l'audit détaillé](AUDIT_FILE_DEMANDES_40_SECONDES_2026-10-27.md).
+  Code applicatif conservé ; aucune conclusion nouvelle sur les appareils physiques.
+
+## 2026-10-27 — File Redis et relais des demandes après 40 secondes
+
+- **Demande :** solliciter un seul conducteur, passer au suivant après refus ou
+  absence de réponse pendant 40 secondes, retirer la demande après acceptation.
+- **Solution préparée :** file Redis, callback authentifié, traitement serveur des
+  échéances, historique SQL, contrôles d'acceptation et migration backend.
+- **Comportements conservés :** demandes ciblées privées, contrôles de proximité,
+  formats de notification et parcours de réservation des trajets publiés.
+- **Vérifications et limites :** voir [le dossier technique](FILE_DEMANDES_REDIS_2026-10-27.md).
+  Aucun déploiement ni test push sur des utilisateurs de production.
+
+## 2026-10-27 — Vérification AWS des demandes sans sonnerie
+
+- **Signalement :** pendant les essais de 14 h à 15 h, sonnerie constatée sur un
+  seul téléphone et absence de reprise après refus ; même build selon l'utilisateur.
+- **Travail réalisé :** lecture ECS/ECR/CloudWatch, recoupement intégral d'un
+  diagnostic SQL existant, consultation du code déployé et reproduction du repli
+  d'enregistrement mobile. Aucun changement de production ni du comportement métier.
+- **Constats :** six notifications par demande sur sept commandes, confirmation
+  fournisseur distincte de la réception, reprise limitée au protocole natif v6,
+  absence de relais spécifique des refus programmés et repli mobile non rehaussé.
+- **Résultats, fichiers et limites :** voir
+  [l'audit AWS du 27 octobre](AUDIT_AWS_SONNERIE_2026-10-27.md). Aucune promesse de
+  sonnerie sur appareil ; correctifs recommandés distingués des modifications appliquées.
+
+## 2026-10-27 — Choisir le destinataire d'une demande de trajet
+
+- **Problème :** impossible de cibler un conducteur proche ou connu depuis la commande.
+- **Appliqué :** choix facultatif dans « Heure et prix », recherche par proximité/nom,
+  restriction serveur de l'audience, suivi du destinataire et élargissement explicite
+  aux conducteurs proches. Fichiers, migration et détails dans le
+  [rapport de mise en œuvre](DEMANDE_CONDUCTEUR_CIBLE_2026-10-27.md).
+- **Conservé :** diffusion habituelle sans choix, acceptation volontaire, refus
+  persistants, prix, horaires et règles d'attribution. Aucun déploiement.
+- **Vérifié :** tests mobile/backend et bases PostgreSQL jetables, TypeScript et
+  compilation NestJS ; résultats précis et limites dans le rapport. Aucun essai
+  physique, aucune garantie nouvelle de réception push ou d'absence de crash natif.
+
+## 2026-10-27 — Masquer les demandes refusées pour le conducteur concerné
+
+- **Problème :** le refus arrêtait l'alerte mais la demande restait visible dans
+  les listes, notamment au retour dans l'application.
+- **Appliqué :** mémorisation serveur par conducteur/demande, filtrage des listes,
+  détails et alertes, retrait des caches après confirmation, retour à l'accueil.
+  Migration et fichiers concernés dans le
+  [rapport de mise en œuvre](REFUS_DEMANDES_CONDUCTEUR_2026-10-27.md).
+- **Conservé :** visibilité pour le passager et les autres conducteurs, trajets
+  attribués, réservations ; ignorer une sonnerie ne vaut pas refus.
+- **Vérifié :** 56 tests mobile, TypeScript, ESLint ciblé, limites réseau/taille ;
+  essais backend sur bases PostgreSQL jetables détaillés dans les journaux.
+  Pas de test physique ni déploiement. Migration nécessaire côté serveur.
+
+## 2026-10-27 — Node et dépendances : mises à jour de sécurité
+
+- **Problème/périmètre :** Node non fixé au correctif LTS récent, 25 paquets
+  affectés côté mobile et 30 côté backend selon l’audit npm initial.
+- **Appliqué :** Node 24.22.1 pour le projet/EAS et le backend/Docker/CI ;
+  correctifs compatibles, substitutions ciblées, adaptation de l’import du
+  décodeur d’URL ESM pour Expo Router 6 et de la lecture d’images par Metro.
+  Versions et fichiers détaillés dans
+  [le rapport Node et dépendances](MISE_A_JOUR_NODE_DEPENDANCES_2026-10-27.md).
+- **Conservé :** version d’application 1.0.18, SDK Expo 54, React Native 0.81.5,
+  SDK natifs de sonnerie/KYC et comportements métier. Aucun déploiement.
+- **Vérifications et limites :** voir le rapport pour les audits npm, les essais
+  sous Node temporaire vérifié, les résultats et les limites natives. Le Node
+  global et les processus existants ne sont pas remplacés automatiquement.
+
 ## 2026-10-27 — Version de l’application Android et iOS : 1.0.18
 
 - **Périmètre et problème :** la version actuelle est déjà en production selon

@@ -18,6 +18,7 @@ const model = { userId: 'driver', tripRequest: request, requestedVehicleType: 'c
   isIdentityVerified: true, isDriverAccount: true, canAcceptDirectly: true, directAcceptVehicle: null, directAcceptVehicleId: '',
   routeCoordinates: [], canEdit: false, canCancel: false };
 const mocks = { react: React, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: false, closed: false, label: null }) },
   '@/hooks/useRouteLocationLabels': { useRouteLocationLabels: () => labels },
   '@/components/trip/RouteLocationDetails': { RouteLocationDetails: 'Route' },
   './RequestPassengerContact': { RequestPassengerContact: 'Contact' },
@@ -147,7 +148,7 @@ test('vehicle selection and both response buttons share the non-shrinking footer
   const { RequestDecisionActions } = loader(mocks)('features/request-detail/RequestDriverDecision.tsx');
   let tree = RequestDecisionActions({ model });
   assert.equal(tree.props.style.flexShrink, 0);
-  assert.equal(tree.props.children[0].type, 'VehiclePicker');
+  assert.ok(elements(tree).some(item => item.type === 'VehiclePicker'));
   const accept = item => elements(item).find(element => element.type === 'Pressable' && words(element) === 'Accepter');
   assert.equal(accept(tree).props.disabled, true, 'no acceptance without selected vehicle');
   tree = RequestDecisionActions({ model: { ...model, directAcceptVehicle: vehicle('one') } });
@@ -164,6 +165,7 @@ test('actual request screen keeps the decision footer outside the scrollable det
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '@/features/request-detail/SharedTripPanel': { SharedTripPanel: 'SharedTripPanel' },
+    '@/features/request-detail/RequestSearchScreen': { RequestSearchScreen: 'RequestSearchScreen' },
     '@/store/api/sharedTripApi': { useSharedTripContextQuery: () => ({}) },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true, displayReadOptions: () => ({}) },
     '@/services/rideAlertSession': { acknowledgeRideAlerts: () => {} },
@@ -188,4 +190,9 @@ test('actual request screen keeps the decision footer outside the scrollable det
   assert.equal(elements(scroll).find(item => item.type === 'Decision').props.presentation, presentation);
   assert.equal(elements(tree).some(item => item.type === 'AcceptModal'), false, 'no legacy acceptance modal in the decision path');
   assert.match(words(tree), /Nouvelle demande/);
+  const previousId = model.userId;
+  try {
+    model.userId = request.passengerId;
+    assert.equal(Screen().type, 'RequestSearchScreen', 'the same persisted detail route becomes the owner search map');
+  } finally { model.userId = previousId; }
 });

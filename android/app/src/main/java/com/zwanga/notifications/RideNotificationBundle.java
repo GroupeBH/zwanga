@@ -49,7 +49,7 @@ final class RideNotificationBundle {
     Bundle b = new Bundle(); b.putString("title", title); b.putBundle("pressAction", action(id)); return b;
   }
   private static String label(String s) {
-    return s == null ? "" : s.replaceAll("<[^>]*>", " ").replaceAll("[\\p{Cntrl}]", " ").trim();
+    return s == null ? "" : s.substring(0, Math.min(1600, s.length())).replaceAll("<[^>]*>", " ").replaceAll("[\\p{Cntrl}]", " ").trim();
   }
   static Bundle create(Context c, Map<String,String> d, String channel, boolean wake) {
     String kind = kind(d), id = "driver-" + kind + "-" + entity(d, kind);
@@ -67,15 +67,22 @@ final class RideNotificationBundle {
     }
     card.putString("id", id); card.putBundle("data", data);
     card.putString("title", "booking".equals(kind) ? "Zwanga · Nouvelle réservation" : "Zwanga · Nouvelle demande");
-    String destination = label(d.get("rideArrival")), price = d.get("ridePricePerSeat");
-    String body = destination.isEmpty() ? "Un passager vous attend." : "Vers " + destination;
-    if (price != null && price.matches("[0-9]{1,10}(\\.[0-9]{1,2})?"))
-      body += " · " + ("budget".equals(d.get("ridePriceKind")) ? "Budget : " : "") + price + " FC / place";
-    card.putString("body", body + " · Acceptez ou refusez dans Zwanga.");
+    String destination = label(d.get("rideArrival")), departure = label(d.get("rideDeparture")), price = d.get("ridePricePerSeat");
+    String body = destination.isEmpty() ? "Un passager vous attend." : (departure.isEmpty() ? "Vers " : departure + " → ") + destination;
+    if (price != null && price.matches("[0-9]{1,10}(\\.[0-9]{1,2})?") &&
+        ("budget".equals(d.get("ridePriceKind")) || "fare".equals(d.get("ridePriceKind")))) {
+      double amount = Double.parseDouble(price);
+      String fare = amount == 0 ? "Gratuit" : ("budget".equals(d.get("ridePriceKind")) ? "Budget : " : "") +
+        java.text.NumberFormat.getNumberInstance(Locale.FRANCE).format(amount) + " FC / place";
+      card.putString("title", "Zwanga · " + fare);
+    }
+    card.putString("body", body + "\nAcceptez ou refusez dans Zwanga.");
     android.putString("channelId", fresh ? channel : quietChannel(c)); android.putInt("importance", 4); android.putInt("visibility", 0);
     android.putString("smallIcon", "notification_icon");
     android.putBundle("pressAction", action("default")); android.putBoolean("autoCancel", false);
     android.putBoolean("onlyAlertOnce", true); android.putBoolean("loopSound", false);
+    Bundle style = new Bundle(); style.putInt("type", 1); style.putString("text", card.getString("body"));
+    android.putBundle("style", style);
     if (fresh) android.putString("sound", "driver_ring");
     ArrayList<Bundle> actions = new ArrayList<>();
     actions.add(button("nearby".equals(kind) ? "Voir et accepter" : "Accepter", "nearby".equals(kind) ? "driver-review-nearby" : "driver-accept"));
@@ -88,7 +95,8 @@ final class RideNotificationBundle {
     boolean locked = (keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive());
     if (fresh && wake && locked && DriverAlertModule.fullScreenBuildEnabled(c) &&
         c.getSharedPreferences("ride-full-screen", 0).getBoolean(d.get("driverId"), false) &&
-        c.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+        (Build.VERSION.SDK_INT < 29 ||
+            c.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED) &&
         manager != null && (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent())) {
       Bundle full = action("ride-full-screen");
       full.putString("launchActivity", "com.zwanga.notifications.IncomingRideActivity"); full.putString("mainComponent", "main");

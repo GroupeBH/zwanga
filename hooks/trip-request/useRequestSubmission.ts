@@ -2,6 +2,7 @@ import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { recoverRequest, type RequestAttempt } from '@/features/trip-request/recoverRequest';
 import { getTokenSessionVersion } from '@/services/tokenSession';
+import { offerTripLocationPermission } from '@/services/tripLocationPermission';
 import { getLocationCoordinates, RequestFormStep } from '@/features/trip-request/requestFormModel';
 import { trackEvent } from '@/services/analytics';
 import {
@@ -20,12 +21,14 @@ import type { useRequestSchedule } from './useRequestSchedule';
 type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'hasChosenDepartureTime' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
   departureAddress: string; arrivalAddress: string; hasDepartureAddress: boolean; hasArrivalAddress: boolean;
   canSubmitRequestDetails: boolean; budgetValue: number; selectedVehicleOptionUnavailable: boolean;
+  targetDriver?: ReturnType<typeof useRequestDraft>['targetDriver'];
   getCurrentDepartureWindow: ReturnType<typeof useRequestSchedule>['getCurrentDepartureWindow'];
   setRequestFormStep: React.Dispatch<React.SetStateAction<RequestFormStep>>;
   setAddressSectionStep: React.Dispatch<React.SetStateAction<AddressSectionStep>>;
 };
 
 export function useRequestSubmission({
+  targetDriver,
   arrivalLocation,
   departureLocation,
   timePreset,
@@ -84,6 +87,7 @@ export function useRequestSubmission({
     setSubmissionRecoveryMessage(null);
     setRequestSentWithoutDetail(false);
     setCreatedRequestId(requestId);
+    offerTripLocationPermission('request', requestId, lifetime.current.version);
     leaving.current = true;
     router.replace(getTripRequestDetailHref(requestId));
   };
@@ -171,6 +175,10 @@ export function useRequestSubmission({
       setFlexibilityMinutes(departureWindow.flex);
     }
     if (!validate(departureWindow)) return;
+    if (targetDriver && targetDriver.vehicleType !== selectedVehicleType) {
+      setSubmissionError('Le type de véhicule a changé. Choisissez à nouveau votre conducteur ou les conducteurs proches.');
+      return;
+    }
     const seatError = getPassengerSeatValidation(
       hasSpecifiedNumberOfSeats ? numberOfSeats : 1,
       isIdentityVerified,
@@ -210,6 +218,7 @@ export function useRequestSubmission({
     createRequestInFlightRef.current = true;
     const submissionStartedAt = Date.now();
     pendingAttempt.current = { startedAt: submissionStartedAt,
+      targetDriverId: targetDriver?.id,
       departure: departureAddress.trim().toLowerCase(), arrival: arrivalAddress.trim().toLowerCase(),
       departureDateMin: departureWindow.min.toISOString(), departureDateMax: departureWindow.max.toISOString(),
       seats: hasSpecifiedNumberOfSeats ? numberOfSeats : 1, price: confirmedPricePerSeat, vehicleType: selectedVehicleType };
@@ -219,6 +228,7 @@ export function useRequestSubmission({
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
       const requestNotes = description.trim();
       const createdRequest = await createTripRequest({
+        ...(targetDriver ? { targetDriverId: targetDriver.id } : {}),
         departureLocation: departureAddress,
         departureReference: departureReference.trim() || undefined,
         departureCoordinates,

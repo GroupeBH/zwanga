@@ -47,8 +47,8 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
 
   @Override public String getName() { return "ZwangaDriverAlerts"; }
 
-  // No permission is declared in the default production manifest. An explicitly
-  // reviewed build may enable it through withIncomingRideAlerts; never via OTA.
+  // Native capability is configured by withIncomingRideAlerts, never via OTA.
+  // Driver consent and Android special access remain required before presentation.
   static boolean fullScreenBuildEnabled(Context context) {
     try {
       android.os.Bundle meta = context.getPackageManager().getApplicationInfo(
@@ -70,7 +70,8 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
       WritableMap status = Arguments.createMap();
       status.putBoolean("optIn", context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false));
-      status.putBoolean("allowed", context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+      status.putBoolean("allowed", (Build.VERSION.SDK_INT < 29 ||
+          context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED) &&
           manager != null && (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));
       status.putBoolean("notificationsAllowed", manager != null && manager.areNotificationsEnabled());
       promise.resolve(status);
@@ -102,7 +103,8 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
       promise.resolve(fullScreenBuildEnabled(context) && userId != null &&
           context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false) &&
-          context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+          (Build.VERSION.SDK_INT < 29 ||
+              context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED) &&
           manager != null && manager.areNotificationsEnabled() &&
           ((keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive())) &&
           (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));

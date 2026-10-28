@@ -2,9 +2,11 @@ import type { MapLocationSelection } from '@/components/LocationPickerModal';
 import type { TimePreset } from '@/features/trip-request/requestFormModel';
 import type { TripPaymentMode, TripRequestVehicleType } from '@/types';
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import type { SelectedRequestDriver } from '../api/requestDriverApi';
 
 /** Only the editable draft belongs here. API results and native objects do not. */
 export interface RequestDraft {
+  targetDriver: SelectedRequestDriver | null;
   departureLocation: MapLocationSelection | null;
   arrivalLocation: MapLocationSelection | null;
   departureManualAddress: string;
@@ -33,6 +35,7 @@ const initialState: DraftsState = { byId: {} };
 
 export function createRequestDraft(departureDateMinMs: number, flexibilityMinutes: number): RequestDraft {
   return {
+    targetDriver: null,
     departureLocation: null, arrivalLocation: null,
     departureManualAddress: '', arrivalManualAddress: '', departureReference: '', arrivalReference: '',
     timePreset: 'custom', hasChosenDepartureTime: false, departureDateMinMs, flexibilityMinutes,

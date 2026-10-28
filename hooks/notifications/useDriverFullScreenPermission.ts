@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, NativeModules, Platform } from 'react-native';
 import { boundedRideAudio } from '@/services/rideAudioDiagnostics';
+import { openDriverAlertSettings } from '@/services/driverAlertChannel';
 
 export type DriverFullScreenPermission = { optIn: boolean; allowed: boolean; notificationsAllowed: boolean };
 function parseState(value: unknown): DriverFullScreenPermission | null {
@@ -14,6 +15,7 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
   const [status, setStatus] = useState<{ owner: string; permission: DriverFullScreenPermission } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const [attempt, retry] = useState(0);
   const bridge = NativeModules?.ZwangaDriverAlerts;
   const owner = useRef(driverId); owner.current = driverId;
   const foreground = useRef(active); foreground.current = active;
@@ -44,7 +46,25 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
       read(0);
     }
     return () => { clearTimeout(retry); ++lifecycle.current; mounted.current = false; };
-  }, [active, bridge, driverId]);
+  }, [active, bridge, driverId, attempt]);
+
+  const openNotifications = async () => {
+    const epoch = generation.current;
+    let cancelled = false;
+    const current = () => !cancelled && mounted.current && generation.current === epoch && owner.current === driverId &&
+      foreground.current && AppState.currentState === 'active';
+    if (Platform.OS !== 'android' || !driverId || inFlight.current || !current()) return;
+    inFlight.current = true; setBusy(true); setError(false);
+    try {
+      await boundedRideAudio(openDriverAlertSettings({ application: true, current }), 2000);
+    } catch { if (current()) setError(true); }
+    finally {
+      cancelled = true;
+      if (mounted.current && generation.current === epoch && owner.current === driverId) {
+        inFlight.current = false; setBusy(false);
+      }
+    }
+  };
 
   const setOptIn = async (value: boolean) => {
     if (AppState.currentState !== 'active' || Platform.OS !== 'android' || !driverId || !mounted.current || !foreground.current ||
@@ -69,5 +89,9 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
     }
   };
   return { permission: Platform.OS === 'android' && active && status?.owner === driverId ? status?.permission : null,
-    busy, error, setOptIn };
+    busy, error, setOptIn, openNotifications,
+    retry: () => {
+      if (mounted.current && foreground.current && AppState.currentState === 'active' && !inFlight.current)
+        retry(value => value + 1);
+    } };
 }

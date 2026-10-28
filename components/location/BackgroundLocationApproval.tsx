@@ -8,6 +8,7 @@ type Props = {
   visible: boolean; busy: boolean; loaded: boolean; loadError: boolean;
   permission: boolean; foregroundPermission: boolean; settingsRequired: boolean; message: string;
   onConfirm: () => void; onClose: () => void; onShow?: () => void; priority?: number;
+  audience?: 'driver' | 'passenger';
 };
 
 /** In-app validation, not an imitation of the OS permission dialog. */
@@ -16,44 +17,49 @@ export function BackgroundLocationApproval(props: Props) {
   const blocked = busy || (!loaded && !loadError);
   const choice = Platform.OS === 'ios' ? 'Toujours' : 'Toujours autoriser';
   const androidSettings = Platform.OS === 'android' && Number(Platform.Version) >= 30;
+  const passenger = props.audience === 'passenger';
   return <RideModal visible={visible} inApp transparent animationType="fade" priority={props.priority} onRequestClose={onClose} onShow={props.onShow}>
     <View style={styles.overlay}>
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <ScrollView contentContainerStyle={styles.content} bounces={false}>
           <View style={styles.heading}>
             <Ionicons name="location" size={26} color={ACTION_COLORS.orange} />
-            <Text accessibilityRole="header" style={styles.title}>Autoriser ma localisation</Text>
+            <Text accessibilityRole="header" style={styles.title}>Localisation en arrière-plan</Text>
           </View>
-          <Text style={styles.lead}>Recevez les demandes proches, même écran éteint.</Text>
-          <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes, même dans une autre application.</Text>
+          <Text style={styles.lead}>{passenger ? 'Gardez le suivi de votre trajet, même écran éteint.'
+            : 'Recevez les demandes proches, même écran éteint.'}</Text>
+          <Text style={styles.copy}>{passenger
+            ? 'Pendant votre trajet, Zwanga collecte et envoie votre position au serveur, même écran éteint.'
+            : 'Hors trajet, Zwanga collecte et envoie votre position au serveur pour les demandes proches, même écran éteint.'}</Text>
           {loadError ? <Text accessibilityLiveRegion="polite" style={styles.copy}>Impossible de vérifier l’autorisation. Réessayez.</Text>
-            : permission ? <Text style={styles.copy}>Votre téléphone a déjà donné son accord. Confirmez pour reprendre le partage hors trajet.</Text>
+            : permission ? <Text style={styles.copy}>{passenger ? 'Votre téléphone a déjà donné son accord.'
+              : 'Autorisation accordée. Confirmez le partage hors trajet.'}</Text>
               : settingsRequired ? <View style={styles.guide}>
-                <Text style={styles.guideTitle}>Le téléphone impose ce dernier réglage</Text>
+                <Text style={styles.guideTitle}>Dans les réglages de Zwanga</Text>
                 <Text style={styles.copy}>{Platform.OS === 'ios'
-                  ? `1. Touchez « Position » dans les réglages de Zwanga.\n2. Choisissez « ${choice} ».\n3. Revenez dans Zwanga.`
-                  : `1. Touchez « Autorisations », puis « Position ».\n2. Choisissez « ${choice} ».\n3. Revenez dans Zwanga.`}</Text>
+                  ? `Position → « ${choice} ». Revenez dans Zwanga.`
+                  : `Autorisations → Position → « ${choice} ». Revenez dans Zwanga.`}</Text>
               </View> : <Text style={styles.copy}>{!foregroundPermission
-                ? 'Validez d’abord la position dans la fenêtre du téléphone. Nous vous demanderons ensuite l’accès même écran éteint.'
+                ? 'Autorisez d’abord la position, puis l’accès en arrière-plan.'
                 : androidSettings
-                  ? `Android peut ouvrir les autorisations de Zwanga. Choisissez « ${choice} », puis revenez ici.`
-                  : `Dans la fenêtre du téléphone, choisissez « ${choice} ».`}</Text>}
-          {Platform.OS === 'ios' && !permission && !settingsRequired && <Text style={styles.copy}>
-            L’iPhone peut demander de confirmer « Toujours » plus tard, même après avoir quitté Zwanga.
-          </Text>}
+                  ? `Choisissez « ${choice} » dans les réglages, puis revenez.`
+                  : `Choisissez « ${choice} » si le téléphone le propose.`}</Text>}
           {message ? <Text accessibilityLiveRegion="polite" style={styles.feedback}>{message}</Text> : null}
           <TouchableOpacity accessibilityRole="button" disabled={blocked}
             accessibilityState={{ disabled: blocked, busy }} onPress={onConfirm}
             style={[styles.primary, blocked && styles.disabled]}>
             {blocked ? <ActivityIndicator color="#FFFFFF" /> : null}
             <Text style={styles.primaryText}>{blocked ? 'Un instant…' : loadError ? 'Réessayer'
-              : settingsRequired ? 'Ouvrir les autorisations' : 'Autoriser'}</Text>
+              : permission ? 'Activer' : settingsRequired || (androidSettings && foregroundPermission)
+                ? 'Ouvrir les réglages' : 'Autoriser'}</Text>
           </TouchableOpacity>
           <TouchableOpacity accessibilityRole="button"
             style={styles.later} onPress={onClose}>
             <Text style={styles.laterText}>Plus tard</Text>
           </TouchableOpacity>
-          <Text style={styles.footnote}>Vous pouvez continuer sans autoriser. Désactivation possible dans Profil → Alertes conducteur.</Text>
+          <Text style={styles.footnote}>{passenger
+            ? 'Facultatif. Votre demande ou réservation reste enregistrée.'
+            : 'Facultatif. Modifiable dans les réglages du téléphone.'}</Text>
         </ScrollView>
       </SafeAreaView>
     </View>

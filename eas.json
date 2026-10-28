@@ -5,6 +5,7 @@
   },
   "build": {
     "dev": {
+      "node": "24.22.1",
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -37,6 +38,7 @@
       }
     },
     "production": {
+      "node": "24.22.1",
       "distribution": "store",
       "environment": "production",
       "autoIncrement": true,
@@ -57,6 +59,7 @@
       },
       "env": {
         "EXPO_PUBLIC_ENV": "production",
+        "ZWANGA_DRIVER_FULL_SCREEN_ENABLED": "true",
         "EXPO_PUBLIC_API_URL": "https://compute-api.zwanga-app.com/api/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "754065251959-chelbj9aa06c2ifbpnmcot2mt6p61rkp.apps.googleusercontent.com",

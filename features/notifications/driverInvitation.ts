@@ -5,7 +5,7 @@ export type DriverInvitation = {
   kind: 'booking' | 'dispatch'; id: string; driverId: string; expiresAt?: string; ringUntil?: string;
 };
 export type DriverDecision = 'accept' | 'decline';
-export type DriverNotificationTarget = { kind: 'booking' | 'dispatch' | 'nearby'; id: string; driverId: string };
+export type DriverNotificationTarget = { kind: 'booking' | 'dispatch' | 'nearby'; id: string; driverId: string; declined?: boolean };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const isInvitationId = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
 
@@ -28,10 +28,12 @@ export function notificationDecision(actionId: string | undefined): DriverDecisi
 export function parseDriverResponseResult(data: Record<string, unknown> | undefined): DriverNotificationTarget | null {
   if (data?.type !== 'driver_action_result' || !isInvitationId(data.id) || !isInvitationId(data.driverId) ||
       (data.kind !== 'booking' && data.kind !== 'dispatch' && data.kind !== 'nearby')) return null;
-  return { kind: data.kind, id: data.id, driverId: data.driverId };
+  return { kind: data.kind, id: data.id, driverId: data.driverId,
+    ...(data.decision === 'decline' && (data.confirmed === true || data.confirmed === 'true') ? { declined: true } : {}) };
 }
 
 export function invitationHref(invitation: DriverNotificationTarget) {
+  if (invitation.declined && invitation.kind !== 'booking') return { pathname: '/(tabs)' as const, params: {} };
   if (invitation.kind === 'nearby') return { pathname: '/request-details/[id]' as const, params: { id: invitation.id } };
   return { pathname: '/incoming-driver' as const, params: { kind: invitation.kind, id: invitation.id, driverId: invitation.driverId } };
 }

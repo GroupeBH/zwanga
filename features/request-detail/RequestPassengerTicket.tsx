@@ -7,6 +7,8 @@ import { getTripRequestExpirationAt } from '@/features/trip-request/requestExpir
 import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailModel';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
+import { RequestTargetDriver } from './RequestTargetDriver';
+import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 
 type Model = ReturnType<typeof useRequestDetailController>;
 type Presentation = ReturnType<typeof buildRequestDetailPresentation>;
@@ -22,13 +24,15 @@ export function formatRequestDay(value: string) {
 
 export function RequestPassengerTicket({ model, presentation }: { model: Model; presentation: Presentation }) {
   const request = model.tripRequest!;
+  const response = useRequestResponseWindow(request, model.responseWindowStartedAt, model.isScreenActive, model.refetch, true);
   const labels = useRouteLocationLabels(request);
   const closed = ['cancelled', 'expired'].includes(request.status);
   const confirmed = request.status === 'driver_selected';
   const expiration = getTripRequestExpirationAt(request);
   const stage = confirmed ? 2 : 1; // A created trip is not proof that it has started.
-  const steps = ['Commande envoyée', presentation.pendingOffersCount ? 'Réponse reçue' : 'Recherche d’un conducteur', 'Conducteur confirmé', 'Départ'];
+  const steps = ['Commande envoyée', presentation.pendingOffersCount ? 'Réponse reçue' : request.targetDriverId ? 'Réponse du conducteur choisi' : 'Recherche d’un conducteur', 'Conducteur confirmé', 'Départ'];
   return <>
+    {request.responseWindow?.phase === 'passenger' && !!response.label && <Text style={local.hint}>{response.label}</Text>}
     <View style={s.card}>
       <View style={s.row}>
         <Text style={s.label}>{formatRequestDay(request.departureDateMin).toLocaleUpperCase('fr-FR')}</Text>
@@ -57,6 +61,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
           <Text style={s.amount}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>}
         departureName={labels.departure.address} arrivalName={labels.arrival.address} />
     </View>
+    <RequestTargetDriver key={request.id} request={request} disabled={model.isCancelling || model.isUpdating} />
     <View style={s.card}>
       {closed ? <><Text style={s.name}>{presentation.ownerHero.title}</Text><Text style={s.muted}>{presentation.ownerHero.subtitle}</Text></>
         : steps.map((label, index) => <View key={label} style={local.step}>
@@ -69,7 +74,9 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
             {index === stage && <Text style={local.hint}>{confirmed
               ? `${request.selectedDriverName || 'Votre conducteur'} a accepté. Retrouvez-le dans votre trajet.`
               : presentation.pendingOffersCount ? 'Un conducteur a répondu. Le conducteur confirmé apparaîtra ici.'
-                : 'Vous serez alerté dès qu’un conducteur répond. Vous pouvez quitter l’application.'}</Text>}
+                : request.targetDriverDeclined ? 'Le conducteur a refusé. Vous pouvez envoyer la commande aux conducteurs proches.'
+                  : request.targetDriverId ? 'Vous serez alerté dès que ce conducteur répond. Vous pouvez quitter l’application.'
+                    : 'Vous serez alerté dès qu’un conducteur répond. Vous pouvez quitter l’application.'}</Text>}
             {index === stage && !confirmed && expiration != null && <Text style={local.hint}>Sans réponse, la commande expire le {new Date(expiration).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à {formatRequestTime(expiration)}.</Text>}
           </View>
         </View>)}
@@ -79,7 +86,9 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
 }
 
 export function RequestPassengerActions({ model }: { model: Model }) {
-  const busy = model.isCancelling || model.isUpdating || model.isFetchingRequest;
+  // A background read must not keep the essential actions disabled on a slow connection.
+  // Edit/cancel mutations retain the existing server-side state/snapshot checks.
+  const busy = model.isCancelling || model.isUpdating;
   return <View style={s.footer}><View style={s.actionRow}>
     {model.canCancel && <Pressable accessibilityRole="button" accessibilityLabel="Annuler la commande" disabled={busy}
       style={[s.cancel, busy && s.disabled]} onPress={model.handleCancelRequest}>

@@ -11,7 +11,7 @@ function fixture(t) {
   const env = { read: null, prompt: null, save: null, active: true, enabled: false, granted: false };
   const appState = { currentState: 'active' };
   const { useNearbyLocationPermission } = loader({ react: hooks.react,
-    'react-native': { AppState: appState, Linking: { openSettings: async () => {} } },
+    'react-native': { AppState: appState, Platform: { OS: 'android' }, Linking: { openSettings: async () => {} } },
     '@/services/tokenSession': { getTokenSessionVersion: () => 0 },
     'expo-location': {
       getForegroundPermissionsAsync: async () => { if (env.read) await env.read; return { granted: true }; },

@@ -52,6 +52,12 @@ public class WakeEligibilityCheck {
     t.context.manager.fullScreen = false; t.check(false); t.context.manager.fullScreen = true;
     t.context.manager.enabled = false; t.check(false); t.context.manager.enabled = true;
     t.context.permission = -1; t.check(false); t.context.permission = 0;
+    Build.VERSION.SDK_INT = 28; t.context.permission = -1; t.check(true); // permission only exists from API 29
+    t.context.preferences.optIn = false; t.check(false); t.context.preferences.optIn = true;
+    t.context.manager.enabled = false; t.check(false); t.context.manager.enabled = true;
+    Build.VERSION.SDK_INT = 29; t.check(false); // manifest grant still required on Android 10+
+    t.context.permission = 0; t.context.manager.fullScreen = false; t.check(true); // special access only from API 34
+    Build.VERSION.SDK_INT = 34; t.check(false); t.context.manager.fullScreen = true;
     t.enabled = false; t.check(false); t.enabled = true;
     t.context.keyguard = null; t.context.power.interactive = false; t.check(true);
     t.context.power = null; t.check(false); // unavailable system services fail closed
@@ -66,4 +72,12 @@ public class WakeEligibilityCheck {
   assert.equal(compile.status, 0, compile.stderr);
   const run = spawnSync('java', ['-cp', directory, 'WakeEligibilityCheck'], { encoding: 'utf8', timeout: 30000 });
   assert.equal(run.status, 0, run.stderr);
+});
+
+test('status, JS notification and native notification agree on the API 29 permission boundary', () => {
+  const module = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
+  const bundle = fs.readFileSync('native/android/notifications/RideNotificationBundle.java', 'utf8');
+  const guarded = /Build.VERSION.SDK_INT < 29 \|\|\s*(?:context|c).checkSelfPermission\("android.permission.USE_FULL_SCREEN_INTENT"\) == PackageManager.PERMISSION_GRANTED/g;
+  assert.equal([...module.matchAll(guarded)].length, 2);
+  assert.equal([...bundle.matchAll(guarded)].length, 1);
 });

@@ -3,6 +3,7 @@ import { getTokenSessionVersion } from '@/services/tokenSession';
 import { inviteAcceptedRequestContact } from '@/store/slices/rideEntrySlice';
 import type { RootState } from '@/store';
 import { offerClock, offerDeadline, type OfferDeadline } from '@/features/notifications/offerDeadline';
+import { hideRefusedRequest } from './trip-request/refusalCache';
 
 export interface DriverDispatchStatus {
   enabled: boolean;
@@ -37,7 +38,16 @@ export const driverDispatchApi = baseApi.injectEndpoints({
   endpoints: builder => ({
     declineNearbyRequest: builder.mutation<NearbyRingingStatus, string>({
       query: id => ({ url: `/driver-dispatch/nearby-requests/${id}/decline`, method: 'PUT', timeout: 10000 }),
-      invalidatesTags: ['DriverDispatch'],
+      async onQueryStarted(id, { dispatch, getState, queryFulfilled }) {
+        const version = getTokenSessionVersion();
+        const userId = (getState() as unknown as RootState).auth.user?.id;
+        try {
+          await queryFulfilled;
+          if (userId && version === getTokenSessionVersion() &&
+            (getState() as unknown as RootState).auth.user?.id === userId) dispatch(hideRefusedRequest(id, baseApi));
+        } catch { /* A failed refusal must remain visible and retryable. */ }
+      },
+      invalidatesTags: (_result, error) => error ? [] : ['DriverDispatch', 'Notification', { type: 'TripRequest', id: 'LIST' }],
     }),
     respondToBookingInvitation: builder.mutation<unknown, { id: string; accept: boolean }>({
       query: ({ id, accept }) => ({ url: `/bookings/${id}/respond-invitation`, method: 'PUT', body: { accept }, timeout: 10000 }),
@@ -94,13 +104,15 @@ export const driverDispatchApi = baseApi.injectEndpoints({
         const userId = (getState() as unknown as RootState).auth.user?.id;
         try {
           const { data } = await queryFulfilled;
+          if (decision === 'decline' && data.status === 'declined' && userId && version === getTokenSessionVersion() &&
+            (getState() as unknown as RootState).auth.user?.id === userId) dispatch(hideRefusedRequest(data.requestId, baseApi));
           if (decision === 'accept' && data.status === 'accepted' && userId && version === getTokenSessionVersion() &&
             (getState() as unknown as RootState).auth.user?.id === userId) {
             dispatch(inviteAcceptedRequestContact({ userId, requestId: data.requestId }));
           }
         } catch { /* Never prompt after a refused or ambiguous response. */ }
       },
-      invalidatesTags: ['DriverDispatch', 'TripRequest', 'MyTripRequests', 'MyDriverOffers', 'AccountActivity', 'Wallet'],
+      invalidatesTags: ['DriverDispatch', 'Notification', 'TripRequest', 'MyTripRequests', 'MyDriverOffers', 'AccountActivity', 'Wallet'],
     }),
   }),
 });

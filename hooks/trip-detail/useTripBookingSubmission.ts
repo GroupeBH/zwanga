@@ -2,6 +2,8 @@ import { getLocationText, getLocationCoordinatesObject } from '../../features/tr
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
+import { getTokenSessionVersion } from '@/services/tokenSession';
+import { offerTripLocationPermission } from '@/services/tripLocationPermission';
 import { useCancelBookingMutation, useCreateBookingMutation } from '@/store/api/bookingApi';
 import { useGetKycStatusQuery } from '@/store/api/userApi';
 import type { Booking, Trip, TripPaymentMode } from '@/types';
@@ -86,6 +88,7 @@ export function useTripBookingSubmission({
       return;
     }
     confirming.current = true;
+    const permissionSession = getTokenSessionVersion();
     try {
     const seatsValue = parseInt(bookingSeats, 10);
     if (estimatedTotal > 0) {
@@ -282,6 +285,7 @@ export function useTripBookingSubmission({
       setBookingStep(1);
       openBookingSuccessModal(seatsValue);
       refreshBookingLists();
+      offerTripLocationPermission('booking', booking.id, permissionSession);
     } catch (error: any) {
       if (isPassengerKycRequiredError(error)) {
         void refetchKycStatus();

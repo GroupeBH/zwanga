@@ -36,6 +36,7 @@ public final class NativeCardProbe {
         for(var item: manager.getActiveNotifications()) if(item.getId()==cardId.hashCode()) {
           count++; android.app.Notification notification=item.getNotification();
           result.put("channel", notification.getChannelId()).put("actions", notification.actions == null ? 0 : notification.actions.length);
+          result.put("template", notification.extras.getString(android.app.Notification.EXTRA_TEMPLATE));
           Bundle card=notification.extras.getBundle("notifee.notification");
           result.put("fullScreenIntent", notification.fullScreenIntent != null).put("restorable",card!=null).put("title",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)))
             .put("body",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)));

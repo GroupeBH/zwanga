@@ -23,7 +23,6 @@ import type { Router } from 'expo-router';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
 import { reportNearbyRequestRefusal } from '@/services/nearbyRequestRefusal';
-import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
 
 interface Params {
   userId?: string;
@@ -81,15 +80,21 @@ export function useRequestDriverActions({
   const transition = useTripStartTransition(`${userId ?? ''}:${id ?? ''}`, router, showDirectAcceptModal);
   const accepted = React.useRef(false);
   React.useEffect(() => { accepted.current = false; }, [id, userId]);
-  const handleDeclineTripRequest = () => {
+  const handleDeclineTripRequest = async () => {
     if (accepted.current || !userId || !tripRequest || tripRequest.passengerId === userId || tripRequest.immediateDispatch ||
       !isRequestUnassigned(tripRequest) || !transition.begin()) return;
-    // Broadcast refusal belongs to this driver only; never cancel the passenger's order.
-    // Acknowledgement is synchronous; OS cleanup must not delay leaving this screen.
-    acknowledgeRideAlerts(alert => alert.recipientId === userId && alert.kind === 'nearby' && alert.id === tripRequest.id);
-    void import('@/services/driverNotifications').then(service => service.dismissDriverDecision(userId, 'nearby', tripRequest.id)).catch(() => {});
-    void reportNearbyRequestRefusal(userId, tripRequest.id).catch(() => reportRideAudioFailure('NEARBY_REFUSAL_SYNC_FAILED'));
-    router.replace('/(tabs)');
+    try {
+      // The request stays available to other drivers. Do not pretend an offline refusal succeeded.
+      await reportNearbyRequestRefusal(userId, tripRequest.id);
+      if (!transition.isCurrent()) return;
+      accepted.current = true;
+      acknowledgeRideAlerts(alert => alert.recipientId === userId && alert.kind === 'nearby' && alert.id === tripRequest.id);
+      void import('@/services/driverNotifications').then(service => service.dismissDriverDecision(userId, 'nearby', tripRequest.id)).catch(() => {});
+      router.replace('/(tabs)');
+    } catch (error) {
+      if (transition.isCurrent()) showDialog({ title: 'Refus non enregistré',
+        message: getApiErrorMessage(error, 'Vérifiez votre connexion puis réessayez.'), variant: 'warning' });
+    } finally { transition.finish(); }
   };
   const handleGoPickup = async () => {
     if (!assignedTrip || !userId || assignedTrip.driverId !== userId || assignedTrip.id !== tripRequest?.tripId ||

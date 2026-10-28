@@ -51,6 +51,8 @@ test('dispatch prompts only for server-confirmed acceptance in the original acco
   const run = (decision, queryFulfilled) => endpoints.respondToDispatchOffer.onQueryStarted({ id: 'offer', decision },
     { dispatch: action => calls.push(action), getState: () => ({ auth: { user: { id: userId } } }), queryFulfilled });
   await run('decline', Promise.resolve({ data: { status: 'declined', requestId: 'request' } }));
+  assert.equal(calls.length, 1); assert.equal(typeof calls[0], 'function', 'confirmed refusal only updates request caches');
+  calls.length = 0;
   await run('accept', Promise.reject(Error('offline'))); assert.deepEqual(calls, []);
   let finish; const work = run('accept', new Promise(resolve => { finish = resolve; }));
   assert.deepEqual(calls, []); finish({ data: { status: 'accepted', requestId: 'request' } }); await work;
