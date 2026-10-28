@@ -1,5 +1,12 @@
 # Journal des changements techniques
 
+## 2026-10-28 — Déblocage ESLint du post-install EAS
+
+- **Problème/périmètre :** le hook `eas-build-post-install` s'arrêtait dans le contrôle de publication sur `scripts/relay-fix-work/apply.cjs:9` : ESLint ne reconnaissait pas `__dirname`, fourni par Node aux modules CommonJS.
+- **Appliqué :** déclaration ESLint locale `/* global __dirname */` dans ce seul script, conforme aux autres scripts CommonJS du projet. Aucun changement de la configuration globale ESLint ni exclusion de fichiers du contrôle.
+- **Conservé/précautions :** toutes les étapes de `scripts/check-release.cjs` et du hook EAS restent actives. Aucun changement du comportement mobile, du backend ou des sources natives. Le script utilitaire n'est pas exécuté pendant la vérification : il contient des écritures dans le dépôt backend voisin.
+- **Vérifications :** sous Node 24.22.1, lint ciblé sans avertissement et syntaxe CommonJS validés. `scripts/check-release.cjs` terminé avec code 0 : compatibilité URI/Metro, parité des sources natives, TypeScript, ESLint global, frontières réseau, taille des sources et 2 822 tests de régression réussis ; 1 test ignoré faute de Ruby. `git diff --check` réussi. Aucun build EAS ni essai natif lancé : la réussite de ces contrôles locaux ne certifie pas la compilation Android/iOS ou le comportement sur appareils.
+
 ## 2026-10-28 — Autorisations guidées dès la connexion, sans passage par Profil
 
 - **Demande :** proposer localisation et plein écran avec des modales simples et des boutons vers les réglages utiles.
