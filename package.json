@@ -2,9 +2,12 @@
   "name": "zwanga-app",
   "main": "index.ts",
   "version": "1.0.18",
+  "engines": {
+    "node": ">=24.22.1 <25"
+  },
   "scripts": {
     "start": "expo start",
-    "postinstall": "node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs && node ./scripts/patch-expo-location-batches.cjs",
+    "postinstall": "node ./scripts/patch-query-string-decoder.cjs && node ./scripts/patch-metro-image-size.cjs && node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs && node ./scripts/patch-expo-location-batches.cjs",
     "eas-build-pre-install": "node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-referral-config.js && node ./scripts/validate-android-crashlytics.js",
     "eas-build-on-success": "node ./scripts/validate-android-native.cjs --eas",
     "eas-build-post-install": "node ./scripts/configure-ride-alert-build.cjs --eas && node ./scripts/patch-expo-location-batches.cjs --check && node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-ios-crashlytics.cjs --eas && node ./scripts/check-release.cjs",
@@ -20,6 +23,7 @@
     "check:network": "node ./scripts/check-network-boundaries.js",
     "check:source-size": "node ./scripts/check-source-size.cjs",
     "check:release": "node ./scripts/check-release.cjs",
+    "check:security": "npm audit --include=dev --audit-level=high",
     "test:referrals": "node --test ./tests/referralAttributionPolicy.test.js ./tests/referralPersistence.test.js ./tests/referralQr.test.js ./tests/referralQrShare.test.js ./tests/referralQrModal.test.js",
     "test:performance": "node --test ./tests/performancePolicy.test.js ./tests/performanceGpsPlaces.test.js ./tests/boundedInboxPages.test.js ./tests/boundedInboxScreens.test.js",
     "test:audit-ux": "node --test ./tests/auditUsabilityFixes.test.js ./tests/requestPassengerContact.test.js ./tests/requestsListData.test.js ./tests/sharedScreenLocation.test.js ./tests/rideLocationStream.test.js ./tests/nearbyDriverPermission.test.js ./tests/nearbyDriverLocation.test.js ./tests/driverAvailability.test.js",
@@ -66,9 +70,9 @@
     "@react-navigation/native": "^7.1.8",
     "@reduxjs/toolkit": "^2.10.1",
     "async-mutex": "^0.5.0",
-    "expo": "~54.0.23",
+    "expo": "~54.0.38",
     "expo-apple-authentication": "~8.0.8",
-    "expo-asset": "~12.0.12",
+    "expo-asset": "~12.0.14",
     "expo-audio": "~1.1.1",
     "expo-auth-session": "^7.0.10",
     "expo-build-properties": "~1.0.10",
@@ -131,6 +135,13 @@
     "eslint-config-expo": "~10.0.0",
     "jsqr": "1.4.0",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "expo": "$expo",
+    "@grpc/grpc-js": "1.14.6",
+    "postcss": "8.5.32",
+    "image-size": "2.0.4",
+    "decode-uri-component": "0.5.1"
   },
   "expo": {
     "autolinking": {

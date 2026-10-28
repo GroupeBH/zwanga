@@ -10,7 +10,7 @@ function repository() {
   return { data, storage, repo: policy.createDriverPermissionRepository(storage, promise => promise) };
 }
 
-test('first visit is silent; publication or a later visit lasting 15 seconds qualifies', async () => {
+test('legacy visit eligibility helper remains compatible but no longer gates onboarding', async () => {
   const { repo } = repository();
   const first = await repo.visit('driver', 1000);
   assert.equal(policy.isDriverPermissionVisitEligible(first, 1000, true), false);
@@ -45,12 +45,12 @@ test('corrupt history or unavailable storage fails closed; calls are bounded', a
   await assert.rejects(broken.published('driver', 1000));
 });
 
-function fixture(t, { returning = false, published = false } = {}) {
+function fixture(t, { returning = false, published = false, initial = {} } = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), memory = repository();
   let visit = 1000, version = 1, revision = 0;
   const options = { userId: 'driver', active: true, safe: true, overlayBusy: false,
-    locationReady: true, locationNeeded: true, fullScreenNeeded: true };
+    locationReady: true, locationNeeded: true, fullScreenNeeded: true, ...initial };
   const usePrompt = loader({ react: { ...hooks.react, useSyncExternalStore: (_, get) => get() },
     '@/services/appActivity': { getAppActiveSince: () => visit, isAppActive: () => options.active },
     '@/services/tokenSession': { getTokenSessionVersion: () => version },
@@ -74,19 +74,23 @@ function fixture(t, { returning = false, published = false } = {}) {
     publish: async () => { await memory.repo.published('driver', visit); revision++; } };
 }
 
-test('foreground timer never prompts on first use; later visit waits a continuous 15 seconds', async t => {
+test('first driver login explains location then full screen without another visit or timer', async t => {
   const f = fixture(t); await f.ready;
-  t.mock.timers.tick(15_000); assert.equal((await f.settle()).selected, null);
-  f.options.active = false; f.render(); f.visit(2000); f.options.active = true; await f.settle();
-  t.mock.timers.tick(14_999); assert.equal((await f.settle()).selected, null);
-  f.options.active = false; f.render(); f.options.active = true; await f.settle();
-  t.mock.timers.tick(1); assert.equal((await f.settle()).selected, null);
-  t.mock.timers.tick(14_999); assert.equal((await f.settle()).selected, 'location');
+  const step = await f.settle(); assert.equal(step.selected, 'location');
+  step.close();
+  const next = await f.settle(); assert.equal(next.selected, 'fullScreen');
+  next.close(); assert.equal((await f.settle()).selected, null);
+});
+
+test('a driver with location already allowed sees full screen immediately', async t => {
+  const f = fixture(t, { initial: { locationNeeded: false } }); await f.ready;
+  assert.equal((await f.settle()).selected, 'fullScreen');
+  assert.equal((await f.repo.visit('driver', 1000)).promptedAt.location, undefined);
 });
 
 test('successful publication triggers without timer only after a safe route and closed success overlay', async t => {
-  const f = fixture(t); await f.ready;
-  f.options.safe = false; f.options.overlayBusy = true; await f.publish();
+  const f = fixture(t, { initial: { safe: false, overlayBusy: true } }); await f.ready;
+  await f.publish();
   assert.equal((await f.settle()).selected, null);
   f.options.safe = true; assert.equal((await f.settle()).selected, null);
   f.options.overlayBusy = false; assert.equal((await f.settle()).selected, 'location');
@@ -102,8 +106,7 @@ test('location then full screen, no same-visit repetition and persisted cooldown
 });
 
 test('already allowed permissions and unavailable full screen do not prompt', async t => {
-  const f = fixture(t, { returning: true }); await f.ready;
-  f.options.locationNeeded = false; f.options.fullScreenNeeded = false;
+  const f = fixture(t, { returning: true, initial: { locationNeeded: false, fullScreenNeeded: false } }); await f.ready;
   t.mock.timers.tick(15_000); assert.equal((await f.settle()).selected, null);
 });
 
@@ -142,8 +145,7 @@ test('a stale onShow after logout or unmount never records a prompt', async t =>
 });
 
 test('full-screen remains eligible when location permission inspection is unavailable', async t => {
-  const f = fixture(t, { returning: true }); await f.ready;
-  f.options.locationReady = false;
+  const f = fixture(t, { returning: true, initial: { locationReady: false } }); await f.ready;
   t.mock.timers.tick(15_000);
   assert.equal((await f.settle()).selected, 'fullScreen');
   const history = await f.repo.visit('driver', 1000);

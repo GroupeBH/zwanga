@@ -26,7 +26,7 @@ test('the actual incoming activity compiles against the installed Android SDK wi
   // Only its existing build flag bridge is stubbed. Android APIs resolve from
   // the real SDK. This is not a Gradle, installation or physical-device test.
   fs.writeFileSync(stub, 'package com.zwanga.notifications; class DriverAlertModule { static boolean fullScreenBuildEnabled(android.content.Context context) { return true; } }');
-  compile(['-classpath', sdk, '-d', temp, stub, sourcePath]);
+  compile(['-classpath', sdk, '-d', temp, stub, sourcePath, 'native/android/notifications/IncomingRideView.java']);
 });
 
 test('native presentation protects locked details and sends at most one action after successful unlock', t => {

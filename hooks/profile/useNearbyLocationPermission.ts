@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Linking } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { ensureNearbyDriverLocation, isNearbyDriverLocationEnabled,
@@ -9,18 +9,22 @@ import { requestLocationPermission, waitForLocationPermission as wait } from '@/
 export function useNearbyLocationPermission(options: {
   userId?: string; driver: boolean; active: boolean; available: boolean;
   deferTrackingToCoordinator?: boolean;
+  purpose?: 'nearby-driver' | 'passenger-trip';
 }) {
   const [, update] = useState(0);
   const [attempt, retry] = useState(0);
   const version = getTokenSessionVersion();
-  const entry = useMemo(() => ({ userId: options.userId, driver: options.driver, version, mounted: true,
+  const passenger = options.purpose === 'passenger-trip';
+  const eligible = options.driver || passenger;
+  const entry = useMemo(() => ({ userId: options.userId, driver: options.driver, passenger, version, mounted: true,
     enabled: true, permission: false, foregroundPermission: false, loaded: false, loadError: false, consent: false,
     busy: false, settingsRequired: false, pendingSettings: false, message: '', readEpoch: 0, checkAfterAction: false,
     action: null as AbortController | null, read: null as AbortController | null,
-  }), [options.userId, version, options.driver]);
+  }), [options.userId, version, options.driver, passenger]);
   const latest = useRef({ entry, options }); latest.current = { entry, options };
   const current = useCallback(() => entry.mounted && latest.current.entry === entry &&
-    entry.version === getTokenSessionVersion() && Boolean(entry.userId) && latest.current.options.driver, [entry]);
+    entry.version === getTokenSessionVersion() && Boolean(entry.userId) &&
+    (latest.current.options.driver || latest.current.options.purpose === 'passenger-trip'), [entry]);
   const touch = useCallback(() => { if (current()) update(value => value + 1); }, [current]);
   useEffect(() => {
     entry.mounted = true;
@@ -30,6 +34,12 @@ export function useNearbyLocationPermission(options: {
   const confirm = useCallback(async (controller: AbortController) => {
     const valid = () => current() && entry.action === controller && !controller.signal.aborted;
     if (!valid() || !entry.consent || !latest.current.options.available) return;
+    if (passenger) {
+      // Permission only: never enable driver discovery or start GPS before a ride.
+      entry.permission = true; entry.loaded = true; entry.settingsRequired = false;
+      entry.consent = false; entry.message = 'Autorisation enregistrée.';
+      return;
+    }
     await wait(setNearbyDriverLocationEnabled(entry.userId!, true, entry.version, valid), controller.signal);
     if (!valid()) return;
     const saved = await wait(isNearbyDriverLocationEnabled(entry.userId!), controller.signal);
@@ -40,7 +50,7 @@ export function useNearbyLocationPermission(options: {
       const started = await wait(ensureNearbyDriverLocation(entry.userId!, valid), controller.signal);
       if (valid() && !started) entry.message = 'L’envoi n’a pas encore démarré. Vérifiez le GPS ou réessayez après votre trajet.';
     }
-  }, [current, entry]);
+  }, [current, entry, passenger]);
 
   const finish = useCallback((controller: AbortController) => {
     if (entry.action !== controller) return;
@@ -50,7 +60,7 @@ export function useNearbyLocationPermission(options: {
   }, [current, entry, touch]);
 
   useEffect(() => {
-    if (!options.active || !options.driver || !entry.userId) return;
+    if (!options.active || !eligible || !entry.userId) return;
     if (entry.action) { entry.checkAfterAction = true; return; }
     const controller = new AbortController(); entry.read = controller;
     const epoch = ++entry.readEpoch;
@@ -59,7 +69,7 @@ export function useNearbyLocationPermission(options: {
     void (async () => {
       try {
         const [enabled, foreground, background] = await wait(Promise.all([
-          isNearbyDriverLocationEnabled(entry.userId!), Location.getForegroundPermissionsAsync(),
+          passenger ? Promise.resolve(true) : isNearbyDriverLocationEnabled(entry.userId!), Location.getForegroundPermissionsAsync(),
           Location.getBackgroundPermissionsAsync(),
         ]), controller.signal);
         if (!valid()) return;
@@ -67,7 +77,7 @@ export function useNearbyLocationPermission(options: {
         if (entry.permission !== permission || entry.enabled !== enabled) entry.message = '';
         entry.enabled = enabled; entry.permission = permission; entry.foregroundPermission = foreground.granted;
         entry.settingsRequired = !foreground.granted ? foreground.canAskAgain === false
-          : !background.granted && background.canAskAgain === false;
+          : !background.granted && (background.canAskAgain === false || (Platform.OS === 'ios' && entry.settingsRequired));
         entry.loaded = true;
         if (entry.pendingSettings && !entry.action) {
           entry.pendingSettings = false;
@@ -86,7 +96,7 @@ export function useNearbyLocationPermission(options: {
       } finally { if (valid()) touch(); }
     })();
     return () => { controller.abort(); };
-  }, [entry, current, touch, confirm, finish, options.active, options.driver, attempt]);
+  }, [entry, current, touch, confirm, finish, options.active, eligible, passenger, attempt]);
 
   const authorize = async (allowSettingsRedirect = false) => {
     if (AppState.currentState !== 'active' || !current() || !latest.current.options.active || !latest.current.options.available ||
@@ -120,13 +130,16 @@ export function useNearbyLocationPermission(options: {
       let background = await wait(Location.getBackgroundPermissionsAsync(), controller.signal);
       if (!valid()) return;
       entry.permission = background.granted;
-      if (!background.granted && background.canAskAgain === false) { await settings(); return; }
+      // Android's fresh result supersedes stale flags; iOS may silently deny Always despite canAskAgain.
+      if (!background.granted && (background.canAskAgain === false ||
+          (Platform.OS === 'ios' && entry.settingsRequired))) { await settings(); return; }
       if (!background.granted) background = await wait(requestLocationPermission(() => Location.requestBackgroundPermissionsAsync(),
         () => valid() && latest.current.options.active), controller.signal, null);
       if (!valid()) return;
       entry.permission = background.granted;
       if (!background.granted) {
-        entry.settingsRequired = background.canAskAgain === false;
+        // iOS "Allow Once" may silently reject Always despite canAskAgain=true.
+        entry.settingsRequired = background.canAskAgain === false || Platform.OS === 'ios';
         entry.message = 'Pas encore autorisé. Les demandes restent accessibles dans l’application.'; return;
       }
       await confirm(controller);
@@ -139,7 +152,7 @@ export function useNearbyLocationPermission(options: {
     } finally { finish(controller); }
   };
   const disable = async () => {
-    if (!current() || !latest.current.options.active || !entry.loaded || entry.action) return;
+    if (passenger || !current() || !latest.current.options.active || !entry.loaded || entry.action) return;
     entry.readEpoch++; entry.read?.abort(); entry.checkAfterAction = false;
     const controller = new AbortController(); entry.action = controller;
     const valid = () => current() && entry.action === controller && !controller.signal.aborted;

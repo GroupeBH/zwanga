@@ -72,14 +72,15 @@ class VibrationEffect { static VibrationEffect createWaveform(long[] p,int r){re
 class Vibrator {
   boolean active; void cancel(){active=false;} void vibrate(VibrationEffect e){active=true;} void vibrate(long[] p,int r){active=true;}
 }
+class RideAlertAudioService { static int handoffs; static void handoff() { handoffs++; } }
 class MediaPlayer {
   interface OnErrorListener { boolean onError(MediaPlayer p,int what,int extra); }
   interface OnPreparedListener { void onPrepared(MediaPlayer p); }
-  static MediaPlayer latest; static boolean stall; boolean playing, released; OnPreparedListener prepared;
+  static MediaPlayer latest; static boolean stall,failStart; boolean playing, released; OnPreparedListener prepared;
   MediaPlayer(){latest=this;} void setAudioAttributes(AudioAttributes a){} void setDataSource(Context c,Uri u){}
   void setLooping(boolean b){} void setOnErrorListener(OnErrorListener l){} void setOnPreparedListener(OnPreparedListener l){prepared=l;}
   void prepareAsync(){if(!stall)prepared.onPrepared(this);} boolean isPlaying(){return playing;}
-  void start(){if(released)throw new IllegalStateException();playing=true;} void pause(){playing=false;}
+  void start(){if(released || failStart)throw new IllegalStateException();playing=true;} void pause(){playing=false;}
   void release(){released=true;playing=false;}
 }
 `;
@@ -89,6 +90,7 @@ class MediaPlayer {
   public static void main(String[] args){
     ReactApplicationContext context=new ReactApplicationContext(); ForegroundAlertPlayer p=new ForegroundAlertPlayer(context);
     p.start("one","ring",false,value->check(Boolean.TRUE.equals(value),"ready")); MediaPlayer first=MediaPlayer.latest;
+    check(RideAlertAudioService.handoffs==1,"handoff after player starts");
     Handler.advance(14999); check(first.playing,"must keep playing during valid lease");
     Handler.advance(1); check(first.released&&!context.vibrator.active,"native watchdog stops sound AND vibration without JS");
     state(p,"one","stopped"); check(Handler.events.isEmpty(),"no retained watchdog after release");
@@ -105,6 +107,11 @@ class MediaPlayer {
     stalled.prepared.onPrepared(stalled); check(fresh.playing,"late preparation cannot revive stale sound");
     context.manager.enabled=false; state(p,"new","stopped"); check(fresh.released,"permission changes still stop audio");
     p.destroy(); check(Handler.events.isEmpty(),"destroy clears timers");
+    context.manager.enabled=true; MediaPlayer.failStart=true;
+    int handoffs=RideAlertAudioService.handoffs;
+    p.start("fails","ring",false,value->check(Boolean.FALSE.equals(value),"start failure"));
+    check(RideAlertAudioService.handoffs==handoffs,"failed app player must not stop service audio");
+    check(Handler.events.isEmpty(),"failed start clears timers");
   }
 }`;
   const file = path.join(directory, 'ForegroundAlertCheck.java');

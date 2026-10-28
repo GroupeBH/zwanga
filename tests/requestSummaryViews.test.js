@@ -8,6 +8,8 @@ const words = tree => typeof tree === 'string' || typeof tree === 'number' ? Str
 const native = { View: 'View', Text: 'Text', Pressable: 'Pressable', ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: x => x } };
 const labels = { departure: { title: 'Départ test', address: 'Départ test', reference: 'Portail' }, arrival: { title: 'Arrivée test', address: 'Arrivée test', context: 'Quartier' } };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: false, closed: false, label: null }) },
+  './RequestTargetDriver': { RequestTargetDriver: 'RequestTargetDriver' },
   '@/hooks/useRouteLocationLabels': { useRouteLocationLabels: () => labels },
   '@/components/trip/RouteLocationDetails': { RouteLocationDetails: 'Route' },
   '@/features/navigation/NavigationContactModal': { NavigationContactModal: 'Contact' },
@@ -48,6 +50,8 @@ test('passenger footer routes modify/cancel to existing actions and keeps assign
   tree = RequestPassengerActions({ model: { ...model, tripRequest: { ...request, tripId: 'trip' }, handleViewTrip: id => calls.push(id) } });
   elements(tree).find(item => item.type === 'Pressable' && words(item).includes('Voir mon trajet')).props.onPress();
   assert.equal(calls.at(-1), 'trip'); assert.doesNotMatch(words(tree), /Modifier la commande/);
+  tree = RequestPassengerActions({ model: { ...model, isFetchingRequest: true } });
+  assert.ok(elements(tree).filter(item => item.type === 'Pressable').every(item => !item.props.disabled));
 });
 
 test('driver response footer accepts without another modal, refuses locally and disables while sending or selecting a vehicle', () => {

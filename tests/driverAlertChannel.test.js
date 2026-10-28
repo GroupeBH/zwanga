@@ -43,6 +43,40 @@ test('settings opens the actual OS channel or app permissions, including native 
   }
 });
 
+test('disabled app notifications open the app notification page, not just its ringtone channel', async () => {
+  const f = fixture('android', () => { throw Error('must not query channel'); });
+  await f.openDriverAlertSettings({ application: true });
+  assert.deepEqual(f.calls, [undefined]);
+  const fallback = fixture('android', undefined, true);
+  await fallback.openDriverAlertSettings({ application: true });
+  assert.deepEqual(fallback.calls, ['app-settings']);
+});
+
+test('stale settings requests do not open a page before or after asynchronous inspection', async () => {
+  const f = fixture('android');
+  await f.openDriverAlertSettings({ application: true, current: () => false });
+  assert.deepEqual(f.calls, []);
+  let current = true;
+  const interrupted = fixture('android', async () => { current = false; return 'driver-phone-ring-v3'; });
+  await interrupted.openDriverAlertSettings({ current: () => current });
+  assert.deepEqual(interrupted.calls, []);
+});
+
+test('fullscreen settings target the lowered presentation channel without resetting its settings', async () => {
+  const f = fixture('android', async () => 'zwanga-ride-ring-v4');
+  f.native.NativeModules.ZwangaDriverAlerts.getFullScreenSettingsChannel = async () => 'ride-audio-visible-v1';
+  await f.openDriverAlertSettings({ presentation: true });
+  assert.deepEqual(f.calls, ['ride-audio-visible-v1']);
+  f.calls.length = 0;
+  f.native.NativeModules.ZwangaDriverAlerts.getFullScreenSettingsChannel = async () => 'unrelated-channel';
+  await f.openDriverAlertSettings({ presentation: true });
+  assert.deepEqual(f.calls, ['zwanga-ride-ring-v4']);
+  let current = true; f.calls.length = 0;
+  f.native.NativeModules.ZwangaDriverAlerts.getFullScreenSettingsChannel = async () => { current = false; return 'ride-audio-visible-v1'; };
+  await f.openDriverAlertSettings({ presentation: true, current: () => current });
+  assert.deepEqual(f.calls, []);
+});
+
 test('native channel uses bundled notification audio, preserves user choices and never forces global volume', () => {
   const source = fs.readFileSync('android/app/src/main/java/com/zwanga/notifications/DriverAlertModule.java', 'utf8');
   assert.match(source, /channel.setSound\(Uri.parse\("android.resource:\/\/".*\/raw\/driver_ring/);

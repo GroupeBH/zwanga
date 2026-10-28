@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { withDangerousMod, withMainApplication, withAndroidManifest, withAppBuildGradle } = require('@expo/config-plugins');
 
-const sourceFiles = ['DriverAlertModule.java', 'DriverAlertPackage.java', 'ForegroundAlertPlayer.java', 'IncomingRideActivity.java',
+const sourceFiles = ['DriverAlertModule.java', 'DriverAlertPackage.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'RidePresentationExpiry.java',
   'NativeRideDelivery.java', 'RideNotificationBundle.java', 'RideFirebaseMessagingService.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'];
 const sourceDirectory = 'native/android/notifications';
 const outputDirectory = 'app/src/main/java/com/zwanga/notifications';
@@ -34,6 +34,16 @@ function registerMessagingService(manifest) {
   app.service.push({ $: { 'android:name': expo, 'tools:node': 'remove' } },
     { $: { 'android:name': own, 'android:exported': 'false' }, 'intent-filter': [{ $: { 'android:priority': '-1' },
       action: [{ $: { 'android:name': 'com.google.firebase.MESSAGING_EVENT' } }] }] });
+  const audio = 'com.zwanga.notifications.RideAlertAudioService';
+  app.service = app.service.filter(s => s.$['android:name'] !== audio);
+  app.service.push({ $: { 'android:name': audio, 'android:exported': 'false', 'android:foregroundServiceType': 'mediaPlayback', 'android:stopWithTask': 'true' } });
+  const permissions = manifest.manifest['uses-permission'] || [];
+  for (const name of ['android.permission.FOREGROUND_SERVICE', 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK']) {
+    const item = permissions.find(p => p.$['android:name'] === name);
+    if (item) delete item.$['tools:node'];
+    else permissions.push({ $: { 'android:name': name } });
+  }
+  manifest.manifest['uses-permission'] = permissions;
   return manifest;
 }
 

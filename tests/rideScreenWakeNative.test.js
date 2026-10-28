@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-test('native fullscreen eligibility accepts screen-off without keyguard but preserves consent and Android grants', t => {
+test('native presentation permits persistent heads-up on Android 13+ and keeps older unlocked phones unobstructed', t => {
   if (spawnSync('javac', ['-version'], { encoding: 'utf8' }).status !== 0) return t.skip('JDK required');
   const source = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
   const start = source.indexOf('  @ReactMethod public void canPresentFullScreen(');
@@ -45,13 +45,21 @@ public class WakeEligibilityCheck {
   }); }
   public static void main(String[] args) {
     WakeEligibilityCheck t = new WakeEligibilityCheck();
-    t.check(false); // unlocked, screen on: never steal the foreground
+    t.check(true); // Android 13+: OS displays a heads-up surface instead of stealing the foreground
+    Build.VERSION.SDK_INT = 32; t.check(false); // older unlocked Android: stay conservative
+    Build.VERSION.SDK_INT = 33; t.check(true); Build.VERSION.SDK_INT = 34;
     t.context.power.interactive = false; t.check(true); // screen off, before automatic lock or without PIN
     t.context.power.interactive = true; t.context.keyguard.locked = true; t.check(true);
     t.context.preferences.optIn = false; t.check(false); t.context.preferences.optIn = true;
     t.context.manager.fullScreen = false; t.check(false); t.context.manager.fullScreen = true;
     t.context.manager.enabled = false; t.check(false); t.context.manager.enabled = true;
     t.context.permission = -1; t.check(false); t.context.permission = 0;
+    Build.VERSION.SDK_INT = 28; t.context.permission = -1; t.check(true); // permission only exists from API 29
+    t.context.preferences.optIn = false; t.check(false); t.context.preferences.optIn = true;
+    t.context.manager.enabled = false; t.check(false); t.context.manager.enabled = true;
+    Build.VERSION.SDK_INT = 29; t.check(false); // manifest grant still required on Android 10+
+    t.context.permission = 0; t.context.manager.fullScreen = false; t.check(true); // special access only from API 34
+    Build.VERSION.SDK_INT = 34; t.check(false); t.context.manager.fullScreen = true;
     t.enabled = false; t.check(false); t.enabled = true;
     t.context.keyguard = null; t.context.power.interactive = false; t.check(true);
     t.context.power = null; t.check(false); // unavailable system services fail closed
@@ -66,4 +74,12 @@ public class WakeEligibilityCheck {
   assert.equal(compile.status, 0, compile.stderr);
   const run = spawnSync('java', ['-cp', directory, 'WakeEligibilityCheck'], { encoding: 'utf8', timeout: 30000 });
   assert.equal(run.status, 0, run.stderr);
+});
+
+test('status, JS notification and native notification agree on the API 29 permission boundary', () => {
+  const module = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
+  const bundle = fs.readFileSync('native/android/notifications/RideNotificationBundle.java', 'utf8');
+  const guarded = /Build.VERSION.SDK_INT < 29 \|\|\s*(?:context|c).checkSelfPermission\("android.permission.USE_FULL_SCREEN_INTENT"\) == PackageManager.PERMISSION_GRANTED/g;
+  assert.equal([...module.matchAll(guarded)].length, 2);
+  assert.equal([...bundle.matchAll(guarded)].length, 1);
 });

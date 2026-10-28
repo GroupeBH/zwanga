@@ -6,14 +6,14 @@ const path = require('node:path');
 const { AndroidConfig } = require('@expo/config-plugins');
 const { configureRideAlertBuild } = require('../scripts/configure-ride-alert-build.cjs');
 
-test('test profile opts into both transports without changing production or dev defaults', () => {
+test('production enables Android capability while iOS Firebase remains an explicit test transport', () => {
   const { build } = require('../eas.json');
   const profile = build['ride-alerts-test'];
   assert.equal(profile.extends, 'production');
   assert.equal(profile.env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED, 'true');
   assert.equal(profile.env.EXPO_PUBLIC_IOS_FCM_ENABLED, 'true');
+  assert.equal(build.production.env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED, 'true');
   for (const name of ['production', 'dev', 'dev-device']) {
-    assert.notEqual(build[name].env?.ZWANGA_DRIVER_FULL_SCREEN_ENABLED, 'true');
     assert.notEqual(build[name].env?.EXPO_PUBLIC_IOS_FCM_ENABLED, 'true');
   }
   assert.match(require('../package.json').scripts['eas-build-post-install'], /^node .\/scripts\/configure-ride-alert-build.cjs --eas &&/);
@@ -38,6 +38,10 @@ test('EAS hook really enables the checked-in Android manifest, preserves other e
   const content = await fs.readFile(filename, 'utf8');
   await run(); assert.equal(await fs.readFile(filename, 'utf8'), content);
   delete env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED; await run();
+  manifest = (await AndroidConfig.Manifest.readAndroidManifestAsync(filename)).manifest;
+  assert.ok(manifest['uses-permission'].some(item => item.$['android:name'] === 'android.permission.USE_FULL_SCREEN_INTENT'),
+    'default EAS/local capability agrees with Expo config');
+  env.ZWANGA_DRIVER_FULL_SCREEN_ENABLED = 'false'; await run();
   manifest = (await AndroidConfig.Manifest.readAndroidManifestAsync(filename)).manifest;
   assert.deepEqual(manifest['uses-permission'].map(item => item.$['android:name']), ['android.permission.INTERNET']);
   assert.equal(manifest.application[0]['meta-data'].find(item => item.$['android:name'] === 'com.zwanga.RIDE_FULL_SCREEN_ENABLED').$['android:value'], 'false');

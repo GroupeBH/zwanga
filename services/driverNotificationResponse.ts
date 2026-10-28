@@ -63,14 +63,17 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
     // Navigation must not wait for feedback-channel creation on a waking phone.
     if (sessionVersion === getTokenSessionVersion()) rememberPendingDriverOpen({
       type: 'driver_action_result', kind: invitation.kind, id: invitation.id, driverId: invitation.driverId,
+      ...(success ? { decision, confirmed: true } : {}),
     });
     try {
       if (Platform.OS === 'android') await boundedRideAudio(notifee.createChannel({ id: RESULT_CHANNEL, name: 'Réponses aux trajets', importance: AndroidImportance.LOW }), 3000);
       if (sessionVersion !== getTokenSessionVersion()) return;
-      const navigateTo = `/incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}`;
+      const navigateTo = success && decision === 'decline' && invitation.kind === 'dispatch' ? '/(tabs)'
+        : `/incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}`;
       await boundedRideAudio(notifee.displayNotification({ id: `driver-result-${invitation.kind}-${invitation.id}`,
         title: success ? 'Réponse enregistrée' : 'Réponse à vérifier', body: message,
-        data: { type: 'driver_action_result', navigateTo, kind: invitation.kind, id: invitation.id, driverId: invitation.driverId },
+        data: { type: 'driver_action_result', navigateTo, kind: invitation.kind, id: invitation.id, driverId: invitation.driverId,
+          ...(success ? { decision, confirmed: true } : {}) },
         android: { channelId: RESULT_CHANNEL, importance: AndroidImportance.LOW, visibility: AndroidVisibility.PRIVATE,
           onlyAlertOnce: true, autoCancel: true, pressAction: { id: 'default', launchActivity: 'default' } },
         ios: { foregroundPresentationOptions: { sound: false, badge: false, banner: true, list: true } },

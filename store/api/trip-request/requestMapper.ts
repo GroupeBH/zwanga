@@ -60,6 +60,10 @@ export const mapServerTripRequestToClient = (request: ServerTripRequest): TripRe
 
   return {
     id: request.id,
+    responseWindow: request.responseWindow,
+    targetDriverId: request.targetDriverId ?? null,
+    targetDriverName: request.targetDriverName ?? null,
+    targetDriverDeclined: request.targetDriverDeclined ?? false,
     immediateDispatch: request.immediateDispatch ?? false,
     passengerId: request.passenger.id,
     passengerName: formatFullName(request.passenger),

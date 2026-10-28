@@ -1,3 +1,4 @@
+import { cancelRideNotification, prepareForegroundRideAudio } from '@/services/backgroundRideAudio';
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -86,21 +87,21 @@ export function useRideRinging(userId: string | undefined) {
             if (!canRestore()) return;
             try {
               if (isSelfDriverAlert(item.notification.data, userId)) {
-                await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
+                await boundedRideAudio(cancelRideNotification(item.id, item.notification.android?.tag)); continue;
               }
               const alert = parseRideAlert(item.notification.data);
               if (!alert || alert.recipientId !== userId) continue;
               silenceRestoredRideAnnouncement(alert.key);
               if (item.id.startsWith(BACKGROUND_RIDE_RING_PREFIX)) {
-                await boundedRideAudio(notifee.cancelNotification(item.id));
+                if (!(await prepareForegroundRideAudio(item.id))) await boundedRideAudio(cancelRideNotification(item.id));
                 if (canRestore()) rememberRideAlert(alert, true);
                 continue;
               }
               if (isRideResponseOpen(alert, path.current)) {
-                await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag)); continue;
+                await boundedRideAudio(cancelRideNotification(item.id, item.notification.android?.tag)); continue;
               }
               if (alert.kind === 'response') {
-                await boundedRideAudio(notifee.cancelNotification(item.id, item.notification.android?.tag));
+                await boundedRideAudio(cancelRideNotification(item.id, item.notification.android?.tag));
                 if (canRestore()) rememberRideAlert(alert, true);
               }
               else if (item.notification.android?.channelId !== 'driver-bookings-active-v1') {

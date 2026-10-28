@@ -123,7 +123,12 @@ public final class AuditRuntime {
     void clear() {
         if (soundOwner != null) bridge.stopForegroundSound(soundOwner);
         soundOwner = null; pending = null; main.removeCallbacks(heartbeat);
-        context.getSystemService(NotificationManager.class).cancelAll(); log("LOCAL_DECISION_CLEARED");
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        for (var item : manager.getActiveNotifications()) {
+            Bundle card = item.getNotification().extras.getBundle("notifee.notification");
+            if (card != null) bridge.stopBackgroundAlertSound(card.getString("id"), ignored -> manager.cancel(item.getId()));
+        }
+        manager.cancelAll(); log("LOCAL_DECISION_CLEARED");
     }
     void snapshot() {
         NotificationManager manager = context.getSystemService(NotificationManager.class);

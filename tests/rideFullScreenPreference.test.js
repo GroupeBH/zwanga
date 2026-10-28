@@ -51,6 +51,7 @@ test('consent dialog is explicit, optional and does not grant native access on i
   tree = f.render(); assert.equal(nodes(tree).find(n => n.type === 'Switch').props.value, false);
   toggle.props.onValueChange(true); f.dialogs[1][2][1].onPress(); await tick();
   tree = f.render(); assert.deepEqual(f.writes, [['driver', true]]);
+  assert.equal(nodes(tree).find(n => n.type === 'Switch').props.value, false, 'local consent is not an Android grant');
   assert.match(text(tree), /Autorisation Android à activer/);
   assert.doesNotMatch(text(tree), /Autorisation activée\./);
   f.hooks.unmount();
@@ -63,10 +64,14 @@ test('return from Android settings rechecks grant, notification permission and r
     { optIn: true, allowed: true, notificationsAllowed: true },
     { optIn: true, allowed: true, notificationsAllowed: false },
     { optIn: true, allowed: false, notificationsAllowed: true },
+    { optIn: true, allowed: true, notificationsAllowed: true, channelReady: false },
+    { optIn: true, allowed: true, notificationsAllowed: true, channelReady: true },
   ]) {
     f.active(false); f.render(); f.permission(state); f.active(true);
     const tree = await load(f);
-    assert.equal(text(tree).includes('Autorisation activée.'), state.allowed && state.notificationsAllowed);
+    const ready = state.allowed && state.notificationsAllowed && state.channelReady !== false;
+    assert.equal(text(tree).includes('Autorisation activée.'), ready);
+    assert.equal(nodes(tree).find(n => n.type === 'Switch').props.value, ready);
     assert.equal(text(tree).includes('Les notifications sont désactivées'), !state.notificationsAllowed);
   }
   f.hooks.unmount();
@@ -82,6 +87,15 @@ test('disable does not reopen a permission dialog and native failure is not disp
   broken.dialogs[0][2][1].onPress(); await tick(); tree = broken.render();
   assert.equal(nodes(tree).find(n => n.type === 'Switch').props.value, false);
   assert.match(text(tree), /Impossible de vérifier/); broken.hooks.unmount();
+});
+
+test('a revoked Android grant still lets the driver withdraw local consent without reopening settings', async () => {
+  const f = fixture({ permission: { optIn: true, allowed: false, notificationsAllowed: true } });
+  const tree = await load(f);
+  assert.equal(nodes(tree).find(n => n.type === 'Switch').props.value, false);
+  nodes(tree).find(n => n.type === 'Button' && text(n).includes('Désactiver cette option')).props.onPress();
+  await tick(); assert.deepEqual(f.writes, [['driver', false]]); assert.equal(f.dialogs.length, 0);
+  f.hooks.unmount();
 });
 
 test('iOS, old binaries, passengers and disabled builds do not present this permission', async () => {

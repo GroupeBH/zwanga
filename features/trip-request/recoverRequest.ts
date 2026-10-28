@@ -2,6 +2,7 @@ import type { TripRequest } from '@/types';
 import { MUTATION_RECONCILIATION_DELAYS_MS } from '@/constants/network';
 
 export interface RequestAttempt {
+  targetDriverId?: string | null;
   startedAt: number; departure: string; arrival: string;
   departureDateMin: string; departureDateMax: string;
   seats: number; price: number; vehicleType: string;
@@ -22,7 +23,8 @@ export async function recoverRequest(attempt: RequestAttempt, read: () => Promis
         Date.parse(request.departureDateMin) === Date.parse(attempt.departureDateMin) &&
         Date.parse(request.departureDateMax) === Date.parse(attempt.departureDateMax) &&
         request.numberOfSeats === attempt.seats && Number(request.maxPricePerSeat) === attempt.price &&
-        request.vehicleType === attempt.vehicleType);
+        request.vehicleType === attempt.vehicleType &&
+        (request.targetDriverId ?? null) === (attempt.targetDriverId ?? null));
       // More than one match is ambiguous too: let the user consult their orders.
       if (matches.length === 1) return matches[0].id;
     } catch { /* Preserve uncertainty when the verification also fails. */ }

@@ -100,3 +100,89 @@ test('a failed navigation leaves the trip button usable instead of an endless sp
   assert.equal(result.passengerTripId, 'trip');
   app.hooks.unmount();
 });
+
+test('confirmed acceptance opens passenger navigation before departure, exactly once', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup('android');
+  app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+  assert.equal(app.render().isOpeningAssignedTrip, true);
+  t.mock.timers.tick(40);
+  assert.deepEqual(app.routes, ['/booking/navigate/booking']);
+  app.render(); t.mock.timers.tick(1000);
+  assert.equal(app.routes.length, 1);
+  app.hooks.unmount();
+});
+
+test('an offer or a not-yet-created booking does not falsely open navigation', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup();
+  for (const bookings of [undefined, [], [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'pending' }]]) {
+    app.props.bookings = bookings;
+    assert.equal(app.render().isOpeningAssignedTrip, false);
+    t.mock.timers.tick(1000);
+  }
+  assert.deepEqual(app.routes, []); app.hooks.unmount();
+});
+
+test('booking authorization failure or background cancels acceptance navigation', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  for (const failure of ['background', 'forbidden']) {
+    const app = setup();
+    app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+    app.render();
+    if (failure === 'background') app.props.isScreenActive = false;
+    else app.props.bookingError = { status: 403 };
+    app.render(); t.mock.timers.tick(500);
+    assert.deepEqual(app.routes, []); app.hooks.unmount();
+  }
+});
+
+test('an ongoing trip waits for its booking lookup instead of visiting an intermediate trip screen', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup();
+  app.props.assignedTrip = { ...trip, status: 'ongoing' };
+  app.props.isResolvingBooking = true;
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  t.mock.timers.tick(500); assert.deepEqual(app.routes, []);
+  app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+  app.props.isResolvingBooking = false;
+  app.render(); t.mock.timers.tick(260);
+  assert.deepEqual(app.routes, ['/booking/navigate/booking']); app.hooks.unmount();
+});
+
+test('a silently ignored navigation restores the trip actions instead of leaving an endless loader', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup('android');
+  app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+  assert.equal(app.render().isOpeningAssignedTrip, true);
+  t.mock.timers.tick(40); t.mock.timers.tick(2000);
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  assert.equal(app.routes.length, 1); app.hooks.unmount();
+});
+
+for (const platform of ['android', 'ios']) test(`${platform}: background after an ignored transition preserves recovery on return`, t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup(platform);
+  app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+  app.render(); t.mock.timers.tick(platform === 'ios' ? 260 : 40);
+  app.props.isScreenActive = false; app.render();
+  t.mock.timers.tick(5000);
+  app.props.isScreenActive = true;
+  assert.equal(app.render().isOpeningAssignedTrip, true);
+  t.mock.timers.tick(2000);
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  assert.equal(app.routes.length, 1);
+  app.props.isScreenActive = false; app.render(); app.props.isScreenActive = true;
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  app.hooks.unmount();
+});
+
+test('router object refresh does not cancel transition recovery or repeat navigation', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup('android'); app.props.assignedTrip = { ...trip, status: 'ongoing' };
+  app.render(); t.mock.timers.tick(40);
+  app.props.router = { replace: href => app.routes.push(href) }; app.render();
+  t.mock.timers.tick(2000);
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  assert.equal(app.routes.length, 1); app.hooks.unmount();
+});

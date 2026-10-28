@@ -5,7 +5,8 @@ const path = require('node:path');
 const serial = process.argv[2] || 'emulator-5554';
 const pkg = 'com.zwanga.audit';
 const withLock = process.argv.includes('--with-lock');
-const output = path.resolve('.expo/ride-alert-emulator-results', process.argv.includes('--fixed') ? 'fixed' : '.', withLock ? 'with-lock' : '.');
+const output = process.env.RIDE_AUDIT_OUTPUT ? path.resolve(process.env.RIDE_AUDIT_OUTPUT)
+  : path.resolve('.expo/ride-alert-emulator-results', process.argv.includes('--fixed') ? 'fixed' : '.', withLock ? 'with-lock' : '.');
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 function adb(...args) {
   const result = spawnSync('adb', ['-s', serial, ...args], { encoding: 'utf8', timeout: 20000, windowsHide: true });
@@ -165,6 +166,8 @@ async function run() {
     }
   } finally {
     shell('pm', 'grant', pkg, 'android.permission.POST_NOTIFICATIONS');
+    inject('consent', '--ez', 'enabled', 'false');
+    shell('cmd', 'appops', 'set', pkg, 'USE_FULL_SCREEN_INTENT', 'default');
     inject('clear'); await awake(); shell('input', 'keyevent', '3');
     if (withLock) shell('locksettings', 'set-disabled', previousLockDisabled);
     fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify({ serial, android: shell('getprop', 'ro.build.version.release'),

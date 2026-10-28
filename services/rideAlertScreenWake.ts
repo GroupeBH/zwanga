@@ -16,9 +16,14 @@ export async function shouldLightUpRideAlertScreen(channelId: string): Promise<b
 
 /** Never delay/cancel the card or restart its sound if waking is unsupported.
  * Old binaries keep their notification/full-screen fallback until rebuilt. */
-export async function wakeDisplayedRideAlert(id: string, channelId: string, deadline: number): Promise<void> {
+export async function wakeDisplayedRideAlert(id: string, channelId: string, deadline: number,
+  options: { fullScreen?: boolean; current?: () => boolean } = {}): Promise<void> {
   if (Platform.OS !== 'android' || !Number.isFinite(deadline) || deadline <= Date.now()) return;
   try {
+    // SystemUI must decide while the screen is still off. An immediate manual
+    // wake can turn an authorized full-screen intent into a heads-up banner.
+    if (options.fullScreen) await new Promise<void>(resolve => setTimeout(resolve, 1500));
+    if (deadline <= Date.now() || options.current?.() === false) return;
     const bridge = NativeModules?.ZwangaDriverAlerts;
     if (typeof bridge?.wakeDisplayedAlert !== 'function') {
       reportRideAudioFailure('RING_SCREEN_WAKE_REBUILD_REQUIRED'); return;
@@ -29,7 +34,7 @@ export async function wakeDisplayedRideAlert(id: string, channelId: string, dead
     // requires the live card, settings and unexpired deadline.
     if (result === 'not-displayed') {
       await new Promise<void>(resolve => setTimeout(resolve, 150));
-      if (deadline <= Date.now()) return;
+      if (deadline <= Date.now() || options.current?.() === false) return;
       result = await boundedRideAudio(bridge.wakeDisplayedAlert(id, channelId, deadline), 2000);
     }
     if (result === 'permission' || result === 'unavailable') reportRideAudioFailure('RING_SCREEN_WAKE_UNAVAILABLE');

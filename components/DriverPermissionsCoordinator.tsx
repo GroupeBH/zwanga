@@ -62,11 +62,12 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
   const location = useNearbyLocationPermission({ userId, driver: true, active, available: true, deferTrackingToCoordinator: true });
   const fullScreen = useDriverFullScreenPermission(userId, active);
   const prompt = useDriverPermissionPrompt({ userId, active, safe, overlayBusy,
-    locationReady: location.loaded && !location.loadError,
+    locationReady: location.loaded || location.loadError,
     // Do not reactivate discovery deliberately disabled in Profile when OS access already exists.
     locationNeeded: !location.permission,
-    fullScreenNeeded: Boolean(fullScreen.permission?.notificationsAllowed &&
-      (!fullScreen.permission.optIn || !fullScreen.permission.allowed)) });
+    fullScreenNeeded: Platform.OS === 'android' && (fullScreen.error || Boolean(fullScreen.permission &&
+      (!fullScreen.permission.notificationsAllowed || !fullScreen.permission.optIn || !fullScreen.permission.allowed ||
+        fullScreen.permission.channelReady === false))) });
   const { selected, close } = prompt;
   const { setConsent } = location;
   useEffect(() => {
@@ -77,7 +78,8 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
   useEffect(() => {
     if (!active) return;
     if (selected === 'location' && location.loaded && location.permission && location.enabled && !location.consent && !location.busy) close();
-    if (selected === 'fullScreen' && fullScreen.permission?.optIn && fullScreen.permission.allowed) close();
+    if (selected === 'fullScreen' && fullScreen.permission?.optIn && fullScreen.permission.allowed &&
+        fullScreen.permission.notificationsAllowed && fullScreen.permission.channelReady !== false) close();
   }, [active, selected, location.loaded, location.permission, location.enabled, location.consent, location.busy,
     fullScreen.permission, close]);
   const dismiss = () => { if (selected === 'location') location.defer(); close(); };
@@ -90,7 +92,17 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
         else { location.setConsent(true); void (location.settingsRequired ? location.openSettings() : location.authorize()); }
       }} />
     <DriverFullScreenApproval visible={selected === 'fullScreen' && safe} busy={fullScreen.busy} error={fullScreen.error}
+      notificationsAllowed={fullScreen.permission?.notificationsAllowed}
+      allowed={fullScreen.permission?.allowed}
+      channelReady={fullScreen.permission?.channelReady}
+      settingsReviewAvailable={fullScreen.settingsReviewAvailable}
       onShow={() => prompt.onShown('fullScreen')}
-      onClose={dismiss} onConfirm={() => { if (safeRef.current) void fullScreen.setOptIn(true); }} />
+      onClose={dismiss} onConfirm={() => {
+        if (!safeRef.current) return;
+        if (fullScreen.error) fullScreen.retry();
+        else if (fullScreen.permission?.notificationsAllowed === false) void fullScreen.openNotifications();
+        else if (fullScreen.permission?.allowed && fullScreen.permission.channelReady === false) void fullScreen.openNotifications(false);
+        else void fullScreen.setOptIn(true);
+      }} />
   </>;
 }

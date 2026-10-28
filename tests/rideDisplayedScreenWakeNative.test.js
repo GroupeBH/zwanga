@@ -54,7 +54,10 @@ class Build {
   static class VERSION_CODES { static int O = 26, P = 28; }
 }
 class PackageManager { static int PERMISSION_GRANTED = 0; }
-class Notification { String getChannelId() { return "ring"; } }
+class Bundle extends java.util.HashMap<String,Object> {
+  Bundle getBundle(String k){return (Bundle)get(k);} String getString(String k){return (String)get(k);}
+}
+class Notification { String channel="ring"; Bundle extras; String getChannelId() { return channel; } }
 class StatusBarNotification {
   int id = "card".hashCode(); String tag; Notification card = new Notification();
   String getTag() { return tag; } int getId() { return id; } Notification getNotification() { return card; }
@@ -99,7 +102,7 @@ class Context {
 }
 public class DisplayedWakeCheck {
   Context context = new Context(); Context getReactApplicationContext() { return context; }
-  ${methods.replaceAll('android.service.notification.StatusBarNotification', 'StatusBarNotification')}
+  ${methods.replaceAll('android.service.notification.StatusBarNotification', 'StatusBarNotification').replaceAll('android.os.Bundle', 'Bundle')}
   void check(String id, String channel, double deadline, String expected) {
     int before = context.power.creations;
     wakeDisplayedAlert(id, channel, deadline, value -> {
@@ -117,6 +120,12 @@ public class DisplayedWakeCheck {
     t.context.power.interactive = true; t.check("already-on"); t.context.power.interactive = false;
     t.check("other", "ring", System.currentTimeMillis() + 30000, "not-displayed");
     t.check("card", "other", System.currentTimeMillis() + 30000, "not-displayed");
+    Notification n=t.context.notifications.cards[0].card; n.channel="ride-audio-visible-v1";
+    t.check("not-displayed");
+    Bundle payload=new Bundle(), data=new Bundle(); data.put("rideAudioChannel","ring"); payload.put("data",data);
+    n.extras=new Bundle(); n.extras.put("notifee.notification",payload); t.check("requested");
+    data.put("rideAudioChannel","other"); t.check("not-displayed");
+    n.channel="unrelated"; data.put("rideAudioChannel","ring"); t.check("not-displayed"); n.channel="ring";
     t.context.notifications.cards[0].tag = "other"; t.check("not-displayed"); t.context.notifications.cards[0].tag = null;
     t.context.permission = -1; t.check("permission"); t.context.permission = 0;
     t.context.power.fails = true; t.check("permission"); t.context.power.fails = false;

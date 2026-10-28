@@ -5,24 +5,35 @@ import { RideModal } from '@/features/navigation/RideModal';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import { ACTION_COLORS } from '@/constants/actionColors';
 
-type Props = { visible: boolean; busy: boolean; error: boolean; onConfirm(): void; onClose(): void; onShow?(): void };
+type Props = { visible: boolean; busy: boolean; error: boolean; notificationsAllowed?: boolean; allowed?: boolean; channelReady?: boolean;
+  settingsReviewAvailable?: boolean;
+  onConfirm(): void; onClose(): void; onShow?(): void };
 
-export function DriverFullScreenApproval({ visible, busy, error, onConfirm, onClose, onShow }: Props) {
+export function DriverFullScreenApproval({ visible, busy, error, notificationsAllowed = true, allowed = false, channelReady = true,
+  settingsReviewAvailable = false, onConfirm, onClose, onShow }: Props) {
+  const needsSettings = Number(Platform.Version) >= 34 && (!allowed || (settingsReviewAvailable && channelReady));
   return <RideModal visible={visible} inApp transparent animationType="fade"
     priority={RIDE_OVERLAY_PRIORITY.information} onRequestClose={onClose} onShow={onShow}>
     <View style={styles.overlay}>
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <ScrollView bounces={false} contentContainerStyle={styles.content}>
           <Ionicons name="phone-portrait-outline" size={36} color={ACTION_COLORS.orange} />
-          <Text accessibilityRole="header" style={styles.title}>Voyez les demandes, même écran éteint</Text>
-          <Text style={styles.copy}>Une nouvelle demande ou réservation pourra apparaître sur l’écran verrouillé pour vous permettre de répondre rapidement.</Text>
-          {Number(Platform.Version) >= 34 && <Text style={styles.guide}>Sur l’écran Android, activez « Autoriser les notifications en plein écran », puis revenez dans Zwanga avec le bouton Retour.</Text>}
-          <Text style={styles.copy}>C’est facultatif. Sans cette option, vous gardez les notifications habituelles. Le téléphone reste verrouillé.</Text>
-          {error && <Text accessibilityRole="alert" style={styles.copy}>Impossible de vérifier l’autorisation. Réessayez ou choisissez « Plus tard ».</Text>}
+          <Text accessibilityRole="header" style={styles.title}>{notificationsAllowed ? 'Demandes en plein écran' : 'Activez les notifications'}</Text>
+          <Text style={styles.copy}>{notificationsAllowed
+            ? 'Voyez les nouvelles demandes même téléphone verrouillé.'
+            : 'Recevez les alertes de nouvelles demandes de trajet.'}</Text>
+          <Text style={styles.guide}>{!notificationsAllowed ? 'Activez « Autoriser les notifications ».'
+            : needsSettings ? 'Dans l’écran Android qui va s’ouvrir, activez « Autoriser les notifications en plein écran ». Revenez ensuite avec le bouton Retour.'
+            : !channelReady ? 'Autorisez les alertes de trajet et leur affichage à l’écran dans les réglages Android.'
+            : 'Touchez Activer pour utiliser cette option.'}</Text>
+          <Text style={styles.copy}>Facultatif. Le téléphone reste verrouillé.</Text>
+          {error && <Text accessibilityRole="alert" style={styles.copy}>Vérification impossible. Réessayez.</Text>}
           <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: busy, busy }}
             disabled={busy} onPress={onConfirm} style={[styles.primary, busy && styles.disabled]}>
             {busy && <ActivityIndicator color="#FFFFFF" />}
-            <Text style={styles.primaryText}>{busy ? 'Un instant…' : 'Autoriser'}</Text>
+            <Text style={styles.primaryText}>{busy ? 'Un instant…' : error ? 'Réessayer'
+              : !notificationsAllowed ? 'Ouvrir les notifications' : needsSettings ? 'Ouvrir les réglages'
+              : !channelReady ? 'Autoriser les alertes de trajet' : 'Activer'}</Text>
           </TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" onPress={onClose} style={styles.later}>
             <Text style={styles.laterText}>Plus tard</Text>

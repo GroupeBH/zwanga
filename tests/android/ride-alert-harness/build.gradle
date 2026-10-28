@@ -7,7 +7,11 @@ repositories {
 android {
     namespace 'com.zwanga.audit'
     compileSdk 36
-    defaultConfig { applicationId 'com.zwanga.audit'; minSdk 26; targetSdk 36; versionCode 1; versionName 'local-audit' }
+    defaultConfig {
+        applicationId 'com.zwanga.audit'; minSdk 26; targetSdk 36; versionCode 1; versionName 'local-audit'
+        // Opt-in diagnostic isolation for emulator gfxstream stalls. Production never uses this flag.
+        manifestPlaceholders = [auditHardwareAccelerated: !providers.gradleProperty('auditSoftwareRendering').isPresent()]
+    }
     buildDir = new File(repo, '.expo/ride-alert-audit-build')
     sourceSets.main.java.srcDir new File(buildDir, 'audit-native')
     sourceSets.main.res.srcDir new File(buildDir, 'audit-res')
@@ -15,7 +19,7 @@ android {
 }
 tasks.register('copyAuditNative', Copy) {
     from(new File(repo, 'native/android/notifications')) {
-        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'IncomingRideActivity.java',
+        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'RidePresentationExpiry.java',
             'NativeRideDelivery.java', 'RideNotificationBundle.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'
     }
     into new File(buildDir, 'audit-native/com/zwanga/notifications')

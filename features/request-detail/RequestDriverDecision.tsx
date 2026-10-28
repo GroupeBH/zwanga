@@ -1,4 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import { Colors } from '@/constants/styles';
 import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
@@ -24,6 +25,7 @@ export function RequestDriverDecision({ model, presentation }: {
   const price = request.maxPricePerSeat;
   return <View style={styles.content}>
     <View style={styles.summary}>
+      {!!request.targetDriverId && <Text style={styles.schedule}>Ce passager vous a choisi</Text>}
       <View style={styles.summaryTop}>
         <View style={styles.passengerCopy}>
           <Text style={styles.passenger}>{request.passengerName || 'Un passager'}</Text>
@@ -54,10 +56,12 @@ export function RequestDriverDecision({ model, presentation }: {
 }
 
 export function RequestDecisionActions({ model }: { model: Model }) {
+  const response = useRequestResponseWindow(model.tripRequest, model.responseWindowStartedAt, model.isScreenActive, model.refetch);
   const busy = model.isAcceptingTripRequest || model.isStartingTrip;
-  const disabled = busy || model.isFetchingRequest;
-  const canAccept = model.canAcceptDirectly && Boolean(model.directAcceptVehicle) && !disabled;
+  const disabled = busy || model.isFetchingRequest || response.closed;
+  const canAccept = model.canAcceptDirectly && Boolean(model.directAcceptVehicle) && !disabled && !response.blocked;
   return <View style={styles.footer}>
+    {!!response.label && <Text style={styles.hint}>{busy ? 'Confirmation du trajet en cours…' : response.label}</Text>}
     {model.canAcceptDirectly && <RequestDecisionVehiclePicker key={`${model.userId}:${model.tripRequest?.id}`} model={model} disabled={disabled} />}
     {!model.isIdentityVerified ? <Pressable accessibilityRole="button" disabled={disabled}
       onPress={() => model.checkIdentity('publish')} style={styles.option}>

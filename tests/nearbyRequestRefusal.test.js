@@ -33,9 +33,9 @@ test('nearby refusal uses authenticated API, coalesces concurrent native actions
 
 test('invalid identifiers, missing tokens and another account never report a refusal', async () => {
   const f = fixture();
-  await f.report('bad', order); await f.report(driver, '../order');
-  f.state.token = null; await f.report(driver, order);
-  f.state.token = 'synthetic'; f.state.owner = other; await f.report(driver, order);
+  await assert.rejects(f.report('bad', order)); await assert.rejects(f.report(driver, '../order'));
+  f.state.token = null; await assert.rejects(f.report(driver, order));
+  f.state.token = 'synthetic'; f.state.owner = other; await assert.rejects(f.report(driver, order));
   assert.deepEqual(f.state.sends, []);
 });
 
@@ -43,7 +43,7 @@ test('logout during token restoration cannot send a late refusal', async () => {
   const f = fixture(); let done;
   f.state.read = () => new Promise(resolve => { done = resolve; });
   const work = f.report(driver, order); await tick(); f.state.version++;
-  done({ accessToken: 'synthetic' }); await work;
+  done({ accessToken: 'synthetic' }); await assert.rejects(work);
   assert.deepEqual(f.state.sends, []);
 });
 

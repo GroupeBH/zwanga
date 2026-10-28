@@ -15,6 +15,8 @@ import {
 } from '@/store/api/tripRequestApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
+import { useGetMyBookingsForTripQuery } from '@/store/api/bookingApi';
+import { useRequestDetailExit } from './useRequestDetailExit';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { reportEntryFailure } from '@/services/entryRecovery';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -24,9 +26,6 @@ export function useRequestDetailData() {
   const isScreenActive = useScreenIsActive();
   const readsEnabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
-  const goHome = useCallback(() => {
-    router.replace('/(tabs)');
-  }, [router]);
   const openDriverOnboarding = useCallback(() => {
     router.push({
       pathname: '/profile',
@@ -46,12 +45,14 @@ export function useRequestDetailData() {
 
   const { data: currentUser } = useGetCurrentUserQuery(undefined, displayReadOptions(readsEnabled));
   const isDriverAccount = hasDriverRole(currentUser);
+  const exit = useRequestDetailExit(router, isScreenActive, `${currentUser?.id}:${id}`);
+  const goHome = exit.goHome;
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
 
   // État pour le polling interval dynamique
   const [pollingInterval, setPollingInterval] = useState(45_000);
 
-  const { currentData: liveRequest, isLoading, isFetching: isFetchingRequest, error, startedTimeStamp, refetch: rawRefetch, isError } = useGetTripRequestByIdQuery(id || '', {
+  const { currentData: liveRequest, isLoading, isFetching: isFetchingRequest, error, startedTimeStamp, fulfilledTimeStamp, refetch: rawRefetch, isError } = useGetTripRequestByIdQuery(id || '', {
     ...displayReadOptions(readsEnabled && Boolean(id) && !isCreateRouteAlias, pollingInterval),
   });
   const cachedRequest = useDisplayReadData(id ?? '', liveRequest);
@@ -62,10 +63,16 @@ export function useRequestDetailData() {
     ...displayReadOptions(readsEnabled && Boolean(tripRequest?.tripId), tripRequest?.status === 'driver_selected' ? 30_000 : 0),
   });
   const assignedTrip = useDisplayReadData(tripRequest?.tripId ?? '', liveAssignedTrip);
+  const ownerTripId = tripRequest?.passengerId === currentUser?.id ? tripRequest?.tripId : null;
+  const { currentData: bookings, error: bookingError, isFetching: bookingFetching } = useGetMyBookingsForTripQuery(ownerTripId ?? '',
+    displayReadOptions(readsEnabled && !!ownerTripId, 5_000));
   const { passengerTripId, isOpeningAssignedTrip } = useAssignedTripNavigation({
     requestId: id,
     tripRequest,
     assignedTrip,
+    bookings,
+    bookingError,
+    isResolvingBooking: !!ownerTripId && !bookings && (!bookingError || bookingFetching),
     userId: currentUser?.id,
     requestError: error,
     tripError: assignedTripError,
@@ -82,13 +89,14 @@ export function useRequestDetailData() {
   // Mettre à jour le polling interval en fonction du statut de la commande
   React.useEffect(() => {
     if (tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received') {
-      setPollingInterval(30000); // 30 secondes pour les commandes actives
+      // Socket invalidation is the fast path; this bounded foreground read covers a lost event.
+      setPollingInterval(tripRequest.passengerId === currentUser?.id ? 5_000 : 30_000);
     } else if (tripRequest?.status === 'driver_selected') {
       setPollingInterval(15000); // Suivre rapidement le démarrage pour masquer l'annulation
     } else {
       setPollingInterval(0); // Pas de polling si annulé ou expiré
     }
-  }, [tripRequest?.status]);
+  }, [tripRequest?.status, tripRequest?.passengerId, currentUser?.id]);
 
   useEffect(() => {
     if (readsEnabled && error && !isFetchingRequest) {
@@ -135,6 +143,7 @@ export function useRequestDetailData() {
   }, [refetch]);
 
   return {
+    responseWindowStartedAt: fulfilledTimeStamp === undefined ? undefined : Math.min(startedTimeStamp ?? fulfilledTimeStamp, fulfilledTimeStamp),
     isScreenActive,
     tripRequest,
     compatibleActiveVehicles,
@@ -158,7 +167,7 @@ export function useRequestDetailData() {
     goHome,
     isLoading,
     isFetchingRequest,
-    isOpeningAssignedTrip,
+    isOpeningAssignedTrip: isOpeningAssignedTrip || exit.leaving,
     isError,
     error,
     passengerTripId,

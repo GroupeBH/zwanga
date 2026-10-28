@@ -36,6 +36,7 @@ export function useRequestDraft() {
       dispatch(changeRequestDraft({ id, change: { field, value } as RequestDraftChange }));
     };
     return {
+      setTargetDriver: setter('targetDriver'),
       setDepartureLocation: setter('departureLocation'), setArrivalLocation: setter('arrivalLocation'),
       setDepartureManualAddress: setter('departureManualAddress'), setArrivalManualAddress: setter('arrivalManualAddress'),
       setDepartureReference: setter('departureReference'), setArrivalReference: setter('arrivalReference'),

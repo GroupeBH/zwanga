@@ -165,4 +165,7 @@ test('request recovery rejects near matches and duplicates instead of confirming
   }
   assert.equal(await recoverRequest(attempt, async () => [row, { ...row, id: 'other' }], () => true), null);
   assert.equal(await recoverRequest(attempt, async () => [row], () => true), 'confirmed');
+  assert.equal(await recoverRequest(attempt, async () => [{ ...row, targetDriverId: 'driver' }], () => true), null);
+  assert.equal(await recoverRequest({ ...attempt, targetDriverId: 'driver' }, async () => [row], () => true), null);
+  assert.equal(await recoverRequest({ ...attempt, targetDriverId: 'driver' }, async () => [{ ...row, targetDriverId: 'driver' }], () => true), 'confirmed');
 });

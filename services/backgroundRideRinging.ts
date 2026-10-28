@@ -6,23 +6,24 @@ import { pendingRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
 import { shouldLightUpRideAlertScreen, wakeDisplayedRideAlert } from './rideAlertScreenWake';
-import { rideAlertFullScreenAction } from './rideAlertFullScreen';
+import { boundRideAlertPresentation, rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 import { DRIVER_RING_DURATION_MS } from '@/features/notifications/driverRinging';
+import { cancelRideNotification, prepareForegroundRideAudio, startBackgroundRideAudio } from './backgroundRideAudio';
 
 export const BACKGROUND_RIDE_RING_PREFIX = 'ride-handoff-';
 let running: Promise<void> | undefined;
 let queued: { userId: string; version: number } | undefined;
 let generation = 0;
-let audible: { id: string; key: string; userId: string; version: number; deadline: number } | undefined;
+let audible: { id: string; key: string; userId: string; version: number; deadline: number; returning?: boolean } | undefined;
 
 async function cancel(id: string) {
-  try { await boundedRideAudio(notifee.cancelNotification(id), 3000); }
+  try { await boundedRideAudio(cancelRideNotification(id), 3000); }
   catch { reportRideAudioFailure('BACKGROUND_RING_CLEANUP_FAILED'); }
 }
 
 /** Transfer one still-pending alert, never renew the original server deadline.
- * Android owns the timeout; no background JS timer, speech or foreground service. */
+ * Native Android owns the timeout/audio lease; no background JS timer or speech. */
 export function reconcileBackgroundRideRinging(userId: string): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
   if (AppState.currentState !== 'background') ++generation;
@@ -43,9 +44,19 @@ async function handOff(userId: string, version: number) {
   const pending = () => pendingRideAlerts(userId);
   const inBackground = () => attempt === generation && AppState.currentState === 'background' && version === getTokenSessionVersion();
   if (audible && (audible.userId !== userId || audible.version !== version || !inBackground() ||
-      audible.deadline <= Date.now() ||
+      audible.deadline <= Date.now() || (audible.returning && inBackground()) ||
       !pending().some(alert => alert.key === audible!.key))) {
-    const previous = audible; audible = undefined;
+    const previous = audible;
+    // Keep the service/card through a slow foreground initialization. Native
+    // handoff removes this temporary card only once the app player has started.
+    const retain = AppState.currentState === 'active' && previous.userId === userId && previous.version === version &&
+      previous.deadline > Date.now() && pending().some(alert => alert.key === previous.key) &&
+      await prepareForegroundRideAudio(previous.id);
+    if (audible !== previous) return;
+    if (retain && version === getTokenSessionVersion() && previous.deadline > Date.now() && pending().some(alert => alert.key === previous.key)) {
+      previous.returning = true; return;
+    }
+    audible = undefined;
     await cancel(previous.id);
   }
   if (!inBackground() || audible) return;
@@ -88,7 +99,10 @@ async function handOff(userId: string, version: number) {
       }
     });
     await boundedRideAudio(display);
-    if (valid() && lightUpScreen) void wakeDisplayedRideAlert(id, channelId, deadline);
+    if (valid() && driverKind) void startBackgroundRideAudio(id);
+    if (valid() && lightUpScreen && fullScreenAction) void boundRideAlertPresentation(id);
+    if (valid() && lightUpScreen) void wakeDisplayedRideAlert(id, channelId, deadline,
+      { fullScreen: Boolean(fullScreenAction), current: valid });
   } catch {
     cancelled = true;
     if (audible === record) { audible = undefined; await cancel(id); }

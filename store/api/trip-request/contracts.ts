@@ -8,6 +8,7 @@ export interface TripRequestPassengerContact {
 }
 
 export type CreateTripRequestPayload = {
+  targetDriverId?: string;
   immediateDispatch?: boolean;
   departureLocation: string;
   departureReference?: string;

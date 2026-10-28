@@ -165,6 +165,7 @@ export function useRequestDetailController() {
 
   return {
     isScreenActive: data.isScreenActive,
+    responseWindowStartedAt: data.responseWindowStartedAt,
     userId: data.currentUser?.id,
     assignedTrip: data.assignedTrip,
     handleGoPickup: driverActions.handleGoPickup,

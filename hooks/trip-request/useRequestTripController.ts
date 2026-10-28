@@ -140,7 +140,7 @@ export function useRequestTripController() {
           ? 'Indiquer la destination'
           : 'Continuer'
       : !draft.hasChosenDepartureTime ? 'Choisir l’heure de départ'
-        : 'Commander le trajet';
+        : draft.targetDriver ? 'Envoyer à ce conducteur' : 'Commander le trajet';
 
   const updateBudget = (value: number) => {
     draft.setHasEditedBudget(true);
@@ -200,6 +200,7 @@ export function useRequestTripController() {
     goToRequestSuccessDetail,
     goHomeAfterRequestSuccess
   } = useRequestSubmission({
+    targetDriver: draft.targetDriver,
     arrivalLocation: draft.arrivalLocation,
     departureLocation: draft.departureLocation,
     timePreset: draft.timePreset,
@@ -256,6 +257,8 @@ export function useRequestTripController() {
       : 'send';
 
   return {
+    targetDriver: draft.targetDriver,
+    setTargetDriver: draft.setTargetDriver,
     activePicker,
     addressInputMode,
     addressSectionStep,

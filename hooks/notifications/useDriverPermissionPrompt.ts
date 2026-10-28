@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { getAppActiveSince, isAppActive } from '@/services/appActivity';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { driverPermissionRepository, getDriverPublicationRevision, subscribeDriverPublication } from '@/services/driverPermissionOnboarding';
-import { DRIVER_PERMISSION_DELAY_MS, isDriverPermissionPromptDue, isDriverPermissionVisitEligible,
+import { isDriverPermissionPromptDue,
   type DriverPermissionHistory, type DriverPermissionKind } from '@/features/permissions/driverPermissionRepository';
 
 type Options = {
@@ -10,25 +10,19 @@ type Options = {
   locationReady: boolean; locationNeeded: boolean; fullScreenNeeded: boolean;
 };
 
-/** One foreground timer, no polling/fetch; a native permission screen preserves the chosen step. */
+/** Contextual sequence from first login; no polling or automatic native settings. */
 export function useDriverPermissionPrompt(options: Options) {
   const { userId, active, safe, overlayBusy, locationReady, locationNeeded, fullScreenNeeded } = options;
   const visit = getAppActiveSince();
   const version = getTokenSessionVersion();
   const revision = useSyncExternalStore(subscribeDriverPublication, getDriverPublicationRevision, getDriverPublicationRevision);
   const [history, setHistory] = useState<DriverPermissionHistory | null>(null);
-  const [stayed, setStayed] = useState(false);
   const [selected, setSelected] = useState<DriverPermissionKind | null>(null);
   const handled = useRef(new Set<DriverPermissionKind>());
   const presentation = useRef<{ kind: DriverPermissionKind; shown: boolean } | null>(null);
   const latest = useRef(options); latest.current = options;
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  useEffect(() => {
-    if (!active) { setStayed(false); return; }
-    const timer = setTimeout(() => setStayed(true), DRIVER_PERMISSION_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [active, visit]);
   useEffect(() => {
     if (!active) return;
     let current = true;
@@ -39,9 +33,10 @@ export function useDriverPermissionPrompt(options: Options) {
     return () => { current = false; };
   }, [active, userId, visit, revision]);
   useEffect(() => { handled.current.clear(); }, [visit]);
-  const eligible = Boolean(history && isDriverPermissionVisitEligible(history, visit, stayed));
+  const eligible = Boolean(history);
   useEffect(() => {
-    if (!history || !eligible || !active || !safe || overlayBusy || selected) return;
+    if (!history || !active || !safe || overlayBusy || selected) return;
+    // One explanation at a time, including fullscreen on the first login.
     const kind = (['location', 'fullScreen'] as const).find(value =>
       !handled.current.has(value) && (value === 'location' ? locationReady && locationNeeded : fullScreenNeeded) &&
       isDriverPermissionPromptDue(history, value, Date.now()));

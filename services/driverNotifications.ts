@@ -18,8 +18,9 @@ import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics
 import { shouldLightUpRideAlertScreen, wakeDisplayedRideAlert } from './rideAlertScreenWake';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 import { dismissDriverAlertFallback } from './driverAlertFallback';
-import { rideAlertFullScreenAction } from './rideAlertFullScreen';
+import { boundRideAlertPresentation, rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { reconcileBackgroundRideRinging } from './backgroundRideRinging';
+import { cancelRideNotification, prepareForegroundRideAudio, startBackgroundRideAudio } from './backgroundRideAudio';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
 const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
@@ -145,15 +146,18 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
       },
     }).then(async () => {
       if (!current() && (!deliveries.has(key) || (deliveries.get(key) === delivery && delivery.attempt === attempt))) {
-        await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
+        await boundedRideAudio(cancelRideNotification(invitationNotificationId(invitation)));
       }
     });
     await boundedRideAudio(display);
     if (!current()) return true;
     published = true;
+    if (fresh && !isAppActive()) void startBackgroundRideAudio(invitationNotificationId(invitation));
+    if (fresh && lightUpScreen && fullScreenAction) void boundRideAlertPresentation(invitationNotificationId(invitation));
     void reportRideNotificationReceipt(data, 'displayed');
     if (fresh && lightUpScreen && !isAppActive()) {
-      void wakeDisplayedRideAlert(invitationNotificationId(invitation), channelId, deadline);
+      void wakeDisplayedRideAlert(invitationNotificationId(invitation), channelId, deadline,
+        { fullScreen: Boolean(fullScreenAction), current: () => current() && !isAppActive() });
     }
     await dismissDriverAlertFallback(data);
     if (current() && isAppActive()) {
@@ -195,7 +199,9 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
     // of the ring stays identifiable during unlock, even on a slow bridge.
     await quietChannel();
     if (!current()) return;
-    await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
+    if (!(await prepareForegroundRideAudio(invitationNotificationId(invitation)))) {
+      await boundedRideAudio(cancelRideNotification(invitationNotificationId(invitation)));
+    }
     if (!owned()) return;
     const register = () => {
       if (!owned() || !alert) return;
@@ -218,7 +224,7 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
       // Late completion must not revive an acknowledged/old-account card.
       // Do not cancel a newer attempt that owns the same stable identifier.
       if (!current() && (!deliveries.has(key) || (deliveries.get(key) === delivery && delivery.attempt === attempt))) {
-        await boundedRideAudio(notifee.cancelNotification(invitationNotificationId(invitation)));
+        await boundedRideAudio(cancelRideNotification(invitationNotificationId(invitation)));
       }
     });
     await boundedRideAudio(display);
@@ -274,8 +280,8 @@ export async function consumeDriverAction(invitation: DriverInvitation, userId: 
 export async function dismissDriverInvitation(invitation: DriverAlert) {
   acknowledgeDelivery(invitation);
   await dismissDriverAlertFallback({ fallbackTag: `ride-backup-${invitation.kind}-${invitation.id}` });
-  await notifee.cancelNotification(invitationNotificationId(invitation));
-  if (Platform.OS === 'android') await notifee.cancelNotification(`ride-handoff-${invitationNotificationId(invitation)}`);
+  await cancelRideNotification(invitationNotificationId(invitation));
+  if (Platform.OS === 'android') await cancelRideNotification(`ride-handoff-${invitationNotificationId(invitation)}`);
   // iOS remote identifiers differ from the Notifee local id.
   const presented = await Notifications.getPresentedNotificationsAsync();
   await Promise.all(presented.filter(item => {
@@ -305,7 +311,7 @@ export async function dismissDriverDecision(userId: string, kind: DriverAlert['k
   if (version !== getTokenSessionVersion()) return;
   await Promise.all([
     ...native.filter(item => kind === 'nearby' && typeof item.id === 'string' && isRemoteNearbyRequestAlert(item.notification.data) && item.notification.data?.driverId === userId && item.notification.data.tripRequestId === id)
-      .map(item => notifee.cancelNotification(item.id, item.notification.android?.tag).catch(() => {})),
+      .map(item => cancelRideNotification(item.id, item.notification.android?.tag).catch(() => {})),
     ...remote.filter(item => kind === 'nearby' && isRemoteNearbyRequestAlert(item.request.content.data) && item.request.content.data.driverId === userId && item.request.content.data.tripRequestId === id)
       .map(item => Notifications.dismissNotificationAsync(item.request.identifier).catch(() => {})),
   ]);
@@ -326,7 +332,7 @@ export async function dismissResolvedDriverBookings(userId: string, ids: string[
     acknowledgeDelivery(invitation); return true;
   };
   await Promise.all([
-    ...native.filter(item => matches(item.notification.data)).map(item => notifee.cancelNotification(item.id, item.notification.android?.tag)),
+    ...native.filter(item => matches(item.notification.data)).map(item => cancelRideNotification(item.id, item.notification.android?.tag)),
     ...remote.filter(item => matches(item.request.content.data)).map(item => Notifications.dismissNotificationAsync(item.request.identifier)),
   ]);
 }

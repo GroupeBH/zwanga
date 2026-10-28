@@ -22,13 +22,22 @@ export async function getDriverAlertChannel(): Promise<string> {
 }
 
 /** Let the user change volume/sound/permissions in the OS; never force them. */
-export async function openDriverAlertSettings(): Promise<void> {
+export async function openDriverAlertSettings(options: { application?: boolean; presentation?: boolean; current?: () => boolean } = {}): Promise<void> {
+  const current = options.current ?? (() => true);
+  if (!current()) return;
   if (Platform.OS === 'android') {
     try {
       const { default: notifee } = await import('@notifee/react-native');
-      await notifee.openNotificationSettings(await getDriverAlertChannel());
+      let channel = options.application ? undefined : await getDriverAlertChannel();
+      const readPresentation = NativeModules?.ZwangaDriverAlerts?.getFullScreenSettingsChannel;
+      if (!options.application && options.presentation && typeof readPresentation === 'function') {
+        const selected = await readPresentation();
+        if ([BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL, LEGACY_DRIVER_CHANNEL, 'ride-audio-visible-v1'].includes(selected)) channel = selected;
+      }
+      if (!current()) return;
+      await notifee.openNotificationSettings(channel);
       return;
     } catch { /* Older/OEM settings screens fall back to the application's settings. */ }
   }
-  await Linking.openSettings();
+  if (current()) await Linking.openSettings();
 }

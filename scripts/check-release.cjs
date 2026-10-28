@@ -16,6 +16,8 @@ function runGate(run = spawnSync) {
   const tests = testFiles();
   if (!tests.length) throw new Error('No regression tests found');
   const checks = [
+    ['URI decoder compatibility', ['scripts/patch-query-string-decoder.cjs', '--check']],
+    ['Metro image compatibility', ['scripts/patch-metro-image-size.cjs', '--check']],
     ['Native source parity', ['scripts/check-native-sources.cjs']],
     ['TypeScript', ['node_modules/typescript/bin/tsc', '--noEmit']],
     ['ESLint (errors)', ['node_modules/eslint/bin/eslint.js', '.', '--quiet']],

@@ -11,7 +11,7 @@ export function DriverFullScreenPreference() {
   const user = useAppSelector(selectUser);
   const active = useScreenIsActive();
   const driverId = user && isDriverAccount(user) ? user.id : undefined;
-  const { permission, busy: saving, error, setOptIn } = useDriverFullScreenPermission(driverId, active);
+  const { permission, busy: saving, error, setOptIn, openNotifications, settingsReviewAvailable } = useDriverFullScreenPermission(driverId, active);
   const [explaining, setExplaining] = useState(false);
   const busy = saving || explaining;
   const owner = useRef(driverId); owner.current = driverId;
@@ -34,7 +34,11 @@ export function DriverFullScreenPreference() {
     const finish = () => { if (current()) { inFlight.current = false; setExplaining(false); } };
     const apply = async () => {
       if (!current()) return;
-      try { await setOptIn(value); }
+      try {
+        if (value && !permission.notificationsAllowed) await openNotifications();
+        else if (value && permission.allowed && permission.channelReady === false) await openNotifications(false);
+        else await setOptIn(value);
+      }
       finally { finish(); }
     };
     if (!value) { void apply(); return; }
@@ -43,7 +47,8 @@ export function DriverFullScreenPreference() {
       'Une demande proche ou une réservation pourra apparaître en plein écran pour vous permettre de répondre rapidement. ' +
       'Les détails restent protégés par le verrouillage. Cette option est facultative.\n\n' +
       (Number(Platform.Version) >= 34
-        ? 'Si Android vous le demande, activez « Autoriser les notifications en plein écran », puis revenez dans Zwanga avec le bouton Retour.'
+        ? (settingsReviewAvailable ? 'Dans l’écran Android qui va s’ouvrir, activez ' : 'Si Android vous le demande, activez ') +
+          '« Autoriser les notifications en plein écran », puis revenez dans Zwanga avec le bouton Retour.'
         : 'Vous pourrez désactiver cette option ici à tout moment.'),
       [{ text: 'Pas maintenant', style: 'cancel', onPress: finish },
         { text: 'Continuer', onPress: () => { accepted = true; void apply(); } }],
@@ -52,11 +57,12 @@ export function DriverFullScreenPreference() {
   return <View style={{ gap: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <Text style={{ flex: 1, fontSize: 17, color: Colors.gray[900], fontWeight: '600' }}>Demandes en plein écran</Text>
-      <Switch value={permission.optIn} disabled={busy || !active} accessibilityLabel="Autoriser les demandes sur l’écran verrouillé"
+      <Switch value={!error && permission.optIn && permission.allowed && permission.notificationsAllowed && permission.channelReady !== false}
+        disabled={busy || !active} accessibilityLabel="Autoriser les demandes sur l’écran verrouillé"
         onValueChange={change} />
     </View>
     <Text style={{ fontSize: 15, lineHeight: 22, color: Colors.gray[700] }}>
-      {permission.optIn && permission.allowed && permission.notificationsAllowed
+      {!error && permission.optIn && permission.allowed && permission.notificationsAllowed && permission.channelReady !== false
         ? 'Autorisation activée. Les demandes peuvent s’afficher sur l’écran verrouillé, selon les réglages du téléphone.'
         : 'Affichez une demande ou une réservation sur l’écran verrouillé. Sans cette option, vous gardez les notifications habituelles.'}
     </Text>
@@ -67,6 +73,15 @@ export function DriverFullScreenPreference() {
     {permission.optIn && !permission.notificationsAllowed && <Text style={{ color: Colors.gray[700] }}>
       Les notifications sont désactivées. Autorisez aussi les notifications Zwanga dans les réglages du téléphone.
     </Text>}
+    {permission.notificationsAllowed && permission.channelReady === false && <TouchableOpacity accessibilityRole="button"
+      disabled={busy || !active} style={{ minHeight: 48, justifyContent: 'center' }} onPress={() => void openNotifications(false)}>
+      <Text style={{ color: Colors.primary, fontWeight: '600' }}>Alertes de trajet à autoriser · Ouvrir les réglages</Text>
+    </TouchableOpacity>}
+    {permission.optIn && (!permission.allowed || !permission.notificationsAllowed || permission.channelReady === false) &&
+      <TouchableOpacity accessibilityRole="button" disabled={busy || !active}
+        style={{ minHeight: 48, justifyContent: 'center' }} onPress={() => change(false)}>
+        <Text style={{ color: Colors.gray[700] }}>Désactiver cette option dans Zwanga</Text>
+      </TouchableOpacity>}
     {error && <Text accessibilityRole="alert" style={{ color: Colors.gray[700] }}>Impossible de vérifier cette option. Réessayez ; vos réglages de notifications ne sont pas modifiés.</Text>}
   </View>;
 }

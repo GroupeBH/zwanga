@@ -22,6 +22,9 @@ import { SharedTripPanel } from '@/features/request-detail/SharedTripPanel';
 import { useSharedTripContextQuery } from '@/store/api/sharedTripApi';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
+import { RequestSearchScreen } from '@/features/request-detail/RequestSearchScreen';
+import { showRequestSearchMap } from '@/features/request-detail/requestSearchModel';
+import { canUseCachedRequestLink } from '@/features/trip-request/assignedTripNavigation';
 
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
@@ -30,8 +33,9 @@ export default function TripRequestDetailsScreen() {
   const { currentData: sharedContext } = useSharedTripContextQuery(model.tripRequest?.id ?? '',
     displayReadOptions(readsEnabled && requestOpen && model.isDriverAccount && !model.isOwner, 15_000));
   const sharing = sharedContext?.hasOngoingTrip === true;
+  const cachedSearchUsable = showRequestSearchMap(model.tripRequest, model.userId) && canUseCachedRequestLink(model.error);
   const reportLayout = useMainScreenReady(model.isScreenActive && Boolean(model.tripRequest) &&
-    !model.isLoading && !model.isOpeningAssignedTrip && !model.isError && !model.error, 'request_detail');
+    !model.isLoading && !model.isOpeningAssignedTrip && ((!model.isError && !model.error) || cachedSearchUsable), 'request_detail');
   const passengerTripId = model.passengerTripId;
 
   if (model.isLoading || (model.isFetchingRequest && !model.tripRequest) || model.isOpeningAssignedTrip) {
@@ -52,7 +56,7 @@ export default function TripRequestDetailsScreen() {
     );
   }
 
-  if (model.isError || model.error) {
+  if ((model.isError || model.error) && !cachedSearchUsable) {
     const errorMessage = getApiErrorMessage(
       model.error,
       'Impossible de charger la commande pour le moment. Réessayez dans un instant.',
@@ -124,6 +128,9 @@ export default function TripRequestDetailsScreen() {
   const showDecision = !sharing && !model.isOwner && model.isDriverAccount && !model.tripRequest.immediateDispatch &&
     isRequestUnassigned(model.tripRequest) && isTripRequestWithinAcceptanceWindow(model.tripRequest);
   const showCourse = !model.isOwner && (model.canOpenAssignedTrip || model.canStartAssignedTrip);
+
+  if (showRequestSearchMap(model.tripRequest, model.userId)) return <RequestSearchScreen key={`${model.userId}:${model.tripRequest.id}`}
+    model={model} presentation={presentation} onLayout={reportLayout} />;
 
   return (
     <SafeAreaView onLayout={reportLayout} style={[styles.container, model.isOwner ? requestSummaryStyles.passengerScreen : requestSummaryStyles.driverScreen]}>

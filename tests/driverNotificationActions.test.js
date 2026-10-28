@@ -17,7 +17,7 @@ test('notification card shows destination, seats and explicit budget/fare, never
   const { driverNotificationCard: card } = loader()('features/notifications/driverNotificationCard.ts');
   const data = { rideDeparture: 'Place centrale', rideArrival: 'Gare', rideSeats: '2', ridePricePerSeat: '2500.50', ridePriceKind: 'budget' };
   const view = card('dispatch', data);
-  assert.equal(view.title, 'Zwanga · Demande près de vous');
+  assert.match(view.title.replace(/[\u202f\u00a0]/g, ' '), /^Zwanga · Budget : 2 500,5 FC \/ place$/);
   assert.equal(card('booking', {}).title, 'Zwanga · Nouvelle réservation');
   assert.match(view.body, /Ouvrez Zwanga pour répondre\.$/);
   assert.match(view.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 2 500,5 FC \/ place/);
@@ -154,7 +154,8 @@ test('a foreground action received by both native listeners mutates and opens it
       f.foreground(push(kind), action); await tick(); await tick();
       assert.equal(f.io.mutations.length, 1);
       assert.equal(f.io.routes.length, 1);
-      assert.deepEqual(f.io.routes[0], { pathname: '/incoming-driver', params: { kind, id, driverId } });
+      assert.deepEqual(f.io.routes[0], kind === 'dispatch' && action === 'driver-decline'
+        ? { pathname: '/(tabs)', params: {} } : { pathname: '/incoming-driver', params: { kind, id, driverId } });
       assert.equal(f.io.dismissed.length, 1);
       assert.equal(f.io.displayed[0].title, 'Réponse enregistrée');
       f.hooks.unmount();
@@ -226,7 +227,8 @@ test('nearby actions open the request, report refusal to the server and never pi
       if (mode === 'foreground') f.foreground(data, action);
       else { f.io.state = 'background'; await f.background(data, action); f.resume(); }
       await tick(); await tick();
-      assert.deepEqual(f.io.routes, [{ pathname: '/request-details/[id]', params: { id: requestId } }]);
+      assert.deepEqual(f.io.routes, [action === 'driver-ignore-nearby' ? { pathname: '/(tabs)', params: {} }
+        : { pathname: '/request-details/[id]', params: { id: requestId } }]);
       assert.deepEqual(f.io.mutations, action === 'driver-ignore-nearby' ? [{ kind: 'nearby-refusal', id: requestId }] : []);
       assert.equal(f.io.dismissed.length, action === 'driver-ignore-nearby' ? 1 : 0);
       f.hooks.unmount();
@@ -247,4 +249,12 @@ test('a new deliberate nearby Accept tap opens again, while concurrent native ev
   assert.equal(f.io.mutations.length, 0);
   assert.equal(f.io.dismissed.length, 0);
   f.hooks.unmount();
+});
+
+
+test('a failed nearby refusal opens a retryable detail and does not dismiss the invitation', async () => {
+  const f = app({ perform: async () => { throw Error('offline'); } }); f.mount(); await tick();
+  f.foreground(push('nearby'), 'driver-ignore-nearby'); await tick(); await tick();
+  assert.deepEqual(f.io.routes, [{ pathname: '/request-details/[id]', params: { id: requestId } }]);
+  assert.equal(f.io.dismissed.length, 0); f.hooks.unmount();
 });

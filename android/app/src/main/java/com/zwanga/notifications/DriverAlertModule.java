@@ -22,7 +22,7 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 
-/** Channel setup and lazy foreground audio; no service or global volume override. */
+/** Channel setup and bounded audio handoff; no global volume override. */
 public final class DriverAlertModule extends ReactContextBaseJavaModule {
   static final String LEGACY_CHANNEL = "booking-ring-v2";
   static final String PHONE_CHANNEL = "driver-phone-ring-v3";
@@ -47,8 +47,8 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
 
   @Override public String getName() { return "ZwangaDriverAlerts"; }
 
-  // No permission is declared in the default production manifest. An explicitly
-  // reviewed build may enable it through withIncomingRideAlerts; never via OTA.
+  // Native capability is configured by withIncomingRideAlerts, never via OTA.
+  // Driver consent and Android special access remain required before presentation.
   static boolean fullScreenBuildEnabled(Context context) {
     try {
       android.os.Bundle meta = context.getPackageManager().getApplicationInfo(
@@ -70,11 +70,47 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
       WritableMap status = Arguments.createMap();
       status.putBoolean("optIn", context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false));
-      status.putBoolean("allowed", context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+      status.putBoolean("allowed", (Build.VERSION.SDK_INT < 29 ||
+          context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED) &&
           manager != null && (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));
       status.putBoolean("notificationsAllowed", manager != null && manager.areNotificationsEnabled());
+      status.putBoolean("channelReady", fullScreenChannelReady(context, manager));
       promise.resolve(status);
-    } catch (Exception ignored) { promise.resolve(null); }
+    } catch (Exception ignored) { promise.reject("FULL_SCREEN_STATUS_UNAVAILABLE", "Impossible de lire l’autorisation plein écran."); }
+  }
+  /** Read the active alert channel without recreating/resetting a user's settings. */
+  static boolean fullScreenChannelReady(Context context, NotificationManager manager) {
+    if (manager == null) return false;
+    if (Build.VERSION.SDK_INT < 26) return true;
+    String id = NativeRideDelivery.prefs(context).getString("channel", BUNDLED_CHANNEL);
+    if (!RideNotificationBundle.channel(id)) id = BUNDLED_CHANNEL;
+    NotificationChannel channel = manager.getNotificationChannel(id);
+    if (channel == null) channel = manager.getNotificationChannel(PHONE_CHANNEL);
+    if (channel == null) channel = manager.getNotificationChannel(LEGACY_CHANNEL);
+    if (channel == null || channel.getImportance() < NotificationManager.IMPORTANCE_HIGH) return false;
+    if (Build.VERSION.SDK_INT >= 28 && channel.getGroup() != null) {
+      NotificationChannelGroup group = manager.getNotificationChannelGroup(channel.getGroup());
+      if (group != null && group.isBlocked()) return false;
+    }
+    return presentationChannelReady(manager);
+  }
+  static boolean presentationChannelReady(NotificationManager manager) {
+    if (Build.VERSION.SDK_INT < 26) return true;
+    NotificationChannel channel = manager.getNotificationChannel("ride-audio-visible-v1");
+    if (channel == null) return true; // Not created until the first native audio session.
+    if (channel.getImportance() < NotificationManager.IMPORTANCE_HIGH || channel.getSound() != null) return false;
+    NotificationChannelGroup group = Build.VERSION.SDK_INT >= 28 && channel.getGroup() != null ?
+      manager.getNotificationChannelGroup(channel.getGroup()) : null;
+    return group == null || !group.isBlocked();
+  }
+  @ReactMethod public void getFullScreenSettingsChannel(Promise promise) {
+    try {
+    Context context = getReactApplicationContext();
+    NotificationManager manager = (NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
+    String channel = NativeRideDelivery.prefs(context).getString("channel", BUNDLED_CHANNEL);
+    promise.resolve(manager != null && !presentationChannelReady(manager) ? "ride-audio-visible-v1" :
+      RideNotificationBundle.channel(channel) ? channel : BUNDLED_CHANNEL);
+    } catch (Exception ignored) { promise.reject("FULL_SCREEN_STATUS_UNAVAILABLE", "Impossible de lire les réglages des alertes."); }
   }
   @ReactMethod public void setFullScreenOptIn(String userId, boolean enabled, Promise promise) {
     Context context = getReactApplicationContext();
@@ -94,6 +130,32 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
     context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).edit().putBoolean(userId, enabled).apply();
     promise.resolve(true);
   }
+  /** Explicit user action: review the real Android grant, even if it is already allowed.
+   * Opening Settings records local consent only; getFullScreenStatus remains authoritative. */
+  @ReactMethod public void requestFullScreenPermission(String userId, Promise promise) {
+    Context context = getReactApplicationContext();
+    if (!fullScreenBuildEnabled(context) || userId == null || userId.isEmpty() || userId.length() > 64) {
+      promise.resolve(false); return;
+    }
+    long deadline = android.os.SystemClock.elapsedRealtime() + 1800;
+    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+      android.app.Activity activity = getCurrentActivity();
+      if (android.os.SystemClock.elapsedRealtime() >= deadline || activity == null ||
+          activity.isFinishing() || activity.isDestroyed() ||
+          getReactApplicationContext().getLifecycleState() != com.facebook.react.common.LifecycleState.RESUMED) {
+        promise.resolve(false); return;
+      }
+      if (Build.VERSION.SDK_INT < 34) { setFullScreenOptIn(userId, true, promise); return; }
+      try {
+        // Do not gate opening on canUseFullScreenIntent(): a tap must let the driver
+        // inspect the OS choice, not just toggle Zwanga's preference and close a modal.
+        activity.startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+            Uri.parse("package:" + context.getPackageName())));
+        context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).edit().putBoolean(userId, true).apply();
+        promise.resolve("settings-opened");
+      } catch (Exception ignored) { promise.resolve(false); }
+    });
+  }
   @ReactMethod public void canPresentFullScreen(String userId, Promise promise) {
     try {
       Context context = getReactApplicationContext();
@@ -102,11 +164,37 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
       promise.resolve(fullScreenBuildEnabled(context) && userId != null &&
           context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).getBoolean(userId, false) &&
-          context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED &&
+          (Build.VERSION.SDK_INT < 29 ||
+              context.checkSelfPermission("android.permission.USE_FULL_SCREEN_INTENT") == PackageManager.PERMISSION_GRANTED) &&
           manager != null && manager.areNotificationsEnabled() &&
-          ((keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive())) &&
+          // Android 13+ keeps a heads-up surface when unlocked; it does not
+          // launch our activity over another foreground app. Older APIs keep
+          // the conservative locked/screen-off restriction.
+          ((Build.VERSION.SDK_INT >= 33 && power != null) || (keyguard != null && keyguard.isKeyguardLocked()) || (power != null && !power.isInteractive())) &&
           (Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent()));
     } catch (Exception ignored) { promise.resolve(false); }
+  }
+
+  @ReactMethod public void boundFullScreenPresentation(String id, Promise promise) {
+    Context context = getReactApplicationContext();
+    // notify() can return before the system notification list is updated.
+    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+      promise.resolve(RidePresentationExpiry.schedulePublished(context, id)), 150);
+  }
+
+  @ReactMethod public void startBackgroundAlertSound(String id, Promise promise) {
+    Context context = getReactApplicationContext();
+    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+      promise.resolve(RideAlertAudioService.startPublished(context, id)), 150);
+  }
+  @ReactMethod public void stopBackgroundAlertSound(String id, Promise promise) {
+    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+      RideAlertAudioService.stopPublished(id); promise.resolve(true);
+    });
+  }
+  @ReactMethod public void prepareForegroundAlert(String id, Promise promise) {
+    new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+      promise.resolve(RideAlertAudioService.preparingForeground(id)));
   }
 
   @ReactMethod
@@ -216,7 +304,7 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       boolean displayed = false;
       if (manager != null) for (android.service.notification.StatusBarNotification item : manager.getActiveNotifications()) {
         if (item.getTag() == null && item.getId() == notificationId.hashCode() &&
-            (Build.VERSION.SDK_INT < 26 || channelId.equals(item.getNotification().getChannelId()))) {
+            (Build.VERSION.SDK_INT < 26 || matchesAlertChannel(item.getNotification(), channelId))) {
           displayed = true; break;
         }
       }
@@ -256,6 +344,14 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       }
       return true;
     } catch (Exception ignored) { return false; }
+  }
+
+  static boolean matchesAlertChannel(Notification notification, String channel) {
+    if (channel.equals(notification.getChannelId())) return true;
+    if (!"ride-audio-visible-v1".equals(notification.getChannelId()) || notification.extras == null) return false;
+    android.os.Bundle card = notification.extras.getBundle("notifee.notification");
+    android.os.Bundle data = card == null ? null : card.getBundle("data");
+    return data != null && channel.equals(data.getString("rideAudioChannel"));
   }
 
   private boolean canMigrate(Context context, NotificationManager manager, NotificationChannel channel) {

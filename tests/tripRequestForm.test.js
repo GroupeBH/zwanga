@@ -207,7 +207,7 @@ test('leaving the address field before its debounce ends does not launch a reque
 
 function submissionHarness({ create, list = () => Promise.resolve([]), verified = true, dispatchEnabled = false }) {
   const hooks = hookHarness();
-  const dialogs = [], routes = [];
+  const dialogs = [], routes = [], permissionOffers = [];
   const identityChecks = [];
   const identity = { isIdentityVerified: verified, checkIdentity: (...args) => identityChecks.push(args), refreshKycStatus() {} };
   const { useRequestSubmission } = loader({
@@ -216,6 +216,7 @@ function submissionHarness({ create, list = () => Promise.resolve([]), verified 
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: (dialog) => dialogs.push(dialog) }) },
     '@/hooks/useIdentityCheck': { useIdentityCheck: () => identity },
     '@/services/analytics': { trackEvent: async () => {} },
+    '@/services/tripLocationPermission': { offerTripLocationPermission: (...args) => permissionOffers.push(args) },
     '@/constants/network': { MUTATION_RECONCILIATION_DELAYS_MS: [0, 0] },
     '@/utils/errorHelpers': {
       isAmbiguousTransportError: (error) => error.status === 'TIMEOUT_ERROR', getApiErrorMessage: (_error, fallback) => fallback,
@@ -239,8 +240,29 @@ function submissionHarness({ create, list = () => Promise.resolve([]), verified 
     getCurrentDepartureWindow: () => ({ min, max, flex: 40 }),
     setDepartureDateMin() {}, setFlexibilityMinutes() {}, setRequestFormStep() {}, setAddressSectionStep() {},
   };
-  return { hooks, dialogs, routes, props, identity, identityChecks, render: () => hooks.render(() => useRequestSubmission(props)) };
+  return { hooks, dialogs, routes, permissionOffers, props, identity, identityChecks, render: () => hooks.render(() => useRequestSubmission(props)) };
 }
+
+test('driver targeting is optional and never silently falls back after a vehicle change', async () => {
+  for (const target of [null, { id: 'chosen-driver', name: 'Conducteur de test', vehicleType: 'car' }]) {
+    let payload;
+    const app = submissionHarness({ create: async value => { payload = value; return { id: 'created' }; } });
+    app.props.selectedVehicleType = 'car';
+    app.props.targetDriver = target;
+    await app.render().handleCreateRequest();
+    assert.equal(payload.targetDriverId, target?.id);
+    if (!target) assert.equal(Object.hasOwn(payload, 'targetDriverId'), false);
+    app.hooks.unmount();
+  }
+  let calls = 0;
+  const app = submissionHarness({ create: async () => { calls++; return { id: 'unexpected' }; } });
+  app.props.targetDriver = { id: 'chosen-driver', vehicleType: 'car' };
+  app.props.selectedVehicleType = 'motorcycle_2_wheels';
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 0);
+  assert.match(app.render().submissionError, /type de véhicule a changé/);
+  app.hooks.unmount();
+});
 
 test('verified passengers can request more than three seats; backend receives the exact count', async () => {
   let payload;
@@ -438,6 +460,7 @@ test('ambiguous creation reconciles by reading requests, without replaying the P
   assert.equal(reads, 1);
   assert.equal(app.render().createdRequestId, 'recovered');
   assert.deepEqual(app.routes, ['/request/recovered']);
+  assert.deepEqual(app.permissionOffers.map(args => args.slice(0, 2)), [['request', 'recovered']]);
   assert.equal(app.render().isRequestSuccessVisible, false, 'open tracking without an extra success modal');
   app.hooks.unmount();
 });
@@ -448,6 +471,7 @@ test('an unconfirmed request never claims success and repeated checks do not rep
     list: async () => { reads++; return []; } });
   await app.render().handleCreateRequest();
   assert.equal(app.render().createdRequestId, null);
+  assert.deepEqual(app.permissionOffers, []);
   assert.doesNotMatch(app.render().requestSuccessText, /a été envoyée|est envoyée|est prête/);
   assert.equal(app.render().requestSuccessDetailLabel, 'Vérifier à nouveau');
   await app.render().handleCreateRequest();
@@ -463,4 +487,16 @@ test('a late server response after leaving the form does not announce success or
   const submitted = app.render().handleCreateRequest(); app.hooks.unmount();
   pending.reject({ status: 'TIMEOUT_ERROR' }); await submitted;
   assert.equal(reads, 0); assert.deepEqual(app.routes, []);
+  assert.deepEqual(app.permissionOffers, []);
+});
+
+test('confirmed request offers background permission after success, never while the server is pending', async () => {
+  const pending = deferred();
+  const app = submissionHarness({ create: () => pending.promise });
+  const submitted = app.render().handleCreateRequest();
+  assert.deepEqual(app.permissionOffers, []);
+  pending.resolve({ id: 'confirmed-request' }); await submitted;
+  assert.deepEqual(app.permissionOffers.map(args => args.slice(0, 2)), [['request', 'confirmed-request']]);
+  assert.deepEqual(app.routes, ['/request/confirmed-request']);
+  app.hooks.unmount();
 });
