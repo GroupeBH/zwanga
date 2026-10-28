@@ -26,7 +26,7 @@ async function probe(payload, mode = 'observe') {
   }
   throw Error('Native probe timed out');
 }
-async function start(seconds = 55) {
+async function start(seconds = 55, mode = 'deliver') {
   operation('clear'); await sleep(700);
   shell('input', 'keyevent', 'KEYCODE_WAKEUP'); shell('wm', 'dismiss-keyguard');
   shell('am', 'start', '-n', `${pkg}/.AuditActivity`, '--ez', 'audioTest', 'true'); await sleep(500);
@@ -35,8 +35,13 @@ async function start(seconds = 55) {
     notificationId: randomUUID(), bookingId: randomUUID(), type: 'new_booking', actionProtocol: 'driver-v1', nativeAlert: 'driver-v6',
     ringUntil: new Date(now + 60000).toISOString(), alertExpiresAt: new Date(now + seconds * 1000).toISOString(),
     rideArrival: 'DESTINATION TEST LOCAL', ridePricePerSeat: '2500', ridePriceKind: 'fare' };
-  await probe(payload, 'deliver'); await sleep(1200);
-  const state = await probe(payload);
+  const initial = await probe(payload, mode);
+  if (mode === 'late-deliver') assert.equal(initial.completed, false, 'publication exceeds the synchronous 2s budget');
+  let state;
+  for (let i = 0; i < 15; i++) {
+    await sleep(400); state = await probe(payload);
+    if (state.audioService === 'playing') break;
+  }
   assert.equal(state.audioService, 'playing', JSON.stringify(state));
   assert.equal(state.channel, 'ride-audio-visible-v1'); assert.equal(state.ongoing, true);
   return payload;
@@ -48,6 +53,13 @@ async function start(seconds = 55) {
     shell('pm', 'grant', pkg, 'android.permission.POST_NOTIFICATIONS');
     receive('--es', 'operation', 'consent', '--ez', 'enabled', 'true');
     shell('appops', 'set', pkg, 'USE_FULL_SCREEN_INTENT', 'allow');
+    const late = await start(55, 'late-deliver');
+    const beforeReplay = await probe(late);
+    await probe(late, 'deliver');
+    const afterReplay = await probe(late);
+    assert.equal(afterReplay.soundUntil, beforeReplay.soundUntil); assert.equal(afterReplay.count, 1);
+    assert.equal(afterReplay.audioService, 'playing');
+    record('late_notifee_publication_starts_audio_without_duplicate_or_extended_deadline');
     const first = await start();
     shell('input', 'keyevent', 'KEYCODE_HOME'); await sleep(8000);
     assert.equal((await probe(first)).audioService, 'playing');

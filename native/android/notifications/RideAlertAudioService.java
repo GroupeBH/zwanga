@@ -65,7 +65,11 @@ public final class RideAlertAudioService extends Service {
       NotificationChannel settings = manager.getNotificationChannel(channel);
       if (settings == null || settings.getImportance() < 3 || settings.getSound() == null) return false;
       NotificationChannel visible = manager.getNotificationChannel(CHANNEL);
-      if (visible != null && (visible.getImportance() < 3 || visible.getSound() != null)) return false;
+      if (visible != null && (visible.getImportance() < 4 || visible.getSound() != null)) return false;
+      if (Build.VERSION.SDK_INT >= 28 && visible != null && visible.getGroup() != null) {
+        NotificationChannelGroup presentationGroup = manager.getNotificationChannelGroup(visible.getGroup());
+        if (presentationGroup != null && presentationGroup.isBlocked()) return false;
+      }
       NotificationChannelGroup group = Build.VERSION.SDK_INT >= 28 && settings.getGroup() != null ?
         manager.getNotificationChannelGroup(settings.getGroup()) : null;
       return group == null || !group.isBlocked();
@@ -85,7 +89,13 @@ public final class RideAlertAudioService extends Service {
     }
   }
   /** Invoked on the main thread only, immediately before the foreground player takes over. */
-  static void handoff() { RideAlertAudioService current = active.get(); if (current != null) current.finishAlert(); }
+  static void handoff() {
+    RideAlertAudioService current = active.get();
+    if (current != null) {
+      current.discardCard = current.id != null && current.id.startsWith("ride-handoff-");
+      current.finishAlert();
+    }
+  }
   static boolean preparingForeground(String card) {
     RideAlertAudioService current = active.get();
     return current != null && card != null && card.equals(current.id) && NativeRideDelivery.foreground() && current.valid();

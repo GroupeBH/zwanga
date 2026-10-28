@@ -13,6 +13,7 @@ function background(t, kind = 'booking', timers = ['Date']) {
   const load = loader({ 'react-native': { Platform: { get OS() { return io.platform; } }, AppState: { get currentState() { return io.state; } },
     NativeModules: { ZwangaDriverAlerts: { canLightUpAlertScreen: async () => io.wake,
       wakeDisplayedAlert: async id => { io.wakes.push(id); return 'requested'; },
+      prepareForegroundAlert: async () => io.retainAudio ?? false,
       canPresentFullScreen: async id => { io.fullScreenCalls.push(id); return io.fullscreen; } } } },
     '@notifee/react-native': { __esModule: true, AndroidStyle: { BIGTEXT: 1 }, AndroidImportance: { HIGH: 4 }, AndroidVisibility: { PRIVATE: 0 }, default: {
       displayNotification: async n => { io.displayed.push(n); await io.display(); }, cancelNotification: async id => io.cancelled.push(id) } },
@@ -52,6 +53,40 @@ test('a passenger response hands back to Android but has no driver decision butt
   assert.equal(f.io.displayed.length, 1); assert.equal(f.io.displayed[0].android.actions, undefined);
   assert.equal(f.io.displayed[0].android.fullScreenAction, undefined); assert.deepEqual(f.io.fullScreenCalls, []);
   f.io.state = 'active'; await f.reconcileBackgroundRideRinging('driver');
+  assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
+});
+
+test('foreground handoff retains the native owner until player readiness, but never across a decision or account change', async t => {
+  for (const reason of ['decision', 'account', 'expiry']) {
+    const f = background(t); f.io.retainAudio = true;
+    await f.reconcileBackgroundRideRinging('driver');
+    f.io.state = 'active'; await f.reconcileBackgroundRideRinging('driver');
+    assert.deepEqual(f.io.cancelled, []);
+    if (reason === 'decision') f.io.pending = [];
+    if (reason === 'account') f.io.version++;
+    if (reason === 'expiry') t.mock.timers.tick(31000);
+    await f.reconcileBackgroundRideRinging('driver');
+    assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id], reason);
+    t.mock.timers.reset();
+  }
+});
+
+test('a decision during asynchronous foreground preparation cannot retain stale audio', async t => {
+  const f = background(t); await f.reconcileBackgroundRideRinging('driver');
+  let finish; f.io.retainAudio = new Promise(resolve => { finish = resolve; });
+  f.io.state = 'active'; const work = f.reconcileBackgroundRideRinging('driver'); await tick();
+  f.io.pending = []; finish(true); await work;
+  assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
+});
+
+test('locking again after native foreground handoff recreates the card with only the remaining time', async t => {
+  const f = background(t); f.io.retainAudio = true;
+  await f.reconcileBackgroundRideRinging('driver');
+  f.io.state = 'active'; await f.reconcileBackgroundRideRinging('driver');
+  t.mock.timers.tick(5000); f.io.state = 'background';
+  await f.reconcileBackgroundRideRinging('driver');
+  assert.equal(f.io.displayed.length, 2);
+  assert.equal(f.io.displayed[1].android.timeoutAfter, 25000);
   assert.deepEqual(f.io.cancelled, [f.io.displayed[0].id]);
 });
 

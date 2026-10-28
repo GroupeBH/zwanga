@@ -11,7 +11,7 @@ export function DriverFullScreenPreference() {
   const user = useAppSelector(selectUser);
   const active = useScreenIsActive();
   const driverId = user && isDriverAccount(user) ? user.id : undefined;
-  const { permission, busy: saving, error, setOptIn, openNotifications } = useDriverFullScreenPermission(driverId, active);
+  const { permission, busy: saving, error, setOptIn, openNotifications, settingsReviewAvailable } = useDriverFullScreenPermission(driverId, active);
   const [explaining, setExplaining] = useState(false);
   const busy = saving || explaining;
   const owner = useRef(driverId); owner.current = driverId;
@@ -47,7 +47,8 @@ export function DriverFullScreenPreference() {
       'Une demande proche ou une réservation pourra apparaître en plein écran pour vous permettre de répondre rapidement. ' +
       'Les détails restent protégés par le verrouillage. Cette option est facultative.\n\n' +
       (Number(Platform.Version) >= 34
-        ? 'Si Android vous le demande, activez « Autoriser les notifications en plein écran », puis revenez dans Zwanga avec le bouton Retour.'
+        ? (settingsReviewAvailable ? 'Dans l’écran Android qui va s’ouvrir, activez ' : 'Si Android vous le demande, activez ') +
+          '« Autoriser les notifications en plein écran », puis revenez dans Zwanga avec le bouton Retour.'
         : 'Vous pourrez désactiver cette option ici à tout moment.'),
       [{ text: 'Pas maintenant', style: 'cancel', onPress: finish },
         { text: 'Continuer', onPress: () => { accepted = true; void apply(); } }],

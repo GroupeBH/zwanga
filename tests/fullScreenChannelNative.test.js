@@ -9,7 +9,7 @@ test('actual native channel-readiness method respects low importance, legacy cha
   if (spawnSync('javac', ['-version']).status !== 0) return t.skip('JDK required');
   const source = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
   const start = source.indexOf('  static boolean fullScreenChannelReady(');
-  const end = source.indexOf('  @ReactMethod public void setFullScreenOptIn', start);
+  const end = source.indexOf('  @ReactMethod public void getFullScreenSettingsChannel', start);
   assert.ok(start > 0 && end > start);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'zwanga-fullscreen-channel-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -27,7 +27,8 @@ class RideNotificationBundle {
   static boolean channel(String id) { return "bundled".equals(id) || "legacy".equals(id) || "phone".equals(id); }
 }
 class NotificationChannel {
-  int importance = 4; String group;
+  int importance = 4; String group; Object sound;
+  Object getSound() { return sound; }
   int getImportance() { return importance; } String getGroup() { return group; }
 }
 class NotificationChannelGroup { boolean blocked; boolean isBlocked() { return blocked; } }
@@ -55,6 +56,12 @@ public class ChannelReadinessCheck {
     channel.importance = 0; check(c, m, false);
     m.channels.put("bundled", new NotificationChannel()); c.channel = "legacy"; check(c, m, false);
     c.channel = "invalid"; check(c, m, true);
+    NotificationChannel visible = new NotificationChannel(); m.channels.put("ride-audio-visible-v1", visible);
+    check(c, m, true);
+    visible.importance = 3; check(c, m, false);
+    visible.importance = 4; visible.group = "render"; m.group.blocked = true; check(c, m, false);
+    m.group.blocked = false; visible.sound = new Object(); check(c, m, false);
+    visible.sound = null; check(c, m, true);
     Build.VERSION.SDK_INT = 25; m.channels.clear(); check(c, m, true);
   }
 }`);

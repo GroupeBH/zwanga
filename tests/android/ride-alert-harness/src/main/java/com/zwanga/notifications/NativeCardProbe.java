@@ -42,7 +42,13 @@ public final class NativeCardProbe {
         NativeRideDelivery.prefs(c).edit().putString("user", d.get("driverId"))
           .putLong("expires", System.currentTimeMillis()+3600000).putString("channel", channel).commit();
         if ("queue".equals(mode)) RideDeliveryWorker.enqueue(c, d);
-        boolean delivered = !"deliver".equals(mode) || (failPrimary ? RideCardDelivery.deliver(c, d, (card, callback) -> callback.done(new Exception("LOCAL_TEST_FAILURE"))) : RideCardDelivery.deliver(c, d));
+        boolean delivered;
+        if ("late-deliver".equals(mode)) {
+          delivered = RideCardDelivery.deliver(c, d, (card, callback) ->
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() ->
+              app.notifee.core.Notifee.getInstance().displayNotification(card,
+                (error, unused) -> callback.done(error == null ? null : new Exception("LOCAL_DELAYED_FAILURE"))), 2600));
+        } else delivered = !"deliver".equals(mode) || (failPrimary ? RideCardDelivery.deliver(c, d, (card, callback) -> callback.done(new Exception("LOCAL_TEST_FAILURE"))) : RideCardDelivery.deliver(c, d));
         org.json.JSONObject result = new org.json.JSONObject().put("completed", delivered)
           .put("audioService", RideAlertAudioService.playbackState())
           .put("receipt", NativeRideDelivery.receipts(c).optJSONObject(d.get("notificationId")))

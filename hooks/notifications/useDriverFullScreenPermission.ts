@@ -18,6 +18,8 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
   const [error, setError] = useState(false);
   const [attempt, retry] = useState(0);
   const bridge = NativeModules?.ZwangaDriverAlerts;
+  const settingsReviewAvailable = Platform.OS === 'android' && Number(Platform.Version) >= 34 &&
+    typeof bridge?.requestFullScreenPermission === 'function';
   const owner = useRef(driverId); owner.current = driverId;
   const foreground = useRef(active); foreground.current = active;
   const generation = useRef(0);
@@ -57,7 +59,7 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
     if (Platform.OS !== 'android' || !driverId || inFlight.current || !current()) return;
     inFlight.current = true; setBusy(true); setError(false);
     try {
-      await boundedRideAudio(openDriverAlertSettings({ application, current }), application ? 2000 : 7000);
+      await boundedRideAudio(openDriverAlertSettings({ application, presentation: !application, current }), application ? 2000 : 7000);
     } catch { if (current()) setError(true); }
     finally {
       cancelled = true;
@@ -74,8 +76,13 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
     const current = () => mounted.current && generation.current === epoch && owner.current === driverId && foreground.current && AppState.currentState === 'active';
     inFlight.current = true; setBusy(true); setError(false);
     try {
-      const saved = await boundedRideAudio(Promise.resolve().then(() => current() ? bridge.setFullScreenOptIn(driverId, value) : false), 2000);
+      const review = value && settingsReviewAvailable;
+      if (review) setStatus(null);
+      const saved = await boundedRideAudio(Promise.resolve().then(() => !current() ? false : review
+        ? bridge.requestFullScreenPermission(driverId) : bridge.setFullScreenOptIn(driverId, value)), 2000);
       if (!current()) return;
+      // Launching Settings is not a grant. The foreground lifecycle reads again on return.
+      if (review && saved === 'settings-opened') return;
       if (saved !== true) throw new Error('Permission unavailable');
       const permission = parseState(await boundedRideAudio(bridge.getFullScreenStatus(driverId), 1500));
       if (current()) {
@@ -90,7 +97,7 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
     }
   };
   return { permission: Platform.OS === 'android' && active && status?.owner === driverId ? status?.permission : null,
-    busy, error, setOptIn, openNotifications,
+    busy, error, setOptIn, openNotifications, settingsReviewAvailable,
     retry: () => {
       if (mounted.current && foreground.current && AppState.currentState === 'active' && !inFlight.current)
         retry(value => value + 1);

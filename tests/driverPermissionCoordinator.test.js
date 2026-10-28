@@ -197,4 +197,10 @@ test('full-screen explanation is in-app, scrollable, optional and opens settings
   const buttons = nodes(tree).filter(n => n.type === 'Button'); assert.equal(buttons.length, 2);
   buttons[0].props.onPress(); buttons[1].props.onPress();
   assert.deepEqual(actions, ['authorize', 'later']);
+  const review = DriverFullScreenApproval({ visible: true, busy: false, error: false, allowed: true,
+    settingsReviewAvailable: true, onConfirm: () => {}, onClose: () => {} });
+  const words = nodes(review).filter(n => n.type === 'Text').flatMap(n => n.props.children).join(' ');
+  assert.match(words, /Ouvrir les réglages/);
+  assert.match(words, /écran Android qui va s’ouvrir/);
+  assert.doesNotMatch(words, /Touchez Activer/);
 });

@@ -1,4 +1,4 @@
-import { cancelRideNotification } from '@/services/backgroundRideAudio';
+import { cancelRideNotification, prepareForegroundRideAudio } from '@/services/backgroundRideAudio';
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
@@ -93,7 +93,7 @@ export function useRideRinging(userId: string | undefined) {
               if (!alert || alert.recipientId !== userId) continue;
               silenceRestoredRideAnnouncement(alert.key);
               if (item.id.startsWith(BACKGROUND_RIDE_RING_PREFIX)) {
-                await boundedRideAudio(cancelRideNotification(item.id));
+                if (!(await prepareForegroundRideAudio(item.id))) await boundedRideAudio(cancelRideNotification(item.id));
                 if (canRestore()) rememberRideAlert(alert, true);
                 continue;
               }

@@ -6,11 +6,12 @@ import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import { ACTION_COLORS } from '@/constants/actionColors';
 
 type Props = { visible: boolean; busy: boolean; error: boolean; notificationsAllowed?: boolean; allowed?: boolean; channelReady?: boolean;
+  settingsReviewAvailable?: boolean;
   onConfirm(): void; onClose(): void; onShow?(): void };
 
 export function DriverFullScreenApproval({ visible, busy, error, notificationsAllowed = true, allowed = false, channelReady = true,
-  onConfirm, onClose, onShow }: Props) {
-  const needsSettings = Number(Platform.Version) >= 34 && !allowed;
+  settingsReviewAvailable = false, onConfirm, onClose, onShow }: Props) {
+  const needsSettings = Number(Platform.Version) >= 34 && (!allowed || (settingsReviewAvailable && channelReady));
   return <RideModal visible={visible} inApp transparent animationType="fade"
     priority={RIDE_OVERLAY_PRIORITY.information} onRequestClose={onClose} onShow={onShow}>
     <View style={styles.overlay}>
@@ -22,7 +23,7 @@ export function DriverFullScreenApproval({ visible, busy, error, notificationsAl
             ? 'Voyez les nouvelles demandes même téléphone verrouillé.'
             : 'Recevez les alertes de nouvelles demandes de trajet.'}</Text>
           <Text style={styles.guide}>{!notificationsAllowed ? 'Activez « Autoriser les notifications ».'
-            : needsSettings ? 'Activez « Autoriser les notifications en plein écran », puis revenez dans Zwanga.'
+            : needsSettings ? 'Dans l’écran Android qui va s’ouvrir, activez « Autoriser les notifications en plein écran ». Revenez ensuite avec le bouton Retour.'
             : !channelReady ? 'Autorisez les alertes de trajet et leur affichage à l’écran dans les réglages Android.'
             : 'Touchez Activer pour utiliser cette option.'}</Text>
           <Text style={styles.copy}>Facultatif. Le téléphone reste verrouillé.</Text>

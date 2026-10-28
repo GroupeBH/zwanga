@@ -32,8 +32,8 @@ class Handler {
   }
 }
 class RideAlertAudioPlayer {
-  static RideAlertAudioPlayer latest; static int created; boolean closed; Runnable ended;
-  RideAlertAudioPlayer(Context c,Handler h,Uri sound,Runnable end){latest=this;created++;ended=end;}
+  static RideAlertAudioPlayer latest; static int created; boolean closed; Runnable ended,failed;
+  RideAlertAudioPlayer(Context c,Handler h,Uri sound,Runnable end,Runnable fail){latest=this;created++;ended=end;failed=fail;}
   String state(){return closed?"stopped":"playing";} void close(){closed=true;}
 }
 `;
@@ -54,6 +54,23 @@ class RideAlertAudioPlayer {
     check(RideAlertAudioPlayer.created==created && HandlerThread.latest.quit && ended[0]==2);
     s=new RideAlertAudioSession(new Context(),new Uri(),5000,()->{throw new RuntimeException();},()->ended[0]++);
     Handler.advance(0); check(s.state().equals("stopped") && ended[0]==3 && Handler.events.isEmpty());
+    s=new RideAlertAudioSession(new Context(),new Uri(),5000,()->true,()->ended[0]++); Handler.advance(0);
+    p=RideAlertAudioPlayer.latest; created=RideAlertAudioPlayer.created;
+    p.failed.run(); p.failed.run(); Handler.advance(299); check(p.closed && RideAlertAudioPlayer.created==created);
+    Handler.advance(1); check(RideAlertAudioPlayer.created==created+1);
+    p.failed.run(); Handler.advance(0); check(!RideAlertAudioPlayer.latest.closed);
+    RideAlertAudioPlayer.latest.failed.run(); Handler.advance(1000); check(RideAlertAudioPlayer.created==created+2);
+    RideAlertAudioPlayer.latest.failed.run(); Handler.advance(0);
+    check(s.state().equals("stopped") && ended[0]==4 && Handler.events.isEmpty());
+    s=new RideAlertAudioSession(new Context(),new Uri(),200,()->true,()->ended[0]++); Handler.advance(0);
+    created=RideAlertAudioPlayer.created; RideAlertAudioPlayer.latest.failed.run(); Handler.advance(500);
+    check(RideAlertAudioPlayer.created==created && ended[0]==5 && Handler.events.isEmpty());
+    s=new RideAlertAudioSession(new Context(),new Uri(),5000,()->true,()->ended[0]++); Handler.advance(0);
+    created=RideAlertAudioPlayer.created; RideAlertAudioPlayer.latest.ended.run(); Handler.advance(1000);
+    check(RideAlertAudioPlayer.created==created && ended[0]==6 && Handler.events.isEmpty());
+    s=new RideAlertAudioSession(new Context(),new Uri(),5000,()->true,()->ended[0]++); Handler.advance(0);
+    created=RideAlertAudioPlayer.created; RideAlertAudioPlayer.latest.failed.run(); Handler.advance(0); s.close(); Handler.advance(1000);
+    check(RideAlertAudioPlayer.created==created && ended[0]==6 && Handler.events.isEmpty());
   }
 }`;
   const file = path.join(directory, 'AudioSessionCheck.java'); fs.writeFileSync(file, source + stubs + checks);

@@ -17,6 +17,9 @@ public final class AuditActivity extends Activity {
             Button button = new Button(this); button.setText(label); layout.addView(button);
             button.setOnClickListener(v -> { if (label.startsWith("État")) AuditApplication.runtime.snapshot(); else AuditApplication.runtime.clear(); });
         }
+        Button permission = new Button(this); permission.setText("Autorisation plein écran (test)"); layout.addView(permission);
+        permission.setOnClickListener(v -> AuditApplication.runtime.bridge.requestFullScreenPermission(AuditRuntime.USER,
+            value -> AuditRuntime.log("PERMISSION_REVIEW " + value)));
         setContentView(layout);
     }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); AuditRuntime.log("DETAIL_OPENED"); }

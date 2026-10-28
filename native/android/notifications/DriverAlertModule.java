@@ -92,7 +92,25 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
       NotificationChannelGroup group = manager.getNotificationChannelGroup(channel.getGroup());
       if (group != null && group.isBlocked()) return false;
     }
-    return true;
+    return presentationChannelReady(manager);
+  }
+  static boolean presentationChannelReady(NotificationManager manager) {
+    if (Build.VERSION.SDK_INT < 26) return true;
+    NotificationChannel channel = manager.getNotificationChannel("ride-audio-visible-v1");
+    if (channel == null) return true; // Not created until the first native audio session.
+    if (channel.getImportance() < NotificationManager.IMPORTANCE_HIGH || channel.getSound() != null) return false;
+    NotificationChannelGroup group = Build.VERSION.SDK_INT >= 28 && channel.getGroup() != null ?
+      manager.getNotificationChannelGroup(channel.getGroup()) : null;
+    return group == null || !group.isBlocked();
+  }
+  @ReactMethod public void getFullScreenSettingsChannel(Promise promise) {
+    try {
+    Context context = getReactApplicationContext();
+    NotificationManager manager = (NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);
+    String channel = NativeRideDelivery.prefs(context).getString("channel", BUNDLED_CHANNEL);
+    promise.resolve(manager != null && !presentationChannelReady(manager) ? "ride-audio-visible-v1" :
+      RideNotificationBundle.channel(channel) ? channel : BUNDLED_CHANNEL);
+    } catch (Exception ignored) { promise.reject("FULL_SCREEN_STATUS_UNAVAILABLE", "Impossible de lire les réglages des alertes."); }
   }
   @ReactMethod public void setFullScreenOptIn(String userId, boolean enabled, Promise promise) {
     Context context = getReactApplicationContext();
@@ -111,6 +129,32 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
     }
     context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).edit().putBoolean(userId, enabled).apply();
     promise.resolve(true);
+  }
+  /** Explicit user action: review the real Android grant, even if it is already allowed.
+   * Opening Settings records local consent only; getFullScreenStatus remains authoritative. */
+  @ReactMethod public void requestFullScreenPermission(String userId, Promise promise) {
+    Context context = getReactApplicationContext();
+    if (!fullScreenBuildEnabled(context) || userId == null || userId.isEmpty() || userId.length() > 64) {
+      promise.resolve(false); return;
+    }
+    long deadline = android.os.SystemClock.elapsedRealtime() + 1800;
+    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+      android.app.Activity activity = getCurrentActivity();
+      if (android.os.SystemClock.elapsedRealtime() >= deadline || activity == null ||
+          activity.isFinishing() || activity.isDestroyed() ||
+          getReactApplicationContext().getLifecycleState() != com.facebook.react.common.LifecycleState.RESUMED) {
+        promise.resolve(false); return;
+      }
+      if (Build.VERSION.SDK_INT < 34) { setFullScreenOptIn(userId, true, promise); return; }
+      try {
+        // Do not gate opening on canUseFullScreenIntent(): a tap must let the driver
+        // inspect the OS choice, not just toggle Zwanga's preference and close a modal.
+        activity.startActivity(new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+            Uri.parse("package:" + context.getPackageName())));
+        context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).edit().putBoolean(userId, true).apply();
+        promise.resolve("settings-opened");
+      } catch (Exception ignored) { promise.resolve(false); }
+    });
   }
   @ReactMethod public void canPresentFullScreen(String userId, Promise promise) {
     try {

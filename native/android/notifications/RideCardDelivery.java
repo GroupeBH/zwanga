@@ -40,14 +40,17 @@ public final class RideCardDelivery {
       Bundle card = RideNotificationBundle.create(c, data, channel, wake);
       NativeRideDelivery.receipt(c, user, receipt, false, card.getString("id"));
       CountDownLatch finished = new CountDownLatch(1);
+      java.util.concurrent.atomic.AtomicBoolean completed = new java.util.concurrent.atomic.AtomicBoolean(false);
       java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean(false);
       try {
         presenter.show(card, error -> {
           try {
             synchronized (NativeRideDelivery.LOCK) {
-              if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis())) { manager.cancel(card.getString("id").hashCode()); return; }
+              if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis())) {
+                if (posted(manager, card)) manager.cancel(card.getString("id").hashCode()); return;
+              }
               if (error != null) { failed.set(true); NativeRideDelivery.failure(c, user, receipt, "NATIVE_CARD_FAILED"); }
-              else if (posted(manager, card)) NativeRideDelivery.receipt(c, user, receipt, true);
+              else completePublished(c, data, card, wake, completed, 0);
             }
           } catch (Exception ignored) { failed.set(true); }
           finally { finished.countDown(); }
@@ -71,24 +74,37 @@ public final class RideCardDelivery {
         // notify() returns before the system server necessarily exposes the
         // active card. A short bounded observation avoids false delivery loss.
         if (!awaitPosted(manager, card)) return false;
-        if (card.getBundle("android").containsKey("fullScreenAction")) RidePresentationExpiry.schedulePublished(c, card.getString("id"));
-        NativeRideDelivery.receipt(c, user, receipt, true);
-        RideAlertAudioService.startPublished(c, card.getString("id"));
-        if (wake) {
-          if (card.getBundle("android").containsKey("fullScreenAction")) {
-            // Let SystemUI choose full-screen while the display is still off.
-            // An immediate wake can turn this into a heads-up notification.
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-              try { if (NativeRideDelivery.owns(c, user) && posted(manager, card)) wake(c, channel, data.get("ringUntil")); }
-              catch (Exception ignored) { }
-            }, 1500);
-          } else wake(c, channel, data.get("ringUntil"));
-        }
+        completePublished(c, data, card, wake, completed, 0);
         return true;
       }
     } catch (Exception error) {
       NativeRideDelivery.failure(c, user, receipt, "NATIVE_CARD_FAILED"); return false;
     } finally { inFlight.remove(receipt); }
+  }
+  /** A late Notifee completion still owns audio/wake initialization. Never republish or renew the card. */
+  private static void completePublished(Context c, Map<String,String> data, Bundle card, boolean shouldWake,
+      java.util.concurrent.atomic.AtomicBoolean completed, int attempt) {
+    synchronized (NativeRideDelivery.LOCK) {
+      if (completed.get() || !NativeRideDelivery.owns(c, data.get("driverId")) ||
+          !RideNotificationBundle.valid(data, System.currentTimeMillis())) return;
+      NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
+      if (manager == null) return;
+      if (!posted(manager, card)) {
+        if (attempt < 10) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+          () -> completePublished(c, data, card, shouldWake, completed, attempt + 1), 100);
+        return;
+      }
+      if (!completed.compareAndSet(false, true)) return;
+      boolean fullScreen = card.getBundle("android").containsKey("fullScreenAction");
+      if (fullScreen) RidePresentationExpiry.schedulePublished(c, card.getString("id"));
+      RideAlertAudioService.startPublished(c, card.getString("id"));
+      NativeRideDelivery.receipt(c, data.get("driverId"), data.get("notificationId"), true);
+      if (shouldWake) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+        try { if (NativeRideDelivery.owns(c, data.get("driverId")) && posted(manager, card))
+          wake(c, card.getBundle("android").getString("channelId"), data.get("ringUntil")); }
+        catch (Exception ignored) { }
+      }, fullScreen ? 1500 : 0);
+    }
   }
   private static boolean awaitPosted(NotificationManager manager, Bundle card) {
     for (int n=0;n<15;n++) {
@@ -98,8 +114,13 @@ public final class RideCardDelivery {
     return posted(manager, card);
   }
   private static boolean posted(NotificationManager manager, Bundle card) {
+    try {
     for (android.service.notification.StatusBarNotification item : manager.getActiveNotifications())
-      if (item.getId() == card.getString("id").hashCode() && item.getTag() == null) return true;
+      if (item.getId() == card.getString("id").hashCode() && item.getTag() == null) {
+        Bundle live = RideAlertAudioService.data(item.getNotification());
+        return live != null && card.getBundle("data").getString("notificationId", "").equals(live.getString("notificationId"));
+      }
+    } catch (Exception ignored) { /* Permission may be revoked while publication completes. */ }
     return false;
   }
   @SuppressWarnings("deprecation")

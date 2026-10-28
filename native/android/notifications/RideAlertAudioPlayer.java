@@ -16,12 +16,12 @@ final class RideAlertAudioPlayer {
   private AudioFocusRequest focus;
   private boolean ready, waiting, closed;
   private float volume = 1f;
-  private final Runnable ended;
+  private final Runnable ended, failed;
   private final Runnable prepareTimeout;
 
-  RideAlertAudioPlayer(Context c, Handler main, Uri sound, Runnable ended) {
+  RideAlertAudioPlayer(Context c, Handler main, Uri sound, Runnable ended, Runnable failed) {
     this.audio = (AudioManager)c.getSystemService(Context.AUDIO_SERVICE);
-    this.main = main; this.ended = ended; prepareTimeout = ended;
+    this.main = main; this.ended = ended; this.failed = failed; prepareTimeout = failed;
     try {
       AudioAttributes attributes = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
@@ -30,7 +30,7 @@ final class RideAlertAudioPlayer {
         .setOnAudioFocusChangeListener(this::onFocus, main).build();
       player = new MediaPlayer(); player.setAudioAttributes(attributes);
       player.setDataSource(c, sound); player.setLooping(true);
-      player.setOnErrorListener((p, what, extra) -> { if (!closed && player == p) ended.run(); return true; });
+      player.setOnErrorListener((p, what, extra) -> { if (!closed && player == p) failed.run(); return true; });
       player.setOnPreparedListener(p -> {
         if (closed || p != player) return;
         main.removeCallbacks(prepareTimeout); ready = true;
@@ -41,7 +41,8 @@ final class RideAlertAudioPlayer {
         } catch (Exception error) { ended.run(); }
       });
       main.postDelayed(prepareTimeout, 5000); player.prepareAsync();
-    } catch (Exception error) { main.post(ended); }
+    } catch (SecurityException error) { main.post(ended); }
+      catch (Exception error) { main.post(failed); }
   }
   private void onFocus(int change) {
     if (closed) return;
@@ -56,7 +57,8 @@ final class RideAlertAudioPlayer {
     try {
       if (waiting) { if (player.isPlaying()) player.pause(); }
       else { player.setVolume(volume, volume); if (!player.isPlaying()) player.start(); }
-    } catch (Exception error) { ended.run(); }
+    } catch (SecurityException error) { ended.run(); }
+      catch (Exception error) { failed.run(); }
   }
   String state() {
     if (closed) return "stopped";
@@ -66,7 +68,7 @@ final class RideAlertAudioPlayer {
   }
   void close() {
     if (closed) return;
-    closed = true; main.removeCallbacks(prepareTimeout); main.removeCallbacks(ended);
+    closed = true; main.removeCallbacks(prepareTimeout); main.removeCallbacks(ended); main.removeCallbacks(failed);
     try { if (focus != null && audio != null) audio.abandonAudioFocusRequest(focus); } catch (Exception ignored) { }
     try { if (player != null) player.release(); } catch (Exception ignored) { }
     player = null;

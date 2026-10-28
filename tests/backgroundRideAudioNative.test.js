@@ -82,8 +82,8 @@ class MediaPlayer {
   const checks = `public class BackgroundAudioCheck {
   static void check(boolean v){if(!v)throw new AssertionError();}
   public static void main(String[] args){
-    Context c=new Context(); Handler h=new Handler(); int[] ends={0}; Runnable ended=()->ends[0]++;
-    RideAlertAudioPlayer p=new RideAlertAudioPlayer(c,h,new Uri(),ended); MediaPlayer media=MediaPlayer.latest;
+    Context c=new Context(); Handler h=new Handler(); int[] ends={0}, failures={0}; Runnable ended=()->ends[0]++, failed=()->failures[0]++;
+    RideAlertAudioPlayer p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); MediaPlayer media=MediaPlayer.latest;
     check(p.state().equals("preparing")); media.prepared.ready(media); check(media.playing && h.pending.isEmpty());
     c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK); check(media.playing && media.volume==.25f);
     c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_GAIN); check(media.volume==1f && media.playing);
@@ -94,13 +94,15 @@ class MediaPlayer {
     media.prepared.ready(media); media.error.error(media,1,1); c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_GAIN);
     check(!media.playing && ends[0]==1); p.close(); check(c.audio.abandoned==1);
     c.audio.result=AudioManager.AUDIOFOCUS_REQUEST_DELAYED;
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended); media=MediaPlayer.latest; media.prepared.ready(media);
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.prepared.ready(media);
     check(!media.playing && p.state().equals("interrupted")); c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_GAIN); check(media.playing); p.close();
     c.audio.result=AudioManager.AUDIOFOCUS_REQUEST_FAILED;
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==2 && !media.playing); p.close();
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==2 && !media.playing && failures[0]==0); p.close();
     c.audio.fail=true;
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==3); p.close();
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended); check(h.pending.size()==1); h.pending.get(0).run(); check(ends[0]==4); p.close(); check(h.pending.isEmpty());
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==3 && failures[0]==0); p.close();
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); check(h.pending.size()==1); h.pending.get(0).run(); check(failures[0]==1 && ends[0]==3); p.close(); check(h.pending.isEmpty());
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.error.error(media,1,1);
+    check(failures[0]==2 && ends[0]==3); p.close(); media.error.error(media,1,1); check(failures[0]==2);
   }
 }`;
   const file = path.join(directory, 'BackgroundAudioCheck.java'); fs.writeFileSync(file, stubs + source + checks);

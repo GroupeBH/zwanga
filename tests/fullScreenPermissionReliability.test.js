@@ -4,7 +4,7 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-function fixture(t, os = 'android') {
+function fixture(t, os = 'android', modern = false, api = 36) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), calls = [];
   const appState = { currentState: 'active' };
@@ -17,8 +17,12 @@ function fixture(t, os = 'android') {
     },
     setFullScreenOptIn: async (id, enabled) => { calls.push(['set', id, enabled]); return true; },
   };
+  if (modern) bridge.requestFullScreenPermission = async id => {
+    calls.push(['review', id]); await env.settings();
+    env.status = { ...env.status, optIn: true }; return 'settings-opened';
+  };
   const hook = loader({ react: hooks.react,
-    'react-native': { AppState: appState, Platform: { OS: os }, NativeModules: { ZwangaDriverAlerts: bridge } },
+    'react-native': { AppState: appState, Platform: { OS: os, Version: api }, NativeModules: { ZwangaDriverAlerts: bridge } },
     '@/services/rideAudioDiagnostics': { boundedRideAudio: (promise, ms) => env.bound(promise, ms) },
     '@/services/driverAlertChannel': { openDriverAlertSettings: async options => {
       calls.push(['notifications', options]); await env.settings(options);
@@ -34,6 +38,57 @@ test('transient full-screen status failure gets one bounded retry and recovers',
   f.env.failure = false; t.mock.timers.tick(1999); await tick(); assert.equal(f.calls.length, 1);
   t.mock.timers.tick(1); await tick(); assert.deepEqual(f.render().permission, f.env.status);
   assert.equal(f.render().error, false);
+});
+
+test('explicit review opens Android even when the initial grant is allowed; only return validates it', async t => {
+  const f = fixture(t, 'android', true);
+  f.env.status.allowed = true; f.render(); await tick();
+  assert.equal(f.render().settingsReviewAvailable, true);
+  await f.render().setOptIn(true);
+  assert.deepEqual(f.calls, [['read', 'driver'], ['review', 'driver']]);
+  assert.equal(f.render().permission, null, 'opening Settings is not an authorization result');
+  f.env.active = false; f.render();
+  f.env.active = true; f.render(); await tick();
+  assert.deepEqual(f.render().permission, { optIn: true, allowed: true, notificationsAllowed: true });
+});
+
+test('returning without granting full screen keeps permission denied despite local consent', async t => {
+  const f = fixture(t, 'android', true); f.render(); await tick();
+  await f.render().setOptIn(true);
+  assert.equal(f.render().permission, null);
+  f.env.active = false; f.render(); f.env.active = true; f.render(); await tick();
+  assert.equal(f.render().permission.optIn, true);
+  assert.equal(f.render().permission.allowed, false);
+  await f.render().setOptIn(false);
+  assert.equal(f.calls.filter(c => c[0] === 'review').length, 1, 'withdrawal never launches Settings');
+});
+
+test('explicit Settings review is single flight and cannot outlive logout or background', async t => {
+  const f = fixture(t, 'android', true); f.render(); await tick();
+  let release; f.env.settings = () => new Promise(resolve => { release = resolve; });
+  const pending = f.render().setOptIn(true); await tick();
+  await f.render().setOptIn(true);
+  assert.equal(f.calls.filter(c => c[0] === 'review').length, 1);
+  f.env.owner = 'other'; f.render(); await tick(); release(); await pending;
+  assert.equal(f.render().permission.optIn, false, 'the old account result is discarded');
+  f.appState.currentState = 'background'; await f.render().setOptIn(true);
+  assert.equal(f.calls.filter(c => c[0] === 'review').length, 1);
+});
+
+test('settings review launch failure is visible and never infers a grant', async t => {
+  const f = fixture(t, 'android', true); f.render(); await tick();
+  f.env.settings = async () => { throw Error('OEM settings unavailable'); };
+  await f.render().setOptIn(true);
+  assert.equal(f.render().error, true); assert.equal(f.render().permission, null);
+  assert.equal(f.env.status.optIn, false);
+});
+
+test('Android 13 keeps its existing consent flow without a special-access review', async t => {
+  const legacy = fixture(t, 'android', true, 33); legacy.render(); await tick();
+  assert.equal(legacy.render().settingsReviewAvailable, false);
+  await legacy.render().setOptIn(true);
+  assert.equal(legacy.calls.some(c => c[0] === 'review'), false);
+  assert.ok(legacy.calls.some(c => c[0] === 'set'));
 });
 
 test('a persistent full-screen error never starts endless retrying or native settings', async t => {

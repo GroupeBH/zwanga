@@ -43,6 +43,10 @@ async function clearCards(){shell('am','broadcast','-n','com.zwanga.audit/.Audit
   const late=await inject(fresh({ringUntil:new Date(now()-5000).toISOString()}));valid(late);assert.equal(late.channel,'ride-native-quiet-v1');assert.equal(late.soundUntil,undefined);record('late_booking_visible_silent');
   const self=await inject(fresh({passengerId:user}));assert.equal(self.count,0);record('own_request_suppressed');
   const expired=await inject(fresh({type:'driver_dispatch_offer',offerId:randomUUID(),expiresAt:new Date(now()-1000).toISOString()}));assert.equal(expired.count,0);record('expired_offer_suppressed',{clockOffsetMs:clockOffset});
+  const expiresDuringPost=fresh({type:'driver_dispatch_offer',offerId:randomUUID(),expiresAt:new Date(now()+1000).toISOString()});
+  await inject(expiresDuringPost,{mode:'late-deliver'});await sleep(3000);
+  const expiredPost=await inject(expiresDuringPost,{mode:'observe'});assert.equal(expiredPost.count,0);
+  assert.notEqual(expiredPost.receipt?.displayed,true);record('late_completion_does_not_revive_expired_offer');
   const queued=fresh();await inject(queued,{mode:'queue'});await sleep(8000);
   const recovered=await inject(queued,{mode:'observe'});valid(recovered);record('workmanager_recovery_without_fcm_or_js');
   shell('am','broadcast','-n','com.zwanga.audit/.AuditReceiver','--es','operation','consent','--ez','enabled','false');

@@ -15,6 +15,7 @@ final class RideAlertAudioSession {
   private final AtomicBoolean closed = new AtomicBoolean();
   private final Runnable ended;
   private RideAlertAudioPlayer player; // accessed only on the audio looper
+  private int attempt, retries;
   private volatile String state = "preparing";
 
   RideAlertAudioSession(Context c, Uri sound, long duration, BooleanSupplier valid, Runnable ended) {
@@ -24,7 +25,7 @@ final class RideAlertAudioSession {
     audio.post(() -> {
       if (closed.get()) return;
       if (!safe(valid) || SystemClock.elapsedRealtime() >= until) { end(); return; }
-      player = new RideAlertAudioPlayer(c, audio, sound, this::end);
+      start(c, sound, until, valid);
     });
     audio.post(new Runnable() { public void run() {
       if (closed.get()) return;
@@ -33,6 +34,22 @@ final class RideAlertAudioSession {
       audio.postDelayed(this, 500);
     }});
     audio.postDelayed(this::end, Math.max(0, until - SystemClock.elapsedRealtime()));
+  }
+  private void start(Context c, Uri sound, long until, BooleanSupplier valid) {
+    if (closed.get()) return;
+    if (!safe(valid) || SystemClock.elapsedRealtime() >= until) { end(); return; }
+    final int generation = ++attempt;
+    player = new RideAlertAudioPlayer(c, audio, sound, this::end,
+      () -> audio.post(() -> {
+        if (closed.get() || generation != attempt) return;
+        // Invalidate duplicate errors from this player before releasing it.
+        ++attempt;
+        if (player != null) player.close();
+        player = null;
+        if (retries >= 2 || !safe(valid) || SystemClock.elapsedRealtime() >= until) { end(); return; }
+        state = "preparing";
+        audio.postDelayed(() -> start(c, sound, until, valid), ++retries == 1 ? 300 : 1000);
+      }));
   }
   private boolean safe(BooleanSupplier valid) {
     try { return valid.getAsBoolean(); } catch (Exception ignored) { return false; }

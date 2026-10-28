@@ -95,6 +95,7 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
       notificationsAllowed={fullScreen.permission?.notificationsAllowed}
       allowed={fullScreen.permission?.allowed}
       channelReady={fullScreen.permission?.channelReady}
+      settingsReviewAvailable={fullScreen.settingsReviewAvailable}
       onShow={() => prompt.onShown('fullScreen')}
       onClose={dismiss} onConfirm={() => {
         if (!safeRef.current) return;
