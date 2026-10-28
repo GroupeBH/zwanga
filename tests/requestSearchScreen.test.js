@@ -67,6 +67,25 @@ test('old backend grid-only responses never fabricate individual vehicle positio
   assert.ok(elements(tree).some(node => node.type === 'Actions'));
 });
 
+test('an overdue request guides editing instead of promising more driver invitations', t => {
+  const app = screenFixture(); t.after(() => app.hooks.unmount());
+  app.model.tripRequest.departureDateMax = new Date(Date.now() - 60000).toISOString();
+  const tree = app.render();
+  assert.match(words(tree), /L’heure de départ est dépassée/);
+  assert.match(words(tree), /Modifiez l’heure de départ/);
+  assert.doesNotMatch(words(tree), /On cherche votre conducteur|Vous serez prévenu dès/);
+  assert.deepEqual(elements(tree).find(node => node.type === 'Map').props.vehicles, []);
+  assert.ok(elements(tree).some(node => node.type === 'Actions'));
+  app.model.tripRequest.departureDateMax = new Date(Date.now() + 600000).toISOString();
+  assert.match(words(app.render()), /On cherche votre conducteur/);
+});
+
+test('a server-stopped search does not claim that drivers are being contacted', t => {
+  const app = screenFixture(); t.after(() => app.hooks.unmount()); app.state.data.searching = false;
+  assert.match(words(app.render()), /Votre demande a changé/);
+  assert.doesNotMatch(words(app.render()), /On cherche votre conducteur|Vous serez prévenu dès/);
+});
+
 test('search reads stop offline; GPS and native map stop when hidden or editing, without inventing drivers', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount()); app.render();
   app.state.data = undefined; app.state.error = true;

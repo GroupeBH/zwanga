@@ -159,3 +159,30 @@ test('a silently ignored navigation restores the trip actions instead of leaving
   assert.equal(app.render().isOpeningAssignedTrip, false);
   assert.equal(app.routes.length, 1); app.hooks.unmount();
 });
+
+for (const platform of ['android', 'ios']) test(`${platform}: background after an ignored transition preserves recovery on return`, t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup(platform);
+  app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+  app.render(); t.mock.timers.tick(platform === 'ios' ? 260 : 40);
+  app.props.isScreenActive = false; app.render();
+  t.mock.timers.tick(5000);
+  app.props.isScreenActive = true;
+  assert.equal(app.render().isOpeningAssignedTrip, true);
+  t.mock.timers.tick(2000);
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  assert.equal(app.routes.length, 1);
+  app.props.isScreenActive = false; app.render(); app.props.isScreenActive = true;
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  app.hooks.unmount();
+});
+
+test('router object refresh does not cancel transition recovery or repeat navigation', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = setup('android'); app.props.assignedTrip = { ...trip, status: 'ongoing' };
+  app.render(); t.mock.timers.tick(40);
+  app.props.router = { replace: href => app.routes.push(href) }; app.render();
+  t.mock.timers.tick(2000);
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  assert.equal(app.routes.length, 1); app.hooks.unmount();
+});

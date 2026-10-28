@@ -127,10 +127,9 @@ module.exports = {
         : {}),
       // Explicitly block ACTIVITY_RECOGNITION permission
       // We only use Accelerometer for device stability detection, not activity recognition
-      // Block FOREGROUND_SERVICE_MEDIA_PLAYBACK as we don't use audio playback in foreground
+      // The bounded Android ride-alert service uses mediaPlayback explicitly.
       blockedPermissions: [
         'android.permission.ACTIVITY_RECOGNITION',
-        'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
       ],
       // Permissions pour la localisation (incluant arrière-plan pour la navigation)
       permissions: [

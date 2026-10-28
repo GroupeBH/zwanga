@@ -14,6 +14,18 @@ export function showRequestSearchMap(request: TripRequest | undefined, userId: s
     isTripRequestWithinAcceptanceWindow(request, now);
 }
 
+/** Dispatch stops at the latest departure, before the request's editable grace period ends. */
+export function requestSearchPhase(request: Pick<TripRequest, 'id' | 'departureDateMax'>,
+  snapshot: RequestSearchSnapshot | undefined, now: number, receivedAt?: number) {
+  const generatedAt = Date.parse(snapshot?.generatedAt ?? '');
+  const current = snapshot?.requestId === request.id && Number.isFinite(generatedAt) &&
+    receivedAt !== undefined && Number.isFinite(receivedAt) && now >= receivedAt && now - receivedAt <= 90_000;
+  const serverNow = current ? generatedAt + now - receivedAt! : now;
+  const deadline = Date.parse(request.departureDateMax);
+  if (Number.isFinite(deadline) && deadline <= serverNow) return 'past-departure';
+  return current && !snapshot.searching ? 'inactive' : 'searching';
+}
+
 /** Invalid/stale/account-mismatched data must never become a native map coordinate. */
 export function searchVehicles(snapshot: RequestSearchSnapshot | undefined, requestId: string, now = Date.now(),
   receivedAt = Date.parse(snapshot?.generatedAt ?? '')) {

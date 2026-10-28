@@ -9,7 +9,8 @@ function configure(manifest, enabled) {
   app['meta-data'].push({ $: { 'android:name': 'com.zwanga.RIDE_FULL_SCREEN_ENABLED', 'android:value': String(enabled) } });
   app.activity = (app.activity || []).filter(item => item.$['android:name'] !== 'com.zwanga.notifications.IncomingRideActivity');
   app.activity.push({ $: { 'android:name': 'com.zwanga.notifications.IncomingRideActivity', 'android:exported': 'false',
-    'android:excludeFromRecents': 'true', 'android:theme': '@style/AppTheme' } });
+    'android:excludeFromRecents': 'true', 'android:theme': '@style/AppTheme', 'android:launchMode': 'singleTop',
+    'android:showWhenLocked': 'true', 'android:turnScreenOn': 'true' } });
   manifest['uses-permission'] = (manifest['uses-permission'] || []).filter(item => item.$['android:name'] !== 'android.permission.USE_FULL_SCREEN_INTENT');
   if (enabled) manifest['uses-permission'].push({ $: { 'android:name': 'android.permission.USE_FULL_SCREEN_INTENT' } });
 }

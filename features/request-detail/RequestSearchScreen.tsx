@@ -7,7 +7,7 @@ import { displayReadOptions, useDisplayReadData, useDisplayReadsEnabled, useDisp
 import { useGetRequestSearchMapQuery } from '@/store/api/requestSearchApi';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import type { buildRequestDetailPresentation } from './requestPresentation';
-import { searchVehicles, searchPassengerPosition } from './requestSearchModel';
+import { requestSearchPhase, searchVehicles, searchPassengerPosition } from './requestSearchModel';
 import { RequestSearchMap } from './RequestSearchMap';
 import { RequestPassengerActions, formatRequestDay, formatRequestTime } from './RequestPassengerTicket';
 import { RequestOwnerModals } from './RequestOwnerModals';
@@ -42,7 +42,8 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
     return () => clearInterval(timer);
   }, [active]);
   const receivedAt = cached?.receivedAt;
-  const vehicles = useMemo(() => searchVehicles(snapshot, request.id, now, receivedAt), [snapshot, request.id, now, receivedAt]);
+  const phase = requestSearchPhase(request, snapshot, now, receivedAt);
+  const vehicles = useMemo(() => phase === 'searching' ? searchVehicles(snapshot, request.id, now, receivedAt) : [], [phase, snapshot, request.id, now, receivedAt]);
   const position = useMemo(() => searchPassengerPosition(lastKnownLocation, now), [lastKnownLocation, now]);
   const total = vehicles.length;
   const labels = useRouteLocationLabels(request);
@@ -53,18 +54,20 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
       <Pressable accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={s.back}>
         <Ionicons name="arrow-back" size={22} color="#1C2433" />
       </Pressable><Text style={s.heading}>Votre demande</Text>
-      <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>En attente</Text></View>
+      <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
     </View>
     <RequestSearchMap requestId={request.id} active={active} departure={departure} position={position} vehicles={vehicles} />
     <View style={s.panel}>
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <Text accessibilityRole="header" style={s.title}>{request.targetDriverDeclined ? 'Choisissez un autre conducteur' :
+        <Text accessibilityRole="header" style={s.title}>{phase === 'past-departure' ? 'L’heure de départ est dépassée' :
+          phase === 'inactive' ? 'Votre demande a changé' : request.targetDriverDeclined ? 'Choisissez un autre conducteur' :
           request.targetDriverId ? 'En attente de votre conducteur' : 'On cherche votre conducteur'}</Text>
-        <Text style={s.subtitle}>{readFailed ? 'Positions indisponibles pour le moment. Votre demande reste enregistrée.' : isFetching && !snapshot
+        <Text style={s.subtitle}>{phase === 'past-departure' ? 'Les conducteurs ne sont plus contactés. Modifiez l’heure de départ pour relancer la recherche. Votre demande reste enregistrée.' :
+          phase === 'inactive' ? 'Actualisez pour consulter son état. Vous pouvez toujours revenir à l’accueil.' : readFailed ? 'Positions indisponibles pour le moment. Votre demande reste enregistrée.' : isFetching && !snapshot
           ? 'Recherche des conducteurs proches…' : total > 0
             ? `${total} véhicule${total > 1 ? 's' : ''} sur la carte${snapshot?.truncated ? ' (les plus proches)' : ''}. Vous serez prévenu dès qu’un conducteur accepte.`
             : 'Aucune position à afficher pour le moment. Votre demande reste en attente d’une réponse.'}</Text>
-        {readFailed && <Pressable accessibilityRole="button" disabled={!readsEnabled || isFetching} onPress={() => { void retry(); void model.refetch(); }} style={s.retry}>
+        {(readFailed || phase === 'inactive') && <Pressable accessibilityRole="button" disabled={!readsEnabled || isFetching} onPress={() => { void retry(); void model.refetch(); }} style={s.retry}>
           <Text style={s.link}>Actualiser</Text>
         </Pressable>}
         <Text style={s.hint}>Dernières positions connues · 5 km autour du départ. Touchez un véhicule pour voir depuis quand.</Text>

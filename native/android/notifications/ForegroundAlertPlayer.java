@@ -84,6 +84,7 @@ final class ForegroundAlertPlayer implements LifecycleEventListener {
           try {
             main.removeCallbacks(timeout); ready = true;
             if (!allowed()) { release(); return; }
+            RideAlertAudioService.handoff();
             applyPause();
             if (player == mp) renewHeartbeat();
             Promise pending = preparing; preparing = null;

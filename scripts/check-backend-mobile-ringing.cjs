@@ -18,7 +18,7 @@ const commit = git('rev-parse', '--verify', `${ref}^{commit}`).trim();
 const allowedMobile = new Set(['driverInvitation', 'ridePlaybackDeadline', 'rideSound', 'rideAlert',
   'requestOwnership', 'driverNotificationCard'].map(name => `features/notifications/${name}.ts`));
 allowedMobile.add('services/rideAlertSession.ts');
-const allowedBackend = new Set(['native-android-driver-push', 'android-driver-backup', 'ios-driver-push']
+const allowedBackend = new Set(['native-android-driver-push', 'android-driver-backup', 'ios-driver-push', 'ride-card-content']
   .map(name => `src/notifications/${name}.ts`));
 function loader(root, allowed, read) {
   const cache = new Map();

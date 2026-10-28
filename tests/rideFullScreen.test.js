@@ -13,6 +13,9 @@ test('fullscreen capability can be explicitly disabled; manifests are idempotent
   assert.equal(manifest['uses-permission'].length, 1);
   assert.equal(manifest.application[0].activity.length, 1);
   assert.equal(manifest.application[0].activity[0].$['android:exported'], 'false');
+  assert.equal(manifest.application[0].activity[0].$['android:showWhenLocked'], 'true');
+  assert.equal(manifest.application[0].activity[0].$['android:turnScreenOn'], 'true');
+  assert.equal(manifest.application[0].activity[0].$['android:launchMode'], 'singleTop');
   configure(manifest, false); assert.equal(manifest['uses-permission'].length, 0);
 });
 test('production and local builds include the capability, never automatic driver consent', () => {
@@ -37,6 +40,9 @@ test('production and local builds include the capability, never automatic driver
   const manifest = fs.readFileSync('android/app/src/main/AndroidManifest.xml', 'utf8');
   assert.ok(manifest.includes('android:name="android.permission.USE_FULL_SCREEN_INTENT"'));
   assert.ok(manifest.includes('android:name="com.zwanga.RIDE_FULL_SCREEN_ENABLED" android:value="true"'));
+  const activity = manifest.match(/<activity[^>]+android:name="com.zwanga.notifications.IncomingRideActivity"[^>]*>/)[0];
+  for (const attribute of ['android:showWhenLocked="true"', 'android:turnScreenOn="true"', 'android:launchMode="singleTop"'])
+    assert.ok(activity.includes(attribute), attribute);
   const native = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
   assert.ok(native.includes('ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT'));
   assert.ok(native.includes('Uri.parse("package:"'));
@@ -63,4 +69,25 @@ test('a second fullscreen intent binds the new invitation and replaces its expir
   const source = fs.readFileSync('native/android/notifications/IncomingRideActivity.java', 'utf8');
   assert.match(source, /onNewIntent\(Intent intent\)[\s\S]*?setIntent\(intent\);\s*showInvitation\(\);/);
   assert.match(source, /private void showInvitation\(\)[\s\S]*?handler.removeCallbacks\(refresh\);[\s\S]*?opening = false; summary = null; notificationId = null;/);
+});
+
+test('native inspection rejects a read failure instead of disguising it as an unsupported build', () => {
+  const source = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
+  const method = source.slice(source.indexOf('public void getFullScreenStatus'), source.indexOf('public void setFullScreenOptIn'));
+  assert.match(method, /!fullScreenBuildEnabled[\s\S]*?promise.resolve\(null\)/);
+  assert.match(method, /catch \(Exception ignored\) \{ promise.reject\("FULL_SCREEN_STATUS_UNAVAILABLE"/);
+});
+
+test('banner expiry bridge is optional, Android-only and cannot fail notification delivery', async () => {
+  for (const os of ['android', 'ios']) for (const mode of ['missing', 'success', 'failure']) {
+    const calls = [];
+    const bridge = mode === 'missing' ? {} : { boundFullScreenPresentation: async id => {
+      calls.push(id); if (mode === 'failure') throw Error('Native unavailable'); return true;
+    } };
+    const module = loader({ 'react-native': { Platform: { OS: os }, NativeModules: { ZwangaDriverAlerts: bridge } },
+      './rideAudioDiagnostics': { boundedRideAudio: (promise, ms) => { assert.equal(ms, 1500); return promise; } }
+    })('services/rideAlertFullScreen.ts');
+    await assert.doesNotReject(() => module.boundRideAlertPresentation('driver-booking-test'));
+    assert.deepEqual(calls, os === 'android' && mode !== 'missing' ? ['driver-booking-test'] : []);
+  }
 });

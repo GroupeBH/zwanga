@@ -14,3 +14,12 @@ export async function rideAlertFullScreenAction(driverId: string) {
     return { id: 'ride-full-screen', launchActivity: 'com.zwanga.notifications.IncomingRideActivity', mainComponent: 'main' };
   } catch { return undefined; }
 }
+
+/** Keep the pending card after the audible window, but release the sticky banner. */
+export async function boundRideAlertPresentation(id: string) {
+  if (Platform.OS !== 'android') return;
+  const bridge = NativeModules?.ZwangaDriverAlerts;
+  if (typeof bridge?.boundFullScreenPresentation !== 'function') return;
+  try { await boundedRideAudio(bridge.boundFullScreenPresentation(id), 1500); }
+  catch { /* Presentation cleanup must not cancel a successful delivery. */ }
+}

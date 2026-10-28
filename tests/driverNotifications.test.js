@@ -167,7 +167,8 @@ test('sleeping Android without fullscreen consent keeps screen wake and the usua
   }
 });
 
-test('eligible Android test builds attach the private full-screen action only to fresh background alerts', async () => {
+test('eligible Android test builds attach the private full-screen action only to fresh background alerts', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
   for (const payload of [
     { ...data, expiresAt: new Date(Date.now() + 30000).toISOString() },
     { type: 'new_booking', actionProtocol: 'driver-v1', bookingId: id, driverId },
@@ -181,6 +182,9 @@ test('eligible Android test builds attach the private full-screen action only to
       assert.equal(f.displays[0].android.fullScreenAction?.launchActivity,
         appState === 'background' ? 'com.zwanga.notifications.IncomingRideActivity' : undefined);
       assert.equal(f.displays[0].android.visibility, 0);
+      assert.equal(f.wakes.length, 0, 'manual wake cannot race SystemUI full-screen evaluation');
+      t.mock.timers.tick(1500); await tick();
+      assert.equal(f.wakes.length, appState === 'background' ? 1 : 0);
     }
   }
 });

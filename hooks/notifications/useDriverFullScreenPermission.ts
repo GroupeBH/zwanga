@@ -3,11 +3,12 @@ import { AppState, NativeModules, Platform } from 'react-native';
 import { boundedRideAudio } from '@/services/rideAudioDiagnostics';
 import { openDriverAlertSettings } from '@/services/driverAlertChannel';
 
-export type DriverFullScreenPermission = { optIn: boolean; allowed: boolean; notificationsAllowed: boolean };
+export type DriverFullScreenPermission = { optIn: boolean; allowed: boolean; notificationsAllowed: boolean; channelReady?: boolean };
 function parseState(value: unknown): DriverFullScreenPermission | null {
   const state = value as DriverFullScreenPermission | null;
   return state && typeof state.optIn === 'boolean' && typeof state.allowed === 'boolean' &&
-    typeof state.notificationsAllowed === 'boolean' ? state : null;
+    typeof state.notificationsAllowed === 'boolean' &&
+    (state.channelReady === undefined || typeof state.channelReady === 'boolean') ? state : null;
 }
 
 /** Shared by contextual onboarding and settings: consent only on a user tap. */
@@ -48,7 +49,7 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
     return () => { clearTimeout(retry); ++lifecycle.current; mounted.current = false; };
   }, [active, bridge, driverId, attempt]);
 
-  const openNotifications = async () => {
+  const openNotifications = async (application = true) => {
     const epoch = generation.current;
     let cancelled = false;
     const current = () => !cancelled && mounted.current && generation.current === epoch && owner.current === driverId &&
@@ -56,7 +57,7 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
     if (Platform.OS !== 'android' || !driverId || inFlight.current || !current()) return;
     inFlight.current = true; setBusy(true); setError(false);
     try {
-      await boundedRideAudio(openDriverAlertSettings({ application: true, current }), 2000);
+      await boundedRideAudio(openDriverAlertSettings({ application, current }), application ? 2000 : 7000);
     } catch { if (current()) setError(true); }
     finally {
       cancelled = true;

@@ -11,6 +11,9 @@ public final class AuditReceiver extends BroadcastReceiver {
             runtime.bridge.ensureBundledChannel(channel -> com.zwanga.notifications.NativeCardProbe.deliver(context,
                 intent.getStringExtra("payload"), intent.getBooleanExtra("failPrimary", false), intent.getStringExtra("mode") == null ? "deliver" : intent.getStringExtra("mode"), result::finish));
         } else if ("snapshot".equals(operation)) runtime.snapshot();
+        else if ("audio-focus".equals(operation)) AudioInterruptionProbe.focus(context, intent.getStringExtra("kind"));
+        else if ("other-notification".equals(operation)) AudioInterruptionProbe.notification(context);
+        else if ("handoff".equals(operation)) runtime.start("audio-service-handoff");
         else if ("clear".equals(operation)) runtime.clear();
         else if ("consent".equals(operation)) {
             context.getSharedPreferences("ride-full-screen", Context.MODE_PRIVATE).edit()

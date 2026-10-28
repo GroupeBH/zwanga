@@ -11,11 +11,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.service.notification.StatusBarNotification;
-import android.view.Gravity;
 import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 /** Optional, private lock-screen surface. No RN tree or private route disclosure while locked,
@@ -74,31 +70,15 @@ public final class IncomingRideActivity extends Activity {
     if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
     else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-    LinearLayout layout = new LinearLayout(this);
-    layout.setOrientation(LinearLayout.VERTICAL); layout.setGravity(Gravity.CENTER);
-    int padding = (int) (24 * getResources().getDisplayMetrics().density);
-    layout.setPadding(padding, padding, padding, padding); layout.setBackgroundColor(0xfffffaf6);
-    TextView title = new TextView(this); title.setText("ZWANGA");
-    title.setTextSize(30); title.setTextColor(0xff1e2a4a); title.setGravity(Gravity.CENTER); layout.addView(title);
+    if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
+    getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR |
+      android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     boolean booking = "new_booking".equals(data.getString("type"));
-    TextView event = new TextView(this); event.setText(booking ? "Nouvelle réservation" : "Demande près de vous");
-    event.setTextSize(22); event.setTextColor(0xff1e2a4a); event.setGravity(Gravity.CENTER);
-    event.setPadding(0, padding, 0, 0); layout.addView(event);
-    summary = new TextView(this); summary.setTextSize(17); summary.setTextColor(0xff414955);
-    summary.setGravity(Gravity.CENTER); summary.setPadding(0, padding, 0, padding); layout.addView(summary);
+    IncomingRideView layout = new IncomingRideView(this, booking, currentNotification(), this::unlockAndSend,
+      () -> { Notification live = currentNotification(); if (live != null) unlockAndSend(live.contentIntent); });
+    summary = layout.summary;
     updateSummary();
-    Notification card = currentNotification();
-    if (card != null && card.actions != null) for (Notification.Action action : card.actions) {
-      Button button = new Button(this); button.setText(action.title); button.setAllCaps(false);
-      button.setMinHeight((int) (56 * getResources().getDisplayMetrics().density));
-      button.setOnClickListener(v -> unlockAndSend(action.actionIntent)); layout.addView(button);
-    }
-    Button details = new Button(this); details.setText("Ouvrir dans Zwanga"); details.setAllCaps(false);
-    details.setMinHeight((int) (56 * getResources().getDisplayMetrics().density));
-    details.setOnClickListener(v -> { Notification live = currentNotification(); if (live != null) unlockAndSend(live.contentIntent); });
-    layout.addView(details);
-    ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.addView(layout);
-    setContentView(scroll); handler.postDelayed(refresh, 1000);
+    setContentView(layout); layout.requestApplyInsets(); handler.postDelayed(refresh, 1000);
   }
 
   private void updateSummary() {

@@ -72,6 +72,7 @@ class VibrationEffect { static VibrationEffect createWaveform(long[] p,int r){re
 class Vibrator {
   boolean active; void cancel(){active=false;} void vibrate(VibrationEffect e){active=true;} void vibrate(long[] p,int r){active=true;}
 }
+class RideAlertAudioService { static void handoff() {} }
 class MediaPlayer {
   interface OnErrorListener { boolean onError(MediaPlayer p,int what,int extra); }
   interface OnPreparedListener { void onPrepared(MediaPlayer p); }

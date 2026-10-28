@@ -105,3 +105,13 @@ test('manual retry rechecks without granting or opening settings', async t => {
   assert.deepEqual(f.calls, [['read', 'driver'], ['read', 'driver']]);
   t.mock.timers.tick(3000); await tick(); assert.equal(f.calls.length, 2);
 });
+
+test('channel settings are explicit, do not grant fullscreen and reject malformed readiness', async t => {
+  const f = fixture(t); f.env.status.channelReady = false; f.render(); await tick();
+  assert.equal(f.render().permission.channelReady, false);
+  await f.render().openNotifications(false);
+  assert.equal(f.calls.find(c => c[0] === 'notifications')[1].application, false);
+  assert.equal(f.calls.some(c => c[0] === 'set'), false);
+  f.env.status.channelReady = 'true'; f.render().retry(); f.render(); await tick();
+  assert.equal(f.render().error, true);
+});

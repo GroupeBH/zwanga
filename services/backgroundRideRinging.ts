@@ -6,9 +6,10 @@ import { pendingRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
 import { shouldLightUpRideAlertScreen, wakeDisplayedRideAlert } from './rideAlertScreenWake';
-import { rideAlertFullScreenAction } from './rideAlertFullScreen';
+import { boundRideAlertPresentation, rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { driverNotificationActions, driverNotificationCard } from '@/features/notifications/driverNotificationCard';
 import { DRIVER_RING_DURATION_MS } from '@/features/notifications/driverRinging';
+import { cancelRideNotification, startBackgroundRideAudio } from './backgroundRideAudio';
 
 export const BACKGROUND_RIDE_RING_PREFIX = 'ride-handoff-';
 let running: Promise<void> | undefined;
@@ -17,12 +18,12 @@ let generation = 0;
 let audible: { id: string; key: string; userId: string; version: number; deadline: number } | undefined;
 
 async function cancel(id: string) {
-  try { await boundedRideAudio(notifee.cancelNotification(id), 3000); }
+  try { await boundedRideAudio(cancelRideNotification(id), 3000); }
   catch { reportRideAudioFailure('BACKGROUND_RING_CLEANUP_FAILED'); }
 }
 
 /** Transfer one still-pending alert, never renew the original server deadline.
- * Android owns the timeout; no background JS timer, speech or foreground service. */
+ * Native Android owns the timeout/audio lease; no background JS timer or speech. */
 export function reconcileBackgroundRideRinging(userId: string): Promise<void> {
   if (Platform.OS !== 'android') return Promise.resolve();
   if (AppState.currentState !== 'background') ++generation;
@@ -88,7 +89,10 @@ async function handOff(userId: string, version: number) {
       }
     });
     await boundedRideAudio(display);
-    if (valid() && lightUpScreen) void wakeDisplayedRideAlert(id, channelId, deadline);
+    if (valid() && driverKind) void startBackgroundRideAudio(id);
+    if (valid() && lightUpScreen && fullScreenAction) void boundRideAlertPresentation(id);
+    if (valid() && lightUpScreen) void wakeDisplayedRideAlert(id, channelId, deadline,
+      { fullScreen: Boolean(fullScreenAction), current: valid });
   } catch {
     cancelled = true;
     if (audible === record) { audible = undefined; await cancel(id); }

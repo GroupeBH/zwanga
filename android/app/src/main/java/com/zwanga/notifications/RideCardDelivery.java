@@ -71,7 +71,9 @@ public final class RideCardDelivery {
         // notify() returns before the system server necessarily exposes the
         // active card. A short bounded observation avoids false delivery loss.
         if (!awaitPosted(manager, card)) return false;
+        if (card.getBundle("android").containsKey("fullScreenAction")) RidePresentationExpiry.schedulePublished(c, card.getString("id"));
         NativeRideDelivery.receipt(c, user, receipt, true);
+        RideAlertAudioService.startPublished(c, card.getString("id"));
         if (wake) {
           if (card.getBundle("android").containsKey("fullScreenAction")) {
             // Let SystemUI choose full-screen while the display is still off.

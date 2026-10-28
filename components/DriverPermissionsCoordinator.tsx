@@ -65,8 +65,9 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
     locationReady: location.loaded || location.loadError,
     // Do not reactivate discovery deliberately disabled in Profile when OS access already exists.
     locationNeeded: !location.permission,
-    fullScreenNeeded: Boolean(fullScreen.permission &&
-      (!fullScreen.permission.notificationsAllowed || !fullScreen.permission.optIn || !fullScreen.permission.allowed)) });
+    fullScreenNeeded: Platform.OS === 'android' && (fullScreen.error || Boolean(fullScreen.permission &&
+      (!fullScreen.permission.notificationsAllowed || !fullScreen.permission.optIn || !fullScreen.permission.allowed ||
+        fullScreen.permission.channelReady === false))) });
   const { selected, close } = prompt;
   const { setConsent } = location;
   useEffect(() => {
@@ -78,7 +79,7 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
     if (!active) return;
     if (selected === 'location' && location.loaded && location.permission && location.enabled && !location.consent && !location.busy) close();
     if (selected === 'fullScreen' && fullScreen.permission?.optIn && fullScreen.permission.allowed &&
-        fullScreen.permission.notificationsAllowed) close();
+        fullScreen.permission.notificationsAllowed && fullScreen.permission.channelReady !== false) close();
   }, [active, selected, location.loaded, location.permission, location.enabled, location.consent, location.busy,
     fullScreen.permission, close]);
   const dismiss = () => { if (selected === 'location') location.defer(); close(); };
@@ -93,11 +94,13 @@ export function DriverPermissionSession({ userId }: { userId: string }) {
     <DriverFullScreenApproval visible={selected === 'fullScreen' && safe} busy={fullScreen.busy} error={fullScreen.error}
       notificationsAllowed={fullScreen.permission?.notificationsAllowed}
       allowed={fullScreen.permission?.allowed}
+      channelReady={fullScreen.permission?.channelReady}
       onShow={() => prompt.onShown('fullScreen')}
       onClose={dismiss} onConfirm={() => {
         if (!safeRef.current) return;
         if (fullScreen.error) fullScreen.retry();
         else if (fullScreen.permission?.notificationsAllowed === false) void fullScreen.openNotifications();
+        else if (fullScreen.permission?.allowed && fullScreen.permission.channelReady === false) void fullScreen.openNotifications(false);
         else void fullScreen.setOptIn(true);
       }} />
   </>;

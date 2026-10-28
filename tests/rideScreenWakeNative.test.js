@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-test('native fullscreen eligibility accepts screen-off without keyguard but preserves consent and Android grants', t => {
+test('native presentation permits persistent heads-up on Android 13+ and keeps older unlocked phones unobstructed', t => {
   if (spawnSync('javac', ['-version'], { encoding: 'utf8' }).status !== 0) return t.skip('JDK required');
   const source = fs.readFileSync('native/android/notifications/DriverAlertModule.java', 'utf8');
   const start = source.indexOf('  @ReactMethod public void canPresentFullScreen(');
@@ -45,7 +45,9 @@ public class WakeEligibilityCheck {
   }); }
   public static void main(String[] args) {
     WakeEligibilityCheck t = new WakeEligibilityCheck();
-    t.check(false); // unlocked, screen on: never steal the foreground
+    t.check(true); // Android 13+: OS displays a heads-up surface instead of stealing the foreground
+    Build.VERSION.SDK_INT = 32; t.check(false); // older unlocked Android: stay conservative
+    Build.VERSION.SDK_INT = 33; t.check(true); Build.VERSION.SDK_INT = 34;
     t.context.power.interactive = false; t.check(true); // screen off, before automatic lock or without PIN
     t.context.power.interactive = true; t.context.keyguard.locked = true; t.check(true);
     t.context.preferences.optIn = false; t.check(false); t.context.preferences.optIn = true;

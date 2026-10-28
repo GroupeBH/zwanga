@@ -130,6 +130,32 @@ test('failed fullscreen inspection offers a read retry, not an automatic permiss
   assert.deepEqual(f.calls, [['retryFullScreen']]); f.hooks.unmount();
 });
 
+test('a low-priority alert channel is repaired before declaring full-screen readiness', () => {
+  const f = fixture(); f.prompt.selected = 'fullScreen';
+  f.fullScreen.permission = { optIn: true, allowed: true, notificationsAllowed: true, channelReady: false };
+  f.fullScreen.openNotifications = application => f.calls.push(['notifications', application]);
+  const modal = f.render().find(n => n.type === 'FullScreenApproval');
+  assert.equal(f.policy().fullScreenNeeded, true); assert.equal(modal.props.channelReady, false);
+  assert.equal(f.calls.some(c => c[0] === 'close'), false);
+  modal.props.onConfirm(); assert.deepEqual(f.calls, [['notifications', false]]);
+  f.fullScreen.permission = { ...f.fullScreen.permission, channelReady: true }; f.render();
+  assert.equal(f.policy().fullScreenNeeded, false); assert.ok(f.calls.some(c => c[0] === 'close'));
+  f.hooks.unmount();
+});
+
+test('initial fullscreen read failure remains eligible even without a cached permission', () => {
+  const f = fixture(); f.prompt.selected = null; f.location.permission = true;
+  f.fullScreen.permission = null; f.fullScreen.error = true;
+  f.render(); assert.equal(f.policy().safe, true); assert.equal(f.policy().fullScreenNeeded, true);
+  f.prompt.selected = 'fullScreen';
+  const modal = f.render().find(n => n.type === 'FullScreenApproval');
+  assert.equal(modal.props.visible, true); modal.props.onConfirm();
+  assert.deepEqual(f.calls, [['retryFullScreen']]);
+  f.fullScreen.error = false; f.render();
+  assert.equal(f.policy().fullScreenNeeded, false, 'unsupported builds stay silent');
+  f.hooks.unmount();
+});
+
 test('an overlay prevents starting, but the permission modal does not block itself', () => {
   const f = fixture(); f.context.busy = true;
   const modal = f.render().find(n => n.type === 'LocationApproval');

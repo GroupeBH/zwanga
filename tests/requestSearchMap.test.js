@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
-const { showRequestSearchMap, searchVehicles, searchVehicleAppearance, searchPassengerPosition, assignedPassengerNavigation } =
+const { showRequestSearchMap, requestSearchPhase, searchVehicles, searchVehicleAppearance, searchPassengerPosition, assignedPassengerNavigation } =
   loader()('features/request-detail/requestSearchModel.ts');
 const now = Date.parse('2026-10-28T12:00:00Z');
 const request = { id: 'request', passengerId: 'owner', status: 'pending', departureDateMax: new Date(now + 600000).toISOString() };
@@ -18,6 +18,17 @@ test('a passenger or driver ordering as passenger sees the search map only for t
 const vehicle = { id: 'opaque-marker', latitude: -4.3011, longitude: 15.3011, vehicleType: 'car', positionUpdatedAt: new Date(now).toISOString() };
 const marker = { ...vehicle, ageMs: 0 };
 const snapshot = { requestId: 'request', searching: true, generatedAt: new Date(now).toISOString(), vehicles: [vehicle], total: 1 };
+
+test('search stops at latest departure, but its editable grace period stays intact', () => {
+  const overdue = { ...request, departureDateMax: new Date(now).toISOString() };
+  assert.equal(showRequestSearchMap(overdue, 'owner', now), true);
+  assert.equal(requestSearchPhase(overdue, snapshot, now, now), 'past-departure');
+  assert.equal(requestSearchPhase(request, snapshot, now, now), 'searching');
+  assert.equal(requestSearchPhase(request, { ...snapshot, searching: false }, now, now), 'inactive');
+  assert.equal(requestSearchPhase(request, { ...snapshot, requestId: 'other', searching: false }, now, now), 'searching');
+  assert.equal(requestSearchPhase(request, snapshot, now + 3600000, now + 3600000), 'searching', 'server time resists phone clock skew');
+  assert.equal(requestSearchPhase(overdue, snapshot, now + 1000, now), 'past-departure', 'legacy searching=true does not extend dispatch');
+});
 test('no invented vehicles: only valid current request snapshots are rendered', () => {
   assert.deepEqual(searchVehicles(snapshot, 'request', now), [marker]);
   for (const patch of [{ requestId: 'other' }, { searching: false }, { generatedAt: 'invalid' },

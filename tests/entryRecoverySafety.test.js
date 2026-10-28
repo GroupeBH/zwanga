@@ -118,6 +118,7 @@ test('diagnostics classify network failures without printing response bodies or 
 test('installed RTK can return FETCH_ERROR/AbortError for a native fetch timeout, not only for entry cancellation', async t => {
   const f = fixture(t);
   const { DEFAULT_API_TIMEOUT_MS } = loader()('constants/network.ts');
+  const requestStarted = deferred();
   const controller = new AbortController(); let nativeAborts = 0;
   const query = fetchBaseQuery({ baseUrl: 'https://example.invalid', timeout: DEFAULT_API_TIMEOUT_MS,
     // Model native fetch rejecting with AbortError instead of forwarding signal.reason.
@@ -126,6 +127,7 @@ test('installed RTK can return FETCH_ERROR/AbortError for a native fetch timeout
         nativeAborts++;
         reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
       }, { once: true });
+      requestStarted.resolve();
     }),
   });
   const pending = f.readEntryQuery({ stage: 'activity', current: () => true,
@@ -137,7 +139,9 @@ test('installed RTK can return FETCH_ERROR/AbortError for a native fetch timeout
     } }),
   });
   const rejected = assert.rejects(pending, error => error.status === 'FETCH_ERROR' && error.error === 'AbortError: Aborted');
-  await flush(); t.mock.timers.tick(DEFAULT_API_TIMEOUT_MS); await rejected;
+  // A single setImmediate is not a guarantee that RTK has entered fetch under
+  // parallel test load. Advance the fake clock only after its abort listener exists.
+  await requestStarted.promise; t.mock.timers.tick(DEFAULT_API_TIMEOUT_MS); await rejected;
   assert.equal(nativeAborts, 1);
   assert.equal(controller.signal.aborted, false, 'the coordinator did not cancel this request');
   assert.deepEqual(f.logs[0][2], { elapsedMs: DEFAULT_API_TIMEOUT_MS, failure: 'aborted' });

@@ -36,3 +36,21 @@ test('wake after publication is bounded, optional on old binaries, and silent on
   delete bridge.wakeDisplayedAlert; await wake('card', 'ring', 200000);
   assert.equal(io.codes.at(-1), 'RING_SCREEN_WAKE_REBUILD_REQUIRED');
 });
+
+test('full-screen wake fallback leaves SystemUI time and rechecks expiry and ownership', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const calls = [];
+  const wake = loader({
+    'react-native': { Platform: { OS: 'android' }, NativeModules: { ZwangaDriverAlerts: {
+      wakeDisplayedAlert: async (...args) => { calls.push(args); return 'requested'; },
+    } } }, './rideAudioDiagnostics': { boundedRideAudio: p => p, reportRideAudioFailure: () => {} },
+  })('services/rideAlertScreenWake.ts').wakeDisplayedRideAlert;
+  const first = wake('card', 'ring', 110000, { fullScreen: true });
+  assert.deepEqual(calls, []); t.mock.timers.tick(1499); await tick(); assert.deepEqual(calls, []);
+  t.mock.timers.tick(1); await first; assert.equal(calls.length, 1);
+  let current = true;
+  const cancelled = wake('old-card', 'ring', 110000, { fullScreen: true, current: () => current });
+  current = false; t.mock.timers.tick(1500); await cancelled; assert.equal(calls.length, 1);
+  const expired = wake('expired', 'ring', Date.now() + 1000, { fullScreen: true });
+  t.mock.timers.tick(1500); await expired; assert.equal(calls.length, 1);
+});

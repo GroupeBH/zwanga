@@ -12,6 +12,20 @@ import java.util.TimeZone;
 
 /** Synthetic local adapter for the production card builder, without FCM/network. */
 public final class NativeCardProbe {
+  /** Render the exact production view with public fixtures; no FLAG_SECURE bypass in production. */
+  public static void preview(android.app.Activity activity, boolean locked, boolean booking) {
+    android.content.Intent intent = activity.getPackageManager().getLaunchIntentForPackage(activity.getPackageName());
+    android.app.PendingIntent action = android.app.PendingIntent.getActivity(activity, 901, intent, android.app.PendingIntent.FLAG_IMMUTABLE);
+    android.app.Notification card = new android.app.Notification.Builder(activity, DriverAlertModule.BUNDLED_CHANNEL)
+      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .addAction(new android.app.Notification.Action.Builder(null, "Refuser", action).build())
+      .addAction(new android.app.Notification.Action.Builder(null, "Accepter", action).build()).build();
+    IncomingRideView view = new IncomingRideView(activity, booking, card, ignored -> {}, () -> {});
+    if (!locked) view.summary.setText("2 500 FC / place\nKasa-Vubu → Gare Centrale\n2 places · Départ : 28/10 16:30");
+    if (android.os.Build.VERSION.SDK_INT >= 30) activity.getWindow().setDecorFitsSystemWindows(false);
+    activity.getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+    activity.setContentView(view); view.requestApplyInsets();
+  }
   /** Exercises the production publisher; supplied identities are local fixtures only. */
   public static void deliver(Context c, String encoded, boolean failPrimary, Runnable done) {
     deliver(c, encoded, failPrimary, "deliver", done);
@@ -30,15 +44,22 @@ public final class NativeCardProbe {
         if ("queue".equals(mode)) RideDeliveryWorker.enqueue(c, d);
         boolean delivered = !"deliver".equals(mode) || (failPrimary ? RideCardDelivery.deliver(c, d, (card, callback) -> callback.done(new Exception("LOCAL_TEST_FAILURE"))) : RideCardDelivery.deliver(c, d));
         org.json.JSONObject result = new org.json.JSONObject().put("completed", delivered)
-          .put("receipt", NativeRideDelivery.receipts(c).optJSONObject(d.get("notificationId")));
+          .put("audioService", RideAlertAudioService.playbackState())
+          .put("receipt", NativeRideDelivery.receipts(c).optJSONObject(d.get("notificationId")))
+          .put("systemFullScreenAllowed", android.os.Build.VERSION.SDK_INT < 34 || manager.canUseFullScreenIntent())
+          .put("channelReady", DriverAlertModule.fullScreenChannelReady(c, manager));
         String cardId = "driver-"+RideNotificationBundle.kind(d)+"-"+RideNotificationBundle.entity(d, RideNotificationBundle.kind(d));
         int count=0;
         for(var item: manager.getActiveNotifications()) if(item.getId()==cardId.hashCode()) {
           count++; android.app.Notification notification=item.getNotification();
           result.put("channel", notification.getChannelId()).put("actions", notification.actions == null ? 0 : notification.actions.length);
+          org.json.JSONArray actionTitles = new org.json.JSONArray();
+          if (notification.actions != null) for (var action : notification.actions) actionTitles.put(action.title.toString());
+          result.put("actionTitles", actionTitles);
           result.put("template", notification.extras.getString(android.app.Notification.EXTRA_TEMPLATE));
           Bundle card=notification.extras.getBundle("notifee.notification");
           result.put("fullScreenIntent", notification.fullScreenIntent != null).put("restorable",card!=null).put("title",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)))
+            .put("ongoing", (notification.flags & android.app.Notification.FLAG_ONGOING_EVENT) != 0)
             .put("body",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)));
           if(card!=null) result.put("soundUntil",card.getBundle("data").getString("nativeSoundUntil"));
         }

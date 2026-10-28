@@ -35,15 +35,22 @@ export function useAssignedTripNavigation({
   const navigationKey = shouldOpenTrip ? `${userId}:${requestId}:${destination}` : null;
   const lastNavigationKey = useRef<string | null>(null);
   const [failedNavigationKey, setFailedNavigationKey] = useState<string | null>(null);
+  const currentRouter = useRef(router); currentRouter.current = router;
 
   useEffect(() => {
-    if (!navigationKey || navigationKey === lastNavigationKey.current) return;
+    if (!navigationKey || navigationKey === failedNavigationKey) return;
     let recovery: ReturnType<typeof setTimeout> | undefined;
+    // A blur cancels timers, not the attempted transition. On return, restore
+    // its fallback without navigating twice or leaving the loader stuck.
+    if (navigationKey === lastNavigationKey.current) {
+      recovery = setTimeout(() => setFailedNavigationKey(navigationKey), 2000);
+      return () => clearTimeout(recovery);
+    }
     // The screen renders its loading state first, releasing any expanded native map on iOS.
     const timer = setTimeout(() => {
       lastNavigationKey.current = navigationKey;
       try {
-        router.replace(destination!);
+        currentRouter.current.replace(destination!);
         // If the navigator ignores the transition, restore the existing trip/Home actions.
         recovery = setTimeout(() => setFailedNavigationKey(navigationKey), 2000);
       } catch (error) {
@@ -52,7 +59,7 @@ export function useAssignedTripNavigation({
       }
     }, Platform.OS === 'ios' ? 260 : 40);
     return () => { clearTimeout(timer); if (recovery) clearTimeout(recovery); };
-  }, [navigationKey, destination, router]);
+  }, [navigationKey, destination, failedNavigationKey]);
 
   return {
     passengerTripId,

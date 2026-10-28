@@ -5,10 +5,10 @@ import { RideModal } from '@/features/navigation/RideModal';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import { ACTION_COLORS } from '@/constants/actionColors';
 
-type Props = { visible: boolean; busy: boolean; error: boolean; notificationsAllowed?: boolean; allowed?: boolean;
+type Props = { visible: boolean; busy: boolean; error: boolean; notificationsAllowed?: boolean; allowed?: boolean; channelReady?: boolean;
   onConfirm(): void; onClose(): void; onShow?(): void };
 
-export function DriverFullScreenApproval({ visible, busy, error, notificationsAllowed = true, allowed = false,
+export function DriverFullScreenApproval({ visible, busy, error, notificationsAllowed = true, allowed = false, channelReady = true,
   onConfirm, onClose, onShow }: Props) {
   const needsSettings = Number(Platform.Version) >= 34 && !allowed;
   return <RideModal visible={visible} inApp transparent animationType="fade"
@@ -22,14 +22,17 @@ export function DriverFullScreenApproval({ visible, busy, error, notificationsAl
             ? 'Voyez les nouvelles demandes même téléphone verrouillé.'
             : 'Recevez les alertes de nouvelles demandes de trajet.'}</Text>
           <Text style={styles.guide}>{!notificationsAllowed ? 'Activez « Autoriser les notifications ».'
-            : needsSettings ? 'Activez « Autoriser les notifications en plein écran ».' : 'Touchez Activer pour utiliser cette option.'}</Text>
+            : needsSettings ? 'Activez « Autoriser les notifications en plein écran », puis revenez dans Zwanga.'
+            : !channelReady ? 'Autorisez les alertes de trajet et leur affichage à l’écran dans les réglages Android.'
+            : 'Touchez Activer pour utiliser cette option.'}</Text>
           <Text style={styles.copy}>Facultatif. Le téléphone reste verrouillé.</Text>
           {error && <Text accessibilityRole="alert" style={styles.copy}>Vérification impossible. Réessayez.</Text>}
           <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: busy, busy }}
             disabled={busy} onPress={onConfirm} style={[styles.primary, busy && styles.disabled]}>
             {busy && <ActivityIndicator color="#FFFFFF" />}
             <Text style={styles.primaryText}>{busy ? 'Un instant…' : error ? 'Réessayer'
-              : !notificationsAllowed ? 'Ouvrir les notifications' : needsSettings ? 'Ouvrir les réglages' : 'Activer'}</Text>
+              : !notificationsAllowed ? 'Ouvrir les notifications' : needsSettings ? 'Ouvrir les réglages'
+              : !channelReady ? 'Autoriser les alertes de trajet' : 'Activer'}</Text>
           </TouchableOpacity>
           <TouchableOpacity accessibilityRole="button" onPress={onClose} style={styles.later}>
             <Text style={styles.laterText}>Plus tard</Text>

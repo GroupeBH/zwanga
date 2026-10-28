@@ -15,6 +15,7 @@ const { driverNotificationCard, driverNotificationActions } = load('features/not
 const { nativeAndroidDriverPush } = load(path.join(backend, 'src/notifications/native-android-driver-push.ts'));
 const { iosDriverPush } = load(path.join(backend, 'src/notifications/ios-driver-push.ts'));
 const { rideSpeechData } = load(path.join(backend, 'src/notifications/ride-speech-data.ts'));
+const { rideCardContent } = load(path.join(backend, 'src/notifications/ride-card-content.ts'));
 const uuid = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const report = { cases: [], observations: [], native: null };
 const normalized = s => s.replace(/[\u202f\u00a0]/g, ' ');
@@ -36,8 +37,8 @@ async function expoPayload(notification) {
     { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   let payload; const module = { exports: {} };
   const fetch = async (_url, options) => { payload = JSON.parse(options.body); return { ok: true, json: async () => ({data:{status:'ok',id:'local-ticket'}}) }; };
-  new Function('module','fetch','EXPO_PUSH_API_URL','PUSH_DELIVERY_TIMEOUT_MS','EXPO_TICKET_PREFIX','EXPO_RECEIPT_OK_PREFIX',compiled)
-    (module, fetch, 'https://no-network.invalid', 10000, 'ticket:', 'ok:');
+  new Function('module','fetch','EXPO_PUSH_API_URL','PUSH_DELIVERY_TIMEOUT_MS','EXPO_TICKET_PREFIX','EXPO_RECEIPT_OK_PREFIX','rideCardContent',compiled)
+    (module, fetch, 'https://no-network.invalid', 10000, 'ticket:', 'ok:', rideCardContent);
   const probe = Object.assign(new module.exports(), { driverActionVersion: async () => 5, ringClientVersion: async () => 5,
     isPassengerRideResponse: () => false, isNearbyRequestRing: () => notification.data.type === 'trip_request_nearby',
     isDriverRingInvitation: () => notification.data.type === 'new_booking', driverRingUntil: () => until, driverNotificationTtl: () => 60 });
@@ -95,8 +96,11 @@ async function nativeProbe() {
     mobileHasTime:js.body.includes('10:00'), iosHasTime:ios.body.includes('10:00'), mobileHasSeats:js.body.includes('2 places'),iosHasSeats:ios.body.includes('2 places') });
   report.observations.push({ name:'expo_price', requestTitle:expo.title, bookingTitle:booking.title,
     requestPriceVisible:/2.?500/.test(expo.title+expo.body), bookingPriceVisible:/2.?500/.test(booking.title+booking.body) });
-  report.observations.push({ name:'shared_actions', mobile:driverNotificationActions('nearby',{sharedTrip:'true'}).map(a=>a.title),
-    note:'Compare with native nearby action: Voir et accepter, regardless of sharedTrip.' });
+  for (const card of [js, ios, expo, booking]) {
+    assert.match(normalized(card.title), /2 500/);
+    assert.match(card.body, /2 places/); assert.match(card.body, /10:00/);
+  }
+  report.observations.push({ name:'shared_actions', mobile:driverNotificationActions('nearby',{sharedTrip:'true'}).map(a=>a.title) });
   for (let i=0;i<100;i++) driverNotificationCard('nearby',request.data);
   const started=performance.now(); for(let i=0;i<1000;i++) driverNotificationCard('nearby',request.data);
   report.performance={calls:1000,totalMs:Number((performance.now()-started).toFixed(2)),hostOnly:true};

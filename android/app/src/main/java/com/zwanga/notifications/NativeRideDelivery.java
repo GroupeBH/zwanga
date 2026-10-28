@@ -34,6 +34,7 @@ final class NativeRideDelivery {
   }
   static void clear(Context c) {
     synchronized (LOCK) {
+      RideAlertAudioService.clearAccount(c, prefs(c).getString("user", ""));
       android.app.NotificationManager manager = (android.app.NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
       JSONObject items = receipts(c);
       Iterator<String> keys = items.keys();
