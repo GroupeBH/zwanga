@@ -97,7 +97,7 @@ test('compact spacing does not shrink primary touch targets or introduce fixed l
   assert.ok(search.resultSeparator.height <= 8);
   assert.ok(search.scrollContent.paddingHorizontal <= 16);
   for (const style of [sheet.publishButton, sheet.searchBar, search.searchModeButton,
-    sheet.driverSearchButton, sheet.passengerAction, toolbar.sortButton]) assert.ok(style.minHeight >= 44);
+    sheet.secondaryAction, sheet.proposeLink, search.orderLink, toolbar.sortButton]) assert.ok(style.minHeight >= 44);
   for (const style of [search.passengerStepButton, header.notificationButton, header.profileButton]) {
     assert.ok(style.height >= 44); assert.ok(style.width >= 44);
   }

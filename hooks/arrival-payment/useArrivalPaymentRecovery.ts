@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useRecoverWalletTopUpMutation } from '@/store/api/walletApi';
 import { acknowledgeWalletTopUpIntent } from '@/features/wallet/topUpIntent';
+import { readPaymentResult } from '@/features/arrival-payment/readPaymentResult';
 import type { useArrivalPaymentState } from './useArrivalPaymentState';
 import type { useArrivalPaymentProvider } from './useArrivalPaymentProvider';
 import type { useArrivalPaymentCompletion } from './useArrivalPaymentCompletion';
@@ -25,12 +26,14 @@ export function useArrivalPaymentRecovery(state: State, provider: ReturnType<typ
       if (stored?.walletTopUpIntent || stored?.walletTopUpOrderNumber) {
         const request = stored.walletTopUpIntent ? recover({ intentScope: `booking:${id}` })
           : state.checkWalletTopUpStatus(stored.walletTopUpOrderNumber!);
-        let response;
-        try { response = await request.unwrap(); }
-        finally { if ('unsubscribe' in request) request.unsubscribe(); }
+        const response = await readPaymentResult(request);
         if (!current()) return;
         const status = response.payment.status;
         if (status === 'failed' || status === 'cancelled' || status === 'succeeded') {
+          if (status === 'succeeded') {
+            await state.persistBookingState(id, { walletTopUpConfirmedAt: new Date().toISOString() });
+            if (!current()) return;
+          }
           if (status === 'succeeded' && !await provider.settleWithPoints(id)) {
             setNotice({ id, message: 'Le paiement est reçu. Nous devons encore confirmer le règlement du trajet. Ne payez pas une seconde fois.' });
             return;
@@ -46,8 +49,7 @@ export function useArrivalPaymentRecovery(state: State, provider: ReturnType<typ
         });
       } else if (stored?.bookingPaymentOrderNumber) {
         const request = state.checkBookingPaymentStatus(stored.bookingPaymentOrderNumber);
-        let response;
-        try { response = await request.unwrap(); } finally { request.unsubscribe?.(); }
+        const response = await readPaymentResult(request);
         if (!current()) return;
         if (await completion.handleCompletedBookingPayment(response)) return;
       } else {
@@ -56,7 +58,7 @@ export function useArrivalPaymentRecovery(state: State, provider: ReturnType<typ
       }
       if (current()) setNotice({ id, message: WAIT });
     } catch {
-      if (current()) setNotice({ id, message: 'Nous n’arrivons pas à joindre le service de paiement. Ne payez pas une seconde fois. Réessayez ou contactez l’aide.' });
+      if (current()) setNotice({ id, message: 'Nous n’arrivons pas à confirmer le règlement du trajet. Ne payez pas une seconde fois. Réessayez ou contactez l’aide.' });
     } finally { busy.current = false; if (state.isSessionCurrent()) setWorking(null); }
   };
   return { run, isWorking: Boolean(workingId && workingId === state.arrivalBooking?.id),

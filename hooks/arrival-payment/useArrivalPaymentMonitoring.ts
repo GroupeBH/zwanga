@@ -105,6 +105,8 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
           if (cancelled) return;
           if (response.payment.status === 'succeeded') {
             topUpConfirmed = true;
+            await latest.current.state.persistBookingState(bookingId, { walletTopUpConfirmedAt: new Date().toISOString() });
+            if (cancelled) return;
             latest.current.state.setStatusMessage('Recharge confirmée. Paiement de la course en cours…');
             finished = await latest.current.provider.settleWithPoints(bookingId);
             if (finished) await acknowledgeWalletTopUpIntent(latest.current.state.user?.id, `booking:${bookingId}`, response);
@@ -157,7 +159,10 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
       void check();
     };
     retry.current = start;
-    if (pausedOrder.current !== orderKey || serverPaymentSucceeded) start();
+    // Operator validation often backgrounds Zwanga. Re-read on return even if
+    // an earlier status check paused. Do not auto-repeat a failed settlement.
+    if (pausedOrder.current !== orderKey || serverPaymentSucceeded ||
+        !latest.current.state.activeStoredState?.walletTopUpConfirmedAt) start();
     return () => {
       cancelled = true;
       clearTimeout(timer);

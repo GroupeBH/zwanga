@@ -13,6 +13,7 @@ import { RideOverlayProvider } from '@/features/navigation/RideOverlayProvider';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import { Ionicons } from '@expo/vector-icons';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 
 const DialogContext = createContext<DialogContextValue | undefined>(undefined);
@@ -162,15 +163,15 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }, [dialog?.dismissible, hideDialog]);
 
   const getActionLoaderColor = (action: DialogAction) => {
-    if (action.variant === 'primary') {
+    if (!action.variant || action.variant === 'primary') {
       return Colors.white;
     }
 
     if (action.variant === 'danger' || action.variant === 'destructive') {
-      return Colors.danger;
+      return Colors.white;
     }
 
-    return Colors.primary;
+    return Colors.gray[800];
   };
 
   return (
@@ -207,18 +208,21 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             <View style={styles.actions}>
               {dialog?.actions?.map((action) => {
                 const isRunningAction = runningActionLabel === action.label;
+                const actionVariant = action.variant ?? 'primary';
 
                 return (
                   <TouchableOpacity
                     key={action.label}
                     onPress={() => handleActionPress(action)}
                     disabled={Boolean(runningActionLabel)}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: Boolean(runningActionLabel), busy: isRunningAction }}
                     style={[
                       styles.actionButton,
-                      action.variant === 'primary' && styles.actionPrimary,
-                      action.variant === 'secondary' && styles.actionSecondary,
-                      action.variant === 'ghost' && styles.actionGhost,
-                      (action.variant === 'danger' || action.variant === 'destructive') &&
+                      actionVariant === 'primary' && styles.actionPrimary,
+                      actionVariant === 'secondary' && styles.actionSecondary,
+                      actionVariant === 'ghost' && styles.actionGhost,
+                      (actionVariant === 'danger' || actionVariant === 'destructive') &&
                         styles.actionDanger,
                       runningActionLabel && action.label !== runningActionLabel && styles.actionDisabled,
                     ]}
@@ -230,9 +234,9 @@ export function DialogProvider({ children }: { children: ReactNode }) {
                       <Text
                         style={[
                           styles.actionText,
-                          action.variant === 'primary' && styles.actionTextPrimary,
-                          action.variant === 'ghost' && styles.actionTextGhost,
-                          (action.variant === 'danger' || action.variant === 'destructive') &&
+                          actionVariant === 'primary' && styles.actionTextPrimary,
+                          actionVariant === 'ghost' && styles.actionTextGhost,
+                          (actionVariant === 'danger' || actionVariant === 'destructive') &&
                             styles.actionTextDanger,
                         ]}
                       >
@@ -321,7 +325,9 @@ const styles = StyleSheet.create({
     marginTop: Spacing.sm,
   },
   actionButton: {
+    minHeight: 48,
     borderRadius: BorderRadius.full,
+    paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     alignItems: 'center',
     borderWidth: 1,
@@ -329,30 +335,34 @@ const styles = StyleSheet.create({
   },
   actionContent: {
     minHeight: 20,
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
   },
   actionPrimary: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: ACTION_COLORS.orange,
+    borderColor: ACTION_COLORS.orange,
   },
   actionSecondary: {
-    backgroundColor: Colors.gray[100],
-    borderColor: Colors.gray[100],
+    backgroundColor: Colors.gray[200],
+    borderColor: Colors.gray[300],
   },
   actionGhost: {
-    borderColor: 'transparent',
+    backgroundColor: Colors.gray[100],
+    borderColor: Colors.gray[300],
   },
   actionDanger: {
-    borderColor: Colors.danger + '30',
-    backgroundColor: Colors.danger + '08',
+    borderColor: Colors.dangerDark,
+    backgroundColor: Colors.dangerDark,
   },
   actionDisabled: {
     opacity: 0.5,
   },
   actionText: {
+    flexShrink: 1,
+    textAlign: 'center',
     fontWeight: FontWeights.semibold,
     color: Colors.gray[800],
   },
@@ -360,9 +370,9 @@ const styles = StyleSheet.create({
     color: Colors.white,
   },
   actionTextGhost: {
-    color: Colors.gray[600],
+    color: Colors.gray[800],
   },
   actionTextDanger: {
-    color: Colors.danger,
+    color: Colors.white,
   },
 });

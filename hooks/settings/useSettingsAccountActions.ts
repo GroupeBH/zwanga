@@ -34,7 +34,7 @@ export function useSettingsAccountActions({
         { label: 'Annuler', variant: 'ghost' },
         {
           label: 'Supprimer',
-          variant: 'primary',
+          variant: 'destructive',
           autoClose: false,
           onPress: async () => {
             try {

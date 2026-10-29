@@ -13,7 +13,7 @@ function controllerFixture() {
   const dispatch = () => {};
   const showDialog = () => {};
   const hookNames = ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity', 'useHomeTripSelection',
-    'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals'];
+    'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals', 'useHomeMapMarkers'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, {
     [name]: props => {
       received[name] = props;

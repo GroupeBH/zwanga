@@ -9,10 +9,12 @@ import * as WebBrowser from 'expo-web-browser';
 import {
   useGetMyBookingsQuery,
   useLazyCheckBookingPaymentStatusQuery,
+  useLazyGetBookingByIdQuery,
   useUpdateBookingPaymentModeMutation,
 } from '@/store/api/bookingApi';
 import { useGetMyWalletQuery } from '@/store/api/walletApi';
 import type { Booking, BookingPaymentResponse, TripPaymentMode } from '@/types';
+import { readPaymentResult } from '@/features/arrival-payment/readPaymentResult';
 
 interface Params {
   isSessionCurrent: () => boolean;
@@ -35,6 +37,7 @@ export function useArrivalPaymentProvider({
   updatePaymentMode,
   showCompletionSummary,
 }: Params) {
+  const [readBooking] = useLazyGetBookingByIdQuery();
   const pointsInFlight = useRef(new Map<string, Promise<boolean>>());
   const openCardPaymentUrl = useCallback(
     async (
@@ -95,25 +98,32 @@ export function useArrivalPaymentProvider({
   const settleWithPointsOnce = useCallback(
     async (bookingId: string) => {
       if (!isSessionCurrent()) return false;
-      const updatedBooking = await updatePaymentMode({
-        bookingId,
-        paymentMode: 'points',
-      }).unwrap();
+      let updatedBooking: Booking;
+      try {
+        updatedBooking = await updatePaymentMode({ bookingId, paymentMode: 'points' }).unwrap();
+      } catch (error) {
+        if (!isSessionCurrent()) return false;
+        // A lost response / replay can be rejected after the debit committed.
+        // Reconcile the booking instead of submitting another top-up or debit.
+        const fresh = await readPaymentResult(readBooking(bookingId, false));
+        if (!isSessionCurrent()) return false;
+        if (fresh?.id !== bookingId || !(fresh.paymentStatus === 'succeeded' || normalizeAmount(fresh.paymentAmount) === 0)) throw error;
+        updatedBooking = fresh;
+      }
 
       if (!isSessionCurrent()) return false;
       if (
-        updatedBooking.paymentStatus === 'succeeded' ||
-        updatedBooking.paymentStatus === 'not_required' ||
-        normalizeAmount(updatedBooking.paymentAmount) === 0
+        updatedBooking?.id === bookingId && (updatedBooking.paymentStatus === 'succeeded' ||
+        normalizeAmount(updatedBooking.paymentAmount) === 0)
       ) {
-        await showCompletionSummary(updatedBooking, { mode: 'points' });
+        await showCompletionSummary(updatedBooking, { mode: updatedBooking.paymentMode ?? 'points' });
         return true;
       }
 
       setStatusMessage('Les jetons sont en cours de vérification. Vous pouvez fermer cette fenêtre et reprendre plus tard.');
       return false;
     },
-    [isSessionCurrent, showCompletionSummary, updatePaymentMode, setStatusMessage],
+    [isSessionCurrent, showCompletionSummary, updatePaymentMode, setStatusMessage, readBooking],
   );
 
   const settleWithPoints = useCallback((bookingId: string) => {

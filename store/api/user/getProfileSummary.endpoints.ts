@@ -68,8 +68,10 @@ deleteAccount: builder.mutation<{ message: string }, void>({
         method: 'DELETE',
       }),
       async onQueryStarted(_arg, { queryFulfilled }) {
-        await queryFulfilled;
-        await AsyncStorage.removeItem(FAVORITE_LOCATION_NOTES_KEY);
+        try { await queryFulfilled; }
+        catch { return; } // The mutation caller handles the server/network failure.
+        try { await AsyncStorage.removeItem(FAVORITE_LOCATION_NOTES_KEY); }
+        catch { console.warn('[Account] Nettoyage local incomplet après suppression du compte.'); }
       },
       invalidatesTags: [currentUserTag, kycStatusTag, vehicleListTag, favoriteLocationsListTag],
     }),

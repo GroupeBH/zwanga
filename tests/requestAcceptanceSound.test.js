@@ -76,6 +76,7 @@ test('foreground notification presentation leaves sound to the shared player and
       '../hooks/notifications/useOverdueRequestNotification': { useOverdueRequestNotification: () => ({}) },
       '@/hooks/notifications/useDriverNotifications': { useDriverNotifications() {} },
       '@/hooks/notifications/useRideRinging': { useRideRinging() {} },
+      '@/hooks/notifications/useIosRideAlertRecovery': { useIosRideAlertRecovery() {} },
       '@/components/ui/DialogProvider': { useDialog: () => ({}) },
       '@/services/pushNotifications': {}, '@/services/backgroundNotificationTask': {},
       '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },

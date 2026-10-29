@@ -182,6 +182,7 @@ export function useArrivalPaymentState() {
         bookingPaymentUrl: null,
         walletTopUpOrderNumber: null,
         walletTopUpIntent: null,
+        walletTopUpConfirmedAt: null,
         mixedCashIntent: null,
       });
       // Do not chain unrelated historical confirmations after closing this one.
@@ -200,6 +201,7 @@ export function useArrivalPaymentState() {
 
   return {
     isMutatingPayment,
+    isCheckingPayment,
     storageError, isStorageLoading, retryPaymentStorage,
     isResumeReady,
     isSessionCurrent,

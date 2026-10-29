@@ -174,6 +174,20 @@ test('empty trip search offers Commander ce trajet without changing the request 
   app.hooks.unmount();
 });
 
+test('trip results still offer ordering a vehicle through the same request creation route', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp();
+  const header = app.list(app.render()).props.ListHeaderComponent;
+  const order = nodes(header).find(node => node.type === 'TouchableOpacity' && text(node) === 'Commander un véhicule');
+  assert.equal(order.props.accessibilityRole, 'button');
+  order.props.onPress();
+  assert.deepEqual(app.routes, [{ pathname: '/request-create', params: { seats: '1' } }]);
+  app.trips = [];
+  assert.equal(nodes(app.list(app.render()).props.ListHeaderComponent)
+    .some(node => node.type === 'TouchableOpacity' && text(node) === 'Commander un véhicule'), false, 'empty state keeps its own action');
+  app.hooks.unmount();
+});
+
 test('embedded search has a tab title without a back arrow and reserves the tab overlay without changing results', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = screenApp();

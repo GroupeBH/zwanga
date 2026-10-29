@@ -155,7 +155,8 @@ export function useArrivalPaymentSubmission({
         setStatusMessage(
           `Vérification du complément de ${formatPoints(intent.amount)}…`,
         );
-        const saved = await persistBookingState(arrivalBooking.id, { walletTopUpIntent: JSON.stringify(intent) });
+        const saved = await persistBookingState(arrivalBooking.id, { walletTopUpIntent: JSON.stringify(intent),
+          ...(recoverTopUp ? {} : { walletTopUpConfirmedAt: null }) });
         if (saved === false || !isSessionCurrent()) return;
         const response = await initiateWalletTopUp({
           intentScope: `booking:${arrivalBooking.id}`,
@@ -188,6 +189,8 @@ export function useArrivalPaymentSubmission({
         }
 
         if (response.payment.status === 'succeeded') {
+          await persistBookingState(arrivalBooking.id, { walletTopUpConfirmedAt: new Date().toISOString() });
+          if (!isSessionCurrent()) return;
           if (await settleWithPoints(arrivalBooking.id)) {
             await acknowledgeWalletTopUpIntent(userId, `booking:${arrivalBooking.id}`, response);
             persistBookingState(arrivalBooking.id, { walletTopUpIntent: null });

@@ -52,7 +52,7 @@ for (const failure of ['setup', 'registered:false']) test(`interactive push retr
   const f = fixture(); f.io.setupFails = failure === 'setup'; f.render();
   t.mock.timers.tick(1200); await tick(); assert.equal(f.io.updates, 1);
   f.io.setupFails = false; f.io.registered = true;
-  t.mock.timers.tick(60000); await tick(); assert.equal(f.io.updates, 1);
+  t.mock.timers.tick(60000); await tick(); assert.equal(f.io.updates, failure === 'registered:false' ? 2 : 1);
   assert.equal(f.io.registrations, failure === 'setup' ? 1 : 2);
   const count = f.io.registrations; t.mock.timers.tick(180000); await tick();
   assert.equal(f.io.registrations, count); assert.equal(f.io.resets, count); f.hooks.unmount();
@@ -115,9 +115,9 @@ test('push retries pause while inactive/offline and register a changed account a
   f.io.enabled = false; f.render(); t.mock.timers.tick(180000); await tick();
   assert.equal(f.io.registrations, 1); assert.equal(f.io.receive, null);
   f.io.enabled = true; f.io.registered = true; f.render(); t.mock.timers.tick(1200); await tick();
-  assert.equal(f.io.registrations, 2); assert.equal(f.io.updates, 1);
+  assert.equal(f.io.registrations, 2); assert.equal(f.io.updates, 2);
   f.io.account = 'b'; f.io.version++; f.render(); t.mock.timers.tick(1200); await tick();
-  assert.equal(f.io.updates, 2); assert.equal(f.io.registrations, 3); f.hooks.unmount();
+  assert.equal(f.io.updates, 3); assert.equal(f.io.registrations, 3); f.hooks.unmount();
 });
 
 test('native token rotation re-registers ordinary and interactive notifications', async t => {
@@ -194,4 +194,25 @@ test('a failed rotation retries even when the previous token was fully registere
   f.io.updateWait = null; t.mock.timers.tick(60000); await tick();
   assert.deepEqual(f.io.sent, ['device', 'rotated', 'rotated']);
   assert.equal(f.io.registrations, 2); f.hooks.unmount();
+});
+
+test('successful registration is rechecked after five foreground minutes, not on every tick', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_000_000 });
+  const f = fixture(); f.io.registered = true;
+  f.render(); t.mock.timers.tick(1200); await tick();
+  assert.equal(f.io.updates, 1);
+  t.mock.timers.tick(240000); await tick(); assert.equal(f.io.updates, 1);
+  t.mock.timers.tick(120000); await tick();
+  assert.equal(f.io.updates, 2); assert.equal(f.io.registrations, 2);
+  f.io.enabled = false; f.render(); t.mock.timers.tick(600000); await tick();
+  assert.equal(f.io.updates, 2); f.hooks.unmount();
+});
+
+test('an available native receiver upgrades a cached legacy capability on foreground return', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const f = fixture(); f.io.registered = true;
+  f.render(); t.mock.timers.tick(1200); await tick(); assert.deepEqual(f.io.capabilities, [2]);
+  f.io.enabled = false; f.render(); f.io.nativeReady = true; f.io.enabled = true; f.render();
+  t.mock.timers.tick(1200); await tick();
+  assert.deepEqual(f.io.capabilities, [2, 6]); assert.equal(f.io.updates, 1); f.hooks.unmount();
 });

@@ -24,6 +24,7 @@ test('one payment modal keeps the same content component from selection through 
     setCompletionSummary: noop, deferPayment: noop, deferEarlyPayment: noop, acknowledgeBooking: noop };
   let submitting = false;
   let recoveryMessage;
+  let canSwitch = false;
   let verification = { phase: 'idle', message: '' };
   let announcement;
   const done = () => {};
@@ -37,7 +38,7 @@ test('one payment modal keeps the same content component from selection through 
     '../hooks/arrival-payment/useArrivalPaymentProvider': { useArrivalPaymentProvider: () => ({}) },
     '../hooks/arrival-payment/useArrivalPaymentMonitoring': { useArrivalPaymentMonitoring: () => ({ verification }) },
     '../hooks/arrival-payment/useArrivalPaymentRecovery': { useArrivalPaymentRecovery: () => ({ isWorking: false, run: noop, message: recoveryMessage }) },
-    '../hooks/arrival-payment/useTokenCashFallback': { useTokenCashFallback: () => ({ canSwitch: false, isWorking: false, run: noop }) },
+    '../hooks/arrival-payment/useTokenCashFallback': { useTokenCashFallback: () => ({ canSwitch, isWorking: false, run: noop }) },
     '../features/arrival-payment/ArrivalPaymentRecovery': { ArrivalPaymentRecovery: 'Recovery' },
     '../hooks/arrival-payment/useArrivalPaymentSubmission': { useArrivalPaymentSubmission: () => ({ handlePayment: noop, isSubmitting: submitting }) },
     '../hooks/arrival-payment/useArrivalPaymentNavigation': { useArrivalPaymentNavigation: () => ({ handleDismissSummary: done }) },
@@ -65,6 +66,11 @@ test('one payment modal keeps the same content component from selection through 
   state.interruptionChoice = null;
   verification = { phase: 'paused', message: 'Le service ne répond pas. Vérifiez à nouveau.' };
   assert.equal(find(render(), 'Recovery').props.message, verification.message, 'do not hide a failed verification behind a generic operator wait');
+  canSwitch = true;
+  assert.equal(find(render(), 'Recovery').props.message, verification.message, 'cash availability must not hide verification failures');
+  state.isCheckingPayment = true;
+  assert.equal(find(render(), 'Recovery').props.verifying, true, 'a status read must be visible even when cash remains selectable');
+  state.isCheckingPayment = false; canSwitch = false;
   recoveryMessage = 'Résultat encore inconnu. Ne payez pas en espèces.';
   assert.equal(find(render(), 'Recovery').props.message, recoveryMessage);
   state.hasPendingProviderPayment = false;

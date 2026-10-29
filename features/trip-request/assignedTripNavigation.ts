@@ -25,3 +25,10 @@ export function hasAssignedTripStarted(tripId: string | null, trip: Trip | undef
   return Boolean(trip.startedAt || trip.status === 'ongoing' || trip.status === 'completed' ||
     trip.interruptionRequest);
 }
+
+export function getAssignedDriverTripId(requestId: string | undefined, request: TripRequest | undefined,
+  userId: string | undefined, error?: unknown): string | null {
+  if (!requestId || request?.id !== requestId || !userId || request.selectedDriverId !== userId ||
+    request.status !== 'driver_selected' || !canUseCachedRequestLink(error)) return null;
+  return request.tripId || null;
+}

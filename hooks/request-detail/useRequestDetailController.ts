@@ -10,6 +10,7 @@ import { useRequestRouteOverridePicker } from './useRequestRouteOverridePicker';
 import { useCallback } from 'react';
 import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 import { buildRequestDetailEntry } from '@/features/notifications/detailEntryAnnouncement';
+import { getAssignedDriverTripId } from '@/features/trip-request/assignedTripNavigation';
 
 export function useRequestDetailController() {
   const data = useRequestDetailData();
@@ -179,6 +180,8 @@ export function useRequestDetailController() {
     isError: data.isError,
     error: data.error,
     passengerTripId: data.passengerTripId,
+    driverTripId: data.isDriverAccount
+      ? getAssignedDriverTripId(data.id, data.tripRequest, data.currentUser?.id, data.error) : null,
     handleViewTrip: driverActions.handleViewTrip,
     refetch: data.refetch,
     routeCoordinates: form.routeCoordinates,

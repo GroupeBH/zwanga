@@ -44,7 +44,7 @@ test('a server cash fallback stops top-up settlement on reopen and ignores a lat
   env.hooks.unmount();
 });
 
-test('502 pauses checks, releases busy state and retains payment references despite rerenders and foregrounding', async t => {
+test('502 pauses checks, retains references and retries once on foreground rather than every render', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   for (const kind of ['wallet', 'booking']) {
     const env = environment(kind); env.response = async () => { throw { status: 502, data: { message: 'ECONNRESET' } }; };
@@ -55,7 +55,7 @@ test('502 pauses checks, releases busy state and retains payment references desp
     for (let i = 0; i < 100; i++) env.render();
     env.state.isAppActive = false; env.render(); env.state.isAppActive = true; env.render();
     t.mock.timers.tick(600000); await flush();
-    assert.deepEqual(env.checks, ['existing-order']); assert.deepEqual(env.patches, []);
+    assert.deepEqual(env.checks, ['existing-order', 'existing-order']); assert.deepEqual(env.patches, []);
     assert.equal(env.settlements, 0); env.hooks.unmount();
   }
 });
@@ -139,7 +139,21 @@ test('failed points settlement pauses instead of automatically repeating the fin
   assert.match(env.render().verification.message, /Recharge confirmée.*règlement du trajet reste à vérifier/);
   assert.doesNotMatch(env.render().verification.message, /Vérification indisponible/);
   t.mock.timers.tick(600000); await flush(); assert.equal(env.settlements, 1);
+  assert.ok(env.state.activeStoredState.walletTopUpConfirmedAt, 'confirmation survives a reopen');
+  env.state.isAppActive = false; env.render(); env.state.isAppActive = true; env.render(); await flush();
+  assert.equal(env.settlements, 1, 'foreground alone must not repeat a failed settlement mutation');
   assert.equal(env.state.activeStoredState.walletTopUpOrderNumber, 'existing-order'); env.hooks.unmount();
+});
+
+test('returning from operator validation rechecks a paused top-up and completes its original booking', async t => {
+  const env = environment(); t.after(() => env.hooks.unmount());
+  env.response = async () => { throw Error('network lost while validating'); };
+  env.render(); await flush(); assert.equal(env.render().verification.phase, 'paused');
+  env.state.isAppActive = false; env.render();
+  env.response = async () => ({ payment: { status: 'succeeded' } });
+  env.state.isAppActive = true; env.render(); await flush();
+  assert.equal(env.settlements, 1); assert.equal(env.checks.length, 2);
+  assert.equal(env.state.activeStoredState.walletTopUpOrderNumber, null);
 });
 
 test('recovery action checks an existing payment, has no idle spinner and leaves close enabled even during a read', () => {
