@@ -121,7 +121,9 @@ for (const recurring of [false, true]) {
     const { usePublishFormState } = loader({ react: hooks.react })('hooks/publish/usePublishFormState.ts');
     const form = () => hooks.render(() => usePublishFormState('motorcycle_3_wheels'));
     form().setSeats('1');
+    const submissionHooks = hookHarness();
     const { usePublishSubmission } = loader({
+      react: submissionHooks.react,
       '../../features/publish/publishModel': { getLocationCoordinates: () => [15, -4], isUserDriver: () => true },
       '@/services/analytics': { trackEvent() {} },
       '@/services/driverPermissionOnboarding': { recordDriverPublication() {} },
@@ -137,7 +139,7 @@ for (const recurring of [false, true]) {
       createTrip: create, createRecurringTrip: create, setPublicationSuccess() {},
       showDialog() { assert.fail('unexpected validation failure'); },
     };
-    await usePublishSubmission(props).handlePublish();
+    await submissionHooks.render(() => usePublishSubmission(props)).handlePublish();
     assert.equal(payloads.length, 1);
     assert.equal(payloads[0].totalSeats, 1);
     assert.equal(payloads[0].pricePerSeat, 2500);

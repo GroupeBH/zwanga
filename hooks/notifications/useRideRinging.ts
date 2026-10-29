@@ -18,6 +18,7 @@ import { beginRideSpeechEntry, clearRideSpeechEntry, hasPendingRideSpeechEntry, 
 import { BACKGROUND_RIDE_RING_PREFIX, clearBackgroundRideRinging, reconcileBackgroundRideRinging } from '@/services/backgroundRideRinging';
 import { boundedRideAudio, reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
 import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
+import { paymentSpeechPending, readPaymentSpeech, subscribePaymentSpeech } from '@/services/paymentSpeechSource';
 
 /** Restores an alert at app entry, then acknowledges passenger responses only
  * on the matching trip. Driver responses are acknowledged by mutation results. */
@@ -180,16 +181,17 @@ export function useRideRinging(userId: string | undefined) {
     let expiry: ReturnType<typeof setInterval> | undefined;
     const updateExpiry = () => {
       const needed = AppState.currentState === 'active' && (pendingRideAlerts(userId).length > 0 ||
-        pendingRideAlertHandoffs(userId).length > 0 || hasPendingRideSpeechEntry(userId));
+        pendingRideAlertHandoffs(userId).length > 0 || hasPendingRideSpeechEntry(userId) || paymentSpeechPending(readPaymentSpeech(userId, version)));
       if (needed && !expiry) expiry = setInterval(() => { reconcile(); updateExpiry(); }, 1000);
       if (!needed && expiry) { clearInterval(expiry); expiry = undefined; }
     };
     const unsubscribeExpiry = subscribeRideAlerts(updateExpiry);
     const unsubscribeEntry = subscribeRideSpeechEntry(() => { reconcile(); updateExpiry(); });
+    const unsubscribePayment = subscribePaymentSpeech(() => { reconcile(); updateExpiry(); });
     updateExpiry();
     if (Platform.OS === 'ios') reconcile();
     void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED'));
-    return () => { disposed = true; clearTimeout(restoreRetry); clearInterval(expiry); unsubscribeEntry(); unsubscribeExpiry(); unsubscribe(); appState.remove(); foreground.remove();
+    return () => { disposed = true; clearTimeout(restoreRetry); clearInterval(expiry); unsubscribePayment(); unsubscribeEntry(); unsubscribeExpiry(); unsubscribe(); appState.remove(); foreground.remove();
       clearRideSpeechEntry(); clearRideAnnouncementSession(); clearRideAlertSession(); stopForegroundRideSound(); void clearBackgroundRideRinging(); };
   }, [userId]);
 }

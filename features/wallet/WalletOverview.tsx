@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { formatWalletAmount } from './walletModel';
 import { compactWalletStyles as styles } from './WalletOverview.styles';
+import { walletTokenWithdrawalsDisabled, WALLET_TOKEN_USE_ONLY } from './walletPolicy';
 
 type Props = {
   wallet: ReturnType<typeof useWalletController>;
@@ -17,6 +18,7 @@ type Props = {
 export function WalletOverview({ wallet, withdrawal, isDriver = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const summary = wallet.walletSummary;
+  const withdrawalsDisabled = walletTokenWithdrawalsDisabled(summary);
   const actions = [
     { id: 'top_up' as const, label: 'Recharger', icon: 'add-outline' as const, disabled: false },
     { id: 'transfer' as const, label: 'Partager', icon: 'paper-plane-outline' as const, disabled: false },
@@ -54,13 +56,13 @@ export function WalletOverview({ wallet, withdrawal, isDriver = false }: Props) 
       {summary && Number(summary.account.reservedCashCommissionBalance) > 0 &&
         <BalanceLine label="Réservés aux commissions cash" value={formatWalletAmount(summary.account.reservedCashCommissionBalance)} />}
       {summary?.withdrawal && <>
-        <BalanceLine label="Retirables" value={formatWalletAmount(Math.max(0, Math.min(Number(summary.account.withdrawableBalance), Number(summary.account.balance) - Number(summary.account.reservedCashCommissionBalance ?? 0))))} />
+        <BalanceLine label="Retirables" value={formatWalletAmount(withdrawalsDisabled ? 0 : Math.max(0, Math.min(Number(summary.account.withdrawableBalance), Number(summary.account.balance) - Number(summary.account.reservedCashCommissionBalance ?? 0))))} />
         <BalanceLine label="Pour payer uniquement" value={formatWalletAmount(summary.withdrawal.nonWithdrawableTokens)} />
         {Number(summary.account.reservedWithdrawalBalance) > 0 &&
           <BalanceLine label="Retraits en cours" value={formatWalletAmount(summary.account.reservedWithdrawalBalance)} />}
       </>}
       <Text style={styles.caption}>Les jetons paient vos trajets{isDriver ? ', commissions cash' : ''} et abonnements. La fidélité est utilisée en premier, sans retrait possible.</Text>
-      <Text style={styles.caption}>Les jetons achetés, même reçus par partage, sont retirables.</Text>
+      <Text style={styles.caption}>{withdrawalsDisabled ? WALLET_TOKEN_USE_ONLY : 'Les jetons achetés, même reçus par partage, sont retirables.'}</Text>
     </View>}
     <View style={styles.actions}>
       {actions.map(action => <TouchableOpacity key={action.id} style={[styles.action, action.disabled && styles.disabled]}

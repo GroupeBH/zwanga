@@ -6,7 +6,8 @@ export function useRequestResponseWindow(request: TripRequest | undefined, readS
   active: boolean, refetch: () => Promise<unknown>, passenger = false) {
   const [, tick] = useState(0);
   const refreshed = useRef('');
-  const window = request?.responseWindow;
+  // A ringing deadline only advances the alert queue; it does not close an available request.
+  const window = request?.responseWindow?.phase === 'driver' ? undefined : request?.responseWindow;
   const measured = requestResponseDeadline(window, readStartedAt);
   const anchor = useRef<{ key: string; deadline: number | null }>({ key: '', deadline: null });
   const sampleKey = `${request?.id}:${window?.serverNow}:${window?.expiresAt}`;

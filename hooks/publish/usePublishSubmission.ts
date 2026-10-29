@@ -25,6 +25,8 @@ import React from 'react';
 import type { Router } from 'expo-router';
 import type { DriverFinanceSummary } from '@/store/api/driverFinanceApi';
 import { estimateCashCommission } from '@/utils/cashCommission';
+import { resolveSharedRouteAddresses } from '@/services/sharedRouteAddresses';
+import { getTokenSessionVersion } from '@/services/tokenSession';
 
 interface Params {
   acceptedPaymentModes: TripPaymentMode[];
@@ -113,10 +115,14 @@ export function usePublishSubmission({
   getMyTrips,
   router,
 }: Params) {
+  const scope = React.useRef({ active: true, version: getTokenSessionVersion() });
+  React.useEffect(() => { const value = scope.current; value.active = true; return () => { value.active = false; }; }, []);
+  const [isResolvingAddresses, setResolvingAddresses] = React.useState(false);
+  const isCurrent = () => scope.current.active && scope.current.version === getTokenSessionVersion();
   const handlePublish = async () => {
     // RTK Query's isLoading is updated on the next render. The ref also blocks
     // two taps occurring in the same frame from creating duplicate trips.
-    if (publishInFlightRef.current || isSubmittingTrip) return;
+    if (publishInFlightRef.current || isSubmittingTrip || !isCurrent()) return;
 
     if (!hasDepartureAddress || !hasArrivalAddress) {
       setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
@@ -182,6 +188,7 @@ export function usePublishSubmission({
 
     publishInFlightRef.current = true;
     const publicationStartedAt = Date.now();
+    let shared = { departureAddress, arrivalAddress };
 
     try {
       if (acceptedPaymentModes?.length === 0) {
@@ -203,16 +210,21 @@ export function usePublishSubmission({
           return;
         }
       }
+      setResolvingAddresses(true);
+      shared = await resolveSharedRouteAddresses(
+        { text: departureAddress, point: departureLocation }, { text: arrivalAddress, point: arrivalLocation });
+      if (!isCurrent()) return;
+      setResolvingAddresses(false);
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
 
       if (isRecurringTrip) {
         await createRecurringTrip({
           acceptedPaymentModes,
-          departureLocation: departureAddress,
+          departureLocation: shared.departureAddress,
           departureReference: departureReference.trim() || undefined,
           departureCoordinates,
-          arrivalLocation: arrivalAddress,
+          arrivalLocation: shared.arrivalAddress,
           arrivalReference: arrivalReference.trim() || undefined,
           arrivalCoordinates,
           startDate: formatDateOnlyValue(departureDate),
@@ -236,10 +248,10 @@ export function usePublishSubmission({
       } else {
         await createTrip({
           acceptedPaymentModes,
-          departureLocation: departureAddress,
+          departureLocation: shared.departureAddress,
           departureReference: departureReference.trim() || undefined,
           departureCoordinates,
-          arrivalLocation: arrivalAddress,
+          arrivalLocation: shared.arrivalAddress,
           arrivalReference: arrivalReference.trim() || undefined,
           arrivalCoordinates,
           departureDate: departureDate.toISOString(),
@@ -263,15 +275,17 @@ export function usePublishSubmission({
       // opening a native Modal above a stack screen that already contains a
       // MapView can crash during the publication transition, so the feedback is
       // rendered as an in-screen overlay instead of a React Native Modal.
+      if (!isCurrent()) return;
       setPublicationSuccess({ recurring: isRecurringTrip });
       void recordDriverPublication(user?.id);
     } catch (error: any) {
+      if (!isCurrent()) return;
       if (isPublicationPhotoRequired(error)) {
         showDialog(publicationPhotoDialog(router));
         return;
       }
-      const normalizedDeparture = departureAddress.trim().toLowerCase();
-      const normalizedArrival = arrivalAddress.trim().toLowerCase();
+      const normalizedDeparture = shared.departureAddress.trim().toLowerCase();
+      const normalizedArrival = shared.arrivalAddress.trim().toLowerCase();
       const recoveredPublication = isRecurringTrip
         ? await reconcileAmbiguousMutation({
             error,
@@ -303,6 +317,7 @@ export function usePublishSubmission({
               }),
           });
 
+      if (!isCurrent()) return;
       if (recoveredPublication) {
         setPublicationSuccess({ recurring: isRecurringTrip });
         void recordDriverPublication(user?.id);
@@ -335,10 +350,12 @@ export function usePublishSubmission({
       });
     } finally {
       publishInFlightRef.current = false;
+      if (isCurrent()) setResolvingAddresses(false);
     }
   };
 
   return {
     handlePublish,
+    isResolvingAddresses,
   };
 }

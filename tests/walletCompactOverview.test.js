@@ -88,6 +88,30 @@ test('cash holds use bonuses first without subtracting them twice from withdrawa
   f.hooks.unmount();
 });
 
+test('explicit server token withdrawal ban removes the old promise without hiding checks on a previous withdrawal', () => {
+  const f = fixture();
+  f.wallet.walletSummary = { ...summary, withdrawal: { ...summary.withdrawal,
+    enabled: false, blocked: true, availableMoney: 0, nonWithdrawableTokens: 100,
+    disabledReason: { code: 'TOKEN_WITHDRAWALS_DISABLED' } } };
+  f.withdrawal.canSubmit = false;
+  button(f.overview(), 'Détails des jetons').props.onPress();
+  const tree = f.overview();
+  assert.match(words(tree), /ne peuvent pas être retirés en argent/);
+  assert.doesNotMatch(words(tree), /même reçus par partage, sont retirables/);
+  assert.equal(all(tree).find(n => n.props.label === 'Retirables').props.value, '0 jetons');
+  assert.equal(button(tree, 'Retirer des jetons').props.disabled, true);
+  assert.match(words(f.history()), /ne peuvent pas être retirés en argent/);
+  assert.doesNotMatch(words(f.history()), /temporairement|Portefeuille à vérifier/);
+  f.withdrawal.activeIntent = { tokens: 5 }; f.withdrawal.canSubmit = true;
+  button(f.overview(), 'Vérifier le retrait').props.onPress();
+  assert.deepEqual(f.calls, ['withdrawal']);
+  const modal = f.WalletWithdrawalModal({ summary: f.wallet.walletSummary, withdrawal: f.withdrawal, visible: true, onClose() {} });
+  assert.match(words(modal), /Retirable.*0 jetons.*ne peuvent pas être retirés/);
+  assert.match(words(modal), /Vérifier la même demande/);
+  assert.equal(all(modal).find(n => n.type === 'Button').props.disabled, false);
+  f.hooks.unmount();
+});
+
 test('driver debt is next to the balance without a reserve card or duplicate recharge action', () => {
   const f = fixture();
   assert.doesNotMatch(words(f.overview(true)), /Commission à régler|Réserve cash|Réserve indisponible/);

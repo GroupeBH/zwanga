@@ -20,8 +20,12 @@ import { AuthStep } from '@/components/auth';
 import type { Router } from 'expo-router';
 import type { StartDiditKycOptions, DiditKycFlowOutcome } from '@/features/identity/diditFlowTypes';
 import type { AuthResponse } from '@/store/api/authApi';
+import { isSignupOtpVerificationEnabled } from '@/config/env';
+import { SignupPhoneProofError, type SignupPhoneProof } from '@/features/auth/signupPhoneProof';
 
 interface Params {
+  signupPhoneProof?: SignupPhoneProof;
+  restartPhoneVerification?: () => void;
   firstName: string;
   lastName: string;
   setStep: React.Dispatch<React.SetStateAction<AuthStep>>;
@@ -52,6 +56,8 @@ interface Params {
 }
 
 export function useRegistrationActions({
+  signupPhoneProof,
+  restartPhoneVerification,
   firstName,
   lastName,
   setStep,
@@ -191,6 +197,11 @@ export function useRegistrationActions({
             licensePlate: normalizeVehiclePlate(vehiclePlate),
           }
         : undefined;
+
+      if (isSignupOtpVerificationEnabled && !signupPhoneProof) throw new SignupPhoneProofError();
+      const phoneVerificationToken = isSignupOtpVerificationEnabled
+        ? signupPhoneProof?.take(phone) : undefined;
+      const phoneProofPayload = phoneVerificationToken ? { phoneVerificationToken } : {};
       
       if (googleIdToken && isGooglePhoneVerified) {
         const authMethod = socialProvider ?? 'google';
@@ -205,6 +216,7 @@ export function useRegistrationActions({
               role,
               vehicle: signupVehicle,
               ...referralSignupPayload,
+              ...phoneProofPayload,
             }).unwrap()
           : await googleMobile({
               idToken: googleIdToken,
@@ -215,6 +227,7 @@ export function useRegistrationActions({
               role,
               vehicle: signupVehicle,
               ...referralSignupPayload,
+              ...phoneProofPayload,
             }).unwrap();
         await completeRegistration(result, authMethod, legalFirstName || googleProfileName || '');
         return;
@@ -222,6 +235,7 @@ export function useRegistrationActions({
       
       const formData = new FormData();
       formData.append('phone', phone);
+      if (phoneVerificationToken) formData.append('phoneVerificationToken', phoneVerificationToken);
       formData.append('pin', pin);
       formData.append('firstName', legalFirstName);
       formData.append('lastName', legalLastName);
@@ -247,6 +261,12 @@ export function useRegistrationActions({
       await completeRegistration(result, 'phone', legalFirstName);
     } catch (error: any) {
       if (!mounted.current) return;
+      const code = error?.data?.code ?? error?.code;
+      if (!resumeFinalization.current && ['PHONE_VERIFICATION_REQUIRED', 'PHONE_VERIFICATION_INVALID'].includes(code)) {
+        restartPhoneVerification?.();
+        showDialog({ variant: 'warning', title: 'Vérification du numéro', message: 'Vérifiez à nouveau votre numéro par SMS. Votre profil est conservé.' });
+        return;
+      }
       showDialog(resumeFinalization.current
         ? { variant: 'warning', title: 'Connexion à finaliser', message: 'Votre compte est déjà créé. Réessayez pour finaliser la connexion, sans recréer de compte.' }
         : { variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, "Impossible de terminer l'inscription pour le moment.") });

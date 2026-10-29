@@ -205,12 +205,13 @@ test('leaving the address field before its debounce ends does not launch a reque
   assert.equal(requests, 0);
 });
 
-function submissionHarness({ create, list = () => Promise.resolve([]), verified = true, dispatchEnabled = false }) {
+function submissionHarness({ create, list = () => Promise.resolve([]), verified = true, dispatchEnabled = false, addressResolver }) {
   const hooks = hookHarness();
   const dialogs = [], routes = [], permissionOffers = [];
   const identityChecks = [];
   const identity = { isIdentityVerified: verified, checkIdentity: (...args) => identityChecks.push(args), refreshKycStatus() {} };
   const { useRequestSubmission } = loader({
+    ...(addressResolver ? { '@/services/sharedRouteAddresses': { resolveSharedRouteAddresses: addressResolver } } : {}),
     react: hooks.react,
     'expo-router': { useRouter: () => ({ replace: (route) => routes.push(route) }) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: (dialog) => dialogs.push(dialog) }) },
@@ -350,6 +351,7 @@ test('submission prevents double taps, omits unspecified seats and opens trackin
   const form = app.render();
   const first = form.handleCreateRequest();
   await form.handleCreateRequest();
+  await new Promise(resolve => setImmediate(resolve));
   assert.equal(calls.length, 1);
   assert.equal(Object.hasOwn(calls[0], 'numberOfSeats'), false);
   assert.equal(calls[0].maxPricePerSeat, 2500);
@@ -484,10 +486,34 @@ test('an unconfirmed request never claims success and repeated checks do not rep
 test('a late server response after leaving the form does not announce success or restart verification', async () => {
   const pending = deferred(); let reads = 0;
   const app = submissionHarness({ create: () => pending.promise, list: async () => { reads++; return []; } });
-  const submitted = app.render().handleCreateRequest(); app.hooks.unmount();
+  const submitted = app.render().handleCreateRequest();
+  await new Promise(resolve => setImmediate(resolve)); app.hooks.unmount();
   pending.reject({ status: 'TIMEOUT_ERROR' }); await submitted;
   assert.equal(reads, 0); assert.deepEqual(app.routes, []);
   assert.deepEqual(app.permissionOffers, []);
+});
+
+test('request address resolution is busy, blocks duplicate sends and never posts after leaving', async () => {
+  const address = deferred(); let posts = 0;
+  const app = submissionHarness({ create: async () => { posts++; return { id: 'request' }; }, addressResolver: () => address.promise });
+  const started = app.render().handleCreateRequest();
+  assert.equal(app.render().isCreating, true);
+  await app.render().handleCreateRequest(); assert.equal(posts, 0);
+  app.hooks.unmount(); address.resolve({ departureAddress: 'Rue des Écoles', arrivalAddress: 'Gare' });
+  await started; assert.equal(posts, 0); assert.deepEqual(app.routes, []);
+});
+
+test('request sends resolved shared addresses and keeps coordinates and reference intact', async () => {
+  let payload;
+  const app = submissionHarness({ create: async value => { payload = value; return { id: 'request' }; },
+    addressResolver: async () => ({ departureAddress: 'Rue des Écoles', arrivalAddress: 'Gare' }) });
+  app.props.departureAddress = 'Ma position'; app.props.departureReference = 'Près de la porte';
+  app.props.departureLocation = { title: 'Ma position', address: '', latitude: -4.31, longitude: 15.29 };
+  await app.render().handleCreateRequest();
+  assert.equal(payload.departureLocation, 'Rue des Écoles');
+  assert.deepEqual(payload.departureCoordinates, [15.29, -4.31]);
+  assert.equal(payload.departureReference, 'Près de la porte');
+  app.hooks.unmount();
 });
 
 test('confirmed request offers background permission after success, never while the server is pending', async () => {

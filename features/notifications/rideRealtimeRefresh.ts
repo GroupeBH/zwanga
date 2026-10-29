@@ -1,10 +1,13 @@
 import type { RideRealtimeEvent } from './rideRealtime';
 
-type Tag = { type: 'AccountActivity' | 'DriverDispatch' | 'Booking' | 'TripRequest' | 'MyTripRequests'; id?: string };
+type Tag = { type: 'AccountActivity' | 'DriverDispatch' | 'Booking' | 'TripRequest' | 'MyTripRequests' | 'Notification' | 'DriverSettlement'; id?: string };
 
 /** Lists must refresh for newly created rows; unrelated detail caches need not. */
 export function rideRealtimeTags(event: RideRealtimeEvent): Tag[] {
+  if (event.kind === 'payment') return [{ type: 'Notification', id: 'DRIVER_PAYMENTS' },
+    { type: 'AccountActivity' }, { type: 'DriverSettlement' }];
   if (event.kind === 'reconnected') return [
+    { type: 'Notification', id: 'DRIVER_PAYMENTS' },
     { type: 'AccountActivity' }, { type: 'DriverDispatch' }, { type: 'Booking' },
     { type: 'TripRequest' }, { type: 'MyTripRequests' },
   ];

@@ -47,7 +47,7 @@ function getEnvConfig(): EnvConfig {
   
   // IMPORTANT: En production (build Play Store/App Store), __DEV__ sera toujours false
   // Si __DEV__ est false et que l'env détecté est 'development', c'est une erreur de configuration
-  // On force donc 'production' pour garantir que l'OTP sera toujours requis
+  // Le fournisseur et l'obligation OTP restent pilotés séparément par le backend.
   if (!__DEV__ && env === 'development') {
     console.warn('[env.ts] Warning: __DEV__ is false but env is "development". Forcing to "production".');
     env = 'production';

@@ -125,7 +125,7 @@ export default function TripRequestDetailsScreen() {
     compatibleActiveVehicles: model.compatibleActiveVehicles,
     requestedVehicleType: model.requestedVehicleType,
   });
-  const showDecision = !sharing && !model.isOwner && model.isDriverAccount && !model.tripRequest.immediateDispatch &&
+  const showDecision = !sharing && !model.isOwner && model.isDriverAccount &&
     isRequestUnassigned(model.tripRequest) && isTripRequestWithinAcceptanceWindow(model.tripRequest);
   const showCourse = !model.isOwner && (model.canOpenAssignedTrip || model.canStartAssignedTrip);
 

@@ -7,14 +7,16 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { formatMoney, normalizeAmount } from './paymentNoticeModel';
+import { driverPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
+import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
 
 /** Explicit receipt, never a dropoff confirmation, electronic payment or revenue credit. */
-export function ConfirmCashReceipt({ booking }: { booking: Booking }) {
+export function ConfirmCashReceipt({ booking, announce = false }: { booking: Booking; announce?: boolean }) {
   const userId = useAppSelector(state => state.auth.user?.id);
-  return <CashReceiptSession key={`${userId}:${booking.id}`} booking={booking} />;
+  return <CashReceiptSession key={`${userId}:${booking.id}`} booking={booking} announce={announce} />;
 }
 
-function CashReceiptSession({ booking }: { booking: Booking }) {
+function CashReceiptSession({ booking, announce }: { booking: Booking; announce: boolean }) {
   const [confirm, { isLoading }] = useConfirmCashReceiptMutation();
   const active = useScreenIsActive();
   const [confirming, setConfirming] = useState(false);
@@ -26,8 +28,12 @@ function CashReceiptSession({ booking }: { booking: Booking }) {
   activeRef.current = active;
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const amount = normalizeAmount(booking.paymentAmount);
-  if (booking.status !== 'completed' || !booking.droppedOff || booking.paymentMode !== 'cash'
-    || !amount || !['CDF', 'USD'].includes(booking.paymentCurrency ?? '')) return null;
+  const eligible = booking.status === 'completed' && booking.droppedOff && booking.paymentMode === 'cash'
+    && Boolean(amount) && ['CDF', 'USD'].includes(booking.paymentCurrency ?? '');
+  usePaymentAnnouncement(eligible ? driverPaymentAnnouncement({ bookingId: booking.id, amount: amount!,
+    currency: booking.paymentCurrency!, mode: 'cash' }, Boolean(booking.cashReceivedAt || received)) : null,
+  active && Boolean(eligible) && (announce || confirming || received));
+  if (!eligible || amount === null) return null;
   if (booking.cashReceivedAt || received) return <Text style={styles.received}>Cash reçu confirmé · {formatMoney(amount, booking.paymentCurrency)}</Text>;
   const submit = async () => {
     if (busy.current || !activeRef.current || !alive.current) return;

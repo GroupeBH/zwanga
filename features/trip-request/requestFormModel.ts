@@ -4,6 +4,7 @@ import {
 } from '@/constants/paymentFeatures';
 import type { FavoriteLocation, TripPaymentMode } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { sharedLocationLabel } from '@/utils/sharedLocationLabel';
 import { boundedRoutePoints, routeBounds } from '@/utils/routes/safePolyline';
 import type { Ionicons } from '@expo/vector-icons';
 import { type Region } from 'react-native-maps';
@@ -137,7 +138,7 @@ export function favoriteIcon(type: FavoriteLocation['type']) {
 }
 
 export function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
-  return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
+  return sharedLocationLabel(selection, manualAddress) || (selection ? 'Point sélectionné' : '');
 }
 
 export function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {

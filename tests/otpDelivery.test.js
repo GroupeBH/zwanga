@@ -43,13 +43,13 @@ function text(tree) {
 }
 const buttons = tree => nodes(tree).filter(node => node.type === 'TouchableOpacity');
 
-test('notice prioritizes WhatsApp via Didit, includes SMS fallback and does not truncate text', () => {
+test('notice describes SMS without provider branding and does not truncate text', () => {
   const { OtpDeliveryNotice } = uiLoader()('components/auth/OtpDeliveryNotice.tsx');
   for (const beforeSend of [true, false]) {
     const tree = OtpDeliveryNotice({ beforeSend });
-    assert.match(text(tree), /WhatsApp via Didit/);
+    assert.match(text(tree), /Code par SMS/);
     assert.match(text(tree), /SMS/);
-    assert.match(text(tree), beforeSend ? /en priorité/ : /revenez saisir le code ici/);
+    assert.match(text(tree), beforeSend ? /recevrez un code par SMS/ : /saisissez le code ici/);
     assert.equal(buttons(tree).length, 0); // No external navigation or automatic resend.
     for (const node of nodes(tree).filter(node => node.type === 'Text')) {
       assert.equal(node.props.numberOfLines, undefined);
@@ -65,17 +65,17 @@ test('before-send guidance appears only when signup really requests OTP, for pho
     const { GooglePhoneStep } = load('components/auth/steps/GooglePhoneStep.tsx');
     const props = { phone: '', mode: 'signup', isLoading: false, onSubmit: noop };
     for (const tree of [PhoneStep(props), GooglePhoneStep(props)]) {
-      assert.equal(text(tree).includes('WhatsApp via Didit'), enabled);
+      assert.equal(text(tree).includes('Code par SMS'), enabled);
       assert.equal(buttons(tree)[0].props.disabled, true);
     }
     assert.doesNotMatch(text(PhoneStep({ ...props, mode: 'login' })), /WhatsApp|Didit/);
   }
 });
 
-test('compact delivery notice keeps WhatsApp/Didit and SMS, with scalable untruncated text', () => {
+test('compact delivery notice describes SMS, with scalable untruncated text', () => {
   const { OtpDeliveryNotice } = uiLoader()('components/auth/OtpDeliveryNotice.tsx');
   const tree = OtpDeliveryNotice({ compact: true });
-  assert.match(text(tree), /WhatsApp via Didit.*Consultez WhatsApp ou vos SMS/);
+  assert.match(text(tree), /Code par SMS.*Consultez vos SMS/);
   for (const node of nodes(tree).filter(node => node.type === 'Text')) {
     assert.equal(node.props.numberOfLines, undefined);
     assert.notEqual(node.props.allowFontScaling, false);
@@ -84,7 +84,7 @@ test('compact delivery notice keeps WhatsApp/Didit and SMS, with scalable untrun
 
 for (const os of ['android', 'ios']) {
   for (const name of ['SmsStep', 'GoogleOtpStep', 'ResetPinStep']) {
-    test(`${name} (${os}) keeps digit count, paste, autofill and resend while guiding toward WhatsApp`, () => {
+    test(`${name} (${os}) keeps digit count, paste, autofill and resend while guiding toward SMS`, () => {
       const Screen = uiLoader(true, os)(`components/auth/steps/${name}.tsx`)[name];
       const size = name === 'ResetPinStep' ? 6 : 5;
       let code = Array(size).fill(''), resends = 0, focused = null;
@@ -101,7 +101,7 @@ for (const os of ['android', 'ios']) {
         isVerifying: false, isLoading: false, isResending: false, ...extra,
       });
       let tree = render();
-      assert.match(text(tree), /WhatsApp via Didit/);
+      assert.match(text(tree), /Code par SMS/);
       assert.match(text(tree), /SMS/);
       assert.match(text(tree), /\+243000000000/);
       assert.match(text(tree), new RegExp(`${size} chiffres`));
@@ -127,16 +127,16 @@ for (const os of ['android', 'ios']) {
   }
 }
 
-test('profile PIN recovery names WhatsApp and Didit, without claiming delivery before success', () => {
+test('profile PIN recovery names SMS, without claiming delivery before success', () => {
   const { ProfilePinModal } = uiLoader()('components/profile/ProfilePinModal.tsx');
   const props = {
     pinModalVisible: true, currentUser: { phone: '+243000000000' },
     oldPin: '', newPin: '', newPinConfirm: '', otpCode: Array(6).fill(''),
     otpInputRefs: { current: [] }, isSendingOtp: true,
   };
-  assert.match(text(ProfilePinModal({ ...props, pinStep: 'oldPin' })), /WhatsApp ou par SMS/);
+  assert.match(text(ProfilePinModal({ ...props, pinStep: 'oldPin' })), /code par SMS/);
   const tree = ProfilePinModal({ ...props, pinStep: 'otp' });
-  assert.match(text(tree), /WhatsApp via Didit/);
+  assert.match(text(tree), /Code par SMS/);
   assert.match(text(tree), /SMS/);
   assert.match(text(tree), /6 chiffres/);
   assert.doesNotMatch(text(tree), /a été envoyé/);
@@ -149,7 +149,7 @@ test('profile PIN recovery names WhatsApp and Didit, without claiming delivery b
 test('login explains forgotten-PIN delivery; normal PIN creation does not promise an OTP', () => {
   const { PinStep } = uiLoader()('components/auth/steps/PinStep.tsx');
   const props = { pin: '', pinConfirm: '', pinInputRef: { current: null }, onForgotPin: noop };
-  assert.match(text(PinStep({ ...props, mode: 'login' })), /WhatsApp ou par SMS/);
+  assert.match(text(PinStep({ ...props, mode: 'login' })), /code par SMS/);
   assert.doesNotMatch(text(PinStep({ ...props, mode: 'signup' })), /WhatsApp|Didit/);
   const { ResetPinStep } = uiLoader()('components/auth/steps/ResetPinStep.tsx');
   assert.doesNotMatch(text(ResetPinStep({ resetPinStep: 'newPin', otpCode: [], newPin: '', newPinConfirm: '' })), /WhatsApp|Didit/);
@@ -167,7 +167,7 @@ function authActions(enabled = true) {
   });
   const props = {
     phone: '+243000000000', googlePhone: '+243000000000', mode: 'signup',
-    setPhone: noop, setGooglePhone: noop, setIsSendingOtp: noop,
+    setPhone: noop, setGooglePhone: noop, setSmsCode: noop, setIsSendingOtp: noop,
     setIsSendingGoogleOtp: noop, setGoogleOtp: noop, setIsGooglePhoneVerified: noop,
     setStep: value => calls.push(['step', value]),
     setGoogleSignupStep: value => calls.push(['socialStep', value]),
@@ -177,7 +177,7 @@ function authActions(enabled = true) {
   return { load, props, calls, dialogs, renderPhone: () => hooks.render(() => load('hooks/auth/usePhoneAuthActions.ts').usePhoneAuthActions(props)) };
 }
 
-test('phone send and resend use WhatsApp guidance without promising a new code or renewed expiry', async () => {
+test('phone send and resend use SMS guidance without promising a new code or renewed expiry', async () => {
   const app = authActions();
   const actions = app.renderPhone();
   await actions.handlePhoneSubmit();
@@ -185,20 +185,19 @@ test('phone send and resend use WhatsApp guidance without promising a new code o
   assert.deepEqual(app.calls.filter(call => call[0] === 'send'), Array(2).fill(['send', { phone: app.props.phone, context: 'registration' }]));
   for (const dialog of app.dialogs) {
     assert.equal(dialog.variant, 'success');
-    assert.match(dialog.message, /WhatsApp/);
-    assert.match(dialog.message, /Didit/);
+    assert.doesNotMatch(dialog.message, /WhatsApp|Didit/);
     assert.match(dialog.message, /SMS/);
     assert.doesNotMatch(dialog.message, /nouveau|minutes/);
   }
 });
 
-test('social resend guides to WhatsApp and preserves provider throttling errors', async () => {
+test('social resend guides to SMS and preserves provider throttling errors', async () => {
   const app = authActions();
   const { useSocialPhoneVerification } = app.load('hooks/auth/useSocialPhoneVerification.ts');
   await useSocialPhoneVerification(app.props).handleSendGoogleOtp();
   assert.deepEqual(app.calls.at(-1), ['socialStep', 'otp']);
   await useSocialPhoneVerification(app.props).handleResendGoogleOtp();
-  assert.match(app.dialogs.at(-1).message, /WhatsApp.*Didit.*SMS/);
+  assert.match(app.dialogs.at(-1).message, /SMS/);
   assert.doesNotMatch(app.dialogs.at(-1).message, /nouveau/);
   app.props.sendPhoneVerificationOtp = () => ({ unwrap: async () => { throw { status: 429, data: { message: 'Trop de tentatives OTP, réessayez plus tard' } }; } });
   await useSocialPhoneVerification(app.props).handleResendGoogleOtp();
@@ -206,7 +205,7 @@ test('social resend guides to WhatsApp and preserves provider throttling errors'
   assert.match(app.dialogs.at(-1).message, /Trop de tentatives/);
 });
 
-test('disabled signup OTP does not send a code or announce WhatsApp delivery', async () => {
+test('disabled signup OTP does not send a code or announce SMS delivery', async () => {
   const app = authActions(false);
   await app.renderPhone().handlePhoneSubmit();
   await app.load('hooks/auth/useSocialPhoneVerification.ts').useSocialPhoneVerification(app.props).handleSendGoogleOtp();
@@ -214,7 +213,7 @@ test('disabled signup OTP does not send a code or announce WhatsApp delivery', a
   assert.equal(app.dialogs.length, 0);
 });
 
-test('Didit send failures are not mislabeled as an incorrect OTP, in auth and profile', () => {
+test('SMS send failures are not mislabeled as an incorrect OTP, in auth and profile', () => {
   const load = loader();
   const { getApiErrorMessage } = load('utils/errorHelpers.ts');
   const { getAuthErrorMessage } = load('features/auth/authModel.ts');

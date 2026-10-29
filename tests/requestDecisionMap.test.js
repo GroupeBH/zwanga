@@ -133,6 +133,44 @@ test('supplied route is reused without another directions request', t => {
   assert.equal(elements(tree).find(item => item.type === 'Polyline').props.coordinates, road);
 });
 
+test('overview draws the requested route without a toggle or extra tap', async t => {
+  const f = preview(t);
+  Object.assign(f.f.props, { initiallyExpanded: false, displayMode: 'overview', overviewHeight: 295 });
+  let tree = f.render();
+  assert.equal(elements(tree).some(item => item.type === 'Pressable'), false);
+  assert.deepEqual(f.calls, [[departure, arrival]]);
+  const frame = elements(tree).find(item => item.props.testID === 'request-decision-map');
+  const style = Object.assign({}, ...frame.props.style.filter(Boolean));
+  assert.equal(style.height, 295); assert.equal(style.borderRadius, 0);
+  await Promise.resolve(); tree = f.render();
+  assert.equal(elements(tree).find(item => item.type === 'Polyline').props.coordinates, road);
+  assert.deepEqual(elements(tree).filter(item => item.type === 'Marker').map(item => item.props.coordinate), [departure, arrival]);
+  f.f.active = false;
+  assert.equal(elements(f.render()).some(item => item.type === 'MapView'), false);
+  assert.equal(f.calls.length, 1, 'overview never fetches while the screen is hidden');
+});
+
+test('overview without coordinates remains a short readable notice, not an empty map', t => {
+  const f = preview(t);
+  Object.assign(f.f.props, { displayMode: 'overview', mapData: null });
+  const tree = f.render();
+  assert.match(words(tree), /Carte indisponible.*adresses ci-dessous/);
+  assert.equal(elements(tree).some(item => item.props.testID === 'request-decision-map'), false);
+  assert.equal(f.calls.length, 0);
+});
+
+test('polling a new object with the same endpoints does not recenter the overview fallback', t => {
+  const f = preview(t, () => new Promise(() => {}));
+  Object.assign(f.f.props, { displayMode: 'overview', overviewHeight: 295 });
+  const map = elements(f.render()).find(item => item.type === 'MapView');
+  map.props.onMapReady(); map.props.onLayout({ nativeEvent: { layout: { width: 390, height: 295 } } });
+  f.render(); assert.equal(f.camera.length, 1);
+  f.f.props.mapData = { ...mapData, fallbackCoordinates: [...mapData.fallbackCoordinates] };
+  f.render(); assert.equal(f.camera.length, 1); assert.equal(f.calls.length, 1);
+  f.f.props.overviewHeight = 200;
+  f.render(); assert.equal(f.camera.length, 2, 'orientation resizes still frame the two endpoints');
+});
+
 test('route service failure leaves a dotted departure/destination preview, not a fake road', async t => {
   const f = preview(t, async () => { throw new Error('offline'); }); f.render();
   await Promise.resolve(); await Promise.resolve();

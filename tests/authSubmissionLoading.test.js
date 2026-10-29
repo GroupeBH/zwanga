@@ -23,6 +23,7 @@ function signupFixture(method = 'phone', extra = {}) {
     showDialog: dialog => dialogs.push(dialog), setStep: () => calls.push('step'),
     router: { replace: () => calls.push('redirect') }, ...extra };
   const { useRegistrationActions } = loader({ react: hooks.react, 'react-native': { Platform: { OS: 'ios' } },
+    '@/config/env': { isSignupOtpVerificationEnabled: false },
     '../../features/auth/authModel': { ensureAuthNotifeeLoaded() {},
       notifeeInstance: { requestPermission: async () => {}, displayNotification: () => io.notification() },
       getAuthErrorMessage: (_error, fallback) => fallback },

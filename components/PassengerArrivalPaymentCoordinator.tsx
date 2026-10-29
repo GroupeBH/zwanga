@@ -32,6 +32,8 @@ import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import { PendingPaymentReminder } from '@/features/arrival-payment/PendingPaymentReminder';
 import { Spacing } from '@/constants/styles';
 import { openInterruptionChoice } from '@/store/slices/tripsSlice';
+import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
+import { passengerPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -133,6 +135,10 @@ function ArrivalPaymentSession() {
 
   const isModalVisible = state.isAppActive && state.isResumeReady && !state.isClosingForInvoice && Boolean(
     interruptionChoice || (!state.isPaymentDeferred && (state.completionSummary || state.arrivalBooking)));
+  usePaymentAnnouncement(passengerPaymentAnnouncement({
+    bookingId: state.arrivalBooking?.id, amount: state.paymentAmount, currency: state.paymentCurrency,
+    receipt, pending: paymentPending, failed: Boolean(state.paymentError), beforeArrival: state.isBeforeArrival,
+  }), isModalVisible && !interruptionChoice && !state.isStorageLoading);
 
   const destination = state.arrivalBooking?.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' :
     state.arrivalBooking?.passengerDestination ??

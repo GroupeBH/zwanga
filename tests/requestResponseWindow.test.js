@@ -33,7 +33,7 @@ function setup(t) {
     advance: ms => { now += ms; t.mock.timers.tick(ms); }, calls: () => calls };
 }
 test('expiry disables responding and refreshes only once even after a failed or stale read', t => {
-  const env = setup(t), request = { id: 'one', responseWindow: sample() };
+  const env = setup(t), request = { id: 'one', responseWindow: sample('passenger') };
   assert.equal(env.render(request).closed, false);
   env.advance(40001);
   assert.equal(env.render(request).closed, true);
@@ -41,13 +41,13 @@ test('expiry disables responding and refreshes only once even after a failed or 
   assert.equal(env.calls(), 1);
 });
 test('a refetch start with old response data cannot extend its deadline', t => {
-  const env = setup(t), request = { id: 'one', responseWindow: sample() };
+  const env = setup(t), request = { id: 'one', responseWindow: sample('passenger') };
   env.render(request); env.advance(39000);
   assert.match(env.render(request, true, 40000).label, /1 s/);
   env.advance(1001); assert.equal(env.render(request, true, 40000).closed, true);
 });
 test('background does not refetch; returning reconciles elapsed time once', t => {
-  const env = setup(t), request = { id: 'one', responseWindow: sample() };
+  const env = setup(t), request = { id: 'one', responseWindow: sample('passenger') };
   env.render(request); env.render(request, false); env.advance(45000);
   env.render(request, false); assert.equal(env.calls(), 0);
   assert.equal(env.render(request, true).blocked, true); assert.equal(env.calls(), 1);
@@ -60,7 +60,15 @@ test('passenger and acceptance phases block direct acceptance, while old server 
   assert.equal(env.render({ id: 'one' }).closed, false);
 });
 test('malformed timing blocks actions and triggers one reconciliation', t => {
-  const env = setup(t), request = { id: 'one', responseWindow: { ...sample(), serverNow: 'invalid' } };
+  const env = setup(t), request = { id: 'one', responseWindow: { ...sample('passenger'), serverNow: 'invalid' } };
   assert.equal(env.render(request).closed, true); env.render(request);
   assert.equal(env.calls(), 1);
+});
+
+test('the 40-second ringing deadline never disables an available in-app request', t => {
+  const env = setup(t), request = { id: 'one', responseWindow: sample() };
+  assert.deepEqual(env.render(request), { blocked: false, closed: false, label: null });
+  env.advance(45000);
+  assert.deepEqual(env.render(request), { blocked: false, closed: false, label: null });
+  assert.equal(env.calls(), 0, 'no one-second timer or forced refresh for attention-only windows');
 });

@@ -30,7 +30,7 @@ export const DriverDropoffReceiptsSheet = memo(function DriverDropoffReceiptsShe
     {selectedId === item.id && <View style={styles.details}>
       {item.numberOfSeats > 1 && <Text style={styles.status}>Montants pour l’ensemble des {item.numberOfSeats} places réservées.</Text>}
       <DriverBookingRevenue bookingId={item.id} active={active} cashReceived={Boolean(item.cashReceivedAt)} />
-      <ConfirmCashReceipt booking={item} />
+      <ConfirmCashReceipt booking={item} announce={active} />
     </View>}
   </View>, [active, selectedId]);
   return <View style={styles.overlay}>

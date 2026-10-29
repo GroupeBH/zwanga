@@ -1,8 +1,8 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetBookingByIdQuery, useRequestPassengerTripInterruptionMutation } from '@/store/api/bookingApi';
+import { useRequestPassengerTripInterruptionMutation } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import {
   useConfirmDriverTripInterruptionMutation,
-  useGetTripByIdQuery,
   useRejectDriverTripInterruptionMutation,
 } from '@/store/api/tripApi';
 import type { TripInterruptionReason, Trip, Booking } from '@/types';
@@ -17,8 +17,8 @@ interface Params {
   trip: Trip | undefined;
   requestPassengerTripInterruption: ReturnType<typeof useRequestPassengerTripInterruptionMutation>[0];
   passengerLocation: { latitude: number; longitude: number; } | null;
-  refetchBooking: ReturnType<typeof useGetBookingByIdQuery>['refetch'];
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
+  refetchBooking: DisplayRefetch<Booking>;
+  refetchTrip: DisplayRefetch<Trip>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   isRequestingPassengerInterruption: boolean;
   tripId: string;

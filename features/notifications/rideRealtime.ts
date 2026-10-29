@@ -4,12 +4,16 @@ import { parseRideAlert } from './rideAlert';
 export type RideRealtimeEvent =
   | { kind: 'incoming'; recipientId: string; eventId: string; data: Record<string, unknown> }
   | { kind: 'changed'; recipientId: string; requestId?: string; bookingId?: string; terminal: boolean }
+  | { kind: 'payment'; recipientId: string; eventId: string; bookingId: string }
   | { kind: 'reconnected' };
 
 export function parseRideRealtimeEvent(raw: unknown): Exclude<RideRealtimeEvent, { kind: 'reconnected' }> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const value = raw as Record<string, unknown>;
   if (!isInvitationId(value.recipientId)) return null;
+  if (value.kind === 'payment' && isInvitationId(value.eventId) && isInvitationId(value.bookingId)) {
+    return { kind: 'payment', recipientId: value.recipientId, eventId: value.eventId, bookingId: value.bookingId };
+  }
   if (value.kind === 'incoming' && isInvitationId(value.eventId) && value.data && typeof value.data === 'object' && !Array.isArray(value.data)) {
     const data = value.data as Record<string, unknown>;
     const alert = parseRideAlert(data);

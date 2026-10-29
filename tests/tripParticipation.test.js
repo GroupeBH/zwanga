@@ -23,9 +23,9 @@ test('three reserved seats stay one passenger participation, without changing th
 });
 
 function guard(overrides = {}) {
-  const state = { userId: 'rider', tripId: 'trip', currentData: trip, bookings: [booking], ...overrides };
+  const state = { userId: 'rider', tripId: 'trip', currentData: trip, bookings: [booking], active: true, online: true, ...overrides };
   const hooks = hookHarness();
-  const calls = [], routes = [];
+  const calls = [], routes = [], tripReads = [];
   const child = React.createElement('DriverController');
   const load = loader({
     '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
@@ -33,9 +33,13 @@ function guard(overrides = {}) {
     'react-native': { ActivityIndicator: 'Spinner', Text: 'Text', TouchableOpacity: 'Button', View: 'View', StyleSheet: { create: x => x } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     'expo-router': { Redirect: 'Redirect', useLocalSearchParams: () => ({ id: state.tripId }), useRouter: () => ({ replace: x => routes.push(x) }) },
-    '@/store/hooks': { useAppSelector: fn => fn({ auth: { user: state.userId ? { id: state.userId, role: 'driver', isDriver: true } : null } }) },
-    '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ currentData: state.currentData, data: trip,
-      error: state.error, isLoading: state.isLoading, isFetching: state.isFetching, refetch() {} }) },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => state.active },
+    '@/store/hooks': { useAppSelector: fn => fn({ auth: { user: state.userId ? { id: state.userId, role: 'driver', isDriver: true } : null }, zwangaApi: { config: { online: state.online } } }) },
+    '@/store/api/tripApi': { useGetTripByIdQuery: (_, options) => {
+      tripReads.push(options);
+      return { currentData: state.currentData, data: trip,
+        error: state.error, isLoading: state.isLoading, isFetching: state.isFetching, refetch() {} };
+    } },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: (_, options) => {
       calls.push(options); return { data: state.bookings };
     } },
@@ -44,7 +48,7 @@ function guard(overrides = {}) {
     }) },
   });
   const { DriverTripAccessGuard } = load('components/trip/DriverTripAccessGuard.tsx');
-  return { state, child, calls, routes, hooks, render: () => hooks.render(() => DriverTripAccessGuard({ children: child })) };
+  return { state, child, calls, routes, tripReads, hooks, render: () => hooks.render(() => DriverTripAccessGuard({ children: child })) };
 }
 
 test('driver-capable passenger entering a driver URL is redirected to their own reservation', () => {
@@ -61,6 +65,20 @@ test('only the owner mounts the driver controller; switching accounts immediatel
   assert.equal(h.render().props.children, h.child);
   assert.equal(h.calls.at(-1).skip, true);
   h.state.userId = 'rider';
+  assert.equal(h.render().type, 'Redirect');
+  h.hooks.unmount();
+});
+
+test('hidden access guard stops its own reads without unmounting an authorized driver controller', () => {
+  const h = guard({ userId: 'owner' });
+  assert.equal(h.render().props.children, h.child);
+  assert.equal(h.tripReads.at(-1).skip, false);
+  h.state.active = false; h.state.currentData = undefined;
+  assert.equal(h.render().props.children, h.child);
+  assert.equal(h.tripReads.at(-1).skip, true); assert.equal(h.calls.at(-1).skip, true);
+  h.state.userId = 'rider';
+  assert.equal(h.render(), null, 'a covered screen cannot redirect the visible screen');
+  h.state.active = true; h.state.currentData = trip;
   assert.equal(h.render().type, 'Redirect');
   h.hooks.unmount();
 });

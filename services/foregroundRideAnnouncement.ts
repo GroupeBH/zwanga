@@ -9,6 +9,7 @@ import { getNavigationSpeechRevision, registerRideSpeechInterruption } from './n
 import { pendingRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
+import { consumePaymentSpeech, paymentSpeechPending, readPaymentSpeech } from './paymentSpeechSource';
 
 type Attempt = {
   key: string; revision: number; spoken: boolean; speech?: typeof ExpoSpeech;
@@ -61,6 +62,14 @@ function loadVoice() {
   return loading;
 }
 
+function screenSpeech(userId: string, version: number) {
+  const source = readPaymentSpeech(userId, version);
+  // A wallet explanation is secondary to a driver opportunity. Do not pause
+  // its ringtone to describe balances while a response is still expected.
+  if (source?.kind === 'wallet' && pendingRideAlerts(userId).some(item => item.kind !== 'response')) return undefined;
+  return source;
+}
+
 /** Called only by the foreground notification coordinator, never by a headless task. */
 export function reconcileRideAnnouncement(userId?: string) {
   if (session !== getTokenSessionVersion() || owner !== userId) {
@@ -68,19 +77,22 @@ export function reconcileRideAnnouncement(userId?: string) {
     session = getTokenSessionVersion(); owner = userId;
   }
   const pending = userId ? pendingRideAlerts(userId) : [];
+  const payment = userId ? screenSpeech(userId, session) : undefined;
   if (current && (!isAppActive() || !current.valid())) void cancelCurrent();
   if (!userId || !Device.isDevice || Platform.OS === 'web' || !isAppActive() ||
       current || stopping || Date.now() < nextAllowedAt) return;
   const entry = readRideSpeechEntry(userId);
   // Expiring the entry summary must not disable future live notifications.
   // Restored notifications are already suppressed separately.
-  if (entry.status === 'waiting') {
+  if (!payment && entry.status === 'waiting') {
     // This backlog belongs to the entry summary, not to future live events.
     pending.forEach(item => markAnnounced(item.key));
     return;
   }
-  if (entry.status !== 'unmanaged' && entry.blocked) return;
-  const atEntry = entry.status === 'ready';
+  if (!payment && entry.status !== 'unmanaged' && entry.blocked) return;
+  if (payment && announced.has(payment.message.key) && paymentSpeechPending(payment)) consumePaymentSpeech(payment);
+  if (payment && (!paymentSpeechPending(payment) || announced.has(payment.message.key))) return;
+  const atEntry = !payment && entry.status === 'ready';
   const consumeEntry = () => {
     consumeRideSpeechEntry(entry);
     // Do not read the notification backlog after describing the screen priority.
@@ -88,18 +100,22 @@ export function reconcileRideAnnouncement(userId?: string) {
   };
   if (atEntry && !entry.message) { consumeEntry(); return; }
   // During navigation, the route's instructions remain the only live voice source.
-  if (!atEntry && /^\/(trip|booking)\/navigate\//.test(entry.path)) return;
-  const alert = atEntry ? undefined : pending.find(item => item.kind !== 'response' && !announced.has(item.key));
-  if (!atEntry && (!alert || !isForegroundRideSoundReady())) return;
-  const text = atEntry ? entry.message?.text : buildRideAnnouncement(alert!);
+  if (!payment && !atEntry && /^\/(trip|booking)\/navigate\//.test(entry.path)) return;
+  const alert = atEntry || payment ? undefined : pending.find(item => item.kind !== 'response' && !announced.has(item.key));
+  if (!payment && !atEntry && (!alert || !isForegroundRideSoundReady())) return;
+  const text = payment ? payment.message.text : atEntry ? entry.message?.text : buildRideAnnouncement(alert!);
   if (!text) return;
-  const attempt: Attempt = { key: atEntry ? entry.message!.key : alert!.key, revision: getNavigationSpeechRevision(), spoken: false,
-    valid: () => atEntry ? isRideSpeechEntryCurrent(entry) :
-      isForegroundRideSoundReady() && pendingRideAlerts(userId).some(item => item.key === alert!.key) };
+  const attempt: Attempt = { key: payment ? payment.message.key : atEntry ? entry.message!.key : alert!.key, revision: getNavigationSpeechRevision(), spoken: false,
+    valid: () => payment ? screenSpeech(userId, session) === payment :
+      !screenSpeech(userId, session) && (atEntry ? isRideSpeechEntryCurrent(entry) :
+        isForegroundRideSoundReady() && pendingRideAlerts(userId).some(item => item.key === alert!.key)) };
   current = attempt;
   const valid = () => current === attempt && isAppActive() && session === getTokenSessionVersion() &&
     owner === userId && attempt.valid() && attempt.revision === getNavigationSpeechRevision();
-  const handled = () => { if (atEntry) consumeEntry(); else markAnnounced(attempt.key); };
+  const handled = () => {
+    if (payment) { markAnnounced(attempt.key); consumePaymentSpeech(payment); }
+    else if (atEntry) consumeEntry(); else markAnnounced(attempt.key);
+  };
   const failed = () => {
     const count = (failures.get(attempt.key) ?? 0) + 1;
     failures.set(attempt.key, count);
@@ -111,9 +127,12 @@ export function reconcileRideAnnouncement(userId?: string) {
   attempt.unregister = registerRideSpeechInterruption(cancelCurrent);
   attempt.timeout = setTimeout(() => {
     if (current === attempt) { handled(); void cancelCurrent(); }
-  }, 25000);
+  }, payment?.kind === 'wallet' ? 45000 : 25000);
   void (async () => {
     try {
+      // An in-app payment explanation is not a push alert: passengers may have
+      // disabled notifications or have no driver channel. TTS keeps OS volume
+      // and interruption rules; never request permission or force the volume here.
       if (atEntry && !await boundedRideAudio(canPlayForegroundRideAudio())) { if (valid()) handled(); return; }
       if (!valid()) return;
       const { speech, voice } = await loadVoice();
@@ -126,7 +145,7 @@ export function reconcileRideAnnouncement(userId?: string) {
       attempt.spoken = true; handled();
       const finished = () => release(attempt);
       speech.speak(text, { language: 'fr-FR', voice, rate: 0.95, pitch: 1,
-        useApplicationAudioSession: !atEntry || isForegroundRideSoundReady(),
+        useApplicationAudioSession: (!atEntry && !payment) || isForegroundRideSoundReady(),
         onDone: finished, onStopped: finished, onError: finished });
     } catch {
       // Missing engine/voice must never prevent accepting a ride or cause a retry loop.

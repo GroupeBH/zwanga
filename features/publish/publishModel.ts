@@ -1,5 +1,6 @@
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
+import { sharedLocationLabel } from '@/utils/sharedLocationLabel';
 import { boundedRoutePoints, routeBounds } from '@/utils/routes/safePolyline';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import React from 'react';
@@ -29,7 +30,7 @@ export const DEFAULT_PUBLISH_REGION: Region = {
 export const PUBLISH_MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 
 export function getLocationText(selection: MapLocationSelection | null, manualAddress: string) {
-  return (manualAddress.trim() || selection?.title || selection?.address || '').trim();
+  return sharedLocationLabel(selection, manualAddress) || (selection ? 'Point sélectionné' : '');
 }
 
 export function getLocationCoordinates(selection: MapLocationSelection | null): [number, number] | undefined {

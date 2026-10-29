@@ -56,13 +56,27 @@ test('passenger footer routes modify/cancel to existing actions and keeps assign
 
 test('driver response footer accepts without another modal, refuses locally and disables while sending or selecting a vehicle', () => {
   const calls = []; const { RequestDecisionActions } = loader(mocks)('features/request-detail/RequestDriverDecision.tsx');
-  const actions = { ...model, handleDirectAcceptTripRequest: (...args) => calls.push(['accept', ...args]), handleDeclineTripRequest: () => calls.push(['decline']) };
+  const actions = { ...model, canRespondToRequest: true, handleDirectAcceptTripRequest: (...args) => calls.push(['accept', ...args]), handleDeclineTripRequest: () => calls.push(['decline']) };
   const buttons = elements(RequestDecisionActions({ model: actions })).filter(item => item.type === 'Pressable');
   buttons[1].props.onPress(); buttons[0].props.onPress();
   assert.deepEqual(calls, [['accept', false, true], ['decline']]);
-  for (const patch of [{ isAcceptingTripRequest: true }, { isFetchingRequest: true }, { directAcceptVehicle: null }]) {
+  const refreshing = elements(RequestDecisionActions({ model: { ...actions, isFetchingRequest: true } })).filter(item => item.type === 'Pressable');
+  assert.ok(refreshing.every(button => !button.props.disabled), 'silent refresh keeps both actions usable');
+  for (const patch of [{ isAcceptingTripRequest: true }, { isStartingTrip: true }, { canRespondToRequest: false }, { directAcceptVehicle: null }]) {
     const accept = elements(RequestDecisionActions({ model: { ...actions, ...patch } })).filter(item => item.type === 'Pressable')[1];
     assert.equal(accept.props.disabled, true);
+  }
+});
+
+test('expired or accepting response windows still block decisions during a silent refresh', () => {
+  for (const closed of [true, false]) {
+    const { RequestDecisionActions } = loader({ ...mocks,
+      '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: true, closed, label: 'Délai écoulé' }) },
+    })('features/request-detail/RequestDriverDecision.tsx');
+    const buttons = elements(RequestDecisionActions({ model: { ...model, canRespondToRequest: true, isFetchingRequest: true } }))
+      .filter(item => item.type === 'Pressable');
+    assert.equal(buttons[1].props.disabled, true);
+    if (closed) assert.equal(buttons[0].props.disabled, true);
   }
 });
 

@@ -1,6 +1,8 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useOfflineRideData } from '@/hooks/navigation/useOfflineRideData';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayRefetch } from '@/hooks/useDisplayReads';
+import { useNavigationReadData } from '@/hooks/navigation/useNavigationReadData';
 import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
 import {
   useAcceptBookingMutation,
@@ -50,25 +52,28 @@ export function useDriverNavigationData() {
   const isFocused = useIsFocused();
   const isAppActive = useAppIsActive();
   const isScreenActive = isFocused && isAppActive;
+  const readsEnabled = isScreenActive && isOnline && !!driverId;
 
-  const { data: liveTrip, error: tripError, isLoading, isFetching: isTripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
-    skip: !tripId,
-    refetchOnMountOrArgChange: typeof bookingId === 'string',
-    skipPollingIfUnfocused: true,
+  const tripRead = useGetTripByIdQuery(tripId, {
+    ...displayReadOptions(readsEnabled && !!tripId),
+    // The access guard has just refreshed this same cache before mounting us.
+    refetchOnMountOrArgChange: 5,
   });
+  const { isLoading, isFetching: isTripFetching } = tripRead;
+  const { data: liveTrip, error: tripError } = useNavigationReadData(`${driverId}:trip:${tripId}`, tripRead, isOnline);
+  const refetchTrip = useDisplayRefetch(readsEnabled && !!tripId, `${driverId}:${tripId}`, tripRead.refetch);
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isOwner = trip?.id === tripId && ownsTrip(trip, driverId);
   const isTripOngoing = isOwner && trip?.status === 'ongoing';
-  const { data: liveBookings, error: bookingsError, isLoading: bookingsLoading, isFetching: bookingsFetching, refetch: refetchBookings } = useGetTripBookingsQuery(
+  const bookingsRead = useGetTripBookingsQuery(
     tripId,
     {
-      skip: !tripId || !isOwner,
-      refetchOnMountOrArgChange: typeof bookingId === 'string',
-      pollingInterval: isScreenActive && isTripOngoing && isOnline ? 20_000 : 0,
-      refetchOnReconnect: isScreenActive,
-      skipPollingIfUnfocused: true,
+      ...displayReadOptions(readsEnabled && !!tripId && isOwner, isTripOngoing ? 20_000 : 0),
     },
   );
+  const { isLoading: bookingsLoading, isFetching: bookingsFetching } = bookingsRead;
+  const { data: liveBookings, error: bookingsError } = useNavigationReadData(`${driverId}:bookings:${tripId}`, bookingsRead, isOnline);
+  const refetchBookings = useDisplayRefetch(readsEnabled && !!tripId && isOwner, `${driverId}:${tripId}`, bookingsRead.refetch);
   const [getDirections] = useGetDirectionsMutation();
   const { data: bookings, offline: offlineBookings } = useOfflineRideData(`trip-bookings:${tripId}`, liveBookings, bookingsError, isTripOngoing);
   const { begin: beginRouteRequest, cancel: cancelRouteRequest } = useNavigationRequestGuard(isScreenActive, tripId);

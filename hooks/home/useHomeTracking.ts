@@ -1,15 +1,10 @@
-import { EMPTY_HOME_BOOKINGS, HOME_AUTO_PROGRESS_PRIORITY, isFreshLivePassengerLocation, isKinshasaHomeTrip } from '@/features/home/homeModel';
-import type { LivePassengerLocation } from '@/features/home/homeTypes';
-import {
-  type PassengerLocationPayload,
-  trackingSocket
-} from '@/services/trackingSocket';
+import { EMPTY_HOME_BOOKINGS, HOME_AUTO_PROGRESS_PRIORITY, isKinshasaHomeTrip } from '@/features/home/homeModel';
+import { trackingSocket } from '@/services/trackingSocket';
 import type { Booking } from '@/types';
 import {
   isCoordinateInKinshasaBounds,
-  normalizeTripMapCoordinate
 } from '@/utils/tripCoordinates';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { getHomeTrackingDialog } from '@/features/home/homeTrackingDialogs';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
@@ -70,10 +65,6 @@ export function useHomeTracking({
 
   const refetchOngoingDriverBookingsRef = useRef<(() => unknown) | null>(null);
 
-  const [liveDriverPassengerLocations, setLiveDriverPassengerLocations] = useState<
-    Record<string, LivePassengerLocation>
-  >({});
-
   useEffect(() => {
     activeBookingsRef.current = activeBookings;
   }, [activeBookings]);
@@ -114,71 +105,16 @@ export function useHomeTracking({
 
   useEffect(() => {
     if (!isFocused || !homeTrackingTripId) {
-      setLiveDriverPassengerLocations({});
       return;
     }
 
     let isCancelled = false;
-    setLiveDriverPassengerLocations({});
-
+    // Keep progress events and our driver's GPS, not invisible passenger map data.
     void trackingSocket
       .joinTrip(homeTrackingTripId)
-      .then(() => {
-        if (isCancelled) return;
-        if (isHomeDriverTracking) {
-          void trackingSocket.requestPassengerLocations(homeTrackingTripId);
-        } else {
-          void trackingSocket.requestDriverLocation(homeTrackingTripId);
-        }
-      })
       .catch((error) => {
         console.warn('[Home] Connexion au suivi du trajet indisponible:', error);
       });
-
-    const unsubscribePassengerLocation = trackingSocket.subscribeToPassengerLocation(
-      (payload: PassengerLocationPayload) => {
-        if (
-          isCancelled ||
-          !isHomeDriverTracking ||
-          payload.tripId !== homeTrackingTripId ||
-          !payload.bookingId ||
-          !payload.coordinates
-        ) {
-          return;
-        }
-
-        const coordinate = normalizeTripMapCoordinate(
-          payload.coordinates[1],
-          payload.coordinates[0],
-        );
-        if (!coordinate) return;
-        const liveLocation = {
-          coordinate,
-          updatedAt: payload.updatedAt,
-        };
-
-        if (!isFreshLivePassengerLocation(liveLocation)) {
-          console.warn('[Home] Position passager socket trop ancienne ignoree:', {
-            bookingId: payload.bookingId,
-            updatedAt: payload.updatedAt,
-          });
-          return;
-        }
-
-        if (isOngoingDriverTripKinshasa && !isCoordinateInKinshasaBounds(coordinate)) {
-          console.warn('[Home] Position passager socket hors Kinshasa ignoree:', {
-            bookingId: payload.bookingId,
-            coordinate,
-          });
-          return;
-        }
-
-        setLiveDriverPassengerLocations((current) => ({
-          ...current,
-          [payload.bookingId]: liveLocation,
-        }));
-      },
-    );
 
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       if (isCancelled || payload.tripId !== homeTrackingTripId || payload.events.length === 0) {
@@ -253,7 +189,6 @@ export function useHomeTracking({
     return () => {
       isCancelled = true;
       void trackingSocket.leaveTrip(homeTrackingTripId);
-      unsubscribePassengerLocation();
       unsubscribeAutoProgress();
     };
   }, [
@@ -302,5 +237,4 @@ export function useHomeTracking({
     isOngoingDriverTripKinshasa,
     liveUserCoordinate,
   ]);
-  return { liveDriverPassengerLocations };
 }

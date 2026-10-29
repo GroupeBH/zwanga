@@ -272,7 +272,7 @@ export function usePublishController() {
     step === 'route'
       ? !route.hasDepartureAddress || !route.hasArrivalAddress
       : step === 'confirm'
-        ? schedule.isSubmittingTrip ||
+        ? schedule.isSubmittingTrip || submission.isResolvingAddresses ||
           !identity.isPublishIdentityVerified
         : false);
 
@@ -284,6 +284,7 @@ export function usePublishController() {
       return 'Continuer';
     }
     if (step === 'confirm') {
+      if (submission.isResolvingAddresses) return 'Recherche des adresses…';
       if (!identity.isPublishIdentityVerified) return 'Identité à vérifier';
       return form.isRecurringTrip ? 'Publier mes trajets' : 'Publier mon trajet';
     }

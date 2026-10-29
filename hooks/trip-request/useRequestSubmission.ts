@@ -2,6 +2,7 @@ import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { recoverRequest, type RequestAttempt } from '@/features/trip-request/recoverRequest';
 import { getTokenSessionVersion } from '@/services/tokenSession';
+import { resolveSharedRouteAddresses } from '@/services/sharedRouteAddresses';
 import { offerTripLocationPermission } from '@/services/tripLocationPermission';
 import { getLocationCoordinates, RequestFormStep } from '@/features/trip-request/requestFormModel';
 import { trackEvent } from '@/services/analytics';
@@ -69,6 +70,7 @@ export function useRequestSubmission({
   const current = () => lifetime.current.mounted && !leaving.current && lifetime.current.version === getTokenSessionVersion();
 
   const [createTripRequest, { isLoading: isCreating }] = useCreateTripRequestMutation();
+  const [resolvingAddresses, setResolvingAddresses] = useState(false);
 
   const [getMyTripRequests] = useLazyGetMyTripRequestsQuery();
 
@@ -224,15 +226,23 @@ export function useRequestSubmission({
       seats: hasSpecifiedNumberOfSeats ? numberOfSeats : 1, price: confirmedPricePerSeat, vehicleType: selectedVehicleType };
 
     try {
+      setResolvingAddresses(true);
+      const shared = await resolveSharedRouteAddresses(
+        { text: departureAddress, point: departureLocation }, { text: arrivalAddress, point: arrivalLocation });
+      if (!current()) return;
+      setResolvingAddresses(false);
+      // Recovery must compare the exact labels sent, not a local GPS shortcut.
+      pendingAttempt.current!.departure = shared.departureAddress.trim().toLowerCase();
+      pendingAttempt.current!.arrival = shared.arrivalAddress.trim().toLowerCase();
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
       const requestNotes = description.trim();
       const createdRequest = await createTripRequest({
         ...(targetDriver ? { targetDriverId: targetDriver.id } : {}),
-        departureLocation: departureAddress,
+        departureLocation: shared.departureAddress,
         departureReference: departureReference.trim() || undefined,
         departureCoordinates,
-        arrivalLocation: arrivalAddress,
+        arrivalLocation: shared.arrivalAddress,
         arrivalReference: arrivalReference.trim() || undefined,
         arrivalCoordinates,
         departureDateMin: departureWindow.min.toISOString(),
@@ -278,6 +288,7 @@ export function useRequestSubmission({
       }
     } finally {
       createRequestInFlightRef.current = false;
+      if (current()) setResolvingAddresses(false);
     }
   };
 
@@ -318,7 +329,7 @@ export function useRequestSubmission({
     createdRequestId,
     submissionRecoveryMessage,
     submissionError,
-    isCreating,
+    isCreating: isCreating || resolvingAddresses,
     handleCreateRequest,
     isRequestSuccessVisible,
     isResolvingSentRequest,

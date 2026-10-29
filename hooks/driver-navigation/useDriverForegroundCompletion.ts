@@ -1,9 +1,8 @@
 import type { NavigationCoordinate } from '@/utils/navigation/routeProgress';
 import { normalizeDriverLocationObject } from '../../features/driver-navigation/navigationBooking';
 import { RouteCoordinate } from '../../features/driver-navigation/navigationModel';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import {
-  useGetTripByIdQuery,
   useLazyGetDriverLocationQuery,
   useUpdateDriverLocationMutation,
 } from '@/store/api/tripApi';
@@ -29,8 +28,8 @@ interface Params {
   tripArrivalCoordinate: MapCoordinate | null;
   isRestCompletionCheckRunningRef: React.RefObject<boolean>;
   lastRestCompletionCheckAtRef: React.RefObject<number>;
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchTrip: DisplayRefetch<Trip>;
+  refetchBookings: DisplayRefetch<Booking[]>;
   bookingsRef: React.RefObject<Booking[] | undefined>;
   presentCompletedTripFromServerSync: (
     completedTrip?: Trip | null,

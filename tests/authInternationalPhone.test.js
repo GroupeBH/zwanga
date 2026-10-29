@@ -58,7 +58,7 @@ function authFixture(phone, { social = false, otpEnabled = true, mode = 'signup'
   const props = new Proxy({ ...state, mode, googleIdToken: 'test-id', googleOtp: ['1', '2', '3', '4', '5'], smsCode: ['1', '2', '3', '4', '5'],
     showDialog: value => dialogs.push(value),
     sendPhoneVerificationOtp: payload => ({ unwrap: async () => { requests.push(payload); } }),
-    verifyPhoneOtp: payload => ({ unwrap: async () => { verifications.push(payload); } }),
+    verifyPhoneOtp: payload => ({ unwrap: async () => { verifications.push(payload); return { valid: true }; } }),
   }, { get(target, key) {
     if (key in state) return state[key];
     if (key in target) return target[key];
@@ -90,10 +90,12 @@ for (const social of [false, true]) {
         assert.equal(app.state.googleSignupStep, 'otp');
         await app.render().handleResendGoogleOtp();
         assert.deepEqual(app.requests[1], { phone, context: 'registration' });
+        app.state.googleOtp = ['1', '2', '3', '4', '5'];
         await app.render().handleVerifyGoogleOtpAndContinue();
         assert.equal(app.state.isGooglePhoneVerified, true);
       } else {
         assert.equal(app.state.step, 'sms');
+        app.state.smsCode = ['1', '2', '3', '4', '5'];
         await app.render().handleSmsSubmit();
       }
       assert.deepEqual(app.verifications, [{ phone, otp: '12345' }]);

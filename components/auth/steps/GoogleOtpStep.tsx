@@ -66,7 +66,7 @@ export function GoogleOtpStep({
             isVerifying && { opacity: 0.7 },
           ]}
           onPress={onVerify}
-          disabled={isVerifying || !isOtpComplete}
+          disabled={isVerifying || isResending || !isOtpComplete}
         >
           {isVerifying ? (
             <ActivityIndicator color="white" />
@@ -82,7 +82,7 @@ export function GoogleOtpStep({
           <Text style={styles.resendText}>Vous n&apos;avez pas reçu le code ?</Text>
           <TouchableOpacity
             onPress={onResend}
-            disabled={isResending}
+            disabled={isResending || isVerifying}
             style={{ opacity: isResending ? 0.5 : 1 }}
           >
             <Text style={styles.resendLink}>

@@ -13,20 +13,24 @@ export type RouteLocationLabels = { departure: RouteStopLabel; arrival: RouteSto
 // Older offline selections may have stored UI placeholders instead of an address.
 const PLACEHOLDERS = new Set([
   'Point sélectionné', 'Position sélectionnée', 'Ma position', 'Lieu sélectionné',
+  'Ma position actuelle', 'Ma localisation', 'Position actuelle', 'Votre position',
+  'Recherche de l’adresse…', "Recherche de l'adresse actuelle...",
+  'Point de départ (voir la carte)', 'Destination (voir la carte)',
   'Point de départ', 'Départ', 'Destination', 'Arrivée', 'Point du trajet',
   'Adresse non disponible', 'Nom du lieu indisponible', UNKNOWN_LOCATION_ADDRESS,
 ].map(value => value.toLocaleLowerCase('fr')));
-const storedText = (value?: string | null) => {
+export const storedLocationText = (value?: string | null) => {
   const cleaned = cleanLocationText(value);
-  return PLACEHOLDERS.has(cleaned.toLocaleLowerCase('fr')) ? '' : cleaned;
+  const coordinatesOnly = /^-?\d{1,3}(?:\.\d+)?\s*,\s*-?\d{1,3}(?:\.\d+)?$/.test(cleaned);
+  return coordinatesOnly || PLACEHOLDERS.has(cleaned.toLocaleLowerCase('fr')) ? '' : cleaned;
 };
 
 /** Display adapter for stored trips/requests. Never write these derived labels back
  * into the API cache or an editing form: coordinates and original values stay intact.
  */
 export function getRouteStopLabel(location: RouteLocationSource | null | undefined, fallbackTitle = 'Point du trajet'): RouteStopLabel {
-  const name = storedText(location?.name);
-  const address = storedText(location?.address);
+  const name = storedLocationText(location?.name);
+  const address = storedLocationText(location?.address);
   // The API mappers put the complete address in BOTH fields. It isn't a custom name.
   const label = readableLocation({
     name: name.toLocaleLowerCase('fr') === address.toLocaleLowerCase('fr') ? undefined : name,

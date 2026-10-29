@@ -11,8 +11,10 @@ import { TextInput } from 'react-native';
 import { AuthMode, AuthStep } from '@/components/auth';
 import { emptyPinResetOtp, PIN_RESET_OTP_LENGTH, usePinResetFlow } from './usePinResetFlow';
 import { usePinLogin } from './usePinLogin';
+import type { SignupPhoneProof } from '@/features/auth/signupPhoneProof';
 
 interface Params {
+  signupPhoneProof?: SignupPhoneProof;
   step: AuthStep;
   phone: string;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
@@ -47,6 +49,7 @@ interface Params {
 }
 
 export function usePhoneAuthActions({
+  signupPhoneProof,
   step,
   phone,
   showDialog,
@@ -96,14 +99,23 @@ export function usePhoneAuthActions({
       setStep('pin');
       return;
     }
+    const ticket = signupPhoneProof?.begin();
+    if (ticket === null) return;
+    let request: ReturnType<typeof sendPhoneVerificationOtp> | undefined;
     try {
       setIsSendingOtp(true);
-      await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
+      request = sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' });
+      await request.unwrap();
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
+      setSmsCode(['', '', '', '', '']);
       setStep('sms');
       showDialog({ variant: 'success', title: 'Code envoyé', message: otpDeliveryCopy.sent });
     } catch (error: any) {
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
+      request?.reset?.();
+      if (ticket !== undefined) signupPhoneProof!.finish(ticket);
       setIsSendingOtp(false);
     }
   };
@@ -116,16 +128,26 @@ export function usePhoneAuthActions({
       showDialog({ variant: 'danger', title: 'Code incomplet', message: 'Veuillez entrer le code complet' });
       return;
     }
+    const ticket = signupPhoneProof?.begin();
+    if (ticket === null) return;
+    const request = verifyPhoneOtp({ phone, otp: code });
     try {
-      await verifyPhoneOtp({ phone, otp: code }).unwrap();
+      const result = await request.unwrap();
+      if (ticket !== undefined && !signupPhoneProof!.capture(phone, result, ticket)) return;
+      if (result?.valid !== true) throw new Error('Code OTP invalide ou expiré.');
+      setSmsCode(['', '', '', '', '']);
       setStep('pin');
     } catch (error: any) {
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
       showDialog({
         variant: 'danger',
         title: 'Code invalide',
         message: getAuthErrorMessage(error, 'Code OTP invalide ou expiré.'),
         actions: [{ label: 'Réessayer', variant: 'primary', onPress: () => { setSmsCode(['', '', '', '', '']); } }],
       });
+    } finally {
+      request.reset?.();
+      if (ticket !== undefined) signupPhoneProof!.finish(ticket);
     }
   };
 

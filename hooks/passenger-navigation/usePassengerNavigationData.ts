@@ -1,6 +1,8 @@
 import { useDialog } from '@/components/ui/DialogProvider';
 import { useOfflineRideData } from '@/hooks/navigation/useOfflineRideData';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayRefetch } from '@/hooks/useDisplayReads';
+import { useNavigationReadData } from '@/hooks/navigation/useNavigationReadData';
 import {
   useCancelBookingMutation,
   useGetBookingByIdQuery,
@@ -37,23 +39,20 @@ export function usePassengerNavigationData() {
   const isFocused = useIsFocused();
   const isAppActive = useAppIsActive();
   const isScreenActive = isFocused && isAppActive;
+  const readsEnabled = isScreenActive && isOnline && !!passengerId;
 
   // Récupérer la réservation et le trajet
-  const { data: liveBooking, error: bookingError, isLoading: bookingLoading, isFetching: bookingFetching, refetch: refetchBooking } = useGetBookingByIdQuery(bookingId, {
-    skip: !bookingId,
-    pollingInterval: isScreenActive && isOnline ? 60_000 : 0,
-    refetchOnReconnect: isScreenActive,
-    skipPollingIfUnfocused: true,
-  });
+  const bookingRead = useGetBookingByIdQuery(bookingId, displayReadOptions(readsEnabled && !!bookingId, 60_000));
+  const { isLoading: bookingLoading, isFetching: bookingFetching } = bookingRead;
+  const { data: liveBooking, error: bookingError } = useNavigationReadData(`${passengerId}:booking:${bookingId}`, bookingRead, isOnline);
+  const refetchBooking = useDisplayRefetch(readsEnabled && !!bookingId, `${passengerId}:${bookingId}`, bookingRead.refetch);
   const { data: booking, offline: offlineBooking } = useOfflineRideData(`booking:${bookingId}`, liveBooking, bookingError, liveBooking?.status === 'accepted');
   useSyncArrivedPaymentBooking(liveBooking, isScreenActive);
   const tripId = booking?.tripId || '';
-  const { data: liveTrip, error: tripError, isLoading: tripLoading, isFetching: tripFetching, refetch: refetchTrip } = useGetTripByIdQuery(tripId, {
-    skip: !tripId,
-    pollingInterval: isScreenActive && isOnline ? 30_000 : 0,
-    refetchOnReconnect: isScreenActive,
-    skipPollingIfUnfocused: true,
-  });
+  const tripRead = useGetTripByIdQuery(tripId, displayReadOptions(readsEnabled && !!tripId, 30_000));
+  const { isLoading: tripLoading, isFetching: tripFetching } = tripRead;
+  const { data: liveTrip, error: tripError } = useNavigationReadData(`${passengerId}:trip:${tripId}`, tripRead, isOnline);
+  const refetchTrip = useDisplayRefetch(readsEnabled && !!tripId, `${passengerId}:${tripId}`, tripRead.refetch);
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
   const isTripOngoing = trip?.status === 'ongoing';
   const driverLocationSnapshot = useDriverLocationFallback(tripId, isScreenActive && isOnline && isTripOngoing);

@@ -7,7 +7,7 @@ import {
 import { useDialog } from '@/components/ui/DialogProvider';
 import { displayNotification } from '@/services/pushNotifications';
 import { stopPassengerBackgroundLocationTracking } from '@/services/passengerBackgroundLocationTask';
-import { useGetBookingByIdQuery } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { useAppSelector } from '@/store/hooks';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { passengerPickupMessage, pickupVehicleReminder } from '@/features/navigation/pickupAwareness';
@@ -20,7 +20,7 @@ interface Params {
   trip: Trip | undefined;
   isMountedRef: React.RefObject<boolean>;
   hasPresentedArrivalModalRef: React.RefObject<boolean>;
-  refetchBooking: ReturnType<typeof useGetBookingByIdQuery>['refetch'];
+  refetchBooking: DisplayRefetch<Booking>;
   hasPresentedNoShowNoticeRef: React.RefObject<boolean>;
   setPickupNotice: React.Dispatch<React.SetStateAction<PassengerPickupNotice | null>>;
   setPickupNoticeCountdown: React.Dispatch<React.SetStateAction<number | null>>;

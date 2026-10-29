@@ -49,6 +49,7 @@ test('Home keeps the map and GPS lifecycle during brief AppState transitions whi
   const app = controllerFixture();
   const workHooks = ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity', 'useHomeTracking', 'useHomeMap', 'useHomeUserLocation'];
   assert.equal(app.render().shouldRenderHomeMap, true);
+  assert.equal(app.received.useHomePassengerMarkers, undefined, 'unused passenger markers are not calculated');
   for (let i = 0; i < 50; i++) {
     app.state.active = false;
     const inactive = app.render();
