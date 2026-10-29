@@ -34,9 +34,9 @@ export default function TripRequestDetailsScreen() {
     displayReadOptions(readsEnabled && requestOpen && model.isDriverAccount && !model.isOwner, 15_000));
   const sharing = sharedContext?.hasOngoingTrip === true;
   const cachedSearchUsable = showRequestSearchMap(model.tripRequest, model.userId) && canUseCachedRequestLink(model.error);
+  const assignedTripId = model.passengerTripId ?? model.driverTripId;
   const reportLayout = useMainScreenReady(model.isScreenActive && Boolean(model.tripRequest) &&
-    !model.isLoading && !model.isOpeningAssignedTrip && ((!model.isError && !model.error) || cachedSearchUsable), 'request_detail');
-  const passengerTripId = model.passengerTripId;
+    !model.isLoading && !model.isOpeningAssignedTrip && ((!model.isError && !model.error) || cachedSearchUsable || Boolean(assignedTripId)), 'request_detail');
 
   if (model.isLoading || (model.isFetchingRequest && !model.tripRequest) || model.isOpeningAssignedTrip) {
     return (
@@ -62,7 +62,7 @@ export default function TripRequestDetailsScreen() {
       'Impossible de charger la commande pour le moment. Réessayez dans un instant.',
     );
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView onLayout={reportLayout} style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={model.goHome} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
@@ -74,8 +74,8 @@ export default function TripRequestDetailsScreen() {
           <Ionicons name="alert-circle-outline" size={64} color={Colors.danger} />
           <Text style={styles.emptyTitle}>Erreur</Text>
           <Text style={styles.emptyText}>{errorMessage}</Text>
-          {passengerTripId && (
-            <TouchableOpacity style={styles.retryButton} onPress={() => model.handleViewTrip(passengerTripId)}>
+          {assignedTripId && (
+            <TouchableOpacity style={styles.retryButton} onPress={() => model.handleViewTrip(assignedTripId)}>
               <Ionicons name="navigate-outline" size={20} color={Colors.white} />
               <Text style={styles.retryButtonText}>Voir mon trajet</Text>
             </TouchableOpacity>

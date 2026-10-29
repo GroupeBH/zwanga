@@ -42,7 +42,10 @@ function acknowledgeDelivery(invitation: DriverAlert) {
   const key = deliveryKey(invitation);
   const delivery = deliveries.get(key) ?? rememberDelivery(key, true);
   delivery.cancelled = true;
-  acknowledgeRideAlerts(alert => alert.key === invitationNotificationId(invitation) && alert.recipientId === invitation.driverId);
+  // A REST recovery may still be fetching an alert not yet in the local map.
+  // Record its decision key now, so that late read cannot restart the sound.
+  acknowledgeRideAlerts(alert => alert.key === invitationNotificationId(invitation) && alert.recipientId === invitation.driverId,
+    { key: invitationNotificationId(invitation), recipientId: invitation.driverId, kind: invitation.kind, id: invitation.id, data: {} });
 }
 
 export async function configureDriverNotifications() {

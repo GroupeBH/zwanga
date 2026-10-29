@@ -181,6 +181,7 @@ test('points settlement stays single-flight across a foreground/background trans
   const hooks = hookHarness(), pending = gate(); let calls = 0, alive = true, summaries = 0;
   const { useArrivalPaymentProvider } = loader({ react: hooks.react, 'expo-linking': linking,
     'expo-web-browser': {},
+    '@/store/api/bookingApi': { useLazyGetBookingByIdQuery: () => [() => assert.fail('no reconciliation on a successful response')] },
   })('hooks/arrival-payment/useArrivalPaymentProvider.ts');
   const render = () => hooks.render(() => useArrivalPaymentProvider({ isSessionCurrent: () => alive,
     updatePaymentMode: () => { calls++; return { unwrap: () => pending.promise }; },

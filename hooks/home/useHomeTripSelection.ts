@@ -130,6 +130,10 @@ export function useHomeTripSelection({
         && ongoingBookingTripIds.has(trip.id)) ?? null;
   }, [activeBookings, currentUser?.id, refreshedPassengerTrip, remoteTrips, storedTrips]);
 
+  const ongoingBookingId = useMemo(() => ongoingBookedTrip ? activeBookings.find(booking =>
+    booking.tripId === ongoingBookedTrip.id && isActivePassengerBooking(booking, currentUser?.id))?.id ?? null : null,
+  [activeBookings, currentUser?.id, ongoingBookedTrip]);
+
   const activeHomeTrip = ongoingDriverTrip ?? ongoingBookedTrip;
   const featuredPassengerTrip = !activeHomeTrip ? latestTrips.find(trip =>
     bookedTripIds.has(trip.id) && !hiddenHomePriorities[homePriorityKeys.passengerTrip(trip)]) ?? null : null;
@@ -216,5 +220,6 @@ export function useHomeTripSelection({
     featuredDriverUpcomingTripSeatsLabel,
     featuredPassengerTrip,
     ongoingBookedTrip,
+    ongoingBookingId,
   };
 }

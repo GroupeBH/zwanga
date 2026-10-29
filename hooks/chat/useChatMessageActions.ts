@@ -44,7 +44,7 @@ export function useChatMessageActions({
         { label: 'Annuler', variant: 'ghost' },
         {
           label: 'Supprimer',
-          variant: 'primary',
+          variant: 'destructive',
           onPress: async () => {
             if (!isCurrent()) return;
             try {

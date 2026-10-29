@@ -9,11 +9,11 @@ const payload = (type = 'trip_request_nearby') => ({ type, driverId, tripRequest
   bookingId: requestId, actionProtocol: 'driver-v1', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
   ringUntil: new Date(Date.now() + 30000).toISOString() });
 
-function fixture(t) {
+function fixture(t, serverRecovery = false) {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout', 'setInterval'], now: 100000 });
   const hooks = hookHarness(), states = new Set(), foreground = new Set();
   const io = { state: 'background', routes: [], links: [], players: [], decisions: [], nativeReads: 0,
-    presented: [], readPresented: null, speech: false };
+    presented: [], readPresented: null, speech: false, recovery: [], recoveryReads: 0 };
   let background;
   const router = { navigate: value => io.routes.push(value) };
   const notifee = {
@@ -24,6 +24,11 @@ function fixture(t) {
   };
   const load = loader({
     react: hooks.react,
+    '@/hooks/useAppIsActive': { useAppIsActive: () => io.state === 'active' },
+    '@/store/hooks': { useAppSelector: select => select({ zwangaApi: { config: { online: true } } }) },
+    '@/services/driverAlertRecovery': { readDriverAlertRecovery: async () => {
+      io.recoveryReads++; return { alerts: io.recovery, retry: false };
+    } },
     'react-native': { Platform: { OS: 'ios' }, NativeModules: {}, Vibration: { vibrate() {}, cancel() {} },
       Linking: { openURL: async url => io.links.push(url) },
       AppState: { get currentState() { return io.state; }, addEventListener: (_type, fn) => {
@@ -62,16 +67,35 @@ function fixture(t) {
   load('services/notifeeBackgroundHandler.ts');
   const useNotifications = load('hooks/notifications/useDriverNotifications.ts').useDriverNotifications;
   const useRinging = load('hooks/notifications/useRideRinging.ts').useRideRinging;
+  const useRecovery = load('hooks/notifications/useIosRideAlertRecovery.ts').useIosRideAlertRecovery;
   const session = load('services/rideAlertSession.ts');
   const sound = load('services/foregroundRideSound.ts');
   t.after(() => { hooks.unmount(); sound.stopForegroundRideSound(); });
   return { io, session, sound,
-    render: () => hooks.render(() => { useNotifications(driverId, true); useRinging(driverId); }),
+    render: () => hooks.render(() => { useNotifications(driverId, true); useRinging(driverId);
+      if (serverRecovery) useRecovery(driverId, true);
+    }),
     press: data => background({ type: 1, detail: { notification: { data }, pressAction: { id: 'default' } } }),
     state: value => { io.state = value; for (const listener of states) listener(value); },
     remember: data => session.rememberRideAlert(load('features/notifications/rideAlert.ts').parseRideAlert(data)),
   };
 }
+
+test('missing card and press event recover a fresh server alert and resume audio on iOS app entry', async t => {
+  const f = fixture(t, true);
+  const alert = loader()('features/notifications/rideAlert.ts').parseRideAlert(payload());
+  f.io.recovery = [alert]; f.render(); await tick();
+  assert.equal(f.io.recoveryReads, 0, 'unlocking outside Zwanga does not run foreground recovery');
+  f.state('active'); f.render(); await tick();
+  assert.equal(f.io.presented.length, 0); assert.equal(f.io.players.length, 1);
+  assert.equal(f.io.players[0].playing, true); assert.deepEqual(f.io.decisions, []);
+  f.remember(payload()); await tick(); assert.equal(f.io.players.length, 1, 'push plus REST share one player');
+  f.session.acknowledgeRideAlerts(a => a.key === alert.key, alert);
+  assert.equal(f.io.players[0].removed, true);
+  f.state('background'); f.render(); t.mock.timers.tick(10000);
+  f.state('active'); f.render(); await tick();
+  assert.equal(f.io.recoveryReads, 2); assert.equal(f.io.players.length, 1, 'a late stale server snapshot cannot undo a local decision');
+});
 
 for (const type of ['trip_request_nearby', 'new_booking']) test(`iOS lock-screen ${type} tap survives a removed card and resumes without answering`, async t => {
   const f = fixture(t);

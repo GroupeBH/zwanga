@@ -6,6 +6,7 @@ export type DialogVariant = 'info' | 'success' | 'warning' | 'danger';
 export interface DialogAction {
   label: string;
   onPress?: () => unknown;
+  /** Defaults to primary; ghost remains a lower-emphasis, neutral filled action. */
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive';
   autoClose?: boolean;
 }

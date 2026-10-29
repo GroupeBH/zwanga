@@ -25,6 +25,9 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       showLocationLegend={home.showLocationLegend}
       userLocationMarkerRef={home.userLocationMarkerRef}
       showUserLocationCallout={home.showUserLocationCallout}
+      markers={home.homeMapMarkers}
+      markerSummary={home.homeMapMarkerSummary}
+      onMarkerPress={home.openHomeMapMarker}
     />
     <HomeLocationButton
       locationButtonBottom={home.locationButtonBottom}
@@ -38,6 +41,9 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       ongoingDriverTrip={home.ongoingDriverTrip}
       ongoingBookedTrip={home.ongoingBookedTrip}
       unreadNotifications={home.unreadNotifications}
+      ongoingBookingId={home.ongoingBookingId}
+      isDriver={home.isDriver}
+      isScreenActive={home.isScreenActive}
     />
     {home.shouldRenderHomeMap && home.hasMapPriorities && <HomeActivityCards
         key={home.currentUser?.id}
@@ -63,7 +69,6 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       recentDestinations={home.recentDestinations}
       hiddenHomePriorities={home.hiddenHomePriorities}
       featuredPassengerTrip={home.featuredPassengerTrip}
-      firstName={home.firstName}
       router={home.router}
       suggestionScopeLabel={home.suggestionScopeLabel}
       sheetBottomOffset={home.sheetBottomOffset}

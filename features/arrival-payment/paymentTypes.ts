@@ -17,6 +17,8 @@ export type StoredBookingPaymentState = {
   bookingPaymentUrl?: string;
   walletTopUpOrderNumber?: string;
   walletTopUpIntent?: string;
+  /** Server-confirmed top-up, not proof that the booking itself was settled. */
+  walletTopUpConfirmedAt?: string;
 };
 
 export type StoredPaymentState = Record<string, StoredBookingPaymentState>;

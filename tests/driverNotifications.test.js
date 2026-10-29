@@ -76,7 +76,7 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
   const appState = { currentState: 'background' };
   const native = { createChannel: async value => channels.push(value), displayNotification: async value => displays.push(value),
     cancelNotification: async id => cancelled.push(id), getDisplayedNotifications: async () => displays.map(notification => ({ id: notification.id, notification })) };
-  const loaded = loader({
+  const loadService = loader({
     './tokenStorage': { getTokens: async () => ({ refreshToken: account ? `x.${Buffer.from(JSON.stringify({ sub: account, exp: Date.now()/1000+3600 })).toString('base64url')}.x` : null }) },
     '@react-native-async-storage/async-storage': { getItem: async key => storage.get(key), setItem: async (key, value) => storage.set(key, value), removeItem: async key => storage.delete(key) },
     'expo-notifications': { setNotificationCategoryAsync: async id => { categories.push(id); },
@@ -89,9 +89,20 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
           wakes.push({ id, channel, deadline }); return 'requested';
         },
         ...(phoneChannel ? { ensureBundledChannel: async () => 'zwanga-ride-ring-v4' } : {}) } } },
-  })('services/driverNotifications.ts');
-  return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented, wakes };
+  });
+  const loaded = loadService('services/driverNotifications.ts');
+  return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented, wakes,
+    session: loadService('services/rideAlertSession.ts') };
 }
+
+test('a decision before alert hydration prevents a late REST snapshot from starting its sound', async () => {
+  const f = service('ios');
+  const alert = load('features/notifications/rideAlert.ts').parseRideAlert({ ...data, ringUntil: data.expiresAt });
+  assert.deepEqual(f.session.pendingRideAlerts(driverId), []);
+  await f.loaded.dismissDriverInvitation(policy.parseDriverInvitation(alert.data));
+  f.session.rememberRideAlert(alert, true);
+  assert.deepEqual(f.session.pendingRideAlerts(driverId), []);
+});
 
 test('simultaneous socket and push share one card, deadline and acknowledgement', async () => {
   const f = service();

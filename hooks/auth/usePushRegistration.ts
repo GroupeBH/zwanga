@@ -17,14 +17,16 @@ import { usesIosFirebaseMessaging } from '@/services/iosFirebaseMessaging';
 import { bindNativeRideDelivery } from '@/services/nativeRideDelivery';
 import { flushNativeRideReceipts } from '@/services/rideNotificationReceipt';
 
+const REGISTRATION_RECHECK_MS = 5 * 60_000;
+
 /** Ordinary push and interactive capability have independent success states. */
 export function usePushRegistration(hasSession: boolean, accessToken: string | null) {
   const enabled = useDisplayReadsEnabled(useAppIsActive() && hasSession);
   const account = accessToken ? getUserIdFromToken(accessToken) : null;
   const dispatch = useAppDispatch();
   const [updateToken] = useUpdateFcmTokenMutation();
-  const state = useRef({ account, tokenKey: '', capabilityKey: '', pendingToken: null as string | null });
-  if (state.current.account !== account) state.current = { account, tokenKey: '', capabilityKey: '', pendingToken: null };
+  const state = useRef({ account, tokenKey: '', capabilityKey: '', checkedAt: 0, pendingToken: null as string | null });
+  if (state.current.account !== account) state.current = { account, tokenKey: '', capabilityKey: '', checkedAt: 0, pendingToken: null };
 
   useEffect(() => {
     if (!enabled || !account) return;
@@ -47,7 +49,7 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
         const token = pending ?? await attempt.wait(() => obtainFcmToken());
         if (!token || !current()) return;
         const key = `${account}:${token}`;
-        if (registration.tokenKey !== key) {
+        if (registration.tokenKey !== key || Date.now() - registration.checkedAt >= REGISTRATION_RECHECK_MS) {
           // A failed rotation must not inherit the old token's successful state.
           registration.capabilityKey = '';
           const request = updateToken({ fcmToken: token });
@@ -55,6 +57,7 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
           finally { request.reset(); }
           if (!current()) return;
           registration.tokenKey = key;
+          registration.checkedAt = Date.now();
           registration.capabilityKey = '';
         }
         const channelId = await attempt.wait(() => configureDriverNotifications());
@@ -62,13 +65,14 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
         const nativeReady = await attempt.wait(() => bindNativeRideDelivery(account, channelId));
         if (!current()) return;
         void flushNativeRideReceipts(account);
-        if (registration.capabilityKey === key) return;
         const backgroundReady = await attempt.wait(() => registerBackgroundNotificationTask());
         // Android data-only delivery needs the headless handler. iOS sound and
         // actions are delivered by APNs/Notifee, even with Background Refresh off.
         if (!current() || (Platform.OS === 'android' && !backgroundReady && !nativeReady)) return;
         const capability = nativeReady ? 6 : Platform.OS === 'ios' && usesIosFirebaseMessaging() ? 5
           : Platform.OS === 'android' && [BUNDLED_DRIVER_CHANNEL, PHONE_DRIVER_CHANNEL].includes(channelId) ? 4 : 2;
+        const capabilityKey = `${key}:${capability}`;
+        if (registration.capabilityKey === capabilityKey) return;
         if (capability === 4 || capability === 6) await attempt.wait(() => configureDriverAlertFallback());
         if (!current()) return;
         const register = async (target: 2 | 3 | 4 | 5 | 6) => {
@@ -78,7 +82,10 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
         };
         try {
           const result = await register(capability);
-          if (current() && result.registered) registration.capabilityKey = key;
+          if (current()) {
+            if (result.registered) registration.capabilityKey = capabilityKey;
+            else registration.tokenKey = ''; // Server lost/rejected the token: repair before advertising capability.
+          }
         } catch (error) {
           // A staged rollout against a v2 backend must retain ordinary/actionable push.
           if (![4, 6].includes(capability) || (error as { status?: unknown })?.status !== 400 || !current()) throw error;
@@ -86,7 +93,10 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
           for (const fallback of (capability === 6 ? [4, 3, 2] : [3, 2]) as (2 | 3 | 4)[]) {
             try {
               const result = await register(fallback);
-              if (current() && result.registered) registration.capabilityKey = key;
+              if (current()) {
+                if (result.registered) registration.capabilityKey = capabilityKey;
+                else registration.tokenKey = '';
+              }
               break;
             } catch (fallbackError) {
               if ((fallbackError as { status?: unknown })?.status !== 400 || !current() || fallback === 2) throw fallbackError;
@@ -105,7 +115,10 @@ export function usePushRegistration(hasSession: boolean, accessToken: string | n
       }
     };
     const initial = setTimeout(() => { void sync(); }, 1200);
-    const retry = setInterval(() => { if (registration.pendingToken || !registration.capabilityKey) void sync(); }, 60_000);
+    const retry = setInterval(() => {
+      void flushNativeRideReceipts(account);
+      if (registration.pendingToken || !registration.capabilityKey || Date.now() - registration.checkedAt >= REGISTRATION_RECHECK_MS) void sync();
+    }, 60_000);
     const unsubscribe = subscribeToFcmRefresh(token => sync(token));
     return () => { cancelled = true; running?.cancel(); clearTimeout(initial); clearInterval(retry); unsubscribe(); };
   }, [enabled, account, accessToken, dispatch, updateToken]);

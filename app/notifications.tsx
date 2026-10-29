@@ -136,7 +136,7 @@ export default function NotificationsScreen() {
         { label: 'Annuler', variant: 'ghost' },
         {
           label: deleteLabel,
-          variant: 'primary',
+          variant: 'destructive',
           onPress: async () => {
             try {
               const allNotificationIds = notifications.map((n) => n.id);

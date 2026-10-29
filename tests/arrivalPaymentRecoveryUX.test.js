@@ -122,3 +122,15 @@ test('late recovery responses cannot change another account or booking', async t
   assert.deepEqual(e.calls.patches, []); assert.deepEqual(e.calls.failed, []); assert.equal(e.calls.ack, 0);
   assert.equal(e.render().isWorking, false);
 });
+
+test('a stalled intent verification releases the button and ignores a late success without losing its reference', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const e = recovery(t); let finish;
+  e.response = () => new Promise(resolve => { finish = resolve; });
+  const task = e.render().run(); assert.equal(e.render().isWorking, true);
+  t.mock.timers.tick(25000); await task;
+  assert.equal(e.render().isWorking, false); assert.match(e.render().message, /Réessayez ou contactez l’aide/);
+  assert.equal(e.state.activeStoredState.walletTopUpIntent, 'original');
+  finish({ payment: { status: 'succeeded' } }); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(e.calls.settled, 0); assert.equal(e.calls.ack, 0); assert.deepEqual(e.calls.patches, []);
+});

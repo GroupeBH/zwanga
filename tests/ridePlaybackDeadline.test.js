@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const user='00000000-0000-4000-8000-000000000001', id='00000000-0000-4000-8000-000000000002';
 const iso=n=>new Date(n).toISOString();
-const delayed=()=>({type:'new_booking',actionProtocol:'driver-v1',driverId:user,bookingId:id,
-  ringUntil:iso(Date.now()-1000),nativeSoundStartedAt:iso(Date.now()-11000),nativeSoundUntil:iso(Date.now()+49000)});
+const delayed=()=>{ const now=Date.now(); return {type:'new_booking',actionProtocol:'driver-v1',driverId:user,bookingId:id,
+  ringUntil:iso(now-1000),nativeSoundStartedAt:iso(now-11000),nativeSoundUntil:iso(now+49000)}; };
 
 test('a native clip started at delivery +50s survives opening at +61s, without extending on duplicates',()=>{
  const load=loader(), data=delayed(), policy=load('features/notifications/ridePlaybackDeadline.ts');

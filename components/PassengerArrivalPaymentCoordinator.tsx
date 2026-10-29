@@ -215,13 +215,15 @@ function ArrivalPaymentSession() {
             ) : recoveryVisible && state.arrivalBooking ? (
               <ArrivalPaymentRecovery bookingId={state.arrivalBooking.id} pending={paymentPending}
                 busy={(cashFallback.canSwitch ? state.isMutatingPayment : state.isBusy) || submission.isSubmitting || recovery.isWorking || cashFallback.isWorking || state.isStorageLoading || mixed.isLoading}
+                verifying={state.isCheckingPayment || recovery.isWorking}
+                topUpConfirmed={Boolean(state.activeStoredState?.walletTopUpConfirmedAt)}
                 pendingCashAllowed={cashFallback.canSwitch && !state.storageError}
                 savingCash={submission.isSubmittingCash || cashFallback.isWorking}
                 beforeArrival={state.isBeforeArrival}
                 amount={state.paymentAmount} currency={state.paymentCurrency} destination={destination}
-                message={cashFallback.message ?? (!paymentPending ? state.paymentError : cashFallback.canSwitch ? undefined : recovery.message ?? (state.storageError ? 'Impossible de retrouver votre paiement sur ce téléphone. Réessayez ou contactez l’aide.'
+                message={cashFallback.message ?? (!paymentPending ? state.paymentError : recovery.message ?? (state.storageError ? 'Impossible de retrouver votre paiement sur ce téléphone. Réessayez ou contactez l’aide.'
                   : mixed.pending ? 'Le règlement jetons + espèces doit être confirmé. Vérifiez avant de payer à nouveau.'
-                  : monitoring.verification.phase === 'paused' ? monitoring.verification.message : undefined))}
+                  : ['paused', 'checking', 'waiting'].includes(monitoring.verification.phase) ? monitoring.verification.message : undefined))}
                 onVerify={retryPayment}
                 onChange={() => { if (!paymentPending) state.setSelectedMode(null); }}
                 onCash={cashFallback.canSwitch ? cashFallback.run : submission.payCash} onClose={state.deferPayment}

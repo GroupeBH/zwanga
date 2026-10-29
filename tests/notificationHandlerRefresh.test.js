@@ -18,6 +18,7 @@ test('actual foreground and tap listeners refresh financial and KYC data through
     '../hooks/notifications/useOverdueRequestNotification': { useOverdueRequestNotification: () => ({ handlePassengerOverdueNotification: async () => false }) },
     '@/hooks/notifications/useDriverNotifications': { useDriverNotifications() {} },
     '@/hooks/notifications/useRideRinging': { useRideRinging() {} },
+    '@/hooks/notifications/useIosRideAlertRecovery': { useIosRideAlertRecovery() {} },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     '@/services/pushNotifications': {}, '@/services/backgroundNotificationTask': {},
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: user }) },

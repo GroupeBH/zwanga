@@ -93,6 +93,7 @@ export const {
   useLazyCheckBookingPaymentStatusQuery,
   useUpdateBookingPaymentModeMutation,
   useGetBookingByIdQuery,
+  useLazyGetBookingByIdQuery,
   useUpdateBookingStatusMutation,
   useCancelBookingMutation,
   useAcceptBookingMutation,

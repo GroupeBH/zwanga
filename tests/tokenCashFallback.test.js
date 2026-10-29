@@ -86,7 +86,7 @@ test('reopening after a confirmed switch restores cash over a stale list, never 
   assert.equal(isTokenCashFallback({ ...receipt, tokenCashFallbackAt: 'invalid' }), false);
   assert.equal(isTokenCashFallback({ ...receipt, paymentAmount: NaN }), false);
 });
-test('pending token complement presents full cash amount as primary and verification as secondary', () => {
+test('pending token complement prioritizes verification and preserves an explicit secondary cash choice', () => {
   const walk = node => React.isValidElement(node) ? [node, ...React.Children.toArray(node.props.children).flatMap(walk)] : [];
   const words = node => typeof node === 'string' || typeof node === 'number' ? String(node)
     : Array.isArray(node) ? node.map(words).join('') : words(node?.props?.children ?? '');
@@ -100,10 +100,10 @@ test('pending token complement presents full cash amount as primary and verifica
   })('features/arrival-payment/ArrivalPaymentRecovery.tsx');
   const tree = ArrivalPaymentRecovery({ bookingId: 'b', pending: true, pendingCashAllowed: true, amount: 4500,
     currency: 'CDF', onCash: async () => cash++, onVerify: () => verify++ });
-  assert.ok(!skip); assert.match(words(tree), /montant total en espèces/);
-  assert.match(words(tree), /recharge confirmée plus tard/); assert.doesNotMatch(words(tree), /Ne payez pas en espèces/);
-  walk(tree).find(node => node.type === 'Button' && /Payer.*4.*500.*en espèces/.test(words(node))).props.onPress();
+  assert.ok(!skip); assert.match(words(tree), /Si vous avez validé Mobile Money, vérifiez/);
+  assert.match(words(tree), /recharge reçue resteront/); assert.doesNotMatch(words(tree), /Payez le montant total/);
+  walk(tree).find(node => node.type === 'Button' && /Choisir les espèces.*4.*500/.test(words(node))).props.onPress();
   assert.equal(cash, 1); assert.equal(verify, 0);
-  walk(tree).find(node => node.type === 'Button' && words(node) === 'Vérifier Mobile Money').props.onPress();
+  walk(tree).find(node => node.type === 'Button' && words(node) === 'Vérifier mon paiement').props.onPress();
   assert.equal(verify, 1);
 });

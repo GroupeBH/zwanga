@@ -100,11 +100,11 @@ test('profile button renders only one uppercase initial even when photo props ex
   assert.deepEqual(calls, Array(4).fill('/profile'));
 });
 
-test('passenger search, publish and order actions retain their existing destinations', () => {
+test('passenger search leads to trips or ordering; proposing stays reachable as a secondary link', () => {
   const calls = [];
   const tree = HomeTripsSheet.type({ ...base, router: { push: route => calls.push(route) } });
-  for (const label of ['Où allez-vous ?', 'Proposer un trajet', 'Commander']) {
-    const button = nodes(tree).find(node => node.type === 'Button' && text(node) === label);
+  for (const label of ['Où allez-vous ?', 'Proposer un trajet']) {
+    const button = nodes(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
     assert.ok(button); assert.equal(button.props.accessibilityRole, 'button');
     assert.ok(flatten(button.props.style).minHeight >= 44);
     for (const labelNode of nodes(button).filter(node => node.type === 'Text')) {
@@ -114,29 +114,34 @@ test('passenger search, publish and order actions retain their existing destinat
     }
     button.props.onPress();
   }
-  assert.deepEqual(calls, ['/search', '/publish', { pathname: '/request-create' }]);
+  assert.deepEqual(calls, ['/search', '/publish']);
+  assert.match(text(tree), /véhicule à commander/, 'the search entry announces ordering, now offered on /search');
+  assert.match(text(tree), /Vous avez un véhicule \? Proposer un trajet/);
+  assert.equal(nodes(tree).some(node => node.type === 'Button' && text(node) === 'Commander'), false);
+  assert.doesNotMatch(text(tree), /Bonjour/);
   assert.ok(nodes(tree).some(node => node.type === 'HomeDestinationShortcuts'));
   assert.doesNotMatch(text(tree), /Demander/);
 });
 
-test('driver dashboard keeps publishing, ordering, clients and revenue without public trip discovery', () => {
+test('driver dashboard keeps publishing, passenger travel, clients and revenue without public trip discovery', () => {
   const modes = [], calls = [];
   const tree = HomeTripsSheet.type({ ...base, isDriver: true, isRequestsSheetMode: true, isScreenActive: true,
     router: { push: path => calls.push(path) }, setHomeSheetMode: mode => modes.push(mode), openSheetIndex: () => calls.push('all') });
   const elements = nodes(tree);
-  for (const label of ['Publier un trajet', 'Commander', 'Chercher un trajet', 'Voir tout']) {
+  for (const label of ['Publier un trajet', 'Voir tout']) {
     elements.find(node => node.type === 'Button' && text(node) === label).props.onPress();
   }
+  elements.find(node => node.props.accessibilityLabel === 'Voyager comme passager').props.onPress();
   elements.find(node => node.props.accessibilityLabel === '0 clients disponibles').props.onPress();
   assert.equal(elements.some(node => node.type === 'HomeDriverStatus'), false);
   assert.doesNotMatch(text(tree), /Indisponible|Hors ligne|En ligne/);
   elements.find(node => node.type === 'HomeDriverEarnings').props.onPress();
   assert.deepEqual(modes, []);
-  assert.deepEqual(calls, ['/publish', { pathname: '/request-create' }, '/search',
-    'all', 'all', '/driver-earnings']);
-  const searchButton = elements.find(node => node.props.accessibilityLabel === 'Chercher un trajet');
-  assert.ok(flatten(searchButton.props.style).minHeight >= 44);
-  assert.match(searchButton.props.accessibilityHint, /voyager comme passager/);
+  assert.deepEqual(calls, ['/publish', 'all', '/search', 'all', '/driver-earnings']);
+  const passengerButton = elements.find(node => node.props.accessibilityLabel === 'Voyager comme passager');
+  assert.ok(flatten(passengerButton.props.style).minHeight >= 44);
+  assert.match(passengerButton.props.accessibilityHint, /Commander un véhicule ou chercher un trajet/);
+  assert.doesNotMatch(text(tree), /Bonjour/);
   assert.equal(elements.some(node => node.props.accessibilityRole === 'tab'), false);
   assert.equal(elements.some(node => node.type === 'Button' && text(node) === 'Trajets'), false);
   assert.equal(elements.some(node => node.type === 'HomeDestinationShortcuts'), false);
@@ -148,18 +153,25 @@ test('option A uses midnight blue and burnt orange with readable white labels; s
   assert.equal(c.blue, '#1E2A4A');
   assert.equal(c.orange, '#D1430F');
   const elements = nodes(HomeTripsSheet.type(base));
-  const button = label => elements.find(node => node.type === 'Button' && text(node) === label);
+  const driverElements = nodes(HomeTripsSheet.type({ ...base, isDriver: true }));
+  const button = label => [...elements, ...driverElements].find(node => node.type === 'Button'
+    && (text(node) === label || node.props.accessibilityLabel === label));
   const luminance = hex => {
     const values = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
       .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
   };
-  for (const [label, color, foreground] of [['Proposer un trajet', c.blue, '#FFFFFF'], ['Commander', c.orange, '#FFFFFF']]) {
+  for (const [label, color, foreground] of [['Publier un trajet', c.blue, '#FFFFFF'], ['Voyager comme passager', c.orange, '#FFFFFF']]) {
     const action = button(label);
     assert.equal(flatten(action.props.style).backgroundColor, color);
     assert.equal(flatten(nodes(action).find(node => node.type === 'Text').props.style).color, foreground);
     const levels = [luminance(foreground), luminance(color)].sort((a, b) => b - a);
     assert.ok((levels[0] + 0.05) / (levels[1] + 0.05) >= 4.5, `${label}: normal-size text contrast`);
+  }
+  const passengerAction = button('Voyager comme passager');
+  for (const node of nodes(passengerAction)) {
+    if (node.type === 'Text') assert.equal(flatten(node.props.style).color, '#FFFFFF');
+    if (node.type === 'Icon') assert.equal(node.props.color, '#FFFFFF');
   }
   assert.equal(flatten(button('Où allez-vous ?').props.style).backgroundColor, '#FFFFFF');
 });
@@ -308,19 +320,17 @@ test('discovery follows the role even with an obsolete feed mode, without tabs o
   }
 });
 
-test('driver can still order without changing role; both primary actions share one row', () => {
+test('driver can still travel as a passenger without changing role; publishing is the single primary action', () => {
   for (const isRequestsSheetMode of [true, false]) {
     const calls = [];
     const tree = HomeTripsSheet.type({ ...base, isDriver: true, isRequestsSheetMode,
       router: { push: route => calls.push(route) } });
     const elements = nodes(tree);
-    const order = elements.find(node => node.props.accessibilityLabel === 'Commander un véhicule');
+    const order = elements.find(node => node.props.accessibilityLabel === 'Voyager comme passager');
     const publish = elements.find(node => node.type === 'Button' && text(node) === 'Publier un trajet');
-    const row = elements.find(node => node.type === 'View' && Array.isArray(node.props.children)
-      && node.props.children.includes(order) && node.props.children.includes(publish));
-    assert.ok(row);
-    assert.equal(flatten(row.props.style).flexDirection, 'row');
+    assert.equal(flatten(publish.props.style).flex, undefined, 'publish spans the full width');
     assert.equal(order.props.accessibilityRole, 'button');
+    assert.equal(elements.filter(node => node.type === 'Button' && ['Publier un trajet', 'Commander'].includes(text(node))).length, 1);
     for (const button of [order, publish]) {
       assert.ok(flatten(button.props.style).minHeight >= 44);
       for (const label of nodes(button).filter(node => node.type === 'Text')) {
@@ -329,7 +339,7 @@ test('driver can still order without changing role; both primary actions share o
       }
     }
     order.props.onPress();
-    assert.deepEqual(calls, [{ pathname: '/request-create' }]);
+    assert.deepEqual(calls, ['/search']);
   }
 });
 

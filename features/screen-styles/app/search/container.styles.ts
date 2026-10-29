@@ -272,6 +272,19 @@ export const styles = StyleSheet.create({
     fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
+  orderLink: {
+    minHeight: 44,
+    marginBottom: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  orderLinkText: {
+    flex: 1,
+    color: Colors.primary,
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.bold,
+  },
   resultSeparator: {
     height: Spacing.sm,
   }

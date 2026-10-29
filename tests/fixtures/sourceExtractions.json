@@ -65,8 +65,8 @@
       "sha256": "4e8f783d36ad4636dd13e65c9ea67664b54bb5fc5a88c2c9e8f2309cec376654"
     },
     "features/screen-styles/app/search/index.ts": {
-      "keys": 44,
-      "sha256": "c8306d23db773c241ce0785546aa42e16ee0719f6e856ba4090e2f77cc835016"
+      "keys": 46,
+      "sha256": "38a9cf89b68363c19594af1c5e1e7cc1a1acba61bd0763b3da36b72435054520"
     },
     "features/screen-styles/app/security/index.ts": {
       "keys": 71,
@@ -245,7 +245,7 @@
       "updateUser": "17cf4874ce92a822d3c6f8bf939f121b5d83371494357feee49ed7ef7e792a7e",
       "requestDriverOnboarding": "52770635580b8b643e2268f9706d13d29f388ba7c239f6afed49f1038912172f",
       "activateDriver": "4c993e25751136fd9d234f4e999f313ca4461b26c09430487a3cd9a5275b155e",
-      "deleteAccount": "8160786312d52735bfcf15c162f51916eec39a8d430822aedd97551738710686",
+      "deleteAccount": "7011e933484c4be8a3675ee22897ba0adb8da41ec4be89ce86dfecc3d6336e9a",
       "getUserById": "0dd2b49af2389970548294e121c6a58453000224ae9fbe3843638beede569fc6",
       "getPublicUserInfo": "7d6e542d9b50bed9d1c3b10f3d3a810abf9253211af30f44edea65eac70f6e21",
       "uploadKyc": "be53fdfe6215cf289ccb00b1b0a1a8c26be961ce51d0a49c2af7f453831329d3",

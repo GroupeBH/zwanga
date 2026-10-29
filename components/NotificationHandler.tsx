@@ -1,6 +1,7 @@
 import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
 import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
 import { useRideRinging } from '@/hooks/notifications/useRideRinging';
+import { useIosRideAlertRecovery } from '@/hooks/notifications/useIosRideAlertRecovery';
 import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { isRemoteNearbyRequestAlert, parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
@@ -44,6 +45,7 @@ export function NotificationHandler() {
   const currentUserRef = useRef(currentUser);
   useDriverNotifications(isAuthenticated ? currentUser?.id : undefined, isDriverAccount(currentUser));
   useRideRinging(isAuthenticated ? currentUser?.id : undefined);
+  useIosRideAlertRecovery(isAuthenticated ? currentUser?.id : undefined, isDriverAccount(currentUser));
   const myTripRequestsRef = useRef(myTripRequests);
   const pathnameRef = useRef(pathname);
   const shownOverdueRequestsRef = useRef(new Set<string>());

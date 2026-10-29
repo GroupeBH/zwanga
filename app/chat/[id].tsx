@@ -161,7 +161,7 @@ export default function ChatScreen() {
     showDialog({ title: 'Message', actions: [
       { label: 'Annuler', variant: 'ghost' },
       { label: 'Modifier', onPress: () => handleEditMessage(msg) },
-      { label: 'Supprimer', variant: 'primary', onPress: () => handleDeleteMessage(msg) },
+      { label: 'Supprimer', variant: 'destructive', onPress: () => handleDeleteMessage(msg) },
     ] });
   }, [isCurrent, user?.id, showDialog, handleEditMessage, handleDeleteMessage]);
 

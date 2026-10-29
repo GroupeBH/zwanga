@@ -8,7 +8,8 @@ import { hideRefusedRequest } from './trip-request/refusalCache';
 export interface DriverDispatchStatus {
   enabled: boolean;
   available: boolean;
-  presence?: { vehicleId: string; leaseId: string; seats: number; expiresAt: string } | null;
+  presence?: { vehicleId: string; leaseId: string; seats: number; expiresAt: string;
+    updatedAt?: string; discoveryEnabled?: boolean | null } | null;
   pendingOfferId: string | null;
   responseSeconds?: number;
   automatic?: boolean;

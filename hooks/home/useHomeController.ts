@@ -11,6 +11,7 @@ import { useHomeTripSelection } from './useHomeTripSelection';
 import { useHomeUserLocation } from './useHomeUserLocation';
 import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 import { useHomePriorityDismissals } from './useHomePriorityDismissals';
+import { useHomeMapMarkers } from './useHomeMapMarkers';
 import { buildHomeEntryAnnouncement } from '@/features/notifications/homeEntryAnnouncement';
 import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 
@@ -34,6 +35,8 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
   });
   useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
   const mapNavigation = useHomeMapNavigation({ ...context });
+  const mapMarkers = useHomeMapMarkers({ ...passengerActivity, ...tripSelection, ...priorities, ...mapNavigation,
+    isDriver: context.isDriver, enabled: !tripSelection.activeHomeTrip });
   const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...mapNavigation });
   const userLocation = useHomeUserLocation({ ...foregroundContext, ...location, ...driverActivity, ...map, ...mapNavigation });
   const hasMapPriorities = !tripSelection.isHomeSheetLockedRetracted && Boolean(
@@ -59,6 +62,7 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
     ...tripSelection,
     ...requestHighlight,
     ...mapNavigation,
+    ...mapMarkers,
     ...map,
     ...userLocation,
     ...sheet,

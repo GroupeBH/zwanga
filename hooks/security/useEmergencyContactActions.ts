@@ -135,7 +135,7 @@ export function useEmergencyContactActions({
       actions: [
         {
           label: 'Supprimer',
-          variant: 'primary',
+          variant: 'destructive',
           onPress: async () => {
             try {
               await deleteContact(contactId).unwrap();
