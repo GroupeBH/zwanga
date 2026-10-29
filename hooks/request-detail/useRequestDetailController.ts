@@ -63,7 +63,7 @@ export function useRequestDetailController() {
   }, [setShowDirectAcceptModal]);
 
   const routeOverride = useRequestRouteOverridePicker(form, `${data.currentUser?.id}:${data.id}`,
-    availability.canAcceptDirectly && !data.isAcceptingTripRequest && !data.isStartingTrip && !data.isFetchingRequest);
+    availability.canAcceptDirectly && !data.isAcceptingTripRequest && !data.isStartingTrip && data.canRespondToRequest);
 
   // Fonctions pour appliquer uniquement la date ou l'heure
   const schedule = useRequestEditSchedule({
@@ -164,6 +164,7 @@ export function useRequestDetailController() {
   });
 
   return {
+    canRespondToRequest: data.canRespondToRequest,
     isScreenActive: data.isScreenActive,
     responseWindowStartedAt: data.responseWindowStartedAt,
     userId: data.currentUser?.id,

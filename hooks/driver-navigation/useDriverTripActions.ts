@@ -4,9 +4,9 @@ import {
   hasBookingDropoffCompleted,
 } from '../../features/driver-navigation/navigationBooking';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
-import { useCancelDriverTripInterruptionMutation, useGetTripByIdQuery } from '@/store/api/tripApi';
+import { useCancelDriverTripInterruptionMutation } from '@/store/api/tripApi';
 import type { Booking, Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { shareTrip } from '@/utils/shareHelpers';
@@ -24,8 +24,8 @@ interface Params {
   activeDriverInterruptionConfirmedCount: number;
   activeDriverInterruptionRequiredCount: number;
   cancelDriverTripInterruption: ReturnType<typeof useCancelDriverTripInterruptionMutation>[0];
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchTrip: DisplayRefetch<Trip>;
+  refetchBookings: DisplayRefetch<Booking[]>;
   bookingsRef: React.RefObject<Booking[] | undefined>;
   pauseTripWithoutPassengerConfirmation: () => Promise<void>;
   sendDriverInterruptionRequest: (reason: TripInterruptionReason) => Promise<void>;

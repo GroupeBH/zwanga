@@ -82,8 +82,10 @@ test('photo policy handles API error envelopes and opens profile without replaci
 });
 
 test('publication photo refusal unlocks submission, keeps the draft and does not reconcile or auto-submit', async () => {
+  const hooks = hookHarness();
   const dialogs = [], navigations = [], successes = [];
   const { usePublishSubmission } = loader({
+    react: hooks.react,
     '../../features/publish/publishModel': { getLocationCoordinates: () => [15, -4], isUserDriver: () => true },
     '@/services/analytics': { trackEvent() { throw Error('must not record success'); } },
     '@/services/driverPermissionOnboarding': { recordDriverPublication() { throw Error('must not start permission onboarding'); } },
@@ -99,7 +101,7 @@ test('publication photo refusal unlocks submission, keeps the draft and does not
     showDialog: value => dialogs.push(value), router: { push: path => navigations.push(path) },
     setPublicationSuccess: value => successes.push(value),
   };
-  await usePublishSubmission(props).handlePublish();
+  await hooks.render(() => usePublishSubmission(props)).handlePublish();
   assert.equal(ref.current, false);
   assert.equal(dialogs.length, 1);
   assert.equal(successes.length, 0);

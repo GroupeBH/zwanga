@@ -8,7 +8,7 @@ const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(
 const flatStyle = style => Object.assign({}, ...(Array.isArray(style) ? style.flat(Infinity) : [style]).filter(Boolean));
 
 function sheet(platform = 'ios', height = 844) {
-  const hooks = hookHarness(); const calls = [];
+  const hooks = hookHarness(); const calls = [], announcements = [];
   const activity = { active: true }; const backHandlers = new Set();
   const window = { width: 390, height }; const insets = { top: 47, bottom: 34, left: 0, right: 0 };
   const native = { Platform: { OS: platform }, View: 'View', Text: 'Text', ScrollView: 'ScrollView', FlatList: 'FlatList', TextInput: 'Input',
@@ -20,6 +20,7 @@ function sheet(platform = 'ios', height = 844) {
       return { remove: () => backHandlers.delete(handler) };
     } } };
   const mocks = { react: { ...React, ...hooks.react }, 'react-native': native,
+    '@/hooks/wallet/useWalletAnnouncement': { useWalletAnnouncement: value => announcements.push(value) },
     '../features/wallet/WalletOverview': { WalletOverview: 'Overview', WalletRelatedLinks: 'RelatedLinks' },
     'react-native-safe-area-context': { SafeAreaProvider: 'Provider', SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => insets },
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-router': { Stack: { Screen: 'StackScreen' } },
@@ -33,7 +34,7 @@ function sheet(platform = 'ios', height = 844) {
     const bodyElement = elements(render()).find(node => node.type === WalletSheetModalBody);
     return bodyElement ? WalletSheetModalBody(bodyElement.props) : null;
   };
-  return { hooks, calls, props, render, body, window, insets, mocks, activity, backHandlers, WalletSheetModalBody };
+  return { hooks, calls, announcements, props, render, body, window, insets, mocks, activity, backHandlers, WalletSheetModalBody };
 }
 
 test('iOS wallet uses a bounded, shrinking sheet inside one keyboard adjustment', () => {
@@ -146,6 +147,7 @@ test('typing in the transfer form preserves controlled values and cannot submit 
   const content = () => elements(Screen()).find(node => node.props?.accessibilityElementsHidden !== undefined);
   const gestureEnabled = () => elements(Screen()).find(node => node.type === 'StackScreen').props.options.gestureEnabled;
   assert.equal(content().props.pointerEvents, 'none');
+  assert.equal(h.announcements.at(-1).visible, false, 'the wallet explanation is hidden under transfer');
   assert.equal(content().props.accessibilityElementsHidden, true);
   assert.equal(gestureEnabled(), false);
   const getSheet = () => WalletTransferModal(elements(Screen()).find(node => node.type === WalletTransferModal).props);
@@ -165,9 +167,11 @@ test('typing in the transfer form preserves controlled values and cannot submit 
   assert.equal(elements(getSheet()).find(node => node.type === 'Button').props.disabled, true);
   getSheet().props.onClose(); assert.equal(getSheet().props.visible, false);
   assert.equal(content().props.pointerEvents, 'auto');
+  assert.equal(h.announcements.at(-1).visible, true);
   assert.equal(content().props.accessibilityElementsHidden, false);
   assert.equal(content().props.importantForAccessibility, 'auto');
   assert.equal(gestureEnabled(), true);
+  h.activity.active = false; content(); assert.equal(h.announcements.at(-1).visible, false);
   assert.equal(wallet.transferAmount, '25'); h.hooks.unmount();
 });
 

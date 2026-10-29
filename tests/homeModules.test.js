@@ -339,14 +339,11 @@ function trackingEnvironment(extra = {}) {
   return { ...app, events, calls, dialogs, props, render: () => app.hooks.render(() => useHomeTracking(props)) };
 }
 
-test('live tracking ignores unrelated/stale locations, deduplicates progress, and uses fresh bookings without reconnecting', async () => {
+test('Home ignores unused passenger positions, deduplicates progress, and uses fresh bookings without reconnecting', async () => {
   const app = trackingEnvironment();
   app.render(); await tick();
-  app.events.location({ tripId: 'other', bookingId: 'booking', coordinates: [15.33, -4.33] });
-  app.events.location({ tripId: 'active', bookingId: 'booking', coordinates: [15.33, -4.33], updatedAt: '2020-01-01' });
-  assert.deepEqual(app.render().liveDriverPassengerLocations, {});
-  app.events.location({ tripId: 'active', bookingId: 'booking', coordinates: [15.33, -4.33], updatedAt: new Date().toISOString() });
-  assert.equal(app.render().liveDriverPassengerLocations.booking.coordinate.latitude, -4.33);
+  assert.equal(app.events.location, undefined, 'no subscriber for positions that Home does not render');
+  assert.equal(app.calls.some(call => ['passengers', 'driver'].includes(call[0])), false);
   app.props.ongoingDriverBookings = [{ id: 'booking', passengerName: 'Béatrice' }];
   app.render();
   const progress = type => app.events.progress({ tripId: 'active', events: [{ type, tripId: 'active', bookingId: 'booking' }] });
@@ -355,9 +352,7 @@ test('live tracking ignores unrelated/stale locations, deduplicates progress, an
   assert.ok(app.dialogs[0].message.includes('Béatrice'));
   assert.equal(app.calls.filter(call => call[0] === 'join').length, 1);
   app.props.isFocused = false; app.render();
-  app.events.location({ tripId: 'active', bookingId: 'late', coordinates: [15.33, -4.33] });
   progress('dropoff_confirmed');
-  assert.deepEqual(app.render().liveDriverPassengerLocations, {});
   assert.equal(app.dialogs.length, 1);
   assert.ok(app.calls.some(call => call[0] === 'unsubscribe-progress'));
   assert.ok(app.calls.some(call => call[0] === 'leave'));
@@ -424,18 +419,6 @@ test('driver GPS emissions keep their four-second throttle and stop out of focus
   app.props.isFocused = false;
   t.mock.timers.tick(5000); app.render();
   assert.equal(app.calls.filter(call => call[0] === 'location').length, 2);
-  app.hooks.unmount();
-});
-
-test('passenger markers keep pickup fallback, hide onboard passengers and cap native markers', () => {
-  const app = environment(), { useHomePassengerMarkers } = app.load('hooks/home/useHomePassengerMarkers.ts');
-  const bookings = Array.from({ length: 20 }, (_, index) => ({ id: String(index), status: 'accepted', passengerId: String(index), passengerLocationUpdatedAt: '2020-01-01', passengerLocationCoordinates: arrival.coordinates }));
-  bookings[0].pickedUp = true;
-  const result = app.hooks.render(() => useHomePassengerMarkers({ ongoingDriverTrip: trip('a', { status: 'ongoing' }), ongoingDriverBookings: bookings, liveDriverPassengerLocations: {} }));
-  assert.equal(result.visibleDriverPassengerMarkers.length, 10);
-  assert.equal(result.visibleDriverPassengerMarkers.some(marker => marker.bookingId === '0'), false);
-  assert.deepEqual(result.visibleDriverPassengerMarkers[0].coordinate, departure.coordinates);
-  assert.equal(result.visibleDriverPassengerMarkers[0].isLive, false);
   app.hooks.unmount();
 });
 
@@ -534,7 +517,7 @@ test('passenger tracking only presents progress for the active passenger booking
     { type: 'driver_arrived_pickup', tripId: 'active', bookingId: 'mine' },
   ] });
   assert.equal(app.dialogs.length, 1);
-  assert.ok(app.calls.some(call => call[0] === 'driver'));
+  assert.equal(app.calls.some(call => call[0] === 'driver'), false, 'Home no longer requests invisible driver positions');
   assert.ok(app.calls.some(call => call[0] === 'refresh-passenger'));
   assert.equal(app.calls.some(call => call[0] === 'location'), false);
   app.hooks.unmount();

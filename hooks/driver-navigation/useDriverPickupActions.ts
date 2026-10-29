@@ -7,9 +7,9 @@ import {
 import { useDialog } from '@/components/ui/DialogProvider';
 import { rideOutbox } from '@/services/rideOutbox';
 import { useRideActionFeedback } from '@/hooks/navigation/useRideActionFeedback';
-import { useCancelBookingMutation, useGetTripBookingsQuery } from '@/store/api/bookingApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
-import type { Booking } from '@/types';
+import { useCancelBookingMutation } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
+import type { Booking, Trip } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useCallback } from 'react';
 import type { Router } from 'expo-router';
@@ -44,8 +44,8 @@ interface Params {
   cancelBooking: ReturnType<typeof useCancelBookingMutation>[0];
   rememberCancelledBooking: (bookingId: string) => void;
   setPickupSkipped: (bookingId: string, shouldSkip: boolean) => void;
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
+  refetchBookings: DisplayRefetch<Booking[]>;
+  refetchTrip: DisplayRefetch<Trip>;
   reconcileBookingStatus: (error: unknown, bookingId: string, expectedStatuses: readonly string[]) => Promise<Booking | null>;
 }
 

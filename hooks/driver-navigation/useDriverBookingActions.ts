@@ -3,12 +3,11 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import {
   useAcceptBookingMutation,
   useConfirmPassengerTripInterruptionMutation,
-  useGetTripBookingsQuery,
   useRejectPassengerTripInterruptionMutation,
   useRejectBookingMutation,
 } from '@/store/api/bookingApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
-import type { Booking } from '@/types';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
+import type { Booking, Trip } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { getDriverInterruptionSettlementMessage } from '@/features/arrival-payment/interruptionSettlement';
@@ -23,8 +22,8 @@ interface Params {
   rememberAcceptedBooking: (bookingId: string) => void;
   lastRouteFetchTimeRef: React.RefObject<number>;
   routeFetchedRef: React.RefObject<boolean>;
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
+  refetchBookings: DisplayRefetch<Booking[]>;
+  refetchTrip: DisplayRefetch<Trip>;
   speakNavigationMessage: (message: string, options?: { force?: boolean; }) => Promise<void>;
   reconcileBookingStatus: (error: unknown, bookingId: string, expectedStatuses: readonly string[]) => Promise<Booking | null>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];

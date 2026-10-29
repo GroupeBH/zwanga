@@ -3,14 +3,13 @@ import { RouteStep, LivePassengerLocation } from '../../features/driver-navigati
 import { useDialog } from '@/components/ui/DialogProvider';
 import { stopDriverBackgroundLocationTracking } from '@/services/driverBackgroundLocationTask';
 import { getTokenSessionVersion } from '@/services/tokenSession';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import {
-  useGetTripByIdQuery,
   usePauseTripMutation,
   useRequestDriverTripInterruptionMutation,
   useStartTripMutation,
 } from '@/store/api/tripApi';
-import type { Trip, TripInterruptionReason } from '@/types';
+import type { Booking, Trip, TripInterruptionReason } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import * as Location from 'expo-location';
@@ -35,8 +34,8 @@ interface Params {
   setRouteDurationSeconds: React.Dispatch<React.SetStateAction<number | null>>;
   setSteps: React.Dispatch<React.SetStateAction<RouteStep[]>>;
   setCurrentStepIndex: React.Dispatch<React.SetStateAction<number>>;
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchTrip: DisplayRefetch<Trip>;
+  refetchBookings: DisplayRefetch<Booking[]>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   reconcileTripStatus: (error: unknown, expectedStatuses: readonly string[]) => Promise<Trip | null>;
   pauseTrip: ReturnType<typeof usePauseTripMutation>[0];

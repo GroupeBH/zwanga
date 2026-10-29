@@ -15,7 +15,7 @@ const vehicle = id => ({ id, brand: 'Marque test', model: `Modèle ${id}`, licen
 const request = { id: 'order', passengerId: 'passenger', passengerName: 'Passager test', status: 'pending', numberOfSeats: 2,
   departureDateMin: '2099-01-01T19:30:00', departureDateMax: '2099-01-01T20:00:00', maxPricePerSeat: 2000, paymentMode: 'cash' };
 const model = { userId: 'driver', tripRequest: request, requestedVehicleType: 'car', compatibleActiveVehicles: [vehicle('one'), vehicle('two')],
-  isIdentityVerified: true, isDriverAccount: true, canAcceptDirectly: true, directAcceptVehicle: null, directAcceptVehicleId: '',
+  isIdentityVerified: true, isDriverAccount: true, canAcceptDirectly: true, canRespondToRequest: true, directAcceptVehicle: null, directAcceptVehicleId: '',
   routeCoordinates: [], canEdit: false, canCancel: false };
 const mocks = { react: React, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: false, closed: false, label: null }) },

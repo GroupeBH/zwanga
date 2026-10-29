@@ -53,6 +53,98 @@ function fixture(t) {
     advance: async (ms = 2001) => { t.mock.timers.tick(ms); await tick(); } };
 }
 
+test('payment overlays use the existing voice after entry, only once, and stop when dismissed', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.ready = false; f.io.allowed = false;
+  const source = f.load('services/paymentSpeechSource.ts');
+  const token = {}, message = { key: 'payment:passenger:one:paid:800:CDF', text: 'Paiement de 800 francs congolais confirmé.' };
+  source.publishPaymentSpeech(token, userId, 0, message);
+  f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1); assert.equal(f.io.spoken[0].text, message.text);
+  f.run(); assert.equal(f.io.spoken.length, 1);
+  source.removePaymentSpeech(token); f.run(); await tick();
+  assert.equal(f.io.stops, 1);
+  source.publishPaymentSpeech(token, userId, 0, message);
+  await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1, 'returning to the same receipt does not repeat its voice');
+  assert.equal(source.paymentSpeechPending(source.readPaymentSpeech(userId, 0)), false);
+});
+
+test('payment voice never leaks after background, dismissal, logout or navigation interruption', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.ready = false;
+  const source = f.load('services/paymentSpeechSource.ts'), token = {};
+  let resolveVoice;
+  f.io.voices = () => new Promise(resolve => { resolveVoice = resolve; });
+  source.publishPaymentSpeech(token, userId, 0, { key: 'payment:one', text: 'Montant à régler.' });
+  f.run(); await tick();
+  f.io.active = false; f.run();
+  resolveVoice([{ language: 'fr-FR', identifier: 'french' }]); await tick();
+  assert.equal(f.io.spoken.length, 0);
+  f.io.active = true; await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1);
+  const priority = f.load('services/navigationSpeechPriority.ts');
+  await priority.interruptRideSpeechForNavigation();
+  assert.equal(f.io.stops, 1);
+  source.removePaymentSpeech(token); f.run(); await tick();
+  assert.equal(f.io.stops, 1, 'a later close cannot stop a GPS instruction');
+  f.io.version++; source.publishPaymentSpeech(token, userId, 0, { key: 'payment:stale', text: 'Must not read.' });
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
+});
+
+test('wallet uses shared audio, stays below payment overlays even after refetch, and has a bounded reading time', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.ready = false; f.io.allowed = false;
+  const source = f.load('services/paymentSpeechSource.ts'), wallet = {}, overlay = {};
+  const message = { key: 'wallet:one', text: 'Vous avez 100 jetons.' };
+  source.publishPaymentSpeech(wallet, userId, 0, message, 'wallet');
+  f.run(); await tick(); assert.equal(f.io.spoken[0].text, message.text);
+  source.publishPaymentSpeech(overlay, userId, 0, { key: 'payment:one', text: 'Paiement confirmé.' });
+  f.run(); await tick(); assert.equal(f.io.stops, 1);
+  source.publishPaymentSpeech(wallet, userId, 0, { key: 'wallet:two', text: 'Vous avez 200 jetons.' }, 'wallet');
+  await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.at(-1).text, 'Paiement confirmé.');
+  f.io.spoken.at(-1).options.onDone(); await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 2, 'underlying screen cannot talk over a visible receipt');
+  source.removePaymentSpeech(overlay); f.run(); await tick();
+  assert.equal(f.io.spoken.at(-1).text, 'Vous avez 200 jetons.');
+  await f.advance(25001); assert.equal(f.io.stops, 1, 'wallet explanation may need more than 25 seconds');
+  await f.advance(20000); assert.equal(f.io.stops, 2, 'missing native completion is bounded at 45 seconds');
+  f.run(); await tick(); assert.equal(f.io.spoken.length, 3);
+});
+
+test('a driver opportunity interrupts wallet speech without being hidden by the balance screen', async t => {
+  const f = fixture(t); f.io.pending = [];
+  const source = f.load('services/paymentSpeechSource.ts');
+  source.publishPaymentSpeech({}, userId, 0, { key: 'wallet:one', text: 'Votre solde.' }, 'wallet');
+  f.run(); await tick(); assert.equal(f.io.spoken[0].text, 'Votre solde.');
+  f.io.pending = [alert('urgent')]; f.run(); await tick(); assert.equal(f.io.stops, 1);
+  await f.advance(); f.run(); await tick();
+  assert.match(f.io.spoken.at(-1).text, /Nouvelle réservation/);
+  f.run(); await tick(); assert.equal(f.io.stops, 1, 'wallet cannot cut the opportunity summary');
+});
+
+test('wallet speech yields to GPS and never continues in the background or another account', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.ready = false;
+  const source = f.load('services/paymentSpeechSource.ts'), token = {};
+  source.publishPaymentSpeech(token, userId, 0, { key: 'wallet:one', text: 'Votre solde.' }, 'wallet');
+  f.run(); await tick();
+  await f.load('services/navigationSpeechPriority.ts').interruptRideSpeechForNavigation();
+  assert.equal(f.io.stops, 1);
+  source.publishPaymentSpeech(token, userId, 0, { key: 'wallet:two', text: 'Nouveau solde.' }, 'wallet');
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 2);
+  f.io.active = false; f.run(); await tick(); assert.equal(f.io.stops, 2);
+  f.io.active = true; f.io.version++; await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 2);
+});
+
+test('busy GPS speech keeps payment unqueued and its retry window expires', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.busy = true;
+  const source = f.load('services/paymentSpeechSource.ts');
+  source.publishPaymentSpeech({}, userId, 0, { key: 'payment:busy', text: 'Montant à régler.' });
+  f.run(); await tick(); assert.equal(f.io.spoken.length, 0);
+  await f.advance(30001); f.io.busy = false; f.run(); await tick();
+  assert.equal(f.io.spoken.length, 0);
+  assert.equal(source.paymentSpeechPending(source.readPaymentSpeech(userId, 0)), false);
+});
+
 test('one announcement per alert, one voice at a time, with ringtone pause/resume and no passenger response speech', async t => {
   const f = fixture(t);
   f.io.pending.push(alert('two', 'dispatch'), alert('response', 'response'));

@@ -4,7 +4,6 @@ import { useHomeLocation } from './useHomeLocation';
 import { useHomeMap } from './useHomeMap';
 import { useHomeMapNavigation } from './useHomeMapNavigation';
 import { useHomePassengerActivity } from './useHomePassengerActivity';
-import { useHomePassengerMarkers } from './useHomePassengerMarkers';
 import { useHomeSheet } from './useHomeSheet';
 import { useHomeTracking } from './useHomeTracking';
 import { useHomeTripFeed } from './useHomeTripFeed';
@@ -33,10 +32,9 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
     hiddenHomePriorities: priorities.hiddenHomePriorities,
     driverCoordinate: location.liveUserCoordinate,
   });
-  const tracking = useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
-  const passengerMarkers = useHomePassengerMarkers({ ...driverActivity, ...tracking });
+  useHomeTracking({ ...foregroundContext, ...passengerActivity, ...driverActivity, ...tripSelection, ...location });
   const mapNavigation = useHomeMapNavigation({ ...context });
-  const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...passengerMarkers, ...mapNavigation });
+  const map = useHomeMap({ ...foregroundContext, ...tripSelection, ...driverActivity, ...location, ...passengerActivity, ...mapNavigation });
   const userLocation = useHomeUserLocation({ ...foregroundContext, ...location, ...driverActivity, ...map, ...mapNavigation });
   const hasMapPriorities = !tripSelection.isHomeSheetLockedRetracted && Boolean(
     (tripSelection.featuredDriverReservation && tripSelection.featuredDriverReservationStatus)
@@ -44,7 +42,7 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
     || requestHighlight.highlightedDriverRequest
     || (passengerActivity.activeTripRequest && passengerActivity.activeRequestStatus),
   );
-  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...passengerMarkers, ...tripFeed, hasMapPriorities });
+  const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...tripFeed, hasMapPriorities });
   useRideEntryAnnouncement(context.currentUser?.id, context.isScreenActive,
     context.isHomeRoleReady && driverActivity.driverAnnouncementReady && passengerActivity.passengerAnnouncementReady && !tripSelection.activeHomeTrip &&
       (Boolean(tripSelection.featuredDriverReservation || tripSelection.featuredDriverUpcomingTrip || tripSelection.featuredPassengerTrip) || passengerActivity.driverRequestsAnnouncementReady),
@@ -60,8 +58,6 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
     ...passengerActivity,
     ...tripSelection,
     ...requestHighlight,
-    ...tracking,
-    ...passengerMarkers,
     ...mapNavigation,
     ...map,
     ...userLocation,

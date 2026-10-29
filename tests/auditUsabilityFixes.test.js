@@ -20,26 +20,31 @@ test('access feedback distinguishes connection, server, not-found and permission
 
 test('driver access retry stays visibly busy and cannot retry during an outstanding read', () => {
   let fetching = false, retries = 0;
+  const hooks = hookHarness();
   const Component = loader({
+    react: { ...React, ...hooks.react },
     '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: v => v } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     'expo-router': { useRouter: () => ({ replace() {} }), useLocalSearchParams: () => ({ id: 'trip' }), Redirect: 'Redirect' },
-    '@/store/hooks': { useAppSelector: select => select({ auth: { user: { id: 'driver' } } }) },
+    '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/store/hooks': { useAppSelector: select => select({ auth: { user: { id: 'driver' } }, zwangaApi: { config: { online: true } } }) },
     '@/hooks/navigation/useOfflineRideData': { useOfflineRideData: () => ({ data: undefined }) },
     '@/store/api/bookingApi': { useGetMyActivityBookingsQuery: () => ({}) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ error: { status: 'FETCH_ERROR' }, isFetching: fetching,
       refetch: () => { retries++; fetching = true; } }) },
   })('components/trip/DriverTripAccessGuard.tsx').DriverTripAccessGuard;
-  let tree = Component({ children: 'protected content' });
+  const render = () => hooks.render(() => Component({ children: 'protected content' }));
+  let tree = render();
   assert.match(words(tree), /Connexion/); assert.doesNotMatch(words(tree), /protected content/);
   nodes(tree).find(n => n.type === 'Button' && words(n) === 'Réessayer').props.onPress();
-  tree = Component({ children: 'protected content' });
+  tree = render();
   assert.equal(tree.type, 'NavigationLoading');
   assert.equal(tree.props.label, 'Ouverture de votre trajet');
   assert.ok(tree.props.onExit);
   assert.equal(nodes(tree).some(n => n.type === 'Button'), false, 'no duplicate retry while the read is pending');
   assert.equal(retries, 1);
+  hooks.unmount();
 });
 
 test('active trip feeds have no independent poll, query only the visible tab and stop reads offline', async () => {

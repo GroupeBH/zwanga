@@ -37,9 +37,9 @@ function screenFixture() {
 test('search screen exposes real drivers, route, price and existing actions outside the scrolling panel', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   const tree = app.render();
-  assert.match(words(tree), /3 véhicules sur la carte/);
+  assert.match(words(tree), /3 véhicules · positions connues · 5 km/);
   assert.match(words(tree), /2 500 FC \/ place/);
-  assert.match(words(tree), /Dernières positions connues/);
+  assert.doesNotMatch(words(tree), /Touchez une voiture/);
   assert.equal(elements(tree).find(node => node.type === 'Map').props.vehicles.length, 3);
   const scroll = elements(tree).find(node => node.type === 'ScrollView');
   assert.ok(elements(scroll).some(node => node.type === 'Sharing'), 'shared ride consent is still accessible');
@@ -52,6 +52,7 @@ test('older positions and rendering limits are explained without claiming live a
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   app.state.data.vehicles[0].positionUpdatedAt = new Date(Date.now() - 3600000).toISOString();
   app.state.data.truncated = true;
+  elements(app.render()).find(node => node.props.accessibilityLabel === 'Voir les détails de la recherche').props.onPress();
   const tree = app.render();
   assert.match(words(tree), /les plus proches/);
   assert.match(words(tree), /Les véhicules plus pâles ont une position ancienne/);
@@ -73,23 +74,23 @@ test('an overdue request guides editing instead of promising more driver invitat
   const tree = app.render();
   assert.match(words(tree), /L’heure de départ est dépassée/);
   assert.match(words(tree), /Modifiez l’heure de départ/);
-  assert.doesNotMatch(words(tree), /On cherche votre conducteur|Vous serez prévenu dès/);
+  assert.doesNotMatch(words(tree), /Recherche en cours|Vous serez prévenu dès/);
   assert.deepEqual(elements(tree).find(node => node.type === 'Map').props.vehicles, []);
   assert.ok(elements(tree).some(node => node.type === 'Actions'));
   app.model.tripRequest.departureDateMax = new Date(Date.now() + 600000).toISOString();
-  assert.match(words(app.render()), /On cherche votre conducteur/);
+  assert.match(words(app.render()), /Recherche en cours/);
 });
 
 test('a server-stopped search does not claim that drivers are being contacted', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount()); app.state.data.searching = false;
   assert.match(words(app.render()), /Votre demande a changé/);
-  assert.doesNotMatch(words(app.render()), /On cherche votre conducteur|Vous serez prévenu dès/);
+  assert.doesNotMatch(words(app.render()), /Recherche en cours|Vous serez prévenu dès/);
 });
 
 test('search reads stop offline; GPS and native map stop when hidden or editing, without inventing drivers', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount()); app.render();
   app.state.data = undefined; app.state.error = true;
-  assert.match(words(app.render()), /Votre demande reste enregistrée/);
+  assert.match(words(app.render()), /demande conservée/);
   app.state.online = false; app.render();
   assert.equal(app.reads.at(-1).options.skip, true);
   app.state.online = true; app.model.isScreenActive = false;
@@ -100,4 +101,36 @@ test('search reads stop offline; GPS and native map stop when hidden or editing,
   app.model.isScreenActive = true; app.model.showEditForm = true; tree = app.render();
   assert.equal(app.reads.at(-1).options.skip, true);
   assert.equal(elements(tree).find(node => node.type === 'Map').props.active, false);
+});
+
+test('compact search keeps essential facts and offers visible, with optional details and full addresses', t => {
+  const app = screenFixture(); t.after(() => app.hooks.unmount());
+  let tree = app.render();
+  const panel = () => elements(tree).find(node => node.props.testID === 'request-search-panel');
+  const style = () => Object.assign({}, ...panel().props.style.filter(Boolean));
+  assert.equal(style().maxHeight, '34%');
+  assert.match(words(tree), /Départ de test/); assert.match(words(tree), /Arrivée de test/);
+  assert.match(words(tree), /Aujourd’hui/); assert.match(words(tree), /1\s+place/);
+  assert.ok(elements(tree).some(node => node.type === 'Sharing'));
+  const expand = elements(tree).find(node => node.props.accessibilityLabel === 'Voir les détails de la recherche');
+  assert.equal(expand.props.accessibilityState.expanded, false);
+  assert.ok(expand.props.style.minHeight >= 44);
+  expand.props.onPress(); tree = app.render();
+  assert.equal(style().maxHeight, '48%'); assert.match(words(tree), /Dernières positions connues/);
+  assert.equal(elements(tree).find(node => node.props.accessibilityLabel === 'Départ : Départ de test').props.numberOfLines, undefined);
+  elements(tree).find(node => node.props.accessibilityLabel === 'Réduire les détails de la recherche').props.onPress();
+  tree = app.render(); assert.equal(style().maxHeight, '34%');
+  assert.equal(elements(tree).find(node => node.props.accessibilityLabel === 'Départ : Départ de test').props.numberOfLines, 1);
+  expand.props.onPress(); app.model.tripRequest.id = 'another-request'; tree = app.render();
+  assert.equal(style().maxHeight, '34%', 'a different request starts compact');
+});
+
+test('no known positions produces one short status, never invented vehicles or a large empty-state paragraph', t => {
+  const app = screenFixture(); t.after(() => app.hooks.unmount());
+  app.state.data.vehicles = []; app.state.data.total = 0;
+  const tree = app.render();
+  assert.match(words(tree), /En attente d’un conducteur/);
+  assert.doesNotMatch(words(tree), /Aucune position|Touchez un|5 km/);
+  assert.deepEqual(elements(tree).find(node => node.type === 'Map').props.vehicles, []);
+  assert.ok(elements(tree).some(node => node.type === 'Actions'));
 });

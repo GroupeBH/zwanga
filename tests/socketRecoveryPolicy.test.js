@@ -19,6 +19,24 @@ function fixture(kind) {
   const join = () => kind === 'chat' ? client.joinBookingRoom('owned') : client.joinTrip('owned');
   return { state, sockets, options, client, join, recovery: load('services/networkRecovery.ts') };
 }
+
+test('chat connection observers open no socket, track failures and do not retain an unused connection', async () => {
+  const f = fixture('chat'), states = [];
+  const stop = f.client.subscribeToConnectionState(value => states.push(value));
+  assert.deepEqual(states, [false]); assert.equal(f.sockets.length, 0);
+  f.state.token = 'synthetic'; await f.join();
+  assert.equal(states.at(-1), true);
+  const socket = f.sockets[0]; socket.connected = false; socket.emit('disconnect', 'transport close');
+  assert.equal(states.at(-1), false);
+  socket.connect(); assert.equal(states.at(-1), true);
+  socket.emit('connect_error', new Error('synthetic')); assert.equal(states.at(-1), false);
+  socket.connect(); assert.equal(states.at(-1), true);
+  await f.client.leaveBookingRoom('owned'); assert.equal(socket.connected, false);
+  assert.equal(states.at(-1), false);
+  stop(); const count = states.length;
+  await f.join(); assert.equal(states.length, count);
+  f.client.disconnect();
+});
 for (const kind of ['chat', 'tracking']) {
   test(`${kind}: explicit temporary server disconnect reconnects once and rejoins owned rooms`, async t => {
     t.mock.method(Math, 'random', () => 0);

@@ -1,9 +1,9 @@
 import { PassengerPickupNotice } from '../../features/passenger-navigation/navigationModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { stopPassengerBackgroundLocationTracking } from '@/services/passengerBackgroundLocationTask';
-import { useCancelBookingMutation, useGetBookingByIdQuery } from '@/store/api/bookingApi';
+import { useCancelBookingMutation } from '@/store/api/bookingApi';
 import { useCreateTripShareLinkMutation } from '@/store/api/trackingApi';
-import { useGetTripByIdQuery } from '@/store/api/tripApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { shareTrip } from '@/utils/shareHelpers';
@@ -21,8 +21,8 @@ interface Params {
   passengerLocationSubscriptionRef: React.RefObject<Location.LocationSubscription | null>;
   setPickupNotice: React.Dispatch<React.SetStateAction<PassengerPickupNotice | null>>;
   setPickupNoticeCountdown: React.Dispatch<React.SetStateAction<number | null>>;
-  refetchBooking: ReturnType<typeof useGetBookingByIdQuery>['refetch'];
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
+  refetchBooking: DisplayRefetch<Booking>;
+  refetchTrip: DisplayRefetch<Trip>;
   navigateBackSafely: () => void;
   isCancellingBooking: boolean;
 }

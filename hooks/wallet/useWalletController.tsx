@@ -264,6 +264,7 @@ export function useWalletController() {
     refreshAll,
     isRefreshing,
     isWalletLoading,
+    isWalletFetching,
     isWalletError,
     canRefresh: readsEnabled,
     walletSummary,

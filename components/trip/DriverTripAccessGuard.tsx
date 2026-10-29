@@ -12,23 +12,32 @@ import { useAppSelector } from '@/store/hooks';
 import { tripAccessFeedback } from '@/features/navigation/tripAccessFeedback';
 import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { displayReadOptions, useDisplayRefetch } from '@/hooks/useDisplayReads';
+import { useNavigationReadData } from '@/hooks/navigation/useNavigationReadData';
 
 /** Do not mount driver controllers (GPS, sockets, actions) until ownership is known. */
 export function DriverTripAccessGuard({ children }: React.PropsWithChildren) {
   const { id } = useLocalSearchParams();
   const tripId = typeof id === 'string' ? id : '';
   const userId = useAppSelector(state => state.auth.user?.id);
+  const online = useAppSelector(state => state.zwangaApi.config.online);
+  const active = useScreenIsActive();
+  const enabled = active && online && !!userId && !!tripId;
   const router = useRouter();
-  const { currentData: liveTrip, error, isLoading, isFetching, refetch } = useGetTripByIdQuery(tripId, {
-    skip: !tripId || !userId,
-  });
+  const read = useGetTripByIdQuery(tripId, displayReadOptions(enabled));
+  const { isLoading, isFetching } = read;
+  const { data: liveTrip, error } = useNavigationReadData(`${userId}:trip:${tripId}`, read, online);
+  const refetch = useDisplayRefetch(enabled, `${userId}:${tripId}`, read.refetch);
   const { data: trip } = useOfflineRideData(`trip:${tripId}`, liveTrip, error,
     ownsTrip(liveTrip, userId) && liveTrip?.status === 'ongoing');
   const isOwner = trip?.id === tripId && ownsTrip(trip, userId);
   const { data: bookings } = useGetMyActivityBookingsQuery(undefined, {
-    ...sharedBookingsOptions, skip: !userId || !trip || isOwner || isTripExpired(trip),
+    ...sharedBookingsOptions, skip: !enabled || !trip || isOwner || isTripExpired(trip),
   });
   if (isOwner) return <React.Fragment key={`${userId}:${tripId}`}>{children}</React.Fragment>;
+  // Covered screens must not redirect the visible screen following a cached change.
+  if (!active) return null;
   if (trip?.id === tripId && isTripExpired(trip)) return <Redirect href={`/trip/${tripId}`} />;
 
   const booking = bookings?.find(candidate => candidate.tripId === tripId

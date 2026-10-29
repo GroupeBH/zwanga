@@ -110,7 +110,8 @@ export const notificationApi = baseApi.injectEndpoints({
         method: 'PUT',
         body: payload,
       }),
-      invalidatesTags: ['Notification'],
+      // A failed acknowledgement must not trigger a GET -> acknowledgement loop.
+      invalidatesTags: (_result, error) => error ? [] : ['Notification'],
     }),
 
     // Marquer toutes les notifications comme lues

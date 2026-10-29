@@ -43,7 +43,9 @@ for (const recurring of [false, true]) {
   for (const [debt, allowed] of [[20, true], [20.01, false], [26, false]]) {
     test(`${recurring ? 'recurring' : 'single'} submission rechecks fresh debt ${debt} before publishing`, async () => {
       const calls = [], dialogs = [], successes = [], publications = [];
+      const hooks = hookHarness();
       const { usePublishSubmission } = loader({
+        react: hooks.react,
         '../../features/publish/publishModel': { getLocationCoordinates: () => [15,-4], isUserDriver: () => true },
         '@/services/analytics': { trackEvent() {} },
         '@/services/driverPermissionOnboarding': { recordDriverPublication: id => publications.push(id) },
@@ -60,7 +62,7 @@ for (const recurring of [false, true]) {
         setPublicationSuccess: s => successes.push(s),
         getMyTrips: () => { throw new Error('No write to reconcile'); }, getMyRecurringTrips: () => { throw new Error('No write to reconcile'); },
       };
-      await usePublishSubmission(props).handlePublish();
+      await hooks.render(() => usePublishSubmission(props)).handlePublish();
       assert.equal(refreshes, 1); assert.equal(calls.length, allowed ? 1 : 0);
       assert.equal(successes.length, allowed ? 1 : 0);
       assert.deepEqual(publications, allowed ? ['driver'] : []);
@@ -68,7 +70,7 @@ for (const recurring of [false, true]) {
       if (!allowed) assert.equal(dialogs[0].title, 'Cash indisponible');
       props.refreshDriverFinance = async () => { throw new Error('offline'); };
       calls.length = 0; successes.length = 0; dialogs.length = 0; publications.length = 0;
-      await usePublishSubmission(props).handlePublish();
+      await hooks.render(() => usePublishSubmission(props)).handlePublish();
       assert.equal(calls.length, 0); assert.equal(successes.length, 0);
       assert.deepEqual(publications, []);
       assert.equal(dialogs[0].title, 'Vérification du cash indisponible');

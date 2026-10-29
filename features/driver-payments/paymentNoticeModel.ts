@@ -18,6 +18,10 @@ export type DriverPaymentNotice = {
   currency: string;
   mode: TripPaymentMode;
   paidAt?: string | null;
+  notificationId?: string;
+  cashRemainder?: number;
+  partial?: boolean;
+  cashReceived?: boolean;
 };
 
 export function getStorageKey(userId: string) {

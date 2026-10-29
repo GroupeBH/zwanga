@@ -1,5 +1,4 @@
 import {
-  DRIVER_PAYMENT_NOTICE_MAX_TRIPS,
   SeenDriverPaymentNotices,
   DriverPaymentNotice,
   getStorageKey,
@@ -27,6 +26,12 @@ import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tr
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import { sharedTripsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
+import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
+import { driverPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
+import { useDriverPaymentInbox } from '@/hooks/notifications/useDriverPaymentInbox';
+import { boundedSeenPaymentNotices } from '@/features/driver-payments/paymentInbox';
+
+const EMPTY_SEEN = {};
 
 export function DriverPaymentNoticeCoordinator() {
   const isAppActive = useAppIsActive();
@@ -37,27 +42,36 @@ export function DriverPaymentNoticeCoordinator() {
   const driverUser = isDriverUser(user);
   const [seenNotices, setSeenNotices] = useState<SeenDriverPaymentNotices>({});
   const [isSeenLoaded, setIsSeenLoaded] = useState(false);
+  const [seenOwner, setSeenOwner] = useState<string>();
   const [activeNotice, setActiveNotice] = useState<DriverPaymentNotice | null>(null);
+  const [noticeOwner, setNoticeOwner] = useState<string>();
   const [isClosingForTripNavigation, setIsClosingForTripNavigation] = useState(false);
   const pendingTripNavigationRef = useRef<string | null>(null);
+  const storageWrite = useRef(Promise.resolve());
+  const inbox = useDriverPaymentInbox(user?.id, isAuthenticated && driverUser,
+    seenOwner === user?.id ? seenNotices : EMPTY_SEEN);
 
   const { data: myTrips = [] } = useGetMyTripsQuery(undefined, {
     ...sharedActivityQueryOptions,
-    skip: !isAuthenticated || !driverUser,
+    skip: !isAuthenticated || !driverUser || !inbox.legacy,
   });
 
   const relevantTrips = useMemo(
     () =>
       myTrips
-        .filter(isTripEligibleForNotice)
-        .sort((left, right) => Date.parse(right.departureTime) - Date.parse(left.departureTime))
-        .slice(0, DRIVER_PAYMENT_NOTICE_MAX_TRIPS),
-    [myTrips],
+        .filter(trip => trip.driverId === user?.id && isTripEligibleForNotice(trip))
+        .sort((left, right) => Date.parse(right.departureTime) - Date.parse(left.departureTime)),
+    [myTrips, user?.id],
   );
 
   useEffect(() => {
     let cancelled = false;
     setIsSeenLoaded(false);
+    setSeenOwner(undefined);
+    setActiveNotice(null);
+    setNoticeOwner(undefined);
+    pendingTripNavigationRef.current = null;
+    setIsClosingForTripNavigation(false);
 
     if (!isAuthenticated || !driverUser || !user?.id) {
       setSeenNotices({});
@@ -74,15 +88,14 @@ export function DriverPaymentNoticeCoordinator() {
           setSeenNotices({});
           return;
         }
-        const parsed = JSON.parse(rawValue) as SeenDriverPaymentNotices;
-        setSeenNotices(parsed && typeof parsed === 'object' ? parsed : {});
+        setSeenNotices(boundedSeenPaymentNotices(JSON.parse(rawValue)));
       })
-      .catch((error) => {
-        console.warn('[DriverPaymentNotice] Etat local illisible:', error);
+      .catch(() => {
+        console.warn('[DriverPaymentNotice] Etat local illisible.');
         if (!cancelled) setSeenNotices({});
       })
       .finally(() => {
-        if (!cancelled) setIsSeenLoaded(true);
+        if (!cancelled) { setSeenOwner(user.id); setIsSeenLoaded(true); }
       });
 
     return () => {
@@ -95,8 +108,9 @@ export function DriverPaymentNoticeCoordinator() {
       if (!user?.id) return;
 
       setSeenNotices((current) => {
-        const next = { ...current, [notice.key]: new Date().toISOString() };
-        void AsyncStorage.setItem(getStorageKey(user.id), JSON.stringify(next));
+        const next = boundedSeenPaymentNotices({ ...current, [notice.key]: new Date().toISOString() });
+        storageWrite.current = storageWrite.current.then(() => AsyncStorage.setItem(getStorageKey(user.id), JSON.stringify(next)))
+          .catch(() => { console.warn('[DriverPaymentNotice] Sauvegarde locale différée.'); });
         return next;
       });
     },
@@ -137,11 +151,14 @@ export function DriverPaymentNoticeCoordinator() {
 
   }, [activeNotice, markNoticeSeen]);
 
+  const candidates = useMemo(() => inbox.legacy ? relevantTrips.flatMap(trip => trip.paymentNotices)
+    .filter(candidate => candidate.mode !== 'cash') : inbox.notices, [inbox.legacy, inbox.notices, relevantTrips]);
   useEffect(() => {
     if (
       !isAuthenticated ||
       !driverUser ||
       !isSeenLoaded ||
+      seenOwner !== user?.id ||
       !isAppActive ||
       activeNotice ||
       isClosingForTripNavigation
@@ -149,9 +166,8 @@ export function DriverPaymentNoticeCoordinator() {
       return;
     }
 
-    const notice = relevantTrips.flatMap(trip => trip.paymentNotices)
-      .find(candidate => candidate.mode !== 'cash' && !seenNotices[candidate.key]);
-    if (notice) setActiveNotice(notice);
+    const notice = candidates.find(candidate => !seenNotices[candidate.key]);
+    if (notice) { setNoticeOwner(user?.id); setActiveNotice(notice); }
   }, [
     activeNotice,
     driverUser,
@@ -159,11 +175,16 @@ export function DriverPaymentNoticeCoordinator() {
     isClosingForTripNavigation,
     isSeenLoaded,
     seenNotices,
-    relevantTrips,
+    candidates,
+    seenOwner,
     isAppActive,
+    user?.id,
   ]);
 
-  const isModalVisible = Boolean(activeNotice && !isClosingForTripNavigation);
+  const noticeStillRelevant = candidates.some(notice => notice.key === activeNotice?.key);
+  useEffect(() => { if (activeNotice && !noticeStillRelevant) setActiveNotice(null); }, [activeNotice, noticeStillRelevant]);
+  const isModalVisible = Boolean(isAuthenticated && noticeOwner === user?.id && seenOwner === user?.id && driverUser && isSeenLoaded && isAppActive && noticeStillRelevant && activeNotice && !isClosingForTripNavigation);
+  usePaymentAnnouncement(driverPaymentAnnouncement(activeNotice, activeNotice?.cashReceived), isModalVisible);
 
   return (
     <Modal
@@ -181,10 +202,13 @@ export function DriverPaymentNoticeCoordinator() {
             <View style={styles.icon}>
               <Ionicons name="cash-outline" size={28} color={Colors.white} />
             </View>
-            <Text style={styles.title}>Paiement passager confirmé</Text>
+            <Text style={styles.title}>{activeNotice.partial ? 'Paiement partiel reçu' : 'Paiement reçu'}</Text>
             <Text style={styles.message}>
-              Le paiement de {activeNotice.passengerName} a été confirmé.
+              {activeNotice.cashReceived ? 'Votre encaissement en espèces est confirmé.' : 'Le paiement du passager est confirmé.'}
             </Text>
+            {activeNotice.partial && <Text style={styles.message}>
+              Il reste {formatMoney(activeNotice.cashRemainder ?? 0, activeNotice.currency)} à recevoir en espèces.
+            </Text>}
 
             <ScrollView bounces={false} style={styles.details} contentContainerStyle={styles.detailsContent}>
               <View style={styles.detailRow}>

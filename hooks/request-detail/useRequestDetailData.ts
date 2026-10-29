@@ -19,12 +19,15 @@ import { useGetMyBookingsForTripQuery } from '@/store/api/bookingApi';
 import { useRequestDetailExit } from './useRequestDetailExit';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { reportEntryFailure } from '@/services/entryRecovery';
+import { useRideSocketConnected } from '@/hooks/notifications/useRideSocketConnected';
+import { requestDetailPollInterval } from '@/features/request-detail/requestPollingPolicy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 export function useRequestDetailData() {
   const isScreenActive = useScreenIsActive();
   const readsEnabled = useDisplayReadsEnabled(isScreenActive);
+  const socketConnected = useRideSocketConnected(readsEnabled);
   const router = useRouter();
   const openDriverOnboarding = useCallback(() => {
     router.push({
@@ -88,15 +91,8 @@ export function useRequestDetailData() {
 
   // Mettre à jour le polling interval en fonction du statut de la commande
   React.useEffect(() => {
-    if (tripRequest?.status === 'pending' || tripRequest?.status === 'offers_received') {
-      // Socket invalidation is the fast path; this bounded foreground read covers a lost event.
-      setPollingInterval(tripRequest.passengerId === currentUser?.id ? 5_000 : 30_000);
-    } else if (tripRequest?.status === 'driver_selected') {
-      setPollingInterval(15000); // Suivre rapidement le démarrage pour masquer l'annulation
-    } else {
-      setPollingInterval(0); // Pas de polling si annulé ou expiré
-    }
-  }, [tripRequest?.status, tripRequest?.passengerId, currentUser?.id]);
+    setPollingInterval(requestDetailPollInterval(tripRequest, currentUser?.id, socketConnected));
+  }, [tripRequest, currentUser?.id, socketConnected]);
 
   useEffect(() => {
     if (readsEnabled && error && !isFetchingRequest) {
@@ -143,6 +139,8 @@ export function useRequestDetailData() {
   }, [refetch]);
 
   return {
+    // A background refresh must not freeze a valid decision. Mutations remain server-authoritative.
+    canRespondToRequest: readsEnabled && Boolean(tripRequest) && !isLoading && !isError && !error,
     responseWindowStartedAt: fulfilledTimeStamp === undefined ? undefined : Math.min(startedTimeStamp ?? fulfilledTimeStamp, fulfilledTimeStamp),
     isScreenActive,
     tripRequest,

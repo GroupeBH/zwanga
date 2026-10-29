@@ -7,6 +7,7 @@ import {
   WalletWithdrawalModal,
 } from "../features/wallet/WalletWithdrawalSection";
 import { useWalletWithdrawal } from "@/hooks/wallet/useWalletWithdrawal";
+import { useWalletAnnouncement } from "@/hooks/wallet/useWalletAnnouncement";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
 import { useAppSelector } from "@/store/hooks";
 import { selectUser } from "@/store/selectors";
@@ -38,6 +39,12 @@ export default function WalletScreen() {
   const user = useAppSelector(selectUser);
   const screenActive = useScreenIsActive();
   const withdrawal = useWalletWithdrawal(wallet.walletSummary, screenActive);
+  useWalletAnnouncement({
+    summary: wallet.walletSummary, userId: user?.id,
+    visible: screenActive && !wallet.activeModal,
+    loading: wallet.isWalletLoading, fetching: wallet.isWalletFetching, error: wallet.isWalletError,
+    issue: withdrawal.storageError ? 'storage' : withdrawal.activeIntent ? 'pending' : withdrawal.historyError ? 'history' : undefined,
+  });
 
   return (
     <SafeAreaView style={styles.container}>

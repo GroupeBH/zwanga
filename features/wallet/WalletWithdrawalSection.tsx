@@ -14,6 +14,7 @@ import { formatWalletAmount } from "./walletModel";
 import { styles } from "@/features/screen-styles/app/wallet";
 import { Colors } from "@/constants/styles";
 import type { WalletSummary } from "@/types";
+import { walletTokenWithdrawalsDisabled, WALLET_TOKEN_USE_ONLY } from './walletPolicy';
 
 export function WalletWithdrawalSection({
   summary, withdrawal,
@@ -23,10 +24,12 @@ export function WalletWithdrawalSection({
 }) {
   const [expanded, setExpanded] = useState(false);
   if (!summary?.withdrawal) return null;
+  const withdrawalsDisabled = walletTokenWithdrawalsDisabled(summary);
   const pendingCount = withdrawal.withdrawals.filter(value => ['pending', 'initiated', 'review'].includes(value.status)).length;
   const notices = [
-    !summary.withdrawal.enabled && 'Retraits temporairement indisponibles.',
-    summary.withdrawal.blocked && 'Portefeuille à vérifier. Contactez l’assistance.',
+    withdrawalsDisabled && WALLET_TOKEN_USE_ONLY,
+    !withdrawalsDisabled && !summary.withdrawal.enabled && 'Retraits temporairement indisponibles.',
+    !withdrawalsDisabled && summary.withdrawal.blocked && 'Portefeuille à vérifier. Contactez l’assistance.',
     withdrawal.storageError && 'Demande impossible à restaurer. Contactez l’assistance avant de réessayer.',
     withdrawal.activeIntent && 'Un retrait reste à vérifier. Utilisez « Vérifier », sans créer une autre demande.',
     withdrawal.historyError && 'Retraits indisponibles. Actualisez avant toute nouvelle demande.',
@@ -76,11 +79,11 @@ export function WalletWithdrawalModal({
       title="Retirer mes jetons"
       subtitle="Versement sur votre Mobile Money."
     >
-      <Text style={styles.balanceLabel}>Retirable : {formatWalletAmount(Math.max(0, Math.min(Number(summary.account.withdrawableBalance), Number(summary.account.balance) - Number(summary.account.reservedCashCommissionBalance ?? 0))))}</Text>
+      <Text style={styles.balanceLabel}>Retirable : {formatWalletAmount(walletTokenWithdrawalsDisabled(summary) ? 0 : Math.max(0, Math.min(Number(summary.account.withdrawableBalance), Number(summary.account.balance) - Number(summary.account.reservedCashCommissionBalance ?? 0))))}</Text>
       <Text style={styles.balanceHint}>
         Minimum : {formatWalletAmount(summary.withdrawal.minimumTokens)}. Identité vérifiée requise.
       </Text>
-      <Text style={styles.balanceHint}>Seuls les jetons achetés, même reçus par partage, sont retirables.</Text>
+      <Text style={styles.balanceHint}>{walletTokenWithdrawalsDisabled(summary) ? WALLET_TOKEN_USE_ONLY : 'Seuls les jetons achetés, même reçus par partage, sont retirables.'}</Text>
       <TextInput
         accessibilityLabel="Nombre de jetons à retirer"
         placeholder="Nombre de jetons"

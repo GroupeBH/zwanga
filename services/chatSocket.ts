@@ -16,6 +16,16 @@ class ChatSocketClient {
   private reconnectListeners = new Set<() => void>();
   private stopRestartRecovery: (() => void) | null = null;
   private rideListeners = new Set<(event: RideRealtimeEvent) => void>();
+  // Passive observers never open or retain a second socket connection.
+  private connectionListeners = new Set<(connected: boolean) => void>();
+  private notifyConnection(connected: boolean) {
+    this.connectionListeners.forEach(listener => { try { listener(connected); } catch { /* Isolate observers. */ } });
+  }
+  subscribeToConnectionState(listener: (connected: boolean) => void) {
+    this.connectionListeners.add(listener);
+    listener(Boolean(this.socket?.connected));
+    return () => { this.connectionListeners.delete(listener); };
+  }
   private hasConsumers() { return this.rooms.size > 0 || this.listeners.size > 0 || this.rideListeners.size > 0 || this.reconnectListeners.size > 0; }
   private rooms = new Map<string, number>();
   private connecting: Promise<Socket> | null = null;
@@ -45,6 +55,8 @@ class ChatSocketClient {
           () => this.socket === socket && this.hasConsumers());
         socket.on('session_expired', () => { socket.disconnect(); void handle401Error().catch(() => undefined); });
         socket.on('connect', () => {
+          if (this.socket !== socket) return;
+          this.notifyConnection(true);
           this.rooms.forEach((_count, bookingId) => socket.emit('join_booking', { bookingId }));
           deliverSocketEvent(this.rideListeners, { kind: 'reconnected' });
           this.reconnectListeners.forEach(listener => { try { listener(); } catch { /* Isolate consumers. */ } });
@@ -57,8 +69,10 @@ class ChatSocketClient {
           if (isChatMessage(message)) deliverSocketEvent(this.listeners, message);
         });
         socket.on('connect_error', (error: Error) => {
+          if (this.socket === socket) this.notifyConnection(false);
           if (__DEV__) console.warn('[ChatSocket]', error.message);
         });
+        socket.on('disconnect', () => { if (this.socket === socket) this.notifyConnection(false); });
       }
       this.socket.auth = { token };
       // Reuse the same Socket.IO manager, including during automatic reconnection.
@@ -145,6 +159,7 @@ class ChatSocketClient {
     this.socket?.disconnect();
     this.socket?.removeAllListeners();
     this.socket = null;
+    this.notifyConnection(false);
     this.connecting = null;
     this.rooms.clear();
     if (clearListeners) { this.listeners.clear(); this.rideListeners.clear(); this.reconnectListeners.clear(); }

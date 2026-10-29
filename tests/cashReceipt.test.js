@@ -40,6 +40,7 @@ test('cash UI requires explicit confirmation, blocks rapid taps and does not upd
   const pending = new Promise(ok => { resolve = ok; });
   const native = { StyleSheet: { create: value => value }, Text: 'Text', View: 'View', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner' };
   const { ConfirmCashReceipt } = loader({ react: hooks.react, 'react-native': native,
+    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement() {} },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/hooks': { useAppSelector: () => 'driver' },
     '@/store/api/bookingApi': { useConfirmCashReceiptMutation: () => [() => { calls++; return { unwrap: () => pending }; }, { isLoading: false }] },

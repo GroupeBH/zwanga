@@ -164,4 +164,4 @@ async function runPreview() {
   console.log(`Synthetic previews only (not native validation): ${directory}`);
 }
 if (require.main === module) void runPreview().catch(error => { console.error(error.message); process.exitCode = 1; });
-module.exports = { renderFixture };
+module.exports = { renderFixture, chromium };

@@ -21,7 +21,7 @@ export function RequestDriverDecision({ model, presentation }: {
 }) {
   const request = model.tripRequest!;
   const route = useRouteLocationLabels(request);
-  const busy = model.isAcceptingTripRequest || model.isStartingTrip || model.isFetchingRequest;
+  const busy = model.isAcceptingTripRequest || model.isStartingTrip || !model.canRespondToRequest;
   const price = request.maxPricePerSeat;
   return <View style={styles.content}>
     <View style={styles.summary}>
@@ -58,7 +58,7 @@ export function RequestDriverDecision({ model, presentation }: {
 export function RequestDecisionActions({ model }: { model: Model }) {
   const response = useRequestResponseWindow(model.tripRequest, model.responseWindowStartedAt, model.isScreenActive, model.refetch);
   const busy = model.isAcceptingTripRequest || model.isStartingTrip;
-  const disabled = busy || model.isFetchingRequest || response.closed;
+  const disabled = busy || !model.canRespondToRequest || response.closed;
   const canAccept = model.canAcceptDirectly && Boolean(model.directAcceptVehicle) && !disabled && !response.blocked;
   return <View style={styles.footer}>
     {!!response.label && <Text style={styles.hint}>{busy ? 'Confirmation du trajet en cours…' : response.label}</Text>}

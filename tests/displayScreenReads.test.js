@@ -20,6 +20,7 @@ function fixture() {
     '@/hooks/useIdentityCheck': { useIdentityCheck: () => ({ isIdentityVerified: true }) },
     '@/hooks/useUserLocation': { useUserLocation: () => ({}) },
     '@/hooks/useAssignedTripNavigation': { useAssignedTripNavigation: () => ({}) },
+    '@/hooks/notifications/useRideSocketConnected': { useRideSocketConnected: () => false },
     './useRequestDetailExit': { useRequestDetailExit: () => ({ goHome() {}, leaving: false }) },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog() {} }) },
     'expo-router': { useRouter: () => ({}), useLocalSearchParams: () => ({ id: state.id }) },

@@ -9,10 +9,10 @@ import {
 } from '../../features/driver-navigation/navigationModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { stopDriverBackgroundLocationTracking } from '@/services/driverBackgroundLocationTask';
-import { useGetTripBookingsQuery } from '@/store/api/bookingApi';
+import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { useLazyGetDriverTripRevenueSummaryQuery } from '@/store/api/driverSettlementsApi';
-import { useCompleteTripMutation, useGetTripByIdQuery } from '@/store/api/tripApi';
-import type { Trip } from '@/types';
+import { useCompleteTripMutation } from '@/store/api/tripApi';
+import type { Booking, Trip } from '@/types';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import { DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS } from '@/utils/navigation/tripCompletion';
@@ -42,8 +42,8 @@ interface Params {
   trip: Trip | undefined;
   completeTrip: ReturnType<typeof useCompleteTripMutation>[0];
   reconcileTripStatus: (error: unknown, expectedStatuses: readonly string[]) => Promise<Trip | null>;
-  refetchTrip: ReturnType<typeof useGetTripByIdQuery>['refetch'];
-  refetchBookings: ReturnType<typeof useGetTripBookingsQuery>['refetch'];
+  refetchTrip: DisplayRefetch<Trip>;
+  refetchBookings: DisplayRefetch<Booking[]>;
 }
 
 export function useDriverCompletionActions({

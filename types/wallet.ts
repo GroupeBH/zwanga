@@ -79,6 +79,7 @@ export interface WalletSummary {
     availableMoney: number;
     nonWithdrawableTokens: number;
     blocked: boolean;
+    disabledReason?: { code: string; message?: string };
   };
 }
 

@@ -6,14 +6,17 @@ import { useProposeSharedTripMutation, useDecideSharedTripMutation, useSharedTri
   type SharedTripContext, type SharedTripOffer } from '@/store/api/sharedTripApi';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { requestSummaryStyles as styles } from './requestSummaryStyles';
+import { useRideSocketConnected } from '@/hooks/notifications/useRideSocketConnected';
+import { sharedOffersPollInterval } from './requestPollingPolicy';
 
 export function SharedTripPanel({ requestId, isOwner, readsEnabled, context, seats, hasPendingOffer, refresh, onProposed }: {
   requestId: string; isOwner: boolean; readsEnabled: boolean; context?: SharedTripContext;
   seats: number; hasPendingOffer: boolean; refresh: () => unknown; onProposed?: () => void;
 }) {
   const { showDialog } = useDialog();
+  const socketConnected = useRideSocketConnected(readsEnabled && isOwner);
   const { currentData: offers = [] } = useSharedTripOffersQuery(requestId,
-    displayReadOptions(readsEnabled && isOwner, 15_000));
+    displayReadOptions(readsEnabled && isOwner, sharedOffersPollInterval(socketConnected)));
   const [propose, proposing] = useProposeSharedTripMutation();
   const [decide, deciding] = useDecideSharedTripMutation();
   const busy = React.useRef(false);

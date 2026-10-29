@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 
 type Tag = 'AccountActivity' | 'Wallet' | 'Referral' | 'DriverSettlement' | 'PaymentHistory' |
-  'Subscription' | 'Booking' | 'User' | 'KycStatus' | 'Vehicle' | 'AppUpdate' |
+  'Subscription' | 'Booking' | 'User' | 'KycStatus' | 'Vehicle' | 'AppUpdate' | 'Notification' |
   { type: 'Message' | 'Conversation'; id: string };
 
 /** Push payloads are hints, never balances or identity authority. Reload REST
@@ -12,6 +12,11 @@ export function notificationEffects(input: Record<string, unknown> | null | unde
   const type = typeof data.type === 'string' ? data.type.toLowerCase().replace(/-/g, '_') : '';
   const tags: Tag[] = ['AccountActivity'];
   let href: Href | null = null;
+  if (type === 'driver_booking_payment_confirmed' || (type === 'cash_payment_confirmed' && data.role === 'driver')) {
+    tags.push('Notification', 'DriverSettlement');
+    if (typeof data.tripId === 'string' && /^[a-zA-Z0-9_-]+$/.test(data.tripId))
+      href = { pathname: '/trip/manage/[id]', params: { id: data.tripId } };
+  }
   if (type.startsWith('wallet_') || ['cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started'].includes(type)) {
     tags.push('Wallet');
     if (type !== 'wallet_loyalty_reward' || data.relatedEntityType === 'welcome_bonus') href = '/wallet';

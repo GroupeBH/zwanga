@@ -25,8 +25,10 @@ test('one payment modal keeps the same content component from selection through 
   let submitting = false;
   let recoveryMessage;
   let verification = { phase: 'idle', message: '' };
+  let announcement;
   const done = () => {};
   const { PassengerArrivalPaymentCoordinator } = loader({ ...mocks, react: { ...React, ...hooks.react },
+    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { announcement = { message, visible }; } },
     'expo-web-browser': { maybeCompleteAuthSession: noop }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     '@/store/hooks': { useAppSelector: fn => fn() }, '@/store/selectors': { selectUser: () => ({ id: 'passenger' }), selectIsAuthenticated: () => true },
     '../hooks/arrival-payment/useArrivalPaymentState': { useArrivalPaymentState: () => state },
@@ -49,14 +51,17 @@ test('one payment modal keeps the same content component from selection through 
   const render = () => hooks.render(() => session.type());
   const find = (tree, type) => all(tree).find(node => node.type === type);
   let tree = render(); assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
+  assert.equal(announcement.visible, true); assert.match(announcement.message.text, /montant à régler/);
   state.hasPendingProviderPayment = true;
   assert.ok(find(render(), 'Recovery')); assert.equal(find(render(), 'Fields'), undefined);
+  assert.match(announcement.message.text, /reste à vérifier/);
   assert.equal(find(render(), 'Actions'), undefined, 'no disabled form or competing footer while waiting');
   const hasRecoveryViewport = tree => all(tree).some(node => Array.isArray(node.props?.style) &&
     node.props.style.some(style => style?.height === '82%'));
   assert.equal(hasRecoveryViewport(render()), true, 'a maxHeight-only sheet collapses flex recovery content in Yoga');
   state.interruptionChoice = { requestId: 'interruption', bookingId: 'booking' };
   assert.equal(hasRecoveryViewport(render()), false, 'the higher-priority interruption choice keeps its own layout');
+  assert.equal(announcement.visible, false, 'payment must not speak over the interruption choice');
   state.interruptionChoice = null;
   verification = { phase: 'paused', message: 'Le service ne répond pas. Vérifiez à nouveau.' };
   assert.equal(find(render(), 'Recovery').props.message, verification.message, 'do not hide a failed verification behind a generic operator wait');
@@ -73,8 +78,10 @@ test('one payment modal keeps the same content component from selection through 
   submitting = false; state.paymentAlreadySucceeded = true; state.arrivalBooking = { ...booking, paymentStatus: 'succeeded', paymentReference: 'REF-TEST' };
   tree = render(); assert.equal(all(tree).filter(node => node.type === 'Fields').length, 1);
   assert.equal(find(tree, 'Fields').props.completionSummary.paymentReference, 'REF-TEST');
+  assert.match(announcement.message.text, /Paiement de 3\s000 francs congolais confirmé/);
   assert.equal(find(tree, 'Actions').props.onDone, done); assert.equal(find(tree, 'Modal').props.onRequestClose, done);
   state.isPaymentDeferred = true; assert.equal(find(render(), 'Modal').props.visible, false);
+  assert.equal(announcement.visible, false);
   state.isPaymentDeferred = false; state.isBeforeArrival = true; state.paymentAlreadySucceeded = false;
   tree = render(); assert.equal(find(tree, 'Actions').props.closeLabel, 'Payer à l’arrivée');
   assert.equal(find(tree, 'Actions').props.onClose, state.deferEarlyPayment);

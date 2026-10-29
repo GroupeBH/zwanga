@@ -15,6 +15,7 @@ function fixture(t, isOwner = true) {
   const { SharedTripPanel } = loader({ react: { ...React, ...hooks.react },
     'react-native': { Text: 'Text', View: 'View', TouchableOpacity: 'Button', StyleSheet: { create: x => x } },
     '@/hooks/useDisplayReads': { displayReadOptions: (enabled, interval) => ({ skip: !enabled, interval }) },
+    '@/hooks/notifications/useRideSocketConnected': { useRideSocketConnected: () => false },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: dialog => dialogs.push(dialog) }) },
     '@/utils/errorHelpers': { getApiErrorMessage: (_error, fallback) => fallback },
     '@/store/api/sharedTripApi': {
