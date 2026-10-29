@@ -7,7 +7,7 @@
   },
   "scripts": {
     "start": "expo start",
-    "postinstall": "node ./scripts/patch-query-string-decoder.cjs && node ./scripts/patch-metro-image-size.cjs && node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs && node ./scripts/patch-expo-location-batches.cjs",
+    "postinstall": "node ./scripts/patch-query-string-decoder.cjs && node ./scripts/patch-metro-image-size.cjs && node ./scripts/patch-react-native-drawing-order.js && node ./scripts/patch-chottulink-ios-swift-header.js && node ./scripts/patch-notifee-expo-driver-actions.cjs && node ./scripts/patch-expo-location-batches.cjs && node ./scripts/patch-react-native-hermes-tarball.cjs",
     "eas-build-pre-install": "node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-referral-config.js && node ./scripts/validate-android-crashlytics.js",
     "eas-build-on-success": "node ./scripts/validate-android-native.cjs --eas",
     "eas-build-post-install": "node ./scripts/configure-ride-alert-build.cjs --eas && node ./scripts/patch-expo-location-batches.cjs --check && node ./scripts/validate-ios-toolchain.cjs --eas && node ./scripts/validate-ios-crashlytics.cjs --eas && node ./scripts/check-release.cjs",

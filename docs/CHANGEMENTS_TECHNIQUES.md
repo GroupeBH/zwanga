@@ -1,5 +1,12 @@
 # Journal des changements techniques
 
+## 2026-10-29 — Échec Gradle EAS : archive source Hermes renommée en `meta-hermes`
+
+- **Constat/périmètre :** le build EAS Android de production échouait dans `gradlew :app:bundleRelease`, sur la tâche `hermes-engine:configureBuildForHermes`, avec `CMake Error: The source directory ".../node_modules/react-native/sdks/hermes" does not appear to contain CMakeLists.txt`. Les builds release compilent React Native et Hermes depuis les sources, via le bloc `ZWANGA_PATCHED_REACT_ANDROID` de `android/settings.gradle` (en place depuis le 2026-09-23).
+- **Cause (vérifiée) :** l'URL `https://github.com/facebook/hermes/tarball/<version>` redirige désormais vers `meta/hermes`. L'archive téléchargée contient donc un dossier racine `meta-hermes-e0fc671/` au lieu de `facebook-hermes-…`. La tâche `unzipHermes` de React Native 0.81.5 ne retire que le préfixe `facebook-hermes-`. Les sources se retrouvaient dans `sdks/hermes/meta-hermes-e0fc671/`, sans `CMakeLists.txt` à la racine. Le contenu de l'archive a été vérifié par téléchargement. Ce n'est pas une régression du code Zwanga.
+- **Solution appliquée :** un nouveau script idempotent, `scripts/patch-react-native-hermes-tarball.cjs`, ajoute le préfixe `meta-hermes-` à la condition d'aplatissement dans `node_modules/react-native/ReactAndroid/hermes-engine/build.gradle.kts`. Il est ajouté en fin de `postinstall` dans `package.json`. Il échoue explicitement si le code amont change, comme les autres patchs. Les scripts, la configuration Gradle et le code applicatif existants ne sont pas modifiés. Le préfixe `facebook-hermes-` reste accepté.
+- **Vérifications/limites :** le patch s'applique et sa réapplication ne change rien. Le nouveau `tests/hermesTarballPatch.test.js` passe (2 tests). `scripts/check-release.cjs` complet en local donne 2 954 tests, 0 échec, 1 ignoré (Ruby absent). Tout cela est vérifié en JavaScript uniquement : la compilation CMake/Gradle de Hermes n'a pas été exécutée localement (Windows), et le build EAS doit être relancé pour confirmer.
+
 ## 2026-10-29 — Échec du build EAS : instantané d'endpoints OTP obsolète
 
 - **Constat/périmètre :** `eas-build-post-install` (`scripts/check-release.cjs`) échouait sur un seul test : `tests/sourceExtractions.test.js`, sur l'empreinte de `store/api/userApi.ts` (2 951 réussis, 1 échec). Les empreintes de `sendPhoneVerificationOtp` et `verifyPhoneOtp` ne correspondaient plus à `tests/fixtures/sourceExtractions.json`. L'échec est reproduit localement avec les mêmes valeurs.
