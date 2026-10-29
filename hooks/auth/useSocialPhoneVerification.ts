@@ -1,4 +1,5 @@
 import { SocialAuthProvider, getAuthErrorMessage } from '../../features/auth/authModel';
+import type { SignupPhoneProof } from '@/features/auth/signupPhoneProof';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
@@ -8,6 +9,7 @@ import type { DialogOptions } from '@/features/dialogs/dialogTypes';
 import type { useSendPhoneVerificationOtpMutation, useVerifyPhoneOtpMutation } from '@/store/api/userApi';
 
 interface Params {
+  signupPhoneProof?: SignupPhoneProof;
   googlePhone: string;
   showDialog: (options: DialogOptions) => void;
   setGooglePhone: React.Dispatch<React.SetStateAction<string>>;
@@ -36,6 +38,7 @@ interface Params {
 }
 
 export function useSocialPhoneVerification({
+  signupPhoneProof,
   googlePhone,
   showDialog,
   setGooglePhone,
@@ -80,36 +83,58 @@ export function useSocialPhoneVerification({
       setStep('profile');
       return;
     }
+    const ticket = signupPhoneProof?.begin();
+    if (ticket === null) return;
+    let request: ReturnType<typeof sendPhoneVerificationOtp> | undefined;
     try {
       setIsSendingGoogleOtp(true);
-      await sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' }).unwrap();
+      request = sendPhoneVerificationOtp({ phone: normalizedPhone, context: 'registration' });
+      await request.unwrap();
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
       setGooglePhone(normalizedPhone);
+      setGoogleOtp(['', '', '', '', '']);
+      setIsGooglePhoneVerified(false);
       setGoogleSignupStep('otp');
     } catch (error: any) {
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
       showDialog({ variant: 'danger', title: 'Erreur OTP', message: getAuthErrorMessage(error, 'Impossible d\'envoyer le code. Réessayez dans un instant.') });
     } finally {
+      request?.reset?.();
+      if (ticket !== undefined) signupPhoneProof!.finish(ticket);
       setIsSendingGoogleOtp(false);
     }
   };
 
   const handleResendGoogleOtp = async () => {
+    const ticket = signupPhoneProof?.begin();
+    if (ticket === null) return;
+    let request: ReturnType<typeof sendPhoneVerificationOtp> | undefined;
     try {
       setIsSendingGoogleOtp(true);
-      await sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' }).unwrap();
+      request = sendPhoneVerificationOtp({ phone: googlePhone, context: 'registration' });
+      await request.unwrap();
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
+      setGoogleOtp(['', '', '', '', '']);
+      setIsGooglePhoneVerified(false);
       showDialog({ variant: 'success', title: 'Code renvoyé', message: otpDeliveryCopy.sent });
     } catch (error: any) {
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
       showDialog({ variant: 'danger', title: 'Erreur', message: getAuthErrorMessage(error, 'Impossible de renvoyer le code. Réessayez dans un instant.') });
     } finally {
+      request?.reset?.();
+      if (ticket !== undefined) signupPhoneProof!.finish(ticket);
       setIsSendingGoogleOtp(false);
     }
   };
 
   const handleGooglePhoneBack = () => {
+    signupPhoneProof?.clear();
     setGoogleSignupStep('phone');
     setGoogleOtp(['', '', '', '', '']);
   };
 
   const handleGoogleCancel = () => {
+    signupPhoneProof?.clear();
     setGoogleFlow(null);
     setGoogleIdToken(null);
     setGoogleProfileName(null);
@@ -128,9 +153,15 @@ export function useSocialPhoneVerification({
       showDialog({ variant: 'warning', title: 'Code incomplet', message: 'Saisissez les 5 chiffres du code.' });
       return;
     }
+    const ticket = signupPhoneProof?.begin();
+    if (ticket === null) return;
+    const request = verifyPhoneOtp({ phone: googlePhone, otp: code });
     try {
       setIsVerifyingGoogleOtp(true);
-      await verifyPhoneOtp({ phone: googlePhone, otp: code }).unwrap();
+      const result = await request.unwrap();
+      if (ticket !== undefined && !signupPhoneProof!.capture(googlePhone, result, ticket)) return;
+      if (result?.valid !== true) throw new Error('Code OTP invalide ou expiré.');
+      setGoogleOtp(['', '', '', '', '']);
       setIsGooglePhoneVerified(true);
       setPhone(googlePhone);
       if (googleFirstName) setFirstName(googleFirstName);
@@ -140,8 +171,11 @@ export function useSocialPhoneVerification({
       setStep('profile');
       showDialog({ variant: 'success', title: 'Numéro vérifié', message: 'Complétez maintenant votre profil.' });
     } catch (error: any) {
+      if (ticket !== undefined && !signupPhoneProof!.current(ticket)) return;
       showDialog({ variant: 'danger', title: 'Validation', message: getAuthErrorMessage(error, 'Code invalide ou expiré.') });
     } finally {
+      request.reset?.();
+      if (ticket !== undefined) signupPhoneProof!.finish(ticket);
       setIsVerifyingGoogleOtp(false);
     }
   };

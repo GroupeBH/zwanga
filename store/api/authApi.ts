@@ -149,6 +149,7 @@ export const authApi = baseApi.injectEndpoints({
     googleMobile: builder.mutation<AuthResponse, ReferralRegistrationAttributionPayload & {
       idToken: string;
       phone?: string;
+      phoneVerificationToken?: string;
       firstName?: string;
       lastName?: string;
       gender?: UserGender;
@@ -205,6 +206,7 @@ export const authApi = baseApi.injectEndpoints({
     appleMobile: builder.mutation<AuthResponse, ReferralRegistrationAttributionPayload & {
       idToken: string;
       phone?: string;
+      phoneVerificationToken?: string;
       nonce?: string;
       firstName?: string;
       lastName?: string;
@@ -222,6 +224,7 @@ export const authApi = baseApi.injectEndpoints({
       query: ({
         idToken,
         phone,
+        phoneVerificationToken,
         nonce,
         firstName,
         lastName,
@@ -240,6 +243,7 @@ export const authApi = baseApi.injectEndpoints({
         body: {
           idToken,
           ...(phone ? { phone } : {}),
+          ...(phoneVerificationToken ? { phoneVerificationToken } : {}),
           ...(nonce ? { nonce } : {}),
           ...(firstName ? { firstName } : {}),
           ...(lastName ? { lastName } : {}),

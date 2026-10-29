@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import { Colors } from '@/constants/styles';
@@ -20,10 +20,18 @@ export function RequestDriverDecision({ model, presentation }: {
   model: Model; presentation: ReturnType<typeof buildRequestDetailPresentation>;
 }) {
   const request = model.tripRequest!;
+  const { height } = useWindowDimensions();
   const route = useRouteLocationLabels(request);
   const busy = model.isAcceptingTripRequest || model.isStartingTrip || !model.canRespondToRequest;
   const price = request.maxPricePerSeat;
   return <View style={styles.content}>
+    <View style={styles.map}>
+      <CollapsibleRouteMap
+        key={`${request.id}:${request.departure?.lat},${request.departure?.lng}:${request.arrival?.lat},${request.arrival?.lng}`}
+        variant="light" displayMode="overview" overviewHeight={Math.round(Math.max(200, Math.min(360, height * 0.35)))}
+        mapData={presentation.requestRouteMapData} routeCoordinates={presentation.displayedRouteCoordinates}
+        departureName={route.departure.title} arrivalName={route.arrival.title} />
+    </View>
     <View style={styles.summary}>
       {!!request.targetDriverId && <Text style={styles.schedule}>Ce passager vous a choisi</Text>}
       <View style={styles.summaryTop}>
@@ -39,12 +47,6 @@ export function RequestDriverDecision({ model, presentation }: {
       <Text style={styles.schedule}>{formatDateWithRelativeLabel(request.departureDateMin, true)}</Text>
       <RouteLocationDetails labels={route} compact />
       <Text style={styles.muted}>{request.paymentMode === 'cash' ? 'Cash à l’arrivée' : request.paymentMode === 'points' ? 'Paiement par jetons' : 'Paiement électronique'}</Text>
-      <CollapsibleRouteMap
-        key={`${request.id}:${request.departure?.lat},${request.departure?.lng}:${request.arrival?.lat},${request.arrival?.lng}`}
-        variant="light" initiallyExpanded={false} toggleAppearance="text"
-        expandLabel="Voir le trajet sur la carte"
-        mapData={presentation.requestRouteMapData} routeCoordinates={presentation.displayedRouteCoordinates}
-        departureName={route.departure.title} arrivalName={route.arrival.title} />
     </View>
     <View style={styles.secondary}>
     {model.canAcceptDirectly && request.paymentMode === 'cash' && price != null &&
@@ -60,7 +62,7 @@ export function RequestDecisionActions({ model }: { model: Model }) {
   const busy = model.isAcceptingTripRequest || model.isStartingTrip;
   const disabled = busy || !model.canRespondToRequest || response.closed;
   const canAccept = model.canAcceptDirectly && Boolean(model.directAcceptVehicle) && !disabled && !response.blocked;
-  return <View style={styles.footer}>
+  return <View style={styles.footer} testID="request-decision-actions">
     {!!response.label && <Text style={styles.hint}>{busy ? 'Confirmation du trajet en cours…' : response.label}</Text>}
     {model.canAcceptDirectly && <RequestDecisionVehiclePicker key={`${model.userId}:${model.tripRequest?.id}`} model={model} disabled={disabled} />}
     {!model.isIdentityVerified ? <Pressable accessibilityRole="button" disabled={disabled}
@@ -82,7 +84,8 @@ export function RequestDecisionActions({ model }: { model: Model }) {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 10 }, summary: { padding: 16, borderRadius: 20, backgroundColor: Colors.white, gap: 8 },
+  content: { gap: 10 }, map: { marginHorizontal: -12 },
+  summary: { paddingHorizontal: 4, paddingVertical: 2, gap: 6 },
   summaryTop: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   passengerCopy: { flexGrow: 1, flexShrink: 1, flexBasis: 140, gap: 3 }, secondary: { paddingHorizontal: 4, gap: 4 },
   fare: { gap: 2, flexShrink: 1 }, amount: { fontSize: 22, fontWeight: '800', color: Colors.gray[900] },

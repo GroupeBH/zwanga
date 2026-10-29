@@ -2,7 +2,7 @@ import { RequestRouteMapData } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -20,6 +20,8 @@ export type CollapsibleRouteMapProps = {
   summary?: ReactNode;
   expandLabel?: string;
   toggleAppearance?: 'button' | 'text';
+  displayMode?: 'collapsible' | 'overview';
+  overviewHeight?: number;
 };
 
 export function CollapsibleRouteMap({
@@ -32,8 +34,12 @@ export function CollapsibleRouteMap({
   summary,
   expandLabel = 'Carte',
   toggleAppearance = 'button',
+  displayMode = 'collapsible',
+  overviewHeight = 280,
 }: CollapsibleRouteMapProps) {
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
+  const overview = displayMode === 'overview';
+  const visible = overview || isExpanded;
   const mapRef = useRef<MapView>(null);
   const active = useScreenIsActive();
   const [loadedRoute, setLoadedRoute] = useState<{ key: string; coordinates: LatLng[] } | null>(null);
@@ -41,32 +47,30 @@ export function CollapsibleRouteMap({
   const toLat = mapData?.arrivalCoordinate.latitude, toLng = mapData?.arrivalCoordinate.longitude;
   const routeKey = `${fromLat}:${fromLng}:${toLat}:${toLng}`;
   const { shouldRenderMap, isMapReady, onMapReady, onMapLayout, runMapCommand } = useNavigationMapLifecycle({
-    screenKey: routeKey, enabled: isExpanded && active && !!mapData, mapRef,
+    screenKey: routeKey, enabled: visible && active && !!mapData, mapRef,
   });
   const suppliedRoute = routeCoordinates.length > 1;
   useEffect(() => {
-    if (!isExpanded || !active || suppliedRoute || fromLat === undefined || fromLng === undefined || toLat === undefined || toLng === undefined) return;
+    if (!visible || !active || suppliedRoute || fromLat === undefined || fromLng === undefined || toLat === undefined || toLng === undefined) return;
     let current = true;
     void getRouteCoordinates({ latitude: fromLat, longitude: fromLng }, { latitude: toLat, longitude: toLng })
       .then(coordinates => { if (current) setLoadedRoute({ key: routeKey, coordinates: coordinates ?? [] }); }).catch(() => {});
     return () => { current = false; };
-  }, [isExpanded, active, suppliedRoute, fromLat, fromLng, toLat, toLng, routeKey]);
+  }, [visible, active, suppliedRoute, fromLat, fromLng, toLat, toLng, routeKey]);
   const displayedCoordinates = suppliedRoute ? routeCoordinates : loadedRoute?.key === routeKey ? loadedRoute.coordinates : undefined;
+  const fallbackCoordinates = useMemo(() => fromLat === undefined || fromLng === undefined || toLat === undefined || toLng === undefined
+    ? [] : [{ latitude: fromLat, longitude: fromLng }, { latitude: toLat, longitude: toLng }], [fromLat, fromLng, toLat, toLng]);
+  const visibleCoordinates = displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : fallbackCoordinates;
 
   useEffect(() => {
-    if (!isMapReady || !mapData) return;
-
-    const visibleCoordinates =
-      displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates;
-
-    if (visibleCoordinates.length < 2) return;
+    if (!isMapReady || visibleCoordinates.length < 2) return;
     runMapCommand(map => {
       map.fitToCoordinates(visibleCoordinates, {
         edgePadding: { top: 34, right: 34, bottom: 34, left: 34 },
         animated: false,
       });
     });
-  }, [mapData, displayedCoordinates, isMapReady, runMapCommand]);
+  }, [visibleCoordinates, isMapReady, runMapCommand, overviewHeight]);
 
   const toggleMap = useCallback(() => {
     setIsExpanded((currentValue) => !currentValue);
@@ -74,6 +78,10 @@ export function CollapsibleRouteMap({
   const textToggle = variant === 'light' && toggleAppearance === 'text';
 
   if (!mapData) {
+    if (overview) return <View style={light.unavailable} accessibilityLabel="Carte indisponible pour ce trajet">
+      <Ionicons name="map-outline" size={22} color={Colors.gray[500]} />
+      <Text style={light.textToggleLabel}>Carte indisponible · consultez les adresses ci-dessous.</Text>
+    </View>;
     const unavailable = (
       <View
         accessibilityLabel="Carte indisponible pour ce trajet"
@@ -112,10 +120,12 @@ export function CollapsibleRouteMap({
 
   return (
     <>
-      {summary ? <View style={light.summaryRow}>{summary}{toggle}</View> : toggle}
-      {isExpanded && active && (
+      {!overview && (summary ? <View style={light.summaryRow}>{summary}{toggle}</View> : toggle)}
+      {visible && active && (
         <View
-          style={[styles.driverInlineMapFrame, variant === 'light' && light.frame]}
+          testID={overview ? 'request-decision-map' : undefined}
+          style={[styles.driverInlineMapFrame, variant === 'light' && light.frame,
+            overview && light.overview, overview && { height: overviewHeight }]}
         >
           {shouldRenderMap && <MapView
             ref={mapRef}
@@ -127,9 +137,10 @@ export function CollapsibleRouteMap({
             onLayout={onMapLayout}
             rotateEnabled={false}
             pitchEnabled={false}
+            showsPointsOfInterest={false}
           >
             <Polyline
-              coordinates={displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : mapData.fallbackCoordinates}
+              coordinates={visibleCoordinates}
               strokeColor={Colors.primary}
               strokeWidth={5}
               lineDashPattern={displayedCoordinates && displayedCoordinates.length > 2 ? undefined : [4, 4]}
@@ -151,6 +162,9 @@ export function CollapsibleRouteMap({
               tracksViewChanges={false}
             />
           </MapView>}
+          {overview && !isMapReady && <View pointerEvents="none" style={light.loading}>
+            <Text style={light.loadingText}>Chargement de la carte…</Text>
+          </View>}
           <View pointerEvents="none" style={styles.driverMapCaption}>
             <Ionicons name="navigate" size={12} color={Colors.primaryDark} />
             <Text style={styles.driverMapCaptionText}>{displayedCoordinates && displayedCoordinates.length > 2 ? 'Itinéraire demandé' : 'Départ et destination'}</Text>
@@ -169,4 +183,8 @@ const light = StyleSheet.create({
     backgroundColor: 'transparent', elevation: 0, shadowOpacity: 0 },
   textToggleLabel: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '500', color: Colors.gray[700] },
   frame: { height: 154, borderRadius: 16, marginTop: 4, marginHorizontal: 0, marginBottom: 8 },
+  overview: { borderRadius: 0, borderWidth: 0, marginTop: 0, marginBottom: 0, backgroundColor: '#E9EFED' },
+  unavailable: { padding: 16, flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: '#F2F4F6' },
+  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { color: Colors.gray[700], fontSize: 13, backgroundColor: '#FFFFFF', padding: 10, borderRadius: 12 },
 });

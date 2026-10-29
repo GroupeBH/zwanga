@@ -182,7 +182,7 @@ test('forgotten PIN from login goes through six-digit OTP then returns to PIN lo
   const app = phoneScreen();
   await app.render().handleForgotPin();
   assert.equal(app.props.step, 'resetPin');
-  assert.match(app.dialogs.at(-1).message, /^Si ce numéro correspond à un compte éligible,.*WhatsApp.*Didit.*SMS/);
+  assert.match(app.dialogs.at(-1).message, /^Si ce numéro correspond à un compte éligible,.*SMS/);
   assert.equal(app.props.resetOtpCode.length, 6);
   app.props.resetOtpCode = '12345'.split('');
   await app.render().handleVerifyResetOtp();
@@ -211,5 +211,5 @@ test('an expired or rejected proof sends the login flow back to OTP and clears t
   assert.equal(app.props.resetNewPin, '');
   assert.equal(app.props.resetNewPinConfirm, '');
   assert.equal(app.dialogs.at(-1).variant, 'danger');
-  assert.match(app.dialogs.at(-1).message, /WhatsApp ou vos SMS/);
+  assert.match(app.dialogs.at(-1).message, /code par SMS/);
 });

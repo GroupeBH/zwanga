@@ -87,6 +87,7 @@ function signupFixture() {
   const mutation = method => payload => ({ unwrap: async () => { calls.push({ method, payload }); return { accessToken: 'test', refreshToken: 'test' }; } });
   const load = loader({
     react: hooks.react,
+    '@/config/env': { isSignupOtpVerificationEnabled: false },
     'react-native': { Platform: { OS: 'ios' } }, 'expo-image-picker': {},
     '@/hooks/useAppIsActive': { useScreenIsActive: () => false },
     '@/features/profile/profilePhotoRecovery': { claimPendingProfileImageUri: async () => null },

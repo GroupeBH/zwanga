@@ -81,7 +81,7 @@ export function useRequestDriverActions({
   const accepted = React.useRef(false);
   React.useEffect(() => { accepted.current = false; }, [id, userId]);
   const handleDeclineTripRequest = async () => {
-    if (accepted.current || !userId || !tripRequest || tripRequest.passengerId === userId || tripRequest.immediateDispatch ||
+    if (accepted.current || !userId || !tripRequest || tripRequest.passengerId === userId ||
       !isRequestUnassigned(tripRequest) || !transition.begin()) return;
     try {
       // The request stays available to other drivers. Do not pretend an offline refusal succeeded.

@@ -9,7 +9,8 @@ const elements = tree => Array.isArray(tree) ? tree.flatMap(elements) : React.is
 const words = tree => typeof tree === 'string' || typeof tree === 'number' ? String(tree) : Array.isArray(tree)
   ? tree.map(words).join(' ') : words(tree?.props?.children ?? '');
 const native = { View: 'View', Text: 'Text', Pressable: 'Pressable', FlatList: 'FlatList', ScrollView: 'ScrollView',
-  TouchableOpacity: 'TouchableOpacity', ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: x => x } };
+  TouchableOpacity: 'TouchableOpacity', ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: x => x },
+  useWindowDimensions: () => ({ height: 844, width: 390 }) };
 const labels = { departure: { title: 'Départ', reference: 'Repère de départ' }, arrival: { title: 'Destination', reference: 'Repère d’arrivée' } };
 const vehicle = id => ({ id, brand: 'Marque test', model: `Modèle ${id}`, licensePlate: `TEST-${id}` });
 const request = { id: 'order', passengerId: 'passenger', passengerName: 'Passager test', status: 'pending', numberOfSeats: 2,
@@ -45,7 +46,8 @@ function picker(t, vehicles = model.compatibleActiveVehicles) {
   const render = () => hooks.render(() => RequestDecisionVehiclePicker({ model: f.model, disabled: f.disabled }));
   const list = tree => elements(tree).find(item => item.type === 'FlatList');
   const options = tree => list(tree)?.props.data.map((item, index) => list(tree).props.renderItem({ item, index })) ?? [];
-  return { f, calls, render, list, options };
+  const toggle = () => elements(render()).find(item => item.type === 'Pressable').props.onPress();
+  return { f, calls, render, list, options, toggle };
 }
 
 test('one vehicle is displayed without another selection step and no arbitrary vehicle is chosen', t => {
@@ -58,10 +60,17 @@ test('one vehicle is displayed without another selection step and no arbitrary v
   assert.deepEqual(f.calls, [], 'existing availability logic owns automatic single-vehicle selection');
 });
 
-test('multiple choices are visible immediately; choosing closes the list and preserves access to Change', t => {
+test('multiple vehicles start collapsed; opening and choosing closes the list and preserves Change', t => {
   const f = picker(t);
   let tree = f.render();
-  assert.match(words(tree), /Choisissez votre véhicule/);
+  assert.match(words(tree), /Choisir mon véhicule.*Pour accepter la demande/);
+  assert.equal(f.list(tree), undefined, 'the fleet does not take space from the route until requested');
+  const choose = elements(tree).find(item => item.type === 'Pressable');
+  assert.equal(choose.props.accessibilityState.expanded, false);
+  assert.match(choose.props.accessibilityLabel, /Choisir mon véhicule pour accepter/);
+  assert.deepEqual(f.calls, [], 'do not select an arbitrary vehicle to save space');
+  f.toggle(); tree = f.render();
+  assert.match(words(tree), /Fermer/);
   assert.equal(f.options(tree).length, 2); assert.deepEqual(f.calls, []);
   f.options(tree)[1].props.onPress(); tree = f.render();
   assert.deepEqual(f.calls, ['two']); assert.equal(f.list(tree), undefined);
@@ -77,6 +86,8 @@ test('multiple choices are visible immediately; choosing closes the list and pre
 test('a large fleet uses a bounded list even on a short screen and keeps full vehicle identities', t => {
   const f = picker(t, Array.from({ length: 30 }, (_, i) => vehicle(String(i))));
   f.f.height = 360;
+  assert.equal(f.list(f.render()), undefined);
+  f.toggle();
   const tree = f.render(), list = f.list(tree);
   assert.equal(list.props.style.maxHeight, 72);
   assert.equal(list.props.initialNumToRender, 3); assert.equal(list.props.removeClippedSubviews, false);
@@ -89,6 +100,9 @@ test('a large fleet uses a bounded list even on a short screen and keeps full ve
 
 test('busy choices cannot change the vehicle and a removed selection requires a fresh choice', t => {
   const f = picker(t); f.f.disabled = true;
+  f.toggle(); assert.equal(f.list(f.render()), undefined, 'disabled picker cannot open');
+  f.f.disabled = false; f.toggle();
+  f.f.disabled = true;
   let tree = f.render();
   for (const option of f.options(tree)) {
     assert.equal(option.props.disabled, true); option.props.onPress();
@@ -100,17 +114,43 @@ test('busy choices cannot change the vehicle and a removed selection requires a 
   assert.equal(f.list(f.render()), undefined);
   f.f.disabled = false;
   f.f.model.compatibleActiveVehicles = [vehicle('one'), vehicle('three')];
+  assert.equal(f.list(f.render()), undefined, 'invalid selection must not automatically expand the footer');
+  assert.match(words(f.render()), /Choisir mon véhicule/);
+  f.toggle();
   assert.equal(f.options(f.render()).length, 2);
   assert.equal(f.options(f.render()).some(item => item.props.accessibilityState.checked), false);
 });
 
 test('expanded choices do not leak to another request or account', t => {
   const f = picker(t);
+  f.toggle();
   f.options(f.render())[0].props.onPress();
   elements(f.render()).find(item => item.type === 'Pressable').props.onPress();
   assert.ok(f.list(f.render()));
   f.f.model.userId = 'other-driver'; f.f.model.tripRequest = { ...request, id: 'other-order' };
   assert.equal(f.list(f.render()), undefined);
+});
+
+test('the fleet can be closed without selecting, and reopening preserves the current vehicle', t => {
+  const f = picker(t);
+  f.toggle(); assert.ok(f.list(f.render()));
+  f.toggle(); assert.equal(f.list(f.render()), undefined);
+  assert.deepEqual(f.calls, []);
+  f.toggle(); f.options(f.render())[1].props.onPress();
+  f.toggle(); f.toggle();
+  assert.equal(f.f.model.directAcceptVehicleId, 'two');
+  assert.equal(f.list(f.render()), undefined);
+  assert.match(words(f.render()), /Modèle two.*TEST-two.*Changer/);
+  assert.deepEqual(f.calls, ['two']);
+});
+
+test('no vehicle leaves no empty selector, and a single compatible vehicle never renders a list', t => {
+  const f = picker(t, []);
+  assert.equal(f.render(), null);
+  f.f.model.compatibleActiveVehicles = [vehicle('only')];
+  assert.equal(f.list(f.render()), undefined);
+  assert.match(words(f.render()), /TEST-only/);
+  assert.deepEqual(f.calls, []);
 });
 
 test('compact summary preserves route landmarks, budget, payment, contact and commission outside the vehicle picker', () => {
@@ -126,13 +166,13 @@ test('compact summary preserves route landmarks, budget, payment, contact and co
   assert.doesNotMatch(words(tree), /Pouvez-vous le prendre|Quel véhicule utilisez-vous/);
 });
 
-test('driver decision keeps the route behind one discreet action and shares only inline optional settings', () => {
+test('driver decision opens with a generous route overview and keeps optional settings inline', () => {
   const { RequestDriverDecision } = loader(mocks)('features/request-detail/RequestDriverDecision.tsx');
   const tree = RequestDriverDecision({ model, presentation });
   const map = elements(tree).find(item => item.type === 'RouteMap');
-  assert.equal(map.props.initiallyExpanded, false); assert.equal(map.props.variant, 'light');
-  assert.equal(map.props.toggleAppearance, 'text');
-  assert.equal(map.props.expandLabel, 'Voir le trajet sur la carte');
+  assert.equal(map.props.displayMode, 'overview'); assert.equal(map.props.variant, 'light');
+  assert.equal(map.props.overviewHeight, 295);
+  assert.ok(elements(tree.props.children[0]).includes(map), 'map leads the content instead of sitting below all details');
   assert.equal(map.props.mapData, presentation.requestRouteMapData);
   assert.equal(map.props.routeCoordinates, presentation.displayedRouteCoordinates);
   assert.equal(map.props.departureName, labels.departure.title);
@@ -142,6 +182,17 @@ test('driver decision keeps the route behind one discreet action and shares only
   assert.equal(elements(tree).some(item => item.props.onPress === model.handleOpenDirectAcceptModal && item.type === 'Pressable'), false);
   const next = RequestDriverDecision({ model: { ...model, tripRequest: { ...request, id: 'next' } }, presentation });
   assert.notEqual(elements(next).find(item => item.type === 'RouteMap').key, map.key, 'route cache state cannot leak between requests');
+});
+
+test('overview adapts to short and tall screens without changing the passenger endpoints', () => {
+  for (const [height, expected] of [[568, 200], [800, 280], [1200, 360]]) {
+    const { RequestDriverDecision } = loader({ ...mocks,
+      'react-native': { ...native, useWindowDimensions: () => ({ height, width: 390 }) },
+    })('features/request-detail/RequestDriverDecision.tsx');
+    const map = elements(RequestDriverDecision({ model, presentation })).find(item => item.type === 'RouteMap');
+    assert.equal(map.props.overviewHeight, expected);
+    assert.equal(map.props.mapData, presentation.requestRouteMapData);
+  }
 });
 
 test('vehicle selection and both response buttons share the non-shrinking footer; eligibility remains enforced', () => {
@@ -190,6 +241,12 @@ test('actual request screen keeps the decision footer outside the scrollable det
   assert.equal(elements(scroll).find(item => item.type === 'Decision').props.presentation, presentation);
   assert.equal(elements(tree).some(item => item.type === 'AcceptModal'), false, 'no legacy acceptance modal in the decision path');
   assert.match(words(tree), /Nouvelle demande/);
+  const previousRequest = model.tripRequest;
+  try {
+    model.tripRequest = { ...request, immediateDispatch: true };
+    assert.ok(elements(Screen()).some(item => item.type === 'DecisionActions'), 'immediate requests also use the in-app accept/refuse footer');
+    assert.ok(elements(Screen()).some(item => item.type === 'Decision'));
+  } finally { model.tripRequest = previousRequest; }
   const previousId = model.userId;
   try {
     model.userId = request.passengerId;

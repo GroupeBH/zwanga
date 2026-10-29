@@ -61,7 +61,7 @@ export function SmsStep({
           isCodeComplete ? styles.mainButtonActive : styles.mainButtonDisabled,
         ]}
         onPress={onSubmit}
-        disabled={!isCodeComplete || isVerifying}
+        disabled={!isCodeComplete || isVerifying || isResending}
       >
         {isVerifying ? (
           <ActivityIndicator color="white" />
@@ -78,7 +78,7 @@ export function SmsStep({
       <TouchableOpacity
         style={styles.resendButton}
         onPress={onResend}
-        disabled={isResending}
+        disabled={isResending || isVerifying}
       >
         {isResending ? (
           <ActivityIndicator size="small" color={Colors.primary} />

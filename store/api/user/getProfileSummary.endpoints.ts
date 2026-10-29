@@ -112,10 +112,8 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
       invalidatesTags: [],
     }),
 // Envoyer un code OTP pour la vérification du numéro de téléphone
-    sendPhoneVerificationOtp: builder.mutation<{ message: string }, { phone: string; context: 'registration' | 'login' | 'update' }>({
+    sendPhoneVerificationOtp: builder.mutation<{ message: string; codeLength?: number; expiresInSeconds?: number }, { phone: string; context: 'registration' | 'login' | 'update' }>({
       queryFn: async (data: { phone: string; context: 'registration' | 'login' | 'update' }, _api, _extraOptions, baseQuery) => {
-        console.log('sendPhoneVerificationOtp queryFn called with:', data);
-
         // S'assurer que le contexte est bien défini
         if (!data.context || (data.context !== 'login' && data.context !== 'registration' && data.context !== 'update')) {
           return {
@@ -144,7 +142,7 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
       },
     }),
 // Vérifier le code OTP pour la vérification du numéro de téléphone
-    verifyPhoneOtp: builder.mutation<{ message: string; valid: boolean }, { phone: string; otp: string }>({
+    verifyPhoneOtp: builder.mutation<{ message: string; valid: boolean; verificationToken?: string; expiresInSeconds?: number }, { phone: string; otp: string }>({
       query: ({ phone, otp }: { phone: string; otp: string }) => ({
         url: '/users/phone/verify',
         method: 'POST',

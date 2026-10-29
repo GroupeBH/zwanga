@@ -159,7 +159,6 @@ export function useRequestAvailability({
   }, [tripRequest?.offers]);
 
   const canAcceptRequest = useMemo(() => {
-    if (tripRequest?.immediateDispatch) return false;
     if (!isDriverAccount || !isIdentityVerified || isOwner || hasExistingOffer) {
       return false;
     }
@@ -184,7 +183,6 @@ export function useRequestAvailability({
     isIdentityVerified,
     isOwner,
     tripRequest?.status,
-    tripRequest?.immediateDispatch,
   ]);
 
   const myOffer = useMemo(() => {

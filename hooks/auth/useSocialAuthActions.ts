@@ -1,4 +1,5 @@
 import { useSocialPhoneVerification } from './useSocialPhoneVerification';
+import type { SignupPhoneProof } from '@/features/auth/signupPhoneProof';
 import {
   SocialAuthProvider,
   SocialSignupSeed,
@@ -17,6 +18,7 @@ import React from 'react';
 import { AuthMode, AuthStep } from '@/components/auth';
 
 export interface SocialAuthParams {
+  signupPhoneProof?: SignupPhoneProof;
   confirmSession: (tokens: AuthResponse) => Promise<void>;
   phone: string;
   setMode: React.Dispatch<React.SetStateAction<AuthMode>>;
@@ -71,6 +73,7 @@ export interface SocialAuthParams {
 }
 
 export function useSocialAuthActions({
+  signupPhoneProof,
   confirmSession,
   phone,
   setMode,
@@ -267,6 +270,7 @@ export function useSocialAuthActions({
   };
 
   const { handleSendGoogleOtp, handleGoogleCancel, handleVerifyGoogleOtpAndContinue, handleResendGoogleOtp, handleGooglePhoneBack } = useSocialPhoneVerification({
+    signupPhoneProof,
     googlePhone,
     showDialog,
     setGooglePhone,

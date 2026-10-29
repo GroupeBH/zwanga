@@ -1,4 +1,5 @@
 import { useAuthDraftPersistence } from './useAuthDraftPersistence';
+import { useSignupPhoneProof } from './useSignupPhoneProof';
 import { useSignupProfileActions } from './useSignupProfileActions';
 import { useAuthFormNavigation } from './useAuthFormNavigation';
 import { useAuthFormState } from './useAuthFormState';
@@ -46,6 +47,10 @@ export function useAuthController() {
   });
 
   const draftPersistence = useAuthDraftPersistence(form, isAuthenticated);
+  const signupPhoneProof = useSignupPhoneProof(JSON.stringify([
+    form.mode, form.socialProvider, form.googleIdToken,
+    (form.googleIdToken ? form.googlePhone : form.phone).trim(),
+  ]));
 
   // ============ COMPUTED VALUES ============
   const getStepSequence = () => {
@@ -196,6 +201,7 @@ export function useAuthController() {
     googleOtp: form.googleOtp,
     setIsVerifyingGoogleOtp: form.setIsVerifyingGoogleOtp,
     verifyPhoneOtp: form.verifyPhoneOtp,
+    signupPhoneProof,
   });
 
   // Phone Handlers
@@ -212,6 +218,7 @@ export function useAuthController() {
     setSmsCode: form.setSmsCode,
     smsInputRefs: form.smsInputRefs,
     verifyPhoneOtp: form.verifyPhoneOtp,
+    signupPhoneProof,
     setPin: form.setPin,
     setPinConfirm: form.setPinConfirm,
     pin: form.pin,
@@ -262,6 +269,15 @@ export function useAuthController() {
     pin: form.pin,
     profilePicture: form.profilePicture,
     register: form.register,
+    signupPhoneProof,
+    restartPhoneVerification: () => {
+      signupPhoneProof.clear();
+      form.setSmsCode(['', '', '', '', '']);
+      form.setGoogleOtp(['', '', '', '', '']);
+      form.setIsGooglePhoneVerified(false);
+      form.setGoogleSignupStep('phone');
+      form.setStep('phone');
+    },
   });
 
   // Profile Handlers

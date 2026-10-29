@@ -7,7 +7,7 @@ export const requestSummaryStyles = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: '#111827' },
   back: { backgroundColor: '#FFFFFF', width: 44, height: 44, borderRadius: 24 },
   content: { padding: 16, paddingBottom: 24, gap: 14 },
-  decisionScroll: { flex: 1, minHeight: 0 }, decisionContent: { padding: 12, paddingBottom: 12, gap: 10 },
+  decisionScroll: { flex: 1, minHeight: 0 }, decisionContent: { padding: 12, paddingTop: 0, paddingBottom: 12, gap: 10 },
   card: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 20, gap: 12 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 20, backgroundColor: '#FFF4C7' },
   badgeText: { color: '#8F3D08', fontSize: 12, fontWeight: '700' }, dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#EE9B00' },

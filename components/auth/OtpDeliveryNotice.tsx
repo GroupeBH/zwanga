@@ -7,15 +7,15 @@ import { StyleSheet, Text, View } from 'react-native';
 export function OtpDeliveryNotice({ beforeSend = false, compact = false }: { beforeSend?: boolean; compact?: boolean }) {
   if (compact) return (
     <View style={styles.compactNotice}>
-      <Ionicons name="logo-whatsapp" size={18} color={Colors.gray[800]} accessible={false} />
+      <Ionicons name="chatbubble-outline" size={18} color={Colors.gray[800]} accessible={false} />
       <Text style={styles.compactBody}>
-        <Text style={styles.compactTitle}>{otpDeliveryCopy.title}.</Text>{' '}Consultez WhatsApp ou vos SMS.
+        <Text style={styles.compactTitle}>{otpDeliveryCopy.title}.</Text>{' '}Consultez vos SMS.
       </Text>
     </View>
   );
   return (
     <View style={styles.notice}>
-      <Ionicons name="logo-whatsapp" size={22} color={Colors.gray[800]} accessible={false} />
+      <Ionicons name="chatbubble-outline" size={22} color={Colors.gray[800]} accessible={false} />
       <View style={styles.content}>
         <Text style={styles.title}>{otpDeliveryCopy.title}</Text>
         <Text style={styles.body}>
