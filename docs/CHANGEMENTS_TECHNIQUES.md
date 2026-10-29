@@ -1,5 +1,12 @@
 # Journal des changements techniques
 
+## 2026-10-29 — Échec du build EAS : instantané d'endpoints OTP obsolète
+
+- **Constat/périmètre :** `eas-build-post-install` (`scripts/check-release.cjs`) échouait sur un seul test : `tests/sourceExtractions.test.js`, sur l'empreinte de `store/api/userApi.ts` (2 951 réussis, 1 échec). Les empreintes de `sendPhoneVerificationOtp` et `verifyPhoneOtp` ne correspondaient plus à `tests/fixtures/sourceExtractions.json`. L'échec est reproduit localement avec les mêmes valeurs.
+- **Cause :** il ne s'agit pas d'une régression. Le commit `80777c1` a volontairement modifié ces deux endpoints dans `store/api/user/getProfileSummary.endpoints.ts`. Les types de réponse ont gagné `codeLength`, `expiresInSeconds` et `verificationToken`, et un `console.log` a été supprimé. L'instantané de référence n'avait pas été mis à jour.
+- **Solution appliquée :** seules les deux empreintes concernées sont mises à jour dans `tests/fixtures/sourceExtractions.json`. Aucun code applicatif, aucun test et aucune autre empreinte n'est modifié.
+- **Vérifications/limites :** `node --test tests/sourceExtractions.test.js` donne 7 tests réussis sur 7 (tests JavaScript uniquement). Le comportement de ces endpoints reste couvert par `signupPhoneProof.test.js` et `otpDelivery.test.js`, qui passaient déjà dans le build. Le build EAS complet n'a pas été relancé dans cette intervention.
+
 ## 2026-10-29 — Test local du SMS OTP Mobishastra à l'inscription
 
 - **Constat/périmètre :** le backend sait générer et valider un code SMS de cinq chiffres via Redis, mais le mobile désactivait cette étape et ignorait la preuve temporaire renvoyée. Les textes évoquaient encore WhatsApp/Didit alors que l'inscription et le PIN oublié passent par SMS.
