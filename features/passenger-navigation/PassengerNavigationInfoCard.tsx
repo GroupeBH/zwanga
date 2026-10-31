@@ -10,6 +10,7 @@ import { styles } from '../screen-styles/app/booking/navigate/detail/index';
 import { RideRecoveryControl } from '@/features/ride-recovery/RideRecoveryControl';
 import { PausedPassengerRideNotice } from '@/components/trip/PausedPassengerRideNotice';
 import { isAwaitingPassengerPickup } from './pickupArrivalEstimate';
+import { PickupDriverChange } from '../request-detail/ChangeRequestDriverButton';
 import { Colors } from '@/constants/styles';
 import { getTripInterruptionReasonLabel } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,9 @@ export function PassengerNavigationInfoCard({
       style={[styles.infoCard, compact.panel, { maxHeight: height * (expanded ? 0.5 : 0.36) }]}
     >
       <ScrollView showsVerticalScrollIndicator contentContainerStyle={{ paddingBottom: data.insets.bottom + 8 }}>
+      {trip.tripRequestId && <PickupDriverChange requestId={trip.tripRequestId} booking={booking}
+        onChanged={state.navigateToRequestSafely}
+        active={awaitingPickup && data.isScreenActive && data.isOnline && !data.offlineBooking && !data.offlineTrip && !data.isCancellingBooking} />}
       {/* Projection du trajet (compact) */}
       {(data.offlineBooking || data.offlineTrip) && <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 8 }}>Dernières informations enregistrées. La carte et le suivi en direct nécessitent une connexion.</Text>}
       {data.isTripOngoing && <RideRecoveryControl condensed tripId={data.tripId} booking={booking} actor="passenger" fix={state.recoveryFix} destination={booking.passengerDestinationCoordinates} />}

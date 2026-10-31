@@ -1,5 +1,6 @@
 import { isInvitationId, parseDriverInvitation } from './driverInvitation';
 import { isRemoteNearbyRequestAlert, isRemoteRequestAcceptanceAlert } from './rideSound';
+import { mapDriverAlertGeneration, nearbyRideAlertKey } from './mapDriverAlert';
 
 export type RideAlert = {
   key: string; recipientId: string; kind: 'booking' | 'dispatch' | 'nearby' | 'response'; id: string;
@@ -8,11 +9,13 @@ export type RideAlert = {
 
 export function parseRideAlert(data: Record<string, unknown> | undefined): RideAlert | null {
   if (!data) return null;
+  // Notifee stores string data; preserve the generation across socket -> card -> restore.
+  if (mapDriverAlertGeneration(data)) data = { ...data, mapDriverPriority: 'true' };
   const invitation = parseDriverInvitation(data);
   if (invitation) return { ...invitation, recipientId: invitation.driverId,
     key: `driver-${invitation.kind}-${invitation.id}`, data };
   if (isRemoteNearbyRequestAlert(data)) return { kind: 'nearby', id: data.tripRequestId as string,
-    recipientId: data.driverId as string, key: `driver-nearby-${data.tripRequestId}`, data,
+    recipientId: data.driverId as string, key: nearbyRideAlertKey(data.tripRequestId as string, mapDriverAlertGeneration(data)), data,
     expiresAt: typeof data.alertExpiresAt === 'string' ? data.alertExpiresAt : undefined };
   const id = data.bookingId ?? data.tripRequestId;
   if (!isRemoteRequestAcceptanceAlert(data) || !isInvitationId(data.passengerId) || !isInvitationId(id)) return null;

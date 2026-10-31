@@ -13,8 +13,9 @@ import { requestSearchBounds } from './requestSearchViewport';
 type Props = {
   requestId: string; active: boolean; departure: MapCoordinate | null; position: MapCoordinate | null;
   vehicles: RequestVehicleMarker[];
+  onSelectVehicle?: (id: string) => void;
 };
-export const RequestSearchMap = memo(function RequestSearchMap({ requestId, active, departure, position, vehicles }: Props) {
+export const RequestSearchMap = memo(function RequestSearchMap({ requestId, active, departure, position, vehicles, onSelectVehicle }: Props) {
   const mapRef = useRef<MapView>(null);
   const lifecycle = useNavigationMapLifecycle({ screenKey: requestId, enabled: active && !!departure, mapRef });
   const { runMapCommand, isMapReady } = lifecycle;
@@ -87,8 +88,9 @@ export const RequestSearchMap = memo(function RequestSearchMap({ requestId, acti
     const vehicle = pin.vehicle, appearance = searchVehicleAppearance(vehicle);
     return <Marker key={vehicle.id} coordinate={{ latitude: vehicle.latitude, longitude: vehicle.longitude }} tracksViewChanges={false}
       image={getVehicleTrackingMarkerImage(appearance.imageType)} anchor={{ x: 0.5, y: 0.5 }}
-      title={appearance.title} description={appearance.description} opacity={appearance.opacity} />;
-  }), [pins, runMapCommand]);
+      title={appearance.title} description={appearance.description} opacity={appearance.opacity}
+      onPress={() => { if (active) onSelectVehicle?.(vehicle.id); }} />;
+  }), [pins, runMapCommand, active, onSelectVehicle]);
   return <View style={s.frame} testID="request-search-map">
     {lifecycle.shouldRenderMap && departure ? <MapView
       ref={mapRef} style={StyleSheet.absoluteFill} provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
@@ -112,6 +114,7 @@ export const RequestSearchMap = memo(function RequestSearchMap({ requestId, acti
     </Pressable>}
   </View>;
 }, (a, b) => a.requestId === b.requestId && a.active === b.active && a.vehicles === b.vehicles
+  && a.onSelectVehicle === b.onSelectVehicle
   && a.departure?.latitude === b.departure?.latitude && a.departure?.longitude === b.departure?.longitude
   && a.position?.latitude === b.position?.latitude && a.position?.longitude === b.position?.longitude);
 const s = StyleSheet.create({

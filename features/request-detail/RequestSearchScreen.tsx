@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,6 +9,7 @@ import type { useRequestDetailController } from '@/hooks/request-detail/useReque
 import type { buildRequestDetailPresentation } from './requestPresentation';
 import { requestSearchPhase, searchVehicles, searchPassengerPosition } from './requestSearchModel';
 import { RequestSearchMap } from './RequestSearchMap';
+import { MapDriverSelection } from './MapDriverSelection';
 import { RequestPassengerActions, formatRequestDay, formatRequestTime } from './RequestPassengerTicket';
 import { RequestOwnerModals } from './RequestOwnerModals';
 import { RequestTargetDriver } from './RequestTargetDriver';
@@ -52,6 +53,13 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
   const labels = useRouteLocationLabels(request);
   const departure = presentation.requestRouteMapData?.departureCoordinate ?? null;
   const readFailed = isError || !!model.error || !readsEnabled || !!snapshot && !Array.isArray(snapshot.vehicles);
+  const [choice, setChoice] = useState<{ requestId: string; vehicleId: string } | null>(null);
+  const canChoose = active && readsEnabled && !readFailed && phase === 'searching' && !request.targetDriverPriorityUntil &&
+    !request.selectedDriverId && !request.tripId && !model.isCancelling && !model.isUpdating;
+  const selectVehicle = useCallback((vehicleId: string) => {
+    if (canChoose) setChoice({ requestId: request.id, vehicleId });
+  }, [canChoose, request.id]);
+  const choosing = choice?.requestId === request.id && !request.targetDriverPriorityUntil;
   return <SafeAreaView style={s.screen} onLayout={onLayout}>
     <View style={s.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={s.back}>
@@ -59,9 +67,11 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
       </Pressable><Text style={s.heading}>Votre demande</Text>
       <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
     </View>
-    <RequestSearchMap requestId={request.id} active={active} departure={departure} position={position} vehicles={vehicles} />
+    <RequestSearchMap requestId={request.id} active={active} departure={departure} position={position} vehicles={vehicles} onSelectVehicle={selectVehicle} />
     <View style={[s.panel, expanded && s.expandedPanel]} testID="request-search-panel">
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        {choosing ? <MapDriverSelection key={`${request.id}:${choice.vehicleId}`} request={request}
+          vehicle={vehicles.find(vehicle => vehicle.id === choice.vehicleId)} disabled={!canChoose} onClose={() => setChoice(null)} /> : <>
         <View style={s.statusRow}>
           <View style={s.status}>
             <Text accessibilityRole="header" style={s.title}>{phase === 'past-departure' ? 'L’heure de départ est dépassée' :
@@ -93,6 +103,8 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
           {vehicles.some(vehicle => vehicle.ageMs >= 10 * 60_000) && <Text style={s.hint}>Les véhicules plus pâles ont une position ancienne.</Text>}
         </View>}
         <ResponseWindow model={model} />
+        {canChoose && total > 0 && <Text style={s.hint}>Touchez un véhicule pour choisir ce conducteur.</Text>}
+        <RequestTargetDriver key={request.id} request={request} disabled={!active || !readsEnabled || model.isCancelling || model.isUpdating} />
         <View style={s.route}>
           <View style={s.routeLine}><Ionicons name="radio-button-on" size={14} color="#30805C" /><Text accessibilityLabel={`Départ : ${labels.departure.title}`} style={s.address} numberOfLines={expanded ? undefined : 1}>{labels.departure.title}</Text></View>
           <View style={s.routeLine}><Ionicons name="location" size={14} color="#DB4D1B" /><Text accessibilityLabel={`Destination : ${labels.arrival.title}`} style={s.address} numberOfLines={expanded ? undefined : 1}>{labels.arrival.title}</Text></View>
@@ -101,9 +113,9 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
             <Text style={s.price}>{request.maxPricePerSeat != null ? `${formatCdfPrice(request.maxPricePerSeat)} / place` : 'Budget à convenir'}</Text>
           </View>
         </View>
-        <RequestTargetDriver key={request.id} request={request} disabled={model.isCancelling || model.isUpdating} />
         <SharedTripPanel requestId={request.id} isOwner readsEnabled={readsEnabled} seats={request.numberOfSeats}
           hasPendingOffer={false} refresh={model.refetch} />
+        </>}
       </ScrollView>
     </View>
     <RequestPassengerActions model={model} />

@@ -1,14 +1,16 @@
 import { ridePlaybackDeadline } from './ridePlaybackDeadline';
 import { isInvitationId } from './driverInvitation';
 import { isSelfDriverAlert } from './requestOwnership';
+import { mapDriverAlertGeneration, type MapDriverAlertGeneration } from './mapDriverAlert';
 
-export type NearbyPhoneAlert = { kind: 'nearby'; id: string; driverId: string; ringUntil: string; expiresAt?: string };
+export type NearbyPhoneAlert = { kind: 'nearby'; id: string; driverId: string; ringUntil: string; expiresAt?: string; priority?: MapDriverAlertGeneration };
 
 /** Only v3 Android data-only pushes are locally displayed; never replay a remote v2 alert. */
 export function parseNearbyPhoneAlert(data: Record<string, unknown> | undefined): NearbyPhoneAlert | null {
   if (!isRemoteNearbyRequestAlert(data) || data?.delivery !== 'driver-phone-v3' ||
       typeof data.ringUntil !== 'string' || !Number.isFinite(ridePlaybackDeadline(data))) return null;
   return { kind: 'nearby', id: data.tripRequestId as string, driverId: data.driverId as string, ringUntil: new Date(ridePlaybackDeadline(data)).toISOString(),
+    priority: mapDriverAlertGeneration(data),
     ...(typeof data.alertExpiresAt === 'string' ? { expiresAt: data.alertExpiresAt } : {}) };
 }
 

@@ -13,6 +13,17 @@ export const requestDriverApi = baseApi.injectEndpoints({
       query: params => ({ url: '/trip-requests/driver-choices', params, timeout: 10000 }),
       keepUnusedDataFor: 15,
     }),
+    targetRequestMapDriver: builder.mutation<TripRequest, { id: string; markerId: string; expectedUpdatedAt: string }>({
+      query: ({ id, ...body }) => ({ url: `/trip-requests/${id}/target-map-driver`, method: 'POST', body, timeout: 15000 }),
+      transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
+      invalidatesTags: () => ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification'],
+    }),
+    changeRequestDriver: builder.mutation<TripRequest, { id: string; selectedDriverId: string; selectedAt: string }>({
+      query: ({ id, ...body }) => ({ url: `/trip-requests/${id}/change-driver`, method: 'PUT', body, timeout: 15000 }),
+      transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
+      // Refresh on an ambiguous timeout too: the transaction may have committed.
+      invalidatesTags: () => ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification'],
+    }),
     openRequestToNearbyDrivers: builder.mutation<TripRequest, string>({
       query: id => ({ url: `/trip-requests/${id}/open-search`, method: 'POST', timeout: 10000 }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
@@ -20,4 +31,5 @@ export const requestDriverApi = baseApi.injectEndpoints({
     }),
   }),
 });
-export const { useRequestDriverChoicesQuery, useOpenRequestToNearbyDriversMutation } = requestDriverApi;
+export const { useRequestDriverChoicesQuery, useOpenRequestToNearbyDriversMutation,
+  useTargetRequestMapDriverMutation, useChangeRequestDriverMutation } = requestDriverApi;

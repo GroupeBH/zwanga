@@ -95,7 +95,7 @@ export function usePassengerNavigationState({
   }, []);
   const mapTopOffset = headerHeight || insets.top + 140;
 
-  const navigateBackSafely = useCallback(() => {
+  const navigateSafely = useCallback((navigate: () => void) => {
     if (isExitingRef.current) {
       return;
     }
@@ -114,12 +114,16 @@ export function usePassengerNavigationState({
       console.warn('[PassengerNavigation] cleanup before back failed:', error);
     }
 
-    const scheduled = navigateAfterRelease(() => {
-      if (router.canGoBack()) router.back();
-      else router.replace('/bookings');
-    }, () => { isExitingRef.current = false; });
+    const scheduled = navigateAfterRelease(navigate, () => { isExitingRef.current = false; });
     if (!scheduled) isExitingRef.current = false;
-  }, [cancelLocationRequest, cancelRouteRequest, navigateAfterRelease, router]);
+  }, [cancelLocationRequest, cancelRouteRequest, navigateAfterRelease]);
+  const navigateBackSafely = useCallback(() => navigateSafely(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/bookings');
+  }), [navigateSafely, router]);
+  const navigateToRequestSafely = useCallback((requestId: string) => navigateSafely(() => {
+    router.replace({ pathname: '/request/[id]', params: { id: requestId } });
+  }), [navigateSafely, router]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -154,6 +158,7 @@ export function usePassengerNavigationState({
     hasPresentedBoardingUncertainNoticeRef,
     passengerLocationSubscriptionRef,
     navigateBackSafely,
+    navigateToRequestSafely,
     presentedPickupNoticeKeysRef,
     highestPickupNoticePriorityRef,
     hasDisplayedDriverNearNotificationRef,

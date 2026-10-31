@@ -8,6 +8,7 @@ import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailMode
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
 import { RequestTargetDriver } from './RequestTargetDriver';
+import { ChangeRequestDriverButton } from './ChangeRequestDriverButton';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 
 type Model = ReturnType<typeof useRequestDetailController>;
@@ -62,6 +63,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
         departureName={labels.departure.address} arrivalName={labels.arrival.address} />
     </View>
     <RequestTargetDriver key={request.id} request={request} disabled={model.isCancelling || model.isUpdating} />
+    <ChangeRequestDriverButton key={`change:${request.id}`} request={request} disabled={!model.isScreenActive || model.isCancelling || model.isUpdating} />
     <View style={s.card}>
       {closed ? <><Text style={s.name}>{presentation.ownerHero.title}</Text><Text style={s.muted}>{presentation.ownerHero.subtitle}</Text></>
         : steps.map((label, index) => <View key={label} style={local.step}>

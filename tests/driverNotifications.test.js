@@ -104,6 +104,54 @@ test('a decision before alert hydration prevents a late REST snapshot from start
   assert.deepEqual(f.session.pendingRideAlerts(driverId), []);
 });
 
+for (const state of ['active', 'background']) test(`a map-selected driver can ring again in ${state}, with one stable native card and no old replay`, async () => {
+  const f = service(); f.appState.currentState = state;
+  const old = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3', driverId, tripRequestId: id,
+    ringUntil: new Date(Date.now() + 60000).toISOString(), alertExpiresAt: new Date(Date.now() + 40000).toISOString() };
+  await f.loaded.displayDriverInvitation(old);
+  await f.loaded.dismissDriverDecision(driverId, 'nearby', id);
+  const fresh = { ...old, mapDriverPriority: state === 'active' ? true : 'true', offerId: '00000000-0000-4000-8000-000000000003',
+    alertExpiresAt: new Date(Date.now() + 180000).toISOString() };
+  await f.loaded.displayDriverInvitation(fresh);
+  await f.loaded.displayDriverInvitation(old);
+  await f.loaded.displayDriverInvitation(fresh);
+  assert.equal(f.displays.length, 2);
+  assert.equal(f.displays[0].id, f.displays[1].id, 'native audio handoff keeps the same card identifier');
+  assert.equal(f.displays[1].data.offerId, fresh.offerId);
+  assert.equal(f.displays[1].data.mapDriverPriority, 'true', 'socket booleans survive Notifee restoration');
+  if (state === 'active') assert.equal(f.session.pendingRideAlerts(driverId)[0].data.offerId, fresh.offerId);
+  await f.loaded.dismissDriverDecision(driverId, 'nearby', id);
+  await f.loaded.displayDriverInvitation(fresh);
+  assert.equal(f.displays.length, 2, 'decision suppresses this generation, not future explicit invitations');
+});
+
+test('failure displaying a map invitation allows its retry, but not a delayed earlier invitation', async () => {
+  const f = service();
+  const old = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3', driverId, tripRequestId: id,
+    ringUntil: new Date(Date.now() + 60000).toISOString() };
+  const fresh = { ...old, mapDriverPriority: true, offerId: '00000000-0000-4000-8000-000000000003',
+    alertExpiresAt: new Date(Date.now() + 180000).toISOString() };
+  const display = f.native.displayNotification;
+  f.native.displayNotification = async () => { throw new Error('bridge unavailable'); };
+  await assert.rejects(f.loaded.displayDriverInvitation(fresh));
+  f.native.displayNotification = display;
+  await f.loaded.displayDriverInvitation(old);
+  assert.equal(f.displays.length, 0);
+  await f.loaded.displayDriverInvitation(fresh);
+  assert.equal(f.displays.length, 1);
+});
+
+test('a map invitation acknowledged before hydration cannot restart through a delayed push', async () => {
+  const f = service();
+  const fresh = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3', driverId, tripRequestId: id,
+    ringUntil: new Date(Date.now() + 60000).toISOString(), mapDriverPriority: true,
+    offerId: '00000000-0000-4000-8000-000000000003', alertExpiresAt: new Date(Date.now() + 180000).toISOString() };
+  const invitation = load('features/notifications/rideSound.ts').parseNearbyPhoneAlert(fresh);
+  await f.loaded.dismissDriverInvitation(invitation);
+  await f.loaded.displayDriverInvitation(fresh);
+  assert.equal(f.displays.length, 0);
+});
+
 test('simultaneous socket and push share one card, deadline and acknowledgement', async () => {
   const f = service();
   const expiresAt = new Date(Date.now() + 20000).toISOString();
