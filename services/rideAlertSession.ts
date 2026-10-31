@@ -3,6 +3,7 @@ import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRideResponseOpen } from '@/features/notifications/rideAlert';
 import { getTokenSessionVersion } from './tokenSession';
 import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
+import { mapDriverAlertGeneration, isNewerMapDriverAlert, type MapDriverAlertGeneration } from '@/features/notifications/mapDriverAlert';
 
 const alerts = new Map<string, RideAlert>();
 // A visible driver notification remains an entry candidate after its SOUND
@@ -13,6 +14,7 @@ type RideAlertHandoff = { alert: RideAlert; until: number; attempts: number; ret
 // its fresh event separately, without authorizing audio before cancellation.
 const handoffs = new Map<string, RideAlertHandoff>();
 const acknowledged = new Set<string>();
+const mapPriorities = new Map<string, MapDriverAlertGeneration>();
 const listeners = new Set<() => void>();
 let session = getTokenSessionVersion();
 let recipient: string | undefined;
@@ -22,7 +24,7 @@ export const getRideAlertsRevision = () => revision;
 function changed() { revision++; listeners.forEach(listener => listener()); }
 function checkSession() {
   if (session === getTokenSessionVersion()) return;
-  session = getTokenSessionVersion(); alerts.clear(); entryOnlyAlerts.clear(); handoffs.clear(); acknowledged.clear(); recipient = undefined;
+  session = getTokenSessionVersion(); alerts.clear(); entryOnlyAlerts.clear(); handoffs.clear(); acknowledged.clear(); mapPriorities.clear(); recipient = undefined;
 }
 export function subscribeRideAlerts(listener: () => void) {
   listeners.add(listener); return () => { listeners.delete(listener); };
@@ -35,9 +37,21 @@ function canRemember(alert: RideAlert) {
     (!recipient || alert.recipientId === recipient) &&
     (!alert.expiresAt || (Number.isFinite(Date.parse(alert.expiresAt)) && Date.parse(alert.expiresAt) > Date.now()));
 }
+function admitMapPriority(alert: RideAlert) {
+  if (alert.kind !== 'nearby') return true;
+  const key = `${alert.recipientId}:${alert.id}`;
+  const next = mapDriverAlertGeneration(alert.data), previous = mapPriorities.get(key);
+  if (previous && next?.offerId === previous.offerId) return true;
+  if (!next) return !previous;
+  if (!isNewerMapDriverAlert(next, previous)) return false;
+  mapPriorities.set(key, next);
+  if (mapPriorities.size > 100) mapPriorities.delete(mapPriorities.keys().next().value!);
+  acknowledgeRideAlerts(item => item.recipientId === alert.recipientId && item.kind === 'nearby' && item.id === alert.id && item.key !== alert.key);
+  return true;
+}
 function storeRideAlert(alert: RideAlert, restoring = false, handedOff = false) {
   checkSession();
-  if (!canRemember(alert)) return;
+  if (!canRemember(alert) || !admitMapPriority(alert)) return;
   // Never start yesterday's sound on launch. An already-playing foreground
   // session, however, remains pending until a decision (or the offer expires).
   const ringUntil = ridePlaybackDeadline(alert.data);
@@ -66,7 +80,7 @@ export function pendingRideAlertHandoffs(userId: string) {
 }
 export function beginRideAlertHandoff(alert: RideAlert): RideAlertHandoff | undefined {
   pendingRideAlertHandoffs(alert.recipientId);
-  if (!canRemember(alert)) return;
+  if (!canRemember(alert) || !admitMapPriority(alert)) return;
   let handoff = handoffs.get(alert.key);
   if (!handoff) {
     const ringUntil = ridePlaybackDeadline(alert.data);
@@ -111,4 +125,4 @@ export function setRideAlertScreen(userId: string, path: string) {
   checkSession(); recipient = userId; pathname = path;
   acknowledgeRideAlerts(alert => alert.recipientId === userId && isRideResponseOpen(alert, path));
 }
-export function clearRideAlertSession() { alerts.clear(); entryOnlyAlerts.clear(); handoffs.clear(); acknowledged.clear(); recipient = undefined; pathname = ''; changed(); }
+export function clearRideAlertSession() { alerts.clear(); entryOnlyAlerts.clear(); handoffs.clear(); acknowledged.clear(); mapPriorities.clear(); recipient = undefined; pathname = ''; changed(); }

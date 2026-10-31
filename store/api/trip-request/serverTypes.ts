@@ -4,6 +4,7 @@ export type ServerTripRequest = {
   responseWindow?: { phase: 'driver' | 'passenger' | 'accepting'; expiresAt: string; serverNow: string };
   targetDriverId?: string | null;
   targetDriverName?: string | null;
+  targetDriverPriorityUntil?: string | null;
   targetDriverDeclined?: boolean;
   immediateDispatch?: boolean;
   id: string;

@@ -63,6 +63,7 @@ export const mapServerTripRequestToClient = (request: ServerTripRequest): TripRe
     responseWindow: request.responseWindow,
     targetDriverId: request.targetDriverId ?? null,
     targetDriverName: request.targetDriverName ?? null,
+    targetDriverPriorityUntil: request.targetDriverPriorityUntil ?? null,
     targetDriverDeclined: request.targetDriverDeclined ?? false,
     immediateDispatch: request.immediateDispatch ?? false,
     passengerId: request.passenger.id,

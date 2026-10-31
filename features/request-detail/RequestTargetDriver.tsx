@@ -33,10 +33,11 @@ export function RequestTargetDriver({ request, disabled }: { request: TripReques
     </View>
     <Text style={s.muted}>{request.targetDriverDeclined
       ? 'Ce conducteur a refusé. Vous pouvez chercher un autre conducteur à proximité.'
+      : request.targetDriverPriorityUntil ? 'Ce conducteur a la priorité pendant 3 minutes au maximum. En cas de refus ou sans réponse, nous chercherons un autre conducteur.'
       : 'Votre demande a été envoyée uniquement à ce conducteur. Vous attendez sa réponse.'}</Text>
     <Pressable accessibilityRole="button" disabled={isLoading || disabled} onPress={() => { void broaden(); }}
       style={[local.button, (isLoading || disabled) && s.disabled]}>
-      {isLoading ? <ActivityIndicator color="#B83D0D" /> : <Text style={local.buttonText}>Envoyer aux conducteurs proches</Text>}
+      {isLoading ? <ActivityIndicator color="#B83D0D" /> : <Text style={local.buttonText}>{request.targetDriverPriorityUntil ? 'Chercher un autre maintenant' : 'Envoyer aux conducteurs proches'}</Text>}
     </Pressable>
     {!!error && <Text accessibilityLiveRegion="polite" style={local.error}>{error}</Text>}
   </View>;

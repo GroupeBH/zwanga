@@ -12,6 +12,36 @@ const booking = () => ({ type: 'new_booking', actionProtocol: 'driver-v1', booki
 const response = () => ({ type: 'booking_response', bookingId: id, tripId, passengerId: userId,
   status: 'rejected', ringAlert: 'booking-response-v1', ringUntil: new Date(Date.now() + 30000).toISOString() });
 
+test('an explicit map choice renews only that invitation, never an older or duplicate request alert', () => {
+  const load = loader(), session = load('services/rideAlertSession.ts');
+  const { parseRideAlert } = load('features/notifications/rideAlert.ts');
+  const data = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', driverId: userId, tripRequestId: id,
+    ringUntil: new Date(Date.now() + 60000).toISOString(), alertExpiresAt: new Date(Date.now() + 40000).toISOString() };
+  const old = parseRideAlert(data);
+  session.rememberRideAlert(old); session.acknowledgeRideAlerts(a => a.id === id);
+  const priority = parseRideAlert({ ...data, mapDriverPriority: 'true', offerId: tripId,
+    alertExpiresAt: new Date(Date.now() + 180000).toISOString() });
+  session.rememberRideAlert(priority); session.rememberRideAlert(priority); session.rememberRideAlert(old);
+  assert.deepEqual(session.pendingRideAlerts(userId), [priority]);
+  session.acknowledgeRideAlerts(a => a.id === id);
+  session.rememberRideAlert(priority); session.rememberRideAlert(old);
+  assert.deepEqual(session.pendingRideAlerts(userId), []);
+});
+
+test('a newer map invitation supersedes a staged handoff without extending its own audio deadline', () => {
+  const load = loader(), session = load('services/rideAlertSession.ts');
+  const { parseRideAlert } = load('features/notifications/rideAlert.ts');
+  const data = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', driverId: userId, tripRequestId: id,
+    ringUntil: new Date(Date.now() + 60000).toISOString() };
+  const old = session.beginRideAlertHandoff(parseRideAlert(data));
+  const fresh = parseRideAlert({ ...data, mapDriverPriority: true, offerId: tripId,
+    alertExpiresAt: new Date(Date.now() + 180000).toISOString() });
+  const current = session.beginRideAlertHandoff(fresh);
+  session.completeRideAlertHandoff(old); session.completeRideAlertHandoff(current);
+  assert.deepEqual(session.pendingRideAlerts(userId), [fresh]);
+  assert.equal(fresh.data.ringUntil, data.ringUntil);
+});
+
 test('self invitations cannot enter sound or speech sessions, but responses to own orders still do', () => {
   const load = loader(), session = load('services/rideAlertSession.ts');
   const { parseRideAlert } = load('features/notifications/rideAlert.ts');

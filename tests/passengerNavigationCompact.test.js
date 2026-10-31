@@ -16,6 +16,7 @@ function fixture() {
     '../screen-styles/app/booking/navigate/detail/index': { styles: { infoCard: { position: 'absolute', padding: 24 } } },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/components/trip/PausedPassengerRideNotice': { PausedPassengerRideNotice: 'Paused' },
+    '../request-detail/ChangeRequestDriverButton': { PickupDriverChange: 'ChangeDriver' },
   })('features/passenger-navigation/PassengerNavigationInfoCard.tsx').PassengerNavigationInfoCard;
   const props = { data: { tripId: 't', trip: { id: 't', status: 'ongoing' },
     booking: { id: 'b', tripId: 't', status: 'accepted', passengerOrigin: 'Point de départ complet', passengerDestination: 'Destination longue', pickedUp: false },

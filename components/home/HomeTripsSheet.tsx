@@ -1,8 +1,5 @@
 import { RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
 import { homePriorityKeys } from '@/features/home/homePriorityDismissal';
-import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { HOME_DASHBOARD_COLORS, styles } from '@/features/home/HomeTripsSheet.styles';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
@@ -11,12 +8,15 @@ import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDism
 import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
+import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { HomeDestinationShortcuts } from './HomeDestinationShortcuts';
+import { HomeDriverEarnings } from './HomeDriverEarnings';
+import { HomeEntryStatus } from './HomeEntryStatus';
 import { HomeSheetLoadingState } from './HomeSheetLoadingState';
 import { HomeSuggestionCard } from './HomeSuggestionCard';
-import { HomeDriverEarnings } from './HomeDriverEarnings';
-import { HomeDestinationShortcuts } from './HomeDestinationShortcuts';
 import { SwipeableHomePriority } from './SwipeableHomePriority';
-import { HomeEntryStatus } from './HomeEntryStatus';
 
 type Props =
   Pick<ReturnType<typeof useHomeSheet>,
@@ -85,7 +85,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
             <>
               <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
                 accessibilityLabel="Où allez-vous ?" accessibilityHint="Chercher un trajet publié ou commander un véhicule."
-                style={styles.searchBar} onPress={() => router.push('/search')}>
+                style={styles.searchBar} onPress={() => router.push('/request')}>
                 <Ionicons name="search-outline" size={24} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
                 <View style={styles.searchCopy}>
                   <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
@@ -139,7 +139,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           {isDriver ? (
             <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.secondaryAction}
               accessibilityLabel="Voyager comme passager" accessibilityHint="Commander un véhicule ou chercher un trajet publié."
-              onPress={() => router.push('/search')}>
+              onPress={() => router.push('/request')}>
               <Ionicons name="person-outline" size={20} color="#FFFFFF" accessible={false} />
               <View style={styles.secondaryActionCopy}>
                 <Text style={styles.secondaryActionTitle}>Voyager comme passager</Text>

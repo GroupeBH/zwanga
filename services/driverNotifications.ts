@@ -21,16 +21,20 @@ import { dismissDriverAlertFallback } from './driverAlertFallback';
 import { boundRideAlertPresentation, rideAlertFullScreenAction } from './rideAlertFullScreen';
 import { reconcileBackgroundRideRinging } from './backgroundRideRinging';
 import { cancelRideNotification, prepareForegroundRideAudio, startBackgroundRideAudio } from './backgroundRideAudio';
+import { nearbyRideAlertKey, isNewerMapDriverAlert, type MapDriverAlertGeneration } from '@/features/notifications/mapDriverAlert';
 
 export const DRIVER_CHANNEL = LEGACY_DRIVER_CHANNEL;
 const FOREGROUND_BOOKING_CHANNEL = 'driver-bookings-active-v1';
 type DriverAlert = DriverInvitation | NearbyPhoneAlert;
 const actionKey = (invitation: DriverInvitation) => `driver-action-v1:${invitation.kind}:${invitation.id}`;
 export const invitationNotificationId = (invitation: DriverAlert) => `driver-${invitation.kind}-${invitation.id}`;
+const invitationAlertKey = (invitation: DriverAlert) => invitation.kind === 'nearby'
+  ? nearbyRideAlertKey(invitation.id, invitation.priority) : invitationNotificationId(invitation);
 // Foreground delivery and the headless task can receive the same push. Never
 // restart its native timeout, including after an action dismissed the card.
-type Delivery = { cancelled: boolean; foreground?: boolean; attempt?: object };
+type Delivery = { cancelled: boolean; foreground?: boolean; attempt?: object; priority?: MapDriverAlertGeneration };
 const deliveries = new Map<string, Delivery>();
+const priorityHeads = new Map<string, MapDriverAlertGeneration>();
 const deliveryKey = (invitation: DriverAlert) => `${getTokenSessionVersion()}:${invitation.driverId}:${invitationNotificationId(invitation)}`;
 function rememberDelivery(key: string, cancelled = false): Delivery {
   const delivery: Delivery = { cancelled };
@@ -40,12 +44,30 @@ function rememberDelivery(key: string, cancelled = false): Delivery {
 }
 function acknowledgeDelivery(invitation: DriverAlert) {
   const key = deliveryKey(invitation);
+  const priority = invitation.kind === 'nearby' ? invitation.priority : undefined;
+  if (priority && isNewerMapDriverAlert(priority, priorityHeads.get(key))) {
+    priorityHeads.set(key, priority);
+    if (priorityHeads.size > 100) priorityHeads.delete(priorityHeads.keys().next().value!);
+  }
   const delivery = deliveries.get(key) ?? rememberDelivery(key, true);
   delivery.cancelled = true;
   // A REST recovery may still be fetching an alert not yet in the local map.
   // Record its decision key now, so that late read cannot restart the sound.
-  acknowledgeRideAlerts(alert => alert.key === invitationNotificationId(invitation) && alert.recipientId === invitation.driverId,
-    { key: invitationNotificationId(invitation), recipientId: invitation.driverId, kind: invitation.kind, id: invitation.id, data: {} });
+  acknowledgeRideAlerts(alert => alert.key === invitationAlertKey(invitation) && alert.recipientId === invitation.driverId,
+    { key: invitationAlertKey(invitation), recipientId: invitation.driverId, kind: invitation.kind, id: invitation.id, data: {} });
+}
+
+function admitDelivery(invitation: DriverAlert) {
+  const key = deliveryKey(invitation), previous = deliveries.get(key);
+  const priority = invitation.kind === 'nearby' ? invitation.priority : undefined;
+  const head = priorityHeads.get(key);
+  if (head?.offerId === priority?.offerId) return true;
+  if (!isNewerMapDriverAlert(priority, head)) return false;
+  priorityHeads.set(key, priority!);
+  if (priorityHeads.size > 100) priorityHeads.delete(priorityHeads.keys().next().value!);
+  if (previous) previous.cancelled = true;
+  const fresh = rememberDelivery(key); fresh.priority = priority;
+  return true;
 }
 
 export async function configureDriverNotifications() {
@@ -76,6 +98,7 @@ export async function configureDriverNotifications() {
 export async function displayDriverInvitation(data: Record<string, unknown>): Promise<boolean> {
   const invitation = parseDriverInvitation(data) ?? parseNearbyPhoneAlert(data);
   if (!invitation) return false;
+  if (invitation.kind === 'nearby' && invitation.priority) data = { ...data, mapDriverPriority: 'true' };
   void reportRideNotificationReceipt(data, 'received');
   // A quiet banner is paired with the single foreground audio player.
   if (isAppActive()) {
@@ -94,7 +117,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
     // Once foreground audio owns this event, the existing handoff owns its
     // return to sleep. Do not ring twice via two different notification IDs.
     if (ridePlaybackDeadline(data) > Date.now() &&
-        pendingRideAlerts(invitation.driverId).some(alert => alert.key === invitationNotificationId(invitation))) {
+        pendingRideAlerts(invitation.driverId).some(alert => alert.key === invitationAlertKey(invitation))) {
       await reconcileBackgroundRideRinging(invitation.driverId); return true;
     }
   }
@@ -105,10 +128,12 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
   if (version !== getTokenSessionVersion()) return true;
   const key = deliveryKey(invitation);
-  if (deliveries.has(key)) return true;
+  const previous = deliveries.get(key);
+  if (!admitDelivery(invitation) || (previous && deliveries.get(key) === previous)) return true;
   const deadline = driverRingDeadline(invitation);
   if (deadline <= Date.now() && data.alertDelivery !== 'native-backup-v4') { reportRideAudioFailure('DRIVER_ALERT_ARRIVED_TOO_LATE'); return true; }
   const delivery = rememberDelivery(key);
+  delivery.priority = invitation.kind === 'nearby' ? invitation.priority : undefined;
   const attempt = {};
   delivery.attempt = attempt;
   let published = false;
@@ -176,15 +201,17 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
 }
 
 async function displayForegroundAlert(invitation: DriverAlert, data: Record<string, unknown>) {
-  const handoffPending = pendingRideAlertHandoffs(invitation.driverId).some(item => item.alert.key === invitationNotificationId(invitation));
+  const handoffPending = pendingRideAlertHandoffs(invitation.driverId).some(item => item.alert.key === invitationAlertKey(invitation));
   if (invitation.kind === 'nearby' && driverRingDeadline(invitation) <= Date.now() && data.alertDelivery !== 'native-backup-v4' && !handoffPending) return;
   const version = getTokenSessionVersion();
   const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
   if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId ||
     version !== getTokenSessionVersion() || !isAppActive()) return;
   const key = deliveryKey(invitation);
+  if (!admitDelivery(invitation)) return;
   if (deliveries.get(key)?.cancelled || deliveries.get(key)?.foreground) return;
   const delivery = deliveries.get(key) ?? rememberDelivery(key);
+  delivery.priority = invitation.kind === 'nearby' ? invitation.priority : undefined;
   const attempt = {};
   delivery.attempt = attempt;
   delivery.foreground = true;
@@ -284,7 +311,7 @@ export async function dismissDriverInvitation(invitation: DriverAlert) {
   acknowledgeDelivery(invitation);
   await dismissDriverAlertFallback({ fallbackTag: `ride-backup-${invitation.kind}-${invitation.id}` });
   await cancelRideNotification(invitationNotificationId(invitation));
-  if (Platform.OS === 'android') await cancelRideNotification(`ride-handoff-${invitationNotificationId(invitation)}`);
+  if (Platform.OS === 'android') await cancelRideNotification(`ride-handoff-${invitationAlertKey(invitation)}`);
   // iOS remote identifiers differ from the Notifee local id.
   const presented = await Notifications.getPresentedNotificationsAsync();
   await Promise.all(presented.filter(item => {
