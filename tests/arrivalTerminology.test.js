@@ -17,6 +17,7 @@ test('passenger copy distinguishes travel, pending confirmation and confirmed ar
     '../screen-styles/app/booking/navigate/detail/index': { styles: {} },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/components/trip/PausedPassengerRideNotice': { PausedPassengerRideNotice: 'PausedNotice' },
+    '../request-detail/ChangeRequestDriverButton': { PickupDriverChange: 'PickupDriverChange' },
   })('features/passenger-navigation/PassengerNavigationInfoCard.tsx');
   const booking = { id: 'booking', passengerOrigin: 'Départ', passengerDestination: 'Destination',
     pickedUp: true, pickedUpConfirmedByPassenger: true, droppedOff: false, droppedOffConfirmedByPassenger: false };

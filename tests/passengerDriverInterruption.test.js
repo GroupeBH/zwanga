@@ -119,6 +119,7 @@ test('the paused trip notice is reachable after confirmation, outside ongoing-on
     '../screen-styles/app/booking/navigate/detail/index': { styles: {} },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/components/trip/PausedPassengerRideNotice': { PausedPassengerRideNotice: 'PausedNotice' },
+    '../request-detail/ChangeRequestDriverButton': { PickupDriverChange: 'PickupDriverChange' },
   })('features/passenger-navigation/PassengerNavigationInfoCard.tsx');
   const tree = hooks.render(() => PassengerNavigationInfoCard({ data: { booking: { ...booking, passengerOrigin: 'Départ', passengerDestination: 'Arrivée' }, trip: confirmed, insets: { bottom: 24 } },
     state: {}, presentation: {}, interruption: {}, tripActions: {} }));
