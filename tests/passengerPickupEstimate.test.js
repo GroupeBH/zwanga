@@ -142,6 +142,7 @@ test('compact pickup panel keeps recovery without duplicate live state or mislea
     '../screen-styles/app/booking/navigate/detail/index': { styles: {} },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/components/trip/PausedPassengerRideNotice': { PausedPassengerRideNotice: 'PausedNotice' },
+    '../request-detail/ChangeRequestDriverButton': { PickupDriverChange: 'PickupDriverChange' },
   })('features/passenger-navigation/PassengerNavigationInfoCard.tsx');
   const props = { data: { booking: { ...booking, passengerOrigin: 'Départ', passengerDestination: 'Destination' },
     trip, isTripOngoing: true, insets: { bottom: 0 } }, state: { isSocketConnected: true },

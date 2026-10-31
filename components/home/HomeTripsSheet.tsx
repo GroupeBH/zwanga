@@ -8,6 +8,7 @@ import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDism
 import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
+import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -85,7 +86,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
             <>
               <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
                 accessibilityLabel="Où allez-vous ?" accessibilityHint="Chercher un trajet publié ou commander un véhicule."
-                style={styles.searchBar} onPress={() => router.push('/request')}>
+                style={styles.searchBar} onPress={() => router.push('/search')}>
                 <Ionicons name="search-outline" size={24} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
                 <View style={styles.searchCopy}>
                   <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
@@ -138,12 +139,12 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           {!isDriver && suggestionScopeLabel ? <Text style={styles.scopeLabel}>{suggestionScopeLabel}</Text> : null}
           {isDriver ? (
             <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.secondaryAction}
-              accessibilityLabel="Voyager comme passager" accessibilityHint="Commander un véhicule ou chercher un trajet publié."
-              onPress={() => router.push('/request')}>
+              accessibilityLabel="Commander un trajet" accessibilityHint="Ouvrir le formulaire de demande de trajet."
+              onPress={() => router.push(getTripRequestCreateHref())}>
               <Ionicons name="person-outline" size={20} color="#FFFFFF" accessible={false} />
               <View style={styles.secondaryActionCopy}>
-                <Text style={styles.secondaryActionTitle}>Voyager comme passager</Text>
-                <Text style={styles.secondaryActionHint}>Commander ou chercher un trajet</Text>
+                <Text style={styles.secondaryActionTitle}>Commander un trajet</Text>
+                <Text style={styles.secondaryActionHint}>Un conducteur vient vous chercher</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color="#FFFFFF" accessible={false} />
             </TouchableOpacity>

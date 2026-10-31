@@ -131,16 +131,16 @@ test('driver dashboard keeps publishing, passenger travel, clients and revenue w
   for (const label of ['Publier un trajet', 'Voir tout']) {
     elements.find(node => node.type === 'Button' && text(node) === label).props.onPress();
   }
-  elements.find(node => node.props.accessibilityLabel === 'Voyager comme passager').props.onPress();
+  elements.find(node => node.props.accessibilityLabel === 'Commander un trajet').props.onPress();
   elements.find(node => node.props.accessibilityLabel === '0 clients disponibles').props.onPress();
   assert.equal(elements.some(node => node.type === 'HomeDriverStatus'), false);
   assert.doesNotMatch(text(tree), /Indisponible|Hors ligne|En ligne/);
   elements.find(node => node.type === 'HomeDriverEarnings').props.onPress();
   assert.deepEqual(modes, []);
-  assert.deepEqual(calls, ['/publish', 'all', '/search', 'all', '/driver-earnings']);
-  const passengerButton = elements.find(node => node.props.accessibilityLabel === 'Voyager comme passager');
+  assert.deepEqual(calls, ['/publish', 'all', { pathname: '/request-create' }, 'all', '/driver-earnings']);
+  const passengerButton = elements.find(node => node.props.accessibilityLabel === 'Commander un trajet');
   assert.ok(flatten(passengerButton.props.style).minHeight >= 44);
-  assert.match(passengerButton.props.accessibilityHint, /Commander un véhicule ou chercher un trajet/);
+  assert.equal(passengerButton.props.accessibilityHint, 'Ouvrir le formulaire de demande de trajet.');
   assert.doesNotMatch(text(tree), /Bonjour/);
   assert.equal(elements.some(node => node.props.accessibilityRole === 'tab'), false);
   assert.equal(elements.some(node => node.type === 'Button' && text(node) === 'Trajets'), false);
@@ -161,14 +161,14 @@ test('option A uses midnight blue and burnt orange with readable white labels; s
       .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
   };
-  for (const [label, color, foreground] of [['Publier un trajet', c.blue, '#FFFFFF'], ['Voyager comme passager', c.orange, '#FFFFFF']]) {
+  for (const [label, color, foreground] of [['Publier un trajet', c.blue, '#FFFFFF'], ['Commander un trajet', c.orange, '#FFFFFF']]) {
     const action = button(label);
     assert.equal(flatten(action.props.style).backgroundColor, color);
     assert.equal(flatten(nodes(action).find(node => node.type === 'Text').props.style).color, foreground);
     const levels = [luminance(foreground), luminance(color)].sort((a, b) => b - a);
     assert.ok((levels[0] + 0.05) / (levels[1] + 0.05) >= 4.5, `${label}: normal-size text contrast`);
   }
-  const passengerAction = button('Voyager comme passager');
+  const passengerAction = button('Commander un trajet');
   for (const node of nodes(passengerAction)) {
     if (node.type === 'Text') assert.equal(flatten(node.props.style).color, '#FFFFFF');
     if (node.type === 'Icon') assert.equal(node.props.color, '#FFFFFF');
@@ -320,16 +320,18 @@ test('discovery follows the role even with an obsolete feed mode, without tabs o
   }
 });
 
-test('driver can still travel as a passenger without changing role; publishing is the single primary action', () => {
+test('driver orders directly through the request form without changing role; publishing stays primary', () => {
   for (const isRequestsSheetMode of [true, false]) {
     const calls = [];
     const tree = HomeTripsSheet.type({ ...base, isDriver: true, isRequestsSheetMode,
       router: { push: route => calls.push(route) } });
     const elements = nodes(tree);
-    const order = elements.find(node => node.props.accessibilityLabel === 'Voyager comme passager');
+    const order = elements.find(node => node.props.accessibilityLabel === 'Commander un trajet');
     const publish = elements.find(node => node.type === 'Button' && text(node) === 'Publier un trajet');
     assert.equal(flatten(publish.props.style).flex, undefined, 'publish spans the full width');
     assert.equal(order.props.accessibilityRole, 'button');
+    assert.match(text(order), /^Commander un trajet/);
+    assert.doesNotMatch(text(order), /Voyager comme passager|chercher un trajet/);
     assert.equal(elements.filter(node => node.type === 'Button' && ['Publier un trajet', 'Commander'].includes(text(node))).length, 1);
     for (const button of [order, publish]) {
       assert.ok(flatten(button.props.style).minHeight >= 44);
@@ -339,7 +341,7 @@ test('driver can still travel as a passenger without changing role; publishing i
       }
     }
     order.props.onPress();
-    assert.deepEqual(calls, ['/search']);
+    assert.deepEqual(calls, [{ pathname: '/request-create' }]);
   }
 });
 
