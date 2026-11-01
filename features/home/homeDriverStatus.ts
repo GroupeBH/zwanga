@@ -3,7 +3,9 @@ import type { DriverDispatchStatus } from '@/store/api/driverDispatchApi';
 /** Same 30-minute boundary as the server's sequential ranking of recent positions. */
 export const RECENT_DRIVER_POSITION_MS = 30 * 60_000;
 
-export type HomeDriverStatusView = { tone: 'ok' | 'warn' | 'off'; title: string; detail: string | null };
+export type HomeDriverStatusView = {
+  tone: 'ok' | 'warn' | 'off'; title: string; detail: string | null; action?: 'refresh';
+};
 
 function elapsedLabel(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
@@ -28,12 +30,12 @@ export function homeDriverStatusView({ online, data, isError, now = Date.now() }
   if (!data.available) return { tone: 'off', title: 'Disponibilité à vérifier', detail: 'Touchez pour voir pourquoi' };
   // Durable positions deliberately do not expire; old lease-based rows do.
   if (data.presence?.discoveryEnabled !== true && !(Date.parse(data.presence?.expiresAt ?? '') > now))
-    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour vérifier' };
+    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour envoyer votre position', action: 'refresh' };
   const updatedAt = Date.parse(data.presence?.updatedAt ?? '');
-  if (!Number.isFinite(updatedAt)) return { tone: 'warn', title: 'Position à vérifier', detail: 'Touchez pour vérifier' };
+  if (!Number.isFinite(updatedAt)) return { tone: 'warn', title: 'Position à vérifier', detail: 'Touchez pour envoyer votre position', action: 'refresh' };
   const age = Math.max(0, now - updatedAt);
   if (age > RECENT_DRIVER_POSITION_MS) {
-    return { tone: 'warn', title: 'Position ancienne', detail: `Dernière position ${elapsedLabel(age)}` };
+    return { tone: 'warn', title: 'Position ancienne', detail: `${elapsedLabel(age)} · Touchez pour actualiser`, action: 'refresh' };
   }
   return { tone: 'ok', title: 'Demandes possibles', detail: `Position à jour ${elapsedLabel(age)}` };
 }

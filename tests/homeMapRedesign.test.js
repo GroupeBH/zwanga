@@ -71,7 +71,9 @@ test('driver status describes server availability without promising push deliver
   assert.deepEqual(homeDriverStatusView({ online: true, data: status(true, 2), now }),
     { tone: 'ok', title: 'Demandes possibles', detail: 'Position à jour il y a 2 min' });
   const stale = homeDriverStatusView({ online: true, data: status(true, RECENT_DRIVER_POSITION_MS / 60_000 + 60), now });
-  assert.equal(stale.tone, 'warn'); assert.equal(stale.detail, 'Dernière position il y a 1 h');
+  assert.equal(stale.tone, 'warn'); assert.equal(stale.detail, 'il y a 1 h · Touchez pour actualiser');
+  assert.equal(stale.action, 'refresh');
+  assert.equal(homeDriverStatusView({ online: true, data: status(true, 2), now }).action, undefined);
   assert.equal(homeDriverStatusView({ online: true, data: status(true, 1), isError: true, now }).title, 'Statut à vérifier');
   const legacy = status(true, 1); legacy.presence.discoveryEnabled = null;
   legacy.presence.expiresAt = new Date(now - 1).toISOString();

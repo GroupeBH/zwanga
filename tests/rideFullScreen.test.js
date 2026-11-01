@@ -68,7 +68,7 @@ test('native opt-in check failure always preserves notification fallback', async
 test('a second fullscreen intent binds the new invitation and replaces its expiry callback', () => {
   const source = fs.readFileSync('native/android/notifications/IncomingRideActivity.java', 'utf8');
   assert.match(source, /onNewIntent\(Intent intent\)[\s\S]*?setIntent\(intent\);\s*showInvitation\(\);/);
-  assert.match(source, /private void showInvitation\(\)[\s\S]*?handler.removeCallbacks\(refresh\);[\s\S]*?opening = false; summary = null; notificationId = null;/);
+  assert.match(source, /private void showInvitation\(\)[\s\S]*?handler.removeCallbacks\(refresh\);[\s\S]*?opening = false; layout = null; notificationId = null;/);
 });
 
 test('native inspection rejects a read failure instead of disguising it as an unsupported build', () => {
