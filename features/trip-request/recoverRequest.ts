@@ -6,6 +6,7 @@ export interface RequestAttempt {
   startedAt: number; departure: string; arrival: string;
   departureDateMin: string; departureDateMax: string;
   seats: number; price: number; vehicleType: string;
+  vehicleTypes?: string[];
 }
 
 /** Reads only: a transport timeout never authorizes replaying the creation POST. */
@@ -24,6 +25,8 @@ export async function recoverRequest(attempt: RequestAttempt, read: () => Promis
         Date.parse(request.departureDateMax) === Date.parse(attempt.departureDateMax) &&
         request.numberOfSeats === attempt.seats && Number(request.maxPricePerSeat) === attempt.price &&
         request.vehicleType === attempt.vehicleType &&
+        [...(request.vehicleTypes?.length ? request.vehicleTypes : [request.vehicleType])].sort().join(',') ===
+          [...(attempt.vehicleTypes?.length ? attempt.vehicleTypes : [attempt.vehicleType])].sort().join(',') &&
         (request.targetDriverId ?? null) === (attempt.targetDriverId ?? null));
       // More than one match is ambiguous too: let the user consult their orders.
       if (matches.length === 1) return matches[0].id;

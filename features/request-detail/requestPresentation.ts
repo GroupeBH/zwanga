@@ -1,3 +1,4 @@
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { RequestRouteMapData, TRIP_REQUEST_VEHICLE_LABELS } from './requestDetailModel';
 import { Colors } from '@/constants/styles';
 import type { TripRequestVehicleType, Vehicle, TripRequest, DriverOffer } from '@/types';
@@ -185,7 +186,7 @@ export function buildRequestDetailPresentation({
     if (compatibleActiveVehicles.length === 0) {
       return {
         badge: 'Véhicule',
-        title: `${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]} requise pour cette course`,
+        title: `${requestVehicleLabel(tripRequest)} requise pour cette course`,
         subtitle: 'Aucun de vos véhicules actifs ne correspond au type demandé.',
       };
     }

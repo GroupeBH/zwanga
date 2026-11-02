@@ -166,6 +166,7 @@ export function useArrivalPaymentState() {
   const hasPendingProviderPayment = !arrivalBooking?.tokenCashFallbackAt && Boolean(
     activeStoredState?.bookingPaymentOrderNumber || activeStoredState?.walletTopUpOrderNumber || activeStoredState?.walletTopUpIntent,
   );
+  const hasPendingBookingPayment = !arrivalBooking?.tokenCashFallbackAt && Boolean(activeStoredState?.bookingPaymentOrderNumber);
   const hasCardPaymentToResume = Boolean(
     activeStoredState?.bookingPaymentOrderNumber &&
       activeStoredState.bookingPaymentMethod === 'card' &&
@@ -239,6 +240,7 @@ export function useArrivalPaymentState() {
     paymentAmount,
     isBusy,
     hasPendingProviderPayment,
+    hasPendingBookingPayment,
     paymentAlreadySucceeded,
     selectedMode,
     selectedChannel,

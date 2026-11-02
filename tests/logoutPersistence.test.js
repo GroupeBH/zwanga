@@ -26,7 +26,7 @@ test('failed SecureStore deletion cannot restore the old account after a process
   await first.storeTokens('old-access', 'old-refresh');
   f.io.deleteFails = true;
   assert.equal(await first.clearTokens(), true);
-  assert.equal(f.disk.size, 2);
+  assert.equal(f.disk.size, 1);
   assert.deepEqual(await f.restart().getTokens(), { accessToken: null, refreshToken: null });
   assert.equal(f.intent.size, 1);
   f.io.deleteFails = false;

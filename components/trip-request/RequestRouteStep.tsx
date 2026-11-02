@@ -1,5 +1,7 @@
 import { ManualAddressStatus } from '@/components/address/ManualAddressStatus';
 import { Colors } from '@/constants/styles';
+import { toggleRequestVehicleType } from '@/features/trip-request/vehicleSelection';
+import { getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { favoriteIcon, POPULAR_PLACES } from '@/features/trip-request/requestFormModel';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
@@ -17,7 +19,7 @@ import {
 
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 
-type Props = Pick<RequestTripController, 'addressInputMode' | 'addressSectionStep' | 'applyQuickPlaceToNextSlot' | 'applySelectionToNextSlot' | 'arrivalAddress' | 'arrivalManualAddress' | 'arrivalManualGeocodeStatus' | 'arrivalReference' | 'departureAddress' | 'departureManualAddress' | 'departureManualGeocodeStatus' | 'departureReference' | 'departureTouchedRef' | 'favoriteSuggestions' | 'hasArrivalAddress' | 'hasDepartureAddress' | 'openPickerFor' | 'quickPlaceResolvingKey' | 'selectedVehicleType' | 'setArrivalLocation' | 'setArrivalManualAddress' | 'setArrivalReference' | 'setDepartureLocation' | 'setDepartureManualAddress' | 'setDepartureReference' | 'setSelectedVehicleType' | 'setShowQuickLandmarks' | 'showQuickLandmarks' | 'swapRoutePoints'>;
+type Props = Pick<RequestTripController, 'addressInputMode' | 'addressSectionStep' | 'applyQuickPlaceToNextSlot' | 'applySelectionToNextSlot' | 'arrivalAddress' | 'arrivalManualAddress' | 'arrivalManualGeocodeStatus' | 'arrivalReference' | 'departureAddress' | 'departureManualAddress' | 'departureManualGeocodeStatus' | 'departureReference' | 'departureTouchedRef' | 'favoriteSuggestions' | 'hasArrivalAddress' | 'hasDepartureAddress' | 'openPickerFor' | 'quickPlaceResolvingKey' | 'selectedVehicleTypes' | 'numberOfSeats' | 'setArrivalLocation' | 'setArrivalManualAddress' | 'setArrivalReference' | 'setDepartureLocation' | 'setDepartureManualAddress' | 'setDepartureReference' | 'setSelectedVehicleTypes' | 'setShowQuickLandmarks' | 'showQuickLandmarks' | 'swapRoutePoints'>;
 
 export function RequestRouteStep({
   addressInputMode,
@@ -38,14 +40,15 @@ export function RequestRouteStep({
   hasDepartureAddress,
   openPickerFor,
   quickPlaceResolvingKey,
-  selectedVehicleType,
+  selectedVehicleTypes,
+  numberOfSeats,
   setArrivalLocation,
   setArrivalManualAddress,
   setArrivalReference,
   setDepartureLocation,
   setDepartureManualAddress,
   setDepartureReference,
-  setSelectedVehicleType,
+  setSelectedVehicleTypes,
   setShowQuickLandmarks,
   showQuickLandmarks,
   swapRoutePoints
@@ -243,24 +246,34 @@ export function RequestRouteStep({
 
     <View style={styles.routeVehicleChoice}>
       <View style={styles.routeVehicleChoiceHeader}>
-        <Text style={styles.routeVehicleChoiceTitle}>Quel véhicule ?</Text>
+        <Text style={styles.routeVehicleChoiceTitle}>Types de véhicule</Text>
+        <Text style={styles.routeVehicleChoiceHint}>Cochez un ou plusieurs types.</Text>
       </View>
       <View style={styles.routeVehicleChoiceRow}>
         {REGISTERED_VEHICLE_TYPE_OPTIONS.map((option) => {
-          const selected = selectedVehicleType === option.id;
+          const selected = selectedVehicleTypes.includes(option.id);
+          const capacity = getPassengerVehicleSeatCapacity(option.id);
+          const disabled = !selected && capacity !== null && numberOfSeats > capacity;
 
           return (
             <TouchableOpacity
               key={option.id}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected, disabled }}
+              disabled={disabled}
               accessibilityLabel={option.label}
+              accessibilityHint={disabled
+                ? 'Pas assez de places pour votre demande.'
+                : selected && selectedVehicleTypes.length === 1
+                  ? 'Gardez au moins un type. Cochez un autre type avant de retirer celui-ci.'
+                  : selected ? 'Décochez ce type de véhicule.' : 'Ajoutez ce type à vos choix.'}
               activeOpacity={0.82}
               style={[
                 styles.routeVehicleChoiceOption,
                 selected && styles.routeVehicleChoiceOptionSelected,
+                disabled && { opacity: 0.4 },
               ]}
-              onPress={() => setSelectedVehicleType(option.id)}
+              onPress={() => setSelectedVehicleTypes(current => toggleRequestVehicleType(current, option.id))}
             >
               <View
                 style={[
@@ -283,14 +296,13 @@ export function RequestRouteStep({
               >
                 {option.label}
               </Text>
-              {selected ? (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={17}
-                  color={Colors.primary}
-                  style={styles.routeVehicleChoiceCheck}
-                />
-              ) : null}
+              <Ionicons
+                name={selected ? 'checkbox' : 'square-outline'}
+                size={17}
+                color={selected ? Colors.primary : Colors.gray[500]}
+                style={styles.routeVehicleChoiceCheck}
+                accessible={false}
+              />
             </TouchableOpacity>
           );
         })}

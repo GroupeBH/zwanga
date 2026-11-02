@@ -1,7 +1,7 @@
 import { Colors } from '@/constants/styles';
 import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
-import { getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
+import { requestVehicleSeatCapacity } from '@/features/trip-request/vehicleSelection';
 import {
   clampRequestSeats,
   MIN_REQUEST_PRICE,
@@ -28,7 +28,7 @@ type Props = Pick<RequestTripController,
   | 'requestSeatsLabel'
   | 'hasSpecifiedNumberOfSeats'
   | 'numberOfSeats'
-  | 'selectedVehicleType'
+  | 'selectedVehicleTypes'
   | 'setHasSpecifiedNumberOfSeats'
   | 'setNumberOfSeats'
   | 'requestPaymentMode'
@@ -51,7 +51,7 @@ export function RequestBudgetFields({
   totalBudgetLabel,
   requestSeatsLabel,
   numberOfSeats,
-  selectedVehicleType,
+  selectedVehicleTypes,
   setHasSpecifiedNumberOfSeats,
   setNumberOfSeats,
   requestPaymentMode,
@@ -62,7 +62,7 @@ export function RequestBudgetFields({
   setDescription,
 }: Props) {
   const { isIdentityVerified, checkIdentity } = useIdentityCheck();
-  const seatCapacity = getPassengerVehicleSeatCapacity(selectedVehicleType);
+  const seatCapacity = requestVehicleSeatCapacity(selectedVehicleTypes);
   const cannotAddSeat = numberOfSeats >= (seatCapacity ?? Number.MAX_SAFE_INTEGER);
   return (
     <>

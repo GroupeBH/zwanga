@@ -3,6 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import { enqueueTokenWrite, getTokenSessionVersion, invalidateTokenSession } from './tokenSession';
 import { clearLogoutIntent, hasLogoutIntent, markLogoutIntent } from './logoutIntent';
+import { readTokenPair, writeTokenPair, TOKEN_PAIR_KEY, type TokenPair } from './tokenPairStorage';
 
 /**
  * Service de gestion des tokens JWT avec SecureStore
@@ -13,11 +14,6 @@ type SecureStoreKeyConfig = {
   access?: string;
   refresh?: string;
   fcm?: string;
-};
-
-type TokenPair = {
-  accessToken: string | null;
-  refreshToken: string | null;
 };
 
 const secureStoreKeys =
@@ -91,10 +87,7 @@ const hydrateTokensCache = async (): Promise<TokenPair> => {
         });
         return { accessToken: null, refreshToken: null };
       }
-      const [accessToken, refreshToken] = await Promise.all([
-        readSecureItem(ACCESS_TOKEN_KEY, 'l\'access token', true),
-        readSecureItem(REFRESH_TOKEN_KEY, 'le refresh token', true),
-      ]);
+      const { accessToken, refreshToken } = await readTokenPair(ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
 
       if (version === getTokenSessionVersion()) {
         tokenCache = { accessToken, refreshToken };
@@ -135,9 +128,10 @@ export async function storeAccessToken(token: string): Promise<void> {
   await enqueueTokenWrite(async () => {
     if (version !== getTokenSessionVersion()) return;
     try {
-      await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
+      const pair = await readTokenPair(ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
+      await writeTokenPair({ ...pair, accessToken: token }, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
       if (version !== getTokenSessionVersion()) return;
-      tokenCache.accessToken = token;
+      tokenCache = { ...pair, accessToken: token };
       tokensCacheHydrated = true;
     } catch (error) {
       console.error('Erreur lors du stockage de l\'access token:', error);
@@ -162,9 +156,10 @@ export async function storeRefreshToken(token: string): Promise<void> {
   await enqueueTokenWrite(async () => {
     if (version !== getTokenSessionVersion()) return;
     try {
-      await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+      const pair = await readTokenPair(ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
+      await writeTokenPair({ ...pair, refreshToken: token }, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
       if (version !== getTokenSessionVersion()) return;
-      tokenCache.refreshToken = token;
+      tokenCache = { ...pair, refreshToken: token };
       tokensCacheHydrated = true;
     } catch (error) {
       console.error('Erreur lors du stockage du refresh token:', error);
@@ -194,13 +189,7 @@ export async function storeTokens(accessToken: string, refreshToken: string, exp
     if (version !== getTokenSessionVersion()) return false;
     // Only a complete new login may supersede a durable logout intent.
     if (expectedVersion !== undefined && await hasLogoutIntent()) return false;
-    // Await both native writes even if one fails, so a queued logout runs last.
-    const writes = await Promise.allSettled([
-      SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
-      SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
-    ]);
-    const failed = writes.find(result => result.status === 'rejected');
-    if (failed?.status === 'rejected') throw failed.reason;
+    await writeTokenPair({ accessToken, refreshToken }, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
 
     if (version !== getTokenSessionVersion()) return false;
     if (expectedVersion === undefined) await clearLogoutIntent();
@@ -232,7 +221,10 @@ export async function removeAccessToken(): Promise<void> {
   tokenCache.accessToken = null;
   tokensCacheHydrated = true;
   try {
-    await enqueueTokenWrite(() => SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY));
+    await enqueueTokenWrite(async () => {
+      const pair = await readTokenPair(ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
+      await writeTokenPair({ ...pair, accessToken: null }, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
+    });
   } catch (error: any) {
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression de l\'access token:', error);
@@ -248,7 +240,10 @@ export async function removeRefreshToken(): Promise<void> {
   tokenCache.refreshToken = null;
   tokensCacheHydrated = true;
   try {
-    await enqueueTokenWrite(() => SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY));
+    await enqueueTokenWrite(async () => {
+      const pair = await readTokenPair(ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
+      await writeTokenPair({ ...pair, refreshToken: null }, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY);
+    });
   } catch (error: any) {
     if (!error?.message?.includes('not found')) {
       console.error('Erreur lors de la suppression du refresh token:', error);
@@ -278,9 +273,12 @@ export async function clearTokens(expectedVersion?: number): Promise<boolean> {
 }
 
 async function deleteStoredTokens(): Promise<boolean> {
+  // Keep the authoritative envelope until legacy deletion succeeds: otherwise old keys
+  // could become visible again after a partially failed cleanup.
   const results = await Promise.allSettled([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY, FCM_TOKEN_KEY, REFRESH_ATTEMPT_KEY]
     .map(key => SecureStore.deleteItemAsync(key)));
-  return results.every(result => result.status === 'fulfilled');
+  if (!results.every(result => result.status === 'fulfilled')) return false;
+  try { await SecureStore.deleteItemAsync(TOKEN_PAIR_KEY); return true; } catch { return false; }
 }
 
 /**

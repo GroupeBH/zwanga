@@ -18,6 +18,7 @@ interface Params {
   numberOfSeats: number;
   hasSpecifiedNumberOfSeats: boolean;
   selectedVehicleType: TripRequestVehicleType;
+  selectedVehicleTypes: TripRequestVehicleType[];
   maxPricePerSeat: string;
   hasEditedBudget: boolean;
 }
@@ -32,6 +33,7 @@ export function useRequestBudgetSummary({
   numberOfSeats,
   hasSpecifiedNumberOfSeats,
   selectedVehicleType,
+  selectedVehicleTypes,
   maxPricePerSeat,
   hasEditedBudget,
 }: Params) {
@@ -76,7 +78,9 @@ export function useRequestBudgetSummary({
       ? 'Calcul...'
       : 'À définir';
 
-  const budgetHintLabel = hasEditedBudget
+  const budgetHintLabel = selectedVehicleTypes?.length > 1
+    ? 'Même budget pour tous les véhicules choisis'
+    : hasEditedBudget
     ? 'Votre budget maximum par place'
     : isVehicleOptionsError && vehicleOptions.length === 0
       ? 'Fixez votre budget pour continuer'

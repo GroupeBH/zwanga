@@ -16,6 +16,8 @@ export interface DriverDispatchStatus {
   positionFreshSeconds?: number;
   locationPolicy?: 'last_known';
   positionExpires?: boolean;
+  needsLocationRefresh?: boolean;
+  alertLocationMaxAgeSeconds?: number;
 }
 export type PresenceInput = { available: false } | {
   available: true; vehicleId: string; seats: number; latitude: number; longitude: number; leaseId?: string;
@@ -26,7 +28,7 @@ export interface DispatchOffer {
   localDeadline?: OfferDeadline;
   vehicleName?: string | null;
   request: { id: string; passengerName: string; departure: string; arrival: string;
-    seats: number; pricePerSeat: number | null; paymentMode: string; vehicleType: string };
+    seats: number; pricePerSeat: number | null; paymentMode: string; vehicleType: string; vehicleTypes?: string[] };
 }
 
 export interface NearbyRingingStatus {
@@ -58,9 +60,10 @@ export const driverDispatchApi = baseApi.injectEndpoints({
       query: () => '/driver-dispatch/status', keepUnusedDataFor: 15,
       providesTags: ['DriverDispatch'],
     }),
-    recordRideNotificationReceipt: builder.mutation<{ received: boolean }, { notificationId: string; stage: 'received' | 'displayed'; observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string }>({
+    recordRideNotificationReceipt: builder.mutation<{ received: boolean; responseWindow?: { offerId: string; expiresAt: string; serverNow: string } }, { notificationId: string; stage: 'received' | 'displayed'; observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string; audioStage?: 'audio_started' | 'audio_failed' | 'audio_suppressed'; audioObservedAt?: string; audioReason?: string }>({
       query: ({ notificationId, ...body }) => ({ url: `/driver-dispatch/notifications/${notificationId}/received`,
         method: 'POST', body, timeout: 4000 }),
+      invalidatesTags: result => result?.responseWindow ? ['DriverDispatch'] : [],
     }),
     registerDriverNotifications: builder.mutation<{ registered: boolean }, 2 | 3 | 4 | 5 | 6 | void>({
       query: (version = 2) => ({ url: '/driver-dispatch/notifications', method: 'POST', body: { version } }),

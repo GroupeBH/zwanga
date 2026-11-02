@@ -1,3 +1,4 @@
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -5,6 +6,8 @@ import { formatMoney } from './paymentModel';
 import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 
 type Props = {
+  mixedCashLabel?: string;
+  onMixedCash?: () => void;
   bookingId: string;
   pending: boolean;
   busy: boolean;
@@ -68,6 +71,13 @@ export function ArrivalPaymentRecovery(props: Props) {
           : cashAllowed ? 'Vous pouvez payer le conducteur en espèces ou choisir un autre moyen.' : 'Choisissez un autre moyen de paiement ou réessayez.')}</Text>
       {!(props.pending && cashAllowed) && <Text style={s.reassurance}>Vous pouvez fermer cette fenêtre et reprendre plus tard.</Text>}
       <View style={s.actions}>
+        {props.mixedCashLabel && props.onMixedCash && <>
+          <Text style={s.message}>La recharge en attente restera dans votre portefeuille si elle aboutit. Vous pouvez utiliser vos jetons disponibles et compléter en espèces.</Text>
+          <TouchableOpacity accessibilityRole="button" disabled={props.busy}
+            style={s.secondary} onPress={() => { if (!props.busy) props.onMixedCash?.(); }}>
+            <Text style={s.link}>{props.mixedCashLabel}</Text>
+          </TouchableOpacity>
+        </>}
         <TouchableOpacity accessibilityRole="button" disabled={primaryBusy}
           accessibilityState={{ disabled: primaryBusy, busy: primaryBusy }} style={[s.primary, primaryBusy && s.disabled]}
           onPress={() => {
@@ -114,7 +124,7 @@ const s = StyleSheet.create({
   message: { fontSize: 16, lineHeight: 24, color: Colors.gray[700], marginTop: 8 },
   reassurance: { fontSize: 14, lineHeight: 21, color: Colors.gray[600], marginTop: 12, marginBottom: 24 },
   actions: { marginTop: 'auto', paddingTop: 12, gap: 4 },
-  primary: { minHeight: 52, padding: 14, borderRadius: 14, backgroundColor: Colors.primary,
+  primary: { minHeight: 52, padding: 14, borderRadius: 14, backgroundColor: ACTION_COLORS.orange,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   disabled: { backgroundColor: Colors.gray[100] }, busyText: { color: Colors.gray[700] },
   primaryText: { color: Colors.white, fontSize: 17, fontWeight: '700', textAlign: 'center', flexShrink: 1 },

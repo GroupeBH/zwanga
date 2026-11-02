@@ -14,10 +14,11 @@ test('native teardown removes a decided card and cannot republish it from onDest
   const harness = `
 class Handler { void removeCallbacksAndMessages(Object unused){} }
 class Player { boolean closed; void close(){closed=true;} }
+class Banner { void close(){} }
 public class CleanupCheck {
   static final int STOP_FOREGROUND_DETACH=2,STOP_FOREGROUND_REMOVE=1;
   static java.lang.ref.WeakReference<CleanupCheck> active=new java.lang.ref.WeakReference<>(null);
-  Handler main=new Handler(); Player player=new Player(); String id="card",user="driver",identity="event",channel="ring";
+  Handler main=new Handler(); Player player=new Player(); Banner banner=new Banner(); String id="card",user="driver",identity="event",channel="ring";
   boolean foreground=true,discardCard; int generation,updates,stops,mode;
   void stopForeground(int flag){stops++;mode=flag;}
   void releaseBanner(boolean ignored){if(id!=null)updates++;}
@@ -26,7 +27,7 @@ public class CleanupCheck {
   public static void main(String[] args){
     CleanupCheck a=new CleanupCheck(); active=new java.lang.ref.WeakReference<>(a); a.discardCard=true;
     Player p=a.player; a.cleanup(); a.cleanup();
-    check(p.closed && a.player==null && a.id==null && a.identity==null && active.get()==null);
+    check(p.closed && a.player==null && a.banner==null && a.id==null && a.identity==null && active.get()==null);
     check(a.updates==0 && a.stops==1 && a.mode==STOP_FOREGROUND_REMOVE);
     CleanupCheck b=new CleanupCheck(); b.cleanup(); b.cleanup();
     check(b.updates==1 && b.stops==1 && b.mode==STOP_FOREGROUND_DETACH);
@@ -83,8 +84,11 @@ class MediaPlayer {
   static void check(boolean v){if(!v)throw new AssertionError();}
   public static void main(String[] args){
     Context c=new Context(); Handler h=new Handler(); int[] ends={0}, failures={0}; Runnable ended=()->ends[0]++, failed=()->failures[0]++;
-    RideAlertAudioPlayer p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); MediaPlayer media=MediaPlayer.latest;
+    java.util.List<String> observations=new ArrayList<>();
+    java.util.function.BiConsumer<String,String> observe=(stage,reason)->observations.add(stage+":"+reason);
+    RideAlertAudioPlayer p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed,observe); MediaPlayer media=MediaPlayer.latest;
     check(p.state().equals("preparing")); media.prepared.ready(media); check(media.playing && h.pending.isEmpty());
+    check(observations.equals(java.util.Arrays.asList("audio_started:PLAYER_STARTED")));
     c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK); check(media.playing && media.volume==.25f);
     c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_GAIN); check(media.volume==1f && media.playing);
     c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT); check(!media.playing && p.state().equals("interrupted"));
@@ -94,14 +98,15 @@ class MediaPlayer {
     media.prepared.ready(media); media.error.error(media,1,1); c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_GAIN);
     check(!media.playing && ends[0]==1); p.close(); check(c.audio.abandoned==1);
     c.audio.result=AudioManager.AUDIOFOCUS_REQUEST_DELAYED;
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.prepared.ready(media);
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed,observe); media=MediaPlayer.latest; media.prepared.ready(media);
     check(!media.playing && p.state().equals("interrupted")); c.audio.focus.listener.change(AudioManager.AUDIOFOCUS_GAIN); check(media.playing); p.close();
     c.audio.result=AudioManager.AUDIOFOCUS_REQUEST_FAILED;
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==2 && !media.playing && failures[0]==0); p.close();
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed,observe); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==2 && !media.playing && failures[0]==0); p.close();
+    check(observations.contains("audio_suppressed:AUDIO_FOCUS_DENIED"));
     c.audio.fail=true;
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==3 && failures[0]==0); p.close();
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); check(h.pending.size()==1); h.pending.get(0).run(); check(failures[0]==1 && ends[0]==3); p.close(); check(h.pending.isEmpty());
-    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed); media=MediaPlayer.latest; media.error.error(media,1,1);
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed,observe); media=MediaPlayer.latest; media.prepared.ready(media); check(ends[0]==3 && failures[0]==0); p.close();
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed,observe); check(h.pending.size()==1); h.pending.get(0).run(); check(failures[0]==1 && ends[0]==3); p.close(); check(h.pending.isEmpty());
+    p=new RideAlertAudioPlayer(c,h,new Uri(),ended,failed,observe); media=MediaPlayer.latest; media.error.error(media,1,1);
     check(failures[0]==2 && ends[0]==3); p.close(); media.error.error(media,1,1); check(failures[0]==2);
   }
 }`;

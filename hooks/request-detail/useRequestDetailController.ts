@@ -51,6 +51,7 @@ export function useRequestDetailController() {
     showEditForm: form.showEditForm,
     tripRequest: data.tripRequest,
     editVehicleType: form.editVehicleType,
+    editVehicleTypes: form.editVehicleTypes,
     editDepartureReference: form.editDepartureReference,
     editArrivalReference: form.editArrivalReference,
     setShowEditForm: form.setShowEditForm,
@@ -107,7 +108,8 @@ export function useRequestDetailController() {
 
   const editor = useRequestEditInitialization({
     setEditExpectedUpdatedAt: form.setEditExpectedUpdatedAt,
-    setEditVehicleType: form.setEditVehicleType,
+    setEditVehicleTypes: form.setEditVehicleTypes,
+    editVehicleTypes: form.editVehicleTypes,
     resetEditBudget: validation.resetEditBudget,
     tripRequest: data.tripRequest,
     setEditAddressInputMode: form.setEditAddressInputMode,
@@ -156,6 +158,7 @@ export function useRequestDetailController() {
     editArrivalReference: form.editArrivalReference,
     editArrivalLocation: form.editArrivalLocation,
     editVehicleType: form.editVehicleType,
+    editVehicleTypes: form.editVehicleTypes,
     editDescription: form.editDescription,
     setShowEditForm: form.setShowEditForm,
     refetch: data.refetch,
@@ -254,6 +257,7 @@ export function useRequestDetailController() {
     isEditVehicleOptionsError: validation.isEditVehicleOptionsError,
     retryEditVehicleOptions: validation.retryEditVehicleOptions,
     editVehicleType: form.editVehicleType,
+    editVehicleTypes: form.editVehicleTypes,
     parsedEditNumberOfSeats: validation.parsedEditNumberOfSeats,
     handleSelectEditVehicle: editor.handleSelectEditVehicle,
     editNumberOfSeats: form.editNumberOfSeats,

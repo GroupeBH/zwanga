@@ -12,7 +12,10 @@ function fixture(getState = () => ({ zwangaApi: { config: { online: true } } }))
   return { hooks, ...load('hooks/useDisplayReads.ts'), session: load('services/tokenSession.ts') };
 }
 
-test('display policy pauses offline/covered reads and resumes once with real RTK middleware', async () => {
+test('display policy pauses offline/covered reads and resumes once with real RTK middleware', async t => {
+  // Advance polling deliberately: host load must not turn an unrelated 20 ms
+  // poll into a false duplicate-focus failure between two assertions.
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
   const calls = [];
   const api = createApi({ reducerPath: 'zwangaApi', keepUnusedDataFor: 0,
     baseQuery: async () => { calls.push(1); return { data: ['synthetic'] }; }, tagTypes: ['Read'],
@@ -35,7 +38,7 @@ test('display policy pauses offline/covered reads and resumes once with real RTK
     await render(true); assert.equal(calls.length, 1);
     store.dispatch(api.internalActions.onOffline());
     assert.equal((await render(true)).skip, true);
-    await new Promise(resolve => setTimeout(resolve, 75));
+    t.mock.timers.tick(75); await flush();
     assert.equal(calls.length, 1);
     store.dispatch(api.internalActions.onOnline());
     await render(false);

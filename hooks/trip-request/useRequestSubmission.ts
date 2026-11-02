@@ -12,14 +12,15 @@ import {
 } from '@/store/api/tripRequestApi';
 import { getApiErrorMessage, isAmbiguousTransportError, isPassengerKycRequiredError, isExtraSeatsIdentityError } from '@/utils/errorHelpers';
 import { useIdentityCheck } from '@/hooks/useIdentityCheck';
-import { getPassengerSeatValidation, getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
+import { getPassengerSeatValidation } from '@/utils/passengerSeats';
+import { requestVehicleSeatCapacity } from '@/features/trip-request/vehicleSelection';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { useRequestDraft } from './useRequestDraft';
 import type { useRequestSchedule } from './useRequestSchedule';
 
-type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'hasChosenDepartureTime' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'requestPaymentMode'> & {
+type Props = Pick<ReturnType<typeof useRequestDraft>, 'arrivalLocation' | 'departureLocation' | 'timePreset' | 'hasChosenDepartureTime' | 'setDepartureDateMin' | 'setFlexibilityMinutes' | 'description' | 'departureReference' | 'arrivalReference' | 'hasSpecifiedNumberOfSeats' | 'numberOfSeats' | 'selectedVehicleType' | 'selectedVehicleTypes' | 'requestPaymentMode'> & {
   departureAddress: string; arrivalAddress: string; hasDepartureAddress: boolean; hasArrivalAddress: boolean;
   canSubmitRequestDetails: boolean; budgetValue: number; selectedVehicleOptionUnavailable: boolean;
   targetDriver?: ReturnType<typeof useRequestDraft>['targetDriver'];
@@ -42,6 +43,7 @@ export function useRequestSubmission({
   hasSpecifiedNumberOfSeats,
   numberOfSeats,
   selectedVehicleType,
+  selectedVehicleTypes = [selectedVehicleType],
   requestPaymentMode,
   departureAddress,
   arrivalAddress,
@@ -177,14 +179,14 @@ export function useRequestSubmission({
       setFlexibilityMinutes(departureWindow.flex);
     }
     if (!validate(departureWindow)) return;
-    if (targetDriver && targetDriver.vehicleType !== selectedVehicleType) {
+    if (targetDriver && !selectedVehicleTypes.includes(targetDriver.vehicleType)) {
       setSubmissionError('Le type de véhicule a changé. Choisissez à nouveau votre conducteur ou les conducteurs proches.');
       return;
     }
     const seatError = getPassengerSeatValidation(
       hasSpecifiedNumberOfSeats ? numberOfSeats : 1,
       isIdentityVerified,
-      getPassengerVehicleSeatCapacity(selectedVehicleType),
+      requestVehicleSeatCapacity(selectedVehicleTypes),
     );
     if (seatError) {
       if (seatError.reason === 'identity') checkIdentity('extra_seats');
@@ -223,7 +225,7 @@ export function useRequestSubmission({
       targetDriverId: targetDriver?.id,
       departure: departureAddress.trim().toLowerCase(), arrival: arrivalAddress.trim().toLowerCase(),
       departureDateMin: departureWindow.min.toISOString(), departureDateMax: departureWindow.max.toISOString(),
-      seats: hasSpecifiedNumberOfSeats ? numberOfSeats : 1, price: confirmedPricePerSeat, vehicleType: selectedVehicleType };
+      seats: hasSpecifiedNumberOfSeats ? numberOfSeats : 1, price: confirmedPricePerSeat, vehicleType: selectedVehicleType, vehicleTypes: [...selectedVehicleTypes] };
 
     try {
       setResolvingAddresses(true);
@@ -252,6 +254,7 @@ export function useRequestSubmission({
         immediateDispatch: timePreset === 'now',
         ...(hasSpecifiedNumberOfSeats ? { numberOfSeats } : {}),
         vehicleType: selectedVehicleType,
+        vehicleTypes: [...selectedVehicleTypes],
         maxPricePerSeat: confirmedPricePerSeat,
         paymentMode: requestPaymentMode,
         description: requestNotes || undefined,

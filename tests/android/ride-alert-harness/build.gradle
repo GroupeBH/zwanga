@@ -19,7 +19,7 @@ android {
 }
 tasks.register('copyAuditNative', Copy) {
     from(new File(repo, 'native/android/notifications')) {
-        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'RidePresentationExpiry.java',
+        include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'RideUnlockBanner.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'IncomingRideContent.java', 'RidePresentationExpiry.java',
             'NativeRideDelivery.java', 'RideNotificationBundle.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'
     }
     into new File(buildDir, 'audit-native/com/zwanga/notifications')

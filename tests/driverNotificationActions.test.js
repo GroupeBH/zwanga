@@ -193,10 +193,10 @@ test('old initial actions are read-only and do not restart the alert or send a d
 });
 
 test('expired and uncertain answers open details for reconciliation without claiming success; deliberate retry is allowed', async () => {
-  const expired = app(); expired.mount(); await tick();
+  const expired = app({ perform: async () => { throw { status: 409 }; } }); expired.mount(); await tick();
   expired.foreground({ ...push(), expiresAt: new Date(0).toISOString() }, 'driver-accept');
   await tick(); await tick();
-  assert.equal(expired.io.mutations.length, 0); assert.equal(expired.io.routes.length, 1);
+  assert.equal(expired.io.mutations.length, 1); assert.equal(expired.io.routes.length, 1);
   assert.equal(expired.io.displayed[0].title, 'Réponse à vérifier'); expired.hooks.unmount();
   const f = app({ perform: async () => { throw { status: 'FETCH_ERROR' }; } });
   f.mount(); await tick(); f.foreground(push(), 'driver-accept'); await tick(); await tick();

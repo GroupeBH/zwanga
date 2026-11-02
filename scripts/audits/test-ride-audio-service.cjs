@@ -13,10 +13,22 @@ const shell = (...args) => run('shell', ...args);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const pkg = 'com.zwanga.audit', output = process.env.RIDE_AUDIT_OUTPUT || '.expo/ride-audio-service-20261028';
 const audioOnly = process.env.RIDE_AUDIT_AUDIO_ONLY === '1';
+const unlockOnly = process.env.RIDE_AUDIT_UNLOCK_ONLY === '1';
 const user = '00000000-0000-4000-8000-000000000001', results = [];
 const receive = (...args) => shell('am', 'broadcast', '-n', `${pkg}/.AuditReceiver`, ...args);
 const operation = name => receive('--es', 'operation', name);
 const record = name => { results.push(name); process.stdout.write(name + '\n'); };
+function assertPinned(payload, label) {
+  const id = payload.type === 'new_booking' ? `driver-booking-${payload.bookingId}` : `driver-nearby-${payload.tripRequestId}`;
+  const hash = [...id].reduce((value, char) => (31 * value + char.charCodeAt(0)) | 0, 0);
+  const dump = shell('dumpsys', 'activity', 'service', 'com.android.systemui/.SystemUIService');
+  const start = dump.indexOf(`Notification: 0|${pkg}|${hash}|`);
+  const row = start < 0 ? '' : dump.slice(start).match(/^[\s\S]*?Intrinsic Height Factors:[^\n]+/)?.[0] || '';
+  fs.writeFileSync(path.join(output, `${label}-system-state.txt`), row);
+  fs.writeFileSync(path.join(output, `${label}.png`), execFileSync(adb,
+    ['-s', serial, 'exec-out', 'screencap', '-p'], { timeout: 15000, windowsHide: true, maxBuffer: 10 * 1024 * 1024 }));
+  assert.ok(row.includes('isHeadsUpState()=true') && row.includes('isPinned()=true'), label);
+}
 async function probe(payload, mode = 'observe') {
   shell('run-as', pkg, 'rm', '-f', 'files/ride-audit-result.json');
   receive('--es', 'operation', 'native-payload', '--es', 'payload', Buffer.from(JSON.stringify(payload)).toString('base64'), '--es', 'mode', mode);
@@ -26,13 +38,14 @@ async function probe(payload, mode = 'observe') {
   }
   throw Error('Native probe timed out');
 }
-async function start(seconds = 55, mode = 'deliver') {
+async function start(seconds = 55, mode = 'deliver', kind = 'booking') {
   operation('clear'); await sleep(700);
   shell('input', 'keyevent', 'KEYCODE_WAKEUP'); shell('wm', 'dismiss-keyguard');
   shell('am', 'start', '-n', `${pkg}/.AuditActivity`, '--ez', 'audioTest', 'true'); await sleep(500);
   const now = Number(shell('date', '+%s%3N').trim());
   const payload = { driverId: user, passengerId: '00000000-0000-4000-8000-000000000002',
-    notificationId: randomUUID(), bookingId: randomUUID(), type: 'new_booking', actionProtocol: 'driver-v1', nativeAlert: 'driver-v6',
+    notificationId: randomUUID(), ...(kind === 'booking' ? { bookingId: randomUUID(), type: 'new_booking' } :
+      { tripRequestId: randomUUID(), type: 'trip_request_nearby' }), actionProtocol: 'driver-v1', nativeAlert: 'driver-v6',
     ringUntil: new Date(now + 60000).toISOString(), alertExpiresAt: new Date(now + seconds * 1000).toISOString(),
     rideArrival: 'DESTINATION TEST LOCAL', ridePricePerSeat: '2500', ridePriceKind: 'fare' };
   const initial = await probe(payload, mode);
@@ -53,6 +66,7 @@ async function start(seconds = 55, mode = 'deliver') {
     shell('pm', 'grant', pkg, 'android.permission.POST_NOTIFICATIONS');
     receive('--es', 'operation', 'consent', '--ez', 'enabled', 'true');
     shell('appops', 'set', pkg, 'USE_FULL_SCREEN_INTENT', 'allow');
+    if (!unlockOnly) {
     const late = await start(55, 'late-deliver');
     const beforeReplay = await probe(late);
     await probe(late, 'deliver');
@@ -72,6 +86,7 @@ async function start(seconds = 55, mode = 'deliver') {
     operation('other-notification'); await sleep(5000);
     const afterNotification = await probe(first);
     assert.equal(afterNotification.audioService, 'playing'); assert.equal(afterNotification.count, 1);
+    if (!audioOnly) assertPinned(first, 'banner-after-other-notification');
     record('ordinary_audible_notification_does_not_stop_service_player');
     for (const kind of ['transient', 'duck']) {
       receive('--es', 'operation', 'audio-focus', '--es', 'kind', kind); await sleep(700);
@@ -86,12 +101,27 @@ async function start(seconds = 55, mode = 'deliver') {
     assert.equal(lost.count, 1); assert.equal(lost.ongoing, false); assert.equal(lost.fullScreenIntent, false);
     receive('--es', 'operation', 'audio-focus', '--es', 'kind', 'release');
     record('permanent_focus_loss_stops_without_removing_pending_card');
-    const sleeping = await start();
+    }
+    const sleeping = await start(55, 'deliver', 'nearby');
     shell('input', 'keyevent', 'KEYCODE_HOME'); shell('input', 'keyevent', 'KEYCODE_SLEEP'); await sleep(1500);
     assert.equal((await probe(sleeping)).audioService, 'playing');
     shell('input', 'keyevent', 'KEYCODE_WAKEUP'); shell('wm', 'dismiss-keyguard'); shell('input', 'keyevent', 'KEYCODE_HOME'); await sleep(900);
     const unlocked = await probe(sleeping); assert.equal(unlocked.audioService, 'playing'); assert.equal(unlocked.count, 1);
     record('existing_service_survives_screen_sleep_and_unlock_outside_app');
+    if (!audioOnly) {
+      await sleep(3000); // one visual re-presentation after the SystemUI unlock transition
+      const restored = await probe(sleeping);
+      assert.equal(restored.onlyAlertOnce, false);
+      assert.equal(restored.soundUntil, unlocked.soundUntil, 'unlock never renews the audio deadline');
+      assertPinned(sleeping, 'banner-after-unlock-outside-app');
+      operation('other-notification'); await sleep(600);
+      assertPinned(sleeping, 'banner-after-unlock-during-other-notification');
+      await sleep(4500);
+      assert.equal((await probe(sleeping)).audioService, 'playing');
+      assertPinned(sleeping, 'banner-after-unlock-and-other-notification');
+      record('banner_and_audio_survive_unlock_then_competing_notification');
+    }
+    if (unlockOnly) return;
     const entry = await start();
     shell('input', 'keyevent', 'KEYCODE_HOME'); await sleep(500);
     shell('am', 'start', '-n', `${pkg}/.AuditActivity`, '--ez', 'audioTest', 'false'); await sleep(1000);

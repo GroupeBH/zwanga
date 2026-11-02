@@ -29,7 +29,9 @@ export default function DriverAvailabilityScreen() {
           onPress={() => { if (enabled && !isFetching) void refetch(); }}>
           <Text style={styles.copy}>{isFetching ? 'Vérification…' : 'Service indisponible · Réessayer'}</Text>
         </TouchableOpacity>
-        : <Text style={styles.hint}>{available ? 'Commandes proches : service disponible' : 'Commandes proches : service indisponible'}</Text>}
+        : <Text style={styles.hint}>{available ? data?.needsLocationRefresh
+          ? 'Actualisez votre position pour recevoir les commandes proches.'
+          : 'Commandes proches : service disponible' : 'Commandes proches : service indisponible'}</Text>}
       <NearbyDriverLocationPermission available={available} />
       <DriverFullScreenPreference />
       <Text style={styles.label}>Son des notifications</Text>
@@ -45,7 +47,9 @@ export default function DriverAvailabilityScreen() {
       </TouchableOpacity>
       {expanded && <>
         <Text style={styles.copy}>Aucune disponibilité à activer. Les commandes proches sont proposées automatiquement aux conducteurs éligibles avec un véhicule adapté. Touchez la notification pour voir le client.</Text>
-        <Text style={styles.copy}>{data?.locationPolicy === 'last_known' && data.positionExpires === false
+        <Text style={styles.copy}>{data?.alertLocationMaxAgeSeconds
+          ? `Votre dernière position reste disponible pour la recherche. Pour recevoir les nouvelles alertes, elle doit dater de moins de ${Math.round(data.alertLocationMaxAgeSeconds / 3600)} heures. Autorisez la localisation et ouvrez l’app pour l’actualiser.`
+          : data?.locationPolicy === 'last_known' && data.positionExpires === false
           ? 'Hors trajet, votre dernière position connue peut être utilisée même si elle est ancienne. Elle ne reflète pas forcément votre emplacement actuel. Un arrêt forcé de l’app peut interrompre son actualisation.'
           : `Une position trop ancienne n’est plus utilisée : elle reste valable au maximum ${Math.round((data?.positionFreshSeconds ?? 300) / 60)} minute(s). Un arrêt forcé de l’app peut interrompre la localisation.`}</Text>
         <Text style={styles.copy}>Le mode silencieux, « Ne pas déranger » et les restrictions du téléphone peuvent limiter les alertes.</Text>

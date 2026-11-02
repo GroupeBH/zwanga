@@ -34,6 +34,7 @@ export function useMixedCashPayment(state: State, completion: ReturnType<typeof 
     skip: !bookingId || state.paymentAlreadySucceeded || confirmed, refetchOnMountOrArgChange: true,
   });
   const supported = Boolean(options?.mixedCashSupported && !state.isBeforeArrival && state.pointsUsed > 0 && state.missingPoints > 0);
+  const directPaymentPending = state.hasPendingBookingPayment ?? state.hasPendingProviderPayment;
   const cashSelected = Boolean(stored || (supported && choice?.id === bookingId && choice?.cash));
   const savedIntent = readIntent(stored, bookingId);
   const displayedPoints = savedIntent?.tokenQuantity ?? state.pointsUsed;
@@ -45,7 +46,7 @@ export function useMixedCashPayment(state: State, completion: ReturnType<typeof 
   }, [bookingId, confirmed, stored, persist]);
 
   const submit = async () => {
-    if (busy.current || !bookingId || !state.isSessionCurrent() || state.hasPendingProviderPayment || state.isBusy) return;
+    if (busy.current || !bookingId || !state.isSessionCurrent() || directPaymentPending || state.isBusy) return;
     if (!stored && (!supported || state.isWalletFetching || !cashSelected)) return;
     let intent: Intent;
     try {
@@ -91,9 +92,10 @@ export function useMixedCashPayment(state: State, completion: ReturnType<typeof 
     } finally { busy.current = false; }
   };
   return { supported, cashSelected, cashRemainder, displayedPoints, displayedTokenAmount, submit, isLoading,
+    canChooseWithPendingTopUp: supported && state.hasPendingProviderPayment && !directPaymentPending && !confirmed && !stored,
     pending: Boolean(stored && !confirmed), message,
     selectCash: (cash: boolean) => {
-      if (bookingId && !busy.current && !stored && !state.hasPendingProviderPayment && !state.isBusy)
+      if (bookingId && !busy.current && !stored && !directPaymentPending && !state.isBusy)
         setChoice({ id: bookingId, cash });
     },
   };

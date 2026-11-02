@@ -23,6 +23,7 @@ export interface TripRequest {
   departureDateMax: string; // ISO string date - Date/heure de départ maximum acceptée
   numberOfSeats: number;
   vehicleType: TripRequestVehicleType;
+  vehicleTypes?: TripRequestVehicleType[];
   maxPricePerSeat?: number | null; // Prix maximum par place accepté (optionnel)
   paymentMode?: TripPaymentMode | null;
   description?: string | null;
@@ -83,6 +84,8 @@ export interface DriverOffer {
 export interface DriverOfferWithTripRequest extends DriverOffer {
   tripRequest: {
     id: string;
+    vehicleType?: TripRequestVehicleType;
+    vehicleTypes?: TripRequestVehicleType[];
     departureLocation: string;
     departureReference?: string | null;
     arrivalLocation: string;

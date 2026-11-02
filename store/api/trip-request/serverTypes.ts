@@ -26,6 +26,7 @@ export type ServerTripRequest = {
   departureDateMax: string;
   numberOfSeats: number;
   vehicleType?: TripRequestVehicleType;
+  vehicleTypes?: TripRequestVehicleType[] | null;
   maxPricePerSeat: number | null;
   paymentMode?: TripPaymentMode | null;
   description: string | null;
@@ -129,6 +130,8 @@ export type ServerDriverOfferWithTripRequest = {
   updatedAt: string;
   tripRequest: {
     id: string;
+    vehicleType?: TripRequestVehicleType;
+    vehicleTypes?: TripRequestVehicleType[] | null;
     departureLocation: string;
     departureReference?: string | null;
     arrivalLocation: string;

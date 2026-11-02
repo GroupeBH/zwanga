@@ -36,9 +36,11 @@ export function BackgroundLocationApproval(props: Props) {
               : 'Autorisation accordée. Confirmez le partage hors trajet.'}</Text>
               : settingsRequired ? <View style={styles.guide}>
                 <Text style={styles.guideTitle}>Dans les réglages de Zwanga</Text>
-                <Text style={styles.copy}>{Platform.OS === 'ios'
-                  ? `Position → « ${choice} ». Revenez dans Zwanga.`
-                  : `Autorisations → Position → « ${choice} ». Revenez dans Zwanga.`}</Text>
+                {(Platform.OS === 'ios'
+                  ? ['Touchez « Position ».', `Choisissez « ${choice} ».`, 'Revenez dans Zwanga.']
+                  : ['Touchez « Autorisations », puis « Position ».', `Choisissez « ${choice} ».`, 'Revenez dans Zwanga.']
+                ).map((step, index) => <Text key={step} style={styles.copy}>{index + 1}. {step}</Text>)}
+                <Text style={styles.footnote}>Zwanga vérifiera votre choix à votre retour.</Text>
               </View> : <Text style={styles.copy}>{!foregroundPermission
                 ? 'Autorisez d’abord la position, puis l’accès en arrière-plan.'
                 : androidSettings

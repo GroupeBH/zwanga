@@ -36,9 +36,9 @@ interface RequestEditModalProps {
   editVehicleOptions: TripRequestVehiclePriceOption[];
   isEditVehicleOptionsError: boolean;
   retryEditVehicleOptions: () => void;
-  editVehicleType: TripRequestVehicleType;
+  editVehicleTypes: TripRequestVehicleType[];
   parsedEditNumberOfSeats: number;
-  handleSelectEditVehicle: (option: TripRequestVehiclePriceOption) => void;
+  handleSelectEditVehicle: (option: Pick<TripRequestVehiclePriceOption, 'vehicleType' | 'availableForRequestedSeats'>) => void;
   editNumberOfSeats: string;
   setEditNumberOfSeats: React.Dispatch<React.SetStateAction<string>>;
   editMaxPricePerSeat: string;
@@ -81,7 +81,7 @@ export function RequestEditModal({
   editVehicleOptions,
   isEditVehicleOptionsError,
   retryEditVehicleOptions,
-  editVehicleType,
+  editVehicleTypes,
   parsedEditNumberOfSeats,
   handleSelectEditVehicle,
   editNumberOfSeats,
@@ -160,7 +160,7 @@ export function RequestEditModal({
             editVehicleOptions={editVehicleOptions}
             isEditVehicleOptionsError={isEditVehicleOptionsError}
             retryEditVehicleOptions={retryEditVehicleOptions}
-            editVehicleType={editVehicleType}
+            editVehicleTypes={editVehicleTypes}
             parsedEditNumberOfSeats={parsedEditNumberOfSeats}
             handleSelectEditVehicle={handleSelectEditVehicle}
             editNumberOfSeats={editNumberOfSeats}

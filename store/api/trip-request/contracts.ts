@@ -20,6 +20,7 @@ export type CreateTripRequestPayload = {
   departureDateMax: string; // ISO string date
   numberOfSeats?: number;
   vehicleType: TripRequestVehicleType;
+  vehicleTypes?: TripRequestVehicleType[];
   maxPricePerSeat?: number;
   paymentMode?: TripPaymentMode;
   description?: string;

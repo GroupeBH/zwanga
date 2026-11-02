@@ -28,6 +28,7 @@ import type { BaseEndpointBuilder } from './types';
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { buildRequestPageEndpoints } from './trip-request/pageEndpoints';
+import { compatibleVehiclePayload, vehicleSelectionError } from '@/features/trip-request/vehiclePayload';
 
 export type { RecommendTripRequestPricePayload } from './trip-request/contracts';
 export type { TripRequestPriceRecommendation } from './trip-request/contracts';
@@ -43,9 +44,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: (payload: CreateTripRequestPayload) => ({
         url: '/trip-requests',
         method: 'POST',
-        body: payload,
+        body: compatibleVehiclePayload(payload),
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
+      transformErrorResponse: vehicleSelectionError,
       transformResponse: (
         response: ServerTripRequest | { data?: ServerTripRequest; tripRequest?: ServerTripRequest },
       ) => {
@@ -83,6 +85,13 @@ export const tripRequestApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Separate Home cache; old backends safely ignore scope until upgraded.
+    getHomeTripRequests: builder.query<TripRequest[], void>({
+      query: () => ({ url: '/trip-requests', params: { scope: 'home' } }),
+      transformResponse: (response: ServerTripRequest[]) => response.map(mapServerTripRequestToClient),
+      providesTags: result => [tripRequestListTag,
+        ...(result ?? []).map(({ id }) => ({ type: 'TripRequest' as const, id }))],
+    }),
     getAvailableTripRequests: builder.query<TripRequest[], void>({
       query: () => '/trip-requests',
       transformResponse: (response: ServerTripRequest[]) =>
@@ -135,9 +144,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: ({ id, payload }) => ({
         url: `/trip-requests/${id}`,
         method: 'PUT',
-        body: payload,
+        body: compatibleVehiclePayload(payload),
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
+      transformErrorResponse: vehicleSelectionError,
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'TripRequest', id },
@@ -304,6 +314,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
           }));
           dispatch(tripRequestApi.util.updateQueryData('getAvailableTripRequests', undefined,
             requests => requests.filter(request => request.id !== tripRequestId)));
+          dispatch(tripRequestApi.util.updateQueryData('getHomeTripRequests', undefined,
+            requests => requests.filter(request => request.id !== tripRequestId)));
           dispatch(tripRequestApi.util.updateQueryData('getTripRequestById', tripRequestId, () => data.tripRequest));
           for (const endpoint of ['getMyTripRequests', 'getMyActivityRequests'] as const) {
             dispatch(tripRequestApi.util.updateQueryData(endpoint, undefined, requests => {
@@ -336,6 +348,7 @@ export const {
   useRecommendTripRequestPriceMutation,
   useGetTripRequestVehicleOptionsMutation,
   useGetAvailableTripRequestsQuery,
+  useGetHomeTripRequestsQuery,
   useGetMyTripRequestsQuery,
   useGetMyActivityRequestsQuery,
   useLazyGetMyTripRequestsQuery,

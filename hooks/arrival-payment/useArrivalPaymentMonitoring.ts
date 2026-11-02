@@ -26,7 +26,7 @@ export function useArrivalPaymentMonitoring({ state, provider, completion }: Par
   const persistBookingState = state.persistBookingState;
   const hasBlockingOverlay = Boolean(state.completionSummary || state.interruptionChoice);
   const serverPaymentSucceeded = state.arrivalBooking?.paymentStatus === 'succeeded';
-  const cashFallback = Boolean(state.arrivalBooking?.tokenCashFallbackAt);
+  const cashFallback = Boolean(state.arrivalBooking?.tokenCashFallbackAt || state.arrivalBooking?.mixedPaymentAt);
   const orderKey = JSON.stringify([bookingId, walletOrder, bookingOrder]);
   const [progress, setProgress] = useState<{ key: string; value: PaymentVerification }>({ key: '', value: IDLE });
   const pausedOrder = useRef<string | null>(null);

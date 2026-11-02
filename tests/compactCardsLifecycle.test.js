@@ -22,7 +22,7 @@ for (const platform of ['ios', 'android']) {
         return updated;
       })];
     } };
-    const { useHomeSheet } = loader({ react, 'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
+    const { useHomeSheet } = loader({ '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true }, react, 'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
     const props = { isDriver: true, width: 390, height: 844, currentUser: {}, insets: { bottom: 34 }, isScreenActive: true,
       latestTrips: [], availableDriverRequests: [], visibleDriverPassengerMarkers: [], router: { push() {} } };
     const draw = () => hooks.render(() => useHomeSheet(props));

@@ -1,7 +1,7 @@
 {
   "name": "zwanga-app",
   "main": "index.ts",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "engines": {
     "node": ">=24.22.1 <25"
   },

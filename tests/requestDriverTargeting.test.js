@@ -18,8 +18,8 @@ test('driver choices are read only while visible and active; search waits for ty
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(); t.after(() => hooks.unmount());
   const env = { active: true, online: true }, calls = [], selected = [];
-  const item = { id: 'driver', name: 'Conducteur test', vehicle: 'Voiture', distanceKm: '1.2' };
-  const props = { departure: { latitude: -4.3, longitude: 15.31 }, seats: 1, vehicleType: 'car', selected: null,
+  const item = { id: 'driver', name: 'Conducteur test', vehicle: 'Moto', vehicleType: 'motorcycle_2_wheels', distanceKm: '1.2' };
+  const props = { departure: { latitude: -4.3, longitude: 15.31 }, seats: 1, vehicleType: 'car', vehicleTypes: ['car', 'motorcycle_2_wheels'], selected: null,
     onSelect: value => selected.push(value) };
   const { RequestDriverPicker } = loader({ ...ui, react: hooks.react,
     '@/hooks/useAppIsActive': { useScreenIsActive: () => env.active },
@@ -34,7 +34,8 @@ test('driver choices are read only while visible and active; search waits for ty
   tree = render(); assert.equal(calls.at(-1).options.skip, false);
   const list = tree.find(n => n.type === 'FlatList'); assert.deepEqual(list.props.data, [item]);
   list.props.renderItem({ item }).props.onPress();
-  assert.deepEqual(selected, [{ ...item, vehicleType: 'car' }]);
+  assert.deepEqual(selected, [item]); // Preserve the actual vehicle type, not the pricing reference.
+  assert.deepEqual(calls.at(-1).args.vehicleTypes, ['car', 'motorcycle_2_wheels']);
   tree = render(); assert.equal(calls.at(-1).options.skip, true);
   tree.find(n => n.props.accessibilityLabel === 'Choisir un conducteur, facultatif').props.onPress();
   tree = render(); tree.filter(n => n.props.accessibilityRole === 'tab')[1].props.onPress();
@@ -67,6 +68,20 @@ test('driver search and explicit audience expansion use their dedicated RTK Quer
     { url: '/trip-requests/request/open-search', method: 'POST', timeout: 10000 },
     { url: '/trip-requests/request/target-map-driver', method: 'POST', body: { markerId: 'a'.repeat(64), expectedUpdatedAt: 'date' }, timeout: 15000 },
     { url: '/trip-requests/request/change-driver', method: 'PUT', body: { selectedDriverId: 'driver', selectedAt: 'date' }, timeout: 15000 }]);
+});
+
+test('driver search serializes all accepted types into one bounded query', async t => {
+  const calls = [];
+  const baseApi = createApi({ reducerPath: 'api', baseQuery: async args => { calls.push(args); return { data: [] }; }, endpoints: () => ({}) });
+  const { requestDriverApi: api } = loader({ './baseApi': { baseApi },
+    './trip-request/requestMapper': { mapServerTripRequestToClient: value => value },
+  })('store/api/requestDriverApi.ts');
+  const store = configureStore({ reducer: { api: api.reducer }, middleware: defaults => defaults().concat(api.middleware) });
+  t.after(() => store.dispatch(api.util.resetApiState()));
+  await store.dispatch(api.endpoints.requestDriverChoices.initiate({ latitude: -4.3, longitude: 15.31, seats: 1,
+    vehicleType: 'car', vehicleTypes: ['car', 'motorcycle_2_wheels'] })).unwrap();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].params.vehicleTypes, 'car,motorcycle_2_wheels');
 });
 
 test('targeted passenger card broadens only on explicit action, guards double taps and displays a failed send', async t => {

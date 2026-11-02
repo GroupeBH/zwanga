@@ -19,7 +19,10 @@ const requestMapMarkerImages: Record<'departure' | 'arrival', ImageRequireSource
   arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
 };
 
-type Props = Pick<RequestTripController, 'arrivalAddress' | 'arrivalLocation' | 'arrivalReference' | 'departureAddress' | 'departureLocation' | 'departureReference' | 'isRouteLoading' | 'routeCoordinates' | 'routeDistanceLabel' | 'routePreviewRegion' | 'setRequestFormStep'>;
+type Props = Pick<RequestTripController, 'arrivalAddress' | 'arrivalLocation' | 'arrivalReference' | 'departureAddress' | 'departureLocation' | 'departureReference' | 'isRouteLoading' | 'routeCoordinates' | 'routeDistanceLabel' | 'routePreviewRegion'> & {
+  onEditRoute: () => void;
+  editDisabled: boolean;
+};
 
 export const RequestRoutePreview = memo(function RequestRoutePreview({
   arrivalAddress,
@@ -32,13 +35,15 @@ export const RequestRoutePreview = memo(function RequestRoutePreview({
   routeCoordinates,
   routeDistanceLabel,
   routePreviewRegion,
-  setRequestFormStep
+  onEditRoute,
+  editDisabled
 }: Props) {
   const [showMap, setShowMap] = useState(false);
   return (<View style={styles.routeSummary}>
     <View style={styles.routeSummaryHeader}>
       <Text style={styles.routeSummaryTitle}>Votre trajet</Text>
-      <TouchableOpacity onPress={() => setRequestFormStep('route')} style={styles.routeSummaryAction}
+      <TouchableOpacity onPress={onEditRoute} disabled={editDisabled} accessibilityState={{ disabled: editDisabled }}
+        style={[styles.routeSummaryAction, editDisabled && styles.mainButtonDisabled]}
         accessibilityRole="button" accessibilityLabel="Modifier le départ et la destination">
         <Text style={styles.routeSummaryActionText}>Modifier</Text>
       </TouchableOpacity>

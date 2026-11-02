@@ -44,6 +44,17 @@ test('a server cash fallback stops top-up settlement on reopen and ignores a lat
   env.hooks.unmount();
 });
 
+test('a confirmed mixed split cancels top-up monitoring without converting a late credit into another fare debit', async () => {
+  const env = environment(), request = deferred(); env.response = () => request.promise;
+  env.render();
+  env.state.arrivalBooking = { ...env.state.arrivalBooking, paymentMode: 'cash', mixedPaymentAt: '2026-11-02T16:00:00Z' };
+  env.render(); request.resolve({ payment: { status: 'succeeded' } }); await flush();
+  assert.equal(env.settlements, 0); assert.equal(env.aborted, 1);
+  assert.equal(env.state.activeStoredState.walletTopUpOrderNumber, 'existing-order');
+  env.state.isAppActive = false; env.render(); env.state.isAppActive = true; env.render();
+  assert.equal(env.checks.length, 1); env.hooks.unmount();
+});
+
 test('502 pauses checks, retains references and retries once on foreground rather than every render', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
   for (const kind of ['wallet', 'booking']) {

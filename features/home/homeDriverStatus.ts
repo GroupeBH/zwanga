@@ -2,8 +2,11 @@ import type { DriverDispatchStatus } from '@/store/api/driverDispatchApi';
 
 /** Same 30-minute boundary as the server's sequential ranking of recent positions. */
 export const RECENT_DRIVER_POSITION_MS = 30 * 60_000;
+export const DRIVER_ALERT_LOCATION_MAX_AGE_MS = 48 * 60 * 60_000;
 
-export type HomeDriverStatusView = { tone: 'ok' | 'warn' | 'off'; title: string; detail: string | null };
+export type HomeDriverStatusView = {
+  tone: 'ok' | 'warn' | 'off'; title: string; detail: string | null; action?: 'refresh';
+};
 
 function elapsedLabel(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
@@ -26,14 +29,17 @@ export function homeDriverStatusView({ online, data, isError, now = Date.now() }
   if (data.presence?.discoveryEnabled === false)
     return { tone: 'off', title: 'Demandes désactivées', detail: 'Touchez pour les activer' };
   if (!data.available) return { tone: 'off', title: 'Disponibilité à vérifier', detail: 'Touchez pour voir pourquoi' };
-  // Durable positions deliberately do not expire; old lease-based rows do.
+  // Keep the last known position; alert eligibility expires separately after 48 hours.
   if (data.presence?.discoveryEnabled !== true && !(Date.parse(data.presence?.expiresAt ?? '') > now))
-    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour vérifier' };
+    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour envoyer votre position', action: 'refresh' };
   const updatedAt = Date.parse(data.presence?.updatedAt ?? '');
-  if (!Number.isFinite(updatedAt)) return { tone: 'warn', title: 'Position à vérifier', detail: 'Touchez pour vérifier' };
+  if (!Number.isFinite(updatedAt)) return { tone: 'warn', title: 'Position à vérifier', detail: 'Touchez pour envoyer votre position', action: 'refresh' };
   const age = Math.max(0, now - updatedAt);
+  if (age >= DRIVER_ALERT_LOCATION_MAX_AGE_MS) {
+    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour recevoir de nouvelles demandes', action: 'refresh' };
+  }
   if (age > RECENT_DRIVER_POSITION_MS) {
-    return { tone: 'warn', title: 'Position ancienne', detail: `Dernière position ${elapsedLabel(age)}` };
+    return { tone: 'warn', title: 'Position ancienne', detail: `${elapsedLabel(age)} · Touchez pour actualiser`, action: 'refresh' };
   }
   return { tone: 'ok', title: 'Demandes possibles', detail: `Position à jour ${elapsedLabel(age)}` };
 }

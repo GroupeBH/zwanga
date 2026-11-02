@@ -82,7 +82,7 @@ test('new login is not overwritten by a secure write already in progress', async
   const work=e.api.refreshAccessToken(old); await flush(); gate=deferred();
   e.requests[0].resolve({accessToken:old,refreshToken:old}); await flush();
   const login=e.storage.storeTokens(jwt('b'),jwt('b')); gate.resolve(); await login; await work;
-  assert.equal(e.disk.get('zwanga_accessToken'),jwt('b'));
+  assert.equal(JSON.parse(e.disk.get('zwanga.session-pair.v2')).accessToken,jwt('b'));
   assert(!e.actions.some(a=>a.type==='auth/setTokens'));
 });
 
@@ -92,6 +92,26 @@ test('parallel refresh calls share one RTK mutation', async () => {
   assert.equal(e.requests.length,1); e.requests[0].resolve({accessToken:token,refreshToken:token});
   assert.deepEqual(await Promise.all([a,b]),[token,token]);
   assert.equal(e.actions.filter(a=>a.type==='auth/setTokens').length,1);
+});
+
+test('a mismatched stored pair never authorizes HTTP or renewal', async () => {
+  const e = environment();
+  await e.storage.storeTokens(jwt('a'), jwt('b'));
+  assert.equal(await e.api.getValidAccessToken(), null);
+  assert.equal(await e.api.hasRecoverableSession(), false);
+  assert.equal(await e.api.refreshAccessToken(jwt('b')), null);
+  assert.equal(e.requests.length, 0);
+  assert.equal((await e.storage.getTokens()).accessToken, null);
+});
+
+test('a coherent refresh response for another identity is not installed', async () => {
+  const e = environment(), accessToken = jwt('a', true), refreshToken = jwt('a');
+  await e.storage.storeTokens(accessToken, refreshToken);
+  const work = e.api.refreshAccessToken(refreshToken); await flush();
+  e.requests[0].resolve({ accessToken: jwt('b'), refreshToken: jwt('b') });
+  assert.equal(await work, null);
+  assert.deepEqual(await e.storage.getTokens(), { accessToken, refreshToken });
+  assert(!e.actions.some(action => action.type === 'auth/setTokens'));
 });
 
 test('lost response and reconnect reuse the persisted attempt ID', async () => {
@@ -170,9 +190,9 @@ test('a Redux-only logout invalidates a pending refresh', async () => {
   assert(!e.actions.some(a=>a.type==='auth/setTokens'));
 });
 
-test('a failed native write cannot release the queue while its sibling is still pending', async () => {
+test('a pending atomic credential write cannot outlive a queued logout', async () => {
   const pending=deferred();
-  const e=environment({beforeWrite:key=>key.endsWith('accessToken') ? Promise.reject(Error('native failure')) : pending.promise});
+  const e=environment({beforeWrite:()=>pending.promise});
   const login=e.storage.storeTokens(jwt('a'),jwt('a')).catch(()=>false); await flush();
   const logout=e.storage.clearTokens(); await flush();
   pending.resolve(); await login; await logout;

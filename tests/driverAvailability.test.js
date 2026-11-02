@@ -234,5 +234,10 @@ test('settings explain last-known positions while remaining compatible with lega
   assert.match(text(tree), /même si elle est ancienne/);
   assert.match(text(tree), /pas forcément votre emplacement actuel/);
   assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
+  status.alertLocationMaxAgeSeconds = 48 * 3600; status.needsLocationRefresh = true;
+  tree = hooks.render(Screen);
+  assert.match(text(tree), /Actualisez votre position pour recevoir les commandes proches/);
+  assert.match(text(tree), /moins de 48 heures/);
+  assert.doesNotMatch(text(tree), /utilisée même si elle est ancienne/);
   hooks.unmount();
 });

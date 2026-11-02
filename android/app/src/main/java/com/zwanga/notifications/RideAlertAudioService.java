@@ -22,6 +22,7 @@ public final class RideAlertAudioService extends Service {
   private static WeakReference<RideAlertAudioService> active = new WeakReference<>(null);
   private final Handler main = new Handler(Looper.getMainLooper());
   private RideAlertAudioSession player;
+  private RideUnlockBanner banner;
   private String id, user, identity, channel;
   private long deadline;
   private boolean foreground, entryReleased, discardCard;
@@ -32,6 +33,7 @@ public final class RideAlertAudioService extends Service {
     if (!entryReleased && NativeRideDelivery.foreground()) {
       entryReleased = true; releaseBanner(false);
     }
+    if (!entryReleased && banner != null) banner.check(RideAlertAudioService.this, id, user, identity);
     main.postDelayed(this, 500);
   }};
   static Bundle data(Notification n) {
@@ -76,17 +78,24 @@ public final class RideAlertAudioService extends Service {
     } catch (Exception ignored) { return false; }
   }
   static boolean startPublished(Context c, String id) {
+    Bundle report = null;
     try {
       if (Build.VERSION.SDK_INT < 26 || id == null || NativeRideDelivery.foreground()) return false;
       Notification live = RidePresentationExpiry.find(c, id); Bundle data = data(live);
+      report = data;
       if (data == null || !NativeRideDelivery.owns(c, data.getString("driverId")) ||
-          deadline(data, System.currentTimeMillis()) <= System.currentTimeMillis() || !allowed(c, originalChannel(live))) return false;
+          deadline(data, System.currentTimeMillis()) <= System.currentTimeMillis()) return false;
+      if (!allowed(c, originalChannel(live))) { audioObservation(c, data, "audio_suppressed", "DEVICE_POLICY"); return false; }
       c.startForegroundService(new Intent(c, RideAlertAudioService.class).putExtra("card", id).putExtra("identity", identity(data)));
       return true;
     } catch (Exception error) {
+      audioObservation(c, report, "audio_suppressed", "BACKGROUND_START_DENIED");
       // Includes ForegroundServiceStartNotAllowedException. Preserve the original OS card/sound.
       android.util.Log.w("ZwangaRideAudio", "BACKGROUND_START_UNAVAILABLE"); return false;
     }
+  }
+  private static void audioObservation(Context c, Bundle data, String stage, String reason) {
+    if (data != null) NativeRideDelivery.audio(c, data.getString("driverId"), data.getString("notificationId"), stage, reason);
   }
   /** Invoked on the main thread only, immediately before the foreground player takes over. */
   static void handoff() {
@@ -156,12 +165,14 @@ public final class RideAlertAudioService extends Service {
       if (Build.VERSION.SDK_INT >= 29) startForeground(id.hashCode(), card, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
       else startForeground(id.hashCode(), card);
       foreground = true; active = new WeakReference<>(this);
+      banner = new RideUnlockBanner(this);
       main.postDelayed(() -> { if (valid()) RidePresentationExpiry.schedulePublished(this, id); }, 150);
       player = new RideAlertAudioSession(this, manager.getNotificationChannel(channel).getSound(),
         Math.max(0, deadline - System.currentTimeMillis()), this::valid,
-        () -> main.post(() -> { if (generation == attempt) finishAlert(); }));
+        () -> main.post(() -> { if (generation == attempt) finishAlert(); }),
+        (stage, reason) -> audioObservation(this, data, stage, reason));
       main.post(tick); main.postDelayed(this::finishAlert, Math.max(0, deadline - System.currentTimeMillis()));
-    } catch (Exception error) { android.util.Log.w("ZwangaRideAudio", "BACKGROUND_PLAYER_UNAVAILABLE"); finishAlert(); }
+    } catch (Exception error) { audioObservation(this, data, "audio_failed", "PLAYER_ERROR"); android.util.Log.w("ZwangaRideAudio", "BACKGROUND_PLAYER_UNAVAILABLE"); finishAlert(); }
     return START_NOT_STICKY;
   }
   private boolean valid() {
@@ -178,6 +189,7 @@ public final class RideAlertAudioService extends Service {
     ++generation;
     main.removeCallbacksAndMessages(null);
     if (player != null) player.close(); player = null;
+    if (banner != null) banner.close(); banner = null;
     if (foreground) { stopForeground(discardCard ? STOP_FOREGROUND_REMOVE : STOP_FOREGROUND_DETACH); foreground = false; }
     if (!discardCard) releaseBanner(true);
     // onDestroy runs after JS can have removed the card. Never republish it there.

@@ -39,6 +39,7 @@ interface Params {
   editArrivalReference: string;
   editArrivalLocation: MapLocationSelection | null;
   editVehicleType: TripRequestVehicleType;
+  editVehicleTypes: TripRequestVehicleType[];
   editDescription: string;
   setShowEditForm: React.Dispatch<React.SetStateAction<boolean>>;
   refetch: DisplayRefetch<TripRequest>;
@@ -71,6 +72,7 @@ export function useRequestPassengerActions({
   editArrivalReference,
   editArrivalLocation,
   editVehicleType,
+  editVehicleTypes,
   editDescription,
   setShowEditForm,
   refetch,
@@ -182,6 +184,7 @@ export function useRequestPassengerActions({
           departureDateMax: updatedDepartureDateMax.toISOString(),
           numberOfSeats: parsedEditNumberOfSeats,
           vehicleType: editVehicleType,
+          vehicleTypes: editVehicleTypes,
           maxPricePerSeat: parsedEditBudget,
           description: editDescription.trim(),
         },
@@ -193,7 +196,7 @@ export function useRequestPassengerActions({
       setTimeout(() => {
         showDialog({
           title: tripRequest?.status === 'expired' ? 'Commande reprogrammée' : 'Commande modifiée',
-          message: `Votre commande utilise maintenant : ${TRIP_REQUEST_VEHICLE_LABELS[editVehicleType]}. Les anciennes offres en attente ont été retirées.`,
+          message: `Votre commande utilise maintenant : ${editVehicleTypes.map(type => TRIP_REQUEST_VEHICLE_LABELS[type]).join(' / ')}. Les anciennes offres en attente ont été retirées.`,
           variant: 'success',
         });
       }, Platform.OS === 'ios' ? 350 : 0);

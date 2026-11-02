@@ -4,7 +4,7 @@ const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes)
   : React.isValidElement(tree) ? [tree, ...nodes(tree.props.children)] : [];
-const words = tree => typeof tree === 'string' ? tree : Array.isArray(tree) ? tree.map(words).join('')
+const words = tree => typeof tree === 'number' ? String(tree) : typeof tree === 'string' ? tree : Array.isArray(tree) ? tree.map(words).join('')
   : React.isValidElement(tree) ? words(tree.props.children) : '';
 
 function fixture(os = 'android', version = 35) {
@@ -55,6 +55,10 @@ test('a blocked system grant shows exact steps and requires a distinct settings 
     const f = fixture(os), tree = f.render({ settingsRequired: true });
     assert.match(words(tree), /Dans les réglages de Zwanga/);
     assert.match(words(tree), /Position/); assert.match(words(tree), /Revenez dans Zwanga/);
+    assert.match(words(tree), /1\. Touchez/);
+    assert.match(words(tree), /2\. Choisissez/);
+    assert.match(words(tree), /3\. Revenez/);
+    assert.match(words(tree), /vérifiera votre choix à votre retour/);
     assert.match(words(tree), os === 'ios' ? /« Toujours »/ : /« Toujours autoriser »/);
     assert.equal(words(nodes(tree).find(n => n.type === 'Button')), 'Ouvrir les réglages');
     assert.deepEqual(f.calls, []);

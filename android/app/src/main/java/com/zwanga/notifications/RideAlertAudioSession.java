@@ -14,11 +14,14 @@ final class RideAlertAudioSession {
   private final Handler audio;
   private final AtomicBoolean closed = new AtomicBoolean();
   private final Runnable ended;
+  private final java.util.function.BiConsumer<String,String> observation;
   private RideAlertAudioPlayer player; // accessed only on the audio looper
   private int attempt, retries;
   private volatile String state = "preparing";
 
-  RideAlertAudioSession(Context c, Uri sound, long duration, BooleanSupplier valid, Runnable ended) {
+  RideAlertAudioSession(Context c, Uri sound, long duration, BooleanSupplier valid, Runnable ended,
+      java.util.function.BiConsumer<String,String> observation) {
+    this.observation = observation;
     this.ended = ended;
     long until = SystemClock.elapsedRealtime() + Math.max(0, duration);
     thread.start(); audio = new Handler(thread.getLooper());
@@ -49,7 +52,7 @@ final class RideAlertAudioSession {
         if (retries >= 2 || !safe(valid) || SystemClock.elapsedRealtime() >= until) { end(); return; }
         state = "preparing";
         audio.postDelayed(() -> start(c, sound, until, valid), ++retries == 1 ? 300 : 1000);
-      }));
+      }), observation);
   }
   private boolean safe(BooleanSupplier valid) {
     try { return valid.getAsBoolean(); } catch (Exception ignored) { return false; }

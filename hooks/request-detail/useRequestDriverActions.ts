@@ -1,3 +1,4 @@
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { getLocationCoordinates } from '../../features/request-detail/requestLocation';
 import { TRIP_REQUEST_VEHICLE_LABELS } from '../../features/request-detail/requestDetailModel';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -163,7 +164,7 @@ export function useRequestDriverActions({
       setShowDirectAcceptModal(false);
       showDialog({
         title: 'Véhicule non disponible',
-        message: `Cette commande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
+        message: `Cette commande nécessite le type ${requestVehicleLabel(tripRequest)}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
         variant: 'warning',
         actions: [{ label: 'Fermer', variant: 'ghost' }],
       });
@@ -302,7 +303,7 @@ export function useRequestDriverActions({
     if (compatibleActiveVehicles.length === 0) {
       showDialog({
         title: 'Véhicule non disponible',
-        message: `Cette commande nécessite le type ${TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
+        message: `Cette commande nécessite le type ${requestVehicleLabel(tripRequest)}. Aucun de vos véhicules actifs ne correspond pour le moment.`,
         variant: 'warning',
         actions: [{ label: 'Fermer', variant: 'ghost' }],
       });

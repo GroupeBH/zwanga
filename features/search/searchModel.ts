@@ -141,7 +141,7 @@ export function getSafeTripRequestId(request: TripRequest|null|undefined) {
   return requestId.length>0? requestId:null;
 }
 export function getTripRequestVehicleName(request: TripRequest) {
-  return requestVehicleLabel[request.vehicleType]??'Véhicule';
+  return (request.vehicleTypes?.length ? request.vehicleTypes : [request.vehicleType]).map(type => requestVehicleLabel[type] ?? 'Véhicule').join(' / ');
 }
 export function formatTripRequestWindow(request: TripRequest) {
   const start=formatDateWithRelativeLabel(request.departureDateMin,true);

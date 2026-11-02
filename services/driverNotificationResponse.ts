@@ -31,7 +31,10 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
       if (!userId || userId !== invitation.driverId || sessionVersion !== getTokenSessionVersion()) return;
       // A matching deliberate decision stops its alert before waiting for HTTP.
       await boundedRideAudio(dismissDriverInvitation(invitation), 3000).catch(() => {});
-      if (invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) throw new Error('expired');
+      // A dispatch receipt may have started a later response window on the server.
+      // The original push deadline controls presentation, not a deliberate decision.
+      // Never replay it offline: the authenticated endpoint checks the live lease.
+      if (invitation.kind !== 'dispatch' && invitation.expiresAt && Date.parse(invitation.expiresAt) <= Date.now()) throw new Error('expired');
       // RTK Query restores/refreshed credentials through SecureStore even without a mounted UI.
       // Both endpoints enforce ownership, deadline, status and idempotency on the server.
       const [{ store }, { driverDispatchApi }] = await Promise.all([import('@/store'), import('@/store/api/driverDispatchApi')]);

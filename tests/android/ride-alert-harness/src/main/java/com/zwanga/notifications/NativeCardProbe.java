@@ -20,8 +20,13 @@ public final class NativeCardProbe {
       .setSmallIcon(android.R.drawable.ic_dialog_info)
       .addAction(new android.app.Notification.Action.Builder(null, "Refuser", action).build())
       .addAction(new android.app.Notification.Action.Builder(null, "Accepter", action).build()).build();
-    IncomingRideView view = new IncomingRideView(activity, booking, card, ignored -> {}, () -> {});
-    if (!locked) view.summary.setText("2 500 FC / place\nKasa-Vubu → Gare Centrale\n2 places · Départ : 28/10 16:30");
+    Map<String, String> fixture = new HashMap<>();
+    fixture.put("ridePricePerSeat", "11000"); fixture.put("ridePriceKind", "fare");
+    fixture.put("rideDeparture", "Ngafula"); fixture.put("rideArrival", "Gare Centrale, Gombe");
+    fixture.put("rideSeats", "1"); fixture.put("rideDepartureAt", "2026-11-01T08:30:00.000Z");
+    fixture.put("tripRequestId", "48040000-0000-4000-8000-000000000001"); fixture.put("passengerName", "Passager de test");
+    IncomingRideView view = new IncomingRideView(activity, booking, card, new IncomingRideContent(fixture), ignored -> {}, () -> {});
+    view.showDetails(!locked); view.updateCountdown(34000, 60000);
     if (android.os.Build.VERSION.SDK_INT >= 30) activity.getWindow().setDecorFitsSystemWindows(false);
     activity.getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     activity.setContentView(view); view.requestApplyInsets();
@@ -66,6 +71,7 @@ public final class NativeCardProbe {
           Bundle card=notification.extras.getBundle("notifee.notification");
           result.put("fullScreenIntent", notification.fullScreenIntent != null).put("restorable",card!=null).put("title",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)))
             .put("ongoing", (notification.flags & android.app.Notification.FLAG_ONGOING_EVENT) != 0)
+            .put("onlyAlertOnce", (notification.flags & android.app.Notification.FLAG_ONLY_ALERT_ONCE) != 0)
             .put("body",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)));
           if(card!=null) result.put("soundUntil",card.getBundle("data").getString("nativeSoundUntil"));
         }

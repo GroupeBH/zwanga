@@ -1,7 +1,7 @@
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
 import { styles } from '@/components/trip/CompactListCard.styles';
 import { Colors } from '@/constants/styles';
-import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { homePriceLabel, homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { placeName } from '@/features/home/homeModel';
 import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
@@ -36,7 +36,7 @@ export const RequestListCard = React.memo(function RequestListCard({
   const name = own
     ? (request.selectedDriverId ? request.selectedDriverName || 'Conducteur Zwanga' : undefined)
     : request.passengerName || 'Passager Zwanga';
-  const vehicle = request.vehicleType && getRegisteredVehicleTypeLabel(request.vehicleType);
+  const vehicle = requestVehicleLabel(request);
   const budget = Number(request.maxPricePerSeat);
   const hasBudget = Number.isFinite(budget) && budget > 0;
   const canReviewForAcceptance = !own && canAccept && isRequestUnassigned(request) && isTripRequestWithinAcceptanceWindow(request);

@@ -12,7 +12,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.service.notification.StatusBarNotification;
 import android.view.WindowManager;
-import android.widget.TextView;
 
 /** Optional, private lock-screen surface. No RN tree or private route disclosure while locked,
  * network mutation, microphone, wake lock, or keyguard bypass. Native Notifee
@@ -21,7 +20,9 @@ public final class IncomingRideActivity extends Activity {
   private final Handler handler = new Handler(Looper.getMainLooper());
   private String notificationId;
   private long closesAt;
-  private TextView summary;
+  private IncomingRideView layout;
+  private long duration;
+  private boolean resumed;
   private boolean opening;
   private int presentation;
   private final Runnable refresh = new Runnable() {
@@ -47,7 +48,7 @@ public final class IncomingRideActivity extends Activity {
     // singleTop may deliver a second invitation to the already-visible surface.
     handler.removeCallbacks(refresh);
     presentation++;
-    opening = false; summary = null; notificationId = null;
+    opening = false; layout = null; notificationId = null;
     if (!DriverAlertModule.fullScreenBuildEnabled(this)) { finish(); return; }
     Bundle notification = getIntent().getBundleExtra("notification");
     if (notification == null) { finish(); return; }
@@ -67,6 +68,7 @@ public final class IncomingRideActivity extends Activity {
       closesAt = Math.min(closesAt, format.parse(until).getTime());
       if (closesAt <= System.currentTimeMillis()) { finish(); return; }
     } catch (Exception ignored) { finish(); return; }
+    duration = Math.max(1, closesAt - System.currentTimeMillis());
     if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
     else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
@@ -74,35 +76,35 @@ public final class IncomingRideActivity extends Activity {
     getWindow().getDecorView().setSystemUiVisibility(android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR |
       android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
     boolean booking = "new_booking".equals(data.getString("type"));
-    IncomingRideView layout = new IncomingRideView(this, booking, currentNotification(), this::unlockAndSend,
+    java.util.Map<String, String> fields = new java.util.HashMap<>();
+    for (String key : new String[]{"ridePricePerSeat", "ridePriceKind", "rideDeparture", "rideArrival",
+        "rideSeats", "rideDepartureAt", "bookingId", "tripRequestId", "passengerName"}) {
+      Object value = data.get(key); if (value instanceof String) fields.put(key, (String) value);
+    }
+    layout = new IncomingRideView(this, booking, currentNotification(), new IncomingRideContent(fields), this::unlockAndSend,
       () -> { Notification live = currentNotification(); if (live != null) unlockAndSend(live.contentIntent); });
-    summary = layout.summary;
     updateSummary();
     setContentView(layout); layout.requestApplyInsets(); handler.postDelayed(refresh, 1000);
   }
 
   private void updateSummary() {
-    if (summary == null) return;
+    if (layout == null) return;
+    layout.updateCountdown(Math.max(0, closesAt - System.currentTimeMillis()), duration);
     KeyguardManager keyguard = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
     // Private notification content must not leak through our optional surface.
     // This conservative rule also holds when OS lock-screen previews are hidden.
-    if (keyguard == null || keyguard.isKeyguardLocked()) {
-      summary.setText("Déverrouillez pour voir le trajet et répondre dans Zwanga."); return;
-    }
-    Notification card = currentNotification();
-    CharSequence body = card == null || card.extras == null ? null : card.extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
-    if (body == null && card != null && card.extras != null) body = card.extras.getCharSequence(Notification.EXTRA_TEXT);
-    summary.setText(body == null ? "Ouvrez Zwanga pour voir le trajet et répondre."
-        : body.toString().substring(0, Math.min(body.length(), 1000)));
+    layout.showDetails(resumed && keyguard != null && !keyguard.isKeyguardLocked() && currentNotification() != null);
   }
 
   @Override public void onWindowFocusChanged(boolean hasFocus) {
     super.onWindowFocusChanged(hasFocus); updateSummary();
   }
   @Override protected void onPause() {
-    if (summary != null) summary.setText("Déverrouillez pour voir le trajet et répondre dans Zwanga.");
+    resumed = false;
+    if (layout != null) layout.showDetails(false);
     super.onPause();
   }
+  @Override protected void onResume() { super.onResume(); resumed = true; updateSummary(); }
 
   private Notification currentNotification() {
     try {

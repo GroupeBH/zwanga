@@ -1,5 +1,6 @@
 import { getTabBarMetrics } from '@/constants/navigation';
 import { Spacing } from '@/constants/styles';
+import { useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { HOME_MAP_PADDING } from '@/features/home/homeMapAppearance';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -57,6 +58,7 @@ export function useHomeSheet({
   hasMapPriorities = false,
 }: Props) {
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
+  const sheetOffline = !useDisplayReadsEnabled(true);
 
   const firstName = currentUser?.firstName?.trim() || currentUser?.name?.trim().split(/\s+/)[0] || '';
   // `name` is the account's display name in the current API (no separate username).
@@ -184,6 +186,7 @@ export function useHomeSheet({
     openSheetIndex,
     isRequestsSheetMode,
     sheetLoading,
+    sheetOffline,
     sheetError,
     refetchSheetContent,
     sheetEmpty,

@@ -41,6 +41,21 @@ test('recovery rejects stale, malformed, foreign, self and unrelated notificatio
   assert.deepEqual(model.driverRecoveryCandidates([row()], '../bad', now), []);
 });
 
+test('a delayed request is recovered at 35 seconds but never after its original 40-second deadline', () => {
+  for (const type of ['driver_dispatch_offer', 'trip_request_nearby']) {
+    const created = now - 35000, until = created + 40000;
+    const item = { ...row(type, { expiresAt: iso(until), alertExpiresAt: iso(until) }), createdAt: iso(created) };
+    const alerts = model.driverRecoveryCandidates([item], id(1), now);
+    assert.equal(alerts.length, 1);
+    assert.equal(alerts[0].data.ringUntil, iso(until));
+    assert.deepEqual(model.driverRecoveryCandidates([item], id(1), until), []);
+    item.data.expiresAt = iso(created + 30000);
+    assert.deepEqual(model.driverRecoveryCandidates([item], id(1), now), [], 'shorter offers are not extended');
+  }
+  assert.deepEqual(model.driverRecoveryCandidates([{ ...row(), createdAt: iso(now - 70000) }], id(1), now), [],
+    'booking sound/recovery remains unchanged');
+});
+
 test('inbox scan, duplicate identities and detail fan-out are bounded', () => {
   assert.equal(model.driverRecoveryCandidates(Array(25).fill(row()), id(1), now).length, 1);
   assert.equal(model.driverRecoveryCandidates(Array.from({ length: 25 }, (_, i) => row('new_booking', { bookingId: id(100 + i) })), id(1), now).length, 3);

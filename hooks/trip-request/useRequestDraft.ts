@@ -44,6 +44,7 @@ export function useRequestDraft() {
       setHasChosenDepartureTime: setter('hasChosenDepartureTime'),
       setFlexibilityMinutes: setter('flexibilityMinutes'), setNumberOfSeats: setter('numberOfSeats'),
       setHasSpecifiedNumberOfSeats: setter('hasSpecifiedNumberOfSeats'), setSelectedVehicleType: setter('selectedVehicleType'),
+      setSelectedVehicleTypes: setter('selectedVehicleTypes'),
       setMaxPricePerSeat: setter('maxPricePerSeat'), setHasEditedBudget: setter('hasEditedBudget'),
       setRequestPaymentMode: setter('requestPaymentMode'), setDescription: setter('description'),
     };

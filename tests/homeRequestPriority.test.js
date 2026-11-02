@@ -74,7 +74,7 @@ test('Home ranks the complete eligible list by driver position before applying i
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
       useGetMyActivityRequestsQuery: () => ({ data: [] }),
-      useGetAvailableTripRequestsQuery: () => ({ data: requests }),
+      useGetHomeTripRequestsQuery: () => ({ data: requests }),
     },
   });
   const { useHomePassengerActivity } = loadHook('hooks/home/useHomePassengerActivity.ts');

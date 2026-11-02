@@ -1,6 +1,8 @@
 import { TRIP_REQUEST_VEHICLE_ICONS, formatCdfPrice } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
+import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
+import { getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { type TripRequestVehiclePriceOption } from '@/store/api/tripRequestApi';
 import type { TripRequestVehicleType } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,9 +15,9 @@ interface RequestEditVehicleOptionsProps {
   editVehicleOptions: TripRequestVehiclePriceOption[];
   isEditVehicleOptionsError: boolean;
   retryEditVehicleOptions: () => void;
-  editVehicleType: TripRequestVehicleType;
+  editVehicleTypes: TripRequestVehicleType[];
   parsedEditNumberOfSeats: number;
-  handleSelectEditVehicle: (option: TripRequestVehiclePriceOption) => void;
+  handleSelectEditVehicle: (option: Pick<TripRequestVehiclePriceOption, 'vehicleType' | 'availableForRequestedSeats'>) => void;
 }
 
 export function RequestEditVehicleOptions({
@@ -24,7 +26,7 @@ export function RequestEditVehicleOptions({
   editVehicleOptions,
   isEditVehicleOptionsError,
   retryEditVehicleOptions,
-  editVehicleType,
+  editVehicleTypes,
   parsedEditNumberOfSeats,
   handleSelectEditVehicle,
 }: RequestEditVehicleOptionsProps) {
@@ -34,8 +36,8 @@ export function RequestEditVehicleOptions({
         <View style={styles.editSectionHeaderCompact}>
           <Ionicons name="car-sport-outline" size={20} color={Colors.primary} />
           <View>
-            <Text style={styles.editSectionTitle}>Type de véhicule</Text>
-            <Text style={styles.editVehicleSubtitle}>Estimation par place</Text>
+            <Text style={styles.editSectionTitle}>Véhicules acceptés</Text>
+            <Text style={styles.editVehicleSubtitle}>Un ou plusieurs choix · même budget</Text>
           </View>
         </View>
         {editVehiclePriceMultiplier > 1 ? (
@@ -68,29 +70,33 @@ export function RequestEditVehicleOptions({
       ) : null}
 
       <View style={styles.editVehicleOptionsList}>
-        {editVehicleOptions.map((option) => {
-          const selected = option.vehicleType === editVehicleType;
-          const unavailable = !option.availableForRequestedSeats;
-          const price = option.recommendedPricePerSeat === null
-            ? 'À confirmer'
-            : formatCdfPrice(option.recommendedPricePerSeat);
+        {REGISTERED_VEHICLE_TYPE_OPTIONS.map(({ id: vehicleType, label }) => {
+          const option = editVehicleOptions.find(value => value.vehicleType === vehicleType);
+          const capacity = getPassengerVehicleSeatCapacity(vehicleType);
+          const availableForRequestedSeats = (capacity === null || parsedEditNumberOfSeats <= capacity)
+            && (option?.availableForRequestedSeats ?? true);
+          const selected = editVehicleTypes.includes(vehicleType);
+          const unavailable = !selected && !availableForRequestedSeats;
+          const price = option?.recommendedPricePerSeat == null
+            ? null : formatCdfPrice(option.recommendedPricePerSeat);
           const detail = unavailable
             ? `Indisponible pour ${parsedEditNumberOfSeats} places`
+            : !option ? 'Budget à fixer ci-dessous'
             : option.recommendedTotalPrice !== null && parsedEditNumberOfSeats > 1
               ? `${formatCdfPrice(option.recommendedTotalPrice)} au total`
               : `${formatCdfPrice(option.pricePerKmPerPassenger)} / km / pers.`;
 
           return (
             <TouchableOpacity
-              key={option.vehicleType}
+              key={vehicleType}
               style={[
                 styles.editVehicleOption,
                 selected && styles.editVehicleOptionSelected,
                 unavailable && styles.editVehicleOptionDisabled,
               ]}
-              onPress={() => handleSelectEditVehicle(option)}
+              onPress={() => handleSelectEditVehicle({ vehicleType, availableForRequestedSeats })}
               disabled={unavailable}
-              accessibilityRole="radio"
+              accessibilityRole="checkbox"
               accessibilityState={{ checked: selected, disabled: unavailable }}
               activeOpacity={0.82}
             >
@@ -99,7 +105,7 @@ export function RequestEditVehicleOptions({
                 selected && styles.editVehicleIconSelected,
               ]}>
                 <Ionicons
-                  name={TRIP_REQUEST_VEHICLE_ICONS[option.vehicleType]}
+                  name={TRIP_REQUEST_VEHICLE_ICONS[vehicleType]}
                   size={20}
                   color={unavailable ? Colors.gray[400] : selected ? Colors.primary : Colors.gray[700]}
                 />
@@ -109,7 +115,7 @@ export function RequestEditVehicleOptions({
                   styles.editVehicleName,
                   unavailable && styles.editVehicleTextDisabled,
                 ]}>
-                  {option.displayName}
+                  {label}
                 </Text>
                 <Text style={[
                   styles.editVehicleMeta,
@@ -118,7 +124,7 @@ export function RequestEditVehicleOptions({
                   {detail}
                 </Text>
               </View>
-              <View style={styles.editVehiclePriceBlock}>
+              {price ? <View style={styles.editVehiclePriceBlock}>
                 <Text style={[
                   styles.editVehiclePrice,
                   unavailable && styles.editVehicleTextDisabled,
@@ -126,9 +132,9 @@ export function RequestEditVehicleOptions({
                   {price}
                 </Text>
                 {!unavailable ? <Text style={styles.editVehiclePriceUnit}>par place</Text> : null}
-              </View>
+              </View> : null}
               <Ionicons
-                name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+                name={selected ? 'checkbox' : 'square-outline'}
                 size={20}
                 color={unavailable ? Colors.gray[300] : selected ? Colors.primary : Colors.gray[300]}
               />

@@ -2,15 +2,21 @@ import type { TripRequest, TripRequestVehicleType } from '@/types';
 import { baseApi } from './baseApi';
 import { mapServerTripRequestToClient } from './trip-request/requestMapper';
 import type { ServerTripRequest } from './trip-request/serverTypes';
+import { compatibleVehiclePayload, vehicleSelectionError } from '@/features/trip-request/vehiclePayload';
 
-export type RequestDriverChoice = { id: string; name: string; vehicle: string; distanceKm: number | string };
+export type RequestDriverChoice = { id: string; name: string; vehicle: string; distanceKm: number | string; vehicleType?: TripRequestVehicleType };
 export type SelectedRequestDriver = RequestDriverChoice & { vehicleType: TripRequestVehicleType };
-export type DriverChoiceQuery = { latitude: number; longitude: number; seats: number; vehicleType: TripRequestVehicleType; search?: string };
+export type DriverChoiceQuery = { latitude: number; longitude: number; seats: number; vehicleType: TripRequestVehicleType; vehicleTypes?: TripRequestVehicleType[]; search?: string };
 
 export const requestDriverApi = baseApi.injectEndpoints({
   endpoints: builder => ({
     requestDriverChoices: builder.query<RequestDriverChoice[], DriverChoiceQuery>({
-      query: params => ({ url: '/trip-requests/driver-choices', params, timeout: 10000 }),
+      query: (input) => {
+        const { vehicleTypes, ...params } = compatibleVehiclePayload(input);
+        return { url: '/trip-requests/driver-choices',
+          params: { ...params, ...(vehicleTypes?.length ? { vehicleTypes: vehicleTypes.join(',') } : {}) }, timeout: 10000 };
+      },
+      transformErrorResponse: vehicleSelectionError,
       keepUnusedDataFor: 15,
     }),
     targetRequestMapDriver: builder.mutation<TripRequest, { id: string; markerId: string; expectedUpdatedAt: string }>({

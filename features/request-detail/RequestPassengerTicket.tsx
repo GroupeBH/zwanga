@@ -1,3 +1,4 @@
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
@@ -37,7 +38,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
     <View style={s.card}>
       <View style={s.row}>
         <Text style={s.label}>{formatRequestDay(request.departureDateMin).toLocaleUpperCase('fr-FR')}</Text>
-        <Text style={s.label}>{TRIP_REQUEST_VEHICLE_LABELS[model.requestedVehicleType]} · {request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text>
+        <Text style={s.label}>{requestVehicleLabel(request)} · {request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text>
       </View>
       <View style={s.row}>
         <View style={s.side}><Text style={s.time}>{formatRequestTime(request.departureDateMin)}</Text><Text style={s.label}>souhaité</Text></View>

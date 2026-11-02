@@ -24,3 +24,14 @@ test('rolling deployment retries an older strict receipt endpoint once without m
  assert.equal(sent.length,2);assert.equal(sent[0].source,'javascript');assert.deepEqual(sent[1],{notificationId:id,stage:'displayed'});
  await api.reportRideNotificationReceipt({notificationId:id,driverId:user},'displayed');assert.equal(sent.length,2);
 });
+
+test('audio observations upload after a displayed receipt without replaying it, with bounded enum metadata',async()=>{
+ const at=Date.now()-30000;
+ const receipts={[id]:{at,displayed:true,displayedAt:at+500}};
+ const {api,sent}=setup({receipts});
+ await api.flushNativeRideReceipts(user);assert.equal(sent.length,1);
+ receipts[id].audioEvents={audio_started:{at:at+600,reason:'PLAYER_STARTED'},audio_failed:{at:at+700,reason:'secret-untrusted'},extra:{at,reason:'PLAYER_ERROR'}};
+ await api.flushNativeRideReceipts(user);assert.equal(sent.length,2);
+ assert.equal(sent[1].audioStage,'audio_started');assert.equal(sent[1].audioObservedAt,new Date(at+600).toISOString());
+ await api.flushNativeRideReceipts(user);assert.equal(sent.length,2);
+});

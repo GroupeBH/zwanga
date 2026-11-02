@@ -108,7 +108,7 @@ export function useHomeTripFeed({
     // Same freshness signals as selection: no new polling or per-render scan.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteTrips, storedTrips, nearbyTripsPayload, currentUser?.id, completedBookingTripIds, bookedTripIds, discoveryUpdatedAt, enabled]);
-  const tripsLoading = Boolean(enabled && selected.isFetching && !hasDisplayableTrips);
+  const tripsLoading = Boolean(enabled && (selected.isFetching || selected.isUninitialized) && !hasDisplayableTrips);
   const tripsError = Boolean(enabled && selected.isError && !hasDisplayableTrips);
   const refetchNearby = useDisplayRefetch(enabled && Boolean(nearbyTripsPayload) && !nearby.isUninitialized,
     JSON.stringify(nearbyTripsPayload), nearby.refetch);

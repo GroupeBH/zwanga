@@ -263,21 +263,22 @@ test("Services reads still pause on blur/background and reuse the same catalogue
   );
 });
 
-test("public search stays unambiguous and the home search links are unchanged", () => {
+test("public search stays unambiguous and separate from the home request actions", () => {
   assert.equal(
     fs.existsSync(path.join(__dirname, "../app/(tabs)/search.tsx")),
     false,
   );
   assert.ok(fs.existsSync(path.join(__dirname, "../app/search.tsx")));
-  for (const filename of [
-    "components/home/HomeTripsSheet.tsx",
-    "hooks/home/useHomeSheet.ts",
-  ]) {
-    assert.match(
-      fs.readFileSync(path.join(__dirname, "..", filename), "utf8"),
-      /router.push\('\/search'\)/,
-    );
-  }
+  // Published trips remain reachable through discovery; the two main home
+  // actions now create a request, as exercised in homeCompactLayout.test.js.
+  assert.match(
+    fs.readFileSync(path.join(__dirname, "../hooks/home/useHomeSheet.ts"), "utf8"),
+    /router.push\('\/search'\)/,
+  );
+  const home = fs.readFileSync(
+    path.join(__dirname, "../components/home/HomeTripsSheet.tsx"), "utf8",
+  );
+  assert.equal((home.match(/router.push\(getTripRequestCreateHref\(\)\)/g) || []).length, 2);
   const layout = fs.readFileSync(
     path.join(__dirname, "../components/ProtectedAppStack.tsx"),
     "utf8",

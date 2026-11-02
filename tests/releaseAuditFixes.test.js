@@ -39,9 +39,14 @@ test('entry status is inline before home actions, with no native overlay or chan
   status = { failed: false, offline: false, actionLabel: 'Reprendre mon trajet', onAction() {} };
   assert.equal(HomeEntryStatus().props.onAction, status.onAction);
   const source = fs.readFileSync('components/home/HomeTripsSheet.tsx', 'utf8');
-  assert.ok(source.indexOf('<HomeEntryStatus />') > source.indexOf('<ScrollView'));
-  assert.ok(source.indexOf('<HomeEntryStatus />') < source.indexOf("router.push('/publish')"));
-  assert.ok(source.indexOf('<HomeEntryStatus />') < source.indexOf("router.push('/search')"));
+  const scroll = source.indexOf('<ScrollView');
+  const statusIndex = source.indexOf('<HomeEntryStatus />');
+  assert.ok(scroll >= 0 && statusIndex > scroll);
+  for (const action of ["router.push('/publish')", 'router.push(getTripRequestCreateHref())']) {
+    const actionIndex = source.indexOf(action);
+    assert.ok(actionIndex >= 0, `home action exists: ${action}`);
+    assert.ok(statusIndex < actionIndex, `entry status precedes: ${action}`);
+  }
   const banner = fs.readFileSync('components/home/EntrySyncBanner.tsx', 'utf8');
   assert.doesNotMatch(banner, /position:\s*'absolute'|zIndex|elevation/);
 });

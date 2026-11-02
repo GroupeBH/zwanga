@@ -1,3 +1,4 @@
+import { acceptedRequestVehicleTypes } from '@/features/trip-request/vehicleSelection';
 import { normalizeTripRequestVehicleType } from '../../features/request-detail/requestDetailModel';
 import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
@@ -110,13 +111,14 @@ export function useRequestDetailData() {
   const requestedVehicleType = normalizeTripRequestVehicleType(
     tripRequest?.vehicleType,
   );
+  const requestedVehicleTypes = useMemo(() => acceptedRequestVehicleTypes(tripRequest ?? {}), [tripRequest]);
   const compatibleActiveVehicles = useMemo(
     () =>
       activeVehicles.filter(
         (vehicle) =>
-          normalizeTripRequestVehicleType(vehicle.type) === requestedVehicleType,
+          requestedVehicleTypes.includes(normalizeTripRequestVehicleType(vehicle.type)),
       ),
-    [activeVehicles, requestedVehicleType],
+    [activeVehicles, requestedVehicleTypes],
   );
 
   const [acceptTripRequest, { isLoading: isAcceptingTripRequest }] = useAcceptTripRequestMutation();

@@ -30,7 +30,7 @@ test('departure and arrival have separate, labelled optional inputs in both map 
   const { RequestRouteStep } = load('components/trip-request/RequestRouteStep.tsx');
   for (const addressInputMode of ['map', 'manual']) {
     const changes = [];
-    const tree = RequestRouteStep({ addressInputMode, addressSectionStep: 'departure',
+    const tree = RequestRouteStep({ addressInputMode, addressSectionStep: 'departure', selectedVehicleTypes: ['car'], numberOfSeats: 1,
       favoriteSuggestions: [], showQuickLandmarks: false, departureReference: 'Pharmacie', arrivalReference: 'Portail bleu',
       departureAddress: 'Départ test', arrivalAddress: 'Arrivée test', hasDepartureAddress: true, hasArrivalAddress: true,
       departureManualAddress: '', departureTouchedRef: { current: false },
@@ -55,7 +55,7 @@ test('departure and arrival have separate, labelled optional inputs in both map 
 test('route preview includes nonempty landmarks without replacing addresses or adding empty labels', () => {
   const { RequestRoutePreview } = load('components/trip-request/RequestRoutePreview.tsx');
   const props = { departureAddress: 'Départ test', arrivalAddress: 'Arrivée test', departureReference: '  Pharmacie  ',
-    arrivalReference: 'Portail bleu', routeCoordinates: [], setRequestFormStep() {} };
+    arrivalReference: 'Portail bleu', routeCoordinates: [], onEditRoute() {}, editDisabled: false };
   const draw = () => hooks.render(() => RequestRoutePreview.type(props));
   const preview = draw();
   assert.match(words(preview), /Départ testRéférence : Pharmacie/);
@@ -67,9 +67,11 @@ test('route preview includes nonempty landmarks without replacing addresses or a
   nodes(expanded).find(n => n.type === 'Button' && words(n) === 'Masquer la carte').props.onPress();
   assert.equal(nodes(draw()).filter(n => n.type === 'Map').length, 0);
   let step;
-  props.setRequestFormStep = value => { step = value; };
+  props.onEditRoute = () => { step = 'route'; };
   nodes(draw()).find(n => n.props.accessibilityLabel === 'Modifier le départ et la destination').props.onPress();
   assert.equal(step, 'route');
+  props.editDisabled = true;
+  assert.equal(nodes(draw()).find(n => n.props.accessibilityLabel === 'Modifier le départ et la destination').props.disabled, true);
   props.departureReference = '  '; props.arrivalReference = '';
   assert.doesNotMatch(words(draw()), /Référence/);
   hooks.unmount();

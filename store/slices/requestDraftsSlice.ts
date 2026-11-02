@@ -20,6 +20,7 @@ export interface RequestDraft {
   numberOfSeats: number;
   hasSpecifiedNumberOfSeats: boolean;
   selectedVehicleType: TripRequestVehicleType;
+  selectedVehicleTypes: TripRequestVehicleType[];
   maxPricePerSeat: string;
   hasEditedBudget: boolean;
   requestPaymentMode: TripPaymentMode;
@@ -39,7 +40,7 @@ export function createRequestDraft(departureDateMinMs: number, flexibilityMinute
     departureLocation: null, arrivalLocation: null,
     departureManualAddress: '', arrivalManualAddress: '', departureReference: '', arrivalReference: '',
     timePreset: 'custom', hasChosenDepartureTime: false, departureDateMinMs, flexibilityMinutes,
-    numberOfSeats: 1, hasSpecifiedNumberOfSeats: false, selectedVehicleType: 'car',
+    numberOfSeats: 1, hasSpecifiedNumberOfSeats: false, selectedVehicleType: 'car', selectedVehicleTypes: ['car'],
     maxPricePerSeat: '', hasEditedBudget: false, requestPaymentMode: 'cash', description: '',
   };
 }
@@ -54,7 +55,17 @@ const slice = createSlice({
     changeRequestDraft(state, { payload }: PayloadAction<{ id: string; change: RequestDraftChange }>) {
       const draft = state.byId[payload.id];
       // Late async results must not resurrect a closed form or a logged-out session.
-      if (draft) Object.assign(draft, { [payload.change.field]: payload.change.value });
+      if (!draft) return;
+      const change = payload.change;
+      if (change.field === 'selectedVehicleTypes') {
+        if (!change.value.length) return;
+        draft.selectedVehicleTypes = [...new Set(change.value)];
+        draft.selectedVehicleType = draft.selectedVehicleTypes[0];
+      } else if (change.field === 'selectedVehicleType') {
+        // The pricing effect must not erase additional choices on a no-op.
+        if (change.value !== draft.selectedVehicleType) draft.selectedVehicleTypes = [change.value];
+        draft.selectedVehicleType = change.value;
+      } else Object.assign(draft, { [change.field]: change.value });
     },
     discardRequestDraft(state, { payload }: PayloadAction<string>) { delete state.byId[payload]; },
     resetRequestDrafts: () => initialState,

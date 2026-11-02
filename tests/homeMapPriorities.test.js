@@ -63,6 +63,7 @@ test('priorities never resize or move the map, sheet, camera padding or location
     for (const height of [568, 844, 1024]) {
       const hooks = hookHarness();
       const { useHomeSheet } = loader({ react: hooks.react,
+        '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true },
         'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
       const props = { isDriver: true, width: 390, height, insets: { top: 44, bottom: 34 },
         latestTrips: [], availableDriverRequests: [], hasMapPriorities: false };
