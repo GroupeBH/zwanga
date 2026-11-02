@@ -302,7 +302,7 @@ test('passenger activity excludes own, linked and expired requests and preserves
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/store/api/tripRequestApi': {
       useGetMyActivityRequestsQuery: () => ({ data: [request('foreign-cache'), request('own', { passengerId: 'me' })] }),
-      useGetAvailableTripRequestsQuery: (_args, options) => { calls.push(options); return { data: requests }; },
+      useGetHomeTripRequestsQuery: (_args, options) => { calls.push(options); return { data: requests }; },
     },
   });
   const { useHomePassengerActivity } = app.load('hooks/home/useHomePassengerActivity.ts');

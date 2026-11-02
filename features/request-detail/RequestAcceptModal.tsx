@@ -140,7 +140,7 @@ export function RequestAcceptModal({
               <View style={styles.directAcceptSummaryRow}>
                 <Ionicons name={TRIP_REQUEST_VEHICLE_ICONS[requestedVehicleType]} size={17} color={Colors.primary} />
                 <Text style={styles.directAcceptSummaryText}>
-                  {TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]} demandée
+                  {TRIP_REQUEST_VEHICLE_LABELS[normalizeTripRequestVehicleType(directAcceptVehicle?.type ?? requestedVehicleType)]} sélectionnée
                 </Text>
               </View>
             </View>

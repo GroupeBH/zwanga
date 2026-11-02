@@ -41,10 +41,31 @@ function setup(t) {
   };
 }
 
+test('Home discovery has its own bounded scope and shares request-list invalidation', async t => {
+  const calls = [];
+  const baseApi = createApi({ reducerPath: 'auditApi', tagTypes: ['TripRequest'],
+    baseQuery: async arg => { calls.push(arg); return { data: [] }; }, endpoints: () => ({}) });
+  const identity = value => value;
+  loader({ './baseApi': { baseApi }, './tripApi': { mapServerTripToClient: identity },
+    './trip-request/requestMapper': { mapServerTripRequestToClient: identity },
+  })('store/api/tripRequestApi.ts');
+  const store = configureStore({ reducer: { auditApi: baseApi.reducer },
+    middleware: defaults => defaults().concat(baseApi.middleware) });
+  t.after(() => store.dispatch(baseApi.util.resetApiState()));
+  await store.dispatch(baseApi.endpoints.getHomeTripRequests.initiate());
+  assert.deepEqual(calls, [{ url: '/trip-requests', params: { scope: 'home' } }]);
+  await store.dispatch(baseApi.endpoints.getAvailableTripRequests.initiate());
+  assert.equal(calls.at(-1), '/trip-requests', 'full discovery keeps its existing scope');
+  store.dispatch(baseApi.util.invalidateTags([{ type: 'TripRequest', id: 'LIST' }]));
+  await Promise.all(store.dispatch(baseApi.util.getRunningQueriesThunk()));
+  assert.equal(calls.filter(arg => arg?.params?.scope === 'home').length, 2);
+});
+
 test('acceptance removes only the confirmed request while refetch is pending', async t => {
   const ctx = setup(t);
   const first = { id: 'a', status: 'pending' }, other = { id: 'b', status: 'pending' };
   await ctx.put('getAvailableTripRequests', [first, other]);
+  await ctx.put('getHomeTripRequests', [first, other]);
   await ctx.put('getTripRequestById', first, 'a');
   await ctx.put('getMyTripRequests', [first]);
   await ctx.put('getMyActivityRequests', [first]);
@@ -54,6 +75,7 @@ test('acceptance removes only the confirmed request while refetch is pending', a
   ctx.complete({ data: { trip: { id: 'trip' }, tripRequest: accepted } });
   await action.unwrap();
   assert.deepEqual(ctx.read('getAvailableTripRequests'), [other]);
+  assert.deepEqual(ctx.read('getHomeTripRequests'), [other]);
   assert.deepEqual(ctx.read('getTripRequestById', 'a'), accepted);
   assert.deepEqual(ctx.read('getMyTripRequests'), [accepted]);
   assert.deepEqual(ctx.read('getMyActivityRequests'), [accepted]);

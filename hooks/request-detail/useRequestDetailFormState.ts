@@ -17,7 +17,8 @@ export function useRequestDetailFormState() {
   const [editDepartureDateMin, setEditDepartureDateMin] = useState<Date | null>(null);
   const [editDepartureDateMax, setEditDepartureDateMax] = useState<Date | null>(null);
   const [editNumberOfSeats, setEditNumberOfSeats] = useState('');
-  const [editVehicleType, setEditVehicleType] = useState<TripRequestVehicleType>('car');
+  const [editVehicleTypes, setEditVehicleTypes] = useState<TripRequestVehicleType[]>(['car']);
+  const editVehicleType = editVehicleTypes[0];
   const [editDescription, setEditDescription] = useState('');
   const [editIosPickerModeMin, setEditIosPickerModeMin] = useState<'date' | 'time' | null>(null);
   const [editIosPickerModeMax, setEditIosPickerModeMax] = useState<'date' | 'time' | null>(null);
@@ -66,6 +67,7 @@ export function useRequestDetailFormState() {
     editNumberOfSeats,
     showEditForm,
     editVehicleType,
+    editVehicleTypes,
     editDepartureReference,
     editArrivalReference,
     setShowEditForm,
@@ -89,7 +91,7 @@ export function useRequestDetailFormState() {
     directAcceptDepartureReference,
     directAcceptArrivalReference,
     setAreDirectOptionsExpanded,
-    setEditVehicleType,
+    setEditVehicleTypes,
     setEditAddressInputMode,
     setEditDepartureLocation,
     setEditDepartureManualAddress,

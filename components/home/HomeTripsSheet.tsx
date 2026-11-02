@@ -23,7 +23,7 @@ type Props =
   Pick<ReturnType<typeof useHomeSheet>,
     'sheetBottomOffset' | 'sheetHeight' | 'onSheetLayout'
     | 'effectiveTripsSheetOpen' | 'toggleTripsSheet' | 'sheetTitle' | 'openSheetIndex'
-    | 'sheetLoading' | 'sheetError'
+    | 'sheetLoading' | 'sheetError' | 'sheetOffline'
     | 'refetchSheetContent' | 'sheetEmpty'>
   & Pick<ReturnType<typeof useHomeTripSelection>, 'isHomeSheetLockedRetracted' | 'latestTrips' | 'suggestionScopeLabel' | 'featuredPassengerTrip'>
   & Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isScreenActive' | 'router'>
@@ -39,12 +39,13 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   openSheetIndex, isDriver, isScreenActive, highlightedDriverRequest,
   dismissPriority, hiddenHomePriorities, prioritiesEnabled,
   availableDriverRequests, sheetLoading,
-  sheetError, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
+  sheetError, sheetOffline, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
   openTripDetail, router, recentDestinations, featuredPassengerTrip,
 }: Props) {
   const showRequests = isDriver;
   const clientCount = availableDriverRequests.length;
-  const clientCountLabel = clientCount >= RECENT_TRIPS_LIMIT ? `${RECENT_TRIPS_LIMIT}+` : String(clientCount);
+  const countUnknown = !clientCount && (sheetOffline || sheetLoading || sheetError);
+  const clientCountLabel = countUnknown ? '—' : clientCount >= RECENT_TRIPS_LIMIT ? `${RECENT_TRIPS_LIMIT}+` : String(clientCount);
   const suggestionTrip = latestTrips.find(trip => !bookedTripIds.has(trip.id))
     ?? latestTrips.find(trip => trip.id !== featuredPassengerTrip?.id);
   const featuredRequest = availableDriverRequests.find(
@@ -73,7 +74,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
               </TouchableOpacity>
               <View style={styles.metricsRow}>
                 <TouchableOpacity activeOpacity={0.8} style={styles.metricCard} accessibilityRole="button"
-                  accessibilityLabel={`${clientCountLabel} clients disponibles`}
+                  accessibilityLabel={countUnknown ? 'Voir les clients, nombre indisponible' : `${clientCountLabel} clients disponibles`}
                   onPress={openSheetIndex}>
                   <Text style={styles.metricLabel}>Clients près de vous</Text>
                   <Text style={styles.metricValue}>{clientCountLabel}</Text>
@@ -85,12 +86,12 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           ) : (
             <>
               <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
-                accessibilityLabel="Où allez-vous ?" accessibilityHint="Chercher un trajet publié ou commander un véhicule."
-                style={styles.searchBar} onPress={() => router.push('/search')}>
+                accessibilityLabel="Où allez-vous ?" accessibilityHint="Ouvrir le formulaire de demande de trajet."
+                style={styles.searchBar} onPress={() => router.push(getTripRequestCreateHref())}>
                 <Ionicons name="search-outline" size={24} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
                 <View style={styles.searchCopy}>
                   <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
-                  <Text style={styles.searchHint}>Trajets publiés ou véhicule à commander</Text>
+                  <Text style={styles.searchHint}>Un conducteur vient vous chercher</Text>
                 </View>
               </TouchableOpacity>
               <HomeDestinationShortcuts active={isScreenActive} recentDestinations={recentDestinations} />
@@ -107,8 +108,15 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
               <Ionicons name="chevron-forward" size={16} color={HOME_DASHBOARD_COLORS.orange} accessible={false} />
             </TouchableOpacity>
           </View>
-          {sheetLoading && !hasSuggestion ? <HomeSheetLoadingState active={isScreenActive} /> : null}
-          {sheetError && !hasSuggestion ? (
+          {sheetOffline && !hasSuggestion ? (
+            <View style={styles.stateRow} accessibilityLiveRegion="polite">
+              <Text style={styles.stateText}>{showRequests
+                ? 'Connectez-vous à Internet pour voir les clients.'
+                : 'Connectez-vous à Internet pour voir les trajets.'}</Text>
+            </View>
+          ) : null}
+          {!sheetOffline && sheetLoading && !hasSuggestion ? <HomeSheetLoadingState active={isScreenActive} /> : null}
+          {!sheetOffline && sheetError && !hasSuggestion ? (
             <View style={styles.stateRow}>
               <Text style={styles.stateText}>Chargement impossible.</Text>
               <TouchableOpacity style={styles.retryButton} onPress={refetchSheetContent} accessibilityRole="button">
@@ -116,7 +124,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
               </TouchableOpacity>
             </View>
           ) : null}
-          {!sheetLoading && !sheetError && !hasSuggestion ? (
+          {!sheetOffline && !sheetLoading && !sheetError && !hasSuggestion ? (
             <View style={styles.emptyState}>
               <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
               <Text style={styles.emptyText}>

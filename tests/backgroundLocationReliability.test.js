@@ -66,15 +66,16 @@ test('an old saved checkpoint cannot invent a crossing, while two fresh observat
 function driverFixture() {
   let callback, tokenFailure = false, diskFailure = false;
   let stored = JSON.stringify({ tripId: 'test-trip' }), stops = 0, sends = 0;
+  const token = `x.${Buffer.from(JSON.stringify({ sub: 'synthetic-driver', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.x`;
   const load = loader({
     'expo-constants': { expoConfig: { extra: {} } },
-    'expo-secure-store': { getItemAsync: async () => {
+    'expo-secure-store': { getItemAsync: async key => {
       if (tokenFailure) throw new Error('temporary secure read failure');
-      return 'synthetic-token';
+      return key === 'zwanga.session-pair.v2' ? null : token;
     } },
     './logoutIntent': { hasLogoutIntent: async () => false },
     '../store/api/authRefreshApi': {}, '../store/storeAccessor': {},
-    '../utils/jwt': { isTokenExpired: () => false }, './networkRecovery': {},
+    './networkRecovery': {},
     '@react-native-async-storage/async-storage': {
       getItem: async () => { if (diskFailure) throw new Error('temporary session read failure'); return stored; },
       setItem: async (_key, value) => { stored = value; }, removeItem: async () => { stored = null; },

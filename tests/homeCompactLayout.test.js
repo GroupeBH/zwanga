@@ -66,7 +66,7 @@ test('Home header has no permission button; contextual onboarding replaces the b
 test('Home identity uses the signed-in first name for both roles, never an available photo or a fake city name', () => {
   for (const isDriver of [true, false]) {
     const hooks = hookHarness();
-    const { useHomeSheet } = loader({ react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
+    const { useHomeSheet } = loader({ '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true }, react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
     const props = { isDriver, width: 390, height: 844, insets: { bottom: 34 }, latestTrips: [], availableDriverRequests: [] };
     for (const [currentUser, expected, initial] of [
       [{ firstName: '  élise  ', name: 'Nom différent', profilePicture: 'photo-test', avatar: 'avatar-test' }, 'élise', 'N'],
@@ -100,7 +100,7 @@ test('profile button renders only one uppercase initial even when photo props ex
   assert.deepEqual(calls, Array(4).fill('/profile'));
 });
 
-test('passenger search leads to trips or ordering; proposing stays reachable as a secondary link', () => {
+test('passenger destination opens the request form directly; proposing stays reachable as a secondary link', () => {
   const calls = [];
   const tree = HomeTripsSheet.type({ ...base, router: { push: route => calls.push(route) } });
   for (const label of ['Où allez-vous ?', 'Proposer un trajet']) {
@@ -114,8 +114,11 @@ test('passenger search leads to trips or ordering; proposing stays reachable as 
     }
     button.props.onPress();
   }
-  assert.deepEqual(calls, ['/search', '/publish']);
-  assert.match(text(tree), /véhicule à commander/, 'the search entry announces ordering, now offered on /search');
+  assert.deepEqual(calls, [{ pathname: '/request-create' }, '/publish']);
+  assert.match(text(tree), /Un conducteur vient vous chercher/);
+  assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Où allez-vous ?').props.accessibilityHint,
+    'Ouvrir le formulaire de demande de trajet.');
+  assert.doesNotMatch(text(tree), /Trajets publiés ou véhicule à commander/);
   assert.match(text(tree), /Vous avez un véhicule \? Proposer un trajet/);
   assert.equal(nodes(tree).some(node => node.type === 'Button' && text(node) === 'Commander'), false);
   assert.doesNotMatch(text(tree), /Bonjour/);
@@ -236,7 +239,7 @@ test('cached suggestions remain visible during loading and errors without a bloc
 
 test('loading or failed discovery never hides personal reservations supplied separately', () => {
   const hooks = hookHarness();
-  const { useHomeSheet } = loader({ react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
+  const { useHomeSheet } = loader({ '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true }, react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
   const props = { isDriver: false, width: 390, height: 844, insets: { bottom: 34 },
     latestTrips: [trip], availableDriverRequests: [], tripsLoading: true, tripsError: false };
   const draw = () => hooks.render(() => useHomeSheet(props));
@@ -249,7 +252,7 @@ test('loading or failed discovery never hides personal reservations supplied sep
 test('dashboard starts open, preserves voluntary collapse and restores the choice after a ride', () => {
   for (const isDriver of [true, false]) {
     const hooks = hookHarness();
-    const { useHomeSheet } = loader({ react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
+    const { useHomeSheet } = loader({ '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true }, react: hooks.react, 'react-native': native })('hooks/home/useHomeSheet.ts');
     const props = { isDriver, width: 390, height: 844, insets: { bottom: 34 }, currentUser: {},
       latestTrips: [], availableDriverRequests: [], isScreenActive: true, isHomeSheetLockedRetracted: false };
     const draw = () => hooks.render(() => useHomeSheet(props));
@@ -371,7 +374,7 @@ test('native measurements position the control without layout loops and reject i
         return updated;
       })];
     } };
-    const { useHomeSheet } = loader({ react, 'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
+    const { useHomeSheet } = loader({ '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true }, react, 'react-native': { ...native, Platform: { OS: platform } } })('hooks/home/useHomeSheet.ts');
     const { Spacing } = load('constants/styles.ts');
     const props = { isDriver: true, width: 390, height: 844, insets: { bottom: 34 }, latestTrips: [], availableDriverRequests: [] };
     const draw = () => hooks.render(() => useHomeSheet(props));

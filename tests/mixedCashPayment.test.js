@@ -39,8 +39,8 @@ function fixture(t) {
     'expo-linking': { createURL: () => '' },
   })('hooks/arrival-payment/useMixedCashPayment.ts');
   const render = () => hooks.render(() => useMixedCashPayment(state, { showCompletionSummary: async b => summaries.push(b) }));
-  const success = () => resolve({ id: 'booking', paymentMode: 'cash', paymentAmount: 3920,
-    mixedTokenAmount: 580, mixedTokenQuantity: 58, mixedPaymentAt: '2026-10-22T10:00:00Z' });
+  const success = (booking = { id: 'booking', paymentMode: 'cash', paymentAmount: 3920,
+    mixedTokenAmount: 580, mixedTokenQuantity: 58, mixedPaymentAt: '2026-10-22T10:00:00Z' }) => resolve(booking);
   t.after(() => hooks.unmount());
   return { render, state, calls, summaries, errors, success, fail: e => reject(e), unsupported: () => { supported = false; } };
 }
@@ -72,6 +72,29 @@ test('a business rejection clears the intent without presenting cash as received
   const pending = f.render().submit(); f.fail({ status: 409 }); await pending;
   assert.equal(f.render().pending, false); assert.equal(f.summaries.length, 0);
   assert.ok(f.errors.at(-1));
+});
+
+test('3500 FC: retry after the old top-up conflict keeps the selected 65 tokens + cash and shows only 2850 cash', async t => {
+  const f = fixture(t);
+  Object.assign(f.state, { paymentAmount: 3500, pointsUsed: 65, amountCoveredByPoints: 650, missingPoints: 285 });
+  f.render().selectCash(true);
+  const first = f.render().submit();
+  f.fail({ status: 409, data: { message: 'Un paiement Mobile Money doit être vérifié avant de choisir les espèces.' } });
+  await first;
+  assert.equal(f.render().pending, false);
+  assert.equal(f.render().cashSelected, true);
+  const retry = f.render().submit();
+  assert.equal(f.errors.at(-1), '');
+  assert.deepEqual(f.calls[1], { bookingId: 'booking', expectedAmount: 3500,
+    expectedTokenAmount: 650, tokenQuantity: 65, currency: 'CDF' });
+  f.success({ id: 'booking', paymentMode: 'cash', paymentAmount: 2850, paymentCurrency: 'CDF',
+    mixedTokenAmount: 650, mixedTokenQuantity: 65, mixedPaymentAt: '2026-11-02T10:00:00Z' });
+  await retry;
+  assert.equal(f.summaries.length, 1);
+  assert.equal(f.summaries[0].paymentAmount, 2850);
+  assert.equal(f.summaries[0].cashReceivedAt, undefined);
+  assert.equal(f.state.activeStoredState.mixedCashIntent, null);
+  assert.ok(f.state.activeStoredState.mixedCashReceipt);
 });
 
 test('before arrival, zero tokens, old backend and pending Mobile Money never start mixed payment', async t => {

@@ -1,3 +1,4 @@
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import {
   RequestRouteMapData,
@@ -122,7 +123,7 @@ export function RequestPassengerSummary({
         <View style={styles.driverVehicleCopy}>
           <Text style={styles.driverVehicleEyebrow}>Véhicule demandé</Text>
           <Text style={styles.driverVehicleName}>
-            {TRIP_REQUEST_VEHICLE_LABELS[requestedVehicleType]}
+            {requestVehicleLabel(tripRequest)}
           </Text>
           <Text style={styles.driverVehicleHint}>
             Choisi pour {tripRequest.numberOfSeats} place{tripRequest.numberOfSeats > 1 ? 's' : ''}

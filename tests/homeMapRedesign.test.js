@@ -12,7 +12,7 @@ const load = loader({ './homeMapAssets': assets,
   '@expo/vector-icons': { Ionicons: 'Icon' },
   './HomeDriverStatus': { HomeDriverStatus: 'HomeDriverStatus' } });
 const { buildHomeMapMarkers, homeMapMarkerSummary, HOME_MAP_MARKER_LIMIT } = load('features/home/homeMapMarkers.ts');
-const { homeDriverStatusView, RECENT_DRIVER_POSITION_MS } = load('features/home/homeDriverStatus.ts');
+const { homeDriverStatusView, RECENT_DRIVER_POSITION_MS, DRIVER_ALERT_LOCATION_MAX_AGE_MS } = load('features/home/homeDriverStatus.ts');
 const { homePriorityKeys } = load('features/home/homePriorityDismissal.ts');
 const { HomeHeader } = load('components/home/HomeHeader.tsx');
 
@@ -83,6 +83,20 @@ test('driver status describes server availability without promising push deliver
   legacy.presence.discoveryEnabled = false;
   assert.equal(homeDriverStatusView({ online: true, data: legacy, now }).title, 'Demandes désactivées');
   assert.equal(homeDriverStatusView({ online: true, data: status(true, null), now }).tone, 'warn');
+});
+
+test('48-hour alert cutoff asks to refresh without promising notification delivery', () => {
+  const now = Date.parse('2026-11-02T12:00:00Z');
+  const view = age => homeDriverStatusView({ online: true, now, data: {
+    enabled: true, available: true, pendingOfferId: null,
+    presence: { discoveryEnabled: true, updatedAt: new Date(now - age).toISOString() },
+  } });
+  assert.equal(DRIVER_ALERT_LOCATION_MAX_AGE_MS, 48 * 3600_000);
+  assert.equal(view(DRIVER_ALERT_LOCATION_MAX_AGE_MS - 1).title, 'Position ancienne');
+  for (const age of [DRIVER_ALERT_LOCATION_MAX_AGE_MS, 72 * 3600_000]) {
+    assert.deepEqual(view(age), { tone: 'warn', title: 'Position à actualiser',
+      detail: 'Touchez pour recevoir de nouvelles demandes', action: 'refresh' });
+  }
 });
 
 test('driver header shows the alert status; the ongoing-trip pill opens the same guidance as the banner', () => {

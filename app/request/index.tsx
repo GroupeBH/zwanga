@@ -24,14 +24,19 @@ import { RequestRouteStep } from '@/components/trip-request/RequestRouteStep';
 import { RequestScheduleFields } from '@/components/trip-request/RequestScheduleFields';
 import { RequestSuccessModal } from '@/components/trip-request/RequestSuccessModal';
 import { useRequestTripController } from '@/hooks/trip-request/useRequestTripController';
+import { useRequestFormNavigation } from '@/hooks/trip-request/useRequestFormNavigation';
 
 export default function RequestTripScreen() {
   const form = useRequestTripController();
+  const navigation = useRequestFormNavigation(form);
   return (
     <FormScreen style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => form.router.back()} style={styles.headerButton}
-          accessibilityRole="button" accessibilityLabel="Retour">
+        <TouchableOpacity onPress={navigation.handleBack}
+          style={[styles.headerButton, navigation.backDisabled && styles.mainButtonDisabled]}
+          disabled={navigation.backDisabled} accessibilityState={{ disabled: navigation.backDisabled }}
+          accessibilityRole="button" accessibilityLabel={form.requestFormStep === 'details'
+            ? 'Revenir à la première étape : départ et arrivée' : 'Retour'}>
           <Ionicons name="chevron-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Commander un trajet</Text>
@@ -43,6 +48,7 @@ export default function RequestTripScreen() {
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <ScrollView
+          ref={navigation.scrollRef}
           contentContainerStyle={[
             styles.content,
             form.requestFormStep === 'route' ? styles.routeContent : styles.detailsContent,
@@ -70,14 +76,15 @@ export default function RequestTripScreen() {
               hasDepartureAddress={form.hasDepartureAddress}
               openPickerFor={form.openPickerFor}
               quickPlaceResolvingKey={form.quickPlaceResolvingKey}
-              selectedVehicleType={form.selectedVehicleType}
+              selectedVehicleTypes={form.selectedVehicleTypes}
               setArrivalLocation={form.setArrivalLocation}
               setArrivalManualAddress={form.setArrivalManualAddress}
               setArrivalReference={form.setArrivalReference}
               setDepartureLocation={form.setDepartureLocation}
               setDepartureManualAddress={form.setDepartureManualAddress}
               setDepartureReference={form.setDepartureReference}
-              setSelectedVehicleType={form.setSelectedVehicleType}
+              setSelectedVehicleTypes={form.setSelectedVehicleTypes}
+              numberOfSeats={form.numberOfSeats}
               setShowQuickLandmarks={form.setShowQuickLandmarks}
               showQuickLandmarks={form.showQuickLandmarks}
               swapRoutePoints={form.swapRoutePoints}
@@ -97,7 +104,8 @@ export default function RequestTripScreen() {
                 routeCoordinates={form.routeCoordinates}
                 routeDistanceLabel={form.routeDistanceLabel}
                 routePreviewRegion={form.routePreviewRegion}
-                setRequestFormStep={form.setRequestFormStep}
+                onEditRoute={navigation.returnToRoute}
+                editDisabled={navigation.backDisabled}
               />
 
               <View style={styles.offerSheet}>
@@ -125,7 +133,7 @@ export default function RequestTripScreen() {
                   requestSeatsLabel={form.requestSeatsLabel}
                   hasSpecifiedNumberOfSeats={form.hasSpecifiedNumberOfSeats}
                   numberOfSeats={form.numberOfSeats}
-                  selectedVehicleType={form.selectedVehicleType}
+                  selectedVehicleTypes={form.selectedVehicleTypes}
                   setHasSpecifiedNumberOfSeats={form.setHasSpecifiedNumberOfSeats}
                   setNumberOfSeats={form.setNumberOfSeats}
                   requestPaymentMode={form.requestPaymentMode}
@@ -136,6 +144,7 @@ export default function RequestTripScreen() {
                   setDescription={form.setDescription}
                 />
                 <RequestDriverPicker departure={form.departureLocation} vehicleType={form.selectedVehicleType}
+                  vehicleTypes={form.selectedVehicleTypes}
                   seats={form.hasSpecifiedNumberOfSeats ? form.numberOfSeats : 1} selected={form.targetDriver}
                   onSelect={form.setTargetDriver} disabled={form.isCreating} />
               </View>
@@ -156,6 +165,14 @@ export default function RequestTripScreen() {
 
       {form.requestFormStep === 'details' && !form.isRequestSuccessVisible && (
         <View style={styles.offerStickyFooter}>
+          <TouchableOpacity onPress={navigation.returnToRoute}
+            style={[styles.previousStepButton, navigation.backDisabled && styles.mainButtonDisabled]}
+            disabled={navigation.backDisabled} accessibilityRole="button"
+            accessibilityLabel="Étape précédente : départ et arrivée"
+            accessibilityState={{ disabled: navigation.backDisabled }}>
+            <Ionicons name="chevron-back" size={18} color={Colors.gray[700]} />
+            <Text style={styles.previousStepText}>Étape précédente</Text>
+          </TouchableOpacity>
           {form.submissionError ? (
             <View style={styles.submissionErrorBanner}>
               <Ionicons name="alert-circle" size={18} color={Colors.danger} />

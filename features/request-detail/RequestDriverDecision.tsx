@@ -1,3 +1,4 @@
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
@@ -37,7 +38,7 @@ export function RequestDriverDecision({ model, presentation }: {
       <View style={styles.summaryTop}>
         <View style={styles.passengerCopy}>
           <Text style={styles.passenger}>{request.passengerName || 'Un passager'}</Text>
-          <Text style={styles.muted}>{request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''} · {TRIP_REQUEST_VEHICLE_LABELS[model.requestedVehicleType]}</Text>
+          <Text style={styles.muted}>{request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''} · {requestVehicleLabel(request)}</Text>
         </View>
         <View style={styles.fare}>
           <Text style={styles.amount}>{price != null ? formatCdfPrice(price) : 'Prix à convenir'}</Text>

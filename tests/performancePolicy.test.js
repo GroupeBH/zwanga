@@ -284,11 +284,11 @@ test('queue refuses extra pending reads without blocking later work', async () =
 
 test('startup uses valid local tokens without a network refresh', async () => {
   let requests = 0;
+  const token = `x.${Buffer.from(JSON.stringify({ sub: 'synthetic-user', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.x`;
   const { validateAndRefreshTokens } = loader({
     '../store/api/authRefreshApi': { authRefreshApi: {} },
     '../store/storeAccessor': { getStoreDispatch: () => () => { requests++; throw new Error('unexpected network'); } },
-    '../utils/jwt': { isTokenExpired: () => false },
-    './tokenStorage': { getTokens: async () => ({ accessToken: 'access', refreshToken: 'refresh' }) },
+    './tokenStorage': { getTokens: async () => ({ accessToken: token, refreshToken: token }) },
   })('services/tokenRefresh.ts');
   assert.equal(await validateAndRefreshTokens(), true);
   assert.equal(requests, 0);

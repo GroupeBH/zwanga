@@ -3,8 +3,9 @@ import { getEditScheduleError } from '../../features/request-detail/requestDetai
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { usePassengerIdentityVerification } from '@/hooks/usePassengerIdentityVerification';
+import { requestVehicleSeatCapacity } from '@/features/trip-request/vehicleSelection';
 import { useEditRequestPricing } from '@/hooks/trip-request/useEditRequestPricing';
-import { getPassengerSeatValidation, getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
+import { getPassengerSeatValidation } from '@/utils/passengerSeats';
 import type { TripRequestVehicleType } from '@/types';
 import React from 'react';
 import type { TripRequest } from '@/types';
@@ -19,6 +20,7 @@ interface Params {
   showEditForm: boolean;
   tripRequest: TripRequest | undefined;
   editVehicleType: TripRequestVehicleType;
+  editVehicleTypes: TripRequestVehicleType[];
   editDepartureReference: string;
   editArrivalReference: string;
   setShowEditForm: React.Dispatch<React.SetStateAction<boolean>>;
@@ -36,6 +38,7 @@ export function useRequestEditValidation({
   showEditForm,
   tripRequest,
   editVehicleType,
+  editVehicleTypes,
   editDepartureReference,
   editArrivalReference,
   setShowEditForm,
@@ -75,18 +78,15 @@ export function useRequestEditValidation({
     numberOfSeats: parsedEditNumberOfSeats,
     hasSpecifiedNumberOfSeats: true,
   });
-  const editSeatCapacity = getPassengerVehicleSeatCapacity(editVehicleType);
+  const editSeatCapacity = requestVehicleSeatCapacity(editVehicleTypes);
   const openEditIdentityVerification = usePassengerIdentityVerification(
     () => setShowEditForm(false),
     () => setShowEditForm(true),
   );
-  const selectedEditVehicleOption = editVehicleOptions.find(
-    (option) => option.vehicleType === editVehicleType,
-  );
-  const isEditVehicleSelectionValid = Boolean(
-    selectedEditVehicleOption?.availableForRequestedSeats
-    || (!selectedEditVehicleOption && isEditVehicleOptionsError && isEditBudgetValid),
-  );
+  const isEditVehicleSelectionValid = editVehicleTypes.length > 0 && editVehicleTypes.every(type => {
+    const option = editVehicleOptions.find(option => option.vehicleType === type);
+    return option?.availableForRequestedSeats || (!option && isEditVehicleOptionsError && isEditBudgetValid);
+  });
   const editScheduleError = getEditScheduleError(
     editDepartureDateMin,
     editDepartureDateMax,

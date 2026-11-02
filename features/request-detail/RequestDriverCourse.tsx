@@ -1,3 +1,4 @@
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -40,7 +41,7 @@ export function RequestDriverCourse({ model, presentation }: { model: Model; pre
       <RouteLocationDetails labels={labels} />
     </View>
     <View style={s.card}>
-      <View style={s.row}><Text style={s.muted}>Véhicule demandé</Text><Text style={s.name}>{TRIP_REQUEST_VEHICLE_LABELS[model.requestedVehicleType]}</Text></View>
+      <View style={s.row}><Text style={s.muted}>Véhicule demandé</Text><Text style={s.name}>{requestVehicleLabel(request)}</Text></View>
       <View style={local.rule} />
       <View style={s.row}><Text style={s.muted}>Passagers</Text><Text style={s.name}>{request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text></View>
       <View style={local.rule} />

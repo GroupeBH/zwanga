@@ -26,13 +26,16 @@ public final class RideCardDelivery {
         NativeRideDelivery.receipts(c).optJSONObject(receipt).optBoolean("displayed")) return true;
     if (!inFlight.add(receipt)) return false;
     try {
+      NativeRideDelivery.receipt(c, user, receipt, false);
       String channel = NativeRideDelivery.prefs(c).getString("channel", "");
       NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
-      if (!RideNotificationBundle.channel(channel) || manager == null || !manager.areNotificationsEnabled()) return true;
+      if (!RideNotificationBundle.channel(channel) || manager == null || !manager.areNotificationsEnabled()) {
+        NativeRideDelivery.audio(c, user, receipt, "audio_suppressed", "NOTIFICATIONS_DISABLED"); return true;
+      }
       if (android.os.Build.VERSION.SDK_INT >= 26) {
         android.app.NotificationChannel settings = manager.getNotificationChannel(channel);
         if (settings == null) return false;
-        if (settings.getImportance() == 0) return true;
+        if (settings.getImportance() == 0) { NativeRideDelivery.audio(c, user, receipt, "audio_suppressed", "NOTIFICATIONS_DISABLED"); return true; }
         if (android.os.Build.VERSION.SDK_INT >= 28 && settings.getGroup() != null &&
             manager.getNotificationChannelGroup(settings.getGroup()) != null && manager.getNotificationChannelGroup(settings.getGroup()).isBlocked()) return true;
       }
@@ -87,6 +90,8 @@ public final class RideCardDelivery {
     synchronized (NativeRideDelivery.LOCK) {
       if (completed.get() || !NativeRideDelivery.owns(c, data.get("driverId")) ||
           !RideNotificationBundle.valid(data, System.currentTimeMillis())) return;
+      org.json.JSONObject previous = NativeRideDelivery.receipts(c).optJSONObject(data.get("notificationId"));
+      if (previous != null && previous.optBoolean("displayed")) return;
       NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
       if (manager == null) return;
       if (!posted(manager, card)) {

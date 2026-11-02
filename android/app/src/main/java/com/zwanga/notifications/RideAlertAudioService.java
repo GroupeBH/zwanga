@@ -76,17 +76,24 @@ public final class RideAlertAudioService extends Service {
     } catch (Exception ignored) { return false; }
   }
   static boolean startPublished(Context c, String id) {
+    Bundle report = null;
     try {
       if (Build.VERSION.SDK_INT < 26 || id == null || NativeRideDelivery.foreground()) return false;
       Notification live = RidePresentationExpiry.find(c, id); Bundle data = data(live);
+      report = data;
       if (data == null || !NativeRideDelivery.owns(c, data.getString("driverId")) ||
-          deadline(data, System.currentTimeMillis()) <= System.currentTimeMillis() || !allowed(c, originalChannel(live))) return false;
+          deadline(data, System.currentTimeMillis()) <= System.currentTimeMillis()) return false;
+      if (!allowed(c, originalChannel(live))) { audioObservation(c, data, "audio_suppressed", "DEVICE_POLICY"); return false; }
       c.startForegroundService(new Intent(c, RideAlertAudioService.class).putExtra("card", id).putExtra("identity", identity(data)));
       return true;
     } catch (Exception error) {
+      audioObservation(c, report, "audio_suppressed", "BACKGROUND_START_DENIED");
       // Includes ForegroundServiceStartNotAllowedException. Preserve the original OS card/sound.
       android.util.Log.w("ZwangaRideAudio", "BACKGROUND_START_UNAVAILABLE"); return false;
     }
+  }
+  private static void audioObservation(Context c, Bundle data, String stage, String reason) {
+    if (data != null) NativeRideDelivery.audio(c, data.getString("driverId"), data.getString("notificationId"), stage, reason);
   }
   /** Invoked on the main thread only, immediately before the foreground player takes over. */
   static void handoff() {
@@ -159,9 +166,10 @@ public final class RideAlertAudioService extends Service {
       main.postDelayed(() -> { if (valid()) RidePresentationExpiry.schedulePublished(this, id); }, 150);
       player = new RideAlertAudioSession(this, manager.getNotificationChannel(channel).getSound(),
         Math.max(0, deadline - System.currentTimeMillis()), this::valid,
-        () -> main.post(() -> { if (generation == attempt) finishAlert(); }));
+        () -> main.post(() -> { if (generation == attempt) finishAlert(); }),
+        (stage, reason) -> audioObservation(this, data, stage, reason));
       main.post(tick); main.postDelayed(this::finishAlert, Math.max(0, deadline - System.currentTimeMillis()));
-    } catch (Exception error) { android.util.Log.w("ZwangaRideAudio", "BACKGROUND_PLAYER_UNAVAILABLE"); finishAlert(); }
+    } catch (Exception error) { audioObservation(this, data, "audio_failed", "PLAYER_ERROR"); android.util.Log.w("ZwangaRideAudio", "BACKGROUND_PLAYER_UNAVAILABLE"); finishAlert(); }
     return START_NOT_STICKY;
   }
   private boolean valid() {

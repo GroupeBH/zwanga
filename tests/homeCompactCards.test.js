@@ -192,7 +192,7 @@ test('invalid dates have readable fallbacks and cross-day departure windows pres
 test('dashboard proportions keep map space without changing locked or safe-area behavior', () => {
   for (const isDriver of [false, true]) {
     const hooks = hookHarness();
-    const { useHomeSheet } = loader({ 'react-native': native, react: hooks.react })('hooks/home/useHomeSheet.ts');
+    const { useHomeSheet } = loader({ '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true }, 'react-native': native, react: hooks.react })('hooks/home/useHomeSheet.ts');
     const props = { isDriver, currentUser: {}, width: 390, height: 844, insets: { bottom: 34 },
       latestTrips: [], availableDriverRequests: [], visibleDriverPassengerMarkers: [], router: { push() {} } };
     const draw = () => hooks.render(() => useHomeSheet(props));

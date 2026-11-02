@@ -3,7 +3,7 @@ import { homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeC
 import type { TripRequestPreviewCardProps } from '@/features/home/homeTypes';
 import React from 'react';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
-import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 
 export const TripRequestPreviewCard = React.memo(function TripRequestPreviewCard({
   cardWidth, onOpen, request,
@@ -20,7 +20,7 @@ export const TripRequestPreviewCard = React.memo(function TripRequestPreviewCard
       priceHint={hasBudget ? 'max / place' : undefined}
       departure={placeName(request.departure)}
       arrival={placeName(request.arrival)}
-      metadata={[homeSeatsLabel(request.numberOfSeats), request.vehicleType && getRegisteredVehicleTypeLabel(request.vehicleType)].filter(Boolean).join(' · ')}
+      metadata={[homeSeatsLabel(request.numberOfSeats), requestVehicleLabel(request)].filter(Boolean).join(' · ')}
       secondary={`${passengerName} · ${getTripRequestStatusMeta(request.status).label}`}
       avatarName={passengerName}
       avatarUri={request.passengerAvatar}

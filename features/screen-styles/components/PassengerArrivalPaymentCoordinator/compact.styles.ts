@@ -1,3 +1,4 @@
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { StyleSheet } from 'react-native';
 import { Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 
@@ -27,7 +28,7 @@ export const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.gray[200] },
   summaryLabel: { flex: 1, color: Colors.gray[600], fontSize: FontSizes.sm },
-  payButton: { minHeight: 50, borderRadius: 14, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center',
+  payButton: { minHeight: 50, borderRadius: 14, backgroundColor: ACTION_COLORS.orange, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', gap: 8, paddingHorizontal: Spacing.md, paddingVertical: 12 },
   payButtonText: { flexShrink: 1, color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold, textAlign: 'center' },
 });

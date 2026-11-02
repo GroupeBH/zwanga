@@ -11,10 +11,11 @@ import type { TripRequestVehicleType } from '@/types';
 type Props = {
   departure: { latitude: number; longitude: number } | null;
   vehicleType: TripRequestVehicleType; seats: number; disabled?: boolean;
+  vehicleTypes: TripRequestVehicleType[];
   selected: SelectedRequestDriver | null; onSelect: (driver: SelectedRequestDriver | null) => void;
 };
 
-export function RequestDriverPicker({ departure, vehicleType, seats, selected, onSelect, disabled }: Props) {
+export function RequestDriverPicker({ departure, vehicleType, vehicleTypes, seats, selected, onSelect, disabled }: Props) {
   const [visible, setVisible] = useState(false);
   const [mode, setMode] = useState<'nearby' | 'search'>('nearby');
   const [search, setSearch] = useState('');
@@ -25,7 +26,7 @@ export function RequestDriverPicker({ departure, vehicleType, seats, selected, o
   const ready = mode === 'nearby' || (debounced.length >= 2 && debounced === search.trim());
   const enabled = useDisplayReadsEnabled(active && visible && !!departure && ready);
   const query = useRequestDriverChoicesQuery({ latitude: departure?.latitude ?? 0, longitude: departure?.longitude ?? 0,
-    vehicleType, seats, ...(mode === 'search' ? { search: debounced } : {}) }, displayReadOptions(enabled));
+    vehicleType, vehicleTypes, seats, ...(mode === 'search' ? { search: debounced } : {}) }, displayReadOptions(enabled));
   const choose = (driver: SelectedRequestDriver | null) => { onSelect(driver); setVisible(false); };
   return <>
     <Pressable style={s.selector} onPress={() => setVisible(true)} disabled={disabled}
@@ -33,7 +34,7 @@ export function RequestDriverPicker({ departure, vehicleType, seats, selected, o
       <View style={s.icon}><Ionicons name="person-outline" size={21} color="#CE4613" /></View>
       <View style={s.grow}><Text style={s.name}>{selected?.name || 'Choisir un conducteur'}</Text>
         <Text style={s.caption}>{selected ? 'La demande sera envoyée uniquement à ce conducteur.' : 'Facultatif · Sinon, les conducteurs proches seront prévenus.'}</Text>
-        {selected && selected.vehicleType !== vehicleType && <Text style={s.error}>Le véhicule a changé. Choisissez à nouveau.</Text>}
+        {selected && !vehicleTypes.includes(selected.vehicleType) && <Text style={s.error}>Le véhicule a changé. Choisissez à nouveau.</Text>}
       </View>
       <Ionicons name="chevron-forward" size={19} color="#667085" />
     </Pressable>
@@ -65,7 +66,7 @@ export function RequestDriverPicker({ departure, vehicleType, seats, selected, o
           <FlatList style={s.list} keyboardShouldPersistTaps="handled" data={enabled && !query.isError && !query.isFetching ? query.currentData ?? [] : []}
             keyExtractor={driver => driver.id} initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3}
             renderItem={({ item }) => <Pressable style={[s.driver, selected?.id === item.id && s.selected]} accessibilityRole="button"
-              accessibilityLabel={`Choisir ${item.name}, ${item.vehicle}`} onPress={() => choose({ ...item, vehicleType })}>
+              accessibilityLabel={`Choisir ${item.name}, ${item.vehicle}`} onPress={() => choose({ ...item, vehicleType: item.vehicleType ?? vehicleType })}>
               <View style={s.avatar}><Text style={s.initial}>{item.name.trim().charAt(0).toLocaleUpperCase() || 'C'}</Text></View>
               <View style={s.grow}><Text style={s.name}>{item.name}</Text><Text style={s.caption}>{item.vehicle}</Text>
                 {Number.isFinite(Number(item.distanceKm)) && <Text style={s.caption}>À environ {Number(item.distanceKm).toLocaleString('fr-FR')} km du départ</Text>}

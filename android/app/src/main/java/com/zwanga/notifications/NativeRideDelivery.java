@@ -91,4 +91,19 @@ final class NativeRideDelivery {
       } catch (Exception ignored) { }
     }
   }
+  /** Bounded enum-only telemetry: no message, token, coordinates or audio recording. */
+  static void audio(Context c, String user, String id, String stage, String reason) {
+    synchronized (LOCK) {
+      if (!owns(c, user) || !RideNotificationBundle.uuid(id) ||
+          !("audio_started".equals(stage) || "audio_failed".equals(stage) || "audio_suppressed".equals(stage))) return;
+      try {
+        receipt(c, user, id, false);
+        JSONObject items = receipts(c), item = items.optJSONObject(id);
+        JSONObject events = item.optJSONObject("audioEvents");
+        if (events == null) events = new JSONObject();
+        if (!events.has(stage)) events.put(stage, new JSONObject().put("at", System.currentTimeMillis()).put("reason", reason));
+        item.put("audioEvents", events); prefs(c).edit().putString("receipts", items.toString()).apply();
+      } catch (Exception ignored) { /* Telemetry must never prevent ringing. */ }
+    }
+  }
 }

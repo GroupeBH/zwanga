@@ -5,7 +5,7 @@ import {
   useGetTripByIdQuery
 } from '@/store/api/tripApi';
 import {
-  useGetAvailableTripRequestsQuery,
+  useGetHomeTripRequestsQuery,
   useGetMyActivityRequestsQuery,
 } from '@/store/api/tripRequestApi';
 import { useMemo } from 'react';
@@ -37,12 +37,13 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
 
   const {
     data: availableTripRequests = EMPTY_HOME_TRIP_REQUESTS,
-    isLoading: availableTripRequestsLoading,
+    isLoading: availableLoading,
+    isUninitialized: availableUninitialized,
     isSuccess: availableReady,
     isFetching: availableFetching,
     isError: availableTripRequestsError,
     refetch: rawRefetchAvailableTripRequests,
-  } = useGetAvailableTripRequestsQuery(undefined, {
+  } = useGetHomeTripRequestsQuery(undefined, {
     ...displayReadOptions(enabled && isDriver, HOME_ACTIVITY_POLL_MS),
   });
   const refetchAvailableTripRequests = useDisplayRefetch(enabled && isDriver, 'available', rawRefetchAvailableTripRequests);
@@ -217,7 +218,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     refetchMyBookings,
     availableDriverRequests,
     notificationsData,
-    availableTripRequestsLoading,
+    availableTripRequestsLoading: enabled && isDriver && (availableLoading || availableUninitialized),
     availableTripRequestsError,
     refetchAvailableTripRequests,
     activeTripRequest,

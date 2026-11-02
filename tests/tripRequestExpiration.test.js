@@ -43,6 +43,7 @@ function setup(t) {
     keepUnusedDataFor: 3600,
     endpoints: builder => ({
       getAvailableTripRequests: builder.query({ query: () => '/requests' }),
+      getHomeTripRequests: builder.query({ query: () => '/requests?scope=home' }),
       getMyTripRequests: builder.query({ query: () => '/mine' }),
       getMyActivityRequests: builder.query({ query: () => '/mine?scope=activity' }),
       getTripRequestById: builder.query({ query: id => `/requests/${id}` }),
@@ -132,6 +133,7 @@ test('shared cache removes expired public requests at the deadline and preserves
   const due = request('due'), later = request('later', 70000);
   const accepted = request('accepted', 0, { selectedDriverId: 'driver', departureDateMax: new Date(NOW).toISOString() });
   await ctx.put('getAvailableTripRequests', [due, later]);
+  await ctx.put('getHomeTripRequests', [due, later]);
   await ctx.put('getMyTripRequests', [due, later, accepted]);
   await ctx.put('getTripRequestById', due, due.id);
   await ctx.put('getTripRequestById', later, later.id);
@@ -141,6 +143,7 @@ test('shared cache removes expired public requests at the deadline and preserves
   assert.equal(ctx.read('getAvailableTripRequests').length, 2);
   t.mock.timers.tick(1);
   assert.deepEqual(ctx.read('getAvailableTripRequests').map(row => row.id), ['later']);
+  assert.deepEqual(ctx.read('getHomeTripRequests').map(row => row.id), ['later']);
   assert.deepEqual(ctx.read('getMyTripRequests').map(row => row.status), ['expired', 'pending', 'pending']);
   assert.equal(ctx.read('getTripRequestById', 'due').status, 'expired');
   assert.equal(ctx.read('getTripRequestById', 'later').status, 'pending');

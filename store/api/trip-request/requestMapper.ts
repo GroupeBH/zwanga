@@ -91,6 +91,7 @@ export const mapServerTripRequestToClient = (request: ServerTripRequest): TripRe
     departureDateMax: request.departureDateMax,
     numberOfSeats: request.numberOfSeats,
     vehicleType: request.vehicleType ?? 'car',
+    vehicleTypes: request.vehicleTypes?.length ? request.vehicleTypes : [request.vehicleType ?? 'car'],
     maxPricePerSeat: request.maxPricePerSeat ?? undefined,
     paymentMode: request.paymentMode ?? undefined,
     description: request.description ?? undefined,
@@ -219,6 +220,8 @@ export const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverO
     ...baseOffer,
     tripRequest: {
       id: offer.tripRequest.id,
+      vehicleType: offer.tripRequest.vehicleType ?? 'car',
+      vehicleTypes: offer.tripRequest.vehicleTypes?.length ? offer.tripRequest.vehicleTypes : [offer.tripRequest.vehicleType ?? 'car'],
       departureLocation: offer.tripRequest.departureLocation,
       departureReference: offer.tripRequest.departureReference ?? undefined,
       arrivalLocation: offer.tripRequest.arrivalLocation,

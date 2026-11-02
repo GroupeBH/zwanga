@@ -13,6 +13,8 @@ export const hideRefusedRequest = (requestId: string, sharedApi: typeof baseApi)
   const state = getState();
   dispatch(api.util.updateQueryData('getAvailableTripRequests', undefined,
     requests => requests.filter(request => request.id !== requestId)));
+  dispatch(api.util.updateQueryData('getHomeTripRequests', undefined,
+    requests => requests.filter(request => request.id !== requestId)));
   for (const args of api.util.selectCachedArgsForQuery(state, 'getAvailableRequestPage')) {
     dispatch(api.util.updateQueryData('getAvailableRequestPage', args, page => {
       const previous = page.data.length;

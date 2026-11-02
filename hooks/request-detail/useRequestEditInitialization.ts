@@ -10,11 +10,13 @@ import type { TripRequestVehicleType } from '@/types';
 import React, { useEffect } from 'react';
 import { Keyboard, Platform } from 'react-native';
 import type { User, TripRequest } from '@/types';
+import { acceptedRequestVehicleTypes, toggleRequestVehicleType } from '@/features/trip-request/vehicleSelection';
 import { canEditTripRequest } from '@/features/trip-request/requestExpiration';
 
 interface Params {
+  editVehicleTypes: TripRequestVehicleType[];
   setEditExpectedUpdatedAt: (value: string | undefined) => void;
-  setEditVehicleType: React.Dispatch<React.SetStateAction<TripRequestVehicleType>>;
+  setEditVehicleTypes: React.Dispatch<React.SetStateAction<TripRequestVehicleType[]>>;
   resetEditBudget: () => void;
   tripRequest: TripRequest | undefined;
   setEditAddressInputMode: React.Dispatch<React.SetStateAction<AddressInputMode>>;
@@ -40,8 +42,9 @@ interface Params {
 }
 
 export function useRequestEditInitialization({
+  editVehicleTypes,
   setEditExpectedUpdatedAt,
-  setEditVehicleType,
+  setEditVehicleTypes,
   resetEditBudget,
   tripRequest,
   setEditAddressInputMode,
@@ -65,10 +68,12 @@ export function useRequestEditInitialization({
   setEditLocationPickerType,
   setEditActivePicker,
 }: Params) {
-  const handleSelectEditVehicle = (option: TripRequestVehiclePriceOption) => {
-    if (!option.availableForRequestedSeats) return;
-    setEditVehicleType(option.vehicleType);
-    resetEditBudget();
+  const handleSelectEditVehicle = (option: Pick<TripRequestVehiclePriceOption, 'vehicleType' | 'availableForRequestedSeats'>) => {
+    if (!editVehicleTypes.includes(option.vehicleType) && !option.availableForRequestedSeats) return;
+    const next = toggleRequestVehicleType(editVehicleTypes, option.vehicleType);
+    if (next === editVehicleTypes) return;
+    setEditVehicleTypes(next);
+    if (next[0] !== editVehicleTypes[0]) resetEditBudget();
   };
 
   // Initialiser le formulaire de modification avec les valeurs actuelles
@@ -132,7 +137,7 @@ export function useRequestEditInitialization({
       setEditDepartureDateMax(currentDepartureDateMax);
     }
     setEditNumberOfSeats(tripRequest.numberOfSeats.toString());
-    setEditVehicleType(requestedVehicleType);
+    setEditVehicleTypes(acceptedRequestVehicleTypes(tripRequest));
     resetEditBudget();
     setEditDescription(tripRequest.description || '');
   };

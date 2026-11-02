@@ -118,7 +118,7 @@
     },
     "features/screen-styles/components/PassengerArrivalPaymentCoordinator/index.ts": {
       "keys": 85,
-      "sha256": "f9989686804272c951599590facb4fdf40c96ec422ac45b730e9e9b996582155"
+      "sha256": "bfd9a9557d0d56a0738e165cea48d9a20d66e33fff78210579f7377d9f8bba0a"
     },
     "features/screen-styles/components/support/supportStyles/index.ts": {
       "keys": 81,
@@ -199,6 +199,7 @@
       "recommendTripRequestPrice": "ef6c56bbeaf0ba631b916f367d65cf34514966c4220e048cd39588b8d1c130d2",
       "tripRequestVehicleOptions": "ca6c544fad107958fb545aaf0139344dc1cd3b758a69d356a5532119b5620421",
       "getTripRequestVehicleOptions": "afb33c05eb31e67338cb3aecdc20352c77609ebc7c6cf9c5dc7d3e0e3f8100d3",
+      "getHomeTripRequests": "e972205d7395bfddc0764086b5ffdd90ffa8ce7bdd6484f100ca91036bcfb7ca",
       "getAvailableTripRequests": "4dab933356429dd643af6d689809a533db043e23dbdfef9e58f426070eb1c463",
       "getMyTripRequests": "3497b6ca1266d364fd281a13be04189220f0837db698716c14fff92bb5614ef6",
       "getMyActivityRequests": "beec60fb77f8facc3986e6b4bf24f20dd6ef0fc191314eafc96338a8d69f0656",
@@ -212,7 +213,7 @@
       "acceptDriverOffer": "be740e7d27541380d59242311cdf774fee01c9c22e49d99e9c0a51ad203ab9b4",
       "rejectDriverOffer": "58ef702131933192b65cd0b1562152ffbfac418fba4a506d139774cb34c1be50",
       "startTripFromRequest": "857d4966408630693775f57cdf8c79b278e09d4bb657da0e69cab96dc1fff53b",
-      "acceptTripRequest": "a3fc7a6154b5c18ec260b9ec29711e9202c40c96428644dd4099ae0822ee7f2f"
+      "acceptTripRequest": "0e6b5b1093e3e2485779a1d5b872da155af976aa48779e8ad2f564723f221d9f"
     },
     "store/api/safetyApi.ts": {
       "createEmergencyContact": "5e83fa346bfc7d927f0c807ec41b5412d8ed1d0f513df644e61721005a12c080",

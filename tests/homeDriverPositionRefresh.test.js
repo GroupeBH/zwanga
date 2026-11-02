@@ -92,6 +92,16 @@ test('stale Home status uploads a fresh position and waits for the backend ackno
   assert.equal(f.calls.resets, 1);
 });
 
+test('a position older than 48 hours can be refreshed from Home without opening settings', async t => {
+  const f = fixture(t);
+  f.setData({ presence: { discoveryEnabled: true, updatedAt: new Date(Date.now() - 48 * 3600_000).toISOString() } });
+  const view = f.render();
+  assert.match(content(view), /Position à actualiser.*Touchez pour recevoir de nouvelles demandes/);
+  await view.props.onPress();
+  assert.equal(f.calls.sends.length, 1); assert.equal(f.calls.settings, 0);
+  assert.match(content(f.render()), /Position envoyée/);
+});
+
 test('success feedback expires, returning to the server status without another location read', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout', 'setInterval'], now: 4_000_000 });
   const f = fixture(t); await f.render().props.onPress(); f.render();

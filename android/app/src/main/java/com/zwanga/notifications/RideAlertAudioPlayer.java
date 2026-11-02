@@ -18,10 +18,16 @@ final class RideAlertAudioPlayer {
   private float volume = 1f;
   private final Runnable ended, failed;
   private final Runnable prepareTimeout;
+  private final java.util.function.BiConsumer<String,String> observation;
+  private boolean reportedPlaying;
 
-  RideAlertAudioPlayer(Context c, Handler main, Uri sound, Runnable ended, Runnable failed) {
+  RideAlertAudioPlayer(Context c, Handler main, Uri sound, Runnable ended, Runnable failed,
+      java.util.function.BiConsumer<String,String> observation) {
+    this.observation = observation;
     this.audio = (AudioManager)c.getSystemService(Context.AUDIO_SERVICE);
-    this.main = main; this.ended = ended; this.failed = failed; prepareTimeout = failed;
+    this.main = main; this.ended = ended;
+    this.failed = () -> { observe("audio_failed", "PLAYER_ERROR"); failed.run(); };
+    prepareTimeout = this.failed;
     try {
       AudioAttributes attributes = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build();
@@ -30,19 +36,19 @@ final class RideAlertAudioPlayer {
         .setOnAudioFocusChangeListener(this::onFocus, main).build();
       player = new MediaPlayer(); player.setAudioAttributes(attributes);
       player.setDataSource(c, sound); player.setLooping(true);
-      player.setOnErrorListener((p, what, extra) -> { if (!closed && player == p) failed.run(); return true; });
+      player.setOnErrorListener((p, what, extra) -> { if (!closed && player == p) this.failed.run(); return true; });
       player.setOnPreparedListener(p -> {
         if (closed || p != player) return;
         main.removeCallbacks(prepareTimeout); ready = true;
         try {
           int result = audio.requestAudioFocus(focus);
-          if (result == AudioManager.AUDIOFOCUS_REQUEST_FAILED) { ended.run(); return; }
+          if (result == AudioManager.AUDIOFOCUS_REQUEST_FAILED) { observe("audio_suppressed", "AUDIO_FOCUS_DENIED"); ended.run(); return; }
           waiting = result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED; apply();
-        } catch (Exception error) { ended.run(); }
+        } catch (Exception error) { observe("audio_failed", "PLAYER_ERROR"); ended.run(); }
       });
       main.postDelayed(prepareTimeout, 5000); player.prepareAsync();
-    } catch (SecurityException error) { main.post(ended); }
-      catch (Exception error) { main.post(failed); }
+    } catch (SecurityException error) { observe("audio_suppressed", "DEVICE_POLICY"); main.post(ended); }
+      catch (Exception error) { main.post(this.failed); }
   }
   private void onFocus(int change) {
     if (closed) return;
@@ -56,10 +62,12 @@ final class RideAlertAudioPlayer {
     if (closed || !ready || player == null) return;
     try {
       if (waiting) { if (player.isPlaying()) player.pause(); }
-      else { player.setVolume(volume, volume); if (!player.isPlaying()) player.start(); }
-    } catch (SecurityException error) { ended.run(); }
+      else { player.setVolume(volume, volume); if (!player.isPlaying()) player.start();
+        if (!reportedPlaying && player.isPlaying()) { reportedPlaying = true; observe("audio_started", "PLAYER_STARTED"); } }
+    } catch (SecurityException error) { observe("audio_suppressed", "DEVICE_POLICY"); ended.run(); }
       catch (Exception error) { failed.run(); }
   }
+  private void observe(String stage, String reason) { try { observation.accept(stage, reason); } catch (Exception ignored) { } }
   String state() {
     if (closed) return "stopped";
     if (!ready) return "preparing";

@@ -10,9 +10,11 @@ export function hasRecoverableAuthSession(
   const refreshPayload = decodeJWT(refreshToken);
   const payload = decodeJWT(accessToken);
   const userId = payload?.sub || payload?.userId;
+  const refreshUserId = refreshPayload?.sub || refreshPayload?.userId;
   return Boolean(
     typeof userId === 'string' &&
     userId.trim() &&
+    refreshUserId === userId &&
     typeof payload?.exp === 'number' &&
     Number.isFinite(payload.exp) &&
     typeof refreshPayload?.exp === 'number' &&

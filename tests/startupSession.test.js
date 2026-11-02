@@ -39,7 +39,7 @@ function fixture(options = {}) {
 test('valid stored tokens open Home on cold start without a network call or onboarding flag reads', async () => {
   const e = fixture({ access: jwt('test-account'), refresh: jwt('test-account', 7200) });
   await e.store.dispatch(e.auth.initializeAuth()).unwrap();
-  assert.equal(e.io.reads, 2, 'one read per token, then memory cache');
+  assert.equal(e.io.reads, 3, 'check envelope, then two legacy reads only during migration');
   assert.equal(e.io.requests.length, 0);
   assert.equal(e.store.getState().auth.user.id, 'test-account');
   for (const route of ['app/index.tsx', 'app/splash.tsx', 'app/onboarding.tsx', 'app/background-location-disclosure.tsx', 'app/auth-entry.tsx']) {
@@ -81,7 +81,7 @@ test('expired access is renewed once before Home; temporary network failures kee
     assert.equal(e.load('app/index.tsx').default().props.href, '/(tabs)');
     const bearer = await e.load('services/tokenRefresh.ts').getValidAccessToken();
     assert.equal(Boolean(bearer), !failure, 'expired access must never authorize HTTP while offline');
-    assert.equal(e.io.clears.length, 0);
+    assert.equal(e.io.clears.length, failure ? 0 : 2, 'only successful migration removes legacy keys');
   }
 });
 

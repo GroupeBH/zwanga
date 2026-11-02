@@ -1,3 +1,4 @@
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
@@ -114,7 +115,7 @@ const s = StyleSheet.create({
   message: { fontSize: 16, lineHeight: 24, color: Colors.gray[700], marginTop: 8 },
   reassurance: { fontSize: 14, lineHeight: 21, color: Colors.gray[600], marginTop: 12, marginBottom: 24 },
   actions: { marginTop: 'auto', paddingTop: 12, gap: 4 },
-  primary: { minHeight: 52, padding: 14, borderRadius: 14, backgroundColor: Colors.primary,
+  primary: { minHeight: 52, padding: 14, borderRadius: 14, backgroundColor: ACTION_COLORS.orange,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   disabled: { backgroundColor: Colors.gray[100] }, busyText: { color: Colors.gray[700] },
   primaryText: { color: Colors.white, fontSize: 17, fontWeight: '700', textAlign: 'center', flexShrink: 1 },

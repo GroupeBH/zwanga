@@ -83,6 +83,13 @@ export const tripRequestApi = baseApi.injectEndpoints({
       }),
     }),
 
+    // Separate Home cache; old backends safely ignore scope until upgraded.
+    getHomeTripRequests: builder.query<TripRequest[], void>({
+      query: () => ({ url: '/trip-requests', params: { scope: 'home' } }),
+      transformResponse: (response: ServerTripRequest[]) => response.map(mapServerTripRequestToClient),
+      providesTags: result => [tripRequestListTag,
+        ...(result ?? []).map(({ id }) => ({ type: 'TripRequest' as const, id }))],
+    }),
     getAvailableTripRequests: builder.query<TripRequest[], void>({
       query: () => '/trip-requests',
       transformResponse: (response: ServerTripRequest[]) =>
@@ -304,6 +311,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
           }));
           dispatch(tripRequestApi.util.updateQueryData('getAvailableTripRequests', undefined,
             requests => requests.filter(request => request.id !== tripRequestId)));
+          dispatch(tripRequestApi.util.updateQueryData('getHomeTripRequests', undefined,
+            requests => requests.filter(request => request.id !== tripRequestId)));
           dispatch(tripRequestApi.util.updateQueryData('getTripRequestById', tripRequestId, () => data.tripRequest));
           for (const endpoint of ['getMyTripRequests', 'getMyActivityRequests'] as const) {
             dispatch(tripRequestApi.util.updateQueryData(endpoint, undefined, requests => {
@@ -336,6 +345,7 @@ export const {
   useRecommendTripRequestPriceMutation,
   useGetTripRequestVehicleOptionsMutation,
   useGetAvailableTripRequestsQuery,
+  useGetHomeTripRequestsQuery,
   useGetMyTripRequestsQuery,
   useGetMyActivityRequestsQuery,
   useLazyGetMyTripRequestsQuery,

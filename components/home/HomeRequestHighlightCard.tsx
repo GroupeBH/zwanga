@@ -5,7 +5,7 @@ import type { TripRequest } from '@/types';
 import React from 'react';
 import type { AccessibilityProps } from 'react-native';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
-import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
+import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 
 type Props = {
   request: TripRequest;
@@ -31,7 +31,7 @@ export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlight
       departure={placeName(request.departure)}
       arrival={placeName(request.arrival)}
       metadata={[homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax), homeSeatsLabel(request.numberOfSeats),
-        request.vehicleType && getRegisteredVehicleTypeLabel(request.vehicleType)].filter(Boolean).join(' · ')}
+        requestVehicleLabel(request)].filter(Boolean).join(' · ')}
       secondary={passengerName}
       avatarName={passengerName}
       avatarUri={request.passengerAvatar}

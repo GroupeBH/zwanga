@@ -259,9 +259,32 @@ test('driver targeting is optional and never silently falls back after a vehicle
   const app = submissionHarness({ create: async () => { calls++; return { id: 'unexpected' }; } });
   app.props.targetDriver = { id: 'chosen-driver', vehicleType: 'car' };
   app.props.selectedVehicleType = 'motorcycle_2_wheels';
+  app.props.selectedVehicleTypes = ['motorcycle_2_wheels'];
   await app.render().handleCreateRequest();
   assert.equal(calls, 0);
   assert.match(app.render().submissionError, /type de véhicule a changé/);
+  app.hooks.unmount();
+});
+
+test('creation sends all choices, the legacy primary and one budget; a secondary-type target is accepted', async () => {
+  let payload;
+  const app = submissionHarness({ create: async value => { payload = value; return { id: 'created' }; } });
+  app.props.selectedVehicleTypes = ['car', 'motorcycle_2_wheels'];
+  app.props.targetDriver = { id: 'motorcycle-driver', vehicleType: 'motorcycle_2_wheels' };
+  await app.render().handleCreateRequest();
+  assert.deepEqual(payload.vehicleTypes, ['car', 'motorcycle_2_wheels']);
+  assert.equal(payload.vehicleType, 'car'); assert.equal(payload.maxPricePerSeat, 2500);
+  assert.equal(payload.targetDriverId, 'motorcycle-driver');
+  app.hooks.unmount();
+});
+
+test('a secondary selected motorcycle still limits the requested seats', async () => {
+  let calls = 0;
+  const app = submissionHarness({ create: async () => { calls++; return { id: 'unexpected' }; } });
+  app.props.selectedVehicleTypes = ['car', 'motorcycle_2_wheels'];
+  app.props.hasSpecifiedNumberOfSeats = true; app.props.numberOfSeats = 3;
+  await app.render().handleCreateRequest();
+  assert.equal(calls, 0);
   app.hooks.unmount();
 });
 
@@ -326,6 +349,7 @@ test('vehicle capacity still applies offline with a manually entered budget', as
   app.props.numberOfSeats = 4;
   app.props.hasSpecifiedNumberOfSeats = true;
   app.props.selectedVehicleType = 'motorcycle_3_wheels';
+  app.props.selectedVehicleTypes = ['motorcycle_3_wheels'];
   await app.render().handleCreateRequest();
   assert.equal(calls, 0);
   assert.match(app.dialogs[0].message, /3 place/);

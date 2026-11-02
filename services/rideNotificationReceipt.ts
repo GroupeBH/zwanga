@@ -8,7 +8,11 @@ const sent = new Map<string, number>();
 const sending = new Set<string>();
 let unsupportedUntil = 0;
 let flushing = false;
-type ReceiptDetail = { observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string };
+type AudioStage = 'audio_started' | 'audio_failed' | 'audio_suppressed';
+const audioStages: AudioStage[] = ['audio_started', 'audio_failed', 'audio_suppressed'];
+const audioReasons = ['PLAYER_STARTED', 'PLAYER_ERROR', 'AUDIO_FOCUS_DENIED', 'DEVICE_POLICY', 'BACKGROUND_START_DENIED', 'NOTIFICATIONS_DISABLED'];
+type ReceiptDetail = { observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string;
+  audioStage?: AudioStage; audioObservedAt?: string; audioReason?: string };
 const queued = new Map<string, { user: string; id: string; stage: 'received' | 'displayed';
   version: number; detail: ReceiptDetail; expiresAt: number }>();
 function pruneQueue() {
@@ -25,7 +29,7 @@ export async function reportRideNotificationReceipt(data: Record<string, unknown
     try { NativeModules?.ZwangaDriverAlerts?.recordNativeRideReceipt?.(user, id, stage === 'displayed', `driver-${invitation.kind}-${invitation.id}`); }
     catch { /* Optional native deduplication cannot block the receipt. */ }
   }
-  const version = getTokenSessionVersion(), key = `${version}:${user}:${id}:${stage}`;
+  const version = getTokenSessionVersion(), key = `${version}:${user}:${id}:${stage}:${detail.audioStage ?? ''}`;
   pruneQueue();
   if (!queued.has(key) && (sent.get(key) ?? 0) <= Date.now())
     queued.set(key, { user, id, stage, version, detail, expiresAt: Date.now() + 15 * 60_000 });
@@ -82,7 +86,8 @@ export async function flushNativeRideReceipts(userId: string) {
     if (version !== getTokenSessionVersion() || Date.now() > stopAt) return;
     const raw = await boundedRideAudio(NativeModules?.ZwangaDriverAlerts?.getNativeRideReceipts?.(userId) ?? Promise.resolve('{}'), 2000);
     if (version !== getTokenSessionVersion()) return;
-    const receipts = JSON.parse(typeof raw === 'string' ? raw : '{}') as Record<string, { displayed?: boolean; at?: number; displayedAt?: number; failureCode?: string }>;
+    const receipts = JSON.parse(typeof raw === 'string' ? raw : '{}') as Record<string, { displayed?: boolean; at?: number; displayedAt?: number; failureCode?: string;
+      audioEvents?: Partial<Record<AudioStage, { at?: number; reason?: string }>> }>;
     // Sequential, bounded, off the critical display path; errors are retried on re-entry.
     for (const [notificationId, receipt] of Object.entries(receipts).slice(-100)) {
       if (version !== getTokenSessionVersion() || Date.now() > stopAt) break;
@@ -91,6 +96,15 @@ export async function flushNativeRideReceipts(userId: string) {
       await reportRideNotificationReceipt({ notificationId, driverId: userId }, receipt.displayed ? 'displayed' : 'received', {
         source: 'native', ...(typeof at === 'number' && Number.isFinite(at) && at > 0 && at <= Date.now() + 300000 ? { observedAt: new Date(at).toISOString() } : {}), failureCode,
       });
+      for (const audioStage of audioStages) {
+        if (version !== getTokenSessionVersion() || Date.now() > stopAt) break;
+        const event = receipt.audioEvents?.[audioStage];
+        if (!event || !audioReasons.includes(event.reason ?? '') || typeof event.at !== 'number' || !Number.isFinite(event.at) ||
+            event.at < Date.now() - 7 * 86400000 || event.at > Date.now() + 300000) continue;
+        await reportRideNotificationReceipt({ notificationId, driverId: userId }, receipt.displayed ? 'displayed' : 'received', {
+          source: 'native', audioStage, audioObservedAt: new Date(event.at).toISOString(), audioReason: event.reason,
+        });
+      }
     }
   } catch { /* Best effort telemetry cannot prevent entry or ringing. */ }
   finally { flushing = false; }

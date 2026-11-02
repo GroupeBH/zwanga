@@ -4,6 +4,7 @@ import { parseRideAlert, type RideAlert } from './rideAlert';
 export const RECOVERY_INBOX_LIMIT = 25;
 export const RECOVERY_DETAIL_LIMIT = 3;
 const RING_WINDOW_MS = 60_000;
+const REQUEST_RESPONSE_WINDOW_MS = 40_000;
 export const record = (value: unknown): Record<string, unknown> | undefined =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const timestamp = (value: unknown) => typeof value === 'string' ? Date.parse(value) : NaN;
@@ -18,7 +19,8 @@ export function driverRecoveryCandidates(rows: unknown[], userId: string, now = 
     if (!row || row.userId !== userId || row.isActive === false || !original || original.driverId !== userId) continue;
     const created = timestamp(row.createdAt);
     if (!Number.isFinite(created) || created > now + 5000) continue;
-    let until = created + RING_WINDOW_MS;
+    let until = created + (['driver_dispatch_offer', 'trip_request_nearby'].includes(String(original.type))
+      ? REQUEST_RESPONSE_WINDOW_MS : RING_WINDOW_MS);
     for (const field of ['ringUntil', 'expiresAt', 'alertExpiresAt']) {
       if (original[field] !== undefined) until = Math.min(until, timestamp(original[field]));
     }
@@ -42,7 +44,7 @@ export function driverRecoveryCandidates(rows: unknown[], userId: string, now = 
 
 export function driverRecoveryDetailUrl(alert: RideAlert): string | undefined {
   if (alert.kind === 'booking') return `/bookings/${alert.id}`;
-  // Scheduled requests can also belong to a sequential 40-second offer.
+  // Scheduled requests can also belong to a sequential offer.
   // Its authoritative state, not the request's general visibility, owns ringing.
   if (alert.data.offerId !== undefined) return isInvitationId(alert.data.offerId)
     ? `/driver-dispatch/offers/${alert.data.offerId}` : undefined;

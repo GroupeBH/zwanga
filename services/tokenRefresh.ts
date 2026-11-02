@@ -1,9 +1,9 @@
 import { authRefreshApi } from '../store/api/authRefreshApi';
 import { getStoreDispatch } from '../store/storeAccessor';
-import { isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
+import { decodeJWT, isTokenExpired, isTokenExpiringSoon } from '../utils/jwt';
 import { clearTokens, getTokens, getRefreshAttemptId, storeTokens } from './tokenStorage';
 import { getTokenSessionVersion } from './tokenSession';
-import { hasUsableNewAuthSession } from '../features/auth/sessionPolicy';
+import { hasRecoverableAuthSession, hasUsableNewAuthSession } from '../features/auth/sessionPolicy';
 import { getNetworkRecoveryEpoch } from './networkRecovery';
 
 const AUTH_REFRESH_ERROR_STATUSES = new Set([400, 401, 403]);
@@ -21,7 +21,7 @@ async function forceLocalLogout(version: number): Promise<void> {
 export async function hasRecoverableSession(options?: { throwOnError?: boolean }): Promise<boolean> {
   const version = getTokenSessionVersion();
   const { accessToken, refreshToken } = await getTokens(options);
-  return version === getTokenSessionVersion() && Boolean(accessToken && refreshToken && !isTokenExpired(refreshToken));
+  return version === getTokenSessionVersion() && hasRecoverableAuthSession(accessToken, refreshToken);
 }
 
 /** Single flight per session; stale replies can neither restore nor clear another account. */
@@ -29,6 +29,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
   const version = getTokenSessionVersion();
   const tokens = await getTokens();
   if (version !== getTokenSessionVersion() || tokens.refreshToken !== refreshToken) return null;
+  if (!hasRecoverableAuthSession(tokens.accessToken, refreshToken)) { await forceLocalLogout(version); return null; }
   if (isTokenExpired(refreshToken)) { await forceLocalLogout(version); return null; }
   if (inFlight?.version === version && inFlight.token === refreshToken) return inFlight.promise;
   if (lastAttempt?.version === version && lastAttempt.token === refreshToken &&
@@ -51,6 +52,8 @@ export async function refreshAccessToken(refreshToken: string): Promise<string |
       try { data = await request.unwrap(); } finally { request.reset(); }
       if (version !== getTokenSessionVersion()) return null;
       if (!hasUsableNewAuthSession(data?.accessToken, data?.refreshToken)) return null;
+      const previous = decodeJWT(refreshToken), next = decodeJWT(data.refreshToken);
+      if ((previous?.sub || previous?.userId) !== (next?.sub || next?.userId)) return null;
       const saved = await storeTokens(data.accessToken, data.refreshToken, version);
       if (!saved || version !== getTokenSessionVersion()) return null;
       getStoreDispatch()({ type: 'auth/setTokens', payload: data });
@@ -87,8 +90,8 @@ export async function validateAndRefreshTokens(): Promise<boolean> {
 /** Never attach an expired access token. baseApi handles renewal before HTTP. */
 export async function getValidAccessToken(): Promise<string | null> {
   const version = getTokenSessionVersion();
-  const { accessToken } = await getTokens();
-  return version === getTokenSessionVersion() && accessToken && !isTokenExpired(accessToken) ? accessToken : null;
+  const { accessToken, refreshToken } = await getTokens();
+  return version === getTokenSessionVersion() && hasUsableNewAuthSession(accessToken, refreshToken) ? accessToken : null;
 }
 
 export async function proactiveTokenRefresh(): Promise<boolean> {

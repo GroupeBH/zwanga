@@ -329,7 +329,7 @@ export default function TripRequestDetailsScreen() {
               editVehicleOptions={model.editVehicleOptions}
               isEditVehicleOptionsError={model.isEditVehicleOptionsError}
               retryEditVehicleOptions={model.retryEditVehicleOptions}
-              editVehicleType={model.editVehicleType}
+              editVehicleTypes={model.editVehicleTypes}
               parsedEditNumberOfSeats={model.parsedEditNumberOfSeats}
               handleSelectEditVehicle={model.handleSelectEditVehicle}
               editNumberOfSeats={model.editNumberOfSeats}

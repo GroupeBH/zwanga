@@ -86,6 +86,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       dismissPriority={home.dismissPriority}
       availableDriverRequests={home.availableDriverRequests}
       sheetLoading={home.sheetLoading}
+      sheetOffline={home.sheetOffline}
       sheetError={home.sheetError}
       refetchSheetContent={home.refetchSheetContent}
       sheetEmpty={home.sheetEmpty}

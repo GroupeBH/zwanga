@@ -26,7 +26,7 @@ export interface DispatchOffer {
   localDeadline?: OfferDeadline;
   vehicleName?: string | null;
   request: { id: string; passengerName: string; departure: string; arrival: string;
-    seats: number; pricePerSeat: number | null; paymentMode: string; vehicleType: string };
+    seats: number; pricePerSeat: number | null; paymentMode: string; vehicleType: string; vehicleTypes?: string[] };
 }
 
 export interface NearbyRingingStatus {
@@ -58,7 +58,7 @@ export const driverDispatchApi = baseApi.injectEndpoints({
       query: () => '/driver-dispatch/status', keepUnusedDataFor: 15,
       providesTags: ['DriverDispatch'],
     }),
-    recordRideNotificationReceipt: builder.mutation<{ received: boolean }, { notificationId: string; stage: 'received' | 'displayed'; observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string }>({
+    recordRideNotificationReceipt: builder.mutation<{ received: boolean }, { notificationId: string; stage: 'received' | 'displayed'; observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string; audioStage?: 'audio_started' | 'audio_failed' | 'audio_suppressed'; audioObservedAt?: string; audioReason?: string }>({
       query: ({ notificationId, ...body }) => ({ url: `/driver-dispatch/notifications/${notificationId}/received`,
         method: 'POST', body, timeout: 4000 }),
     }),

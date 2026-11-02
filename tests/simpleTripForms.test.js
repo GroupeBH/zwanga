@@ -37,7 +37,7 @@ test('compact order controls preserve price, seat limits, payment selection, tot
   const calls = [];
   const { RequestBudgetFields } = load('components/trip-request/RequestBudgetFields.tsx');
   const props = { vehicleOptions: [], budgetValue: 1000, budgetLabel: '1 000 FC', budgetHintLabel: 'Prix recommandé par place',
-    totalBudgetLabel: '2 000 FC', requestSeatsLabel: '2 places', numberOfSeats: 2, selectedVehicleType: 'motorcycle_2_wheels',
+    totalBudgetLabel: '2 000 FC', requestSeatsLabel: '2 places', numberOfSeats: 2, selectedVehicleTypes: ['motorcycle_2_wheels'],
     updateBudget: value => calls.push(['price', value]), setNumberOfSeats: update => calls.push(['seats', update(2)]),
     setHasSpecifiedNumberOfSeats() {}, setRequestPaymentMode: value => calls.push(['payment', value]),
     setShowAdvanced: update => calls.push(['note', update(false)]), requestPaymentMode: 'cash' };

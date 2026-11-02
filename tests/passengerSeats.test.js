@@ -51,14 +51,14 @@ test('request seat control goes past two, respects motorcycle capacity and prese
     '@/utils/reanimated': { default: { View: 'View' }, FadeIn: {}, FadeOut: {} },
     '@/hooks/useIdentityCheck': { useIdentityCheck: () => ({ isIdentityVerified: true, checkIdentity() {} }) },
   })('components/trip-request/RequestBudgetFields.tsx');
-  const props = { vehicleOptions: [], budgetValue: 2000, budgetLabel: '2 000 FC', totalBudgetLabel: '6 000 FC', numberOfSeats: 3, requestSeatsLabel: '3 places', selectedVehicleType: 'car', setHasSpecifiedNumberOfSeats() {}, setNumberOfSeats: update => { props.numberOfSeats = update(props.numberOfSeats); } };
+  const props = { vehicleOptions: [], budgetValue: 2000, budgetLabel: '2 000 FC', totalBudgetLabel: '6 000 FC', numberOfSeats: 3, requestSeatsLabel: '3 places', selectedVehicleTypes: ['car'], setHasSpecifiedNumberOfSeats() {}, setNumberOfSeats: update => { props.numberOfSeats = update(props.numberOfSeats); } };
   const add = tree => nodes(tree).find(node => node.type === 'TouchableOpacity' && nodes(node).some(child => child.type === 'Icon' && child.props.name === 'add' && child.props.size === 18));
   const tree = RequestBudgetFields(props);
   assert.match(text(tree), /6 000 FC pour 3 places/);
   assert.equal(add(tree).props.disabled, false);
   add(tree).props.onPress();
   assert.equal(props.numberOfSeats, 4);
-  props.selectedVehicleType = 'motorcycle_3_wheels';
+  props.selectedVehicleTypes = ['motorcycle_3_wheels'];
   props.numberOfSeats = 3;
   assert.equal(add(RequestBudgetFields(props)).props.disabled, true);
 });

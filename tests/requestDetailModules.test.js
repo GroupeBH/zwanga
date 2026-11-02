@@ -111,11 +111,12 @@ test('edit submission sends the displayed per-seat price and refuses a pending c
     isIdentityVerified: true, parsedEditBudget: 2250, isEditBudgetValid: true,
     updateTripRequest: input => { calls.push(input); return { unwrap: async () => {} }; },
     editDepartureReference: '  station ', editArrivalReference: '', editAddressInputMode: 'manual',
-    editVehicleType: 'car', editDescription: '', setShowEditForm: noop, refetch: noop,
+    editVehicleType: 'car', editVehicleTypes: ['car'], editDescription: '', setShowEditForm: noop, refetch: noop,
   };
   await useRequestPassengerActions(params).handleUpdateRequest();
   assert.equal(calls[0].payload.maxPricePerSeat, 2250);
   assert.equal(calls[0].payload.numberOfSeats, 4);
+  assert.deepEqual(calls[0].payload.vehicleTypes, ['car']);
   assert.equal(calls[0].payload.departureReference, 'station');
   assert.equal(calls[0].payload.departureCoordinates, undefined);
   await useRequestPassengerActions({ ...params, isEditVehicleOptionsLoading: true }).handleUpdateRequest();

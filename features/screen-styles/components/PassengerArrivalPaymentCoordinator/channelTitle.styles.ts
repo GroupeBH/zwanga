@@ -1,3 +1,4 @@
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { StyleSheet } from "react-native";
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constants/styles";
 
@@ -140,7 +141,7 @@ export const styles = StyleSheet.create({
   payButton: {
     minHeight: 56,
     borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
+    backgroundColor: ACTION_COLORS.orange,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
