@@ -7,6 +7,19 @@ const selection = load('features/trip-request/vehicleSelection.ts');
 const slice = load('store/slices/requestDraftsSlice.ts');
 const car = 'car', moto = 'motorcycle_2_wheels', tricycle = 'motorcycle_3_wheels';
 
+test('one vehicle uses the old production DTO; multiple choices are never silently lost or retried', () => {
+  const { compatibleVehiclePayload, vehicleSelectionError } = load('features/trip-request/vehiclePayload.ts');
+  const single = { vehicleType: car, vehicleTypes: [moto], expectedUpdatedAt: 'revision' };
+  assert.deepEqual(compatibleVehiclePayload(single), { vehicleType: moto, expectedUpdatedAt: 'revision' });
+  assert.deepEqual(single.vehicleTypes, [moto], 'do not mutate the saved draft');
+  const multiple = { vehicleType: car, vehicleTypes: [car, moto] };
+  assert.equal(compatibleVehiclePayload(multiple), multiple);
+  const error = { status: 400, data: { message: ['property vehicleTypes should not exist'] } };
+  assert.equal(vehicleSelectionError(error).data.code, 'MULTIPLE_VEHICLE_TYPES_UNAVAILABLE');
+  for (const error of [{ status: 503 }, { status: 'TIMEOUT_ERROR' }, { status: 400, data: { message: 'other' } }])
+    assert.equal(vehicleSelectionError(error), error);
+});
+
 test('selection is nonempty, reversible, deduplicated and has a stable legacy primary', () => {
   assert.deepEqual(selection.toggleRequestVehicleType([car], car), [car]);
   assert.deepEqual(selection.toggleRequestVehicleType([car], moto), [car, moto]);

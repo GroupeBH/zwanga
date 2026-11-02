@@ -55,6 +55,17 @@ test('published booking refusal uses its dedicated endpoint; receipt/body tap ne
   assert.deepEqual(view.mutations, [{ kind: 'booking', body: { id, accept: false } }]);
 });
 
+test('a deliberate dispatch action uses the live server deadline, not the older push deadline', async () => {
+  const view = app();
+  await view.respond({ ...invitation, expiresAt: new Date(0).toISOString() }, 'driver-accept');
+  assert.equal(view.mutations.length, 1);
+  assert.equal(view.displays[0].title, 'Réponse enregistrée');
+  const booking = app();
+  await booking.respond({ ...invitation, kind: 'booking', expiresAt: new Date(0).toISOString() }, 'driver-accept');
+  assert.equal(booking.mutations.length, 0);
+  assert.equal(booking.displays[0].title, 'Réponse à vérifier');
+});
+
 test('confirmed headless dispatch acceptance queues contact for the verified token owner without opening a screen', async () => {
   const view = app({ perform: async () => ({ status: 'accepted', requestId: 'request' }) });
   await view.respond(invitation, 'driver-accept');

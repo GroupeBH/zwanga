@@ -21,7 +21,9 @@ export function ProfileDriverAvailabilityEntry() {
     </View>
     <View style={styles.copy}>
       <Text style={[menuStyles.menuText, styles.title]}>Alertes conducteur</Text>
-      <Text style={styles.description}>Réservations et commandes proches, automatiquement</Text>
+      <Text style={styles.description}>{data.needsLocationRefresh
+        ? 'Actualisez votre position pour recevoir les commandes proches.'
+        : 'Réservations et commandes proches, automatiquement'}</Text>
     </View>
     <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
   </TouchableOpacity>;

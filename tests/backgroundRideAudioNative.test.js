@@ -14,10 +14,11 @@ test('native teardown removes a decided card and cannot republish it from onDest
   const harness = `
 class Handler { void removeCallbacksAndMessages(Object unused){} }
 class Player { boolean closed; void close(){closed=true;} }
+class Banner { void close(){} }
 public class CleanupCheck {
   static final int STOP_FOREGROUND_DETACH=2,STOP_FOREGROUND_REMOVE=1;
   static java.lang.ref.WeakReference<CleanupCheck> active=new java.lang.ref.WeakReference<>(null);
-  Handler main=new Handler(); Player player=new Player(); String id="card",user="driver",identity="event",channel="ring";
+  Handler main=new Handler(); Player player=new Player(); Banner banner=new Banner(); String id="card",user="driver",identity="event",channel="ring";
   boolean foreground=true,discardCard; int generation,updates,stops,mode;
   void stopForeground(int flag){stops++;mode=flag;}
   void releaseBanner(boolean ignored){if(id!=null)updates++;}
@@ -26,7 +27,7 @@ public class CleanupCheck {
   public static void main(String[] args){
     CleanupCheck a=new CleanupCheck(); active=new java.lang.ref.WeakReference<>(a); a.discardCard=true;
     Player p=a.player; a.cleanup(); a.cleanup();
-    check(p.closed && a.player==null && a.id==null && a.identity==null && active.get()==null);
+    check(p.closed && a.player==null && a.banner==null && a.id==null && a.identity==null && active.get()==null);
     check(a.updates==0 && a.stops==1 && a.mode==STOP_FOREGROUND_REMOVE);
     CleanupCheck b=new CleanupCheck(); b.cleanup(); b.cleanup();
     check(b.updates==1 && b.stops==1 && b.mode==STOP_FOREGROUND_DETACH);

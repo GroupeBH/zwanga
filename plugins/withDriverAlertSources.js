@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { withDangerousMod, withMainApplication, withAndroidManifest, withAppBuildGradle } = require('@expo/config-plugins');
 
-const sourceFiles = ['DriverAlertModule.java', 'DriverAlertPackage.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'IncomingRideContent.java', 'RidePresentationExpiry.java',
+const sourceFiles = ['DriverAlertModule.java', 'DriverAlertPackage.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'RideUnlockBanner.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'IncomingRideContent.java', 'RidePresentationExpiry.java',
   'NativeRideDelivery.java', 'RideNotificationBundle.java', 'RideFirebaseMessagingService.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'];
 const sourceDirectory = 'native/android/notifications';
 const outputDirectory = 'app/src/main/java/com/zwanga/notifications';

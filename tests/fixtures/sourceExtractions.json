@@ -195,7 +195,7 @@
       "updatePassengerLocation": "b264b53284316fa749a6d83eee245f2b4c84b0837989ece97f004454d2709d92"
     },
     "store/api/tripRequestApi.ts": {
-      "createTripRequest": "edd2c7cf2c02b4b631dd249eb39c941d9b09f91f4872ca68874133e7af337ce4",
+      "createTripRequest": "77757fead5b82802e4e38d7d1980063a0299117afef4b0244898138a7f524d77",
       "recommendTripRequestPrice": "ef6c56bbeaf0ba631b916f367d65cf34514966c4220e048cd39588b8d1c130d2",
       "tripRequestVehicleOptions": "ca6c544fad107958fb545aaf0139344dc1cd3b758a69d356a5532119b5620421",
       "getTripRequestVehicleOptions": "afb33c05eb31e67338cb3aecdc20352c77609ebc7c6cf9c5dc7d3e0e3f8100d3",
@@ -205,7 +205,7 @@
       "getMyActivityRequests": "beec60fb77f8facc3986e6b4bf24f20dd6ef0fc191314eafc96338a8d69f0656",
       "getTripRequestById": "59fddab115f95eafa643c13405d8498b612ebea4dbe001535e1b38c9d92506dc",
       "getTripRequestPassengerContact": "52ca623ed1b045b2398596b7e38eab25f84e3b86e769a7549f594ce8821a7a7a",
-      "updateTripRequest": "96921f02da7b1e7847d1c7f40e9a57628da0808de0bc9b86b9b65fcc2846386c",
+      "updateTripRequest": "7db0cf2bbf32df34da8b113b14c9e06e1caa1cf5105e842f32d72a5cb1a004ea",
       "cancelTripRequest": "68912ade31fcd1d37c14b92e5fea0485237b87f962a75a3bf24b4bbd1dcb9922",
       "releaseOverdueDriver": "703980365b1c14d6ad8a025ccfdf9664fe21fb71ed197cb2d821c68b2fb52ae4",
       "createDriverOffer": "5a947799ef2113e9cb9a292629bd11d68dcd8a5c5ca0c985b583e5510786f7d7",

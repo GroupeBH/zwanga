@@ -71,6 +71,7 @@ public final class NativeCardProbe {
           Bundle card=notification.extras.getBundle("notifee.notification");
           result.put("fullScreenIntent", notification.fullScreenIntent != null).put("restorable",card!=null).put("title",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TITLE)))
             .put("ongoing", (notification.flags & android.app.Notification.FLAG_ONGOING_EVENT) != 0)
+            .put("onlyAlertOnce", (notification.flags & android.app.Notification.FLAG_ONLY_ALERT_ONCE) != 0)
             .put("body",String.valueOf(notification.extras.getCharSequence(android.app.Notification.EXTRA_TEXT)));
           if(card!=null) result.put("soundUntil",card.getBundle("data").getString("nativeSoundUntil"));
         }

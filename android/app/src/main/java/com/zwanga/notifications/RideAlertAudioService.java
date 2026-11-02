@@ -22,6 +22,7 @@ public final class RideAlertAudioService extends Service {
   private static WeakReference<RideAlertAudioService> active = new WeakReference<>(null);
   private final Handler main = new Handler(Looper.getMainLooper());
   private RideAlertAudioSession player;
+  private RideUnlockBanner banner;
   private String id, user, identity, channel;
   private long deadline;
   private boolean foreground, entryReleased, discardCard;
@@ -32,6 +33,7 @@ public final class RideAlertAudioService extends Service {
     if (!entryReleased && NativeRideDelivery.foreground()) {
       entryReleased = true; releaseBanner(false);
     }
+    if (!entryReleased && banner != null) banner.check(RideAlertAudioService.this, id, user, identity);
     main.postDelayed(this, 500);
   }};
   static Bundle data(Notification n) {
@@ -163,6 +165,7 @@ public final class RideAlertAudioService extends Service {
       if (Build.VERSION.SDK_INT >= 29) startForeground(id.hashCode(), card, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
       else startForeground(id.hashCode(), card);
       foreground = true; active = new WeakReference<>(this);
+      banner = new RideUnlockBanner(this);
       main.postDelayed(() -> { if (valid()) RidePresentationExpiry.schedulePublished(this, id); }, 150);
       player = new RideAlertAudioSession(this, manager.getNotificationChannel(channel).getSound(),
         Math.max(0, deadline - System.currentTimeMillis()), this::valid,
@@ -186,6 +189,7 @@ public final class RideAlertAudioService extends Service {
     ++generation;
     main.removeCallbacksAndMessages(null);
     if (player != null) player.close(); player = null;
+    if (banner != null) banner.close(); banner = null;
     if (foreground) { stopForeground(discardCard ? STOP_FOREGROUND_REMOVE : STOP_FOREGROUND_DETACH); foreground = false; }
     if (!discardCard) releaseBanner(true);
     // onDestroy runs after JS can have removed the card. Never republish it there.

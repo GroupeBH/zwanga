@@ -80,11 +80,13 @@ function ArrivalPaymentSession() {
 
   const recovery = useArrivalPaymentRecovery(state, provider, completion);
   const cashFallback = useTokenCashFallback(state, completion);
-  const monitoring = useArrivalPaymentMonitoring({
-    state: { ...state, isPaymentDeferred: state.isPaymentDeferred || recovery.isWorking || cashFallback.isWorking }, provider, completion,
-  });
   const mixed = useMixedCashPayment(state, completion);
-  const paymentPending = state.hasPendingProviderPayment || mixed.pending || Boolean(state.storageError);
+  const monitoring = useArrivalPaymentMonitoring({
+    state: { ...state, isPaymentDeferred: state.isPaymentDeferred || recovery.isWorking || cashFallback.isWorking || mixed.cashSelected || mixed.pending }, provider, completion,
+  });
+  const paymentPending = state.hasPendingBookingPayment ||
+    (state.hasPendingProviderPayment && !(mixed.cashSelected && state.selectedMode === 'points')) ||
+    mixed.pending || Boolean(state.storageError);
 
   const submission = useArrivalPaymentSubmission({
     userId: state.user?.id,
@@ -172,10 +174,10 @@ function ArrivalPaymentSession() {
     isPaymentPhoneInvalid ||
     (state.selectedMode === 'points' && state.isWalletFetching);
   const recoveryVisible = !receipt && Boolean(state.arrivalBooking) &&
-    (paymentPending || state.canChangeFailedPaymentMode || recovery.isWorking || cashFallback.isWorking || submission.isSubmittingCash);
+    (paymentPending || (!mixed.cashSelected && state.canChangeFailedPaymentMode) || recovery.isWorking || cashFallback.isWorking || submission.isSubmittingCash);
   const retryPayment = state.storageError ? state.retryPaymentStorage
-    : state.activeStoredState?.walletTopUpIntent ? () => { void recovery.run(); }
-    : mixed.pending ? () => { void mixed.submit(); } : monitoring.retryVerification;
+    : mixed.pending ? () => { void mixed.submit(); }
+    : state.activeStoredState?.walletTopUpIntent ? () => { void recovery.run(); } : monitoring.retryVerification;
 
   return (
     <>
@@ -214,6 +216,11 @@ function ArrivalPaymentSession() {
               />
             ) : recoveryVisible && state.arrivalBooking ? (
               <ArrivalPaymentRecovery bookingId={state.arrivalBooking.id} pending={paymentPending}
+                mixedCashLabel={mixed.canChooseWithPendingTopUp && !state.storageError && !state.isStorageLoading
+                  ? `Utiliser ${formatPoints(state.pointsUsed)} + ${formatMoney(mixed.cashRemainder, state.paymentCurrency)} en espèces` : undefined}
+                onMixedCash={() => { if (!state.isBusy && !state.storageError && !state.isStorageLoading) {
+                  state.setSelectedMode('points'); mixed.selectCash(true);
+                } }}
                 busy={(cashFallback.canSwitch ? state.isMutatingPayment : state.isBusy) || submission.isSubmitting || recovery.isWorking || cashFallback.isWorking || state.isStorageLoading || mixed.isLoading}
                 verifying={state.isCheckingPayment || recovery.isWorking}
                 topUpConfirmed={Boolean(state.activeStoredState?.walletTopUpConfirmedAt)}

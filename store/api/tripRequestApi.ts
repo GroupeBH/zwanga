@@ -28,6 +28,7 @@ import type { BaseEndpointBuilder } from './types';
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { buildRequestPageEndpoints } from './trip-request/pageEndpoints';
+import { compatibleVehiclePayload, vehicleSelectionError } from '@/features/trip-request/vehiclePayload';
 
 export type { RecommendTripRequestPricePayload } from './trip-request/contracts';
 export type { TripRequestPriceRecommendation } from './trip-request/contracts';
@@ -43,9 +44,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: (payload: CreateTripRequestPayload) => ({
         url: '/trip-requests',
         method: 'POST',
-        body: payload,
+        body: compatibleVehiclePayload(payload),
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
+      transformErrorResponse: vehicleSelectionError,
       transformResponse: (
         response: ServerTripRequest | { data?: ServerTripRequest; tripRequest?: ServerTripRequest },
       ) => {
@@ -142,9 +144,10 @@ export const tripRequestApi = baseApi.injectEndpoints({
       query: ({ id, payload }) => ({
         url: `/trip-requests/${id}`,
         method: 'PUT',
-        body: payload,
+        body: compatibleVehiclePayload(payload),
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
+      transformErrorResponse: vehicleSelectionError,
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       invalidatesTags: (_result, _error, { id }: { id: string }) => [
         { type: 'TripRequest', id },

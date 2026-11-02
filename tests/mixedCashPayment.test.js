@@ -114,6 +114,28 @@ test('server-confirmed mixed payment on reopen shows original total, paid tokens
   assert.equal(buildPaymentCompletionSummary({ ...booking, cashReceivedAt: 'date' }, undefined, [], {}).cashInstructions, false);
 });
 
+test('a pending wallet top-up allows explicit mixed choice and preserves its original reference', async t => {
+  const f = fixture(t);
+  Object.assign(f.state, { hasPendingProviderPayment: true, hasPendingBookingPayment: false,
+    activeStoredState: { walletTopUpOrderNumber: 'original-order', walletTopUpIntent: 'original-intent' } });
+  assert.equal(f.render().canChooseWithPendingTopUp, true);
+  assert.equal(f.calls.length, 0);
+  f.render().selectCash(true);
+  const pending = f.render().submit();
+  assert.equal(f.calls.length, 1);
+  f.success(); await pending;
+  assert.equal(f.state.activeStoredState.walletTopUpOrderNumber, 'original-order');
+  assert.equal(f.state.activeStoredState.walletTopUpIntent, 'original-intent');
+});
+
+test('a pending direct fare blocks the mixed choice even when a top-up is also pending', async t => {
+  const f = fixture(t);
+  Object.assign(f.state, { hasPendingProviderPayment: true, hasPendingBookingPayment: true });
+  assert.equal(f.render().canChooseWithPendingTopUp, false);
+  f.render().selectCash(true); await f.render().submit();
+  assert.equal(f.calls.length, 0);
+});
+
 test('a confirmed split survives a stale server list without changing another booking or a received cash receipt', () => {
   const { restoreMixedCashReceipt, serializeMixedCashReceipt } = loader()('features/arrival-payment/mixedCashReceipt.ts');
   const booking = { id: 'booking', paymentAmount: 3920, paymentCurrency: 'CDF', mixedTokenAmount: 580, mixedTokenQuantity: 58,
