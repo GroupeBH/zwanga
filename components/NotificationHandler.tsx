@@ -129,7 +129,9 @@ export function NotificationHandler() {
     Notifications.setNotificationHandler({
       handleNotification: async (notification) => {
         const type = notification.request.content.data?.type;
+        const rideAlert = parseRideAlert(notification.request.content.data);
         const tripRevenueModalAlreadyOwnsForeground =
+          (rideAlert?.kind === 'response' && rideAlert.recipientId === currentUserRef.current?.id) ||
           !canShowRequestNotification(notification.request.content.data, currentUserRef.current) ||
           (Platform.OS === 'android' && Boolean(parseDriverInvitation(notification.request.content.data) || parseNearbyPhoneAlert(notification.request.content.data))) ||
           (type === 'driver_trip_revenue' && pathnameRef.current.startsWith('/trip/navigate/'));
@@ -140,7 +142,7 @@ export function NotificationHandler() {
 
         return {
           shouldShowAlert: !tripRevenueModalAlreadyOwnsForeground,
-          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground && !incomingScreenOwnsSound && !parseRideAlert(notification.request.content.data),
+          shouldPlaySound: !tripRevenueModalAlreadyOwnsForeground && !incomingScreenOwnsSound && !rideAlert,
           shouldSetBadge: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowBanner: !tripRevenueModalAlreadyOwnsForeground,
           shouldShowList: !tripRevenueModalAlreadyOwnsForeground,

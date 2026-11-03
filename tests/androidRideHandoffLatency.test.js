@@ -5,6 +5,9 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve, reject; const promise = new Promise((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; };
 const noop = () => {};
+// These tests isolate native publication/handoff; HTTP admission is exercised separately.
+const ringValidation = { validateRideRing: async () => true, rideRingValidationIsCurrent: () => true,
+  needsRideRingValidation: () => false };
 const driverId = '00000000-0000-4000-8000-000000000001';
 const requestId = '00000000-0000-4000-8000-000000000002';
 const cardId = `driver-nearby-${requestId}`;
@@ -20,6 +23,7 @@ function fixture(t) {
     listeners.add(callback); return { remove: () => listeners.delete(callback) };
   } };
   const load = loader({
+    './rideRingValidation': ringValidation, '@/services/rideRingValidation': ringValidation,
     react: hooks.react, 'expo-router': { usePathname: () => '/' },
     '@react-native-async-storage/async-storage': {},
     './tokenStorage': { getTokens: async () => ({ refreshToken: 'test-session' }) },

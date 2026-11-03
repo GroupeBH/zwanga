@@ -93,6 +93,11 @@ test('foreground notification presentation leaves sound to the shared player and
     assert.equal(phoneAlert.shouldPlaySound, false);
     assert.equal(phoneAlert.shouldShowBanner, platform === 'ios', 'Android v3 banner belongs only to Notifee');
     assert.equal((await handler.handleNotification(notification({ type: 'message' }))).shouldPlaySound, true);
+    const responseNotice = await handler.handleNotification(notification({ type: 'trip_request_accepted',
+      ringAlert: 'request-accepted-v1', passengerId: user.id,
+      tripRequestId: '00000000-0000-4000-8000-000000000004' }));
+    assert.equal(responseNotice.shouldPlaySound, false);
+    assert.equal(responseNotice.shouldShowBanner, false, 'the in-app response panel owns this information');
     user = { ...user, role: 'passenger' };
     hooks.render(() => loadComponent('components/NotificationHandler.tsx').NotificationHandler());
     for (const type of ['trip_request', 'new_trip_request', 'driver_dispatch_offer', 'trip_request_nearby']) {

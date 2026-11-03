@@ -36,6 +36,8 @@ export function createRideOverlayStore() {
   return {
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     getActive: () => active,
+    // Stable scalar snapshot for screen controllers that only need visibility.
+    hasActive: () => active !== null,
     getEntries: () => snapshot,
     hasNavigation: () => scopes.size > 0,
     // Includes UIKit dismissals still in flight, not just the currently visible overlay.

@@ -174,6 +174,18 @@ test('a paid booking remains pinned until closed, then older cash reminders stay
   render().resumePayment(); assert.equal(render().isPaymentDeferred, false);
   bookings = bookings.map(booking => booking.id === 'cash' ? { ...booking, cashReceivedAt: '2026-09-23T10:00:00Z' } : booking);
   assert.equal(render().paymentAlreadySucceeded, true, 'cash received by the driver enables finishing, not changing modes');
+  render().acknowledgeBooking('cash', false, '2026-09-23T10:00:00Z');
+  assert.equal(storedState.cash.acknowledgedCashReceivedAt, '2026-09-23T10:00:00Z');
+  assert.equal(render().arrivalBooking, null, 'a confirmed cash receipt is acknowledged by its server identity');
+  render().setCompletionSummary(null);
+  const early = { id: 'early', passengerId: 'user', tripId: 'early-trip', status: 'accepted',
+    paymentMode: 'points', paymentStatus: 'succeeded', paymentAmount: 500, updatedAt: now };
+  bookings = [early];
+  render().acknowledgeBooking('early', true);
+  assert.ok(storedState.early.preArrivalDismissedAt);
+  assert.equal(storedState.early.acknowledgedAt, undefined, 'closing before arrival preserves the final receipt/rating');
+  bookings = [{ ...early, status: 'completed' }];
+  assert.equal(render().arrivalBooking.id, 'early');
   hooks.unmount();
 });
 

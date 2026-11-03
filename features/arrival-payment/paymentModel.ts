@@ -204,7 +204,15 @@ export function getStorageKey(userId: string) {
 
 export function selectArrivedPaymentBooking(bookings: Booking[], storedState: StoredPaymentState, now = Date.now()) {
   return [...bookings].filter(booking => {
-    if (!hasPassengerArrived(booking) || storedState[booking.id]?.acknowledgedAt) return false;
+    if (!hasPassengerArrived(booking)) return false;
+    const acknowledged = storedState[booking.id]?.acknowledgedAt;
+    if (acknowledged) {
+      // Cash instructions may have been closed before the driver confirmed collection.
+      // Present the actual receipt once, without reopening old acknowledged payments.
+      if (booking.paymentMode !== 'cash' || !booking.cashReceivedAt ||
+        !Number.isFinite(Date.parse(booking.cashReceivedAt)) ||
+        storedState[booking.id]?.acknowledgedCashReceivedAt === booking.cashReceivedAt) return false;
+    }
     return isFinanciallyPending(booking) || now - getArrivalTimestamp(booking) <= RECENT_ARRIVAL_WINDOW_MS ||
       Boolean(storedState[booking.id]?.requiredActionAt);
   }).sort((left, right) => Number(isFinanciallyPending(right)) - Number(isFinanciallyPending(left)) ||

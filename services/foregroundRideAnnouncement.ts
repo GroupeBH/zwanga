@@ -64,9 +64,9 @@ function loadVoice() {
 
 function screenSpeech(userId: string, version: number) {
   const source = readPaymentSpeech(userId, version);
-  // A wallet explanation is secondary to a driver opportunity. Do not pause
-  // its ringtone to describe balances while a response is still expected.
-  if (source?.kind === 'wallet' && pendingRideAlerts(userId).some(item => item.kind !== 'response')) return undefined;
+  // Screen explanations remain secondary to a driver opportunity. Do not pause
+  // its ringtone for balances/proximity while a driver response is expected.
+  if ((source?.kind === 'wallet' || source?.kind === 'approach') && pendingRideAlerts(userId).some(item => item.kind !== 'response')) return undefined;
   return source;
 }
 

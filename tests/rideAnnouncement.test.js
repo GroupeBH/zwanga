@@ -53,6 +53,51 @@ function fixture(t) {
     advance: async (ms = 2001) => { t.mock.timers.tick(ms); await tick(); } };
 }
 
+test('a visible passenger reply speaks once without a ringtone and yields on background or dismissal', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.ready = false; f.io.allowed = false;
+  const source = f.load('services/paymentSpeechSource.ts'), token = {};
+  const notice = f.load('features/notifications/passengerResponseNotice.ts').passengerResponseNotice(
+    alert('accepted', 'response', { type: 'trip_request_accepted', body: 'private arbitrary text' }));
+  source.publishPaymentSpeech(token, userId, 0, notice.speech, 'response');
+  f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1);
+  assert.match(f.io.spoken[0].text, /Un conducteur a accepté/);
+  assert.equal(f.io.spoken[0].text.includes('private'), false);
+  assert.equal(f.io.spoken[0].options.useApplicationAudioSession, false);
+  f.run(); assert.equal(f.io.spoken.length, 1);
+  f.io.active = false; f.run(); await tick(); assert.equal(f.io.stops, 1);
+  source.removePaymentSpeech(token);
+  f.io.active = true; await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.length, 1);
+});
+
+test('passenger response speech stays below payment and above wallet', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.ready = false;
+  const source = f.load('services/paymentSpeechSource.ts'), payment = {}, response = {}, wallet = {};
+  const publish = (token, kind) => source.publishPaymentSpeech(token, userId, 0, { key: kind, text: kind }, kind);
+  publish(response, 'response'); publish(wallet, 'wallet'); publish(payment, 'payment');
+  f.run(); await tick(); assert.equal(f.io.spoken[0].text, 'payment');
+  source.removePaymentSpeech(payment); f.run(); await tick();
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.at(-1).text, 'response');
+  source.removePaymentSpeech(response); source.removePaymentSpeech(wallet); f.run(); await tick();
+});
+
+test('approach voice stays below payment/reply and yields to a driver opportunity and background', async t => {
+  const f = fixture(t); f.io.pending = [];
+  const source = f.load('services/paymentSpeechSource.ts'), approach = {}, response = {}, payment = {};
+  const publish = (token, kind) => source.publishPaymentSpeech(token, userId, 0, { key: kind, text: kind }, kind);
+  publish(approach, 'approach'); f.run(); await tick(); assert.equal(f.io.spoken.at(-1).text, 'approach');
+  publish(response, 'response'); publish(payment, 'payment'); f.run(); await tick(); assert.equal(f.io.stops, 1);
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.at(-1).text, 'payment');
+  source.removePaymentSpeech(payment); f.run(); await tick(); await f.advance(); f.run(); await tick();
+  assert.equal(f.io.spoken.at(-1).text, 'response');
+  source.removePaymentSpeech(response); f.run(); await tick(); await f.advance();
+  f.run(); await tick(); assert.equal(f.io.spoken.length, 3, 'approach is not repeated on modal dismissal');
+  f.io.pending = [alert('driver-opportunity')]; f.run(); await tick();
+  assert.match(f.io.spoken.at(-1).text, /Nouvelle réservation/);
+  f.io.active = false; f.run(); await tick(); assert.equal(f.io.stops, 4);
+});
+
 test('payment overlays use the existing voice after entry, only once, and stop when dismissed', async t => {
   const f = fixture(t); f.io.pending = []; f.io.ready = false; f.io.allowed = false;
   const source = f.load('services/paymentSpeechSource.ts');

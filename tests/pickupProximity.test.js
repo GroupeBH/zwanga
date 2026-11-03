@@ -52,6 +52,19 @@ test('passenger gets one vehicle reminder for the booking holder, not one per se
   h.hooks.unmount();
 });
 
+test('threshold announcements replace only the old approach voice, retaining notices and arrival guidance', async () => {
+  const h = passengerNotices(); h.props.approachAnnouncements = true;
+  h.emit(); await flush();
+  assert.equal(h.shown.length, 1); assert.equal(h.pushed.length, 1); assert.equal(h.spoken.length, 0);
+  h.emit({ type: 'driver_arrived_pickup', distanceMeters: 70 }); await flush();
+  assert.equal(h.spoken.length, 1); assert.match(h.spoken[0], /Rejoignez le conducteur.*Toyota Yaris/);
+  h.hooks.unmount();
+  const ready = passengerNotices(); ready.props.approachAnnouncements = true;
+  ready.emit({ type: 'parties_nearby', distanceMeters: 2 }); ready.emit(); await flush();
+  assert.equal(ready.spoken.length, 1, 'a silent old approach event cannot cancel the readiness sentence');
+  assert.match(ready.spoken[0], /Signalez-vous au conducteur/); ready.hooks.unmount();
+});
+
 test('passenger readiness does not swallow approach; actual pickup arrival prevents a late approach alert', async () => {
   const h = passengerNotices();
   h.emit({ type: 'parties_nearby', distanceMeters: 2 }); h.emit();

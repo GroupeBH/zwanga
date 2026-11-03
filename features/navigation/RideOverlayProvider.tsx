@@ -7,12 +7,20 @@ import { RideNoticeBanner } from './RideNoticeBanner';
 
 const subscribeNothing = () => () => {};
 const noOverlay = () => null;
+const noActiveOverlay = () => false;
 const emptyEntries: import('./rideOverlayStore').RideOverlayEntry[] = [];
 const noEntries = () => emptyEntries;
 export function useRideOverlay() {
   const store = useContext(RideOverlayContext);
   const active = useSyncExternalStore(store?.subscribe ?? subscribeNothing, store?.getActive ?? noOverlay, noOverlay);
   return { store, active };
+}
+
+/** Producers of RideModal children must not subscribe to those children's identity.
+ * A boolean only changes on open/close, not when a panel publishes fresh JSX. */
+export function useHasRideOverlay() {
+  const store = useContext(RideOverlayContext);
+  return useSyncExternalStore(store?.subscribe ?? subscribeNothing, store?.hasActive ?? noActiveOverlay, noActiveOverlay);
 }
 
 function RideOverlayHost({ scope }: { scope: string }) {

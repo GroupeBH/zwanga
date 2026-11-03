@@ -16,6 +16,7 @@ import React, { useCallback, useRef } from 'react';
 import type { Booking, Trip } from '@/types';
 
 interface Params {
+  approachAnnouncements?: boolean;
   isScreenActive: boolean;
   trip: Trip | undefined;
   isMountedRef: React.RefObject<boolean>;
@@ -39,6 +40,7 @@ interface Params {
 }
 
 export function usePassengerNavigationNotices({
+  approachAnnouncements = false,
   isScreenActive,
   trip,
   isMountedRef,
@@ -164,6 +166,8 @@ export function usePassengerNavigationNotices({
     }
     setPickupNotice({ type: nextType, distanceMeters: event.distanceMeters, detectedAt: event.detectedAt,
       expiresAt: event.expiresAt, pickupWaitSeconds: event.pickupWaitSeconds });
+    // Threshold speech owns approach distances. Keep arrival/readiness and all visual notices.
+    if (approachAnnouncements && nextType === 'driver_near_pickup') return;
     latestPickupEvent.current = event;
     void Speech.stop().then(() => {
       const current = pickupContext.current;
@@ -172,7 +176,7 @@ export function usePassengerNavigationNotices({
         current.booking?.droppedOff || current.booking?.droppedOffConfirmedByPassenger) return;
       Speech.speak(message, { language: 'fr-FR', rate: 0.95 });
     }).catch(() => { /* Voice is optional. */ });
-  }, [isMountedRef, vehicleReminder, presentedPickupNoticeKeysRef, highestPickupNoticePriorityRef,
+  }, [approachAnnouncements, isMountedRef, vehicleReminder, presentedPickupNoticeKeysRef, highestPickupNoticePriorityRef,
     hasDisplayedDriverNearNotificationRef, setPickupNotice]);
 
   const presentBoardedNotice = useCallback(() => {

@@ -9,6 +9,7 @@ import { pendingRideAlertHandoffs, pendingRideAlerts } from '@/services/rideAler
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
 import { rideRealtimeTags } from '@/features/notifications/rideRealtimeRefresh';
+import { invalidateRideRingValidation, needsRideRingValidation, validateRideRing } from '@/services/rideRingValidation';
 import type { RideRealtimeEvent } from '@/features/notifications/rideRealtime';
 
 /** One shared socket, foreground only; no background polling or offline decisions. */
@@ -35,6 +36,13 @@ export function useRideRealtime(userId: string | undefined, driverAccount: boole
     };
     const stop = chatSocket.subscribeToRideAlerts(event => {
       if (!current() || (event.kind !== 'reconnected' && event.recipientId !== userId)) return;
+      if (event.kind === 'reconnected') {
+        for (const alert of pendingRideAlerts(userId)) if (needsRideRingValidation(alert.data))
+          void validateRideRing(alert.data).then(valid => {
+            if (!valid && current() && alert.kind !== 'response') return dismissDriverInvitation({
+              kind: alert.kind, id: alert.id, driverId: userId, ringUntil: String(alert.data.ringUntil ?? '') });
+          }).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISMISS_FAILED'));
+      }
       if (event.kind === 'incoming') {
         if (!canShowRequestNotification(event.data, { id: userId, role: driverAccount ? 'driver' : 'passenger' })) return;
         const now = Date.now();
@@ -45,6 +53,7 @@ export function useRideRealtime(userId: string | undefined, driverAccount: boole
         // Uses the exact push path and its existing delivery/acknowledgement keys.
         void displayDriverInvitation(event.data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
       } else if (event.kind === 'changed' && event.terminal) {
+        if (event.requestId) invalidateRideRingValidation(event.requestId);
         const candidates = new Map([...pendingRideAlerts(userId),
           ...pendingRideAlertHandoffs(userId).map(item => item.alert)].map(alert => [alert.key, alert]));
         const matches = [...candidates.values()].filter(alert => alert.kind !== 'response' &&

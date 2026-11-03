@@ -9,6 +9,9 @@ const alerts = new Map<string, RideAlert>();
 // A visible driver notification remains an entry candidate after its SOUND
 // window. It never authorizes a decision: entry verifies it against the server.
 const entryOnlyAlerts = new Map<string, RideAlert>();
+// Separate from audio/route acknowledgements: even on the matching trip the
+// passenger must see the reply once. Bounded, session-scoped, never persisted.
+const responseNotices = new Map<string, { alert: RideAlert; until: number }>();
 type RideAlertHandoff = { alert: RideAlert; until: number; attempts: number; retryAt: number };
 // A native cancellation may finish during unlock/background transitions. Keep
 // its fresh event separately, without authorizing audio before cancellation.
@@ -24,7 +27,7 @@ export const getRideAlertsRevision = () => revision;
 function changed() { revision++; listeners.forEach(listener => listener()); }
 function checkSession() {
   if (session === getTokenSessionVersion()) return;
-  session = getTokenSessionVersion(); alerts.clear(); entryOnlyAlerts.clear(); handoffs.clear(); acknowledged.clear(); mapPriorities.clear(); recipient = undefined;
+  session = getTokenSessionVersion(); alerts.clear(); entryOnlyAlerts.clear(); responseNotices.clear(); handoffs.clear(); acknowledged.clear(); mapPriorities.clear(); recipient = undefined;
 }
 export function subscribeRideAlerts(listener: () => void) {
   listeners.add(listener); return () => { listeners.delete(listener); };
@@ -62,6 +65,10 @@ function storeRideAlert(alert: RideAlert, restoring = false, handedOff = false) 
       entryOnlyAlerts.set(alert.key, alert); changed();
     }
     return;
+  }
+  if (alert.kind === 'response' && !responseNotices.has(alert.key)) {
+    if (responseNotices.size >= 20) responseNotices.delete(responseNotices.keys().next().value!);
+    responseNotices.set(alert.key, { alert, until: Date.now() + 180000 });
   }
   if (recipient && isRideResponseOpen(alert, pathname)) { acknowledgeRideAlerts(a => a.key === alert.key, alert); return; }
   if (!alerts.has(alert.key)) {
@@ -105,6 +112,16 @@ export function pendingRideAlerts(userId: string): RideAlert[] {
   for (const [key, alert] of alerts) if (alert.expiresAt && Date.parse(alert.expiresAt) <= Date.now()) alerts.delete(key);
   return [...alerts.values()].filter(alert => alert.recipientId === userId);
 }
+export function pendingRideResponseNotices(userId: string): RideAlert[] {
+  checkSession();
+  for (const [key, notice] of responseNotices) if (notice.until <= Date.now()) responseNotices.delete(key);
+  return [...responseNotices.values()].filter(item => item.alert.recipientId === userId).map(item => item.alert);
+}
+export function dismissRideResponseNotice(alert: RideAlert) {
+  checkSession();
+  responseNotices.delete(alert.key);
+  acknowledgeRideAlerts(item => item.recipientId === alert.recipientId && item.key === alert.key, alert);
+}
 /** Routing only. Never pass these candidates to the sound or speech player. */
 export function pendingRideEntryAlerts(userId: string): RideAlert[] {
   const audible = pendingRideAlerts(userId);
@@ -125,4 +142,4 @@ export function setRideAlertScreen(userId: string, path: string) {
   checkSession(); recipient = userId; pathname = path;
   acknowledgeRideAlerts(alert => alert.recipientId === userId && isRideResponseOpen(alert, path));
 }
-export function clearRideAlertSession() { alerts.clear(); entryOnlyAlerts.clear(); handoffs.clear(); acknowledged.clear(); mapPriorities.clear(); recipient = undefined; pathname = ''; changed(); }
+export function clearRideAlertSession() { alerts.clear(); entryOnlyAlerts.clear(); responseNotices.clear(); handoffs.clear(); acknowledged.clear(); mapPriorities.clear(); recipient = undefined; pathname = ''; changed(); }

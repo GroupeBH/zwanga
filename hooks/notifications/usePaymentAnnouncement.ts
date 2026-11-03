@@ -7,7 +7,7 @@ import { publishPaymentSpeech, removePaymentSpeech, type ScreenSpeechKind } from
 import type { RideEntryMessage } from '@/services/rideEntryAnnouncement';
 
 /** The existing foreground voice owns playback, interruption and deduplication. */
-export function usePaymentAnnouncement(message: RideEntryMessage | null, visible: boolean, kind: ScreenSpeechKind = 'payment') {
+export function useScreenAnnouncement(message: RideEntryMessage | null, visible: boolean, kind: ScreenSpeechKind = 'payment') {
   const active = useAppIsActive();
   const user = useAppSelector(selectUser);
   const token = useRef({});
@@ -20,3 +20,6 @@ export function usePaymentAnnouncement(message: RideEntryMessage | null, visible
     return () => removePaymentSpeech(source);
   }, [active, visible, user?.id, version, key, text, kind]);
 }
+
+// Preserve the existing payment/wallet API while sharing its speech arbiter.
+export const usePaymentAnnouncement = useScreenAnnouncement;

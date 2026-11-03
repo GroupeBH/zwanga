@@ -16,6 +16,7 @@ import { useTripBookingSubmission } from './useTripBookingSubmission';
 import { useTripBookingPayment } from './useTripBookingPayment';
 import { useTripDetailContactActions } from './useTripDetailContactActions';
 import { Colors } from '@/constants/styles';
+import { usePassengerApproachAnnouncement } from '@/hooks/notifications/usePassengerApproachAnnouncement';
 
 
 
@@ -56,6 +57,11 @@ export function useTripDetailController() {
     myBookings: data.myBookings,
     user: data.user,
     trackParam: data.trackParam,
+  });
+
+  usePassengerApproachAnnouncement({
+    userId: data.user?.id, trip: data.trip, booking: activity.activeBooking ?? activity.bookingForTrip,
+    isScreenActive: data.isScreenActive, useFallback: true,
   });
 
   const progressNotices = useTripDetailProgressNotices({

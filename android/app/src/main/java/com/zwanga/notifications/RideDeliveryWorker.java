@@ -5,7 +5,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
-/** Durable, bounded local recovery. No network or credentials. */
+/** Durable bounded recovery; live request validation uses no account credentials. */
 public final class RideDeliveryWorker extends Worker {
   public RideDeliveryWorker(Context c, WorkerParameters p) { super(c, p); }
   static void enqueue(Context c, Map<String,String> data) {

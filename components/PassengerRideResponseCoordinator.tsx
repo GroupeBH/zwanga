@@ -1,0 +1,80 @@
+import React, { useSyncExternalStore } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { useScreenAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
+import { useAppSelector } from '@/store/hooks';
+import { selectIsAuthenticated, selectUser } from '@/store/selectors';
+import { RideModal } from '@/features/navigation/RideModal';
+import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
+import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
+import type { RideAlert } from '@/features/notifications/rideAlert';
+import { passengerResponseNotice } from '@/features/notifications/passengerResponseNotice';
+import { acknowledgeRideAlerts, dismissRideResponseNotice, getRideAlertsRevision,
+  pendingRideResponseNotices, subscribeRideAlerts } from '@/services/rideAlertSession';
+import { getTokenSessionVersion } from '@/services/tokenSession';
+import { getNotificationHref } from '@/utils/notificationNavigation';
+import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
+
+/** A passenger reply needs information, not another driver-decision ringtone. */
+export function PassengerRideResponseCoordinator() {
+  const active = useAppIsActive();
+  const authenticated = useAppSelector(selectIsAuthenticated);
+  const user = useAppSelector(selectUser);
+  const router = useRouter();
+  useSyncExternalStore(subscribeRideAlerts, getRideAlertsRevision, getRideAlertsRevision);
+  const notice = user?.id ? pendingRideResponseNotices(user.id)[0] : undefined;
+  const visible = Boolean(active && authenticated && notice);
+  const version = getTokenSessionVersion();
+  const current = () => Boolean(notice && user?.id === notice.recipientId && version === getTokenSessionVersion());
+  const close = () => { if (current()) dismissRideResponseNotice(notice!); };
+  const open = () => {
+    if (!current()) return;
+    const href = getNotificationHref(notice!.data, user ?? undefined);
+    close();
+    if (href) router.push(href);
+  };
+  return <RideModal inApp visible={visible} transparent priority={RIDE_OVERLAY_PRIORITY.information}
+    onRequestClose={close} onShow={() => {
+      // A displayed response is read: leaving the app must not restart its sound.
+      if (current()) acknowledgeRideAlerts(item => item.key === notice!.key, notice);
+    }}>
+    {notice ? <PassengerResponsePanel key={notice.key} alert={notice} onClose={close} onOpen={open} /> : null}
+  </RideModal>;
+}
+
+function PassengerResponsePanel({ alert, onClose, onOpen }: { alert: RideAlert; onClose: () => void; onOpen: () => void }) {
+  const { active } = useRideOverlay();
+  // The overlay host keeps covered panels mounted. Never speak over payment,
+  // confirmation, SOS or another panel that actually owns the visible screen.
+  const shown = React.isValidElement<{ alert: RideAlert }>(active?.children) &&
+    active.children.type === PassengerResponsePanel && active.children.props.alert.key === alert.key;
+  const notice = passengerResponseNotice(alert)!;
+  useScreenAnnouncement(notice.speech, shown, 'response');
+  return <View style={styles.overlay}>
+    <View style={styles.card}>
+      <ScrollView bounces={false}>
+        <Text style={styles.title} accessibilityRole="header">{notice.title}</Text>
+        <Text style={styles.message}>{notice.message}</Text>
+      </ScrollView>
+      <TouchableOpacity accessibilityRole="button" style={styles.primary} onPress={onOpen}>
+        <Text style={styles.primaryText}>Voir mon trajet</Text>
+      </TouchableOpacity>
+      <TouchableOpacity accessibilityRole="button" style={styles.secondary} onPress={onClose}>
+        <Text style={styles.secondaryText}>Compris</Text>
+      </TouchableOpacity>
+    </View>
+  </View>;
+}
+
+const styles = StyleSheet.create({
+  overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl, backgroundColor: 'rgba(17, 24, 39, 0.58)' },
+  card: { width: '100%', maxWidth: 420, maxHeight: '80%', padding: Spacing.xl, borderRadius: BorderRadius.xxl, backgroundColor: Colors.white },
+  title: { fontSize: FontSizes.xl, fontWeight: FontWeights.bold, color: Colors.gray[900], textAlign: 'center' },
+  message: { fontSize: FontSizes.base, color: Colors.gray[700], textAlign: 'center', marginTop: Spacing.md, marginBottom: Spacing.lg },
+  primary: { minHeight: 52, justifyContent: 'center', alignItems: 'center', padding: Spacing.md, borderRadius: BorderRadius.lg, backgroundColor: ACTION_COLORS.orange },
+  primaryText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
+  secondary: { minHeight: 48, justifyContent: 'center', alignItems: 'center', padding: Spacing.md, marginTop: Spacing.sm, borderRadius: BorderRadius.lg, backgroundColor: Colors.gray[100] },
+  secondaryText: { color: Colors.gray[700], fontSize: FontSizes.base, fontWeight: FontWeights.semibold },
+});

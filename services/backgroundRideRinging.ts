@@ -1,4 +1,5 @@
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
+import { validateRideRing, rideRingValidationIsCurrent } from './rideRingValidation';
 import { AppState, Platform } from 'react-native';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
 import { getDriverAlertChannel } from './driverAlertChannel';
@@ -50,7 +51,7 @@ async function handOff(userId: string, version: number) {
     // Keep the service/card through a slow foreground initialization. Native
     // handoff removes this temporary card only once the app player has started.
     const retain = AppState.currentState === 'active' && previous.userId === userId && previous.version === version &&
-      previous.deadline > Date.now() && pending().some(alert => alert.key === previous.key) &&
+      previous.deadline > Date.now() && pending().some(alert => alert.key === previous.key && alert.kind !== 'response') &&
       await prepareForegroundRideAudio(previous.id);
     if (audible !== previous) return;
     if (retain && version === getTokenSessionVersion() && previous.deadline > Date.now() && pending().some(alert => alert.key === previous.key)) {
@@ -73,6 +74,7 @@ async function handOff(userId: string, version: number) {
   const [lightUpScreen, fullScreenAction] = await Promise.all([
     shouldLightUpRideAlertScreen(channelId), driverKind ? rideAlertFullScreenAction(userId) : undefined,
   ]);
+  if (!await validateRideRing(alert.data)) return;
   if (!valid()) return;
   const id = `${BACKGROUND_RIDE_RING_PREFIX}${alert.key}`;
   const record = { id, key: alert.key, userId, version, deadline };
@@ -99,7 +101,7 @@ async function handOff(userId: string, version: number) {
       }
     });
     await boundedRideAudio(display);
-    if (valid() && driverKind) void startBackgroundRideAudio(id);
+    if (valid() && driverKind && rideRingValidationIsCurrent(alert.data)) void startBackgroundRideAudio(id);
     if (valid() && lightUpScreen && fullScreenAction) void boundRideAlertPresentation(id);
     if (valid() && lightUpScreen) void wakeDisplayedRideAlert(id, channelId, deadline,
       { fullScreen: Boolean(fullScreenAction), current: valid });

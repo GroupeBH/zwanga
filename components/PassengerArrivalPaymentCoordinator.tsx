@@ -20,7 +20,7 @@ import { styles } from '../features/screen-styles/components/PassengerArrivalPay
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import { PassengerInterruptionChoice } from '@/components/trip/PassengerInterruptionChoice';
 import React, { useMemo } from 'react';
-import { buildPaymentCompletionSummary } from '@/features/arrival-payment/buildPaymentCompletionSummary';
+import { resolvePaymentReceipt } from '@/features/arrival-payment/resolvePaymentReceipt';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -47,8 +47,8 @@ function ArrivalPaymentSession() {
   const state = useArrivalPaymentState();
   const interruptionChoice = state.interruptionChoice;
   // Already paid/free bookings open their receipt immediately, not another confirmation step.
-  const receipt = useMemo(() => state.completionSummary ?? (state.arrivalBooking && (state.paymentAlreadySucceeded || state.arrivalBooking.mixedPaymentAt || state.arrivalBooking.tokenCashFallbackAt)
-    ? buildPaymentCompletionSummary(state.arrivalBooking, state.wallet, state.paymentHistory, {}) : null),
+  const receipt = useMemo(() => resolvePaymentReceipt(state.completionSummary, state.arrivalBooking,
+    state.paymentAlreadySucceeded, state.wallet, state.paymentHistory),
   [state.completionSummary, state.arrivalBooking, state.paymentAlreadySucceeded, state.wallet, state.paymentHistory]);
 
   const completion = useArrivalPaymentCompletion({
@@ -126,8 +126,8 @@ function ArrivalPaymentSession() {
     acknowledgeBooking: state.acknowledgeBooking,
     setCompletionSummary: state.setCompletionSummary,
     router: state.router,
-    pendingInvoicePaymentIdRef: state.pendingInvoicePaymentIdRef,
-    setIsClosingForInvoice: state.setIsClosingForInvoice,
+    setIsClosingForNavigation: state.setIsClosingForNavigation,
+    isSessionCurrent: state.isSessionCurrent,
     arrivalBooking: state.arrivalBooking,
     activeStoredState: state.activeStoredState,
     isBusy: state.isBusy,
@@ -135,7 +135,7 @@ function ArrivalPaymentSession() {
     openCardPaymentUrl: provider.openCardPaymentUrl,
   });
 
-  const isModalVisible = state.isAppActive && state.isResumeReady && !state.isClosingForInvoice && Boolean(
+  const isModalVisible = state.isAppActive && state.isResumeReady && !state.isClosingForNavigation && Boolean(
     interruptionChoice || (!state.isPaymentDeferred && (state.completionSummary || state.arrivalBooking)));
   usePaymentAnnouncement(passengerPaymentAnnouncement({
     bookingId: state.arrivalBooking?.id, amount: state.paymentAmount, currency: state.paymentCurrency,
@@ -281,6 +281,7 @@ function ArrivalPaymentSession() {
                   completionSummary={receipt}
                   onDone={navigation.handleDismissSummary}
                   onInvoice={navigation.handleOpenInvoice}
+                  onRateDriver={navigation.handleRateDriver}
                   hasPendingProviderPayment={paymentPending}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   selectedMode={state.selectedMode}

@@ -11,6 +11,7 @@ import { DriverPermissionsCoordinator } from '@/components/DriverPermissionsCoor
 import { TripLocationPermissionCoordinator } from '@/components/TripLocationPermissionCoordinator';
 import { DriverPaymentNoticeCoordinator } from '@/components/DriverPaymentNoticeCoordinator';
 import { PassengerArrivalPaymentCoordinator } from '@/components/PassengerArrivalPaymentCoordinator';
+import { PassengerRideResponseCoordinator } from '@/components/PassengerRideResponseCoordinator';
 import { Colors } from '@/constants/styles';
 import { IdentityProvider } from '@/contexts/IdentityContext';
 import { TutorialProvider } from '@/contexts/TutorialContext';
@@ -83,6 +84,7 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
                 <ActiveRideResumeCoordinator>
                   <AcceptedRequestContactCoordinator />
                   <PassengerArrivalPaymentCoordinator />
+                  <PassengerRideResponseCoordinator />
                   <DriverPaymentNoticeCoordinator />
                   <StoreReviewCoordinator />
                   <DriverPermissionsCoordinator />

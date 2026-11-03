@@ -202,6 +202,7 @@ function ProfileContent() {
       <ProfilePinModal
         currentUser={profile.currentUser}
         handleForgotPin={profile.handleForgotPin}
+        handleResendPinOtp={profile.handleResendPinOtp}
         handleNewPinChange={profile.handleNewPinChange}
         handleNewPinConfirmChange={profile.handleNewPinConfirmChange}
         handleOldPinChange={profile.handleOldPinChange}

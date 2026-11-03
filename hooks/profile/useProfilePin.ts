@@ -2,6 +2,7 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import {
   useUpdatePinMutation,
+  useRequestPinChangeOtpMutation,
 } from '@/store/api/userApi';
 import { emptyPinResetOtp, PIN_RESET_OTP_LENGTH, usePinResetFlow } from '@/hooks/auth/usePinResetFlow';
 import { clearTokens } from '@/services/tokenStorage';
@@ -11,7 +12,7 @@ import { useRouter } from 'expo-router';
 import {
   getApiErrorMessage
 } from '@/utils/errorHelpers';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
 import type { useProfileData } from './useProfileData';
 
@@ -51,12 +52,37 @@ export function useProfilePin({
   const pinConfirmInputRef = useRef<TextInput | null>(null);
 
   const [updatePin, { isLoading: isUpdatingPin }] = useUpdatePinMutation();
+  const [requestPinChangeOtp] = useRequestPinChangeOtpMutation();
+  const pinGeneration = useRef(0);
+  const sendingChange = useRef(false);
+
+  useEffect(() => {
+    if (!pinModalVisible) {
+      pinGeneration.current += 1;
+      setOldPin('');
+      setOtpCode(emptyPinResetOtp());
+      setNewPin('');
+      setNewPinConfirm('');
+      setIsSendingOtp(false);
+    }
+  }, [pinModalVisible]);
+  useEffect(() => {
+    setOldPin('');
+    setOtpCode(emptyPinResetOtp());
+    setNewPin('');
+    setNewPinConfirm('');
+    setPinStep('oldPin');
+    setIsSendingOtp(false);
+    return () => { pinGeneration.current += 1; };
+  }, [currentUser?.id, currentUser?.phone]);
 
   const pinReset = usePinResetFlow(currentUser?.phone || '', pinModalVisible && forgotPinMode);
   const isUpdatingPinWithOtp = pinReset.isBusy;
 
   const handleOpenPinModal = () => {
+    pinGeneration.current += 1;
     setPinModalVisible(true);
+    setIsSendingOtp(false);
     setPinStep('oldPin');
     setForgotPinMode(false);
     setOldPin('');
@@ -70,7 +96,7 @@ export function useProfilePin({
   };
 
   const handleForgotPin = async () => {
-    if (pinReset.isBusy || isUpdatingPin) return;
+    if (pinReset.isBusy || isUpdatingPin || sendingChange.current) return;
     setForgotPinMode(true);
     setPinStep('otp');
     setOldPin('');
@@ -113,8 +139,12 @@ export function useProfilePin({
     }
 
     try {
-      if (!await pinReset.verifyOtp(code)) return;
-      setOtpCode(emptyPinResetOtp());
+      if (forgotPinMode) {
+        if (!await pinReset.verifyOtp(code)) return;
+        setOtpCode(emptyPinResetOtp());
+      }
+      // A normal change verifies OTP and old PIN together on final submission.
+      // The code stays only in component memory until that request.
       setPinStep('newPin');
       setTimeout(() => {
         pinInputRef.current?.focus();
@@ -133,7 +163,31 @@ export function useProfilePin({
     setOldPin(sanitized);
   };
 
-  const handleVerifyOldPin = () => {
+  const sendPinChangeOtp = async () => {
+    if (sendingChange.current || isUpdatingPin || pinReset.isBusy) return;
+    sendingChange.current = true;
+    setIsSendingOtp(true);
+    const generation = pinGeneration.current;
+    const request = requestPinChangeOtp();
+    try {
+      await request.unwrap();
+      if (generation !== pinGeneration.current) return;
+      setOtpCode(emptyPinResetOtp());
+      setPinStep('otp');
+    } catch (error: unknown) {
+      if (generation !== pinGeneration.current) return;
+      showDialog({ variant: 'danger', title: 'SMS indisponible',
+        message: getApiErrorMessage(error, 'Impossible d’envoyer le code. Réessayez dans un instant.') });
+    } finally {
+      request.reset();
+      sendingChange.current = false;
+      if (generation === pinGeneration.current) setIsSendingOtp(false);
+    }
+  };
+
+  const handleResendPinOtp = () => forgotPinMode ? handleForgotPin() : sendPinChangeOtp();
+
+  const handleVerifyOldPin = async () => {
     if (oldPin.length !== 4) {
       showDialog({
         variant: 'danger',
@@ -142,11 +196,8 @@ export function useProfilePin({
       });
       return;
     }
-    // Passer à l'étape de saisie du nouveau PIN
-    setPinStep('newPin');
-    setTimeout(() => {
-      pinInputRef.current?.focus();
-    }, 100);
+    setForgotPinMode(false);
+    await sendPinChangeOtp();
   };
 
   const handleNewPinChange = (value: string) => {
@@ -160,7 +211,7 @@ export function useProfilePin({
   };
 
   const handleUpdatePin = async () => {
-    if (isUpdatingPin || pinReset.isBusy) return;
+    if (isUpdatingPin || pinReset.isBusy || sendingChange.current) return;
     if (newPin.length !== 4) {
       showDialog({
         variant: 'danger',
@@ -207,7 +258,12 @@ export function useProfilePin({
           setPinStep('oldPin');
           return;
         }
-        const request = updatePin({ oldPin, newPin });
+        const otp = otpCode.join('');
+        if (!/^\d{6}$/.test(otp)) {
+          setPinStep('otp');
+          return;
+        }
+        const request = updatePin({ oldPin, newPin, otp });
         try {
           await request.unwrap();
         } finally {
@@ -254,6 +310,7 @@ export function useProfilePin({
     }
   };
   return {
+    handleResendPinOtp,
     handleForgotPin,
     handleNewPinChange,
     handleNewPinConfirmChange,
