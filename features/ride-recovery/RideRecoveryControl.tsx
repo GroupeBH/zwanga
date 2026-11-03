@@ -12,7 +12,7 @@ import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOutboxError } from './rideOutboxEngine';
-import { rideBookingStages, rideRecoveryTrigger, rideStageMessage } from './rideRecoveryPresentation';
+import { RIDE_CONFIRM_LABEL, rideActionQuestion, rideBookingStages, rideRecoveryTrigger, rideStageMessage } from './rideRecoveryPresentation';
 import {
   isNearRideStop,
   type RideDecision,
@@ -148,6 +148,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const entryLabel = overview ? 'Mes passagers' : !directStage && actor === 'driver'
     ? bookingRows.length > 1 ? 'Mes passagers' : driverNavigation ? 'Voir la réponse du passager' : 'Voir les confirmations'
     : trigger.label;
+  const actionLabel = directStage ? saving ? 'Enregistrement…' : saved ? 'Confirmation enregistrée' : RIDE_CONFIRM_LABEL : entryLabel;
   const triggerButton =
     <TouchableOpacity disabled={!active || saving || saved} onPress={() => {
       if (!active || savingRef.current) return;
@@ -156,21 +157,22 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       } else setVisible(true);
     }} style={[styles.trigger, compact && styles.compact, highlighted && styles.triggerHighlighted, Boolean(directStage) && styles.primaryTrigger, driverNavigation && styles.navigationTrigger, overview && styles.navigationOverview]}
       accessibilityRole="button" accessibilityLabel={directStage
-        ? `${directStage.label}${actor === 'driver' ? ` : ${directRow?.item.passengerName || 'Passager'}` : ''}`
+        ? `${saving || saved ? actionLabel : `${directStage.question} ${actionLabel}`}${actor === 'driver' ? ` : ${directRow?.item.passengerName || 'Passager'}` : ''}`
         : actor === 'driver' ? entryLabel : trigger.accessibilityLabel}
       accessibilityState={{ disabled: !active || saving || saved, busy: saving || pendingStage?.entry?.state === 'sending' }}
       accessibilityHint={directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}. L’autre personne confirme de son côté.` : 'Consulte les confirmations du trajet.'}>
       {saving ? <ActivityIndicator color={directStage ? Colors.white : Colors.primaryDark} /> : !overview && <Ionicons name={directStage ? directStage.stage === 'pickup' ? 'car-outline' : 'flag-outline' : trigger.icon} size={20} color={directStage ? Colors.white : Colors.primaryDark} />}
-      <Text style={[styles.triggerLabel, Boolean(directStage) && styles.primaryLabel]}>{directStage ? saving ? 'Enregistrement…' : saved ? 'Confirmation enregistrée' : directStage.label : entryLabel}</Text>
+      <Text style={[styles.triggerLabel, Boolean(directStage) && styles.primaryLabel]}>{actionLabel}</Text>
       {!overview && !compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
     </TouchableOpacity>;
   return <>
+    {directStage && <Text testID="ride-action-question" style={[styles.actionQuestion, compact && styles.compactQuestion]}>{directStage.question}</Text>}
     {!overview && triggerButton}
     {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
       ? rideStageMessage(inlineStage, actor)
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
       : driverNavigation && actor === 'driver' ? directStage?.stage === 'pickup'
-        ? 'Appuyez quand le passager est monté. Véhicule à l’arrêt.'
+        ? 'Appuyez quand le passager est dans le véhicule. Véhicule à l’arrêt.'
         : 'Appuyez quand le passager est descendu. Véhicule à l’arrêt.'
       : condensed && actor === 'driver' ? `${directRow?.item.passengerName || 'Passager'} · ${directRow?.item.numberOfSeats} place(s). À confirmer à l’arrêt.`
       : condensed && actor === 'passenger' ? directStage?.stage === 'dropoff'
@@ -178,7 +180,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
         : 'Appuyez une fois dans le véhicule.'
       : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme de son côté.`
       : directStage?.stage === 'dropoff' ? 'Appuyez une fois à destination. Le conducteur confirme aussi votre arrivée à destination ; la détection automatique reste active.'
-      : 'Appuyez une fois à bord. Le conducteur confirme aussi l’embarquement ; la détection automatique reste active.'}</Text>
+      : 'Appuyez une fois dans le véhicule. Le conducteur confirme aussi de son côté ; la détection automatique reste active.'}</Text>
       : !compact && !overview && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
     <View style={driverNavigation ? styles.navigationSecondary : undefined}>
     {overview && triggerButton}
@@ -218,24 +220,26 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
                   <Ionicons name={selected?.id === item.id ? 'chevron-up' : 'chevron-down'} size={20} color={Colors.gray[600]} />
                 </TouchableOpacity>}
                 {selected?.id === item.id && stages.map(stageInfo => {
-                  const { stage, entry, status, canArrive, unavailable, other, label } = stageInfo;
-                  return <View key={stage} style={styles.stage}>
-                    <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{stage === 'pickup' ? 'Montée à bord' : 'Arrivée'}</Text></View>
+                  const { stage, entry, status, canArrive, unavailable, other, question } = stageInfo;
+                  const stageLabel = savedStageKey === `${item.id}:${stage}` ? 'Validation enregistrée' : saving ? 'Enregistrement…' : RIDE_CONFIRM_LABEL;
+                  return <View key={stage} testID={`ride-stage-${item.id}-${stage}`} style={styles.stage}>
+                    <View style={styles.stageHeading}><Ionicons name={status === 'confirmed' ? 'checkmark-circle' : stage === 'pickup' ? 'car-outline' : 'flag-outline'} size={23} color={status === 'confirmed' ? Colors.successDark : Colors.primary} /><Text style={styles.stageTitle}>{unavailable ? stage === 'pickup' ? 'Dans le véhicule' : 'Arrivée' : question}</Text></View>
                     <Text style={styles.status} accessibilityLiveRegion="polite">{rideStageMessage(stageInfo, actor)}</Text>
                     {actor === 'driver' && stage === 'dropoff' && (status === 'confirmed' || entry?.state === 'confirmed') &&
                       <DriverBookingRevenue bookingId={item.id} active={active && visible} />}
                     {!unavailable && <View style={styles.actions}>
-                      <TouchableOpacity disabled={Boolean(choice) || saving || !active || savedStageKey === `${item.id}:${stage}`} style={styles.confirm} onPress={() => { if (!choice) void saveChoice({ bookingId: item.id, stage, decision: 'confirm' }); }} accessibilityRole="button"><Text style={styles.confirmLabel}>{savedStageKey === `${item.id}:${stage}` ? 'Validation enregistrée' : label}</Text></TouchableOpacity>
+                      <TouchableOpacity disabled={Boolean(choice) || saving || !active || savedStageKey === `${item.id}:${stage}`} style={styles.confirm} onPress={() => { if (!choice) void saveChoice({ bookingId: item.id, stage, decision: 'confirm' }); }} accessibilityRole="button"
+                        accessibilityLabel={`${stageLabel === RIDE_CONFIRM_LABEL ? `${question} ${stageLabel}` : stageLabel}${actor === 'driver' ? ` : ${item.passengerName || 'Passager'}` : ''}`}><Text style={styles.confirmLabel}>{stageLabel}</Text></TouchableOpacity>
                       {other === 'confirm' && <TouchableOpacity disabled={Boolean(choice) || saving || !active} style={styles.reject} onPress={() => { if (!savingRef.current && !choice && active) setChoice({ bookingId: item.id, stage, decision: 'reject' }); }} accessibilityRole="button"><Text style={styles.rejectLabel}>Ce n’est pas exact</Text></TouchableOpacity>}
                     </View>}
-                    {stage === 'dropoff' && !canArrive && status !== 'confirmed' && <Text style={styles.hint}>Confirmez d’abord la montée à bord.</Text>}
+                    {stage === 'dropoff' && !canArrive && status !== 'confirmed' && <Text style={styles.hint}>{actor === 'driver' ? 'Confirmez d’abord que le passager est dans le véhicule.' : 'Confirmez d’abord que vous êtes dans le véhicule.'}</Text>}
                   </View>;
                 })}
               </View>;
             }} />
           {choice && <View style={styles.review}>
             <Text style={styles.passenger}>{selected?.passengerName || 'Réservation indisponible'} · {selected?.numberOfSeats ?? '—'} place(s)</Text>
-            <Text style={styles.stageTitle}>{choice.decision === 'reject' ? 'Signaler votre désaccord ?' : choice.stage === 'pickup' ? 'L’embarquement a bien eu lieu ?' : 'Vous confirmez l’arrivée à destination ?'}</Text>
+            <Text style={styles.stageTitle}>{choice.decision === 'reject' ? 'Signaler votre désaccord ?' : rideActionQuestion(actor, choice.stage)}</Text>
             <Text style={styles.status}>Cette réponse concerne toutes les places de cette réservation, pas les autres réservations du trajet. Elle sera sauvegardée, puis transmise au serveur.</Text>
             <View style={styles.actions}>
               <TouchableOpacity style={styles.reject} disabled={saving} onPress={() => setChoice(null)} accessibilityRole="button"><Text style={styles.rejectLabel}>Retour</Text></TouchableOpacity>
@@ -261,6 +265,8 @@ const styles = StyleSheet.create({
   navigationOverview: { flex: 1, minHeight: 48, paddingVertical: 8, paddingHorizontal: 4, borderWidth: 0, backgroundColor: Colors.gray[100] },
   triggerLabel: { color: Colors.primaryDark, fontWeight: '700', fontSize: 12, textAlign: 'center', flexShrink: 1 },
   primaryLabel: { color: Colors.white, fontSize: 15 },
+  actionQuestion: { color: Colors.gray[900], fontSize: 15, lineHeight: 21, fontWeight: '600', marginBottom: 6 },
+  compactQuestion: { alignSelf: 'center', maxWidth: 126, textAlign: 'center' },
   hint: { color: Colors.gray[600], fontSize: 12, lineHeight: 18, marginTop: 5 },
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(10, 20, 30, 0.45)' },
   sheet: { height: '85%', backgroundColor: Colors.white, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },

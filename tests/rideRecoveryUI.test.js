@@ -45,18 +45,76 @@ function setup() {
   const render = () => { tree = hooks.render(() => RideRecoveryControl(props)); return tree; };
   const button = label => all(all(tree).find(node => node.type === 'Modal')).find(node => node.type === 'Button' && words(node) === label);
   const trigger = () => all(tree).find(node => node.type === 'Button');
+  const stagePanel = stage => all(tree).find(node => node.type === 'View' && node.props.testID?.startsWith('ride-stage-') && node.props.testID.endsWith(`-${stage}`));
+  const confirm = stage => all(stagePanel(stage)).find(node => node.type === 'Button' && words(node) === 'Oui, confirmer');
+  const question = () => all(tree).find(node => node.props?.testID === 'ride-action-question');
   render();
-  return { state, booking, queries, sent, results, io, hooks, render, button, trigger, tree: () => tree, props: value => { props = value; }, snapshots: value => { snapshots = value; }, active: value => { active = value; } };
+  return { state, booking, queries, sent, results, io, hooks, render, button, trigger, question, stagePanel, confirm, tree: () => tree, props: value => { props = value; }, snapshots: value => { snapshots = value; }, active: value => { active = value; } };
+}
+
+function assertAction(h, actor, stage) {
+  const question = actor === 'driver'
+    ? stage === 'pickup' ? 'Le passager est dans le véhicule ?' : 'Le passager est descendu ?'
+    : stage === 'pickup' ? 'Vous êtes dans le véhicule ?' : 'Vous êtes arrivé ?';
+  assert.equal(words(h.question()), question);
+  assert.equal(words(h.trigger()), 'Oui, confirmer');
+  assert.ok(h.trigger().props.accessibilityLabel.startsWith(`${question} Oui, confirmer`));
+  const elements = all(h.tree());
+  assert.ok(elements.indexOf(h.question()) < elements.indexOf(h.trigger()), 'the question precedes its action');
+  assert.equal(h.question().props.numberOfLines, undefined, 'the question can wrap, including large text');
+}
+
+for (const actor of ['driver', 'passenger']) {
+  for (const stage of ['pickup', 'dropoff']) {
+    test(`${actor} ${stage}: action, saving and saved labels remain distinct and accessible`, async () => {
+      for (const layout of [{}, { compact: true }, { condensed: true, driverNavigation: actor === 'driver' }]) {
+        const h = setup();
+        h.state.auth.user.id = actor; h.state.rideRecovery.userId = actor;
+        const booking = { ...h.booking, pickedUp: stage === 'dropoff' };
+        const props = { tripId: 'trip', actor, ...layout, ...(actor === 'driver' ? { bookings: [booking] } : { booking }) };
+        h.props(props); h.render();
+        assertAction(h, actor, stage);
+        assert.equal(h.trigger().props.accessibilityLabel, `${words(h.question())} Oui, confirmer${actor === 'driver' ? ' : Test' : ''}`);
+        const panelNodes = all(h.stagePanel(stage));
+        const panelQuestion = panelNodes.find(node => node.type === 'Text' && words(node) === words(h.question()));
+        const panelButton = panelNodes.find(node => node.type === 'Button' && words(node) === 'Oui, confirmer');
+        assert.ok(panelQuestion && panelButton, 'the sheet retains explicit context for each short button');
+        assert.ok(panelNodes.indexOf(panelQuestion) < panelNodes.indexOf(panelButton));
+        assert.equal(panelButton.props.accessibilityLabel, h.trigger().props.accessibilityLabel);
+        assert.equal(h.confirm(stage === 'pickup' ? 'dropoff' : 'pickup'), undefined, 'the other stage is not available');
+        assert.equal(h.sent.length, 0, 'showing an action is never a confirmation');
+        let finish;
+        h.io.enqueue = () => new Promise(resolve => { finish = resolve; });
+        const press = h.trigger().props.onPress;
+        press(); press(); h.render();
+        assert.equal(words(h.trigger()), 'Enregistrement…');
+        assert.match(h.trigger().props.accessibilityLabel, /^Enregistrement…/);
+        assert.equal(h.trigger().props.accessibilityState.busy, true);
+        assert.equal(h.sent.length, 1);
+        finish(); await new Promise(resolve => setImmediate(resolve)); h.render();
+        assert.equal(words(h.trigger()), 'Confirmation enregistrée');
+        assert.match(h.trigger().props.accessibilityLabel, /^Confirmation enregistrée/);
+        assert.equal(h.trigger().props.disabled, true);
+        assert.match(words(h.tree()), /Enregistré sur ce téléphone/);
+        const stagePanel = h.stagePanel(stage);
+        assert.ok(stagePanel);
+        assert.doesNotMatch(words(stagePanel), /Confirmation validée/);
+        if (stage === 'dropoff') assert.match(words(h.stagePanel('pickup')), /Dans le véhiculeConfirmation validée/);
+        assert.equal(booking.droppedOff, undefined);
+        h.hooks.unmount();
+      }
+    });
+  }
 }
 
 test('one passenger tap saves pickup directly, then reports its result without an intermediate modal', async () => {
   const h = setup();
   h.snapshots([{ bookingId: 'booking', pickup: { status: 'none' }, dropoff: { status: 'none' } }]); h.render();
-  assert.equal(words(h.trigger()), 'Je suis à bord');
+  assertAction(h, 'passenger', 'pickup');
   h.trigger().props.onPress(); h.render();
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, false);
   assert.equal(h.queries.at(-1).options.skip, true);
-  assert.equal(h.button('Je suis arrivé'), undefined);
+  assert.equal(h.confirm('dropoff'), undefined);
   await new Promise(resolve => setImmediate(resolve)); h.render();
   assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', decision: 'confirm' }]);
   assert.equal(h.booking.pickedUp, undefined);
@@ -75,7 +133,8 @@ test('driver navigation names its next action and keeps contact actions beside t
       condensed: true, driverNavigation: true, preferredBookingId: next.id, preferredStage: stage,
       secondaryActions: React.createElement('ContactActions') });
     h.render();
-    assert.match(words(h.tree()), stage === 'pickup' ? /Appuyez quand le passager est monté/ : /Appuyez quand le passager est descendu/);
+    assertAction(h, 'driver', stage);
+    assert.match(words(h.tree()), stage === 'pickup' ? /Appuyez quand le passager est dans le véhicule/ : /Appuyez quand le passager est descendu/);
     assert.ok(all(h.tree()).some(node => node.type === 'ContactActions'));
     assert.ok(all(h.tree()).some(node => node.type === 'Button' && words(node) === 'Passagers'));
     h.trigger().props.onPress(); h.trigger().props.onPress();
@@ -92,11 +151,12 @@ test('an incoming reservation cannot label another passenger one-tap confirmatio
     preferredBookingId: 'booking', preferredStage: 'pickup' };
   h.props({ ...props, driverOverviewOnly: true }); h.render();
   assert.equal(words(h.trigger()), 'Mes passagers');
+  assert.equal(h.question(), undefined, 'an overview is not a confirmation question');
   h.trigger().props.onPress(); h.render();
   assert.equal(h.sent.length, 0, 'overview never declares boarding for the incoming request');
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true);
   h.props({ ...props, driverOverviewOnly: false }); h.render();
-  assert.equal(words(h.trigger()), 'Le passager est à bord');
+  assertAction(h, 'driver', 'pickup');
   h.hooks.unmount();
 });
 
@@ -122,7 +182,7 @@ test('condensed driver controls confirm either stage without acting for the pass
     h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: stage === 'dropoff' }], actor: 'driver', condensed: true });
     h.render(); h.render();
     assert.match(words(h.tree()), /Test · 1 place\(s\). À confirmer à l’arrêt/);
-    assert.equal(words(h.trigger()), stage === 'pickup' ? 'Le passager est à bord' : 'Le passager est descendu');
+    assertAction(h, 'driver', stage);
     const press = h.trigger().props.onPress; press(); press();
     await new Promise(resolve => setImmediate(resolve)); h.render(); press();
     assert.deepEqual(h.sent, [{ bookingId: 'booking', tripId: 'trip', stage, decision: 'confirm' }]);
@@ -180,13 +240,14 @@ test('driver bypass modal explains dual confirmation and preserves cancellation 
   const props = { pickupBypassConfirmation: { waypoint: { passenger: { name: 'Passager' } } },
     insets: { bottom: 0 }, trip: {}, handleConfirmBypassedPickup: () => { confirmed++; }, handleCancelBypassedPickup() {}, pauseTripWithoutPassengerConfirmation() {} };
   const tree = NavigationPickupBypassModal(props);
-  assert.match(words(tree), /Je suis à bord.*deux confirmations.*détection automatique/);
-  const button = all(tree).find(node => node.type === 'Button' && words(node) === 'Confirmer l’embarquement');
+  assert.match(words(tree), /Le passager est dans le véhicule \?.*deux confirmations.*détection automatique/);
+  const button = all(tree).find(node => node.type === 'Button' && words(node) === 'Oui, confirmer');
+  assert.equal(button.props.accessibilityLabel, 'Le passager est dans le véhicule ? Oui, confirmer : Passager');
   button.props.onPress(); assert.equal(confirmed, 1);
   assert.match(words(tree), /Annuler la réservation/);
   assert.match(words(NavigationPickupBypassModal({ ...props, trip: { tripRequestId: 'request' } })), /Arrêter le trajet/);
   const paused = NavigationPickupBypassModal({ ...props, isPausingTrip: true });
-  assert.equal(all(paused).find(node => node.type === 'Button' && words(node) === 'Confirmer l’embarquement').props.disabled, true);
+  assert.equal(all(paused).find(node => node.type === 'Button' && words(node) === 'Oui, confirmer').props.disabled, true);
 });
 
 test('waiting copy identifies the other actor and never calls a queued vote server-received', () => {
@@ -215,7 +276,7 @@ test('the optional status link preserves disagreement without adding a step to p
   const h = setup();
   h.snapshots([{ bookingId: 'booking', pickup: { status: 'awaiting_other', driver: 'confirm' }, dropoff: { status: 'none' } }]);
   h.render(); h.render();
-  assert.equal(words(h.trigger()), 'Je suis à bord');
+  assertAction(h, 'passenger', 'pickup');
   const inspect = all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Voir les confirmations');
   inspect.props.onPress(); h.render();
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true);
@@ -229,8 +290,8 @@ test('the optional status link preserves disagreement without adding a step to p
 test('a saved pickup allows queuing arrival, but neither is displayed as server-confirmed', () => {
   const h = setup();
   h.state.rideRecovery.entries = [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', state: 'queued', decision: 'confirm' }];
-  h.render(); assert.ok(h.button('Je suis arrivé')); assert.equal(h.button('Je suis à bord'), undefined);
-  assert.equal(words(h.trigger()), 'Je suis arrivé');
+  h.render(); assert.ok(h.confirm('dropoff')); assert.equal(h.confirm('pickup'), undefined);
+  assertAction(h, 'passenger', 'dropoff');
   assert.match(words(h.tree()), /Enregistré sur ce téléphone/);
   assert.doesNotMatch(words(h.tree()), /Confirmation validée/);
   h.hooks.unmount();
@@ -271,12 +332,12 @@ test('manual driver dropoff shows this passenger revenue only after server confi
 
 test('passenger arrival is saved in one tap with a result but no intermediate confirmation or invented payment', async () => {
   const h = setup();
-  assert.equal(words(h.trigger()), 'Je suis à bord');
+  assertAction(h, 'passenger', 'pickup');
   assert.equal(all(h.trigger()).find(node => node.type === 'Icon').props.name, 'car-outline');
   h.booking.pickedUp = true;
   h.props({ tripId: 'trip', booking: { ...h.booking }, actor: 'passenger' }); h.render();
-  assert.equal(words(h.trigger()), 'Je suis arrivé');
-  assert.equal(h.trigger().props.accessibilityLabel, 'Je suis arrivé');
+  assertAction(h, 'passenger', 'dropoff');
+  assert.equal(h.trigger().props.accessibilityLabel, 'Vous êtes arrivé ? Oui, confirmer');
   assert.equal(all(h.trigger()).find(node => node.type === 'Icon').props.name, 'flag-outline');
   h.trigger().props.onPress(); h.render();
   assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, false);
@@ -288,10 +349,10 @@ test('passenger arrival is saved in one tap with a result but no intermediate co
   h.hooks.unmount();
 });
 
-test('server pickup confirmation updates the label even if the booking cache is older', () => {
+test('server pickup confirmation updates the question even if the booking cache is older', () => {
   const h = setup();
   h.snapshots([{ bookingId: 'booking', pickup: { status: 'confirmed' }, dropoff: { status: 'none' } }]); h.render();
-  assert.equal(words(h.trigger()), 'Je suis arrivé');
+  assertAction(h, 'passenger', 'dropoff');
   h.hooks.unmount();
 });
 
@@ -299,17 +360,19 @@ test('driver labels cover pickup, dropoff and passengers at different stages', (
   const h = setup();
   const props = { tripId: 'trip', actor: 'driver', compact: true };
   h.props({ ...props, bookings: [h.booking] }); h.render();
-  assert.equal(words(h.trigger()), 'Le passager est à bord');
+  assertAction(h, 'driver', 'pickup');
   const onboard = { ...h.booking, id: 'onboard', passengerName: 'À bord', pickedUp: true };
   h.props({ ...props, bookings: [onboard] }); h.render();
-  assert.equal(words(h.trigger()), 'Le passager est descendu');
+  assertAction(h, 'driver', 'dropoff');
   h.props({ ...props, bookings: [h.booking, onboard] }); h.render();
   assert.equal(words(h.trigger()), 'Mes passagers');
   h.trigger().props.onPress(); h.render();
   all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations de Test').props.onPress(); h.render();
-  assert.ok(h.button('Le passager est à bord')); assert.equal(h.button('Le passager est descendu'), undefined);
+  assert.ok(h.confirm('pickup')); assert.equal(h.confirm('dropoff'), undefined);
+  assert.equal(h.confirm('pickup').props.accessibilityLabel, 'Le passager est dans le véhicule ? Oui, confirmer : Test');
   all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations de À bord').props.onPress(); h.render();
-  assert.ok(h.button('Le passager est descendu'));
+  assert.ok(h.confirm('dropoff'));
+  assert.equal(h.confirm('dropoff').props.accessibilityLabel, 'Le passager est descendu ? Oui, confirmer : À bord');
   assert.deepEqual(h.sent, []);
   assert.ok(h.trigger().props.style.flat().some(style => style?.maxWidth === 126));
   h.hooks.unmount();
@@ -322,7 +385,7 @@ test('the next stop confirms only its passenger in one tap and keeps every other
     h.props({ tripId: 'trip', actor: 'driver', bookings: [h.booking, next],
       preferredBookingId: next.id, preferredStage: stage, condensed: true });
     h.render(); h.render();
-    assert.equal(words(h.trigger()), stage === 'pickup' ? 'Le passager est à bord' : 'Le passager est descendu');
+    assertAction(h, 'driver', stage);
     assert.match(h.trigger().props.accessibilityLabel, /Prochain passager/);
     assert.match(words(h.tree()), /Prochain passager · 1 place/);
     all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Tous les passagers').props.onPress(); h.render();
@@ -357,12 +420,14 @@ test('submitted or completed stages offer a status view instead of an unavailabl
   const h = setup();
   h.state.rideRecovery.entries = ['pickup', 'dropoff'].map(stage => ({ bookingId: 'booking', tripId: 'trip', stage, state: 'queued', decision: 'confirm' }));
   h.render(); assert.equal(words(h.trigger()), 'Voir les confirmations');
+  assert.equal(h.question(), undefined, 'queued actions must not ask for confirmation again');
   assert.match(words(h.tree()), /Enregistré sur ce téléphone/);
   h.state.rideRecovery.entries = [];
   h.props({ tripId: 'trip', booking: { ...h.booking, pickedUp: true, droppedOff: true }, actor: 'passenger' });
   h.render(); assert.equal(words(h.trigger()), 'Voir les confirmations');
-  assert.equal(h.button('Je suis à bord'), undefined);
-  assert.equal(h.button('Je suis arrivé'), undefined);
+  assert.equal(h.confirm('pickup'), undefined);
+  assert.equal(h.confirm('dropoff'), undefined);
+  assert.equal(h.question(), undefined, 'completed stages have no confirmation question');
   h.hooks.unmount();
 });
 
@@ -371,10 +436,10 @@ test('blocked, disputed or other-account pickup entries do not advertise arrival
   for (const state of ['blocked', 'disputed']) {
     h.state.rideRecovery.entries = [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', state, decision: 'confirm' }];
     h.render(); assert.equal(words(h.trigger()), 'Voir les confirmations');
-    assert.equal(h.button('Je suis arrivé'), undefined);
+    assert.equal(h.confirm('dropoff'), undefined);
   }
   h.state.rideRecovery.userId = 'someone-else'; h.render();
-  assert.equal(words(h.trigger()), 'Je suis à bord');
+  assertAction(h, 'passenger', 'pickup');
   h.hooks.unmount();
 });
 
@@ -455,7 +520,7 @@ test('foreign holders/trips cannot produce manual declarations even with a suppl
   const h = setup();
   for (const patch of [{ passengerId: 'other' }, { tripId: 'another-trip' }]) {
     h.props({ tripId: 'trip', booking: { ...h.booking, ...patch }, actor: 'passenger' }); h.render();
-    assert.equal(h.button('Je suis à bord'), undefined);
+    assert.equal(h.confirm('pickup'), undefined);
     assert.equal(all(h.tree()).find(node => node.type === 'List').props.data.length, 0);
   }
   assert.deepEqual(h.sent, []); h.hooks.unmount();
@@ -471,7 +536,7 @@ test('multiple groups confirm the selected reservation directly, including after
   h.props({ ...props, bookings: [...bookings].reverse() }); h.render();
   assert.equal(select('Titulaire 1').props.accessibilityState.expanded, true);
   assert.equal(all(h.tree()).find(node => node.type === 'List').props.initialNumToRender, 6);
-  const press = h.button('Le passager est descendu').props.onPress; press(); press();
+  const press = h.confirm('dropoff').props.onPress; press(); press();
   await new Promise(resolve => setImmediate(resolve)); h.render(); press();
   assert.deepEqual(h.sent, [{ bookingId: 'b1', tripId: 'trip', stage: 'dropoff', decision: 'confirm' }]);
   assert.equal(h.button('Enregistrer ma réponse'), undefined);

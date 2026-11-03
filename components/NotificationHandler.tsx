@@ -18,7 +18,8 @@ import { useGetMyActivityRequestsQuery, useReleaseOverdueDriverMutation } from '
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
 import { selectIsAuthenticated } from '@/store/selectors';
-import { getTripUrl, handleNotificationNavigation, isTripInterruptionNotification } from '@/utils/notificationNavigation';
+import { handleNotificationNavigation, isTripInterruptionNotification } from '@/utils/notificationNavigation';
+import { getTripDeepLinkHref } from '@/utils/tripDeepLink';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
 import { usePathname, useRouter } from 'expo-router';
@@ -313,36 +314,9 @@ export function NotificationHandler() {
               },
             } as any);
           });
-        } else if (route.startsWith('trip/manage/')) {
-          const tripId = route.replace('trip/manage/', '').split('?')[0];
-          router.push({
-            pathname: '/trip/manage/[id]',
-            params: { id: tripId },
-          });
         } else if (route.startsWith('trip/')) {
-          const parts = route.replace('trip/', '').split('?');
-          const tripId = parts[0];
-          const params = parseQueryParams(parts[1] || '');
-
-          const linkData = {
-            tripId,
-            driverId: params.driverId,
-            ...params,
-          };
-
-          const targetUrl = getTripUrl(tripId, linkData, currentUserRef.current);
-
-          if (targetUrl.includes('/trip/manage/')) {
-            router.push({
-              pathname: '/trip/manage/[id]',
-              params: { id: tripId, ...params },
-            });
-          } else {
-            router.push({
-              pathname: '/trip/[id]',
-              params: { id: tripId, ...params },
-            });
-          }
+          const href = getTripDeepLinkHref(route, currentUserRef.current);
+          if (href) router.push(href);
         } else if (route.startsWith('chat/')) {
           const conversationId = route.replace('chat/', '').split('?')[0];
           router.push({

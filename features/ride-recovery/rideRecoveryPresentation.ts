@@ -5,9 +5,11 @@ import { rideEntryMessage } from './rideRecoveryModel';
 type RideActor = 'driver' | 'passenger';
 const STAGES: RideStage[] = ['pickup', 'dropoff'];
 
-export function rideActionLabel(actor: RideActor, stage: RideStage) {
-  if (actor === 'passenger') return stage === 'pickup' ? 'Je suis à bord' : 'Je suis arrivé';
-  return stage === 'pickup' ? 'Le passager est à bord' : 'Le passager est descendu';
+export const RIDE_CONFIRM_LABEL = 'Oui, confirmer';
+
+export function rideActionQuestion(actor: RideActor, stage: RideStage) {
+  if (actor === 'passenger') return stage === 'pickup' ? 'Vous êtes dans le véhicule ?' : 'Vous êtes arrivé ?';
+  return stage === 'pickup' ? 'Le passager est dans le véhicule ?' : 'Le passager est descendu ?';
 }
 
 /** Share the existing sheet's availability rules with its entry-point label. */
@@ -23,7 +25,7 @@ export function rideBookingStages(item: Booking, snapshot: RideSnapshot | undefi
       unavailable: Boolean(item.status !== 'accepted' || item.droppedOff || item.droppedOffAt || entry || serverStage?.[actor] || status === 'confirmed' || status === 'disputed' || (stage === 'dropoff' && !canArrive)),
       own: serverStage?.[actor],
       other: serverStage?.[actor === 'driver' ? 'passenger' : 'driver'],
-      label: rideActionLabel(actor, stage),
+      question: rideActionQuestion(actor, stage),
     };
   });
 }
@@ -50,7 +52,7 @@ export function rideRecoveryTrigger(actor: RideActor, availableStages: RideStage
     icon: 'people-outline' as const,
   };
   if (pickup || dropoff) {
-    const label = rideActionLabel(actor, pickup ? 'pickup' : 'dropoff');
+    const label = rideActionQuestion(actor, pickup ? 'pickup' : 'dropoff');
     return { label, accessibilityLabel: label, icon: pickup ? 'car-outline' as const : 'flag-outline' as const };
   }
   return { label: 'Voir les confirmations', accessibilityLabel: 'Voir les confirmations du trajet', icon: 'list-outline' as const };

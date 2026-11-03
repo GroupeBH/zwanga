@@ -47,3 +47,17 @@ test('presentation omits malformed amounts and preserves electronic pending paym
   assert.deepEqual(getTripRevenueRows({ confirmedAmount: 'NaN', creditPendingAmount: -1, cashToCollectAmount: Infinity }), []);
   assert.equal(getTripRevenueRows({ electronicPendingAmount: 4750 })[0].key, 'electronicPending');
 });
+
+test('cash received is distinct from both platform earnings and cash still owed, including push strings', () => {
+  const summary = { ledgerVerified: 'true', confirmedAmount: '1800', cashReceivedAmount: '1200', cashToCollectAmount: '500', totalExpectedAmount: '3500' };
+  assert.deepEqual(getTripRevenueRows(summary).map(({ key, amount }) => ({ key, amount })), [
+    { key: 'confirmed', amount: 1800 }, { key: 'cashReceived', amount: 1200 }, { key: 'cash', amount: 500 },
+  ]);
+  const message = getTripRevenueMessage(summary).replace(/\s+/g, ' ');
+  assert.match(message, /Cash reçu : 1 200/);
+  assert.match(message, /À recevoir en cash : 500/);
+  assert.match(message, /Total du trajet : 3 500/);
+  assert.doesNotMatch(message, /Gains crédités : 3 500/);
+  assert.deepEqual(getTripRevenueRows({ cashReceivedAmount: 'invalid' }), []);
+  assert.doesNotMatch(getTripRevenueMessage({ cashReceivedAmount: 1200, cashToCollectAmount: 0 }), /À recevoir/);
+});
