@@ -1,28 +1,33 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from "@/constants/styles";
 import { StyleSheet } from "react-native";
+import { ACTION_COLORS } from '@/constants/actionColors';
 
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
   },
   header: {
     backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.lg,
+    paddingHorizontal: 20,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[200],
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
   closeButton: {
-    marginRight: Spacing.lg,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    marginRight: Spacing.sm,
   },
   headerTitle: {
+    flex: 1,
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
@@ -35,6 +40,8 @@ export const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
+    minHeight: 44,
+    justifyContent: 'center',
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.sm,
   },
@@ -55,9 +62,9 @@ export const styles = StyleSheet.create({
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xl,
-    paddingBottom: Spacing.xxl,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
   driverCard: {
     backgroundColor: Colors.white,
@@ -286,7 +293,7 @@ export const styles = StyleSheet.create({
     minHeight: 56,
   },
   submitButtonActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: ACTION_COLORS.orange,
   },
   submitButtonDanger: {
     backgroundColor: Colors.danger,

@@ -10,6 +10,8 @@ const noOverlay = () => null;
 const noActiveOverlay = () => false;
 const emptyEntries: import('./rideOverlayStore').RideOverlayEntry[] = [];
 const noEntries = () => emptyEntries;
+/** Store-only consumers must not rerender when a panel republishes its JSX. */
+export function useRideOverlayStore() { return useContext(RideOverlayContext); }
 export function useRideOverlay() {
   const store = useContext(RideOverlayContext);
   const active = useSyncExternalStore(store?.subscribe ?? subscribeNothing, store?.getActive ?? noOverlay, noOverlay);

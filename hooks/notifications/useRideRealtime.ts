@@ -5,11 +5,12 @@ import { baseApi } from '@/store/api/baseApi';
 import { chatSocket } from '@/services/chatSocket';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { displayDriverInvitation, dismissDriverInvitation } from '@/services/driverNotifications';
-import { pendingRideAlertHandoffs, pendingRideAlerts } from '@/services/rideAlertSession';
+import { pendingRideAlertHandoffs, pendingRideEntryAlerts } from '@/services/rideAlertSession';
+import { revalidatePendingRideAlerts } from '@/services/rideAlertRevalidation';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
 import { rideRealtimeTags } from '@/features/notifications/rideRealtimeRefresh';
-import { invalidateRideRingValidation, needsRideRingValidation, validateRideRing } from '@/services/rideRingValidation';
+import { invalidateRideRingValidation } from '@/services/rideRingValidation';
 import type { RideRealtimeEvent } from '@/features/notifications/rideRealtime';
 
 /** One shared socket, foreground only; no background polling or offline decisions. */
@@ -37,11 +38,7 @@ export function useRideRealtime(userId: string | undefined, driverAccount: boole
     const stop = chatSocket.subscribeToRideAlerts(event => {
       if (!current() || (event.kind !== 'reconnected' && event.recipientId !== userId)) return;
       if (event.kind === 'reconnected') {
-        for (const alert of pendingRideAlerts(userId)) if (needsRideRingValidation(alert.data))
-          void validateRideRing(alert.data).then(valid => {
-            if (!valid && current() && alert.kind !== 'response') return dismissDriverInvitation({
-              kind: alert.kind, id: alert.id, driverId: userId, ringUntil: String(alert.data.ringUntil ?? '') });
-          }).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISMISS_FAILED'));
+        void revalidatePendingRideAlerts(userId);
       }
       if (event.kind === 'incoming') {
         if (!canShowRequestNotification(event.data, { id: userId, role: driverAccount ? 'driver' : 'passenger' })) return;
@@ -54,7 +51,7 @@ export function useRideRealtime(userId: string | undefined, driverAccount: boole
         void displayDriverInvitation(event.data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
       } else if (event.kind === 'changed' && event.terminal) {
         if (event.requestId) invalidateRideRingValidation(event.requestId);
-        const candidates = new Map([...pendingRideAlerts(userId),
+        const candidates = new Map([...pendingRideEntryAlerts(userId),
           ...pendingRideAlertHandoffs(userId).map(item => item.alert)].map(alert => [alert.key, alert]));
         const matches = [...candidates.values()].filter(alert => alert.kind !== 'response' &&
           ((event.bookingId && alert.kind === 'booking' && alert.id === event.bookingId) ||

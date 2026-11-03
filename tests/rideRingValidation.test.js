@@ -22,6 +22,17 @@ test('a queued request is silent after cancellation, another acceptance, malform
   f.io.network = async () => { throw Error('network unavailable'); };
   assert.equal(await f.validateRideRing(data()), false);
 });
+
+test('revalidation distinguishes terminal denial, expiry and recoverable transport failures', async () => {
+  const f = fixture();
+  assert.equal(await f.checkRideRing(data()), 'allowed');
+  f.io.network = async () => ({ allowed: false });
+  assert.equal(await f.checkRideRing(data()), 'denied');
+  f.io.network = async () => { throw Error('offline'); };
+  assert.equal(await f.checkRideRing(data()), 'unavailable');
+  assert.equal(await f.checkRideRing({ ...data(), ringValidationToken: undefined }), 'unavailable');
+  assert.equal(await f.checkRideRing({ ...data(), ringUntil: new Date(0).toISOString() }), 'expired');
+});
 test('simultaneous deliveries share work, but approval is not cached and mutations are not retained', async () => {
   const f = fixture(), event = data();
   assert.deepEqual(await Promise.all([f.validateRideRing(event), f.validateRideRing(event)]), [true, true]);

@@ -268,6 +268,7 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true, panel: 'sos' }; } },
     '@/features/driver-navigation/DriverNavigationTopPanel': { DriverNavigationTopPanel: 'TopPanel' },
     '@/features/driver-navigation/DriverNavigationGuidance': { DriverNavigationGuidance: 'Guidance' },
+    '@/features/driver-navigation/DriverPaidRequestCompletionPrompt': { DriverPaidRequestCompletionPrompt: 'PaidRequestCompletion' },
     '@/features/navigation/NavigationAssistanceModals': { NavigationAssistanceModals: 'AssistanceModals' },
     '../../../features/screen-styles/app/trip/navigate/detail/index': { styles: {} },
     '../../../features/driver-navigation/navigationModel': { KINSHASA_FALLBACK_MAP_COORDINATE: { latitude: -4.3, longitude: 15.2 } },

@@ -1,4 +1,5 @@
-const pending = new Map<string, Promise<boolean>>();
+export type RideRingVerdict = 'allowed' | 'denied' | 'unavailable' | 'expired';
+const pending = new Map<string, Promise<RideRingVerdict>>();
 const revisions = new Map<string, number>();
 const grants = new Map<string, { until: number; request: string; revision: number }>();
 export const needsRideRingValidation = (data: Record<string, unknown>) =>
@@ -19,43 +20,51 @@ export function rideRingValidationIsCurrent(data: Record<string, unknown>): bool
 }
 
 /** No cached positive verdict: a push is a hint, not permission to ring. */
-export async function validateRideRing(data: Record<string, unknown>): Promise<boolean> {
-  if (!needsRideRingValidation(data)) return true;
+export async function checkRideRing(data: Record<string, unknown>): Promise<RideRingVerdict> {
+  if (!needsRideRingValidation(data)) return 'allowed';
   const token = data.ringValidationToken;
   const deadline = Date.parse(String(data.ringUntil ?? ''));
-  if (typeof token !== 'string' || token.length > 256 || !token || !(deadline > Date.now())) return false;
+  if (Number.isFinite(deadline) && deadline <= Date.now()) return 'expired';
+  // A legacy inbox row without a transport permit is not a refusal/decision.
+  if (typeof token !== 'string' || token.length > 256 || !token || !Number.isFinite(deadline)) return 'unavailable';
   const request = String(data.tripRequestId ?? '');
   const revision = revisions.get(request) ?? 0;
   const key = `${token}:${revision}`;
   const current = pending.get(key);
   if (current) return current;
-  if (pending.size >= 8) return false;
+  if (pending.size >= 8) return 'unavailable';
   let expired = false;
   let operation: { abort(): void; reset(): void } | undefined;
   let timer: ReturnType<typeof setTimeout>;
   const check = (async () => {
     try {
-      const network = (async () => {
+      const network = (async (): Promise<RideRingVerdict> => {
         const [{ store }, { rideRingApi }] = await Promise.all([import('@/store'), import('@/store/api/rideRingApi')]);
-        if (expired) return false;
+        if (expired) return 'unavailable';
         const request = store.dispatch(rideRingApi.endpoints.validateRideRing.initiate(token, { track: false }));
         operation = request;
         const result = await request.unwrap();
-        return result?.allowed === true;
+        return result?.allowed === true ? 'allowed' : result?.allowed === false ? 'denied' : 'unavailable';
       })();
-      const timeout = new Promise<boolean>(resolve => {
-        timer = setTimeout(() => { expired = true; operation?.abort(); resolve(false); }, 3000);
+      const timeout = new Promise<RideRingVerdict>(resolve => {
+        timer = setTimeout(() => { expired = true; operation?.abort(); resolve('unavailable'); }, 3000);
       });
-      const allowed = await Promise.race([network, timeout]) && deadline > Date.now() &&
-        (revisions.get(request) ?? 0) === revision;
-      if (allowed) {
+      let verdict = await Promise.race([network, timeout]);
+      if ((revisions.get(request) ?? 0) !== revision) verdict = 'denied';
+      else if (deadline <= Date.now()) verdict = 'expired';
+      if (verdict === 'allowed') {
         grants.set(token, { until: Math.min(deadline, Date.now() + 3000), request, revision });
         if (grants.size > 100) grants.delete(grants.keys().next().value!);
       } else grants.delete(token);
-      return allowed;
-    } catch { return false; }
+      return verdict;
+    } catch { grants.delete(token); return 'unavailable' as const; }
     finally { clearTimeout(timer!); operation?.reset(); pending.delete(key); }
   })();
   pending.set(key, check);
   return check;
+}
+
+/** Fresh publishers remain fail-closed, without turning network failure into a decision. */
+export async function validateRideRing(data: Record<string, unknown>): Promise<boolean> {
+  return await checkRideRing(data) === 'allowed';
 }

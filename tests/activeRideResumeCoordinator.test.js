@@ -66,9 +66,9 @@ function fixture(t, passenger = false) {
       initiate: (id, options) => ({ name: 'getCurrentUser', id, options }),
     } } } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => env.active },
-    '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ store: {
+    '@/features/navigation/RideOverlayProvider': { useRideOverlayStore: () => ({
       subscribe: () => () => {}, isBusy: () => env.busy,
-    } }) },
+    }) },
     '@/services/tokenSession': { getTokenSessionVersion: () => env.version },
     '@/services/appActivity': { isAppActive: () => env.active, getAppActiveSince: () => foregroundSince },
   });

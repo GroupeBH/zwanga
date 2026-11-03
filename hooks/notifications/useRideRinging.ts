@@ -1,6 +1,7 @@
 import { cancelRideNotification, prepareForegroundRideAudio } from '@/services/backgroundRideAudio';
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
-import { needsRideRingValidation, validateRideRing } from '@/services/rideRingValidation';
+import { needsRideRingValidation, checkRideRing } from '@/services/rideRingValidation';
+import { cancelRideAlertRevalidation, revalidatePendingRideAlerts } from '@/services/rideAlertRevalidation';
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import { usePathname } from 'expo-router';
@@ -11,7 +12,7 @@ import { parseDriverInvitation, readDriverPushData } from '@/features/notificati
 import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { clearRideAlertSession, pendingRideAlertHandoffs, pendingRideAlerts, rememberRideAlert, setRideAlertScreen, subscribeRideAlerts } from '@/services/rideAlertSession';
 import { startForegroundRideSound, stopForegroundRideSound } from '@/services/foregroundRideSound';
-import { displayDriverInvitation, dismissDriverInvitation } from '@/services/driverNotifications';
+import { displayDriverInvitation } from '@/services/driverNotifications';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { dismissOpenedRideResponses } from '@/services/passengerRideAlerts';
 import { clearRideAnnouncementSession, reconcileRideAnnouncement, silenceRestoredRideAnnouncement, stopRideAnnouncement } from '@/services/foregroundRideAnnouncement';
@@ -37,12 +38,11 @@ export function useRideRinging(userId: string | undefined) {
     let disposed = false;
     const version = getTokenSessionVersion();
     const current = () => !disposed && version === getTokenSessionVersion();
-    let checkingResume = false;
     const reconcile = () => {
       if (!current() || AppState.currentState !== 'active') {
         stopRideAnnouncement(); stopForegroundRideSound();
         if (current()) void reconcileBackgroundRideRinging(userId);
-      } else if (!checkingResume) {
+      } else {
         if (Platform.OS === 'android') for (const handoff of pendingRideAlertHandoffs(userId)) {
           if (handoff.attempts < 3 && handoff.retryAt <= Date.now())
             void displayDriverInvitation(handoff.alert.data).catch(() => reportRideAudioFailure('RING_HANDOFF_RETRY_FAILED'));
@@ -100,8 +100,13 @@ export function useRideRinging(userId: string | undefined) {
               const alert = parseRideAlert(item.notification.data);
               if (!alert || alert.recipientId !== userId) continue;
               if (responsesOnly && alert.kind !== 'response') continue;
-              if (needsRideRingValidation(alert.data) && !await validateRideRing(alert.data)) {
-                await boundedRideAudio(cancelRideNotification(item.id, item.notification.android?.tag)); continue;
+              if (needsRideRingValidation(alert.data) && ridePlaybackDeadline(alert.data) > Date.now()) {
+                const verdict = await checkRideRing(alert.data);
+                if (!canRestore()) return;
+                if (verdict === 'denied') {
+                  await boundedRideAudio(cancelRideNotification(item.id, item.notification.android?.tag)); continue;
+                }
+                if (verdict === 'unavailable') { failed = true; continue; }
               }
               silenceRestoredRideAnnouncement(alert.key);
               if (item.id.startsWith(BACKGROUND_RIDE_RING_PREFIX)) {
@@ -130,8 +135,13 @@ export function useRideRinging(userId: string | undefined) {
               const alert = parseRideAlert(item.request.content.data);
               if (!alert || alert.recipientId !== userId) continue;
               if (responsesOnly && alert.kind !== 'response') continue;
-              if (needsRideRingValidation(alert.data) && !await validateRideRing(alert.data)) {
-                await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
+              if (needsRideRingValidation(alert.data) && ridePlaybackDeadline(alert.data) > Date.now()) {
+                const verdict = await checkRideRing(alert.data);
+                if (!canRestore()) return;
+                if (verdict === 'denied') {
+                  await boundedRideAudio(Notifications.dismissNotificationAsync(item.request.identifier)); continue;
+                }
+                if (verdict === 'unavailable') { failed = true; continue; }
               }
               silenceRestoredRideAnnouncement(alert.key);
               if (Platform.OS === 'android' && (parseDriverInvitation(alert.data) || parseNearbyPhoneAlert(alert.data))) {
@@ -179,26 +189,21 @@ export function useRideRinging(userId: string | undefined) {
     let backgrounded = AppState.currentState === 'background';
     const appState = AppState.addEventListener('change', state => {
       if (state === 'background') backgrounded = true;
-      if (state !== 'active') { restoreEpoch++; clearTimeout(restoreRetry); restoreRetry = undefined; }
+      if (state !== 'active') { restoreEpoch++; clearTimeout(restoreRetry); restoreRetry = undefined; cancelRideAlertRevalidation(userId); }
       if (state === 'active' && backgrounded) { backgrounded = false; beginRideSpeechEntry(userId); }
       if (state === 'active') {
         restoreRetries = 0;
-        checkingResume = true;
-        // Requests heard before disconnection must be rechecked before resuming.
-        const validatePending = Promise.all(pendingRideAlerts(userId).map(async alert => {
-          if (needsRideRingValidation(alert.data) && !await validateRideRing(alert.data) && current() && alert.kind !== 'response')
-            await dismissDriverInvitation({ kind: alert.kind, id: alert.id, driverId: userId,
-              ringUntil: String(alert.data.ringUntil ?? '') });
-        }));
+        // Pause only requests awaiting validation, not bookings. Network errors
+        // keep a silent entry candidate and bounded retry, never a local refusal.
+        const validatePending = revalidatePendingRideAlerts(userId);
         // Resume already-known alerts immediately after unlock or an iOS
         // interruption; native notification reads must not gate the player.
         if (Platform.OS === 'ios') reconcile();
         // Android's OS handoff must stop before its known JS player resumes,
         // but a slow notification enumeration must not gate that resumption.
         void validatePending.then(() => reconcileBackgroundRideRinging(userId)).then(() => {
-          checkingResume = false;
           if (current() && AppState.currentState === 'active') reconcile();
-        }).catch(() => { checkingResume = false; reportRideAudioFailure('RING_RECONCILE_FAILED'); });
+        }).catch(() => reportRideAudioFailure('RING_RECONCILE_FAILED'));
         void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED'));
       }
       else { stopRideAnnouncement(); stopForegroundRideSound(); }
@@ -219,7 +224,7 @@ export function useRideRinging(userId: string | undefined) {
     updateExpiry();
     if (Platform.OS === 'ios') reconcile();
     void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED'));
-    return () => { disposed = true; clearTimeout(restoreRetry); clearInterval(expiry); unsubscribePayment(); unsubscribeEntry(); unsubscribeExpiry(); unsubscribe(); appState.remove(); foreground.remove();
+    return () => { disposed = true; cancelRideAlertRevalidation(userId); clearTimeout(restoreRetry); clearInterval(expiry); unsubscribePayment(); unsubscribeEntry(); unsubscribeExpiry(); unsubscribe(); appState.remove(); foreground.remove();
       clearRideSpeechEntry(); clearRideAnnouncementSession(); clearRideAlertSession(); stopForegroundRideSound(); void clearBackgroundRideRinging(); };
   }, [userId]);
 }

@@ -86,7 +86,7 @@ test('compact navigation shows latest dropoff, opens details explicitly and clos
     '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'Revenue' },
     './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'Sheet' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
-    '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ active: null }) },
+    '@/features/navigation/RideOverlayProvider': { useHasRideOverlay: () => false },
     '@/components/home/SwipeableHomePriority': { SwipeableHomePriority: 'Swipe' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
   })('features/driver-navigation/DriverDropoffReceipts.tsx');
@@ -131,7 +131,7 @@ test('swiping hides only the receipt UI until a new dropoff, not a refetch or pa
     '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'Revenue' },
     './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'Sheet' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
-    '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ active: overlay }) },
+    '@/features/navigation/RideOverlayProvider': { useHasRideOverlay: () => Boolean(overlay) },
     '@/components/home/SwipeableHomePriority': { SwipeableHomePriority: 'Swipe' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
   })('features/driver-navigation/DriverDropoffReceipts.tsx');

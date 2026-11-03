@@ -2,8 +2,28 @@
 
 Application de test **séparée** : `com.zwanga.audit`, libellée « Zwanga · TEST
 LOCAL ». Ne remplace pas `com.zwanga`, ne lit pas ses préférences ni ses comptes.
-La permission Internet est supprimée du manifeste fusionné. Aucun appel serveur,
-Firebase, acceptation ou refus réel n'est exécuté.
+Par défaut, la permission Internet est supprimée du manifeste fusionné. Aucun appel
+Firebase, acceptation ou refus réel n'est exécuté. L'option de compilation
+`-PauditLoopbackValidation` autorise le vérificateur synthétique local décrit ci-dessous.
+
+## Vérification locale des demandes (3 novembre 2026)
+
+Les demandes proches exigent maintenant une capacité de sonnerie : les anciennes
+fixtures sans capacité ne testaient plus leur chemin positif. Pour les deux scripts
+`scripts/audits/test-native-ride-delivery.cjs` et `test-ride-audio-service.cjs`, compiler
+ce banc avec `-PauditLoopbackValidation`, puis installer uniquement `com.zwanga.audit`.
+Ils démarrent un serveur synthétique sur `127.0.0.1` avec port aléatoire et ouvrent un
+tunnel `adb reverse` pour ce port. Le tunnel et le serveur sont fermés après les tests.
+Le banc accepte uniquement une adresse `http://127.0.0.1:port` ; ce réglage de test
+n'est jamais lu par les sources de production et n'utilise aucun compte ou secret.
+
+La variante de test dispose d'Internet/HTTP clair ; ce n'est pas une isolation réseau
+du système Android. Ne pas y injecter de données réelles. Le manifeste par défaut
+reste hors ligne et aucune permission de l'application Zwanga n'est modifiée.
+Le contrôle HTTP natif et la publication Notifee sont réels ; le verdict de disponibilité
+est simulé, sans FCM, APNs ni serveur métier. Les signatures et règles de disponibilité
+réelles sont vérifiées séparément par les tests backend. Cela ne certifie donc pas
+la livraison de bout en bout depuis la production.
 
 ## Ce qui est réel et ce qui est simulé
 

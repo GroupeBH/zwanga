@@ -75,16 +75,22 @@ public final class RideCardDelivery {
         }
       } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
       catch (Exception e) { failed.set(true); NativeRideDelivery.failure(c, user, receipt, "NATIVE_CARD_FAILED"); }
+      // Observation sleeps on this worker, never under the lock also used by
+      // main-thread lifecycle/audio callbacks. Recheck ownership after waiting.
+      if (!failed.get() && !awaitPosted(manager, card)) return false;
       synchronized (NativeRideDelivery.LOCK) {
-        if (!NativeRideDelivery.owns(c, user) || !RideRingValidation.fresh(data, checkedUntil)) return true;
-        if (!failed.get() && !awaitPosted(manager, card)) return false;
+        if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis()) ||
+            !RideRingValidation.fresh(data, checkedUntil)) return true;
         if (!posted(manager, card)) {
           try { RideCardFallback.display(c, card); }
           catch (Exception e) { NativeRideDelivery.failure(c, user, receipt, "NATIVE_FALLBACK_FAILED"); }
         }
-        // notify() returns before the system server necessarily exposes the
-        // active card. A short bounded observation avoids false delivery loss.
-        if (!awaitPosted(manager, card)) return false;
+      }
+      // notify() returns before the system server necessarily exposes the card.
+      if (!awaitPosted(manager, card)) return false;
+      synchronized (NativeRideDelivery.LOCK) {
+        if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis()) ||
+            !RideRingValidation.fresh(data, checkedUntil)) return true;
         completePublished(c, data, card, wake, completed, 0, checkedUntil);
         return true;
       }
