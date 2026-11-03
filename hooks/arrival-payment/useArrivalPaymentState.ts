@@ -55,10 +55,9 @@ export function useArrivalPaymentState() {
   const [paymentError, setPaymentError] = useState('');
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [completionSummary, setCompletionSummary] = useState<PaymentCompletionSummary | null>(null);
-  const [isClosingForInvoice, setIsClosingForInvoice] = useState(false);
+  const [isClosingForNavigation, setIsClosingForNavigation] = useState(false);
   const [resolvedInterruption, setResolvedInterruption] = useState<string | null>(null);
   const activeBookingIdRef = useRef<string | null>(null);
-  const pendingInvoicePaymentIdRef = useRef<string | null | undefined>(undefined);
 
   const {
     data: activityBookings = EMPTY_BOOKINGS,
@@ -175,10 +174,14 @@ export function useArrivalPaymentState() {
   const mobileMoneyPhone = formatPaymentPhone(paymentPhone || user?.phone);
 
   const acknowledgeBooking = useCallback(
-    (bookingId: string) => {
+    (bookingId: string, beforeArrival = false, cashReceivedAt?: string) => {
       const acknowledgedAt = new Date().toISOString();
+      const acknowledgement = {
+        ...(beforeArrival ? { preArrivalDismissedAt: acknowledgedAt } : { acknowledgedAt }),
+        ...(cashReceivedAt ? { acknowledgedCashReceivedAt: cashReceivedAt } : {}),
+      };
       persistBookingState(bookingId, {
-        acknowledgedAt,
+        ...acknowledgement,
         bookingPaymentOrderNumber: null,
         bookingPaymentUrl: null,
         walletTopUpOrderNumber: null,
@@ -188,7 +191,7 @@ export function useArrivalPaymentState() {
       });
       // Do not chain unrelated historical confirmations after closing this one.
       const next = selectArrivedPaymentBooking(bookings, {
-        ...storedState, [bookingId]: { ...storedState[bookingId], acknowledgedAt },
+        ...storedState, [bookingId]: { ...storedState[bookingId], ...acknowledgement },
       });
       setDeferredBookingId(next?.id ?? null);
     },
@@ -255,10 +258,9 @@ export function useArrivalPaymentState() {
     completionSummary,
     acknowledgeBooking,
     router,
-    pendingInvoicePaymentIdRef,
-    setIsClosingForInvoice,
+    setIsClosingForNavigation,
     interruptionChoice,
-    isClosingForInvoice,
+    isClosingForNavigation,
     insets,
     setResolvedInterruption,
     dispatch,

@@ -4,18 +4,18 @@ import {
   StoredBookingPaymentState,
   PaymentCompletionSummary,
 } from '../../features/arrival-payment/paymentTypes';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import type { Booking } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
   completionSummary: PaymentCompletionSummary | null;
-  acknowledgeBooking: (bookingId: string) => void;
+  acknowledgeBooking: (bookingId: string, beforeArrival?: boolean, cashReceivedAt?: string) => void;
   setCompletionSummary: React.Dispatch<React.SetStateAction<PaymentCompletionSummary | null>>;
   router: Router;
-  pendingInvoicePaymentIdRef: React.RefObject<string | null | undefined>;
-  setIsClosingForInvoice: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsClosingForNavigation: React.Dispatch<React.SetStateAction<boolean>>;
+  isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
   activeStoredState: StoredBookingPaymentState | undefined;
   isBusy: boolean;
@@ -28,19 +28,21 @@ export function useArrivalPaymentNavigation({
   acknowledgeBooking,
   setCompletionSummary,
   router,
-  pendingInvoicePaymentIdRef,
-  setIsClosingForInvoice,
+  setIsClosingForNavigation,
+  isSessionCurrent,
   arrivalBooking,
   activeStoredState,
   isBusy,
   setPaymentError,
   openCardPaymentUrl,
 }: Params) {
+  const pendingNavigation = useRef<{ kind: 'invoice'; id: string | null } | { kind: 'rating'; id: string } | null>(null);
+  useEffect(() => () => { pendingNavigation.current = null; }, []);
   const handleDismissSummary = useCallback(() => {
-    if (!completionSummary) return;
-    acknowledgeBooking(completionSummary.bookingId);
+    if (!completionSummary || pendingNavigation.current || !isSessionCurrent()) return;
+    acknowledgeBooking(completionSummary.bookingId, completionSummary.beforeArrival, completionSummary.cashReceivedAt);
     setCompletionSummary(null);
-  }, [acknowledgeBooking, completionSummary, setCompletionSummary]);
+  }, [acknowledgeBooking, completionSummary, isSessionCurrent, setCompletionSummary]);
 
   const navigateToInvoice = useCallback(
     (paymentHistoryId?: string | null) => {
@@ -57,26 +59,36 @@ export function useArrivalPaymentNavigation({
   );
 
   const handleModalDismiss = useCallback(() => {
-    const paymentHistoryId = pendingInvoicePaymentIdRef.current;
-    if (paymentHistoryId === undefined) return;
-
-    pendingInvoicePaymentIdRef.current = undefined;
+    const target = pendingNavigation.current;
+    if (!target) return;
+    pendingNavigation.current = null;
     // The in-app sheet is already removed; no native presentation or animation to await.
-    try { navigateToInvoice(paymentHistoryId); }
-    finally { setIsClosingForInvoice(false); }
-  }, [navigateToInvoice, pendingInvoicePaymentIdRef, setIsClosingForInvoice]);
+    try {
+      if (!isSessionCurrent()) return;
+      if (target.kind === 'rating') router.push({ pathname: '/rate/[id]', params: { id: target.id } });
+      else navigateToInvoice(target.id);
+    } finally { setIsClosingForNavigation(false); }
+  }, [isSessionCurrent, navigateToInvoice, router, setIsClosingForNavigation]);
 
   const handleOpenInvoice = useCallback(() => {
-    if (!completionSummary) return;
+    if (!completionSummary || pendingNavigation.current || !isSessionCurrent()) return;
     const paymentHistoryId = completionSummary.paymentHistoryId;
 
-    pendingInvoicePaymentIdRef.current = paymentHistoryId ?? null;
-    setIsClosingForInvoice(true);
+    pendingNavigation.current = { kind: 'invoice', id: paymentHistoryId ?? null };
+    setIsClosingForNavigation(true);
 
-    acknowledgeBooking(completionSummary.bookingId);
+    acknowledgeBooking(completionSummary.bookingId, completionSummary.beforeArrival, completionSummary.cashReceivedAt);
     setCompletionSummary(null);
 
-  }, [acknowledgeBooking, completionSummary, pendingInvoicePaymentIdRef, setCompletionSummary, setIsClosingForInvoice]);
+  }, [acknowledgeBooking, completionSummary, isSessionCurrent, setCompletionSummary, setIsClosingForNavigation]);
+
+  const handleRateDriver = useCallback(() => {
+    if (!completionSummary?.ratingTripId || completionSummary.beforeArrival || pendingNavigation.current || !isSessionCurrent()) return;
+    pendingNavigation.current = { kind: 'rating', id: completionSummary.ratingTripId };
+    setIsClosingForNavigation(true);
+    acknowledgeBooking(completionSummary.bookingId, false, completionSummary.cashReceivedAt);
+    setCompletionSummary(null);
+  }, [acknowledgeBooking, completionSummary, isSessionCurrent, setCompletionSummary, setIsClosingForNavigation]);
 
   const handleResumeCardPayment = useCallback(async () => {
     if (
@@ -110,6 +122,7 @@ export function useArrivalPaymentNavigation({
     handleModalDismiss,
     handleDismissSummary,
     handleOpenInvoice,
+    handleRateDriver,
     handleResumeCardPayment,
   };
 }

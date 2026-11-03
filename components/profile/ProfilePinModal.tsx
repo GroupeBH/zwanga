@@ -22,6 +22,7 @@ import {
 type Props = Pick<ReturnType<typeof useProfileController>,
   | 'currentUser'
   | 'handleForgotPin'
+  | 'handleResendPinOtp'
   | 'handleNewPinChange'
   | 'handleNewPinConfirmChange'
   | 'handleOldPinChange'
@@ -48,6 +49,7 @@ type Props = Pick<ReturnType<typeof useProfileController>,
 export function ProfilePinModal({
   currentUser,
   handleForgotPin,
+  handleResendPinOtp,
   handleNewPinChange,
   handleNewPinConfirmChange,
   handleOldPinChange,
@@ -93,7 +95,7 @@ export function ProfilePinModal({
           {pinStep === 'oldPin' ? (
             <>
               <Text style={styles.pinModalSubtitle}>
-                Saisissez votre mot de passe actuel à quatre chiffres.
+                Saisissez votre mot de passe actuel. Un code SMS confirmera la modification.
               </Text>
               <View style={styles.formSection}>
                 <Text style={styles.inputLabel}>Mot de passe actuel</Text>
@@ -118,9 +120,9 @@ export function ProfilePinModal({
                   oldPin.length === 4 ? styles.pinModalButtonActive : styles.pinModalButtonDisabled,
                 ]}
                 onPress={handleVerifyOldPin}
-                disabled={oldPin.length !== 4}
+                disabled={oldPin.length !== 4 || isSendingOtp}
               >
-                <Text style={styles.pinModalButtonText}>Continuer</Text>
+                {isSendingOtp ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.pinModalButtonText}>Recevoir le code SMS</Text>}
               </TouchableOpacity>
               <TouchableOpacity style={styles.pinModalForgotButton} onPress={handleForgotPin}>
                 <Text style={styles.pinModalForgotText}>Mot de passe oublié ?</Text>
@@ -153,11 +155,11 @@ export function ProfilePinModal({
               >
                 {isUpdatingPinWithOtp
                   ? <ActivityIndicator color={Colors.white} />
-                  : <Text style={styles.pinModalButtonText}>Vérifier</Text>}
+                  : <Text style={styles.pinModalButtonText}>Continuer</Text>}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.pinModalResendButton}
-                onPress={handleForgotPin}
+                onPress={handleResendPinOtp}
                 disabled={isSendingOtp || isUpdatingPinWithOtp}
               >
                 {isSendingOtp ? (

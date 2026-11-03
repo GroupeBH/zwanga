@@ -2,7 +2,7 @@ import { Colors } from '@/constants/styles';
 import { SwipeableHomePriority } from '@/components/home/SwipeableHomePriority';
 import { DriverBookingRevenue } from '@/features/driver-payments/DriverBookingRevenue';
 import { RideModal } from '@/features/navigation/RideModal';
-import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
+import { useHasRideOverlay } from '@/features/navigation/RideOverlayProvider';
 import { Ionicons } from '@expo/vector-icons';
 import type { Booking } from '@/types';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
@@ -20,7 +20,7 @@ export const DriverDropoffReceipts = memo(function DriverDropoffReceipts({ booki
   const completed = useMemo(() => getConfirmedDropoffs(bookings, tripId), [bookings, tripId]);
   const receiptKey = useMemo(() => getDropoffReceiptsKey(completed, tripId), [completed, tripId]);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
-  const { active: overlay } = useRideOverlay();
+  const overlay = useHasRideOverlay();
   const [openedTrip, setOpenedTrip] = useState<string | null>(null);
   const close = useCallback(() => setOpenedTrip(null), []);
   useEffect(close, [active, tripId, close]);

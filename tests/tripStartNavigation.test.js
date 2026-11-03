@@ -73,6 +73,21 @@ function fixture(t, kind = 'request', platform = 'android') {
   };
 }
 
+for (const platform of ['ios', 'android']) test(`${platform}: a rejected request names the conflicting trip without starting or accepting it`, async t => {
+  const app = fixture(t, 'request', platform);
+  const tripId = '00000000-0000-4000-8000-000000000002';
+  app.props.userId = 'driver';
+  app.state.accept = async () => { throw { data: { code: 'DRIVER_SCHEDULE_CONFLICT', conflict: {
+    id: tripId, driverId: 'driver', kind: 'trip', departure: 'Départ prévu', arrival: 'Arrivée prévue',
+    departureDate: '2099-01-01T09:00:00Z', status: 'upcoming',
+  } } }; };
+  await app.render().handleDirectAcceptTripRequest(false, true);
+  assert.deepEqual(app.calls.map(call => call[0]), ['accept']);
+  assert.deepEqual(app.routes, []); assert.match(app.dialogs[0].message, /Départ prévu/);
+  app.dialogs[0].actions[1].onPress();
+  assert.deepEqual(app.routes, [{ pathname: '/trip/manage/[id]', params: { id: tripId } }]);
+});
+
 test('inline acceptance stays on the confirmed request, without a second modal or an automatic departure', async t => {
   const app = fixture(t); app.props.refetch = () => { app.state.refreshes++; return Promise.resolve({}); };
   await app.render().handleDirectAcceptTripRequest(false, true);

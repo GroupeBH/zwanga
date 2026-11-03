@@ -8,24 +8,25 @@ const words = tree => typeof tree === 'string' ? tree : typeof tree === 'number'
   Array.isArray(tree) ? tree.map(words).join('') : words(tree?.props?.children ?? '');
 const all = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(all) : [tree, ...all(tree.props?.children)];
 function fixture() {
-  const hooks = hookHarness(), options = [], routes = [], answers = [], dismissals = [];
+  const hooks = hookHarness(), options = [], routes = [], answers = [], dismissals = [], dialogs = [];
   const data = { id: id(2), driverId: id(1), requestId: id(3), status: 'pending', actionable: true,
     request: { passengerName: 'Passager', departure: 'Départ', arrival: 'Arrivée', seats: 1, pricePerSeat: 1000, paymentMode: 'cash' } };
   const state = { data, query: { data, currentData: data, isFetching: true, isError: false, refetch: async () => {} },
     result: { status: 'accepted', requestId: id(3) } };
-  const router = { replace: path => routes.push(path), canGoBack: () => false };
+  const router = { replace: path => routes.push(path), push: path => routes.push(path), canGoBack: () => false };
   const Screen = loader({ react: hooks.react,
     'react-native': { View: 'View', Text: 'Text', ScrollView: 'ScrollView', TouchableOpacity: 'Button',
       ActivityIndicator: 'Spinner', StyleSheet: { create: value => value } },
     'react-native-safe-area-context': { SafeAreaView: 'Safe' }, '@expo/vector-icons': { Ionicons: 'Icon' },
     'expo-router': { useLocalSearchParams: () => ({ kind: 'dispatch', id: id(2) }), useRouter: () => router },
+    '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: value => dialogs.push(value) }) },
     '@/store/hooks': { useAppDispatch: () => () => {} },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/api/userApi': { useGetCurrentUserQuery: () => ({ data: { id: id(1) } }) },
     '@/store/api/bookingApi': { useGetBookingByIdQuery: () => ({}) },
     '@/store/api/driverDispatchApi': {
       useGetDispatchOfferQuery: (_id, queryOptions) => { options.push(queryOptions); return state.query; },
-      useRespondToDispatchOfferMutation: () => [input => ({ unwrap: async () => { answers.push(input); return state.result; } })],
+      useRespondToDispatchOfferMutation: () => [input => ({ unwrap: async () => { answers.push(input); if (state.error) throw state.error; return state.result; } })],
       useRespondToBookingInvitationMutation: () => [() => assert.fail('not a booking')],
     },
     '@/services/driverNotifications': { consumeDriverAction: async () => null, dismissDriverInvitation: async input => dismissals.push(input) },
@@ -35,8 +36,26 @@ function fixture() {
     '@/hooks/notifications/useRideEntryAnnouncement': { useRideEntryAnnouncement() {} },
   })('app/incoming-driver.tsx').default;
   const render = () => hooks.render(() => Screen().type());
-  return { hooks, state, options, routes, answers, dismissals, render };
+  return { hooks, state, options, routes, answers, dismissals, dialogs, render };
 }
+
+test('an overlapping course is shown on dispatch rejection without accepting or dismissing the offer', async () => {
+  const f = fixture();
+  try {
+    f.state.query.isFetching = false;
+    f.state.data.localDeadline = { wall: Date.now() + 20000, monotonic: performance.now() + 20000 };
+    f.state.error = { data: { code: 'DRIVER_SCHEDULE_CONFLICT', conflict: {
+      id: id(4), driverId: id(1), kind: 'trip', status: 'upcoming',
+      departure: 'Départ prévu', arrival: 'Arrivée prévue', departureDate: '2099-01-01T15:00:00Z',
+    } } };
+    all(f.render()).find(node => node.type === 'Button' && words(node) === 'Accepter').props.onPress();
+    await tick();
+    assert.equal(f.answers.length, 1); assert.deepEqual(f.dismissals, []); assert.deepEqual(f.routes, []);
+    assert.match(f.dialogs[0].message, /Départ prévu/);
+    f.dialogs[0].actions[1].onPress();
+    assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: id(4) } }]);
+  } finally { f.hooks.unmount(); }
+});
 
 test('an old cache without a receipt deadline cannot stop polling before the fresh offer arrives', async () => {
   const f = fixture();

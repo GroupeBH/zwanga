@@ -24,6 +24,7 @@ import type { Router } from 'expo-router';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
 import { reportNearbyRequestRefusal } from '@/services/nearbyRequestRefusal';
+import { driverScheduleConflictDialog } from '@/features/request-detail/scheduleConflict';
 
 interface Params {
   userId?: string;
@@ -127,6 +128,10 @@ export function useRequestDriverActions({
               transition.openNavigation(result.trip);
             } catch (error: any) {
               if (!transition.isCurrent()) return;
+              const conflict = driverScheduleConflictDialog(error, userId, href => {
+                if (transition.isCurrent()) router.push(href);
+              });
+              if (conflict) { showDialog(conflict); return; }
               const isQuotaError = isDailyPublicationLimitError(error);
 
               showDialog({
@@ -260,6 +265,10 @@ export function useRequestDriverActions({
     } catch (error: any) {
       if (!transition.isCurrent()) return;
       setShowDirectAcceptModal(false);
+      const conflict = driverScheduleConflictDialog(error, userId, href => {
+        if (transition.isCurrent()) router.push(href);
+      });
+      if (conflict) { showDialog(conflict); return; }
       const resolvedMessage = getApiErrorMessage(
         error,
         'Impossible d\u2019accepter cette commande pour le moment.',

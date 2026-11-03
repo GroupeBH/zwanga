@@ -85,7 +85,9 @@ export function useRatingData() {
     submitInFlightRef.current = false;
     hasInitializedTargetRef.current = false;
     setSubmitSuccessMessage(null);
-  }, [ratingScopeKey]);
+    setSelectedPassenger(passengerIdParam);
+    setActiveTab('rate');
+  }, [ratingScopeKey, passengerIdParam]);
 
   // Liste des passagers (excluant l'utilisateur actuel si c'est un passager)
   const passengers = useMemo(() => {
@@ -154,6 +156,7 @@ export function useRatingData() {
 
     if (trip.driverId === user.id) {
       setRateTargetType('passenger');
+      setSelectedPassenger(null);
       return;
     }
 
@@ -161,16 +164,23 @@ export function useRatingData() {
     setSelectedPassenger(null);
   }, [passengerIdParam, trip, user?.id]);
 
-  // Pré-sélectionner le passager si un passengerId est fourni dans l'URL
+  // A sole passenger needs no extra selection. Never replace an explicit URL target,
+  // and never force that URL target again after a deliberate selection by the user.
   useEffect(() => {
-    if (passengerIdParam && passengers.length > 0) {
-      const passengerExists = passengers.some(p => p.id === passengerIdParam);
-      if (passengerExists && selectedPassenger !== passengerIdParam) {
-        setSelectedPassenger(passengerIdParam);
-        setRateTargetType('passenger');
-      }
+    if (isTripDriver && rateTargetType === 'passenger' && !passengerIdParam &&
+      !selectedPassenger && !bookingsLoading && passengers.length === 1) {
+      setSelectedPassenger(passengers[0].id);
     }
-  }, [passengerIdParam, passengers, selectedPassenger]);
+  }, [isTripDriver, rateTargetType, passengerIdParam, passengers, selectedPassenger, bookingsLoading]);
+
+  // A note/comment belongs to one person, never silently carry it to another.
+  const previousTargetRef = useRef(`${ratingScopeKey}:${rateTargetType}:${selectedPassenger ?? ''}`);
+  useEffect(() => {
+    const target = `${ratingScopeKey}:${rateTargetType}:${selectedPassenger ?? ''}`;
+    if (previousTargetRef.current === target) return;
+    previousTargetRef.current = target;
+    setRating(0); setSelectedTags([]); setComment(''); setReportReason('');
+  }, [ratingScopeKey, rateTargetType, selectedPassenger]);
 
   // Debug: Afficher les passagers récupérés (uniquement en développement)
   useEffect(() => {

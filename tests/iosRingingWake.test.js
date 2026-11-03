@@ -7,6 +7,7 @@ const driverId = '00000000-0000-4000-8000-000000000001';
 const requestId = '00000000-0000-4000-8000-000000000002';
 const payload = (type = 'trip_request_nearby') => ({ type, driverId, tripRequestId: requestId,
   bookingId: requestId, actionProtocol: 'driver-v1', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
+  ringValidationToken: 'test-permit',
   ringUntil: new Date(Date.now() + 30000).toISOString() });
 
 function fixture(t, serverRecovery = false) {
@@ -24,6 +25,8 @@ function fixture(t, serverRecovery = false) {
   };
   const load = loader({
     react: hooks.react,
+    '@/store': { store: { dispatch: () => ({ unwrap: async () => ({ allowed: true }), abort() {}, reset() {} }) } },
+    '@/store/api/rideRingApi': { rideRingApi: { endpoints: { validateRideRing: { initiate: () => ({}) } } } },
     '@/hooks/useAppIsActive': { useAppIsActive: () => io.state === 'active' },
     '@/store/hooks': { useAppSelector: select => select({ zwangaApi: { config: { online: true } } }) },
     '@/services/driverAlertRecovery': { readDriverAlertRecovery: async () => {
@@ -45,7 +48,8 @@ function fixture(t, serverRecovery = false) {
     'expo-router': { useRouter: () => router, usePathname: () => '/request-details/' + requestId },
     './useRideRealtime': { useRideRealtime() {} },
     '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
-    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async () => {} },
+    '@/services/driverNotifications': { configureDriverNotifications: async () => {}, displayDriverInvitation: async () => {},
+      dismissDriverInvitation: async () => assert.fail('an allowed invitation must not be dismissed') },
     './driverNotificationResponse': { respondToDriverNotification: async () => io.decisions.push('decision') },
     '@/services/driverNotificationResponse': { respondToDriverNotification: async () => io.decisions.push('decision') },
     './ongoingTripNotification': { ONGOING_TRIP_NOTIFICATION_ID: 'ongoing' },

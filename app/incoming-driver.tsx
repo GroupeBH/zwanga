@@ -20,6 +20,8 @@ import { IncomingBookingRedirect } from '@/features/notifications/IncomingBookin
 import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { offerRemaining, type OfferDeadline } from '@/features/notifications/offerDeadline';
+import { useDialog } from '@/components/ui/DialogProvider';
+import { driverScheduleConflictDialog } from '@/features/request-detail/scheduleConflict';
 
 export default function IncomingDriverScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>();
@@ -30,6 +32,7 @@ export default function IncomingDriverScreen() {
 function IncomingDriverContent() {
   const params = useLocalSearchParams<{ id?: string; kind?: string; driverId?: string; actionEvent?: string }>();
   const router = useRouter();
+  const { showDialog } = useDialog();
   const dispatch = useAppDispatch();
   const active = useScreenIsActive();
   const { data: user } = useGetCurrentUserQuery();
@@ -113,11 +116,15 @@ function IncomingDriverContent() {
       if (decision === 'decline' && mounted.current && current.current.active) router.replace('/(tabs)');
     } catch (cause) {
       if (version !== getTokenSessionVersion() || current.current.userId !== invitation.driverId) return;
+      const conflict = driverScheduleConflictDialog(cause, invitation.driverId, href => {
+        if (mounted.current && current.current.active && current.current.userId === invitation.driverId) router.push(href);
+      });
+      if (conflict && mounted.current && current.current.active) showDialog(conflict);
       if (mounted.current) setError(getApiErrorMessage(cause, 'Votre réponse n’a pas pu être confirmée. Vérifiez la connexion puis réessayez.'));
       // Reconcile an ambiguous result; never queue a later automatic acceptance.
       if (kind === 'dispatch') void refetchOffer().catch(() => {}); else void refetchBooking().catch(() => {});
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
-  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest, router]);
+  }, [invitation, actionable, done, respond, id, respondBooking, kind, refetchOffer, refetchBooking, openAcceptedRequest, router, showDialog]);
 
   useEffect(() => {
     if (!active || !authorized || !invitation || kind !== 'dispatch' || !offer.currentData) return;

@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' version '8.11.0' }
 def repo = rootDir.toPath().resolve('../../..').normalize().toFile()
+// Explicit opt-in for a synthetic verifier on host loopback, reached via ADB reverse.
+// The default harness retains its no-Internet manifest; production is untouched.
+def loopbackValidation = providers.gradleProperty('auditLoopbackValidation').isPresent()
+def generatedManifest = new File(repo, '.expo/ride-alert-audit-build/audit-manifest/AndroidManifest.xml')
 repositories {
     google(); mavenCentral()
     maven { url new File(repo, 'node_modules/@notifee/react-native/android/libs') }
@@ -15,12 +19,28 @@ android {
     buildDir = new File(repo, '.expo/ride-alert-audit-build')
     sourceSets.main.java.srcDir new File(buildDir, 'audit-native')
     sourceSets.main.res.srcDir new File(buildDir, 'audit-res')
+    sourceSets.main.manifest.srcFile generatedManifest
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
+
+tasks.register('prepareAuditManifest') {
+    inputs.file 'src/main/AndroidManifest.xml'
+    inputs.property 'loopbackValidation', loopbackValidation
+    outputs.file generatedManifest
+    doLast {
+        def manifest = file('src/main/AndroidManifest.xml').getText('UTF-8')
+        if (loopbackValidation) manifest = manifest
+            .replace('android:name="android.permission.INTERNET" tools:node="remove"', 'android:name="android.permission.INTERNET"')
+            .replace('<application ', '<application android:usesCleartextTraffic="true" ')
+        generatedManifest.parentFile.mkdirs()
+        generatedManifest.setText(manifest, 'UTF-8')
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'prepareAuditManifest' }
 tasks.register('copyAuditNative', Copy) {
     from(new File(repo, 'native/android/notifications')) {
         include 'DriverAlertModule.java', 'ForegroundAlertPlayer.java', 'RideAlertAudioService.java', 'RideAlertAudioPlayer.java', 'RideAlertAudioSession.java', 'RideUnlockBanner.java', 'IncomingRideActivity.java', 'IncomingRideView.java', 'IncomingRideContent.java', 'RidePresentationExpiry.java',
-            'NativeRideDelivery.java', 'RideNotificationBundle.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'
+            'NativeRideDelivery.java', 'RideRingValidation.java', 'RideNotificationBundle.java', 'RideCardDelivery.java', 'RideCardFallback.java', 'RideDeliveryWorker.java'
     }
     into new File(buildDir, 'audit-native/com/zwanga/notifications')
 }

@@ -36,6 +36,10 @@ public final class DriverAlertModule extends ReactContextBaseJavaModule {
     return NativeRideDelivery.bind(getReactApplicationContext(), user, expires, channel);
   }
   @ReactMethod(isBlockingSynchronousMethod = true)
+  public boolean configureRideValidation(String user, String base) {
+    return RideRingValidation.configure(getReactApplicationContext(), user, base);
+  }
+  @ReactMethod(isBlockingSynchronousMethod = true)
   public boolean clearNativeRideAccount() { NativeRideDelivery.clear(getReactApplicationContext()); return true; }
   @ReactMethod public void getNativeRideReceipts(String user, Promise promise) {
     promise.resolve(NativeRideDelivery.pendingReceipts(getReactApplicationContext(), user));

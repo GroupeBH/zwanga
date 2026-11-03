@@ -1,4 +1,5 @@
 import { NavigationTripRevenueSummary } from './NavigationTripRevenueSummary';
+import { TRIP_COMPLETED_MESSAGE } from './tripCompletionCopy';
 import { TripEndNotice } from './navigationModel';
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import { Colors, Spacing } from '@/constants/styles';
@@ -56,9 +57,7 @@ export function NavigationTripEndModal({
             </Text>
           </View>
           <Text style={styles.waypointModalWaitingText}>
-            {tripEndNotice?.completedWhileAppInactive
-              ? "Le trajet s'est terminé pendant que le téléphone était en veille ou hors de l'application. Il est maintenant clôturé. Vous pouvez noter les passagers."
-              : 'Vous avez atteint la destination finale. Le trajet est terminé automatiquement. Vous pouvez noter les passagers.'}
+            {TRIP_COMPLETED_MESSAGE}
           </Text>
           {tripEndNotice?.revenueSummary ? (
             <NavigationTripRevenueSummary summary={tripEndNotice.revenueSummary} />
@@ -86,14 +85,9 @@ export function NavigationTripEndModal({
           >
             <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
             <Text style={[styles.waypointGpsStatusText, { color: Colors.success }]}>
-              {tripEndNotice?.distanceMeters !== undefined
-                ? `Arrivée détectée à ${Math.max(1, Math.round(tripEndNotice.distanceMeters))} m`
-                : 'Arrivée détectée'}
+              Fin du trajet confirmée
             </Text>
           </View>
-          <Text style={styles.waypointModalWaitingText}>
-            L&apos;embarquement est validé automatiquement lorsque les deux téléphones se déplacent ensemble.
-          </Text>
           <View style={styles.waypointModalActions}>
             <TouchableOpacity
               style={styles.waypointModalSecondaryButton}

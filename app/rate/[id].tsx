@@ -3,10 +3,12 @@ import { RatingParticipantSelector } from '../../features/rating/RatingParticipa
 import { useRatingActions } from '../../hooks/rating/useRatingActions';
 import { useRatingReport } from '../../hooks/rating/useRatingReport';
 import { styles } from '../../features/screen-styles/app/rate/detail/index';
+import { RatingReviewForm } from '../../features/rating/RatingReviewForm';
+import { styles as ux } from '../../features/rating/ratingExperience.styles';
 import { Colors, Spacing } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
@@ -39,21 +41,22 @@ export default function RateScreen() {
     tripId, reason: reportReason, description: comment, captureRatingSession,
   });
 
+  const targetReady = Boolean(trip && (rateTargetType === 'driver' ? trip.driverId && !isTripDriver
+    : passengers.some(passenger => passenger.id === selectedPassenger)));
+  const locked = isSubmittingReview || isSendingReport || Boolean(submitSuccessMessage);
+  const canSubmit = targetReady && !locked && (activeTab === 'rate' ? rating > 0 : Boolean(!reportSent && reportReason && comment.trim().length >= 10));
+
   return (
     <RideOverlayScope scopeKey={ratingScopeKey} active={active}>
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <TouchableOpacity onPress={goBackSafely} style={styles.closeButton}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer la notation" onPress={goBackSafely} style={styles.closeButton}>
             <Ionicons name="close" size={28} color={Colors.gray[900]} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>
-            {isTripDriver 
-              ? 'Évaluer un passager' 
-              : isTripPassenger 
-              ? 'Évaluer les intervenants'
-              : 'Votre avis'}
+            {activeTab === 'report' ? 'Signaler un problème' : rateTargetType === 'passenger' ? 'Noter le passager' : 'Noter le conducteur'}
           </Text>
         </View>
 
@@ -61,7 +64,7 @@ export default function RateScreen() {
         <View style={styles.tabsContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'rate' && styles.tabActive]}
-            onPress={() => setActiveTab('rate')}
+            disabled={locked} accessibilityRole="tab" accessibilityState={{ selected: activeTab === 'rate', disabled: locked }} onPress={() => setActiveTab('rate')}
           >
             <Text style={[styles.tabText, activeTab === 'rate' && styles.tabTextActive]}>
               Noter
@@ -69,7 +72,7 @@ export default function RateScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'report' && styles.tabActive]}
-            onPress={() => setActiveTab('report')}
+            disabled={locked} accessibilityRole="tab" accessibilityState={{ selected: activeTab === 'report', disabled: locked }} onPress={() => setActiveTab('report')}
           >
             <Text style={[styles.tabText, activeTab === 'report' && styles.tabTextActive]}>
               Signaler
@@ -78,7 +81,9 @@ export default function RateScreen() {
         </View>
       </View>
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView 
+        testID="rating-content-scroll"
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollViewContent}
         showsVerticalScrollIndicator={false}
@@ -90,6 +95,7 @@ export default function RateScreen() {
           <Animated.View entering={FadeInDown}>
             {/* Info conducteur / passager */}
             <RatingParticipantSelector
+              disabled={locked}
               isTripDriver={isTripDriver}
               rateTargetType={rateTargetType}
               trip={trip}
@@ -103,90 +109,10 @@ export default function RateScreen() {
               refetchBookings={refetchBookings}
             />
 
-            {/* Étoiles */}
-            <View style={styles.ratingContainer}>
-              <Text style={styles.ratingTitle}>
-                {rateTargetType === 'driver'
-                  ? "Comment s'est passé le trajet avec ce conducteur ?"
-                  : "Comment s'est comporté ce passager ?"}
-              </Text>
-              <View style={styles.starsContainer}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <TouchableOpacity
-                    key={star}
-                    onPress={() => setRating(star)}
-                    style={styles.starButton}
-                  >
-                    <Ionicons
-                      name={star <= rating ? 'star' : 'star-outline'}
-                      size={40}
-                      color={star <= rating ? Colors.secondary : Colors.gray[300]}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {rating > 0 && (
-                <Text style={styles.ratingText}>{getRatingText()}</Text>
-              )}
-            </View>
-
-            {/* Tags */}
-            {rating > 0 && (
-              <View style={styles.tagsContainer}>
-                <Text style={styles.tagsTitle}>
-                  {rateTargetType === 'driver'
-                    ? 'Qu\'avez-vous particulièrement apprécié chez ce conducteur ?'
-                    : 'Qu\'avez-vous particulièrement apprécié chez ce passager ?'}
-                </Text>
-                <View style={styles.tagsList}>
-                  {rateTags.map((tag) => {
-                    const isSelected = selectedTags.includes(tag.id);
-                    return (
-                      <TouchableOpacity
-                        key={tag.id}
-                        style={[
-                          styles.tag,
-                          isSelected && styles.tagActive,
-                          { marginRight: Spacing.sm, marginBottom: Spacing.sm },
-                        ]}
-                        onPress={() => toggleTag(tag.id)}
-                      >
-                        <Ionicons
-                          name={tag.icon as any}
-                          size={16}
-                          color={isSelected ? Colors.white : Colors.gray[600]}
-                        />
-                        <Text style={[styles.tagText, isSelected && styles.tagTextActive]}>
-                          {tag.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Commentaire */}
-            {rating > 0 && (
-              <View style={styles.commentContainer}>
-                <Text style={styles.commentTitle}>
-                  Commentaire (optionnel)
-                </Text>
-                <TextInput
-                  style={styles.commentInput}
-                  placeholder="Partagez votre expérience..."
-                  placeholderTextColor={Colors.gray[500]}
-                  multiline
-                  textAlignVertical="top"
-                  value={comment}
-                  onChangeText={setComment}
-                  maxLength={500}
-                />
-                <Text style={styles.commentCounter}>
-                  {comment.length}/500
-                </Text>
-              </View>
-            )}
+            {targetReady && <RatingReviewForm key={`${ratingScopeKey}:${rateTargetType}:${selectedPassenger ?? ''}`}
+              rating={rating} setRating={setRating} getRatingText={getRatingText}
+              selectedTags={selectedTags} toggleTag={toggleTag} rateTags={rateTags}
+              comment={comment} setComment={setComment} disabled={locked} />}
 
             {submitSuccessMessage && (
               <View style={styles.successMessage}>
@@ -195,24 +121,6 @@ export default function RateScreen() {
               </View>
             )}
 
-            {/* Bouton Envoyer */}
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                rating > 0 ? styles.submitButtonActive : styles.submitButtonDisabled,
-                (isSubmittingReview || Boolean(submitSuccessMessage)) && styles.submitButtonDisabled,
-              ]}
-              onPress={handleSubmitRating}
-              disabled={rating === 0 || isSubmittingReview || Boolean(submitSuccessMessage)}
-            >
-              {isSubmittingReview ? (
-                <ActivityIndicator size="small" color={Colors.white} />
-              ) : (
-                <Text style={styles.submitButtonText}>
-                  {submitSuccessMessage ? 'Envoyée' : "Envoyer l'évaluation"}
-                </Text>
-              )}
-            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -233,6 +141,7 @@ export default function RateScreen() {
             </View>
 
             <RatingParticipantSelector
+              disabled={locked} reporting
               isTripDriver={isTripDriver} rateTargetType={rateTargetType} trip={trip}
               selectedPassenger={selectedPassenger} passengers={passengers}
               isTripPassenger={isTripPassenger} setRateTargetType={setRateTargetType}
@@ -255,6 +164,7 @@ export default function RateScreen() {
                       isSelected && styles.reasonCardActive,
                       { marginBottom: Spacing.md },
                     ]}
+                    disabled={locked || !targetReady}
                     onPress={() => setReportReason(reason.id)}
                   >
                     <View style={[styles.reasonIcon, isSelected && styles.reasonIconActive]}>
@@ -276,10 +186,10 @@ export default function RateScreen() {
             </View>
 
             {/* Détails */}
-            {reportReason && (
+            {Boolean(reportReason) && (
               <View style={styles.commentContainer}>
                 <Text style={styles.commentTitle}>
-                  Détails supplémentaires *
+                  Décrivez le problème (10 caractères minimum)
                 </Text>
                 <TextInput
                   style={styles.commentInput}
@@ -289,6 +199,7 @@ export default function RateScreen() {
                   textAlignVertical="top"
                   value={comment}
                   onChangeText={setComment}
+                  editable={!locked}
                   maxLength={500}
                 />
                 <Text style={styles.commentCounter}>
@@ -297,19 +208,20 @@ export default function RateScreen() {
               </View>
             )}
 
-            {/* Bouton Envoyer */}
-            <TouchableOpacity
-              style={[styles.submitButton, reportReason ? styles.submitButtonDanger : styles.submitButtonDisabled]}
-              onPress={handleSubmitReport}
-              disabled={!reportReason || isSendingReport || reportSent}
-            >
-              <Text style={styles.submitButtonText}>
-                {reportSent ? 'Signalement envoyé' : isSendingReport ? 'Envoi…' : 'Envoyer le signalement'}
-              </Text>
-            </TouchableOpacity>
           </Animated.View>
         )}
       </ScrollView>
+      <View testID="rating-submit-footer" style={ux.footer}>
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: !canSubmit, busy: isSubmittingReview || isSendingReport }}
+          style={[styles.submitButton, ux.footerButton, canSubmit
+            ? activeTab === 'report' ? styles.submitButtonDanger : styles.submitButtonActive : styles.submitButtonDisabled]}
+          onPress={activeTab === 'rate' ? handleSubmitRating : handleSubmitReport} disabled={!canSubmit}>
+          {isSubmittingReview || isSendingReport ? <ActivityIndicator color={Colors.white} /> :
+            <Text style={styles.submitButtonText}>{activeTab === 'report' ? reportSent ? 'Signalement envoyé' : 'Envoyer le signalement'
+              : submitSuccessMessage ? 'Note envoyée' : 'Envoyer la note'}</Text>}
+        </TouchableOpacity>
+      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
     </RideOverlayScope>
   );

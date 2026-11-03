@@ -22,6 +22,7 @@ import React, { useCallback } from 'react';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { useAppDispatch } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
+import { TRIP_COMPLETED_MESSAGE } from '@/features/driver-navigation/tripCompletionCopy';
 
 interface Params {
   isMountedRef: React.RefObject<boolean>;
@@ -179,9 +180,7 @@ export function useDriverCompletionActions({
       void Speech.stop().finally(() => {
         if (!isMountedRef.current) return;
         Speech.speak(
-          options.completedWhileAppInactive
-            ? "Le trajet s'est terminé pendant que l'application était en veille."
-            : 'Vous avez atteint la destination finale. Le trajet est terminé automatiquement.',
+          TRIP_COMPLETED_MESSAGE,
           {
             language: SPEECH_LANGUAGE,
             rate: SPEECH_RATE,

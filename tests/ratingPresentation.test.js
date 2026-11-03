@@ -21,13 +21,15 @@ for (const os of ['ios', 'android']) test(`${os}: rating is a regular screen, no
 test('the rating screen registers an active route scope for in-app dialogs and keeps keyboard taps usable', () => {
   const state = { active: true, ratingScopeKey: 'rating:driver:trip', activeTab: 'rate', rating: 0, passengers: [] };
   const Screen = loader({ react: React,
-    'react-native': { View: 'View', ScrollView: 'ScrollView', Text: 'Text', TouchableOpacity: 'Button' },
+    'react-native': { View: 'View', ScrollView: 'ScrollView', Text: 'Text', TouchableOpacity: 'Button',
+      KeyboardAvoidingView: 'KeyboardAvoidingView', Platform: { OS: 'ios' }, StyleSheet: { create: value => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/constants/styles': { Colors: { gray: {}, primary: '', secondary: '' }, Spacing: {} },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' } },
     '../../features/screen-styles/app/rate/detail/index': { styles: {} },
     '../../features/rating/RatingParticipantSelector': { RatingParticipantSelector: 'Participants' },
+    '../../features/rating/RatingReviewForm': { RatingReviewForm: 'ReviewForm' },
     '../../hooks/rating/useRatingData': { useRatingData: () => state },
     '../../hooks/rating/useRatingActions': { useRatingActions: () => ({}) },
     '../../hooks/rating/useRatingReport': { useRatingReport: () => ({}) },
@@ -37,6 +39,15 @@ test('the rating screen registers an active route scope for in-app dialogs and k
   assert.equal(Screen().props.active, true);
   const scroll = all(Screen()).find(node => node.type === 'ScrollView');
   assert.equal(scroll.props.keyboardShouldPersistTaps, 'handled');
+  assert.equal(all(scroll).some(node => node.props?.testID === 'rating-submit-footer'), false);
+  const submit = () => all(Screen()).find(node => node.props?.testID === 'rating-submit-footer').props.children;
+  assert.equal(submit().props.disabled, true);
+  Object.assign(state, { trip: { driverId: 'driver' }, rateTargetType: 'passenger', isTripDriver: true,
+    selectedPassenger: 'passenger', passengers: [{ id: 'passenger' }], rating: 0 });
+  assert.equal(submit().props.disabled, true, 'no preset note');
+  state.rating = 4; assert.equal(submit().props.disabled, false);
+  state.isSubmittingReview = true; assert.equal(submit().props.disabled, true);
+  state.isSubmittingReview = false; state.passengers = []; assert.equal(submit().props.disabled, true, 'missing person is not silently replaced');
   state.active = false; assert.equal(Screen().props.active, false);
 });
 

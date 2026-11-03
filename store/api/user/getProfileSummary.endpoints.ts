@@ -151,12 +151,16 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
         body: { phone, otp },
       }),
     }),
-// Modifier le PIN (nécessite l'ancien PIN pour validation)
-    updatePin: builder.mutation<{ message: string }, { oldPin: string; newPin: string }>({
-      query: ({ oldPin, newPin }) => ({
+// Le destinataire est le numéro du compte authentifié, jamais fourni par le mobile.
+    requestPinChangeOtp: builder.mutation<{ message: string; codeLength: number; expiresInSeconds: number }, void>({
+      query: () => ({ url: '/users/pin/change/request-otp', method: 'POST' }),
+    }),
+// L'ancien PIN et l'OTP dédié sont tous deux obligatoires.
+    updatePin: builder.mutation<{ message: string }, { oldPin: string; newPin: string; otp: string }>({
+      query: ({ oldPin, newPin, otp }) => ({
         url: '/users/pin/change',
         method: 'POST',
-        body: { oldPin, newPin },
+        body: { oldPin, newPin, otp },
       }),
       // Le parcours déconnecte la session après le changement du PIN.
     }),

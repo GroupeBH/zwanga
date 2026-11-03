@@ -73,6 +73,8 @@ export interface DriverTripRevenueSummary {
   ledgerVerified?: boolean;
   creditPendingAmount?: number;
   zwangaSubsidyAmount?: number;
+  /** Cash receipt confirmed by the driver; never a platform wallet credit. */
+  cashReceivedAmount?: number;
   cashToCollectAmount: number;
   electronicPendingAmount: number;
   pointsPendingAmount?: number;

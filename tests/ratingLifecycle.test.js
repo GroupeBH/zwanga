@@ -3,16 +3,16 @@ const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
-function fixture(t, os = 'ios', role = 'driver') {
+function fixture(t, os = 'ios', role = 'driver', people = ['passenger'], passengerIdParam) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), calls = [], pending = [], events = [], dialogs = [];
-  const state = { active: true, userId: role === 'driver' ? 'driver' : 'passenger', tripId: 'trip', canGoBack: true };
+  const state = { active: true, userId: role === 'driver' ? 'driver' : 'passenger', tripId: 'trip', canGoBack: true, people, passengerIdParam };
   const router = { canGoBack: () => state.canGoBack, back: () => events.push('back'), replace: path => events.push(path) };
   const load = loader({
     react: hooks.react,
     'react-native': { Platform: { OS: os }, Keyboard: { dismiss: () => events.push('keyboard') } },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => state.active },
-    'expo-router': { useLocalSearchParams: () => ({ id: state.tripId }), useRouter: () => router },
+    'expo-router': { useLocalSearchParams: () => ({ id: state.tripId, passengerId: state.passengerIdParam }), useRouter: () => router },
     '@/store/hooks': { useAppSelector: selector => selector({ auth: { user: { id: state.userId } } }) },
     '@/store/selectors': { selectUser: value => value.auth.user },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({ data: {
@@ -20,8 +20,8 @@ function fixture(t, os = 'ios', role = 'driver') {
       status: role === 'driver' ? 'completed' : 'ongoing', passengers: [],
     } }) },
     '@/store/api/bookingApi': {
-      useGetTripBookingsQuery: () => ({ data: [{ id: 'booking', tripId: state.tripId, passengerId: 'passenger',
-        status: 'completed', numberOfSeats: 2, passengerName: 'Passager test' }] }),
+      useGetTripBookingsQuery: () => ({ isLoading: state.bookingsLoading, data: state.people.map(id => ({ id: `booking-${id}`, tripId: state.tripId, passengerId: id,
+        status: 'completed', numberOfSeats: 2, passengerName: 'Passager test' })) }),
       useGetMyBookingsForTripQuery: () => ({ data: [{ id: 'booking', tripId: state.tripId,
         passengerId: state.userId, status: 'accepted', droppedOffConfirmedByPassenger: true, numberOfSeats: 1 }] }),
     },
@@ -38,8 +38,8 @@ function fixture(t, os = 'ios', role = 'driver') {
     const model = useRatingData();
     return { ...model, ...useRatingActions(model) };
   });
-  const model = render(); model.setRating(5);
-  if (role === 'driver') model.setSelectedPassenger('passenger');
+  // Flush initialization/sole-passenger selection effects before simulating an input.
+  render(); render(); render(); render().setRating(5);
   t.after(() => hooks.unmount());
   return { hooks, state, calls, pending, events, dialogs, render };
 }
@@ -132,12 +132,43 @@ test('a successful rating opened without history also goes Home directly', async
 test('another trip/account and unmount reject old feedback without unlocking a newer submission', async t => {
   const env = fixture(t), old = env.render().handleSubmitRating();
   env.state.userId = 'other-driver'; env.state.tripId = 'other-trip'; env.render();
+  env.render(); env.render(); env.render().setRating(5);
   const next = env.render().handleSubmitRating();
   env.pending[0].reject({ status: 500 }); await old;
   assert.equal(env.render().submitInFlightRef.current, true);
   assert.deepEqual(env.dialogs, []); assert.equal(env.render().submitSuccessMessage, null);
   env.hooks.unmount(); env.pending[1].resolve({}); await next;
   t.mock.timers.tick(2000); assert.deepEqual(env.events, []);
+});
+
+test('one passenger is selected automatically; multiple passengers require an explicit choice', async t => {
+  const single = fixture(t); assert.equal(single.render().selectedPassenger, 'passenger');
+  const multi = single; multi.state.people = ['first', 'second']; multi.state.tripId = 'multi-trip';
+  multi.render(); multi.render(); multi.render(); multi.render().setRating(5);
+  assert.equal(multi.render().selectedPassenger, null);
+  await multi.render().handleSubmitRating(); assert.equal(multi.calls.length, 0);
+  multi.render().setSelectedPassenger('second'); multi.render();
+  assert.equal(multi.render().rating, 0, 'choosing a person never supplies a score');
+  multi.render().setRating(4); const task = multi.render().handleSubmitRating();
+  assert.equal(multi.calls[0].ratedUserId, 'second'); multi.pending[0].resolve({}); await task;
+});
+
+test('URL preselection does not override a manual choice or carry a note/comment to another person', t => {
+  const env = fixture(t, 'ios', 'driver', ['first', 'second'], 'first');
+  assert.equal(env.render().selectedPassenger, 'first');
+  env.render().setComment('Commentaire du premier'); env.render().setSelectedTags(['friendly']);
+  env.render().setSelectedPassenger('second'); env.render();
+  const model = env.render();
+  assert.equal(model.selectedPassenger, 'second'); assert.equal(model.rating, 0);
+  assert.equal(model.comment, ''); assert.deepEqual(model.selectedTags, []);
+  env.render().setRating(3); env.render(); assert.equal(env.render().rating, 3, 'REST refresh preserves the same-person draft');
+});
+
+test('a new trip clears the previous score and an unknown explicit passenger is never replaced', t => {
+  const env = fixture(t); env.state.tripId = 'next-trip'; env.render(); env.render(); env.render();
+  assert.equal(env.render().rating, 0);
+  const invalid = env; invalid.state.passengerIdParam = 'missing'; invalid.render(); invalid.render();
+  assert.equal(invalid.render().selectedPassenger, 'missing');
 });
 
 test('inactive actions cannot submit, show validation dialogs or navigate; a deep link still returns Home', async t => {

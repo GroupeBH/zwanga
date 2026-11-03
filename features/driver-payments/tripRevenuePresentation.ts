@@ -2,6 +2,7 @@ type RevenuePayload = {
   ledgerVerified?: unknown;
   confirmedAmount?: unknown;
   creditPendingAmount?: unknown;
+  cashReceivedAmount?: unknown;
   cashToCollectAmount?: unknown;
   electronicPendingAmount?: unknown;
   pointsPendingAmount?: unknown;
@@ -10,7 +11,7 @@ type RevenuePayload = {
 };
 
 export type TripRevenueRow = {
-  key: 'confirmed' | 'unverified' | 'creditPending' | 'cash' | 'electronicPending' | 'pointsPending';
+  key: 'confirmed' | 'unverified' | 'creditPending' | 'cashReceived' | 'cash' | 'electronicPending' | 'pointsPending';
   amount: number;
   label: string;
   hint: string;
@@ -41,6 +42,11 @@ export function getTripRevenueRows(summary: RevenuePayload): TripRevenueRow[] {
     key: 'creditPending', amount: pending, label: 'Crédit en attente',
     hint: 'Ce montant n’est pas encore ajouté à vos gains.', icon: 'time-outline', tone: 'info',
   });
+  const received = amount(summary.cashReceivedAmount);
+  if (received > 0) rows.push({
+    key: 'cashReceived', amount: received, label: 'Cash reçu',
+    hint: 'Reçu du passager, hors de votre solde de revenus.', icon: 'cash-outline', tone: 'success',
+  });
   const cash = amount(summary.cashToCollectAmount);
   if (cash > 0) rows.push({
     key: 'cash', amount: cash, label: 'À recevoir en cash',
@@ -65,6 +71,6 @@ export function getTripRevenueMessage(summary: RevenuePayload) {
     `${row.label} : ${row.amount.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${currency}`,
   );
   const total = amount(summary.totalExpectedAmount);
-  if (total > 0) lines.unshift(`Total attendu : ${total.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${currency}`);
+  if (total > 0) lines.unshift(`Total du trajet : ${total.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${currency}`);
   return lines.join('\n') || 'Consultez Revenus pour vérifier le bilan de ce trajet.';
 }

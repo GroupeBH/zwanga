@@ -1,6 +1,6 @@
 import type { RideEntryMessage } from './rideEntryAnnouncement';
 
-export type ScreenSpeechKind = 'payment' | 'wallet';
+export type ScreenSpeechKind = 'payment' | 'wallet' | 'response' | 'approach';
 type Source = { userId: string; version: number; message: RideEntryMessage; deadline: number; consumed: boolean; kind: ScreenSpeechKind };
 const sources = new Map<object, Source>();
 const listeners = new Set<() => void>();
@@ -15,9 +15,10 @@ export function publishPaymentSpeech(token: object, userId: string, version: num
 export function removePaymentSpeech(token: object) { if (sources.delete(token)) notify(); }
 export function readPaymentSpeech(userId: string, version: number) {
   const visible = [...sources.values()].reverse().filter(source => source.userId === userId && source.version === version);
-  // An arrival/payment overlay must stay ahead of the underlying wallet, even
-  // after a wallet refetch. Consumed overlays still own their visible screen.
-  return visible.find(source => source.kind === 'payment') ?? visible[0];
+  // Decision/payment overlays stay ahead of the underlying screens, even after
+  // a refetch or new GPS fix. Consumed overlays still own their visible screen.
+  return visible.find(source => source.kind === 'payment') ?? visible.find(source => source.kind === 'response') ??
+    visible.find(source => source.kind === 'approach') ?? visible[0];
 }
 export function paymentSpeechPending(source: Source | undefined) {
   return Boolean(source && !source.consumed && Date.now() < source.deadline);

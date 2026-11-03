@@ -65,8 +65,11 @@ test('reset API contract uses the three POST endpoints and excludes newPin from 
     assert.deepEqual(endpoints[name].query(body), { url, method: 'POST', body });
   }
   const user = load('store/api/user/getProfileSummary.endpoints.ts').buildGetProfileSummaryEndpoints(builder);
-  assert.deepEqual(user.updatePin.query({ oldPin: '1234', newPin: '5678' }), {
-    url: '/users/pin/change', method: 'POST', body: { oldPin: '1234', newPin: '5678' },
+  assert.deepEqual(user.requestPinChangeOtp.query(), {
+    url: '/users/pin/change/request-otp', method: 'POST',
+  });
+  assert.deepEqual(user.updatePin.query({ oldPin: '1234', newPin: '5678', otp: '123456' }), {
+    url: '/users/pin/change', method: 'POST', body: { oldPin: '1234', newPin: '5678', otp: '123456' },
   });
   assert.equal(user.updatePinWithOtp, undefined);
 });

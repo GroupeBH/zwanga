@@ -10,7 +10,7 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 
-/** Synthetic local adapter for the production card builder, without FCM/network. */
+/** Synthetic local adapter. Optional loopback verifier, never FCM or real accounts. */
 public final class NativeCardProbe {
   /** Render the exact production view with public fixtures; no FLAG_SECURE bypass in production. */
   public static void preview(android.app.Activity activity, boolean locked, boolean booking) {
@@ -46,6 +46,11 @@ public final class NativeCardProbe {
         // DriverAlertModule already creates this user's configured channel in AuditRuntime.
         NativeRideDelivery.prefs(c).edit().putString("user", d.get("driverId"))
           .putLong("expires", System.currentTimeMillis()+3600000).putString("channel", channel).commit();
+        String validationBase = d.remove("auditValidationBase");
+        if (validationBase != null) {
+          if (!"com.zwanga.audit".equals(c.getPackageName()) || !validationBase.matches("http://127\\.0\\.0\\.1:[0-9]{1,5}") ||
+              !RideRingValidation.configure(c, d.get("driverId"), validationBase)) throw new IllegalArgumentException("LOCAL_VERIFIER_ONLY");
+        } else NativeRideDelivery.prefs(c).edit().remove("validationBase").commit();
         if ("queue".equals(mode)) RideDeliveryWorker.enqueue(c, d);
         boolean delivered;
         if ("late-deliver".equals(mode)) {

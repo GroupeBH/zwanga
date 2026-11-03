@@ -20,6 +20,9 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
     destination: booking.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' : booking.passengerDestination ?? booking.trip?.arrival?.address ?? booking.trip?.arrival?.name,
     numberOfSeats: booking.numberOfSeats,
     bookingId: booking.id, beforeArrival: !hasPassengerArrived(booking), mode, channel: options.channel,
+    ratingTripId: booking.status === 'completed' && (booking.paymentStatus === 'succeeded' ||
+      cashReceived || normalizeAmount(booking.paymentAmount) === 0) ? booking.tripId : undefined,
+    cashReceivedAt: cashReceived ? booking.cashReceivedAt ?? undefined : undefined,
     amount: (normalizeAmount(booking.paymentAmount) ?? normalizeAmount(payment?.amount) ?? 0) + Number(booking.mixedTokenAmount ?? 0),
     currency: booking.paymentCurrency ?? payment?.currency ?? 'CDF',
     walletBalance: normalizeAmount(wallet?.account.balance), earnedPoints: getLedgerEntryAmount(reward),

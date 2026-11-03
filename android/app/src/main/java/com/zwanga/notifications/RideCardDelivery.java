@@ -26,6 +26,13 @@ public final class RideCardDelivery {
         NativeRideDelivery.receipts(c).optJSONObject(receipt).optBoolean("displayed")) return true;
     if (!inFlight.add(receipt)) return false;
     try {
+      int verdict = RideRingValidation.check(c, data);
+      if (verdict != 1) {
+        NativeRideDelivery.failure(c, user, receipt, verdict == 0 ? "REQUEST_NO_LONGER_AVAILABLE" : "REQUEST_CHECK_UNAVAILABLE");
+        return verdict == 0;
+      }
+      final long checkedUntil = android.os.SystemClock.elapsedRealtime() + 3000;
+      if (!NativeRideDelivery.owns(c, user)) return true;
       NativeRideDelivery.receipt(c, user, receipt, false);
       String channel = NativeRideDelivery.prefs(c).getString("channel", "");
       NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -40,6 +47,7 @@ public final class RideCardDelivery {
             manager.getNotificationChannelGroup(settings.getGroup()) != null && manager.getNotificationChannelGroup(settings.getGroup()).isBlocked()) return true;
       }
       boolean wake = DriverAlertModule.allowsAlertScreenWake(c, channel) && !NativeRideDelivery.foreground();
+      if (!RideRingValidation.fresh(data, checkedUntil)) return false;
       Bundle card = RideNotificationBundle.create(c, data, channel, wake);
       NativeRideDelivery.receipt(c, user, receipt, false, card.getString("id"));
       CountDownLatch finished = new CountDownLatch(1);
@@ -49,11 +57,11 @@ public final class RideCardDelivery {
         presenter.show(card, error -> {
           try {
             synchronized (NativeRideDelivery.LOCK) {
-              if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis())) {
+              if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis()) || !RideRingValidation.fresh(data, checkedUntil)) {
                 if (posted(manager, card)) manager.cancel(card.getString("id").hashCode()); return;
               }
               if (error != null) { failed.set(true); NativeRideDelivery.failure(c, user, receipt, "NATIVE_CARD_FAILED"); }
-              else completePublished(c, data, card, wake, completed, 0);
+              else completePublished(c, data, card, wake, completed, 0, checkedUntil);
             }
           } catch (Exception ignored) { failed.set(true); }
           finally { finished.countDown(); }
@@ -67,17 +75,23 @@ public final class RideCardDelivery {
         }
       } catch (InterruptedException e) { Thread.currentThread().interrupt(); return false; }
       catch (Exception e) { failed.set(true); NativeRideDelivery.failure(c, user, receipt, "NATIVE_CARD_FAILED"); }
+      // Observation sleeps on this worker, never under the lock also used by
+      // main-thread lifecycle/audio callbacks. Recheck ownership after waiting.
+      if (!failed.get() && !awaitPosted(manager, card)) return false;
       synchronized (NativeRideDelivery.LOCK) {
-        if (!NativeRideDelivery.owns(c, user)) return true;
-        if (!failed.get() && !awaitPosted(manager, card)) return false;
+        if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis()) ||
+            !RideRingValidation.fresh(data, checkedUntil)) return true;
         if (!posted(manager, card)) {
           try { RideCardFallback.display(c, card); }
           catch (Exception e) { NativeRideDelivery.failure(c, user, receipt, "NATIVE_FALLBACK_FAILED"); }
         }
-        // notify() returns before the system server necessarily exposes the
-        // active card. A short bounded observation avoids false delivery loss.
-        if (!awaitPosted(manager, card)) return false;
-        completePublished(c, data, card, wake, completed, 0);
+      }
+      // notify() returns before the system server necessarily exposes the card.
+      if (!awaitPosted(manager, card)) return false;
+      synchronized (NativeRideDelivery.LOCK) {
+        if (!NativeRideDelivery.owns(c, user) || !RideNotificationBundle.valid(data, System.currentTimeMillis()) ||
+            !RideRingValidation.fresh(data, checkedUntil)) return true;
+        completePublished(c, data, card, wake, completed, 0, checkedUntil);
         return true;
       }
     } catch (Exception error) {
@@ -86,7 +100,7 @@ public final class RideCardDelivery {
   }
   /** A late Notifee completion still owns audio/wake initialization. Never republish or renew the card. */
   private static void completePublished(Context c, Map<String,String> data, Bundle card, boolean shouldWake,
-      java.util.concurrent.atomic.AtomicBoolean completed, int attempt) {
+      java.util.concurrent.atomic.AtomicBoolean completed, int attempt, long checkedUntil) {
     synchronized (NativeRideDelivery.LOCK) {
       if (completed.get() || !NativeRideDelivery.owns(c, data.get("driverId")) ||
           !RideNotificationBundle.valid(data, System.currentTimeMillis())) return;
@@ -94,9 +108,13 @@ public final class RideCardDelivery {
       if (previous != null && previous.optBoolean("displayed")) return;
       NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
       if (manager == null) return;
+      if (!RideRingValidation.fresh(data, checkedUntil)) {
+        if (posted(manager, card)) manager.cancel(card.getString("id").hashCode());
+        return;
+      }
       if (!posted(manager, card)) {
         if (attempt < 10) new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-          () -> completePublished(c, data, card, shouldWake, completed, attempt + 1), 100);
+          () -> completePublished(c, data, card, shouldWake, completed, attempt + 1, checkedUntil), 100);
         return;
       }
       if (!completed.compareAndSet(false, true)) return;

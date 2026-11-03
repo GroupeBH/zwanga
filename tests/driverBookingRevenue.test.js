@@ -50,6 +50,19 @@ test('explicit cash receipt changes the cash label but never increases platform 
   assert.doesNotMatch(text, /Gains crédités 5 000/);
 });
 
+test('server cash receipts are shown as received in full and compact views without local flags', () => {
+  const app = receipt();
+  app.data(summary({ cashReceivedAmount: 2000, cashToCollectAmount: 0 }));
+  const text = words(app.render()).replace(/\s+/g, ' ');
+  assert.match(text, /Cash reçu 2 000 CDF/);
+  assert.match(text, /Gains crédités 3 000 CDF/);
+  assert.match(text, /pas dans votre solde de revenus/);
+  assert.doesNotMatch(text, /À recevoir/);
+  app.data(summary({ cashReceivedAmount: 5000, cashToCollectAmount: 0, confirmedAmount: 0 }));
+  assert.match(words(app.render({ compact: true })), /Cash reçu/);
+  assert.doesNotMatch(words(app.render({ compact: true })), /crédités|à recevoir/);
+});
+
 test('loading, errors, stale passenger data and unconfirmed drops never become invented zero earnings', () => {
   const app = receipt();
   app.data(undefined);
@@ -86,7 +99,7 @@ test('compact navigation shows latest dropoff, opens details explicitly and clos
     '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'Revenue' },
     './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'Sheet' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
-    '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ active: null }) },
+    '@/features/navigation/RideOverlayProvider': { useHasRideOverlay: () => false },
     '@/components/home/SwipeableHomePriority': { SwipeableHomePriority: 'Swipe' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
   })('features/driver-navigation/DriverDropoffReceipts.tsx');
@@ -131,7 +144,7 @@ test('swiping hides only the receipt UI until a new dropoff, not a refetch or pa
     '@/features/driver-payments/DriverBookingRevenue': { DriverBookingRevenue: 'Revenue' },
     './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'Sheet' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
-    '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ active: overlay }) },
+    '@/features/navigation/RideOverlayProvider': { useHasRideOverlay: () => Boolean(overlay) },
     '@/components/home/SwipeableHomePriority': { SwipeableHomePriority: 'Swipe' },
     '@expo/vector-icons': { Ionicons: 'Icon' },
   })('features/driver-navigation/DriverDropoffReceipts.tsx');

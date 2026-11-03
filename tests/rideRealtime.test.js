@@ -17,21 +17,23 @@ test('socket envelopes validate recipients, ids and invitation ownership before 
 test('foreground subscription coalesces refresh, ignores foreign sessions and releases when backgrounded', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(); const state = { active: true, session: 0 }; let receive;
-  const displayed = [], dismissed = [], invalidated = []; let stops = 0;
+  const displayed = [], dismissed = [], invalidated = []; let stops = 0, rechecks = 0;
   const { useRideRealtime } = loader({ react: hooks.react,
     '@/hooks/useAppIsActive': { useAppIsActive: () => state.active },
     '@/store/hooks': { useAppDispatch: () => tags => invalidated.push(tags) },
     '@/store/api/baseApi': { baseApi: { util: { invalidateTags: tags => tags } } },
     '@/services/chatSocket': { chatSocket: { subscribeToRideAlerts: fn => { receive = fn; return () => { stops++; }; } } },
     '@/services/tokenSession': { getTokenSessionVersion: () => state.session },
+    '@/services/rideAlertRevalidation': { revalidatePendingRideAlerts: async () => { rechecks++; } },
     '@/services/driverNotifications': { displayDriverInvitation: async data => displayed.push(data), dismissDriverInvitation: async data => dismissed.push(data) },
     '@/services/rideAlertSession': { pendingRideAlertHandoffs: () => [],
-      pendingRideAlerts: () => [{ kind: 'dispatch', key: 'dispatch', id: id(4), recipientId: id(1), data: incoming.data }] },
+      pendingRideEntryAlerts: () => [{ kind: 'dispatch', key: 'dispatch', id: id(4), recipientId: id(1), data: incoming.data }] },
     '@/services/rideAudioDiagnostics': { reportRideAudioFailure() {} },
   })('hooks/notifications/useRideRealtime.ts');
   hooks.render(() => useRideRealtime(id(1), true));
   receive(incoming); receive({ kind: 'reconnected' }); receive({ ...incoming, recipientId: id(9) });
   assert.equal(displayed.length, 1); t.mock.timers.tick(1000); assert.equal(invalidated.length, 1);
+  assert.equal(rechecks, 1, 'reconnect delegates to the shared bounded revalidation');
   for (let i = 0; i < 20; i++) { receive(incoming); t.mock.timers.tick(250); }
   assert.equal(displayed.length, 1); assert.equal(invalidated.length, 1, 'same event is not reloaded every 250 ms');
   receive({ kind: 'changed', recipientId: id(1), requestId: id(5), terminal: true });
@@ -54,6 +56,7 @@ test('server cancellation clears a staged handoff before its native callback can
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(); let receive, session;
   const load = loader({ react: hooks.react,
+    '@/services/rideAlertRevalidation': { revalidatePendingRideAlerts: async () => {} },
     '@/hooks/useAppIsActive': { useAppIsActive: () => true },
     '@/store/hooks': { useAppDispatch: () => () => {} },
     '@/store/api/baseApi': { baseApi: { util: { invalidateTags: tags => tags } } },

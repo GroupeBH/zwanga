@@ -67,7 +67,7 @@ test('nearby alert fields survive the plain body copied into dataString by Expo 
   assert.equal(load('features/notifications/rideSound.ts').parseNearbyPhoneAlert(policy.readDriverPushData({ data: malformed })), null);
 });
 
-function service(platform = 'android', account = driverId, phoneChannel = false, fullScreen = false) {
+function service(platform = 'android', account = driverId, phoneChannel = false, fullScreen = false, ringAllowed = true) {
   const storage = new Map();
   const displays = [];
   const channels = [];
@@ -77,6 +77,7 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
   const native = { createChannel: async value => channels.push(value), displayNotification: async value => displays.push(value),
     cancelNotification: async id => cancelled.push(id), getDisplayedNotifications: async () => displays.map(notification => ({ id: notification.id, notification })) };
   const loadService = loader({
+    './rideRingValidation': { validateRideRing: async () => ringAllowed, rideRingValidationIsCurrent: () => ringAllowed },
     './tokenStorage': { getTokens: async () => ({ refreshToken: account ? `x.${Buffer.from(JSON.stringify({ sub: account, exp: Date.now()/1000+3600 })).toString('base64url')}.x` : null }) },
     '@react-native-async-storage/async-storage': { getItem: async key => storage.get(key), setItem: async (key, value) => storage.set(key, value), removeItem: async key => storage.delete(key) },
     'expo-notifications': { setNotificationCategoryAsync: async id => { categories.push(id); },
@@ -94,6 +95,15 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
   return { loaded, displays, storage, channels, categories, cancelled, appState, native, presented, wakes,
     session: loadService('services/rideAlertSession.ts') };
 }
+
+for (const state of ['active', 'background']) test(`server-denied requests never publish or ring in ${state}`, async () => {
+  const f = service('android', driverId, false, false, false);
+  f.appState.currentState = state;
+  await f.loaded.displayDriverInvitation({ ...data, ringUntil: data.expiresAt });
+  assert.equal(f.displays.length, 0);
+  assert.equal(f.wakes.length, 0);
+  assert.equal(f.session.pendingRideAlerts(driverId).length, 0);
+});
 
 test('a decision before alert hydration prevents a late REST snapshot from starting its sound', async () => {
   const f = service('ios');

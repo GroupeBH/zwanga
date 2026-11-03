@@ -245,7 +245,7 @@ test('an entry voice pauses a ringtone still initializing, without starting it u
   f.stopForegroundRideSound();
 });
 
-test('coordinator keeps ringing on Home and stops on the passenger trip, with cleanup on background', async t => {
+test('passenger replies remain available on Home without ringing, then acknowledge on their trip', async t => {
   t.mock.timers.enable({ apis: ['setInterval'] });
   const hooks = hookHarness(); const io = { path: '/home', plays: 0, stops: 0, receive: null, state: null, episodes: [] };
   const app = { currentState: 'active', addEventListener: (_event, fn) => { io.state = fn; return { remove() {} }; } };
@@ -262,8 +262,8 @@ test('coordinator keeps ringing on Home and stops on the passenger trip, with cl
   const render = () => hooks.render(() => useRideRinging(userId));
   render(); await tick();
   io.receive({ request: { content: { data: response() } } });
-  assert.ok(io.plays > 0);
-  assert.ok(io.episodes.every(key => key === load('features/notifications/rideAlert.ts').parseRideAlert(response()).key));
+  assert.equal(io.plays, 0, 'an informational reply must not start foreground audio');
+  assert.equal(load('services/rideAlertSession.ts').pendingRideResponseNotices(userId).length, 1);
   io.path = `/trip/${otherId}`; render();
   assert.equal(load('services/rideAlertSession.ts').pendingRideAlerts(userId).length, 1);
   io.path = `/booking/navigate/${id}`; render();

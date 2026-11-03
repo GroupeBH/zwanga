@@ -10,6 +10,7 @@ export type StoredBookingPaymentState = {
   settledAt?: string;
   requiredActionAt?: string;
   acknowledgedAt?: string;
+  acknowledgedCashReceivedAt?: string;
   preArrivalDismissedAt?: string;
   bookingPaymentOrderNumber?: string;
   bookingPaymentMethod?: SubscriptionPaymentMethod;
@@ -45,6 +46,9 @@ export type PaymentCompletionSummary = {
   numberOfSeats?: number;
   cashInstructions?: boolean;
   bookingId: string;
+  /** Only present for a completed passenger booking with a confirmed settlement. */
+  ratingTripId?: string;
+  cashReceivedAt?: string;
   beforeArrival?: boolean;
   mode: TripPaymentMode | null;
   channel?: PaymentChannel;

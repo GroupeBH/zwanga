@@ -25,7 +25,8 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
     const row = rows.length === 1 && rows[0].amount === summary?.totalExpectedAmount ? rows[0] : undefined;
     const label = isError ? 'À actualiser' : !summary?.dropoffConfirmed ? 'Détail du gain'
       : summary.totalExpectedAmount === 0 ? 'Gratuit'
-        : row?.key === 'cash' ? cashReceived ? 'Cash reçu' : 'Cash à recevoir'
+        : row?.key === 'cashReceived' ? 'Cash reçu'
+          : row?.key === 'cash' ? cashReceived ? 'Cash reçu' : 'Cash à recevoir'
           : row?.key === 'confirmed' ? 'Gains crédités'
             : row?.key === 'unverified' ? 'Gain à vérifier'
               : row?.key === 'creditPending' ? 'Crédit en attente'
@@ -45,14 +46,15 @@ export const DriverBookingRevenue = memo(function DriverBookingRevenue({ booking
       </View>
       {rows.map(row => <View key={row.key} style={styles.row}>
         <Text style={styles.label}>{row.key === 'cash' && cashReceived ? 'Cash reçu' : row.label}</Text>
-        <Text style={[styles.amount, row.key === 'cash' ? styles.cash : row.key === 'confirmed' ? styles.confirmed : null]}>
+        <Text style={[styles.amount, row.key === 'cash' ? styles.cash : row.key === 'confirmed' || row.key === 'cashReceived' ? styles.confirmed : null]}>
           {format(row.amount)}
         </Text>
       </View>)}
       <Text style={styles.hint}>{rows.some(row => row.key === 'cash')
         ? cashReceived ? 'Le cash a été reçu directement du passager, pas dans votre solde de revenus.'
           : 'Le cash est à recevoir du passager, pas dans votre solde de revenus.'
-        : summary.totalExpectedAmount > 0 ? 'Seuls les gains crédités sont enregistrés dans vos revenus.'
+        : rows.some(row => row.key === 'cashReceived') ? 'Le cash a été reçu directement du passager, pas dans votre solde de revenus.'
+          : summary.totalExpectedAmount > 0 ? 'Seuls les gains crédités sont enregistrés dans vos revenus.'
           : 'Aucun gain à encaisser pour cette réservation.'}</Text>
     </> : <Text style={styles.hint}>{isError
       ? 'Le gain de ce passager est indisponible pour le moment. Réessayez avec une connexion.'

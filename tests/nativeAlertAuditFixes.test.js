@@ -17,6 +17,23 @@ test('a late Notifee completion cannot initialize a second audio publisher after
   assert.ok(card.indexOf('previous.optBoolean("displayed")') < card.indexOf('RideAlertAudioService.startPublished'));
   assert.match(card, /synchronized \(NativeRideDelivery.LOCK\)/);
 });
+
+test('notification publication polling never holds the lifecycle/audio lock', () => {
+  const card = source('RideCardDelivery');
+  let locks = 0;
+  for (const match of card.matchAll(/synchronized \(NativeRideDelivery\.LOCK\)\s*\{/g)) {
+    let depth = 1, end = match.index + match[0].length;
+    const start = end;
+    while (depth && end < card.length) {
+      if (card[end] === '{') depth++;
+      else if (card[end] === '}') depth--;
+      end++;
+    }
+    assert.doesNotMatch(card.slice(start, end), /awaitPosted\(|Thread\.sleep\(|finished\.await\(/);
+    locks++;
+  }
+  assert.ok(locks >= 3, 'ownership checks remain serialized');
+});
 test('audio_started follows MediaPlayer playback, never just service startup', () => {
   const player = source('RideAlertAudioPlayer');
   assert.match(player, /if \(!reportedPlaying && player.isPlaying\(\)\).*observe\("audio_started", "PLAYER_STARTED"\)/);

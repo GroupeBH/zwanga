@@ -71,9 +71,9 @@ function entryRecoveryHarness(t) {
     '@/components/home/EntrySyncBanner': { EntrySyncBanner: 'SyncBanner' },
     '@/features/navigation/homeEntryStatusContext': { HomeEntryStatusContext: { Provider: 'StatusProvider' } },
     '@/features/navigation/appEntryContext': { AppEntryContext: { Provider: 'EntryProvider' } },
-    '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ store: {
+    '@/features/navigation/RideOverlayProvider': { useRideOverlayStore: () => ({
       subscribe: () => () => {}, isBusy: () => env.busy,
-    } }) },
+    }) },
     '@/services/tokenSession': { getTokenSessionVersion: () => 0 },
     '@/services/appActivity': { isAppActive: () => env.active, isAppForeground: () => env.active, getAppActiveSince: () => foregroundSince },
   });

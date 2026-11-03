@@ -150,6 +150,7 @@ export function useRequestDetailData() {
     currentUser,
     assignedTrip,
     isDriverAccount,
+    passengerBooking: bookings?.find(booking => booking.tripId === ownerTripId && booking.passengerId === currentUser?.id && booking.status === 'accepted'),
     isIdentityVerified,
     isAcceptingTripRequest,
     id,

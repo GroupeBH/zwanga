@@ -12,5 +12,10 @@ export async function bindNativeRideDelivery(userId: string, channelId: string):
   if (!refreshToken || getUserIdFromToken(refreshToken) !== userId || version !== getTokenSessionVersion()) return false;
   const expires = Number(decodeJWT(refreshToken)?.exp) * 1000;
   if (!Number.isFinite(expires) || expires <= Date.now()) return false;
-  return bridge.bindNativeRideAccount(userId, expires, channelId) === 6;
+  if (bridge.bindNativeRideAccount(userId, expires, channelId) !== 6) return false;
+  // Older binaries remain compatible; the new receiver fails closed until bound.
+  if (typeof bridge.configureRideValidation !== 'function') return true;
+  const { API_BASE_URL } = await import('@/config/env');
+  if (version !== getTokenSessionVersion()) return false;
+  return bridge.configureRideValidation(userId, API_BASE_URL) === true;
 }

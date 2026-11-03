@@ -1,10 +1,12 @@
-/* Local emulator, production Java + synthetic fixtures; no FCM/backend/network. */
+/* Local emulator, production Java + loopback verdict fixtures; no FCM/real backend. */
 const { execFileSync } = require('node:child_process');
 const { Buffer } = require('node:buffer');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { startLocalRingValidation } = require('./local-ring-validation.cjs');
+let validation;
 const serial = process.env.RIDE_AUDIT_SERIAL || 'emulator-5554';
 const adb = process.env.RIDE_AUDIT_ADB;
 if (!adb || !/^emulator-\d+$/.test(serial)) throw Error('Local emulator and RIDE_AUDIT_ADB required');
@@ -30,6 +32,7 @@ function assertPinned(payload, label) {
   assert.ok(row.includes('isHeadsUpState()=true') && row.includes('isPinned()=true'), label);
 }
 async function probe(payload, mode = 'observe') {
+  if (validation && payload.type === 'trip_request_nearby') payload = validation.addTo(payload);
   shell('run-as', pkg, 'rm', '-f', 'files/ride-audit-result.json');
   receive('--es', 'operation', 'native-payload', '--es', 'payload', Buffer.from(JSON.stringify(payload)).toString('base64'), '--es', 'mode', mode);
   for (let i = 0; i < 30; i++) {
@@ -63,6 +66,7 @@ async function start(seconds = 55, mode = 'deliver', kind = 'booking') {
   if (shell('getprop', 'ro.kernel.qemu').trim() !== '1') throw Error('Emulator required');
   fs.mkdirSync(output, { recursive: true });
   try {
+    validation = await startLocalRingValidation(run);
     shell('pm', 'grant', pkg, 'android.permission.POST_NOTIFICATIONS');
     receive('--es', 'operation', 'consent', '--ez', 'enabled', 'true');
     shell('appops', 'set', pkg, 'USE_FULL_SCREEN_INTENT', 'allow');
@@ -137,6 +141,7 @@ async function start(seconds = 55, mode = 'deliver', kind = 'booking') {
     assert.equal(ended.ongoing, false); assert.equal(ended.count, 1);
     record('business_deadline_stops_audio_and_foreground_service');
   } finally {
+    await validation?.close();
     receive('--es', 'operation', 'audio-focus', '--es', 'kind', 'release'); operation('clear');
     receive('--es', 'operation', 'consent', '--ez', 'enabled', 'false'); shell('appops', 'set', pkg, 'USE_FULL_SCREEN_INTENT', 'default');
     shell('input', 'keyevent', 'KEYCODE_WAKEUP'); shell('wm', 'dismiss-keyguard'); shell('input', 'keyevent', 'KEYCODE_HOME');

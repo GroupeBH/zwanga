@@ -7,6 +7,7 @@ import React from 'react';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
+import { RIDE_CONFIRM_LABEL, rideActionQuestion } from '@/features/ride-recovery/rideRecoveryPresentation';
 
 interface NavigationPickupBypassModalProps {
   pickupBypassConfirmation: PickupBypassConfirmation | null;
@@ -60,7 +61,7 @@ export function NavigationPickupBypassModal({
           <View style={[styles.waypointModalIcon, { backgroundColor: Colors.warning }]}>
             <Ionicons name="help-circle" size={32} color={Colors.white} />
           </View>
-          <Text style={styles.waypointModalTitle}>Embarquement en attente</Text>
+          <Text style={styles.waypointModalTitle}>{rideActionQuestion('driver', 'pickup')}</Text>
           <Text style={styles.waypointModalPassenger}>
             {pickupBypassConfirmation?.waypoint.passenger.name || 'Passager'}
           </Text>
@@ -73,8 +74,8 @@ export function NavigationPickupBypassModal({
           </View>
           <Text style={styles.waypointModalWaitingText}>
             Vous avez dépassé le point de prise en charge sans confirmation automatique.
-            {' '}Si le passager est à bord, confirmez ci-dessous. Il valide aussi avec « Je suis à bord » dans son application.
-            {' '}L’embarquement est validé après vos deux confirmations, ou par la détection automatique.
+            {' '}Si le passager est dans le véhicule, confirmez ci-dessous. Il répond aussi dans son application.
+            {' '}Cette étape est validée après vos deux confirmations, ou par la détection automatique.
           </Text>
           <View style={[styles.waypointGpsStatus, styles.pickupBypassStatus]}>
             <Ionicons name="navigate-circle" size={18} color={Colors.warningDark} />
@@ -149,6 +150,7 @@ export function NavigationPickupBypassModal({
               ]}
               onPress={() => void handleConfirmBypassedPickup()}
               accessibilityRole="button"
+              accessibilityLabel={`${pickupBypassAction === 'confirm' ? 'Enregistrement…' : `${rideActionQuestion('driver', 'pickup')} ${RIDE_CONFIRM_LABEL}`} : ${pickupBypassConfirmation?.waypoint.passenger.name || 'Passager'}`}
               accessibilityHint="Enregistre directement votre validation. Le passager confirme de son côté."
               disabled={
                 Boolean(pickupBypassAction) ||
@@ -157,7 +159,7 @@ export function NavigationPickupBypassModal({
             >
               {pickupBypassAction === 'confirm' ? <ActivityIndicator size="small" color={Colors.white} /> : <>
                 <Ionicons name="checkmark-circle" size={20} color={Colors.white} />
-                <Text style={styles.waypointModalPrimaryButtonText}>Confirmer l’embarquement</Text>
+                <Text style={styles.waypointModalPrimaryButtonText}>{RIDE_CONFIRM_LABEL}</Text>
               </>}
             </TouchableOpacity>
           </View>

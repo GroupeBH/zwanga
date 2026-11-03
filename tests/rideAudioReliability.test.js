@@ -49,7 +49,8 @@ test('a 60-second alert can hand off after 30 seconds without renewing its deadl
 });
 
 test('a passenger response hands back to Android but has no driver decision buttons', async t => {
-  const f = background(t, 'response'); f.io.fullscreen = true; await f.reconcileBackgroundRideRinging('driver');
+  const f = background(t, 'response'); f.io.fullscreen = true; f.io.retainAudio = true;
+  await f.reconcileBackgroundRideRinging('driver');
   assert.equal(f.io.displayed.length, 1); assert.equal(f.io.displayed[0].android.actions, undefined);
   assert.equal(f.io.displayed[0].android.fullScreenAction, undefined); assert.deepEqual(f.io.fullScreenCalls, []);
   f.io.state = 'active'; await f.reconcileBackgroundRideRinging('driver');

@@ -13,7 +13,7 @@ import { AppEntryContext } from '@/features/navigation/appEntryContext';
 import { STARTUP_ROUTES } from '@/features/navigation/homeBackPolicy';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useActiveRideResume } from '@/hooks/navigation/useActiveRideResume';
-import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
+import { useRideOverlayStore } from '@/features/navigation/RideOverlayProvider';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { getAppActiveSince, isAppActive } from '@/services/appActivity';
 import { HomeRoleLoader } from '@/components/home/HomeRoleLoader';
@@ -52,7 +52,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   const segments = useSegments();
   const navigation = useRootNavigationState();
   const router = useRouter();
-  const { store: overlays } = useRideOverlay();
+  const overlays = useRideOverlayStore();
   const overlayBusy = useSyncExternalStore(overlays?.subscribe ?? noSubscribe, overlays?.isBusy ?? busyWithoutHost, busyWithoutHost);
   // Observe the shared discovery cache; do not add list subscriptions or a polling loop.
   const trips = tripApi.endpoints.getMyActivityTrips.useQueryState(undefined);

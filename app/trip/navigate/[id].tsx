@@ -17,6 +17,7 @@ import { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssista
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
+import { DriverPaidRequestCompletionPrompt } from '@/features/driver-navigation/DriverPaidRequestCompletionPrompt';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
@@ -173,6 +174,9 @@ function DriverNavigationScreen() {
         trip={model.session.foundation.data.trip}
         handleRatePassengersFromTripEnd={model.handleRatePassengersFromTripEnd}
       />
+
+      <DriverPaidRequestCompletionPrompt model={model}
+        blocked={assistanceOrSecurityVisible || model.session.foundation.mapState.backgroundDisclosureVisible} />
 
       <NavigationPickupBypassModal
         pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}

@@ -11,9 +11,15 @@ import { useCallback } from 'react';
 import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 import { buildRequestDetailEntry } from '@/features/notifications/detailEntryAnnouncement';
 import { getAssignedDriverTripId } from '@/features/trip-request/assignedTripNavigation';
+import { usePassengerApproachAnnouncement } from '@/hooks/notifications/usePassengerApproachAnnouncement';
 
 export function useRequestDetailController() {
   const data = useRequestDetailData();
+  usePassengerApproachAnnouncement({
+    userId: data.currentUser?.id, trip: data.assignedTrip, booking: data.passengerBooking,
+    isScreenActive: data.isScreenActive && !data.isOpeningAssignedTrip,
+    useFallback: true, joinTracking: true,
+  });
 
   // États pour le formulaire de modification
   const form = useRequestDetailFormState();

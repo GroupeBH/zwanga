@@ -1,4 +1,5 @@
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
+import { validateRideRing, rideRingValidationIsCurrent } from './rideRingValidation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
@@ -100,6 +101,10 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   if (!invitation) return false;
   if (invitation.kind === 'nearby' && invitation.priority) data = { ...data, mapDriverPriority: 'true' };
   void reportRideNotificationReceipt(data, 'received');
+  if (!await validateRideRing(data)) {
+    await dismissDriverAlertFallback(data);
+    return true; // Stale/unverifiable requests are never an audible fallback.
+  }
   // A quiet banner is paired with the single foreground audio player.
   if (isAppActive()) {
     if (Platform.OS === 'android') {
@@ -108,7 +113,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
       const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
       if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
       const alert = parseRideAlert(data);
-      if (alert) rememberRideAlert(alert);
+      if (alert && rideRingValidationIsCurrent(data)) rememberRideAlert(alert);
       return true;
     }
     // If the phone went to sleep during foreground setup, continue with the
@@ -138,7 +143,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   delivery.attempt = attempt;
   let published = false;
   const current = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
-    !delivery.cancelled && version === getTokenSessionVersion();
+    !delivery.cancelled && version === getTokenSessionVersion() && rideRingValidationIsCurrent(data);
   try {
     let fresh = deadline > Date.now();
     let channelId = fresh ? await configureDriverNotifications() : await quietChannel();
@@ -218,7 +223,7 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
   let published = false;
   let registered = false;
   const owned = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
-    !delivery.cancelled && version === getTokenSessionVersion();
+    !delivery.cancelled && version === getTokenSessionVersion() && rideRingValidationIsCurrent(data);
   const current = () => owned() && isAppActive();
   try {
     const alert = parseRideAlert(data);

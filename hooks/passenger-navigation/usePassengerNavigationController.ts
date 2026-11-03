@@ -19,6 +19,7 @@ import { usePassengerNavigationTripActions } from './usePassengerNavigationTripA
 import React, { useCallback } from 'react';
 import type { MapMarker } from 'react-native-maps';
 import { usePassengerEntryAnnouncement } from '@/hooks/notifications/useNavigationEntryAnnouncement';
+import { usePassengerApproachAnnouncement } from '@/hooks/notifications/usePassengerApproachAnnouncement';
 
 
 
@@ -58,6 +59,7 @@ export function usePassengerNavigationController() {
   });
 
   const notices = usePassengerNavigationNotices({
+    approachAnnouncements: true,
     isScreenActive: data.isScreenActive,
     trip: data.trip,
     showNotice,
@@ -277,6 +279,12 @@ export function usePassengerNavigationController() {
     rejectDriverTripInterruption: data.rejectDriverTripInterruption,
   });
 
+  usePassengerApproachAnnouncement({
+    userId: data.passengerId, trip: data.trip, booking: data.booking,
+    isScreenActive: data.isScreenActive && data.isOnline && !data.offlineBooking && !data.offlineTrip &&
+      !interruption.canRespondToDriverInterruption && !interruption.pendingPassengerInterruptionRequest,
+    locationSnapshot: data.driverLocationSnapshot,
+  });
   usePassengerEntryAnnouncement(data, interruption);
   // État du trajet pour le passager
   const presentation = usePassengerNavigationPresentation({
