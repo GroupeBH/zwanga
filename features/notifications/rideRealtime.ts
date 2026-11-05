@@ -1,5 +1,6 @@
 import { isInvitationId } from './driverInvitation';
 import { parseRideAlert } from './rideAlert';
+import { isCounterOfferAlert } from './rideSound';
 
 export type RideRealtimeEvent =
   | { kind: 'incoming'; recipientId: string; eventId: string; data: Record<string, unknown> }
@@ -17,7 +18,7 @@ export function parseRideRealtimeEvent(raw: unknown): Exclude<RideRealtimeEvent,
   if (value.kind === 'incoming' && isInvitationId(value.eventId) && value.data && typeof value.data === 'object' && !Array.isArray(value.data)) {
     const data = value.data as Record<string, unknown>;
     const alert = parseRideAlert(data);
-    if (!alert || alert.recipientId !== value.recipientId || alert.kind === 'response') return null;
+    if (!alert || alert.recipientId !== value.recipientId || (alert.kind === 'response' && !isCounterOfferAlert(data))) return null;
     return { kind: 'incoming', recipientId: value.recipientId, eventId: value.eventId, data };
   }
   if (value.kind === 'changed' && typeof value.terminal === 'boolean' &&

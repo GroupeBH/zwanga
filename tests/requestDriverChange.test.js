@@ -32,14 +32,15 @@ test('map selection carries the displayed request revision and an opaque marker,
   for (const id of ['', 'driver', 'x'.repeat(64)]) assert.equal(mapDriverSelectionPayload(open, id), null);
 });
 
-test('native map taps use a separate compact action panel and memoization tracks the callback', () => {
+test('native map taps open the scoped profile and keep the map callback stable', () => {
   const map = readFileSync('features/request-detail/RequestSearchMap.tsx', 'utf8');
   assert.match(map, /if \(active\) onSelectVehicle\?\.\(vehicle.id\)/);
   assert.match(map, /a.onSelectVehicle === b.onSelectVehicle/);
   assert.match(map, /tracksViewChanges=\{false\}/);
   const screen = readFileSync('features/request-detail/RequestSearchScreen.tsx', 'utf8');
   assert.match(screen, /!request.targetDriverPriorityUntil/);
-  assert.match(screen, /MapDriverSelection/);
+  assert.match(screen, /pathname: '\/driver\/\[id\]'/);
+  assert.match(screen, /requestId: request.id/);
   assert.match(screen, /maxHeight: '34%'/);
   const change = readFileSync('features/request-detail/ChangeRequestDriverButton.tsx', 'utf8');
   assert.match(change, /version !== getTokenSessionVersion/);

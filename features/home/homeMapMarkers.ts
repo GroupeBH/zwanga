@@ -10,6 +10,7 @@ export type HomeMapMarker = {
   key: string;
   kind: 'trip' | 'request';
   id: string;
+  driverId?: string;
   coordinate: { latitude: number; longitude: number };
   image: ImageRequireSource;
   title: string;
@@ -45,7 +46,7 @@ export function buildHomeMapMarkers({ isDriver, latestTrips, availableDriverRequ
     const coordinate = normalizeTripMapCoordinate(trip.departure?.lat, trip.departure?.lng);
     if (!coordinate) continue;
     markers.push({ key: `trip:${trip.id}`, kind: 'trip', id: trip.id, coordinate,
-      image: getTripMarkerImage(trip, false), title: route(trip.departure, trip.arrival) });
+      driverId: trip.driverId, image: getTripMarkerImage(trip, false), title: route(trip.departure, trip.arrival) });
   }
   return markers;
 }

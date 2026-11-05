@@ -195,6 +195,7 @@ test('primary action opens time selection first, then submits planned or immedia
     './useRequestQuickPlaces': { useRequestQuickPlaces: () => ({}) },
     './useRequestBudgetSummary': { useRequestBudgetSummary: () => ({ hasDepartureAddress: true, hasArrivalAddress: true, canSubmitRequestDetails: true }) },
     './useRequestRoutePrefill': { useRequestRoutePrefill: () => ({}) },
+    './useDirectDriverPrefill': { useDirectDriverPrefill: () => ({ blocked: false }) },
     '@/hooks/useUserLocation': { useUserLocation: () => ({}) },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/api/googleMapsApi': { useGeocodeMutation: () => [() => {}] },

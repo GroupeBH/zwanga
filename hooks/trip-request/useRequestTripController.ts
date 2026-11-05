@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRequestDraft } from './useRequestDraft';
 import { useRequestSchedule } from './useRequestSchedule';
 import { useRequestSubmission } from './useRequestSubmission';
+import { useDirectDriverPrefill } from './useDirectDriverPrefill';
 
 export function useRequestTripController() {
   const isScreenActive = useScreenIsActive();
@@ -33,7 +34,10 @@ export function useRequestTripController() {
     departure?: string;
     minSeats?: string;
     seats?: string;
+    targetDriverId?: string;
+    targetVehicleType?: string;
   }>();
+  const directDriverPrefill = useDirectDriverPrefill(requestParams.targetDriverId, requestParams.targetVehicleType, isScreenActive, draft);
 
   const insets = useSafeAreaInsets();
 
@@ -220,7 +224,7 @@ export function useRequestTripController() {
     arrivalAddress,
     hasDepartureAddress,
     hasArrivalAddress,
-    canSubmitRequestDetails,
+    canSubmitRequestDetails: canSubmitRequestDetails && !directDriverPrefill.blocked,
     budgetValue,
     selectedVehicleOptionUnavailable,
     getCurrentDepartureWindow: schedule.getCurrentDepartureWindow,
@@ -246,12 +250,13 @@ export function useRequestTripController() {
       return;
     }
     if (!draft.hasChosenDepartureTime) { schedule.openCustomPicker('time'); return; }
+    if (directDriverPrefill.blocked) return;
     await handleCreateRequest();
   };
 
   const primaryButtonDisabled =
     isCreating ||
-    (requestFormStep === 'details' && !canSubmitRequestDetails);
+    (requestFormStep === 'details' && (!canSubmitRequestDetails || directDriverPrefill.blocked));
 
   const primaryIconName: keyof typeof Ionicons.glyphMap =
     !hasDepartureAddress || !hasArrivalAddress || requestFormStep === 'route'
@@ -259,6 +264,7 @@ export function useRequestTripController() {
       : 'send';
 
   return {
+    directDriverPrefill,
     targetDriver: draft.targetDriver,
     setTargetDriver: draft.setTargetDriver,
     activePicker,

@@ -14,6 +14,7 @@ import { selectIsAuthenticated } from '@/store/selectors';
 import { accountActivityApi } from '@/store/api/accountActivityApi';
 import { bookingApi } from '@/store/api/bookingApi';
 import { tripApi } from '@/store/api/tripApi';
+import { useGetMyRatedTripsQuery } from '@/store/api/reviewApi';
 
 const repository = createReviewRepository(AsyncStorage);
 const noSubscribe = () => () => {};
@@ -38,7 +39,7 @@ function ReviewSession({ userId }: { userId: string }) {
   wasForeground.current = foreground;
   const pathname = usePathname();
   const [due, setDue] = useState(false);
-  // Cache reads only: the existing activity coordinator owns all network requests.
+  // Ride/payment cache reads only: the activity coordinator owns their requests.
   const { data: bookings, isFetching: bookingsFetching } = bookingApi.endpoints.getMyActivityBookings.useQueryState(undefined, {
     selectFromResult: ({ data, isFetching }) => ({ data, isFetching }),
   });
@@ -59,21 +60,34 @@ function ReviewSession({ userId }: { userId: string }) {
     }
     return results;
   }, [bookings, trips, userId]);
+  // One bounded query, only after a genuinely paid/completed ride. Never derive
+  // a submitted rating from navigation, a tapped button or the rating's value.
+  const tripIds = useMemo(() => [...new Set([...completions]
+    .sort((a, b) => b.completedAt - a.completedAt).map(item => item.tripId))].slice(0, 100).sort(), [completions]);
+  const ratings = useGetMyRatedTripsQuery({ userId, tripIds }, {
+    skip: !foreground || pathname !== '/' || tripIds.length === 0,
+    refetchOnMountOrArgChange: 60, refetchOnReconnect: true,
+  });
+  const ratingsReady = ratings.currentData?.userId === userId && !ratings.isFetching && !ratings.isError;
+  const ratedCompletions = useMemo(() => ratingsReady
+    ? completions.filter(item => ratings.currentData!.ratedTripIds.includes(item.tripId)) : [],
+  [completions, ratings.currentData, ratingsReady]);
   const live = activity?.hasLiveActivity || trips?.some(trip => trip.driverId === userId && trip.status === 'ongoing')
     || bookings?.some(booking => booking.passengerId === userId && booking.status === 'accepted' && booking.trip?.status === 'ongoing');
   // A cached "no active ride" from before sleep is insufficient for another native window.
   const fresh = activity?.userId === userId && (fulfilledTimeStamp ?? 0) >= resumedAt.current && !activityFetching && !activityError;
-  const safe = foreground && fresh && pathname === '/' && !overlayBusy && !live && !bookingsFetching && !tripsFetching;
+  const safe = foreground && fresh && pathname === '/' && !overlayBusy && !live && !bookingsFetching && !tripsFetching
+    && ratingsReady && ratedCompletions.length > 0;
   const safeRef = useRef(safe);
   safeRef.current = safe;
 
   useEffect(() => {
     let current = true;
-    void repository.observe(userId, initializedAt, completions).then(value => {
+    void repository.observe(userId, initializedAt, ratedCompletions).then(value => {
       if (current) setDue(value);
     }).catch(() => { if (current) setDue(false); });
     return () => { current = false; };
-  }, [completions, foreground, initializedAt, userId]);
+  }, [ratedCompletions, foreground, initializedAt, userId]);
 
   useEffect(() => {
     if (!due || !safe) return;

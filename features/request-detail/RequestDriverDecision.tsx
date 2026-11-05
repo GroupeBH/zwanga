@@ -11,6 +11,7 @@ import { RequestPassengerContact } from './RequestPassengerContact';
 import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailModel';
 import { RequestDecisionVehiclePicker } from './RequestDecisionVehiclePicker';
 import { RequestDecisionOptions } from './RequestDecisionOptions';
+import { RequestCounterOffer } from './RequestCounterOffer';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import type { buildRequestDetailPresentation } from './requestPresentation';
 
@@ -65,13 +66,14 @@ export function RequestDecisionActions({ model }: { model: Model }) {
   const canAccept = model.canAcceptDirectly && Boolean(model.directAcceptVehicle) && !disabled && !response.blocked;
   return <View style={styles.footer} testID="request-decision-actions">
     {!!response.label && <Text style={styles.hint}>{busy ? 'Confirmation du trajet en cours…' : response.label}</Text>}
-    {model.canAcceptDirectly && <RequestDecisionVehiclePicker key={`${model.userId}:${model.tripRequest?.id}`} model={model} disabled={disabled} />}
+    {model.canAcceptDirectly && model.myOffer?.status !== 'pending' && <RequestDecisionVehiclePicker key={`${model.userId}:${model.tripRequest?.id}`} model={model} disabled={disabled} />}
+    <RequestCounterOffer key={`price:${model.userId}:${model.tripRequest?.id}`} model={model} disabled={busy || !model.canRespondToRequest || ((response.closed || response.blocked) && model.myOffer?.status !== 'pending')} />
     {!model.isIdentityVerified ? <Pressable accessibilityRole="button" disabled={disabled}
       onPress={() => model.checkIdentity('publish')} style={styles.option}>
       <Text style={styles.optionText}>Vérifier mon identité pour accepter</Text>
     </Pressable> : !model.compatibleActiveVehicles.length ? <Text style={styles.hint}>Aucun véhicule compatible avec cette commande.</Text>
-      : model.myOffer?.status === 'pending' ? <Text style={styles.hint}>Votre réponse attend la confirmation du passager.</Text> : null}
-    <View style={styles.buttons}>
+      : null}
+    {model.myOffer?.status !== 'pending' && <View style={styles.buttons}>
       <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled}
         style={[styles.button, styles.refuse, disabled && styles.disabled]} onPress={model.handleDeclineTripRequest}>
         <Text style={styles.refuseText}>Refuser</Text>
@@ -80,7 +82,7 @@ export function RequestDecisionActions({ model }: { model: Model }) {
         style={[styles.button, styles.accept, !canAccept && styles.disabled]} onPress={() => { void model.handleDirectAcceptTripRequest(false, true); }}>
         {busy ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.acceptText}>Accepter</Text>}
       </Pressable>
-    </View>
+    </View>}
   </View>;
 }
 

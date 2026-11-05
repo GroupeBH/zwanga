@@ -177,6 +177,8 @@ export default function TripDetailsScreen() {
         adjustBookingSeats={model.pricing.adjustBookingSeats}
         isBooking={model.bookingState.isBooking}
         bookingSeats={model.bookingState.bookingSeats}
+        bookingProposedPrice={model.bookingState.bookingProposedPrice}
+        setBookingProposedPrice={model.bookingState.setBookingProposedPrice}
         handleBookingSeatsChange={model.pricing.handleBookingSeatsChange}
         seatLimit={model.access.seatLimit}
         isIdentityVerified={model.data.isIdentityVerified}

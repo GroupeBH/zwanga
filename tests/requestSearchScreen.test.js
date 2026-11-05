@@ -10,7 +10,7 @@ const words = tree => typeof tree === 'string' || typeof tree === 'number' ? Str
 const native = { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', StyleSheet: { create: x => x } };
 
 function screenFixture() {
-  const hooks = hookHarness(), reads = [], gps = [];
+  const hooks = hookHarness(), reads = [], gps = [], routes = [];
   const now = Date.now();
   const model = { userId: 'owner', isScreenActive: true, tripRequest: { id: 'request', passengerId: 'owner', status: 'pending',
     vehicleType: 'car', numberOfSeats: 1, maxPricePerSeat: 2500, departureDateMin: new Date(now + 600000).toISOString(),
@@ -19,6 +19,7 @@ function screenFixture() {
     total: 3, vehicles: Array.from({ length: 3 }, (_, i) => ({ id: `vehicle-${i}`, latitude: -4.3, longitude: 15.3 + i / 10000,
       vehicleType: 'car', positionUpdatedAt: new Date(now).toISOString() })) } };
   const Screen = loader({ react: { ...React, ...hooks.react }, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    'expo-router': { useRouter: () => ({ push: route => routes.push(route) }) },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/store/hooks': { useAppSelector: fn => fn({ zwangaApi: { config: { online: state.online } } }) },
     '@/hooks/useUserLocation': { useUserLocation: options => { gps.push(options); return { lastKnownLocation: null }; } },
@@ -26,12 +27,12 @@ function screenFixture() {
       return { currentData: options.skip ? undefined : state.data, fulfilledTimeStamp: now, isError: state.error, refetch: async () => ({ data: state.data }) }; } },
     '@/hooks/useRouteLocationLabels': { useRouteLocationLabels: () => ({ departure: { title: 'Départ de test' }, arrival: { title: 'Arrivée de test' } }) },
     './RequestSearchMap': { RequestSearchMap: 'Map' }, './RequestOwnerModals': { RequestOwnerModals: 'Editor' },
-    './MapDriverSelection': { MapDriverSelection: 'DriverSelection' },
+    './PassengerPriceOffers': { PassengerPriceOffers: 'PriceOffers' },
     './RequestTargetDriver': { RequestTargetDriver: 'Target' }, './SharedTripPanel': { SharedTripPanel: 'Sharing' },
     './RequestPassengerTicket': { RequestPassengerActions: 'Actions', formatRequestDay: () => 'Aujourd’hui', formatRequestTime: () => '12:00' },
     '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({}) },
   })('features/request-detail/RequestSearchScreen.tsx').RequestSearchScreen;
-  return { state, model, reads, gps, hooks, render: () => hooks.render(() => Screen({ model, presentation: {
+  return { state, model, reads, gps, hooks, routes, render: () => hooks.render(() => Screen({ model, presentation: {
     requestRouteMapData: { departureCoordinate: { latitude: -4.3, longitude: 15.3 } } }, onLayout() {} })) };
 }
 
@@ -49,21 +50,17 @@ test('search screen exposes real drivers, route, price and existing actions outs
   assert.equal(app.reads.at(-1).options.pollingInterval, 30000);
 });
 
-test('a map tap opens the compact choice panel, while inactive or priority searches cannot target another driver', t => {
+test('a map tap opens the scoped profile, while offline or priority searches cannot target another driver', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   let tree = app.render();
   elements(tree).find(node => node.type === 'Map').props.onSelectVehicle('vehicle-1');
-  tree = app.render();
-  const selection = elements(tree).find(node => node.type === 'DriverSelection');
-  assert.equal(selection.props.vehicle.id, 'vehicle-1');
-  assert.equal(selection.props.disabled, false);
-  selection.props.onClose(); app.render();
+  assert.deepEqual(app.routes, [{ pathname: '/driver/[id]', params: { id: 'vehicle-1', requestId: 'request' } }]);
   app.model.tripRequest.targetDriverPriorityUntil = new Date(Date.now() + 180000).toISOString();
   tree = app.render(); elements(tree).find(node => node.type === 'Map').props.onSelectVehicle('vehicle-2');
-  assert.equal(elements(app.render()).some(node => node.type === 'DriverSelection'), false);
+  assert.equal(app.routes.length, 1);
   delete app.model.tripRequest.targetDriverPriorityUntil; app.state.online = false;
   tree = app.render(); elements(tree).find(node => node.type === 'Map').props.onSelectVehicle('vehicle-2');
-  assert.equal(elements(app.render()).some(node => node.type === 'DriverSelection'), false);
+  assert.equal(app.routes.length, 1);
 });
 
 test('older positions and rendering limits are explained without claiming live availability', t => {

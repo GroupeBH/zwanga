@@ -7,7 +7,7 @@ const NO_MARKERS: HomeMapMarker[] = [];
 /** Map pins reuse lists Home already loaded: no extra query, socket or location read.
  * Hidden during an ongoing trip so the map keeps its single purpose. */
 export function useHomeMapMarkers({ enabled = true, isDriver, latestTrips, availableDriverRequests, hiddenHomePriorities,
-  openTripDetail, openTripRequestDetail }: {
+  openTripDetail, openTripRequestDetail, openMapDriverProfile }: {
   enabled?: boolean;
   isDriver: boolean;
   latestTrips?: Trip[];
@@ -15,12 +15,14 @@ export function useHomeMapMarkers({ enabled = true, isDriver, latestTrips, avail
   hiddenHomePriorities?: Record<string, boolean>;
   openTripDetail?: (tripId: string) => void;
   openTripRequestDetail?: (requestId: string) => void;
+  openMapDriverProfile?: (driverId: string, tripId: string) => void;
 }) {
   const homeMapMarkers = useMemo(() => enabled ? buildHomeMapMarkers({
     isDriver, latestTrips: latestTrips ?? [], availableDriverRequests: availableDriverRequests ?? [], hiddenHomePriorities,
   }) : NO_MARKERS, [availableDriverRequests, enabled, hiddenHomePriorities, isDriver, latestTrips]);
   const openHomeMapMarker = useCallback((marker: HomeMapMarker) => {
-    if (marker.kind === 'trip') openTripDetail?.(marker.id); else openTripRequestDetail?.(marker.id);
-  }, [openTripDetail, openTripRequestDetail]);
+    if (marker.kind === 'trip' && marker.driverId && openMapDriverProfile) openMapDriverProfile(marker.driverId, marker.id);
+    else if (marker.kind === 'trip') openTripDetail?.(marker.id); else openTripRequestDetail?.(marker.id);
+  }, [openTripDetail, openTripRequestDetail, openMapDriverProfile]);
   return { homeMapMarkers, homeMapMarkerSummary: homeMapMarkerSummary(isDriver, homeMapMarkers.length), openHomeMapMarker };
 }

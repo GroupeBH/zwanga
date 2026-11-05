@@ -1,4 +1,4 @@
-import React, { useSyncExternalStore } from 'react';
+import React, { useEffect, useSyncExternalStore } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
@@ -10,6 +10,9 @@ import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { passengerResponseNotice } from '@/features/notifications/passengerResponseNotice';
+import { isCounterOfferAlert } from '@/features/notifications/rideSound';
+import { useGetTripRequestByIdQuery } from '@/store/api/tripRequestApi';
+import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts, dismissRideResponseNotice, getRideAlertsRevision,
   pendingRideResponseNotices, subscribeRideAlerts } from '@/services/rideAlertSession';
 import { getTokenSessionVersion } from '@/services/tokenSession';
@@ -17,7 +20,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 import { ACTION_COLORS } from '@/constants/actionColors';
 
-/** A passenger reply needs information, not another driver-decision ringtone. */
+/** Normal replies are informational; a new price explicitly asks for a ringing decision. */
 export function PassengerRideResponseCoordinator() {
   const active = useAppIsActive();
   const authenticated = useAppSelector(selectIsAuthenticated);
@@ -25,6 +28,24 @@ export function PassengerRideResponseCoordinator() {
   const router = useRouter();
   useSyncExternalStore(subscribeRideAlerts, getRideAlertsRevision, getRideAlertsRevision);
   const notice = user?.id ? pendingRideResponseNotices(user.id)[0] : undefined;
+  const counterOffer = !!notice && isCounterOfferAlert(notice.data);
+  const readsEnabled = useDisplayReadsEnabled(active && authenticated && counterOffer);
+  const request = useGetTripRequestByIdQuery(counterOffer ? notice!.id : '', displayReadOptions(readsEnabled, 15000));
+  useEffect(() => {
+    if (!active || !counterOffer || !notice) return;
+    const until = Date.parse(String(notice.data.alertExpiresAt ?? notice.expiresAt ?? ''));
+    if (!Number.isFinite(until)) return;
+    const timeout = setTimeout(() => dismissRideResponseNotice(notice), Math.max(0, Math.min(until - Date.now(), 120000)));
+    return () => clearTimeout(timeout);
+  }, [active, counterOffer, notice]);
+  useEffect(() => {
+    if (!counterOffer || !notice || !request.currentData || request.isFetching || request.isError) return;
+    const current = request.currentData;
+    if (current.passengerId === user?.id && (current.selectedDriverId || current.tripId ||
+        !['pending', 'offers_received'].includes(current.status) ||
+        !current.offers?.some(offer => offer.id === notice.data.offerId && offer.status === 'pending')))
+      dismissRideResponseNotice(notice);
+  }, [counterOffer, notice, request.currentData, request.isFetching, request.isError, user?.id]);
   const visible = Boolean(active && authenticated && notice);
   const version = getTokenSessionVersion();
   const current = () => Boolean(notice && user?.id === notice.recipientId && version === getTokenSessionVersion());
@@ -37,8 +58,8 @@ export function PassengerRideResponseCoordinator() {
   };
   return <RideModal inApp visible={visible} transparent priority={RIDE_OVERLAY_PRIORITY.information}
     onRequestClose={close} onShow={() => {
-      // A displayed response is read: leaving the app must not restart its sound.
-      if (current()) acknowledgeRideAlerts(item => item.key === notice!.key, notice);
+      // Ordinary replies are read on display. A price needs an explicit interaction.
+      if (current() && !counterOffer) acknowledgeRideAlerts(item => item.key === notice!.key, notice);
     }}>
     {notice ? <PassengerResponsePanel key={notice.key} alert={notice} onClose={close} onOpen={open} /> : null}
   </RideModal>;
@@ -59,10 +80,10 @@ function PassengerResponsePanel({ alert, onClose, onOpen }: { alert: RideAlert; 
         <Text style={styles.message}>{notice.message}</Text>
       </ScrollView>
       <TouchableOpacity accessibilityRole="button" style={styles.primary} onPress={onOpen}>
-        <Text style={styles.primaryText}>Voir mon trajet</Text>
+        <Text style={styles.primaryText}>{isCounterOfferAlert(alert.data) ? 'Voir le prix proposé' : 'Voir mon trajet'}</Text>
       </TouchableOpacity>
       <TouchableOpacity accessibilityRole="button" style={styles.secondary} onPress={onClose}>
-        <Text style={styles.secondaryText}>Compris</Text>
+        <Text style={styles.secondaryText}>{isCounterOfferAlert(alert.data) ? 'Pas maintenant' : 'Compris'}</Text>
       </TouchableOpacity>
     </View>
   </View>;

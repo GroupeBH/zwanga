@@ -9,11 +9,12 @@ import type { useRequestDetailController } from '@/hooks/request-detail/useReque
 import type { buildRequestDetailPresentation } from './requestPresentation';
 import { requestSearchPhase, searchVehicles, searchPassengerPosition } from './requestSearchModel';
 import { RequestSearchMap } from './RequestSearchMap';
-import { MapDriverSelection } from './MapDriverSelection';
+import { useRouter } from 'expo-router';
 import { RequestPassengerActions, formatRequestDay, formatRequestTime } from './RequestPassengerTicket';
 import { RequestOwnerModals } from './RequestOwnerModals';
 import { RequestTargetDriver } from './RequestTargetDriver';
 import { SharedTripPanel } from './SharedTripPanel';
+import { PassengerPriceOffers } from './PassengerPriceOffers';
 import { formatCdfPrice } from './requestDetailModel';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
@@ -29,6 +30,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
   model: Model; presentation: ReturnType<typeof buildRequestDetailPresentation>; onLayout: (event: LayoutChangeEvent) => void;
 }) {
   const request = model.tripRequest!;
+  const router = useRouter();
   const active = model.isScreenActive && !model.showEditForm && !model.editLocationPickerType;
   const readsEnabled = useDisplayReadsEnabled(active);
   const { currentData, isError, isFetching, refetch, fulfilledTimeStamp } = useGetRequestSearchMapQuery(request.id, displayReadOptions(readsEnabled, 30_000));
@@ -53,13 +55,11 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
   const labels = useRouteLocationLabels(request);
   const departure = presentation.requestRouteMapData?.departureCoordinate ?? null;
   const readFailed = isError || !!model.error || !readsEnabled || !!snapshot && !Array.isArray(snapshot.vehicles);
-  const [choice, setChoice] = useState<{ requestId: string; vehicleId: string } | null>(null);
   const canChoose = active && readsEnabled && !readFailed && phase === 'searching' && !request.targetDriverPriorityUntil &&
     !request.selectedDriverId && !request.tripId && !model.isCancelling && !model.isUpdating;
   const selectVehicle = useCallback((vehicleId: string) => {
-    if (canChoose) setChoice({ requestId: request.id, vehicleId });
-  }, [canChoose, request.id]);
-  const choosing = choice?.requestId === request.id && !request.targetDriverPriorityUntil;
+    if (canChoose) router.push({ pathname: '/driver/[id]', params: { id: vehicleId, requestId: request.id } });
+  }, [canChoose, request.id, router]);
   return <SafeAreaView style={s.screen} onLayout={onLayout}>
     <View style={s.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={s.back}>
@@ -70,8 +70,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
     <RequestSearchMap requestId={request.id} active={active} departure={departure} position={position} vehicles={vehicles} onSelectVehicle={selectVehicle} />
     <View style={[s.panel, expanded && s.expandedPanel]} testID="request-search-panel">
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        {choosing ? <MapDriverSelection key={`${request.id}:${choice.vehicleId}`} request={request}
-          vehicle={vehicles.find(vehicle => vehicle.id === choice.vehicleId)} disabled={!canChoose} onClose={() => setChoice(null)} /> : <>
+        <PassengerPriceOffers key={request.id} request={request} enabled={readsEnabled && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
         <View style={s.statusRow}>
           <View style={s.status}>
             <Text accessibilityRole="header" style={s.title}>{phase === 'past-departure' ? 'L’heure de départ est dépassée' :
@@ -98,7 +97,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
               readFailed ? 'Votre demande reste enregistrée. Réessayez pour afficher les positions.' :
                 total ? `${total} véhicule${total > 1 ? 's' : ''} sur la carte${snapshot?.truncated ? ' (les plus proches)' : ''}. Une position ne garantit pas la disponibilité.` :
                   'Aucune position transmise pour le moment. Votre demande reste en attente d’une réponse.'}</Text>
-          <Text style={s.hint}>Dernières positions connues · 5 km autour du départ. Touchez une voiture, une moto ou un tricycle pour voir depuis quand.</Text>
+          <Text style={s.hint}>Dernières positions connues · 5 km autour du départ. Touchez un véhicule pour voir son conducteur et lui envoyer votre demande.</Text>
           {total > MAX_INDIVIDUAL_SEARCH_MARKERS && <Text style={s.hint}>Touchez un groupe de véhicules pour agrandir la carte.</Text>}
           {vehicles.some(vehicle => vehicle.ageMs >= 10 * 60_000) && <Text style={s.hint}>Les véhicules plus pâles ont une position ancienne.</Text>}
         </View>}
@@ -115,7 +114,6 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
         </View>
         <SharedTripPanel requestId={request.id} isOwner readsEnabled={readsEnabled} seats={request.numberOfSeats}
           hasPendingOffer={false} refresh={model.refetch} />
-        </>}
       </ScrollView>
     </View>
     <RequestPassengerActions model={model} />

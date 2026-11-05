@@ -24,7 +24,9 @@ export function createReviewRepository(storage: Storage, now: () => number = Dat
         const raw = await storage.getItem(key);
         const previous = parseReviewHistory(raw, initializedAt);
         const next = recordReviewCompletions(previous, completions, now());
-        if (raw === null || next !== previous) await storage.setItem(key, JSON.stringify(next));
+        // Also persist the V1 -> V2 policy migration, even on an idle observation.
+        const serialized = JSON.stringify(next);
+        if (raw !== serialized) await storage.setItem(key, serialized);
         return reviewIsDue(next, now());
       });
     },

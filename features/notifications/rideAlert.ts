@@ -1,5 +1,5 @@
 import { isInvitationId, parseDriverInvitation } from './driverInvitation';
-import { isRemoteNearbyRequestAlert, isRemoteRequestAcceptanceAlert } from './rideSound';
+import { isCounterOfferAlert, isRemoteNearbyRequestAlert, isRemoteRequestAcceptanceAlert } from './rideSound';
 import { mapDriverAlertGeneration, nearbyRideAlertKey } from './mapDriverAlert';
 
 export type RideAlert = {
@@ -20,12 +20,16 @@ export function parseRideAlert(data: Record<string, unknown> | undefined): RideA
   const id = data.bookingId ?? data.tripRequestId;
   if (!isRemoteRequestAcceptanceAlert(data) || !isInvitationId(data.passengerId) || !isInvitationId(id)) return null;
   return { kind: 'response', id, recipientId: data.passengerId,
-    key: `ride-response-${data.type}-${id}-${data.status ?? 'accepted'}`, data };
+    key: `ride-response-${data.type}-${id}-${isCounterOfferAlert(data) ? data.offerId : data.status ?? 'accepted'}`, data,
+    ...(isCounterOfferAlert(data) && typeof data.ringUntil === 'string' ? { expiresAt: data.ringUntil } : {}) };
 }
 
 /** Match complete route segments, never a prefix or a driver's account role. */
 export function isRideResponseOpen(alert: RideAlert, pathname: string): boolean {
   if (alert.kind !== 'response') return false;
+  // A price is a decision, not an accepted-ride information message.
+  // Its explicit controls (or expiry) acknowledge the alert, not route focus.
+  if (isCounterOfferAlert(alert.data)) return false;
   const { tripId, bookingId, tripRequestId } = alert.data;
   return (isInvitationId(tripId) && pathname === `/trip/${tripId}`) ||
     (isInvitationId(bookingId) && pathname === `/booking/navigate/${bookingId}`) ||

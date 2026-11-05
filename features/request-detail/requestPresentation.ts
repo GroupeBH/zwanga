@@ -158,7 +158,7 @@ export function buildRequestDetailPresentation({
     if (myOffer?.status === 'pending') {
       return {
         badge: 'En attente',
-        title: 'Votre ancienne réponse est encore en attente',
+        title: 'Votre proposition attend la réponse du passager',
         subtitle: 'Vous serez notifié dès que son statut évoluera.',
       };
     }

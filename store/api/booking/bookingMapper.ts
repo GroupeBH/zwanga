@@ -171,6 +171,8 @@ export const mapServerBookingToClient = (booking: ServerBooking): Booking => ({
   paymentMode: booking.paymentMode ?? undefined,
   paymentStatus: booking.paymentStatus ?? undefined,
   paymentAmount: booking.paymentAmount ?? undefined,
+  grossPaymentAmount: booking.grossPaymentAmount ?? undefined,
+  proposedPricePerSeat: booking.proposedPricePerSeat == null ? null : Number(booking.proposedPricePerSeat),
   paymentCurrency: booking.paymentCurrency ?? undefined,
   paymentReference: booking.paymentReference ?? undefined,
   paymentTransactionId: booking.paymentTransactionId ?? undefined,

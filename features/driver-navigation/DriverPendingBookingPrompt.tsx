@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/styles';
+import { bookingFareLabel, bookingProposalPrice } from '@/features/trip-detail/bookingPriceProposal';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -27,6 +28,7 @@ export function DriverPendingBookingPrompt(props: Props) {
       <Text style={styles.eyebrow}>Nouvelle réservation{props.queuedCount > 0 ? ` (+${props.queuedCount})` : ''}</Text>
       <Text style={styles.name} numberOfLines={1}>{props.booking.passengerName || 'Passager'}</Text>
       <Text style={styles.meta}>{formatSeatCount(props.booking.numberOfSeats)} · {formatPendingBookingPayment(props.booking, props.tripPrice)}</Text>
+      {bookingProposalPrice(props.booking) !== null && <Text style={styles.eyebrow}>{bookingFareLabel(props.booking, props.tripPrice)}</Text>}
       </View>
       <TouchableOpacity style={[styles.contact, props.busy && styles.disabled]}
         accessibilityRole="button" accessibilityLabel={`Contacter ${props.booking.passengerName || 'le passager'} avant d’accepter`}
@@ -55,11 +57,12 @@ export function DriverPendingBookingPrompt(props: Props) {
         <Text style={[styles.buttonText, styles.rejectText]}>Refuser</Text>
       </TouchableOpacity>
       <TouchableOpacity style={[styles.button, styles.accept, props.busy && styles.disabled]}
-        accessibilityRole="button" accessibilityLabel="Accepter la réservation"
+        accessibilityRole="button" accessibilityLabel={bookingProposalPrice(props.booking) !== null
+          ? `Accepter ce prix : ${bookingFareLabel(props.booking, props.tripPrice)}` : 'Accepter la réservation'}
         accessibilityState={{ disabled: props.busy, busy: props.accepting }}
         disabled={props.busy} activeOpacity={0.85} onPress={() => void props.onAccept(props.booking)}>
         {props.accepting ? <ActivityIndicator size="small" color={Colors.white} /> : <Ionicons name="checkmark" size={18} color={Colors.white} />}
-        <Text style={[styles.buttonText, styles.acceptText]}>Accepter</Text>
+        <Text style={[styles.buttonText, styles.acceptText]}>{bookingProposalPrice(props.booking) !== null ? 'Accepter ce prix' : 'Accepter'}</Text>
       </TouchableOpacity>
     </View>
   </View>;

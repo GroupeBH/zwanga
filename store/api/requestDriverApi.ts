@@ -4,12 +4,17 @@ import { mapServerTripRequestToClient } from './trip-request/requestMapper';
 import type { ServerTripRequest } from './trip-request/serverTypes';
 import { compatibleVehiclePayload, vehicleSelectionError } from '@/features/trip-request/vehiclePayload';
 
-export type RequestDriverChoice = { id: string; name: string; vehicle: string; distanceKm: number | string; vehicleType?: TripRequestVehicleType };
+export type RequestDriverChoice = { id: string; name: string; vehicle: string; distanceKm: number | string | null; vehicleType?: TripRequestVehicleType };
 export type SelectedRequestDriver = RequestDriverChoice & { vehicleType: TripRequestVehicleType };
 export type DriverChoiceQuery = { latitude: number; longitude: number; seats: number; vehicleType: TripRequestVehicleType; vehicleTypes?: TripRequestVehicleType[]; search?: string };
 
 export const requestDriverApi = baseApi.injectEndpoints({
   endpoints: builder => ({
+    requestMapDriver: builder.query<{ driverId: string; vehicleType: TripRequestVehicleType; positionUpdatedAt: string }, { requestId: string; markerId: string }>({
+      query: ({ requestId, markerId }) => ({ url: `/trip-requests/${requestId}/map-driver`, params: { markerId }, timeout: 10000 }),
+      keepUnusedDataFor: 15,
+      providesTags: (_result, _error, { requestId }) => [{ type: 'TripRequest', id: requestId }],
+    }),
     requestDriverChoices: builder.query<RequestDriverChoice[], DriverChoiceQuery>({
       query: (input) => {
         const { vehicleTypes, ...params } = compatibleVehiclePayload(input);
@@ -37,5 +42,5 @@ export const requestDriverApi = baseApi.injectEndpoints({
     }),
   }),
 });
-export const { useRequestDriverChoicesQuery, useOpenRequestToNearbyDriversMutation,
+export const { useRequestMapDriverQuery, useRequestDriverChoicesQuery, useOpenRequestToNearbyDriversMutation,
   useTargetRequestMapDriverMutation, useChangeRequestDriverMutation } = requestDriverApi;

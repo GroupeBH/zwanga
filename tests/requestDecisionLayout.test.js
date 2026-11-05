@@ -26,6 +26,7 @@ const mocks = { react: React, 'react-native': native, '@expo/vector-icons': { Io
   './RequestDecisionVehiclePicker': { RequestDecisionVehiclePicker: 'VehiclePicker' },
   './CollapsibleRouteMap': { CollapsibleRouteMap: 'RouteMap' },
   './RequestDecisionOptions': { RequestDecisionOptions: 'Options' },
+  './RequestCounterOffer': { RequestCounterOffer: 'CounterOffer' },
   '@/features/driver-payments/CashCommissionNotice': { CashCommissionNotice: 'Commission' },
 };
 const presentation = { requestRouteMapData: { departureCoordinate: { latitude: -4.3, longitude: 15.3 },

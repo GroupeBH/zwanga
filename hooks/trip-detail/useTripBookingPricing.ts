@@ -1,4 +1,5 @@
 import { ELECTRONIC_PAYMENTS_ENABLED } from '@/constants/paymentFeatures';
+import { bookingProposalError } from '@/features/trip-detail/bookingPriceProposal';
 import type { Booking } from '@/types';
 import React, { useMemo } from 'react';
 import type { Trip } from '@/types';
@@ -8,6 +9,7 @@ interface Params {
   seatLimit: number;
   setBookingModalError: React.Dispatch<React.SetStateAction<string>>;
   bookingSeats: string;
+  bookingProposedPrice?: string;
   trip: Trip | undefined;
   activeBooking: Booking | null;
 }
@@ -17,6 +19,7 @@ export function useTripBookingPricing({
   seatLimit,
   setBookingModalError,
   bookingSeats,
+  bookingProposedPrice = '',
   trip,
   activeBooking,
 }: Params) {
@@ -62,8 +65,10 @@ export function useTripBookingPricing({
     if (Number.isNaN(seatsValue) || seatsValue <= 0 || !trip) {
       return 0;
     }
-    return trip.price === 0 ? 0 : seatsValue * trip.price;
-  }, [bookingSeats, trip?.price]);
+    const proposal = bookingProposedPrice.trim() && !bookingProposalError(bookingProposedPrice, trip.price, seatsValue)
+      ? Number(bookingProposedPrice) : trip.price;
+    return seatsValue * proposal;
+  }, [bookingSeats, trip?.price, bookingProposedPrice]);
   const activeBookingPaymentAmount = useMemo(() => {
     if (!activeBooking) return 0;
     const storedAmount = Number(activeBooking.paymentAmount ?? 0);

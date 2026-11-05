@@ -175,9 +175,13 @@ module.exports = {
         (process.env.NODE_ENV === 'production' ? 'production' : 
          process.env.NODE_ENV === 'development' ? 'development' : 
          'production'), // Par défaut, considérer comme production pour les builds
-      // Feature flag OTP inscription (desactive par defaut pour bypass temporaire)
+      // Les profils EAS activent l'OTP d'inscription ; le serveur choisit le fournisseur.
+      // Le fallback conserve la compatibilité des builds sans activation explicite.
       EXPO_PUBLIC_ENABLE_SIGNUP_OTP:
         process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP || 'false',
+      // Vérification des comptes existants dans les nouveaux builds uniquement.
+      EXPO_PUBLIC_REQUIRE_ACCOUNT_PHONE_OTP:
+        process.env.EXPO_PUBLIC_REQUIRE_ACCOUNT_PHONE_OTP || 'false',
       // Google Maps API key
       EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
       // Google Sign-In OAuth IDs

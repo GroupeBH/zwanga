@@ -31,18 +31,21 @@ import { freshEntryData } from '@/features/navigation/entryFreshness';
 import { useEntryPresentation } from '@/hooks/navigation/useEntryPresentation';
 import { HomeEntryStatusContext } from '@/features/navigation/homeEntryStatusContext';
 import { primePendingBookingTrip } from '@/store/api/booking/entrySnapshot';
+import { DriverBookingAlertBanner } from '@/components/DriverBookingAlertBanner';
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
 const selectEntryUserId = (state: RootState) => state.auth.tokenPayload?.sub ?? state.auth.tokenPayload?.userId ?? state.auth.user?.id;
 
-export function ActiveRideResumeCoordinator({ children }: { children: ReactNode }) {
+export function ActiveRideResumeCoordinator({ children, enabled = true }: { children: ReactNode; enabled?: boolean }) {
   const dispatch = useAppDispatch();
   const reduxStore = useStore<RootState>();
-  const authenticated = useAppSelector(selectIsAuthenticated);
+  const hasSession = useAppSelector(selectIsAuthenticated);
+  const authenticated = hasSession && enabled;
   const userId = useAppSelector(selectEntryUserId);
   const online = useAppSelector(state => state.zwangaApi.config.online);
-  const active = useAppIsActive();
+  const foreground = useAppIsActive();
+  const active = foreground && enabled;
   const sessionVersion = getTokenSessionVersion();
   // Shared native timestamp, not the mount time of each child: a summary may
   // already have finished when profile hydration lets entry render.
@@ -133,7 +136,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
     requests, trips, activity, reconciled, alerts, readRequest, readTrip, readBooking, readDispatch,
     verifyPriority: resume.verifyPriority,
     prepareBookingEntry: snapshot => { if (userId) dispatch(primePendingBookingTrip(snapshot, userId)); },
-    replace: presentation.replaceRequest, refresh: refreshActivity });
+    replace: presentation.replaceRequest, replaceBooking: presentation.replaceBooking, refresh: refreshActivity });
   const entryPending = resume.pending || requestResume.pending;
   const failed = resume.pending ? resume.failed : requestResume.failed;
   const blocking = entryPending && !presentation.released && !failed && online;
@@ -153,9 +156,11 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   }, [authenticated, userId, path, active, entryNavigationReady, entryPending, overlayBusy]);
   // A sibling above the mounted navigator, not a native modal or a replacement
   // navigator: route changes can complete without revealing the Home in between.
-  return <AppEntryContext.Provider value={blocking}>
+  return <AppEntryContext.Provider value={!enabled || blocking}>
     <HomeEntryStatusContext.Provider value={!blocking && active && authenticated && homeRoleReady && onHome && !overlayBusy && (entryPending || proposal)
       ? { failed, offline: !online, actionLabel, onAction: proposal ? presentation.open : retry } : null}>
+      <DriverBookingAlertBanner userId={userId} alerts={alerts} path={path}
+        visible={active && authenticated && entryNavigationReady && !overlayBusy} />
       {children}
     </HomeEntryStatusContext.Provider>
     {blocking && active && !overlayBusy && <View style={styles.cover} accessibilityViewIsModal testID="active-ride-entry">

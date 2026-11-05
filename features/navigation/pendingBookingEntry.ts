@@ -2,6 +2,11 @@ import type { Booking, Trip } from '@/types';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { hasPassengerFinishedRide, ownsTrip } from '@/features/activity/tripParticipation';
 import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
+import { canResumeRequestFromPath } from './priorityRequestEntry';
+
+/** Read-only screens may yield to a new booking; forms, chat and guidance never do. */
+export const canAutoOpenBookingFromPath = (path: string) => canResumeRequestFromPath(path) ||
+  /^\/trip\/(?:manage\/)?[0-9a-f-]{36}$/i.test(path);
 
 export type PendingBookingEntry = { id: string; tripId?: string; key: string; alertKey?: string };
 export type VerifiedBookingEntry = { booking: Booking; trip: Trip };

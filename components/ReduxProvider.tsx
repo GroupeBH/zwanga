@@ -27,6 +27,7 @@ import { AuthGuard } from './AuthGuard';
 import { NotificationHandler } from './NotificationHandler';
 import { ReferralAttributionHandler } from './ReferralAttributionHandler';
 import { InstallationUpdatesCoordinator } from './InstallationUpdatesCoordinator';
+import { AccountPhoneVerificationGate } from './AccountPhoneVerificationGate';
 
 interface ReduxProviderProps {
   children: React.ReactNode;
@@ -74,26 +75,32 @@ export function ReduxProvider({ children }: ReduxProviderProps) {
             <DialogProvider>
               <ReferralAttributionHandler />
               <InstallationUpdatesCoordinator />
-              <AccountActivityCoordinator />
-              <DriverPresenceCoordinator />
               <AppUpdateCoordinator />
-              <ActiveRideLocationCoordinator />
-              <RideOutboxCoordinator />
-              <NotificationHandler />
-              <AuthGuard>
-                <ActiveRideResumeCoordinator>
-                  <AcceptedRequestContactCoordinator />
-                  <PassengerArrivalPaymentCoordinator />
-                  <PassengerRideResponseCoordinator />
-                  <DriverPaymentNoticeCoordinator />
-                  <StoreReviewCoordinator />
-                  <DriverPermissionsCoordinator />
-                  <TripLocationPermissionCoordinator />
-                  <TutorialProvider>
-                    <IdentityProvider>{children}</IdentityProvider>
-                  </TutorialProvider>
-                </ActiveRideResumeCoordinator>
-              </AuthGuard>
+              <AccountPhoneVerificationGate>{(phoneBlocked) => <>
+                {!phoneBlocked && <>
+                  <AccountActivityCoordinator />
+                  <DriverPresenceCoordinator />
+                  <ActiveRideLocationCoordinator />
+                  <RideOutboxCoordinator />
+                  <NotificationHandler />
+                </>}
+                <AuthGuard>
+                  <ActiveRideResumeCoordinator enabled={!phoneBlocked}>
+                    {!phoneBlocked && <>
+                      <AcceptedRequestContactCoordinator />
+                      <PassengerArrivalPaymentCoordinator />
+                      <PassengerRideResponseCoordinator />
+                      <DriverPaymentNoticeCoordinator />
+                      <StoreReviewCoordinator />
+                      <DriverPermissionsCoordinator />
+                      <TripLocationPermissionCoordinator />
+                    </>}
+                    <TutorialProvider>
+                      <IdentityProvider>{children}</IdentityProvider>
+                    </TutorialProvider>
+                  </ActiveRideResumeCoordinator>
+                </AuthGuard>
+              </>}</AccountPhoneVerificationGate>
             </DialogProvider>
           </View>
         )}

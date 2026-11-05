@@ -7,6 +7,7 @@ import { CompactCardAvatar } from '@/components/trip/CompactCardAvatar';
 import { ConfirmCashReceipt } from '@/features/driver-payments/ConfirmCashReceipt';
 import { homeDepartureLabel } from '@/features/home/homeCardPresentation';
 import { Colors, Spacing } from '@/constants/styles';
+import { bookingFareLabel, bookingProposalPrice } from '@/features/trip-detail/bookingPriceProposal';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -74,7 +75,7 @@ export function ManageTripBookings({
                 <View style={styles.bookingInfo}>
                   <Text style={styles.bookingName} numberOfLines={1}>{booking.passengerName || 'Passager'}</Text>
                   <Text style={styles.bookingMeta}>
-                    {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''} • {(booking.numberOfSeats * (trip.price ?? 0)).toLocaleString()} FC
+                    {booking.numberOfSeats} place{booking.numberOfSeats > 1 ? 's' : ''} • {bookingFareLabel(booking, trip.price)}
                   </Text>
                   {booking.status !== 'pending' && booking.passengerDestination && (
                     <Text style={styles.destination} numberOfLines={1}>
@@ -139,7 +140,9 @@ export function ManageTripBookings({
                 <TouchableOpacity
                   style={[styles.actionButton, styles.acceptButton]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Accepter la réservation de ${booking.passengerName || 'ce passager'}`}
+                  accessibilityLabel={bookingProposalPrice(booking) !== null
+                    ? `Accepter ce prix : ${bookingFareLabel(booking, trip.price)}`
+                    : `Accepter la réservation de ${booking.passengerName || 'ce passager'}`}
                   accessibilityState={{ disabled: busy, busy: state.processingBookingId === booking.id && state.isAccepting }}
                   onPress={() => bookingsActions.handleAcceptBooking(booking.id)}
                   disabled={busy}
@@ -147,7 +150,7 @@ export function ManageTripBookings({
                   {state.processingBookingId === booking.id && state.isAccepting ? (
                     <ActivityIndicator size="small" color={Colors.white} />
                   ) : (
-                    <Text style={styles.actionText}>Accepter</Text>
+                    <Text style={styles.actionText}>{bookingProposalPrice(booking) !== null ? 'Accepter ce prix' : 'Accepter'}</Text>
                   )}
                 </TouchableOpacity>
               </View>

@@ -17,6 +17,8 @@ export interface User {
   completedTrips?: number;
   passengerBookingsCount?: number;
   verified: boolean;
+  /** Phone ownership only; email/KYC verification must not satisfy an SMS gate. */
+  isPhoneVerified?: boolean;
   identityVerified: boolean; // Vérification d'identité (carte + visage)
   vehicle?: Vehicle;
   vehicles?: Vehicle[];

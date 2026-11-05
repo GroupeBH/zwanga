@@ -3,6 +3,11 @@ import type { RideAlert } from './rideAlert';
 /** Fixed copy only: never read an arbitrary push body or private name aloud. */
 export function passengerResponseNotice(alert: RideAlert) {
   if (alert.kind !== 'response') return null;
+  if (alert.data.type === 'driver_offer') {
+    const title = 'Un conducteur propose un autre prix';
+    const message = 'Ouvrez votre demande pour voir le prix et choisir « Accepter ce prix » ou « Refuser ce prix ».';
+    return { title, message, speech: { key: `response-notice:${alert.key}`, text: `${title}. ${message}` } };
+  }
   const rejected = alert.data.status === 'rejected';
   const accepted = alert.data.type === 'trip_request_accepted' || alert.data.status === 'accepted';
   const title = rejected ? 'Réservation refusée' : alert.data.type === 'trip_request_accepted'

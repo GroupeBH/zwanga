@@ -43,6 +43,7 @@ function fixture(t, passenger = false) {
     react: { ...hooks.react, useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot() },
     'react-native': { View: 'View', StyleSheet: { create: value => value, absoluteFillObject: { position: 'absolute' } } },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'EntryLoader' },
+    '@/components/DriverBookingAlertBanner': { DriverBookingAlertBanner: 'BookingBanner' },
     '@/components/home/EntrySyncBanner': { EntrySyncBanner: 'SyncBanner' },
     '@/features/navigation/homeEntryStatusContext': { HomeEntryStatusContext: { Provider: 'StatusProvider' } },
     '@/features/navigation/appEntryContext': { AppEntryContext: { Provider: 'EntryProvider' } },
@@ -77,11 +78,20 @@ function fixture(t, passenger = false) {
   const wrapper = () => {
     if (env.active && !wasActive) foregroundSince = Date.now();
     wasActive = env.active;
-    return hooks.render(() => Component({ children: 'navigator' }));
+    return hooks.render(() => Component({ children: 'navigator', enabled: env.enabled }));
   };
   return { env, trip, booking, reads, routes, observed, wrapper, alerts: load('services/rideAlertSession.ts'),
     speechEntry: load('services/rideEntryAnnouncement.ts'), render: () => wrapper().props.children[1] || null };
 }
+
+test('account verification pauses ride routing and screen readiness without unmounting navigation', async t => {
+  const f = fixture(t); f.env.enabled = false; f.env.segments = ['(tabs)'];
+  f.render(); await flush();
+  const tree = f.wrapper();
+  assert.equal(tree.props.value, true);
+  assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.routes, []);
+});
 
 test('a new reservation opens trip management with the passenger first, without a notification or extra discovery', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
@@ -95,6 +105,23 @@ test('a new reservation opens trip management with the passenger first, without 
   assert.deepEqual(f.reads, [{ name: 'getBookingById', id: 'booking', options: { subscribe: false, forceRefetch: true } }]);
   f.env.path = '/trip/manage/trip'; assert.equal(f.render(), null);
   f.env.path = '/'; f.render(); await flush(); assert.equal(f.routes.length, 1, 'can leave management voluntarily');
+});
+
+test('a live booking opens its verified trip even after visiting Profile; retained alerts do not trap Home', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)'];
+  f.env.trips.data = []; f.env.activity.data.hasLiveActivity = false;
+  f.render(); f.render(); await flush();
+  f.env.path = '/profile'; f.render();
+  Object.assign(f.trip, { status: 'upcoming' }); f.booking.status = 'pending';
+  f.alerts.rememberRideAlert({ key: 'driver-booking-booking', id: 'booking', kind: 'booking', recipientId: 'driver',
+    data: { type: 'new_booking', passengerId: 'passenger', tripId: 'trip' } });
+  f.render(); f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
+  assert.deepEqual(f.reads.map(read => read.id), ['booking']);
+  assert.equal(f.env.seeds[0].value.id, 'trip');
+  f.env.path = '/'; f.render(); await flush(); f.render();
+  assert.equal(f.routes.length, 1);
 });
 
 test('an ongoing driver or passenger ride always wins over an incoming booking alert', async t => {
@@ -277,7 +304,7 @@ test('one shared loader waits for both the Home role and the no-ride decision in
     assert.equal(f.wrapper().props.value, true, 'one result alone must not reveal Home');
     (first === 'profile' ? activityReady : profileReady)(); f.render(); f.render();
     const finished = f.wrapper(); assert.equal(finished.props.value, false);
-    assert.equal(finished.props.children[0].props.children, 'navigator', 'never unmount the routing tree');
+    assert.equal(finished.props.children[0].props.children[1], 'navigator', 'never unmount the routing tree');
     assert.equal(f.render(), null); await flush(); assert.deepEqual(f.routes, []);
   }
 });

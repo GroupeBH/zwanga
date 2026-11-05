@@ -1,4 +1,5 @@
 import { FeedbackState, hasPassengerBoarded } from '../../features/manage-trip/manageTripModel';
+import { bookingAcceptanceArgument } from '@/features/trip-detail/bookingPriceProposal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
 import { useAcceptBookingMutation, useCancelBookingMutation, useRejectBookingMutation } from '@/store/api/bookingApi';
@@ -79,7 +80,7 @@ export function useManageTripBookingActions({
     };
     setProcessingBookingId(bookingId);
     try {
-      const result = status === 'accepted' ? await acceptBooking(bookingId).unwrap()
+      const result = status === 'accepted' ? await acceptBooking(bookingAcceptanceArgument(booking)).unwrap()
         : await rejectBooking({ id: bookingId, reason: 'Refus du conducteur' }).unwrap();
       if (!isCurrent()) return;
       commit(result);

@@ -146,6 +146,9 @@ export function useTripDetailController() {
   });
 
   const wizard = useTripBookingWizard({
+    bookingProposedPrice: bookingState.bookingProposedPrice,
+    setBookingProposedPrice: bookingState.setBookingProposedPrice,
+    listedPrice: data.trip?.price,
     isBooking: bookingState.isBooking,
     setBookingModalVisible: bookingState.setBookingModalVisible,
     setBookingStep: bookingState.setBookingStep,
@@ -187,6 +190,7 @@ export function useTripDetailController() {
   });
 
   const pricing = useTripBookingPricing({
+    bookingProposedPrice: bookingState.bookingProposedPrice,
     setBookingSeats: bookingState.setBookingSeats,
     seatLimit: access.seatLimit,
     setBookingModalError: bookingState.setBookingModalError,
@@ -196,6 +200,8 @@ export function useTripDetailController() {
   });
 
   const bookingSubmission = useTripBookingSubmission({
+    bookingProposedPrice: bookingState.bookingProposedPrice,
+    setBookingProposedPrice: bookingState.setBookingProposedPrice,
     isBooking: bookingState.isBooking,
     trip: data.trip,
     isValidatingDestination: bookingState.isValidatingDestination,

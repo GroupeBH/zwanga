@@ -10,6 +10,8 @@ const labels = { departure: { title: 'Départ test', address: 'Départ test', re
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: false, closed: false, label: null }) },
   './RequestTargetDriver': { RequestTargetDriver: 'RequestTargetDriver' },
+  './RequestCounterOffer': { RequestCounterOffer: 'CounterOffer' },
+  './PassengerPriceOffers': { PassengerPriceOffers: 'PriceOffers' },
   './ChangeRequestDriverButton': { ChangeRequestDriverButton: 'ChangeRequestDriverButton' },
   '@/hooks/useRouteLocationLabels': { useRouteLocationLabels: () => labels },
   '@/components/trip/RouteLocationDetails': { RouteLocationDetails: 'Route' },

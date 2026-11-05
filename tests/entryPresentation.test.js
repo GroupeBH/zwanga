@@ -164,3 +164,24 @@ test('late request callbacks cannot survive backgrounding, signout or account ch
   }
   assert.deepEqual(f.routes, []);
 });
+
+test('a newly verified reservation bypasses old entry navigation but respects sensitive screens', t => {
+  const f = fixture(t); f.render(); t.mock.timers.tick(5000);
+  const target = { pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'new', section: 'passengers' } };
+  f.env.path = '/profile';
+  assert.equal(f.render().replaceBooking(target), true);
+  for (const path of ['/publish', '/booking/payment', '/trip/navigate/live', '/booking/navigate/live', '/chat/one']) {
+    f.env.path = path; assert.equal(f.render().replaceBooking(target), false, path);
+  }
+  f.env.path = '/'; assert.equal(f.render().replaceBooking('/wallet'), false);
+  assert.equal(f.render().replaceBooking({ pathname: '/trip/manage/[id]', params: { id: 'trip' } }), false);
+  assert.deepEqual(f.routes, [target]);
+});
+
+test('booking entry cannot use callbacks from another account or a backgrounded app', t => {
+  const f = fixture(t), target = { pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'new', section: 'passengers' } };
+  const old = f.render(); f.env.userId = 'other'; f.render();
+  assert.throws(() => old.replaceBooking(target), /STALE/);
+  f.env.active = false; assert.throws(() => f.render().replaceBooking(target), /STALE/);
+  assert.deepEqual(f.routes, []);
+});

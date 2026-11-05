@@ -51,6 +51,17 @@ test('refusal is direct, without a reason form or confirmation screen', async ()
   assert.equal(actions.openRejectModal, undefined); env.h.unmount();
 });
 
+test('accepting a price proposal explicitly sends the currently displayed amount once', async () => {
+  const env = bookingFixture();
+  env.params.bookings = [{ ...pendingBooking, proposedPricePerSeat: 2000, numberOfSeats: 2 }];
+  const action = env.render().handleAcceptBooking(pendingBooking.id);
+  assert.deepEqual(env.calls.accept, [{ id: pendingBooking.id, acceptedPricePerSeat: 2000 }]);
+  env.rejection.resolve({ ...env.params.bookings[0], status: 'accepted', grossPaymentAmount: 4000 });
+  await action;
+  assert.equal(env.calls.commits[0][2].grossPaymentAmount, 4000);
+  assert.equal(env.calls.feedback.at(-1).type, 'success'); env.h.unmount();
+});
+
 test('accept/refuse double taps share one lock and confirmed decisions cannot replay from stale cards', async () => {
   const env = bookingFixture(), actions = env.render();
   const first = actions.handleAcceptBooking(pendingBooking.id), second = actions.handleRejectBooking(pendingBooking);

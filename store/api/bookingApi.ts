@@ -23,14 +23,16 @@ export const bookingApi = baseApi.injectEndpoints({
     ...buildCreateBookingEndpoints(builder),
     ...buildBookingHistory(builder),
     ...buildCashReceiptEndpoints(builder),
-    acceptBooking: builder.mutation<Booking, string>({
-      query: (id: string) => ({
-        url: `/bookings/${id}/accept`,
+    acceptBooking: builder.mutation<Booking, string | { id: string; acceptedPricePerSeat: number }>({
+      query: arg => ({
+        url: `/bookings/${typeof arg === 'string' ? arg : arg.id}/accept`,
         method: 'PUT',
+        ...(typeof arg === 'string' ? {} : { body: { acceptedPricePerSeat: arg.acceptedPricePerSeat } }),
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
-      async onQueryStarted(id, { dispatch, queryFulfilled }) {
+      async onQueryStarted(arg, { dispatch, queryFulfilled }) {
+        const id = typeof arg === 'string' ? arg : arg.id;
         const acceptedAt = new Date().toISOString();
 
         try {

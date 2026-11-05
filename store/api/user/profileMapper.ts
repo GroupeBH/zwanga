@@ -50,6 +50,7 @@ export const mapServerUser = (user: ServerUser): User => {
     rating: user.rating ?? 0,
     totalTrips: user.totalTrips ?? 0,
     verified: Boolean(user.isEmailVerified || user.isPhoneVerified),
+    isPhoneVerified: typeof user.isPhoneVerified === 'boolean' ? user.isPhoneVerified : undefined,
     identityVerified: mapProfileIdentity(user.kycDocuments, user.id)?.status === 'approved',
     vehicle: vehicleEntry ? mapServerVehicle(vehicleEntry) : undefined,
     vehicles: Array.isArray(user.vehicles) ? user.vehicles.map(mapServerVehicle) : undefined,

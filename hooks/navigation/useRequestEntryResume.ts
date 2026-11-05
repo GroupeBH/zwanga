@@ -13,7 +13,7 @@ import type { ReconciledActivity } from '@/services/activityReadiness';
 import { isEntryActivityListReady } from '@/features/navigation/entryActivityReadiness';
 import { isEntryReadFresh } from '@/features/navigation/entryFreshness';
 import { ENTRY_LOAD_TIMEOUT_MS, reportEntryFailure, type EntryStage } from '@/services/entryRecovery';
-import { isPendingBookingEntryListed, selectBookingEntryAlert, selectPendingBookingEntry, verifyPendingBookingEntry, type VerifiedBookingEntry } from '@/features/navigation/pendingBookingEntry';
+import { canAutoOpenBookingFromPath, isPendingBookingEntryListed, selectBookingEntryAlert, selectPendingBookingEntry, verifyPendingBookingEntry, type VerifiedBookingEntry } from '@/features/navigation/pendingBookingEntry';
 
 interface Options {
   userId?: string; active: boolean; online: boolean; ready: boolean; path: string; overlayBusy: boolean;
@@ -30,6 +30,7 @@ interface Options {
   readBooking: (id: string, signal?: AbortSignal) => Promise<Booking>;
   readDispatch: (id: string, signal?: AbortSignal) => Promise<{ id: string; driverId: string; actionable: boolean; expiresAt: string; serverNow: string }>;
   replace: (path: Href) => void | boolean;
+  replaceBooking?: (path: Href) => void | boolean;
   refresh: () => Promise<unknown>;
   verifyPriority?: (signal: AbortSignal) => Promise<`/trip/navigate/${string}` | `/booking/navigate/${string}` | null>;
   prepareBookingEntry?: (snapshot: VerifiedBookingEntry) => void;
@@ -57,7 +58,7 @@ export function useRequestEntryResume(options: Options) {
     done: false, checked: false, pending: false, redirecting: false, failed: false, attempt: '',
     controller: undefined as AbortController | undefined, generation: 0, deadline: 0, stage: 'activity' as EntryStage,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    rejected: new Set<string>() }), [options.userId, entryBoundary]);
+    rejected: new Set<string>(), openedBookings: new Set<string>() }), [options.userId, entryBoundary]);
   const latest = useRef({ entry, options }); latest.current = { entry, options };
   useEffect(() => { entry.mounted = true; return () => { entry.mounted = false; entry.controller?.abort(); }; }, [entry]);
   const touch = useCallback(() => advance(value => value + 1), []);
@@ -67,9 +68,19 @@ export function useRequestEntryResume(options: Options) {
   }, [options.active, entry]);
   useEffect(() => {
     if (entry.redirecting && options.path !== entry.path) { entry.redirecting = false; touch(); }
-    if (!options.active || !options.userId || !options.ready || entry.done) return;
+    if (!options.active || !options.userId || !options.ready) return;
     if (isRideResumeEntryTransition(options.path)) return;
-    if (!canResumeRequestFromPath(options.path) || (entry.path !== null && entry.path !== options.path)) {
+    const incomingBooking = options.driver ? selectBookingEntryAlert(options.alerts, options.userId,
+      new Set([...entry.rejected, ...entry.openedBookings])) : undefined;
+    const bookingEntry = !!incomingBooking && canAutoOpenBookingFromPath(options.path);
+    if (entry.done && bookingEntry && !entry.pending) {
+      entry.done = false; entry.path = null; entry.attempt = ''; entry.deadline = 0; entry.failed = false;
+    }
+    if (entry.done) return;
+    if ((!canResumeRequestFromPath(options.path) && !bookingEntry) || (entry.path !== null && entry.path !== options.path)) {
+      // A manual navigation during verification wins. Do not reopen this same
+      // event on the next render; a different reservation can still be handled.
+      if (entry.attempt.startsWith('booking:')) entry.openedBookings.add(entry.attempt);
       entry.done = true; touch(); return;
     }
     entry.path = options.path;
@@ -78,7 +89,7 @@ export function useRequestEntryResume(options: Options) {
     const userId = options.userId;
     // Reservations on a published trip need an answer before other requests.
     // Ongoing navigation above still has absolute priority; reuse discovery.
-    const bookingAlert = options.driver ? selectBookingEntryAlert(options.alerts, userId, entry.rejected) : undefined;
+    const bookingAlert = incomingBooking;
     const driverTrips = driverEntryTrips(options, entry);
     const booking = bookingAlert ?? (options.driver && !entry.checked && driverTrips
       ? selectPendingBookingEntry(driverTrips, userId, entry.rejected) : undefined);
@@ -130,7 +141,10 @@ export function useRequestEntryResume(options: Options) {
     const releaseAttempt = () => { if (generation === entry.generation) entry.attempt = ''; };
     const navigate = (destination: Href) => {
       entry.stage = 'navigation'; entry.redirecting = true;
-      if (latest.current.options.replace(destination) === false) entry.redirecting = false;
+      const replace = bookingAlert ? latest.current.options.replaceBooking ?? latest.current.options.replace : latest.current.options.replace;
+      if (replace(destination) === false) entry.redirecting = false;
+      if (booking) entry.openedBookings.add(booking.key);
+      while (entry.openedBookings.size > 100) entry.openedBookings.delete(entry.openedBookings.values().next().value!);
       entry.done = true;
     };
     void (async () => {
@@ -221,7 +235,9 @@ export function useRequestEntryResume(options: Options) {
       if (entry.mounted && latest.current.entry === entry) touch();
     });
   }, [entry, options, touch]);
-  const pending = Boolean(options.userId && !isRideResumeEntryTransition(options.path) && canResumeRequestFromPath(options.path) &&
+  const eligiblePath = canResumeRequestFromPath(options.path) ||
+    (entry.attempt.startsWith('booking:') && canAutoOpenBookingFromPath(options.path));
+  const pending = Boolean(options.userId && !isRideResumeEntryTransition(options.path) && eligiblePath &&
     !options.hasOngoingRide && (entry.redirecting || (!entry.done && (!entry.checked || entry.pending || entry.failed))));
   const failed = entry.failed || !options.online;
   const attemptGeneration = entry.generation;

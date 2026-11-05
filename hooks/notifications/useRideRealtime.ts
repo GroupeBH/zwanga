@@ -5,7 +5,8 @@ import { baseApi } from '@/store/api/baseApi';
 import { chatSocket } from '@/services/chatSocket';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { displayDriverInvitation, dismissDriverInvitation } from '@/services/driverNotifications';
-import { pendingRideAlertHandoffs, pendingRideEntryAlerts } from '@/services/rideAlertSession';
+import { pendingRideAlertHandoffs, pendingRideEntryAlerts, rememberRideAlert } from '@/services/rideAlertSession';
+import { parseRideAlert } from '@/features/notifications/rideAlert';
 import { revalidatePendingRideAlerts } from '@/services/rideAlertRevalidation';
 import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
 import { reportRideAudioFailure } from '@/services/rideAudioDiagnostics';
@@ -48,7 +49,9 @@ export function useRideRealtime(userId: string | undefined, driverAccount: boole
         seen.set(event.eventId, now + 60_000);
         while (seen.size > 256) seen.delete(seen.keys().next().value!);
         // Uses the exact push path and its existing delivery/acknowledgement keys.
-        void displayDriverInvitation(event.data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
+        const alert = parseRideAlert(event.data);
+        if (alert?.kind === 'response') rememberRideAlert(alert);
+        else void displayDriverInvitation(event.data).catch(() => reportRideAudioFailure('DRIVER_ALERT_DISPLAY_FAILED'));
       } else if (event.kind === 'changed' && event.terminal) {
         if (event.requestId) invalidateRideRingValidation(event.requestId);
         const candidates = new Map([...pendingRideEntryAlerts(userId),

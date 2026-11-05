@@ -149,6 +149,7 @@ export const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOf
   return {
     id: offer.id,
     tripRequestId: offer.tripRequestId,
+    existingTripId: offer.existingTripId,
     driverId: offer.driver.id,
     driverName: formatFullName(offer.driver),
     driverAvatar: offer.driver.profilePicture ?? undefined,

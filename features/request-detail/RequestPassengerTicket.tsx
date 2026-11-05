@@ -9,6 +9,7 @@ import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailMode
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
 import { RequestTargetDriver } from './RequestTargetDriver';
+import { PassengerPriceOffers } from './PassengerPriceOffers';
 import { ChangeRequestDriverButton } from './ChangeRequestDriverButton';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 
@@ -34,6 +35,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
   const stage = confirmed ? 2 : 1; // A created trip is not proof that it has started.
   const steps = ['Commande envoyée', presentation.pendingOffersCount ? 'Réponse reçue' : request.targetDriverId ? 'Réponse du conducteur choisi' : 'Recherche d’un conducteur', 'Conducteur confirmé', 'Départ'];
   return <>
+    <PassengerPriceOffers key={request.id} request={request} enabled={model.isScreenActive && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
     {request.responseWindow?.phase === 'passenger' && !!response.label && <Text style={local.hint}>{response.label}</Text>}
     <View style={s.card}>
       <View style={s.row}>

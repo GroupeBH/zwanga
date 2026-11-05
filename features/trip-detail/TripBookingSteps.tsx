@@ -10,6 +10,7 @@ import { useTripPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getRouteStopLabel } from '@/utils/routeLocationLabels';
+import { BookingPriceProposalField } from './BookingPriceProposalField';
 
 interface TripBookingStepsProps {
   viewportHeight: number;
@@ -17,6 +18,8 @@ interface TripBookingStepsProps {
   adjustBookingSeats: (delta: number) => void;
   isBooking: boolean;
   bookingSeats: string;
+  bookingProposedPrice?: string;
+  setBookingProposedPrice?: (value: string) => void;
   handleBookingSeatsChange: (value: string) => void;
   seatLimit: number;
   isIdentityVerified: boolean;
@@ -44,6 +47,8 @@ export function TripBookingSteps({
   adjustBookingSeats,
   isBooking,
   bookingSeats,
+  bookingProposedPrice = '',
+  setBookingProposedPrice,
   handleBookingSeatsChange,
   seatLimit,
   isIdentityVerified,
@@ -125,11 +130,14 @@ export function TripBookingSteps({
         />
 
         <Text style={styles.bookingModalPrice}>
-          Total estimé :{' '}
+          {bookingProposedPrice.trim() ? 'Total proposé : ' : 'Total estimé : '}
           <Text style={styles.bookingModalPriceValue}>
             {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC`}
           </Text>
         </Text>
+
+        {setBookingProposedPrice && !trip?.tripRequestId && <BookingPriceProposalField listedPrice={trip?.price ?? 0}
+          seats={Number(bookingSeats)} value={bookingProposedPrice} onChange={setBookingProposedPrice} disabled={isBooking} />}
 
         {estimatedTotal > 0 ? (
           <View style={styles.bookingPaymentSection}>
@@ -277,7 +285,7 @@ export function TripBookingSteps({
           <View style={styles.bookingPreviewCopy}>
             <Text style={styles.bookingPreviewTitle}>Vérifiez votre réservation</Text>
             <Text style={styles.bookingPreviewText}>
-              Le conducteur recevra ces informations pour accepter votre place.
+              {bookingProposedPrice.trim() ? 'Le conducteur doit accepter votre prix avant de confirmer la réservation.' : 'Le conducteur recevra ces informations pour accepter votre place.'}
             </Text>
           </View>
         </View>
@@ -318,7 +326,7 @@ export function TripBookingSteps({
           <View style={styles.bookingSummaryRow}>
             <Ionicons name="cash" size={16} color={Colors.success} />
             <Text style={styles.bookingSummaryText}>
-              {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC`}
+              {estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal} FC${bookingProposedPrice.trim() ? ' proposés au total' : ''}`}
             </Text>
           </View>
           {estimatedTotal > 0 ? (

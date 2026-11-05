@@ -33,6 +33,9 @@ export function driverNotificationCard(kind: DriverCardKind, data: Record<string
 /** Scheduled/shared requests still need vehicle selection or passenger consent. */
 export function driverNotificationActions(kind: DriverCardKind, data: Record<string, unknown>) {
   const action = (title: string, id: string) => ({ title, pressAction: { id, launchActivity: 'default' } });
+  if (kind === 'booking' && data.ridePriceKind === 'budget') return [
+    action('Refuser', 'driver-decline'), action('Voir le prix proposé', 'default'),
+  ];
   if (kind === 'nearby') return [
     action('Refuser', 'driver-ignore-nearby'),
     action(data.sharedTrip === true || data.sharedTrip === 'true' ? 'Voir la demande' : 'Accepter', 'driver-review-nearby'),

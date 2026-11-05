@@ -11,6 +11,7 @@ interface EnvConfig {
   apiUrl: string;
   env: 'development' | 'staging' | 'production';
   enableSignupOtp: boolean;
+  requireAccountPhoneOtp: boolean;
   chottuLinkEnabled: boolean;
   chottuLinkMobileApiKey: string;
   chottuLinkDomain: string;
@@ -70,6 +71,10 @@ function getEnvConfig(): EnvConfig {
     process.env.EXPO_PUBLIC_ENABLE_SIGNUP_OTP ??
     'false';
   const enableSignupOtp = String(rawEnableSignupOtp).toLowerCase() === 'true';
+  const requireAccountPhoneOtp = String(
+    extra.EXPO_PUBLIC_REQUIRE_ACCOUNT_PHONE_OTP ??
+    process.env.EXPO_PUBLIC_REQUIRE_ACCOUNT_PHONE_OTP ?? 'false',
+  ).toLowerCase() === 'true';
   const chottuLinkEnabled =
     String(extra.EXPO_PUBLIC_CHOTTULINK_ENABLED ?? 'false').toLowerCase() ===
     'true';
@@ -84,6 +89,7 @@ function getEnvConfig(): EnvConfig {
     apiUrl,
     env,
     enableSignupOtp,
+    requireAccountPhoneOtp,
     chottuLinkEnabled,
     chottuLinkMobileApiKey,
     chottuLinkDomain,
@@ -107,6 +113,7 @@ export const isProduction = envConfig.env === 'production';
  * false => bypass OTP pour l'inscription classique et Google.
  */
 export const isSignupOtpVerificationEnabled = envConfig.enableSignupOtp;
+export const isAccountPhoneVerificationRequired = envConfig.requireAccountPhoneOtp;
 export const chottuLinkReferralConfig = {
   enabled: envConfig.chottuLinkEnabled,
   mobileApiKey: envConfig.chottuLinkMobileApiKey,

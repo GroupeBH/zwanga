@@ -49,6 +49,7 @@ export const HomeMap = React.memo(function HomeMap({
           {markers.map(marker => (
             <Marker key={marker.key} identifier={marker.key} coordinate={marker.coordinate}
               image={marker.image} title={marker.title} tracksViewChanges={false} zIndex={5}
+              onPress={marker.kind === 'trip' && onMarkerPress ? () => onMarkerPress(marker) : undefined}
               onCalloutPress={onMarkerPress ? () => onMarkerPress(marker) : undefined} />
           ))}
           {coordinate && (

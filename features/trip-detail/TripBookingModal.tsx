@@ -17,6 +17,8 @@ interface TripBookingModalProps {
   adjustBookingSeats: (delta: number) => void;
   isBooking: boolean;
   bookingSeats: string;
+  bookingProposedPrice?: string;
+  setBookingProposedPrice?: (value: string) => void;
   handleBookingSeatsChange: (value: string) => void;
   seatLimit: number;
   isIdentityVerified: boolean;
@@ -51,6 +53,8 @@ export function TripBookingModal({
   adjustBookingSeats,
   isBooking,
   bookingSeats,
+  bookingProposedPrice = '',
+  setBookingProposedPrice,
   handleBookingSeatsChange,
   seatLimit,
   isIdentityVerified,
@@ -95,6 +99,8 @@ export function TripBookingModal({
             adjustBookingSeats={adjustBookingSeats}
             isBooking={isBooking}
             bookingSeats={bookingSeats}
+            bookingProposedPrice={bookingProposedPrice}
+            setBookingProposedPrice={setBookingProposedPrice}
             handleBookingSeatsChange={handleBookingSeatsChange}
             seatLimit={seatLimit}
             isIdentityVerified={isIdentityVerified}
@@ -158,7 +164,7 @@ export function TripBookingModal({
                 {isBooking || isValidatingDestination ? (
                   <ActivityIndicator color={Colors.white} />
                 ) : (
-                  <Text style={styles.bookingModalButtonPrimaryText}>Confirmer</Text>
+                  <Text style={styles.bookingModalButtonPrimaryText}>{bookingProposedPrice.trim() ? 'Envoyer mon prix' : 'Confirmer'}</Text>
                 )}
               </TouchableOpacity>
             )}
