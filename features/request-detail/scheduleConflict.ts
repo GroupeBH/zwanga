@@ -27,7 +27,7 @@ export function driverScheduleConflictDialog(
   const ongoing = valid && conflict?.status === 'ongoing';
   const description = valid
     ? `${ongoing ? 'En cours' : conflict?.status === 'preparing' ? 'Prise en charge en préparation' : 'Déjà prévu'} · ${formatDateWithRelativeLabel(conflict!.departureDate as string, true)}\n\nDépart : ${label(conflict!.departure) || 'Lieu non renseigné'}\nArrivée : ${label(conflict!.arrival) || 'Lieu non renseigné'}`
-    : 'Une autre course vous empêche d’accepter cette demande. Retrouvez-la dans « Mes trajets ».';
+    : 'Une autre course vous empêche d’accepter cette commande. Retrouvez-la dans « Mes trajets ».';
   const explanation = body.code === 'SHARED_TRIP_OFFER_REQUIRED'
     ? 'Pour proposer le partage du trajet en cours, l’accord du passager est nécessaire.'
     : 'Les horaires, y compris le temps nécessaire entre deux courses, ne sont pas compatibles.';

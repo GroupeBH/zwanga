@@ -6,10 +6,9 @@ import {
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { type TripRequestVehiclePriceOption } from '@/store/api/tripRequestApi';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, User, TripRequest } from '@/types';
 import React, { useEffect } from 'react';
 import { Keyboard, Platform } from 'react-native';
-import type { User, TripRequest } from '@/types';
 import { acceptedRequestVehicleTypes, toggleRequestVehicleType } from '@/features/trip-request/vehicleSelection';
 import { canEditTripRequest } from '@/features/trip-request/requestExpiration';
 
@@ -73,7 +72,6 @@ export function useRequestEditInitialization({
     const next = toggleRequestVehicleType(editVehicleTypes, option.vehicleType);
     if (next === editVehicleTypes) return;
     setEditVehicleTypes(next);
-    if (next[0] !== editVehicleTypes[0]) resetEditBudget();
   };
 
   // Initialiser le formulaire de modification avec les valeurs actuelles

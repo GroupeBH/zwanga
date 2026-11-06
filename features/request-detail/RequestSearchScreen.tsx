@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ import { RequestOwnerModals } from './RequestOwnerModals';
 import { RequestTargetDriver } from './RequestTargetDriver';
 import { SharedTripPanel } from './SharedTripPanel';
 import { PassengerPriceOffers } from './PassengerPriceOffers';
+import { pendingPriceOffers } from './counterOfferPolicy';
 import { formatCdfPrice } from './requestDetailModel';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
@@ -30,8 +31,14 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
   model: Model; presentation: ReturnType<typeof buildRequestDetailPresentation>; onLayout: (event: LayoutChangeEvent) => void;
 }) {
   const request = model.tripRequest!;
+  const priceOffers = pendingPriceOffers(request);
   const router = useRouter();
   const active = model.isScreenActive && !model.showEditForm && !model.editLocationPickerType;
+  const offerIds = priceOffers.map(offer => offer.id).sort().join(',');
+  const contentScroll = useRef<ScrollView>(null);
+  useEffect(() => {
+    if (active && offerIds) contentScroll.current?.scrollTo({ y: 0, animated: true });
+  }, [active, offerIds]);
   const readsEnabled = useDisplayReadsEnabled(active);
   const { currentData, isError, isFetching, refetch, fulfilledTimeStamp } = useGetRequestSearchMapQuery(request.id, displayReadOptions(readsEnabled, 30_000));
   const cached = useDisplayReadData(request.id, currentData ? { snapshot: currentData, receivedAt: fulfilledTimeStamp } : undefined);
@@ -64,20 +71,20 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
     <View style={s.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={s.back}>
         <Ionicons name="arrow-back" size={22} color="#1C2433" />
-      </Pressable><Text style={s.heading}>Votre demande</Text>
-      <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
+      </Pressable><Text style={s.heading}>Votre commande</Text>
+      <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{priceOffers.length ? 'Nouveau prix' : phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
     </View>
     <RequestSearchMap requestId={request.id} active={active} departure={departure} position={position} vehicles={vehicles} onSelectVehicle={selectVehicle} />
-    <View style={[s.panel, expanded && s.expandedPanel]} testID="request-search-panel">
-      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <View style={[s.panel, (expanded || priceOffers.length > 0) && s.expandedPanel]} testID="request-search-panel">
+      <ScrollView ref={contentScroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <PassengerPriceOffers key={request.id} request={request} enabled={readsEnabled && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
         <View style={s.statusRow}>
           <View style={s.status}>
-            <Text accessibilityRole="header" style={s.title}>{phase === 'past-departure' ? 'L’heure de départ est dépassée' :
-              phase === 'inactive' ? 'Votre demande a changé' : request.targetDriverDeclined ? 'Choisissez un autre conducteur' :
+            <Text accessibilityRole="header" style={s.title}>{priceOffers.length ? 'Choisissez le prix qui vous convient' : phase === 'past-departure' ? 'L’heure de départ est dépassée' :
+              phase === 'inactive' ? 'Votre commande a changé' : request.targetDriverDeclined ? 'Choisissez un autre conducteur' :
               request.targetDriverId ? 'En attente du conducteur' : 'Recherche en cours'}</Text>
             <Text style={s.hint}>{phase === 'past-departure' ? 'Modifiez l’heure de départ pour reprendre.' :
-              phase === 'inactive' ? 'Actualisez pour voir la réponse.' : readFailed ? 'Positions indisponibles · demande conservée' :
+              phase === 'inactive' ? 'Actualisez pour voir la réponse.' : readFailed ? 'Positions indisponibles · commande conservée' :
                 isFetching && !snapshot ? 'Chargement des positions…' : total > 0
                   ? `${total} véhicule${total > 1 ? 's' : ''} · positions connues · 5 km`
                   : 'En attente d’un conducteur'}</Text>
@@ -92,12 +99,12 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
           <Text style={s.link}>Actualiser</Text>
         </Pressable>}
         {expanded && <View style={s.details}>
-          <Text style={s.hint}>{phase === 'past-departure' ? 'Les conducteurs ne sont plus contactés. Votre demande reste enregistrée.' :
-            phase === 'inactive' ? 'Votre demande a changé. Consultez sa réponse avant de continuer.' :
-              readFailed ? 'Votre demande reste enregistrée. Réessayez pour afficher les positions.' :
+          <Text style={s.hint}>{phase === 'past-departure' ? 'Les conducteurs ne sont plus contactés. Votre commande reste enregistrée.' :
+            phase === 'inactive' ? 'Votre commande a changé. Consultez sa réponse avant de continuer.' :
+              readFailed ? 'Votre commande reste enregistrée. Réessayez pour afficher les positions.' :
                 total ? `${total} véhicule${total > 1 ? 's' : ''} sur la carte${snapshot?.truncated ? ' (les plus proches)' : ''}. Une position ne garantit pas la disponibilité.` :
-                  'Aucune position transmise pour le moment. Votre demande reste en attente d’une réponse.'}</Text>
-          <Text style={s.hint}>Dernières positions connues · 5 km autour du départ. Touchez un véhicule pour voir son conducteur et lui envoyer votre demande.</Text>
+                  'Aucune position transmise pour le moment. Votre commande reste en attente d’une réponse.'}</Text>
+          <Text style={s.hint}>Dernières positions connues · 5 km autour du départ. Touchez un véhicule pour voir son conducteur et lui envoyer votre commande.</Text>
           {total > MAX_INDIVIDUAL_SEARCH_MARKERS && <Text style={s.hint}>Touchez un groupe de véhicules pour agrandir la carte.</Text>}
           {vehicles.some(vehicle => vehicle.ageMs >= 10 * 60_000) && <Text style={s.hint}>Les véhicules plus pâles ont une position ancienne.</Text>}
         </View>}

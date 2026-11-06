@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const React = require('react');
+const fs = require('node:fs');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', StyleSheet: { create: value => value } };
 const load = loader({ react: React, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' } });
@@ -16,10 +17,9 @@ const textContent = node => node == null || typeof node === 'boolean' ? '' : Arr
 test('cash is explicitly non-withdrawable, confirmed and separate from credits, without an action', () => {
   const tree = CashRevenueSummary({ amount: 12000, currency: 'CDF' });
   const text = textContent(tree);
-  assert.match(text, /Cash reçu des passagers/);
+  assert.match(text, /Espèces reçues des passagers/);
   assert.match(text, /Non retirable/);
-  assert.match(text, /réceptions confirmées/);
-  assert.match(text, /Exclu du solde retirable/);
+  assert.match(text, /Déjà reçues et confirmées/);
   assert.ok(text.includes(formatAmount(12000, 'CDF')));
   assert.equal(elements(tree).filter(node => node.type === 'Button').length, 0);
 });
@@ -28,7 +28,7 @@ test('missing or invalid cash totals never pretend to be zero; a genuine zero is
   for (const amount of [undefined, null, NaN, Infinity, -1]) {
     const tree = CashRevenueSummary({ amount, currency: 'CDF' });
     assert.equal(elements(tree).find(node => node.props?.testID === 'driver-cash-received').props.children, '—');
-    assert.match(textContent(tree), /total cash est indisponible/);
+    assert.match(textContent(tree), /Total indisponible/);
   }
   const tree = CashRevenueSummary({ amount: 0, currency: 'CDF' });
   assert.equal(elements(tree).find(node => node.props?.testID === 'driver-cash-received').props.children, '0 CDF');
@@ -61,4 +61,21 @@ test('only succeeded payouts are labelled withdrawn; pending and failed states s
     assert.ok(textContent(tree).includes(label));
     if (status === 'succeeded') assert.doesNotMatch(textContent(tree), /Réessayer/);
   }
+});
+
+test('reviewed compact earnings styles exist for every consumer and retain readable actions', () => {
+  const { styles } = load('features/screen-styles/app/driver-earnings/index.ts');
+  for (const file of ['app/driver-earnings.tsx', 'features/driver-earnings/CashRevenueSummary.tsx',
+    'features/driver-earnings/DriverEarningRow.tsx', 'features/driver-earnings/PayoutHistory.tsx']) {
+    for (const [, key] of fs.readFileSync(file, 'utf8').matchAll(/styles\.(\w+)/g)) {
+      assert.ok(Object.hasOwn(styles, key), `${file}: missing ${key}`);
+    }
+  }
+  assert.equal(styles.balanceSection.backgroundColor, '#FFFFFF');
+  assert.notEqual(styles.balance.color, styles.balanceSection.backgroundColor);
+  assert.ok(styles.payoutButton.minHeight >= 48);
+  assert.ok(styles.detailsButton.minHeight >= 44);
+  assert.ok(styles.historyTab.minHeight >= 44);
+  assert.equal(styles.historyTabSelected.borderBottomWidth, undefined, 'inherits the tab border');
+  assert.notEqual(styles.historyTabSelected.borderBottomColor, 'transparent');
 });

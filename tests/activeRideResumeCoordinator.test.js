@@ -4,6 +4,8 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+const emptyActivity = userId => ({ userId, hasLiveActivity: false,
+  trips: { count: 0 }, bookings: { count: 0 }, requests: { count: 0 } });
 
 function fixture(t, passenger = false) {
   const hooks = hookHarness(), reads = [], routes = [], observed = [];
@@ -28,12 +30,14 @@ function fixture(t, passenger = false) {
     if (action.running) return env.pending;
     reads.push(action);
     return { unwrap: async () => action.name === 'getTripById' ? env.tripDetails?.[action.id] ?? trip : action.name === 'getTripRequestById' ? env.request
+      : action.name === 'getMyOfferPage' ? { data: env.offers ?? [], nextCursor: null }
       : action.name === 'getDispatchOffer' ? env.offer : env.bookingDetails?.[action.id] ?? booking };
   };
   // No query subscription functions: the coordinator must only observe existing
   // activity caches and verify one authenticated detail, never add discovery polls.
   const api = (category, listName, detailName) => ({
     endpoints: {
+      getMyOfferPage: { select: () => () => ({}), initiate: (id, options) => ({ name: 'getMyOfferPage', id, options }) },
       [listName]: { useQueryState: arg => { observed.push([category, arg]); return env[category]; } },
       [detailName]: { select: () => () => env.detailCache?.[detailName] ?? {}, initiate: (id, options) => ({ name: detailName, id, options }) },
     },
@@ -224,7 +228,7 @@ test('earlier published departure keeps Home instead of forcing accepted-request
   f.env.trips.data.push({ id: 'published', driverId: 'driver', status: 'upcoming', departureTime: '2026-10-19T09:00:00Z' });
   f.env.trips.fulfilledTimeStamp = now + 1001;
   Object.assign(f.env.activity.data, { trips: { count: 2 }, bookings: { count: 0 }, requests: { count: 0 } });
-  f.render(); f.render(); await flush(); f.render();
+  f.render(); f.render(); await flush(); f.render(); await flush(); f.render();
   assert.equal(f.render(), null); assert.deepEqual(f.routes, []);
 });
 
@@ -298,7 +302,7 @@ test('one shared loader waits for both the Home role and the no-ride decision in
     f.env.trips = { isSuccess: false }; f.env.bookings = { isSuccess: false };
     assert.equal(f.wrapper().props.value, true);
     const profileReady = () => { f.env.profile = { data: { id: 'driver', role: 'driver' }, isSuccess: true }; };
-    const activityReady = () => { f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() }; };
+    const activityReady = () => { f.env.activity = { data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() }; };
     (first === 'profile' ? profileReady : activityReady)();
     assert.equal(f.render().props.children.props.loadingLabel, 'Ouverture de Zwanga'); f.render();
     assert.equal(f.wrapper().props.value, true, 'one result alone must not reveal Home');
@@ -327,7 +331,7 @@ test('the authenticated token identity blocks Home while the profile is still hy
 test('a failed or foreign profile releases the cover for neutral Home, never a cached-role bypass', async t => {
   const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips = { isSuccess: false }; f.env.bookings = { isSuccess: false };
   f.env.profile = { data: { id: 'another', role: 'driver' }, isSuccess: true, isFetching: false };
-  f.render(); f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.render(); f.env.activity = { data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   f.render(); assert.equal(f.render(), null); assert.equal(f.wrapper().props.value, false);
   assert.equal(Boolean(f.wrapper().props.children[0].props.value), false, 'no known-role banner on a foreign profile');
   await flush(); assert.deepEqual(f.reads, []);
@@ -406,17 +410,48 @@ test('a passenger waiting request replaces Home automatically even when its veri
 test('a ringing nearby request restored after fast Home opens its decision screen without acknowledging the sound', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
-  f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.env.activity = { data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   f.render(); t.mock.timers.tick(3000); f.render(); assert.deepEqual(f.routes, []);
   f.env.request = { id: 'nearby', passengerId: 'passenger', status: 'pending', departureDateMax: new Date(200000).toISOString() };
   f.alerts.rememberRideAlert({ key: 'driver-nearby-nearby', id: 'nearby', kind: 'nearby', recipientId: 'driver',
     data: { ringUntil: new Date(130000).toISOString() } }, true);
   f.render(); await flush(); f.render(); await flush();
   assert.deepEqual(f.routes, ['/request-details/nearby']);
-  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getMyOfferPage', 'getTripRequestById']);
   f.env.path = '/request-details/nearby'; f.render();
   assert.equal(f.alerts.pendingRideAlerts('driver').length, 1, 'opening is not accepting or refusing');
 });
+
+for (const returning of [false, true]) {
+  test(`driver entry opens the order behind the latest price proposal (${returning ? 'foreground return' : 'cold start'})`, async t => {
+    t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+    const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
+    const freshEmpty = () => ({ data: emptyActivity('driver'), isSuccess: true,
+      startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() });
+    f.env.activity = freshEmpty();
+    if (returning) {
+      f.render(); f.render(); await flush(); f.render(); await flush();
+      assert.deepEqual(f.routes, []);
+      f.env.active = false; f.render(); t.mock.timers.tick(1000);
+      f.env.active = true; f.env.activity = freshEmpty();
+    }
+    const proposal = (id, createdAt) => ({ id, tripRequestId: `order-${id}`, driverId: 'driver', status: 'pending',
+      createdAt: new Date(createdAt).toISOString(), pricePerSeat: 1500,
+      tripRequest: { id: `order-${id}`, passenger: { id: 'passenger' }, status: 'offers_received',
+        departureDateMax: new Date(200000).toISOString() } });
+    f.env.offers = [proposal('old', 80000), proposal('latest', 90000)];
+    f.env.request = { ...f.env.offers[1].tripRequest, passengerId: 'passenger', offers: [f.env.offers[1]] };
+    f.render(); f.render(); await flush(); f.render(); await flush();
+    assert.deepEqual(f.routes, ['/request-details/order-latest'], 'the actual coordinator opens the parent order, not an offer list');
+    const offersRead = f.reads.filter(read => read.name === 'getMyOfferPage');
+    assert.equal(offersRead.length, returning ? 2 : 1, 'one bounded discovery per entry, not per render');
+    assert.deepEqual(offersRead.at(-1).id, { limit: 20 });
+    assert.deepEqual(f.reads.filter(read => read.name === 'getTripRequestById').map(read => read.id), ['order-latest']);
+    f.env.path = '/request-details/order-latest'; f.render();
+    f.env.path = '/'; f.render(); await flush();
+    assert.equal(f.routes.length, 1, 'a deliberate return Home is still allowed');
+  });
+}
 
 test('a quick return rechecks a cached empty account and opens newly ongoing driver or passenger guidance', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
@@ -425,7 +460,7 @@ test('a quick return rechecks a cached empty account and opens newly ongoing dri
     const userId = f.env.state.auth.user.id;
     const currentTrips = f.env.trips.data, currentBookings = f.env.bookings.data;
     f.env.trips.data = []; f.env.bookings.data = [];
-    f.env.activity = { data: { userId, hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+    f.env.activity = { data: emptyActivity(userId), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
     f.render(); f.render(); await flush(); assert.deepEqual(f.routes, []);
     f.env.active = false; f.render(); t.mock.timers.tick(1000);
     f.env.active = true; f.render(); f.render(); await flush();
@@ -443,12 +478,12 @@ test('a quick return rechecks a cached empty account and opens newly ongoing dri
 test('returning after publishing an order opens that order even from a driver account with a recent empty cache', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
-  f.env.activity = { data: { userId: 'driver', hasLiveActivity: false }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.env.activity = { data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   f.render(); f.render(); f.env.active = false; f.render(); t.mock.timers.tick(1000);
   f.env.active = true; f.render(); f.render(); await flush();
   f.env.request = { id: 'order', passengerId: 'driver', status: 'pending', departureDateMax: new Date(200000).toISOString() };
   f.env.requests = { data: [f.env.request], isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
-  f.env.activity = { data: { userId: 'driver', hasLiveActivity: true, trips: { count: 0 }, bookings: { count: 0 },
+  f.env.activity = { data: { userId: 'driver', hasLiveActivity: false, trips: { count: 0 }, bookings: { count: 0 },
     requests: { count: 1 } }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   f.render(); f.render(); await flush(); f.render(); await flush();
   assert.deepEqual(f.routes, ['/request-details/order']);

@@ -30,18 +30,18 @@ export function MapDriverSelection({ request, markerId, disabled, onClose }: {
       if (mounted.current && version === getTokenSessionVersion()) onClose();
     } catch (cause) {
       if (mounted.current && version === getTokenSessionVersion()) setError(getApiErrorMessage(cause,
-        'Envoi non confirmé. Actualisez la demande avant de réessayer.'));
+        'Envoi non confirmé. Actualisez la commande avant de réessayer.'));
     } finally { busy.current = false; }
   };
   return <View style={s.panel}>
-    <Text style={s.title}>{available ? 'Lui envoyer votre demande en cours' : 'Votre demande a changé'}</Text>
+    <Text style={s.title}>{available ? 'Lui envoyer votre commande en cours' : 'Votre commande a changé'}</Text>
     <Text style={s.hint}>Il aura 3 minutes pour répondre. En cas de refus ou sans réponse, la recherche reprendra automatiquement.</Text>
     <Pressable accessibilityRole="button" disabled={disabled || isLoading || !available} onPress={() => { void submit(); }}
       style={[s.button, (disabled || isLoading || !available) && s.disabled]}>
       {isLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.buttonText}>Envoyer à ce conducteur</Text>}
     </Pressable>
     {!!error && <Text accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
-    {(!available || !!error) && <Pressable accessibilityRole="button" onPress={onClose} style={s.button}><Text style={s.buttonText}>Revenir à ma demande</Text></Pressable>}
+    {(!available || !!error) && <Pressable accessibilityRole="button" onPress={onClose} style={s.button}><Text style={s.buttonText}>Revenir à ma commande</Text></Pressable>}
   </View>;
 }
 const s = StyleSheet.create({

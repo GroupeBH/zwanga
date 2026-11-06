@@ -23,7 +23,7 @@ function editPricingApp(t) {
     },
   })('hooks/trip-request/useEditRequestPricing.ts');
   const props = {
-    enabled: true, requestId: 'request-1', vehicleType: 'car',
+    enabled: true, requestId: 'request-1', vehicleType: 'car', initialBudget: 2700,
     departureAddress: 'Gombe', arrivalAddress: 'Limete', departureReference: '', arrivalReference: '',
     departureLocation: null, arrivalLocation: null, numberOfSeats: 2, hasSpecifiedNumberOfSeats: true,
   };
@@ -41,20 +41,21 @@ function editPricingApp(t) {
     fail: () => { errors.add(JSON.stringify(receivedArgs)); return render(); } };
 }
 
-test('editing recalculates the price when the route changes without changing vehicle type', t => {
+test('editing keeps the saved budget before, during and after route estimates', t => {
   const app = editPricingApp(t);
   assert.equal(app.render().isPriceLoading, true);
   assert.equal(app.args(), skipToken);
   app.ready();
-  assert.equal(app.settle(2000).confirmedPricePerSeat, 2000);
+  assert.equal(app.settle(2000).confirmedPricePerSeat, 2700);
   app.props.arrivalAddress = 'Lemba';
   const recalculating = app.render();
-  assert.equal(recalculating.maxPricePerSeat, '');
-  assert.equal(recalculating.isBudgetValid, false);
+  assert.equal(recalculating.maxPricePerSeat, '2700');
+  assert.equal(recalculating.isBudgetValid, true);
   app.ready();
   const updated = app.settle(3500);
-  assert.equal(updated.maxPricePerSeat, '3500');
-  assert.equal(updated.confirmedPricePerSeat, 3500);
+  assert.equal(updated.maxPricePerSeat, '2700');
+  assert.equal(updated.confirmedPricePerSeat, 2700);
+  assert.equal(updated.recommendedPricePerSeat, 3500);
   assert.equal(updated.vehiclePriceMultiplier, 1.2);
   app.hooks.unmount();
 });
@@ -67,7 +68,8 @@ test('an obsolete route response cannot replace the current route price', t => {
   app.render(); app.ready();
   app.settle(5000);
   const updated = app.settle(1500, originalArgs);
-  assert.equal(updated.confirmedPricePerSeat, 5000);
+  assert.equal(updated.confirmedPricePerSeat, 2700);
+  assert.equal(updated.recommendedPricePerSeat, 5000);
   app.hooks.unmount();
 });
 
@@ -81,7 +83,7 @@ test('manual typing is preserved when a recommendation arrives for the same rout
   app.hooks.unmount();
 });
 
-test('a manual budget is invalidated when route, coordinates, landmark, seats or vehicle change', t => {
+test('route, coordinates, landmark, seats or vehicle changes never replace a manually edited budget', t => {
   const app = editPricingApp(t);
   app.render(); app.ready(); app.settle(2000);
   for (const change of [
@@ -94,16 +96,17 @@ test('a manual budget is invalidated when route, coordinates, landmark, seats or
     app.render().setMaxPricePerSeat('2750');
     assert.equal(app.render().hasEditedBudget, true);
     Object.assign(app.props, change);
-    assert.equal(app.render().hasEditedBudget, false);
+    assert.equal(app.render().hasEditedBudget, true);
     app.ready();
     const updated = app.settle(4000);
-    assert.equal(updated.confirmedPricePerSeat, app.props.vehicleType === 'car' ? 4000 : 6000);
+    assert.equal(updated.confirmedPricePerSeat, 2750);
   }
   app.hooks.unmount();
 });
 
 test('a failed recommendation allows manual pricing without submitting an absent price', t => {
   const app = editPricingApp(t);
+  app.props.initialBudget = null;
   app.render(); app.ready();
   assert.equal(app.fail().isBudgetValid, false);
   assert.equal(app.render().confirmedPricePerSeat, undefined);
@@ -129,7 +132,7 @@ test('closing for identity verification or the map preserves the current manual 
   app.props.enabled = true;
   assert.equal(app.render().maxPricePerSeat, '3000');
   app.render().resetBudget();
-  assert.equal(app.render().confirmedPricePerSeat, 2000);
+  assert.equal(app.render().confirmedPricePerSeat, 2700);
   app.hooks.unmount();
 });
 
@@ -144,6 +147,17 @@ test('closed editors and invalid seat counts never request a price', t => {
     app.render(); app.ready();
     assert.equal(app.args(), skipToken);
   }
+  app.hooks.unmount();
+});
+
+test('a different request uses its own saved budget, never the previous draft or an estimate', t => {
+  const app = editPricingApp(t);
+  app.render().setMaxPricePerSeat('8100');
+  app.props.requestId = 'request-2'; app.props.initialBudget = 1700;
+  assert.equal(app.render().confirmedPricePerSeat, 1700);
+  app.props.initialBudget = null; app.render(); app.ready();
+  assert.equal(app.settle(9000).maxPricePerSeat, '');
+  assert.equal(app.render().isBudgetValid, false);
   app.hooks.unmount();
 });
 

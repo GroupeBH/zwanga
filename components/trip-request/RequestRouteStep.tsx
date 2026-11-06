@@ -263,7 +263,7 @@ export function RequestRouteStep({
               disabled={disabled}
               accessibilityLabel={option.label}
               accessibilityHint={disabled
-                ? 'Pas assez de places pour votre demande.'
+                ? 'Pas assez de places pour votre commande.'
                 : selected && selectedVehicleTypes.length === 1
                   ? 'Gardez au moins un type. Cochez un autre type avant de retirer celui-ci.'
                   : selected ? 'Décochez ce type de véhicule.' : 'Ajoutez ce type à vos choix.'}

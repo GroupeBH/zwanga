@@ -1,16 +1,17 @@
-import React, { useEffect, useSyncExternalStore } from 'react';
+import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { useScreenAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
-import { useAppSelector } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { baseApi } from '@/store/api/baseApi';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import { RideModal } from '@/features/navigation/RideModal';
 import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { passengerResponseNotice } from '@/features/notifications/passengerResponseNotice';
-import { isCounterOfferAlert } from '@/features/notifications/rideSound';
+import { isCounterOfferAlert, isDriverOfferAcceptanceAlert } from '@/features/notifications/rideSound';
 import { useGetTripRequestByIdQuery } from '@/store/api/tripRequestApi';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts, dismissRideResponseNotice, getRideAlertsRevision,
@@ -26,26 +27,39 @@ export function PassengerRideResponseCoordinator() {
   const authenticated = useAppSelector(selectIsAuthenticated);
   const user = useAppSelector(selectUser);
   const router = useRouter();
+  const dispatch = useAppDispatch();
   useSyncExternalStore(subscribeRideAlerts, getRideAlertsRevision, getRideAlertsRevision);
   const notice = user?.id ? pendingRideResponseNotices(user.id)[0] : undefined;
   const counterOffer = !!notice && isCounterOfferAlert(notice.data);
-  const readsEnabled = useDisplayReadsEnabled(active && authenticated && counterOffer);
-  const request = useGetTripRequestByIdQuery(counterOffer ? notice!.id : '', displayReadOptions(readsEnabled, 15000));
+  const driverAcceptance = !!notice && isDriverOfferAcceptanceAlert(notice.data);
+  // A pre-alert cache cannot prove that the newly announced price disappeared.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const observedAt = useMemo(() => Date.now(), [notice?.key]);
+  const readsEnabled = useDisplayReadsEnabled(active && authenticated && (counterOffer || driverAcceptance));
+  const requestId = counterOffer || driverAcceptance ? notice!.id : undefined;
+  const request = useGetTripRequestByIdQuery(requestId ?? '', displayReadOptions(readsEnabled, counterOffer ? 15000 : 0));
   useEffect(() => {
-    if (!active || !counterOffer || !notice) return;
+    if (readsEnabled && requestId) dispatch(baseApi.util.invalidateTags([{ type: 'TripRequest', id: requestId }]));
+  }, [dispatch, readsEnabled, requestId, observedAt]);
+  useEffect(() => {
+    if (!active || !(counterOffer || driverAcceptance) || !notice) return;
     const until = Date.parse(String(notice.data.alertExpiresAt ?? notice.expiresAt ?? ''));
     if (!Number.isFinite(until)) return;
     const timeout = setTimeout(() => dismissRideResponseNotice(notice), Math.max(0, Math.min(until - Date.now(), 120000)));
     return () => clearTimeout(timeout);
-  }, [active, counterOffer, notice]);
+  }, [active, counterOffer, driverAcceptance, notice]);
   useEffect(() => {
-    if (!counterOffer || !notice || !request.currentData || request.isFetching || request.isError) return;
+    if (!(counterOffer || driverAcceptance) || !notice || !request.currentData || request.isFetching || request.isError ||
+        request.startedTimeStamp === undefined || request.startedTimeStamp < observedAt) return;
     const current = request.currentData;
-    if (current.passengerId === user?.id && (current.selectedDriverId || current.tripId ||
+    if (driverAcceptance && (current.selectedDriverId !== user?.id || current.status !== 'driver_selected' ||
+        !current.offers?.some(offer => offer.id === notice.data.offerId && offer.driverId === user?.id && offer.status === 'accepted')))
+      dismissRideResponseNotice(notice);
+    if (counterOffer && current.passengerId === user?.id && (current.selectedDriverId || current.tripId ||
         !['pending', 'offers_received'].includes(current.status) ||
         !current.offers?.some(offer => offer.id === notice.data.offerId && offer.status === 'pending')))
       dismissRideResponseNotice(notice);
-  }, [counterOffer, notice, request.currentData, request.isFetching, request.isError, user?.id]);
+  }, [counterOffer, driverAcceptance, notice, request.currentData, request.isFetching, request.isError, request.startedTimeStamp, observedAt, user?.id]);
   const visible = Boolean(active && authenticated && notice);
   const version = getTokenSessionVersion();
   const current = () => Boolean(notice && user?.id === notice.recipientId && version === getTokenSessionVersion());
@@ -80,7 +94,7 @@ function PassengerResponsePanel({ alert, onClose, onOpen }: { alert: RideAlert; 
         <Text style={styles.message}>{notice.message}</Text>
       </ScrollView>
       <TouchableOpacity accessibilityRole="button" style={styles.primary} onPress={onOpen}>
-        <Text style={styles.primaryText}>{isCounterOfferAlert(alert.data) ? 'Voir le prix proposé' : 'Voir mon trajet'}</Text>
+        <Text style={styles.primaryText}>{isCounterOfferAlert(alert.data) || alert.data.type === 'offer_accepted' ? 'Voir la commande' : 'Voir mon trajet'}</Text>
       </TouchableOpacity>
       <TouchableOpacity accessibilityRole="button" style={styles.secondary} onPress={onClose}>
         <Text style={styles.secondaryText}>{isCounterOfferAlert(alert.data) ? 'Pas maintenant' : 'Compris'}</Text>

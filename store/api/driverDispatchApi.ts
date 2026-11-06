@@ -50,7 +50,8 @@ export const driverDispatchApi = baseApi.injectEndpoints({
             (getState() as unknown as RootState).auth.user?.id === userId) dispatch(hideRefusedRequest(id, baseApi));
         } catch { /* A failed refusal must remain visible and retryable. */ }
       },
-      invalidatesTags: (_result, error) => error ? [] : ['DriverDispatch', 'Notification', { type: 'TripRequest', id: 'LIST' }],
+      invalidatesTags: (_result, error, id) => error ? [] : ['DriverDispatch', 'Notification', 'MyDriverOffers', 'AccountActivity',
+        { type: 'TripRequest', id }, { type: 'TripRequest', id: 'LIST' }],
     }),
     respondToBookingInvitation: builder.mutation<unknown, { id: string; accept: boolean }>({
       query: ({ id, accept }) => ({ url: `/bookings/${id}/respond-invitation`, method: 'PUT', body: { accept }, timeout: 10000 }),

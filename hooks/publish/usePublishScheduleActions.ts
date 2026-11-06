@@ -1,136 +1,100 @@
-import { DateTimePickerAndroid, DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import React from 'react';
+import { DateTimePickerAndroid, type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { Keyboard, Platform } from 'react-native';
+import { applyDatePart, applyTimePart, buildPresetWindow } from '@/features/trip-request/requestFormModel';
 
+type Mode = 'date' | 'time';
+type Target = 'departure' | 'recurringEndDate';
 interface Params {
+  isScreenActive: boolean;
   departureDateTime: Date | null;
+  hasChosenDepartureTime: boolean;
+  setHasChosenDepartureTime: Dispatch<SetStateAction<boolean>>;
   recurringEndDate: Date | null;
-  setRecurringEndDate: React.Dispatch<React.SetStateAction<Date | null>>;
-  setDepartureDateTime: React.Dispatch<React.SetStateAction<Date | null>>;
-  setIosPickerValue: React.Dispatch<React.SetStateAction<Date>>;
-  setIosPickerTarget: React.Dispatch<React.SetStateAction<"departure" | "recurringEndDate">>;
-  setIosPickerMode: React.Dispatch<React.SetStateAction<"date" | "time" | null>>;
-  iosPickerMode: "date" | "time" | null;
-  iosPickerTarget: "departure" | "recurringEndDate";
+  setRecurringEndDate: Dispatch<SetStateAction<Date | null>>;
+  setDepartureDateTime: Dispatch<SetStateAction<Date | null>>;
+  setIosPickerValue: Dispatch<SetStateAction<Date>>;
+  setIosPickerTarget: Dispatch<SetStateAction<Target>>;
+  setIosPickerMode: Dispatch<SetStateAction<Mode | null>>;
+  iosPickerMode: Mode | null;
+  iosPickerTarget: Target;
   iosPickerValue: Date;
 }
 
-export function usePublishScheduleActions({
-  departureDateTime,
-  recurringEndDate,
-  setRecurringEndDate,
-  setDepartureDateTime,
-  setIosPickerValue,
-  setIosPickerTarget,
-  setIosPickerMode,
-  iosPickerMode,
-  iosPickerTarget,
-  iosPickerValue,
-}: Params) {
-  const getBaseDateTime = () => {
-    if (departureDateTime) {
-      return new Date(departureDateTime);
+/** Same explicit date/time choices as requests. Never commit a dismissal or a late native callback. */
+export function usePublishScheduleActions(props: Params) {
+  const { isScreenActive, setIosPickerMode, setIosPickerTarget } = props;
+  const latest = useRef(props); latest.current = props;
+  const mounted = useRef(false), generation = useRef(0), androidMode = useRef<Mode | null>(null);
+  const opening = useRef(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const invalidate = useCallback(() => {
+    generation.current++; opening.current = false;
+    const mode = androidMode.current; androidMode.current = null;
+    if (mode) void DateTimePickerAndroid.dismiss(mode).catch(() => {});
+  }, []);
+  const closeIosPicker = useCallback(() => {
+    invalidate(); setIosPickerMode(null); setIosPickerTarget('departure'); setPickerError(null);
+  }, [invalidate, setIosPickerMode, setIosPickerTarget]);
+  useEffect(() => {
+    mounted.current = true;
+    if (!isScreenActive) closeIosPicker();
+    return () => { mounted.current = false; invalidate(); };
+  }, [isScreenActive, closeIosPicker, invalidate]);
+  const valid = (epoch: number) => mounted.current && latest.current.isScreenActive && epoch === generation.current;
+  const baseDate = () => {
+    const p = latest.current, suggestion = buildPresetWindow('now').min;
+    return p.departureDateTime
+      ? p.hasChosenDepartureTime ? new Date(p.departureDateTime) : applyDatePart(p.departureDateTime, suggestion)
+      : suggestion;
+  };
+  const commit = (mode: Mode, target: Target, picked: Date) => {
+    if (!Number.isFinite(picked.getTime())) return;
+    const p = latest.current;
+    if (target === 'recurringEndDate') {
+      const end = new Date(picked); end.setHours(0, 0, 0, 0); p.setRecurringEndDate(end);
+    } else {
+      const base = baseDate();
+      p.setDepartureDateTime(current => mode === 'date' ? applyDatePart(picked, current ?? base) : applyTimePart(picked, current ?? base));
+      if (mode === 'time') p.setHasChosenDepartureTime(true);
     }
-    const base = new Date();
-    base.setMinutes(0, 0, 0);
-    base.setHours(base.getHours() + 1);
-    return base;
   };
-
-  const applyDatePart = (pickedDate: Date) => {
-    const base = getBaseDateTime();
-    const next = new Date(base);
-    next.setFullYear(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
-    return next;
-  };
-
-  const applyTimePart = (pickedDate: Date) => {
-    const base = getBaseDateTime();
-    const next = new Date(base);
-    next.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
-    return next;
-  };
-
-  const openDateOrTimePicker = (
-    mode: 'date' | 'time',
-    target: 'departure' | 'recurringEndDate' = 'departure',
-  ) => {
-    Keyboard.dismiss();
-    if (Platform.OS === 'android') {
-      const value =
-        target === 'recurringEndDate'
-          ? recurringEndDate ?? departureDateTime ?? getBaseDateTime()
-          : getBaseDateTime();
-      DateTimePickerAndroid.open({
-        mode,
-        value,
-        is24Hour: true,
-        minimumDate:
-          mode === 'date'
-            ? target === 'recurringEndDate'
-              ? departureDateTime ?? new Date()
-              : new Date()
-            : undefined,
-        onChange: (_event: DateTimePickerEvent, selectedDate?: Date) => {
-          if (!selectedDate) {
-            return;
-          }
-
-          if (target === 'recurringEndDate') {
-            const nextEndDate = new Date(selectedDate);
-            nextEndDate.setHours(0, 0, 0, 0);
-            setRecurringEndDate(nextEndDate);
-            return;
-          }
-
-          setDepartureDateTime(
-            mode === 'date' ? applyDatePart(selectedDate) : applyTimePart(selectedDate),
-          );
+  const openDateOrTimePicker = (mode: Mode, target: Target = 'departure') => {
+    if (!mounted.current || !latest.current.isScreenActive || opening.current || latest.current.iosPickerMode) return;
+    opening.current = true; Keyboard.dismiss(); setPickerError(null);
+    const epoch = ++generation.current, p = latest.current;
+    const value = target === 'recurringEndDate' ? p.recurringEndDate ?? p.departureDateTime ?? baseDate() : baseDate();
+    if (Platform.OS !== 'android') {
+      p.setIosPickerValue(new Date(value)); p.setIosPickerTarget(target); p.setIosPickerMode(mode); return;
+    }
+    androidMode.current = mode;
+    const fail = () => {
+      if (!valid(epoch)) return;
+      androidMode.current = null; opening.current = false; generation.current++;
+      setPickerError('Impossible d’ouvrir le sélecteur. Réessayez.');
+    };
+    try {
+      DateTimePickerAndroid.open({ mode, value, is24Hour: true,
+        minimumDate: mode === 'date' ? target === 'recurringEndDate' ? p.departureDateTime ?? new Date() : new Date() : undefined,
+        onError: fail,
+        onChange: (event: DateTimePickerEvent, date?: Date) => {
+          if (!valid(epoch)) return;
+          androidMode.current = null; opening.current = false; generation.current++;
+          if (event.type === 'set' && date) commit(mode, target, date);
         },
       });
-    } else {
-      const value =
-        target === 'recurringEndDate'
-          ? recurringEndDate ?? departureDateTime ?? getBaseDateTime()
-          : getBaseDateTime();
-      setIosPickerValue(new Date(value));
-      setIosPickerTarget(target);
-      setIosPickerMode(mode);
-    }
+    } catch { fail(); }
   };
-
-  const handleIosPickerChange = (_event: DateTimePickerEvent, selectedDate?: Date) => {
-    if (!selectedDate) {
-      return;
-    }
-    setIosPickerValue(selectedDate);
+  const epoch = generation.current;
+  const handleIosPickerChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (valid(epoch) && event.type === 'set' && date && Number.isFinite(date.getTime()) && latest.current.iosPickerMode)
+      latest.current.setIosPickerValue(date);
   };
-
   const confirmIosPicker = () => {
-    if (!iosPickerMode) {
-      return;
-    }
-    if (iosPickerTarget === 'recurringEndDate') {
-      const nextEndDate = new Date(iosPickerValue);
-      nextEndDate.setHours(0, 0, 0, 0);
-      setRecurringEndDate(nextEndDate);
-    } else {
-      setDepartureDateTime(
-        iosPickerMode === 'date' ? applyDatePart(iosPickerValue) : applyTimePart(iosPickerValue),
-      );
-    }
+    if (!valid(epoch)) return;
+    const p = latest.current;
+    if (p.iosPickerMode) commit(p.iosPickerMode, p.iosPickerTarget, p.iosPickerValue);
     closeIosPicker();
   };
-
-  const closeIosPicker = () => {
-    setIosPickerMode(null);
-    setIosPickerTarget('departure');
-  };
-
-  return {
-    openDateOrTimePicker,
-    closeIosPicker,
-    handleIosPickerChange,
-    confirmIosPicker,
-  };
+  return { openDateOrTimePicker, closeIosPicker, handleIosPickerChange, confirmIosPicker, pickerError };
 }

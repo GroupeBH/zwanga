@@ -27,10 +27,10 @@ export function BackgroundLocationApproval(props: Props) {
             <Text accessibilityRole="header" style={styles.title}>Localisation en arrière-plan</Text>
           </View>
           <Text style={styles.lead}>{passenger ? 'Gardez le suivi de votre trajet, même écran éteint.'
-            : 'Recevez les demandes proches, même écran éteint.'}</Text>
+            : 'Recevez les commandes proches, même écran éteint.'}</Text>
           <Text style={styles.copy}>{passenger
             ? 'Pendant votre trajet, Zwanga collecte et envoie votre position au serveur, même écran éteint.'
-            : 'Hors trajet, Zwanga collecte et envoie votre position au serveur pour les demandes proches, même écran éteint.'}</Text>
+            : 'Hors trajet, Zwanga collecte et envoie votre position au serveur pour les commandes proches, même écran éteint.'}</Text>
           {loadError ? <Text accessibilityLiveRegion="polite" style={styles.copy}>Impossible de vérifier l’autorisation. Réessayez.</Text>
             : permission ? <Text style={styles.copy}>{passenger ? 'Votre téléphone a déjà donné son accord.'
               : 'Autorisation accordée. Confirmez le partage hors trajet.'}</Text>
@@ -60,7 +60,7 @@ export function BackgroundLocationApproval(props: Props) {
             <Text style={styles.laterText}>Plus tard</Text>
           </TouchableOpacity>
           <Text style={styles.footnote}>{passenger
-            ? 'Facultatif. Votre demande ou réservation reste enregistrée.'
+            ? 'Facultatif. Votre commande ou réservation reste enregistrée.'
             : 'Facultatif. Modifiable dans les réglages du téléphone.'}</Text>
         </ScrollView>
       </SafeAreaView>

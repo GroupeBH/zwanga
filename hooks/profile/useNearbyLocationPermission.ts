@@ -125,7 +125,7 @@ export function useNearbyLocationPermission(options: {
       entry.foregroundPermission = foreground.granted;
       if (!foreground.granted) {
         entry.settingsRequired = foreground.canAskAgain === false;
-        entry.message = 'Position non autorisée. Les demandes restent accessibles dans l’application.'; return;
+        entry.message = 'Position non autorisée. Les commandes restent accessibles dans l’application.'; return;
       }
       let background = await wait(Location.getBackgroundPermissionsAsync(), controller.signal);
       if (!valid()) return;
@@ -140,7 +140,7 @@ export function useNearbyLocationPermission(options: {
       if (!background.granted) {
         // iOS "Allow Once" may silently reject Always despite canAskAgain=true.
         entry.settingsRequired = background.canAskAgain === false || Platform.OS === 'ios';
-        entry.message = 'Pas encore autorisé. Les demandes restent accessibles dans l’application.'; return;
+        entry.message = 'Pas encore autorisé. Les commandes restent accessibles dans l’application.'; return;
       }
       await confirm(controller);
     } catch (error) {

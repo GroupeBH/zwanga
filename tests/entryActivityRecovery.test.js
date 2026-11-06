@@ -84,9 +84,17 @@ test('passenger waiting-request discovery uses the same receipts, not HTTP respo
   app.request = { ...app.request, passengerId: 'driver', selectedDriverId: undefined, tripId: undefined, status: 'pending' };
   app.trips.data = []; app.requests.data = [app.request];
   app.summary.trips.count = 0; app.summary.requests.count = 1;
+  // Production summary means no ONGOING trip, not no pending request.
+  app.summary.hasLiveActivity = false;
   app.produce(); await flush(); t.mock.timers.tick(25);
   app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
   assert.deepEqual(app.routes, ['/request-details/request']);
   assert.equal(app.reads.filter(name => name === 'getMyActivityRequests').length, 1);
+  app.path = '/request-details/request'; app.enter(); app.path = '/'; app.enter();
+  assert.equal(app.routes.length, 1, 'a deliberate exit still reaches Home');
+  app.active = false; app.produce(); app.enter(); t.mock.timers.tick(1000);
+  app.active = true; app.produce(); app.enter(); await flush();
+  app.produce(); app.enter(); await flush(); app.enter(); await flush();
+  assert.deepEqual(app.routes, ['/request-details/request', '/request-details/request']);
 });

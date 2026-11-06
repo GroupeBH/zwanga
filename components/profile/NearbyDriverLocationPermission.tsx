@@ -42,9 +42,9 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
   const disabled = flow.busy || !flow.loaded || (!authorized && (!available || !flow.consent));
   const settingsChoice = Platform.OS === 'ios' ? '« Toujours »' : '« Toujours autoriser »';
   return <View style={styles.section}>
-    <Text style={styles.title}>Recevoir les demandes près de vous</Text>
+    <Text style={styles.title}>Recevoir les commandes près de vous</Text>
     <Text style={styles.copy}>Même quand l’écran est éteint ou que vous utilisez une autre application.</Text>
-    <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes pour trouver les demandes proches. Le téléphone peut retarder ces envois.</Text>
+    <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes pour trouver les commandes proches. Le téléphone peut retarder ces envois.</Text>
     {authorized ? <>
       <View style={styles.authorized}>
         <View style={styles.dot} />

@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
+import { formatRequestDayLabel, formatTimeLabel } from '@/features/trip-request/requestFormModel';
 
 interface Params {
   departureDateTime: Date | null;
+  hasChosenDepartureTime: boolean;
   recurringEndDate: Date | null;
   recurringWeekdayOptions: { value: number; label: string; }[];
   recurringWeekdays: number[];
@@ -15,6 +17,7 @@ interface Params {
 
 export function usePublishSchedulePresentation({
   departureDateTime,
+  hasChosenDepartureTime,
   recurringEndDate,
   recurringWeekdayOptions,
   recurringWeekdays,
@@ -38,26 +41,12 @@ export function usePublishSchedulePresentation({
   };
 
   const formattedDateLabel = useMemo(() => {
-    if (!departureDateTime) {
-      return 'Choisir la date';
-    }
-    return new Intl.DateTimeFormat('fr-FR', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }).format(departureDateTime);
+    return formatRequestDayLabel(departureDateTime ?? new Date());
   }, [departureDateTime]);
 
   const formattedTimeLabel = useMemo(() => {
-    if (!departureDateTime) {
-      return 'Choisir l\'heure';
-    }
-    return new Intl.DateTimeFormat('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(departureDateTime);
-  }, [departureDateTime]);
+    return !departureDateTime || !hasChosenDepartureTime ? 'Choisir l’heure' : formatTimeLabel(departureDateTime);
+  }, [departureDateTime, hasChosenDepartureTime]);
 
   const formattedFullDateTime = useMemo(() => {
     if (!departureDateTime) {

@@ -78,13 +78,14 @@ test('notification proposal actions open price review, never accept an unseen pr
 
 test('booking creation sends the proposal separately, and invalid inputs never send HTTP', async () => {
   const h = hookHarness(), sent = [], errors = [];
+  let paymentReads = 0;
   const load = loader({ react: h.react,
     '../../features/trip-detail/tripDetailModel': { getLocationText: () => '', getLocationCoordinatesObject: () => undefined },
     '@/utils/routeHelpers': { isPointOnRoute: () => true },
     '@/services/tokenSession': { getTokenSessionVersion: () => 1 },
     '@/services/tripLocationPermission': { offerTripLocationPermission() {} },
     '@/services/analytics': { trackEvent: async () => {} },
-    '@/store/api/driverFinanceApi': { useLazyTripPaymentOptionsQuery: () => [() => ({ unwrap: async () => ({ availablePaymentModes: ['cash'] }) })] },
+    '@/store/api/driverFinanceApi': { useLazyTripPaymentOptionsQuery: () => [() => ({ unwrap: async () => { paymentReads++; return { availablePaymentModes: ['cash'] }; } })] },
     '@/utils/errorHelpers': { getApiErrorMessage: () => 'error', isPassengerKycRequiredError: () => false },
   });
   const { useTripBookingSubmission } = load('hooks/trip-detail/useTripBookingSubmission.ts');
@@ -102,5 +103,12 @@ test('booking creation sends the proposal separately, and invalid inputs never s
   assert.equal(sent[0].numberOfSeats, 2); assert.equal('paymentAmount' in sent[0], false);
   props.bookingProposedPrice = '0'; await submit(); assert.equal(sent.length, 1); assert.match(errors.at(-1), /supérieur à zéro/);
   props.bookingProposedPrice = ''; await submit(); assert.equal('proposedPricePerSeat' in sent[1], false);
+  const readsBefore = paymentReads;
+  for (const invalid of ['', '0', '1.5', '2abc', 'NaN', 'Infinity', '4']) {
+    props.bookingSeats = invalid; await submit();
+    assert.equal(sent.length, 2); assert.equal(paymentReads, readsBefore, 'one-panel confirmation validates seats before HTTP');
+  }
+  props.bookingSeats = '3'; props.isIdentityVerified = false; await submit();
+  assert.equal(sent.length, 2); assert.equal(paymentReads, readsBefore, 'identity restrictions survive removal of wizard steps');
   h.unmount();
 });

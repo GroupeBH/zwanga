@@ -2,6 +2,7 @@ import { styles } from '../screen-styles/app/notifications/index';
 import { Colors } from '@/constants/styles';
 import type { Notification } from '@/types';
 import { formatRelativeTime } from '@/utils/dateHelpers';
+import { orderNotificationText } from './requestVisibility';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
@@ -82,14 +83,14 @@ export const NotificationListItem = React.memo(function NotificationListItem({
       <View style={styles.notificationContent}>
         <View style={styles.notificationHeader}>
           <Text style={styles.notificationTitle} numberOfLines={1}>
-            {notification.title}
+            {orderNotificationText(notification.title, notification.data)}
           </Text>
           <Text style={styles.notificationTime} numberOfLines={1}>
             {formatRelativeTime(notification.createdAt)}
           </Text>
         </View>
         <Text style={styles.notificationMessage} numberOfLines={2}>
-          {notification.body}
+          {orderNotificationText(notification.body, notification.data)}
         </Text>
       </View>
       {isUnread && <View style={styles.unreadDot} />}

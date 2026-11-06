@@ -5,8 +5,8 @@ import { FormModal } from '@/components/forms/FormLayout';
 import { Colors } from '@/constants/styles';
 import type { Trip, TripPaymentMode } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Text, TouchableOpacity, View } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 interface TripBookingModalProps {
@@ -76,28 +76,35 @@ export function TripBookingModal({
   trip,
   bookingModalError,
   closeBookingModal,
-  goToPreviousBookingStep,
-  goToNextBookingStep,
   handleConfirmBooking,
 }: TripBookingModalProps) {
+  const [confirming, setConfirming] = useState(false);
+  const confirmingRef = useRef(false);
+  const busy = confirming || isBooking || isValidatingDestination;
+  const close = () => { if (!busy && !confirmingRef.current) closeBookingModal(); };
+  const confirm = async () => {
+    if (busy || confirmingRef.current) return;
+    confirmingRef.current = true; setConfirming(true);
+    try { await handleConfirmBooking(); }
+    finally { confirmingRef.current = false; setConfirming(false); }
+  };
   return (
-    <FormModal animationType="fade" transparent visible={bookingModalVisible} onRequestClose={closeBookingModal}>
-      <View style={styles.bookingModalOverlay}>
-        <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
-          {/* Step Indicator */}
-          <View style={styles.bookingStepIndicator}>
-            <View style={[styles.bookingStepDot, bookingStep >= 1 && styles.bookingStepDotActive]} />
-            <View style={[styles.bookingStepLine, bookingStep >= 2 && styles.bookingStepLineActive]} />
-            <View style={[styles.bookingStepDot, bookingStep >= 2 && styles.bookingStepDotActive]} />
-            <View style={[styles.bookingStepLine, bookingStep >= 3 && styles.bookingStepLineActive]} />
-            <View style={[styles.bookingStepDot, bookingStep >= 3 && styles.bookingStepDotActive]} />
+    <FormModal animationType="fade" transparent visible={bookingModalVisible} onRequestClose={close}>
+      <KeyboardAvoidingView style={styles.bookingModalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={[styles.bookingModalCard, { paddingBottom: Math.max(insets.bottom, 16) + 24, maxHeight: '95%', flexShrink: 1 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <Text style={[styles.bookingModalTitle, { flex: 1 }]}>Réserver ce trajet</Text>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Fermer la réservation"
+              disabled={busy} onPress={close} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="close" size={24} color={Colors.gray[700]} />
+            </TouchableOpacity>
           </View>
 
           <TripBookingSteps
             viewportHeight={viewportHeight}
             bookingStep={bookingStep}
             adjustBookingSeats={adjustBookingSeats}
-            isBooking={isBooking}
+            isBooking={busy}
             bookingSeats={bookingSeats}
             bookingProposedPrice={bookingProposedPrice}
             setBookingProposedPrice={setBookingProposedPrice}
@@ -127,50 +134,17 @@ export function TripBookingModal({
           ) : null}
 
           <View style={styles.bookingModalActions}>
-            {bookingStep === 1 ? (
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
-                onPress={closeBookingModal}
-                disabled={isBooking}
-              >
-                <Text style={styles.bookingModalButtonSecondaryText}>Annuler</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonSecondary]}
-                onPress={goToPreviousBookingStep}
-                disabled={isBooking}
-              >
-                <Ionicons name="arrow-back" size={18} color={Colors.gray[700]} style={{ marginRight: 4 }} />
-                <Text style={styles.bookingModalButtonSecondaryText}>Retour</Text>
-              </TouchableOpacity>
-            )}
-
-            {bookingStep < 3 ? (
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
-                onPress={goToNextBookingStep}
-                disabled={isBooking}
-              >
-                <Text style={styles.bookingModalButtonPrimaryText}>Suivant</Text>
-                <Ionicons name="arrow-forward" size={18} color={Colors.white} style={{ marginLeft: 4 }} />
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.bookingModalButton, styles.bookingModalButtonPrimary]}
-                onPress={handleConfirmBooking}
-                disabled={isBooking || isValidatingDestination}
-              >
-                {isBooking || isValidatingDestination ? (
-                  <ActivityIndicator color={Colors.white} />
-                ) : (
-                  <Text style={styles.bookingModalButtonPrimaryText}>{bookingProposedPrice.trim() ? 'Envoyer mon prix' : 'Confirmer'}</Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
+            <TouchableOpacity accessibilityRole="button"
+              style={[styles.bookingModalButton, styles.bookingModalButtonPrimary, busy && { opacity: 0.6 }]}
+              onPress={() => { void confirm(); }} disabled={busy} accessibilityState={{ disabled: busy, busy }}>
+              {busy ? <ActivityIndicator color={Colors.white} />
+                : <Text style={styles.bookingModalButtonPrimaryText}>
+                    {bookingProposedPrice.trim() ? 'Envoyer mon prix' : 'Confirmer la réservation'}
+                  </Text>}
+            </TouchableOpacity>
           </View>
         </View>
+      </KeyboardAvoidingView>
     </FormModal>
   );
 }

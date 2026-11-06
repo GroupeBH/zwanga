@@ -165,7 +165,7 @@ function IncomingDriverContent() {
       </TouchableOpacity>
     </View>
     <ScrollView contentContainerStyle={styles.content}>
-      <Text style={styles.title}>{done === 'accept' ? 'Ouverture du trajet…' : done === 'decline' ? 'Retour à l’accueil…' : 'Nouvelle demande de trajet'}</Text>
+      <Text style={styles.title}>{done === 'accept' ? 'Ouverture du trajet…' : done === 'decline' ? 'Retour à l’accueil…' : 'Nouvelle commande de trajet'}</Text>
       {!done && kind === 'dispatch' && authorized && <Text style={styles.countdown}>
         {remaining > 0 && offer.data?.actionable ? `${remaining} s pour répondre` : offer.isError ? 'Vérification nécessaire' : 'Cette proposition n’est plus disponible'}
       </Text>}

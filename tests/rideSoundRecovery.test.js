@@ -140,10 +140,10 @@ test('a new alert cannot bypass silent mode or DND and old binaries remain compa
   assert.deepEqual(f.io.logs, [['[RideAudio]', 'RING_SYSTEM_AUDIO_UNAVAILABLE']]);
 });
 
-test('native health snapshots are token-scoped, main-threaded and respect system audio policy', () => {
+test('native health snapshots are token-scoped, audio-worker serialized and respect system audio policy', () => {
   const source = fs.readFileSync('android/app/src/main/java/com/zwanga/notifications/ForegroundAlertPlayer.java', 'utf8');
   const method = source.slice(source.indexOf('void state('), source.indexOf('private void release()'));
-  for (const fragment of ['main.post(', '!token.equals(owner)', '!allowed()', 'player.isPlaying()', 'promise.resolve("stopped")']) {
+  for (const fragment of ['postAudio(', '!token.equals(owner)', '!allowed()', 'player.isPlaying()', 'promise.resolve("stopped")']) {
     assert.ok(method.includes(fragment), fragment);
   }
   const bridge = fs.readFileSync('android/app/src/main/java/com/zwanga/notifications/DriverAlertModule.java', 'utf8');

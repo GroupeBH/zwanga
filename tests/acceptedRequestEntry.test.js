@@ -17,7 +17,7 @@ function fixture(t) {
     path: '/', overlayBusy: false, ridePending: false, hasOngoingRide: false,
     requests: { data: [], isSuccess: true, fulfilledTimeStamp: now + 1000 },
     trips: { data: [acceptedTrip()], isSuccess: true, fulfilledTimeStamp: now + 1000 },
-    activity: { data: { userId: 'driver', hasLiveActivity: true, trips: { count: 1, revision: 'trips-v1' }, requests: { count: 0 } },
+    activity: { data: { userId: 'driver', hasLiveActivity: false, trips: { count: 1, revision: 'trips-v1' }, requests: { count: 0 } },
       isSuccess: true, startedTimeStamp: now + 1000, fulfilledTimeStamp: now + 1000 }, alerts: [],
     readTrip: async id => { reads.push(['trip', id]); return acceptedTrip(); },
     readRequest: async id => { reads.push(['request', id]); return acceptedRequest(); },
@@ -162,7 +162,7 @@ test('late accepted detail cannot redirect after account/session/background/path
     if (change === 'overlay') f.options.overlayBusy = true;
     if (change === 'ride') f.options.hasOngoingRide = true;
     if (change === 'role') f.options.driver = false;
-    if (change === 'empty') f.options.activity.data.hasLiveActivity = false;
+    if (change === 'empty') f.options.activity.data.trips.count = 0;
     f.render(); wait.resolve(acceptedRequest()); await flush(); assert.deepEqual(f.routes, [], change);
   }
 });

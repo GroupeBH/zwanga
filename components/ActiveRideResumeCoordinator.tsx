@@ -89,6 +89,16 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
     stage: 'dispatch-detail', signal, current: currentRead(),
     start: () => dispatch(driverDispatchApi.endpoints.getDispatchOffer.initiate(id, { subscribe: false, forceRefetch: true })),
   }), [dispatch, currentRead]);
+  const readOffers = useCallback(async (signal?: AbortSignal) => {
+    const args = { limit: 20 };
+    const page = await readEntryQuery({
+      stage: 'request-detail', signal, current: currentRead(),
+      reuse: () => freshEntryData(tripRequestApi.endpoints.getMyOfferPage.select(args)(reduxStore.getState()), Date.now(), since),
+      running: () => dispatch(tripRequestApi.util.getRunningQueryThunk('getMyOfferPage', args)),
+      start: () => dispatch(tripRequestApi.endpoints.getMyOfferPage.initiate(args, { subscribe: false, forceRefetch: true })),
+    });
+    return page.data;
+  }, [dispatch, currentRead, reduxStore, since]);
   const readTrip = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
     stage: 'trip-detail', signal, current: currentRead(),
     reuse: () => freshEntryData(tripApi.endpoints.getTripById.select(id)(reduxStore.getState()), Date.now(), since),
@@ -117,6 +127,7 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
   const presentation = useEntryPresentation({ userId: authenticated ? userId : undefined, active, path, since,
     ready: entryNavigationReady && !isRideResumeEntryTransition(path), replace: router.replace,
     fastHome: Boolean(homeRoleReady && freshActivity && freshActivity.userId === userId && !freshActivity.hasLiveActivity &&
+      freshActivity.requests?.count === 0 && freshActivity.trips?.count === 0 && freshActivity.bookings?.count === 0 &&
       !alerts.length && !dispatchStatus.data?.pendingOfferId),
   });
   const resume = useActiveRideResume({ userId: authenticated ? userId : undefined, active, online, path, since,
@@ -133,7 +144,7 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
     driver: homeRoleReady && isDriverAccount(profile.data), profileReady: homeRoleReady,
     pendingDispatchId: dispatchStatus.isSuccess && !dispatchStatus.isFetching && !dispatchStatus.isError && dispatchStatus.data?.enabled
       ? dispatchStatus.data.pendingOfferId : null,
-    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readBooking, readDispatch,
+    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readBooking, readDispatch, readOffers,
     verifyPriority: resume.verifyPriority,
     prepareBookingEntry: snapshot => { if (userId) dispatch(primePendingBookingTrip(snapshot, userId)); },
     replace: presentation.replaceRequest, replaceBooking: presentation.replaceBooking, refresh: refreshActivity });
@@ -149,7 +160,7 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
   const proposal = presentation.proposal;
   const actionLabel = proposal ? typeof proposal === 'string' && /\/(trip|booking)\/navigate\//.test(proposal)
     ? 'Reprendre mon trajet' : typeof proposal === 'object' && proposal.pathname === '/trip/manage/[id]'
-      ? 'Voir la réservation' : 'Voir la demande' : undefined;
+      ? 'Voir la réservation' : 'Voir la commande' : undefined;
   useEffect(() => {
     if (authenticated && userId) setRideSpeechEntryGate({ userId, path,
       blocked: !active || !entryNavigationReady || isRideResumeEntryTransition(path) || entryPending || overlayBusy });

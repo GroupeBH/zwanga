@@ -252,7 +252,7 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
 
         {!isLoadingResults && !currentError && searchMode === 'trips' && filteredTrips.length > 0 && (
           <TouchableOpacity style={styles.orderLink} onPress={handleCreateTripRequest} activeOpacity={0.82}
-            accessibilityRole="button" accessibilityHint="Demander un véhicule si aucun trajet publié ne convient.">
+            accessibilityRole="button" accessibilityHint="Commander un trajet si aucun trajet publié ne convient.">
             <Ionicons name="paper-plane-outline" size={18} color={Colors.primary} />
             <Text style={styles.orderLinkText}>Commander un véhicule</Text>
             <Ionicons name="chevron-forward" size={16} color={Colors.primary} />

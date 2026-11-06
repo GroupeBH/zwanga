@@ -18,10 +18,10 @@ export function DriverFullScreenApproval({ visible, busy, error, notificationsAl
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
         <ScrollView bounces={false} contentContainerStyle={styles.content}>
           <Ionicons name="phone-portrait-outline" size={36} color={ACTION_COLORS.orange} />
-          <Text accessibilityRole="header" style={styles.title}>{notificationsAllowed ? 'Demandes en plein écran' : 'Activez les notifications'}</Text>
+          <Text accessibilityRole="header" style={styles.title}>{notificationsAllowed ? 'Commandes en plein écran' : 'Activez les notifications'}</Text>
           <Text style={styles.copy}>{notificationsAllowed
-            ? 'Voyez les nouvelles demandes même téléphone verrouillé.'
-            : 'Recevez les alertes de nouvelles demandes de trajet.'}</Text>
+            ? 'Voyez les nouvelles commandes même téléphone verrouillé.'
+            : 'Recevez les alertes de nouvelles commandes de trajet.'}</Text>
           <Text style={styles.guide}>{!notificationsAllowed ? 'Activez « Autoriser les notifications ».'
             : needsSettings ? 'Dans l’écran Android qui va s’ouvrir, activez « Autoriser les notifications en plein écran ». Revenez ensuite avec le bouton Retour.'
             : !channelReady ? 'Autorisez les alertes de trajet et leur affichage à l’écran dans les réglages Android.'

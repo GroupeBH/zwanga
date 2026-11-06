@@ -22,12 +22,12 @@ function elapsedLabel(ms: number): string {
 export function homeDriverStatusView({ online, data, isError, now = Date.now() }: {
   online: boolean; data?: DriverDispatchStatus; isError?: boolean; now?: number;
 }): HomeDriverStatusView | null {
-  if (!online) return { tone: 'off', title: 'Hors ligne', detail: 'Les demandes reprendront à la reconnexion' };
+  if (!online) return { tone: 'off', title: 'Hors ligne', detail: 'Les commandes reprendront à la reconnexion' };
   if (isError) return { tone: 'off', title: 'Statut à vérifier', detail: 'Touchez pour vérifier' };
   if (!data) return null;
   if (!data.enabled) return null;
   if (data.presence?.discoveryEnabled === false)
-    return { tone: 'off', title: 'Demandes désactivées', detail: 'Touchez pour les activer' };
+    return { tone: 'off', title: 'Commandes désactivées', detail: 'Touchez pour les activer' };
   if (!data.available) return { tone: 'off', title: 'Disponibilité à vérifier', detail: 'Touchez pour voir pourquoi' };
   // Keep the last known position; alert eligibility expires separately after 48 hours.
   if (data.presence?.discoveryEnabled !== true && !(Date.parse(data.presence?.expiresAt ?? '') > now))
@@ -36,10 +36,10 @@ export function homeDriverStatusView({ online, data, isError, now = Date.now() }
   if (!Number.isFinite(updatedAt)) return { tone: 'warn', title: 'Position à vérifier', detail: 'Touchez pour envoyer votre position', action: 'refresh' };
   const age = Math.max(0, now - updatedAt);
   if (age >= DRIVER_ALERT_LOCATION_MAX_AGE_MS) {
-    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour recevoir de nouvelles demandes', action: 'refresh' };
+    return { tone: 'warn', title: 'Position à actualiser', detail: 'Touchez pour recevoir de nouvelles commandes', action: 'refresh' };
   }
   if (age > RECENT_DRIVER_POSITION_MS) {
     return { tone: 'warn', title: 'Position ancienne', detail: `${elapsedLabel(age)} · Touchez pour actualiser`, action: 'refresh' };
   }
-  return { tone: 'ok', title: 'Demandes possibles', detail: `Position à jour ${elapsedLabel(age)}` };
+  return { tone: 'ok', title: 'Commandes possibles', detail: `Position à jour ${elapsedLabel(age)}` };
 }

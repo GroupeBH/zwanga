@@ -65,7 +65,7 @@ final class IncomingRideView extends LinearLayout {
 
     ScrollView scroll = new ScrollView(c); scroll.setFillViewport(true); scroll.setVerticalScrollBarEnabled(false);
     LinearLayout content = column(); content.setPadding(0, dp(24), 0, dp(20));
-    TextView eyebrow = text(booking ? "NOUVELLE RÉSERVATION" : "NOUVELLE DEMANDE", 11, 0xffb33700, true);
+    TextView eyebrow = text(booking ? "NOUVELLE RÉSERVATION" : "NOUVELLE COMMANDE", 11, 0xffb33700, true);
     eyebrow.setLetterSpacing(0.08f); content.addView(eyebrow);
     TextView heading = text(booking ? "Un passager a\nréservé" : "Un passager vous\nattend", 28, INK, true);
     heading.setPadding(0, dp(8), 0, dp(18)); heading.setLineSpacing(0, 1.06f);

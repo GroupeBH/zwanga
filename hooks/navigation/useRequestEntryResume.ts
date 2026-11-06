@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Href } from 'expo-router';
-import type { Booking, Trip, TripRequest } from '@/types';
+import type { Booking, DriverOfferWithTripRequest, Trip, TripRequest } from '@/types';
+import { isResumableOfferRequest, latestDriverOffer } from '@/features/navigation/driverOfferEntry';
 import type { AccountActivity } from '@/store/api/accountActivityApi';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRideResumeEntryTransition } from '@/features/navigation/activeRideResume';
@@ -26,6 +27,7 @@ interface Options {
   alerts: RideAlert[];
   pendingDispatchId?: string | null;
   readRequest: (id: string, signal?: AbortSignal) => Promise<TripRequest>;
+  readOffers?: (signal?: AbortSignal) => Promise<DriverOfferWithTripRequest[]>;
   readTrip: (id: string, signal?: AbortSignal) => Promise<Trip>;
   readBooking: (id: string, signal?: AbortSignal) => Promise<Booking>;
   readDispatch: (id: string, signal?: AbortSignal) => Promise<{ id: string; driverId: string; actionable: boolean; expiresAt: string; serverNow: string }>;
@@ -43,7 +45,7 @@ function entrySummary(options: Options, since: number) {
 
 function driverEntryTrips(options: Options, entry: { since: number }): readonly Trip[] | undefined {
   const summary = entrySummary(options, entry.since);
-  if (!options.driver || summary?.hasLiveActivity === false || summary?.trips?.count === 0) return [];
+  if (!options.driver || summary?.trips?.count === 0) return [];
   if (options.activity.isFetching) return undefined;
   return isEntryActivityListReady('trips', options.trips, { userId: options.userId!, since: entry.since, summary,
     summaryTime: options.activity.fulfilledTimeStamp, reconciled: options.reconciled }) ? options.trips.data ?? [] : undefined;
@@ -109,19 +111,21 @@ export function useRequestEntryResume(options: Options) {
     if (!booking && !alert && !dispatchId && !entry.checked && driverTrips === undefined) return;
     const accepted = !booking && !alert && !dispatchId && options.driver && !entry.checked
       ? selectAcceptedRequestTrip(driverTrips ?? [], userId, entry.rejected) : undefined;
-    const requestsReady = summary?.hasLiveActivity === false || isEntryActivityListReady('requests', options.requests, {
+    const requestsReady = isEntryActivityListReady('requests', options.requests, {
       userId, since: entry.since, summary, summaryTime: options.activity.fulfilledTimeStamp, reconciled: options.reconciled,
     });
     if (!booking && !accepted && !alert && !dispatchId && !requestsReady) return;
-    const request = !booking && !accepted && !alert && !dispatchId && summary?.requests?.count !== 0 && summary?.hasLiveActivity !== false
+    const request = !booking && !accepted && !alert && !dispatchId && summary?.requests?.count !== 0
       ? selectWaitingRequest(options.requests.data ?? [], userId, entry.rejected) : undefined;
-    if (!booking && !accepted && !alert && !dispatchId && !request) {
+    const offerFallback = !booking && !accepted && !alert && !dispatchId && !request &&
+      options.driver && !entry.checked && options.readOffers && !entry.rejected.has('driver-offers');
+    if (!booking && !accepted && !alert && !dispatchId && !request && !offerFallback) {
       // A native alert can finish restoring after the account summary. Keep listening
       // only on this entry's original screen, never after a deliberate navigation.
       if (!entry.checked) { entry.checked = true; touch(); }
       return;
     }
-    const key = booking?.key ?? (accepted ? acceptedRequestEntryKey(accepted) : alert?.key ?? (dispatchId ? `dispatch:${dispatchId}` : request!.id));
+    const key = booking?.key ?? (accepted ? acceptedRequestEntryKey(accepted) : alert?.key ?? (dispatchId ? `dispatch:${dispatchId}` : offerFallback ? 'driver-offers' : request!.id));
     if (entry.attempt === key) return;
     entry.attempt = key; entry.pending = true; entry.failed = false; touch();
     const generation = ++entry.generation;
@@ -135,7 +139,7 @@ export function useRequestEntryResume(options: Options) {
       return entry.mounted && next.entry === entry && generation === entry.generation && !controller.signal.aborted &&
         !entry.done && version === getTokenSessionVersion() &&
         next.options.userId === userId && next.options.active && next.options.online && next.options.ready &&
-        next.options.profileReady && (!(booking || alert || dispatchId || accepted) || next.options.driver) &&
+        next.options.profileReady && (!(booking || alert || dispatchId || accepted || offerFallback) || next.options.driver) &&
         next.options.path === entry.path && !next.options.ridePending && !next.options.hasOngoingRide && !next.options.overlayBusy;
     };
     const releaseAttempt = () => { if (generation === entry.generation) entry.attempt = ''; };
@@ -178,6 +182,14 @@ export function useRequestEntryResume(options: Options) {
         const offer = await options.readDispatch(dispatchId, controller.signal);
         if (offer.id === dispatchId && offer.driverId === userId && offer.actionable && Date.parse(offer.expiresAt) > Date.parse(offer.serverNow))
           destination = { pathname: '/incoming-driver', params: { id: dispatchId, kind: 'dispatch', driverId: userId } };
+      } else if (offerFallback) {
+        const offers = await options.readOffers!(controller.signal);
+        if (!current()) { releaseAttempt(); return; }
+        const offer = latestDriverOffer(offers, userId);
+        if (offer) {
+          const detail = await options.readRequest(offer.tripRequestId, controller.signal);
+          if (isResumableOfferRequest(detail, offer, userId)) destination = `/request-details/${detail.id}`;
+        }
       } else {
         const detail = await options.readRequest(alert?.id ?? request!.id, controller.signal);
         if (detail.id === (alert?.id ?? request!.id) && (alert
@@ -213,7 +225,9 @@ export function useRequestEntryResume(options: Options) {
           entry.rejected.add(key); return;
         }
       }
-      if (!bookingAlert && !alert && !dispatchId && entrySummary(latest.current.options, entry.since)?.hasLiveActivity === false) {
+      const latestSummary = entrySummary(latest.current.options, entry.since);
+      if (!bookingAlert && !alert && !dispatchId && !offerFallback &&
+        (booking || accepted ? latestSummary?.trips?.count === 0 : latestSummary?.requests?.count === 0)) {
         entry.rejected.add(key); return;
       }
       if (destination) {

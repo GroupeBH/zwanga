@@ -64,6 +64,17 @@ test('pickup driver change uses the navigation screen safe map-release callback'
   assert.deepEqual(app.routes, [], 'no direct stack replacement while the navigation map is mounted');
 });
 
+test('passenger cannot reuse an open confirmation after boarding or a request change', async t => {
+  for (const patch of [{ request: { ...request, id: 'other' } },
+    { request, booking: { tripId: 'trip', passengerId: 'owner', status: 'accepted', pickedUp: true } }]) {
+    const app = fixture('ChangeRequestDriverButton'); t.after(() => app.hooks.unmount());
+    nodes(app.hooks.render(() => app.component({ request }))).find(n => n.type === 'Pressable').props.onPress();
+    app.hooks.render(() => app.component(patch));
+    await app.dialog().actions[1].onPress();
+    assert.equal(app.calls.length, 0);
+  }
+});
+
 test('a response from a previous account cannot update cache or redirect', async t => {
   const app = fixture('ChangeRequestDriverButton'); t.after(() => app.hooks.unmount());
   nodes(app.hooks.render(() => app.component({ request }))).find(n => n.type === 'Pressable').props.onPress();

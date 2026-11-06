@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import { RideModal } from '@/features/navigation/RideModal';
 import { useProposeCounterOfferMutation } from '@/store/api/counterOfferApi';
 import { getTokenSessionVersion } from '@/services/tokenSession';
@@ -16,7 +16,7 @@ export function RequestCounterOffer({ model, disabled }: { model: ReturnType<typ
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const amount = counterOfferPrice(price), request = model.tripRequest;
   const pending = model.myOffer?.status === 'pending';
-  if (!request || !model.isIdentityVerified || (!model.canAcceptDirectly && !pending)) return null;
+  if (!request || pending || !model.isIdentityVerified || !model.canAcceptDirectly) return null;
   const submit = async () => {
     if (!request || !amount || disabled || busy.current || !model.directAcceptVehicle || !model.isScreenActive) return;
     busy.current = true; setError('');
@@ -29,19 +29,16 @@ export function RequestCounterOffer({ model, disabled }: { model: ReturnType<typ
       setVisible(false); void model.refetch();
     } catch (cause) {
       if (mounted.current && version === getTokenSessionVersion()) {
-        setError(getApiErrorMessage(cause, 'Envoi non confirmé. Actualisez la demande avant de réessayer.'));
+        setError(getApiErrorMessage(cause, 'Envoi non confirmé. Actualisez la commande avant de réessayer.'));
         void model.refetch();
       }
     } finally { busy.current = false; }
   };
   return <>
-    {pending ? <View style={s.notice}>
-      <Text style={s.hint}>Prix proposé : {formatCdfPrice(model.myOffer!.pricePerSeat)} par place. En attente du passager.</Text>
-      <Pressable accessibilityRole="button" disabled={disabled} style={s.link} onPress={model.handleDeclineTripRequest}><Text style={s.linkText}>Retirer ma proposition</Text></Pressable>
-    </View> : <Pressable accessibilityRole="button" disabled={disabled || !model.directAcceptVehicle} style={s.link}
+    <Pressable accessibilityRole="button" disabled={disabled || !model.directAcceptVehicle} style={s.link}
       onPress={() => { setPrice(String(request.maxPricePerSeat ?? '')); setError(''); setVisible(true); }}>
       <Text style={[s.linkText, (disabled || !model.directAcceptVehicle) && s.disabled]}>Proposer un autre prix</Text>
-    </Pressable>}
+    </Pressable>
     <RideModal inApp transparent visible={visible && model.isScreenActive && !pending} animationType="fade"
       onRequestClose={() => { if (!busy.current) setVisible(false); }}>
       <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -60,7 +57,7 @@ export function RequestCounterOffer({ model, disabled }: { model: ReturnType<typ
     </RideModal>
   </>;
 }
-const s = StyleSheet.create({ notice: { gap: 4 }, overlay: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: 20 },
+const s = StyleSheet.create({ overlay: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: 20 },
   scroll: { flexGrow: 0, borderRadius: 24 }, panel: { backgroundColor: '#FFFFFF', padding: 20, gap: 12 }, title: { color: '#202734', fontSize: 20, fontWeight: '700' },
   hint: { color: '#536071', fontSize: 13, lineHeight: 19 }, input: { borderWidth: 1, borderColor: '#AEB5BF', borderRadius: 12,
     padding: 14, fontSize: 24, color: '#202734' }, link: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },

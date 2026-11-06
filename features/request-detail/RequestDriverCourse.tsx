@@ -9,9 +9,10 @@ import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
 import { NavigationContactModal } from '@/features/navigation/NavigationContactModal';
 import { getAcceptedRequestContact } from './acceptedRequestContact';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
-import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailModel';
+import { formatCdfPrice } from './requestDetailModel';
 import { formatRequestDay, formatRequestTime } from './RequestPassengerTicket';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
+import { WithdrawRequestDriverButton } from './WithdrawRequestDriverButton';
 
 type Model = ReturnType<typeof useRequestDetailController>;
 export function RequestDriverCourse({ model, presentation }: { model: Model; presentation: ReturnType<typeof buildRequestDetailPresentation> }) {
@@ -52,7 +53,8 @@ export function RequestDriverCourse({ model, presentation }: { model: Model; pre
 }
 
 export function RequestCourseActions({ model }: { model: Model }) {
-  const busy = model.isStartingTrip || model.isStartingTripFromRequest;
+  const [withdrawing, setWithdrawing] = useState(false);
+  const busy = model.isStartingTrip || model.isStartingTripFromRequest || withdrawing;
   const canGo = model.assignedTrip && ['upcoming', 'ongoing'].includes(model.assignedTrip.status);
   return <View style={[s.footer, s.footerWhite]}>
     {(canGo || model.canStartAssignedTrip) && <Pressable accessibilityRole="button" accessibilityState={{ busy, disabled: busy }} disabled={busy}
@@ -61,8 +63,11 @@ export function RequestCourseActions({ model }: { model: Model }) {
       <Text style={s.primaryText}>{model.assignedTrip?.status === 'ongoing' ? 'Reprendre la course' : 'Aller chercher le passager'}</Text>
     </Pressable>}
     {model.tripRequest?.tripId && <Pressable accessibilityRole="button" disabled={busy} style={s.secondary} onPress={() => model.handleViewTrip(model.tripRequest!.tripId!)}>
-      <Text style={s.secondaryText}>{canGo ? 'Gérer ou annuler la course' : 'Voir le trajet'}</Text>
+      <Text style={s.secondaryText}>{canGo ? 'Voir les détails du trajet' : 'Voir le trajet'}</Text>
     </Pressable>}
+    <WithdrawRequestDriverButton request={model.tripRequest} trip={model.assignedTrip}
+      disabled={!model.isScreenActive || model.isStartingTrip || model.isStartingTripFromRequest}
+      onWithdrawn={model.goHome} onPendingChange={setWithdrawing} />
   </View>;
 }
 const local = StyleSheet.create({

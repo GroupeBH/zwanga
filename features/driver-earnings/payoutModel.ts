@@ -4,6 +4,24 @@ import { getErrorStatus, isAmbiguousTransportError } from '@/utils/errorHelpers'
 export const PAYOUT_PENDING_MESSAGE = 'Zwanga vérifie le versement de vos gains vers votre Mobile Money. Aucun paiement ne vous est demandé.';
 export const PAYOUT_REVIEW_MESSAGE = 'La confirmation n’est pas encore disponible. Le montant reste réservé pour éviter un double versement. Contactez l’assistance avec la référence ci-dessous.';
 
+/** Accept French decimal input without truncating invalid text or rounding extra decimals. */
+export function parsePayoutAmount(input: string): number | null {
+  const value = input.trim().replace(/[\s\u00a0\u202f]/g, '');
+  if (!/^\d+(?:[.,]\d{1,2})?$/.test(value)) return null;
+  const amount = Number(value.replace(',', '.'));
+  return amount > 0 && Number.isSafeInteger(Math.round(amount * 100)) ? amount : null;
+}
+
+export function payoutAmountError(input: string, available: number, minimum: number, currency = 'CDF'): string | null {
+  const amount = parsePayoutAmount(input);
+  if (amount === null) return 'Entrez un montant supérieur à zéro, avec au maximum deux décimales.';
+  if (!Number.isFinite(available) || !Number.isFinite(minimum) || minimum <= 0)
+    return 'Actualisez vos gains pour vérifier le montant disponible.';
+  if (amount < minimum) return `Le retrait minimum est de ${formatAmount(minimum, currency)}.`;
+  if (amount > available) return `Vous pouvez retirer jusqu’à ${formatAmount(available, currency)}.`;
+  return null;
+}
+
 export function normalizePayoutPhone(value?: string | null): string | null {
   let phone = (value ?? '').trim().replace(/[\s()-]/g, '');
   if (phone.startsWith('+')) phone = phone.slice(1);
@@ -35,7 +53,7 @@ function describeRefusal(value?: string | null): string {
 
 export function getPayoutMessage(payout: DriverPayout): string {
   if (payout.recoveryBlocked) return 'Un versement a été confirmé après libération du montant. L’assistance doit vérifier votre solde avant un nouveau retrait.';
-  if (isPayoutPending(payout) && payout.reviewStatus === 'requested') return 'Votre demande de vérification est enregistrée. Le montant reste réservé jusqu’à confirmation du résultat. Aucun nouveau versement n’a été lancé.';
+  if (isPayoutPending(payout) && payout.reviewStatus === 'requested') return 'La vérification de votre retrait est enregistrée. Le montant reste réservé jusqu’à confirmation du résultat. Aucun nouveau versement n’a été lancé.';
   if (isPayoutPending(payout) && payout.isStale) return 'Ce retrait prend plus de temps que prévu. Demandez une vérification : après confirmation de non-paiement, vos gains seront à nouveau disponibles.';
   if (payout.status === 'succeeded') return 'Zwanga a versé vos gains sur votre compte Mobile Money.';
   if (payout.status === 'cancelled') return 'Versement annulé. Le montant est à nouveau disponible dans vos revenus.';
@@ -44,10 +62,10 @@ export function getPayoutMessage(payout: DriverPayout): string {
 }
 
 export function getPayoutErrorMessage(error: unknown): string {
-  if (isPayoutOutcomeUncertain(error)) return 'La réponse n’a pas pu être confirmée. Vérifiez cette même demande avant de lancer un autre versement.';
+  if (isPayoutOutcomeUncertain(error)) return 'La réponse n’a pas pu être confirmée. Vérifiez ce même retrait avant de lancer un autre versement.';
   const status = getErrorStatus(error);
-  if (status === 401) return 'Reconnectez-vous pour vérifier votre demande de versement.';
-  if (status === 429) return 'Trop de tentatives. Patientez un instant avant de vérifier votre demande.';
+  if (status === 401) return 'Reconnectez-vous pour vérifier votre retrait.';
+  if (status === 429) return 'Trop de tentatives. Patientez un instant avant de vérifier votre retrait.';
   const data = (error as { data?: { message?: unknown } })?.data;
   return describeRefusal(typeof data?.message === 'string' ? data.message : null);
 }

@@ -78,7 +78,7 @@ test('double-tap review requests only one investigation and never frees funds lo
   assert.equal(f.reviews.length, 1);
   assert.equal(f.calls.length, 0);
   assert.equal(f.render().canSubmit, false);
-  assert.match(f.dialogs.at(-1).message, /demande de vérification est enregistrée/);
+  assert.match(f.dialogs.at(-1).message, /vérification de votre retrait est enregistrée/);
 });
 
 test('late success incidents and old pending payouts have explicit messages', () => {
@@ -120,7 +120,7 @@ test('failed and uncertain responses never appear as successful transfers or dem
   assert.match(getPayoutMessage({ status: 'failed', paymentMessage: 'SQLSTATE failed internal server error' }), /n’a pas abouti/);
   assert.match(getPayoutMessage({ status: 'pending' }), /reste réservé/);
   assert.match(getPayoutMessage({ status: 'initiated', orderNumber: 'ORDER' }), /Aucun paiement/);
-  assert.match(getPayoutErrorMessage({ status: 'TIMEOUT_ERROR' }), /même demande/);
+  assert.match(getPayoutErrorMessage({ status: 'TIMEOUT_ERROR' }), /même retrait/);
   assert.match(getPayoutErrorMessage({ status: 400, data: { message: 'FLEXPAY_TOKEN is not configured' } }), /service de versement Zwanga/);
 });
 
@@ -129,7 +129,7 @@ test('persists before POST, uses normalized recipient, announces merchant-to-dri
   await confirm(f, await ready(f));
   assert.deepEqual(f.events, ['persist', 'post']);
   assert.equal(f.calls[0].phone, '+243891234567');
-  assert.match(f.dialogs[0].message, /depuis son compte marchand/);
+  assert.match(f.dialogs[0].message, /Vous recevrez ce montant sur le Mobile Money/);
   assert.equal(f.dialogs.at(-1).title, 'Versement en cours');
   assert.equal(f.storage.size, 0);
 });
@@ -273,7 +273,7 @@ test('a late response after unmount does not open a dialog on another screen', a
 test('recipient form starts with the profile number without launching or preparing any transfer', async () => {
   const f = fixture();
   (await ready(f)).openPayoutForm();
-  assert.deepEqual(f.render().payoutForm, { userId: 'driver-A', amount: 9500, phone: '+243891234567' });
+  assert.deepEqual(f.render().payoutForm, { userId: 'driver-A', amount: '9500', phone: '+243891234567' });
   assert.equal(f.storage.size, 0);
   assert.equal(f.calls.length, 0);
   assert.equal(f.dialogs.length, 0);
@@ -427,4 +427,54 @@ test('a timeout received in the background keeps the chosen recipient for verifi
   assert.equal(f.render().payoutForm, null);
   assert.match(f.dialogs.at(-1).message, /\+243991234567/);
   assert.equal(f.calls.length, 1);
+});
+
+test('a partial withdrawal keeps the exact chosen amount through confirmation, storage and POST', async () => {
+  const f = fixture(); (await ready(f)).openPayoutForm();
+  f.render().setPayoutAmount('2 500,50');
+  f.render().confirmPayoutForm();
+  assert.match(f.dialogs.at(-1).title, /2\s500,5 CDF/);
+  assert.equal(f.calls.length, 0);
+  await f.dialogs.at(-1).actions.at(-1).onPress();
+  assert.equal(f.calls[0].amount, 2500.5);
+  assert.deepEqual(f.events, ['persist', 'post']);
+});
+
+test('invalid, zero, excessive precision, below minimum and over-balance amounts keep the form without a POST', async () => {
+  for (const amount of ['', '0', '-50', '1e3', '500FC', '12,345', '999', '9501']) {
+    const f = fixture(); f.props.summary = { ...summary, minimumPayoutAmount: 1000 };
+    (await ready(f)).openPayoutForm(); f.render().setPayoutAmount(amount); f.render().confirmPayoutForm();
+    assert.equal(f.calls.length, 0, amount); assert.equal(f.storage.size, 0);
+    assert.equal(f.render().payoutForm.amount, amount);
+    assert.equal(f.dialogs.at(-1).title, 'Montant indisponible'); f.harness.unmount();
+  }
+});
+
+test('background refresh never silently changes a partial draft or the all-balance snapshot', async () => {
+  const f = fixture(); (await ready(f)).openPayoutForm(); f.render().setPayoutAmount('3000');
+  f.props.summary = { ...summary, availableBalance: 12000 }; assert.equal(f.render().payoutForm.amount, '3000');
+  f.render().setPayoutAmount(String(f.props.summary.availableBalance));
+  f.props.summary = { ...summary, availableBalance: 15000 }; assert.equal(f.render().payoutForm.amount, '12000');
+  f.render().confirmPayoutForm(); await f.dialogs.at(-1).actions.at(-1).onPress();
+  assert.equal(f.calls[0].amount, 12000);
+});
+
+test('decreased balance or revoked identity while final confirmation is open prevents transfer', async () => {
+  for (const change of [{ availableBalance: 2000 }, { kycApproved: false }]) {
+    const f = fixture(); (await ready(f)).openPayoutForm(); f.render().setPayoutAmount('3000');
+    f.render().confirmPayoutForm(); const confirmAction = f.dialogs.at(-1).actions.at(-1).onPress;
+    f.props.summary = { ...summary, ...change }; f.render(); await confirmAction();
+    assert.equal(f.calls.length, 0); assert.equal(f.storage.size, 0);
+    assert.equal(f.dialogs.at(-1).title, 'Versement non lancé'); f.harness.unmount();
+  }
+});
+
+test('uncertain partial payout retains its exact amount and key, never turning into the full balance', async () => {
+  const f = fixture(); f.setResponder(async () => { throw { status: 'TIMEOUT_ERROR' }; });
+  (await ready(f)).openPayoutForm(); f.render().setPayoutAmount('3000');
+  f.render().confirmPayoutForm(); await f.dialogs.at(-1).actions.at(-1).onPress();
+  const original = f.calls[0]; assert.equal(original.amount, 3000);
+  f.props.summary = { ...summary, availableBalance: 6500 }; f.render().openPayoutForm();
+  f.render().setPayoutAmount('6500'); assert.equal(f.render().payoutForm, null);
+  await f.dialogs.at(-1).actions.at(-1).onPress(); assert.deepEqual(f.calls[1], original);
 });

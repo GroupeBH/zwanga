@@ -2,9 +2,10 @@ import { StyleSheet } from 'react-native';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
 
 export const styles = StyleSheet.create({
-  amountBlock: { backgroundColor: Colors.gray[50], borderRadius: BorderRadius.lg, padding: Spacing.lg, marginBottom: Spacing.xl },
-  amountLabel: { color: Colors.gray[600], fontSize: FontSizes.sm },
-  amount: { color: Colors.gray[900], fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, marginTop: Spacing.xs },
+  amountBlock: { marginBottom: Spacing.xl },
+  amountHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: Spacing.sm },
+  amountInput: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, minHeight: 60 },
+  remaining: { color: Colors.gray[700], fontSize: FontSizes.sm },
   label: { color: Colors.gray[900], fontSize: FontSizes.base, fontWeight: FontWeights.semibold },
   hint: { color: Colors.gray[600], fontSize: FontSizes.sm, lineHeight: 21, marginVertical: Spacing.sm },
   input: {

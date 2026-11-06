@@ -1,7 +1,7 @@
 {
   "name": "zwanga-app",
   "main": "index.ts",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "engines": {
     "node": ">=24.22.1 <25"
   },
@@ -134,6 +134,7 @@
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "jsqr": "1.4.0",
+    "react-refresh": "0.14.2",
     "typescript": "~5.9.2"
   },
   "overrides": {
@@ -141,7 +142,9 @@
     "@grpc/grpc-js": "1.14.6",
     "postcss": "8.5.32",
     "image-size": "2.0.4",
-    "decode-uri-component": "0.5.1"
+    "decode-uri-component": "0.5.1",
+    "glob@>=9 <14.0.2": "14.0.2",
+    "minimatch@>=7 <11.0.1": "11.0.1"
   },
   "expo": {
     "autolinking": {

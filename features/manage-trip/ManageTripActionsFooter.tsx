@@ -3,7 +3,8 @@ import { styles } from '../screen-styles/app/trip/manage/detail/index';
 import { Colors } from '@/constants/styles';
 import { isPendingTripInterruption } from '@/utils/tripInterruption';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useState } from 'react';
+import { TripDriverWithdrawal } from '@/features/request-detail/WithdrawRequestDriverButton';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 
 interface ManageTripActionsFooterProps {
@@ -17,6 +18,7 @@ export function ManageTripActionsFooter({
   actions,
   canCompleteTrip,
 }: ManageTripActionsFooterProps) {
+  const [withdrawing, setWithdrawing] = useState(false);
   const trip = state.trip;
   if (!trip) return null;
   const interruptionPending = isPendingTripInterruption(trip.interruptionRequest?.status);
@@ -34,7 +36,7 @@ export function ManageTripActionsFooter({
             <TouchableOpacity
               style={[styles.primaryButton, styles.startTripButton, styles.footerPrimaryAction]}
               onPress={actions.handleStartTrip}
-              disabled={state.isStartingTrip}
+              disabled={state.isStartingTrip || withdrawing}
               activeOpacity={0.8}
             >
               {state.isStartingTrip ? (
@@ -133,6 +135,9 @@ export function ManageTripActionsFooter({
           <Text style={styles.primaryButtonText}>Évaluer les passagers</Text>
         </TouchableOpacity>
       )}
+      {trip.tripRequestId && <TripDriverWithdrawal trip={trip} bookings={state.bookings}
+        active={state.isScreenActive && !state.isStartingTrip && !state.isUpdatingTripStatus && !state.isPausingTrip && !state.isCancellingBooking}
+        onWithdrawn={state.goHome} onPendingChange={setWithdrawing} />}
     </View>
   );
 }

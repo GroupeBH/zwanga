@@ -22,6 +22,7 @@ import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { reportEntryFailure } from '@/services/entryRecovery';
 import { useRideSocketConnected } from '@/hooks/notifications/useRideSocketConnected';
 import { requestDetailPollInterval } from '@/features/request-detail/requestPollingPolicy';
+import { usePassengerOfferNotice } from './usePassengerOfferNotice';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -62,6 +63,8 @@ export function useRequestDetailData() {
   const cachedRequest = useDisplayReadData(id ?? '', liveRequest);
   const tripRequest = currentUser?.id && (isDriverAccount || cachedRequest?.passengerId === currentUser.id)
     ? cachedRequest : undefined;
+  usePassengerOfferNotice(liveRequest, currentUser?.id,
+    readsEnabled && !isFetchingRequest && !isError && !error, startedTimeStamp);
   const refetch = useDisplayRefetch(readsEnabled && Boolean(id) && !isCreateRouteAlias, id ?? '', rawRefetch);
   const { currentData: liveAssignedTrip, error: assignedTripError } = useGetTripByIdQuery(tripRequest?.tripId || '', {
     ...displayReadOptions(readsEnabled && Boolean(tripRequest?.tripId), tripRequest?.status === 'driver_selected' ? 30_000 : 0),
@@ -150,7 +153,8 @@ export function useRequestDetailData() {
     currentUser,
     assignedTrip,
     isDriverAccount,
-    passengerBooking: bookings?.find(booking => booking.tripId === ownerTripId && booking.passengerId === currentUser?.id && booking.status === 'accepted'),
+    passengerBooking: bookings?.find(booking => booking.tripId === ownerTripId && booking.passengerId === currentUser?.id && booking.status === 'accepted')
+      ?? bookings?.find(booking => booking.tripId === ownerTripId && booking.passengerId === currentUser?.id),
     isIdentityVerified,
     isAcceptingTripRequest,
     id,

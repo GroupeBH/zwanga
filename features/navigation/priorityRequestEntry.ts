@@ -9,7 +9,9 @@ export function canResumeRequestFromPath(path: string) {
 }
 
 export function isOwnWaitingRequest(request: TripRequest, userId: string) {
-  return request.passengerId === userId && isRequestUnassigned(request) && isTripRequestWithinAcceptanceWindow(request);
+  // Accepting a price selects the driver; the trip is only created on start.
+  const awaitingStart = request.status === 'driver_selected' && !!request.selectedDriverId && !request.tripId;
+  return request.passengerId === userId && (isRequestUnassigned(request) || awaitingStart) && isTripRequestWithinAcceptanceWindow(request);
 }
 
 export function selectWaitingRequest(requests: readonly TripRequest[], userId: string, excluded: Set<string>) {

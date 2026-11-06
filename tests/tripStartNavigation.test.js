@@ -312,3 +312,32 @@ test('refusal waits for confirmation; a network failure stays retryable without 
   assert.deepEqual(app.routes, ['/(tabs)']);
   assert.equal(app.calls.filter(c => c[0] === 'report-refusal').length, 2);
 });
+
+test('pending price withdrawal shows progress, serializes taps and acknowledges its dispatch invitation too', async t => {
+  const app = fixture(t), waiting = deferred(); app.props.userId = 'driver';
+  app.props.tripRequest = { ...request, passengerId: 'passenger', status: 'offers_received',
+    offers: [{ id: 'offer', driverId: 'driver', status: 'pending' }] };
+  app.state.refuse = () => waiting.promise;
+  const work = app.render().handleDeclineTripRequest();
+  assert.equal(app.render().isDecliningTripRequest, true);
+  await app.render().handleDeclineTripRequest();
+  assert.equal(app.calls.length, 1);
+  waiting.resolve(); await work;
+  assert.equal(app.render().isDecliningTripRequest, false);
+  const match = app.calls.find(c => c[0] === 'acknowledge')[1];
+  assert.equal(match({ recipientId: 'driver', kind: 'dispatch', data: { tripRequestId: 'request' } }), true);
+  assert.equal(match({ recipientId: 'other', kind: 'dispatch', data: { tripRequestId: 'request' } }), false);
+  assert.deepEqual(app.routes, ['/(tabs)']);
+});
+
+test('failed withdrawal retains the pending price and does not navigate or acknowledge an alert', async t => {
+  const app = fixture(t); app.props.userId = 'driver';
+  app.props.tripRequest = { ...request, passengerId: 'passenger', offers: [{ driverId: 'driver', status: 'pending' }] };
+  app.state.refuse = async () => { throw Error('offline'); };
+  await app.render().handleDeclineTripRequest();
+  assert.equal(app.render().isDecliningTripRequest, false);
+  assert.equal(app.dialogs.at(-1).title, 'Retrait non confirmé');
+  assert.equal(app.props.tripRequest.offers[0].status, 'pending');
+  assert.deepEqual(app.calls.map(c => c[0]), ['report-refusal']);
+  assert.deepEqual(app.routes, []);
+});

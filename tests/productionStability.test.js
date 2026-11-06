@@ -153,6 +153,8 @@ test('trip detail native modals share the route overlay and booking panels suppo
   assert.match(fs.readFileSync('features/trip-detail/TripReviewsModal.tsx', 'utf8'), /<ProfileReviewsModal/);
   assert.match(fs.readFileSync('components/profile/ProfileReviewsModal.tsx', 'utf8'), /RideModal as Modal/);
   assert.match(fs.readFileSync('features/trip-detail/TripBookingSuccessModal.tsx', 'utf8'), /onRequestClose=\{closeBookingSuccessModal\}/);
-  assert.match(fs.readFileSync('features/trip-detail/TripBookingModal.tsx', 'utf8'), /onRequestClose=\{closeBookingModal\}/);
+  const bookingModal = fs.readFileSync('features/trip-detail/TripBookingModal.tsx', 'utf8');
+  assert.match(bookingModal, /onRequestClose=\{close\}/);
+  assert.match(bookingModal, /if \(!busy && !confirmingRef.current\) closeBookingModal\(\)/);
   assert.doesNotMatch(fs.readFileSync('hooks/trip-detail/useTripBookingWizard.ts', 'utf8'), /setTimeout/);
 });

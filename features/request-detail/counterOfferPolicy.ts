@@ -1,4 +1,10 @@
 import type { TripRequest } from '@/types';
+import { isRequestUnassigned } from '@/features/trip-request/requestExpiration';
+
+export function pendingDriverOffer(request: TripRequest | undefined, userId: string | undefined) {
+  if (!request || !userId || request.passengerId === userId || !isRequestUnassigned(request)) return undefined;
+  return request.offers?.find(offer => offer.driverId === userId && offer.status === 'pending');
+}
 
 export function counterOfferPrice(input: string): number | null {
   const value = input.trim();

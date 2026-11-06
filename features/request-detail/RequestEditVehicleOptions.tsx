@@ -37,7 +37,7 @@ export function RequestEditVehicleOptions({
           <Ionicons name="car-sport-outline" size={20} color={Colors.primary} />
           <View>
             <Text style={styles.editSectionTitle}>Véhicules acceptés</Text>
-            <Text style={styles.editVehicleSubtitle}>Un ou plusieurs choix · même budget</Text>
+            <Text style={styles.editVehicleSubtitle}>Un ou plusieurs choix · votre prix reste inchangé</Text>
           </View>
         </View>
         {editVehiclePriceMultiplier > 1 ? (
@@ -131,7 +131,7 @@ export function RequestEditVehicleOptions({
                 ]}>
                   {price}
                 </Text>
-                {!unavailable ? <Text style={styles.editVehiclePriceUnit}>par place</Text> : null}
+                {!unavailable ? <Text style={styles.editVehiclePriceUnit}>estimé / place</Text> : null}
               </View> : null}
               <Ionicons
                 name={selected ? 'checkbox' : 'square-outline'}

@@ -3,6 +3,7 @@ import { DriverTripAccessGuard } from '@/components/trip/DriverTripAccessGuard';
 import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
 import { ManageTripContent } from '../../../features/manage-trip/ManageTripContent';
 import { ManageTripActionsFooter } from '../../../features/manage-trip/ManageTripActionsFooter';
+import { accessStyles } from '@/features/manage-trip/manageTripAccess.styles';
 import { ManageTripContactModal } from '@/features/manage-trip/ManageTripContactModal';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { labelStatus, statusColor } from '../../../features/manage-trip/manageTripStatus';
@@ -62,35 +63,19 @@ function OwnerManageTripScreen() {
             Vous n’avez pas l’autorisation d’accéder à ce trajet.
           </Text>
           <TouchableOpacity
-            style={[styles.primaryButton, { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl }]}
+            style={accessStyles.button}
+            accessibilityRole="button"
             onPress={model.state.goHome}
           >
-            <Text style={styles.primaryButtonText}>Retour</Text>
+            <Text style={accessStyles.label}>Retour</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (!model.state.isIdentityVerified) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centerContent}>
-          <Ionicons name="shield-outline" size={34} color={Colors.primary} />
-          <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
-            Votre identité doit être vérifiée pour gérer vos trajets.
-          </Text>
-          <TouchableOpacity
-            style={[styles.primaryButton, { marginTop: Spacing.lg }]}
-            onPress={() => model.state.router.push('/profile')}
-          >
-            <Text style={styles.primaryButtonText}>Vérifier mon identité</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
+  // An identity refresh must not hide a trip the user already owns. Ownership
+  // remains guarded above; publication and new-request acceptance keep their checks.
   return (
     <RideOverlayScope scopeKey={`manage:${model.state.tripId}`} active={model.state.isScreenActive}>
     <SafeAreaView style={styles.container}>

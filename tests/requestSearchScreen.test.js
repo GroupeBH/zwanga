@@ -50,6 +50,25 @@ test('search screen exposes real drivers, route, price and existing actions outs
   assert.equal(app.reads.at(-1).options.pollingInterval, 30000);
 });
 
+test('a new price restores the top of the panel and exposes the decision instead of hiding below the map', t => {
+  const app = screenFixture(); t.after(() => app.hooks.unmount());
+  const scrolls = [];
+  const initialScroll = elements(app.render()).find(node => node.type === 'ScrollView');
+  initialScroll.props.ref.current = { scrollTo: value => scrolls.push(value) };
+  app.model.tripRequest.status = 'offers_received';
+  app.model.tripRequest.offers = [{ id: 'offer-1', status: 'pending' }];
+  const tree = app.render();
+  assert.match(words(tree), /Nouveau prix/);
+  assert.match(words(tree), /Choisissez le prix qui vous convient/);
+  const panel = elements(tree).find(node => node.props.testID === 'request-search-panel');
+  assert.equal(panel.props.style[1].maxHeight, '48%');
+  const scroll = elements(tree).find(node => node.type === 'ScrollView');
+  assert.equal(scroll.key, initialScroll.key, 'do not remount decision controls or lose an in-flight mutation');
+  assert.deepEqual(scrolls, [{ y: 0, animated: true }]);
+  assert.equal(scroll.props.children[0].type, 'PriceOffers');
+  app.render(); assert.equal(scrolls.length, 1, 'normal polling must not reset scrolling');
+});
+
 test('a map tap opens the scoped profile, while offline or priority searches cannot target another driver', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   let tree = app.render();
@@ -98,14 +117,14 @@ test('an overdue request guides editing instead of promising more driver invitat
 
 test('a server-stopped search does not claim that drivers are being contacted', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount()); app.state.data.searching = false;
-  assert.match(words(app.render()), /Votre demande a changé/);
+  assert.match(words(app.render()), /Votre commande a changé/);
   assert.doesNotMatch(words(app.render()), /Recherche en cours|Vous serez prévenu dès/);
 });
 
 test('search reads stop offline; GPS and native map stop when hidden or editing, without inventing drivers', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount()); app.render();
   app.state.data = undefined; app.state.error = true;
-  assert.match(words(app.render()), /demande conservée/);
+  assert.match(words(app.render()), /commande conservée/);
   app.state.online = false; app.render();
   assert.equal(app.reads.at(-1).options.skip, true);
   app.state.online = true; app.model.isScreenActive = false;

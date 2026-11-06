@@ -103,6 +103,15 @@ test('only the selected list is subscribed; hidden screens pause reads, timers a
   f.hooks.unmount();
 });
 
+test('proposal tab does not subscribe to either request list or location updates', () => {
+  const f = fixture(); f.state.tab = 'my-offers';
+  assert.equal(f.render().activeTab, 'my-offers');
+  for (const name of ['available', 'own']) {
+    assert.equal(f.options(name).skip, true); assert.equal(f.options(name).pollingInterval, 0);
+  }
+  assert.equal(f.state.coordinateReads, 0); f.hooks.unmount();
+});
+
 test('profile loading/failure cannot expose unidentified cached requests; retry targets the profile', () => {
   const f = fixture(); f.profile.data = undefined; f.profile.isLoading = true;
   let view = f.render();

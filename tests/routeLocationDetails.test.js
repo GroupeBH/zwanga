@@ -271,7 +271,7 @@ test('booking recap cleans display strings without changing passenger inputs or 
   const all = nodes(TripBookingSteps(props));
   assert.ok(all.some(node => node.type === 'Text' && node.props.children === labels.departure.address));
   assert.ok(all.some(node => node.type === 'Text' && node.props.children === labels.arrival.address));
-  assert.ok(all.some(node => node.type === 'Text' && node.props.children === '3000 FC'));
+  assert.ok(all.some(node => node.type === 'Text' && typeof node.props.children === 'string' && node.props.children.replace(/\s/g, '') === '3000FC'));
   assert.equal(JSON.stringify(props), before);
 });
 

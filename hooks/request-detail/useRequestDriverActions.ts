@@ -25,6 +25,7 @@ import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
 import { reportNearbyRequestRefusal } from '@/services/nearbyRequestRefusal';
 import { driverScheduleConflictDialog } from '@/features/request-detail/scheduleConflict';
+import { pendingDriverOffer } from '@/features/request-detail/counterOfferPolicy';
 
 interface Params {
   userId?: string;
@@ -81,22 +82,33 @@ export function useRequestDriverActions({
 }: Params) {
   const transition = useTripStartTransition(`${userId ?? ''}:${id ?? ''}`, router, showDirectAcceptModal);
   const accepted = React.useRef(false);
-  React.useEffect(() => { accepted.current = false; }, [id, userId]);
+  const [isDecliningTripRequest, setIsDecliningTripRequest] = React.useState(false);
+  const actionScope = React.useMemo(() => ({ mounted: true }), [id, userId]);
+  React.useEffect(() => {
+    actionScope.mounted = true; accepted.current = false; setIsDecliningTripRequest(false);
+    return () => { actionScope.mounted = false; };
+  }, [actionScope]);
   const handleDeclineTripRequest = async () => {
     if (accepted.current || !userId || !tripRequest || tripRequest.passengerId === userId ||
       !isRequestUnassigned(tripRequest) || !transition.begin()) return;
+    const withdrawing = Boolean(pendingDriverOffer(tripRequest, userId));
+    setIsDecliningTripRequest(true);
     try {
       // The request stays available to other drivers. Do not pretend an offline refusal succeeded.
       await reportNearbyRequestRefusal(userId, tripRequest.id);
       if (!transition.isCurrent()) return;
       accepted.current = true;
-      acknowledgeRideAlerts(alert => alert.recipientId === userId && alert.kind === 'nearby' && alert.id === tripRequest.id);
+      acknowledgeRideAlerts(alert => alert.recipientId === userId &&
+        ((alert.kind === 'nearby' && alert.id === tripRequest.id) || (alert.kind === 'dispatch' && alert.data.tripRequestId === tripRequest.id)));
       void import('@/services/driverNotifications').then(service => service.dismissDriverDecision(userId, 'nearby', tripRequest.id)).catch(() => {});
       router.replace('/(tabs)');
     } catch (error) {
-      if (transition.isCurrent()) showDialog({ title: 'Refus non enregistré',
+      if (transition.isCurrent()) showDialog({ title: withdrawing ? 'Retrait non confirmé' : 'Refus non enregistré',
         message: getApiErrorMessage(error, 'Vérifiez votre connexion puis réessayez.'), variant: 'warning' });
-    } finally { transition.finish(); }
+    } finally {
+      if (actionScope.mounted) setIsDecliningTripRequest(false);
+      transition.finish();
+    }
   };
   const handleGoPickup = async () => {
     if (!assignedTrip || !userId || assignedTrip.driverId !== userId || assignedTrip.id !== tripRequest?.tripId ||
@@ -332,6 +344,7 @@ export function useRequestDriverActions({
   return {
     handleGoPickup,
     handleDeclineTripRequest,
+    isDecliningTripRequest,
     onDirectAcceptModalDismiss: transition.onModalDismiss,
     handleViewTrip,
     handleStartTripFromRequest,

@@ -25,6 +25,8 @@ import { acknowledgeRideAlerts } from '@/services/rideAlertSession';
 import { RequestSearchScreen } from '@/features/request-detail/RequestSearchScreen';
 import { showRequestSearchMap } from '@/features/request-detail/requestSearchModel';
 import { canUseCachedRequestLink } from '@/features/trip-request/assignedTripNavigation';
+import { pendingDriverOffer } from '@/features/request-detail/counterOfferPolicy';
+import { RequestPendingOfferActions } from '@/features/request-detail/RequestPendingOfferActions';
 
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
@@ -128,6 +130,7 @@ export default function TripRequestDetailsScreen() {
   const showDecision = !sharing && !model.isOwner && model.isDriverAccount &&
     isRequestUnassigned(model.tripRequest) && isTripRequestWithinAcceptanceWindow(model.tripRequest);
   const showCourse = !model.isOwner && (model.canOpenAssignedTrip || model.canStartAssignedTrip);
+  const showPendingOffer = Boolean(pendingDriverOffer(model.tripRequest, model.userId));
 
   if (showRequestSearchMap(model.tripRequest, model.userId)) return <RequestSearchScreen key={`${model.userId}:${model.tripRequest.id}`}
     model={model} presentation={presentation} onLayout={reportLayout} />;
@@ -138,7 +141,7 @@ export default function TripRequestDetailsScreen() {
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={[styles.backButton, requestSummaryStyles.back]}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text style={requestSummaryStyles.headerTitle}>{model.isOwner ? 'Votre commande' : showDecision ? 'Nouvelle demande' : 'Course'}</Text>
+        <Text style={requestSummaryStyles.headerTitle}>{model.isOwner ? 'Votre commande' : showPendingOffer ? 'Commande en attente' : showDecision ? 'Nouvelle commande' : 'Course'}</Text>
         {model.isOwner && <View style={[requestSummaryStyles.badge, { backgroundColor: presentation.statusConfig.bg }]}>
           <View style={[requestSummaryStyles.dot, { backgroundColor: presentation.statusConfig.color }]} />
           <Text style={requestSummaryStyles.badgeText}>{presentation.statusConfig.label}</Text>
@@ -388,9 +391,9 @@ export default function TripRequestDetailsScreen() {
           }
         />
 
-      </ScrollView>
-      {model.isOwner && <RequestPassengerActions model={model} />}
-      {showDecision && <RequestDecisionActions model={model} />}
+      </ScrollView>{model.isOwner && <RequestPassengerActions model={model} />}
+      {showPendingOffer ? <RequestPendingOfferActions key={`${model.userId}:${model.tripRequest.id}`} model={model} />
+        : showDecision && <RequestDecisionActions model={model} />}
       {showCourse && <RequestCourseActions model={model} />}
     </SafeAreaView>
   );

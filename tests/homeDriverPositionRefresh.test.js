@@ -96,7 +96,7 @@ test('a position older than 48 hours can be refreshed from Home without opening 
   const f = fixture(t);
   f.setData({ presence: { discoveryEnabled: true, updatedAt: new Date(Date.now() - 48 * 3600_000).toISOString() } });
   const view = f.render();
-  assert.match(content(view), /Position à actualiser.*Touchez pour recevoir de nouvelles demandes/);
+  assert.match(content(view), /Position à actualiser.*Touchez pour recevoir de nouvelles commandes/);
   await view.props.onPress();
   assert.equal(f.calls.sends.length, 1); assert.equal(f.calls.settings, 0);
   assert.match(content(f.render()), /Position envoyée/);
@@ -106,7 +106,7 @@ test('success feedback expires, returning to the server status without another l
   t.mock.timers.enable({ apis: ['Date', 'setTimeout', 'setInterval'], now: 4_000_000 });
   const f = fixture(t); await f.render().props.onPress(); f.render();
   t.mock.timers.tick(5000);
-  assert.match(content(f.render()), /Demandes possibles/);
+  assert.match(content(f.render()), /Commandes possibles/);
   assert.equal(f.calls.gps.length, 1);
 });
 
@@ -168,7 +168,7 @@ test('the manual action does not compete with a pending automatic send', async t
   await tick(); await f.render().props.onPress();
   assert.equal(f.calls.sends.length, 1); assert.doesNotMatch(content(f.render()), /Position envoyée/);
   pending.resolve(); await sending;
-  assert.match(content(f.render()), /Demandes possibles/);
+  assert.match(content(f.render()), /Commandes possibles/);
   assert.doesNotMatch(content(f.render()), /Envoi non confirmé/);
 });
 

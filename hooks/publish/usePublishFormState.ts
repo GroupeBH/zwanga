@@ -24,6 +24,7 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
   const [activeLocationType, setActiveLocationType] = useState<'departure' | 'arrival' | null>(null);
   const [locationPickerInitialQuery, setLocationPickerInitialQuery] = useState('');
   const [departureDateTime, setDepartureDateTime] = useState<Date | null>(null);
+  const [hasChosenDepartureTime, setHasChosenDepartureTime] = useState(false);
   const [iosPickerMode, setIosPickerMode] = useState<'date' | 'time' | null>(null);
   const [iosPickerTarget, setIosPickerTarget] = useState<'departure' | 'recurringEndDate'>('departure');
   const [iosPickerValue, setIosPickerValue] = useState<Date>(new Date());
@@ -92,6 +93,8 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
     routeCoordinates,
     activeLocationType,
     departureDateTime,
+    hasChosenDepartureTime,
+    setHasChosenDepartureTime,
     recurringEndDate,
     setIosPickerValue,
     iosPickerMode,

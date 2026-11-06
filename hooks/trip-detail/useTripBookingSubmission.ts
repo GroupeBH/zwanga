@@ -95,7 +95,25 @@ export function useTripBookingSubmission({
     confirming.current = true;
     const permissionSession = getTokenSessionVersion();
     try {
-    const seatsValue = parseInt(bookingSeats, 10);
+    const seatsValue = Number(bookingSeats);
+    const seatError = getPassengerSeatValidation(seatsValue, isIdentityVerified, seatLimit);
+    if (seatError) {
+      setBookingModalError(seatError.message);
+      setBookingStep(1);
+      return;
+    }
+    if (!Number.isSafeInteger(seatsValue) || seatsValue <= 0) {
+      setBookingModalError('Veuillez indiquer un nombre de places valide.');
+      return;
+    }
+    // Vérifier si le nombre de places dépasse les places disponibles
+    if (seatsValue > seatLimit) {
+      setBookingModalError(
+        `Il reste seulement ${seatLimit} place${seatLimit > 1 ? 's' : ''} pour ce trajet.`,
+      );
+      return;
+    }
+
     const proposalError = bookingProposalError(bookingProposedPrice, trip.price, seatsValue);
     if (proposalError) { setBookingModalError(proposalError); setBookingStep(1); return; }
     if (estimatedTotal > 0) {
@@ -109,24 +127,6 @@ export function useTripBookingSubmission({
         setBookingModalError('Impossible de vérifier les modes de paiement. Réessayez.'); return;
       }
     }
-    const seatError = getPassengerSeatValidation(seatsValue, isIdentityVerified, seatLimit);
-    if (seatError) {
-      setBookingModalError(seatError.message);
-      setBookingStep(1);
-      return;
-    }
-    if (Number.isNaN(seatsValue) || seatsValue <= 0) {
-      setBookingModalError('Veuillez indiquer un nombre de places valide.');
-      return;
-    }
-    // Vérifier si le nombre de places dépasse les places disponibles
-    if (seatsValue > seatLimit) {
-      setBookingModalError(
-        `Il reste seulement ${seatLimit} place${seatLimit > 1 ? 's' : ''} pour ce trajet.`,
-      );
-      return;
-    }
-
     setBookingModalError('');
 
     const manualPassengerOrigin = passengerOriginManualAddress.trim();

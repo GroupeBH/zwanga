@@ -1,4 +1,5 @@
 import { usePublishSuccessActions } from './usePublishSuccessActions';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { usePublishStepNavigation } from './usePublishStepNavigation';
 import { usePublishVehicleCreation } from './usePublishVehicleCreation';
 import { usePublishVehicleEditor } from './usePublishVehicleEditor';
@@ -31,6 +32,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 export function usePublishController() {
+  const isScreenActive = useScreenIsActive();
   const router = useRouter();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const insets = useSafeAreaInsets();
@@ -136,6 +138,9 @@ export function usePublishController() {
   });
 
   const scheduleActions = usePublishScheduleActions({
+    isScreenActive: isScreenActive && step === 'datetime',
+    hasChosenDepartureTime: form.hasChosenDepartureTime,
+    setHasChosenDepartureTime: form.setHasChosenDepartureTime,
     departureDateTime: form.departureDateTime,
     recurringEndDate: form.recurringEndDate,
     setRecurringEndDate: form.setRecurringEndDate,
@@ -149,6 +154,7 @@ export function usePublishController() {
   });
 
   const schedule = usePublishSchedulePresentation({
+    hasChosenDepartureTime: form.hasChosenDepartureTime,
     departureDateTime: form.departureDateTime,
     recurringEndDate: form.recurringEndDate,
     recurringWeekdayOptions: presentation.recurringWeekdayOptions,
@@ -210,7 +216,7 @@ export function usePublishController() {
     showDialog,
     isPublishIdentityVerified: identity.isPublishIdentityVerified,
     openKycModal: identity.openKycModal,
-    departureDateTime: form.departureDateTime,
+    departureDateTime: form.hasChosenDepartureTime ? form.departureDateTime : null,
     isRecurringTrip: form.isRecurringTrip,
     recurringWeekdays: form.recurringWeekdays,
     recurringEndDate: form.recurringEndDate,
@@ -229,7 +235,7 @@ export function usePublishController() {
     seats: form.seats,
     isFreeTrip: form.isFreeTrip,
     price: form.price,
-    departureDateTime: form.departureDateTime,
+    departureDateTime: form.hasChosenDepartureTime ? form.departureDateTime : null,
     isRecurringTrip: form.isRecurringTrip,
     recurringWeekdays: form.recurringWeekdays,
     isDriver: vehicle.isDriver,

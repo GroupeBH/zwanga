@@ -1,6 +1,7 @@
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRideResponseOpen } from '@/features/notifications/rideAlert';
+import { isCounterOfferAlert, isDriverOfferAcceptanceAlert } from '@/features/notifications/rideSound';
 import { getTokenSessionVersion } from './tokenSession';
 import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
 import { mapDriverAlertGeneration, isNewerMapDriverAlert, type MapDriverAlertGeneration } from '@/features/notifications/mapDriverAlert';
@@ -55,6 +56,17 @@ function admitMapPriority(alert: RideAlert) {
 }
 function storeRideAlert(alert: RideAlert, restoring = false, handedOff = false) {
   checkSession();
+  // A price can still be actionable after its 60-second audio window. Recover
+  // its notice from REST/push without replaying or extending the old sound.
+  if (isCounterOfferAlert(alert.data) || isDriverOfferAcceptanceAlert(alert.data)) {
+    const until = Date.parse(String(alert.data.alertExpiresAt ?? alert.expiresAt ?? ''));
+    if (Number.isFinite(until) && canRemember({ ...alert, expiresAt: new Date(until).toISOString() }) &&
+        !responseNotices.has(alert.key)) {
+      if (responseNotices.size >= 20) responseNotices.delete(responseNotices.keys().next().value!);
+      responseNotices.set(alert.key, { alert, until: Math.min(until, Date.now() + 180000) });
+      changed();
+    }
+  }
   if (!canRemember(alert) || !admitMapPriority(alert)) return;
   // Never start yesterday's sound on launch. An already-playing foreground
   // session, however, remains pending until a decision (or the offer expires).

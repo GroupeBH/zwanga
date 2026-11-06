@@ -22,16 +22,16 @@ export function DriverProfileRequestAction({ driver, active, requestId, markerId
   if (requestId) return <View style={s.section}>
     {request.currentData && request.currentData.passengerId === userId && markerId ? <MapDriverSelection request={request.currentData} markerId={markerId}
       disabled={!enabled || request.isError || request.isFetching} onClose={() => router.replace(getTripRequestDetailHref(requestId))} /> :
-      <Text style={s.hint}>{request.isError ? 'Impossible de vérifier votre demande. Revenez à la carte et réessayez.' : 'Vérification de votre demande…'}</Text>}
+      <Text style={s.hint}>{request.isError ? 'Impossible de vérifier votre commande. Revenez à la carte et réessayez.' : 'Vérification de votre commande…'}</Text>}
   </View>;
   if (!choice) return null;
   return <View style={s.section}>
-    <Text style={s.hint}>Demandez-lui un trajet à l’heure et vers la destination de votre choix. Sa disponibilité reste à confirmer.</Text>
+    <Text style={s.hint}>Commandez un trajet à l’heure et vers la destination de votre choix. Sa disponibilité reste à confirmer.</Text>
     <Pressable accessibilityRole="button" disabled={!active} style={s.button} onPress={() => {
       if (!active || opening.current) return;
       opening.current = true;
       router.push({ pathname: '/request', params: { targetDriverId: choice.id, targetVehicleType: choice.vehicleType } });
-    }}><Text style={s.buttonText}>Demander un trajet à ce conducteur</Text></Pressable>
+    }}><Text style={s.buttonText}>Commander un trajet avec ce conducteur</Text></Pressable>
     {!!routeUuid(sourceTripId) && <Pressable accessibilityRole="button" style={s.link}
       onPress={() => { if (active) router.push({ pathname: '/trip/[id]', params: { id: sourceTripId! } }); }}>
       <Text style={s.linkText}>Voir le trajet publié et réserver une place</Text>

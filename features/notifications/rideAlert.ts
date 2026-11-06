@@ -1,5 +1,5 @@
 import { isInvitationId, parseDriverInvitation } from './driverInvitation';
-import { isCounterOfferAlert, isRemoteNearbyRequestAlert, isRemoteRequestAcceptanceAlert } from './rideSound';
+import { isCounterOfferAlert, isDriverOfferAcceptanceAlert, isRemoteNearbyRequestAlert, isRemoteRequestAcceptanceAlert } from './rideSound';
 import { mapDriverAlertGeneration, nearbyRideAlertKey } from './mapDriverAlert';
 
 export type RideAlert = {
@@ -17,10 +17,12 @@ export function parseRideAlert(data: Record<string, unknown> | undefined): RideA
   if (isRemoteNearbyRequestAlert(data)) return { kind: 'nearby', id: data.tripRequestId as string,
     recipientId: data.driverId as string, key: nearbyRideAlertKey(data.tripRequestId as string, mapDriverAlertGeneration(data)), data,
     expiresAt: typeof data.alertExpiresAt === 'string' ? data.alertExpiresAt : undefined };
-  const id = data.bookingId ?? data.tripRequestId;
-  if (!isRemoteRequestAcceptanceAlert(data) || !isInvitationId(data.passengerId) || !isInvitationId(id)) return null;
-  return { kind: 'response', id, recipientId: data.passengerId,
-    key: `ride-response-${data.type}-${id}-${isCounterOfferAlert(data) ? data.offerId : data.status ?? 'accepted'}`, data,
+  const driverAcceptance = isDriverOfferAcceptanceAlert(data);
+  const id = driverAcceptance ? data.tripRequestId : data.bookingId ?? data.tripRequestId;
+  const recipientId = driverAcceptance ? data.driverId : data.passengerId;
+  if (!isRemoteRequestAcceptanceAlert(data) || !isInvitationId(recipientId) || !isInvitationId(id)) return null;
+  return { kind: 'response', id, recipientId,
+    key: `ride-response-${data.type}-${id}-${isCounterOfferAlert(data) || driverAcceptance ? data.offerId : data.status ?? 'accepted'}`, data,
     ...(isCounterOfferAlert(data) && typeof data.ringUntil === 'string' ? { expiresAt: data.ringUntil } : {}) };
 }
 

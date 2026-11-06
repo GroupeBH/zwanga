@@ -240,7 +240,7 @@ test('Android foreground audio uses notification attributes and releases on life
   const source = fs.readFileSync('android/app/src/main/java/com/zwanga/notifications/ForegroundAlertPlayer.java', 'utf8');
   for (const contract of ['AudioAttributes.USAGE_NOTIFICATION', 'AudioManager.STREAM_NOTIFICATION', 'LifecycleState.RESUMED',
     'manager.areNotificationsEnabled()', 'channel.getSound() == null', 'group.isBlocked()', 'prepareAsync()',
-    'main.postDelayed(timeout, 5000)', 'onHostPause()', 'previous.release()', 'token.equals(owner)']) assert.ok(source.includes(contract), contract);
+    'audio.postDelayed(timeout, 5000)', 'onHostPause()', 'previous.release()', 'token.equals(owner)']) assert.ok(source.includes(contract), contract);
   assert.doesNotMatch(source, /setStreamVolume|adjustStreamVolume|startForegroundService|WakeLock|TYPE_RINGTONE/);
 });
 

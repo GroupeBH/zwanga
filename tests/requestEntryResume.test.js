@@ -47,6 +47,12 @@ test('the most recently created active order wins; foreign, expired and assigned
   f.render(); await flush(); assert.deepEqual(f.reads, ['new']); assert.deepEqual(f.routes, ['/request-details/new']);
 });
 
+test('passenger returns to the accepted-price request while the driver has not started', async t => {
+  const f = fixture(t), chosen = { ...request(), status: 'driver_selected', selectedDriverId: 'driver' };
+  f.options.requests.data = [chosen]; f.options.readRequest = async () => chosen;
+  f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
+});
+
 test('fresh legacy lists can recover an own request after the summary fails with retained old data', async t => {
   const f = fixture(t);
   f.options.activity = { data: { userId: 'user', hasLiveActivity: false }, isSuccess: false,

@@ -1,3 +1,5 @@
+import { orderNotificationText } from './requestVisibility';
+
 type DriverCardKind = 'booking' | 'dispatch' | 'nearby';
 
 function label(value: unknown, limit = 160): string {
@@ -22,9 +24,10 @@ export function driverNotificationCard(kind: DriverCardKind, data: Record<string
   const schedule = Number.isFinite(departureAt) ? `Départ : ${new Date(departureAt).toLocaleString('fr-FR', {
     timeZone: 'Africa/Kinshasa', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
   })}` : '';
-  const legacy = label(data.invitationText, 800);
+  const legacy = orderNotificationText(label(data.invitationText, 800),
+    { type: kind === 'booking' ? 'new_booking' : 'trip_request' });
   return {
-    title: price ? `Zwanga · ${price}` : kind === 'booking' ? 'Zwanga · Nouvelle réservation' : 'Zwanga · Demande près de vous',
+    title: price ? `Zwanga · ${price}` : kind === 'booking' ? 'Zwanga · Nouvelle réservation' : 'Zwanga · Commande près de vous',
     // Older pushes may carry their fare only in the body. Keep it without guessing.
     body: `${[price, route, [seats, schedule].filter(Boolean).join(' · '), !price ? legacy : ''].filter(Boolean).join('\n').slice(0, 900)}\nOuvrez Zwanga pour répondre.`.trim(),
   };
@@ -38,7 +41,7 @@ export function driverNotificationActions(kind: DriverCardKind, data: Record<str
   ];
   if (kind === 'nearby') return [
     action('Refuser', 'driver-ignore-nearby'),
-    action(data.sharedTrip === true || data.sharedTrip === 'true' ? 'Voir la demande' : 'Accepter', 'driver-review-nearby'),
+    action(data.sharedTrip === true || data.sharedTrip === 'true' ? 'Voir la commande' : 'Accepter', 'driver-review-nearby'),
   ];
   return [action('Refuser', 'driver-decline'), action('Accepter', 'driver-accept')];
 }

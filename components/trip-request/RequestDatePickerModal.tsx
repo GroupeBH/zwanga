@@ -13,7 +13,9 @@ import {
 
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 
-type Props = Pick<RequestTripController, 'iosPickerValue' | 'handleIosPickerChange' | 'insets' | 'iosPickerMode' | 'closeDatePicker' | 'confirmIosPicker'>;
+type Props = Pick<RequestTripController, 'iosPickerValue' | 'handleIosPickerChange' | 'insets' | 'iosPickerMode' | 'closeDatePicker' | 'confirmIosPicker'> & {
+  minimumDate?: Date; title?: string;
+};
 
 type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
   accentColor?: string;
@@ -25,7 +27,7 @@ type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
 };
 const IOSDateTimePicker = DateTimePicker as React.ComponentType<IOSDateTimePickerProps>;
 
-export function RequestDatePickerModal({ iosPickerValue, handleIosPickerChange, insets, iosPickerMode, closeDatePicker, confirmIosPicker }: Props) {
+export function RequestDatePickerModal({ iosPickerValue, handleIosPickerChange, insets, iosPickerMode, closeDatePicker, confirmIosPicker, minimumDate, title }: Props) {
   return (<FormModal inApp
     transparent
     animationType="slide"
@@ -43,7 +45,7 @@ export function RequestDatePickerModal({ iosPickerValue, handleIosPickerChange, 
           accessibilityLabel="Fermer le sélecteur"
         />
         <View style={styles.iosSheet}>
-          <Text style={pickerStyles.title}>{iosPickerMode === 'date' ? 'Choisir la date' : 'Choisir l’heure'}</Text>
+          <Text style={pickerStyles.title}>{title ?? (iosPickerMode === 'date' ? 'Choisir la date' : 'Choisir l’heure')}</Text>
           <IOSDateTimePicker
             key={iosPickerMode}
             value={iosPickerValue}
@@ -54,7 +56,7 @@ export function RequestDatePickerModal({ iosPickerValue, handleIosPickerChange, 
             accentColor={Colors.primary}
             textColor={Colors.gray[900]}
             minuteInterval={5}
-            minimumDate={iosPickerMode === 'date' ? new Date() : undefined}
+            minimumDate={iosPickerMode === 'date' ? minimumDate ?? new Date() : undefined}
             onChange={handleIosPickerChange}
             style={styles.iosPicker}
           />

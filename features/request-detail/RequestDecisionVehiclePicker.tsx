@@ -27,14 +27,14 @@ export function RequestDecisionVehiclePicker({ model, disabled }: { model: Model
     <Pressable accessibilityRole="button" accessibilityState={{ expanded, disabled }} disabled={disabled}
       accessibilityLabel={selected
         ? `Changer de véhicule. ${selected.brand} ${selected.model}, ${selected.licensePlate}`
-        : 'Choisir mon véhicule pour accepter la demande'}
+        : 'Choisir mon véhicule pour accepter la commande'}
       accessibilityHint={expanded ? 'Replier la liste des véhicules.' : 'Afficher vos véhicules disponibles.'}
       onPress={() => { if (!disabled) setExpandedScope(expanded ? null : scope); }}
       style={({ pressed }) => [styles.current, !selected && styles.choose, pressed && !disabled && styles.pressed]}>
       <Ionicons name="car-outline" size={22} color={Colors.primaryDark} />
       <View style={styles.copy}>
         <Text style={styles.name}>{selected ? `${selected.brand} ${selected.model}` : 'Choisir mon véhicule'}</Text>
-        <Text style={styles.hint}>{selected ? selected.licensePlate : 'Pour accepter la demande'}</Text>
+        <Text style={styles.hint}>{selected ? selected.licensePlate : 'Pour accepter la commande'}</Text>
       </View>
       {(expanded || selected) && <Text style={styles.change}>{expanded ? 'Fermer' : 'Changer'}</Text>}
       <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.primaryDark} />

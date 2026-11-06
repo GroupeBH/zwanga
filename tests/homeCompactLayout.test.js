@@ -117,7 +117,7 @@ test('passenger destination opens the request form directly; proposing stays rea
   assert.deepEqual(calls, [{ pathname: '/request-create' }, '/publish']);
   assert.match(text(tree), /Un conducteur vient vous chercher/);
   assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Où allez-vous ?').props.accessibilityHint,
-    'Ouvrir le formulaire de demande de trajet.');
+    'Ouvrir le formulaire de commande de trajet.');
   assert.doesNotMatch(text(tree), /Trajets publiés ou véhicule à commander/);
   assert.match(text(tree), /Vous avez un véhicule \? Proposer un trajet/);
   assert.equal(nodes(tree).some(node => node.type === 'Button' && text(node) === 'Commander'), false);
@@ -143,7 +143,7 @@ test('driver dashboard keeps publishing, passenger travel, clients and revenue w
   assert.deepEqual(calls, ['/publish', 'all', { pathname: '/request-create' }, 'all', '/driver-earnings']);
   const passengerButton = elements.find(node => node.props.accessibilityLabel === 'Commander un trajet');
   assert.ok(flatten(passengerButton.props.style).minHeight >= 44);
-  assert.equal(passengerButton.props.accessibilityHint, 'Ouvrir le formulaire de demande de trajet.');
+  assert.equal(passengerButton.props.accessibilityHint, 'Ouvrir le formulaire de commande de trajet.');
   assert.doesNotMatch(text(tree), /Bonjour/);
   assert.equal(elements.some(node => node.props.accessibilityRole === 'tab'), false);
   assert.equal(elements.some(node => node.type === 'Button' && text(node) === 'Trajets'), false);
@@ -424,6 +424,17 @@ test('driver publish action uses blue without changing its destination', () => {
   assert.equal(flatten(button.props.style).backgroundColor, c.blue);
   assert.equal(flatten(nodes(button).find(node => node.type === 'Text').props.style).color, '#FFFFFF');
   button.props.onPress(); assert.deepEqual(calls, ['/publish']);
+});
+
+test('Home has no separate followed-orders shortcut and keeps the client list accessible', () => {
+  for (const isDriver of [true, false]) {
+    const calls = [];
+    const tree = HomeTripsSheet.type({ ...base, isDriver, openSheetIndex: () => calls.push('list') });
+    assert.doesNotMatch(text(tree), /Commandes suivies|Mes propositions|Demandes suivies/);
+    const seeAll = nodes(tree).find(node => node.type === 'Button' && text(node) === 'Voir tout');
+    assert.ok(seeAll); seeAll.props.onPress();
+    assert.deepEqual(calls, ['list']);
+  }
 });
 
 test('client acceptance shares the primary orange; green remains a status color', () => {

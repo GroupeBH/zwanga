@@ -69,7 +69,7 @@ test('driver status describes server availability without promising push deliver
   assert.deepEqual(homeDriverStatusView({ online: true, data: status(false, 1), now }),
     { tone: 'off', title: 'Disponibilité à vérifier', detail: 'Touchez pour voir pourquoi' });
   assert.deepEqual(homeDriverStatusView({ online: true, data: status(true, 2), now }),
-    { tone: 'ok', title: 'Demandes possibles', detail: 'Position à jour il y a 2 min' });
+    { tone: 'ok', title: 'Commandes possibles', detail: 'Position à jour il y a 2 min' });
   const stale = homeDriverStatusView({ online: true, data: status(true, RECENT_DRIVER_POSITION_MS / 60_000 + 60), now });
   assert.equal(stale.tone, 'warn'); assert.equal(stale.detail, 'il y a 1 h · Touchez pour actualiser');
   assert.equal(stale.action, 'refresh');
@@ -81,7 +81,7 @@ test('driver status describes server availability without promising push deliver
   legacy.presence.expiresAt = new Date(now + 60_000).toISOString();
   assert.equal(homeDriverStatusView({ online: true, data: legacy, now }).tone, 'ok');
   legacy.presence.discoveryEnabled = false;
-  assert.equal(homeDriverStatusView({ online: true, data: legacy, now }).title, 'Demandes désactivées');
+  assert.equal(homeDriverStatusView({ online: true, data: legacy, now }).title, 'Commandes désactivées');
   assert.equal(homeDriverStatusView({ online: true, data: status(true, null), now }).tone, 'warn');
 });
 
@@ -95,7 +95,7 @@ test('48-hour alert cutoff asks to refresh without promising notification delive
   assert.equal(view(DRIVER_ALERT_LOCATION_MAX_AGE_MS - 1).title, 'Position ancienne');
   for (const age of [DRIVER_ALERT_LOCATION_MAX_AGE_MS, 72 * 3600_000]) {
     assert.deepEqual(view(age), { tone: 'warn', title: 'Position à actualiser',
-      detail: 'Touchez pour recevoir de nouvelles demandes', action: 'refresh' });
+      detail: 'Touchez pour recevoir de nouvelles commandes', action: 'refresh' });
   }
 });
 

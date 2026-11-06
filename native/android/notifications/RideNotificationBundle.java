@@ -67,7 +67,7 @@ final class RideNotificationBundle {
       data.putString("nativeSoundStartedAt", iso(now)); data.putString("nativeSoundUntil", iso(until));
     }
     card.putString("id", id); card.putBundle("data", data);
-    card.putString("title", "booking".equals(kind) ? "Zwanga · Nouvelle réservation" : "Zwanga · Nouvelle demande");
+    card.putString("title", "booking".equals(kind) ? "Zwanga · Nouvelle réservation" : "Zwanga · Nouvelle commande");
     String destination = label(d.get("rideArrival")), departure = label(d.get("rideDeparture")), price = d.get("ridePricePerSeat");
     String body = destination.isEmpty() ? "Un passager vous attend." : (departure.isEmpty() ? "Vers " : departure + " → ") + destination;
     String fare = "";
@@ -99,7 +99,7 @@ final class RideNotificationBundle {
     if (fresh) android.putString("sound", "driver_ring");
     ArrayList<Bundle> actions = new ArrayList<>();
     actions.add(button("Refuser", "nearby".equals(kind) ? "driver-ignore-nearby" : "driver-decline"));
-    actions.add(button("nearby".equals(kind) && "true".equals(d.get("sharedTrip")) ? "Voir la demande" : "Accepter", "nearby".equals(kind) ? "driver-review-nearby" : "driver-accept"));
+    actions.add(button("nearby".equals(kind) && "true".equals(d.get("sharedTrip")) ? "Voir la commande" : "Accepter", "nearby".equals(kind) ? "driver-review-nearby" : "driver-accept"));
     android.putParcelableArrayList("actions", actions);
     if ("dispatch".equals(kind)) android.putDouble("timeoutAfter", Math.max(1, date(d.get("expiresAt")) - System.currentTimeMillis()));
     NotificationManager manager = (NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -124,7 +124,7 @@ final class RideNotificationBundle {
   static String quietChannel(Context c) {
     String id = "ride-native-quiet-v1";
     if (Build.VERSION.SDK_INT >= 26) {
-      android.app.NotificationChannel quiet = new android.app.NotificationChannel(id, "Demandes à consulter", 3);
+      android.app.NotificationChannel quiet = new android.app.NotificationChannel(id, "Commandes à consulter", 3);
       quiet.setSound(null, null); quiet.enableVibration(false);
       ((NotificationManager)c.getSystemService(Context.NOTIFICATION_SERVICE)).createNotificationChannel(quiet);
     }

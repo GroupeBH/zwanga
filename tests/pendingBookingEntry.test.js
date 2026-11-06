@@ -58,7 +58,7 @@ function fixture(t) {
     path: '/', overlayBusy: false, ridePending: false, hasOngoingRide: false, alerts: [],
     trips: { data: [trip()], isSuccess: true, fulfilledTimeStamp: now },
     requests: { data: [], isSuccess: true, fulfilledTimeStamp: now },
-    activity: { data: { userId: 'driver', hasLiveActivity: true, trips: { count: 1 }, requests: { count: 0 } },
+    activity: { data: { userId: 'driver', hasLiveActivity: false, trips: { count: 1 }, requests: { count: 0 } },
       isSuccess: true, startedTimeStamp: now, fulfilledTimeStamp: now },
     readBooking: async id => { reads.push(['booking', id]); return booking({ id }); },
     readTrip: async id => { reads.push(['trip', id]); return trip({ id }); },

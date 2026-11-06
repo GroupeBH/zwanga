@@ -41,12 +41,12 @@ export function PassengerPriceOffers({ request, enabled, refresh }: { request: T
     {!!offer.vehicleInfo && <Text style={s.hint}>{offer.vehicleInfo}</Text>}
     {offer.requiresPassengerKyc && <Text style={s.hint}>Ce conducteur demande une identité vérifiée.</Text>}
     <View style={s.actions}>
-      <Pressable accessibilityRole="button" disabled={disabled} style={[s.button, s.secondary]} onPress={() => { void decide(offer.id, false); }}><Text style={s.secondaryText}>Refuser ce prix</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={disabled} style={[s.button, s.secondary, disabled && s.disabled]} onPress={() => { void decide(offer.id, false); }}><Text style={s.secondaryText}>{declining.isLoading ? 'Refus en cours…' : 'Refuser et chercher un autre'}</Text></Pressable>
       <Pressable accessibilityRole="button" disabled={disabled} style={[s.button, s.primary, disabled && s.disabled]} onPress={() => { void decide(offer.id, true); }}>
         {accepting.isLoading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={s.primaryText}>Accepter ce prix</Text>}
       </Pressable>
     </View>
-    <Text style={s.hint}>En refusant, vous pourrez choisir un autre conducteur.</Text>
+    <Text style={s.hint}>Si vous refusez, votre commande reste ouverte pour un autre conducteur.</Text>
     <Pressable accessibilityRole="button" disabled={disabled} style={s.link} onPress={() => router.push({ pathname: '/driver/[id]', params: { id: offer.driverId, viewOnly: 'true' } })}>
       <Text style={s.secondaryText}>Voir le conducteur</Text>
     </Pressable>

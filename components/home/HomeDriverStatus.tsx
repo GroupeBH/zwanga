@@ -36,7 +36,7 @@ export const HomeDriverStatus = React.memo(function HomeDriverStatus({ active, o
   return (
     <TouchableOpacity accessibilityRole="button" activeOpacity={0.8}
       accessibilityLabel={`Alertes conducteur : ${title}${detail ? `, ${detail}` : ''}`}
-      accessibilityHint={canRefresh ? 'Envoyer votre position actuelle pour les demandes proches.' : 'Ouvrir les réglages des alertes conducteur.'}
+      accessibilityHint={canRefresh ? 'Envoyer votre position actuelle pour les commandes proches.' : 'Ouvrir les réglages des alertes conducteur.'}
       accessibilityState={{ disabled, busy: refresh.busy }} disabled={disabled}
       onPress={canRefresh ? refresh.refresh : onPress} style={styles.driverStatus}>
       <View style={[styles.driverStatusDot, tone]} />

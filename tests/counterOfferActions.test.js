@@ -53,7 +53,7 @@ for (const accept of [true, false]) test(`passenger ${accept ? 'acceptance' : 'r
   const f = fixture(t), { PassengerPriceOffers } = f.load('features/request-detail/PassengerPriceOffers.tsx');
   const tree = f.hooks.render(() => PassengerPriceOffers({ request, enabled: true, refresh: f.refresh }));
   assert.match(words(tree).replace(/\s+/g, ' '), /Conducteur de test propose un prix.*1500 FC.*Total : 3000 FC/);
-  const action = press(tree, accept ? 'Accepter ce prix' : 'Refuser ce prix'); action.props.onPress(); action.props.onPress();
+  const action = press(tree, accept ? 'Accepter ce prix' : 'Refuser et chercher un autre'); action.props.onPress(); action.props.onPress();
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0].kind, accept ? 'accept' : 'decline');
   f.resolve(request); await flush();
   assert.equal(f.refreshes(), 1); assert.equal(f.acknowledged.length, 1);

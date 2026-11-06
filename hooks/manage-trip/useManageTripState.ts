@@ -2,7 +2,6 @@ import { FeedbackState } from '../../features/manage-trip/manageTripModel';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { displayReadOptions, useDisplayReadsEnabled, useDisplayRefetch, useDisplayReadData } from '@/hooks/useDisplayReads';
 import { useDialog } from '@/components/ui/DialogProvider';
-import { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { ownsTrip } from '@/features/activity/tripParticipation';
 import { useUserLocation } from '@/hooks/useUserLocation';
 import {
@@ -47,7 +46,6 @@ export function useManageTripState() {
   const selectFocus = useMemo(() => focusBookingId
     ? bookingApi.endpoints.getBookingById.select(focusBookingId) : () => undefined, [focusBookingId]);
   const focusedBooking = useAppSelector(selectFocus);
-  const { isIdentityVerified } = useIdentityCheck();
 
   // Polling intelligent basé sur le statut du trajet
   const [pollingInterval, setPollingInterval] = useState<number>(0);
@@ -183,7 +181,6 @@ export function useManageTripState() {
     goHome,
     tripLoading,
     tripFetching,
-    isIdentityVerified,
     bookingsFetching,
     bookingsLoading: !bookings && readsEnabled && !bookingsError,
     bookingsError,

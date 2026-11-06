@@ -44,12 +44,14 @@ function entryRecoveryHarness(t) {
       }
       if (action.name === 'getTripById') return env.trip;
       if (action.name === 'getTripRequestById') return env.request;
+      if (action.name === 'getMyOfferPage') return { data: [], nextCursor: null };
       throw new Error(`Unexpected action: ${action.name}`);
     } };
   };
   const endpoint = (name, category) => ({ useQueryState: () => env[category], select: () => () => listNames[name] || name === 'getAccountActivity' ? env[category] : {},
     initiate: () => ({ name }) });
-  const api = (category, list, detail) => ({ endpoints: { [list]: endpoint(list, category), [detail]: endpoint(detail, category) },
+  const api = (category, list, detail) => ({ endpoints: { [list]: endpoint(list, category), [detail]: endpoint(detail, category),
+    getMyOfferPage: { select: () => () => ({}), initiate: () => ({ name: 'getMyOfferPage' }) } },
     util: { getRunningQueryThunk: () => ({ running: true }) } });
   const load = loader({ react,
     'react-native': { View: 'View', StyleSheet: { create: value => value, absoluteFillObject: { position: 'absolute' } } },
@@ -69,6 +71,8 @@ function entryRecoveryHarness(t) {
     '@/hooks/useAppIsActive': { useAppIsActive: () => env.active, useAppIsForeground: () => env.active },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'EntryLoader' },
     '@/components/home/EntrySyncBanner': { EntrySyncBanner: 'SyncBanner' },
+    // Actual native banner rendering is covered by driverBookingAlertBanner.test.js.
+    '@/components/DriverBookingAlertBanner': { DriverBookingAlertBanner: 'BookingBanner' },
     '@/features/navigation/homeEntryStatusContext': { HomeEntryStatusContext: { Provider: 'StatusProvider' } },
     '@/features/navigation/appEntryContext': { AppEntryContext: { Provider: 'EntryProvider' } },
     '@/features/navigation/RideOverlayProvider': { useRideOverlayStore: () => ({

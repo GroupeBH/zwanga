@@ -38,6 +38,7 @@ export function usePublishSuccessActions({
     form.setArrivalPointStatus(null);
     form.setActiveLocationType(null);
     form.setDepartureDateTime(null);
+    form.setHasChosenDepartureTime(false);
     form.setIosPickerMode(null);
     form.setIosPickerTarget('departure');
     form.resetSeats();
