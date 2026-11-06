@@ -1,4 +1,6 @@
 import { RequestEditVehicleOptions } from './RequestEditVehicleOptions';
+import { FormDisclosure } from '@/components/forms/FormDisclosure';
+import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { formatCdfPrice } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
@@ -195,11 +197,11 @@ export function RequestEditFields({
       )}
 
       {/* Fenêtre horaire */}
+      <FormDisclosure title="Quand partir ?" forceOpen={Boolean(editScheduleError || editIosPickerModeMin || editIosPickerModeMax)}
+        summary={editDepartureDateMin && editDepartureDateMax
+          ? `${editDepartureDateMin.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} → ${editDepartureDateMax.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+          : 'Choisir la date et les heures'}>
       <View style={styles.editSection}>
-        <View style={styles.editSectionHeader}>
-          <Ionicons name="calendar" size={20} color={Colors.warning} />
-          <Text style={styles.editSectionTitle}>Créneau de départ</Text>
-        </View>
         
         {/* Min */}
         <View style={styles.editDateTimeRow}>
@@ -243,8 +245,13 @@ export function RequestEditFields({
           </View>
         )}
       </View>
+      </FormDisclosure>
 
       {/* Type de véhicule et estimation */}
+      <FormDisclosure title="Véhicules acceptés"
+        summary={REGISTERED_VEHICLE_TYPE_OPTIONS.filter(option => editVehicleTypes.includes(option.id)).map(option => option.label).join(' · ') || 'Choisir un véhicule'}
+        forceOpen={!editVehicleTypes.length || Boolean(getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity)) ||
+          editVehicleOptions.some(option => editVehicleTypes.includes(option.vehicleType) && !option.availableForRequestedSeats)}>
       <RequestEditVehicleOptions
         editVehiclePriceMultiplier={editVehiclePriceMultiplier}
         isEditVehicleOptionsLoading={isEditVehicleOptionsLoading}
@@ -255,12 +262,13 @@ export function RequestEditFields({
         parsedEditNumberOfSeats={parsedEditNumberOfSeats}
         handleSelectEditVehicle={handleSelectEditVehicle}
       />
+      </FormDisclosure>
 
       {/* Capacité & Prix */}
       <View style={styles.editSection}>
         <View style={styles.editSectionHeader}>
           <Ionicons name="people" size={20} color={Colors.info} />
-          <Text style={styles.editSectionTitle}>Capacité & Budget</Text>
+          <Text style={styles.editSectionTitle}>Places et prix</Text>
         </View>
         <View style={styles.editRowInputs}>
           <View style={{flex: 1}}>
@@ -274,21 +282,19 @@ export function RequestEditFields({
             />
           </View>
           <View style={{flex: 1}}>
-            <Text style={styles.editLabel}>Prix max/place (FC)</Text>
+            <Text style={styles.editLabel}>Votre prix / place (FC)</Text>
             <TextInput
               style={styles.editInput}
               keyboardType="numeric"
-              placeholder={isEditVehicleOptionsLoading ? 'Calcul en cours…' : 'Votre budget'}
+              placeholder="Votre prix"
               value={editMaxPricePerSeat}
               onChangeText={setEditMaxPricePerSeat}
             />
           </View>
         </View>
         <Text style={styles.editVehicleSubtitle}>
-          {isEditVehicleOptionsLoading
-            ? 'Recalcul du prix pour votre commande…'
-            : isEditBudgetValid && parsedEditBudget !== undefined && Number.isSafeInteger(parsedEditNumberOfSeats) && parsedEditNumberOfSeats > 0
-              ? `Total : ${formatCdfPrice(parsedEditBudget * parsedEditNumberOfSeats)} pour ${parsedEditNumberOfSeats} place${parsedEditNumberOfSeats > 1 ? 's' : ''}. Ce prix sera enregistré à la confirmation.`
+          {isEditBudgetValid && parsedEditBudget !== undefined && Number.isSafeInteger(parsedEditNumberOfSeats) && parsedEditNumberOfSeats > 0
+              ? `Total : ${formatCdfPrice(parsedEditBudget * parsedEditNumberOfSeats)}`
               : 'Indiquez un budget par place avant de confirmer.'}
         </Text>
       </View>
@@ -296,11 +302,10 @@ export function RequestEditFields({
       {getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity) && (
         <Text style={styles.editScheduleError}>{getPassengerSeatValidation(parsedEditNumberOfSeats, true, editSeatCapacity)?.message}</Text>
       )}
-      <PassengerSeatNotice isIdentityVerified={isIdentityVerified} capacity={editSeatCapacity} onVerify={() => openEditIdentityVerification()} />
+      {parsedEditNumberOfSeats >= 3 && <PassengerSeatNotice isIdentityVerified={isIdentityVerified} capacity={editSeatCapacity} onVerify={() => openEditIdentityVerification()} />}
 
       {/* Description */}
-      <View style={styles.editSection}>
-        <Text style={styles.editLabel}>Note pour le conducteur (optionnel)</Text>
+      <FormDisclosure title="Note pour le conducteur" summary={editDescription || 'Facultatif'}>
         <TextInput
           style={[styles.editInput, styles.editTextArea]}
           multiline
@@ -309,7 +314,7 @@ export function RequestEditFields({
           value={editDescription}
           onChangeText={setEditDescription}
         />
-      </View>
+      </FormDisclosure>
     </ScrollView>
   );
 }

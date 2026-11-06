@@ -31,18 +31,21 @@ import { freshEntryData } from '@/features/navigation/entryFreshness';
 import { useEntryPresentation } from '@/hooks/navigation/useEntryPresentation';
 import { HomeEntryStatusContext } from '@/features/navigation/homeEntryStatusContext';
 import { primePendingBookingTrip } from '@/store/api/booking/entrySnapshot';
+import { DriverBookingAlertBanner } from '@/components/DriverBookingAlertBanner';
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
 const selectEntryUserId = (state: RootState) => state.auth.tokenPayload?.sub ?? state.auth.tokenPayload?.userId ?? state.auth.user?.id;
 
-export function ActiveRideResumeCoordinator({ children }: { children: ReactNode }) {
+export function ActiveRideResumeCoordinator({ children, enabled = true }: { children: ReactNode; enabled?: boolean }) {
   const dispatch = useAppDispatch();
   const reduxStore = useStore<RootState>();
-  const authenticated = useAppSelector(selectIsAuthenticated);
+  const hasSession = useAppSelector(selectIsAuthenticated);
+  const authenticated = hasSession && enabled;
   const userId = useAppSelector(selectEntryUserId);
   const online = useAppSelector(state => state.zwangaApi.config.online);
-  const active = useAppIsActive();
+  const foreground = useAppIsActive();
+  const active = foreground && enabled;
   const sessionVersion = getTokenSessionVersion();
   // Shared native timestamp, not the mount time of each child: a summary may
   // already have finished when profile hydration lets entry render.
@@ -86,6 +89,16 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
     stage: 'dispatch-detail', signal, current: currentRead(),
     start: () => dispatch(driverDispatchApi.endpoints.getDispatchOffer.initiate(id, { subscribe: false, forceRefetch: true })),
   }), [dispatch, currentRead]);
+  const readOffers = useCallback(async (signal?: AbortSignal) => {
+    const args = { limit: 20 };
+    const page = await readEntryQuery({
+      stage: 'request-detail', signal, current: currentRead(),
+      reuse: () => freshEntryData(tripRequestApi.endpoints.getMyOfferPage.select(args)(reduxStore.getState()), Date.now(), since),
+      running: () => dispatch(tripRequestApi.util.getRunningQueryThunk('getMyOfferPage', args)),
+      start: () => dispatch(tripRequestApi.endpoints.getMyOfferPage.initiate(args, { subscribe: false, forceRefetch: true })),
+    });
+    return page.data;
+  }, [dispatch, currentRead, reduxStore, since]);
   const readTrip = useCallback((id: string, signal?: AbortSignal) => readEntryQuery({
     stage: 'trip-detail', signal, current: currentRead(),
     reuse: () => freshEntryData(tripApi.endpoints.getTripById.select(id)(reduxStore.getState()), Date.now(), since),
@@ -114,6 +127,7 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   const presentation = useEntryPresentation({ userId: authenticated ? userId : undefined, active, path, since,
     ready: entryNavigationReady && !isRideResumeEntryTransition(path), replace: router.replace,
     fastHome: Boolean(homeRoleReady && freshActivity && freshActivity.userId === userId && !freshActivity.hasLiveActivity &&
+      freshActivity.requests?.count === 0 && freshActivity.trips?.count === 0 && freshActivity.bookings?.count === 0 &&
       !alerts.length && !dispatchStatus.data?.pendingOfferId),
   });
   const resume = useActiveRideResume({ userId: authenticated ? userId : undefined, active, online, path, since,
@@ -130,10 +144,10 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
     driver: homeRoleReady && isDriverAccount(profile.data), profileReady: homeRoleReady,
     pendingDispatchId: dispatchStatus.isSuccess && !dispatchStatus.isFetching && !dispatchStatus.isError && dispatchStatus.data?.enabled
       ? dispatchStatus.data.pendingOfferId : null,
-    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readBooking, readDispatch,
+    requests, trips, activity, reconciled, alerts, readRequest, readTrip, readBooking, readDispatch, readOffers,
     verifyPriority: resume.verifyPriority,
     prepareBookingEntry: snapshot => { if (userId) dispatch(primePendingBookingTrip(snapshot, userId)); },
-    replace: presentation.replaceRequest, refresh: refreshActivity });
+    replace: presentation.replaceRequest, replaceBooking: presentation.replaceBooking, refresh: refreshActivity });
   const entryPending = resume.pending || requestResume.pending;
   const failed = resume.pending ? resume.failed : requestResume.failed;
   const blocking = entryPending && !presentation.released && !failed && online;
@@ -146,16 +160,18 @@ export function ActiveRideResumeCoordinator({ children }: { children: ReactNode 
   const proposal = presentation.proposal;
   const actionLabel = proposal ? typeof proposal === 'string' && /\/(trip|booking)\/navigate\//.test(proposal)
     ? 'Reprendre mon trajet' : typeof proposal === 'object' && proposal.pathname === '/trip/manage/[id]'
-      ? 'Voir la réservation' : 'Voir la demande' : undefined;
+      ? 'Voir la réservation' : 'Voir la commande' : undefined;
   useEffect(() => {
     if (authenticated && userId) setRideSpeechEntryGate({ userId, path,
       blocked: !active || !entryNavigationReady || isRideResumeEntryTransition(path) || entryPending || overlayBusy });
   }, [authenticated, userId, path, active, entryNavigationReady, entryPending, overlayBusy]);
   // A sibling above the mounted navigator, not a native modal or a replacement
   // navigator: route changes can complete without revealing the Home in between.
-  return <AppEntryContext.Provider value={blocking}>
+  return <AppEntryContext.Provider value={!enabled || blocking}>
     <HomeEntryStatusContext.Provider value={!blocking && active && authenticated && homeRoleReady && onHome && !overlayBusy && (entryPending || proposal)
       ? { failed, offline: !online, actionLabel, onAction: proposal ? presentation.open : retry } : null}>
+      <DriverBookingAlertBanner userId={userId} alerts={alerts} path={path}
+        visible={active && authenticated && entryNavigationReady && !overlayBusy} />
       {children}
     </HomeEntryStatusContext.Provider>
     {blocking && active && !overlayBusy && <View style={styles.cover} accessibilityViewIsModal testID="active-ride-entry">

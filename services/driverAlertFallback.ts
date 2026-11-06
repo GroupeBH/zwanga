@@ -9,7 +9,7 @@ export const DRIVER_FALLBACK_CHANNEL = 'driver-alert-backup-v1';
 export async function configureDriverAlertFallback() {
   if (Platform.OS !== 'android') return;
   await boundedRideAudio(notifee.createChannel({
-    id: DRIVER_FALLBACK_CHANNEL, name: 'Demandes à consulter',
+    id: DRIVER_FALLBACK_CHANNEL, name: 'Commandes à consulter',
     importance: AndroidImportance.DEFAULT, sound: undefined, vibration: false,
     visibility: AndroidVisibility.PRIVATE,
   }));

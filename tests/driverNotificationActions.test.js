@@ -43,7 +43,7 @@ test('both actions open the app; nearby/shared requests do not pretend to be exc
     assert.ok(buttons.every(b => b.pressAction.launchActivity === 'default'));
   }
   assert.deepEqual(actions('nearby', {}).map(b => b.pressAction.id), ['driver-ignore-nearby', 'driver-review-nearby']);
-  assert.equal(actions('nearby', { sharedTrip: 'true' })[1].title, 'Voir la demande');
+  assert.equal(actions('nearby', { sharedTrip: 'true' })[1].title, 'Voir la commande');
 });
 
 function app(options = {}) {

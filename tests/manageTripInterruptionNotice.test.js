@@ -14,6 +14,7 @@ function environment(mutate = async () => ({})) {
   const hooks = hookHarness();
   const calls = [], dialogs = [];
   const load = loader({
+    '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
     react: { ...React, ...hooks.react },
     'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
     '@expo/vector-icons': { Ionicons: 'Icon' },

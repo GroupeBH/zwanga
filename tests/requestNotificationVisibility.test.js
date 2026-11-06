@@ -42,4 +42,14 @@ test('old order notification text is updated without renaming payment, support o
   assert.equal(data.type, 'trip_request_accepted');
   assert.equal(orderNotificationText('Demande de retrait', { type: 'wallet_withdrawal' }), 'Demande de retrait');
   assert.equal(orderNotificationText('Demande envoyée', null), 'Demande envoyée');
+  assert.equal(orderNotificationText('Demande envoyée', undefined), 'Demande envoyée');
+  for (const type of ['trip_request', 'trip_request_nearby', 'driver_dispatch_offer', 'new_trip_request', 'driver_offer', 'offer_accepted']) {
+    const payload = { type, tripRequestId: 'order', pricePerSeat: 1200 };
+    assert.equal(orderNotificationText('NOUVELLE DEMANDE · DEMANDES SUIVIES', payload), 'NOUVELLE COMMANDE · COMMANDES SUIVIES');
+    assert.equal(orderNotificationText('Ouvrez cette demande. Prix demandé : 1 200 FC.', payload), 'Ouvrez cette commande. Prix demandé : 1 200 FC.');
+    assert.deepEqual(payload, { type, tripRequestId: 'order', pricePerSeat: 1200 });
+  }
+  for (const type of ['support', 'new_booking', 'booking_response', 'permission', 'wallet_withdrawal']) {
+    assert.equal(orderNotificationText('Demande envoyée', { type }), 'Demande envoyée');
+  }
 });

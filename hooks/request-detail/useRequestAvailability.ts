@@ -187,7 +187,9 @@ export function useRequestAvailability({
 
   const myOffer = useMemo(() => {
     if (!tripRequest?.offers || !currentUser) return null;
-    return tripRequest.offers.find((offer) => offer.driverId === currentUser.id);
+    return tripRequest.offers.find((offer) => offer.driverId === currentUser.id && offer.status === 'pending')
+      ?? tripRequest.offers.find((offer) => offer.driverId === currentUser.id && offer.status === 'accepted')
+      ?? tripRequest.offers.find((offer) => offer.driverId === currentUser.id);
   }, [tripRequest, currentUser]);
 
   const isCurrentDriverAssigned = useMemo(() => {

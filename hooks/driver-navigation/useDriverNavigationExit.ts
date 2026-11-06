@@ -9,6 +9,8 @@ import * as Location from 'expo-location';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import React, { useCallback, useEffect } from 'react';
 import type { Router } from 'expo-router';
+import { runNavigationCleanup } from '@/utils/navigation/cleanup';
+import { warnThrottled } from '@/utils/throttledWarning';
 
 interface Params {
   cancelRouteRequest: () => void;
@@ -142,22 +144,20 @@ export function useDriverNavigationExit({
   presentedTripDestinationKeysRef,
 }: Params) {
   const stopNavigationSideEffects = useCallback(() => {
-    cancelRouteRequest();
-    cancelLocationRequest();
-    stopDriverMarkerAnimation();
-    if (recalcRouteTimeoutRef.current) {
-      clearTimeout(recalcRouteTimeoutRef.current);
-      recalcRouteTimeoutRef.current = null;
-    }
-    if (locationSubscription.current) {
-      locationSubscription.current.remove();
-      locationSubscription.current = null;
-    }
-    if (backgroundDisclosureResolverRef.current) {
-      backgroundDisclosureResolverRef.current(false);
-      backgroundDisclosureResolverRef.current = null;
-    }
-    void Speech.stop();
+    // Detach handles first: repeated exits/unmounts must not reuse failed resources.
+    const timer = recalcRouteTimeoutRef.current;
+    const subscription = locationSubscription.current;
+    const resolveDisclosure = backgroundDisclosureResolverRef.current;
+    recalcRouteTimeoutRef.current = null;
+    locationSubscription.current = null;
+    backgroundDisclosureResolverRef.current = null;
+    runNavigationCleanup(cancelRouteRequest);
+    runNavigationCleanup(cancelLocationRequest);
+    runNavigationCleanup(stopDriverMarkerAnimation);
+    runNavigationCleanup(() => { if (timer) clearTimeout(timer); });
+    runNavigationCleanup(() => subscription?.remove());
+    runNavigationCleanup(() => resolveDisclosure?.(false));
+    runNavigationCleanup(() => Speech.stop());
   }, [cancelLocationRequest, cancelRouteRequest, stopDriverMarkerAnimation]);
 
   const cleanupNavigationUi = useCallback(() => {
@@ -196,22 +196,26 @@ export function useDriverNavigationExit({
     setActiveWaypoint(null);
   }, [stopNavigationSideEffects]);
 
-  const navigateBackSafely = useCallback(() => {
-    if (isExitingRef.current) {
-      return;
-    }
-
+  const navigateSafely = useCallback((destination: Parameters<Router['replace']>[0]) => {
+    if (isExitingRef.current) return;
     isExitingRef.current = true;
-    stopNavigationSideEffects();
-    const scheduled = navigateAfterRelease(() => {
-      if (tripId) {
-        router.replace(`/trip/manage/${tripId}`);
-      } else {
-        router.replace('/(tabs)');
-      }
-    }, () => { isExitingRef.current = false; });
-    if (!scheduled) isExitingRef.current = false;
-  }, [navigateAfterRelease, router, stopNavigationSideEffects, tripId]);
+    try {
+      stopNavigationSideEffects();
+      const scheduled = navigateAfterRelease(() => router.replace(destination), () => { isExitingRef.current = false; });
+      if (!scheduled) isExitingRef.current = false;
+    } catch {
+      isExitingRef.current = false;
+      warnThrottled('[NavigationExit] Sortie interrompue ; nouvel essai possible.');
+    }
+  }, [isExitingRef, navigateAfterRelease, router, stopNavigationSideEffects]);
+
+  const navigateBackSafely = useCallback(() => {
+    navigateSafely(tripId ? `/trip/manage/${tripId}` : '/(tabs)');
+  }, [navigateSafely, tripId]);
+
+  const navigateHomeSafely = useCallback(() => {
+    navigateSafely('/(tabs)');
+  }, [navigateSafely]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -290,6 +294,7 @@ export function useDriverNavigationExit({
 
   return {
     navigateBackSafely,
+    navigateHomeSafely,
     cleanupNavigationUi,
   };
 }

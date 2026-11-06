@@ -6,7 +6,7 @@ export const MAX_REVIEW_RECEIPTS = 2048;
 const roles: ReviewRole[] = ['passenger', 'driver'];
 type Progress = { count: number; promptedCount: number; ignoredBefore: number; seen: Record<string, number> };
 export type ReviewHistory = {
-  version: 1;
+  version: 2;
   initializedAt: number;
   attempts: number[];
   passenger: Progress;
@@ -15,7 +15,7 @@ export type ReviewHistory = {
 
 export function newReviewHistory(now: number): ReviewHistory {
   const progress = (): Progress => ({ count: 0, promptedCount: 0, ignoredBefore: now, seen: {} });
-  return { version: 1, initializedAt: now, attempts: [], passenger: progress(), driver: progress() };
+  return { version: 2, initializedAt: now, attempts: [], passenger: progress(), driver: progress() };
 }
 
 const validTime = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
@@ -24,8 +24,8 @@ const count = (value: unknown): value is number => Number.isSafeInteger(value) &
 /** Fail closed if corrupt: never reset the quota silently after an unreadable history. */
 export function parseReviewHistory(raw: string | null, initializedAt: number): ReviewHistory {
   if (raw === null) return newReviewHistory(initializedAt);
-  const data = JSON.parse(raw) as ReviewHistory;
-  if (!data || data.version !== 1 || !validTime(data.initializedAt) || !Array.isArray(data.attempts)
+  const data = JSON.parse(raw) as Omit<ReviewHistory, 'version'> & { version: number };
+  if (!data || ![1, 2].includes(data.version) || !validTime(data.initializedAt) || !Array.isArray(data.attempts)
     || data.attempts.length > MAX_REVIEW_ATTEMPTS || !data.attempts.every(validTime)
     || !roles.every(role => {
       const progress = data[role];
@@ -35,7 +35,12 @@ export function parseReviewHistory(raw: string | null, initializedAt: number): R
         && !Array.isArray(progress.seen) && Object.keys(progress.seen).length <= MAX_REVIEW_RECEIPTS
         && Object.values(progress.seen).every(validTime);
     })) throw new Error('Invalid local review history');
-  return data;
+  if (data.version === 1) return { ...data, version: 2,
+    // V1 counted paid rides without checking their rating. Preserve all past
+    // attempts and deduplication, but require NEW verified rides for the reminder.
+    passenger: { ...data.passenger, count: data.passenger.promptedCount },
+    driver: { ...data.driver, count: data.driver.promptedCount } };
+  return data as ReviewHistory;
 }
 
 export function recordReviewCompletions(history: ReviewHistory, completions: ReviewCompletion[], now: number): ReviewHistory {
@@ -67,7 +72,7 @@ export function recordReviewCompletions(history: ReviewHistory, completions: Rev
 }
 
 export function nextReviewMilestone(promptedCount: number): number {
-  return promptedCount === 0 ? 1 : (Math.floor(promptedCount / 10) + 1) * 10;
+  return promptedCount === 0 ? 1 : promptedCount + 3;
 }
 
 export function reviewIsDue(history: ReviewHistory, now: number): boolean {

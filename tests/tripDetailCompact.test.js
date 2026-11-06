@@ -59,7 +59,7 @@ test('driver photo, profile, vehicle details and contact keep their actions and 
   const result = render();
   assert.equal(result.nodes.find(node => node.type === 'Image').props.source.uri, trip.driverAvatar);
   result.buttons.forEach(button => button.props.onPress());
-  assert.deepEqual(result.calls, [{ pathname: '/driver/[id]', params: { id: 'driver' } },
+  assert.deepEqual(result.calls, [{ pathname: '/driver/[id]', params: { id: 'driver', sourceTripId: 'trip' } },
     ['vehicle', true], 'message', ['contact', true]]);
 });
 

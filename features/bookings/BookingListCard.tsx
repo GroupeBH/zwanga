@@ -4,6 +4,7 @@ import { Colors } from '@/constants/styles';
 import { homeDepartureLabel, homePriceLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { getPlaceName } from '@/features/search/searchModel';
 import type { Booking } from '@/types';
+import { bookingPassengerTotal, bookingProposalPrice } from '@/features/trip-detail/bookingPriceProposal';
 import { Ionicons } from '@expo/vector-icons';
 import type { Router } from 'expo-router';
 import React from 'react';
@@ -38,7 +39,9 @@ export const BookingListCard = React.memo(function BookingListCard({
     && !pickupSync && !arrivalSync;
   const canRate = booking.status === 'completed' && booking.droppedOffConfirmedByPassenger && trip?.id;
   const driverName = trip?.driverName || 'Conducteur Zwanga';
-  const total = trip ? booking.numberOfSeats * trip.price : undefined;
+  const proposed = bookingProposalPrice(booking);
+  const proposing = booking.status === 'pending' && proposed !== null;
+  const total = trip || booking.paymentAmount != null || proposing ? bookingPassengerTotal(booking, trip?.price) : undefined;
 
   return (
     <View style={styles.card}>
@@ -49,7 +52,7 @@ export const BookingListCard = React.memo(function BookingListCard({
         departure={trip ? getPlaceName(trip.departure) : 'Départ à préciser'}
         arrival={booking.passengerDestination || (trip ? getPlaceName(trip.arrival) : 'Destination à préciser')}
         priceText={homePriceLabel(total)}
-        priceHint={total !== undefined && total > 0 ? 'total estimé' : undefined}
+        priceHint={proposing ? 'prix proposé · en attente' : total !== undefined && total > 0 ? 'total passager' : undefined}
         metadata={`${homeDepartureLabel(trip?.departureTime)} · ${homeSeatsLabel(booking.numberOfSeats)}`}
         avatarName={trip ? driverName : undefined}
         avatarUri={trip?.driverAvatar?.trim() || trip?.driver?.profilePicture}

@@ -102,7 +102,7 @@ export function TripSummary({
             if (trip?.driverId) {
               router.push({
                 pathname: '/driver/[id]',
-                params: { id: trip.driverId },
+                params: { id: trip.driverId, sourceTripId: trip.id },
               });
             }
           }}

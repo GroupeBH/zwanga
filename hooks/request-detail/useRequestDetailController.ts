@@ -174,6 +174,7 @@ export function useRequestDetailController() {
   });
 
   return {
+    passengerBooking: data.passengerBooking,
     canRespondToRequest: data.canRespondToRequest,
     isScreenActive: data.isScreenActive,
     responseWindowStartedAt: data.responseWindowStartedAt,
@@ -181,6 +182,7 @@ export function useRequestDetailController() {
     assignedTrip: data.assignedTrip,
     handleGoPickup: driverActions.handleGoPickup,
     handleDeclineTripRequest: driverActions.handleDeclineTripRequest,
+    isDecliningTripRequest: driverActions.isDecliningTripRequest,
     isLoading: data.isLoading,
     isFetchingRequest: data.isFetchingRequest,
     tripRequest: data.tripRequest,

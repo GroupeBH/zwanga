@@ -12,6 +12,7 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const insets = { top: 47, bottom: 34, left: 0, right: 0 };
 const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openContact() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
   '@/components/trip/TripShareAction': { TripShareAction: 'ShareAction' },
   './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
   './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'ReceiptsSheet' },

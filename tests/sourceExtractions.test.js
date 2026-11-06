@@ -23,7 +23,7 @@ test('style extraction preserves every key and value, including platform-specifi
 });
 
 for (const [file, expected] of Object.entries(baseline.endpoints)) {
-  test(`${file}: request payloads, transforms, cache invalidation and lifecycle callbacks are unchanged`, () => {
+  test(`${file}: request payloads, transforms, cache invalidation and lifecycle callbacks match the reviewed contract`, () => {
     const all = properties(file, read(file), 'endpoints');
     const source = ts.createSourceFile(file, read(file), ts.ScriptTarget.Latest, true);
     for (const declaration of source.statements.filter(ts.isImportDeclaration)) {

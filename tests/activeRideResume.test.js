@@ -267,6 +267,27 @@ const activity = (overrides = {}) => ({ isSuccess: true, startedTimeStamp: Date.
   data: { userId: 'driver', hasLiveActivity: true, passengerTrackingBookingId: null,
     trips: { count: 1 }, bookings: { count: 0 }, ...overrides } });
 
+test('a booking handoff can check ongoing priority on the current screen after initial discovery settled', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const app = fixture(t, { activity: activity({ hasLiveActivity: false }), trips: { data: [], isSuccess: true } });
+  app.render(); app.options.path = '/profile'; app.render();
+  assert.equal(await app.render().verifyPriority(new AbortController().signal), null);
+  app.options.trips = { data: [trip()], isSuccess: true }; app.render();
+  assert.equal(await app.render().verifyPriority(new AbortController().signal), '/trip/navigate/trip');
+  assert.deepEqual(app.calls, [], 'the read itself does not redirect');
+});
+
+test('moving again during a post-entry priority read still cancels the handoff', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const wait = deferred();
+  const app = fixture(t, { activity: activity({ hasLiveActivity: false }), trips: { data: [], isSuccess: true } });
+  app.render(); app.options.path = '/profile'; app.render();
+  app.options.trips = { data: [trip()], isSuccess: true }; app.options.readTrip = () => wait.promise;
+  const pending = app.render().verifyPriority(new AbortController().signal);
+  app.options.path = '/booking/payment'; app.render(); wait.resolve(trip());
+  await assert.rejects(pending, /STALE_ENTRY_PRIORITY/); assert.deepEqual(app.calls, []);
+});
+
 test('pre-summary empty lists do not finish recovery before live activity reconciliation', async t => {
   const app = fixture(t, { activity: activity(),
     trips: { data: [], isSuccess: true, startedTimeStamp: Date.now() + 100, fulfilledTimeStamp: Date.now() + 100 },
@@ -277,6 +298,8 @@ test('pre-summary empty lists do not finish recovery before live activity reconc
 });
 
 test('a fresh empty summary ends recovery without loading lists or hijacking a later ride', async t => {
+  // Loader/transpilation duration is not part of this freshness scenario.
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
   const app = fixture(t, { activity: activity({ hasLiveActivity: false }), trips: { isSuccess: false }, bookings: { isSuccess: false } });
   app.render();
   app.options.trips = { data: [trip()], isSuccess: true }; app.options.activity = activity();

@@ -1,14 +1,16 @@
 import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
+import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import type { buildRequestDetailPresentation } from './requestPresentation';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 import { getTripRequestExpirationAt } from '@/features/trip-request/requestExpiration';
-import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailModel';
+import { formatCdfPrice } from './requestDetailModel';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
 import { RequestTargetDriver } from './RequestTargetDriver';
+import { PassengerPriceOffers } from './PassengerPriceOffers';
 import { ChangeRequestDriverButton } from './ChangeRequestDriverButton';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 
@@ -34,6 +36,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
   const stage = confirmed ? 2 : 1; // A created trip is not proof that it has started.
   const steps = ['Commande envoyée', presentation.pendingOffersCount ? 'Réponse reçue' : request.targetDriverId ? 'Réponse du conducteur choisi' : 'Recherche d’un conducteur', 'Conducteur confirmé', 'Départ'];
   return <>
+    <PassengerPriceOffers key={request.id} request={request} enabled={model.isScreenActive && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
     {request.responseWindow?.phase === 'passenger' && !!response.label && <Text style={local.hint}>{response.label}</Text>}
     <View style={s.card}>
       <View style={s.row}>
@@ -64,7 +67,6 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
         departureName={labels.departure.address} arrivalName={labels.arrival.address} />
     </View>
     <RequestTargetDriver key={request.id} request={request} disabled={model.isCancelling || model.isUpdating} />
-    <ChangeRequestDriverButton key={`change:${request.id}`} request={request} disabled={!model.isScreenActive || model.isCancelling || model.isUpdating} />
     <View style={s.card}>
       {closed ? <><Text style={s.name}>{presentation.ownerHero.title}</Text><Text style={s.muted}>{presentation.ownerHero.subtitle}</Text></>
         : steps.map((label, index) => <View key={label} style={local.step}>
@@ -89,20 +91,24 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
 }
 
 export function RequestPassengerActions({ model }: { model: Model }) {
+  const [changingDriver, setChangingDriver] = useState(false);
   // A background read must not keep the essential actions disabled on a slow connection.
   // Edit/cancel mutations retain the existing server-side state/snapshot checks.
-  const busy = model.isCancelling || model.isUpdating;
+  const busy = model.isCancelling || model.isUpdating || changingDriver;
   return <View style={s.footer}><View style={s.actionRow}>
     {model.canCancel && <Pressable accessibilityRole="button" accessibilityLabel="Annuler la commande" disabled={busy}
       style={[s.cancel, busy && s.disabled]} onPress={model.handleCancelRequest}>
       {model.isCancelling ? <ActivityIndicator color="#BF1B20" /> : <Text style={s.cancelText}>Annuler</Text>}
     </Pressable>}
-    {model.tripRequest?.tripId ? <Pressable accessibilityRole="button" style={s.primary} onPress={() => model.handleViewTrip(model.tripRequest!.tripId!)}>
+    {model.tripRequest?.tripId ? <Pressable accessibilityRole="button" disabled={busy} style={[s.primary, busy && s.disabled]} onPress={() => model.handleViewTrip(model.tripRequest!.tripId!)}>
       <Text style={s.primaryText}>Voir mon trajet</Text>
     </Pressable> : model.canEdit && <Pressable accessibilityRole="button" disabled={busy} style={[s.primary, busy && s.disabled]} onPress={model.handleOpenEditForm}>
       <Text style={s.primaryText}>{model.tripRequest?.status === 'expired' ? 'Reprogrammer la commande' : 'Modifier la commande'}</Text>
     </Pressable>}
-  </View></View>;
+  </View><ChangeRequestDriverButton key={`change:${model.tripRequest?.id}`}
+    request={!model.tripRequest?.tripId || model.passengerBooking ? model.tripRequest : undefined}
+    booking={model.passengerBooking} onPendingChange={setChangingDriver}
+    disabled={!model.isScreenActive || model.isCancelling || model.isUpdating} /></View>;
 }
 const local = StyleSheet.create({
   perforation: { marginHorizontal: -20, marginVertical: 8 }, perforationLine: { marginHorizontal: 20, marginVertical: 0 },

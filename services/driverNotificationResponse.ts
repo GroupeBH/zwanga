@@ -58,10 +58,13 @@ export async function respondToDriverNotification(invitation: DriverInvitation, 
         : 'Votre refus a été enregistré.';
       completed.add(key);
       if (completed.size > 100) completed.delete(completed.values().next().value!);
-    } catch {
+    } catch (error: unknown) {
       // Never save an offline decision to replay later. A timeout may have reached the server.
       if (sessionVersion !== getTokenSessionVersion()) return;
       message = 'Votre réponse n’est pas confirmée. Ouvrez la commande pour vérifier son état ou réessayer.';
+      if ((error as { data?: { code?: string } })?.data?.code === 'BOOKING_PRICE_CONFIRMATION_REQUIRED') {
+        message = 'Ce passager propose un autre prix. Ouvrez la réservation pour voir et accepter ce montant.';
+      }
     }
     // Navigation must not wait for feedback-channel creation on a waking phone.
     if (sessionVersion === getTokenSessionVersion()) rememberPendingDriverOpen({

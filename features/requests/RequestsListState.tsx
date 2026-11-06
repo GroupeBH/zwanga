@@ -17,10 +17,11 @@ export function RequestsListState({ loading, error, searching, busy, tab, onRetr
   </View>;
 
   const title = error ? 'Impossible de charger les commandes' : searching ? 'Aucun résultat'
-    : tab === 'available' ? 'Aucune commande pour le moment' : 'Votre première commande ?';
+    : tab === 'available' ? 'Aucune commande pour le moment' : tab === 'my-offers' ? 'Aucune proposition envoyée' : 'Votre première commande ?';
   const description = error ? 'Vérifiez votre connexion puis réessayez.'
     : searching ? 'Essayez un autre lieu ou un autre nom.'
       : tab === 'available' ? 'Les nouvelles commandes des passagers apparaîtront ici.'
+        : tab === 'my-offers' ? 'Vos commandes avec un prix proposé apparaîtront ici, même après avoir quitté l’application.'
         : 'Indiquez votre trajet et votre horaire pour trouver un conducteur.';
   return <View style={styles.emptyContainer}>
     <View style={styles.emptyIcon}>

@@ -15,13 +15,14 @@ const text = node => node == null || typeof node === 'boolean' ? '' : Array.isAr
 const button = (tree, label) => elements(tree).find(node => node.type === 'Button' && (text(node) === label || node.props.accessibilityLabel === label));
 const item = (id, name = 'Gombe') => ({ id, departure: { name }, arrival: { name: 'Lemba' } });
 
-function fixture() {
+function fixture(params = {}) {
   const hooks = hookHarness(), calls = [], tabs = [];
   const data = { available: [item('first')], own: [item('mine')], isDriver: true,
     isLoading: false, isFetching: false, isError: false, hasData: true, proximityAvailable: true };
   const router = { push: route => calls.push(route), back: () => calls.push('back') };
   const load = loader({ react: { ...React, ...hooks.react }, 'react-native': { ...native, Keyboard: { dismiss() {} } },
-    'expo-router': { useRouter: () => router }, '@expo/vector-icons': { Ionicons: 'Icon' },
+    'expo-router': { useRouter: () => router, useLocalSearchParams: () => params }, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '@/features/requests/DriverOffersList': { DriverOffersList: 'OffersList' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
     '@/hooks/requests/useRequestsData': { useRequestsData: tab => {
       const activeTab = data.isDriver ? tab : 'my-requests';
@@ -33,13 +34,27 @@ function fixture() {
 }
 const list = tree => elements(tree).find(node => node.type === 'List');
 
+test('driver can reopen proposals from Home or the tab without showing unrelated available requests', () => {
+  for (const params of [{}, { tab: 'my-offers' }]) {
+    const f = fixture(params); let tree = f.render();
+    if (!params.tab) { button(tree, 'Commandes suivies').props.onPress(); tree = f.render(); }
+    assert.equal(f.tabs.at(-1), 'my-offers');
+    assert.equal(list(tree), undefined);
+    assert.equal(elements(tree).some(node => node.type === 'Input'), false);
+    const offers = elements(tree).find(node => node.type === 'OffersList');
+    offers.props.onOpen('request');
+    assert.deepEqual(f.calls, [{ pathname: '/request-details/[id]', params: { id: 'request' } }]);
+    f.hooks.unmount();
+  }
+});
+
 test('compact accessible tabs replace the context card and never show unqueried zero counters', () => {
   const f = fixture(); f.data.hasData = false; f.data.isLoading = true; f.data.available = [];
   const tree = f.render(), tabs = elements(tree).filter(node => node.props?.accessibilityRole === 'tab');
-  assert.deepEqual(tabs.map(text), ['Disponibles', 'Mes commandes']);
-  assert.deepEqual(tabs.map(node => node.props.accessibilityState.selected), [true, false]);
-  assert.equal(elements(tree).some(node => node.props?.children === '0 demande'), false);
-  assert.equal(elements(tree).some(node => node.props?.children === 'Demandes publiées par d’autres passagers'), false);
+  assert.deepEqual(tabs.map(text), ['Disponibles', 'Commandes suivies', 'Mes commandes']);
+  assert.deepEqual(tabs.map(node => node.props.accessibilityState.selected), [true, false, false]);
+  assert.equal(elements(tree).some(node => node.props?.children === '0 commande'), false);
+  assert.equal(elements(tree).some(node => node.props?.children === 'Commandes publiées par d’autres passagers'), false);
   assert.equal(list(tree).props.initialNumToRender, 6);
   assert.equal(list(tree).props.keyboardShouldPersistTaps, 'handled');
   button(tree, 'Retour').props.onPress(); assert.deepEqual(f.calls, ['back']);

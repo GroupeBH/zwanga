@@ -1,4 +1,5 @@
 import { getLocationText, getLocationCoordinatesObject } from '../../features/trip-detail/tripDetailModel';
+import { bookingProposalError } from '@/features/trip-detail/bookingPriceProposal';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
@@ -19,6 +20,8 @@ interface Params {
   trip: Trip | undefined;
   isValidatingDestination: boolean;
   bookingSeats: string;
+  bookingProposedPrice?: string;
+  setBookingProposedPrice?: (value: string) => void;
   isIdentityVerified: boolean;
   seatLimit: number;
   setBookingModalError: React.Dispatch<React.SetStateAction<string>>;
@@ -53,6 +56,8 @@ export function useTripBookingSubmission({
   trip,
   isValidatingDestination,
   bookingSeats,
+  bookingProposedPrice = '',
+  setBookingProposedPrice,
   isIdentityVerified,
   seatLimit,
   setBookingModalError,
@@ -90,25 +95,14 @@ export function useTripBookingSubmission({
     confirming.current = true;
     const permissionSession = getTokenSessionVersion();
     try {
-    const seatsValue = parseInt(bookingSeats, 10);
-    if (estimatedTotal > 0) {
-      try {
-        const options = await getPaymentOptions({ tripId: trip.id, numberOfSeats: seatsValue }, false).unwrap();
-        if (!options.availablePaymentModes.includes(bookingPaymentMode)) {
-          setBookingModalError(options.cashUnavailableReason ?? 'Choisissez un mode de paiement accepté et disponible.');
-          setBookingStep(1); return;
-        }
-      } catch {
-        setBookingModalError('Impossible de vérifier les modes de paiement. Réessayez.'); return;
-      }
-    }
+    const seatsValue = Number(bookingSeats);
     const seatError = getPassengerSeatValidation(seatsValue, isIdentityVerified, seatLimit);
     if (seatError) {
       setBookingModalError(seatError.message);
       setBookingStep(1);
       return;
     }
-    if (Number.isNaN(seatsValue) || seatsValue <= 0) {
+    if (!Number.isSafeInteger(seatsValue) || seatsValue <= 0) {
       setBookingModalError('Veuillez indiquer un nombre de places valide.');
       return;
     }
@@ -120,6 +114,19 @@ export function useTripBookingSubmission({
       return;
     }
 
+    const proposalError = bookingProposalError(bookingProposedPrice, trip.price, seatsValue);
+    if (proposalError) { setBookingModalError(proposalError); setBookingStep(1); return; }
+    if (estimatedTotal > 0) {
+      try {
+        const options = await getPaymentOptions({ tripId: trip.id, numberOfSeats: seatsValue }, false).unwrap();
+        if (!options.availablePaymentModes.includes(bookingPaymentMode)) {
+          setBookingModalError(options.cashUnavailableReason ?? 'Choisissez un mode de paiement accepté et disponible.');
+          setBookingStep(1); return;
+        }
+      } catch {
+        setBookingModalError('Impossible de vérifier les modes de paiement. Réessayez.'); return;
+      }
+    }
     setBookingModalError('');
 
     const manualPassengerOrigin = passengerOriginManualAddress.trim();
@@ -257,6 +264,7 @@ export function useTripBookingSubmission({
       const booking = await createBooking({
         tripId: trip.id,
         numberOfSeats: seatsValue,
+        ...(bookingProposedPrice.trim() ? { proposedPricePerSeat: Number(bookingProposedPrice) } : {}),
         passengerOrigin: passengerOriginText || undefined,
         passengerOriginCoordinates: getLocationCoordinatesObject(resolvedPassengerOrigin),
         passengerDestination: hasCustomPassengerDestination
@@ -276,6 +284,7 @@ export function useTripBookingSubmission({
         payment_mode: estimatedTotal > 0 ? bookingPaymentMode : null,
       });
       setBookingModalVisible(false);
+      setBookingProposedPrice?.('');
       setBookingModalError('');
       setPassengerOrigin(null);
       setPassengerOriginManualAddress('');

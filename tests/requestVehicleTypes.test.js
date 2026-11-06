@@ -116,10 +116,10 @@ test('editing restores every choice and adding a secondary type does not reset t
   render().handleSelectEditVehicle({ vehicleType: tricycle, availableForRequestedSeats: true });
   assert.deepEqual(types, [car, moto, tricycle]); assert.equal(resets, 0);
   render().handleSelectEditVehicle({ vehicleType: car, availableForRequestedSeats: true });
-  assert.deepEqual(types, [moto, tricycle]); assert.equal(resets, 1);
+  assert.deepEqual(types, [moto, tricycle]); assert.equal(resets, 0);
   render().handleSelectEditVehicle({ vehicleType: tricycle, availableForRequestedSeats: false });
   assert.deepEqual(types, [moto]); // An incompatible selected option can still be removed.
   render().handleSelectEditVehicle({ vehicleType: moto, availableForRequestedSeats: true });
-  assert.deepEqual(types, [moto]); assert.equal(resets, 1);
+  assert.deepEqual(types, [moto]); assert.equal(resets, 0);
   hooks.unmount();
 });

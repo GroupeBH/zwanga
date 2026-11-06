@@ -1,4 +1,5 @@
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
+import { bookingProposalError } from '@/features/trip-detail/bookingPriceProposal';
 import { getPassengerSeatValidation } from '@/utils/passengerSeats';
 import React, { useEffect, useRef } from 'react';
 import { useIsFocused } from '@react-navigation/native';
@@ -22,6 +23,9 @@ interface Params {
   setPassengerOrigin: React.Dispatch<React.SetStateAction<MapLocationSelection | null>>;
   bookingStep: 1 | 2 | 3;
   bookingSeats: string;
+  bookingProposedPrice?: string;
+  listedPrice?: number;
+  setBookingProposedPrice?: (value: string) => void;
   setBookingModalError: React.Dispatch<React.SetStateAction<string>>;
   seatLimit: number;
   isIdentityVerified: boolean;
@@ -45,6 +49,9 @@ export function useTripBookingWizard({
   setPassengerOrigin,
   bookingStep,
   bookingSeats,
+  bookingProposedPrice = '',
+  listedPrice = 0,
+  setBookingProposedPrice,
   setBookingModalError,
   seatLimit,
   isIdentityVerified,
@@ -65,6 +72,7 @@ export function useTripBookingWizard({
     }
     setBookingModalVisible(false);
     setBookingStep(1);
+    setBookingProposedPrice?.('');
     setShouldAutofillPassengerOrigin(false);
     setPassengerOriginManualAddress('');
     setPassengerDestinationManualAddress('');
@@ -109,6 +117,8 @@ export function useTripBookingWizard({
     if (bookingStep === 1) {
       // Valider le nombre de places avant de continuer
       const seatsValue = parseInt(bookingSeats, 10);
+      const proposalError = bookingProposalError(bookingProposedPrice, listedPrice, seatsValue);
+      if (proposalError) { setBookingModalError(proposalError); return; }
       if (isNaN(seatsValue) || seatsValue < 1) {
         setBookingModalError('Veuillez entrer un nombre de places valide');
         return;

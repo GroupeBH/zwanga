@@ -4,12 +4,17 @@ import { mapServerTripRequestToClient } from './trip-request/requestMapper';
 import type { ServerTripRequest } from './trip-request/serverTypes';
 import { compatibleVehiclePayload, vehicleSelectionError } from '@/features/trip-request/vehiclePayload';
 
-export type RequestDriverChoice = { id: string; name: string; vehicle: string; distanceKm: number | string; vehicleType?: TripRequestVehicleType };
+export type RequestDriverChoice = { id: string; name: string; vehicle: string; distanceKm: number | string | null; vehicleType?: TripRequestVehicleType };
 export type SelectedRequestDriver = RequestDriverChoice & { vehicleType: TripRequestVehicleType };
 export type DriverChoiceQuery = { latitude: number; longitude: number; seats: number; vehicleType: TripRequestVehicleType; vehicleTypes?: TripRequestVehicleType[]; search?: string };
 
 export const requestDriverApi = baseApi.injectEndpoints({
   endpoints: builder => ({
+    requestMapDriver: builder.query<{ driverId: string; vehicleType: TripRequestVehicleType; positionUpdatedAt: string }, { requestId: string; markerId: string }>({
+      query: ({ requestId, markerId }) => ({ url: `/trip-requests/${requestId}/map-driver`, params: { markerId }, timeout: 10000 }),
+      keepUnusedDataFor: 15,
+      providesTags: (_result, _error, { requestId }) => [{ type: 'TripRequest', id: requestId }],
+    }),
     requestDriverChoices: builder.query<RequestDriverChoice[], DriverChoiceQuery>({
       query: (input) => {
         const { vehicleTypes, ...params } = compatibleVehiclePayload(input);
@@ -30,6 +35,12 @@ export const requestDriverApi = baseApi.injectEndpoints({
       // Refresh on an ambiguous timeout too: the transaction may have committed.
       invalidatesTags: () => ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification'],
     }),
+    withdrawRequestDriver: builder.mutation<{ id: string; withdrawn: true }, { id: string; selectedAt: string }>({
+      query: ({ id, ...body }) => ({ url: `/trip-requests/${id}/withdraw-driver`, method: 'PUT', body, timeout: 15000 }),
+      // On success the screen exits safely before refreshing its trip/booking subscriptions.
+      // On timeout reconcile server state, but never replay a cancellation automatically.
+      invalidatesTags: (_result, error) => error ? ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification', 'Booking', 'Trip'] : [],
+    }),
     openRequestToNearbyDrivers: builder.mutation<TripRequest, string>({
       query: id => ({ url: `/trip-requests/${id}/open-search`, method: 'POST', timeout: 10000 }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
@@ -37,5 +48,5 @@ export const requestDriverApi = baseApi.injectEndpoints({
     }),
   }),
 });
-export const { useRequestDriverChoicesQuery, useOpenRequestToNearbyDriversMutation,
-  useTargetRequestMapDriverMutation, useChangeRequestDriverMutation } = requestDriverApi;
+export const { useRequestMapDriverQuery, useRequestDriverChoicesQuery, useOpenRequestToNearbyDriversMutation,
+  useTargetRequestMapDriverMutation, useChangeRequestDriverMutation, useWithdrawRequestDriverMutation } = requestDriverApi;

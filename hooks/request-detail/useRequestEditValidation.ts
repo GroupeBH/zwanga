@@ -6,9 +6,8 @@ import { usePassengerIdentityVerification } from '@/hooks/usePassengerIdentityVe
 import { requestVehicleSeatCapacity } from '@/features/trip-request/vehicleSelection';
 import { useEditRequestPricing } from '@/hooks/trip-request/useEditRequestPricing';
 import { getPassengerSeatValidation } from '@/utils/passengerSeats';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, TripRequest } from '@/types';
 import React from 'react';
-import type { TripRequest } from '@/types';
 
 interface Params {
   editAddressInputMode: AddressInputMode;
@@ -68,6 +67,7 @@ export function useRequestEditValidation({
   } = useEditRequestPricing({
     enabled: showEditForm && Boolean(tripRequest?.id),
     requestId: tripRequest?.id,
+    initialBudget: tripRequest?.maxPricePerSeat,
     vehicleType: editVehicleType,
     departureAddress: editDepartureAddress,
     arrivalAddress: editArrivalAddress,

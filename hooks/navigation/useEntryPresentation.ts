@@ -4,6 +4,7 @@ import { ENTRY_COVER_MAX_MS } from '@/features/navigation/entryFreshness';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { canResumeRequestFromPath } from '@/features/navigation/priorityRequestEntry';
 import { canResumeRideFromPath, isRideNavigationPath } from '@/features/navigation/activeRideResume';
+import { canAutoOpenBookingFromPath } from '@/features/navigation/pendingBookingEntry';
 
 /** Keep the short cover budget. Verified rides/requests may still open automatically
  * on the untouched entry screen; deliberate navigation always wins. */
@@ -66,11 +67,22 @@ export function useEntryPresentation(options: {
     return true;
   }, [current, entry]);
   const replaceRequest = useCallback((destination: Href) => replace(destination, true), [replace]);
+  // Only called after authenticated booking + ongoing-ride verification. A NEW
+  // reservation may arrive after ordinary entry navigation has already settled.
+  const replaceBooking = useCallback((destination: Href): boolean => {
+    if (!current()) throw new Error('STALE_ENTRY_PRESENTATION');
+    const booking = typeof destination === 'object' && destination.pathname === '/trip/manage/[id]' &&
+      !!destination.params?.id && !!destination.params?.bookingId && destination.params?.section === 'passengers';
+    const guidance = typeof destination === 'string' && isRideNavigationPath(destination);
+    if (!(booking || guidance) || !canAutoOpenBookingFromPath(latest.current.options.path)) return false;
+    latest.current.options.replace(destination); entry.proposal = null;
+    return true;
+  }, [current, entry]);
   const open = useCallback(() => {
     if (!current() || !entry.proposal || latest.current.options.path !== entry.path) return;
     // A deliberate tap, not a background decision. The destination owns its reads/actions.
     latest.current.options.replace(entry.proposal);
     entry.proposal = null; update(value => value + 1);
   }, [current, entry]);
-  return { released: entry.released || options.fastHome, proposal: entry.proposal, replace, replaceRequest, open, reveal };
+  return { released: entry.released || options.fastHome, proposal: entry.proposal, replace, replaceRequest, replaceBooking, open, reveal };
 }

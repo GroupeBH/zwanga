@@ -9,7 +9,7 @@ import * as Notifications from 'expo-notifications';
 import notifee from '@notifee/react-native';
 import { parseRideAlert, type RideAlert } from '@/features/notifications/rideAlert';
 import { parseDriverInvitation, readDriverPushData } from '@/features/notifications/driverInvitation';
-import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
+import { isCounterOfferAlert, parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { clearRideAlertSession, pendingRideAlertHandoffs, pendingRideAlerts, rememberRideAlert, setRideAlertScreen, subscribeRideAlerts } from '@/services/rideAlertSession';
 import { startForegroundRideSound, stopForegroundRideSound } from '@/services/foregroundRideSound';
 import { displayDriverInvitation } from '@/services/driverNotifications';
@@ -22,8 +22,8 @@ import { boundedRideAudio, reportRideAudioFailure } from '@/services/rideAudioDi
 import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
 import { paymentSpeechPending, readPaymentSpeech, subscribePaymentSpeech } from '@/services/paymentSpeechSource';
 
-/** Driver opportunities ring until a confirmed decision. Passenger replies
- * are silent in the app and acknowledged by their panel or matching trip. */
+/** Opportunities and price proposals can ring. Acceptance information stays
+ * silent in the app and is acknowledged by its panel or matching trip. */
 export function useRideRinging(userId: string | undefined) {
   const pathname = usePathname();
   useEffect(() => {
@@ -49,7 +49,7 @@ export function useRideRinging(userId: string | undefined) {
         }
         // Passenger replies are informational in the app (panel + voice), not
         // driver opportunities awaiting a decision. Keep them for background delivery.
-        const pending = pendingRideAlerts(userId).filter(alert => alert.kind !== 'response');
+        const pending = pendingRideAlerts(userId).filter(alert => alert.kind !== 'response' || isCounterOfferAlert(alert.data));
         if (!pending.length) stopForegroundRideSound();
         reconcileRideAnnouncement(userId);
         if (pending.length) void startForegroundRideSound(pending[pending.length - 1].key)

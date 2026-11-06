@@ -43,8 +43,8 @@ export function DriverFullScreenPreference() {
     };
     if (!value) { void apply(); return; }
     let accepted = false;
-    Alert.alert('Afficher les demandes sur l’écran verrouillé ?',
-      'Une demande proche ou une réservation pourra apparaître en plein écran pour vous permettre de répondre rapidement. ' +
+    Alert.alert('Afficher les commandes sur l’écran verrouillé ?',
+      'Une commande proche ou une réservation pourra apparaître en plein écran pour vous permettre de répondre rapidement. ' +
       'Les détails restent protégés par le verrouillage. Cette option est facultative.\n\n' +
       (Number(Platform.Version) >= 34
         ? (settingsReviewAvailable ? 'Dans l’écran Android qui va s’ouvrir, activez ' : 'Si Android vous le demande, activez ') +
@@ -56,15 +56,15 @@ export function DriverFullScreenPreference() {
   };
   return <View style={{ gap: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <Text style={{ flex: 1, fontSize: 17, color: Colors.gray[900], fontWeight: '600' }}>Demandes en plein écran</Text>
+      <Text style={{ flex: 1, fontSize: 17, color: Colors.gray[900], fontWeight: '600' }}>Commandes en plein écran</Text>
       <Switch value={!error && permission.optIn && permission.allowed && permission.notificationsAllowed && permission.channelReady !== false}
-        disabled={busy || !active} accessibilityLabel="Autoriser les demandes sur l’écran verrouillé"
+        disabled={busy || !active} accessibilityLabel="Autoriser les commandes sur l’écran verrouillé"
         onValueChange={change} />
     </View>
     <Text style={{ fontSize: 15, lineHeight: 22, color: Colors.gray[700] }}>
       {!error && permission.optIn && permission.allowed && permission.notificationsAllowed && permission.channelReady !== false
-        ? 'Autorisation activée. Les demandes peuvent s’afficher sur l’écran verrouillé, selon les réglages du téléphone.'
-        : 'Affichez une demande ou une réservation sur l’écran verrouillé. Sans cette option, vous gardez les notifications habituelles.'}
+        ? 'Autorisation activée. Les commandes peuvent s’afficher sur l’écran verrouillé, selon les réglages du téléphone.'
+        : 'Affichez une commande ou une réservation sur l’écran verrouillé. Sans cette option, vous gardez les notifications habituelles.'}
     </Text>
     {permission.optIn && !permission.allowed && <TouchableOpacity accessibilityRole="button" disabled={busy || !active}
       style={{ minHeight: 48, justifyContent: 'center' }} onPress={() => change(true)}>

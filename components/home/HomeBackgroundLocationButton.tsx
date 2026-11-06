@@ -35,7 +35,7 @@ export function HomeBackgroundLocationButton({ userId, active }: { userId: strin
     <TouchableOpacity accessibilityRole="button" activeOpacity={0.9}
       onPress={() => { if (active && !flow.busy) setOpenedFor({ userId, version }); }}
       accessibilityLabel={flow.loadError ? 'Vérifier ma localisation' : 'Activer ma localisation en arrière-plan'}
-      accessibilityHint="Pour recevoir les demandes proches même écran éteint"
+      accessibilityHint="Pour recevoir les commandes proches même écran éteint"
       accessibilityState={{ disabled: flow.busy, busy: flow.busy }} disabled={flow.busy} style={styles.button}>
       {flow.busy ? <ActivityIndicator size="small" color="#FFFFFF" />
         : <Ionicons name="location-outline" size={24} color="#FFFFFF" />}

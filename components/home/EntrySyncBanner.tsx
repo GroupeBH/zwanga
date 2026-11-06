@@ -8,7 +8,7 @@ export function EntrySyncBanner({ actionLabel, onAction }: {
   if (!actionLabel) return null;
   return <View style={styles.banner} testID="entry-sync-banner">
     <Text style={styles.text} accessibilityLiveRegion="polite">
-      {actionLabel === 'Reprendre mon trajet' ? 'Trajet en cours' : 'Une demande à consulter'}
+      {actionLabel === 'Reprendre mon trajet' ? 'Trajet en cours' : 'Une commande à consulter'}
     </Text>
     <TouchableOpacity accessibilityRole="button" onPress={onAction} style={styles.action}>
       <Text style={styles.label}>{actionLabel}</Text>

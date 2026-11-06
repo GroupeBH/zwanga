@@ -2,27 +2,30 @@ import { useRequestCards } from '@/hooks/requests/useRequestCards';
 import { useRequestsData } from '@/hooks/requests/useRequestsData';
 import { styles } from '@/features/screen-styles/app/requests';
 import { RequestsListState } from '@/features/requests/RequestsListState';
+import { DriverOffersList } from '@/features/requests/DriverOffersList';
 import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { filterRequestIndex, indexRequests, type RequestTab } from '@/features/requests/requestsListModel';
 import { Colors } from '@/constants/styles';
 import type { TripRequest } from '@/types';
 import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Keyboard, RefreshControl, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const tabs: { key: RequestTab; label: string }[] = [
   { key: 'available', label: 'Disponibles' },
+  { key: 'my-offers', label: 'Commandes suivies' },
   { key: 'my-requests', label: 'Mes commandes' },
 ];
 const requestKey = (request: TripRequest) => request.id;
 
 export default function TripRequestsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ tab?: string }>();
   const listRef = useRef<FlatList<TripRequest>>(null);
-  const [requestedTab, setActiveTab] = useState<RequestTab>('available');
+  const [requestedTab, setActiveTab] = useState<RequestTab>(params.tab === 'my-offers' ? 'my-offers' : 'available');
   const [search, setSearch] = useState('');
   const { activeTab, requests, isDriver, isLoading, isFetching, isError, hasData, proximityAvailable, refresh, pagination } = useRequestsData(requestedTab, search);
   const index = useMemo(() => indexRequests(requests), [requests]);
@@ -58,7 +61,7 @@ export default function TripRequestsScreen() {
           onPress={() => router.back()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={23} color={Colors.gray[900]} />
         </TouchableOpacity>
-        <Text accessibilityRole="header" style={styles.headerTitle}>{isDriver && activeTab === 'available' ? 'Trouver un client' : 'Mes commandes'}</Text>
+        <Text accessibilityRole="header" style={styles.headerTitle}>{activeTab === 'my-offers' ? 'Commandes suivies' : isDriver && activeTab === 'available' ? 'Trouver un client' : 'Mes commandes'}</Text>
       </View>
 
       <View style={styles.toolbar}>
@@ -69,7 +72,7 @@ export default function TripRequestsScreen() {
             <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
           </TouchableOpacity>)}
         </View>}
-        <View style={styles.searchContainer}>
+        {activeTab !== 'my-offers' && <View style={styles.searchContainer}>
           <Ionicons name="search-outline" size={19} color={Colors.gray[500]} accessible={false} />
           <TextInput accessibilityLabel="Rechercher par départ, arrivée ou nom"
             placeholder="Départ, arrivée ou nom" placeholderTextColor={Colors.gray[500]}
@@ -79,10 +82,10 @@ export default function TripRequestsScreen() {
             onPress={() => changeSearch('')} style={styles.clearButton}>
             <Ionicons name="close-circle" size={20} color={Colors.gray[500]} />
           </TouchableOpacity>}
-        </View>
+        </View>}
       </View>
 
-      <FlatList ref={listRef} data={filteredRequests} keyExtractor={requestKey}
+      {activeTab === 'my-offers' ? <DriverOffersList onOpen={handleRequestPress} /> : <FlatList ref={listRef} data={filteredRequests} keyExtractor={requestKey}
         renderItem={activeTab === 'available' ? renderAvailableRequestCard : renderMyRequestCard}
         initialNumToRender={6} maxToRenderPerBatch={6} windowSize={5}
         style={styles.list} contentContainerStyle={[styles.listContent, !count && styles.emptyListContent]}
@@ -109,7 +112,7 @@ export default function TripRequestsScreen() {
           error={Boolean(isError)} searching={searching} busy={Boolean(isFetching)} tab={activeTab}
           onRetry={refresh} onClearSearch={() => changeSearch('')} />}
         ListFooterComponent={<HistoryPagination {...pagination} />}
-      />
+      />}
 
       {activeTab === 'my-requests' && <View style={styles.footer}>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Commander un trajet"

@@ -16,8 +16,18 @@ export function parseNearbyPhoneAlert(data: Record<string, unknown> | undefined)
 
 /** These alerts are already displayed by APNs/FCM (unlike headless driver invitations). */
 export function isRemoteRequestAcceptanceAlert(data: Record<string, unknown> | undefined): boolean {
-  return (data?.type === 'trip_request_accepted' && data.ringAlert === 'request-accepted-v1') ||
+  return isCounterOfferAlert(data) || isDriverOfferAcceptanceAlert(data) || (data?.type === 'trip_request_accepted' && data.ringAlert === 'request-accepted-v1') ||
     (data?.type === 'booking_response' && data.ringAlert === 'booking-response-v1');
+}
+
+export function isDriverOfferAcceptanceAlert(data: Record<string, unknown> | undefined): boolean {
+  return data?.type === 'offer_accepted' && data.ringAlert === 'offer-accepted-v1' &&
+    isInvitationId(data.offerId) && isInvitationId(data.driverId) && isInvitationId(data.passengerId) && isInvitationId(data.tripRequestId) &&
+    data.driverId !== data.passengerId;
+}
+
+export function isCounterOfferAlert(data: Record<string, unknown> | undefined): boolean {
+  return data?.type === 'driver_offer' && data.ringAlert === 'counter-offer-v1' && isInvitationId(data.offerId);
 }
 
 /** Scheduled request family (remote v2, Android headless v3): never authorizes a decision. */

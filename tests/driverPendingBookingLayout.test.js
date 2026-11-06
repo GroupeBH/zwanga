@@ -10,6 +10,7 @@ const flat = style => Object.assign({}, ...(Array.isArray(style) ? style.flat(In
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollView: 'Scroll', ActivityIndicator: 'Spinner',
   StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 320, height: 640 }) };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
   '../screen-styles/app/trip/navigate/detail/index': { styles: { floatingButtons: { bottom: 180, gap: 8 } } },
   './navigationPresentation': { formatSeatCount: count => `${count} places`, formatPendingBookingPayment: () => 'Cash' },
   './DriverInterruptionPrompt': { DriverInterruptionPrompt: 'Interruption' },

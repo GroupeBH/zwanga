@@ -48,6 +48,12 @@ export function useHomeMapNavigation({ isFocused, isScreenActive = isFocused, ro
     });
   }, [router, scheduleMapDetailNavigation]);
 
+  const openMapDriverProfile = useCallback((driverId: string, tripId: string) => {
+    scheduleMapDetailNavigation(`driver:${driverId}`, () => {
+      router.push({ pathname: '/driver/[id]', params: { id: driverId, sourceTripId: tripId } });
+    });
+  }, [router, scheduleMapDetailNavigation]);
+
   useEffect(() => {
     if (!canNavigate) {
       if (openingMapDetailTimerRef.current) {
@@ -69,5 +75,5 @@ export function useHomeMapNavigation({ isFocused, isScreenActive = isFocused, ro
       clearTimeout(openingMapDetailRecoveryTimerRef.current);
     }
   }, []);
-  return { openingMapDetailKey, openTripRequestDetail, shouldRenderHomeMap, openTripDetail };
+  return { openingMapDetailKey, openTripRequestDetail, shouldRenderHomeMap, openTripDetail, openMapDriverProfile };
 }

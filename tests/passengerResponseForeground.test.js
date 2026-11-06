@@ -39,6 +39,21 @@ function ringFixture(t, platform) {
 }
 
 for (const platform of ['ios', 'android']) {
+  test(`${platform}: counteroffer rings even on the request until the passenger explicitly opens or dismisses it`, async t => {
+    const f = ringFixture(t, platform); await tick();
+    const data = { ...responseData(), type: 'driver_offer', ringAlert: 'counter-offer-v1', offerId: otherId };
+    delete data.bookingId;
+    const alert = f.parse(data);
+    f.session.setRideAlertScreen(userId, `/request/${requestId}`);
+    f.receive(data); await tick();
+    assert.equal(f.io.plays.at(-1), alert.key);
+    assert.equal(f.session.pendingRideResponseNotices(userId).length, 1);
+    f.session.dismissRideResponseNotice(alert);
+    assert.equal(f.session.pendingRideAlerts(userId).length, 0);
+    const played = f.io.plays.length;
+    f.receive(data); await tick(); assert.equal(f.io.plays.length, played, 'duplicate push cannot restart a read price alert');
+  });
+
   test(`${platform}: live accepted/refused replies do not ring; driver alerts still do until acknowledged`, async t => {
     const f = ringFixture(t, platform); await tick();
     for (const [type, status] of [['trip_request_accepted', 'accepted'], ['booking_response', 'accepted'], ['booking_response', 'rejected']]) {
@@ -121,8 +136,11 @@ test('response panel appears only in-app, speaks only when visible and opens the
     'expo-router': { useRouter: () => ({ push: href => io.routes.push(href) }) },
     '@/hooks/useAppIsActive': { useAppIsActive: () => io.active },
     '@/hooks/notifications/usePaymentAnnouncement': { useScreenAnnouncement: (...args) => io.speech.push(args) },
-    '@/store/hooks': { useAppSelector: selector => selector === 'user' ? io.user : io.authenticated },
+    '@/store/hooks': { useAppDispatch: () => () => {}, useAppSelector: selector => selector === 'user' ? io.user : io.authenticated },
+    '@/store/api/baseApi': { baseApi: { util: { invalidateTags: tags => tags } } },
     '@/store/selectors': { selectUser: 'user', selectIsAuthenticated: 'authenticated' },
+    '@/store/api/tripRequestApi': { useGetTripRequestByIdQuery: () => ({}) },
+    '@/hooks/useDisplayReads': { displayReadOptions: enabled => ({ skip: !enabled }), useDisplayReadsEnabled: enabled => enabled },
     '@/features/navigation/RideModal': { RideModal: 'RideModal' },
     '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ active: io.overlay }) },
   });

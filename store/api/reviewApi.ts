@@ -3,6 +3,7 @@ import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 
 export interface ReviewPage { data: Review[]; total: number; nextCursor: string | null }
+export interface RatedTrips { userId: string; ratedTripIds: string[] }
 
 const buildFullName = (user?: { firstName?: string | null; lastName?: string | null; phone?: string }) => {
   if (!user) {
@@ -46,7 +47,22 @@ export const reviewApi = baseApi.injectEndpoints({
         body: payload,
       }),
       transformResponse: (response: any) => mapServerRating(response),
-      invalidatesTags: ['User', 'Trip'],
+      invalidatesTags: (result, error) => result && !error ? ['User', 'Trip', 'Review'] : [],
+    }),
+
+    getMyRatedTrips: builder.query<RatedTrips, { userId: string; tripIds: string[] }>({
+      // Account ID partitions the cache only; the server always uses JWT identity.
+      async queryFn({ userId, tripIds }, _api, _extra, baseQuery) {
+        const response = await baseQuery({ url: '/ratings/mine/trips', params: { tripIds: tripIds.join(',') } });
+        if (response.error) return { error: response.error };
+        const data = response.data as RatedTrips | undefined;
+        if (!data || data.userId !== userId || !Array.isArray(data.ratedTripIds)
+          || data.ratedTripIds.length > 100 || data.ratedTripIds.some(id => typeof id !== 'string' || !tripIds.includes(id)))
+          return { error: { status: 'CUSTOM_ERROR', error: 'Vérification des évaluations indisponible.' } };
+        return { data };
+      },
+      providesTags: ['Review'],
+      keepUnusedDataFor: 60,
     }),
 
     getReviews: builder.query<Review[], string>({
@@ -77,6 +93,7 @@ export const reviewApi = baseApi.injectEndpoints({
 
 export const {
   useCreateReviewMutation,
+  useGetMyRatedTripsQuery,
   useGetReviewsQuery,
   useGetReviewPageQuery,
   useGetAverageRatingQuery,

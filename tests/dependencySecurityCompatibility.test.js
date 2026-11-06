@@ -6,6 +6,25 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 
+test('modern glob dependencies are patched without replacing legacy callback APIs', async () => {
+  const { createRequire } = require('node:module');
+  const semver = require('semver');
+  const lock = require('../package-lock.json');
+  for (const [name, pkg] of Object.entries(lock.packages)) {
+    if (name.endsWith('/minimatch') && semver.gte(pkg.version, '7.0.0'))
+      assert.ok(semver.gte(pkg.version, '11.0.1'), `${name}: ${pkg.version}`);
+    if (name.endsWith('/glob') && semver.gte(pkg.version, '9.0.0'))
+      assert.ok(semver.gte(pkg.version, '14.0.2'), `${name}: ${pkg.version}`);
+  }
+  const fromExpo = createRequire(require.resolve('@expo/config-plugins/package.json'));
+  const glob = fromExpo('glob');
+  const options = { cwd: path.join(root, 'tests') };
+  assert.ok(glob.globSync('dependency*.test.js', options).includes('dependencySecurityCompatibility.test.js'));
+  assert.deepEqual(await glob.glob('dependency*.test.js', options), glob.globSync('dependency*.test.js', options));
+  const controller = new AbortController(); controller.abort(new Error('test cancellation'));
+  await assert.rejects(glob.glob('**/*', { ...options, signal: controller.signal }), /test cancellation/);
+});
+
 test('patched URI decoder preserves route parameters and handles malformed input without hanging', () => {
   const result = spawnSync(process.execPath, ['-e', `
     const assert = require('node:assert/strict');

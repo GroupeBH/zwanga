@@ -60,7 +60,7 @@ export function AppUpdatePrompt({ enabled = true }: { enabled?: boolean }) {
         <ScrollView style={styles.body} contentContainerStyle={styles.content} bounces={false}>
           <View style={styles.icon}><Ionicons name="download-outline" size={30} color={Colors.primary} /></View>
           <Text accessibilityRole="header" style={styles.title}>Mise à jour disponible</Text>
-          <Text style={styles.version}>Zwanga · version {release.version}</Text>
+          <Text style={styles.version}>{release.comparison === 'native_build' ? 'Une nouvelle version de Zwanga' : `Zwanga · version ${release.version}`}</Text>
           <Text style={styles.copy}>Profitez des dernières améliorations de Zwanga.</Text>
           {release.notes.trim() ? <Text style={styles.notes}>{release.notes}</Text> : null}
           <Text style={styles.storeHint}>La mise à jour se poursuit dans {release.platform === 'ios' ? 'l’App Store' : 'Google Play'}.</Text>

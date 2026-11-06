@@ -29,7 +29,7 @@ test('approval opens inside the app, discloses background use, and is scrollable
   assert.deepEqual(nodes(tree).find(n => n.type === 'Safe').props.edges, ['bottom', 'left', 'right']);
   assert.match(words(tree), /écran éteint/); assert.match(words(tree), /au serveur/);
   assert.match(words(tree), /collecte et envoie votre position/); assert.match(words(tree), /Hors trajet/);
-  assert.match(words(tree), /demandes proches/); assert.match(words(tree), /Toujours autoriser/);
+  assert.match(words(tree), /commandes proches/); assert.match(words(tree), /Toujours autoriser/);
   assert.ok(words(tree).split(/\s+/).length < 80, 'disclosure remains concise');
   const buttons = nodes(tree).filter(n => n.type === 'Button');
   assert.deepEqual(buttons.map(words), ['Ouvrir les réglages', 'Plus tard']);
@@ -82,7 +82,7 @@ test('passenger disclosure explains trip-only use, preserves the booking and off
     assert.match(words(tree), /collecte et envoie votre position/);
     assert.match(words(tree), /Facultatif/);
     assert.match(words(tree), /réservation reste enregistrée/);
-    assert.doesNotMatch(words(tree), /Alertes conducteur|3 minutes|demandes proches/);
+    assert.doesNotMatch(words(tree), /Alertes conducteur|3 minutes|commandes proches/);
     assert.deepEqual(f.calls, []);
     nodes(tree).filter(n => n.type === 'Button')[1].props.onPress();
     assert.deepEqual(f.calls, ['close']);

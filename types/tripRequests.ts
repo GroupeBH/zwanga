@@ -53,6 +53,7 @@ export interface TripRequest {
 export type DriverOfferStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 
 export interface DriverOffer {
+  existingTripId?: string | null;
   id: string;
   tripRequestId: string;
   driverId: string;

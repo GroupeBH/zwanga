@@ -6,6 +6,10 @@
   "build": {
     "dev": {
       "node": "24.22.1",
+      "env": {
+        "EXPO_PUBLIC_ENABLE_SIGNUP_OTP": "true",
+        "EXPO_PUBLIC_REQUIRE_ACCOUNT_PHONE_OTP": "true"
+      },
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -59,6 +63,8 @@
       },
       "env": {
         "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_ENABLE_SIGNUP_OTP": "true",
+        "EXPO_PUBLIC_REQUIRE_ACCOUNT_PHONE_OTP": "true",
         "ZWANGA_DRIVER_FULL_SCREEN_ENABLED": "true",
         "EXPO_PUBLIC_API_URL": "https://compute-api.zwanga-app.com/api/v1",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "754065251959-scmvdlel13lf7kpbg3tdmevl7hj0299s.apps.googleusercontent.com",

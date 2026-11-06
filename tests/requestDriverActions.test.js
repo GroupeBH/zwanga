@@ -64,6 +64,17 @@ test('pickup driver change uses the navigation screen safe map-release callback'
   assert.deepEqual(app.routes, [], 'no direct stack replacement while the navigation map is mounted');
 });
 
+test('passenger cannot reuse an open confirmation after boarding or a request change', async t => {
+  for (const patch of [{ request: { ...request, id: 'other' } },
+    { request, booking: { tripId: 'trip', passengerId: 'owner', status: 'accepted', pickedUp: true } }]) {
+    const app = fixture('ChangeRequestDriverButton'); t.after(() => app.hooks.unmount());
+    nodes(app.hooks.render(() => app.component({ request }))).find(n => n.type === 'Pressable').props.onPress();
+    app.hooks.render(() => app.component(patch));
+    await app.dialog().actions[1].onPress();
+    assert.equal(app.calls.length, 0);
+  }
+});
+
 test('a response from a previous account cannot update cache or redirect', async t => {
   const app = fixture('ChangeRequestDriverButton'); t.after(() => app.hooks.unmount());
   nodes(app.hooks.render(() => app.component({ request }))).find(n => n.type === 'Pressable').props.onPress();
@@ -76,10 +87,10 @@ test('map selection explains the deadline, sends no driver identity and guards d
   const app = fixture('MapDriverSelection'); t.after(() => app.hooks.unmount());
   let closed = false;
   const props = { request: { ...request, status: 'pending', selectedDriverId: null, tripId: null }, disabled: false,
-    vehicle: { id: 'a'.repeat(64), vehicleType: 'car', ageMs: 0 }, onClose: () => { closed = true; } };
+    markerId: 'a'.repeat(64), onClose: () => { closed = true; } };
   const tree = app.hooks.render(() => app.component(props));
   assert.ok(nodes(tree).some(n => n.type === 'Text' && String(n.props.children).includes('3 minutes')));
-  const send = nodes(tree).filter(n => n.type === 'Pressable')[1]; send.props.onPress(); send.props.onPress();
+  const send = nodes(tree).find(n => n.type === 'Pressable'); send.props.onPress(); send.props.onPress();
   assert.equal(app.calls.length, 1);
   assert.deepEqual(Object.keys(app.calls[0]).sort(), ['expectedUpdatedAt', 'id', 'markerId']);
   app.reject(); await flush();

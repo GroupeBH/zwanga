@@ -35,6 +35,8 @@ export function useTripDetailBookingState({
   const [bookingModalVisible, setBookingModalVisible] = useState(false);
   const [bookingStep, setBookingStep] = useState<1 | 2 | 3>(1); // 1: places, 2: points, 3: preview
   const [bookingSeats, setBookingSeats] = useState('1');
+  const [bookingProposedPrice, setBookingProposedPrice] = useState('');
+  useEffect(() => { setBookingProposedPrice(''); }, [tripId]);
   const [bookingPaymentMode, setBookingPaymentMode] =
     useState<TripPaymentMode>('cash');
   const [bookingModalError, setBookingModalError] = useState('');
@@ -150,6 +152,8 @@ export function useTripDetailBookingState({
     shouldAutofillPassengerOrigin,
     bookingStep,
     bookingSeats,
+    bookingProposedPrice,
+    setBookingProposedPrice,
     setBookingSuccess,
     isCreatingTripShareLink,
     createTripShareLink,

@@ -26,6 +26,7 @@ const mocks = { react: React, 'react-native': native, '@expo/vector-icons': { Io
   './RequestDecisionVehiclePicker': { RequestDecisionVehiclePicker: 'VehiclePicker' },
   './CollapsibleRouteMap': { CollapsibleRouteMap: 'RouteMap' },
   './RequestDecisionOptions': { RequestDecisionOptions: 'Options' },
+  './RequestCounterOffer': { RequestCounterOffer: 'CounterOffer' },
   '@/features/driver-payments/CashCommissionNotice': { CashCommissionNotice: 'Commission' },
 };
 const presentation = { requestRouteMapData: { departureCoordinate: { latitude: -4.3, longitude: 15.3 },
@@ -63,7 +64,7 @@ test('one vehicle is displayed without another selection step and no arbitrary v
 test('multiple vehicles start collapsed; opening and choosing closes the list and preserves Change', t => {
   const f = picker(t);
   let tree = f.render();
-  assert.match(words(tree), /Choisir mon véhicule.*Pour accepter la demande/);
+  assert.match(words(tree), /Choisir mon véhicule.*Pour accepter la commande/);
   assert.equal(f.list(tree), undefined, 'the fleet does not take space from the route until requested');
   const choose = elements(tree).find(item => item.type === 'Pressable');
   assert.equal(choose.props.accessibilityState.expanded, false);
@@ -240,7 +241,7 @@ test('actual request screen keeps the decision footer outside the scrollable det
   assert.ok(tree.props.children.some(item => item?.type === 'DecisionActions'));
   assert.equal(elements(scroll).find(item => item.type === 'Decision').props.presentation, presentation);
   assert.equal(elements(tree).some(item => item.type === 'AcceptModal'), false, 'no legacy acceptance modal in the decision path');
-  assert.match(words(tree), /Nouvelle demande/);
+  assert.match(words(tree), /Nouvelle commande/);
   const previousRequest = model.tripRequest;
   try {
     model.tripRequest = { ...request, immediateDispatch: true };

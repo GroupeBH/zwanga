@@ -140,8 +140,10 @@ test('the last day of a month and next-year labels use calendar dates, not 24-ho
   assert.ok(model.FLEX_OPTIONS.every(value => value > 0));
 });
 
-const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
-const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join('') : words(node?.props?.children ?? '');
+const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all)
+  : typeof node.type === 'function' ? all(node.type(node.props)) : [node, ...all(node.props?.children)];
+const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join('')
+  : typeof node?.type === 'function' ? words(node.type(node.props)) : words(node?.props?.children ?? '');
 const native = { Text: 'Text', View: 'View', TouchableOpacity: 'Button', StyleSheet: { create: x => x } };
 
 test('date/time remain accessible without quick shortcuts, and flexibility is collapsed', () => {
@@ -195,6 +197,7 @@ test('primary action opens time selection first, then submits planned or immedia
     './useRequestQuickPlaces': { useRequestQuickPlaces: () => ({}) },
     './useRequestBudgetSummary': { useRequestBudgetSummary: () => ({ hasDepartureAddress: true, hasArrivalAddress: true, canSubmitRequestDetails: true }) },
     './useRequestRoutePrefill': { useRequestRoutePrefill: () => ({}) },
+    './useDirectDriverPrefill': { useDirectDriverPrefill: () => ({ blocked: false }) },
     '@/hooks/useUserLocation': { useUserLocation: () => ({}) },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/api/googleMapsApi': { useGeocodeMutation: () => [() => {}] },

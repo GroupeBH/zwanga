@@ -58,7 +58,7 @@ function fixture(t) {
     path: '/', overlayBusy: false, ridePending: false, hasOngoingRide: false, alerts: [],
     trips: { data: [trip()], isSuccess: true, fulfilledTimeStamp: now },
     requests: { data: [], isSuccess: true, fulfilledTimeStamp: now },
-    activity: { data: { userId: 'driver', hasLiveActivity: true, trips: { count: 1 }, requests: { count: 0 } },
+    activity: { data: { userId: 'driver', hasLiveActivity: false, trips: { count: 1 }, requests: { count: 0 } },
       isSuccess: true, startedTimeStamp: now, fulfilledTimeStamp: now },
     readBooking: async id => { reads.push(['booking', id]); return booking({ id }); },
     readTrip: async id => { reads.push(['trip', id]); return trip({ id }); },
@@ -223,4 +223,43 @@ test('no new trip fetches after the entry has settled; a live alert may still op
   assert.equal(f.render().pending, false);
   f.options.trips.data = [trip()]; f.options.activity.data.trips.count = 1; f.render(); await flush(); assert.deepEqual(f.reads, []);
   f.options.alerts = [alert()]; f.render(); await flush(); assert.deepEqual(f.routes, [target()]);
+});
+
+test('each new live booking opens once after an earlier reservation, without trapping manual Home', async t => {
+  const f = fixture(t);
+  f.options.alerts = [alert()]; f.render(); await flush();
+  f.options.path = '/trip/manage/11111111-1111-4111-8111-111111111111'; f.render();
+  f.options.alerts.push(alert({ id: 'next', key: 'driver-booking-next' }));
+  f.render(); await flush(); f.render();
+  assert.deepEqual(f.routes, [target(), target('trip', 'next')]);
+  f.options.path = '/'; f.render(); await flush(); f.render();
+  assert.equal(f.routes.length, 2, 'retained old cards do not cause a redirect loop');
+});
+
+test('a new live reservation can open after ordinary navigation but never from a payment or active guidance', async t => {
+  for (const path of ['/profile', '/booking/payment', '/booking/navigate/live', '/trip/navigate/live', '/publish', '/chat/one']) {
+    const f = fixture(t);
+    f.options.trips.data = []; f.options.activity.data.hasLiveActivity = false;
+    f.render(); f.options.path = path; f.render();
+    f.options.alerts = [alert()]; f.render(); await flush(); f.render();
+    assert.equal(f.routes.length, path === '/profile' ? 1 : 0, path);
+  }
+});
+
+test('manual navigation while a live booking is verified cannot repeatedly hijack the new screen', async t => {
+  const f = fixture(t), wait = deferred();
+  f.options.alerts = [alert()]; f.options.readBooking = () => wait.promise;
+  f.render(); f.options.path = '/profile'; f.render();
+  wait.resolve(booking()); await flush(); f.render(); await flush(); f.render();
+  assert.deepEqual(f.routes, []);
+});
+
+test('a thrown booking redirect remains retryable after initial Home discovery settled', async t => {
+  const f = fixture(t); f.options.trips.data = []; f.options.activity.data.hasLiveActivity = false;
+  f.render(); f.render(); f.options.alerts = [alert()];
+  f.options.replaceBooking = () => { throw new Error('navigator unavailable'); };
+  f.render(); await flush(); assert.equal(f.render().failed, true);
+  f.options.replaceBooking = destination => f.routes.push(destination);
+  f.render().retry(); f.render(); await flush();
+  assert.deepEqual(f.routes, [target()]);
 });

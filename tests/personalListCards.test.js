@@ -101,7 +101,7 @@ test('unknown request budgets are never confused with free trips and expired req
 
 test('reservations retain the original detail route, total estimate, personal destination and driver photo', () => {
   const result = reservation({ passengerDestination: 'Université de Kinshasa' });
-  for (const value of ['Confirmée', 'Avenue Matadi', 'Université de Kinshasa', '2 places', '5.000 FC', 'total estimé', 'Alex']) {
+  for (const value of ['Confirmée', 'Avenue Matadi', 'Université de Kinshasa', '2 places', '5.000 FC', 'total passager', 'Alex']) {
     assert.ok(result.text.includes(value), value);
   }
   assert.equal(result.nodes.find(node => node.type === 'Image').props.source.uri, trip.driverAvatar);

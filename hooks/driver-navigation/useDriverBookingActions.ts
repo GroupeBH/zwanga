@@ -1,4 +1,5 @@
 import { getBookingActionErrorMessage } from '../../features/driver-navigation/navigationPresentation';
+import { bookingAcceptanceArgument } from '@/features/trip-detail/bookingPriceProposal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import {
   useAcceptBookingMutation,
@@ -70,7 +71,7 @@ export function useDriverBookingActions({
       const action = beginBookingAction(booking, 'accept');
       if (!action) return;
       try {
-        const accepted = await acceptBooking(booking.id).unwrap();
+        const accepted = await acceptBooking(bookingAcceptanceArgument(booking)).unwrap();
         if (!action.isCurrent()) return;
         commitBookingDecision(action.booking, 'accepted', accepted);
         action.complete();

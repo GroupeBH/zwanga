@@ -110,7 +110,7 @@ test('denied permission leaves foreground discovery available without saving con
   const f = fixture(); f.deny(); f.render(); await tick();
   checkbox(f.render()).props.onChange(true);
   nodes(f.render()).find(node => node.type === 'Button').props.onPress(); await tick();
-  assert.deepEqual(f.calls, ['permission']); assert.match(words(f.render()), /demandes restent accessibles/);
+  assert.deepEqual(f.calls, ['permission']); assert.match(words(f.render()), /commandes restent accessibles/);
   assert.doesNotMatch(words(f.render()), /Autorisé sur ce téléphone/);
   assert.ok(button(f.render(), 'Ouvrir les réglages'));
   f.hooks.unmount();

@@ -48,7 +48,7 @@ test('Home hides background sync progress, failure and offline status without re
 
 test('verified activities remain accessible, including after an offline or failed sync', () => {
   const f = fixture(); let actions = 0;
-  for (const actionLabel of ['Reprendre mon trajet', 'Voir la réservation', 'Voir la demande']) {
+  for (const actionLabel of ['Reprendre mon trajet', 'Voir la réservation', 'Voir la commande']) {
     const tree = f.EntrySyncBanner({ failed: true, offline: true, actionLabel, onAction: () => { actions++; } });
     assert.equal(tree.props.testID, 'entry-sync-banner');
     assert.equal(tree.props.accessibilityViewIsModal, undefined);
@@ -62,7 +62,7 @@ test('verified activities remain accessible, including after an offline or faile
     buttons[0].props.onPress();
     assert.ok(rendered.some(node => node.type === 'Text' && node.props.children === actionLabel));
     assert.ok(rendered.some(node => node.type === 'Text' && node.props.children ===
-      (actionLabel === 'Reprendre mon trajet' ? 'Trajet en cours' : 'Une demande à consulter')));
+      (actionLabel === 'Reprendre mon trajet' ? 'Trajet en cours' : 'Une commande à consulter')));
   }
   assert.equal(actions, 3);
 });

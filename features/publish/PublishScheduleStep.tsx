@@ -1,4 +1,5 @@
 import { PublishStep } from './publishModel';
+import { DepartureDateTimeFields } from '@/components/forms/DepartureDateTimeFields';
 import { styles } from '../screen-styles/app/publish/index';
 import { Colors, Spacing } from '@/constants/styles';
 import Animated, { FadeInDown } from '@/utils/reanimated';
@@ -12,6 +13,8 @@ interface PublishScheduleStepProps {
   openDateOrTimePicker: (mode: "date" | "time", target?: "departure" | "recurringEndDate") => void;
   formattedDateLabel: string;
   formattedTimeLabel: string;
+  hasChosenDepartureTime: boolean;
+  pickerError: string | null;
   isRecurringTrip: boolean;
   toggleRecurringTrip: () => void;
   recurringWeekdayOptions: { value: number; label: string; }[];
@@ -31,6 +34,8 @@ export function PublishScheduleStep({
   openDateOrTimePicker,
   formattedDateLabel,
   formattedTimeLabel,
+  hasChosenDepartureTime,
+  pickerError,
   isRecurringTrip,
   toggleRecurringTrip,
   recurringWeekdayOptions,
@@ -48,34 +53,10 @@ export function PublishScheduleStep({
     <Animated.View entering={stepEntering} style={styles.stepContainer}>
       <Text style={styles.sectionTitle}>Quand partez-vous ?</Text>
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>DATE ET HEURE DE DÉPART</Text>
-        <View style={styles.datetimeButtons}>
-          <TouchableOpacity
-            style={styles.datetimeButton}
-            onPress={() => openDateOrTimePicker('date')}
-          >
-            <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.primary + '15' }]}>
-              <Ionicons name="calendar" size={18} color={Colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.datetimeButtonLabel}>Date</Text>
-              <Text style={styles.datetimeButtonValue} numberOfLines={1} ellipsizeMode="tail">{formattedDateLabel}</Text>
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.datetimeButton}
-            onPress={() => openDateOrTimePicker('time')}
-          >
-            <View style={[styles.datetimeButtonIcon, { backgroundColor: Colors.gray[200] }]}>
-              <Ionicons name="time" size={18} color={Colors.gray[700]} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.datetimeButtonLabel}>Heure</Text>
-              <Text style={styles.datetimeButtonValue} numberOfLines={1} ellipsizeMode="tail">{formattedTimeLabel}</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+      <View style={{ gap: 8, marginBottom: Spacing.lg }}>
+        <DepartureDateTimeFields dateLabel={formattedDateLabel} timeLabel={formattedTimeLabel}
+          hasChosenTime={hasChosenDepartureTime} onOpen={openDateOrTimePicker} />
+        {pickerError && <Text style={{ color: Colors.danger }} accessibilityLiveRegion="polite">{pickerError}</Text>}
       </View>
       <TouchableOpacity
         style={[
@@ -159,13 +140,6 @@ export function PublishScheduleStep({
         </View>
       )}
 
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
-        <Text style={styles.infoText}>
-          Choisissez une date et une heure précises pour que les passagers puissent mieux planifier.
-        </Text>
-      </View>
-
       <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TouchableOpacity
           style={[styles.button, styles.buttonSecondary]}
@@ -173,8 +147,9 @@ export function PublishScheduleStep({
         >
           <Text style={styles.buttonSecondaryText}>Retour</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]} onPress={handleNextStep}>
-          <Text style={styles.buttonText}>Continuer</Text>
+        <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]}
+          onPress={() => hasChosenDepartureTime ? handleNextStep() : openDateOrTimePicker('time')}>
+          <Text style={styles.buttonText}>{hasChosenDepartureTime ? 'Continuer' : 'Choisir l’heure'}</Text>
         </TouchableOpacity>
       </View>
     </Animated.View>

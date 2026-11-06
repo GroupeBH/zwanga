@@ -104,7 +104,7 @@ export function RequestEditModal({
       visible={showEditForm}
       animationType="slide"
       transparent
-      onRequestClose={() => setShowEditForm(false)}
+      onRequestClose={() => { if (!isUpdating) setShowEditForm(false); }}
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -114,6 +114,7 @@ export function RequestEditModal({
           style={styles.editModalBackdrop}
           activeOpacity={1}
           onPress={() => setShowEditForm(false)}
+          disabled={isUpdating}
         />
         
         <View style={styles.editModalCard}>
@@ -123,19 +124,19 @@ export function RequestEditModal({
               <Ionicons name="create-outline" size={24} color={Colors.primary} />
               <View>
                 <Text style={styles.editModalTitle}>Modifier la commande</Text>
-                <Text style={styles.editModalSubtitle}>Ajustez les détails avant de republier</Text>
               </View>
             </View>
             <TouchableOpacity
               style={styles.editModalCloseButton}
               onPress={() => setShowEditForm(false)}
+              disabled={isUpdating}
+              accessibilityLabel="Fermer la modification"
             >
               <Ionicons name="close" size={24} color={Colors.gray[600]} />
             </TouchableOpacity>
           </View>
 
           {/* Contenu Scrollable */}
-          <Text style={[styles.editModalSubtitle, { marginHorizontal: 20, marginBottom: 12 }]}>Les anciennes offres en attente seront retirées. Une commande expirée exige un nouveau créneau futur. Une recherche immédiate reprogrammée devient une commande classique.</Text>
           <RequestEditFields
             editAddressInputMode={editAddressInputMode}
             setEditAddressInputMode={setEditAddressInputMode}
@@ -177,8 +178,11 @@ export function RequestEditModal({
           />
 
           {/* Actions fixes en bas */}
+          <Text style={[styles.editModalSubtitle, { marginHorizontal: 20, marginTop: 8 }]}>
+            {isEditVehicleOptionsLoading ? 'Vérification des véhicules…' : 'Enregistrer relance la recherche et retire les propositions en attente.'}
+          </Text>
           <View style={styles.editModalFooter}>
-            <TouchableOpacity style={styles.editModalCancelButton} onPress={() => setShowEditForm(false)}>
+            <TouchableOpacity style={styles.editModalCancelButton} disabled={isUpdating} onPress={() => setShowEditForm(false)}>
               <Text style={styles.editModalCancelText}>Annuler</Text>
             </TouchableOpacity>
             <TouchableOpacity

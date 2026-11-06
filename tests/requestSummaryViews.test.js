@@ -8,8 +8,11 @@ const words = tree => typeof tree === 'string' || typeof tree === 'number' ? Str
 const native = { View: 'View', Text: 'Text', Pressable: 'Pressable', ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: x => x } };
 const labels = { departure: { title: 'Départ test', address: 'Départ test', reference: 'Portail' }, arrival: { title: 'Arrivée test', address: 'Arrivée test', context: 'Quartier' } };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  './WithdrawRequestDriverButton': { WithdrawRequestDriverButton: 'DriverWithdrawal' },
   '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: false, closed: false, label: null }) },
   './RequestTargetDriver': { RequestTargetDriver: 'RequestTargetDriver' },
+  './RequestCounterOffer': { RequestCounterOffer: 'CounterOffer' },
+  './PassengerPriceOffers': { PassengerPriceOffers: 'PriceOffers' },
   './ChangeRequestDriverButton': { ChangeRequestDriverButton: 'ChangeRequestDriverButton' },
   '@/hooks/useRouteLocationLabels': { useRouteLocationLabels: () => labels },
   '@/components/trip/RouteLocationDetails': { RouteLocationDetails: 'Route' },
@@ -43,15 +46,17 @@ test('closed requests replace progress with their closed status; a selected driv
   assert.equal(completedIcons.length, 2, 'only sent/search stages complete, not departure');
 });
 
-test('passenger footer routes modify/cancel to existing actions and keeps assigned-trip access', () => {
-  const calls = []; const { RequestPassengerActions } = loader(mocks)('features/request-detail/RequestPassengerTicket.tsx');
-  let tree = RequestPassengerActions({ model: { ...model, handleCancelRequest: () => calls.push('cancel'), handleOpenEditForm: () => calls.push('edit') } });
+test('passenger footer routes modify/cancel to existing actions and keeps assigned-trip access', t => {
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const calls = []; const { RequestPassengerActions } = loader({ ...mocks, react: { ...React, ...hooks.react } })('features/request-detail/RequestPassengerTicket.tsx');
+  const render = props => hooks.render(() => RequestPassengerActions({ model: props }));
+  let tree = render({ ...model, handleCancelRequest: () => calls.push('cancel'), handleOpenEditForm: () => calls.push('edit') });
   for (const button of elements(tree).filter(item => item.type === 'Pressable')) button.props.onPress();
   assert.deepEqual(calls, ['cancel', 'edit']);
-  tree = RequestPassengerActions({ model: { ...model, tripRequest: { ...request, tripId: 'trip' }, handleViewTrip: id => calls.push(id) } });
+  tree = render({ ...model, tripRequest: { ...request, tripId: 'trip' }, handleViewTrip: id => calls.push(id) });
   elements(tree).find(item => item.type === 'Pressable' && words(item).includes('Voir mon trajet')).props.onPress();
   assert.equal(calls.at(-1), 'trip'); assert.doesNotMatch(words(tree), /Modifier la commande/);
-  tree = RequestPassengerActions({ model: { ...model, isFetchingRequest: true } });
+  tree = render({ ...model, isFetchingRequest: true });
   assert.ok(elements(tree).filter(item => item.type === 'Pressable').every(item => !item.props.disabled));
 });
 
@@ -67,6 +72,34 @@ test('driver response footer accepts without another modal, refuses locally and 
     const accept = elements(RequestDecisionActions({ model: { ...actions, ...patch } })).filter(item => item.type === 'Pressable')[1];
     assert.equal(accept.props.disabled, true);
   }
+});
+
+test('passenger change remains in the footer and blocks conflicting actions while sending', t => {
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const { RequestPassengerActions } = loader({ ...mocks, react: { ...React, ...hooks.react } })('features/request-detail/RequestPassengerTicket.tsx');
+  const selected = { ...model, isScreenActive: true, tripRequest: { ...request, status: 'driver_selected', tripId: 'trip' },
+    passengerBooking: { id: 'booking', status: 'accepted', tripId: 'trip', passengerId: request.passengerId } };
+  const render = value => hooks.render(() => RequestPassengerActions({ model: value }));
+  const tree = render(selected);
+  const change = elements(tree).find(item => item.type === 'ChangeRequestDriverButton');
+  assert.equal(change.props.request, selected.tripRequest);
+  assert.equal(change.props.booking, selected.passengerBooking);
+  change.props.onPendingChange(true);
+  assert.ok(elements(render(selected)).filter(item => item.type === 'Pressable').every(item => item.props.disabled));
+  change.props.onPendingChange(false);
+  assert.equal(elements(render({ ...selected, passengerBooking: undefined })).find(item => item.type === 'ChangeRequestDriverButton').props.request, undefined);
+});
+
+test('driver withdrawal blocks a simultaneous departure and keeps safe exit in the parent', t => {
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const { RequestCourseActions } = loader({ ...mocks, react: { ...React, ...hooks.react } })('features/request-detail/RequestDriverCourse.tsx');
+  const driver = { ...model, isScreenActive: true, canStartAssignedTrip: true, goHome: () => {},
+    tripRequest: { ...request, selectedDriverId: 'driver', status: 'driver_selected' } };
+  const render = () => hooks.render(() => RequestCourseActions({ model: driver }));
+  const withdraw = elements(render()).find(item => item.type === 'DriverWithdrawal');
+  assert.equal(withdraw.props.onWithdrawn, driver.goHome);
+  withdraw.props.onPendingChange(true);
+  assert.ok(elements(render()).filter(item => item.type === 'Pressable').every(item => item.props.disabled));
 });
 
 test('expired or accepting response windows still block decisions during a silent refresh', () => {
@@ -91,7 +124,10 @@ test('driver confirmed course uses authorized contact and its actual pickup time
   const button = elements(tree).find(item => item.type === 'Pressable'); button.props.onPress();
   const updated = hooks.render(() => module.RequestDriverCourse({ model: driver, presentation }));
   assert.equal(elements(updated).find(item => item.type === 'Contact').props.contacts[0].id, 'passenger');
-  assert.match(words(module.RequestCourseActions({ model: driver })), /Aller chercher le passager/);
+  const footerHooks = hookHarness();
+  const footer = loader({ ...mocks, react: { ...React, ...footerHooks.react } })('features/request-detail/RequestDriverCourse.tsx');
+  assert.match(words(footerHooks.render(() => footer.RequestCourseActions({ model: driver }))), /Aller chercher le passager/);
+  footerHooks.unmount();
   hooks.unmount();
 });
 

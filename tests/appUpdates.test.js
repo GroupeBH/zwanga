@@ -50,9 +50,34 @@ test('foreground lookup is cached, skipped when inactive and suppresses stale da
     '@/store/api/appUpdatesApi': { useGetAppUpdateQuery: (_, value) => { options = value; return { currentData: { enabled: true, release }, isError: error }; } },
   })('hooks/useAppUpdate.ts');
   assert.equal(h.render(useAppUpdate).release, release);
-  assert.equal(options.refetchOnMountOrArgChange, 3600);
-  active = false; h.render(useAppUpdate); assert.equal(options.skip, true);
+  assert.equal(options.refetchOnMountOrArgChange, 60);
+  assert.equal(options.pollingInterval, 300000);
+  assert.equal(options.refetchOnReconnect, true);
+  active = false; h.render(useAppUpdate); assert.equal(options.skip, true); assert.equal(options.pollingInterval, 0);
   error = true; assert.equal(h.render(useAppUpdate).release, null);
+  h.unmount();
+});
+
+test('automatic Play announcements use versionCode only, preserving legacy comparisons', () => {
+  const store = { ...release, version: '0.0.0', build: '175', comparison: 'native_build' };
+  assert.equal(policy.isNewerRelease(store, { ...installed, version: '99.0', build: '174' }), true);
+  assert.equal(policy.isNewerRelease(store, { ...installed, version: '0.1', build: '175' }), false);
+  assert.equal(policy.isNewerRelease(store, { ...installed, build: '176' }), false);
+  assert.equal(policy.isNewerRelease({ ...store, platform: 'ios' }, { ...installed, platform: 'ios' }), false);
+  assert.equal(policy.isNewerRelease({ ...store, comparison: 'unknown' }, installed), false);
+});
+
+test('build-only announcement does not show a fictional 0.0.0 version in the modal', async () => {
+  const h = hookHarness();
+  const { AppUpdatePrompt } = loader({ react: h.react, 'react-native': native,
+    '@expo/vector-icons': { Ionicons: 'Icon' }, '@/features/navigation/RideModal': { RideModal: 'Overlay' },
+    '@/hooks/useAppUpdate': { useAppUpdate: () => ({ release: { ...release, version: '0.0.0', comparison: 'native_build' }, active: true }) },
+    '@react-native-async-storage/async-storage': { getItem: async () => null },
+  })('components/AppUpdatePrompt.tsx');
+  const render = () => h.render(() => AppUpdatePrompt({}));
+  render(); await tick();
+  assert.match(JSON.stringify(render()), /Une nouvelle version de Zwanga/);
+  assert.doesNotMatch(JSON.stringify(render()), /0\.0\.0/);
   h.unmount();
 });
 

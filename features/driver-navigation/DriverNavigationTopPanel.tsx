@@ -10,6 +10,7 @@ import { DriverNavigationPassengersBar } from './DriverNavigationPassengersBar';
 import { DriverDropoffReceipts } from './DriverDropoffReceipts';
 import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
 import { getDriverNavigationLayout } from './driverNavigationLayout';
+import { TripDriverWithdrawal } from '@/features/request-detail/WithdrawRequestDriverButton';
 
 const EMPTY_BOOKINGS: NonNullable<Props['model']['session']['foundation']['data']['bookings']> = [];
 
@@ -65,6 +66,10 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       </View>
     </View>
     <View style={styles.journey}>
+    {data.trip?.tripRequestId && <TripDriverWithdrawal trip={data.trip} bookings={data.bookings}
+      active={data.isScreenActive && !offline && !data.isRestartingTrip && !data.isPausingTrip &&
+        !data.isCancellingPickupBypassBooking && !data.isRequestingDriverInterruption && !data.isCancellingDriverInterruption}
+      onWithdrawn={model.session.foundation.exitActions.navigateHomeSafely} />}
     {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff || hasPendingBooking ? <DriverNavigationPassengersBar
       onContact={assistance.openContact}
       foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />

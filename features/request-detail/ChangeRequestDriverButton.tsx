@@ -11,8 +11,9 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import type { Booking, TripRequest } from '@/types';
 import { canChangeRequestDriver } from './requestDriverChangePolicy';
 
-export function ChangeRequestDriverButton({ request, booking, disabled, onChanged }: {
+export function ChangeRequestDriverButton({ request, booking, disabled, onChanged, onPendingChange }: {
   request?: TripRequest; booking?: Booking; disabled?: boolean; onChanged?: (requestId: string) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const userId = useAppSelector(state => state.auth.user?.id);
   const dispatch = useAppDispatch(), router = useRouter();
@@ -28,29 +29,34 @@ export function ChangeRequestDriverButton({ request, booking, disabled, onChange
     if (disabled || busy.current) return;
     const selection = request!, version = getTokenSessionVersion();
     showDialog({ title: 'Changer de conducteur ?',
-      message: 'La prise en charge avec ce conducteur sera annulée. Votre demande sera conservée pour chercher un autre conducteur.',
+      message: 'La prise en charge avec ce conducteur sera annulée. Votre commande sera conservée pour chercher un autre conducteur.',
       variant: 'warning', actions: [
         { label: 'Garder ce conducteur', variant: 'secondary' },
         { label: 'Chercher un autre', onPress: async () => {
           const current = latest.current;
           if (busy.current || !mounted.current || current.disabled || version !== getTokenSessionVersion() ||
               !canChangeRequestDriver(current.request, current.userId, current.booking) ||
+              current.request?.id !== selection.id || current.userId !== userId ||
               current.request?.selectedAt !== selection.selectedAt || current.request?.selectedDriverId !== selection.selectedDriverId) return;
-          busy.current = true; setError(null);
+          busy.current = true; setError(null); onPendingChange?.(true);
           try {
             const updated = await change({ id: selection.id, selectedDriverId: selection.selectedDriverId!, selectedAt: selection.selectedAt! }).unwrap();
-            if (!mounted.current || version !== getTokenSessionVersion()) return;
+            if (!mounted.current || version !== getTokenSessionVersion() || latest.current.request?.id !== selection.id ||
+                latest.current.userId !== userId) return;
             await dispatch(tripRequestApi.util.upsertQueryData('getTripRequestById', updated.id, updated));
-            if (mounted.current && version === getTokenSessionVersion()) {
+            if (mounted.current && version === getTokenSessionVersion() && latest.current.request?.id === selection.id) {
               if (onChanged) onChanged(updated.id);
               else router.replace({ pathname: '/request/[id]', params: { id: updated.id } });
               // Do not unmount the pickup action through a booking refetch before navigation.
               dispatch(tripRequestApi.util.invalidateTags(['Booking', 'Trip']));
             }
           } catch (cause) {
-            if (mounted.current && version === getTokenSessionVersion()) setError(getApiErrorMessage(cause,
-              'Changement non confirmé. Actualisez avant de réessayer ; votre demande est conservée.'));
-          } finally { busy.current = false; }
+            if (mounted.current && version === getTokenSessionVersion() && latest.current.request?.id === selection.id) setError(getApiErrorMessage(cause,
+              'Changement non confirmé. Actualisez avant de réessayer ; votre commande est conservée.'));
+          } finally {
+            busy.current = false;
+            if (mounted.current && version === getTokenSessionVersion()) onPendingChange?.(false);
+          }
         } },
       ] });
   };
@@ -68,7 +74,8 @@ export function PickupDriverChange({ requestId, booking, active, onChanged }: {
   return <ChangeRequestDriverButton request={currentData} booking={booking} disabled={!active || isError} onChanged={onChanged} />;
 }
 const s = StyleSheet.create({
-  button: { minHeight: 44, justifyContent: 'center', alignItems: 'center', padding: 10 },
+  button: { minHeight: 44, justifyContent: 'center', alignItems: 'center', padding: 10,
+    borderWidth: 1, borderColor: '#D9E0E8', borderRadius: 16, backgroundColor: '#FFFFFF' },
   label: { color: '#B83D0D', fontSize: 14, fontWeight: '600' }, disabled: { opacity: 0.5 },
   error: { color: '#B42318', fontSize: 13, lineHeight: 18, paddingVertical: 6 },
 });

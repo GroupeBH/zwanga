@@ -57,6 +57,7 @@ export type ServerTripRequest = {
 };
 
 export type ServerDriverOffer = {
+  existingTripId?: string | null;
   id: string;
   tripRequestId: string;
   driver: {

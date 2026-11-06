@@ -7,7 +7,8 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function environment() {
   const hooks = hookHarness(), values = new Map(), calls = [];
   const env = { hooks, calls, foreground: true, pathname: '/', overlayBusy: false,
-    auth: { user: { id: 'passenger' }, isAuthenticated: true }, bookings: [], trips: [], keyboard: false };
+    auth: { user: { id: 'passenger' }, isAuthenticated: true }, bookings: [], trips: [], keyboard: false,
+    ratings: { userId: 'passenger', ratedTripIds: ['trip'] }, ratingsFetching: false, ratingsError: false };
   const overlay = { subscribe: () => () => {}, isBusy: () => env.overlayBusy };
   const store = { getState: () => ({ auth: env.auth }) };
   const cache = key => ({ endpoints: { [key === 'bookings' ? 'getMyActivityBookings' : 'getMyActivityTrips']:
@@ -26,6 +27,10 @@ function environment() {
     '@/features/store-review/nativeReview': { loadNativeReview: async () => native },
     '@/store/api/bookingApi': { bookingApi: cache('bookings') },
     '@/store/api/tripApi': { tripApi: cache('trips') },
+    '@/store/api/reviewApi': { useGetMyRatedTripsQuery: (args, options) => {
+      env.ratingQuery = { args, options };
+      return { currentData: env.ratings, isFetching: env.ratingsFetching, isError: env.ratingsError };
+    } },
     '@/store/api/accountActivityApi': { accountActivityApi: { endpoints: { getAccountActivity: { useQueryState: () => ({
       data: { userId: 'passenger', hasLiveActivity: false }, fulfilledTimeStamp: env.activityAt ?? Date.now(),
     }) } } } },
@@ -47,6 +52,43 @@ test('a full trip queues a native request only after quiet foreground home; navi
   env.overlayBusy = false; env.render(); t.mock.timers.tick(2999); await flush(); assert.equal(env.calls.length, 0);
   t.mock.timers.tick(1); await flush(); assert.equal(env.calls.length, 1);
   env.render(); env.hooks.unmount();
+});
+
+test('payment and completion alone never solicit: waits for an authenticated successful rating read', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-09-22T10:00:00Z') });
+  const env = environment(); env.ratings = { userId: 'passenger', ratedTripIds: [] };
+  env.render(); await flush(); assert.equal(env.ratingQuery.options.skip, true);
+  t.mock.timers.tick(1000); env.complete(); env.render(); await flush(); env.render();
+  assert.deepEqual(env.ratingQuery.args, { userId: 'passenger', tripIds: ['trip'] });
+  t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0);
+  for (const change of [() => { env.ratings = { userId: 'another-account', ratedTripIds: ['trip'] }; },
+    () => { env.ratings = { userId: 'passenger', ratedTripIds: ['trip'] }; env.ratingsError = true; },
+    () => { env.ratingsError = false; env.ratingsFetching = true; }]) {
+    change(); env.render(); await flush(); env.render(); t.mock.timers.tick(5000); await flush();
+    assert.equal(env.calls.length, 0);
+  }
+  env.ratingsFetching = false; env.render(); await flush(); env.render();
+  t.mock.timers.tick(3000); await flush(); assert.equal(env.calls.length, 1);
+  env.hooks.unmount();
+});
+
+test('driver with a validated paid-passenger completion waits for their own rating and reminds only after three new trips', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-09-22T10:00:00Z') });
+  const env = environment(); env.bookings = []; env.ratings = { userId: 'passenger', ratedTripIds: [] };
+  env.render(); await flush();
+  for (let i = 1; i <= 4; i++) {
+    t.mock.timers.tick(1000);
+    const id = `driver-trip-${i}`;
+    env.trips = [...env.trips, { driverId: 'passenger', status: 'completed',
+      reviewCompletion: { role: 'driver', tripId: id, completedAt: Date.now() } }];
+    env.render(); await flush(); env.render();
+    t.mock.timers.tick(3000); await flush();
+    assert.equal(env.calls.length, i === 1 ? 0 : 1, 'no prompt before rating');
+    env.ratings = { userId: 'passenger', ratedTripIds: [...env.ratings.ratedTripIds, id] };
+    env.render(); await flush(); env.render(); t.mock.timers.tick(3000); await flush(); env.render();
+    assert.equal(env.calls.length, i === 4 ? 2 : 1);
+  }
+  env.hooks.unmount();
 });
 
 test('a scheduled request is cancelled on blur, background, logout and unmount', async t => {
@@ -80,4 +122,18 @@ test('returning from sleep waits for a fresh server activity snapshot before req
   t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0);
   env.activityAt = Date.now(); env.render(); t.mock.timers.tick(3000); await flush();
   assert.equal(env.calls.length, 1); env.hooks.unmount();
+});
+
+test('rating lookup is bounded and only queries eligible completed rides while Home is foreground', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-09-22T10:00:00Z') });
+  const env = environment(); env.render(); await flush(); t.mock.timers.tick(1000);
+  env.trips = Array.from({ length: 150 }, (_, index) => ({ driverId: 'passenger', status: 'completed',
+    reviewCompletion: { role: 'driver', tripId: `trip-${index}`, completedAt: Date.now() - index } }));
+  env.render(); await flush();
+  assert.equal(env.ratingQuery.args.tripIds.length, 100);
+  assert.equal(env.ratingQuery.args.tripIds.includes('trip-149'), false);
+  assert.equal(env.ratingQuery.options.skip, false);
+  env.pathname = '/rate/trip-0'; env.render(); assert.equal(env.ratingQuery.options.skip, true);
+  env.pathname = '/'; env.foreground = false; env.render(); assert.equal(env.ratingQuery.options.skip, true);
+  env.hooks.unmount();
 });

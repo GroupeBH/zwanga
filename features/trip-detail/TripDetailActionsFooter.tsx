@@ -5,6 +5,7 @@ import { styles } from '../screen-styles/app/trip/detail/index';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors, Spacing } from '@/constants/styles';
 import { isTripExpired } from './tripDetailAvailability';
+import { bookingPassengerTotal, bookingProposalPrice } from './bookingPriceProposal';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -97,7 +98,9 @@ export function TripDetailActionsFooter({
                         <View style={styles.bookingHeaderCopy}>
                           <Text style={styles.bookingCardTitle}>Ma réservation</Text>
                           <Text style={styles.bookingCardSubtitle}>
-                            {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}{trip.price === 0 ? 'Gratuit' : `${trip.price} FC`}
+                            {activeBooking.numberOfSeats} place{activeBooking.numberOfSeats > 1 ? 's' : ''}{' • '}
+                            {activeBooking.status === 'pending' && bookingProposalPrice(activeBooking) !== null ? 'Prix proposé : ' : 'Total : '}
+                            {bookingPassengerTotal(activeBooking, trip.price).toLocaleString('fr-FR')} FC
                           </Text>
                         </View>
                       </View>

@@ -480,6 +480,8 @@ test('foreground bookings use one silent Android banner with direct actions, not
   assert.equal(f.displays.length, 1);
   assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
   assert.equal(f.displays[0].android.loopSound, undefined);
+  assert.equal(f.displays[0].android.autoCancel, false, 'opening the app must not clear a pending reservation card');
+  assert.equal(f.displays[0].android.timeoutAfter, undefined, 'ringtone timeout is not a booking decision');
   assert.equal(f.displays[0].android.sound, undefined);
   assert.equal(f.channels[0].sound, undefined); assert.equal(f.channels[0].vibration, false);
   assert.deepEqual(f.displays[0].android.actions.map(action => action.pressAction.id), ['driver-decline', 'driver-accept']);
@@ -501,7 +503,7 @@ test('nearby Android foreground delivery remains visible, silent and deduplicate
   const nativePayload = policy.readDriverPushData({ data: { ...payload, dataString: 'Un client près de vous' } });
   await Promise.all([f.loaded.displayDriverInvitation(nativePayload), f.loaded.displayDriverInvitation(nativePayload)]);
   assert.equal(f.displays.length, 1);
-  assert.equal(f.displays[0].title, 'Zwanga · Demande près de vous');
+  assert.equal(f.displays[0].title, 'Zwanga · Commande près de vous');
   assert.equal(f.displays[0].android.channelId, 'driver-bookings-active-v1');
   assert.equal(f.displays[0].android.loopSound, undefined);
   assert.equal(f.displays[0].android.sound, undefined);

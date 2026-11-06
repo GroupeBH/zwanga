@@ -54,12 +54,12 @@ test('no first-use prompt from old history; duplicate bookings, repeated respons
   assert.equal(recordReviewCompletions(initial, [completion(2, 'passenger', start + 99999)], start + 5000), initial);
 });
 
-test('milestones are exactly 1, 10, 20 and attempts are shared between roles over rolling 365 days', () => {
+test('milestones are exactly 1, 4, 7 and attempts are shared between roles over rolling 365 days', () => {
   let state = newReviewHistory(start);
   const now = start + 10000;
   for (let i = 1; i <= 21; i++) {
     state = recordReviewCompletions(state, [completion(i)], now);
-    assert.equal(reviewIsDue(state, now), [1, 10, 20].includes(i), `trip ${i}`);
+    assert.equal(reviewIsDue(state, now), [1, 4, 7].includes(i), `trip ${i}`);
     if (reviewIsDue(state, now)) state = reserveReviewAttempt(state, now);
   }
   state = recordReviewCompletions(state, [completion('driver-first', 'driver')], now);
@@ -76,7 +76,9 @@ test('batch catchup and both roles coalesce into a single request rather than a 
     [...Array.from({ length: 21 }, (_, index) => completion(index)), completion('driver', 'driver')], start + 5000);
   state = reserveReviewAttempt(state, start + 5000);
   assert.equal(state.attempts.length, 1); assert.equal(reviewIsDue(state, start + 5000), false);
-  state = recordReviewCompletions(state, Array.from({ length: 9 }, (_, i) => completion(i + 21)), start + 5000);
+  state = recordReviewCompletions(state, [completion(21), completion(22)], start + 5000);
+  assert.equal(reviewIsDue(state, start + 5000), false);
+  state = recordReviewCompletions(state, [completion(23)], start + 5000);
   assert.equal(reviewIsDue(state, start + 5000), true);
 });
 
@@ -90,7 +92,21 @@ test('deduplication stays bounded and pruning never allows old rides to be count
 });
 
 test('invalid storage never silently resets the attempt quota', () => {
-  for (const raw of ['bad json', 'null', '{}', JSON.stringify({ ...newReviewHistory(start), version: 2 }),
+  for (const raw of ['bad json', 'null', '{}', JSON.stringify({ ...newReviewHistory(start), version: 3 }),
     JSON.stringify({ ...newReviewHistory(start), attempts: [1, 2, 3, 4] })]) assert.throws(() => parseReviewHistory(raw, start));
   assert.equal(reviewIsDue(parseReviewHistory(null, start), start), false);
+});
+
+test('V1 upgrade retains quotas and seen rides, but never counts old unverified progress toward the new reminder', () => {
+  let old = recordReviewCompletions(newReviewHistory(start), [completion(1)], start + 5000);
+  old = reserveReviewAttempt(old, start + 5000);
+  old = recordReviewCompletions(old, [completion(2), completion(3)], start + 5000);
+  const migrated = parseReviewHistory(JSON.stringify({ ...old, version: 1 }), start + 6000);
+  assert.equal(migrated.version, 2);
+  assert.deepEqual(migrated.attempts, old.attempts);
+  assert.equal(migrated.passenger.count, 1);
+  assert.equal(reviewIsDue(migrated, start + 7000), false);
+  assert.equal(recordReviewCompletions(migrated, [completion(2)], start + 7000), migrated);
+  const due = recordReviewCompletions(migrated, [completion(4), completion(5), completion(6)], start + 7000);
+  assert.equal(reviewIsDue(due, start + 7000), true);
 });

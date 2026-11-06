@@ -1,7 +1,7 @@
 import type { TripRequest } from '@/types';
 import { normalizeHistorySearch } from '@/utils/rideHistory';
 
-export type RequestTab = 'available' | 'my-requests';
+export type RequestTab = 'available' | 'my-offers' | 'my-requests';
 export const EMPTY_REQUESTS: TripRequest[] = [];
 
 /** Preserve history, but bring responses and unstarted pickups above older requests. */

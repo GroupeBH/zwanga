@@ -123,6 +123,7 @@ test('controller exposes landmarks, preserves them across steps and swaps them w
     './useRequestQuickPlaces': { useRequestQuickPlaces: () => ({}) },
     './useRequestBudgetSummary': { useRequestBudgetSummary: () => ({ hasDepartureAddress: true, hasArrivalAddress: true }) },
     './useRequestRoutePrefill': { useRequestRoutePrefill: () => ({}) },
+    './useDirectDriverPrefill': { useDirectDriverPrefill: () => ({ blocked: false }) },
     '@/hooks/useUserLocation': { useUserLocation: () => ({}) },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/api/googleMapsApi': { useGeocodeMutation: () => [() => {}] },

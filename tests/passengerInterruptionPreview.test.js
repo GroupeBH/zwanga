@@ -92,6 +92,7 @@ test('preview is a read-only RTK query with no long-lived coordinate cache', () 
 
 test('urgent driver prompt stays outside the clipped route scroll and keeps assistance available', () => {
   const { DriverNavigationTopPanel } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },

@@ -6,18 +6,21 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 const driverId = '00000000-0000-4000-8000-000000000001';
 const requestId = '00000000-0000-4000-8000-000000000002';
 
-for (const platform of ['android', 'ios']) test(`${platform}: icon launch restores a retained request after the sound ends without renewing audio`, async t => {
+for (const platform of ['android', 'ios']) for (const kind of ['request', 'booking'])
+test(`${platform}: icon launch restores a retained ${kind} after the sound ends without renewing audio`, async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout', 'setInterval'], now: 100000 });
   const hooks = hookHarness();
-  const data = { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', delivery: 'driver-phone-v3',
-    driverId, tripRequestId: requestId, ringUntil: new Date(Date.now() - 1000).toISOString() };
+  const data = { ...(kind === 'request'
+    ? { type: 'trip_request_nearby', ringAlert: 'nearby-request-v1', tripRequestId: requestId }
+    : { type: 'new_booking', actionProtocol: 'driver-v1', bookingId: requestId }), delivery: 'driver-phone-v3',
+    driverId, ringUntil: new Date(Date.now() - 1000).toISOString() };
   const noop = () => {};
   const load = loader({
     react: hooks.react, 'expo-router': { usePathname: () => '/' },
-    './tokenStorage': { getTokens: async () => assert.fail('expired nearby restoration must not read auth storage') },
+    './tokenStorage': { getTokens: async () => assert.fail('silent restoration must not read auth storage') },
     '@react-native-async-storage/async-storage': {},
     'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active', addEventListener: () => ({ remove: noop }) } },
-    '@notifee/react-native': { getDisplayedNotifications: async () => [{ id: 'driver-nearby-' + requestId,
+    '@notifee/react-native': { getDisplayedNotifications: async () => [{ id: `driver-${kind}-` + requestId,
       notification: { data, android: { channelId: 'zwanga-ride-ring-v4' } } }] },
     'expo-notifications': { getPresentedNotificationsAsync: async () => platform === 'ios' ? [
       { request: { identifier: 'remote-card', content: { data } } }] : [], addNotificationReceivedListener: () => ({ remove: noop }) },

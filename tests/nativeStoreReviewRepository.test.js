@@ -41,6 +41,21 @@ test('accounts have separate progress and quotas; no writes on identical idle ob
   assert.equal(JSON.parse(env.values.get(reviewStorageKey('b'))).attempts.length, 1);
 });
 
+test('legacy policy migration is persisted once even without a new completion, retaining old attempts', async () => {
+  const env = fixture(); await env.repository.observe('a', start, [event]);
+  await env.repository.requestIfDue('a', start, env.load, () => true);
+  const key = reviewStorageKey('a'), old = JSON.parse(env.values.get(key));
+  old.version = 1; old.passenger.count = 5;
+  env.values.set(key, JSON.stringify(old));
+  assert.equal(await env.repository.observe('a', start + 500, []), false);
+  const migrated = JSON.parse(env.values.get(key));
+  assert.equal(migrated.version, 2); assert.equal(migrated.passenger.count, 1);
+  assert.deepEqual(migrated.attempts, old.attempts);
+  const writes = env.writes.length;
+  await env.repository.observe('a', start + 600, []);
+  assert.equal(env.writes.length, writes); assert.equal(env.calls.length, 1);
+});
+
 test('unavailable native module/TestFlight does not consume quota or open an external store', async () => {
   const env = fixture(); await env.repository.observe('a', start, [event]);
   assert.equal(await env.repository.requestIfDue('a', start, async () => null, () => true), false);

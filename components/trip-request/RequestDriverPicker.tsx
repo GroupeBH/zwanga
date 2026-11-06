@@ -33,7 +33,7 @@ export function RequestDriverPicker({ departure, vehicleType, vehicleTypes, seat
       accessibilityRole="button" accessibilityLabel={selected ? `Conducteur choisi : ${selected.name}. Modifier` : 'Choisir un conducteur, facultatif'}>
       <View style={s.icon}><Ionicons name="person-outline" size={21} color="#CE4613" /></View>
       <View style={s.grow}><Text style={s.name}>{selected?.name || 'Choisir un conducteur'}</Text>
-        <Text style={s.caption}>{selected ? 'La demande sera envoyée uniquement à ce conducteur.' : 'Facultatif · Sinon, les conducteurs proches seront prévenus.'}</Text>
+        <Text style={s.caption}>{selected ? 'La commande sera envoyée uniquement à ce conducteur.' : 'Facultatif · Sinon, les conducteurs proches seront prévenus.'}</Text>
         {selected && !vehicleTypes.includes(selected.vehicleType) && <Text style={s.error}>Le véhicule a changé. Choisissez à nouveau.</Text>}
       </View>
       <Ionicons name="chevron-forward" size={19} color="#667085" />
@@ -42,7 +42,7 @@ export function RequestDriverPicker({ departure, vehicleType, vehicleTypes, seat
       <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setVisible(false)} accessibilityLabel="Fermer" accessibilityRole="button" />
         <View style={[s.panel, { paddingBottom: Math.max(insets.bottom, 16), marginTop: insets.top + 16 }]}>
-          <View style={s.heading}><Text style={s.title}>À qui envoyer la demande ?</Text>
+          <View style={s.heading}><Text style={s.title}>À qui envoyer la commande ?</Text>
             <Pressable style={s.close} onPress={() => setVisible(false)} accessibilityRole="button" accessibilityLabel="Fermer le choix du conducteur">
               <Ionicons name="close" size={24} color="#172033" />
             </Pressable>
@@ -61,7 +61,7 @@ export function RequestDriverPicker({ departure, vehicleType, vehicleTypes, seat
             <TextInput style={s.input} value={search} onChangeText={setSearch} placeholder="Nom ou identifiant Zwanga"
               placeholderTextColor="#667085" accessibilityLabel="Nom ou identifiant du conducteur" maxLength={80} autoCorrect={false} returnKeyType="search" />
           </View>}
-          <Text style={s.caption}>Le conducteur choisi devra accepter votre demande.</Text>
+          <Text style={s.caption}>Le conducteur choisi devra accepter votre commande.</Text>
           {query.isFetching && enabled ? <ActivityIndicator style={s.loader} color="#CE4613" accessibilityLabel="Recherche des conducteurs" /> : null}
           <FlatList style={s.list} keyboardShouldPersistTaps="handled" data={enabled && !query.isError && !query.isFetching ? query.currentData ?? [] : []}
             keyExtractor={driver => driver.id} initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3}

@@ -38,6 +38,7 @@ createBooking: builder.mutation<
       {
         tripId: string;
         numberOfSeats: number;
+        proposedPricePerSeat?: number;
         passengerOrigin?: string;
         passengerOriginReference?: string;
         passengerOriginCoordinates?: { latitude: number; longitude: number };

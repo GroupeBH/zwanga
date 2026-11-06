@@ -64,10 +64,12 @@ test('driver search and explicit audience expansion use their dedicated RTK Quer
   await store.dispatch(api.endpoints.openRequestToNearbyDrivers.initiate('request')).unwrap();
   await store.dispatch(api.endpoints.targetRequestMapDriver.initiate({ id: 'request', markerId: 'a'.repeat(64), expectedUpdatedAt: 'date' })).unwrap();
   await store.dispatch(api.endpoints.changeRequestDriver.initiate({ id: 'request', selectedDriverId: 'driver', selectedAt: 'date' })).unwrap();
+  await store.dispatch(api.endpoints.withdrawRequestDriver.initiate({ id: 'request', selectedAt: 'date' })).unwrap();
   assert.deepEqual(calls, [{ url: '/trip-requests/driver-choices', params: args, timeout: 10000 },
     { url: '/trip-requests/request/open-search', method: 'POST', timeout: 10000 },
     { url: '/trip-requests/request/target-map-driver', method: 'POST', body: { markerId: 'a'.repeat(64), expectedUpdatedAt: 'date' }, timeout: 15000 },
-    { url: '/trip-requests/request/change-driver', method: 'PUT', body: { selectedDriverId: 'driver', selectedAt: 'date' }, timeout: 15000 }]);
+    { url: '/trip-requests/request/change-driver', method: 'PUT', body: { selectedDriverId: 'driver', selectedAt: 'date' }, timeout: 15000 },
+    { url: '/trip-requests/request/withdraw-driver', method: 'PUT', body: { selectedAt: 'date' }, timeout: 15000 }]);
 });
 
 test('driver search serializes all accepted types into one bounded query', async t => {

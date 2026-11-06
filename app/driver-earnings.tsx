@@ -7,7 +7,7 @@ import {
   useGetDriverPayoutsPageQuery,
   useGetMyDriverSettlementQuery,
 } from '@/store/api/driverSettlementsApi';
-import { formatAmount, maskPhone } from '@/features/driver-earnings/payoutModel';
+import { formatAmount } from '@/features/driver-earnings/payoutModel';
 import { CashRevenueSummary } from '@/features/driver-earnings/CashRevenueSummary';
 import { DriverEarningRow } from '@/features/driver-earnings/DriverEarningRow';
 import { PayoutHistory } from '@/features/driver-earnings/PayoutHistory';
@@ -15,7 +15,6 @@ import { PayoutDestinationModal } from '@/features/driver-earnings/PayoutDestina
 import { useDriverPayout } from '@/hooks/driver-earnings/useDriverPayout';
 import { useHistoryCursor } from '@/hooks/useHistoryCursor';
 import { HistoryPagination } from '@/components/ui/HistoryPagination';
-import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -29,6 +28,8 @@ export default function DriverEarningsScreen() {
   const enabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [history, setHistory] = useState<'earnings' | 'payouts'>('earnings');
+  const [showBalanceDetails, setShowBalanceDetails] = useState(false);
   const earningsCursor = useHistoryCursor('earnings');
   const payoutsCursor = useHistoryCursor('payouts');
   const {
@@ -78,7 +79,7 @@ export default function DriverEarningsScreen() {
     }
   }, [refetchSummary, refetchEarnings, refetchPayouts]);
   const { canSubmit: canOpenWithdrawal, busy: isWithdrawing, checkPayout, requestPayoutReview, storageError, hasUnconfirmedIntent,
-    payoutForm, openPayoutForm, setPayoutPhone, confirmPayoutForm, closePayoutForm } =
+    payoutForm, openPayoutForm, setPayoutPhone, setPayoutAmount, confirmPayoutForm, closePayoutForm } =
     useDriverPayout({ summary, payouts, refresh, isActive: isScreenActive });
 
   return (
@@ -88,24 +89,19 @@ export default function DriverEarningsScreen() {
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.headerCopy}>
-          <Text style={styles.title}>Revenus conducteur</Text>
-          <Text style={styles.subtitle}>Gains, cash reçu et retraits Mobile Money</Text>
+          <Text style={styles.title}>Mes gains</Text>
         </View>
         <TouchableOpacity
-          accessibilityLabel="Actualiser les revenus"
-          onPress={() => void refresh()}
+          accessibilityRole="button" accessibilityLabel="Contacter l’assistance pour mes gains"
+          onPress={() => router.push('/support')}
           style={styles.headerButton}
         >
-          {refreshing ? (
-            <ActivityIndicator size="small" color={Colors.gray[900]} />
-          ) : (
-            <Ionicons name="refresh" size={22} color={Colors.gray[900]} />
-          )}
+          <Ionicons name="help-circle-outline" size={24} color={Colors.gray[700]} />
         </TouchableOpacity>
       </View>
 
       <FlatList
-        data={earnings} keyExtractor={earning => earning.id}
+        data={history === 'earnings' ? earnings : []} keyExtractor={earning => earning.id}
         initialNumToRender={8} maxToRenderPerBatch={8} windowSize={5}
         renderItem={({ item: earning }) => <View style={pageInsets}><DriverEarningRow earning={earning} /></View>}
         contentContainerStyle={styles.content}
@@ -114,16 +110,14 @@ export default function DriverEarningsScreen() {
         }
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={<>
-        <Animated.View entering={FadeInDown.delay(60)} style={styles.balanceSection}>
-          <Text style={styles.eyebrow}>SOLDE RETIRABLE</Text>
+        <View style={styles.balanceSection}>
+          <Text style={styles.eyebrow}>Disponible à retirer</Text>
           {isLoading && !summary ? (
             <ActivityIndicator size="small" color={Colors.primary} style={styles.loader} />
           ) : (
             <Text style={styles.balance}>{summary ? formatAmount(availableBalance, currency) : '—'}</Text>
           )}
-          <Text style={styles.balanceHint}>
-            Paiements électroniques et jetons, nets de commission ({commissionPercent} %), plus les participations Zwanga créditées. Le cash reçu des passagers n’est pas inclus.
-          </Text>
+          <Text style={styles.balanceHint}>Sur votre Mobile Money, en partie ou en totalité.</Text>
 
           <TouchableOpacity
             accessibilityRole="button"
@@ -137,20 +131,14 @@ export default function DriverEarningsScreen() {
               <Ionicons name="phone-portrait-outline" size={19} color={Colors.white} />
             )}
             <Text style={styles.payoutButtonText}>
-              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier ma demande' : 'Retirer mes gains'}
+              {isWithdrawing ? 'Vérification en cours…' : hasUnconfirmedIntent ? 'Vérifier mon retrait' : 'Retirer mes gains'}
             </Text>
           </TouchableOpacity>
-          <Text style={styles.payoutDestination}>
-            Numéro habituel : {summary?.payoutPhone ? maskPhone(summary.payoutPhone) : 'Non renseigné'} · Identité {summary?.kycApproved ? 'vérifiée' : 'à vérifier'}
-          </Text>
-
-          <Text style={styles.balanceHint}>
-            Zwanga verse vos gains sur votre Mobile Money. Vous pouvez choisir un autre numéro avant de confirmer.
-          </Text>
-          {storageError && <Text style={styles.balanceHint}>Impossible de restaurer le suivi du versement sur ce téléphone. Contactez l’assistance avant une nouvelle demande.</Text>}
-          <TouchableOpacity accessibilityRole="button" onPress={() => router.push('/support')} style={styles.headerButton} accessibilityLabel="Contacter l’assistance pour mes gains">
-            <Ionicons name="help-circle-outline" size={24} color={Colors.white} />
-          </TouchableOpacity>
+          {summary && !canOpenWithdrawal && !isWithdrawing && !storageError && !hasUnconfirmedIntent && availableBalance < summary.minimumPayoutAmount &&
+            <Text style={styles.balanceHint}>Minimum de retrait : {formatAmount(summary.minimumPayoutAmount, currency)}</Text>}
+          {summary && !summary.kycApproved && <Text style={styles.inlineError}>Votre identité doit être vérifiée avant un retrait.</Text>}
+          {storageError && <Text style={styles.inlineError}>Le dernier retrait doit être vérifié. Contactez l’assistance avant de réessayer.</Text>}
+          {summaryError && <Text style={styles.inlineError}>Solde non actualisé. Tirez vers le bas pour réessayer.</Text>}
 
           <View style={styles.balanceBreakdown}>
             <View style={styles.breakdownItem}>
@@ -165,32 +153,48 @@ export default function DriverEarningsScreen() {
               <Text style={styles.breakdownValue}>{summary ? formatAmount(summary.paidBalance, currency) : '—'}</Text>
             </View>
           </View>
-        </Animated.View>
+          <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showBalanceDetails }}
+            onPress={() => setShowBalanceDetails(value => !value)} style={styles.detailsButton}>
+            <Text style={styles.detailsText}>Comprendre mon solde</Text>
+            <Ionicons name={showBalanceDetails ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.gray[600]} />
+          </TouchableOpacity>
+          {showBalanceDetails && <Text style={styles.balanceHint}>
+            Paiements électroniques et jetons, après commission{summary ? ` (${commissionPercent} %)` : ''}, plus les participations Zwanga créditées. Les espèces reçues des passagers ne sont pas incluses.
+          </Text>}
+        </View>
 
         <CashRevenueSummary amount={summary?.cashReceivedAmount} currency={currency} />
 
-        <PayoutHistory payouts={payouts} availableBalance={availableBalance} busy={isWithdrawing}
+        <View style={styles.historyTabs} accessibilityRole="tablist">
+          {(['earnings', 'payouts'] as const).map(tab => <TouchableOpacity key={tab} accessibilityRole="tab"
+            accessibilityState={{ selected: history === tab }} onPress={() => setHistory(tab)}
+            style={[styles.historyTab, history === tab && styles.historyTabSelected]}>
+            <Text style={[styles.historyTabText, history === tab && styles.historyTabTextSelected]}>{tab === 'earnings' ? 'Gains' : 'Retraits'}</Text>
+          </TouchableOpacity>)}
+        </View>
+
+        {history === 'payouts' && <><PayoutHistory payouts={payouts} availableBalance={availableBalance} busy={isWithdrawing}
           canRetry={canOpenWithdrawal && !hasUnconfirmedIntent} onRetry={openPayoutForm} onCheck={checkPayout} onReview={requestPayoutReview}
           onSupport={() => router.push('/support')} />
         <View style={pageInsets}><HistoryPagination page={payoutsCursor.page} hasNext={Boolean(payoutsPage?.nextCursor)}
           busy={payoutsFetching} error={payoutsError} onPrevious={payoutsCursor.previous}
-          onNext={() => payoutsCursor.next(payoutsPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetchPayouts(); }} /></View>
+          onNext={() => payoutsCursor.next(payoutsPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetchPayouts(); }} /></View></>}
 
-        <Animated.View entering={FadeInDown.delay(150)} style={styles.section}>
+        {history === 'earnings' && <View style={styles.section}>
           <View style={styles.sectionHeading}>
             <View>
               <Text style={styles.sectionTitle}>Historique des gains</Text>
               <Text style={styles.sectionMeta}>{earningsPage?.total ?? '—'} opération(s)</Text>
             </View>
-            <View style={styles.liveIndicator}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>Actualisé</Text>
-            </View>
           </View>
 
-        </Animated.View>
+        </View>}
         </>}
-        ListEmptyComponent={hasError && !isLoading ? (
+        ListEmptyComponent={history === 'payouts' ? (payoutsFetching && !payoutsPage ? <ActivityIndicator color={Colors.primary} /> :
+          !payouts.length ? <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>{payoutsError ? 'Retraits indisponibles' : 'Aucun retrait pour le moment'}</Text>
+            <Text style={styles.emptyText}>{payoutsError ? 'Tirez vers le bas pour réessayer.' : 'Vos retraits apparaîtront ici.'}</Text>
+          </View> : null) : hasError && !isLoading ? (
             <View style={styles.emptyState}>
               <Ionicons name="cloud-offline-outline" size={28} color={Colors.gray[500]} />
               <Text style={styles.emptyTitle}>Revenus indisponibles</Text>
@@ -201,17 +205,18 @@ export default function DriverEarningsScreen() {
               <Ionicons name="receipt-outline" size={28} color={Colors.gray[500]} />
               <Text style={styles.emptyTitle}>Aucune course créditée</Text>
               <Text style={styles.emptyText}>
-                Les paiements électroniques, jetons et participations Zwanga apparaissent ici après crédit. Le cash reçu est suivi séparément.
+                Vos gains apparaîtront ici après confirmation du paiement.
               </Text>
             </View>
           ) : <ActivityIndicator color={Colors.primary} />}
-        ListFooterComponent={<View style={pageInsets}><HistoryPagination page={earningsCursor.page} hasNext={Boolean(earningsPage?.nextCursor)}
+        ListFooterComponent={history === 'earnings' ? <View style={pageInsets}><HistoryPagination page={earningsCursor.page} hasNext={Boolean(earningsPage?.nextCursor)}
           busy={earningsFetching} error={earningsError} onPrevious={earningsCursor.previous}
-          onNext={() => earningsCursor.next(earningsPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetchEarnings(); }} /></View>}
+          onNext={() => earningsCursor.next(earningsPage?.nextCursor)} onRetry={() => { if (isScreenActive) void refetchEarnings(); }} /></View> : null}
       />
-      <PayoutDestinationModal visible={Boolean(payoutForm)} amount={payoutForm?.amount ?? 0}
+      <PayoutDestinationModal visible={Boolean(payoutForm)} amount={payoutForm?.amount ?? ''}
+        availableBalance={availableBalance} minimumAmount={summary?.minimumPayoutAmount ?? 1}
         currency={currency} phone={payoutForm?.phone ?? ''} defaultPhone={summary?.payoutPhone}
-        disabled={!canOpenWithdrawal} onChangePhone={setPayoutPhone}
+        disabled={!canOpenWithdrawal} onChangePhone={setPayoutPhone} onChangeAmount={setPayoutAmount}
         onContinue={confirmPayoutForm} onClose={closePayoutForm} />
     </SafeAreaView>
   );

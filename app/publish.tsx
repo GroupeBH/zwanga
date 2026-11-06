@@ -133,6 +133,8 @@ export default function PublishScreen() {
             openDateOrTimePicker={model.scheduleActions.openDateOrTimePicker}
             formattedDateLabel={model.schedule.formattedDateLabel}
             formattedTimeLabel={model.schedule.formattedTimeLabel}
+            hasChosenDepartureTime={model.form.hasChosenDepartureTime}
+            pickerError={model.scheduleActions.pickerError}
             isRecurringTrip={model.form.isRecurringTrip}
             toggleRecurringTrip={model.schedule.toggleRecurringTrip}
             recurringWeekdayOptions={model.presentation.recurringWeekdayOptions}

@@ -200,9 +200,12 @@ export function useActiveRideResume(options: Options) {
   // discovery settled. Recheck only at that handoff, never on settled Home.
   const verifyPriority = useCallback(async (signal: AbortSignal) => {
     const version = getTokenSessionVersion();
+    // A new live reservation can arrive after the initial entry already ended.
+    // Freeze this verification's screen, not the screen of the first app entry.
+    const verificationPath = latest.current.options.path;
     const valid = () => entry.mounted && latest.current.entry === entry && !signal.aborted &&
       version === getTokenSessionVersion() && latest.current.options.active && latest.current.options.online &&
-      latest.current.options.ready && !latest.current.options.overlayBusy && latest.current.options.path === entry.path;
+      latest.current.options.ready && !latest.current.options.overlayBusy && latest.current.options.path === verificationPath;
     const select = () => findRideToResume(userId!,
       latest.current.options.trips.data?.filter(trip => !entry.rejectedTrips.has(trip.id)),
       latest.current.options.bookings.data?.filter(booking => !entry.rejectedBookings.has(booking.id)));

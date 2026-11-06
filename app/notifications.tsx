@@ -10,7 +10,7 @@ import {
   useMarkNotificationsAsReadMutation,
 } from '@/store/api/notificationApi';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
-import { canShowRequestNotification } from '@/features/notifications/requestVisibility';
+import { canShowRequestNotification, orderNotificationText } from '@/features/notifications/requestVisibility';
 import type { Notification } from '@/types';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
@@ -308,7 +308,7 @@ export default function NotificationsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{selectedNotification?.title}</Text>
+              <Text style={styles.modalTitle}>{orderNotificationText(selectedNotification?.title ?? '', selectedNotification?.data)}</Text>
               <TouchableOpacity onPress={() => setSelectedNotification(null)}>
                 <Ionicons name="close" size={22} color={Colors.gray[700]} />
               </TouchableOpacity>
@@ -316,7 +316,7 @@ export default function NotificationsScreen() {
             <Text style={styles.modalTime}>
               Reçu {selectedNotification ? formatDateTime(selectedNotification.createdAt) : ''}
             </Text>
-            <Text style={styles.modalMessage}>{selectedNotification?.body}</Text>
+            <Text style={styles.modalMessage}>{orderNotificationText(selectedNotification?.body ?? '', selectedNotification?.data)}</Text>
             {selectedNotification?.data && renderNotificationData(selectedNotification.data)}
             <View style={styles.modalActions}>
               {(() => {

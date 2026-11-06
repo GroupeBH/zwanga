@@ -2,6 +2,7 @@ import LocationPickerModal from '@/components/LocationPickerModal';
 import { FormScreen } from '@/components/forms/FormLayout';
 import { RequestBudgetFields } from '@/components/trip-request/RequestBudgetFields';
 import { RequestDriverPicker } from '@/components/trip-request/RequestDriverPicker';
+import { DirectDriverNotice } from '@/components/trip-request/DirectDriverNotice';
 import { Colors } from '@/constants/styles';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
 import Animated, { FadeIn } from '@/utils/reanimated';
@@ -56,6 +57,7 @@ export default function RequestTripScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <DirectDriverNotice prefill={form.directDriverPrefill} driver={form.targetDriver} disabled={form.isCreating} />
           {form.requestFormStep === 'route' && (
             <RequestRouteStep
               addressInputMode={form.addressInputMode}

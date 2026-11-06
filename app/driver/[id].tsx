@@ -3,6 +3,10 @@ import { Colors } from '@/constants/styles';
 import { useGetAverageRatingQuery } from '@/store/api/reviewApi';
 import { usePublicReviewPage } from '@/hooks/usePublicReviewPage';
 import { HistoryPagination } from '@/components/ui/HistoryPagination';
+import { DriverProfileRequestAction } from '@/components/trip-request/DriverProfileRequestAction';
+import { driverProfileContext, routeUuid } from '@/features/trip-request/directDriverRequest';
+import { useRequestMapDriverQuery } from '@/store/api/requestDriverApi';
+import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useGetPublicUserInfoQuery } from '@/store/api/userApi';
 import { openPhoneCall, openWhatsApp } from '@/utils/phoneHelpers';
@@ -24,9 +28,13 @@ export default function DriverDetailsScreen() {
   const active = useScreenIsActive();
   const router = useRouter();
   const params = useLocalSearchParams();
-  const driverId = typeof params.id === 'string' ? params.id : '';
+  const context = driverProfileContext(params.id, params.requestId);
+  const readsEnabled = useDisplayReadsEnabled(active);
+  const mapDriver = useRequestMapDriverQuery({ requestId: context.requestId, markerId: context.markerId },
+    displayReadOptions(readsEnabled && context.fromMap && context.valid));
+  const driverId = context.fromMap ? mapDriver.currentData?.driverId ?? '' : context.driverId;
 
-  const { data: driver, isLoading: driverLoading, refetch: refetchDriver } = useGetPublicUserInfoQuery(driverId, {
+  const { currentData: driver, isLoading: driverLoading, refetch: refetchDriver } = useGetPublicUserInfoQuery(driverId, {
     skip: !driverId || !active,
   });
 
@@ -73,7 +81,7 @@ export default function DriverDetailsScreen() {
 
   const driverPhone = driver?.phone ?? null;
 
-  if (driverLoading) {
+  if (driverLoading || (context.fromMap && mapDriver.isFetching && !mapDriver.currentData)) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loaderContainer}>
@@ -89,7 +97,7 @@ export default function DriverDetailsScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.emptyContainer}>
           <Ionicons name="person-outline" size={64} color={Colors.gray[400]} />
-          <Text style={styles.emptyText}>Conducteur non trouvé</Text>
+          <Text style={styles.emptyText}>Ce profil n’est pas disponible. Revenez à la carte ou au trajet pour réessayer.</Text>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
@@ -185,6 +193,10 @@ export default function DriverDetailsScreen() {
             )}
           </View>
         </View>
+
+        {params.viewOnly !== 'true' && <DriverProfileRequestAction key={`${driverId}:${context.requestId}`} driver={driver} active={active}
+          requestId={context.fromMap ? context.requestId : undefined} markerId={context.markerId}
+          sourceTripId={routeUuid(params.sourceTripId)} preferredType={mapDriver.currentData?.vehicleType} />}
 
         {/* Statistiques */}
         <View style={styles.section}>

@@ -29,7 +29,7 @@ export default function AppUpdateScreen() {
       <Ionicons name="download-outline" size={38} color={Colors.primary} />
       <Text style={styles.title}>{update.release ? 'Une nouvelle version de Zwanga' : 'Mises à jour de Zwanga'}</Text>
       {update.isFetching && <ActivityIndicator accessibilityLabel="Vérification de la mise à jour" color={Colors.primary} />}
-      <Text style={styles.copy}>{update.release ? `La version ${update.release.version} est disponible. Mettez Zwanga à jour pour profiter des dernières améliorations.`
+      <Text style={styles.copy}>{update.release ? `${update.release.comparison === 'native_build' ? 'Une nouvelle version' : `La version ${update.release.version}`} est disponible. Mettez Zwanga à jour pour profiter des dernières améliorations.`
         : update.isError ? 'La disponibilité n’a pas pu être vérifiée. Vous pouvez consulter votre store.' : 'Consultez votre store pour retrouver la dernière version disponible.'}</Text>
       {update.release?.notes ? <Text style={styles.copy}>{update.release.notes}</Text> : null}
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
