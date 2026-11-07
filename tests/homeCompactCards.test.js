@@ -203,7 +203,7 @@ test('dashboard proportions keep map space without changing locked or safe-area 
     props.width = 320; props.height = 568;
     assert.equal(draw().sheetHeight, (568 - 96) * 0.63);
     props.isHomeSheetLockedRetracted = true;
-    assert.equal(draw().sheetHeight, 78);
+    assert.equal(draw().sheetHeight, Math.min(288, (568 - 96) * 0.55));
     hooks.unmount();
   }
 });

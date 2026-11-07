@@ -104,9 +104,9 @@ function nodes(element) {
 }
 
 test('slow, empty, failed and refreshing trip queries keep the same map position in the Home render tree', () => {
-  const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true,
+  const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true, width: 390,
     hasMapPriorities: true, mapPriorityLayout: { top: 100, bottom: 400 }, highlightedDriverRequest: { id: 'nearby' } };
-  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards'];
+  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet'];
   const load = loader({
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
@@ -138,4 +138,23 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     Object.assign(home, update);
     assert.equal(nodes(render()).some(node => node.type === 'HomeActivityCards'), false);
   }
+  Object.assign(home, { hasMapPriorities: false, shouldRenderHomeMap: true });
+  for (const role of ['driver', 'passenger']) {
+    home.activeHomeTrip = { id: 'ride', status: 'ongoing' };
+    home.ongoingDriverTrip = role === 'driver' ? home.activeHomeTrip : null;
+    home.ongoingBookingId = role === 'passenger' ? 'booking' : null;
+    const tree = render(), rendered = nodes(tree);
+    assert.equal(tree.props.children[0].type, 'HomeMap', 'starting a ride does not move/remount the map');
+    assert.equal(rendered.some(node => node.type === 'HomeTripsSheet'), false);
+    const panel = rendered.find(node => node.type === 'HomeOngoingTripSheet');
+    assert.equal(panel.props.activeHomeTrip, home.activeHomeTrip);
+    assert.equal(panel.props.width, 390, 'the responsive panel receives the real Home viewport width');
+    assert.equal(panel.props.ongoingBookingId, home.ongoingBookingId);
+    assert.equal(rendered.find(node => node.type === 'HomeHeader').props.showOngoingShortcut, false);
+  }
+  Object.assign(home, { activeHomeTrip: null, ongoingDriverTrip: null, ongoingBookingId: null });
+  const restored = nodes(render());
+  assert.equal(render().props.children[0].type, 'HomeMap');
+  assert.equal(restored.some(node => node.type === 'HomeOngoingTripSheet'), false);
+  assert.equal(restored.some(node => node.type === 'HomeTripsSheet'), true);
 });

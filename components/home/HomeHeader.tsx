@@ -15,11 +15,11 @@ type Props =
   & Pick<ReturnType<typeof useHomeSheet>, 'profileInitial' | 'unreadNotifications'>
   & Pick<ReturnType<typeof useHomeDriverActivity>, 'ongoingDriverTrip'>
   & Pick<ReturnType<typeof useHomeTripSelection>, 'ongoingBookedTrip'>
-  & { ongoingBookingId?: string | null; isDriver?: boolean; isScreenActive?: boolean };
+  & { ongoingBookingId?: string | null; isDriver?: boolean; isScreenActive?: boolean; showOngoingShortcut?: boolean };
 
 export const HomeHeader = React.memo(function HomeHeader({
   insets, router, profileInitial, ongoingDriverTrip, ongoingBookedTrip, unreadNotifications,
-  ongoingBookingId, isDriver = false, isScreenActive = true,
+  ongoingBookingId, isDriver = false, isScreenActive = true, showOngoingShortcut = true,
 }: Props) {
   const ongoing = Boolean(ongoingDriverTrip || ongoingBookedTrip);
   // Same destinations as the global ongoing-trip banner.
@@ -53,7 +53,7 @@ export const HomeHeader = React.memo(function HomeHeader({
       ) : (
         <View style={styles.mapHeader} pointerEvents="box-none">{notifications}{profile}</View>
       )}
-      {ongoing ? (ongoingRoute ? (
+      {ongoing && showOngoingShortcut ? (ongoingRoute ? (
         <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.activeTripPill}
           accessibilityLabel="Trajet en cours" accessibilityHint="Ouvrir le guidage du trajet en cours."
           onPress={() => router.push(ongoingRoute)}>

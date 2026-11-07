@@ -109,6 +109,25 @@ test('the banner stays hidden on the passenger navigation screen', () => {
   assert.equal(h.render(), null); h.hooks.unmount();
 });
 
+test('Home uses its own panel, while other tabs and the background notification retain their ride access', () => {
+  for (const pathname of ['/', '/index', '/(tabs)', '/(tabs)/index']) {
+    const h = banner({ pathname });
+    assert.equal(h.render(), null);
+    assert.equal(h.starts.length, 1, 'hiding the Home duplicate must not stop native tracking');
+    assert.equal(h.starts[0].bookingId, 'reservation');
+    h.data.pathname = '/messages';
+    h.press();
+    assert.deepEqual(h.routes, ['/booking/navigate/reservation']);
+    assert.equal(h.starts.length, 1);
+    h.data.pathname = pathname;
+    assert.equal(h.render(), null);
+    h.data.bookings = [{ ...booking, droppedOff: true }];
+    assert.equal(h.render(), null);
+    assert.equal(h.stops.length, 1, 'completion still stops native tracking on Home');
+    h.hooks.unmount();
+  }
+});
+
 test('the ongoing notification retains the passenger booking and its navigation URL', async () => {
   const notices = [];
   const native = {
