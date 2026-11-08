@@ -115,16 +115,18 @@ test('arrival waiting for pickup is retried, but conflicts are not blindly retri
 
 test('an account change stops the batch and never publishes the old account response to the new one', async () => {
   const h = harness();
-  let finish;
-  h.deps.send = () => new Promise(resolve => { finish = resolve; });
-  const box = h.create(); await box.enqueue(input); await box.enqueue({ ...input, bookingId: 'other' });
+  const finishes = [];
+  h.deps.send = event => new Promise(resolve => { finishes.push(() => resolve({ ...snapshot('awaiting_other'), bookingId: event.bookingId })); });
+  const box = h.create();
+  for (const bookingId of ['booking', 'other', 'third']) await box.enqueue({ ...input, bookingId });
   const flushing = box.flush();
-  while (!finish) await new Promise(resolve => setImmediate(resolve));
+  while (finishes.length < 2) await new Promise(resolve => setImmediate(resolve));
   h.user('b'); const count = h.published.length;
-  finish(snapshot('awaiting_other')); await flushing;
+  finishes.forEach(finish => finish()); await flushing;
+  assert.equal(finishes.length, 2, 'a new account cannot start the third old-account booking');
   assert.equal(h.published.length, count);
   await box.hydrate(); assert.deepEqual(h.published.at(-1), { userId: 'b', entries: [] });
-  h.user('a'); await box.hydrate(); assert.equal(h.published.at(-1).entries.length, 2);
+  h.user('a'); await box.hydrate(); assert.equal(h.published.at(-1).entries.length, 3);
 });
 
 test('foreground worker stops when the app is paused; enqueuing still works offline', async () => {
@@ -199,4 +201,43 @@ test('offline snapshots strip live positions, isolate accounts and bound retenti
   assert.equal(await loadRideSnapshot('b', 'trip'), undefined);
   for (let i = 0; i < 10; i++) await saveRideSnapshot('a', `trip-${i}`, { id: i });
   assert.equal(Object.keys(JSON.parse([...disk.values()][0])).length, 6);
+});
+
+test('one slow passenger cannot block another; same-booking steps stay sequential and concurrency is bounded', async () => {
+  const h = harness(), pending = [], sent = [];
+  let active = 0, peak = 0;
+  h.deps.send = event => {
+    sent.push(`${event.bookingId}:${event.stage}`); peak = Math.max(peak, ++active);
+    return new Promise(resolve => pending.push(() => {
+      active--; resolve({ ...snapshot('confirmed'), bookingId: event.bookingId, dropoff: { status: 'confirmed' } });
+    }));
+  };
+  const box = h.create();
+  await box.enqueue(input); await box.enqueue({ ...input, stage: 'dropoff' });
+  await box.enqueue({ ...input, bookingId: 'other' }); await box.enqueue({ ...input, bookingId: 'third' });
+  const work = box.flush(); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sent, ['booking:pickup', 'other:pickup']);
+  await box.flush(); assert.equal(sent.length, 2, 'concurrent flush is ignored');
+  pending[1](); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sent, ['booking:pickup', 'other:pickup', 'third:pickup']);
+  pending[2](); pending[0](); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(sent.at(-1), 'booking:dropoff'); pending[3](); await work;
+  assert.equal(peak, 2); assert.equal(h.published.at(-1).entries.every(entry => entry.state === 'confirmed'), true);
+});
+
+test('a disk failure waits for the other in-flight booking before releasing the flush guard', async () => {
+  const h = harness(), finishes = [];
+  h.deps.send = event => new Promise(resolve => finishes.push(() => resolve({ ...snapshot('confirmed'), bookingId: event.bookingId })));
+  const box = h.create();
+  for (const bookingId of ['booking', 'other', 'third']) await box.enqueue({ ...input, bookingId });
+  const work = box.flush(); await new Promise(resolve => setImmediate(resolve));
+  const save = h.deps.storage.setItem;
+  h.deps.storage.setItem = async () => { throw Error('disk full'); };
+  finishes[0](); await new Promise(resolve => setImmediate(resolve));
+  await box.flush(); assert.equal(finishes.length, 2);
+  const rejected = assert.rejects(work, /disk full/);
+  finishes[1](); await rejected;
+  h.deps.storage.setItem = save;
+  h.deps.send = async event => ({ ...snapshot('confirmed'), bookingId: event.bookingId });
+  await box.flush(); assert.equal(h.published.at(-1).entries.every(entry => entry.state === 'confirmed'), true);
 });

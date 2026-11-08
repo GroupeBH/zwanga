@@ -150,13 +150,13 @@ export const styles = StyleSheet.create({
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.md,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: Spacing.xxl,
   },
   routeScrollViewContent: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   stepContainer: {
     marginTop: 0,

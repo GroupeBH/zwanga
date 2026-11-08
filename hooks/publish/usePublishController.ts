@@ -138,7 +138,7 @@ export function usePublishController() {
   });
 
   const scheduleActions = usePublishScheduleActions({
-    isScreenActive: isScreenActive && step === 'datetime',
+    isScreenActive: isScreenActive && step === 'route',
     hasChosenDepartureTime: form.hasChosenDepartureTime,
     setHasChosenDepartureTime: form.setHasChosenDepartureTime,
     departureDateTime: form.departureDateTime,
@@ -287,6 +287,7 @@ export function usePublishController() {
     if (step === 'route') {
       if (!route.hasDepartureAddress) return 'Indiquez le départ';
       if (!route.hasArrivalAddress) return "Indiquez l'arrivée";
+      if (!form.hasChosenDepartureTime) return 'Choisir l’heure';
       return 'Continuer';
     }
     if (step === 'confirm') {
@@ -302,17 +303,18 @@ export function usePublishController() {
       submission.handlePublish();
       return;
     }
+    if (step === 'route' && route.hasDepartureAddress && route.hasArrivalAddress &&
+        identity.isPublishIdentityVerified && !form.hasChosenDepartureTime) {
+      scheduleActions.openDateOrTimePicker('time');
+      return;
+    }
     navigation.handleNextStep();
   };
 
   const handleStartKyc = async () => {
     identity.setKycModalVisible(false);
-    const outcome = await identity.startDiditKyc();
-    if (outcome?.status === 'approved') {
-      if (step === 'route' && route.hasDepartureCoordinates && route.hasArrivalCoordinates) {
-        navigation.goToStep('datetime');
-      }
-    }
+    await identity.startDiditKyc();
+    // Stay on the itinerary so Continue validates the hour and recurring days too.
   };
 
   const { finishPublicationSuccess } = usePublishSuccessActions({

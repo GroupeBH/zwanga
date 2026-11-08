@@ -1,5 +1,6 @@
 import { ridePlaybackDeadline } from '@/features/notifications/ridePlaybackDeadline';
-import { validateRideRing, rideRingValidationIsCurrent } from './rideRingValidation';
+import { rideRingValidationIsCurrent } from './rideRingValidation';
+import { admitDriverAlert } from './driverAlertAdmission';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidStyle } from '@notifee/react-native';
@@ -101,19 +102,21 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   if (!invitation) return false;
   if (invitation.kind === 'nearby' && invitation.priority) data = { ...data, mapDriverPriority: 'true' };
   void reportRideNotificationReceipt(data, 'received');
-  if (!await validateRideRing(data)) {
-    await dismissDriverAlertFallback(data);
-    return true; // Stale/unverifiable requests are never an audible fallback.
-  }
+  if (!await admitDriverAlert(data, invitation.driverId)) return true;
   // A quiet banner is paired with the single foreground audio player.
   if (isAppActive()) {
     if (Platform.OS === 'android') {
       await displayForegroundAlert(invitation, data);
     } else {
+      const version = getTokenSessionVersion();
       const { refreshToken } = await boundedRideAudio(getTokens({ throwOnError: true }));
       if (!refreshToken || isTokenExpired(refreshToken) || getUserIdFromToken(refreshToken) !== invitation.driverId) return true;
       const alert = parseRideAlert(data);
-      if (alert && rideRingValidationIsCurrent(data)) rememberRideAlert(alert);
+      if (alert && await admitDriverAlert(data, invitation.driverId, true) &&
+          version === getTokenSessionVersion() && isAppActive()) {
+        const handoff = pendingRideAlertHandoffs(invitation.driverId).find(item => item.alert.key === alert.key);
+        if (handoff) completeRideAlertHandoff(handoff); else rememberRideAlert(alert);
+      }
       return true;
     }
     // If the phone went to sleep during foreground setup, continue with the
@@ -142,15 +145,17 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
   const attempt = {};
   delivery.attempt = attempt;
   let published = false;
-  const current = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
-    !delivery.cancelled && version === getTokenSessionVersion() && rideRingValidationIsCurrent(data);
+  const owned = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
+    !delivery.cancelled && version === getTokenSessionVersion();
+  const current = () => owned() && rideRingValidationIsCurrent(data);
+  const renew = async () => owned() && await admitDriverAlert(data, invitation.driverId, true) && owned();
   try {
     let fresh = deadline > Date.now();
     let channelId = fresh ? await configureDriverNotifications() : await quietChannel();
     const [lightUpScreen, fullScreenAction] = fresh ? await Promise.all([
       shouldLightUpRideAlertScreen(channelId), rideAlertFullScreenAction(invitation.driverId),
     ]) : [false, undefined];
-    if (!current()) return true;
+    if (!await renew()) return true;
     if (deadline <= Date.now()) {
       if (invitation.kind === 'dispatch') return true;
       fresh = false; channelId = await quietChannel();
@@ -178,6 +183,7 @@ export async function displayDriverInvitation(data: Record<string, unknown>): Pr
         actions: driverNotificationActions(invitation.kind, data),
       },
     }).then(async () => {
+      if (owned()) await renew();
       if (!current() && (!deliveries.has(key) || (deliveries.get(key) === delivery && delivery.attempt === attempt))) {
         await boundedRideAudio(cancelRideNotification(invitationNotificationId(invitation)));
       }
@@ -222,8 +228,10 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
   delivery.foreground = true;
   let published = false;
   let registered = false;
-  const owned = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
-    !delivery.cancelled && version === getTokenSessionVersion() && rideRingValidationIsCurrent(data);
+  const owner = () => deliveries.get(key) === delivery && delivery.attempt === attempt &&
+    !delivery.cancelled && version === getTokenSessionVersion();
+  const owned = () => owner() && rideRingValidationIsCurrent(data);
+  const renew = async () => owner() && await admitDriverAlert(data, invitation.driverId, true) && owner();
   const current = () => owned() && isAppActive();
   try {
     const alert = parseRideAlert(data);
@@ -233,11 +241,11 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
     // App audio starts only after that replacement is published, so the source
     // of the ring stays identifiable during unlock, even on a slow bridge.
     await quietChannel();
-    if (!current()) return;
+    if (!await renew() || !current()) return;
     if (!(await prepareForegroundRideAudio(invitationNotificationId(invitation)))) {
       await boundedRideAudio(cancelRideNotification(invitationNotificationId(invitation)));
     }
-    if (!owned()) return;
+    if (!await renew()) return;
     const register = () => {
       if (!owned() || !alert) return;
       if (handoff) completeRideAlertHandoff(handoff);
@@ -256,6 +264,7 @@ async function displayForegroundAlert(invitation: DriverAlert, data: Record<stri
         actions: driverNotificationActions(invitation.kind, data),
       },
     }).then(async () => {
+      if (owner()) await renew();
       // Late completion must not revive an acknowledged/old-account card.
       // Do not cancel a newer attempt that owns the same stable identifier.
       if (!current() && (!deliveries.has(key) || (deliveries.get(key) === delivery && delivery.attempt === attempt))) {

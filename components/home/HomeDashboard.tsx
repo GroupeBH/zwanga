@@ -4,6 +4,7 @@ import { HomeHeader } from '@/components/home/HomeHeader';
 import { HomeLocationButton } from '@/components/home/HomeLocationButton';
 import { HomeMap } from '@/components/home/HomeMap';
 import { HomeTripsSheet } from '@/components/home/HomeTripsSheet';
+import { HomeOngoingTripSheet } from '@/components/home/HomeOngoingTripSheet';
 import { HomeActivityCards } from '@/components/home/HomeActivityCards';
 import { styles } from '@/features/home/HomeScreen.styles';
 import { useHomeController } from '@/hooks/home/useHomeController';
@@ -42,6 +43,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       ongoingBookedTrip={home.ongoingBookedTrip}
       unreadNotifications={home.unreadNotifications}
       ongoingBookingId={home.ongoingBookingId}
+      showOngoingShortcut={!home.activeHomeTrip}
       isDriver={home.isDriver}
       isScreenActive={home.isScreenActive}
     />
@@ -65,7 +67,17 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
         featuredPassengerTrip={home.featuredPassengerTrip}
         openTripDetail={home.openTripDetail}
       />}
-    <HomeTripsSheet
+    {home.activeHomeTrip ? <HomeOngoingTripSheet
+      activeHomeTrip={home.activeHomeTrip}
+      ongoingDriverTrip={home.ongoingDriverTrip}
+      ongoingBookingId={home.ongoingBookingId}
+      activeBookings={home.activeBookings}
+      router={home.router}
+      width={home.width}
+      sheetBottomOffset={home.sheetBottomOffset}
+      sheetHeight={home.sheetHeight}
+      onSheetLayout={home.onSheetLayout}
+    /> : <HomeTripsSheet
       recentDestinations={home.recentDestinations}
       hiddenHomePriorities={home.hiddenHomePriorities}
       featuredPassengerTrip={home.featuredPassengerTrip}
@@ -94,7 +106,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       latestTrips={home.latestTrips}
       bookedTripIds={home.bookedTripIds}
       openTripDetail={home.openTripDetail}
-    />
+    />}
     <AppUpdatePrompt enabled={home.isScreenActive && !home.ongoingDriverTrip && !home.ongoingBookedTrip && !home.highlightedDriverRequest && !home.featuredDriverReservation} />
   </SafeAreaView>;
 }

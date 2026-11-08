@@ -24,25 +24,23 @@ export function usePublishPresentation({
     isConfirmed: boolean,
     label: string,
   ) => {
-    if (!hasAddress && !hasGpsSuggestion) {
+    // Confirmed points already have a coloured field/icon. Keep actionable warnings.
+    if (isConfirmed || (!hasAddress && !hasGpsSuggestion)) {
       return null;
     }
 
-    const isReady = isConfirmed;
-    const message = isReady
-      ? `${label} confirmé sur la carte`
-      : hasGpsSuggestion
+    const message = hasGpsSuggestion
         ? `${label} trouvé, vérifiez le point sur la carte`
         : `${label} à confirmer sur la carte`;
 
     return (
       <View style={styles.gpsStatus}>
         <Ionicons
-          name={isReady ? 'checkmark-circle' : 'alert-circle'}
+          name="alert-circle"
           size={14}
-          color={isReady ? Colors.success : Colors.warning}
+          color={Colors.warning}
         />
-        <Text style={[styles.gpsStatusText, isReady && styles.gpsStatusTextReady]}>
+        <Text style={styles.gpsStatusText}>
           {message}
         </Text>
       </View>

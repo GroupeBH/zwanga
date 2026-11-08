@@ -91,7 +91,11 @@ export function useHomeSheet({
 
   const effectiveTripsSheetOpen = tripsSheetOpen && !isHomeSheetLockedRetracted;
 
-  const sheetHeight = effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
+  // An ongoing ride gets a compact summary with a real navigation action, not
+  // the disabled collapsed discovery handle. Leave at least 45% to the map.
+  const ongoingSheetHeight = Math.min(288, availableHeight * 0.55);
+  const sheetHeight = isHomeSheetLockedRetracted ? ongoingSheetHeight
+    : effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
 
   const [sheetMeasurement, setSheetMeasurement] = useState<{ height: number; width: number; open: boolean; expectedHeight: number } | null>(null);
   // Native layout events can arrive after blur, rotation, collapse or unmount.

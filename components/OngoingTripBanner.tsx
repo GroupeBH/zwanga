@@ -95,6 +95,12 @@ export function OngoingTripBanner({ position = 'bottom' }: OngoingTripBannerProp
     const ongoingTripId = ongoingTrip?.trip?.id;
     if (!ongoingTripId) return true;
 
+    // Home has its own current-ride panel. Keep the tracking effect above alive,
+    // but do not stack a second banner over that panel and its navigation action.
+    if (pathname === '/' || pathname === '/index' || pathname === '/(tabs)' || pathname === '/(tabs)/index') {
+      return true;
+    }
+
     if (pathname?.startsWith('/auth') || pathname?.startsWith('/splash') || pathname?.startsWith('/onboarding')) {
       return true;
     }

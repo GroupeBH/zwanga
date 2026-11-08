@@ -38,14 +38,18 @@ export function useRideRinging(userId: string | undefined) {
     let disposed = false;
     const version = getTokenSessionVersion();
     const current = () => !disposed && version === getTokenSessionVersion();
+    const retryingHandoffs = new Set<string>();
     const reconcile = () => {
       if (!current() || AppState.currentState !== 'active') {
         stopRideAnnouncement(); stopForegroundRideSound();
         if (current()) void reconcileBackgroundRideRinging(userId);
       } else {
-        if (Platform.OS === 'android') for (const handoff of pendingRideAlertHandoffs(userId)) {
-          if (handoff.attempts < 3 && handoff.retryAt <= Date.now())
-            void displayDriverInvitation(handoff.alert.data).catch(() => reportRideAudioFailure('RING_HANDOFF_RETRY_FAILED'));
+        for (const handoff of pendingRideAlertHandoffs(userId)) {
+          if (handoff.attempts < 3 && handoff.retryAt <= Date.now() && !retryingHandoffs.has(handoff.alert.key)) {
+            retryingHandoffs.add(handoff.alert.key);
+            void displayDriverInvitation(handoff.alert.data).catch(() => reportRideAudioFailure('RING_HANDOFF_RETRY_FAILED'))
+              .finally(() => retryingHandoffs.delete(handoff.alert.key));
+          }
         }
         // Passenger replies are informational in the app (panel + voice), not
         // driver opportunities awaiting a decision. Keep them for background delivery.

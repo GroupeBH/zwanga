@@ -55,14 +55,17 @@ for (const status of [400,401,403]) test(`a current HTTP ${status} rejection cle
   assert(e.actions.some(a=>a.type==='auth/logout'));
 });
 
-for (const reply of ['success','rejected']) test(`late refresh ${reply} cannot modify another account`, async () => {
+for (const reply of ['success','rejected']) test(`late refresh ${reply} cannot modify another account`, async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-08T10:00:00Z') });
   const e=environment(); const old=jwt('a'); await e.storage.storeTokens(jwt('a',true),old);
   const work=e.api.refreshAccessToken(old); await flush();
-  await e.storage.clearTokens(); await e.storage.storeTokens(jwt('b'),jwt('b'));
+  const next = jwt('b');
+  await e.storage.clearTokens(); await e.storage.storeTokens(next,next);
+  t.mock.timers.tick(1100); // Compare the saved token, not a newly generated expiry.
   if(reply==='success') e.requests[0].resolve({accessToken:jwt('a'),refreshToken:old});
   else e.requests[0].reject({status:401});
   assert.equal(await work,null);
-  assert.equal((await e.storage.getTokens()).accessToken,jwt('b'));
+  assert.equal((await e.storage.getTokens()).accessToken,next);
   assert(!e.actions.some(a=>a.type==='auth/logout'||a.type==='auth/setTokens'));
 });
 
@@ -76,13 +79,15 @@ test('logout during the secure write cannot resurrect credentials on disk or Red
   assert(!e.actions.some(a=>a.type==='auth/setTokens'));
 });
 
-test('new login is not overwritten by a secure write already in progress', async () => {
+test('new login is not overwritten by a secure write already in progress', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-11-08T10:00:00Z') });
   let gate; const e=environment({beforeWrite:()=>gate?.promise}); const old=jwt('a');
   await e.storage.storeTokens(jwt('a',true),old);
   const work=e.api.refreshAccessToken(old); await flush(); gate=deferred();
   e.requests[0].resolve({accessToken:old,refreshToken:old}); await flush();
-  const login=e.storage.storeTokens(jwt('b'),jwt('b')); gate.resolve(); await login; await work;
-  assert.equal(JSON.parse(e.disk.get('zwanga.session-pair.v2')).accessToken,jwt('b'));
+  const next = jwt('b');
+  const login=e.storage.storeTokens(next,next); t.mock.timers.tick(1100); gate.resolve(); await login; await work;
+  assert.equal(JSON.parse(e.disk.get('zwanga.session-pair.v2')).accessToken,next);
   assert(!e.actions.some(a=>a.type==='auth/setTokens'));
 });
 

@@ -79,3 +79,30 @@ test('endpoint reuses public RTK transport with POST, bounded timeout, no creden
   assert.deepEqual(calls[0][0], { url: '/notifications/ride-alerts/validate', method: 'POST',
     body: { token: 'capability' }, timeout: 3000, redirect: 'error' });
 });
+
+test('slow publication renews only an expired lease, never its deadline or a terminal invalidation', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  const f = fixture(), event = data(), original = event.ringUntil;
+  assert.equal(await f.refreshRideRingValidation(event), 'denied', 'no lease to renew');
+  await f.checkRideRing(event);
+  assert.equal(await f.refreshRideRingValidation(event), 'allowed');
+  assert.equal(f.io.calls.length, 1, 'fast path adds no network operation');
+  t.mock.timers.tick(3500);
+  assert.equal(await f.refreshRideRingValidation(event), 'allowed');
+  assert.equal(f.io.calls.length, 2);
+  assert.equal(event.ringUntil, original);
+  f.invalidateRideRingValidation('request');
+  assert.equal(await f.refreshRideRingValidation(event), 'denied');
+  assert.equal(f.io.calls.length, 2, 'do not renew a terminal generation');
+});
+
+test('renewal observes a server refusal and expiry without extending the sound', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
+  for (const end of ['denied', 'expired']) {
+    const f = fixture(), event = data(); await f.checkRideRing(event);
+    t.mock.timers.tick(end === 'expired' ? 40001 : 3001);
+    f.io.network = async () => ({ allowed: false });
+    assert.equal(await f.refreshRideRingValidation(event), end);
+    assert.equal(f.rideRingValidationIsCurrent(event), false);
+  }
+});

@@ -29,7 +29,10 @@ public final class RideAlertAudioService extends Service {
   private volatile boolean closing;
   private int generation;
   private final Runnable tick = new Runnable() { public void run() {
-    if (!valid()) { finishAlert(); return; }
+    // The audio looper already checks ownership, device policy and the posted
+    // card every 500 ms. Do not repeat those Binder calls on the UI looper.
+    // The worker alone interprets player state and owns bounded audio retries.
+    if (closing || System.currentTimeMillis() >= deadline || player == null) { finishAlert(); return; }
     if (!entryReleased && NativeRideDelivery.foreground()) {
       entryReleased = true; releaseBanner(false);
     }
