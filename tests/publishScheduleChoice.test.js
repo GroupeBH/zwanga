@@ -73,7 +73,7 @@ test('recurring end date keeps its own minimum and never changes or confirms dep
   assert.equal(f.props.hasChosenDepartureTime, false);
 });
 
-test('publication shares the request fields and picker; Continue opens the time chooser when missing', () => {
+test('publication shares the request fields and picker without a duplicate step footer', () => {
   const calls = [], load = loader({ 'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button',
     StyleSheet: { create: value => value } }, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { default: { View: 'Animated' } },
@@ -88,10 +88,9 @@ test('publication shares the request fields and picker; Continue opens the time 
   const fields = load('components/forms/DepartureDateTimeFields.tsx').DepartureDateTimeFields;
   const tree = PublishScheduleStep(props);
   assert.ok(all(tree).some(node => node.type === fields));
-  const primary = all(tree).filter(node => node.type === 'Button').at(-1);
-  primary.props.onPress(); assert.deepEqual(calls, ['time']);
-  all(PublishScheduleStep({ ...props, hasChosenDepartureTime: true })).filter(node => node.type === 'Button').at(-1).props.onPress();
-  assert.deepEqual(calls, ['time', 'continue']);
+  assert.equal(all(tree).filter(node => node.type === 'Button').length, 0);
+  all(tree).find(node => node.type === fields).props.onOpen('time');
+  assert.deepEqual(calls, ['time']);
   const modal = load('features/publish/PublishDateTimeModal.tsx').PublishDateTimeModal({ iosPickerMode: 'date', iosPickerTarget: 'recurringEndDate',
     departureDateTime: new Date(2026, 11, 18), closeIosPicker() {} });
   assert.equal(modal.type, load('components/trip-request/RequestDatePickerModal.tsx').RequestDatePickerModal);

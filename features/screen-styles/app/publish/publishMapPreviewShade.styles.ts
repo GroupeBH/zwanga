@@ -35,17 +35,7 @@ export const styles = StyleSheet.create({
   publishRouteSheet: {
     marginHorizontal: 0,
     marginTop: 0,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.white,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gray[200],
-    shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 1,
+    gap: 8,
   },
   rideSheetHeader: {
     flexDirection: 'row',

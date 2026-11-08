@@ -14,8 +14,8 @@ const entryOnlyAlerts = new Map<string, RideAlert>();
 // passenger must see the reply once. Bounded, session-scoped, never persisted.
 const responseNotices = new Map<string, { alert: RideAlert; until: number }>();
 type RideAlertHandoff = { alert: RideAlert; until: number; attempts: number; retryAt: number };
-// A native cancellation may finish during unlock/background transitions. Keep
-// its fresh event separately, without authorizing audio before cancellation.
+// A native handoff or initial network validation can fail during entry. Keep
+// its fresh event separately, without authorizing audio before validation and handoff.
 const handoffs = new Map<string, RideAlertHandoff>();
 const acknowledged = new Set<string>();
 const validationPaused = new Set<string>();
@@ -128,6 +128,11 @@ export function completeRideAlertHandoff(handoff: RideAlertHandoff) {
   if (handoffs.get(handoff.alert.key) !== handoff) return;
   handoffs.delete(handoff.alert.key);
   storeRideAlert(handoff.alert, false, true);
+}
+/** A failed admission is not a driver decision. Remove only its silent retry. */
+export function discardRideAlertHandoff(key: string) {
+  checkSession();
+  if (handoffs.delete(key)) changed();
 }
 function knownRideAlerts(userId: string): RideAlert[] {
   checkSession();

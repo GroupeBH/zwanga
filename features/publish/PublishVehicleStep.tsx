@@ -1,13 +1,10 @@
-import { PublishStep } from './publishModel';
-import { styles } from '../screen-styles/app/publish/index';
-import { Colors, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import type { Vehicle } from '@/types';
-import Animated, { FadeInDown } from '@/utils/reanimated';
+import Animated, { type FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import type { EdgeInsets } from 'react-native-safe-area-context';
+import React, { useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface PublishVehicleStepProps {
   stepEntering: FadeInDown | undefined;
@@ -17,146 +14,59 @@ interface PublishVehicleStepProps {
   isLoadingVehicles: boolean;
   openVehicleForm: () => void;
   setSelectedVehicleId: React.Dispatch<React.SetStateAction<string | null>>;
-  insets: EdgeInsets;
-  goToStep: (nextStep: PublishStep) => void;
-  handleNextStep: () => void;
 }
 
-export function PublishVehicleStep({
-  stepEntering,
-  activeVehicles,
-  selectedVehicleId,
-  vehicleCreationMessage,
-  isLoadingVehicles,
-  openVehicleForm,
-  setSelectedVehicleId,
-  insets,
-  goToStep,
-  handleNextStep,
-}: PublishVehicleStepProps) {
-  return (
-    <Animated.View entering={stepEntering} style={styles.stepContainer}>
-      <Text style={styles.sectionTitle}>Avec quel véhicule ?</Text>
-
-      <View style={styles.inputGroup}>
-        {vehicleCreationMessage ? (
-          <View style={styles.vehicleSuccessBanner} accessibilityRole="alert">
-            <View style={styles.vehicleSuccessIcon}>
-              <Ionicons name="checkmark" size={18} color={Colors.white} />
-            </View>
-            <View style={styles.vehicleSuccessContent}>
-              <Text style={styles.vehicleSuccessTitle}>Véhicule prêt</Text>
-              <Text style={styles.vehicleSuccessText}>{vehicleCreationMessage}</Text>
-            </View>
+export function PublishVehicleStep(props: PublishVehicleStepProps) {
+  const [expanded, setExpanded] = useState(false);
+  const selected = props.activeVehicles.find(vehicle => vehicle.id === props.selectedVehicleId);
+  const loading = props.isLoadingVehicles && !props.activeVehicles.length;
+  const name = (vehicle: Vehicle) => `${vehicle.brand} ${vehicle.model}`.trim() || 'Véhicule';
+  return <Animated.View entering={props.stepEntering} style={s.section}>
+    <Text style={s.title}>Votre véhicule</Text>
+    {loading ? <View style={s.loading}><ActivityIndicator color={Colors.primary} /><Text style={s.hint}>Chargement des véhicules…</Text></View>
+      : !props.activeVehicles.length ? <TouchableOpacity style={s.current} accessibilityRole="button" onPress={props.openVehicleForm}>
+        <Ionicons name="add-circle-outline" size={22} color={Colors.primary} /><Text style={s.link}>Ajouter mon véhicule</Text>
+      </TouchableOpacity> : <>
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded }}
+          accessibilityLabel={selected ? `${name(selected)}, ${selected.licensePlate}. Changer de véhicule` : 'Choisir mon véhicule'}
+          style={s.current} onPress={() => setExpanded(value => !value)}>
+          <Ionicons name={selected?.type === 'motorcycle_2_wheels' ? 'bicycle-outline' : 'car-outline'} size={22} color={Colors.primary} />
+          <View style={s.copy}>
+            <Text style={s.name}>{selected ? name(selected) : 'Choisir mon véhicule'}</Text>
+            {selected && <Text style={s.hint}>{selected.licensePlate} · {getRegisteredVehicleTypeLabel(selected.type)}</Text>}
           </View>
-        ) : null}
-        {isLoadingVehicles && activeVehicles.length === 0 ? (
-          <View style={styles.vehicleLoadingState}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.vehicleLoadingText}>Chargement de vos véhicules...</Text>
-          </View>
-        ) : activeVehicles.length === 0 ? (
-          <View style={styles.vehicleEmptyState}>
-            <Ionicons name="car-outline" size={48} color={Colors.gray[400]} />
-            <Text style={styles.vehicleEmptyTitle}>Aucun véhicule</Text>
-            <Text style={styles.vehicleEmptyText}>
-              Ajoutez votre premier véhicule pour publier des trajets
-            </Text>
-            <TouchableOpacity
-              style={styles.addVehicleButton}
-              onPress={openVehicleForm}
-            >
-              <Ionicons name="add-circle" size={20} color={Colors.white} />
-              <Text style={styles.addVehicleButtonText}>Ajouter un véhicule</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.vehicleScrollView}
-              contentContainerStyle={styles.vehicleScrollContent}
-            >
-              {activeVehicles.map((vehicle) => {
-                const isSelected = selectedVehicleId === vehicle.id;
-                const vehicleName = `${vehicle.brand} ${vehicle.model}`.trim();
-
-                return (
-                  <TouchableOpacity
-                    key={vehicle.id}
-                    style={[
-                      styles.vehicleCard,
-                      isSelected && styles.vehicleCardActive,
-                    ]}
-                    onPress={() => setSelectedVehicleId(vehicle.id)}
-                    activeOpacity={0.86}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isSelected }}
-                  >
-                    <View style={[styles.vehicleCardAccent, isSelected && styles.vehicleCardAccentActive]} />
-                    <View style={styles.vehicleCardHeader}>
-                      <View style={[styles.vehicleCardIconWrap, isSelected && styles.vehicleCardIconWrapActive]}>
-                        <Ionicons
-                          name="car-sport"
-                          size={22}
-                          color={isSelected ? Colors.white : Colors.primary}
-                        />
-                      </View>
-                      <View style={[styles.vehicleCardStatus, isSelected && styles.vehicleCardStatusActive]}>
-                        {isSelected ? <Ionicons name="checkmark" size={12} color={Colors.white} /> : null}
-                        <Text style={[styles.vehicleCardStatusText, isSelected && styles.vehicleCardStatusTextActive]}>
-                          {isSelected ? 'Choisi' : 'Actif'}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={styles.vehicleCardBrand} numberOfLines={1}>
-                      {vehicleName || 'Véhicule'}
-                    </Text>
-                    <View style={styles.vehiclePlatePill}>
-                      <Ionicons name="card-outline" size={13} color={Colors.gray[500]} />
-                      <Text style={styles.vehiclePlateText} numberOfLines={1}>
-                        {vehicle.licensePlate}
-                      </Text>
-                    </View>
-                    <Text style={styles.vehicleCardDetails} numberOfLines={1}>
-                      {getRegisteredVehicleTypeLabel(vehicle.type)} • {vehicle.color || 'Couleur non précisée'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.addVehicleButtonSecondary}
-              onPress={openVehicleForm}
-            >
-              <Ionicons name="add" size={18} color={Colors.primary} />
-              <Text style={styles.addVehicleButtonSecondaryText}>Ajouter un autre véhicule</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-      </View>
-
-      <View style={styles.infoBox}>
-        <Ionicons name="information-circle-outline" size={20} color={Colors.info} />
-        <Text style={styles.infoText}>
-          Les passagers pourront voir les détails de votre véhicule après avoir réservé.
-        </Text>
-      </View>
-
-      <View style={[styles.buttonRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-        <TouchableOpacity
-          style={[styles.button, styles.buttonSecondary]}
-          onPress={() => goToStep('datetime')}
-        >
-          <Text style={styles.buttonSecondaryText}>Retour</Text>
+          <Text style={s.link}>{expanded ? 'Fermer' : 'Changer'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, { flex: 1, marginLeft: Spacing.md }]} onPress={handleNextStep}>
-          <Text style={styles.buttonText}>Continuer</Text>
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
-  );
+        {expanded && <View>
+          <ScrollView nestedScrollEnabled style={s.list} contentContainerStyle={s.options} keyboardShouldPersistTaps="handled">
+            {props.activeVehicles.map(vehicle => <TouchableOpacity key={vehicle.id} accessibilityRole="radio"
+              accessibilityLabel={`${name(vehicle)}, ${vehicle.licensePlate}`}
+              accessibilityState={{ checked: vehicle.id === selected?.id }}
+              style={[s.option, vehicle.id === selected?.id && s.selected]}
+              onPress={() => { props.setSelectedVehicleId(vehicle.id); setExpanded(false); }}>
+              <Ionicons name={vehicle.id === selected?.id ? 'radio-button-on' : 'radio-button-off'} size={20} color={Colors.primary} />
+              <View style={s.copy}><Text style={s.name}>{name(vehicle)}</Text>
+                <Text style={s.hint}>{vehicle.licensePlate} · {getRegisteredVehicleTypeLabel(vehicle.type)}</Text></View>
+            </TouchableOpacity>)}
+          </ScrollView>
+          <TouchableOpacity style={s.add} accessibilityRole="button" onPress={props.openVehicleForm}>
+            <Text style={s.link}>+ Ajouter un véhicule</Text>
+          </TouchableOpacity>
+        </View>}
+      </>}
+    {!!props.vehicleCreationMessage && <Text style={s.hint} accessibilityLiveRegion="polite">{props.vehicleCreationMessage}</Text>}
+  </Animated.View>;
 }
+const s = StyleSheet.create({
+  section: { gap: 6, marginBottom: 10 }, title: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
+  current: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 60, padding: 10,
+    borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, backgroundColor: Colors.white },
+  copy: { flex: 1, minWidth: 0, gap: 2 }, name: { fontSize: 14, fontWeight: '600', color: Colors.gray[900] },
+  hint: { fontSize: 12, lineHeight: 18, color: Colors.gray[600] },
+  link: { fontSize: 13, fontWeight: '700', color: Colors.primaryDark },
+  list: { maxHeight: 176 }, options: { gap: 6, paddingVertical: 6 },
+  option: { minHeight: 56, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white },
+  selected: { borderColor: Colors.primary, backgroundColor: '#FFF3EC' },
+  add: { minHeight: 44, justifyContent: 'center' }, loading: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10 },
+});

@@ -77,7 +77,8 @@ function service(platform = 'android', account = driverId, phoneChannel = false,
   const native = { createChannel: async value => channels.push(value), displayNotification: async value => displays.push(value),
     cancelNotification: async id => cancelled.push(id), getDisplayedNotifications: async () => displays.map(notification => ({ id: notification.id, notification })) };
   const loadService = loader({
-    './rideRingValidation': { validateRideRing: async () => ringAllowed, rideRingValidationIsCurrent: () => ringAllowed },
+    './rideRingValidation': { checkRideRing: async () => ringAllowed ? 'allowed' : 'denied',
+      refreshRideRingValidation: async () => ringAllowed ? 'allowed' : 'denied', rideRingValidationIsCurrent: () => ringAllowed },
     './tokenStorage': { getTokens: async () => ({ refreshToken: account ? `x.${Buffer.from(JSON.stringify({ sub: account, exp: Date.now()/1000+3600 })).toString('base64url')}.x` : null }) },
     '@react-native-async-storage/async-storage': { getItem: async key => storage.get(key), setItem: async (key, value) => storage.set(key, value), removeItem: async key => storage.delete(key) },
     'expo-notifications': { setNotificationCategoryAsync: async id => { categories.push(id); },

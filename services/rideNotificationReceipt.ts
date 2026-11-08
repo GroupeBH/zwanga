@@ -11,6 +11,12 @@ let flushing = false;
 type AudioStage = 'audio_started' | 'audio_failed' | 'audio_suppressed';
 const audioStages: AudioStage[] = ['audio_started', 'audio_failed', 'audio_suppressed'];
 const audioReasons = ['PLAYER_STARTED', 'PLAYER_ERROR', 'AUDIO_FOCUS_DENIED', 'DEVICE_POLICY', 'BACKGROUND_START_DENIED', 'NOTIFICATIONS_DISABLED'];
+// Unknown native values never become telemetry. Older servers retain the
+// metadata-free fallback below during a rolling deployment.
+function compatibleFailureCode(code?: string) {
+  return ['NATIVE_CARD_FAILED', 'NATIVE_CARD_PENDING', 'NATIVE_FALLBACK_FAILED',
+    'REQUEST_CHECK_UNAVAILABLE', 'REQUEST_NO_LONGER_AVAILABLE'].includes(code ?? '') ? code : undefined;
+}
 type ReceiptDetail = { observedAt?: string; source?: 'native' | 'javascript'; failureCode?: string;
   audioStage?: AudioStage; audioObservedAt?: string; audioReason?: string };
 const queued = new Map<string, { user: string; id: string; stage: 'received' | 'displayed';
@@ -29,7 +35,7 @@ export async function reportRideNotificationReceipt(data: Record<string, unknown
     try { NativeModules?.ZwangaDriverAlerts?.recordNativeRideReceipt?.(user, id, stage === 'displayed', `driver-${invitation.kind}-${invitation.id}`); }
     catch { /* Optional native deduplication cannot block the receipt. */ }
   }
-  const version = getTokenSessionVersion(), key = `${version}:${user}:${id}:${stage}:${detail.audioStage ?? ''}`;
+  const version = getTokenSessionVersion(), key = `${version}:${user}:${id}:${stage}:${detail.audioStage ?? ''}:${detail.failureCode ?? ''}`;
   pruneQueue();
   if (!queued.has(key) && (sent.get(key) ?? 0) <= Date.now())
     queued.set(key, { user, id, stage, version, detail, expiresAt: Date.now() + 15 * 60_000 });
@@ -92,7 +98,7 @@ export async function flushNativeRideReceipts(userId: string) {
     for (const [notificationId, receipt] of Object.entries(receipts).slice(-100)) {
       if (version !== getTokenSessionVersion() || Date.now() > stopAt) break;
       const at = receipt.displayed ? receipt.displayedAt ?? receipt.at : receipt.at;
-      const failureCode = ['NATIVE_CARD_FAILED', 'NATIVE_CARD_PENDING', 'NATIVE_FALLBACK_FAILED'].includes(receipt.failureCode ?? '') ? receipt.failureCode : undefined;
+      const failureCode = compatibleFailureCode(receipt.failureCode);
       await reportRideNotificationReceipt({ notificationId, driverId: userId }, receipt.displayed ? 'displayed' : 'received', {
         source: 'native', ...(typeof at === 'number' && Number.isFinite(at) && at > 0 && at <= Date.now() + 300000 ? { observedAt: new Date(at).toISOString() } : {}), failureCode,
       });

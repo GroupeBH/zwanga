@@ -13,7 +13,7 @@ import { styles } from '../features/screen-styles/app/publish/index';
 import { FormScreen } from '@/components/forms/FormLayout';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { VehicleFormModal } from '@/components/VehicleFormModal';
-import { Colors, Spacing } from '@/constants/styles';
+import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
@@ -49,34 +49,16 @@ export default function PublishScreen() {
         isStepCompleted={model.navigation.isStepCompleted}
       />
 
-      {/* {!isIdentityVerified && (
-        <View style={styles.identityWarningCard}>
-          <View style={styles.identityWarningIcon}>
-            <Ionicons name="shield" size={20} color={Colors.primary} />
-          </View>
-          <View style={styles.identityWarningContent}>
-            <Text style={styles.identityWarningTitle}>Identité à vérifier</Text>
-            <Text style={styles.identityWarningText}>
-              Vérifiez votre identité pour pouvoir publier et confirmer vos trajets.
-            </Text>
-          <TouchableOpacity
-              style={styles.identityWarningButton}
-              onPress={handleStartKyc}
-            >
-              <Text style={styles.identityWarningButtonText}>Compléter ma vérification</Text>
-              <Ionicons name="chevron-forward" size={14} color={Colors.white} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )} */}
-
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
+          testID="publish-step-content"
+          key={model.step}
+          keyboardDismissMode="on-drag"
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollViewContent,
             model.step === 'route' && styles.routeScrollViewContent,
-            { paddingBottom: Spacing.lg },
+            { paddingBottom: 12 },
           ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -126,8 +108,8 @@ export default function PublishScreen() {
             handleStartKyc={model.handleStartKyc}
           />
         )}
-        {/* Étape 2: Date & Heure */}
-        {model.step === 'datetime' && (
+        {/* Date et heure : même étape que l’itinéraire */}
+        {model.step === 'route' && (
           <PublishScheduleStep
             stepEntering={model.stepEntering}
             openDateOrTimePicker={model.scheduleActions.openDateOrTimePicker}
@@ -140,18 +122,14 @@ export default function PublishScreen() {
             recurringWeekdayOptions={model.presentation.recurringWeekdayOptions}
             recurringWeekdays={model.form.recurringWeekdays}
             toggleRecurringWeekday={model.schedule.toggleRecurringWeekday}
-            recurringDaysSummary={model.schedule.recurringDaysSummary}
             formattedRecurringEndDate={model.schedule.formattedRecurringEndDate}
             recurringEndDate={model.form.recurringEndDate}
             setRecurringEndDate={model.form.setRecurringEndDate}
-            insets={model.insets}
-            goToStep={model.navigation.goToStep}
-            handleNextStep={model.navigation.handleNextStep}
           />
         )}
 
-        {/* Étape 3: Véhicule */}
-        {model.step === 'vehicle' && (
+        {/* Étape 2 : véhicule, places et prix */}
+        {model.step === 'pricing' && (
           <PublishVehicleStep
             stepEntering={model.stepEntering}
             activeVehicles={model.vehicle.activeVehicles}
@@ -160,13 +138,10 @@ export default function PublishScreen() {
             isLoadingVehicles={model.vehicle.isLoadingVehicles}
             openVehicleForm={model.vehicleEditor.openVehicleForm}
             setSelectedVehicleId={model.vehicle.setSelectedVehicleId}
-            insets={model.insets}
-            goToStep={model.navigation.goToStep}
-            handleNextStep={model.navigation.handleNextStep}
           />
         )}
 
-        {/* Étape 4: Places & Prix */}
+        {/* Places et prix : même étape que le véhicule */}
         {model.step === 'pricing' && (
           <PublishPricingStep
             acceptedPaymentModes={model.form.acceptedPaymentModes}
@@ -186,7 +161,7 @@ export default function PublishScreen() {
           />
         )}
 
-        {/* Étape 5: Confirmation */}
+        {/* Étape 3 : vérifier avant de publier */}
         {model.step === 'confirm' && (
           <PublishConfirmationStep
             acceptedPaymentModes={model.form.acceptedPaymentModes}
@@ -199,7 +174,6 @@ export default function PublishScreen() {
             isRouteLoading={model.form.isRouteLoading}
             departureSummary={model.presentation.departureSummary}
             departureReference={model.form.departureReference}
-            formatCoordinatePair={model.schedule.formatCoordinatePair}
             arrivalSummary={model.presentation.arrivalSummary}
             arrivalReference={model.form.arrivalReference}
             formattedFullDateTime={model.schedule.formattedFullDateTime}
@@ -211,20 +185,19 @@ export default function PublishScreen() {
             price={model.form.price}
             requiresPassengerKyc={model.form.requiresPassengerKyc}
             description={model.form.description}
-            insets={model.insets}
+            selectedVehicle={model.vehicle.activeVehicles.find(vehicle => vehicle.id === model.vehicle.selectedVehicleId)}
             goToStep={model.navigation.goToStep}
             isSubmittingTrip={model.schedule.isSubmittingTrip}
-            isPublishIdentityVerified={model.identity.isPublishIdentityVerified}
-            handlePublish={model.submission.handlePublish}
           />
         )}
       </ScrollView>
 
         <View
+          testID="publish-footer"
           style={[
             styles.fixedBottomBar,
             model.step !== 'route' && styles.fixedBottomBarRow,
-            { paddingBottom: Spacing.lg },
+            { paddingBottom: 12 },
           ]}
         >
           {previousStep && (

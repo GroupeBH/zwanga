@@ -35,3 +35,27 @@ test('audio observations upload after a displayed receipt without replaying it, 
  assert.equal(sent[1].audioStage,'audio_started');assert.equal(sent[1].audioObservedAt,new Date(at+600).toISOString());
  await api.flushNativeRideReceipts(user);assert.equal(sent.length,2);
 });
+
+for (const failureCode of ['REQUEST_CHECK_UNAVAILABLE','REQUEST_NO_LONGER_AVAILABLE'])
+test(`native ${failureCode} uploads even after the initial received receipt`,async()=>{
+ const receipts={[id]:{at:Date.now(),displayed:false}};
+ const {api,sent}=setup({receipts});
+ await api.reportRideNotificationReceipt({notificationId:id,driverId:user},'received');
+ receipts[id].failureCode=failureCode;
+ await api.flushNativeRideReceipts(user);
+ assert.equal(sent.length,2);assert.equal(sent[1].failureCode,failureCode);
+ assert.equal(sent[1].stage,'received');assert.equal(sent[1].source,'native');
+ await api.flushNativeRideReceipts(user);assert.equal(sent.length,2,'do not repeat unchanged observations');
+});
+
+test('new validation failure reasons remain compatible with an older strict receipt DTO',async()=>{
+ const {api,sent}=setup({legacy:true,receipts:{[id]:{at:Date.now(),failureCode:'REQUEST_CHECK_UNAVAILABLE'}}});
+ await api.flushNativeRideReceipts(user);
+ assert.equal(sent.length,2);assert.equal(sent[0].failureCode,'REQUEST_CHECK_UNAVAILABLE');
+ assert.deepEqual(sent[1],{notificationId:id,stage:'received'});
+});
+
+test('unrecognized native reasons are never forwarded',async()=>{
+ const {api,sent}=setup({receipts:{[id]:{at:Date.now(),failureCode:'arbitrary-payload'}}});
+ await api.flushNativeRideReceipts(user);assert.equal(sent[0].failureCode,undefined);
+});

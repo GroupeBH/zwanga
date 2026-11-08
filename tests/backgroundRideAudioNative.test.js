@@ -5,6 +5,19 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
+test('periodic UI work delegates expensive audio/card checks to the existing audio worker', () => {
+  const service = fs.readFileSync('native/android/notifications/RideAlertAudioService.java', 'utf8');
+  const tick = service.slice(service.indexOf('private final Runnable tick'), service.indexOf('static Bundle data'));
+  assert.doesNotMatch(tick, /\bvalid\(\)|\ballowed\(|RidePresentationExpiry\.find|NativeRideDelivery\.owns/);
+  assert.match(tick, /closing/); assert.match(tick, /System\.currentTimeMillis\(\) >= deadline/);
+  assert.match(tick, /player == null/);
+  assert.doesNotMatch(tick, /player\.state\(\)/, 'the UI must not cancel an audio-worker retry from a transient player state');
+  assert.match(service, /this::valid/);
+  const session = fs.readFileSync('native/android/notifications/RideAlertAudioSession.java', 'utf8');
+  assert.match(session, /!safe\(valid\)\) \{ end\(\); return; \}/);
+  assert.match(session, /audio\.postDelayed\(this, 500\)/);
+});
+
 test('native teardown removes a decided card and cannot republish it from onDestroy', t => {
   if (spawnSync('javac', ['-version']).status !== 0) return t.skip('JDK required');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'zwanga-audio-cleanup-'));

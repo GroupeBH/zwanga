@@ -7,6 +7,7 @@ const deferred = () => { let resolve, reject; const promise = new Promise((done,
 const noop = () => {};
 // These tests isolate native publication/handoff; HTTP admission is exercised separately.
 const ringValidation = { validateRideRing: async () => true, rideRingValidationIsCurrent: () => true,
+  checkRideRing: async () => 'allowed', refreshRideRingValidation: async () => 'allowed',
   needsRideRingValidation: () => false };
 const driverId = '00000000-0000-4000-8000-000000000001';
 const requestId = '00000000-0000-4000-8000-000000000002';

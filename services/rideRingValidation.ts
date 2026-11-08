@@ -68,3 +68,12 @@ export async function checkRideRing(data: Record<string, unknown>): Promise<Ride
 export async function validateRideRing(data: Record<string, unknown>): Promise<boolean> {
   return await checkRideRing(data) === 'allowed';
 }
+
+/** Renew only a lease previously granted to this delivery, never a terminal
+ * invalidation. Slow native bridges do not extend the business deadline. */
+export async function refreshRideRingValidation(data: Record<string, unknown>): Promise<RideRingVerdict> {
+  if (rideRingValidationIsCurrent(data)) return 'allowed';
+  const grant = grants.get(String(data.ringValidationToken ?? ''));
+  if (!grant || (revisions.get(grant.request) ?? 0) !== grant.revision) return 'denied';
+  return checkRideRing(data);
+}

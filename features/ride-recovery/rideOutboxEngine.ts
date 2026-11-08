@@ -92,46 +92,66 @@ export function createRideOutbox(deps: Dependencies) {
       try {
         const candidates = await exclusive(() => read(userId));
         const snapshots = new Map<string, RideSnapshot>();
-        // FIFO per booking; independent passengers are not blocked by another's conflict.
+        const grouped = new Map<string, RideOutboxEntry[]>();
         for (const entry of candidates) {
-          if (deps.userId() !== userId || deps.canSend?.() === false) return;
-          if (!['queued', 'sending', 'received'].includes(entry.state) || entry.nextAttemptAt > deps.now()) continue;
-          if (deps.now() - Date.parse(entry.occurredAt) > OFFLINE_RIDE_MAX_AGE) {
-            await update(userId, entry.eventId, { state: 'blocked', message: 'Cette confirmation est trop ancienne pour être transmise automatiquement. Contactez l’assistance.' });
-            continue;
-          }
-          try {
-            let snapshot: RideSnapshot;
-            if (entry.state === 'received') snapshot = snapshots.get(entry.bookingId) ?? await deps.read(entry.bookingId);
-            else {
-              await update(userId, entry.eventId, { state: 'sending' });
-              if (deps.userId() !== userId || deps.canSend?.() === false) {
-                await update(userId, entry.eventId, { state: 'queued' });
-                return;
-              }
-              const { state: _state, attempts: _attempts, nextAttemptAt: _next, message: _message, ...event } = entry;
-              snapshot = await deps.send(event);
-            }
-            const status = snapshot[entry.stage]?.status;
-            if (snapshot.bookingId !== entry.bookingId || !['none', 'awaiting_other', 'ready', 'confirmed', 'disputed'].includes(status)) throw new Error('Invalid acknowledgement');
-            snapshots.set(entry.bookingId, snapshot);
-            // Reconcile a ready dual receipt using its SAME key, never invent the other vote.
-            if (entry.state === 'received' && entry.decision === 'confirm' && status === 'ready' &&
-                snapshot.pickup.status !== 'disputed' && snapshot.dropoff.status !== 'disputed') {
-              await update(userId, entry.eventId, { state: 'queued', nextAttemptAt: 0, message: 'Confirmation reçue. Validation du serveur en cours…' });
+          const entries = grouped.get(entry.bookingId) ?? [];
+          entries.push(entry); grouped.set(entry.bookingId, entries);
+        }
+        // One ordered stream per booking; at most two independent network calls.
+        let next = 0, failed = false;
+        const sendBooking = async (entries: RideOutboxEntry[]) => {
+          for (const entry of entries) {
+            if (failed || deps.userId() !== userId || deps.canSend?.() === false) return;
+            if (!['queued', 'sending', 'received'].includes(entry.state) || entry.nextAttemptAt > deps.now()) continue;
+            if (deps.now() - Date.parse(entry.occurredAt) > OFFLINE_RIDE_MAX_AGE) {
+              await update(userId, entry.eventId, { state: 'blocked', message: 'Cette confirmation est trop ancienne pour être transmise automatiquement. Contactez l’assistance.' });
               continue;
             }
-            await update(userId, entry.eventId, { state: status === 'confirmed' ? 'confirmed' : status === 'disputed' ? 'disputed' : 'received', nextAttemptAt: deps.now() + 60_000, message: undefined });
-          } catch (error) {
-            if (deps.userId() !== userId) {
-              await update(userId, entry.eventId, { state: entry.state === 'received' ? 'received' : 'queued', nextAttemptAt: 0 });
-              return;
+            try {
+              let snapshot: RideSnapshot;
+              if (entry.state === 'received') snapshot = snapshots.get(entry.bookingId) ?? await deps.read(entry.bookingId);
+              else {
+                await update(userId, entry.eventId, { state: 'sending' });
+                if (deps.userId() !== userId || deps.canSend?.() === false) {
+                  await update(userId, entry.eventId, { state: 'queued' });
+                  return;
+                }
+                const { state: _state, attempts: _attempts, nextAttemptAt: _next, message: _message, ...event } = entry;
+                snapshot = await deps.send(event);
+              }
+              const status = snapshot[entry.stage]?.status;
+              if (snapshot.bookingId !== entry.bookingId || !['none', 'awaiting_other', 'ready', 'confirmed', 'disputed'].includes(status)) throw new Error('Invalid acknowledgement');
+              snapshots.set(entry.bookingId, snapshot);
+              // Reconcile a ready dual receipt using its SAME key, never invent the other vote.
+              if (entry.state === 'received' && entry.decision === 'confirm' && status === 'ready' &&
+                  snapshot.pickup.status !== 'disputed' && snapshot.dropoff.status !== 'disputed') {
+                await update(userId, entry.eventId, { state: 'queued', nextAttemptAt: 0, message: 'Confirmation reçue. Validation du serveur en cours…' });
+                continue;
+              }
+              await update(userId, entry.eventId, { state: status === 'confirmed' ? 'confirmed' : status === 'disputed' ? 'disputed' : 'received', nextAttemptAt: deps.now() + 60_000, message: undefined });
+            } catch (error) {
+              if (deps.userId() !== userId) {
+                await update(userId, entry.eventId, { state: entry.state === 'received' ? 'received' : 'queued', nextAttemptAt: 0 });
+                return;
+              }
+              const retry = rideRetry(error, entry.attempts, deps.now());
+              // Once receipt is known, only read the server state, never resend it.
+              await update(userId, entry.eventId, { ...retry, state: entry.state === 'received' && retry.state === 'queued' ? 'received' : retry.state, attempts: entry.attempts + 1 });
             }
-            const retry = rideRetry(error, entry.attempts, deps.now());
-            // Once receipt is known, only read the server state, never resend it.
-            await update(userId, entry.eventId, { ...retry, state: entry.state === 'received' && retry.state === 'queued' ? 'received' : retry.state, attempts: entry.attempts + 1 });
           }
-        }
+        };
+        const groups = [...grouped.values()];
+        const worker = async () => {
+          try {
+            while (!failed && next < groups.length && deps.userId() === userId && deps.canSend?.() !== false)
+              await sendBooking(groups[next++]);
+          } catch (error) { failed = true; throw error; }
+        };
+        // A disk error must wait for the other worker before releasing the
+        // flush guard, so another flush cannot resend its in-flight event.
+        const results = await Promise.allSettled(Array.from({ length: Math.min(2, groups.length) }, worker));
+        const failure = results.find(result => result.status === 'rejected');
+        if (failure?.status === 'rejected') throw failure.reason;
       } finally { flushing = false; }
     },
   };

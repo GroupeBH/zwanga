@@ -53,8 +53,8 @@ export const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
   },
   modeToggle: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -138,6 +138,7 @@ export const styles = StyleSheet.create({
     backgroundColor: Colors.gray[50],
   },
   referenceAddButton: {
+    minHeight: 44,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',

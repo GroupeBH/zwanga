@@ -4,10 +4,8 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 const steps: { id: PublishStep; label: string }[] = [
-  { id: 'route', label: 'Départ et arrivée' },
-  { id: 'datetime', label: 'Date et heure' },
-  { id: 'vehicle', label: 'Véhicule' },
-  { id: 'pricing', label: 'Places et prix' },
+  { id: 'route', label: 'Itinéraire et départ' },
+  { id: 'pricing', label: 'Véhicule et prix' },
   { id: 'confirm', label: 'Vérifier le trajet' },
 ];
 

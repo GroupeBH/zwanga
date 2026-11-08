@@ -73,13 +73,11 @@ export function usePublishStepNavigation({
         openKycModal();
         return;
       }
-      goToStep('datetime');
-    } else if (step === 'datetime') {
-      if (!departureDateTime) {
+      if (!departureDateTime || !Number.isFinite(departureDateTime.getTime())) {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner la date et l heure de départ.',
+          message: 'Choisissez votre heure de départ.',
         });
         return;
       }
@@ -103,8 +101,8 @@ export function usePublishStepNavigation({
           return;
         }
       }
-      goToStep('vehicle');
-    } else if (step === 'vehicle') {
+      goToStep('pricing');
+    } else if (step === 'pricing') {
       if (!selectedVehicleId) {
         showDialog({
           variant: 'warning',
@@ -113,9 +111,8 @@ export function usePublishStepNavigation({
         });
         return;
       }
-      goToStep('pricing');
-    } else if (step === 'pricing') {
-      if (!isFreeTrip && !price) {
+      if (!isFreeTrip && (!price.trim() || !Number.isFinite(Number(price)) ||
+          Number(price) <= 0 || Number(price) !== parseFloat(price))) {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
