@@ -26,3 +26,30 @@ test('scheduled and immediate requests need eligibility, not a received alert, f
       assert.equal(render({}, patch).canAcceptDirectly, false);
   }
 });
+
+test('the regular detail selects only a sole compatible vehicle and preserves an explicit fleet choice', t => {
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const { useRequestAvailability } = loader({ react: hooks.react,
+    '@/utils/routeApi': { getRouteCoordinates: () => assert.fail('Vehicle selection must not request a route') },
+  })('hooks/request-detail/useRequestAvailability.ts');
+  const noop = () => {};
+  const first = { id: 'first', isActive: true }, second = { id: 'second', isActive: true }, third = { id: 'third', isActive: true };
+  const props = { loadRoute: false, currentUser: { id: 'driver' }, isDriverAccount: true, isIdentityVerified: true,
+    tripRequest: { id: 'request', passengerId: 'passenger', status: 'pending', offers: [],
+      departureDateMin: '2099-01-01T10:00:00Z', departureDateMax: '2099-01-01T11:00:00Z' },
+    directAcceptVehicleId: '', compatibleActiveVehicles: [first], setDirectAcceptRequiresPassengerKyc: noop,
+    setDirectAcceptVehicleId: update => { props.directAcceptVehicleId = update(props.directAcceptVehicleId); },
+    setIsLoadingRoute: noop, setRouteCoordinates: noop, setShowDirectAcceptModal: noop };
+  const render = () => hooks.render(() => useRequestAvailability(props));
+  render(); assert.equal(render().directAcceptVehicle, first, 'one compatible vehicle is automatically selected');
+  props.compatibleActiveVehicles = [first, second];
+  render(); assert.equal(render().directAcceptVehicle, first, 'keep the driver’s existing compatible choice');
+  props.directAcceptVehicleId = ''; props.compatibleActiveVehicles = [first, second];
+  render(); assert.equal(render().directAcceptVehicle, null, 'a fleet requires an explicit choice');
+  props.directAcceptVehicleId = 'second';
+  assert.equal(render().directAcceptVehicle, second);
+  props.compatibleActiveVehicles = [first, third];
+  render(); assert.equal(render().directAcceptVehicle, null, 'a removed vehicle cannot be accepted');
+  props.compatibleActiveVehicles = [];
+  render(); assert.equal(render().canAcceptDirectly, false);
+});
