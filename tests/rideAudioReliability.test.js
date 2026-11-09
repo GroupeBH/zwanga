@@ -129,10 +129,11 @@ test('an alert expiring while fullscreen eligibility resolves cannot wake the ph
 
 test('background handoff preserves nearby price/destination and its two safe action buttons', async t => {
   const f = background(t, 'nearby');
-  Object.assign(f.alert.data, { ridePricePerSeat: '1000', ridePriceKind: 'budget', rideArrival: 'Gare' });
+  Object.assign(f.alert.data, { ridePricePerSeat: '1000', rideSeats: '2', ridePriceKind: 'budget', rideArrival: 'Gare' });
   await f.reconcileBackgroundRideRinging('driver');
   const notification = f.io.displayed[0];
-  assert.match(notification.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 1 000 FC \/ place/);
+  assert.match(notification.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 2 000 FC pour le trajet/);
+  assert.doesNotMatch(notification.body, /par place|\/ place/);
   assert.match(notification.body, /Destination : Gare/);
   assert.equal(notification.android.style.text, notification.body);
   assert.deepEqual(notification.android.actions.map(a => a.pressAction.id), ['driver-ignore-nearby', 'driver-review-nearby']);

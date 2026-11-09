@@ -67,6 +67,17 @@ test('free trips are distinct from unknown prices and no number of seats multipl
   assert.equal(presentation.homeSeatsLabel(NaN), 'Places à préciser');
 });
 
+test('an accepted command remains a total in a generic trip card; published trips stay per seat', () => {
+  const command = { ...trip, tripRequestId: 'test-command', totalSeats: 8, availableSeats: 6,
+    passengers: [{ seats: 2, bookingStatus: 'accepted' }] };
+  const view = render(TripPreviewCard, { trip: command, cardWidth: 280, onOpen() {} });
+  assert.ok(view.text.includes('4 000 FC'));
+  assert.ok(view.text.includes('pour le trajet'));
+  assert.equal(view.text.includes('/ place'), false);
+  const incomplete = render(TripPreviewCard, { trip: { ...command, passengers: [] }, cardWidth: 280, onOpen() {} });
+  assert.ok(incomplete.text.includes('Prix dans la commande'));
+});
+
 test('driver photos use existing data and keep a stable initials layer without changing card actions', () => {
   const { SearchResultCard } = load('components/search/SearchResultCard.tsx');
   const { CompactCardAvatar } = load('components/trip/CompactCardAvatar.tsx');
@@ -98,14 +109,14 @@ test('driver photos use existing data and keep a stable initials layer without c
   assert.equal(CompactCardAvatar.$$typeof, Symbol.for('react.memo'));
 });
 
-test('request cards show a departure window, requested vehicle and budget per seat, never an arrival deadline', () => {
+test('request cards show a departure window, requested vehicle and total budget, never an arrival deadline', () => {
   const routes = [];
   const result = render(TripRequestPreviewCard, { request, cardWidth: 280, onOpen: id => routes.push(id) });
-  for (const value of ['11:00–11:30', '2.500 FC', 'max / place', '2 places', 'Moto à 2 roues', 'Marie']) {
+  for (const value of ['11:00–11:30', '5.000 FC', 'pour le trajet', '2 places', 'Moto à 2 roues', 'Marie']) {
     assert.ok(result.text.includes(value), value);
   }
   assert.equal(result.text.includes('ARRIVÉE'), false);
-  assert.equal(result.text.includes('5.000'), false);
+  assert.equal(result.text.includes('2.500'), false);
   assert.equal(result.buttons.length, 1);
   result.buttons[0].props.onPress(); assert.deepEqual(routes, ['r']);
 });
@@ -154,7 +165,7 @@ test('nearby priorities keep distance, date, seats, budget and their screen-read
   let dismissals = 0;
   const result = render(HomeRequestHighlightCard, { request, distanceMeters: 1250, onOpen() {},
     accessibilityActions: [{ name: 'dismiss', label: 'Masquer' }], onAccessibilityAction: () => dismissals++ });
-  for (const value of ['1,3 km', '11:00–11:30', '2 places', '2.500 FC', 'Moto à 2 roues']) assert.ok(result.text.includes(value));
+  for (const value of ['1,3 km', '11:00–11:30', '2 places', '5.000 FC', 'Moto à 2 roues']) assert.ok(result.text.includes(value));
   result.buttons[0].props.onAccessibilityAction({ nativeEvent: { actionName: 'dismiss' } });
   assert.equal(dismissals, 1);
   assert.ok(result.buttons[0].props.accessibilityHint.includes(request.arrival.name));

@@ -68,14 +68,13 @@ final class RideNotificationBundle {
     }
     card.putString("id", id); card.putBundle("data", data);
     card.putString("title", "booking".equals(kind) ? "Zwanga · Nouvelle réservation" : "Zwanga · Nouvelle commande");
-    String destination = label(d.get("rideArrival")), departure = label(d.get("rideDeparture")), price = d.get("ridePricePerSeat");
+    String destination = label(d.get("rideArrival")), departure = label(d.get("rideDeparture"));
     String body = destination.isEmpty() ? "Un passager vous attend." : (departure.isEmpty() ? "Vers " : departure + " → ") + destination;
     String fare = "";
-    if (price != null && price.matches("[0-9]{1,10}(\\.[0-9]{1,2})?") &&
-        ("budget".equals(d.get("ridePriceKind")) || "fare".equals(d.get("ridePriceKind")))) {
-      double amount = Double.parseDouble(price);
+    Double amount = IncomingRideContent.displayedPrice(d);
+    if (amount != null) {
       fare = amount == 0 ? "Gratuit" : ("budget".equals(d.get("ridePriceKind")) ? "Budget : " : "") +
-        java.text.NumberFormat.getNumberInstance(Locale.FRANCE).format(amount) + " FC / place";
+        java.text.NumberFormat.getNumberInstance(Locale.FRANCE).format(amount) + ("booking".equals(kind) ? " FC / place" : " FC pour le trajet");
       card.putString("title", "Zwanga · " + fare);
     }
     // The unlocked full-screen summary reads the body, not the notification title.

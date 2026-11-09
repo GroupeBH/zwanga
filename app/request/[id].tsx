@@ -1,3 +1,4 @@
+import { requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { useRequestDetailController } from '../../hooks/request-detail/useRequestDetailController';
 import { buildRequestDetailPresentation } from '../../features/request-detail/requestPresentation';
 import { RequestDriverSummary } from '../../features/request-detail/RequestDriverSummary';
@@ -27,7 +28,6 @@ import { showRequestSearchMap } from '@/features/request-detail/requestSearchMod
 import { canUseCachedRequestLink } from '@/features/trip-request/assignedTripNavigation';
 import { pendingDriverOffer } from '@/features/request-detail/counterOfferPolicy';
 import { RequestPendingOfferActions } from '@/features/request-detail/RequestPendingOfferActions';
-
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
   const readsEnabled = useDisplayReadsEnabled(model.isScreenActive);
@@ -238,8 +238,8 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.detailRow}>
                   <Ionicons name="cash-outline" size={20} color={Colors.gray[600]} />
                   <View style={styles.detailInfo}>
-                    <Text style={styles.detailLabel}>Prix maximum par place</Text>
-                    <Text style={styles.detailValue}>{presentation.request.maxPricePerSeat} FC</Text>
+                    <Text style={styles.detailLabel}>Budget du trajet</Text>
+                    <Text style={styles.detailValue}>{requestPriceLabel(presentation.request.maxPricePerSeat, presentation.request.numberOfSeats)}</Text>
                   </View>
                 </View>
               </>

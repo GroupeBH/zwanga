@@ -48,13 +48,14 @@ test('compact search trips keep essential data and forward the original trip on 
   assert.equal(SearchResultCard.$$typeof, Symbol.for('react.memo'));
 });
 
-test('compact search requests preserve both departure bounds, per-seat budget and offers', () => {
+test('compact search requests show the total command budget and preserve both departure bounds and offers', () => {
   const opened = [];
   const result = render(SearchRequestResultCard, { request, onPress: item => opened.push(item) });
-  for (const value of ['11:00–11:30', '2.500 FC', 'max / place', '2 places', 'Moto', 'Marie', '2 offres']) {
+  for (const value of ['11:00–11:30', '5.000 FC', 'pour le trajet', '2 places', 'Moto', 'Marie', '2 offres']) {
     assert.ok(result.text.includes(value), value);
   }
-  assert.equal(result.text.includes('5.000'), false);
+  assert.equal(result.text.includes('2.500'), false);
+  assert.equal(result.text.includes('/ place'), false);
   result.button.props.onPress(); assert.equal(opened[0], request);
   assert.equal(SearchRequestResultCard.$$typeof, Symbol.for('react.memo'));
 });

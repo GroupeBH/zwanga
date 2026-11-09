@@ -46,7 +46,7 @@ export function RequestDriverCourse({ model, presentation }: { model: Model; pre
       <View style={local.rule} />
       <View style={s.row}><Text style={s.muted}>Passagers</Text><Text style={s.name}>{request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text></View>
       <View style={local.rule} />
-      <View style={s.row}><Text style={s.muted}>Prix par place</Text><Text style={s.name}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>
+      <View style={s.row}><Text style={s.muted}>Prix du trajet</Text><Text style={s.name}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>
     </View>
     {contactOpen && contact && !closed && <NavigationContactModal role="driver" contacts={[contact]} onClose={() => setContactOpen(false)} />}
   </>;

@@ -85,7 +85,6 @@ export const requestStyles = StyleSheet.create({
   offerPriceCenter: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.sm },
   offerPriceValue: { fontSize: FontSizes.xxl, fontWeight: FontWeights.bold, color: Colors.gray[900] },
   offerPriceHint: { marginTop: 2, fontSize: FontSizes.sm, color: Colors.gray[600], textAlign: 'center' },
-  offerPriceTotal: { marginTop: 4, fontSize: FontSizes.sm, fontWeight: FontWeights.bold, color: Colors.primaryDark, textAlign: 'center' },
   offerOptionsRow: { minHeight: 58, borderRadius: BorderRadius.lg, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm, paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
   offerOptionCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   offerOptionIcon: { width: 34, height: 34, borderRadius: BorderRadius.full, backgroundColor: Colors.primary + '10', alignItems: 'center', justifyContent: 'center' },

@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
 import { homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { formatPrice, getPlaceName, getTripRequestVehicleName } from '@/features/search/searchModel';
@@ -13,8 +14,8 @@ export type SearchRequestResultCardProps = {
 export const SearchRequestResultCard = React.memo(function SearchRequestResultCard({
   request, disabled = false, onPress,
 }: SearchRequestResultCardProps) {
-  const budget = Number(request.maxPricePerSeat);
-  const hasBudget = Number.isFinite(budget) && budget > 0;
+  const budget = requestTotalPrice(request.selectedPricePerSeat ?? request.maxPricePerSeat, request.numberOfSeats);
+  const hasBudget = budget !== null && budget > 0;
   const offersCount = request.offers?.length ?? 0;
   return (
     <CompactTripCard
@@ -24,7 +25,7 @@ export const SearchRequestResultCard = React.memo(function SearchRequestResultCa
       departure={getPlaceName(request.departure)}
       arrival={getPlaceName(request.arrival)}
       priceText={hasBudget ? formatPrice(budget) : 'À proposer'}
-      priceHint={hasBudget ? 'max / place' : undefined}
+      priceHint={hasBudget ? 'pour le trajet' : undefined}
       metadataPrefix={homeSeatsLabel(request.numberOfSeats)}
       metadata={getTripRequestVehicleName(request)}
       secondary={`Commande de ${request.passengerName || 'Passager Zwanga'}`}

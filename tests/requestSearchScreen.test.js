@@ -40,7 +40,7 @@ test('search screen exposes real drivers, route, price and existing actions outs
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   const tree = app.render();
   assert.match(words(tree), /3 véhicules · positions connues · 5 km/);
-  assert.match(words(tree), /2 500 FC \/ place/);
+  assert.match(words(tree), /2 500 FC pour le trajet/);
   assert.doesNotMatch(words(tree), /Touchez une voiture/);
   assert.equal(elements(tree).find(node => node.type === 'Map').props.vehicles.length, 3);
   assert.equal(elements(tree).find(node => node.type === 'Map').props.searching, true);

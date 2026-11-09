@@ -1,4 +1,5 @@
-import { TRIP_REQUEST_VEHICLE_ICONS, formatCdfPrice } from './requestDetailModel';
+import { requestTotalPrice, requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
+import { TRIP_REQUEST_VEHICLE_ICONS } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
@@ -77,14 +78,12 @@ export function RequestEditVehicleOptions({
             && (option?.availableForRequestedSeats ?? true);
           const selected = editVehicleTypes.includes(vehicleType);
           const unavailable = !selected && !availableForRequestedSeats;
-          const price = option?.recommendedPricePerSeat == null
-            ? null : formatCdfPrice(option.recommendedPricePerSeat);
+          const price = requestTotalPrice(option?.recommendedPricePerSeat, parsedEditNumberOfSeats) === null
+            ? null : requestPriceLabel(option?.recommendedPricePerSeat, parsedEditNumberOfSeats);
           const detail = unavailable
             ? `Indisponible pour ${parsedEditNumberOfSeats} places`
             : !option ? 'Budget à fixer ci-dessous'
-            : option.recommendedTotalPrice !== null && parsedEditNumberOfSeats > 1
-              ? `${formatCdfPrice(option.recommendedTotalPrice)} au total`
-              : `${formatCdfPrice(option.pricePerKmPerPassenger)} / km / pers.`;
+            : `Pour ${parsedEditNumberOfSeats} passager${parsedEditNumberOfSeats > 1 ? 's' : ''}`;
 
           return (
             <TouchableOpacity
@@ -131,7 +130,7 @@ export function RequestEditVehicleOptions({
                 ]}>
                   {price}
                 </Text>
-                {!unavailable ? <Text style={styles.editVehiclePriceUnit}>estimé / place</Text> : null}
+                {!unavailable ? <Text style={styles.editVehiclePriceUnit}>trajet estimé</Text> : null}
               </View> : null}
               <Ionicons
                 name={selected ? 'checkbox' : 'square-outline'}

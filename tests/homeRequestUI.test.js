@@ -46,7 +46,7 @@ test('confirmed locations show the quote immediately even if the legacy step is 
   }
   const footer = all.find(n => n.props.testID === 'home-request-footer');
   assert.equal(nodes(footer).filter(n => n.type === 'Button').length, 1);
-  assert.match(words(footer), /Départ maintenant.*1 place.*3 500 FC/);
+  assert.equal(words(footer), 'Commander le trajet');
   nodes(footer).find(n => n.type === 'Button').props.onPress(); assert.equal(f.calls.at(-1), 'submit');
   assert.ok(all.some(n => n.type === 'Scroll'), 'quote and options remain scrollable at small heights');
   assert.equal(nodes(all.find(n => n.type === 'Scroll')).some(n => n.props.testID === 'home-request-footer'), false);
@@ -103,7 +103,7 @@ test('sending and recovery lock edits; the existing success/reconciliation modal
   const f = fixture(t); f.flow.locked = true; f.form.isCreating = true;
   let all = nodes(f.render());
   assert.equal(all.find(n => n.type === 'Scroll').props.pointerEvents, 'none');
-  assert.equal(all.find(n => n.props.testID === 'home-request-footer').props.children[2].props.disabled, true);
+  assert.equal(nodes(all.find(n => n.props.testID === 'home-request-footer')).find(n => n.type === 'Button').props.disabled, true);
   f.form.isRequestSuccessVisible = true; all = nodes(f.render());
   assert.equal(all.some(n => n.props.testID === 'home-request-footer'), false);
 });
@@ -134,7 +134,9 @@ test('payment, seat count, references, notes and driver targeting remain availab
   const f = fixture(t); const { HomeRequestExtras } = f.load('components/trip-request/HomeRequestExtras.tsx');
   const render = () => f.hooks.render(() => HomeRequestExtras({ form: f.form }));
   let all = nodes(render()); assert.equal(all.some(n => n.type === 'Input'), false);
-  assert.match(words(render()), /Cash · 1 place/);
+  const paymentToggle = all.find(n => n.props.accessibilityLabel?.startsWith('Modifier le paiement'));
+  assert.equal(words(paymentToggle), 'Cash');
+  assert.doesNotMatch(words(render()), /1 place/);
   all.find(n => n.props.accessibilityLabel?.startsWith('Modifier le paiement')).props.onPress();
   all = nodes(render()); assert.ok(all.some(n => n.props.section === 'options'));
   all.find(n => n.type === 'Button' && words(n).includes('Ajouter une précision')).props.onPress();
@@ -151,9 +153,50 @@ test('compact pricing retains a readable total, capacity/payment logic and an of
   const tree = RequestBudgetFields({ ...f.form, compact: true, section: 'price' });
   assert.match(words(tree), /Fixez votre budget/);
   const all = nodes(tree); assert.equal(all.some(n => n.props.accessibilityRole === 'radio'), false);
-  all.find(n => n.props.accessibilityLabel === 'Augmenter le prix par place').props.onPress();
+  all.find(n => n.props.accessibilityLabel === 'Augmenter le prix du trajet').props.onPress();
   assert.deepEqual(f.calls, [500]);
   const styles = f.load('features/trip-request/homeRequestStyles.ts').homeRequestStyles;
   assert.ok(require('./helpers/contrast.cjs').contrast(styles.submit.backgroundColor, styles.submitText.color) >= 4.5);
   assert.ok(styles.submit.minHeight >= 44); assert.equal(styles.submitText.flexShrink, 1);
+});
+
+test('creation prominently displays the whole command price without changing the unit update contract', t => {
+  const f = fixture(t), { RequestBudgetFields } = f.load('components/trip-request/RequestBudgetFields.tsx');
+  Object.assign(f.form, { numberOfSeats: 3, requestSeatsLabel: '3 places', totalBudgetLabel: '10 500 FC',
+    updateBudget: value => f.calls.push(value) });
+  const tree = RequestBudgetFields({ ...f.form, compact: true, section: 'price' });
+  assert.match(words(tree), /10 500 FC/);
+  assert.match(words(tree), /Prix recommandé pour le trajet/);
+  assert.doesNotMatch(words(tree), /3 500 FC|par place|\/ place|Pour toute la commande|3 places/);
+  nodes(tree).find(n => n.props.accessibilityLabel === 'Augmenter le prix du trajet').props.onPress();
+  assert.deepEqual(f.calls, [4000], 'the existing creation controller still receives a unit price');
+});
+
+test('the compact footer removes the summary for planned orders but preserves submission errors', t => {
+  const f = fixture(t);
+  Object.assign(f.form, { timePreset: 'custom', numberOfSeats: 3, requestSeatsLabel: '3 places' });
+  let footer = nodes(f.render()).find(n => n.props.testID === 'home-request-footer');
+  assert.equal(words(footer), 'Commander le trajet');
+  f.form.submissionError = 'Connexion interrompue. Réessayez.';
+  footer = nodes(f.render()).find(n => n.props.testID === 'home-request-footer');
+  assert.equal(words(footer), 'Connexion interrompue. Réessayez.Commander le trajet');
+  assert.equal(nodes(footer).find(n => n.props.accessibilityLiveRegion === 'polite').props.children, f.form.submissionError);
+});
+
+test('payment and seat controls remain usable after opening the simplified payment row', t => {
+  const f = fixture(t);
+  const { HomeRequestExtras } = f.load('components/trip-request/HomeRequestExtras.tsx');
+  f.form.setNumberOfSeats = update => { f.form.numberOfSeats = update(f.form.numberOfSeats); };
+  f.form.setRequestPaymentMode = value => { f.form.requestPaymentMode = value; };
+  const render = () => f.hooks.render(() => HomeRequestExtras({ form: f.form }));
+  nodes(render()).find(n => n.props.accessibilityLabel?.startsWith('Modifier le paiement')).props.onPress();
+  const options = nodes(render()).find(n => n.props.section === 'options');
+  const controls = nodes(options.type(options.props));
+  controls.find(n => n.props.accessibilityLabel === 'Augmenter le nombre de places').props.onPress();
+  assert.equal(f.form.numberOfSeats, 2);
+  controls.find(n => n.props.accessibilityRole === 'radio' && !n.props.accessibilityState.checked).props.onPress();
+  assert.notEqual(f.form.requestPaymentMode, 'cash');
+  const paymentToggle = nodes(render()).find(n => n.props.accessibilityLabel?.startsWith('Modifier le paiement'));
+  assert.notEqual(words(paymentToggle), 'Cash');
+  assert.doesNotMatch(words(paymentToggle), /place/);
 });

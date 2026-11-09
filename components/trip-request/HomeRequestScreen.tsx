@@ -81,7 +81,6 @@ export function HomeRequestScreen({ form, navigation }: Props) {
       </ScrollView>
       {!form.isRequestSuccessVisible && <View style={s.footer} testID="home-request-footer">
         {form.submissionError && <Text style={s.error} accessibilityLiveRegion="polite">{form.submissionError}</Text>}
-        {ready && <Text style={s.summary}>{form.timePreset === 'now' ? 'Départ maintenant' : 'Départ planifié'} · {form.requestSeatsLabel} · Total {form.totalBudgetLabel}</Text>}
         <TouchableOpacity style={[s.submit, disabled && s.disabled]} disabled={disabled} accessibilityRole="button"
           accessibilityState={{ disabled, busy: form.isCreating || !ready }} onPress={flow.submit}>
           {form.isCreating ? <ActivityIndicator color={Colors.white} /> : <Text style={s.submitText}>{label}</Text>}

@@ -10,7 +10,7 @@ function homeRequestFixture(overrides = {}) {
     hasDepartureAddress: true, hasArrivalAddress: true, activePicker: null, insets: { top: 0, bottom: 0 },
     timePreset: 'now', hasChosenDepartureTime: true, departureDateMin: new Date('2030-11-09T13:00:00Z'),
     flexibilityMinutes: 30, timeSummary: 'Départ demain à 13:00', vehicleOptions: [], isPriceLoading: false,
-    budgetValue: 3500, budgetLabel: '3 500 FC', totalBudgetLabel: '3 500 FC', budgetHintLabel: 'Prix recommandé par place',
+    budgetValue: 3500, budgetLabel: '3 500 FC', totalBudgetLabel: '3 500 FC', budgetHintLabel: 'Prix recommandé pour le trajet',
     numberOfSeats: 1, requestSeatsLabel: '1 place', requestPaymentMode: 'cash', targetDriver: null,
     directDriverPrefill: { blocked: false, status: 'none' }, routeCoordinates: [], routeDistanceLabel: '4,2 km',
     routePreviewRegion: { latitude: -4.31, longitude: 15.30, latitudeDelta: 0.04, longitudeDelta: 0.04 },

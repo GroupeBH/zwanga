@@ -8,11 +8,10 @@ import {
   useCancelTripRequestMutation,
   useUpdateTripRequestMutation,
 } from '@/store/api/tripRequestApi';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, TripRequest } from '@/types';
 import { getApiErrorMessage, isPassengerKycRequiredError, isExtraSeatsIdentityError } from '@/utils/errorHelpers';
 import React from 'react';
 import { Platform } from 'react-native';
-import type { TripRequest } from '@/types';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 
 interface Params {
@@ -161,7 +160,7 @@ export function useRequestPassengerActions({
     ) {
       showDialog({
         title: 'Budget invalide',
-        message: 'Le prix maximum par place doit être un montant positif.',
+        message: 'Indiquez un prix total valide pour le trajet.',
         variant: 'warning',
       });
       return;

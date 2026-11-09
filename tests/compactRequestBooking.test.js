@@ -82,7 +82,7 @@ test('request editor keeps saved price and route visible while secondary control
     editVehicleTypes: ['car'], editVehicleOptions: [], parsedEditNumberOfSeats: 1, editSeatCapacity: 4,
     editNumberOfSeats: '1', editMaxPricePerSeat: '1700', isEditBudgetValid: true, parsedEditBudget: 1700,
     editDepartureDateMin: new Date('2026-11-07T10:00:00Z'), editDepartureDateMax: new Date('2026-11-07T11:00:00Z') };
-  let tree = Fields(props); assert.equal(nodes(tree).some(n => n.type === 'Input' && n.props.value === '1700'), true);
+  let tree = Fields(props); assert.equal(nodes(tree).some(n => n.type.name === 'RequestTotalBudgetInput' && n.props.pricePerSeat === '1700' && n.props.seats === 1), true);
   assert.match(words(tree), /Gombe/); assert.match(words(tree), /Lemba/);
   const disclosures = nodes(tree).filter(n => n.type === 'Disclosure');
   assert.equal(disclosures.length, 3); assert.equal(disclosures[0].props.forceOpen, false);

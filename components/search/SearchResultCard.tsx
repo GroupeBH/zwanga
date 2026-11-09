@@ -1,3 +1,4 @@
+import { requestTripPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
 import { homeDepartureLabel, homePriceLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { getPlaceName, getVehicleName } from '@/features/search/searchModel';
@@ -24,8 +25,8 @@ export const SearchResultCard = React.memo(function SearchResultCard({
       label={homeDepartureLabel(trip.departureTime)}
       departure={getPlaceName(trip.departure)}
       arrival={getPlaceName(trip.arrival)}
-      priceText={homePriceLabel(trip.price)}
-      priceHint={trip.price > 0 ? '/ place' : undefined}
+      priceText={trip.tripRequestId ? requestTripPriceLabel(trip) : homePriceLabel(trip.price)}
+      priceHint={trip.price > 0 ? (trip.tripRequestId ? 'pour le trajet' : '/ place') : undefined}
       metadataPrefix={homeSeatsLabel(trip.availableSeats, true)}
       metadata={getVehicleName(trip)}
       secondary={`${driverName} · ${ratingLabel}`}

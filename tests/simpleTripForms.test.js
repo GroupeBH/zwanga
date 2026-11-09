@@ -36,7 +36,7 @@ test('publication groups the form into three compact, accessible steps', () => {
 test('compact order controls preserve price, seat limits, payment selection, total and notes', () => {
   const calls = [];
   const { RequestBudgetFields } = load('components/trip-request/RequestBudgetFields.tsx');
-  const props = { vehicleOptions: [], budgetValue: 1000, budgetLabel: '1 000 FC', budgetHintLabel: 'Prix recommandé par place',
+  const props = { vehicleOptions: [], budgetValue: 1000, budgetLabel: '1 000 FC', budgetHintLabel: 'Prix recommandé pour le trajet',
     totalBudgetLabel: '2 000 FC', requestSeatsLabel: '2 places', numberOfSeats: 2, selectedVehicleTypes: ['motorcycle_2_wheels'],
     updateBudget: value => calls.push(['price', value]), setNumberOfSeats: update => calls.push(['seats', update(2)]),
     setHasSpecifiedNumberOfSeats() {}, setRequestPaymentMode: value => calls.push(['payment', value]),
@@ -44,17 +44,18 @@ test('compact order controls preserve price, seat limits, payment selection, tot
   const tree = RequestBudgetFields(props);
   const all = nodes(tree);
   const press = label => all.find(node => node.props.accessibilityLabel === label).props.onPress();
-  press('Diminuer le prix par place'); press('Augmenter le prix par place');
+  press('Diminuer le prix du trajet'); press('Augmenter le prix du trajet');
   press('Diminuer le nombre de places');
   const cash = all.find(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Cash');
   assert.equal(cash.props.accessibilityState.checked, true); cash.props.onPress();
   all.find(node => node.type === 'Button' && text(node) === 'Ajouter une note').props.onPress();
   assert.deepEqual(calls, [['price', 500], ['price', 1500], ['seats', 1], ['payment', 'cash'], ['note', true]]);
-  const total = all.find(node => node.type === 'Text' && text(node).startsWith('Total estimé ·'));
-  assert.match(text(total), /2 000 FC pour 2 places/);
+  const total = all.find(node => node.type === 'Text' && text(node) === '2 000 FC');
+  assert.ok(total, 'the full command total is visible');
+  assert.doesNotMatch(text(tree), /Total estimé ·|pour 2 places|par place/);
   assert.equal(total.props.numberOfLines, undefined, 'the total can wrap instead of clipping large fonts');
   const atMinimum = nodes(RequestBudgetFields({ ...props, numberOfSeats: 1, budgetValue: 500 }));
-  for (const label of ['Diminuer le nombre de places', 'Diminuer le prix par place']) {
+  for (const label of ['Diminuer le nombre de places', 'Diminuer le prix du trajet']) {
     assert.equal(atMinimum.find(node => node.props.accessibilityLabel === label).props.disabled, true);
   }
 });

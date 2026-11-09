@@ -26,7 +26,6 @@ type Props = Pick<RequestTripController,
   | 'budgetLabel'
   | 'budgetHintLabel'
   | 'totalBudgetLabel'
-  | 'requestSeatsLabel'
   | 'hasSpecifiedNumberOfSeats'
   | 'numberOfSeats'
   | 'selectedVehicleTypes'
@@ -49,10 +48,8 @@ export function RequestBudgetFields({
   retryVehicleOptions,
   budgetValue,
   updateBudget,
-  budgetLabel,
   budgetHintLabel,
   totalBudgetLabel,
-  requestSeatsLabel,
   numberOfSeats,
   selectedVehicleTypes,
   setHasSpecifiedNumberOfSeats,
@@ -100,24 +97,21 @@ export function RequestBudgetFields({
           style={[styles.offerPriceButton, compact && compactStyles.priceButton, budgetValue <= MIN_REQUEST_PRICE && styles.offerPriceButtonDisabled]}
           onPress={() => updateBudget(budgetValue - REQUEST_PRICE_STEP)}
           disabled={budgetValue <= MIN_REQUEST_PRICE}
-          accessibilityRole="button" accessibilityLabel="Diminuer le prix par place"
+          accessibilityRole="button" accessibilityLabel="Diminuer le prix du trajet"
           activeOpacity={0.78}
         >
           <Ionicons name="remove" size={26} color={budgetValue <= MIN_REQUEST_PRICE ? Colors.gray[400] : Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.offerPriceCenter}>
-          <Text style={[styles.offerPriceValue, compact && compactStyles.priceValue]}>{budgetLabel}</Text>
+          <Text style={[styles.offerPriceValue, compact && compactStyles.priceValue]}>{totalBudgetLabel}</Text>
           <Text style={styles.offerPriceHint}>
             {budgetHintLabel}
-          </Text>
-          <Text style={styles.offerPriceTotal}>
-            Total estimé · {totalBudgetLabel} pour {requestSeatsLabel}
           </Text>
         </View>
         <TouchableOpacity
           style={[styles.offerPriceButton, compact && compactStyles.priceButton]}
           onPress={() => updateBudget(budgetValue + REQUEST_PRICE_STEP)}
-          accessibilityRole="button" accessibilityLabel="Augmenter le prix par place"
+          accessibilityRole="button" accessibilityLabel="Augmenter le prix du trajet"
           activeOpacity={0.78}
         >
           <Ionicons name="add" size={26} color={Colors.gray[900]} />

@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { orderNotificationText } from './requestVisibility';
 
 type DriverCardKind = 'booking' | 'dispatch' | 'nearby';
@@ -7,14 +8,15 @@ function label(value: unknown, limit = 160): string {
     .replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit) : '';
 }
 
-/** Presentation only: never infer a fare from seats, a missing value or a route. */
+/** Presentation only: total for commands, unit fare for published-trip bookings. */
 export function driverNotificationCard(kind: DriverCardKind, data: Record<string, unknown>) {
   const rawPrice = data.ridePricePerSeat;
-  const amount = (data.ridePriceKind === 'fare' || data.ridePriceKind === 'budget') &&
+  const unitAmount = (data.ridePriceKind === 'fare' || data.ridePriceKind === 'budget') &&
     typeof rawPrice === 'string' && /^\d{1,10}(\.\d{1,2})?$/.test(rawPrice)
     ? Number(rawPrice) : undefined;
-  const price = amount === undefined ? '' : amount === 0 ? 'Gratuit'
-    : `${data.ridePriceKind === 'budget' ? 'Budget : ' : ''}${amount.toLocaleString('fr-FR')} FC / place`;
+  const amount = kind === 'booking' ? unitAmount : requestTotalPrice(unitAmount, data.rideSeats);
+  const price = amount == null ? '' : amount === 0 ? 'Gratuit'
+    : `${data.ridePriceKind === 'budget' ? 'Budget : ' : ''}${amount.toLocaleString('fr-FR')} FC ${kind === 'booking' ? '/ place' : 'pour le trajet'}`;
   const departure = label(data.rideDeparture);
   const arrival = label(data.rideArrival);
   const route = arrival ? `${departure ? `${departure} → ` : 'Destination : '}${arrival}` : departure ? `Départ : ${departure}` : '';
@@ -26,10 +28,11 @@ export function driverNotificationCard(kind: DriverCardKind, data: Record<string
   })}` : '';
   const legacy = orderNotificationText(label(data.invitationText, 800),
     { type: kind === 'booking' ? 'new_booking' : 'trip_request' });
+  const legacyCommand = legacy.replace(/\d[\d\s.,]{0,24}FC(?:\s*(?:\/|par)\s*places?)?/gi, 'Prix à consulter dans Zwanga');
   return {
     title: price ? `Zwanga · ${price}` : kind === 'booking' ? 'Zwanga · Nouvelle réservation' : 'Zwanga · Commande près de vous',
-    // Older pushes may carry their fare only in the body. Keep it without guessing.
-    body: `${[price, route, [seats, schedule].filter(Boolean).join(' · '), !price ? legacy : ''].filter(Boolean).join('\n').slice(0, 900)}\nOuvrez Zwanga pour répondre.`.trim(),
+    // Preserve legacy route/action copy, but never relabel a legacy unit amount as a total.
+    body: `${[price, route, [seats, schedule].filter(Boolean).join(' · '), !price ? (kind === 'booking' ? legacy : legacyCommand) : ''].filter(Boolean).join('\n').slice(0, 900)}\nOuvrez Zwanga pour répondre.`.trim(),
   };
 }
 

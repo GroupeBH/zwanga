@@ -8,7 +8,7 @@ import { acknowledgeRideAlerts, dismissRideResponseNotice, pendingRideResponseNo
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import type { TripRequest } from '@/types';
 import { pendingPriceOffers } from './counterOfferPolicy';
-import { formatCdfPrice } from './requestDetailModel';
+import { requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 
 export function PassengerPriceOffers({ request, enabled, refresh }: { request: TripRequest; enabled: boolean; refresh: () => unknown }) {
   const router = useRouter();
@@ -36,8 +36,8 @@ export function PassengerPriceOffers({ request, enabled, refresh }: { request: T
   const disabled = !enabled || accepting.isLoading || declining.isLoading;
   return <>{offers.map(offer => <View style={s.section} key={offer.id}>
     <Text style={s.title}>{offer.driverName || 'Un conducteur'} propose un prix</Text>
-    <Text style={s.price}>{formatCdfPrice(offer.pricePerSeat)} / place</Text>
-    <Text style={s.hint}>Total : {formatCdfPrice(offer.pricePerSeat * request.numberOfSeats)} pour {request.numberOfSeats} place(s), avant une éventuelle aide Zwanga.</Text>
+    <Text style={s.price}>{requestPriceLabel(offer.pricePerSeat, request.numberOfSeats)} pour le trajet</Text>
+    <Text style={s.hint}>Pour {request.numberOfSeats} passager(s), avant une éventuelle aide Zwanga.</Text>
     {!!offer.vehicleInfo && <Text style={s.hint}>{offer.vehicleInfo}</Text>}
     {offer.requiresPassengerKyc && <Text style={s.hint}>Ce conducteur demande une identité vérifiée.</Text>}
     <View style={s.actions}>

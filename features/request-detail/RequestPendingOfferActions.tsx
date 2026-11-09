@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import { pendingDriverOffer } from './counterOfferPolicy';
-import { formatCdfPrice } from './requestDetailModel';
+import { requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 
 /** Withdrawal is not a new acceptance: no vehicle/KYC/driver-response deadline gate. */
 export function RequestPendingOfferActions({ model }: { model: ReturnType<typeof useRequestDetailController> }) {
@@ -10,7 +10,7 @@ export function RequestPendingOfferActions({ model }: { model: ReturnType<typeof
   const busy = model.isDecliningTripRequest;
   const disabled = busy || !model.isScreenActive || !model.canRespondToRequest;
   return <View style={s.footer} testID="request-pending-offer-actions">
-    <Text style={s.title}>Votre prix : {formatCdfPrice(offer.pricePerSeat)} par place</Text>
+    <Text style={s.title}>Votre prix : {requestPriceLabel(offer.pricePerSeat, model.tripRequest?.numberOfSeats)} pour le trajet</Text>
     <Text style={s.hint}>Votre prix a été envoyé pour cette commande. En attente de la réponse du passager.</Text>
     <Pressable accessibilityRole="button" accessibilityState={{ disabled, busy }} disabled={disabled}
       onPress={() => { if (!disabled) void model.handleDeclineTripRequest(); }} style={[s.button, disabled && s.disabled]}>

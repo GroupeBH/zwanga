@@ -54,7 +54,8 @@ test('request seat control goes past two, respects motorcycle capacity and prese
   const props = { vehicleOptions: [], budgetValue: 2000, budgetLabel: '2 000 FC', totalBudgetLabel: '6 000 FC', numberOfSeats: 3, requestSeatsLabel: '3 places', selectedVehicleTypes: ['car'], setHasSpecifiedNumberOfSeats() {}, setNumberOfSeats: update => { props.numberOfSeats = update(props.numberOfSeats); } };
   const add = tree => nodes(tree).find(node => node.type === 'TouchableOpacity' && nodes(node).some(child => child.type === 'Icon' && child.props.name === 'add' && child.props.size === 18));
   const tree = RequestBudgetFields(props);
-  assert.match(text(tree), /6 000 FC pour 3 places/);
+  assert.match(text(tree), /6 000 FC/);
+  assert.doesNotMatch(text(tree), /pour 3 places|par place/);
   assert.equal(add(tree).props.disabled, false);
   add(tree).props.onPress();
   assert.equal(props.numberOfSeats, 4);

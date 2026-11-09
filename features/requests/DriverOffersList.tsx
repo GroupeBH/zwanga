@@ -7,7 +7,8 @@ import { displayReadOptions, useDisplayReadData, useDisplayReadsEnabled } from '
 import { useHistoryCursor } from '@/hooks/useHistoryCursor';
 import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
-import { homePriceLabel, homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
+import { requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
+import { homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 import { Colors } from '@/constants/styles';
 import { styles } from '@/features/screen-styles/app/requests';
@@ -40,7 +41,7 @@ export function DriverOffersList({ onOpen }: { onOpen: (requestId: string) => vo
     return <CompactTripCard label={!open && offer.status === 'pending' ? 'Commande fermée' : labels[offer.status]}
       labelColor={open ? Colors.primary : Colors.gray[600]} disabled={!open}
       departure={request.departureLocation} arrival={request.arrivalLocation}
-      priceText={homePriceLabel(offer.pricePerSeat)} priceHint="proposé / place"
+      priceText={requestPriceLabel(offer.pricePerSeat, request.numberOfSeats)} priceHint="pour le trajet"
       metadata={`${homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax)} · ${homeSeatsLabel(request.numberOfSeats)}`}
       avatarName={name} avatarUri={request.passenger.profilePicture} secondary={name}
       badge={open ? 'Voir la commande' : undefined} accessibilityLabel={`${labels[offer.status]} : ${request.departureLocation} vers ${request.arrivalLocation}`}

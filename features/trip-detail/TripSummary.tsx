@@ -62,7 +62,7 @@ export function TripSummary({
         </View>
         <Text style={styles.tripPriceBadgeText}>
           {tripPriceLabel}
-          {trip?.price !== 0 ? <Text style={styles.tripPriceBadgeHint}> / place</Text> : null}
+          {trip?.price !== 0 ? <Text style={styles.tripPriceBadgeHint}>{trip?.tripRequestId ? ' pour le trajet' : ' / place'}</Text> : null}
         </Text>
       </View>
 

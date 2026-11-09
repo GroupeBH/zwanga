@@ -1,3 +1,4 @@
+import type { TripRequestVehicleType } from '@/types';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import {
   formatCdfPrice,
@@ -81,10 +82,10 @@ export function useRequestBudgetSummary({
   const budgetHintLabel = selectedVehicleTypes?.length > 1
     ? 'Même budget pour tous les véhicules choisis'
     : hasEditedBudget
-    ? 'Votre budget maximum par place'
+    ? 'Votre budget pour le trajet'
     : isVehicleOptionsError && vehicleOptions.length === 0
       ? 'Fixez votre budget pour continuer'
-      : 'Prix recommandé par place';
+      : 'Prix recommandé pour le trajet';
 
   const routeDistanceLabel = formatDistanceKm(routeDistanceMeters);
 
@@ -108,4 +109,3 @@ export function useRequestBudgetSummary({
     totalBudgetLabel,
   };
 }
-import type { TripRequestVehicleType } from '@/types';

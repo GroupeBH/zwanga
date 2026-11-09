@@ -17,7 +17,7 @@ export function HomeRequestExtras({ form }: { form: RequestTripController }) {
       accessibilityLabel={`Modifier le paiement et les places : ${payment}, ${form.requestSeatsLabel}`}
       onPress={() => setShowOptions(value => !value)}>
       <Ionicons name="wallet-outline" size={20} color={Colors.gray[700]} />
-      <Text style={[s.locationText, s.locationCopy]}>{payment} · {form.requestSeatsLabel}</Text>
+      <Text style={[s.locationText, s.locationCopy]}>{payment}</Text>
       <Ionicons name={showOptions ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[600]} />
     </TouchableOpacity>
     {showOptions && <View style={s.extras}><RequestBudgetFields {...form} compact section="options" /></View>}

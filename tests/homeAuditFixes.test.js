@@ -74,7 +74,8 @@ test('tariffs returned by the server retain their prices and availability', () =
     editVehicleOptions: [{ vehicleType: 'car', availableForRequestedSeats: true, recommendedPricePerSeat: 1500,
       recommendedTotalPrice: 1500, pricePerKmPerPassenger: 500 }], editVehiclePriceMultiplier: 1 });
   assert.match(text(tree), /1.500 FC/);
-  assert.match(text(tree), /500 FC \/ km/);
+  assert.match(text(tree), /trajet estimé/);
+  assert.doesNotMatch(text(tree), /500 FC \/ km|par place/);
 });
 
 test('request and payment primary actions keep at least 4.5:1 contrast with white text', () => {

@@ -159,7 +159,7 @@ test('compact summary preserves route landmarks, budget, payment, contact and co
   const tree = RequestDriverDecision({ model, presentation });
   const route = elements(tree).find(item => item.type === 'Route');
   assert.equal(route.props.compact, true); assert.equal(route.props.labels, labels);
-  for (const value of ['Passager test', '2 000 FC', 'Budget par place', 'Cash à l’arrivée']) assert.ok(words(tree).includes(value), value);
+  for (const value of ['Passager test', '4 000 FC', 'Budget du trajet', 'Cash à l’arrivée']) assert.ok(words(tree).includes(value), value);
   assert.match(words(tree), /2\s+place\s*s/);
   assert.equal(elements(tree).find(item => item.type === 'Commission').props.amount, 4000);
   assert.equal(elements(tree).find(item => item.type === 'Contact').props.requestId, request.id);

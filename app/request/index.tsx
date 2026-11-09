@@ -134,7 +134,6 @@ export default function RequestTripScreen() {
                   budgetLabel={form.budgetLabel}
                   budgetHintLabel={form.budgetHintLabel}
                   totalBudgetLabel={form.totalBudgetLabel}
-                  requestSeatsLabel={form.requestSeatsLabel}
                   hasSpecifiedNumberOfSeats={form.hasSpecifiedNumberOfSeats}
                   numberOfSeats={form.numberOfSeats}
                   selectedVehicleTypes={form.selectedVehicleTypes}

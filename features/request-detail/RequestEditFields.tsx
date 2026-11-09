@@ -1,3 +1,4 @@
+import { RequestTotalBudgetInput } from '@/components/trip-request/RequestTotalBudgetInput';
 import { RequestEditVehicleOptions } from './RequestEditVehicleOptions';
 import { FormDisclosure } from '@/components/forms/FormDisclosure';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
@@ -282,20 +283,18 @@ export function RequestEditFields({
             />
           </View>
           <View style={{flex: 1}}>
-            <Text style={styles.editLabel}>Votre prix / place (FC)</Text>
-            <TextInput
-              style={styles.editInput}
-              keyboardType="numeric"
-              placeholder="Votre prix"
-              value={editMaxPricePerSeat}
-              onChangeText={setEditMaxPricePerSeat}
+            <Text style={styles.editLabel}>Prix du trajet (FC)</Text>
+            <RequestTotalBudgetInput
+              style={styles.editInput} hintStyle={styles.editScheduleError}
+              pricePerSeat={editMaxPricePerSeat} seats={parsedEditNumberOfSeats}
+              onChangePricePerSeat={setEditMaxPricePerSeat}
             />
           </View>
         </View>
         <Text style={styles.editVehicleSubtitle}>
           {isEditBudgetValid && parsedEditBudget !== undefined && Number.isSafeInteger(parsedEditNumberOfSeats) && parsedEditNumberOfSeats > 0
               ? `Total : ${formatCdfPrice(parsedEditBudget * parsedEditNumberOfSeats)}`
-              : 'Indiquez un budget par place avant de confirmer.'}
+              : 'Indiquez le prix total du trajet avant de confirmer.'}
         </Text>
       </View>
 

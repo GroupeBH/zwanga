@@ -1,3 +1,4 @@
+import { requestTripPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { getRegisteredVehicleTypeLabel } from '@/constants/vehicleTypes';
 import { formatDateTime } from '@/utils/dateHelpers';
 import { type RouteInfo } from '@/utils/routeApi';
@@ -30,7 +31,7 @@ export function useTripDetailPresentation({
     : trip?.arrivalTime
       ? formatDateTime(trip.arrivalTime)
       : '--:--';
-  const tripPriceLabel = trip?.price === 0 ? 'Gratuit' : `${trip?.price ?? 0} FC`;
+  const tripPriceLabel = trip?.tripRequestId ? requestTripPriceLabel(trip) : trip?.price === 0 ? 'Gratuit' : `${trip?.price ?? 0} FC`;
   const tripSeatsLabel =
     availableSeats <= 0 ? 'Complet' : `${availableSeats} place${availableSeats > 1 ? 's' : ''}`;
   const tripRouteDistanceLabel = routeInfo?.distance

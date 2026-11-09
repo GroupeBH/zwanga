@@ -61,6 +61,7 @@ export function ProtectedAppStack() {
         <Stack.Screen name="search" options={{ presentation: 'card' }} />
         <Stack.Screen name="security" />
         <Stack.Screen name="services/[id]" />
+        <Stack.Screen name="services/edit" />
         <Stack.Screen name="services/index" />
         <Stack.Screen name="services/new" />
         <Stack.Screen name="settings" />

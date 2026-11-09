@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
@@ -31,6 +32,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
   model: Model; presentation: ReturnType<typeof buildRequestDetailPresentation>; onLayout: (event: LayoutChangeEvent) => void;
 }) {
   const request = model.tripRequest!;
+  const budget = requestTotalPrice(request.maxPricePerSeat, request.numberOfSeats);
   const priceOffers = pendingPriceOffers(request);
   const router = useRouter();
   const active = model.isScreenActive && !model.showEditForm && !model.editLocationPickerType;
@@ -117,7 +119,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
           <View style={s.routeLine}><Ionicons name="location" size={14} color="#DB4D1B" /><Text accessibilityLabel={`Destination : ${labels.arrival.title}`} style={s.address} numberOfLines={expanded ? undefined : 1}>{labels.arrival.title}</Text></View>
           <View style={s.meta}>
             <Text style={s.schedule}>{formatRequestDay(request.departureDateMin)} · {formatRequestTime(request.departureDateMin)}–{formatRequestTime(request.departureDateMax)} · {request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text>
-            <Text style={s.price}>{request.maxPricePerSeat != null ? `${formatCdfPrice(request.maxPricePerSeat)} / place` : 'Budget à convenir'}</Text>
+            <Text style={s.price}>{budget != null ? `${formatCdfPrice(budget)} pour le trajet` : 'Budget à convenir'}</Text>
           </View>
         </View>
         <SharedTripPanel requestId={request.id} isOwner readsEnabled={readsEnabled} seats={request.numberOfSeats}

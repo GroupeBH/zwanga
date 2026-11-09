@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import type { RideAlert } from './rideAlert';
 
 /** Fixed copy and a bounded numeric price, never an arbitrary push body or private name aloud. */
@@ -11,8 +12,9 @@ export function passengerResponseNotice(alert: RideAlert) {
   if (alert.data.type === 'driver_offer') {
     const title = 'Un conducteur propose un autre prix';
     const price = Number(alert.data.pricePerSeat);
-    const amount = Number.isSafeInteger(price) && price > 0 && price <= 1000000
-      ? `Prix proposé : ${price.toLocaleString('fr-FR')} FC par place. ` : '';
+    const total = Number.isSafeInteger(price) && price > 0 && price <= 1000000
+      ? requestTotalPrice(price, alert.data.numberOfSeats ?? alert.data.rideSeats) : null;
+    const amount = total !== null ? `Prix proposé pour le trajet : ${total.toLocaleString('fr-FR')} FC. ` : '';
     const message = `${amount}Ouvrez votre commande pour choisir « Accepter ce prix » ou « Refuser ce prix ».`;
     return { title, message, speech: { key: `response-notice:${alert.key}`, text: `${title}. ${message}` } };
   }

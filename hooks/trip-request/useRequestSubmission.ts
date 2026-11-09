@@ -214,7 +214,7 @@ export function useRequestSubmission({
     if (!canSubmitRequestDetails) {
       showDialog({
         title: 'Budget requis',
-        message: "Le tarif automatique n'est pas disponible pour le moment. Fixez votre budget maximum par place, puis envoyez la commande.",
+        message: "Le tarif automatique n'est pas disponible pour le moment. Fixez votre budget pour le trajet, puis envoyez la commande.",
         variant: 'warning',
       });
       return;
