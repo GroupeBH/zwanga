@@ -66,7 +66,7 @@ export const LOCAL_FAQ_ENTRIES: SupportFaqEntry[] = [
     category: 'paiements',
     question: 'Quels paiements sont acceptés ?',
     answer:
-      'Selon le trajet, vous pouvez payer en espèces, Orange Money, M-Pesa ou Airtel Money.',
+      'Selon le trajet, vous pouvez payer en cash, Orange Money, M-Pesa ou Airtel Money.',
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },

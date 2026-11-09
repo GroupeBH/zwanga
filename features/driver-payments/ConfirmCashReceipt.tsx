@@ -1,14 +1,13 @@
 import { Colors } from '@/constants/styles';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { useConfirmCashReceiptMutation } from '@/store/api/bookingApi';
 import { useAppSelector } from '@/store/hooks';
 import type { Booking } from '@/types';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
-import React, { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { formatMoney, normalizeAmount } from './paymentNoticeModel';
 import { driverPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
 import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
+import { useCashReceiptConfirmation } from './useCashReceiptConfirmation';
 
 /** Explicit receipt, never a dropoff confirmation, electronic payment or revenue credit. */
 export function ConfirmCashReceipt({ booking, announce = false }: { booking: Booking; announce?: boolean }) {
@@ -17,52 +16,28 @@ export function ConfirmCashReceipt({ booking, announce = false }: { booking: Boo
 }
 
 function CashReceiptSession({ booking, announce }: { booking: Booking; announce: boolean }) {
-  const [confirm, { isLoading }] = useConfirmCashReceiptMutation();
   const active = useScreenIsActive();
-  const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState('');
-  const [received, setReceived] = useState(false);
-  const busy = useRef(false);
-  const alive = useRef(true);
-  const activeRef = useRef(active);
-  activeRef.current = active;
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const amount = normalizeAmount(booking.paymentAmount);
+  const { submit, busy: isLoading, error, received } = useCashReceiptConfirmation(booking.id, amount, booking.paymentCurrency ?? '', active);
   const eligible = booking.status === 'completed' && booking.droppedOff && booking.paymentMode === 'cash'
     && Boolean(amount) && ['CDF', 'USD'].includes(booking.paymentCurrency ?? '');
   usePaymentAnnouncement(eligible ? driverPaymentAnnouncement({ bookingId: booking.id, amount: amount!,
     currency: booking.paymentCurrency!, mode: 'cash' }, Boolean(booking.cashReceivedAt || received)) : null,
-  active && Boolean(eligible) && (announce || confirming || received));
+  active && Boolean(eligible) && (announce || received));
   if (!eligible || amount === null) return null;
   if (booking.cashReceivedAt || received) return <Text style={styles.received}>Cash reçu confirmé · {formatMoney(amount, booking.paymentCurrency)}</Text>;
-  const submit = async () => {
-    if (busy.current || !activeRef.current || !alive.current) return;
-    busy.current = true; setError('');
-    try {
-      const result = await confirm({ bookingId: booking.id, amount, currency: booking.paymentCurrency! }).unwrap();
-      if (alive.current && activeRef.current) {
-        if (result.cashReceivedAt) { setReceived(true); setConfirming(false); }
-        else setError('La confirmation n’a pas été enregistrée. Actualisez le trajet puis réessayez.');
-      }
-    } catch (failure) {
-      if (alive.current && activeRef.current) setError(getApiErrorMessage(failure, 'Impossible de confirmer le cash reçu. Réessayez avec une connexion.'));
-    } finally { busy.current = false; }
-  };
   return <View style={styles.box}>
     {booking.mixedPaymentAt && <Text style={styles.hint}>
-      Déjà réglé en jetons : {formatMoney(Number(booking.mixedTokenAmount), booking.paymentCurrency)}. Reste en espèces : {formatMoney(amount, booking.paymentCurrency)}.
+      Déjà réglé en jetons : {formatMoney(Number(booking.mixedTokenAmount), booking.paymentCurrency)}. Reste en cash : {formatMoney(amount, booking.paymentCurrency)}.
     </Text>}
-    {confirming && <Text style={styles.hint}>Confirmez uniquement si vous avez reçu {formatMoney(amount, booking.paymentCurrency)} du passager. Aucun montant ne sera ajouté au solde de revenus.</Text>}
+    <Text style={styles.hint}>Confirmez uniquement après avoir reçu {formatMoney(amount, booking.paymentCurrency)} du passager.</Text>
     {Boolean(error) && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
     <View style={styles.actions}>
-      {confirming && <TouchableOpacity style={styles.button} accessibilityRole="button" disabled={isLoading} onPress={() => setConfirming(false)}>
-        <Text style={styles.label}>Pas encore</Text>
-      </TouchableOpacity>}
       <TouchableOpacity style={[styles.button, styles.primary]} accessibilityRole="button" disabled={!active || isLoading}
         accessibilityState={{ disabled: !active || isLoading, busy: isLoading }}
-        onPress={confirming ? () => void submit() : () => setConfirming(true)}>
+        onPress={() => void submit()}>
         {isLoading ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryLabel}>
-          {confirming ? 'Oui, cash reçu' : `Confirmer le cash reçu · ${formatMoney(amount, booking.paymentCurrency)}`}
+          J’ai reçu le cash · {formatMoney(amount, booking.paymentCurrency)}
         </Text>}
       </TouchableOpacity>
     </View>

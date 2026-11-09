@@ -163,14 +163,14 @@ test('a decline puts the cash choice first, without a new screen, payment or rep
   const cards = flatten(failedForm).filter(child => child.props.accessibilityRole === 'radio');
   assert.ok(cards.length >= 2);
   assert.ok(cards.every(card => !card.props.disabled));
-  const cash = cards.find(card => card.props.accessibilityLabel === 'Payer en espèces');
+  const cash = cards.find(card => card.props.accessibilityLabel === 'Payer en cash');
   assert.equal(cards[0], cash);
   assert.equal(cash.props.accessibilityState.checked, false, 'suggesting cash does not select it automatically');
   cash.props.onPress(); assert.deepEqual(choices, ['cash']);
   for (let i = 0; i < 100; i++) render();
   assert.equal(scrolls.length, 1, 'store rerenders do not drive another scroll');
   props.isBeforeArrival = true;
-  assert.equal(flatten(render()).some(child => child.props.accessibilityLabel === 'Espèces'), false);
+  assert.equal(flatten(render()).some(child => child.props.accessibilityLabel === 'Cash'), false);
   hooks.unmount();
 });
 

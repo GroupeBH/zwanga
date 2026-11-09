@@ -22,7 +22,7 @@ export function passengerPaymentAnnouncement({ bookingId, amount, currency, rece
     const money = spokenMoney(value, receipt.currency);
     if (!money) return null;
     const text = receipt.cashInstructions
-      ? `${receipt.mixedTokenAmount ? 'La part en jetons est réglée. ' : ''}Remettez ${money} en espèces au conducteur${receipt.beforeArrival ? ' à l’arrivée' : ''}. Il confirmera la réception.`
+      ? `${receipt.mixedTokenAmount ? 'La part en jetons est réglée. ' : ''}Remettez ${money} en cash au conducteur${receipt.beforeArrival ? ' à l’arrivée' : ''}. Il confirmera la réception.`
       : receipt.amount === 0 ? 'Ce trajet est gratuit. Vous n’avez rien à payer.'
       : `Paiement de ${money} confirmé. Vous n’avez rien à payer de nouveau.`;
     return message('passenger', id, receipt.cashInstructions ? 'cash-due' : 'paid', value, receipt.currency, text);
@@ -36,7 +36,7 @@ export function passengerPaymentAnnouncement({ bookingId, amount, currency, rece
     `${beforeArrival ? 'Vous pouvez préparer votre paiement. ' : ''}Le montant à régler est de ${money}. Choisissez votre moyen de paiement sur l’écran.`) : null;
 }
 
-export function driverPaymentAnnouncement(notice: Pick<DriverPaymentNotice, 'bookingId' | 'amount' | 'currency' | 'mode' | 'partial' | 'cashRemainder'> | null,
+export function driverPaymentAnnouncement(notice: Pick<DriverPaymentNotice, 'bookingId' | 'amount' | 'currency' | 'mode' | 'partial' | 'cashRemainder' | 'cashDeclared'> | null,
   cashReceived = false): RideEntryMessage | null {
   if (!notice) return null;
   const money = spokenMoney(notice.amount, notice.currency);
@@ -44,11 +44,13 @@ export function driverPaymentAnnouncement(notice: Pick<DriverPaymentNotice, 'boo
   if (notice.partial) {
     const rest = spokenMoney(notice.cashRemainder, notice.currency);
     return rest ? message('driver', notice.bookingId, 'partial', notice.amount, notice.currency,
-      `${money} reçus en jetons Zwanga. Il reste ${rest} à recevoir en espèces.`) : null;
+      `${money} reçus en jetons Zwanga. Il reste ${rest} à recevoir en cash.`) : null;
   }
   const cash = notice.mode === 'cash';
+  if (notice.cashDeclared) return message('driver', notice.bookingId, 'cash-declared', notice.amount, notice.currency,
+    `Le passager indique avoir payé ${money} en cash. Confirmez seulement après avoir reçu l’argent.`);
   return message('driver', notice.bookingId, cash && !cashReceived ? 'cash-due' : 'paid', notice.amount, notice.currency,
-    cash ? cashReceived ? `Réception de ${money} en espèces confirmée.`
-      : `Le passager doit vous remettre ${money} en espèces. Confirmez seulement après avoir reçu l’argent.`
+    cash ? cashReceived ? `Réception de ${money} en cash confirmée.`
+      : `Le passager doit vous remettre ${money} en cash. Confirmez seulement après avoir reçu l’argent.`
       : `Le paiement d’un passager de ${money} est confirmé${notice.mode === 'points' ? ' en jetons Zwanga' : ''}. Ne lui demandez pas de payer de nouveau.`);
 }

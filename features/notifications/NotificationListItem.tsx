@@ -34,6 +34,9 @@ export const notificationTypeConfig: Record<
   driver_booking_payment_confirmed: {
     icon: 'checkmark-circle-outline', color: Colors.successDark, background: Colors.success + '18',
   },
+  cash_payment_declared: {
+    icon: 'cash-outline', color: Colors.primaryDark, background: Colors.primary + '18',
+  },
   warning: {
     icon: 'warning-outline',
     color: Colors.danger,

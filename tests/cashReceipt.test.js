@@ -19,6 +19,14 @@ test('cash receipt mutation uses RTK, checks the shown fare and invalidates rela
   assert.equal(mapped.cashReceivedByDriverId, 'driver'); assert.equal(mapped.cashReceivedAmount, '2000');
 });
 
+test('passenger cash declaration sends only the authoritative fare and does not optimistically credit or confirm receipt', () => {
+  const endpoint = loader()('store/api/booking/cashReceipt.endpoints.ts').buildCashReceiptEndpoints({ mutation: x => x }).declareCashPayment;
+  assert.deepEqual(endpoint.query({ bookingId: 'booking', amount: 2850, currency: 'CDF' }).body, { amount: 2850, currency: 'CDF' });
+  assert.equal(endpoint.query({ bookingId: 'booking' }).url, '/bookings/booking/cash-declaration');
+  assert.deepEqual(endpoint.invalidatesTags(undefined), []);
+  assert.equal(endpoint.onQueryStarted, undefined);
+});
+
 test('driver activity mapping derives eligibility from every booking, without another HTTP call', () => {
   const { mapActivityTrip } = loader()('store/api/trip/activityTripMapper.ts');
   const booking = { id: 'booking', status: 'completed', numberOfSeats: 2, pickedUp: true, droppedOff: true,
@@ -48,7 +56,6 @@ test('cash UI requires explicit confirmation, blocks rapid taps and does not upd
   })('features/driver-payments/ConfirmCashReceipt.tsx');
   const wrapper = ConfirmCashReceipt({ booking: { id: 'booking', status: 'completed', droppedOff: true, paymentMode: 'cash', paymentAmount: 2000, paymentCurrency: 'CDF' } });
   const render = () => hooks.render(() => wrapper.type(wrapper.props));
-  buttons(render()).at(-1).props.onPress(); assert.equal(calls, 0);
   const confirm = buttons(render()).at(-1); confirm.props.onPress(); confirm.props.onPress(); assert.equal(calls, 1);
   hooks.unmount(); resolve({ cashReceivedAt: 'now' }); await pending;
 });

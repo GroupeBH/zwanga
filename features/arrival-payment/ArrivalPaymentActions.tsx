@@ -29,10 +29,17 @@ type Props = {
 export function ArrivalPaymentActions(props: Props) {
   const canRate = Boolean(props.completionSummary?.ratingTripId && !props.completionSummary.beforeArrival && props.onRateDriver);
   if (props.completionSummary) return <View style={local.footer}>
-    <TouchableOpacity accessibilityRole="button" style={styles.payButton} onPress={canRate ? props.onRateDriver : props.onDone}>
+    {!!props.paymentError && <Text style={local.noticeText} accessibilityRole="alert">{props.paymentError}</Text>}
+    <TouchableOpacity accessibilityRole="button" disabled={props.isBusy} accessibilityState={{ busy: props.isBusy, disabled: props.isBusy }}
+      style={[styles.payButton, props.isBusy && styles.payButtonDisabled]} onPress={canRate ? props.onRateDriver : props.onDone}>
+      {props.isBusy ? <ActivityIndicator color={Colors.white} /> : <>
       <Ionicons name={canRate ? 'star-outline' : 'checkmark'} size={20} color={Colors.white} />
-      <Text style={styles.payButtonText}>{canRate ? 'Noter le conducteur' : props.completionSummary.beforeArrival ? 'Continuer le trajet' : 'Terminer'}</Text>
+      <Text style={styles.payButtonText}>{canRate ? 'Noter le conducteur' : props.completionSummary.beforeArrival ? 'Continuer le trajet'
+        : props.completionSummary.cashInstructions ? 'J’ai payé en cash' : 'Terminer'}</Text>
+      </>}
     </TouchableOpacity>
+    {props.completionSummary.cashInstructions && !props.completionSummary.beforeArrival && <TouchableOpacity accessibilityRole="button"
+      style={local.secondary} disabled={props.isBusy} onPress={props.onClose}><Text style={styles.invoiceButtonText}>Pas encore</Text></TouchableOpacity>}
     {canRate && <TouchableOpacity accessibilityRole="button" style={local.secondary} onPress={props.onDone}>
       <Text style={styles.invoiceButtonText}>Pas maintenant</Text>
     </TouchableOpacity>}

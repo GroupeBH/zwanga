@@ -1,5 +1,10 @@
 # Journal des changements techniques
 
+## 2026-11-09 — Cash : déclaration passager et confirmation conducteur depuis tous les écrans
+
+- **Problème / solution :** la fin du paiement cash ne prévenait pas le conducteur. Ajout d'une déclaration explicite côté serveur, notification transactionnelle socket et récupération REST, puis modal global « J’ai reçu le cash » / « Pas encore ». Confirmation en un appui, sans considérer la déclaration passager comme un reçu. Complément jetons + cash limité au montant restant. Vocabulaire utilisateur harmonisé en « cash ».
+- **Périmètre / précautions / tests / limites :** détails des fichiers, de la migration additive, de l'intégration HTTP/socket/PostgreSQL et des protections dans [le compte rendu du paiement cash](PAIEMENT_CASH_CONDUCTEUR_2026-11-09.md). Règles financières et sonneries conservées. Aucun déploiement, aucune base existante modifiée, aucun test physique ni garantie native annoncée.
+
 ## 2026-11-08 — Correctifs ciblés de fiabilité, sans refonte des alertes
 
 - **Périmètre / problèmes reproduits :** une indisponibilité au premier contrôle serveur supprimait le candidat à l'alerte JavaScript ; une publication native simulée de 3,5 secondes dépassait son autorisation de publication de trois secondes et annulait la carte pourtant encore valide. La file des confirmations de trajet attendait chaque passager en série. Le service audio Android répétait les contrôles système sur le thread d'affichage et sur son thread audio. Deux motifs natifs d'échec de validation disparaissaient lors de l'envoi des diagnostics. Enfin, l'empreinte de styles de publication n'avait pas été actualisée après la simplification du formulaire déjà demandée.

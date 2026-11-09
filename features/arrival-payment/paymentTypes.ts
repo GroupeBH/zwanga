@@ -79,7 +79,7 @@ export const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: 'cash',
     icon: 'cash-outline',
-    title: 'Espèces',
+    title: 'Cash',
     description: 'Remettez le montant au conducteur',
   },
 ];

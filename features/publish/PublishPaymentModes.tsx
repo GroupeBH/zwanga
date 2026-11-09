@@ -10,7 +10,7 @@ import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { estimateCashCommission } from '@/utils/cashCommission';
 
-export const paymentModeLabels: Record<TripPaymentMode, string> = { electronic: 'Paiement électronique', points: 'Jetons Zwanga', cash: 'Espèces (cash)' };
+export const paymentModeLabels: Record<TripPaymentMode, string> = { electronic: 'Paiement électronique', points: 'Jetons Zwanga', cash: 'Cash' };
 const shortLabels: Record<TripPaymentMode, string> = { electronic: 'Électronique', points: 'Jetons', cash: 'Cash' };
 
 export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {

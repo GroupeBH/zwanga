@@ -77,7 +77,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
       : []),
     {
       id: 'cash',
-      label: 'Espèces (cash)',
+      label: 'Cash',
       description: 'Réglez directement auprès du conducteur',
       icon: 'cash-outline',
     },

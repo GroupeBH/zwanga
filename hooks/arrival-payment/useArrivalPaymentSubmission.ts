@@ -24,6 +24,7 @@ interface Params {
   pendingTopUp?: string;
   payTokensCash?: () => Promise<void>;
   acknowledgeCash?: (bookingId: string) => void;
+  declareCashPayment: (bookingId: string, amount: number, currency: string) => Promise<Booking>;
   isSessionCurrent: () => boolean;
   arrivalBooking: Booking | null;
   paymentAmount: number | null;
@@ -57,6 +58,7 @@ export function useArrivalPaymentSubmission({
   pendingTopUp,
   payTokensCash,
   acknowledgeCash,
+  declareCashPayment,
   isSessionCurrent,
   arrivalBooking,
   paymentAmount,
@@ -105,14 +107,11 @@ export function useArrivalPaymentSubmission({
 
     try {
       if (mode === 'cash' && !recoverTopUp) {
-        // Continuing an existing cash booking is not a change of mode or a cash receipt.
-        // In particular the server rejects changing a mode after the driver received cash.
-        if (arrivalBooking.paymentMode === 'cash') {
-          if (acknowledgeCash) acknowledgeCash(arrivalBooking.id);
-          else await showCompletionSummary(arrivalBooking, { mode: 'cash' });
+        if (arrivalBooking.cashReceivedAt || paymentAmount === 0) {
+          await showCompletionSummary(arrivalBooking, { mode: 'cash' });
           return;
         }
-        const updatedBooking = await updatePaymentMode({
+        const updatedBooking = arrivalBooking.paymentMode === 'cash' ? arrivalBooking : await updatePaymentMode({
           bookingId: arrivalBooking.id,
           paymentMode: 'cash',
         }).unwrap();
@@ -122,9 +121,16 @@ export function useArrivalPaymentSubmission({
           setPaymentError('Le passage au paiement cash n’a pas été confirmé. Actualisez la réservation avant de réessayer.');
           return;
         }
-        // If the server changed the displayed fare, show the authoritative amount before closing.
-        if (acknowledgeCash && normalizeAmount(updatedBooking.paymentAmount) === paymentAmount) acknowledgeCash(updatedBooking.id);
-        else await showCompletionSummary(updatedBooking, { mode: 'cash' });
+        // Recovery chooses cash; it does not yet declare a physical handover.
+        // A changed fare also requires a new explicit tap on the authoritative amount.
+        if (modeOverride === 'cash' || normalizeAmount(updatedBooking.paymentAmount) !== paymentAmount || updatedBooking.paymentCurrency !== paymentCurrency) {
+          await showCompletionSummary(updatedBooking, { mode: 'cash' });
+          return;
+        }
+        const declared = await declareCashPayment(updatedBooking.id, paymentAmount, updatedBooking.paymentCurrency ?? paymentCurrency);
+        if (!isSessionCurrent()) return;
+        if (acknowledgeCash) acknowledgeCash(declared.id);
+        else await showCompletionSummary(declared, { mode: 'cash' });
         return;
       }
 
@@ -294,6 +300,7 @@ export function useArrivalPaymentSubmission({
     pendingTopUp,
     payTokensCash,
     acknowledgeCash,
+    declareCashPayment,
     isSessionCurrent,
     setPaymentError,
     reportPaymentFailure,

@@ -17,7 +17,7 @@ test('mixed tokens/cash only announces the remainder as cash due, never as recei
   const receipt = { bookingId: 'test', amount: 4500, cashInstructions: true, currency: 'CDF', mixedTokenAmount: 580, cashRemainder: 3920 };
   const voice = model.passengerPaymentAnnouncement({ ...base, receipt });
   assert.match(voice.text, /part en jetons est réglée/);
-  assert.match(voice.text, /3\s920 francs congolais en espèces/);
+  assert.match(voice.text, /3\s920 francs congolais en cash/);
   assert.doesNotMatch(voice.text, /Paiement.*confirmé/);
   assert.match(model.passengerPaymentAnnouncement({ ...base, receipt: { ...receipt, cashInstructions: false } }).text, /Paiement de 4\s500.*confirmé/);
   assert.match(model.passengerPaymentAnnouncement({ ...base, receipt: { ...receipt, amount: 0, cashInstructions: false } }).text, /gratuit/);
@@ -57,6 +57,7 @@ test('driver notice speaks only the displayed confirmed payment for the current 
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '@react-native-async-storage/async-storage': { getItem: async () => null, setItem: async () => {} },
     '@/features/navigation/RideModal': { RideModal: 'Modal' }, '@/hooks/useAppIsActive': { useAppIsActive: () => active },
+    '@/features/driver-payments/CashPaymentRequestNotice': { CashPaymentRequestNotice: 'CashNotice' },
     '@/store/selectors': { selectUser: () => user, selectIsAuthenticated: () => true },
     '@/store/hooks': { useAppSelector: fn => fn() }, '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: trips }) },
     '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { spoken = { message, visible }; } },

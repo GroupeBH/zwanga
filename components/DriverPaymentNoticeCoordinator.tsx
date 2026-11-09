@@ -30,6 +30,7 @@ import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnounce
 import { driverPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
 import { useDriverPaymentInbox } from '@/hooks/notifications/useDriverPaymentInbox';
 import { boundedSeenPaymentNotices } from '@/features/driver-payments/paymentInbox';
+import { CashPaymentRequestNotice } from '@/features/driver-payments/CashPaymentRequestNotice';
 
 const EMPTY_SEEN = {};
 
@@ -47,6 +48,8 @@ export function DriverPaymentNoticeCoordinator() {
   const [noticeOwner, setNoticeOwner] = useState<string>();
   const [isClosingForTripNavigation, setIsClosingForTripNavigation] = useState(false);
   const pendingTripNavigationRef = useRef<string | null>(null);
+  const cashConfirmationBusy = useRef(false);
+  const handleCashBusy = useCallback((busy: boolean) => { cashConfirmationBusy.current = busy; }, []);
   const storageWrite = useRef(Promise.resolve());
   const inbox = useDriverPaymentInbox(user?.id, isAuthenticated && driverUser,
     seenOwner === user?.id ? seenNotices : EMPTY_SEEN);
@@ -194,20 +197,27 @@ export function DriverPaymentNoticeCoordinator() {
       animationType="fade"
       presentationStyle="overFullScreen"
       onDismiss={handleModalDismiss}
-      onRequestClose={closeNotice}
+      onRequestClose={() => { if (!cashConfirmationBusy.current) closeNotice(); }}
     >
       <View style={styles.overlay}>
-        {activeNotice ? (
+        {activeNotice?.cashDeclared ? (
+          <CashPaymentRequestNotice key={`${noticeOwner}:${activeNotice.key}`} notice={activeNotice} active={isModalVisible}
+            onBusyChange={handleCashBusy}
+            onClose={closeNotice} onConfirmed={() => {
+              markNoticeSeen({ ...activeNotice, key: `booking-payment:${activeNotice.bookingId}:cash` });
+              closeNotice();
+            }} />
+        ) : activeNotice ? (
           <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
             <View style={styles.icon}>
               <Ionicons name="cash-outline" size={28} color={Colors.white} />
             </View>
             <Text style={styles.title}>{activeNotice.partial ? 'Paiement partiel reçu' : 'Paiement reçu'}</Text>
             <Text style={styles.message}>
-              {activeNotice.cashReceived ? 'Votre encaissement en espèces est confirmé.' : 'Le paiement du passager est confirmé.'}
+              {activeNotice.cashReceived ? 'Votre encaissement en cash est confirmé.' : 'Le paiement du passager est confirmé.'}
             </Text>
             {activeNotice.partial && <Text style={styles.message}>
-              Il reste {formatMoney(activeNotice.cashRemainder ?? 0, activeNotice.currency)} à recevoir en espèces.
+              Il reste {formatMoney(activeNotice.cashRemainder ?? 0, activeNotice.currency)} à recevoir en cash.
             </Text>}
 
             <ScrollView bounces={false} style={styles.details} contentContainerStyle={styles.detailsContent}>

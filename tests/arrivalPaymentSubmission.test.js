@@ -5,12 +5,12 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 
 function app(t, mode = 'points') {
   const hooks = hookHarness();
-  const calls = { points: 0, electronic: 0, cash: 0, summary: 0, summaries: [], errors: [], failures: [], patches: [], urls: 0 };
+  const calls = { declarations: [], points: 0, electronic: 0, cash: 0, summary: 0, summaries: [], errors: [], failures: [], patches: [], urls: 0 };
   let resolvePoints;
   const gate = new Promise(resolve => { resolvePoints = resolve; });
   const props = {
     isSessionCurrent: () => true,
-    arrivalBooking: { id: 'booking', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000 },
+    arrivalBooking: { id: 'booking', status: 'accepted', pickedUp: true, paymentMode: mode, paymentAmount: 5000, paymentCurrency: 'CDF' },
     selectedMode: mode, selectedChannel: 'mpesa', paymentAmount: 5000, paymentCurrency: 'CDF',
     isBusy: false, hasPendingProviderPayment: false, paymentAlreadySucceeded: false,
     requiredPoints: 50, missingPoints: 0, isWalletFetching: false, moneyComplement: 0,
@@ -19,6 +19,10 @@ function app(t, mode = 'points') {
     reportPaymentFailure: id => calls.failures.push(id),
     settleWithPoints: async () => { calls.points++; await gate; return true; },
     updatePaymentMode: () => { calls.cash++; return { unwrap: async () => props.arrivalBooking }; },
+    declareCashPayment: async (bookingId, amount, currency) => {
+      calls.declarations.push({ bookingId, amount, currency });
+      return { ...props.arrivalBooking, id: bookingId, paymentMode: 'cash', paymentAmount: amount, paymentCurrency: currency };
+    },
     initiateBookingPayment: () => { calls.electronic++; return { unwrap: async () => ({ booking: props.arrivalBooking, payment: { status: 'pending', orderNumber: 'existing' } }) }; },
     showCompletionSummary: async value => { calls.summary++; calls.summaries.push(value); },
     handleCompletedBookingPayment: async () => false,
@@ -73,7 +77,8 @@ test('cash mode selection is unavailable before arrival and shows instructions a
   assert.equal(env.calls.cash, 0);
   env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true };
   await env.render().handlePayment();
-  assert.equal(env.calls.cash, 0, 'an existing cash choice must not require a network mutation');
+  assert.equal(env.calls.cash, 0, 'an existing cash choice must not change payment mode');
+  assert.deepEqual(env.calls.declarations, [{ bookingId: 'booking', amount: 5000, currency: 'CDF' }]);
   assert.equal(env.calls.summary, 1);
 });
 
@@ -83,6 +88,7 @@ test('the unified cash sheet finishes in one tap without claiming collection or 
   env.props.acknowledgeCash = id => acknowledgements.push(id);
   await env.render().handlePayment();
   assert.deepEqual(acknowledgements, ['booking']); assert.equal(env.calls.summary + env.calls.cash + env.calls.points, 0);
+  assert.equal(env.calls.declarations.length, 1, 'notify the driver before locally dismissing');
   assert.equal(env.props.arrivalBooking.cashReceivedAt, undefined); assert.deepEqual(env.calls.patches, []);
 });
 
@@ -96,6 +102,38 @@ test('cash switching closes only when the acknowledged fare matches what was sho
   env.props.updatePaymentMode = () => ({ unwrap: async () => ({ ...env.props.arrivalBooking, paymentMode: 'cash', paymentAmount: 2000 }) });
   await env.render().handlePayment(); assert.deepEqual(acknowledgements, []);
   assert.equal(env.calls.summaries.at(-1).paymentAmount, 2000);
+});
+
+test('failed passenger declaration keeps the payment open and retries without changing cash mode or taking money', async t => {
+  const env = app(t, 'cash'), acknowledged = [];
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true };
+  env.props.acknowledgeCash = id => acknowledged.push(id);
+  env.props.declareCashPayment = async () => { throw { status: 503 }; };
+  await env.render().handlePayment();
+  assert.deepEqual(acknowledged, []); assert.ok(env.calls.errors.at(-1));
+  env.props.declareCashPayment = async () => env.props.arrivalBooking;
+  await env.render().handlePayment(); assert.deepEqual(acknowledged, ['booking']);
+  assert.equal(env.calls.cash + env.calls.points + env.calls.electronic, 0);
+});
+
+test('cash currency changes require displaying the new fare before any declaration', async t => {
+  const env = app(t, 'electronic'), acknowledged = [];
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true };
+  env.props.selectedMode = 'cash'; env.props.acknowledgeCash = id => acknowledged.push(id);
+  env.props.updatePaymentMode = () => ({ unwrap: async () => ({ ...env.props.arrivalBooking, paymentMode: 'cash', paymentCurrency: 'USD' }) });
+  await env.render().handlePayment();
+  assert.deepEqual(acknowledged, []); assert.deepEqual(env.calls.declarations, []);
+  assert.equal(env.calls.summaries.at(-1).paymentCurrency, 'USD');
+});
+
+test('choosing cash after a failed electronic payment does not claim the passenger handed over money', async t => {
+  const env = app(t, 'electronic'), acknowledged = [];
+  env.props.arrivalBooking = { ...env.props.arrivalBooking, status: 'completed', droppedOff: true };
+  env.props.acknowledgeCash = id => acknowledged.push(id);
+  env.props.updatePaymentMode = () => ({ unwrap: async () => ({ ...env.props.arrivalBooking, paymentMode: 'cash' }) });
+  await env.render().payCash();
+  assert.deepEqual(acknowledged, []); assert.deepEqual(env.calls.declarations, []);
+  assert.equal(env.calls.summaries.at(-1).paymentMode, 'cash', 'the cash summary asks explicitly whether cash was handed over');
 });
 
 test('the visible busy state lasts for the whole submission, including the gap after the network mutation', async t => {

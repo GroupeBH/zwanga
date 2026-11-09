@@ -39,7 +39,7 @@ test('failed Mobile Money highlights cash with the whole fare; selecting it only
   const env = form(t);
   const buttons = env.render().filter(node => node.props.accessibilityRole === 'radio');
   const cash = buttons[0];
-  assert.equal(cash.props.accessibilityLabel, 'Payer en espèces');
+  assert.equal(cash.props.accessibilityLabel, 'Payer en cash');
   assert.equal(cash.props.disabled, false); assert.equal(cash.props.accessibilityState.checked, false);
   assert.match(flatten(cash).filter(node => node.type === 'Text').map(node => node.props.children).join(''), /4\D?500.*CDF|4\D?500.*FC/);
   assert.deepEqual(env.choices, []);
@@ -53,10 +53,10 @@ test('an unsuccessful token complement offers both full cash and mixed cash with
     walletBalance: 58, pointsUsed: 58, amountCoveredByPoints: 580,
     cashComplementAvailable: true, cashRemainder: 3920 });
   const nodes = env.render();
-  const full = nodes.find(node => node.props.accessibilityLabel === 'Payer en espèces');
-  const mixed = nodes.find(node => node.props.accessibilityLabel === 'Compléter en Espèces');
+  const full = nodes.find(node => node.props.accessibilityLabel === 'Payer en cash');
+  const mixed = nodes.find(node => node.props.accessibilityLabel === 'Compléter en Cash');
   assert.ok(full); assert.ok(mixed);
-  assert.ok(flatten(mixed).some(node => node.props.children === 'Compléter en espèces'));
+  assert.ok(flatten(mixed).some(node => node.props.children === 'Compléter en cash'));
   mixed.props.onPress(); assert.deepEqual(env.complements, [true]); assert.deepEqual(env.choices, ['points']);
   full.props.onPress(); assert.deepEqual(env.choices, ['points', 'cash']);
 });
@@ -68,14 +68,14 @@ test('cash suggestion respects arrival, server eligibility, paid state and pendi
     { hasPaymentFailure: false }, { selectedMode: 'cash' },
   ]) {
     const env = form(t); Object.assign(env.props, patch);
-    assert.equal(env.render().some(node => node.props.accessibilityLabel === 'Payer en espèces'), false);
+    assert.equal(env.render().some(node => node.props.accessibilityLabel === 'Payer en cash'), false);
   }
   for (const available of [undefined, { acceptedPaymentModes: ['electronic'], availablePaymentModes: ['electronic'] },
-    { acceptedPaymentModes: ['electronic', 'cash'], availablePaymentModes: ['electronic'], cashUnavailableReason: 'Espèces indisponibles pour ce trajet.' }]) {
+    { acceptedPaymentModes: ['electronic', 'cash'], availablePaymentModes: ['electronic'], cashUnavailableReason: 'Cash indisponibles pour ce trajet.' }]) {
     const env = form(t); env.query.currentData = available;
     const nodes = env.render();
-    assert.equal(nodes.some(node => node.props.accessibilityLabel === 'Payer en espèces'), false);
-    const cash = nodes.find(node => node.props.accessibilityLabel === 'Espèces');
+    assert.equal(nodes.some(node => node.props.accessibilityLabel === 'Payer en cash'), false);
+    const cash = nodes.find(node => node.props.accessibilityLabel === 'Cash');
     if (cash) { assert.equal(cash.props.disabled, true); cash.props.onPress(); }
     assert.deepEqual(env.choices, []);
   }
@@ -84,11 +84,11 @@ test('cash suggestion respects arrival, server eligibility, paid state and pendi
 test('failed options read never authorizes cash from a stale cache; retry stays in the form', async t => {
   const env = form(t); env.query.isError = true;
   const nodes = env.render();
-  assert.equal(nodes.some(node => node.props.accessibilityLabel === 'Payer en espèces'), false);
-  const cash = nodes.find(node => node.props.accessibilityLabel === 'Espèces');
+  assert.equal(nodes.some(node => node.props.accessibilityLabel === 'Payer en cash'), false);
+  const cash = nodes.find(node => node.props.accessibilityLabel === 'Cash');
   assert.equal(cash.props.disabled, true); cash.props.onPress(); assert.deepEqual(env.choices, []);
   Object.assign(env.props, { selectedMode: 'points', cashComplementAvailable: true, moneyComplement: 3920 });
-  const mixed = env.render().find(node => node.props.accessibilityLabel === 'Compléter en Espèces');
+  const mixed = env.render().find(node => node.props.accessibilityLabel === 'Compléter en Cash');
   assert.equal(mixed.props.disabled, true); mixed.props.onPress(); assert.deepEqual(env.complements, []);
   const retry = nodes.find(node => node.props.accessibilityLabel === 'Actualiser les moyens de paiement');
   await retry.props.onPress(); assert.equal(env.refreshes, 1);
@@ -96,5 +96,5 @@ test('failed options read never authorizes cash from a stale cache; retry stays 
   const busy = env.render().find(node => node.props.accessibilityLabel === retry.props.accessibilityLabel);
   assert.equal(busy.props.disabled, true); await busy.props.onPress(); assert.equal(env.refreshes, 1);
   env.query.isFetching = false; env.query.isError = false;
-  assert.equal(env.render().find(node => node.props.accessibilityLabel === 'Payer en espèces').props.disabled, false);
+  assert.equal(env.render().find(node => node.props.accessibilityLabel === 'Payer en cash').props.disabled, false);
 });

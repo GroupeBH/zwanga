@@ -31,7 +31,7 @@ export function buildPaymentCompletionSummary(booking: Booking, wallet: WalletSu
     paymentReference: booking.paymentReference ?? payment?.reference ?? options.paymentReference ?? null,
     cashInstructions,
     driverNotice: booking.mixedPaymentAt && cashInstructions
-      ? 'Les jetons sont réglés. Remettez uniquement le complément en espèces au conducteur ; il confirmera sa réception.'
+      ? 'Les jetons sont réglés. Remettez uniquement le complément en cash au conducteur ; il confirmera sa réception.'
       : booking.tokenCashFallbackAt && cashInstructions
       ? 'Remettez ce montant au conducteur. Vos jetons restent dans votre portefeuille. Si Mobile Money est confirmé plus tard, la recharge y restera aussi.'
       : cashInstructions

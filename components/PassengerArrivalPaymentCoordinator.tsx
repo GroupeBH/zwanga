@@ -34,6 +34,7 @@ import { Spacing } from '@/constants/styles';
 import { openInterruptionChoice } from '@/store/slices/tripsSlice';
 import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
 import { passengerPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
+import { usePassengerCashDeclaration } from '@/hooks/arrival-payment/usePassengerCashDeclaration';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -45,6 +46,7 @@ export function PassengerArrivalPaymentCoordinator() {
 
 function ArrivalPaymentSession() {
   const state = useArrivalPaymentState();
+  const cashDeclaration = usePassengerCashDeclaration(state.isSessionCurrent);
   const interruptionChoice = state.interruptionChoice;
   // Already paid/free bookings open their receipt immediately, not another confirmation step.
   const receipt = useMemo(() => resolvePaymentReceipt(state.completionSummary, state.arrivalBooking,
@@ -89,6 +91,7 @@ function ArrivalPaymentSession() {
     mixed.pending || Boolean(state.storageError);
 
   const submission = useArrivalPaymentSubmission({
+    declareCashPayment: cashDeclaration.declare,
     userId: state.user?.id,
     pendingTopUp: state.activeStoredState?.walletTopUpIntent,
     payTokensCash: mixed.cashSelected ? mixed.submit : undefined,
@@ -122,6 +125,7 @@ function ArrivalPaymentSession() {
   });
 
   const navigation = useArrivalPaymentNavigation({
+    declareCashPayment: cashDeclaration.declare,
     completionSummary: receipt,
     acknowledgeBooking: state.acknowledgeBooking,
     setCompletionSummary: state.setCompletionSummary,
@@ -150,10 +154,10 @@ function ArrivalPaymentSession() {
   const actionLabel = !state.selectedMode ? 'Choisir un mode de paiement' : state.paymentAlreadySucceeded
     ? state.isBeforeArrival ? 'Continuer le trajet' : 'Terminer'
     : state.selectedMode === 'cash'
-      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'Terminer · paiement en espèces'
+      ? state.isBeforeArrival ? 'Préparation du paiement…' : 'J’ai payé en cash'
       : state.selectedMode === 'points'
         ? state.missingPoints > 0
-          ? mixed.cashSelected ? `Utiliser ${formatPoints(state.pointsUsed)} + espèces`
+          ? mixed.cashSelected ? `Utiliser ${formatPoints(state.pointsUsed)} + cash`
             : `Ajouter ${formatMoney(state.moneyComplement, state.paymentCurrency)} et payer`
           : `Payer avec ${formatPoints(state.requiredPoints ?? 0)}`
         : state.selectedChannel === 'card'
@@ -192,7 +196,7 @@ function ArrivalPaymentSession() {
       statusBarTranslucent
       presentationStyle="overFullScreen"
       onDismiss={navigation.handleModalDismiss}
-      onRequestClose={receipt ? navigation.handleDismissSummary : state.deferPayment}
+      onRequestClose={receipt && !receipt.cashInstructions ? navigation.handleDismissSummary : state.deferPayment}
     >
       <View style={styles.overlay}>
         <KeyboardAvoidingView
@@ -217,7 +221,7 @@ function ArrivalPaymentSession() {
             ) : recoveryVisible && state.arrivalBooking ? (
               <ArrivalPaymentRecovery bookingId={state.arrivalBooking.id} pending={paymentPending}
                 mixedCashLabel={mixed.canChooseWithPendingTopUp && !state.storageError && !state.isStorageLoading
-                  ? `Utiliser ${formatPoints(state.pointsUsed)} + ${formatMoney(mixed.cashRemainder, state.paymentCurrency)} en espèces` : undefined}
+                  ? `Utiliser ${formatPoints(state.pointsUsed)} + ${formatMoney(mixed.cashRemainder, state.paymentCurrency)} en cash` : undefined}
                 onMixedCash={() => { if (!state.isBusy && !state.storageError && !state.isStorageLoading) {
                   state.setSelectedMode('points'); mixed.selectCash(true);
                 } }}
@@ -229,7 +233,7 @@ function ArrivalPaymentSession() {
                 beforeArrival={state.isBeforeArrival}
                 amount={state.paymentAmount} currency={state.paymentCurrency} destination={destination}
                 message={cashFallback.message ?? (!paymentPending ? state.paymentError : recovery.message ?? (state.storageError ? 'Impossible de retrouver votre paiement sur ce téléphone. Réessayez ou contactez l’aide.'
-                  : mixed.pending ? 'Le règlement jetons + espèces doit être confirmé. Vérifiez avant de payer à nouveau.'
+                  : mixed.pending ? 'Le règlement jetons + cash doit être confirmé. Vérifiez avant de payer à nouveau.'
                   : ['paused', 'checking', 'waiting'].includes(monitoring.verification.phase) ? monitoring.verification.message : undefined))}
                 onVerify={retryPayment}
                 onChange={() => { if (!paymentPending) state.setSelectedMode(null); }}
@@ -251,7 +255,7 @@ function ArrivalPaymentSession() {
                   paymentCurrency={state.paymentCurrency}
                   paymentAlreadySucceeded={state.paymentAlreadySucceeded}
                   arePointsRecommended={state.arePointsRecommended}
-                  isBusy={state.isBusy || submission.isSubmitting || mixed.isLoading || state.isStorageLoading}
+                  isBusy={state.isBusy || submission.isSubmitting || mixed.isLoading || cashDeclaration.busy || state.isStorageLoading}
                   hasPendingProviderPayment={paymentPending}
                   setSelectedMode={state.setSelectedMode}
                   setPaymentError={state.setPaymentError}
@@ -277,7 +281,7 @@ function ArrivalPaymentSession() {
                 />
 
                 <ArrivalPaymentActions
-                  isBusy={state.isBusy || submission.isSubmitting || mixed.isLoading || state.isStorageLoading}
+                  isBusy={state.isBusy || submission.isSubmitting || mixed.isLoading || cashDeclaration.busy || state.isStorageLoading}
                   completionSummary={receipt}
                   onDone={navigation.handleDismissSummary}
                   onInvoice={navigation.handleOpenInvoice}

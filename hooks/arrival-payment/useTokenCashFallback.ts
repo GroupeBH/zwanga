@@ -34,9 +34,9 @@ export function useTokenCashFallback(state: ReturnType<typeof useArrivalPaymentS
       if (current()) {
         const status = (error as { status?: number })?.status;
         setNotice({ id, text: status === 409
-          ? 'Le paiement a changé. Vérifiez son état avant de remettre les espèces.'
-          : status === 404 ? 'Le passage aux espèces n’est pas encore disponible sur le serveur. Réessayez plus tard ou contactez l’aide.'
-          : 'Le passage aux espèces n’est pas confirmé. Réessayez avant de remettre l’argent au conducteur.' });
+          ? 'Le paiement a changé. Vérifiez son état avant de remettre le cash.'
+          : status === 404 ? 'Le passage au cash n’est pas encore disponible sur le serveur. Réessayez plus tard ou contactez l’aide.'
+          : 'Le passage au cash n’est pas confirmé. Réessayez avant de remettre l’argent au conducteur.' });
         void Promise.resolve().then(() => state.refetchBookings()).catch(() => undefined);
       }
     } finally { busy.current = false; if (state.isSessionCurrent()) setWorkingId(null); }

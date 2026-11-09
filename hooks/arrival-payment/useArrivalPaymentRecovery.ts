@@ -6,7 +6,7 @@ import type { useArrivalPaymentState } from './useArrivalPaymentState';
 import type { useArrivalPaymentProvider } from './useArrivalPaymentProvider';
 import type { useArrivalPaymentCompletion } from './useArrivalPaymentCompletion';
 
-const WAIT = 'Votre opérateur n’a pas encore confirmé le résultat. Ne payez pas en espèces maintenant. Réessayez dans un moment ou contactez l’aide.';
+const WAIT = 'Votre opérateur n’a pas encore confirmé le résultat. Ne payez pas en cash maintenant. Réessayez dans un moment ou contactez l’aide.';
 type State = ReturnType<typeof useArrivalPaymentState>;
 
 /** Explicit user recovery. Never forgets an uncertain attempt or initiates a new debit. */

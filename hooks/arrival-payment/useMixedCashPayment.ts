@@ -17,7 +17,7 @@ function readIntent(raw: string | undefined, bookingId: string | undefined): Int
   } catch { return null; }
 }
 type State = ReturnType<typeof useArrivalPaymentState>;
-const UNCERTAIN = 'Confirmation du paiement jetons + espèces indisponible. Ne payez pas le montant total. Reprenez la vérification pour retrouver le même règlement.';
+const UNCERTAIN = 'Confirmation du paiement jetons + cash indisponible. Ne payez pas le montant total. Reprenez la vérification pour retrouver le même règlement.';
 
 /** No provider polling or automatic collection: every write follows an explicit tap. */
 export function useMixedCashPayment(state: State, completion: ReturnType<typeof useArrivalPaymentCompletion>) {

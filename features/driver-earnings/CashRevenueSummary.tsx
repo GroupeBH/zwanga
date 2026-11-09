@@ -9,7 +9,7 @@ export function CashRevenueSummary({ amount, currency }: Props) {
   const hasTotal = typeof amount === 'number' && Number.isFinite(amount) && amount >= 0;
   return (
     <View style={styles.cashSection}>
-      <View style={styles.cashHeading}><Text style={styles.rowTitle}>Espèces reçues des passagers</Text>
+      <View style={styles.cashHeading}><Text style={styles.rowTitle}>Cash reçu des passagers</Text>
       <Text style={styles.cashAmount} testID="driver-cash-received">
         {hasTotal ? formatAmount(amount, currency) : '—'}
       </Text></View>
