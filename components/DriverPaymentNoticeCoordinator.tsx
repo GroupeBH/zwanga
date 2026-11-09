@@ -26,7 +26,8 @@ import { useGetMyActivityTripsQuery as useGetMyTripsQuery } from '@/store/api/tr
 import { useAppSelector } from '@/store/hooks';
 import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import { sharedTripsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
-import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
+import { PaymentModalAnnouncement } from '@/components/PaymentModalAnnouncement';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { driverPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
 import { useDriverPaymentInbox } from '@/hooks/notifications/useDriverPaymentInbox';
 import { boundedSeenPaymentNotices } from '@/features/driver-payments/paymentInbox';
@@ -187,7 +188,6 @@ export function DriverPaymentNoticeCoordinator() {
   const noticeStillRelevant = candidates.some(notice => notice.key === activeNotice?.key);
   useEffect(() => { if (activeNotice && !noticeStillRelevant) setActiveNotice(null); }, [activeNotice, noticeStillRelevant]);
   const isModalVisible = Boolean(isAuthenticated && noticeOwner === user?.id && seenOwner === user?.id && driverUser && isSeenLoaded && isAppActive && noticeStillRelevant && activeNotice && !isClosingForTripNavigation);
-  usePaymentAnnouncement(driverPaymentAnnouncement(activeNotice, activeNotice?.cashReceived), isModalVisible);
 
   return (
     <Modal
@@ -200,6 +200,7 @@ export function DriverPaymentNoticeCoordinator() {
       onRequestClose={() => { if (!cashConfirmationBusy.current) closeNotice(); }}
     >
       <View style={styles.overlay}>
+        <PaymentModalAnnouncement message={driverPaymentAnnouncement(activeNotice, activeNotice?.cashReceived)} enabled={isModalVisible} />
         {activeNotice?.cashDeclared ? (
           <CashPaymentRequestNotice key={`${noticeOwner}:${activeNotice.key}`} notice={activeNotice} active={isModalVisible}
             onBusyChange={handleCashBusy}
@@ -320,7 +321,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.sm,
     borderRadius: BorderRadius.lg,
-    backgroundColor: Colors.primary,
+    backgroundColor: ACTION_COLORS.orange,
     marginTop: Spacing.lg,
   },
   primaryButtonText: {

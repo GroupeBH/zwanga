@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, type Href } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import { BackHandler, Keyboard, ScrollView, Text, View } from "react-native";
-import type { ProOffering } from "@/types/proServices";
+import type { ProOffering, ProCase } from "@/types/proServices";
 import { ServiceButton, ServiceLayout, s } from "./ServiceLayout";
 import { ServiceNeedStep, ServiceContactStep } from "./ServiceFormFields";
 import { ServiceFormReview } from "./ServiceFormReview";
@@ -17,12 +17,15 @@ export function ServiceRequestForm({
   offering,
   initial,
   active,
+  existing,
 }: {
   offering: ProOffering;
   initial: { fullName: string; phone: string };
   active: boolean;
+  existing?: Pick<ProCase, 'id' | 'application' | 'updatedAt' | 'editMode'>;
 }) {
-  const c = useProServiceForm(offering, initial);
+  const c = useProServiceForm(offering, initial, existing);
+  const { step, sent, locked, goTo } = c;
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     if (!active) return;
@@ -30,18 +33,18 @@ export function ServiceRequestForm({
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [active, c.step, c.sent, c.uncertain]);
   useEffect(() => {
-    if (!active || c.step === 0) return;
+    if (!active || step === 0) return;
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       () => {
-        if (c.sent) router.replace(servicesRoute);
-        else if (c.locked) router.push(servicesRoute);
-        else c.goTo((c.step - 1) as FormStep);
+        if (sent) router.replace(servicesRoute);
+        else if (locked) router.push(servicesRoute);
+        else goTo((step - 1) as FormStep);
         return true;
       },
     );
     return () => subscription.remove();
-  }, [active, c.step, c.locked, c.goTo, c.sent]);
+  }, [active, step, locked, goTo, sent]);
   const onBack = () => {
     if (c.sent) router.replace(servicesRoute);
     else if (c.locked)
@@ -53,7 +56,7 @@ export function ServiceRequestForm({
   if (c.sent)
     return (
       <ServiceLayout
-        title="Demande envoyée"
+        title={existing ? "Demande modifiée" : "Demande envoyée"}
         onBack={onBack}
         footer={
           <>
@@ -73,7 +76,7 @@ export function ServiceRequestForm({
           <View style={f.successIcon}>
             <Ionicons name="checkmark" size={34} color="#206547" />
           </View>
-          <Text style={f.title}>Votre demande a bien été reçue.</Text>
+          <Text style={f.title}>{existing ? "Vos modifications ont été enregistrées." : "Votre demande a bien été reçue."}</Text>
           <Text style={s.text}>
             Vous pouvez retrouver son avancement dans « Mes dossiers ».
           </Text>
@@ -90,23 +93,22 @@ export function ServiceRequestForm({
             <View style={f.nextStep}>
               <Text style={f.stepNumber}>2</Text>
               <View style={s.flex}>
-                <Text style={s.label}>Votre accord avant toute suite</Text>
+                <Text style={s.label}>{c.additionsOnly ? "Étude des documents ajoutés" : "Votre accord avant toute suite"}</Text>
                 <Text style={s.text}>
-                  Un devis et des conditions validées devront vous être
-                  présentés.
+                  {c.additionsOnly ? 'Cet ajout ne modifie pas le contrat et les paiements existants.' : 'Un devis et des conditions validées devront vous être présentés.'}
                 </Text>
               </View>
             </View>
           </View>
           <Text style={f.small}>
-            Aucun paiement effectué. Aucun financement engagé.
+            {existing ? 'Aucun nouveau paiement ni financement déclenché.' : 'Aucun paiement effectué. Aucun financement engagé.'}
           </Text>
         </View>
       </ServiceLayout>
     );
   return (
     <ServiceLayout
-      title="Nouvelle demande"
+      title={existing ? "Modifier ma demande" : "Nouvelle demande"}
       onBack={onBack}
       scrollRef={scrollRef}
       allowBackGesture={!c.locked}
@@ -117,24 +119,29 @@ export function ServiceRequestForm({
               {c.message || Object.values(c.errors).find(Boolean)}
             </Text>
           )}
-          <ServiceButton
+          {c.alreadyExists || c.mustReload ? (
+            <ServiceButton
+              title={c.mustReload ? "Actualiser mon dossier" : "Voir ma demande"}
+              onPress={() => router.replace((existing ? `/services/${existing.id}` : '/services') as Href)}
+            />
+          ) : <ServiceButton
             title={
               c.step < 2
                 ? "Continuer"
                 : c.uncertain
                   ? "Vérifier mon envoi"
-                  : "Envoyer ma demande"
+                  : existing ? "Enregistrer les modifications" : "Envoyer ma demande"
             }
             busy={c.busy}
             disabled={
-              !active || (!c.uncertain && offering.availability !== "open")
+              !active || (!existing && !c.uncertain && offering.availability !== "open")
             }
             onPress={() => {
               Keyboard.dismiss();
               if (c.step < 2) c.next();
               else void c.submit();
             }}
-          />
+          />}
           <Text style={f.footerNote}>
             {c.uncertain
               ? "Même demande · aucun nouvel envoi distinct"
@@ -164,7 +171,10 @@ export function ServiceRequestForm({
         ))}
       </View>
       <Text style={f.small}>{offering.name}</Text>
-      {offering.availability !== "open" && (
+      {existing && <Text style={s.text}>{c.additionsOnly
+        ? 'Ajoutez un document à ce dossier. Le contrat et les paiements existants restent inchangés. L’équipe étudiera cet ajout séparément.'
+        : 'Votre dossier reste le même. Les modifications seront réétudiées avant tout accord.'}</Text>}
+      {!existing && offering.availability !== "open" && (
         <Text style={s.error}>
           Les nouvelles demandes sont temporairement indisponibles pour ce
           service.

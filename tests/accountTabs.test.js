@@ -278,7 +278,7 @@ test("public search stays unambiguous and separate from the home request actions
   const home = fs.readFileSync(
     path.join(__dirname, "../components/home/HomeTripsSheet.tsx"), "utf8",
   );
-  assert.equal((home.match(/router.push\(getTripRequestCreateHref\(\)\)/g) || []).length, 2);
+  assert.equal((home.match(/router.push\(getTripRequestCreateHref\(\{ entry: 'home' \}\)\)/g) || []).length, 2);
   const layout = fs.readFileSync(
     path.join(__dirname, "../components/ProtectedAppStack.tsx"),
     "utf8",

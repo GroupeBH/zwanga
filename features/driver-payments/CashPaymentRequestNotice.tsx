@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { formatMoney, type DriverPaymentNotice } from './paymentNoticeModel';
 import { useCashReceiptConfirmation } from './useCashReceiptConfirmation';
 
@@ -38,7 +39,7 @@ const styles = StyleSheet.create({
   message: { fontSize: 16, lineHeight: 23, color: Colors.gray[800], textAlign: 'center' },
   hint: { fontSize: 14, lineHeight: 21, color: Colors.gray[600], textAlign: 'center' },
   footnote: { fontSize: 12, lineHeight: 18, color: Colors.gray[600], textAlign: 'center' },
-  primary: { width: '100%', minHeight: 52, padding: 12, borderRadius: 14, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  primary: { width: '100%', minHeight: 52, padding: 12, borderRadius: 14, backgroundColor: ACTION_COLORS.orange, alignItems: 'center', justifyContent: 'center' },
   primaryText: { color: Colors.white, fontSize: 17, fontWeight: '700', textAlign: 'center' },
   secondary: { width: '100%', minHeight: 48, padding: 10, borderRadius: 14, backgroundColor: Colors.gray[100], alignItems: 'center', justifyContent: 'center' },
   secondaryText: { fontSize: 16, color: Colors.gray[800], fontWeight: '600' },

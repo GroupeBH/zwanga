@@ -6,6 +6,7 @@ import type {
   ProCaseRow,
   ProOffering,
   ServiceCode,
+  CurrentDocumentCase,
 } from "@/types/proServices";
 
 export const proServicesApi = baseApi.injectEndpoints({
@@ -27,6 +28,20 @@ export const proServicesApi = baseApi.injectEndpoints({
     getProCase: builder.query<ProCase, string>({
       query: (id) => `/pro-services/mine/${encodeURIComponent(id)}`,
       providesTags: ["ProServices"],
+    }),
+    getCurrentDocumentCase: builder.query<CurrentDocumentCase, void>({
+      query: () => "/pro-services/mine/current-documents",
+      providesTags: ["ProServices"],
+    }),
+    updateDocumentCase: builder.mutation<{ id: string }, {
+      id: string; mutationId: string; expectedUpdatedAt: string;
+      contactConsent: true; application: ProApplication;
+    }>({
+      query: ({ id, ...body }) => ({
+        url: `/pro-services/mine/${encodeURIComponent(id)}`,
+        method: "PATCH", body, timeout: 15000,
+      }),
+      invalidatesTags: ["ProServices"],
     }),
     createProCase: builder.mutation<
       { id: string },
@@ -71,6 +86,8 @@ export const {
   useGetProOfferingsQuery,
   useGetMyProCasesQuery,
   useGetProCaseQuery,
+  useGetCurrentDocumentCaseQuery,
+  useUpdateDocumentCaseMutation,
   useCreateProCaseMutation,
   useAcceptProQuoteMutation,
   useCancelProCaseMutation,

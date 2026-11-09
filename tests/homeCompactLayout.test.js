@@ -114,7 +114,7 @@ test('passenger destination opens the request form directly; proposing stays rea
     }
     button.props.onPress();
   }
-  assert.deepEqual(calls, [{ pathname: '/request-create' }, '/publish']);
+  assert.deepEqual(calls, [{ pathname: '/request-create', params: { entry: 'home' } }, '/publish']);
   assert.match(text(tree), /Un conducteur vient vous chercher/);
   assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Où allez-vous ?').props.accessibilityHint,
     'Ouvrir le formulaire de commande de trajet.');
@@ -140,7 +140,7 @@ test('driver dashboard keeps publishing, passenger travel, clients and revenue w
   assert.doesNotMatch(text(tree), /Indisponible|Hors ligne|En ligne/);
   elements.find(node => node.type === 'HomeDriverEarnings').props.onPress();
   assert.deepEqual(modes, []);
-  assert.deepEqual(calls, ['/publish', 'all', { pathname: '/request-create' }, 'all', '/driver-earnings']);
+  assert.deepEqual(calls, ['/publish', 'all', { pathname: '/request-create', params: { entry: 'home' } }, 'all', '/driver-earnings']);
   const passengerButton = elements.find(node => node.props.accessibilityLabel === 'Commander un trajet');
   assert.ok(flatten(passengerButton.props.style).minHeight >= 44);
   assert.equal(passengerButton.props.accessibilityHint, 'Ouvrir le formulaire de commande de trajet.');
@@ -344,7 +344,7 @@ test('driver orders directly through the request form without changing role; pub
       }
     }
     order.props.onPress();
-    assert.deepEqual(calls, [{ pathname: '/request-create' }]);
+    assert.deepEqual(calls, [{ pathname: '/request-create', params: { entry: 'home' } }]);
   }
 });
 

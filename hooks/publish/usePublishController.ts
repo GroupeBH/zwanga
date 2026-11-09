@@ -223,6 +223,7 @@ export function usePublishController() {
     selectedVehicleId: vehicle.selectedVehicleId,
     isFreeTrip: form.isFreeTrip,
     price: form.price,
+    acceptedPaymentModes: form.acceptedPaymentModes,
   });
 
   const submission = usePublishSubmission({

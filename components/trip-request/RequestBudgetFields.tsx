@@ -10,6 +10,7 @@ import {
   TRIP_PAYMENT_MODE_OPTIONS
 } from '@/features/trip-request/requestFormModel';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
+import { homeRequestStyles as compactStyles } from '@/features/trip-request/homeRequestStyles';
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 import Animated, { FadeIn, FadeOut } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,9 +38,11 @@ type Props = Pick<RequestTripController,
   | 'showAdvanced'
   | 'description'
   | 'setDescription'
->;
+> & { compact?: boolean; section?: 'all' | 'price' | 'options' };
 
 export function RequestBudgetFields({
+  compact = false,
+  section = 'all',
   isPriceLoading,
   vehicleOptions,
   isVehicleOptionsError,
@@ -66,6 +69,7 @@ export function RequestBudgetFields({
   const cannotAddSeat = numberOfSeats >= (seatCapacity ?? Number.MAX_SAFE_INTEGER);
   return (
     <>
+      {section !== 'options' && <>
       {isPriceLoading && vehicleOptions.length === 0 ? (
         <View style={styles.vehicleChoiceLoading}>
           <ActivityIndicator color={Colors.primary} size="small" />
@@ -91,9 +95,9 @@ export function RequestBudgetFields({
         </View>
       ) : null}
 
-      <View style={styles.offerPriceControl}>
+      <View style={[styles.offerPriceControl, compact && compactStyles.priceControl]}>
         <TouchableOpacity
-          style={[styles.offerPriceButton, budgetValue <= MIN_REQUEST_PRICE && styles.offerPriceButtonDisabled]}
+          style={[styles.offerPriceButton, compact && compactStyles.priceButton, budgetValue <= MIN_REQUEST_PRICE && styles.offerPriceButtonDisabled]}
           onPress={() => updateBudget(budgetValue - REQUEST_PRICE_STEP)}
           disabled={budgetValue <= MIN_REQUEST_PRICE}
           accessibilityRole="button" accessibilityLabel="Diminuer le prix par place"
@@ -102,7 +106,7 @@ export function RequestBudgetFields({
           <Ionicons name="remove" size={26} color={budgetValue <= MIN_REQUEST_PRICE ? Colors.gray[400] : Colors.gray[900]} />
         </TouchableOpacity>
         <View style={styles.offerPriceCenter}>
-          <Text style={styles.offerPriceValue}>{budgetLabel}</Text>
+          <Text style={[styles.offerPriceValue, compact && compactStyles.priceValue]}>{budgetLabel}</Text>
           <Text style={styles.offerPriceHint}>
             {budgetHintLabel}
           </Text>
@@ -111,7 +115,7 @@ export function RequestBudgetFields({
           </Text>
         </View>
         <TouchableOpacity
-          style={styles.offerPriceButton}
+          style={[styles.offerPriceButton, compact && compactStyles.priceButton]}
           onPress={() => updateBudget(budgetValue + REQUEST_PRICE_STEP)}
           accessibilityRole="button" accessibilityLabel="Augmenter le prix par place"
           activeOpacity={0.78}
@@ -120,7 +124,9 @@ export function RequestBudgetFields({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.offerOptionsRow}>
+      </>}
+      {section !== 'price' && <>
+      <View style={[styles.offerOptionsRow, compact && compactStyles.seatControl]}>
         <View style={styles.offerOptionCopy}>
           <View style={styles.offerOptionIcon}>
             <Ionicons name="people" size={17} color={Colors.primary} />
@@ -176,6 +182,7 @@ export function RequestBudgetFields({
 
       <View style={styles.offerPaymentBlock}>
         <Text style={styles.offerSectionLabel}>Mode de paiement</Text>
+        <View style={compact ? compactStyles.paymentRow : styles.offerPaymentBlock}>
         {TRIP_PAYMENT_MODE_OPTIONS.map((option) => {
           const selected = requestPaymentMode === option.id;
           return (
@@ -183,6 +190,7 @@ export function RequestBudgetFields({
               key={option.id}
               style={[
                 styles.offerPaymentOption,
+                compact && compactStyles.paymentChoice,
                 selected && styles.offerPaymentOptionSelected,
               ]}
               onPress={() => setRequestPaymentMode(option.id)}
@@ -206,15 +214,16 @@ export function RequestBudgetFields({
             </TouchableOpacity>
           );
         })}
+        </View>
       </View>
 
-      <TouchableOpacity style={styles.offerNoteToggle} onPress={() => setShowAdvanced((value) => !value)}
+      {!compact && <TouchableOpacity style={styles.offerNoteToggle} onPress={() => setShowAdvanced((value) => !value)}
         accessibilityRole="button" accessibilityState={{ expanded: showAdvanced }}>
         <Text style={styles.offerNoteToggleText}>{showAdvanced ? 'Masquer la note' : 'Ajouter une note'}</Text>
         <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[500]} />
-      </TouchableOpacity>
+      </TouchableOpacity>}
 
-      {showAdvanced && (
+      {showAdvanced && !compact && (
         <Animated.View entering={FadeIn} exiting={FadeOut} style={styles.offerNotePanel}>
           <TextInput
             style={styles.textArea}
@@ -226,6 +235,7 @@ export function RequestBudgetFields({
           />
         </Animated.View>
       )}
+      </>}
     </>
   );
 }

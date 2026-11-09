@@ -8,7 +8,7 @@ import {
 } from "@/features/pro-services/ServiceLayout";
 import { ServiceRequestForm } from "@/features/pro-services/ServiceRequestForm";
 import { proError } from "@/features/pro-services/model";
-import { useGetProOfferingsQuery } from "@/store/api/proServicesApi";
+import { useGetProOfferingsQuery, useGetCurrentDocumentCaseQuery } from "@/store/api/proServicesApi";
 import { useAppSelector } from "@/store/hooks";
 import { selectUser } from "@/store/selectors";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
@@ -18,7 +18,21 @@ export default function NewServiceScreen() {
   const user = useAppSelector(selectUser);
   const active = useScreenIsActive();
   const catalogue = useGetProOfferingsQuery(undefined, { skip: !active });
+  const current = useGetCurrentDocumentCaseQuery(undefined, { skip: !active || service !== 'documents', refetchOnMountOrArgChange: true });
   const offering = catalogue.data?.find((item) => item.code === service);
+  if (service === 'documents' && (current.isFetching || !current.currentData || current.isError || current.currentData.request)) {
+    const request = current.currentData?.request;
+    return <ServiceLayout title="Ma demande de documents">
+      {current.isFetching ? <ActivityIndicator /> : current.isError || !current.currentData ? <>
+        <Text style={s.error}>Impossible de vérifier votre demande existante. Réessayez.</Text>
+        <ServiceButton title="Réessayer" disabled={!active} onPress={() => current.refetch()} />
+      </> : request && <>
+        <Text style={s.text}>{request.canEdit ? 'Vous avez déjà une demande. Modifiez-la au lieu d’en créer une autre.' : 'Votre demande est déjà engagée. Consultez son suivi ou contactez l’assistance.'}</Text>
+        <ServiceButton title={request.canEdit ? 'Modifier ma demande' : 'Voir ma demande'}
+          onPress={() => router.replace((request.canEdit ? `/services/edit?id=${request.id}` : `/services/${request.id}`) as Href)} />
+      </>}
+    </ServiceLayout>;
+  }
   if (offering)
     return (
       <ServiceRequestForm

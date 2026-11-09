@@ -191,7 +191,7 @@ export function usePublishSubmission({
     let shared = { departureAddress, arrivalAddress };
 
     try {
-      if (acceptedPaymentModes?.length === 0) {
+      if (!isFreeTrip && acceptedPaymentModes?.length === 0) {
         showDialog({ variant: 'warning', title: 'Paiement requis', message: 'Choisissez au moins un mode de paiement disponible.' });
         return;
       }
@@ -220,7 +220,9 @@ export function usePublishSubmission({
 
       if (isRecurringTrip) {
         await createRecurringTrip({
-          acceptedPaymentModes,
+          // No payment is collected for a free trip; omit the irrelevant selector,
+          // not an empty array rejected by the API's ArrayMinSize(1) validation.
+          acceptedPaymentModes: isFreeTrip ? undefined : acceptedPaymentModes,
           departureLocation: shared.departureAddress,
           departureReference: departureReference.trim() || undefined,
           departureCoordinates,
@@ -247,7 +249,7 @@ export function usePublishSubmission({
         });
       } else {
         await createTrip({
-          acceptedPaymentModes,
+          acceptedPaymentModes: isFreeTrip ? undefined : acceptedPaymentModes,
           departureLocation: shared.departureAddress,
           departureReference: departureReference.trim() || undefined,
           departureCoordinates,

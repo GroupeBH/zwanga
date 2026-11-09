@@ -46,6 +46,9 @@ export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {
         </TouchableOpacity>;
       })}
     </View>
+    {value.length === 0 && <Text style={s.required} accessibilityRole="alert" accessibilityLiveRegion="polite">
+      Choisissez Électronique ou Jetons pour continuer, ou rechargez pour accepter le cash.
+    </Text>}
     {!cashAvailable && <View>
       <Text style={s.copy} accessibilityLiveRegion="polite">
         {isFetching ? 'Vérification du cash…' : !readsEnabled || isError || !finance
@@ -102,6 +105,7 @@ const s = StyleSheet.create({
   label: { fontSize: 13, textAlign: 'center', fontWeight: '600', color: Colors.gray[800] },
   selectedText: { color: Colors.primaryDark },
   copy: { fontSize: 12, lineHeight: 18, color: Colors.gray[600] },
+  required: { fontSize: 13, lineHeight: 19, color: Colors.danger, fontWeight: '600' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   action: { minHeight: 44, justifyContent: 'center' },
   link: { color: Colors.primaryDark, fontWeight: '600', fontSize: 13 },

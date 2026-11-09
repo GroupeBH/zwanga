@@ -29,7 +29,7 @@ test('one payment modal keeps the same content component from selection through 
   let announcement;
   const done = () => {};
   const { PassengerArrivalPaymentCoordinator } = loader({ ...mocks, react: { ...React, ...hooks.react },
-    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { announcement = { message, visible }; } },
+    '@/components/PaymentModalAnnouncement': { PaymentModalAnnouncement: 'Announcement' },
     '@/hooks/arrival-payment/usePassengerCashDeclaration': { usePassengerCashDeclaration: () => ({ declare: noop, busy: false }) },
     'expo-web-browser': { maybeCompleteAuthSession: noop }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     '@/store/hooks': { useAppSelector: fn => fn() }, '@/store/selectors': { selectUser: () => ({ id: 'passenger' }), selectIsAuthenticated: () => true },
@@ -50,7 +50,12 @@ test('one payment modal keeps the same content component from selection through 
     '@/store/slices/tripsSlice': { openInterruptionChoice: noop },
   })('components/PassengerArrivalPaymentCoordinator.tsx');
   const session = PassengerArrivalPaymentCoordinator();
-  const render = () => hooks.render(() => session.type());
+  const render = () => {
+    const tree = hooks.render(() => session.type());
+    const voice = all(tree).find(node => node.type === 'Announcement');
+    announcement = { message: voice.props.message, visible: voice.props.enabled };
+    return tree;
+  };
   const find = (tree, type) => all(tree).find(node => node.type === type);
   let tree = render(); assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
   assert.equal(announcement.visible, true); assert.match(announcement.message.text, /montant à régler/);

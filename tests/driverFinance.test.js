@@ -35,10 +35,10 @@ test('arrival choices obey server availability without selecting a different pay
   const render = () => hooks.render(() => ArrivalPaymentFields({ arrivalBooking: { id: 'booking', paymentMode: 'points' },
     paymentAmount: 10000, paymentCurrency: 'CDF', selectedMode: 'points', setSelectedMode: x => selected.push(x), setPaymentError() {}, setStatusMessage() {} }));
   const cards = () => nodes(render()).filter(n => n.props?.accessibilityRole === 'radio');
-  let cash = cards().find(n => n.props.accessibilityLabel === 'Espèces');
+  let cash = cards().find(n => n.props.accessibilityLabel === 'Cash');
   assert.equal(cash.props.disabled, true); cash.props.onPress(); assert.deepEqual(selected, []);
   assert.equal(cards().length, 2);
-  available = ['points','cash']; cash = cards().find(n => n.props.accessibilityLabel === 'Espèces');
+  available = ['points','cash']; cash = cards().find(n => n.props.accessibilityLabel === 'Cash');
   cash.props.onPress(); assert.deepEqual(selected, ['cash']); hooks.unmount();
 });
 

@@ -12,7 +12,7 @@ function navigationFixture(overrides = {}) {
     hasDepartureAddress: true, hasArrivalAddress: true, setAddressSectionStep: value => calls.push(value),
     showDialog: value => dialogs.push(value), isPublishIdentityVerified: true, openKycModal: () => calls.push('identity'),
     departureDateTime: new Date(2030, 4, 12, 17, 30), isRecurringTrip: false, recurringWeekdays: [1],
-    recurringEndDate: null, selectedVehicleId: 'car', isFreeTrip: false, price: '2000', ...overrides };
+    recurringEndDate: null, selectedVehicleId: 'car', isFreeTrip: false, price: '2000', acceptedPaymentModes: ['points'], ...overrides };
   const hook = loader(base)('hooks/publish/usePublishStepNavigation.ts').usePublishStepNavigation;
   return { calls, dialogs, props, next: () => hook(props).handleNextStep() };
 }
@@ -66,6 +66,22 @@ function controllerFixture() {
   });
   return { state, calls, captured, render: () => hooks.render(load('hooks/publish/usePublishController.ts').usePublishController) };
 }
+
+test('empty payment selection blocks pricing immediately, but never blocks a free trip', () => {
+  const f = navigationFixture({ step: 'pricing', acceptedPaymentModes: [] });
+  f.next(); assert.deepEqual(f.calls, []); assert.equal(f.dialogs[0].title, 'Choisissez un paiement');
+  f.props.isFreeTrip = true; f.next(); assert.deepEqual(f.calls, ['confirm']);
+  f.calls.length = 0; f.props.isFreeTrip = false; f.props.acceptedPaymentModes = ['points'];
+  f.next(); assert.deepEqual(f.calls, ['confirm']);
+});
+
+test('real controller passes the current payment selection to step validation', () => {
+  const f = controllerFixture();
+  f.render().handleFooterPrimary(); assert.equal(f.render().step, 'pricing');
+  f.state.form.acceptedPaymentModes = [];
+  f.render().handleFooterPrimary(); assert.equal(f.render().step, 'pricing');
+  assert.deepEqual(f.calls, ['Choisissez un paiement']);
+});
 test('main footer opens the time picker on step one, then progresses in exactly three stages', () => {
   const f = controllerFixture(); f.state.form.hasChosenDepartureTime = false;
   let m = f.render(); assert.equal(m.footerPrimaryLabel, 'Choisir l’heure');

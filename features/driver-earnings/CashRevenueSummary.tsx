@@ -15,7 +15,7 @@ export function CashRevenueSummary({ amount, currency }: Props) {
       </Text></View>
       <Text style={styles.rowMeta}>
         {hasTotal
-          ? 'Déjà reçues et confirmées · Non retirable'
+          ? 'Déjà reçu et confirmé · Non retirable'
           : 'Total indisponible · Hors solde retirable'}
       </Text>
     </View>

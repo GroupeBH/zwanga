@@ -124,6 +124,7 @@ test('vehicle submission locking and Android back dismissal are preserved', () =
 
 for (const [file, footers] of [
   ['app/request/index.tsx', ['styles.footer', 'styles.offerStickyFooter']],
+  ['components/trip-request/HomeRequestScreen.tsx', ['s.footer']],
   ['app/publish.tsx', ['styles.fixedBottomBar']],
 ]) {
   test(`${file}: action footers are inside the safe screen and keyboard-avoiding area`, () => {

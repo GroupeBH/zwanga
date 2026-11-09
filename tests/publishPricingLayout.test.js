@@ -38,7 +38,7 @@ test('compact payment choices keep the commission visible and reveal full terms 
   assert.doesNotMatch(words(tree), /sans débiter|revérifiée/);
   const boxes = nodes(tree).filter(n => n.props.accessibilityRole === 'checkbox');
   assert.equal(boxes.length, 3);
-  assert.deepEqual(boxes.map(n => n.props.accessibilityLabel), ['Paiement électronique', 'Jetons Zwanga', 'Espèces (cash)']);
+  assert.deepEqual(boxes.map(n => n.props.accessibilityLabel), ['Paiement électronique', 'Jetons Zwanga', 'Cash']);
   const disclosure = nodes(tree).find(n => n.props.accessibilityState?.expanded === false);
   assert.ok(disclosure.props.style.minHeight >= 44);
   disclosure.props.onPress(); tree = f.render();
@@ -64,7 +64,7 @@ test('cash failure, loading and insufficient reserve are distinct; wallet and re
 
 test('cash selection still uses the entered price and can be removed if eligibility changes', () => {
   const f = paymentFixture();
-  const cash = () => nodes(f.render()).find(n => n.props.accessibilityLabel === 'Espèces (cash)');
+  const cash = () => nodes(f.render()).find(n => n.props.accessibilityLabel === 'Cash');
   assert.equal(cash().props.disabled, false);
   f.props.price = 20000; assert.equal(cash().props.disabled, true);
   f.props.price = 10000; cash().props.onPress();

@@ -15,6 +15,7 @@ import { proError } from "@/features/pro-services/model";
 import {
   useGetMyProCasesQuery,
   useGetProOfferingsQuery,
+  useGetCurrentDocumentCaseQuery,
 } from "@/store/api/proServicesApi";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
 
@@ -36,6 +37,7 @@ export default function ServicesScreen({
     refetchOnMountOrArgChange: 30,
   });
   const offerings = catalogue.data ?? [];
+  const currentDocuments = useGetCurrentDocumentCaseQuery(undefined, { skip: !active, refetchOnMountOrArgChange: true });
   return (
     <ServiceLayout
       title="Services pro"
@@ -66,7 +68,9 @@ export default function ServicesScreen({
       {offerings
         .filter((item) => item.availability === "open")
         .map((item) => (
-          <OpenService key={item.code} item={item} />
+          <OpenService key={item.code} item={item}
+            current={item.code === 'documents' ? currentDocuments.currentData?.request : undefined}
+            checking={item.code === 'documents' && currentDocuments.isFetching} />
         ))}
       {!catalogue.isLoading &&
         !catalogue.isError &&

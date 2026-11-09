@@ -14,20 +14,23 @@ function text(node) {
 }
 function environment() {
   const hooks = hookHarness(), routes = [], queries = [];
-  const state = { active: true, online: true, favorites: [], recent: [] };
+  const state = { active: true, online: true, favorites: [], recent: [], version: 0 };
   const load = loader({ react: { ...React, ...hooks.react },
     'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', StyleSheet: { create: value => value } },
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-router': { useRouter: () => ({ push: route => routes.push(route) }) },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: active => active && state.online },
+    '@/components/LocationPickerModal': { __esModule: true, default: 'Picker' },
+    '@/services/tokenSession': { getTokenSessionVersion: () => state.version },
     '@/store/api/userApi': { useGetFavoriteLocationsQuery: (_, options) => { queries.push(options); return { data: state.favorites }; } },
   });
   const { HomeDestinationShortcuts } = load('components/home/HomeDestinationShortcuts.tsx');
   const draw = () => hooks.render(() => HomeDestinationShortcuts.type({ active: state.active, recentDestinations: state.recent }));
   const press = label => nodes(draw()).find(node => node.props.accessibilityLabel === label).props.onPress();
-  return { state, routes, queries, draw, press, hooks };
+  const picker = () => nodes(draw()).find(node => node.type === 'Picker').props;
+  return { state, routes, queries, draw, press, hooks, picker };
 }
 
-test('Maison and Travail open address management if unset, otherwise prefill a search with valid coordinates', () => {
+test('Maison centers the map on the default favorite; confirmation alone prefills the destination', () => {
   const app = environment();
   app.press('Maison'); assert.deepEqual(app.routes.pop(), '/favorite-locations');
   app.state.favorites = [
@@ -35,22 +38,49 @@ test('Maison and Travail open address management if unset, otherwise prefill a s
     { type: 'home', name: 'Home test', isDefault: true, coordinates: { latitude: -4.3, longitude: 15.2 } },
     { type: 'work', name: 'Work test', coordinates: { latitude: NaN, longitude: 999 } },
   ];
-  app.press('Maison'); assert.deepEqual(app.routes.pop(), { pathname: '/search', params: {
-    arrival: 'Home test', mode: 'map', arrivalLat: '-4.3', arrivalLng: '15.2', arrivalRadiusKm: '5',
+  app.press('Maison');
+  assert.deepEqual(app.picker().initialLocation, { title: 'Home test', address: 'Home test', latitude: -4.3, longitude: 15.2 });
+  assert.equal(app.picker().autoLocateOnOpen, false);
+  assert.equal(app.picker().confirmLabel, 'Confirmer cette destination');
+  assert.equal(app.routes.length, 0);
+  const adjusted = { title: 'Point ajusté', address: 'Rue de test', latitude: -4.31, longitude: 15.21 };
+  const picker = app.picker(); picker.onSelect(adjusted); picker.onSelect({ ...adjusted, latitude: -4.4 });
+  assert.equal(app.routes.length, 0, 'wait for native/modal dismissal before navigating');
+  app.picker().onDismiss(); app.picker().onDismiss();
+  assert.deepEqual(app.routes.pop(), { pathname: '/request-create', params: {
+    entry: 'home',
+    arrival: 'Point ajusté', arrivalAddress: 'Rue de test', arrivalLat: '-4.31', arrivalLng: '15.21',
   } });
-  app.press('Travail'); assert.deepEqual(app.routes.pop(), { pathname: '/search', params: { arrival: 'Work test' } });
+  app.press('Travail');
+  assert.equal(app.picker().initialLocation, null);
+  assert.equal(app.picker().initialSearchQuery, 'Work test');
+  app.picker().onClose(); app.picker().onDismiss();
+  assert.equal(app.routes.length, 0, 'cancel or invalid coordinates never invent a destination');
   app.hooks.unmount();
 });
 
-test('recent destinations expand inline, offer an empty state and navigate without mutating a booking', () => {
+test('recents without coordinates open location search, not a fake map point or booking mutation', () => {
   const app = environment();
   assert.doesNotMatch(text(app.draw()), /prochaines destinations/);
   app.press('Destinations récentes'); assert.match(text(app.draw()), /prochaines destinations/);
   app.state.recent = [{ name: 'Recent test', lat: 0, lng: 0, hasCoordinates: false }];
   const row = nodes(app.draw()).find(node => node.type === 'Button' && text(node) === 'Recent test');
   row.props.onPress();
-  assert.deepEqual(app.routes, [{ pathname: '/search', params: { arrival: 'Recent test' } }]);
+  assert.deepEqual(app.routes, []);
+  assert.equal(app.picker().initialLocation, null);
+  assert.equal(app.picker().initialSearchQuery, 'Recent test');
   assert.equal(nodes(app.draw()).find(node => node.props.accessibilityLabel === 'Destinations récentes').props.accessibilityState.expanded, false);
+  app.hooks.unmount();
+});
+
+for (const interruption of ['blur', 'account']) test(`pending shortcut confirmation is discarded on ${interruption}`, () => {
+  const app = environment();
+  app.state.favorites = [{ type: 'home', name: 'Home', coordinates: { latitude: -4.3, longitude: 15.2 } }];
+  app.press('Maison'); const picker = app.picker(); picker.onSelect(picker.initialLocation);
+  if (interruption === 'blur') app.state.active = false;
+  else app.state.version++;
+  app.picker().onDismiss();
+  assert.deepEqual(app.routes, []);
   app.hooks.unmount();
 });
 

@@ -48,6 +48,22 @@ test('document choices expose accessible multi-selection and toggle only the cho
   assert.deepEqual(changes, [['documents', []]]);
 });
 
+test('an existing document dossier replaces the create button, including a completed dossier', () => {
+  const routes = [];
+  const { OpenService } = loader({
+    'react-native': nativeUI(), '@expo/vector-icons': { Ionicons: 'Icon' },
+    'expo-router': { router: { push: value => routes.push(value) } },
+    './ServiceLayout': { ServiceButton: 'ServiceButton', s: {} },
+  })('features/pro-services/ServiceCatalogue.tsx');
+  for (const status of ['submitted', 'completed', 'rejected', 'cancelled']) {
+    const tree = nodes(OpenService({ item: offering, current: { id: 'existing', status, canEdit: true } }));
+    const button = tree.find(node => node.type === 'ServiceButton');
+    assert.equal(button.props.title, 'Modifier ma demande');
+    button.props.onPress();
+    assert.equal(routes.at(-1), '/services/edit?id=existing');
+  }
+});
+
 test('review keeps details visible and disables edit and consent after an uncertain send', () => {
   const { ServiceFormReview } = loader({
     'react-native': nativeUI(), '@expo/vector-icons': { Ionicons: 'Icon' },

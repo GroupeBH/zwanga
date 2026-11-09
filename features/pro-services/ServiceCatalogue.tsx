@@ -7,6 +7,7 @@ import type {
   ProOffering,
   ServiceCode,
   ServiceStatus,
+  CurrentDocumentCase,
 } from "@/types/proServices";
 import { serviceNames, statusNames } from "./model";
 import { ServiceButton, s } from "./ServiceLayout";
@@ -18,7 +19,7 @@ const icons: Record<ServiceCode, keyof typeof Ionicons.glyphMap> = {
   fleet: "bus-outline",
 };
 
-export function OpenService({ item }: { item: ProOffering }) {
+export function OpenService({ item, current, checking = false }: { item: ProOffering; current?: CurrentDocumentCase['request']; checking?: boolean }) {
   return (
     <View style={c.offering}>
       <View style={s.row}>
@@ -26,15 +27,16 @@ export function OpenService({ item }: { item: ProOffering }) {
           <Ionicons name={icons[item.code]} size={24} color="#C34412" />
         </View>
         <View style={s.flex}>
-          <Text style={c.availability}>DEMANDES OUVERTES</Text>
+          <Text style={c.availability}>{current ? 'DEMANDE EN COURS' : 'DEMANDES OUVERTES'}</Text>
           <Text style={c.title}>{item.name}</Text>
         </View>
       </View>
       <Text style={s.text}>{item.description}</Text>
       <ServiceButton
-        title="Faire une demande"
+        title={current ? current.canEdit ? 'Modifier ma demande' : 'Voir ma demande' : 'Faire une demande'}
+        disabled={checking}
         onPress={() =>
-          router.push({
+          current ? router.push((current.canEdit ? `/services/edit?id=${current.id}` : `/services/${current.id}`) as any) : router.push({
             pathname: "/services/new",
             params: { service: item.code },
           } as any)

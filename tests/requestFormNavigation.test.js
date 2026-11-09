@@ -41,6 +41,7 @@ function fixture(t) {
     '@/utils/reanimated': { default: { View: 'Animated' }, FadeIn: {} },
     '@/components/LocationPickerModal': { default: 'LocationPicker' },
     '@/components/forms/FormLayout': { FormScreen: 'Form' },
+    '@/components/trip-request/HomeRequestScreen': { HomeRequestScreen: 'HomeRequestScreen' },
     '@/hooks/trip-request/useRequestTripController': { useRequestTripController: () => {
       latestDraft = load('hooks/trip-request/useRequestDraft.ts').useRequestDraft();
       return { ...latestDraft, ...form };
@@ -59,6 +60,16 @@ function fixture(t) {
 }
 const previousLabel = 'Étape précédente : départ et arrivée';
 const headerLabel = 'Revenir à la première étape : départ et arrivée';
+
+test('Home delegates back to its inline workspace without installing a second Android listener', t => {
+  const f = fixture(t); Object.assign(f.form, { isHomeEntry: true, requestFormStep: 'details' });
+  const home = nodes(f.render()).find(n => n.type === 'HomeRequestScreen');
+  assert.ok(home);
+  assert.equal(f.listeners.size, 0);
+  home.props.navigation.returnToRoute(); assert.equal(f.form.requestFormStep, 'details');
+  home.props.navigation.handleBack();
+  assert.deepEqual(f.calls, ['exit']); assert.equal(f.form.requestFormStep, 'details');
+});
 
 test('previous step preserves the real Redux draft, resets scroll and leaves submission untouched', t => {
   const f = fixture(t); let tree = f.render();

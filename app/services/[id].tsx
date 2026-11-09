@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import {
@@ -18,6 +18,7 @@ import {
   useGetProCaseQuery,
   useAcceptProQuoteMutation,
   useCancelProCaseMutation,
+  useGetProOfferingsQuery,
 } from "@/store/api/proServicesApi";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
 
@@ -28,6 +29,7 @@ export default function ServiceCaseScreen() {
     skip: !id || !active,
     refetchOnMountOrArgChange: 30,
   });
+  const catalogue = useGetProOfferingsQuery(undefined, { skip: !active });
   const [accept, accepting] = useAcceptProQuoteMutation();
   const [cancel, cancelling] = useCancelProCaseMutation();
   const [consent, setConsent] = useState(false);
@@ -73,6 +75,9 @@ export default function ServiceCaseScreen() {
           <Text style={s.eyebrow}>{statusNames[item.status]}</Text>
           <Text style={s.title}>{serviceNames[item.serviceCode]}</Text>
           <Text style={s.text}>Référence : {item.id}</Text>
+          {item.canEdit && <ServiceButton title="Modifier ma demande" secondary
+            disabled={busy || !active || result.isFetching}
+            onPress={() => router.push(`/services/edit?id=${item.id}` as Href)} />}
           {!!item.customerMessage && (
             <View style={s.notice}>
               <Text style={s.label}>Message de l’équipe</Text>
@@ -84,6 +89,9 @@ export default function ServiceCaseScreen() {
             <Text style={s.text}>
               {item.application.fullName} · {item.application.phone}
             </Text>
+            {item.application.documents.map(code => <Text key={code} style={s.text}>
+              {catalogue.data?.find(service => service.code === item.serviceCode)?.documentOptions.find(doc => doc.code === code)?.label ?? code}
+            </Text>)}
             {!!item.application.vehicleDescription && (
               <Text style={s.text}>
                 {item.application.vehicleDescription} {item.application.plate}
@@ -97,6 +105,7 @@ export default function ServiceCaseScreen() {
             <>
               <View style={s.section}>
                 <Text style={s.heading}>Devis · version {quote.version}</Text>
+                {!item.acceptedAt && item.status !== 'quoted' && <Text style={s.error}>Ancien devis : une nouvelle proposition est nécessaire après modification du dossier.</Text>}
                 <Text style={s.text}>{quote.description}</Text>
                 <Text style={s.text}>Prestataire : {quote.providerName}</Text>
                 <Text style={s.label}>

@@ -74,7 +74,8 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
       </Pressable><Text style={s.heading}>Votre commande</Text>
       <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{priceOffers.length ? 'Nouveau prix' : phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
     </View>
-    <RequestSearchMap requestId={request.id} active={active} departure={departure} position={position} vehicles={vehicles} onSelectVehicle={selectVehicle} />
+    <RequestSearchMap requestId={request.id} active={active} searching={phase === 'searching' && !readFailed}
+      departure={departure} position={position} vehicles={vehicles} onSelectVehicle={selectVehicle} />
     <View style={[s.panel, (expanded || priceOffers.length > 0) && s.expandedPanel]} testID="request-search-panel">
       <ScrollView ref={contentScroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <PassengerPriceOffers key={request.id} request={request} enabled={readsEnabled && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />

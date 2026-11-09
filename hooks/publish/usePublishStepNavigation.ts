@@ -2,6 +2,7 @@ import type { AddressSectionStep } from '@/components/AddressSectionSlider';
 import { PublishStep, PUBLISH_STEP_ORDER } from '../../features/publish/publishModel';
 import { useDialog } from '@/components/ui/DialogProvider';
 import React, { startTransition } from 'react';
+import type { TripPaymentMode } from '@/types';
 
 interface Params {
   stepNumber: number;
@@ -20,6 +21,7 @@ interface Params {
   selectedVehicleId: string | null;
   isFreeTrip: boolean;
   price: string;
+  acceptedPaymentModes: TripPaymentMode[];
 }
 
 export function usePublishStepNavigation({
@@ -39,6 +41,7 @@ export function usePublishStepNavigation({
   selectedVehicleId,
   isFreeTrip,
   price,
+  acceptedPaymentModes,
 }: Params) {
   const getStepNumber = () => {
     return stepNumber;
@@ -118,6 +121,11 @@ export function usePublishStepNavigation({
           title: 'Informations manquantes',
           message: 'Merci de renseigner le prix ou de sélectionner Gratuit.',
         });
+        return;
+      }
+      if (!isFreeTrip && acceptedPaymentModes?.length === 0) {
+        showDialog({ variant: 'warning', title: 'Choisissez un paiement',
+          message: 'Activez Électronique ou Jetons, ou rechargez vos jetons pour accepter le cash.' });
         return;
       }
       goToStep('confirm');

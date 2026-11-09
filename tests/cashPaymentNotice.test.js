@@ -68,6 +68,9 @@ test('cash modal offers exactly one explicit receipt action and a not-yet exit, 
     onConfirmed: () => confirmed++, onClose: () => closed++ }));
   const buttons = all(tree).filter(n => n.type === 'Button');
   assert.equal(buttons.length, 2); assert.equal(submitted, 0);
+  const buttonStyle = Object.assign({}, ...buttons[0].props.style.filter(Boolean));
+  const label = all(buttons[0]).find(n => n.type === 'Text');
+  assert.ok(require('./helpers/contrast.cjs').contrast(buttonStyle.backgroundColor, label.props.style.color) >= 4.5);
   buttons[1].props.onPress(); assert.equal(closed, 1); assert.equal(submitted, 0);
   await buttons[0].props.onPress(); assert.equal(confirmed, 1); assert.equal(submitted, 1);
   hooks.unmount();

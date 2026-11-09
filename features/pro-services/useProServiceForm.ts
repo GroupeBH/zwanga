@@ -1,10 +1,11 @@
 import { randomUUID } from "expo-crypto";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCreateProCaseMutation } from "@/store/api/proServicesApi";
+import { useCreateProCaseMutation, useUpdateDocumentCaseMutation } from "@/store/api/proServicesApi";
 import type {
   ProApplication,
   ProOffering,
   ServiceCode,
+  ProCase,
 } from "@/types/proServices";
 import { proError } from "./model";
 import {
@@ -24,8 +25,9 @@ type Submission = {
 export function useProServiceForm(
   offering: ProOffering,
   initial: { fullName: string; phone: string },
+  existing?: Pick<ProCase, 'id' | 'application' | 'updatedAt' | 'editMode'>,
 ) {
-  const [form, setForm] = useState<ProApplication>(() => ({
+  const [form, setForm] = useState<ProApplication>(() => existing ? applicationSnapshot(existing.application) : ({
     ...initial,
     vehicleDescription: "",
     plate: "",
@@ -38,7 +40,10 @@ export function useProServiceForm(
   const [message, setMessage] = useState("");
   const [sent, setSent] = useState<string>();
   const [uncertain, setUncertain] = useState(false);
+  const [mustReload, setMustReload] = useState(false);
+  const [alreadyExists, setAlreadyExists] = useState(false);
   const [create, mutation] = useCreateProCaseMutation();
+  const [update, updating] = useUpdateDocumentCaseMutation();
   const pending = useRef<Submission | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -48,12 +53,16 @@ export function useProServiceForm(
       mounted.current = false;
     };
   }, []);
-  const locked = mutation.isLoading || uncertain || !!sent;
+  const busy = mutation.isLoading || updating.isLoading;
+  const additionsOnly = existing?.editMode === 'add_documents';
+  const fixedDocuments = additionsOnly ? existing.application.documents : [];
+  const locked = busy || uncertain || !!sent || mustReload || alreadyExists;
   const change = <K extends keyof ProApplication>(
     key: K,
     value: ProApplication[K],
   ) => {
     if (locked || inFlight.current) return;
+    if (additionsOnly && (key !== 'documents' || fixedDocuments.some(code => !(value as string[]).includes(code)))) return;
     setForm((previous) => ({ ...previous, [key]: value }));
     setErrors((previous) => ({ ...previous, [key]: undefined }));
     setMessage("");
@@ -81,16 +90,18 @@ export function useProServiceForm(
     setErrors((previous) => ({ ...previous, consent: undefined }));
   };
   const submit = async () => {
-    if (inFlight.current || mutation.isLoading || sent || step !== 2) return;
+    if (inFlight.current || busy || sent || mustReload || alreadyExists || step !== 2) return;
     // An uncertain attempt must replay the exact payload/key, even if the catalogue changed.
     if (!pending.current) {
-      if (offering.availability !== "open") {
+      if (!existing && offering.availability !== "open") {
         setMessage(
           "Les nouvelles demandes sont temporairement indisponibles pour ce service.",
         );
         return;
       }
       const invalid = validateProStep(form, offering, 2, consent);
+      if (additionsOnly && !form.documents.some(code => !fixedDocuments.includes(code)))
+        invalid.documents = 'Choisissez un nouveau document à ajouter.';
       setErrors(invalid);
       if (Object.keys(invalid).length) {
         if (invalid.documents || invalid.description) setStep(0);
@@ -107,13 +118,20 @@ export function useProServiceForm(
         contactConsent: true,
         application: applicationSnapshot(form),
       };
-      const response = await create(pending.current).unwrap();
+      const response = existing
+        ? await update({ id: existing.id, expectedUpdatedAt: existing.updatedAt,
+            mutationId: pending.current.submissionKey, contactConsent: true,
+            application: pending.current.application }).unwrap()
+        : await create(pending.current).unwrap();
       if (!mounted.current) return;
       setSent(response.id);
       setUncertain(false);
     } catch (error) {
       if (!mounted.current) return;
       const status = (error as { status?: number | string })?.status;
+      const code = (error as { data?: { code?: string } })?.data?.code;
+      if (code === 'DOCUMENT_REQUEST_ALREADY_EXISTS') setAlreadyExists(true);
+      if (code === 'DOCUMENT_REQUEST_CHANGED' || code === 'DOCUMENT_REQUEST_NOT_EDITABLE') setMustReload(true);
       const definitive =
         !uncertain &&
         typeof status === "number" &&
@@ -135,8 +153,12 @@ export function useProServiceForm(
     message,
     sent,
     uncertain,
+    mustReload,
+    alreadyExists,
+    additionsOnly,
+    fixedDocuments,
     locked,
-    busy: mutation.isLoading,
+    busy,
     change,
     goTo,
     next,

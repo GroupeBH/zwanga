@@ -119,10 +119,15 @@ test('receipt modal works without recent trips, queues payments, dismisses once 
     '@/store/selectors': { selectUser: () => user, selectIsAuthenticated: () => true },
     '@/store/hooks': { useAppSelector: fn => fn() },
     '@/store/api/tripApi': { useGetMyActivityTripsQuery: (_arg, options) => { tripQuerySkipped = options.skip; return { data: [] }; } },
-    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { spoken = { message, visible }; } },
+    '@/components/PaymentModalAnnouncement': { PaymentModalAnnouncement: 'Announcement' },
     '@/hooks/notifications/useDriverPaymentInbox': { useDriverPaymentInbox: (_user, _enabled, dismissed) => { seen = dismissed; return { notices: user.id === 'driver-1' ? notices : [], legacy: false }; } },
   })('components/DriverPaymentNoticeCoordinator.tsx').DriverPaymentNoticeCoordinator;
-  const render = () => hooks.render(Component);
+  const render = () => {
+    const tree = hooks.render(Component);
+    const voice = tree.props.children.props.children[0];
+    spoken = { message: voice.props.message, visible: voice.props.enabled };
+    return tree;
+  };
   render(); await tick(); render(); let tree = render();
   assert.equal(tripQuerySkipped, true); assert.equal(tree.props.visible, true);
   assert.match(spoken.message.text, /800 francs congolais/); assert.equal(seen[notices[0].key], undefined);

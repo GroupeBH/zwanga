@@ -32,7 +32,7 @@ import { selectIsAuthenticated, selectUser } from '@/store/selectors';
 import { PendingPaymentReminder } from '@/features/arrival-payment/PendingPaymentReminder';
 import { Spacing } from '@/constants/styles';
 import { openInterruptionChoice } from '@/store/slices/tripsSlice';
-import { usePaymentAnnouncement } from '@/hooks/notifications/usePaymentAnnouncement';
+import { PaymentModalAnnouncement } from '@/components/PaymentModalAnnouncement';
 import { passengerPaymentAnnouncement } from '@/features/arrival-payment/paymentAnnouncement';
 import { usePassengerCashDeclaration } from '@/hooks/arrival-payment/usePassengerCashDeclaration';
 
@@ -141,10 +141,10 @@ function ArrivalPaymentSession() {
 
   const isModalVisible = state.isAppActive && state.isResumeReady && !state.isClosingForNavigation && Boolean(
     interruptionChoice || (!state.isPaymentDeferred && (state.completionSummary || state.arrivalBooking)));
-  usePaymentAnnouncement(passengerPaymentAnnouncement({
+  const paymentAnnouncement = passengerPaymentAnnouncement({
     bookingId: state.arrivalBooking?.id, amount: state.paymentAmount, currency: state.paymentCurrency,
     receipt, pending: paymentPending, failed: Boolean(state.paymentError), beforeArrival: state.isBeforeArrival,
-  }), isModalVisible && !interruptionChoice && !state.isStorageLoading);
+  });
 
   const destination = state.arrivalBooking?.interruptionFareLocked ? 'Arrêt confirmé pendant le trajet' :
     state.arrivalBooking?.passengerDestination ??
@@ -199,6 +199,7 @@ function ArrivalPaymentSession() {
       onRequestClose={receipt && !receipt.cashInstructions ? navigation.handleDismissSummary : state.deferPayment}
     >
       <View style={styles.overlay}>
+        <PaymentModalAnnouncement message={paymentAnnouncement} enabled={isModalVisible && !interruptionChoice && !state.isStorageLoading} />
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[styles.keyboardAvoidingView, { flex: 1 }]}

@@ -87,7 +87,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
             <>
               <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
                 accessibilityLabel="Où allez-vous ?" accessibilityHint="Ouvrir le formulaire de commande de trajet."
-                style={styles.searchBar} onPress={() => router.push(getTripRequestCreateHref())}>
+                style={styles.searchBar} onPress={() => router.push(getTripRequestCreateHref({ entry: 'home' }))}>
                 <Ionicons name="search-outline" size={24} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
                 <View style={styles.searchCopy}>
                   <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
@@ -148,7 +148,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           {isDriver ? (
             <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.secondaryAction}
               accessibilityLabel="Commander un trajet" accessibilityHint="Ouvrir le formulaire de commande de trajet."
-              onPress={() => router.push(getTripRequestCreateHref())}>
+              onPress={() => router.push(getTripRequestCreateHref({ entry: 'home' }))}>
               <Ionicons name="person-outline" size={20} color="#FFFFFF" accessible={false} />
               <View style={styles.secondaryActionCopy}>
                 <Text style={styles.secondaryActionTitle}>Commander un trajet</Text>

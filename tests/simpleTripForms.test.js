@@ -46,7 +46,7 @@ test('compact order controls preserve price, seat limits, payment selection, tot
   const press = label => all.find(node => node.props.accessibilityLabel === label).props.onPress();
   press('Diminuer le prix par place'); press('Augmenter le prix par place');
   press('Diminuer le nombre de places');
-  const cash = all.find(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Espèces (cash)');
+  const cash = all.find(node => node.props.accessibilityRole === 'radio' && node.props.accessibilityLabel === 'Cash');
   assert.equal(cash.props.accessibilityState.checked, true); cash.props.onPress();
   all.find(node => node.type === 'Button' && text(node) === 'Ajouter une note').props.onPress();
   assert.deepEqual(calls, [['price', 500], ['price', 1500], ['seats', 1], ['payment', 'cash'], ['note', true]]);

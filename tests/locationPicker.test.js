@@ -349,9 +349,11 @@ test('the modal mounts its session only when visible and its map only after the 
     '@/components/location-picker/LocationPickerMap': { LocationPickerMap: 'PickerMap' },
   });
   const Modal = load('components/LocationPickerModal.tsx').default;
-  const props = { visible: false, onClose() {}, onSelect() {} };
+  let dismissed = 0;
+  const props = { visible: false, onClose() {}, onSelect() {}, onDismiss: () => dismissed++ };
   const render = () => hooks.render(() => Modal(props));
   assert.equal(render().props.children, false);
+  render().props.onDismiss(); assert.equal(dismissed, 1, 'map dismissal is forwarded for safe follow-up navigation');
   props.visible = true;
   assert.equal(render().props.children.props.mapEnabled, false);
   render().props.onShow();
@@ -400,9 +402,20 @@ test('search overlays the map without resizing it and preserves its props; foote
   assert.equal(list.props.windowSize, 3);
   const confirm = nodes(searching).find(node => node.props.onPress === state.confirm);
   assert.equal(confirm.props.disabled, true);
+  state.searchOpen = false;
+  const custom = hooks.render(() => content.type({ ...content.props, confirmLabel: 'Confirmer ce départ' }));
+  assert.ok(nodes(custom).some(node => node.type === 'Text' && node.props.children === 'Confirmer ce départ'));
   const styles = load('features/location-picker/LocationPicker.styles.ts').styles;
   assert.equal(styles.results.position, 'absolute');
   assert.equal(styles.workspace.flex, 1);
   assert.ok(styles.confirm.minHeight >= 44);
+  assert.equal(styles.confirmText.flexShrink, 1, 'the departure label can wrap with larger fonts');
+  assert.ok(require('./helpers/contrast.cjs').contrast(styles.confirm.backgroundColor, styles.confirmText.color) >= 4.5);
+  let focuses = 0;
+  nodes(custom).find(node => node.type === 'TextInput').props.ref.current = { focus: () => focuses++ };
+  hooks.render(() => content.type({ ...content.props, focusSearchOnOpen: true, mapEnabled: false }));
+  assert.equal(focuses, 0, 'wait for the native modal opening, not an arbitrary timeout');
+  for (let i = 0; i < 3; i++) hooks.render(() => content.type({ ...content.props, focusSearchOnOpen: true, mapEnabled: true }));
+  assert.equal(focuses, 1, 'only focus once; do not reopen the keyboard after map selection');
   hooks.unmount();
 });

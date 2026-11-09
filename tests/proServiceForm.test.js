@@ -12,9 +12,10 @@ const offering = {
 const initial = { fullName: 'Compte de test', phone: '0000000000' };
 const validForm = { ...initial, vehicleDescription: '', plate: '', documents: ['permis'], description: '' };
 
-function setup(respond = async () => ({ id: 'case-test' }), service = offering) {
+function setup(respond = async () => ({ id: 'case-test' }), service = offering, existing) {
   const harness = hookHarness();
   const calls = [];
+  const updates = [];
   let key = 0;
   let currentOffering = service;
   const { useProServiceForm } = loader({
@@ -25,17 +26,72 @@ function setup(respond = async () => ({ id: 'case-test' }), service = offering) 
         calls.push(body);
         return { unwrap: () => respond(body, calls.length) };
       }, { isLoading: false }],
+      useUpdateDocumentCaseMutation: () => [body => {
+        updates.push(body);
+        return { unwrap: () => respond(body, updates.length) };
+      }, { isLoading: false }],
     },
   })('features/pro-services/useProServiceForm.ts');
-  const render = () => harness.render(() => useProServiceForm(currentOffering, initial));
+  const render = () => harness.render(() => useProServiceForm(currentOffering, initial, existing));
   const review = () => {
     render().change('documents', ['permis']);
     render().next();
     render().next();
     return render();
   };
-  return { render, review, calls, unmount: harness.unmount, setOffering: value => { currentOffering = value; } };
+  return { render, review, calls, updates, unmount: harness.unmount, setOffering: value => { currentOffering = value; } };
 }
+
+test('editing prefills the same dossier and retries the same mutation after a lost response', async () => {
+  const existing = { id: 'existing', updatedAt: '2026-11-09T12:00:00.000Z', application: validForm };
+  const env = setup(async (_body, count) => { if (count === 1) throw { status: 'TIMEOUT_ERROR' }; return { id: 'existing' }; }, offering, existing);
+  assert.deepEqual(env.render().form.documents, ['permis']);
+  env.render().change('documents', ['permis', 'assurance']);
+  env.render().next(); env.render().next(); env.render().toggleConsent();
+  await env.render().submit();
+  assert.equal(env.render().uncertain, true);
+  await env.render().submit();
+  assert.equal(env.calls.length, 0);
+  assert.deepEqual(env.updates[0], env.updates[1]);
+  assert.equal(env.updates[0].id, 'existing');
+  assert.equal(env.updates[0].expectedUpdatedAt, existing.updatedAt);
+  assert.deepEqual(env.updates[0].application.documents, ['permis', 'assurance']);
+  assert.equal(env.render().sent, 'existing');
+});
+
+test('a dossier already financed only allows adding documents, not rewriting validated information', async () => {
+  const existing = { id: 'existing', updatedAt: '2026-11-09T12:00:00.000Z', application: validForm, editMode: 'add_documents' };
+  const env = setup(undefined, offering, existing);
+  env.render().change('fullName', 'Must not replace');
+  env.render().change('documents', []);
+  assert.deepEqual(env.render().form, validForm);
+  env.render().next(); env.render().next(); env.render().toggleConsent();
+  await env.render().submit();
+  assert.equal(env.updates.length, 0);
+  env.render().change('documents', ['permis', 'assurance']);
+  env.render().next(); env.render().next(); env.render().toggleConsent();
+  await env.render().submit();
+  assert.equal(env.updates.length, 1);
+});
+
+test('a duplicate creation offers the existing dossier and prevents more submissions', async () => {
+  const env = setup(async () => { throw { status: 409, data: { code: 'DOCUMENT_REQUEST_ALREADY_EXISTS', message: 'Modifiez votre demande existante.' } }; });
+  env.review(); env.render().toggleConsent(); await env.render().submit();
+  assert.equal(env.render().alreadyExists, true);
+  assert.equal(env.render().locked, true);
+  await env.render().submit();
+  assert.equal(env.calls.length, 1);
+});
+
+test('stale or no-longer-editable dossiers must be refreshed before resubmission', async () => {
+  for (const code of ['DOCUMENT_REQUEST_CHANGED', 'DOCUMENT_REQUEST_NOT_EDITABLE']) {
+    const env = setup(async () => { throw { status: 409, data: { code } }; }, offering, { id: 'existing', updatedAt: '2026-11-09T12:00:00.000Z', application: validForm });
+    env.review(); env.render().toggleConsent(); await env.render().submit();
+    assert.equal(env.render().mustReload, true);
+    await env.render().submit();
+    assert.equal(env.updates.length, 1);
+  }
+});
 
 test('step validation is specific and accepts no financing by itself', () => {
   const { validateProStep } = loader()('features/pro-services/proServiceFormModel.ts');

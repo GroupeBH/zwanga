@@ -26,10 +26,12 @@ import { RequestScheduleFields } from '@/components/trip-request/RequestSchedule
 import { RequestSuccessModal } from '@/components/trip-request/RequestSuccessModal';
 import { useRequestTripController } from '@/hooks/trip-request/useRequestTripController';
 import { useRequestFormNavigation } from '@/hooks/trip-request/useRequestFormNavigation';
+import { HomeRequestScreen } from '@/components/trip-request/HomeRequestScreen';
 
 export default function RequestTripScreen() {
   const form = useRequestTripController();
   const navigation = useRequestFormNavigation(form);
+  if (form.isHomeEntry) return <HomeRequestScreen form={form} navigation={navigation} />;
   return (
     <FormScreen style={styles.container}>
       <View style={styles.header}>

@@ -75,6 +75,15 @@ for (const recurring of [false, true]) {
       assert.deepEqual(publications, []);
       assert.equal(dialogs[0].title, 'Vérification du cash indisponible');
       assert.equal(props.publishInFlightRef.current, false);
+      props.acceptedPaymentModes = []; dialogs.length = 0;
+      await hooks.render(() => usePublishSubmission(props)).handlePublish();
+      assert.equal(calls.length, 0); assert.equal(dialogs[0].title, 'Paiement requis');
+      props.isFreeTrip = true; dialogs.length = 0;
+      await hooks.render(() => usePublishSubmission(props)).handlePublish();
+      assert.equal(calls.length, 1, 'free single/recurring trips work even after cash became unavailable');
+      assert.equal(calls[0].pricePerSeat, 0); assert.equal(calls[0].isFree, true);
+      assert.equal(calls[0].acceptedPaymentModes, undefined, 'omit irrelevant modes: the API rejects an empty array');
+      assert.equal(dialogs.length, 0); assert.equal(props.publishInFlightRef.current, false);
     });
   }
 }
