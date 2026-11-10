@@ -120,24 +120,48 @@ for (const recurring of [false, true]) test(`GPS to ${recurring ? 'recurring' : 
   }
 });
 
-for (const online of [true, false]) test(`request form to HTTP and detail navigation with geocoder ${online ? 'online' : 'unavailable'}`, async t => {
-  const f = await fixture(t, online);
-  const { useRequestSubmission } = f.load('hooks/trip-request/useRequestSubmission.ts');
+function requestProps(overrides = {}) {
   const noop = () => {};
-  const props = { arrivalLocation: arrival, departureLocation: point, timePreset: 'custom', hasChosenDepartureTime: true,
-    setDepartureDateMin: noop, setFlexibilityMinutes: noop, description: '', departureReference: '', arrivalReference: '',
+  return { arrivalLocation: arrival, departureLocation: point, timePreset: 'custom', hasChosenDepartureTime: true,
+    setDepartureDateMin: noop, setFlexibilityMinutes: noop, description: '', departureReference: 'Entrée principale', arrivalReference: '',
     hasSpecifiedNumberOfSeats: true, numberOfSeats: 1, selectedVehicleType: 'car', requestPaymentMode: 'cash',
     departureAddress: 'Ma position', arrivalAddress: 'Gare Centrale', hasDepartureAddress: true, hasArrivalAddress: true,
     canSubmitRequestDetails: true, budgetValue: 2500, selectedVehicleOptionUnavailable: false,
     getCurrentDepartureWindow: () => ({ min: new Date('2030-01-01T12:00:00Z'), max: new Date('2030-01-01T12:30:00Z'), flex: 30 }),
-    setRequestFormStep: noop, setAddressSectionStep: noop };
+    setRequestFormStep: noop, setAddressSectionStep: noop, ...overrides };
+}
+
+for (const online of [true, false]) test(`request form to HTTP and detail navigation with geocoder ${online ? 'online' : 'unavailable'}`, async t => {
+  const f = await fixture(t, online);
+  const { useRequestSubmission } = f.load('hooks/trip-request/useRequestSubmission.ts');
+  const props = requestProps();
   const form = f.hooks.render(() => useRequestSubmission(props));
   await Promise.all([form.handleCreateRequest(), form.handleCreateRequest()]);
+  assert.equal(f.hooks.render(() => useRequestSubmission(props)).submissionError, null);
   assert.equal(f.posts.length, 1); assert.equal(f.posts[0].path, '/trip-requests');
   assert.equal(f.posts[0].body.departureLocation, online ? 'Rue des Écoles, Gombe, Kinshasa' : 'Point de départ (voir la carte)');
   assert.deepEqual(f.posts[0].body.departureCoordinates, [15.29, -4.31]);
+  assert.equal(f.posts[0].body.departureReference, 'Entrée principale');
   assert.equal(f.posts[0].body.paymentMode, 'cash'); assert.equal(f.posts[0].body.maxPricePerSeat, 2500);
   assert.deepEqual(f.routes, [{ pathname: '/request-details/[id]', params: { id: 'local-created' } }]);
+});
+
+test('a map-only departure cannot POST without a reference; entering it allows one local HTTP submission', async t => {
+  const f = await fixture(t, false), steps = [];
+  const { useRequestSubmission } = f.load('hooks/trip-request/useRequestSubmission.ts');
+  const props = requestProps({ departureReference: ' ', setRequestFormStep: step => steps.push(step),
+    setAddressSectionStep: step => steps.push(step) });
+  const render = () => f.hooks.render(() => useRequestSubmission(props));
+  await render().handleCreateRequest();
+  assert.match(render().submissionError, /Ajoutez un repère au départ/);
+  assert.deepEqual(steps, ['route', 'departure']);
+  assert.equal(f.posts.length, 0); assert.deepEqual(f.routes, []);
+  props.departureReference = 'Devant la pharmacie';
+  const ready = render(); await Promise.all([ready.handleCreateRequest(), ready.handleCreateRequest()]);
+  assert.equal(render().submissionError, null);
+  assert.equal(f.posts.length, 1); assert.equal(f.posts[0].path, '/trip-requests');
+  assert.equal(f.posts[0].body.departureReference, 'Devant la pharmacie');
+  assert.equal(f.routes.length, 1);
 });
 
 test('wallet HTTP response to visible screen speech respects actual withdrawal policy and stops on exit', async t => {

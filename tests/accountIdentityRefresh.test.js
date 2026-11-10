@@ -175,14 +175,25 @@ test('publication banner distinguishes loading, unavailable and approved without
     '@/utils/reanimated': { __esModule: true, default: { View: 'View' } },
     '../screen-styles/app/publish/index': { styles: {} }, './PublishRouteFields': { PublishRouteFields: 'Fields' },
   })('features/publish/PublishRouteStep.tsx');
-  let retries = 0;
-  const props = { isPublishIdentityVerified: false, refreshIdentity: () => retries++, showQuickLandmarks: false };
+  // Route shortcuts now precede the identity banner: select its content, not the first button.
+  const banner = tree => nodes(tree).find(node => node.type === 'Button' &&
+    /Mise à jour de votre profil|Votre statut est indisponible|Vérifiez votre identité pour publier/.test(text(node)));
+  let retries = 0, kycStarts = 0;
+  const props = { isPublishIdentityVerified: false, refreshIdentity: () => retries++,
+    handleStartKyc: () => kycStarts++, showQuickLandmarks: false };
   const loading = PublishRouteStep({ ...props, isCheckingIdentity: true });
   assert.match(text(loading), /Mise à jour de votre profil/);
   assert.doesNotMatch(text(loading), /Vérifiez votre identité pour publier/);
-  assert.equal(nodes(loading).find(node => node.type === 'Button' && node.props.accessibilityRole === 'button').props.disabled, true);
+  assert.equal(banner(loading).props.disabled, true);
+  assert.deepEqual(banner(loading).props.accessibilityState, { disabled: true, busy: true });
+  assert.notEqual(nodes(loading).find(node => node.props.accessibilityLabel === 'Références rapides').props.disabled, true);
   const unavailable = PublishRouteStep({ ...props, isIdentityStatusUnavailable: true });
-  nodes(unavailable).find(node => node.type === 'Button' && node.props.accessibilityRole === 'button').props.onPress();
+  assert.notEqual(banner(unavailable).props.disabled, true);
+  banner(unavailable).props.onPress();
   assert.equal(retries, 1); assert.doesNotMatch(text(unavailable), /Vérifiez votre identité pour publier/);
-  assert.doesNotMatch(text(PublishRouteStep({ ...props, isPublishIdentityVerified: true })), /identité|statut|validation/i);
+  assert.equal(kycStarts, 0);
+  const approved = PublishRouteStep({ ...props, isPublishIdentityVerified: true });
+  assert.equal(banner(approved), undefined);
+  assert.doesNotMatch(text(approved), /identité|statut|validation/i);
+  banner(PublishRouteStep(props)).props.onPress(); assert.equal(kycStarts, 1);
 });
