@@ -13,7 +13,8 @@ function environment() {
     listedTrips: [] };
   const query = (name, data, options) => {
     queries.push({ name, options });
-    return { data, isLoading: false, refetch: () => {
+    return { data, currentData: name === 'driver' && env.driverReadPending ? undefined : data,
+      isFetching: Boolean(name === 'driver' && env.driverReadPending), isLoading: false, refetch: () => {
       assert.equal(Boolean(options.skip), false, 'must not refetch an uninitialised/unauthorised query');
       refreshes.push(name); return { data };
     } };
@@ -68,6 +69,16 @@ test('unresolved trip ownership does not fetch driver bookings on detail or rati
     if (view.refetchTripBookings) view.refetchTripBookings(); else view.refetchBookings();
     assert.deepEqual(env.refreshes, []); env.hooks.unmount();
   }
+});
+
+test('owner detail never reuses previous query data while the current reservations are unresolved', () => {
+  const env = environment(); env.user = { id: 'owner' }; env.driverReadPending = true;
+  const hook = env.load('hooks/trip-detail/useTripDetailData.ts').useTripDetailData;
+  const view = env.hooks.render(hook);
+  assert.equal(view.tripBookings, undefined); assert.equal(view.bookingsFetching, true);
+  env.driverReadPending = false;
+  assert.deepEqual(env.hooks.render(hook).tripBookings, env.driverBookings);
+  env.hooks.unmount();
 });
 
 test('rating retains passenger identity and driver/passenger targets without the forbidden bookings list', () => {

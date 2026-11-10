@@ -1,5 +1,6 @@
 import { RequestTotalBudgetInput } from '@/components/trip-request/RequestTotalBudgetInput';
 import { RequestEditVehicleOptions } from './RequestEditVehicleOptions';
+import { RequestEditReferences, type RequestEditReferenceProps } from './RequestEditReferences';
 import { FormDisclosure } from '@/components/forms/FormDisclosure';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { formatCdfPrice } from './requestDetailModel';
@@ -93,7 +94,8 @@ export function RequestEditFields({
   openEditIdentityVerification,
   editDescription,
   setEditDescription,
-}: RequestEditFieldsProps) {
+  ...references
+}: RequestEditFieldsProps & RequestEditReferenceProps) {
   return (
     <ScrollView
       style={styles.editModalScrollView}
@@ -198,6 +200,8 @@ export function RequestEditFields({
       )}
 
       {/* Fenêtre horaire */}
+      <RequestEditReferences {...references} editAddressInputMode={editAddressInputMode}
+        editDepartureAddress={editDepartureAddress} editArrivalAddress={editArrivalAddress} />
       <FormDisclosure title="Quand partir ?" forceOpen={Boolean(editScheduleError || editIosPickerModeMin || editIosPickerModeMax)}
         summary={editDepartureDateMin && editDepartureDateMax
           ? `${editDepartureDateMin.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} → ${editDepartureDateMax.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`

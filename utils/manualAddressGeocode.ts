@@ -49,6 +49,7 @@ export function mapGeocodeResponseToSelection(
 
   return {
     ...readableLocation({ ...response, name: trimmedAddress }),
+    ...(response.addressComponents ? { addressComponents: response.addressComponents } : {}),
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
   };

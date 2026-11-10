@@ -31,7 +31,7 @@ export function IncomingBookingRedirect() {
     // Ongoing rides already have an inline pending-booking panel. Future/past rides
     // open the existing passenger list, with the selected reservation first.
     router.replace({
-      pathname: booking.trip?.status === 'ongoing' ? '/trip/navigate/[id]' : '/trip/manage/[id]',
+      pathname: booking.trip?.status === 'ongoing' ? '/trip/navigate/[id]' : '/trip/[id]',
       params: { id: booking.tripId, bookingId: validId, section: 'passengers' },
     });
   }, [authorized, booking, enabled, query.isError, query.isFetching, router, userId, validId]);

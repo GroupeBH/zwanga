@@ -1,72 +1,66 @@
 import { DepartureDateTimeFields } from '@/components/forms/DepartureDateTimeFields';
 import { Colors } from '@/constants/styles';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import Animated, { type FadeInDown } from '@/utils/reanimated';
-import React from 'react';
-import { StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PublishRecurrenceModal, type RecurrenceChoice } from './PublishRecurrenceModal';
 
 interface PublishScheduleStepProps {
   stepEntering: FadeInDown | undefined;
   openDateOrTimePicker: (mode: 'date' | 'time', target?: 'departure' | 'recurringEndDate') => void;
+  selectDepartureIn?: (minutes: number) => void;
   formattedDateLabel: string;
   formattedTimeLabel: string;
   hasChosenDepartureTime: boolean;
   pickerError: string | null;
+  departureDateTime: Date | null;
   isRecurringTrip: boolean;
-  toggleRecurringTrip: () => void;
   recurringWeekdayOptions: { value: number; label: string }[];
   recurringWeekdays: number[];
-  toggleRecurringWeekday: (weekday: number) => void;
-  formattedRecurringEndDate: string;
   recurringEndDate: Date | null;
-  setRecurringEndDate: React.Dispatch<React.SetStateAction<Date | null>>;
+  onSaveRecurrence: (choice: RecurrenceChoice | null) => void;
 }
 
 export function PublishScheduleStep(props: PublishScheduleStepProps) {
+  const active = useScreenIsActive();
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { if (!active) setEditing(false); }, [active]);
+  const days = props.recurringWeekdayOptions.filter(day => props.recurringWeekdays.includes(day.value)).map(day => day.label).join(' · ');
   return <Animated.View entering={props.stepEntering} style={s.section}>
-    <Text style={s.title}>Quand partez-vous ?</Text>
-    <DepartureDateTimeFields dateLabel={props.formattedDateLabel} timeLabel={props.formattedTimeLabel}
+    {!props.isRecurringTrip && props.selectDepartureIn && <View style={s.quickTimes}>
+      {[5, 15, 30].map(minutes => <TouchableOpacity key={minutes} style={s.quickTime}
+        accessibilityRole="button" accessibilityLabel={`Partir dans ${minutes} minutes`}
+        onPress={() => props.selectDepartureIn?.(minutes)}>
+        <Text style={s.link}>Dans {minutes} min</Text>
+      </TouchableOpacity>)}
+    </View>}
+    <DepartureDateTimeFields compact dateLabel={props.formattedDateLabel} timeLabel={props.formattedTimeLabel}
       hasChosenTime={props.hasChosenDepartureTime} onOpen={props.openDateOrTimePicker} />
     {!!props.pickerError && <Text style={s.error} accessibilityLiveRegion="polite">{props.pickerError}</Text>}
-    <View style={s.row}>
-      <Text style={s.label}>Répéter ce trajet</Text>
-      <Switch accessibilityLabel="Répéter ce trajet" value={props.isRecurringTrip} onValueChange={props.toggleRecurringTrip}
-        trackColor={{ false: Colors.gray[300], true: Colors.primary }} />
-    </View>
-    {props.isRecurringTrip && <View style={s.recurring}>
-      <Text style={s.hint}>Choisissez vos jours habituels.</Text>
-      <View style={s.days}>{props.recurringWeekdayOptions.map(day => {
-        const selected = props.recurringWeekdays.includes(day.value);
-        return <TouchableOpacity key={day.value} style={[s.day, selected && s.selected]}
-          accessibilityRole="checkbox" accessibilityLabel={day.label} accessibilityState={{ checked: selected }}
-          onPress={() => props.toggleRecurringWeekday(day.value)}>
-          <Text style={[s.dayText, selected && s.selectedText]}>{day.label}</Text>
-        </TouchableOpacity>;
-      })}</View>
-      <View style={s.row}>
-        <TouchableOpacity style={s.endDate} accessibilityRole="button"
-          accessibilityLabel={`Date de fin : ${props.formattedRecurringEndDate}`}
-          onPress={() => props.openDateOrTimePicker('date', 'recurringEndDate')}>
-          <Text style={s.hint}>Fin (facultatif)</Text><Text style={s.link}>{props.formattedRecurringEndDate}</Text>
-        </TouchableOpacity>
-        {!!props.recurringEndDate && <TouchableOpacity style={s.clear} accessibilityRole="button"
-          accessibilityLabel="Retirer la date de fin" onPress={() => props.setRecurringEndDate(null)}>
-          <Text style={s.link}>Retirer</Text>
-        </TouchableOpacity>}
-      </View>
-    </View>}
+    <TouchableOpacity style={s.repeat} accessibilityRole="button" accessibilityLabel="Répéter ce trajet"
+      accessibilityHint={props.isRecurringTrip ? `Modifier les jours : ${days}` : 'Choisir les jours dans une fenêtre'}
+      accessibilityState={{ expanded: editing }} onPress={() => { if (active) setEditing(true); }}>
+      <Ionicons name="repeat" size={20} color={Colors.primaryDark} />
+      <View style={s.copy}><Text style={s.label}>Répéter ce trajet</Text>
+        {props.isRecurringTrip && <Text style={s.hint}>{days}</Text>}</View>
+      <Text style={s.link}>{props.isRecurringTrip ? 'Modifier' : 'Choisir'}</Text>
+      <Ionicons name="chevron-forward" size={16} color={Colors.gray[500]} />
+    </TouchableOpacity>
+    {editing && active && <PublishRecurrenceModal departureDateTime={props.departureDateTime}
+      weekdays={props.recurringWeekdays} endDate={props.recurringEndDate} options={props.recurringWeekdayOptions}
+      enabled={props.isRecurringTrip} onClose={() => setEditing(false)}
+      onSave={choice => { if (!active) return; props.onSaveRecurrence(choice); setEditing(false); }} />}
   </Animated.View>;
 }
 const s = StyleSheet.create({
-  section: { gap: 8, paddingTop: 12 },
-  title: { fontSize: 16, fontWeight: '700', color: Colors.gray[900] },
-  row: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  label: { flex: 1, fontSize: 14, color: Colors.gray[800] },
+  quickTimes: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  quickTime: { minHeight: 44, flex: 1, minWidth: 84, justifyContent: 'center', alignItems: 'center',
+    borderRadius: 10, backgroundColor: '#FFF3EC', paddingHorizontal: 8 },
+  section: { gap: 6, paddingTop: 8 },
+  repeat: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  copy: { flex: 1, minWidth: 0 }, label: { fontSize: 14, color: Colors.gray[800] },
   hint: { fontSize: 12, lineHeight: 18, color: Colors.gray[600] },
-  recurring: { gap: 6 }, days: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  day: { minHeight: 44, minWidth: 44, flexGrow: 1, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.white },
-  selected: { borderColor: Colors.primary, backgroundColor: '#FFF3EC' },
-  dayText: { fontSize: 13, color: Colors.gray[700] }, selectedText: { color: Colors.primaryDark, fontWeight: '700' },
-  endDate: { minHeight: 44, flex: 1, justifyContent: 'center', gap: 2 }, clear: { minHeight: 44, justifyContent: 'center', padding: 8 },
-  link: { color: Colors.primaryDark, fontSize: 14, fontWeight: '600' }, error: { color: Colors.danger, fontSize: 13 },
+  link: { color: Colors.primaryDark, fontSize: 13, fontWeight: '600' }, error: { color: Colors.danger, fontSize: 13 },
 });

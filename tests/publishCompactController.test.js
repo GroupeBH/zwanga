@@ -14,7 +14,8 @@ function navigationFixture(overrides = {}) {
     departureDateTime: new Date(2030, 4, 12, 17, 30), isRecurringTrip: false, recurringWeekdays: [1],
     recurringEndDate: null, selectedVehicleId: 'car', isFreeTrip: false, price: '2000', acceptedPaymentModes: ['points'], ...overrides };
   const hook = loader(base)('hooks/publish/usePublishStepNavigation.ts').usePublishStepNavigation;
-  return { calls, dialogs, props, next: () => hook(props).handleNextStep() };
+  return { calls, dialogs, props, next: () => props.step === 'pricing'
+    ? hook(props).validateForPublish() : hook(props).handleNextStep() };
 }
 test('route validates location, identity and time before entering vehicle/price', () => {
   const f = navigationFixture(); f.next(); assert.deepEqual(f.calls, ['pricing']);
@@ -40,7 +41,7 @@ test('merged price stage requires a vehicle and valid fare, preserving free trip
     assert.deepEqual(f.calls, []); assert.equal(f.dialogs.length, 1);
   }
   for (const patch of [{}, { price: '1e3' }, { price: '', isFreeTrip: true }]) {
-    const f = navigationFixture({ step: 'pricing', ...patch }); f.next(); assert.deepEqual(f.calls, ['confirm']);
+    const f = navigationFixture({ step: 'pricing', ...patch }); assert.equal(f.next(), true); assert.deepEqual(f.calls, []);
   }
 });
 
@@ -49,12 +50,17 @@ function controllerFixture() {
   state.identity.startDiditKyc = async () => ({ status: 'approved' }); state.identity.setKycModalVisible = noop;
   const pieces = { VehicleState: state.vehicle, VehicleEditor: {}, FormState: state.form, Identity: state.identity,
     RoutePreview: state.route, Presentation: state.presentation, LocationActions: {}, SchedulePresentation: state.schedule,
-    RouteResolution: {}, VehicleCreation: {}, SuccessActions: {},
-    ScheduleActions: { openDateOrTimePicker: mode => calls.push(mode) }, Submission: { handlePublish: () => calls.push('publish') } };
+    RouteResolution: {}, VehicleCreation: {}, SuccessActions: {}, SuccessRedirect: {},
+    ScheduleActions: { openDateOrTimePicker: mode => calls.push(mode) },
+    Submission: Object.assign(state.submission, { handlePublish: () => calls.push('publish') }) };
   const mocks = Object.fromEntries(Object.entries(pieces).map(([name, value]) => [`./usePublish${name}`, {
     [`usePublish${name}`]: params => { captured[name] = params; return value; },
   }]));
   const load = loader({ ...base, ...mocks, react: { ...hooks.react, startTransition: callback => callback() },
+    './usePublishPriceEstimate': { usePublishPriceEstimate: params => {
+      captured.PriceEstimate = params;
+      return { ...state.pricing, price: state.form.price, setPrice: state.form.setPrice };
+    } },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     'expo-router': { useRouter: () => ({}), useLocalSearchParams: () => ({}) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
@@ -70,9 +76,9 @@ function controllerFixture() {
 test('empty payment selection blocks pricing immediately, but never blocks a free trip', () => {
   const f = navigationFixture({ step: 'pricing', acceptedPaymentModes: [] });
   f.next(); assert.deepEqual(f.calls, []); assert.equal(f.dialogs[0].title, 'Choisissez un paiement');
-  f.props.isFreeTrip = true; f.next(); assert.deepEqual(f.calls, ['confirm']);
+  f.props.isFreeTrip = true; assert.equal(f.next(), true); assert.deepEqual(f.calls, []);
   f.calls.length = 0; f.props.isFreeTrip = false; f.props.acceptedPaymentModes = ['points'];
-  f.next(); assert.deepEqual(f.calls, ['confirm']);
+  assert.equal(f.next(), true); assert.deepEqual(f.calls, []);
 });
 
 test('real controller passes the current payment selection to step validation', () => {
@@ -82,7 +88,7 @@ test('real controller passes the current payment selection to step validation', 
   f.render().handleFooterPrimary(); assert.equal(f.render().step, 'pricing');
   assert.deepEqual(f.calls, ['Choisissez un paiement']);
 });
-test('main footer opens the time picker on step one, then progresses in exactly three stages', () => {
+test('main footer opens the time picker on step one, then publishes directly on the second screen', () => {
   const f = controllerFixture(); f.state.form.hasChosenDepartureTime = false;
   let m = f.render(); assert.equal(m.footerPrimaryLabel, 'Choisir l’heure');
   assert.equal(f.captured.ScheduleActions.isScreenActive, true);
@@ -90,11 +96,12 @@ test('main footer opens the time picker on step one, then progresses in exactly 
   f.state.form.hasChosenDepartureTime = true;
   f.render().handleFooterPrimary(); m = f.render(); assert.equal(m.step, 'pricing');
   assert.equal(f.captured.ScheduleActions.isScreenActive, false); assert.equal(m.previousStep, 'route');
-  m.handleFooterPrimary(); m = f.render(); assert.equal(m.step, 'confirm'); assert.equal(m.previousStep, 'pricing');
-  m.handleFooterPrimary(); assert.deepEqual(f.calls, ['time', 'publish']);
+  assert.equal(m.footerPrimaryLabel, 'Publier mon trajet');
+  m.handleFooterPrimary(); m = f.render(); assert.equal(m.step, 'pricing');
+  assert.deepEqual(f.calls, ['time', 'publish']);
 });
 test('returning to either step preserves the entered values and does not publish', () => {
-  const f = controllerFixture(); f.render().navigation.goToStep('confirm');
+  const f = controllerFixture(); f.render().navigation.goToStep('pricing');
   f.render().navigation.goToStep('route'); let m = f.render();
   assert.equal(m.form.price, '2500'); assert.equal(m.form.departureDateTime.getHours(), 17);
   m.handleFooterPrimary(); m = f.render(); assert.equal(m.vehicle.selectedVehicleId, 'preview-car');
@@ -105,4 +112,19 @@ test('identity approval cannot skip required recurring settings or hour choice',
   await f.render().handleStartKyc(); let m = f.render(); assert.equal(m.step, 'route');
   m.handleFooterPrimary(); m = f.render(); assert.equal(m.step, 'route');
   assert.deepEqual(f.calls, ['Jours manquants']);
+});
+
+test('direct publication retains every validation and cannot bypass a busy or unresolved state', () => {
+  for (const patch of [{ hasChosenDepartureTime: false }, { acceptedPaymentModes: [] },
+    { isRecurringTrip: true, recurringWeekdays: [] }, { price: 'Infinity' }]) {
+    const f = controllerFixture(); f.render().handleFooterPrimary(); Object.assign(f.state.form, patch);
+    f.render().handleFooterPrimary(); assert.ok(!f.calls.includes('publish'));
+  }
+  for (const busy of ['isSubmittingTrip', 'isResolvingAddresses']) {
+    const f = controllerFixture(); f.render().handleFooterPrimary();
+    if (busy === 'isSubmittingTrip') f.state.schedule[busy] = true;
+    else f.state.submission[busy] = true;
+    assert.equal(f.render().footerPrimaryDisabled, true); f.render().handleFooterPrimary();
+    assert.ok(!f.calls.includes('publish'));
+  }
 });

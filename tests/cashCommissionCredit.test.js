@@ -33,6 +33,33 @@ test('existing debt consumes the allowance; blocked wallets, invalid inputs and 
 test('publication accounts for per-passenger rounding without understating commission', () => {
   assert.equal(estimateCashCommission(finance(), 1010, 5).required, 2.55);
 });
+test('six-trip advance keeps the 5% fee and debt, then requires full funding without renewal', () => {
+  const state = finance(); state.cash.moneyPerToken = 10;
+  state.cash.debtTokens = 30; state.cash.availableCreditTokens = 0; state.cash.debtLimitTokens = 0;
+  state.cash.creditAllowance = { eligible: true, remainingTrips: 1, tripLimit: 6, completedTrips: 5, reservedTrips: 0, oneTime: true };
+  const preview = estimateCashCommission(state, 10000);
+  assert.equal(preview.allowed, true); assert.equal(preview.required, 50);
+  assert.equal(preview.debt, 50); assert.equal(preview.totalDebt, 80);
+  state.cash.blocked = true; assert.equal(estimateCashCommission(state, 10000).allowed, false);
+  state.cash.blocked = false; state.cash.creditAllowance.remainingTrips = 0;
+  assert.equal(estimateCashCommission(state, 10000).allowed, false);
+  state.cash.availableTokens = 100;
+  assert.equal(estimateCashCommission(state, 10000).allowed, false, 'settle outstanding debt first');
+  state.cash.debtTokens = 0;
+  assert.equal(estimateCashCommission(state, 10000).allowed, true);
+  state.cash.availableTokens = 49;
+  assert.equal(estimateCashCommission(state, 10000).allowed, false);
+});
+
+test('missing or invalid entitlement never grants a six-trip advance', () => {
+  const state = finance(); state.cash.availableCreditTokens = 0; state.cash.debtLimitTokens = 0;
+  assert.equal(estimateCashCommission(state, 10000).allowed, false);
+  state.cash.creditAllowance = { eligible: false, remainingTrips: 6, tripLimit: 6, oneTime: true };
+  assert.equal(estimateCashCommission(state, 10000).allowed, false);
+  state.cash.creditAllowance.eligible = true; state.cash.creditAllowance.oneTime = false;
+  assert.equal(estimateCashCommission(state, 10000).allowed, false);
+});
+
 test('cash acceptance notice shows forecast, current due and hides stale balances offline', () => {
   const hooks = hookHarness(); const data = finance(); let online = true;
   const props = { amount: 20000 };
@@ -46,8 +73,14 @@ test('cash acceptance notice shows forecast, current due and hides stale balance
   const render = () => words(hooks.render(() => Component(props)));
   assert.match(render(), /5 % : 10 jetons/); assert.match(render(), /Dette totale estimée/);
   data.cash.debtTokens = 7; props.confirmed = true;
-  assert.match(render(), /7 jetons dus/); assert.match(render(), /Tolérance cumulée/); assert.doesNotMatch(render(), /Aucun nouveau cash/);
+  assert.match(render(), /Reste dû : 700 FC/); assert.match(render(), /courses confirmées/); assert.doesNotMatch(render(), /Aucun nouveau cash/);
   online = false; assert.doesNotMatch(render(), /7 jetons/); assert.match(render(), /vérification/);
   online = true; response.isError = true; assert.doesNotMatch(render(), /7 jetons/);
+  response.isError = false; props.confirmed = false; data.cash.debtTokens = 0;
+  data.cash.creditAllowance = { eligible: true, remainingTrips: 2, tripLimit: 6, completedTrips: 4, reservedTrips: 0, oneTime: true };
+  assert.match(render(), /Commission cash de 5 %/);
+  assert.match(render(), /2 trajet/);
+  assert.match(render(), /Commission due, pas offerte/); assert.match(render(), /4\/6/);
+  online = false; assert.doesNotMatch(render(), /offerte/);
   hooks.unmount();
 });

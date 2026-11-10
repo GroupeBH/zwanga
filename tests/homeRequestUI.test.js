@@ -33,6 +33,64 @@ function fixture(t) {
     render: () => hooks.render(() => HomeRequestScreen({ form, navigation: { scrollRef: { current: null }, handleBack() {} } })) };
 }
 
+test('commune-only labels expose required reference inputs next to the route, not inside extras', t => {
+  const f = fixture(t);
+  f.form.departureAddress = 'Gombe'; f.form.arrivalAddress = 'Lemba';
+  f.form.departureReference = ''; f.form.arrivalReference = '';
+  f.form.setDepartureReference = value => { f.form.departureReference = value; };
+  const fields = nodes(f.render()).filter(n => n.type.name === 'RequestReferenceField');
+  assert.equal(fields.length, 2); assert.ok(fields.every(n => n.props.required));
+  const start = fields[0].type(fields[0].props);
+  assert.match(words(start), /Repère au départ · obligatoire/);
+  nodes(start).find(n => n.type === 'Input').props.onChangeText('Devant la pharmacie');
+  assert.equal(f.form.departureReference, 'Devant la pharmacie');
+  f.form.arrivalAddress = 'Avenue de la Victoire';
+  assert.equal(nodes(f.render()).filter(n => n.type.name === 'RequestReferenceField').length, 1);
+});
+
+test('the itinerary stays collapsed by default and can be shown without changing the order', t => {
+  const f = fixture(t);
+  const toggle = () => nodes(f.render()).find(n => n.props.testID === 'home-request-route-toggle');
+  const map = () => nodes(f.render()).find(n => n.type?.type?.name === 'HomeRequestMap');
+  assert.equal(map(), undefined);
+  assert.equal(words(toggle()), 'Voir l’itinéraire · 4,2 km');
+  assert.equal(toggle().props.accessibilityState.expanded, false);
+  toggle().props.onPress();
+  assert.equal(toggle().props.accessibilityState.expanded, true);
+  assert.match(words(toggle()), /Masquer l’itinéraire/);
+  assert.equal(map().props.routeCoordinates, f.form.routeCoordinates);
+  assert.equal(map().props.departureLocation, f.form.departureLocation);
+  assert.equal(map().props.arrivalLocation, f.form.arrivalLocation);
+  assert.equal(map().props.enabled, true);
+  f.dimensions.height = 568; f.dimensions.fontScale = 1.5;
+  assert.equal(map().props.height, 120);
+  f.form.isScreenActive = false;
+  assert.equal(map().props.enabled, false, 'the native map is disabled when the screen loses focus');
+  toggle().props.onPress();
+  assert.equal(map(), undefined, 'collapse unmounts the preview rather than just hiding it');
+  assert.deepEqual(f.calls, [], 'showing a route does not submit or edit the order');
+});
+
+test('the itinerary disclosure respects loading, submission locks and inline location selection', t => {
+  const f = fixture(t);
+  const toggle = () => nodes(f.render()).find(n => n.props.testID === 'home-request-route-toggle');
+  f.form.isRouteLoading = true;
+  assert.equal(words(toggle()), 'Voir l’itinéraire', 'do not show a distance for the previous route while loading');
+  f.flow.locked = true;
+  assert.equal(toggle().props.disabled, true);
+  toggle().props.onPress();
+  assert.equal(toggle().props.accessibilityState.expanded, false);
+  f.flow.locked = false;
+  toggle().props.onPress();
+  f.flow.pickerTarget = 'arrival';
+  assert.equal(toggle(), undefined);
+  assert.equal(nodes(f.render()).some(n => n.type?.type?.name === 'HomeRequestMap'), false);
+  f.flow.pickerTarget = null;
+  assert.equal(toggle().props.accessibilityState.expanded, true);
+  f.form.departureLocation = null;
+  assert.equal(toggle(), undefined, 'no itinerary action without both endpoints');
+});
+
 test('confirmed locations show the quote immediately even if the legacy step is still route', t => {
   const f = fixture(t); f.form.requestFormStep = 'route';
   const tree = f.render(), all = nodes(tree);
@@ -50,8 +108,13 @@ test('confirmed locations show the quote immediately even if the legacy step is 
   nodes(footer).find(n => n.type === 'Button').props.onPress(); assert.equal(f.calls.at(-1), 'submit');
   assert.ok(all.some(n => n.type === 'Scroll'), 'quote and options remain scrollable at small heights');
   assert.equal(nodes(all.find(n => n.type === 'Scroll')).some(n => n.props.testID === 'home-request-footer'), false);
+  assert.equal(all.some(n => n.type === 'Map' || n.type?.type?.name === 'HomeRequestMap'), false,
+    'the order form must not mount the large route map');
   f.dimensions.height = 568; f.dimensions.fontScale = 1.5;
-  assert.equal(nodes(f.render()).find(n => n.type?.type?.name === 'HomeRequestMap').props.height, 120);
+  const compact = nodes(f.render());
+  assert.equal(compact.some(n => n.type === 'Map' || n.type?.type?.name === 'HomeRequestMap'), false);
+  assert.ok(compact.some(n => n.type.name === 'HomeRequestChoices'));
+  assert.ok(compact.some(n => n.props.testID === 'home-request-footer'));
 });
 
 for (const target of ['arrival', 'departure']) test('inline ' + target + ' selection replaces the entire form, with no background map or intermediate page', t => {
@@ -121,11 +184,11 @@ test('compact choices preserve multi-select, last-type protection, seat capacity
   f.form.applyPreset = preset => { f.form.timePreset = preset; };
   f.form.setHasChosenDepartureTime = value => { f.form.hasChosenDepartureTime = value; };
   const render = () => HomeRequestChoices({ form: f.form });
-  const press = label => nodes(render()).find(n => n.props.accessibilityLabel === label).props.onPress();
+  const press = label => nodes(render()).find(n => n.props.accessibilityLabel?.split(',')[0] === label).props.onPress();
   press('Voiture'); assert.deepEqual(f.form.selectedVehicleTypes, ['car']);
   press('Moto à 2 roues'); assert.deepEqual(f.form.selectedVehicleTypes, ['car', 'motorcycle_2_wheels']);
   press('Moto à 2 roues'); f.form.numberOfSeats = 4;
-  assert.equal(nodes(render()).find(n => n.props.accessibilityLabel === 'Moto à 2 roues').props.disabled, true);
+  assert.equal(nodes(render()).find(n => n.props.accessibilityLabel?.startsWith('Moto à 2 roues,')).props.disabled, true);
   press('Choisir un autre jour ou une autre heure');
   assert.equal(f.form.timePreset, 'custom'); assert.equal(f.form.hasChosenDepartureTime, false);
 });

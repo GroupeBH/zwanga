@@ -242,7 +242,7 @@ test('map preview/fullscreen use readable marker text without changing coordinat
   const mapPresentation = { routeMapCoordinates: [], passengerDestinationMarkers: [] };
   const Preview = env.load('features/trip-detail/TripDetailMapPreview.tsx').TripDetailMapPreview;
   const Fullscreen = env.load('features/trip-detail/TripMapModal.tsx').TripMapModal;
-  const trees = [Preview({ model: { presentation: { routeLabels: labels }, data: { viewportHeight: 700 },
+  const trees = [Preview({ model: { presentation: { routeLabels: labels }, data: { viewportHeight: 700 }, bookingState: {},
     route: { departureCoordinate, arrivalCoordinate }, mapPresentation } }),
   Fullscreen({ routeLabels: labels, mapModalVisible: true, insets: { top: 0, bottom: 0 },
     departureCoordinate, arrivalCoordinate, ...mapPresentation })];

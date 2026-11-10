@@ -1,10 +1,16 @@
 import type { DriverFinanceSummary } from '@/store/api/driverFinanceApi';
 
+export function hasCashCreditAllowance(finance: DriverFinanceSummary | undefined) {
+  const credit = finance?.cash.creditAllowance;
+  return credit?.eligible === true && credit.remainingTrips > 0 && credit.tripLimit === 6 && credit.oneTime === true;
+}
+
 /** Preview only. The server reserves funds atomically when the driver accepts. */
 export function estimateCashCommission(finance: DriverFinanceSummary | undefined, price: number, seats = 1) {
   if (!finance || !Number.isFinite(price) || price < 0 || !Number.isInteger(seats) || seats < 1 ||
       !Number.isFinite(finance.cash.moneyPerToken) || finance.cash.moneyPerToken <= 0) return null;
-  const rate = finance.cashCommissionRate ?? finance.commissionRate ?? 0.05;
+  const advance = hasCashCreditAllowance(finance);
+  const rate = finance.cash.creditAllowance ? finance.commissionRate : finance.cashCommissionRate ?? finance.commissionRate ?? 0.05;
   // Each single-seat passenger is rounded separately; reserve the conservative
   // estimate when the aggregate rounding would require slightly fewer tokens.
   const tokenCost = (amount: number) => Math.round(Math.round(amount * rate * 100) / finance.cash.moneyPerToken) / 100;
@@ -21,5 +27,5 @@ export function estimateCashCommission(finance: DriverFinanceSummary | undefined
   const totalDebt = Math.round((existingDebt + debt) * 100) / 100;
   return { required, debt, debtAmount: Math.round(debt * finance.cash.moneyPerToken * 100) / 100,
     totalDebt, remainingCredit: credit,
-    allowed: finance.cash.enabled && !finance.cash.blocked && existingDebt <= limit && debt <= credit };
+    allowed: finance.cash.enabled && !finance.cash.blocked && (finance.cash.creditAllowance ? (advance || (existingDebt === 0 && debt === 0)) : (existingDebt <= limit && debt <= credit)) };
 }

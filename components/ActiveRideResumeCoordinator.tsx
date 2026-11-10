@@ -159,7 +159,7 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
   const onHome = path === '/' || path === '/(tabs)';
   const proposal = presentation.proposal;
   const actionLabel = proposal ? typeof proposal === 'string' && /\/(trip|booking)\/navigate\//.test(proposal)
-    ? 'Reprendre mon trajet' : typeof proposal === 'object' && proposal.pathname === '/trip/manage/[id]'
+    ? 'Reprendre mon trajet' : typeof proposal === 'object' && ['/trip/[id]', '/trip/manage/[id]'].includes(proposal.pathname)
       ? 'Voir la réservation' : 'Voir la commande' : undefined;
   useEffect(() => {
     if (authenticated && userId) setRideSpeechEntryGate({ userId, path,

@@ -29,6 +29,12 @@ test('query params cannot override the trip ID or inject navigation state', () =
   });
 });
 
+test('legacy notification links retain the reservation focus before canonical detail redirect', () => {
+  assert.deepEqual(resolve('zwanga://trip/manage/trip?bookingId=booking&section=passengers&openEdit=1'), {
+    pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers', openEdit: '1' },
+  });
+});
+
 test('incomplete, nested and foreign links never become detail IDs', () => {
   for (const path of ['trip/', 'trip/navigate', 'trip/manage/', 'trip/navigate/a/b',
     'trip/manage/a/b', 'trip/a/b', 'trip/navigate/a%2Fb', 'trip/../a', 'https://other/trip/a']) {

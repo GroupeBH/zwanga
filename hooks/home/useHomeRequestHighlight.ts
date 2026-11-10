@@ -20,20 +20,21 @@ export function useHomeRequestHighlight({ enabled, userId, requests, driverCoord
   const dispatch = useAppDispatch();
   const appActive = useAppIsActive();
   const authenticatedUserId = useAppSelector(state => state.auth.user?.id);
+  const highlights = useAppSelector(state => state.homeRequestHighlights);
+  const deadlines = highlights.userId === userId ? highlights.expiresAtById : undefined;
   const [, forceUpdate] = useState(0);
   const now = Date.now();
   const candidate = requests.find(request => request.passengerId !== userId && isRequestUnassigned(request)
     && isTripRequestWithinAcceptanceWindow(request, now)
-    && !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)]) ?? null;
+    && !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)]
+    // A spent highlight must not occupy the queue ahead of unseen commands.
+    // This affects presentation only; the original request stays in the list.
+    && (deadlines?.[request.id] === undefined || deadlines[request.id] > now)) ?? null;
   const canShow = enabled && appActive && Boolean(userId && userId === authenticatedUserId)
     && candidate !== null && candidate.passengerId !== userId
     && isRequestUnassigned(candidate) && isTripRequestWithinAcceptanceWindow(candidate, now);
   const requestId = canShow ? candidate?.id : undefined;
-  const expiresAt = useAppSelector(state => (
-    requestId && state.homeRequestHighlights.userId === userId
-      ? state.homeRequestHighlights.expiresAtById[requestId]
-      : undefined
-  ));
+  const expiresAt = requestId ? deadlines?.[requestId] : undefined;
 
   useEffect(() => {
     if (requestId && userId && expiresAt === undefined) {

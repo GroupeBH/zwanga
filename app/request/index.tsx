@@ -67,6 +67,8 @@ export default function RequestTripScreen() {
               applyQuickPlaceToNextSlot={form.applyQuickPlaceToNextSlot}
               applySelectionToNextSlot={form.applySelectionToNextSlot}
               arrivalAddress={form.arrivalAddress}
+              arrivalLocation={form.arrivalLocation}
+              departureLocation={form.departureLocation}
               arrivalManualAddress={form.arrivalManualAddress}
               arrivalManualGeocodeStatus={form.arrivalManualGeocodeStatus}
               arrivalReference={form.arrivalReference}
@@ -89,6 +91,9 @@ export default function RequestTripScreen() {
               setDepartureReference={form.setDepartureReference}
               setSelectedVehicleTypes={form.setSelectedVehicleTypes}
               numberOfSeats={form.numberOfSeats}
+              vehicleOptions={form.vehicleOptions}
+              isPriceLoading={form.isPriceLoading}
+              isVehicleOptionsError={form.isVehicleOptionsError}
               setShowQuickLandmarks={form.setShowQuickLandmarks}
               showQuickLandmarks={form.showQuickLandmarks}
               swapRoutePoints={form.swapRoutePoints}

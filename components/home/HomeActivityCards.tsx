@@ -8,10 +8,8 @@ import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
-import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDismissals';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
-import { HomeRequestHighlightCard } from './HomeRequestHighlightCard';
 import { SwipeableHomePriority } from './SwipeableHomePriority';
 import { HomeMapPriorities, type HomeMapPriorityLayout } from './HomeMapPriorities';
 
@@ -32,7 +30,6 @@ type Props =
     'activeTripRequest'
     | 'activeRequestStatus'
   >
-  & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest' | 'highlightedRequestDistance'>
   & Pick<ReturnType<typeof useHomeMapNavigation>,
     'openTripRequestDetail'
     | 'openTripDetail'
@@ -43,14 +40,13 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
   featuredDriverReservationPassengerName, featuredDriverReservationSeatsLabel,
   featuredDriverUpcomingTrip, featuredDriverUpcomingTripSeatsLabel,
   activeTripRequest, activeRequestStatus, openTripRequestDetail,
-  highlightedDriverRequest, highlightedRequestDistance, dismissPriority, prioritiesEnabled,
+  dismissPriority, prioritiesEnabled,
   featuredPassengerTrip, openTripDetail, mapLayout,
 }: Props) {
   const bookingKey = featuredDriverReservation ? homePriorityKeys.booking(featuredDriverReservation.booking) : '';
   const tripKey = featuredDriverUpcomingTrip ? homePriorityKeys.upcomingTrip(featuredDriverUpcomingTrip) : '';
   const reservationCount = featuredDriverUpcomingTrip ? getDriverTripReservationCounts(featuredDriverUpcomingTrip).total : 0;
   const reservationLabel = `${reservationCount} réservation${reservationCount > 1 ? 's' : ''}`;
-  const nearbyKey = highlightedDriverRequest ? homePriorityKeys.nearbyRequest(highlightedDriverRequest) : '';
   const ownRequestKey = activeTripRequest ? homePriorityKeys.ownRequest(activeTripRequest) : '';
   const ownBudget = requestTotalPrice(activeTripRequest?.selectedPricePerSeat ?? activeTripRequest?.maxPricePerSeat, activeTripRequest?.numberOfSeats);
   const hasOwnBudget = ownBudget !== null && ownBudget > 0;
@@ -73,7 +69,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           arrival={placeName(featuredDriverReservation.trip.arrival)}
           metadata={`${homeDepartureLabel(featuredDriverReservation.trip.departureTime)} · ${featuredDriverReservationSeatsLabel} · ${featuredDriverReservationPassengerName}`}
           accessibilityLabel="Ouvrir la réservation reçue"
-          onPress={() => router.push(`/trip/manage/${featuredDriverReservation.trip.id}`)}
+          onPress={() => router.push(`/trip/${featuredDriverReservation.trip.id}`)}
         />
       </SwipeableHomePriority>
     ),
@@ -90,7 +86,7 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           priceHint={featuredDriverUpcomingTrip.price > 0 ? (featuredDriverUpcomingTrip.tripRequestId ? 'pour le trajet' : '/ place') : undefined}
           metadata={`${homeDepartureLabel(featuredDriverUpcomingTrip.departureTime)} · ${featuredDriverUpcomingTripSeatsLabel}`}
           accessibilityLabel={reservationCount ? `Ouvrir le trajet avec ${reservationLabel}` : 'Ouvrir le trajet publié qui démarre bientôt'}
-          onPress={() => router.push(`/trip/manage/${featuredDriverUpcomingTrip.id}`)}
+          onPress={() => router.push(`/trip/${featuredDriverUpcomingTrip.id}`)}
         />
       </SwipeableHomePriority>
     ),
@@ -102,16 +98,6 @@ export const HomeActivityCards = React.memo(function HomeActivityCards({
           departure={placeName(featuredPassengerTrip.departure)} arrival={placeName(featuredPassengerTrip.arrival)}
           metadata={homeDepartureLabel(featuredPassengerTrip.departureTime)}
           accessibilityLabel="Ouvrir mon trajet réservé" onPress={() => openTripDetail(featuredPassengerTrip.id)} />
-      </SwipeableHomePriority>
-    ),
-    highlightedDriverRequest && (
-      <SwipeableHomePriority key={nearbyKey} priorityKey={nearbyKey} enabled={prioritiesEnabled} onDismiss={dismissPriority}>
-        <HomeRequestHighlightCard
-          {...dismissAccessibility(nearbyKey)}
-          request={highlightedDriverRequest}
-          distanceMeters={highlightedRequestDistance}
-          onOpen={openTripRequestDetail}
-        />
       </SwipeableHomePriority>
     ),
     activeTripRequest && activeRequestStatus && (

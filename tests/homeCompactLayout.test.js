@@ -189,16 +189,16 @@ test('only one suggestion mounts, with reserved trips retained if no new trip is
   assert.equal(cards[0].props.booked, true); assert.equal(cards[0].props.item.id, 'reserved');
 });
 
-test('priorities shown over the map are not repeated inside the discovery sheet', () => {
+test('reservations on the map are not duplicated; commands remain reachable in discovery after the modal closes', () => {
   const reserved = { ...trip, id: 'reserved' };
   const request = { id: 'nearest' }, otherRequest = { id: 'other-request' };
   const suggestions = props => nodes(HomeTripsSheet.type({ ...base, ...props })).filter(node => node.type === HomeSuggestionCard);
   assert.equal(suggestions({ featuredPassengerTrip: reserved, latestTrips: [reserved], bookedTripIds: new Set(['reserved']) }).length, 0);
   assert.equal(suggestions({ featuredPassengerTrip: reserved, latestTrips: [reserved, trip], bookedTripIds: new Set(['reserved']) })[0].props.item.id, 'trip');
   const driver = { isDriver: true, isRequestsSheetMode: true, highlightedDriverRequest: request };
-  assert.equal(suggestions({ ...driver, availableDriverRequests: [request] }).length, 0);
-  assert.equal(suggestions({ ...driver, availableDriverRequests: [request, otherRequest] })[0].props.item.id, 'other-request');
-  assert.match(text(HomeTripsSheet.type({ ...base, ...driver, availableDriverRequests: [request] })), /sur la carte/);
+  assert.equal(suggestions({ ...driver, availableDriverRequests: [request] }).length, 1);
+  assert.equal(suggestions({ ...driver, availableDriverRequests: [request, otherRequest] })[0].props.item.id, 'nearest');
+  assert.doesNotMatch(text(HomeTripsSheet.type({ ...base, ...driver, availableDriverRequests: [request] })), /sur la carte/);
 });
 
 test('passengers never get clients and dismissed requests do not reappear through the fallback', () => {

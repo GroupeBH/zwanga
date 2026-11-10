@@ -1,6 +1,8 @@
 import { ManualAddressStatus } from '@/components/address/ManualAddressStatus';
+import { requiresRequestReference } from '@/features/trip-request/requestReference';
 import { Colors } from '@/constants/styles';
 import { toggleRequestVehicleType } from '@/features/trip-request/vehicleSelection';
+import { requestVehicleEstimate } from '@/features/trip-request/vehicleEstimate';
 import { getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { favoriteIcon, POPULAR_PLACES } from '@/features/trip-request/requestFormModel';
@@ -19,7 +21,7 @@ import {
 
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 
-type Props = Pick<RequestTripController, 'addressInputMode' | 'addressSectionStep' | 'applyQuickPlaceToNextSlot' | 'applySelectionToNextSlot' | 'arrivalAddress' | 'arrivalManualAddress' | 'arrivalManualGeocodeStatus' | 'arrivalReference' | 'departureAddress' | 'departureManualAddress' | 'departureManualGeocodeStatus' | 'departureReference' | 'departureTouchedRef' | 'favoriteSuggestions' | 'hasArrivalAddress' | 'hasDepartureAddress' | 'openPickerFor' | 'quickPlaceResolvingKey' | 'selectedVehicleTypes' | 'numberOfSeats' | 'setArrivalLocation' | 'setArrivalManualAddress' | 'setArrivalReference' | 'setDepartureLocation' | 'setDepartureManualAddress' | 'setDepartureReference' | 'setSelectedVehicleTypes' | 'setShowQuickLandmarks' | 'showQuickLandmarks' | 'swapRoutePoints'>;
+type Props = Pick<RequestTripController, 'addressInputMode' | 'addressSectionStep' | 'applyQuickPlaceToNextSlot' | 'applySelectionToNextSlot' | 'arrivalAddress' | 'arrivalManualAddress' | 'arrivalManualGeocodeStatus' | 'arrivalReference' | 'departureAddress' | 'departureManualAddress' | 'departureManualGeocodeStatus' | 'departureReference' | 'departureTouchedRef' | 'favoriteSuggestions' | 'hasArrivalAddress' | 'hasDepartureAddress' | 'openPickerFor' | 'quickPlaceResolvingKey' | 'selectedVehicleTypes' | 'numberOfSeats' | 'setArrivalLocation' | 'setArrivalManualAddress' | 'setArrivalReference' | 'setDepartureLocation' | 'setDepartureManualAddress' | 'setDepartureReference' | 'setSelectedVehicleTypes' | 'setShowQuickLandmarks' | 'showQuickLandmarks' | 'swapRoutePoints' | 'vehicleOptions' | 'isPriceLoading' | 'isVehicleOptionsError'>;
 
 export function RequestRouteStep({
   addressInputMode,
@@ -42,6 +44,9 @@ export function RequestRouteStep({
   quickPlaceResolvingKey,
   selectedVehicleTypes,
   numberOfSeats,
+  vehicleOptions,
+  isPriceLoading,
+  isVehicleOptionsError,
   setArrivalLocation,
   setArrivalManualAddress,
   setArrivalReference,
@@ -51,8 +56,12 @@ export function RequestRouteStep({
   setSelectedVehicleTypes,
   setShowQuickLandmarks,
   showQuickLandmarks,
-  swapRoutePoints
-}: Props) {
+  swapRoutePoints,
+  departureLocation,
+  arrivalLocation,
+}: Props & Partial<Pick<RequestTripController, 'departureLocation' | 'arrivalLocation'>>) {
+  const departureRequired = requiresRequestReference(departureAddress, departureLocation);
+  const arrivalRequired = requiresRequestReference(arrivalAddress, arrivalLocation);
   return (<Animated.View entering={FadeIn} style={styles.routeSetup}>
     <View style={styles.routeSetupHeader}>
       <Text style={styles.routeSetupTitle}>Où allez-vous ?</Text>
@@ -100,14 +109,14 @@ export function RequestRouteStep({
           </View>
         ) : null}
         <View style={styles.routeManualWrap}>
-          <Text style={styles.routeReferenceLabel}>Référence au départ · facultative</Text>
+          <Text style={styles.routeReferenceLabel}>{departureRequired ? 'Repère au départ · obligatoire' : 'Référence au départ · facultative'}</Text>
           <TextInput
             style={styles.rideReferenceInput}
             value={departureReference}
             onChangeText={setDepartureReference}
             placeholder="Ex. Devant la pharmacie"
             placeholderTextColor={Colors.gray[500]}
-            accessibilityLabel="Référence au départ, facultative"
+            accessibilityLabel={departureRequired ? 'Repère au départ, obligatoire' : 'Référence au départ, facultative'}
             autoCapitalize="sentences"
             returnKeyType="done"
             maxLength={200}
@@ -153,14 +162,14 @@ export function RequestRouteStep({
           </View>
         ) : null}
         <View style={styles.routeManualWrap}>
-          <Text style={styles.routeReferenceLabel}>Référence à l’arrivée · facultative</Text>
+          <Text style={styles.routeReferenceLabel}>{arrivalRequired ? 'Repère à l’arrivée · obligatoire' : 'Référence à l’arrivée · facultative'}</Text>
           <TextInput
             style={styles.rideReferenceInput}
             value={arrivalReference}
             onChangeText={setArrivalReference}
             placeholder="Ex. Portail bleu, entrée principale"
             placeholderTextColor={Colors.gray[500]}
-            accessibilityLabel="Référence à l’arrivée, facultative"
+            accessibilityLabel={arrivalRequired ? 'Repère à l’arrivée, obligatoire' : 'Référence à l’arrivée, facultative'}
             autoCapitalize="sentences"
             returnKeyType="done"
             maxLength={200}
@@ -254,6 +263,9 @@ export function RequestRouteStep({
           const selected = selectedVehicleTypes.includes(option.id);
           const capacity = getPassengerVehicleSeatCapacity(option.id);
           const disabled = !selected && capacity !== null && numberOfSeats > capacity;
+          const estimate = requestVehicleEstimate(option.id, {
+            vehicleOptions, isPriceLoading, isVehicleOptionsError, hasDepartureAddress, hasArrivalAddress, numberOfSeats,
+          });
 
           return (
             <TouchableOpacity
@@ -261,7 +273,7 @@ export function RequestRouteStep({
               accessibilityRole="checkbox"
               accessibilityState={{ checked: selected, disabled }}
               disabled={disabled}
-              accessibilityLabel={option.label}
+              accessibilityLabel={`${option.label}, estimation pour le trajet : ${estimate}`}
               accessibilityHint={disabled
                 ? 'Pas assez de places pour votre commande.'
                 : selected && selectedVehicleTypes.length === 1
@@ -296,6 +308,10 @@ export function RequestRouteStep({
               >
                 {option.label}
               </Text>
+              <View style={styles.routeVehicleEstimate}>
+                <Text style={styles.routeVehicleEstimateLabel}>Estimation</Text>
+                <Text style={styles.routeVehicleEstimatePrice}>{estimate}</Text>
+              </View>
               <Ionicons
                 name={selected ? 'checkbox' : 'square-outline'}
                 size={17}

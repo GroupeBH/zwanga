@@ -144,9 +144,13 @@ export function useRequestEntryResume(options: Options) {
     };
     const releaseAttempt = () => { if (generation === entry.generation) entry.attempt = ''; };
     const navigate = (destination: Href) => {
-      entry.stage = 'navigation'; entry.redirecting = true;
+      // The detail already owns the booking modal. Replacing this same route
+      // would remount it, reopen dismissed panels and leave the entry cover waiting.
+      const alreadyOnDetail = Boolean(booking && typeof destination === 'object' && destination !== null &&
+        destination.pathname === '/trip/[id]' && latest.current.options.path === `/trip/${destination.params?.id}`);
+      entry.stage = 'navigation'; entry.redirecting = !alreadyOnDetail;
       const replace = bookingAlert ? latest.current.options.replaceBooking ?? latest.current.options.replace : latest.current.options.replace;
-      if (replace(destination) === false) entry.redirecting = false;
+      if (!alreadyOnDetail && replace(destination) === false) entry.redirecting = false;
       if (booking) entry.openedBookings.add(booking.key);
       while (entry.openedBookings.size > 100) entry.openedBookings.delete(entry.openedBookings.values().next().value!);
       entry.done = true;

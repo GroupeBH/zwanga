@@ -264,6 +264,7 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   const mocked = { ...defaults,
     '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'DriverAccessGuard' },
+    '@/components/trip/NextRequestAfterTrip': { NextRequestAfterTrip: 'NextRequest' },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
     '../../../hooks/driver-navigation/useDriverNavigationController': { useDriverNavigationController: () => model },
     '@/hooks/navigation/useNavigationAssistance': { useNavigationAssistance: value => { received.push(value); return { ...assistance, isOpen: true, panel: 'sos' }; } },
@@ -283,6 +284,14 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   assert.equal(guarded.type, 'DriverAccessGuard');
   assert.equal(received.length, 0, 'driver controllers do not run before the access guard');
   const tree = guarded.props.children.type();
+  const next = all(tree).find(node => node.type === 'NextRequest');
+  assert.equal(next.props.trip, model.session.foundation.data.trip);
+  assert.equal(next.props.active, model.session.foundation.data.isScreenActive);
+  assert.equal(next.props.blocked, true, 'assistance keeps priority over the next command');
+  const releases = [];
+  model.session.foundation.exitActions.navigateSafely = target => releases.push(target);
+  next.props.onOpenRequestDetail('following');
+  assert.deepEqual(releases, [{ pathname: '/request-details/[id]', params: { id: 'following' } }]);
   assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.forceRecalculateRoute, model.forceRecalculateRoute);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.canToggleRouteSections, true);

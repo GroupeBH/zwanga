@@ -6,10 +6,11 @@ import type { RouteLocationLabels, RouteStopLabel } from '@/utils/routeLocationL
 type Props = {
   labels: RouteLocationLabels; tone?: 'light' | 'dark'; trailingInset?: number;
   compact?: boolean; departureTimeLabel?: string; arrivalTimeLabel?: string;
+  showContext?: boolean;
 };
 
-function Stop({ label, stop, arrival = false, dark, compact, time }: {
-  label: string; stop: RouteStopLabel; arrival?: boolean; dark: boolean; compact?: boolean; time?: string;
+function Stop({ label, stop, arrival = false, dark, compact, time, showContext }: {
+  label: string; stop: RouteStopLabel; arrival?: boolean; dark: boolean; compact?: boolean; time?: string; showContext: boolean;
 }) {
   const timeLabel = time ? `${arrival ? 'Arrivée estimée' : 'Départ'} : ${time}` : '';
   const accessibilityLabel = [label, stop.title, stop.context, stop.reference && `Référence : ${stop.reference}`, timeLabel].filter(Boolean).join('. ');
@@ -22,7 +23,7 @@ function Stop({ label, stop, arrival = false, dark, compact, time }: {
           {!!time && <Text style={[styles.time, dark && styles.darkLabel]}>{time}</Text>}
         </View>
         <Text style={[styles.title, dark && styles.darkTitle]}>{stop.title}</Text>
-        {!!stop.context && <Text style={[styles.context, dark && styles.darkContext]}>{stop.context}</Text>}
+        {showContext && !!stop.context && <Text style={[styles.context, dark && styles.darkContext]}>{stop.context}</Text>}
         {!!stop.reference && <Text style={[styles.reference, dark && styles.darkReference]}>Référence : {stop.reference}</Text>}
       </View>
     </View>
@@ -32,13 +33,14 @@ function Stop({ label, stop, arrival = false, dark, compact, time }: {
 /** Shared, wrapping route labels for driver/passenger trip and request details. */
 export const RouteLocationDetails = memo(function RouteLocationDetails({
   labels, tone = 'light', trailingInset = 0, compact = false, departureTimeLabel, arrivalTimeLabel,
+  showContext = true,
 }: Props) {
   const dark = tone === 'dark';
   return (
     <View style={[styles.container, { paddingRight: trailingInset }]}>
-      <Stop label="Départ" stop={labels.departure} dark={dark} compact={compact} time={departureTimeLabel} />
+      <Stop label="Départ" stop={labels.departure} dark={dark} compact={compact} time={departureTimeLabel} showContext={showContext} />
       <View style={[styles.divider, compact && styles.compactDivider, dark && styles.darkDivider]} />
-      <Stop label="Destination" stop={labels.arrival} arrival dark={dark} compact={compact} time={arrivalTimeLabel} />
+      <Stop label="Destination" stop={labels.arrival} arrival dark={dark} compact={compact} time={arrivalTimeLabel} showContext={showContext} />
     </View>
   );
 });

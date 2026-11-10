@@ -1,4 +1,5 @@
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
+import { missingRequestReference, requestReferenceMessage } from '@/features/trip-request/requestReference';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { recoverRequest, type RequestAttempt } from '@/features/trip-request/recoverRequest';
 import { getTokenSessionVersion } from '@/services/tokenSession';
@@ -108,6 +109,15 @@ export function useRequestSubmission({
     else setRequestSentWithoutDetail(true);
   };
 
+  const validateReferences = (departure = departureAddress, arrival = arrivalAddress) => {
+    const target = missingRequestReference(departure, departureReference, departureLocation) ? 'departure'
+      : missingRequestReference(arrival, arrivalReference, arrivalLocation) ? 'arrival' : null;
+    if (!target) return true;
+    setSubmissionError(requestReferenceMessage(target));
+    setRequestFormStep('route');
+    setAddressSectionStep(target);
+    return false;
+  };
   const validate = (departureWindow = getCurrentDepartureWindow()) => {
     if (!hasDepartureAddress) {
       setRequestFormStep('route');
@@ -129,6 +139,7 @@ export function useRequestSubmission({
       });
       return false;
     }
+    if (!validateReferences()) return false;
     if (
       departureLocation &&
       arrivalLocation &&
@@ -233,6 +244,11 @@ export function useRequestSubmission({
         { text: departureAddress, point: departureLocation }, { text: arrivalAddress, point: arrivalLocation });
       if (!current()) return;
       setResolvingAddresses(false);
+      if (!validateReferences(shared.departureAddress, shared.arrivalAddress)) {
+        // Nothing was sent: a missing reference must never enter uncertain-send recovery.
+        pendingAttempt.current = null;
+        return;
+      }
       // Recovery must compare the exact labels sent, not a local GPS shortcut.
       pendingAttempt.current!.departure = shared.departureAddress.trim().toLowerCase();
       pendingAttempt.current!.arrival = shared.arrivalAddress.trim().toLowerCase();

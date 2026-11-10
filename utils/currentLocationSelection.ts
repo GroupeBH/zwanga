@@ -28,20 +28,22 @@ export async function buildCurrentLocationSelection(coordinate: Coordinate) {
     console.warn("Impossible de resoudre l'adresse de la position actuelle", error);
   }
 
+  const addressComponents = [
+    { longName: address?.streetNumber ?? '', types: ['street_number'] },
+    { longName: address?.street ?? '', types: ['route'] },
+    { longName: address?.district ?? '', types: ['neighborhood'] },
+    { longName: address?.city || address?.subregion || '', types: ['locality'] },
+    { longName: address?.region ?? '', types: ['administrative_area_level_1'] },
+  ].filter(part => part.longName.trim());
   return {
     ...readableLocation({
       name: address?.name,
       formattedAddress: formatAddress(address),
-      addressComponents: [
-        { longName: address?.streetNumber ?? '', types: ['street_number'] },
-        { longName: address?.street ?? '', types: ['route'] },
-        { longName: address?.district ?? '', types: ['neighborhood'] },
-        { longName: address?.city || address?.subregion || '', types: ['locality'] },
-        { longName: address?.region ?? '', types: ['administrative_area_level_1'] },
-      ],
+      addressComponents,
       fallbackTitle: 'Ma position',
     }),
     latitude: coordinate.latitude,
     longitude: coordinate.longitude,
+    ...(addressComponents.length ? { addressComponents } : {}),
   };
 }

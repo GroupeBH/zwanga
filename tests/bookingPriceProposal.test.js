@@ -12,7 +12,8 @@ const all = tree => Array.isArray(tree) ? tree.flatMap(all) : React.isValidEleme
 const words = tree => Array.isArray(tree) ? tree.map(words).join('') : React.isValidElement(tree) ? words(tree.props.children) : typeof tree === 'string' || typeof tree === 'number' ? String(tree) : '';
 
 test('price is optional, whole CDF per seat, lower than public fare and bounded', () => {
-  for (const text of ['', ' ', '1', '2000']) assert.equal(policy.bookingProposalError(text, 3000, 2), null);
+  for (const text of ['', ' ', '2500', '2800']) assert.equal(policy.bookingProposalError(text, 3000, 2), null);
+  for (const text of ['1', '2000', '2499']) assert.match(policy.bookingProposalError(text, 3000, 2), /2 500/);
   for (const text of ['0', '-1', '1.5', '2e3', 'NaN', '3000', '5000', 'abc']) assert.ok(policy.bookingProposalError(text, 3000, 2));
   assert.ok(policy.bookingProposalError('2500', 3000, 100000));
   assert.ok(policy.bookingProposalError('2500', 3000, 1.5));
@@ -45,10 +46,10 @@ test('optional field opens and can revert to public price, with explicit per-sea
 test('price estimates update with number of seats, without changing confirmed payment', () => {
   const h = hookHarness();
   const { useTripBookingPricing } = loader({ react: h.react })('hooks/trip-detail/useTripBookingPricing.ts');
-  const props = { bookingSeats: '2', bookingProposedPrice: '2000', trip: { price: 3000 }, activeBooking: null };
+  const props = { bookingSeats: '2', bookingProposedPrice: '2500', trip: { price: 3000 }, activeBooking: null };
   const render = () => h.render(() => useTripBookingPricing(props));
-  assert.equal(render().estimatedTotal, 4000);
-  props.bookingSeats = '3'; assert.equal(render().estimatedTotal, 6000);
+  assert.equal(render().estimatedTotal, 5000);
+  props.bookingSeats = '3'; assert.equal(render().estimatedTotal, 7500);
   props.bookingProposedPrice = ''; assert.equal(render().estimatedTotal, 9000);
   h.unmount();
 });
@@ -91,15 +92,15 @@ test('booking creation sends the proposal separately, and invalid inputs never s
   const { useTripBookingSubmission } = load('hooks/trip-detail/useTripBookingSubmission.ts');
   const noop = () => {};
   const props = { isBooking: false, trip: { id: 'trip', price: 3000, departure: { lat: -4.32, lng: 15.3 }, arrival: { lat: -4.34, lng: 15.35 } },
-    isValidatingDestination: false, bookingSeats: '2', bookingProposedPrice: '2000', isIdentityVerified: true, seatLimit: 3,
+    isValidatingDestination: false, bookingSeats: '2', bookingProposedPrice: '2500', isIdentityVerified: true, seatLimit: 3,
     setBookingModalError: e => errors.push(e), setBookingStep: noop, passengerOriginManualAddress: '', passengerDestinationManualAddress: '',
     passengerOrigin: null, passengerDestination: null, setIsValidatingDestination: noop, setPassengerOrigin: noop, setPassengerDestination: noop,
     routeCoordinates: null, createBooking: body => ({ unwrap: async () => { sent.push(body); return { id: 'booking' }; } }),
-    estimatedTotal: 4000, bookingPaymentMode: 'cash', setBookingModalVisible: noop, setPassengerOriginManualAddress: noop,
+    estimatedTotal: 5000, bookingPaymentMode: 'cash', setBookingModalVisible: noop, setPassengerOriginManualAddress: noop,
     setPassengerDestinationManualAddress: noop, setShouldAutofillPassengerOrigin: noop, openBookingSuccessModal: noop,
     refreshBookingLists: noop, refetchKycStatus: noop, openPassengerIdentityVerification: noop, activeBooking: null, showDialog: noop };
   const submit = () => h.render(() => useTripBookingSubmission(props)).handleConfirmBooking();
-  await submit(); assert.equal(sent.length, 1); assert.equal(sent[0].proposedPricePerSeat, 2000);
+  await submit(); assert.equal(sent.length, 1); assert.equal(sent[0].proposedPricePerSeat, 2500);
   assert.equal(sent[0].numberOfSeats, 2); assert.equal('paymentAmount' in sent[0], false);
   props.bookingProposedPrice = '0'; await submit(); assert.equal(sent.length, 1); assert.match(errors.at(-1), /supérieur à zéro/);
   props.bookingProposedPrice = ''; await submit(); assert.equal('proposedPricePerSeat' in sent[1], false);

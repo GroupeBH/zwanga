@@ -43,14 +43,14 @@ test('compact payment choices keep the commission visible and reveal full terms 
   assert.ok(disclosure.props.style.minHeight >= 44);
   disclosure.props.onPress(); tree = f.render();
   assert.match(words(tree), /sans débiter votre portefeuille/);
-  assert.match(words(tree), /réservés sur vos jetons à l’acceptation, bonus inclus/);
+  assert.match(words(tree), /réservés sur vos jetons disponibles, bonus inclus/);
   nodes(tree).find(n => n.props.accessibilityState?.expanded === true).props.onPress();
   assert.doesNotMatch(words(f.render()), /sans débiter/);
 });
 
 test('cash failure, loading and insufficient reserve are distinct; wallet and refresh stay available', () => {
   const f = paymentFixture(); f.response.currentData.cash.availableTokens = 0;
-  let tree = f.render(); assert.match(words(tree), /Rechargez/);
+  let tree = f.render(); assert.match(words(tree), /rechargez/i);
   nodes(tree).find(n => n.type === 'Button' && words(n) === 'Recharger').props.onPress();
   assert.deepEqual(f.paths, ['/wallet']);
   nodes(tree).find(n => n.props.accessibilityLabel === 'Actualiser la disponibilité du cash').props.onPress();
@@ -104,13 +104,15 @@ test('optional note expands without losing text; passenger identity toggle is al
   const Component = loader({ react: { ...React, ...hooks.react }, 'react-native': native })('features/publish/PublishPassengerOptions.tsx').PublishPassengerOptions;
   const render = () => hooks.render(() => Component(props));
   assert.ok(!nodes(render()).some(n => n.type === 'Input'));
+  assert.ok(!nodes(render()).some(n => n.type === 'Switch'));
+  nodes(render()).find(n => n.type === 'Button').props.onPress();
   nodes(render()).find(n => n.type === 'Switch').props.onValueChange(true);
   assert.match(words(render()), /Identité vérifiée/);
-  nodes(render()).find(n => n.type === 'Button').props.onPress();
+  nodes(render()).filter(n => n.type === 'Button')[1].props.onPress();
   nodes(render()).find(n => n.type === 'Input').props.onChangeText('Petit bagage accepté');
-  nodes(render()).find(n => n.type === 'Button').props.onPress();
+  nodes(render()).filter(n => n.type === 'Button')[1].props.onPress();
   assert.equal(props.description, 'Petit bagage accepté');
-  nodes(render()).find(n => n.type === 'Button').props.onPress();
+  nodes(render()).filter(n => n.type === 'Button')[1].props.onPress();
   assert.equal(nodes(render()).find(n => n.type === 'Input').props.value, props.description);
   hooks.unmount();
 });

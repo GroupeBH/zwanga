@@ -10,7 +10,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const trip = patch => ({ id: 'trip', driverId: 'driver', status: 'upcoming', departureTime: iso(3600000),
   reservationSummary: { pendingBookingIds: ['booking'], acceptedCount: 0 }, ...patch });
 const booking = patch => ({ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'pending', trip: trip(), ...patch });
-const target = (id = 'trip', bookingId = 'booking') => ({ pathname: '/trip/manage/[id]', params: { id, bookingId, section: 'passengers' } });
+const target = (id = 'trip', bookingId = 'booking') => ({ pathname: '/trip/[id]', params: { id, bookingId, section: 'passengers' } });
 const alert = patch => ({ id: 'booking', key: 'driver-booking-booking', kind: 'booking', recipientId: 'driver',
   data: { tripId: 'trip', type: 'new_booking', passengerId: 'passenger' }, ...patch });
 test.beforeEach(t => t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now }));
@@ -262,4 +262,14 @@ test('a thrown booking redirect remains retryable after initial Home discovery s
   f.options.replaceBooking = destination => f.routes.push(destination);
   f.render().retry(); f.render(); await flush();
   assert.deepEqual(f.routes, [target()]);
+});
+
+test('new reservation on its current canonical detail refreshes data without remounting it or trapping the entry cover', async t => {
+  const f = fixture(t), id = '11111111-1111-4111-8111-111111111111', snapshots = [];
+  f.options.path = `/trip/${id}`; f.options.alerts = [alert({ data: { tripId: id } })];
+  f.options.readBooking = async () => booking({ tripId: id, trip: trip({ id }) });
+  f.options.prepareBookingEntry = snapshot => snapshots.push(snapshot);
+  f.render(); await flush();
+  assert.equal(f.render().pending, false); assert.deepEqual(f.routes, []); assert.equal(snapshots.length, 1);
+  f.render(); await flush(); assert.equal(snapshots.length, 1, 'same alert cannot reopen the panel');
 });

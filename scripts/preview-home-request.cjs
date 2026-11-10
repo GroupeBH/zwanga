@@ -12,8 +12,18 @@ const { homeRequestFixture, homeRequestBoundaryMocks } = require('../tests/helpe
 const { chromium } = require('./preview-arrival-payment.cjs');
 const noop = () => {}, h = React.createElement;
 
-function renderFixture({ width, height, textScale = 1, planned = false, missingGps = false, arrivalPicker = false, searching = false }) {
+function renderFixture({ width, height, textScale = 1, planned = false, coarseRoute = false, missingGps = false, arrivalPicker = false, searching = false }) {
   const form = homeRequestFixture(planned ? { timePreset: 'custom' } : {});
+  // Synthetic server quote for 3.3 km in normal traffic, one requested seat.
+  Object.assign(form, { budgetValue: 4950, budgetLabel: '4 950 FC', totalBudgetLabel: '4 950 FC', routeDistanceLabel: '3,3 km',
+    vehicleOptions: ['car', 'motorcycle_2_wheels', 'motorcycle_3_wheels'].map(vehicleType => ({
+      vehicleType, recommendedPricePerSeat: 4950, recommendedTotalPrice: 4950,
+      pricePerKmPerPassenger: 1500, availableForRequestedSeats: true,
+    })) });
+  if (coarseRoute) Object.assign(form, { departureAddress: 'Selembao', arrivalAddress: 'Mont Ngafula',
+    departureLocation: { ...form.departureLocation, title: 'Selembao', address: 'Selembao' },
+    arrivalLocation: { ...form.arrivalLocation, title: 'Mont Ngafula', address: 'Mont Ngafula' },
+    departureReference: 'Devant la pharmacie', arrivalReference: 'Portail bleu', hasChosenDepartureTime: false });
   if (missingGps) Object.assign(form, { departureLocation: null, departureAddress: '', requestFormStep: 'route' });
   if (arrivalPicker) form.arrivalLocation = null;
   const pickerTarget = arrivalPicker ? 'arrival' : missingGps ? 'departure' : null;
@@ -72,6 +82,8 @@ async function run() {
     { width: 390, height: 844, name: 'review-390' }, { width: 360, height: 800, name: 'review-360' },
     { width: 320, height: 568, name: 'review-small' }, { width: 320, height: 568, textScale: 1.5, name: 'large-text' },
     { width: 390, height: 844, planned: true, name: 'planned' },
+    { width: 390, height: 844, planned: true, coarseRoute: true, name: 'landmarks-planned' },
+    { width: 320, height: 568, textScale: 1.5, planned: true, coarseRoute: true, name: 'landmarks-small' },
     { width: 320, height: 568, missingGps: true, name: 'gps-fallback' },
     { width: 390, height: 844, missingGps: true, name: 'gps-fallback-390' },
     { width: 320, height: 568, textScale: 1.5, missingGps: true, name: 'gps-large-text' },

@@ -6,6 +6,7 @@ export interface DriverFinanceSummary {
   pro: { isActive: boolean; endDate: string | null };
   trial: { startDate: string; endDate: string } | null;
   cash: { enabled: boolean; availableTokens: number; reservedTokens: number; debtTokens: number;
+    creditAllowance?: { eligible: boolean; remainingTrips: number; completedTrips: number; reservedTrips: number; tripLimit: number; oneTime: boolean };
     debtLimitTokens?: number; availableCreditTokens?: number; debtAmount?: number;
     moneyPerToken: number; coverageAmount: number; blocked: boolean; purchasedTokensOnly: boolean };
 }

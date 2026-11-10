@@ -151,6 +151,36 @@ test('the banner expires after ten minutes, while refreshes preserve the origina
   app.hooks.unmount();
 });
 
+test('an elapsed nearest highlight cannot hide a new command behind it', t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  const app = highlightApp(); app.render(); app.render();
+  const originalDeadline = app.store.getState().homeRequestHighlights.expiresAtById.near;
+  t.mock.timers.tick(model.HOME_REQUEST_HIGHLIGHT_MS);
+  app.props.requests = [request('near'), request('new-command')];
+  app.render();
+  assert.equal(app.render().highlightedDriverRequest.id, 'new-command');
+  assert.equal(app.store.getState().homeRequestHighlights.expiresAtById.near, originalDeadline);
+  assert.deepEqual(app.props.requests.map(item => item.id), ['near', 'new-command'], 'list visibility is unchanged');
+  assert.equal(app.store.getState().homeRequestHighlights.expiresAtById['new-command'], Date.now() + model.HOME_REQUEST_HIGHLIGHT_MS);
+  app.hooks.unmount();
+});
+
+test('expiry advances to the next eligible command, not an ignored, assigned or own request', t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  const app = highlightApp();
+  const hidden = request('hidden');
+  app.props.requests.push(hidden, request('assigned', { selectedDriverId: 'other-driver' }),
+    request('own', { passengerId: 'driver' }), request('next'));
+  app.props.hiddenHomePriorities = { [load('features/home/homePriorityDismissal.ts').homePriorityKeys.nearbyRequest(hidden)]: true };
+  app.render(); assert.equal(app.render().highlightedDriverRequest.id, 'near');
+  t.mock.timers.tick(model.HOME_REQUEST_HIGHLIGHT_MS);
+  app.render(); assert.equal(app.render().highlightedDriverRequest.id, 'next');
+  assert.deepEqual(Object.keys(app.store.getState().homeRequestHighlights.expiresAtById).sort(), ['near', 'next']);
+  t.mock.timers.tick(model.HOME_REQUEST_HIGHLIGHT_MS);
+  assert.equal(app.render().highlightedDriverRequest, null, 'do not re-alert commands already presented');
+  app.hooks.unmount();
+});
+
 test('tab changes, background time and remounts do not restart a highlight', t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
   const first = highlightApp(); first.render(); first.render();

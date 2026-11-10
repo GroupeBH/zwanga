@@ -43,6 +43,20 @@ export type TripRequestPriceRecommendation = {
   pricePerKmPerPassenger: number;
   recommendedPricePerSeat: number | null;
   recommendedTotalPrice: number | null;
+  pricing?: TripRequestPricing;
+};
+
+export type TripRequestPricing = {
+  pricingVersion: string;
+  minimumPricePerSeat: number;
+  pricePerKmPerPassenger: number;
+  pricePerDelayMinute: number;
+  trafficDelaySurchargePerSeat: number;
+  billableDelaySeconds: number;
+  heavyRain: boolean;
+  heavyTraffic: boolean;
+  trafficDataAvailable: boolean;
+  distanceSource: 'google_directions' | 'straight_line' | 'unavailable';
 };
 
 export type TripRequestVehiclePriceOption = {
@@ -60,6 +74,7 @@ export type TripRequestVehicleOptions = {
   pricingModel: 'distance_per_vehicle_type';
   distanceMeters: number | null;
   numberOfSeats: number;
+  pricing?: TripRequestPricing;
   weatherImpact: {
     priceMultiplier: number;
     [key: string]: unknown;

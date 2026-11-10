@@ -10,7 +10,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
+    paddingVertical: 4,
     backgroundColor: '#EEF2F6',
   },
   closeButton: {

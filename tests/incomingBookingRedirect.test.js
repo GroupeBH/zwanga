@@ -28,7 +28,7 @@ test('booking links open the existing passenger list directly, without an accept
   for (const status of ['pending', 'accepted', 'rejected', 'cancelled']) {
     const f = fixture(); f.state.query.currentData = { ...booking, status };
     const tree = f.render(); f.render();
-    assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: tripId, bookingId: id, section: 'passengers' } }]);
+    assert.deepEqual(f.routes, [{ pathname: '/trip/[id]', params: { id: tripId, bookingId: id, section: 'passengers' } }]);
     assert.equal(f.dismissals.length, status === 'pending' ? 0 : 1);
     assert.doesNotMatch(words(tree), /Un passager vous attend|C’est confirmé|Voir les détails|Accepter|Refuser/);
     f.hooks.unmount();
@@ -38,7 +38,7 @@ test('booking links open the existing passenger list directly, without an accept
 test('ongoing trips go directly to navigation; finished trips keep their management/history screen', () => {
   for (const status of ['ongoing', 'completed', 'cancelled']) {
     const f = fixture(); f.state.query.currentData = { ...booking, trip: { ...booking.trip, status } };
-    f.render(); assert.equal(f.routes[0].pathname, status === 'ongoing' ? '/trip/navigate/[id]' : '/trip/manage/[id]');
+    f.render(); assert.equal(f.routes[0].pathname, status === 'ongoing' ? '/trip/navigate/[id]' : '/trip/[id]');
     f.hooks.unmount();
   }
 });

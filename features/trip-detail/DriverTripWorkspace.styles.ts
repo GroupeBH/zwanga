@@ -1,0 +1,30 @@
+import { StyleSheet } from 'react-native';
+import { Colors } from '@/constants/styles';
+
+export const driverTripStyles = StyleSheet.create({
+  sheet: { backgroundColor: Colors.white, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16, gap: 6 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  status: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  muted: { color: Colors.gray[600], fontSize: 13, lineHeight: 19 },
+  price: { color: Colors.gray[900], fontSize: 20, fontWeight: '700' },
+  unit: { color: Colors.gray[600], fontSize: 12, fontWeight: '400' },
+  facts: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4 },
+  fact: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  link: { fontSize: 13, fontWeight: '600', color: Colors.primaryDark },
+  disclosure: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.gray[200], paddingVertical: 8 },
+  title: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '600', color: Colors.gray[900] },
+  details: { gap: 8, paddingBottom: 8 },
+  pending: { color: Colors.primaryDark, fontSize: 13, fontWeight: '700' },
+  feedback: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10, borderRadius: 10, backgroundColor: '#FFF3EC' },
+  feedbackText: { flex: 1, fontSize: 14, color: Colors.gray[800] },
+  close: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  footer: { backgroundColor: Colors.white, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.gray[200],
+    paddingHorizontal: 16, paddingTop: 8, gap: 4 },
+  primary: { minHeight: 48, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: Colors.primary,
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  primaryText: { flexShrink: 1, fontSize: 16, fontWeight: '700', color: Colors.white, textAlign: 'center' },
+  headerIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: Colors.gray[50] },
+  disabled: { opacity: 0.45 },
+});

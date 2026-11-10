@@ -9,6 +9,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
 
 interface PublishConfirmationStepProps {
+  compact?: boolean;
   acceptedPaymentModes: import('@/types').TripPaymentMode[];
   stepEntering: FadeInDown | undefined;
   publicationSuccess: PublicationSuccess;
@@ -40,8 +41,33 @@ export function PublishConfirmationStep(props: PublishConfirmationStepProps) {
   const [showMap, setShowMap] = useState(false);
   const { publicationSuccess, routePreviewRegion, departureLocation, arrivalLocation, routeCoordinates, isRouteLoading } = props;
   return <Animated.View entering={props.stepEntering} style={s.content}>
-    <Text style={s.title}>Tout est correct ?</Text>
-    <View style={s.section}>
+    {!props.compact && <Text style={s.title}>Tout est correct ?</Text>}
+    {props.compact ? <View style={s.compactSection}>
+      {(['departure', 'arrival'] as const).map(point => {
+        const departure = point === 'departure';
+        const summary = departure ? props.departureSummary : props.arrivalSummary;
+        const reference = departure ? props.departureReference : props.arrivalReference;
+        return <View key={point} style={s.summaryPoint}>
+          <Ionicons name={departure ? 'ellipse' : 'location'} size={departure ? 10 : 16}
+            color={departure ? Colors.success : Colors.primaryDark} style={s.pointIcon} />
+          <View style={s.copy}>
+            <Text style={s.hint}>{departure ? 'Départ' : 'Arrivée'}</Text>
+            <Text style={s.summaryPlace} numberOfLines={2} accessibilityLabel={summary.title}>{summary.title}</Text>
+            {!!reference.trim() && <Text style={s.hint}>{reference.trim()}</Text>}
+          </View>
+        </View>;
+      })}
+      <View style={s.summaryFooter}>
+        <Ionicons name="calendar-outline" size={17} color={Colors.gray[600]} />
+        <View style={s.copy}><Text style={s.summaryDate}>{props.formattedFullDateTime}</Text>
+          {props.isRecurringTrip && <Text style={s.hint}>{props.recurringDaysSummary} · Fin : {props.formattedRecurringEndDate}</Text>}
+        </View>
+        <TouchableOpacity style={s.edit} accessibilityRole="button" accessibilityLabel="Modifier l’itinéraire et l’horaire"
+          disabled={props.isSubmittingTrip} onPress={() => props.goToStep('route')}>
+          <Text style={s.link}>Modifier</Text>
+        </TouchableOpacity>
+      </View>
+    </View> : <View style={s.section}>
       <View style={s.heading}><Text style={s.label}>Itinéraire et départ</Text>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Modifier l’itinéraire et l’horaire"
           disabled={props.isSubmittingTrip} style={s.edit} onPress={() => props.goToStep('route')}>
@@ -57,7 +83,7 @@ export function PublishConfirmationStep(props: PublishConfirmationStepProps) {
           <View style={s.copy}>
             <Text style={s.hint}>{point === 'departure' ? 'Départ' : 'Arrivée'}</Text>
             <Text style={s.place}>{summary.title}</Text>
-            {!!summary.address && summary.address !== summary.title && <Text style={s.hint}>{summary.address}</Text>}
+            {!props.compact && !!summary.address && summary.address !== summary.title && <Text style={s.hint}>{summary.address}</Text>}
             {!!reference.trim() && <Text style={s.hint}>{reference.trim()}</Text>}
           </View>
         </View>;
@@ -66,8 +92,8 @@ export function PublishConfirmationStep(props: PublishConfirmationStepProps) {
       {props.isRecurringTrip && <Text style={s.hint}>
         {props.recurringDaysSummary} · Fin : {props.formattedRecurringEndDate}
       </Text>}
-    </View>
-    <View style={s.section}>
+    </View>}
+    {!props.compact && <View style={s.section}>
       <View style={s.heading}><Text style={s.label}>Véhicule et prix</Text>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Modifier le véhicule, les places et le prix"
           disabled={props.isSubmittingTrip} style={s.edit} onPress={() => props.goToStep('pricing')}>
@@ -86,7 +112,7 @@ export function PublishConfirmationStep(props: PublishConfirmationStepProps) {
         ({ cash: 'Cash', electronic: 'Électronique', points: 'Jetons' })[mode]).join(' · ')}</Text>}
       {props.requiresPassengerKyc && <Text style={s.hint}>Passagers vérifiés uniquement</Text>}
       {!!props.description.trim() && <Text style={s.hint}>Note : {props.description.trim()}</Text>}
-    </View>
+    </View>}
     <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showMap }} style={s.mapToggle}
       onPress={() => setShowMap(value => !value)}>
       <Ionicons name="map-outline" size={18} color={Colors.primaryDark} />
@@ -156,7 +182,13 @@ export function PublishConfirmationStep(props: PublishConfirmationStepProps) {
   </Animated.View>;
 }
 const s = StyleSheet.create({
-  content: { gap: 10 }, title: { fontSize: 20, fontWeight: '700', color: Colors.gray[900] },
+  compactSection: { gap: 10, paddingHorizontal: 12, paddingTop: 12, backgroundColor: Colors.white, borderRadius: 14 },
+  summaryPoint: { flexDirection: 'row', alignItems: 'center', gap: 8 }, pointIcon: { width: 18, textAlign: 'center' },
+  summaryPlace: { fontSize: 14, lineHeight: 19, fontWeight: '600', color: Colors.gray[900] },
+  summaryDate: { fontSize: 13, lineHeight: 18, color: Colors.gray[700] },
+  summaryFooter: { flexDirection: 'row', gap: 8, alignItems: 'center', minHeight: 44,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Colors.gray[200] },
+  content: { gap: 4 }, title: { fontSize: 20, fontWeight: '700', color: Colors.gray[900] },
   section: { backgroundColor: Colors.white, borderRadius: 14, paddingHorizontal: 12, paddingBottom: 12, gap: 8 },
   heading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   label: { fontSize: 14, fontWeight: '700', color: Colors.gray[700], flexShrink: 1 },

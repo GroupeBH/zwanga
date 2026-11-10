@@ -306,50 +306,7 @@ export default function TripRequestDetailsScreen() {
 
         {/* Modal de modification de la commande */}
         {model.showEditForm && model.tripRequest && (
-            <RequestEditModal
-              showEditForm={model.showEditForm}
-              setShowEditForm={model.setShowEditForm}
-              editAddressInputMode={model.editAddressInputMode}
-              setEditAddressInputMode={model.setEditAddressInputMode}
-              editDepartureManualAddress={model.editDepartureManualAddress}
-              setEditDepartureManualAddress={model.setEditDepartureManualAddress}
-              editArrivalManualAddress={model.editArrivalManualAddress}
-              setEditArrivalManualAddress={model.setEditArrivalManualAddress}
-              openEditLocationPicker={model.openEditLocationPicker}
-              editDepartureAddress={model.editDepartureAddress}
-              editArrivalAddress={model.editArrivalAddress}
-              openEditDateOrTimePickerMin={model.openEditDateOrTimePickerMin}
-              editDepartureDateMin={model.editDepartureDateMin}
-              openEditDateOrTimePickerMax={model.openEditDateOrTimePickerMax}
-              editDepartureDateMax={model.editDepartureDateMax}
-              editScheduleError={model.editScheduleError}
-              editIosPickerModeMin={model.editIosPickerModeMin}
-              handleEditIosPickerChangeMin={model.handleEditIosPickerChangeMin}
-              editIosPickerModeMax={model.editIosPickerModeMax}
-              handleEditIosPickerChangeMax={model.handleEditIosPickerChangeMax}
-              editVehiclePriceMultiplier={model.editVehiclePriceMultiplier}
-              isEditVehicleOptionsLoading={model.isEditVehicleOptionsLoading}
-              editVehicleOptions={model.editVehicleOptions}
-              isEditVehicleOptionsError={model.isEditVehicleOptionsError}
-              retryEditVehicleOptions={model.retryEditVehicleOptions}
-              editVehicleTypes={model.editVehicleTypes}
-              parsedEditNumberOfSeats={model.parsedEditNumberOfSeats}
-              handleSelectEditVehicle={model.handleSelectEditVehicle}
-              editNumberOfSeats={model.editNumberOfSeats}
-              setEditNumberOfSeats={model.setEditNumberOfSeats}
-              editMaxPricePerSeat={model.editMaxPricePerSeat}
-              setEditMaxPricePerSeat={model.setEditMaxPricePerSeat}
-              isEditBudgetValid={model.isEditBudgetValid}
-              parsedEditBudget={model.parsedEditBudget}
-              editSeatCapacity={model.editSeatCapacity}
-              isIdentityVerified={model.isIdentityVerified}
-              openEditIdentityVerification={model.openEditIdentityVerification}
-              editDescription={model.editDescription}
-              setEditDescription={model.setEditDescription}
-              isEditFormValid={model.isEditFormValid}
-              handleUpdateRequest={model.handleUpdateRequest}
-              isUpdating={model.isUpdating}
-            />
+            <RequestEditModal {...model} />
           )}
         {/* Location Picker Modal pour la modification */}
         {model.editLocationPickerType && (

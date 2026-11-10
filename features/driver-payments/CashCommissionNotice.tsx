@@ -6,7 +6,7 @@ import { selectUser } from '@/store/selectors';
 import { useDriverFinanceSummaryQuery } from '@/store/api/driverFinanceApi';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
-import { estimateCashCommission } from '@/utils/cashCommission';
+import { estimateCashCommission, hasCashCreditAllowance } from '@/utils/cashCommission';
 
 export function CashCommissionNotice({ amount, confirmed = false }: { amount: number; confirmed?: boolean }) {
   const user = useAppSelector(selectUser);
@@ -16,15 +16,18 @@ export function CashCommissionNotice({ amount, confirmed = false }: { amount: nu
   const format = (value: number) => value.toLocaleString('fr-FR');
   let message = 'Commission cash : vérification au moment de l’acceptation.';
   if (estimate && finance) {
-    if (finance.cash.debtTokens > 0) {
-      message = `${format(finance.cash.debtTokens)} jetons dus (${format(finance.cash.debtAmount ?? finance.cash.debtTokens * finance.cash.moneyPerToken)} FC). Tolérance cumulée : ${finance.cash.debtLimitTokens ?? 25} jetons. ${confirmed ? 'Les courses confirmées peuvent se terminer.' : estimate.allowed ? 'Cette commission reste dans la limite autorisée.' : 'Ce nouveau paiement cash dépasse la capacité disponible. Rechargez.'} Tous les jetons reçus peuvent couvrir ce dû.`;
-    } else if (confirmed) {
-      message = 'Commission cash réservée. Le portefeuille affiche votre réserve actualisée.';
-    } else if (!estimate.allowed) {
-      message = 'Réserve cash insuffisante ou bloquée. Rechargez avant d’accepter.';
+    if (confirmed) {
+      message = `Commission cash : 5 %. Reste dû : ${format(finance.cash.debtAmount ?? finance.cash.debtTokens * finance.cash.moneyPerToken)} FC. Les courses confirmées peuvent se terminer.`;
     } else {
       message = `Commission cash de 5 % : ${format(estimate.required)} jetons.`;
-      if (estimate.debt > 0) message += ` Dette totale estimée : ${format(estimate.totalDebt)} jetons, dans la limite de ${finance.cash.debtLimitTokens ?? 25}.`;
+      if (estimate.allowed && hasCashCreditAllowance(finance)) {
+        message += ` Avance unique : ${finance.cash.creditAllowance!.remainingTrips} trajet(s) disponible(s), en cours déduits. Commission due, pas offerte.`;
+      }
+      if (estimate.totalDebt > 0) message += ` Dette totale estimée : ${format(estimate.totalDebt)} jetons.`;
+      if (!estimate.allowed) message += ' Régularisez le dû et rechargez avant un nouveau trajet cash.';
+    }
+    if (finance.cash.creditAllowance) {
+      message += ` Trajets cash payés : ${finance.cash.creditAllowance.completedTrips}/6. Ensuite, réserve en jetons obligatoire.`;
     }
   }
   return <Text accessibilityLiveRegion="polite" style={{ fontSize: 13, lineHeight: 19, color: Colors.primaryDark }}>{message}</Text>;

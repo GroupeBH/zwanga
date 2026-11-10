@@ -77,6 +77,8 @@ test('a late route response cannot update a detail screen that has lost focus', 
     setCalculatedArrivalTime: () => calls.push('arrival'), setIsLoadingRoute() {},
   };
   hooks.render(() => useTripDetailRouteCoordinates({ ...props }));
+  assert.deepEqual(calls, ['coordinates', 'info', 'arrival'], 'clear previous route before loading');
+  calls.length = 0;
   props.isScreenActive = false; hooks.render(() => useTripDetailRouteCoordinates({ ...props }));
   resolve({ duration: 10, coordinates: [] }); await settle();
   assert.deepEqual(calls, []); hooks.unmount();

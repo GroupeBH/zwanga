@@ -169,6 +169,7 @@ export function useTripDetailBookingState({
     setRouteInfo,
     setCalculatedArrivalTime,
     setIsLoadingRoute,
+    isLoadingRoute,
     routeInfo,
     setEstimatedArrivalTime,
     isDetailMapReady,

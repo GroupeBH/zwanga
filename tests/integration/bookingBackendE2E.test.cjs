@@ -64,7 +64,7 @@ test('mobile → HTTP → PostgreSQL → outbox → mobile routing → explicit 
   const pending = await driver.call('getBookingById', booking.id);
   const destination = await navigation.verifyPendingBookingEntry({ id: booking.id, key: `booking:${booking.id}` },
     f.driver.id, async () => pending, () => { throw Error('Trip already included'); });
-  assert.deepEqual(destination, { pathname: '/trip/manage/[id]',
+  assert.deepEqual(destination, { pathname: '/trip/[id]',
     params: { id: f.trip.id, bookingId: booking.id, section: 'passengers' } });
   const accepted = await driver.call('acceptBooking', policy.bookingAcceptanceArgument(pending));
   assert.equal(accepted.status, 'accepted');

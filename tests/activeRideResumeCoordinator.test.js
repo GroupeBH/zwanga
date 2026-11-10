@@ -105,7 +105,7 @@ test('a new reservation opens trip management with the passenger first, without 
   f.booking.status = 'pending'; f.env.trips.fulfilledTimeStamp = 101000;
   Object.assign(f.env.activity.data, { trips: { count: 1 }, bookings: { count: 0 }, requests: { count: 0 } });
   f.render(); f.render(); await flush(); f.render(); await flush();
-  assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
+  assert.deepEqual(f.routes, [{ pathname: '/trip/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
   assert.deepEqual(f.reads, [{ name: 'getBookingById', id: 'booking', options: { subscribe: false, forceRefetch: true } }]);
   f.env.path = '/trip/manage/trip'; assert.equal(f.render(), null);
   f.env.path = '/'; f.render(); await flush(); assert.equal(f.routes.length, 1, 'can leave management voluntarily');
@@ -121,7 +121,7 @@ test('a live booking opens its verified trip even after visiting Profile; retain
   f.alerts.rememberRideAlert({ key: 'driver-booking-booking', id: 'booking', kind: 'booking', recipientId: 'driver',
     data: { type: 'new_booking', passengerId: 'passenger', tripId: 'trip' } });
   f.render(); f.render(); await flush(); f.render(); await flush();
-  assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
+  assert.deepEqual(f.routes, [{ pathname: '/trip/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
   assert.deepEqual(f.reads.map(read => read.id), ['booking']);
   assert.equal(f.env.seeds[0].value.id, 'trip');
   f.env.path = '/'; f.render(); await flush(); f.render();
@@ -179,7 +179,7 @@ test('the handoff checks the server and rejects a newly discovered but already c
   const stale = { id: 'stale', driverId: 'driver', status: 'ongoing' };
   f.env.trips.data = [f.trip, stale]; f.env.tripDetails = { stale: { ...stale, status: 'completed' } };
   f.env.activity.data.trips.count = 2; f.render(); slow.resolve(); await flush(); f.render(); await flush();
-  assert.deepEqual(f.routes, [{ pathname: '/trip/manage/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
+  assert.deepEqual(f.routes, [{ pathname: '/trip/[id]', params: { id: 'trip', bookingId: 'booking', section: 'passengers' } }]);
   assert.equal(f.reads.filter(read => read.id === 'stale').length, 1);
   assert.equal(f.env.seeds[0].value.id, 'trip');
 });

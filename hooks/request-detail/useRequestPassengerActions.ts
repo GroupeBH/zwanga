@@ -1,4 +1,5 @@
 import { getLocationCoordinates } from '../../features/request-detail/requestLocation';
+import { missingRequestReference, requestReferenceMessage } from '@/features/trip-request/requestReference';
 import { TRIP_REQUEST_VEHICLE_LABELS, isValidDate } from '../../features/request-detail/requestDetailModel';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -98,6 +99,12 @@ export function useRequestPassengerActions({
       return;
     }
     const updatedDepartureDateMin = editDepartureDateMin;
+    const missingReference = missingRequestReference(editDepartureAddress, editDepartureReference, editAddressInputMode === 'map' ? editDepartureLocation : null)
+      ? 'departure' : missingRequestReference(editArrivalAddress, editArrivalReference, editAddressInputMode === 'map' ? editArrivalLocation : null) ? 'arrival' : null;
+    if (missingReference) {
+      showDialog({ title: 'Repère obligatoire', message: requestReferenceMessage(missingReference), variant: 'warning' });
+      return;
+    }
     const updatedDepartureDateMax = editDepartureDateMax;
     if (
       !isValidDate(updatedDepartureDateMin) ||

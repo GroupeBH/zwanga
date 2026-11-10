@@ -32,6 +32,8 @@ export function useTripDetailData() {
   const shouldOpenEditFromParams = openEditParamValue === '1' || openEditParamValue === 'true';
   const openEditParamKey = `${tripId}:${openEditParamValue ?? ''}`;
   const trackParam = Array.isArray(params.track) ? params.track.includes('true') : params.track === 'true'; // Permet le suivi via lien partagé
+  const focusBookingId = typeof params.bookingId === 'string' ? params.bookingId : undefined;
+  const passengersFirst = params.section === 'passengers' || Boolean(focusBookingId);
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
   const user = useAppSelector(selectUser);
 
@@ -98,7 +100,9 @@ export function useTripDetailData() {
     return isLiveTrip ? refetchActivityBookings() : refetchHistoricalBookings();
   }, [isLiveTrip, needsPassengerBookings, refetchActivityBookings, refetchHistoricalBookings]);
   const {
-    data: driverTripBookings,
+    currentData: driverTripBookings,
+    isFetching: bookingsFetching,
+    isError: bookingsError,
     refetch: refetchDriverTripBookings,
   } = useGetTripBookingsQuery(tripId, {
     skip: !tripId || !isTripDriver || !isScreenActive,
@@ -170,6 +174,10 @@ export function useTripDetailData() {
     user,
     trackParam,
     tripBookings,
+    focusBookingId,
+    passengersFirst,
+    bookingsFetching: Boolean(bookingsFetching),
+    bookingsError: Boolean(bookingsError),
     setTrackingError,
     setLiveDriverUpdatedAt,
     setLiveDriverCoordinate,

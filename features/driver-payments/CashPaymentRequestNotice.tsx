@@ -17,6 +17,7 @@ export function CashPaymentRequestNotice({ notice, active, onConfirmed, onClose,
       <Text style={styles.amount}>{formatMoney(notice.amount, notice.currency)}</Text>
       <Text style={styles.message}>{notice.passengerName === 'un passager' ? 'Le passager' : notice.passengerName} indique avoir payé en cash.</Text>
       <Text style={styles.hint}>Confirmez seulement quand l’argent est entre vos mains.</Text>
+      <Text style={styles.hint}>Commission Zwanga : 5 %, y compris sur les six premiers trajets cash. Ensuite, réserve en jetons obligatoire.</Text>
       {!!receipt.error && <Text style={styles.error} accessibilityRole="alert">{receipt.error}</Text>}
       <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: receipt.busy || !active, busy: receipt.busy }}
         disabled={receipt.busy || !active} style={[styles.primary, receipt.busy && styles.disabled]}

@@ -27,6 +27,7 @@ import type { DriverFinanceSummary } from '@/store/api/driverFinanceApi';
 import { estimateCashCommission } from '@/utils/cashCommission';
 import { resolveSharedRouteAddresses } from '@/services/sharedRouteAddresses';
 import { getTokenSessionVersion } from '@/services/tokenSession';
+import { MIN_REQUEST_PRICE } from '@/features/trip-request/requestFormModel';
 
 interface Params {
   acceptedPaymentModes: TripPaymentMode[];
@@ -136,6 +137,10 @@ export function usePublishSubmission({
 
     const seatsValue = parseInt(seats, 10);
     const priceValue = isFreeTrip ? 0 : parseFloat(price);
+    if (!isFreeTrip && (!Number.isFinite(priceValue) || priceValue < MIN_REQUEST_PRICE)) {
+      showDialog({ variant: 'warning', title: 'Prix minimum', message: 'Le prix minimum est de 2 500 FC par place.' });
+      return;
+    }
     const departureDate = departureDateTime;
 
     if (
@@ -201,7 +206,7 @@ export function usePublishSubmission({
         try {
           const finance = await refreshDriverFinance();
           if (!estimateCashCommission(finance, priceValue, seatsValue)?.allowed) {
-            showDialog({ variant: 'warning', title: 'Cash indisponible', message: 'La commission de ce trajet ne peut pas être couverte dans la limite cumulée de 25 jetons de dette. Rechargez ou retirez le cash des paiements acceptés.' });
+            showDialog({ variant: 'warning', title: 'Cash indisponible', message: 'Après vos six premiers trajets cash, régularisez les commissions dues et rechargez les jetons nécessaires.' });
             return;
           }
         } catch {
@@ -218,8 +223,9 @@ export function usePublishSubmission({
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
 
+      let publicationId: string | undefined;
       if (isRecurringTrip) {
-        await createRecurringTrip({
+        const created = await createRecurringTrip({
           // No payment is collected for a free trip; omit the irrelevant selector,
           // not an empty array rejected by the API's ArrayMinSize(1) validation.
           acceptedPaymentModes: isFreeTrip ? undefined : acceptedPaymentModes,
@@ -240,6 +246,7 @@ export function usePublishSubmission({
           vehicleId: selectedVehicleId,
           requiresPassengerKyc,
         }).unwrap();
+        publicationId = created?.id;
         void trackEvent('recurring_trip_created', {
           seats: seatsValue,
           is_free: isFreeTrip,
@@ -248,7 +255,7 @@ export function usePublishSubmission({
           weekdays_count: recurringWeekdays.length,
         });
       } else {
-        await createTrip({
+        const created = await createTrip({
           acceptedPaymentModes: isFreeTrip ? undefined : acceptedPaymentModes,
           departureLocation: shared.departureAddress,
           departureReference: departureReference.trim() || undefined,
@@ -264,6 +271,7 @@ export function usePublishSubmission({
           vehicleId: selectedVehicleId,
           requiresPassengerKyc,
         }).unwrap();
+        publicationId = created?.id;
         void trackEvent('trip_published', {
           seats: seatsValue,
           price_per_seat: priceValue,
@@ -278,7 +286,7 @@ export function usePublishSubmission({
       // MapView can crash during the publication transition, so the feedback is
       // rendered as an in-screen overlay instead of a React Native Modal.
       if (!isCurrent()) return;
-      setPublicationSuccess({ recurring: isRecurringTrip });
+      setPublicationSuccess({ recurring: isRecurringTrip, ...(publicationId ? { id: publicationId } : {}) });
       void recordDriverPublication(user?.id);
     } catch (error: any) {
       if (!isCurrent()) return;
@@ -288,6 +296,7 @@ export function usePublishSubmission({
       }
       const normalizedDeparture = shared.departureAddress.trim().toLowerCase();
       const normalizedArrival = shared.arrivalAddress.trim().toLowerCase();
+      let recoveredId: string | undefined;
       const recoveredPublication = isRecurringTrip
         ? await reconcileAmbiguousMutation({
             error,
@@ -295,12 +304,14 @@ export function usePublishSubmission({
             isApplied: (templates) =>
               templates.some((template) => {
                 const createdAt = new Date(template.createdAt).getTime();
-                return (
+                const matches = (
                   Number.isFinite(createdAt) &&
                   createdAt >= publicationStartedAt - 10_000 &&
                   template.departure.name.trim().toLowerCase() === normalizedDeparture &&
                   template.arrival.name.trim().toLowerCase() === normalizedArrival
                 );
+                if (matches) recoveredId = template.id;
+                return matches;
               }),
           })
         : await reconcileAmbiguousMutation({
@@ -309,19 +320,21 @@ export function usePublishSubmission({
             isApplied: (latestTrips) =>
               latestTrips.some((latestTrip) => {
                 const latestDepartureAt = new Date(latestTrip.departureTime).getTime();
-                return (
+                const matches = (
                   Number.isFinite(latestDepartureAt) &&
                   Math.abs(latestDepartureAt - departureDate.getTime()) < 60_000 &&
                   latestTrip.departure.name.trim().toLowerCase() === normalizedDeparture &&
                   latestTrip.arrival.name.trim().toLowerCase() === normalizedArrival &&
                   (latestTrip.vehicle?.id ?? latestTrip.vehicleId) === selectedVehicleId
                 );
+                if (matches) recoveredId = latestTrip.id;
+                return matches;
               }),
           });
 
       if (!isCurrent()) return;
       if (recoveredPublication) {
-        setPublicationSuccess({ recurring: isRecurringTrip });
+        setPublicationSuccess({ recurring: isRecurringTrip, ...(recoveredId ? { id: recoveredId } : {}) });
         void recordDriverPublication(user?.id);
         return;
       }

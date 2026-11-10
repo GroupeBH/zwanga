@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormScreen } from '@/components/forms/FormLayout';
@@ -15,12 +16,15 @@ import { DirectDriverNotice } from './DirectDriverNotice';
 import { HomeRequestChoices } from './HomeRequestChoices';
 import { HomeRequestExtras } from './HomeRequestExtras';
 import { HomeRequestMap } from './HomeRequestMap';
+import { RequestReferenceField } from './RequestReferenceField';
+import { missingRequestReference, requiresRequestReference } from '@/features/trip-request/requestReference';
 
 type Props = { form: RequestTripController; navigation: ReturnType<typeof useRequestFormNavigation> };
 
 export function HomeRequestScreen({ form, navigation }: Props) {
   const flow = useHomeRequestFlow(form);
   const { height, fontScale } = useWindowDimensions();
+  const [showRouteMap, setShowRouteMap] = useState(false);
   if (flow.pickerTarget) {
     const departure = flow.pickerTarget === 'departure';
     return <FormScreen style={s.screen}>
@@ -38,7 +42,6 @@ export function HomeRequestScreen({ form, navigation }: Props) {
   const disabled = flow.locked || !ready || !form.canSubmitRequestDetails;
   const label = !ready ? 'Recherche de votre position…' : !form.hasChosenDepartureTime
     ? 'Choisir l’heure de départ' : form.targetDriver ? 'Envoyer à ce conducteur' : 'Commander le trajet';
-  const mapHeight = Math.max(120, Math.min(180, height * (fontScale > 1.2 ? 0.18 : 0.21)));
   return <FormScreen style={s.screen}>
     <View style={s.header}>
       <TouchableOpacity style={s.back} onPress={flow.handleBack} disabled={flow.locked}
@@ -55,7 +58,8 @@ export function HomeRequestScreen({ form, navigation }: Props) {
           {(['departure', 'arrival'] as const).map(target => {
             const address = target === 'departure' ? form.departureAddress : form.arrivalAddress;
             const title = target === 'departure' ? 'Départ' : 'Arrivée';
-            return <TouchableOpacity key={target} style={s.location} onPress={() => flow.openPicker(target)}
+            const required = requiresRequestReference(address, target === 'departure' ? form.departureLocation : form.arrivalLocation);
+            return <View key={target}><TouchableOpacity style={s.location} onPress={() => flow.openPicker(target)}
               disabled={flow.locked} accessibilityRole="button" accessibilityLabel={`${title} : ${address || 'Votre position'}. Modifier`}>
               <Ionicons name={target === 'departure' ? 'locate-outline' : 'location-outline'} size={20}
                 color={target === 'departure' ? ACTION_COLORS.blue : ACTION_COLORS.orange} />
@@ -63,13 +67,28 @@ export function HomeRequestScreen({ form, navigation }: Props) {
                 <Text style={s.locationText} numberOfLines={2}>{address || 'Recherche de votre position…'}</Text>
               </View>
               <Ionicons name="pencil-outline" size={16} color={Colors.gray[600]} />
-            </TouchableOpacity>;
+            </TouchableOpacity>
+              {required && <RequestReferenceField target={target} required disabled={flow.locked}
+                value={target === 'departure' ? form.departureReference : form.arrivalReference}
+                onChangeText={target === 'departure' ? form.setDepartureReference : form.setArrivalReference} />}
+            </View>;
           })}
         </View>
-        <HomeRequestMap departureLocation={form.departureLocation} arrivalLocation={form.arrivalLocation}
-          routeCoordinates={form.routeCoordinates} routePreviewRegion={form.routePreviewRegion}
-          routeDistanceLabel={form.routeDistanceLabel} isRouteLoading={form.isRouteLoading}
-          enabled={form.isScreenActive} height={mapHeight} />
+        {ready && <View>
+          <TouchableOpacity style={s.routeToggle} testID="home-request-route-toggle" disabled={flow.locked}
+            accessibilityRole="button" accessibilityState={{ expanded: showRouteMap, disabled: flow.locked }}
+            onPress={() => { if (!flow.locked) setShowRouteMap(value => !value); }}>
+            <Ionicons name="map-outline" size={18} color={ACTION_COLORS.orange} />
+            <Text style={s.routeToggleText}>{showRouteMap ? 'Masquer l’itinéraire' : 'Voir l’itinéraire'}
+              {!form.isRouteLoading && form.routeDistanceLabel ? <Text style={s.routeDistance}> · {form.routeDistanceLabel}</Text> : null}
+            </Text>
+            <Ionicons name={showRouteMap ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.gray[600]} />
+          </TouchableOpacity>
+          {showRouteMap && <HomeRequestMap departureLocation={form.departureLocation} arrivalLocation={form.arrivalLocation}
+            routeCoordinates={form.routeCoordinates} routePreviewRegion={form.routePreviewRegion}
+            routeDistanceLabel={form.routeDistanceLabel} isRouteLoading={form.isRouteLoading}
+            enabled={form.isScreenActive} height={Math.max(120, Math.min(180, height * (fontScale > 1.2 ? 0.18 : 0.21)))} />}
+        </View>}
         <View style={s.content}>
           <DirectDriverNotice prefill={form.directDriverPrefill} driver={form.targetDriver} disabled={flow.locked} />
           <HomeRequestChoices form={form} />
@@ -82,7 +101,13 @@ export function HomeRequestScreen({ form, navigation }: Props) {
       {!form.isRequestSuccessVisible && <View style={s.footer} testID="home-request-footer">
         {form.submissionError && <Text style={s.error} accessibilityLiveRegion="polite">{form.submissionError}</Text>}
         <TouchableOpacity style={[s.submit, disabled && s.disabled]} disabled={disabled} accessibilityRole="button"
-          accessibilityState={{ disabled, busy: form.isCreating || !ready }} onPress={flow.submit}>
+          accessibilityState={{ disabled, busy: form.isCreating || !ready }} onPress={() => {
+            if (missingRequestReference(form.departureAddress, form.departureReference, form.departureLocation) ||
+              missingRequestReference(form.arrivalAddress, form.arrivalReference, form.arrivalLocation)) {
+              navigation.scrollRef.current?.scrollTo({ y: 0, animated: true });
+            }
+            flow.submit();
+          }}>
           {form.isCreating ? <ActivityIndicator color={Colors.white} /> : <Text style={s.submitText}>{label}</Text>}
         </TouchableOpacity>
       </View>}

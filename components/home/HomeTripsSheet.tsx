@@ -5,7 +5,6 @@ import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeMapNavigation } from '@/hooks/home/useHomeMapNavigation';
 import type { useHomePassengerActivity } from '@/hooks/home/useHomePassengerActivity';
 import type { useHomePriorityDismissals } from '@/hooks/home/useHomePriorityDismissals';
-import type { useHomeRequestHighlight } from '@/hooks/home/useHomeRequestHighlight';
 import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
@@ -28,7 +27,6 @@ type Props =
   & Pick<ReturnType<typeof useHomeTripSelection>, 'isHomeSheetLockedRetracted' | 'latestTrips' | 'suggestionScopeLabel' | 'featuredPassengerTrip'>
   & Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isScreenActive' | 'router'>
   & Pick<ReturnType<typeof useHomePassengerActivity>, 'availableDriverRequests' | 'bookedTripIds' | 'recentDestinations'>
-  & Pick<ReturnType<typeof useHomeRequestHighlight>, 'highlightedDriverRequest'>
   & Pick<ReturnType<typeof useHomePriorityDismissals>, 'dismissPriority' | 'hiddenHomePriorities'>
   & Pick<ReturnType<typeof useHomeMapNavigation>, 'openTripRequestDetail' | 'openTripDetail'>
   & { prioritiesEnabled: boolean };
@@ -36,7 +34,7 @@ type Props =
 export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   suggestionScopeLabel, sheetBottomOffset, sheetHeight, onSheetLayout,
   effectiveTripsSheetOpen, toggleTripsSheet, isHomeSheetLockedRetracted, sheetTitle,
-  openSheetIndex, isDriver, isScreenActive, highlightedDriverRequest,
+  openSheetIndex, isDriver, isScreenActive,
   dismissPriority, hiddenHomePriorities, prioritiesEnabled,
   availableDriverRequests, sheetLoading,
   sheetError, sheetOffline, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
@@ -49,7 +47,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   const suggestionTrip = latestTrips.find(trip => !bookedTripIds.has(trip.id))
     ?? latestTrips.find(trip => trip.id !== featuredPassengerTrip?.id);
   const featuredRequest = availableDriverRequests.find(
-    request => request.id !== highlightedDriverRequest?.id && !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)],
+    request => !hiddenHomePriorities[homePriorityKeys.nearbyRequest(request)],
   );
   const hasSuggestion = showRequests ? Boolean(featuredRequest) : Boolean(suggestionTrip);
 
@@ -129,7 +127,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
               <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
               <Text style={styles.emptyText}>
                 {showRequests
-                  ? highlightedDriverRequest ? 'Le client le plus proche est sur la carte.' : 'Aucun nouveau client pour le moment.'
+                  ? 'Aucun nouveau client pour le moment.'
                   : featuredPassengerTrip ? 'Votre réservation est sur la carte.' : 'Aucun trajet disponible pour le moment.'}
               </Text>
             </View>

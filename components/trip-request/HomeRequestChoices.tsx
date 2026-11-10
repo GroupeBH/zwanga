@@ -4,6 +4,7 @@ import { ACTION_COLORS } from '@/constants/actionColors';
 import { Colors } from '@/constants/styles';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { toggleRequestVehicleType } from '@/features/trip-request/vehicleSelection';
+import { requestVehicleEstimate } from '@/features/trip-request/vehicleEstimate';
 import { homeRequestStyles as s } from '@/features/trip-request/homeRequestStyles';
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 import { getPassengerVehicleSeatCapacity } from '@/utils/passengerSeats';
@@ -37,13 +38,18 @@ export function HomeRequestChoices({ form }: { form: RequestTripController }) {
         const capacity = getPassengerVehicleSeatCapacity(option.id);
         const disabled = !selected && capacity !== null && form.numberOfSeats > capacity;
         const label = option.id === 'car' ? 'Voiture' : option.id === 'motorcycle_2_wheels' ? 'Moto 2 roues' : 'Moto 3 roues';
+        const estimate = requestVehicleEstimate(option.id, form);
         return <TouchableOpacity key={option.id} style={[s.vehicle, selected && s.selected, disabled && s.disabled]}
           onPress={() => form.setSelectedVehicleTypes(current => toggleRequestVehicleType(current, option.id))}
-          accessibilityRole="checkbox" accessibilityLabel={option.label} accessibilityState={{ checked: selected, disabled }}
+          accessibilityRole="checkbox" accessibilityLabel={`${option.label}, estimation pour le trajet : ${estimate}`} accessibilityState={{ checked: selected, disabled }}
           accessibilityHint={disabled ? 'Pas assez de places.' : selected && form.selectedVehicleTypes.length === 1
             ? 'Gardez au moins un type de véhicule.' : 'Ajoutez ou retirez ce type de véhicule.'} disabled={disabled}>
           <Ionicons name={option.icon} size={24} color={selected ? ACTION_COLORS.orange : Colors.gray[700]} />
           <Text style={[s.choiceText, selected && s.selectedText]}>{label}</Text>
+          <View style={s.vehicleEstimate}>
+            <Text style={s.vehicleEstimateLabel}>Estimation</Text>
+            <Text style={s.vehicleEstimatePrice}>{estimate}</Text>
+          </View>
         </TouchableOpacity>;
       })}
     </View>

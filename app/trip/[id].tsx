@@ -1,4 +1,5 @@
 import { TripDetailMapPreview } from '../../features/trip-detail/TripDetailMapPreview';
+import { tripDetailMapHeight } from '@/features/trip-detail/tripDetailLayout';
 import { useTripDetailController } from '../../hooks/trip-detail/useTripDetailController';
 import { TripDetailContentSheet } from '../../features/trip-detail/TripDetailContentSheet';
 import { TripDetailActionsFooter } from '../../features/trip-detail/TripDetailActionsFooter';
@@ -21,6 +22,13 @@ import React from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
+import { useDriverTripWorkspace } from '@/hooks/trip-detail/useDriverTripWorkspace';
+import { DriverTripDetailContent } from '@/features/trip-detail/DriverTripDetailContent';
+import { DriverTripActionsBar } from '@/features/trip-detail/DriverTripActionsBar';
+import { DriverTripHeaderActions } from '@/features/trip-detail/DriverTripHeaderActions';
+import { ManageTripContactModal } from '@/features/manage-trip/ManageTripContactModal';
+import { NextRequestAfterTrip } from '@/components/trip/NextRequestAfterTrip';
+import { DriverReservationModal } from '@/features/trip-detail/DriverReservationModal';
 
 export default function TripDetailsScreen() {
   const model = useTripDetailController();
@@ -31,6 +39,18 @@ export default function TripDetailsScreen() {
     onRetry={() => { if (model.data.tripId && model.data.isScreenActive && !model.data.tripFetching) void model.data.refetchTrip(); }}
     onHome={model.data.goHome} />;
 
+  return model.data.isTripDriver
+    ? <OwnerTripDetails key={`${model.data.user?.id}:${model.data.tripId}`} model={model} />
+    : <TripDetailsView model={model} />;
+}
+
+type DetailProps = { model: ReturnType<typeof useTripDetailController>; workspace?: ReturnType<typeof useDriverTripWorkspace> };
+function OwnerTripDetails({ model }: DetailProps) {
+  const workspace = useDriverTripWorkspace(model);
+  return <TripDetailsView model={model} workspace={workspace} />;
+}
+
+function TripDetailsView({ model, workspace }: DetailProps) {
   return (
     <RideOverlayScope scopeKey={`trip-detail:${model.data.tripId}`} active={model.data.isScreenActive}>
     <SafeAreaView style={styles.container}>
@@ -39,27 +59,34 @@ export default function TripDetailsScreen() {
         pointerEvents="box-none"
         style={[
           styles.header,
-          model.hasRenderableTripMap && styles.headerFloating,
-          model.hasRenderableTripMap && { paddingTop: model.presentation.headerFloatingOffset },
+          model.data.isTripDriver && styles.ownerHeader,
+          model.hasRenderableTripMap && !model.data.isTripDriver && styles.headerFloating,
+          model.hasRenderableTripMap && !model.data.isTripDriver && { paddingTop: model.presentation.headerFloatingOffset },
         ]}
       >
-        <View pointerEvents="box-none" style={styles.headerTop}>
+        <View pointerEvents="box-none" style={[styles.headerTop, model.data.isTripDriver && styles.ownerHeaderRow]}>
           <TouchableOpacity
             onPress={model.data.goHome}
+            accessibilityRole="button"
+            accessibilityLabel="Revenir à l’accueil"
             style={styles.headerCircleButton}
             activeOpacity={0.85}
             hitSlop={{ top: 16, right: 16, bottom: 16, left: 16 }}
           >
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, model.hasRenderableTripMap && styles.headerTitleFloating]}>
-            Détails du trajet
+          <Text style={[styles.headerTitle, model.data.isTripDriver && styles.ownerHeaderTitle,
+            workspace && { flex: 1, minWidth: 0, fontSize: 18 },
+            model.hasRenderableTripMap && !model.data.isTripDriver && styles.headerTitleFloating]}>
+            {model.data.isTripDriver ? 'Votre trajet' : 'Détails du trajet'}
           </Text>
-          <View style={styles.headerActions}>
+          <View style={[styles.headerActions, workspace && { gap: 2 }]}>
+            {workspace && <DriverTripHeaderActions workspace={workspace} />}
             <TouchableOpacity
               onPress={() => void model.contact.handleShareTrip()}
               style={[
                 styles.shareButton,
+                workspace && { width: 44, height: 44 },
                 model.bookingState.isCreatingTripShareLink && styles.shareButtonDisabled,
               ]}
               disabled={model.bookingState.isCreatingTripShareLink}
@@ -79,7 +106,7 @@ export default function TripDetailsScreen() {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollViewContent}
+        contentContainerStyle={[styles.scrollViewContent, workspace && { paddingBottom: 8 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={model.bookingState.refreshing} onRefresh={model.activity.onRefresh} tintColor={Colors.primary} />
@@ -91,7 +118,7 @@ export default function TripDetailsScreen() {
               style={[
                 styles.mapPreview,
                 styles.mapLoadingPlaceholder,
-                { height: Math.min(214, Math.max(172, model.data.viewportHeight * 0.27)) },
+                { height: tripDetailMapHeight(model.data.viewportHeight, model.data.isTripDriver) },
               ]}
             >
               <ActivityIndicator size="small" color={Colors.primary} />
@@ -123,7 +150,7 @@ export default function TripDetailsScreen() {
           />
         )}
 
-        <TripDetailContentSheet
+        {workspace ? <DriverTripDetailContent model={model} workspace={workspace} /> : <TripDetailContentSheet
           hasRenderableTripMap={model.hasRenderableTripMap}
           config={model.config}
           presentation={model.presentation}
@@ -133,11 +160,11 @@ export default function TripDetailsScreen() {
           activity={model.activity}
           contact={model.contact}
           safety={model.safety}
-        />
+        />}
       </ScrollView>
 
       {/* Sticky Footer for Actions */}
-      <TripDetailActionsFooter
+      {workspace ? <DriverTripActionsBar workspace={workspace} bottomInset={0} goHome={model.data.goHome} /> : <TripDetailActionsFooter
         data={model.data}
         access={model.access}
         activity={model.activity}
@@ -147,7 +174,15 @@ export default function TripDetailsScreen() {
         bookingState={model.bookingState}
         bookingSubmission={model.bookingSubmission}
         bookingLocation={model.bookingLocation}
-      />
+      />}
+      {workspace && <>
+        <DriverReservationModal workspace={workspace} blocked={Boolean(workspace.state.contactBookingId) ||
+          model.editing.edit.editTripModalVisible || model.bookingState.mapModalVisible ||
+          model.bookingState.vehicleDetailModalVisible || model.bookingState.tripGuideVisible} />
+        <ManageTripContactModal state={workspace.state} bookings={model.data.tripBookings} />
+        <NextRequestAfterTrip trip={model.data.trip} active={model.data.isScreenActive}
+          blocked={workspace.busy || !!workspace.state.contactBookingId || model.editing.edit.editTripModalVisible} />
+      </>}
 
       <TripVehicleDetailsModal
         vehicleDetailModalVisible={model.bookingState.vehicleDetailModalVisible}

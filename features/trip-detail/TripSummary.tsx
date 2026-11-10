@@ -10,6 +10,7 @@ import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
 import type { RouteLocationLabels } from '@/utils/routeLocationLabels';
 
 interface TripSummaryProps {
+  isTripDriver?: boolean;
   config: { color: string; bgColor: string; label: string; };
   routeLabels: RouteLocationLabels;
   tripPriceLabel: string;
@@ -33,6 +34,7 @@ interface TripSummaryProps {
 }
 
 export function TripSummary({
+  isTripDriver = false,
   config,
   routeLabels,
   tripPriceLabel,
@@ -96,7 +98,7 @@ export function TripSummary({
       )}
 
       <View style={styles.tripDirectInfoRow}>
-        <TouchableOpacity
+        {!isTripDriver && <TouchableOpacity
           style={styles.tripDriverCompact}
           onPress={() => {
             if (trip?.driverId) {
@@ -126,7 +128,7 @@ export function TripSummary({
             </View>
           </View>
           <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
         <TouchableOpacity
           style={styles.tripVehicleCompact}
@@ -160,7 +162,7 @@ export function TripSummary({
         </View>
       ) : null}
 
-      <View style={styles.tripInlineActions}>
+      {!isTripDriver && <View style={styles.tripInlineActions}>
         <TouchableOpacity
           style={styles.tripInlineActionButton}
           onPress={handleContactDriver}
@@ -188,7 +190,7 @@ export function TripSummary({
           <Ionicons name="chatbubbles-outline" size={17} color={Colors.primary} />
           <Text style={styles.tripInlineActionText}>Contacter</Text>
         </TouchableOpacity>
-      </View>
+      </View>}
     </View>
   );
 }

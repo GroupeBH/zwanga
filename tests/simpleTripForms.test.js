@@ -19,15 +19,15 @@ function text(tree) {
   return React.isValidElement(tree) ? text(tree.props.children) : '';
 }
 
-test('publication groups the form into three compact, accessible steps', () => {
+test('publication groups the form into two compact, accessible steps', () => {
   const { PublishStepIndicator } = load('features/publish/PublishStepIndicator.tsx');
-  const steps = ['route', 'pricing', 'confirm'];
+  const steps = ['route', 'pricing'];
   for (const [index, id] of steps.entries()) {
     const tree = PublishStepIndicator({ isStepActive: step => step === id, isStepCompleted: step => steps.indexOf(step) < index });
     assert.equal(tree.props.accessibilityRole, 'progressbar');
     assert.equal(tree.props.accessibilityValue.now, index + 1);
-    assert.equal(tree.props.accessibilityValue.max, 3);
-    assert.match(text(tree), new RegExp(`${index + 1} sur 3`));
+    assert.equal(tree.props.accessibilityValue.max, 2);
+    assert.match(text(tree), new RegExp(`${index + 1} sur 2`));
     assert.equal(nodes(tree).filter(node => node.type === 'Text').length, 1);
     assert.equal(nodes(tree).filter(node => node.type === 'Button').length, 0, 'steps cannot bypass validation');
   }

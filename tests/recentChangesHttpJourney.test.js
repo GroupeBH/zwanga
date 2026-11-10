@@ -112,7 +112,7 @@ for (const recurring of [false, true]) test(`GPS to ${recurring ? 'recurring' : 
   assert.equal(f.posts[0].body.arrivalLocation, 'Gare Centrale');
   assert.deepEqual(f.posts[0].body.departureCoordinates, [15.29, -4.31]);
   assert.equal(f.posts[0].body.pricePerSeat, 2500); assert.equal(f.posts[0].body.totalSeats, 2);
-  assert.deepEqual(successes, [{ recurring }]);
+  assert.deepEqual(successes, [{ recurring, id: 'local-created' }]);
   if (!recurring) {
     const remote = await f.dispatch('getTripById', 'local-created').unwrap();
     assert.ok(JSON.stringify(remote).includes('Rue des Écoles'));

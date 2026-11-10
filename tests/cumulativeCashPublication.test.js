@@ -36,6 +36,11 @@ test('publication removes a selected cash mode after price, seats or debt invali
   render(); assert.deepEqual(props.value, [], 'do not silently enable a different payment mode');
   props.seats = 1; props.value = ['points','cash']; response.currentData = finance(26);
   render(); assert.deepEqual(props.value, ['points']);
+  response.currentData.cash.creditAllowance = { eligible: true, remainingTrips: 5, tripLimit: 6, completedTrips: 0, reservedTrips: 1, oneTime: true };
+  props.value = ['cash']; props.price = 500000;
+  render(); assert.deepEqual(props.value, ['cash'], 'server offer allows cash without a top-up, even with old debt');
+  response.currentData.cash.creditAllowance.eligible = false;
+  render(); assert.deepEqual(props.value, [], 'normal safeguards resume when the offer is exhausted');
   hooks.unmount();
 });
 

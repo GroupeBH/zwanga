@@ -8,6 +8,7 @@ import {
 } from '@/features/trip-request/requestFormModel';
 import { useMemo } from 'react';
 import { useRequestVehicleOptions } from './useRequestVehicleOptions';
+import { requestPricingDescription } from '@/features/trip-request/pricingDescription';
 
 interface Params {
   departureLocation: MapLocationSelection | null;
@@ -46,7 +47,7 @@ export function useRequestBudgetSummary({
 
   const hasArrivalAddress = arrivalAddress.length > 0;
 
-  const { vehicleOptions, routeDistanceMeters, isPriceLoading, isVehicleOptionsError, retryVehicleOptions } = useRequestVehicleOptions({
+  const { vehicleOptions, pricing, routeDistanceMeters, isPriceLoading, isVehicleOptionsError, retryVehicleOptions } = useRequestVehicleOptions({
     departureAddress, arrivalAddress, departureReference, arrivalReference, departureLocation, arrivalLocation,
     numberOfSeats, hasSpecifiedNumberOfSeats,
   });
@@ -85,7 +86,7 @@ export function useRequestBudgetSummary({
     ? 'Votre budget pour le trajet'
     : isVehicleOptionsError && vehicleOptions.length === 0
       ? 'Fixez votre budget pour continuer'
-      : 'Prix recommandé pour le trajet';
+      : requestPricingDescription(pricing) ?? 'Prix recommandé pour le trajet';
 
   const routeDistanceLabel = formatDistanceKm(routeDistanceMeters);
 

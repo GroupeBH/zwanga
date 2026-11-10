@@ -1,7 +1,11 @@
 import { readableLocation, UNKNOWN_LOCATION_ADDRESS } from '@/utils/readableLocation';
 
 export type PickerCoordinate = { latitude: number; longitude: number };
-export type MapLocationSelection = PickerCoordinate & { title: string; address: string };
+export type MapLocationSelection = PickerCoordinate & {
+  title: string; address: string;
+  placeTypes?: string[];
+  addressComponents?: { longName: string; types: string[] }[];
+};
 export const DEFAULT_PICKER_LOCATION: MapLocationSelection = {
   title: 'Kinshasa', address: 'Kinshasa, RDC', latitude: -4.441931, longitude: 15.266293,
 };

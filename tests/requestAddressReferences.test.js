@@ -31,7 +31,7 @@ test('departure and arrival have separate, labelled optional inputs in both map 
   for (const addressInputMode of ['map', 'manual']) {
     const changes = [];
     const tree = RequestRouteStep({ addressInputMode, addressSectionStep: 'departure', selectedVehicleTypes: ['car'], numberOfSeats: 1,
-      favoriteSuggestions: [], showQuickLandmarks: false, departureReference: 'Pharmacie', arrivalReference: 'Portail bleu',
+      favoriteSuggestions: [], vehicleOptions: [], showQuickLandmarks: false, departureReference: 'Pharmacie', arrivalReference: 'Portail bleu',
       departureAddress: 'Départ test', arrivalAddress: 'Arrivée test', hasDepartureAddress: true, hasArrivalAddress: true,
       departureManualAddress: '', departureTouchedRef: { current: false },
       setDepartureReference: value => changes.push(['departure', value]), setArrivalReference: value => changes.push(['arrival', value]),
@@ -50,6 +50,19 @@ test('departure and arrival have separate, labelled optional inputs in both map 
     assert.match(words(tree), /Référence à l’arrivée · facultative/);
     assert.doesNotMatch(words(tree), /Repère/);
   }
+});
+
+test('editing exposes both saved references and marks only coarse addresses as required', () => {
+  const { RequestEditReferences } = load('features/request-detail/RequestEditReferences.tsx');
+  const changes = [];
+  const tree = RequestEditReferences({ editAddressInputMode: 'manual', editDepartureAddress: 'Gombe',
+    editArrivalAddress: 'Avenue de la Victoire', editDepartureReference: 'Pharmacie', editArrivalReference: 'Entrée B',
+    setEditDepartureReference: value => changes.push(value), setEditArrivalReference() {} });
+  const fields = nodes(tree).filter(n => n.type.name === 'RequestReferenceField');
+  assert.equal(fields.length, 2);
+  assert.equal(fields[0].props.required, true); assert.equal(fields[0].props.value, 'Pharmacie');
+  assert.equal(fields[1].props.required, false); assert.equal(fields[1].props.value, 'Entrée B');
+  fields[0].props.onChangeText('École'); assert.deepEqual(changes, ['École']);
 });
 
 test('route preview includes nonempty landmarks without replacing addresses or adding empty labels', () => {
@@ -78,21 +91,24 @@ test('route preview includes nonempty landmarks without replacing addresses or a
 });
 
 test('publication uses reference labels for both optional fields without changing their values or callbacks', () => {
-  const { PublishRouteFields } = loader({
+  const loadPublication = loader({
     'react-native': { View: 'View', Text: 'Text', TextInput: 'Input', TouchableOpacity: 'Button', StyleSheet: { create: value => value } },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     '../screen-styles/app/publish/index': { styles: {} },
     '@/components/address/ManualAddressStatus': { ManualAddressStatus: 'Status' },
-  })('features/publish/PublishRouteFields.tsx');
+    '@/utils/reanimated': { default: { View: 'Animated' } },
+  });
+  const { PublishRouteFields } = loadPublication('features/publish/PublishRouteFields.tsx');
+  const { PublishRouteStep } = loadPublication('features/publish/PublishRouteStep.tsx');
   const changes = [];
   const props = { departureReference: '', arrivalReference: '', renderGpsStatus: () => null,
     setShowDepartureReference: value => changes.push(['openDeparture', value]),
     setShowArrivalReference: value => changes.push(['openArrival', value]),
     setDepartureReference: value => changes.push(['departure', value]),
     setArrivalReference: value => changes.push(['arrival', value]) };
-  const closed = PublishRouteFields(props);
-  const add = nodes(closed).filter(n => n.type === 'Button' && words(n) === 'Ajouter une référence');
-  assert.equal(add.length, 2);
+  const closed = PublishRouteStep(props);
+  const add = nodes(closed).filter(n => n.props.accessibilityLabel === 'Ajouter des références de départ et d’arrivée');
+  assert.equal(add.length, 1);
   add.forEach(button => button.props.onPress());
   const opened = PublishRouteFields({ ...props, shouldShowDepartureReference: true, shouldShowArrivalReference: true,
     departureReference: 'Entrée principale', arrivalReference: 'Portail bleu' });

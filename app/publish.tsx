@@ -113,22 +113,30 @@ export default function PublishScreen() {
           <PublishScheduleStep
             stepEntering={model.stepEntering}
             openDateOrTimePicker={model.scheduleActions.openDateOrTimePicker}
+            selectDepartureIn={model.scheduleActions.selectDepartureIn}
             formattedDateLabel={model.schedule.formattedDateLabel}
             formattedTimeLabel={model.schedule.formattedTimeLabel}
             hasChosenDepartureTime={model.form.hasChosenDepartureTime}
             pickerError={model.scheduleActions.pickerError}
+            departureDateTime={model.form.departureDateTime}
             isRecurringTrip={model.form.isRecurringTrip}
-            toggleRecurringTrip={model.schedule.toggleRecurringTrip}
             recurringWeekdayOptions={model.presentation.recurringWeekdayOptions}
             recurringWeekdays={model.form.recurringWeekdays}
-            toggleRecurringWeekday={model.schedule.toggleRecurringWeekday}
-            formattedRecurringEndDate={model.schedule.formattedRecurringEndDate}
             recurringEndDate={model.form.recurringEndDate}
-            setRecurringEndDate={model.form.setRecurringEndDate}
+            onSaveRecurrence={choice => {
+              model.form.setIsRecurringTrip(choice !== null);
+              if (choice) model.form.setRecurringWeekdays(choice.weekdays);
+              model.form.setRecurringEndDate(choice?.endDate ?? null);
+            }}
           />
         )}
 
         {/* Étape 2 : véhicule, places et prix */}
+        {model.step === 'pricing' && <PublishConfirmationStep compact
+          {...model.form} {...model.schedule} {...model.presentation}
+          stepEntering={model.stepEntering} publicationSuccess={model.publicationSuccess}
+          routePreviewRegion={model.route.routePreviewRegion}
+          goToStep={model.navigation.goToStep} />}
         {model.step === 'pricing' && (
           <PublishVehicleStep
             stepEntering={model.stepEntering}
@@ -144,6 +152,7 @@ export default function PublishScreen() {
         {/* Places et prix : même étape que le véhicule */}
         {model.step === 'pricing' && (
           <PublishPricingStep
+            estimate={model.pricing}
             acceptedPaymentModes={model.form.acceptedPaymentModes}
             setAcceptedPaymentModes={model.form.setAcceptedPaymentModes}
             stepEntering={model.stepEntering}
@@ -161,35 +170,6 @@ export default function PublishScreen() {
           />
         )}
 
-        {/* Étape 3 : vérifier avant de publier */}
-        {model.step === 'confirm' && (
-          <PublishConfirmationStep
-            acceptedPaymentModes={model.form.acceptedPaymentModes}
-            stepEntering={model.stepEntering}
-            publicationSuccess={model.publicationSuccess}
-            routePreviewRegion={model.route.routePreviewRegion}
-            departureLocation={model.form.departureLocation}
-            arrivalLocation={model.form.arrivalLocation}
-            routeCoordinates={model.form.routeCoordinates}
-            isRouteLoading={model.form.isRouteLoading}
-            departureSummary={model.presentation.departureSummary}
-            departureReference={model.form.departureReference}
-            arrivalSummary={model.presentation.arrivalSummary}
-            arrivalReference={model.form.arrivalReference}
-            formattedFullDateTime={model.schedule.formattedFullDateTime}
-            isRecurringTrip={model.form.isRecurringTrip}
-            recurringDaysSummary={model.schedule.recurringDaysSummary}
-            formattedRecurringEndDate={model.schedule.formattedRecurringEndDate}
-            seats={model.form.seats}
-            isFreeTrip={model.form.isFreeTrip}
-            price={model.form.price}
-            requiresPassengerKyc={model.form.requiresPassengerKyc}
-            description={model.form.description}
-            selectedVehicle={model.vehicle.activeVehicles.find(vehicle => vehicle.id === model.vehicle.selectedVehicleId)}
-            goToStep={model.navigation.goToStep}
-            isSubmittingTrip={model.schedule.isSubmittingTrip}
-          />
-        )}
       </ScrollView>
 
         <View
@@ -219,7 +199,7 @@ export default function PublishScreen() {
             onPress={model.handleFooterPrimary}
             disabled={model.footerPrimaryDisabled}
           >
-            {model.step === 'confirm' && model.schedule.isSubmittingTrip ? (
+            {model.step === 'pricing' && model.schedule.isSubmittingTrip ? (
               <ActivityIndicator color={Colors.white} />
             ) : (
               <Text style={styles.buttonText}>{model.footerPrimaryLabel}</Text>

@@ -7,10 +7,14 @@ import { TRIP_PAYMENT_MODE_OPTIONS } from '@/features/trip-request/requestFormMo
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 import { RequestBudgetFields } from './RequestBudgetFields';
 import { RequestDriverPicker } from './RequestDriverPicker';
+import { requiresRequestReference } from '@/features/trip-request/requestReference';
 
 export function HomeRequestExtras({ form }: { form: RequestTripController }) {
   const [showOptions, setShowOptions] = useState(false);
   const [showExtras, setShowExtras] = useState(false);
+  const departureRequired = requiresRequestReference(form.departureAddress, form.departureLocation);
+  const arrivalRequired = requiresRequestReference(form.arrivalAddress, form.arrivalLocation);
+  const hasExtraReference = (!departureRequired && form.departureReference) || (!arrivalRequired && form.arrivalReference);
   const payment = TRIP_PAYMENT_MODE_OPTIONS.find(option => option.id === form.requestPaymentMode)?.label ?? 'Paiement à choisir';
   return <>
     <TouchableOpacity style={s.extrasToggle} accessibilityRole="button" accessibilityState={{ expanded: showOptions }}
@@ -24,16 +28,16 @@ export function HomeRequestExtras({ form }: { form: RequestTripController }) {
     <TouchableOpacity style={s.extrasToggle} accessibilityRole="button" accessibilityState={{ expanded: showExtras }}
       onPress={() => setShowExtras(value => !value)}>
       <Text style={[s.label, s.locationCopy]}>{form.targetDriver ? `Pour ${form.targetDriver.name} · Modifier`
-        : form.departureReference || form.arrivalReference || form.description ? 'Précisions ajoutées · Modifier'
+        : hasExtraReference || form.description ? 'Précisions ajoutées · Modifier'
           : 'Ajouter une précision ou choisir un conducteur'}</Text>
       <Ionicons name={showExtras ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.gray[600]} />
     </TouchableOpacity>
     {showExtras && <View style={s.extras}>
       {([
-        ['Repère au départ', form.departureReference, form.setDepartureReference, 'Ex. Devant la pharmacie'],
-        ['Repère à l’arrivée', form.arrivalReference, form.setArrivalReference, 'Ex. Portail bleu'],
-        ['Note pour le conducteur', form.description, form.setDescription, 'Ex. J’ai un bagage'],
-      ] as const).map(([label, value, onChangeText, placeholder]) => <View key={label}>
+        ['Repère au départ', form.departureReference, form.setDepartureReference, 'Ex. Devant la pharmacie', departureRequired],
+        ['Repère à l’arrivée', form.arrivalReference, form.setArrivalReference, 'Ex. Portail bleu', arrivalRequired],
+        ['Note pour le conducteur', form.description, form.setDescription, 'Ex. J’ai un bagage', false],
+      ] as const).filter(([, , , , required]) => !required).map(([label, value, onChangeText, placeholder]) => <View key={label}>
         <Text style={s.label}>{label} · facultatif</Text>
         <TextInput style={s.input} accessibilityLabel={label} value={value} onChangeText={onChangeText}
           placeholder={placeholder} placeholderTextColor={Colors.gray[500]} maxLength={200} returnKeyType="done" />

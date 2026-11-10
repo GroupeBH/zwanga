@@ -158,7 +158,7 @@ export function useTripsController() {
   });
 
   const openPublishedTripDetails = useCallback(
-    (selectedTripId: string) => state.router.push(`/trip/manage/${selectedTripId}`),
+    (selectedTripId: string) => state.router.push(`/trip/${selectedTripId}`),
     [state.router],
   );
   const openBookingTripDetails = useCallback(

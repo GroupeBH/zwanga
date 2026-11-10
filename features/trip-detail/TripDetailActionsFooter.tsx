@@ -63,13 +63,13 @@ export function TripDetailActionsFooter({
               </TouchableOpacity>
               {(trip.canReprogram || trip.status === 'upcoming' || trip.status === 'ongoing') && (
                 <TouchableOpacity
-                  style={[styles.actionButton, { backgroundColor: Colors.secondary, flex: 1 }]}
+                  style={[styles.actionButton, styles.ownerEditButton]}
                   onPress={editor.openEditModal}
                   accessibilityRole="button"
                   accessibilityLabel={trip.canReprogram ? 'Modifier et reprogrammer ce trajet' : 'Modifier ce trajet'}
                 >
-                  <Ionicons name="create-outline" size={20} color={Colors.white} style={{ marginRight: 8 }} />
-                  <Text style={styles.actionButtonText}>Modifier</Text>
+                  <Ionicons name="create-outline" size={20} color={Colors.gray[800]} style={{ marginRight: 8 }} />
+                  <Text style={[styles.actionButtonText, styles.ownerEditButtonText]}>Modifier</Text>
                 </TouchableOpacity>
               )}
             </View>

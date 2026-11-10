@@ -5,8 +5,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 const steps: { id: PublishStep; label: string }[] = [
   { id: 'route', label: 'Itinéraire et départ' },
-  { id: 'pricing', label: 'Véhicule et prix' },
-  { id: 'confirm', label: 'Vérifier le trajet' },
+  { id: 'pricing', label: 'Prix et publication' },
 ];
 
 interface Props {
@@ -29,7 +28,7 @@ export function PublishStepIndicator({ isStepActive, isStepCompleted }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: Spacing.lg, paddingTop: 4, paddingBottom: 10, gap: 8 },
+  container: { paddingHorizontal: Spacing.lg, paddingTop: 4, paddingBottom: 6, gap: 6 },
   label: { fontSize: 13, color: Colors.gray[700], fontWeight: '600' },
   track: { flexDirection: 'row', gap: 6 },
   segment: { flex: 1, height: 4, borderRadius: 2, backgroundColor: Colors.gray[200] },

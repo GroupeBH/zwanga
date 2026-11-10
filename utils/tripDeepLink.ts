@@ -11,7 +11,7 @@ export function getTripDeepLinkHref(url: string, user?: User) {
   const values = new URLSearchParams(query);
   const params: Record<string, string> = {};
   // Preserve supported share/edit options, never navigator state or a query-supplied ID.
-  for (const key of ['driverId', 'role', 'track', 'openEdit']) {
+  for (const key of ['driverId', 'role', 'track', 'openEdit', 'bookingId', 'section']) {
     const value = values.get(key);
     if (value) params[key] = value;
   }

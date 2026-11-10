@@ -1,4 +1,5 @@
 import type { Booking } from '@/types';
+import { MIN_REQUEST_PRICE } from '@/features/trip-request/requestFormModel';
 
 export const bookingProposalError = (text: string, listedPrice: number, seats: number): string | null => {
   if (!text.trim()) return null;
@@ -8,6 +9,7 @@ export const bookingProposalError = (text: string, listedPrice: number, seats: n
       seats < 1 || amount * seats > 99_999_999) {
     return 'Indiquez un prix par place en FC, supérieur à zéro et inférieur au prix affiché.';
   }
+  if (amount < MIN_REQUEST_PRICE) return 'Le prix minimum est de 2 500 FC par place.';
   return null;
 };
 

@@ -150,7 +150,7 @@ test('creation and update modals consistently use the protected layout', () => {
     'features/request-detail/RequestAcceptModal.tsx', 'features/request-detail/RequestEditModal.tsx',
     'features/security/EmergencyContactFormModal.tsx', 'app/favorite-locations.tsx',
     'features/support/SupportTicketModal.tsx',
-    'app/trip/manage/[id].tsx', 'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
+    'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
     'components/LocationPickerModal.tsx', 'components/profile/ProfilePinModal.tsx',
     'components/profile/ProfileSubscriptionModal.tsx', 'components/PassengerArrivalPaymentCoordinator.tsx',
   ]) assert.match(read(file), /import \{ FormModal as Modal \} from '@\/components\/forms\/FormLayout'/, file);

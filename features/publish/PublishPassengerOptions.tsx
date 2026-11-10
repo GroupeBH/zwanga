@@ -9,7 +9,16 @@ export function PublishPassengerOptions({ requiresPassengerKyc, setRequiresPasse
   setDescription: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const [noteExpanded, setNoteExpanded] = useState(Boolean(description));
+  const [expanded, setExpanded] = useState(Boolean(description || requiresPassengerKyc));
   return <View style={s.container}>
+    <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded }} style={s.noteButton}
+      onPress={() => setExpanded(value => !value)}>
+      <View style={s.copy}><Text style={s.label}>Options du trajet</Text>
+        <Text style={s.hint}>{[requiresPassengerKyc && 'Passagers vérifiés', description.trim() && 'Note ajoutée']
+          .filter(Boolean).join(' · ') || 'Note, passagers vérifiés'}</Text></View>
+      <Text style={s.noteLabel} accessible={false}>{expanded ? '−' : '+'}</Text>
+    </TouchableOpacity>
+    {expanded && <>
     <View style={s.row}>
       <View style={s.copy}>
         <Text style={s.label}>Passagers vérifiés uniquement</Text>
@@ -26,6 +35,7 @@ export function PublishPassengerOptions({ requiresPassengerKyc, setRequiresPasse
     {noteExpanded && <TextInput accessibilityLabel="Note aux passagers, facultative" style={s.input}
       placeholder="Bagages, rendez-vous…" placeholderTextColor={Colors.gray[500]} value={description}
       onChangeText={setDescription} multiline numberOfLines={2} textAlignVertical="top" />}
+    </>}
   </View>;
 }
 const s = StyleSheet.create({

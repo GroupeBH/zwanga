@@ -88,7 +88,7 @@ test('only a valid, current recommendation can become the confirmed displayed pr
   for (const draft of ['', '1945', '5000']) {
     const state = model.getRequestBudgetState(draft, false, option);
     assert.equal(state.canSubmitRequestDetails, true);
-    assert.equal(state.budgetValue, 2000);
+    assert.equal(state.budgetValue, 2500);
   }
   for (const price of [null, 0, -1, NaN, Infinity]) {
     const state = model.getRequestBudgetState('5000', false, { ...option, recommendedPricePerSeat: price });
@@ -236,6 +236,7 @@ function submissionHarness({ create, list = () => Promise.resolve([]), verified 
     ...slice.createRequestDraft(min.getTime(), 40),
     hasChosenDepartureTime: true,
     departureAddress: 'Gombe', arrivalAddress: 'Limete', hasDepartureAddress: true, hasArrivalAddress: true,
+    departureReference: 'Devant la pharmacie', arrivalReference: 'Portail bleu',
     canSubmitRequestDetails: true, budgetValue: 2500, hasEditedBudget: true,
     selectedVehicleOptionUnavailable: false,
     getCurrentDepartureWindow: () => ({ min, max, flex: 40 }),
@@ -317,14 +318,44 @@ test('request creation sends each trimmed landmark separately from addresses and
   app.hooks.unmount();
 });
 
-test('landmarks remain optional, including whitespace-only values', async () => {
+test('landmarks remain optional for precise addresses, including whitespace-only values', async () => {
   let payload;
   const app = submissionHarness({ create: async args => { payload = args; return { id: 'created' }; } });
   app.props.departureReference = '   '; app.props.arrivalReference = '';
+  app.props.departureAddress = 'Avenue des Aviateurs'; app.props.arrivalAddress = 'Gare Centrale';
   await app.render().handleCreateRequest();
   assert.equal(payload.departureReference, undefined);
   assert.equal(payload.arrivalReference, undefined);
   assert.equal(app.dialogs.length, 0);
+  app.hooks.unmount();
+});
+
+test('commune-only departure and arrival require separate references before any POST', async () => {
+  const posted = [];
+  const app = submissionHarness({ create: async value => { posted.push(value); return { id: 'created' }; } });
+  app.props.departureReference = '  '; app.props.arrivalReference = '';
+  await app.render().handleCreateRequest();
+  assert.equal(posted.length, 0); assert.match(app.render().submissionError, /repère au départ/);
+  app.props.departureReference = 'Devant la pharmacie';
+  await app.render().handleCreateRequest();
+  assert.equal(posted.length, 0); assert.match(app.render().submissionError, /repère à l’arrivée/);
+  app.props.arrivalReference = '  École du quartier  ';
+  await app.render().handleCreateRequest();
+  assert.equal(posted.length, 1); assert.equal(posted[0].arrivalReference, 'École du quartier');
+  app.hooks.unmount();
+});
+
+test('a coarse resolved address cannot bypass the reference guard or enter pending-send recovery', async () => {
+  const posted = []; let reads = 0;
+  const app = submissionHarness({ create: async value => { posted.push(value); return { id: 'created' }; },
+    list: async () => { reads++; return []; },
+    addressResolver: async () => ({ departureAddress: 'Gombe', arrivalAddress: 'Limete' }) });
+  app.props.departureAddress = 'Avenue test'; app.props.departureReference = '';
+  await app.render().handleCreateRequest();
+  assert.equal(posted.length, 0); assert.match(app.render().submissionError, /repère au départ/);
+  app.props.departureReference = 'Devant la pharmacie';
+  await app.render().handleCreateRequest();
+  assert.equal(posted.length, 1); assert.equal(reads, 0);
   app.hooks.unmount();
 });
 
@@ -402,8 +433,8 @@ test('confirmation sends the displayed recommendation per seat, not a new estima
   }).budgetValue;
   await app.render().handleCreateRequest();
   assert.equal(payload.numberOfSeats, 2);
-  assert.equal(payload.maxPricePerSeat, 2000);
-  assert.equal(payload.maxPricePerSeat * payload.numberOfSeats, 4000);
+  assert.equal(payload.maxPricePerSeat, 2500);
+  assert.equal(payload.maxPricePerSeat * payload.numberOfSeats, 5000);
   app.render().goHomeAfterRequestSuccess();
   assert.deepEqual(app.routes, ['/request/created']);
   app.hooks.unmount();

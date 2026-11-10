@@ -3,6 +3,7 @@ import { PublishStep, PUBLISH_STEP_ORDER } from '../../features/publish/publishM
 import { useDialog } from '@/components/ui/DialogProvider';
 import React, { startTransition } from 'react';
 import type { TripPaymentMode } from '@/types';
+import { MIN_REQUEST_PRICE } from '@/features/trip-request/requestFormModel';
 
 interface Params {
   stepNumber: number;
@@ -61,8 +62,7 @@ export function usePublishStepNavigation({
     });
   };
 
-  const handleNextStep = () => {
-    if (step === 'route') {
+  const validateRoute = () => {
       if (!hasDepartureAddress || !hasArrivalAddress) {
         setAddressSectionStep(!hasDepartureAddress ? 'departure' : 'arrival');
         showDialog({
@@ -70,11 +70,11 @@ export function usePublishStepNavigation({
           title: 'Itinéraire incomplet',
           message: 'Indiquez une adresse de départ et une destination, ou choisissez-les sur la carte.',
         });
-        return;
+        return false;
       }
       if (!isPublishIdentityVerified) {
         openKycModal();
-        return;
+        return false;
       }
       if (!departureDateTime || !Number.isFinite(departureDateTime.getTime())) {
         showDialog({
@@ -82,7 +82,7 @@ export function usePublishStepNavigation({
           title: 'Informations manquantes',
           message: 'Choisissez votre heure de départ.',
         });
-        return;
+        return false;
       }
       if (isRecurringTrip && recurringWeekdays.length === 0) {
         showDialog({
@@ -90,7 +90,7 @@ export function usePublishStepNavigation({
           title: 'Jours manquants',
           message: 'Sélectionnez au moins un jour pour ce trajet habituel.',
         });
-        return;
+        return false;
       }
       if (isRecurringTrip && recurringEndDate) {
         const startDate = new Date(departureDateTime);
@@ -101,39 +101,43 @@ export function usePublishStepNavigation({
             title: 'Date de fin invalide',
             message: 'La date de fin doit être postérieure au début.',
           });
-          return;
+          return false;
         }
       }
-      goToStep('pricing');
-    } else if (step === 'pricing') {
+      return true;
+  };
+  const validatePricing = () => {
       if (!selectedVehicleId) {
         showDialog({
           variant: 'warning',
           title: 'Véhicule requis',
           message: 'Veuillez sélectionner un véhicule pour continuer.',
         });
-        return;
+        return false;
       }
       if (!isFreeTrip && (!price.trim() || !Number.isFinite(Number(price)) ||
-          Number(price) <= 0 || Number(price) !== parseFloat(price))) {
+          Number(price) < MIN_REQUEST_PRICE || Number(price) !== parseFloat(price))) {
         showDialog({
           variant: 'warning',
           title: 'Informations manquantes',
-          message: 'Merci de renseigner le prix ou de sélectionner Gratuit.',
+          message: 'Indiquez au moins 2 500 FC par place ou sélectionnez Gratuit.',
         });
-        return;
+        return false;
       }
       if (!isFreeTrip && acceptedPaymentModes?.length === 0) {
         showDialog({ variant: 'warning', title: 'Choisissez un paiement',
           message: 'Activez Électronique ou Jetons, ou rechargez vos jetons pour accepter le cash.' });
-        return;
+        return false;
       }
-      goToStep('confirm');
-    }
+      return true;
+  };
+  const handleNextStep = () => {
+    if (step === 'route' && validateRoute()) goToStep('pricing');
   };
 
   return {
     handleNextStep,
+    validateForPublish: () => validateRoute() && validatePricing(),
     goToStep,
     getStepNumber,
     isStepActive,

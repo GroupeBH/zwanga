@@ -106,7 +106,7 @@ function nodes(element) {
 test('slow, empty, failed and refreshing trip queries keep the same map position in the Home render tree', () => {
   const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true, width: 390,
     hasMapPriorities: true, mapPriorityLayout: { top: 100, bottom: 400 }, highlightedDriverRequest: { id: 'nearby' } };
-  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet'];
+  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestModal'];
   const load = loader({
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
@@ -132,7 +132,8 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     assert.equal(sheet.props.priorityContent, undefined);
     assert.equal(tree.props.children.includes(priority), true, 'priorities are an overlay sibling, not inside the sheet or native map');
     assert.deepEqual(priority.props.mapLayout, home.mapPriorityLayout);
-    assert.equal(priority.props.highlightedDriverRequest.id, 'nearby');
+    assert.equal(priority.props.highlightedDriverRequest, undefined);
+    assert.equal(rendered.find(node => node.type === 'HomeRequestModal').props.request.id, 'nearby');
   }
   for (const update of [{ hasMapPriorities: false }, { hasMapPriorities: true, shouldRenderHomeMap: false }]) {
     Object.assign(home, update);

@@ -72,7 +72,7 @@ test('a favorite or suggestion with coordinates is immediately usable without de
   const app = pickerApp(t);
   await app.render().resolvePlace(suggestion);
   const state = app.render();
-  assert.deepEqual(state.selection, place);
+  assert.deepEqual(state.selection, { ...place, placeTypes: suggestion.placeType });
   assert.equal(state.resolving, false);
   assert.equal(state.searchOpen, false);
   assert.equal(app.calls.details.length, 0);
@@ -178,13 +178,15 @@ test('reverse geocoding resolves a readable label, caches it and never moves the
     addressComponents: [{ longName: 'Av. Bakole 1', types: ['route'] }],
   });
   await flush();
-  assert.deepEqual(app.render().selection, { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa' });
+  const expected = { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa',
+    addressComponents: [{ longName: 'Av. Bakole 1', types: ['route'] }] };
+  assert.deepEqual(app.render().selection, expected);
   app.render().settleMap(point); app.render();
   app.render().settleMap(next); app.render();
   t.mock.timers.tick(400);
   assert.equal(app.calls.reverse.length, 1, 'cached names need no further geocoding call');
   app.render().confirm();
-  assert.deepEqual(app.calls.selected[0], { ...next, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Kinshasa' });
+  assert.deepEqual(app.calls.selected[0], expected);
 });
 
 test('historical selections and favorite labels are cleaned when entering the picker', t => {
@@ -208,6 +210,7 @@ test('a neighborhood-first reverse address submits the avenue to the parent form
   app.render().confirm();
   assert.deepEqual(app.calls.selected[0], {
     ...next, title: '3b Av Matadi', address: '3b Av Matadi, Q/Mazamba Domicile, Kinshasa, RDC',
+    addressComponents: [{ longName: 'Q/Mazamba Domicile', types: ['premise'] }],
   });
   assert.equal(app.calls.reverse.length, 1);
 });
