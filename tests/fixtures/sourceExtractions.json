@@ -46,7 +46,7 @@
     },
     "features/screen-styles/app/publish/index.ts": {
       "keys": 313,
-      "sha256": "b465a53936fed30aa5d231069122e89d8c105a6597bd55e59e2a6f9e90e6b5a8"
+      "sha256": "7ab6c83b07047a968d90c0de381d35373deacd5fff1708897044b53079b0d3d9"
     },
     "features/screen-styles/app/rate/detail/index.ts": {
       "keys": 74,
@@ -89,8 +89,8 @@
       "sha256": "bfc749e4215442acb33412f73a6e817fd2a6d562edd222ba4abdc68b0f45b007"
     },
     "features/screen-styles/app/trip/detail/index.ts": {
-      "keys": 539,
-      "sha256": "4036edb1a641072ad56810b096340dd8659f63bce40625cc3728b182503ad8e8"
+      "keys": 545,
+      "sha256": "6fba2bd97c1665804a591a8ab61ebce3c0cf84577cb88148c5fe400cf85436db"
     },
     "features/screen-styles/app/trip/manage/detail/index.ts": {
       "keys": 111,
@@ -158,7 +158,7 @@
       "decideDriverInterruption": "671a83f2fba137030290a6d1bfd1fc5f56fb8849ec14ae499ce1755894209bc0",
       "confirmDriverTripInterruption": "2e2f866242d3643fc68a70ee1737bb640eedf750bb079f859b5b87efb2542f3d",
       "rejectDriverTripInterruption": "129e629f9ab82b4e6897c137330d7bd1fc547316d57437946f78e43a7b08d11f",
-      "completeTrip": "3b99ffcf0fba1358864976ced50160d9515cf9c580ed424710eab67759a13aac",
+      "completeTrip": "8fd3c33b6bbe5fcacaad7fff867cfce3b2b1a43f1adbae1cd6e1758bd5a338cb",
       "updateDriverLocation": "c8eedbe3693e34f01bbe5f304a0226f79412d70c5bc9cdd5917d16e727920236",
       "getDriverLocation": "8a0c5474198bc2a14f94686e0c6e74a0cee5c14ff4e00bdc7ec54ec5bcc7e86d",
       "bookTrip": "8bdd76c860b19eb4778251f2990dfceb8b1d6b97c7c71c77c0bdb2ed38db1798",

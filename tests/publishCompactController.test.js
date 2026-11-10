@@ -12,7 +12,7 @@ function navigationFixture(overrides = {}) {
     hasDepartureAddress: true, hasArrivalAddress: true, setAddressSectionStep: value => calls.push(value),
     showDialog: value => dialogs.push(value), isPublishIdentityVerified: true, openKycModal: () => calls.push('identity'),
     departureDateTime: new Date(2030, 4, 12, 17, 30), isRecurringTrip: false, recurringWeekdays: [1],
-    recurringEndDate: null, selectedVehicleId: 'car', isFreeTrip: false, price: '2000', acceptedPaymentModes: ['points'], ...overrides };
+    recurringEndDate: null, selectedVehicleId: 'car', isFreeTrip: false, price: '2500', acceptedPaymentModes: ['points'], ...overrides };
   const hook = loader(base)('hooks/publish/usePublishStepNavigation.ts').usePublishStepNavigation;
   return { calls, dialogs, props, next: () => props.step === 'pricing'
     ? hook(props).validateForPublish() : hook(props).handleNextStep() };
@@ -36,11 +36,12 @@ test('merged route stage still validates recurring weekdays and end date', () =>
   assert.deepEqual(valid.calls, ['pricing']);
 });
 test('merged price stage requires a vehicle and valid fare, preserving free trips', () => {
-  for (const patch of [{ selectedVehicleId: null }, ...['', '0', '-1', 'bad', 'Infinity', '0x10'].map(price => ({ price }))]) {
-    const f = navigationFixture({ step: 'pricing', ...patch }); f.next();
+  for (const patch of [{ selectedVehicleId: null }, ...['', '0', '-1', '2000', '2499', '1e3', 'bad', 'Infinity', '0x10'].map(price => ({ price }))]) {
+    const f = navigationFixture({ step: 'pricing', ...patch }); assert.equal(f.next(), false);
     assert.deepEqual(f.calls, []); assert.equal(f.dialogs.length, 1);
+    if (patch.price !== undefined) assert.match(f.dialogs[0].message, /2 500 FC par place/);
   }
-  for (const patch of [{}, { price: '1e3' }, { price: '', isFreeTrip: true }]) {
+  for (const patch of [{}, { price: '2.5e3' }, { price: '3000' }, { price: '', isFreeTrip: true }]) {
     const f = navigationFixture({ step: 'pricing', ...patch }); assert.equal(f.next(), true); assert.deepEqual(f.calls, []);
   }
 });

@@ -118,7 +118,8 @@ test('driver debt is next to the balance without a reserve card or duplicate rec
   f.wallet.cashDebt = { tokens: 2, amount: 200 };
   const tree = f.overview(true);
   assert.match(words(tree), /Commission à régler.*2 jetons.*200 FC/);
-  assert.match(words(tree), /Tolérance cumulée.*25 jetons.*prochaine commission.*prochains jetons reçus/);
+  assert.match(words(tree), /Avance unique sur les six premiers trajets cash.*régularisez les commissions.*provisionnez vos jetons.*prochains jetons reçus couvrent ce dû/);
+  assert.doesNotMatch(words(tree), /Tolérance cumulée|25 jetons/);
   assert.doesNotMatch(words(tree), /Nouveaux paiements cash bloqués/);
   assert.ok(all(tree).some(n => n.props.accessibilityLiveRegion === 'polite'));
   assert.equal(all(tree).filter(n => n.type === 'Button' && words(n).includes('Recharger')).length, 1);
