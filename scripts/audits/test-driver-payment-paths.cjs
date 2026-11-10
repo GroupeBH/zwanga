@@ -11,6 +11,7 @@ const result = spawnSync(process.execPath, ['--require', resolve(__dirname, '../
   'src/notifications/transactional-notifications.subscriber.spec.ts', 'src/notifications/ride-realtime-delivery.spec.ts',
   'src/notifications/notifications.service.spec.ts', 'src/bookings/cash-receipts.spec.ts',
   'src/bookings/bookings.service.spec.ts',
+  'src/bookings/cash-declaration-postgres.spec.ts',
 ], { cwd: backend, windowsHide: true, stdio: 'inherit', env: minimalEnvironment({ NODE_ENV: 'test',
   AWS_EC2_METADATA_DISABLED: 'true', MIXED_CASH_TEST_POSTGRES_BIN: bin, RIDE_AUDIT_MOBILE_ROOT: resolve(__dirname, '../..') }) });
 if (result.error) throw result.error;

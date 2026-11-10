@@ -97,7 +97,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       <View style={styles.headerCopy}>
         <Text style={styles.eyebrow}>{beforeArrival ? 'DESTINATION À PROXIMITÉ' : arrivalBooking?.interruptionFareLocked ? 'ARRÊT CONFIRMÉ' : 'ARRIVÉE CONFIRMÉE'}</Text>
         <Text style={styles.title} accessibilityLiveRegion="polite">
-          {complete ? cash ? 'Règlement en espèces' : amount === 0 ? 'Trajet gratuit' : 'Paiement confirmé' : 'Régler le trajet'}
+          {complete ? cash ? 'Règlement en cash' : amount === 0 ? 'Trajet gratuit' : 'Paiement confirmé' : 'Régler le trajet'}
         </Text>
       </View>
       <Ionicons name={complete && !cash ? 'checkmark-circle' : 'wallet-outline'} size={28}
@@ -111,7 +111,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
       <Text style={styles.amountLabel}>{seats > 1 ? `Total pour ${seats} places` : 'Montant du trajet'}</Text>
       <Text style={styles.amountValue}>{amount === null ? 'Calcul en cours…' : formatMoney(amount, currency)}</Text>
       <Text style={styles.amountHint}>
-        {receipt?.mixedTokenAmount ? 'Le prix est partagé entre vos jetons et le complément en espèces.'
+        {receipt?.mixedTokenAmount ? 'Le prix est partagé entre vos jetons et le complément en cash.'
           : cash ? 'À remettre au conducteur. Aucun prélèvement dans l’application.'
           : complete ? 'Rien à payer de nouveau.'
           : hasPendingProviderPayment ? 'Paiement en cours : ne payez pas une seconde fois.'
@@ -139,7 +139,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
         </TouchableOpacity>}
         {paymentOptions?.cashUnavailableReason && <Text style={styles.amountHint}>{paymentOptions.cashUnavailableReason}</Text>}
         {hasPaymentFailure && <Text style={styles.amountHint} accessibilityLiveRegion="polite">{offerCashFallback
-          ? 'Le paiement n’a pas abouti. Vous pouvez réessayer ou choisir les espèces ci-dessous.'
+          ? 'Le paiement n’a pas abouti. Vous pouvez réessayer ou choisir le cash ci-dessous.'
           : 'Vous pouvez réessayer ou choisir un autre moyen de paiement.'}</Text>}
         <View style={styles.options}>
           {paymentChoices.filter(option => (!beforeArrival || option.id !== 'cash') &&
@@ -148,7 +148,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
             const selected = selectedMode === option.id;
             const disabled = modeSelectionLocked || !paymentOptions?.availablePaymentModes.includes(option.id);
             const cashFallback = option.id === 'cash' && offerCashFallback;
-            const title = cashFallback ? 'Payer en espèces' : option.title;
+            const title = cashFallback ? 'Payer en cash' : option.title;
             return <TouchableOpacity key={option.id} accessibilityRole="radio" accessibilityLabel={title}
               accessibilityState={{ checked: selected, disabled }} activeOpacity={0.85} disabled={disabled}
               onPress={() => { if (disabled) return; setSelectedMode(option.id); setPaymentError(''); setStatusMessage(''); }}
@@ -172,7 +172,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
           <Text style={styles.paymentFieldLabel}>Comment compléter ?</Text>
           <View style={styles.channelGrid}>
             {[{ cash: false, label: 'Mobile Money', icon: 'phone-portrait-outline' as const },
-              { cash: true, label: 'Espèces', icon: 'cash-outline' as const }].map(option => (
+              { cash: true, label: 'Cash', icon: 'cash-outline' as const }].map(option => (
               <TouchableOpacity key={option.label} accessibilityRole="radio" accessibilityLabel={`Compléter en ${option.label}`}
                 accessibilityState={{ checked: Boolean(props.cashComplementSelected) === option.cash, disabled: modeSelectionLocked }}
                 disabled={modeSelectionLocked} onPress={() => {
@@ -181,7 +181,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
                 }}
                 style={[styles.channelOption, Boolean(props.cashComplementSelected) === option.cash && styles.channelOptionSelected]}>
                 <Ionicons name={option.icon} size={20} color={Colors.primary} />
-                <Text style={styles.channelTitle}>{option.cash && hasPaymentFailure ? 'Compléter en espèces' : option.label}</Text>
+                <Text style={styles.channelTitle}>{option.cash && hasPaymentFailure ? 'Compléter en cash' : option.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -195,7 +195,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
           <Text style={styles.breakdownValue}>{formatPoints(pointsUsed)} · {formatMoney(amountCoveredByPoints, currency)}</Text>
         </View>
         <View style={styles.breakdownRow}>
-          <Text style={styles.breakdownLabel}>{props.cashComplementSelected ? 'À remettre en espèces' : 'Complément Mobile Money'}</Text>
+          <Text style={styles.breakdownLabel}>{props.cashComplementSelected ? 'À remettre en cash' : 'Complément Mobile Money'}</Text>
           <Text style={styles.breakdownValue}>{formatMoney(props.cashComplementSelected ? props.cashRemainder ?? 0 : moneyComplement, currency)}</Text>
         </View>
         {moneyComplement > 0 && <Text style={styles.pointsHint}>{props.cashComplementSelected

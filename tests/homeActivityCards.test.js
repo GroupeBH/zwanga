@@ -45,20 +45,18 @@ function render(overrides = {}) {
   return { routes, elements: nodes(tree), buttons: nodes(tree).filter(node => node.type === 'Button') };
 }
 
-test('the upcoming trip remains visible before the nearby request and both keep their destinations', () => {
+test('the upcoming trip keeps its destination without duplicating the command modal as a priority card', () => {
   const { buttons, routes } = render();
-  assert.equal(buttons.length, 2);
+  assert.equal(buttons.length, 1);
   assert.equal(buttons[0].props.accessibilityLabel, 'Ouvrir le trajet publié qui démarre bientôt');
-  assert.match(buttons[1].props.accessibilityLabel, /Voir la commande à accepter/);
   buttons.forEach(button => button.props.onPress());
-  assert.deepEqual(routes, ['/trip/manage/upcoming', '/request/nearest']);
+  assert.deepEqual(routes, ['/trip/upcoming']);
 });
 
-test('without an upcoming trip, the highlighted request remains directly accessible', () => {
+test('nearby orders no longer occupy map priority space', () => {
   const { buttons, routes } = render({ featuredDriverUpcomingTrip: null });
-  assert.equal(buttons.length, 1);
-  buttons[0].props.onPress();
-  assert.deepEqual(routes, ['/request/nearest']);
+  assert.equal(buttons.length, 0);
+  assert.deepEqual(routes, []);
 });
 
 test('personal passenger reservations open details and can be dismissed without cancelling them', () => {
@@ -83,8 +81,8 @@ test('a booked unstarted trip shows its real reservation count before nearby req
     assert.ok(elements.some(node => node.type === 'Text' && node.props.children === label));
     assert.ok(elements.some(node => node.type === 'Icon' && node.props.name === 'ticket-outline'));
     buttons[0].props.onPress();
-    assert.deepEqual(routes, ['/trip/manage/upcoming']);
-    assert.match(buttons[1].props.accessibilityLabel, /Voir la commande à accepter/);
+    assert.deepEqual(routes, ['/trip/upcoming']);
+    assert.equal(buttons.length, 1);
   }
 });
 
@@ -103,10 +101,10 @@ test('a received reservation also precedes a highlighted request without losing 
     featuredDriverReservationPassengerName: 'Alex',
     featuredDriverReservationSeatsLabel: '1 place',
   });
-  assert.equal(buttons.length, 2);
+  assert.equal(buttons.length, 1);
   assert.equal(buttons[0].props.accessibilityLabel, 'Ouvrir la réservation reçue');
   buttons.forEach(button => button.props.onPress());
-  assert.deepEqual(routes, ['/trip/manage/reserved', '/request/nearest']);
+  assert.deepEqual(routes, ['/trip/reserved']);
 });
 
 test('reservation and upcoming trip departure/destination names are bold without making the separator bold', () => {
@@ -139,16 +137,16 @@ test('no priority leaves no footer, message or undo button behind', () => {
   assert.equal(buttons.length, 0);
 });
 
-test('received reservations, upcoming departures and requests have distinct surfaces and meaningful icons', () => {
+test('received reservations and upcoming departures keep distinct surfaces and meaningful icons', () => {
   const { elements, buttons } = render({
     featuredDriverReservation: { trip: upcoming, booking: { id: 'booking' } },
     featuredDriverReservationStatus: { label: 'Nouvelle réservation' },
     featuredDriverReservationPassengerName: 'Alex', featuredDriverReservationSeatsLabel: '1 place',
   });
   const surfaces = buttons.map(button => Object.assign({}, ...button.props.style.filter(Boolean)));
-  assert.equal(new Set(surfaces.map(style => style.backgroundColor)).size, 3);
-  assert.equal(new Set(surfaces.map(style => style.borderColor)).size, 3);
-  for (const icon of ['ticket-outline', 'time-outline', 'paper-plane-outline']) {
+  assert.equal(new Set(surfaces.map(style => style.backgroundColor)).size, 2);
+  assert.equal(new Set(surfaces.map(style => style.borderColor)).size, 2);
+  for (const icon of ['ticket-outline', 'time-outline']) {
     assert.ok(elements.some(node => node.type === 'Icon' && node.props.name === icon), icon);
   }
   assert.ok(elements.some(node => node.type === 'Text' && node.props.children === 'Nouvelle réservation'));

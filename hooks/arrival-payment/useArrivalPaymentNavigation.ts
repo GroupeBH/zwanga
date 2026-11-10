@@ -10,6 +10,7 @@ import type { Booking } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
+  declareCashPayment: (bookingId: string, amount: number, currency: string) => Promise<Booking>;
   completionSummary: PaymentCompletionSummary | null;
   acknowledgeBooking: (bookingId: string, beforeArrival?: boolean, cashReceivedAt?: string) => void;
   setCompletionSummary: React.Dispatch<React.SetStateAction<PaymentCompletionSummary | null>>;
@@ -24,6 +25,7 @@ interface Params {
 }
 
 export function useArrivalPaymentNavigation({
+  declareCashPayment,
   completionSummary,
   acknowledgeBooking,
   setCompletionSummary,
@@ -37,12 +39,23 @@ export function useArrivalPaymentNavigation({
   openCardPaymentUrl,
 }: Params) {
   const pendingNavigation = useRef<{ kind: 'invoice'; id: string | null } | { kind: 'rating'; id: string } | null>(null);
+  const declaring = useRef(false);
   useEffect(() => () => { pendingNavigation.current = null; }, []);
-  const handleDismissSummary = useCallback(() => {
-    if (!completionSummary || pendingNavigation.current || !isSessionCurrent()) return;
-    acknowledgeBooking(completionSummary.bookingId, completionSummary.beforeArrival, completionSummary.cashReceivedAt);
-    setCompletionSummary(null);
-  }, [acknowledgeBooking, completionSummary, isSessionCurrent, setCompletionSummary]);
+  const handleDismissSummary = useCallback(async () => {
+    if (!completionSummary || pendingNavigation.current || declaring.current || isBusy || !isSessionCurrent()) return;
+    declaring.current = true;
+    try {
+      if (completionSummary.cashInstructions && !completionSummary.beforeArrival) {
+        setPaymentError('');
+        await declareCashPayment(completionSummary.bookingId, completionSummary.cashRemainder ?? completionSummary.amount, completionSummary.currency);
+        if (!isSessionCurrent()) return;
+      }
+      acknowledgeBooking(completionSummary.bookingId, completionSummary.beforeArrival, completionSummary.cashReceivedAt);
+      setCompletionSummary(null);
+    } catch (error) {
+      if (isSessionCurrent()) setPaymentError(getApiErrorMessage(error, 'Impossible de prévenir le conducteur. Vérifiez votre connexion puis réessayez.'));
+    } finally { declaring.current = false; }
+  }, [acknowledgeBooking, completionSummary, declareCashPayment, isBusy, isSessionCurrent, setCompletionSummary, setPaymentError]);
 
   const navigateToInvoice = useCallback(
     (paymentHistoryId?: string | null) => {

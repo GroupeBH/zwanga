@@ -1,5 +1,6 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
-import { RequestRouteMapData, TRIP_REQUEST_VEHICLE_LABELS } from './requestDetailModel';
+import { RequestRouteMapData } from './requestDetailModel';
 import { Colors } from '@/constants/styles';
 import type { TripRequestVehicleType, Vehicle, TripRequest, DriverOffer } from '@/types';
 
@@ -69,7 +70,7 @@ export function buildRequestDetailPresentation({
 
   const isRequestClosed = tripRequest.status === 'expired' || tripRequest.status === 'cancelled';
   const pendingOffersCount = isRequestClosed ? 0 : tripRequest.offers?.filter((offer) => offer.status === 'pending').length ?? 0;
-  const ownerDisplayedBudget = tripRequest.selectedPricePerSeat ?? tripRequest.maxPricePerSeat;
+  const ownerDisplayedBudget = requestTotalPrice(tripRequest.selectedPricePerSeat ?? tripRequest.maxPricePerSeat, tripRequest.numberOfSeats);
   const heroStepIndex =
     isRequestClosed ? -1 : tripRequest.tripId
       ? 3

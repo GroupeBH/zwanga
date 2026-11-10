@@ -82,16 +82,19 @@ export function PublishRouteFields({
       <View style={styles.routeVisual}>
         <View style={styles.dotGreen} />
         <View style={styles.routeLine} />
+        <TouchableOpacity style={styles.swapButton} onPress={swapRoutePoints}
+          accessibilityRole="button" accessibilityLabel="Inverser le départ et l’arrivée">
+          <Ionicons name="swap-vertical" size={20} color={Colors.primaryDark} />
+        </TouchableOpacity>
+        <View style={styles.routeLine} />
         <View style={styles.dotBlue} />
       </View>
       <View style={styles.routeInputs}>
         {/* Départ */}
         <View style={[styles.addressField, hasDepartureCoordinates && styles.addressFieldDepartureReady]}>
-          <Text style={[styles.addressFieldLabel, hasDepartureCoordinates && styles.addressFieldLabelReady]}>
-            Départ
-          </Text>
           <View style={styles.addressInputRow}>
             <TouchableOpacity
+              accessibilityRole="button" accessibilityLabel={`Départ : ${departureLocation?.title || departureManualAddress || 'Choisir sur la carte'}`}
               style={[
                 styles.addressInputButton,
                 hasDepartureCoordinates && styles.addressInputButtonDepartureActive,
@@ -102,11 +105,8 @@ export function PublishRouteFields({
               }}
               activeOpacity={0.85}
             >
-              <Ionicons
-                name={hasDepartureCoordinates ? "location" : "location-outline"}
-                size={18}
-                color={hasDepartureCoordinates ? Colors.success : Colors.gray[500]}
-              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.addressFieldLabel}>Départ</Text>
               <Text
                 style={[
                   styles.addressInputText,
@@ -116,8 +116,10 @@ export function PublishRouteFields({
               >
                 {departureLocation?.title || departureManualAddress || 'Choisir sur la carte'}
               </Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
+              accessibilityRole="button" accessibilityLabel="Saisir l’adresse de départ"
               style={[
                 styles.modeToggle,
                 manualAddressTarget === 'departure' && styles.modeToggleActive,
@@ -178,34 +180,14 @@ export function PublishRouteFields({
                 placeholderTextColor={Colors.gray[400]}
               />
             </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.referenceAddButton}
-              onPress={() => setShowDepartureReference(true)}
-            >
-              <Ionicons name="add" size={15} color={Colors.gray[600]} />
-              <Text style={styles.referenceAddText}>Ajouter une référence</Text>
-            </TouchableOpacity>
-          )}
+          ) : null}
         </View>
-
-        {/* Swap button */}
-        <TouchableOpacity
-          style={styles.swapButton}
-          onPress={swapRoutePoints}
-        >
-          <View style={styles.swapButtonInner}>
-            <Ionicons name="swap-vertical" size={18} color={Colors.primary} />
-          </View>
-        </TouchableOpacity>
 
         {/* Arrivée */}
         <View style={[styles.addressField, hasArrivalCoordinates && styles.addressFieldArrivalReady]}>
-          <Text style={[styles.addressFieldLabel, hasArrivalCoordinates && styles.addressFieldLabelReady]}>
-            Arrivée
-          </Text>
           <View style={styles.addressInputRow}>
             <TouchableOpacity
+              accessibilityRole="button" accessibilityLabel={`Arrivée : ${arrivalLocation?.title || arrivalManualAddress || 'Choisir sur la carte'}`}
               style={[
                 styles.addressInputButton,
                 hasArrivalCoordinates && styles.addressInputButtonArrivalActive,
@@ -216,11 +198,8 @@ export function PublishRouteFields({
               }}
               activeOpacity={0.85}
             >
-              <Ionicons
-                name={hasArrivalCoordinates ? "navigate" : "navigate-outline"}
-                size={18}
-                color={hasArrivalCoordinates ? Colors.primary : Colors.gray[500]}
-              />
+              <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.addressFieldLabel}>Arrivée</Text>
               <Text
                 style={[
                   styles.addressInputText,
@@ -230,8 +209,10 @@ export function PublishRouteFields({
               >
                 {arrivalLocation?.title || arrivalManualAddress || 'Choisir sur la carte'}
               </Text>
+              </View>
             </TouchableOpacity>
             <TouchableOpacity
+              accessibilityRole="button" accessibilityLabel="Saisir l’adresse d’arrivée"
               style={[
                 styles.modeToggle,
                 manualAddressTarget === 'arrival' && styles.modeToggleActive,
@@ -290,15 +271,7 @@ export function PublishRouteFields({
                 placeholderTextColor={Colors.gray[400]}
               />
             </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.referenceAddButton}
-              onPress={() => setShowArrivalReference(true)}
-            >
-              <Ionicons name="add" size={15} color={Colors.gray[600]} />
-              <Text style={styles.referenceAddText}>Ajouter une référence</Text>
-            </TouchableOpacity>
-          )}
+          ) : null}
         </View>
       </View>
     </View>

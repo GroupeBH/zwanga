@@ -82,7 +82,7 @@ export function getPaymentChannelLabel(channel?: PaymentChannel) {
 
 export function getPaymentModeLabel(mode?: TripPaymentMode | null, channel?: PaymentChannel) {
   if (mode === 'points') return 'Jetons Zwanga';
-  if (mode === 'cash') return 'Paiement en espèces';
+  if (mode === 'cash') return 'Paiement en cash';
   if (mode === 'electronic') return getPaymentChannelLabel(channel);
   return 'Paiement';
 }

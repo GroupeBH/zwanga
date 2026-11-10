@@ -1,3 +1,4 @@
+import { requestTripPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { Colors } from '@/constants/styles';
 import { homePriceLabel } from '@/features/home/homeCardPresentation';
 import type { Trip } from '@/types';
@@ -9,7 +10,7 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { styles } from './ManageTripSummary.styles';
 
 type Props = {
-  trip: Pick<Trip, 'departure' | 'arrival' | 'departureTime' | 'status' | 'availableSeats' | 'totalSeats' | 'price'>;
+  trip: Pick<Trip, 'departure' | 'arrival' | 'departureTime' | 'status' | 'availableSeats' | 'totalSeats' | 'price' | 'tripRequestId' | 'passengers' | 'reservationSummary'>;
   onEditRoute?: () => void;
 };
 
@@ -52,8 +53,8 @@ export const ManageTripSummary = React.memo(function ManageTripSummary({ trip, o
           </Text>
         </View>
         <Text style={styles.price}>
-          {homePriceLabel(trip.price)}
-          {hasPrice ? <Text style={styles.priceUnit}> / place</Text> : null}
+          {trip.tripRequestId ? requestTripPriceLabel(trip) : homePriceLabel(trip.price)}
+          {hasPrice ? <Text style={styles.priceUnit}>{trip.tripRequestId ? ' pour le trajet' : ' / place'}</Text> : null}
         </Text>
       </View>
 

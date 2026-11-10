@@ -1,4 +1,5 @@
 import { getLocationCoordinates } from '../../features/request-detail/requestLocation';
+import { missingRequestReference, requestReferenceMessage } from '@/features/trip-request/requestReference';
 import { TRIP_REQUEST_VEHICLE_LABELS, isValidDate } from '../../features/request-detail/requestDetailModel';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -8,11 +9,10 @@ import {
   useCancelTripRequestMutation,
   useUpdateTripRequestMutation,
 } from '@/store/api/tripRequestApi';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, TripRequest } from '@/types';
 import { getApiErrorMessage, isPassengerKycRequiredError, isExtraSeatsIdentityError } from '@/utils/errorHelpers';
 import React from 'react';
 import { Platform } from 'react-native';
-import type { TripRequest } from '@/types';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
 
 interface Params {
@@ -99,6 +99,12 @@ export function useRequestPassengerActions({
       return;
     }
     const updatedDepartureDateMin = editDepartureDateMin;
+    const missingReference = missingRequestReference(editDepartureAddress, editDepartureReference, editAddressInputMode === 'map' ? editDepartureLocation : null)
+      ? 'departure' : missingRequestReference(editArrivalAddress, editArrivalReference, editAddressInputMode === 'map' ? editArrivalLocation : null) ? 'arrival' : null;
+    if (missingReference) {
+      showDialog({ title: 'Repère obligatoire', message: requestReferenceMessage(missingReference), variant: 'warning' });
+      return;
+    }
     const updatedDepartureDateMax = editDepartureDateMax;
     if (
       !isValidDate(updatedDepartureDateMin) ||
@@ -161,7 +167,7 @@ export function useRequestPassengerActions({
     ) {
       showDialog({
         title: 'Budget invalide',
-        message: 'Le prix maximum par place doit être un montant positif.',
+        message: 'Indiquez un prix total valide pour le trajet.',
         variant: 'warning',
       });
       return;

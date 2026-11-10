@@ -117,6 +117,7 @@ export function ServiceNeedStep({ controller: c, offering }: Props) {
                   key={doc.code}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: selected }}
+                  disabled={c.locked || c.fixedDocuments?.includes(doc.code)}
                   accessibilityLabel={doc.label}
                   activeOpacity={0.75}
                   style={[
@@ -164,6 +165,7 @@ export function ServiceNeedStep({ controller: c, offering }: Props) {
           label={documents ? "Précisions (facultatif)" : "Votre besoin"}
           error={c.errors.description}
           multiline
+          editable={!c.locked && !c.additionsOnly}
           value={c.form.description}
           maxLength={2000}
           placeholder={
@@ -194,6 +196,7 @@ export function ServiceContactStep({ controller: c }: { controller: Form }) {
       </View>
       <Field
         label="Nom complet"
+        editable={!c.locked && !c.additionsOnly}
         value={c.form.fullName}
         error={c.errors.fullName}
         autoComplete="name"
@@ -206,6 +209,7 @@ export function ServiceContactStep({ controller: c }: { controller: Form }) {
       />
       <Field
         label="Numéro de contact"
+        editable={!c.locked && !c.additionsOnly}
         value={c.form.phone}
         error={c.errors.phone}
         inputRef={phoneRef}
@@ -225,6 +229,7 @@ export function ServiceContactStep({ controller: c }: { controller: Form }) {
           <View style={f.section}>
             <Field
               label="Marque et modèle"
+              editable={!c.locked && !c.additionsOnly}
               value={c.form.vehicleDescription}
               maxLength={180}
               placeholder="Marque, modèle, type de véhicule…"
@@ -232,6 +237,7 @@ export function ServiceContactStep({ controller: c }: { controller: Form }) {
             />
             <Field
               label="Plaque d’immatriculation"
+              editable={!c.locked && !c.additionsOnly}
               value={c.form.plate}
               maxLength={40}
               autoCapitalize="characters"

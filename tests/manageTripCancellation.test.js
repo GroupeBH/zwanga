@@ -6,12 +6,6 @@ const pendingBooking = { id: 'booking-test', tripId: 'trip-test', status: 'pendi
 const trip = { id: 'trip-test', driverId: 'driver-test', status: 'upcoming' };
 const native = { StyleSheet: { create: value => value }, Platform: { OS: 'ios' } };
 const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
-function nodes(tree) {
-  if (!tree || typeof tree !== 'object') return [];
-  if (Array.isArray(tree)) return tree.flatMap(nodes);
-  return [tree, ...nodes(tree.props?.children)];
-}
-
 function bookingFixture() {
   const h = hookHarness(), calls = { accept: [], reject: [], cancel: [], feedback: [], commits: [], refresh: 0, dialogs: [] };
   let rejection = deferred(), cancellation = deferred(), reconciled = null;
@@ -173,28 +167,12 @@ test('trip cancellation error remains on screen and allows a new attempt', async
   assert.equal(writes, 2); assert.equal(exits, 1); h.unmount();
 });
 
-test('manage screen scopes confirmation and form overlays to its focus and wires native back dismissal', () => {
-  const close = () => {};
-  const model = { trip, state: { tripId: trip.id, isOwner: true, isIdentityVerified: true,
-    isScreenActive: true, insets: { bottom: 0 }, editRouteModalVisible: true },
-    actions: {}, bookingsActions: {}, routeEditor: { closeEditRouteModal: close }, tracking: {} };
-  const { default: Screen } = loader({
-    'react-native': { ...native, View: 'View', Text: 'Text', TouchableOpacity: 'Button', TextInput: 'Input', ActivityIndicator: 'Spinner' },
-    'react-native-safe-area-context': { SafeAreaView: 'Safe' }, '@expo/vector-icons': { Ionicons: 'Icon' },
-    '@/utils/reanimated': { __esModule: true, default: { View: 'Animated' }, FadeInDown: {} },
-    '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'Guard' },
-    '../../../hooks/manage-trip/useManageTripController': { useManageTripController: () => model },
-    '../../../features/manage-trip/ManageTripContent': { ManageTripContent: 'Content' },
-    '../../../features/manage-trip/ManageTripActionsFooter': { ManageTripActionsFooter: 'Footer' },
-    '@/features/manage-trip/ManageTripContactModal': { ManageTripContactModal: 'Contact' },
-    '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'Scope' },
-    '@/components/forms/FormLayout': { FormModal: 'Modal' },
-    '../../../features/screen-styles/app/trip/manage/detail/index': { styles: {} },
-  })('app/trip/manage/[id].tsx');
-  const owner = Screen().props.children.type;
-  let tree = owner(); assert.equal(tree.type, 'Scope'); assert.equal(tree.props.scopeKey, 'manage:trip-test');
-  assert.equal(tree.props.active, true);
-  assert.equal(nodes(tree).find(node => node.type === 'Modal' && node.props.visible).props.onRequestClose, close);
-  assert.equal(nodes(tree).filter(node => node.type === 'Modal').length, 1, 'no refusal form remains');
-  model.state.isScreenActive = false; tree = owner(); assert.equal(tree.props.active, false);
+test('new owner detail keeps confirmation and edit panels in its screen scope', () => {
+  const fs = require('node:fs');
+  const source = fs.readFileSync('app/trip/[id].tsx', 'utf8');
+  assert.match(source, /<RideOverlayScope/);
+  assert.match(source, /scopeKey=\{`trip-detail:/);
+  assert.match(source, /active=\{model.data.isScreenActive\}/);
+  assert.match(source, /<TripEditModal/);
+  assert.match(fs.readFileSync('features/trip-detail/TripEditModal.tsx', 'utf8'), /onRequestClose=/);
 });

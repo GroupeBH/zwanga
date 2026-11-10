@@ -1,6 +1,7 @@
 import type { TripRequestVehicleType } from '@/types';
 import { useEffect, useState } from 'react';
 import { useRequestVehicleOptions } from './useRequestVehicleOptions';
+import { MIN_REQUEST_PRICE } from '@/features/trip-request/requestFormModel';
 
 type Props = Parameters<typeof useRequestVehicleOptions>[0] & {
   requestId?: string;
@@ -35,7 +36,8 @@ export function useEditRequestPricing({ requestId, initialBudget, vehicleType, .
     hasEditedBudget,
     recommendedPricePerSeat: recommendation,
     isBudgetValid: confirmedPricePerSeat !== undefined
-      && Number.isFinite(confirmedPricePerSeat) && confirmedPricePerSeat > 0,
+      && Number.isFinite(confirmedPricePerSeat) && confirmedPricePerSeat > 0
+      && (confirmedPricePerSeat >= MIN_REQUEST_PRICE || confirmedPricePerSeat === Number(initialBudget)),
     setMaxPricePerSeat: (value: string) => setManualBudget({ key: budgetKey, value }),
     resetBudget: () => setManualBudget({ key: budgetKey, value: savedBudget }),
   };

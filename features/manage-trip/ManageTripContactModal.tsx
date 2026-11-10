@@ -6,7 +6,8 @@ import React from 'react';
 
 /** Resolve the selected reservation from fresh data, never a saved phone/name snapshot. */
 export function ManageTripContactModal({ state, bookings }: {
-  state: ReturnType<typeof useManageTripState>;
+  state: Pick<ReturnType<typeof useManageTripState>, 'isScreenActive' | 'isOwner' | 'contactBookingId' |
+    'trip' | 'userId' | 'setContactBookingId'>;
   bookings: Booking[] | undefined;
 }) {
   if (!state.isScreenActive || !state.isOwner || !state.contactBookingId) return null;

@@ -49,7 +49,7 @@ export function useEntryPresentation(options: {
     if (!current()) throw new Error('STALE_ENTRY_PRESENTATION');
     const requestDestination = typeof destination === 'string' ? /^\/request-details\/[^/]+$/.test(destination)
       : (destination.pathname === '/incoming-driver' && destination.params?.kind === 'dispatch') ||
-        (destination.pathname === '/trip/manage/[id]' && Boolean(destination.params?.id) &&
+        (['/trip/[id]', '/trip/manage/[id]'].includes(destination.pathname) && Boolean(destination.params?.id) &&
           Boolean(destination.params?.bookingId) && destination.params?.section === 'passengers');
     const automaticDestination = (priorityRequest && requestDestination && canResumeRequestFromPath(entry.path)) ||
       (typeof destination === 'string' && isRideNavigationPath(destination) && canResumeRideFromPath(entry.path));
@@ -71,7 +71,7 @@ export function useEntryPresentation(options: {
   // reservation may arrive after ordinary entry navigation has already settled.
   const replaceBooking = useCallback((destination: Href): boolean => {
     if (!current()) throw new Error('STALE_ENTRY_PRESENTATION');
-    const booking = typeof destination === 'object' && destination.pathname === '/trip/manage/[id]' &&
+    const booking = typeof destination === 'object' && ['/trip/[id]', '/trip/manage/[id]'].includes(destination.pathname) &&
       !!destination.params?.id && !!destination.params?.bookingId && destination.params?.section === 'passengers';
     const guidance = typeof destination === 'string' && isRideNavigationPath(destination);
     if (!(booking || guidance) || !canAutoOpenBookingFromPath(latest.current.options.path)) return false;

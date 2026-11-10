@@ -2,7 +2,7 @@ import React, { useContext, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { BackHandler, Keyboard, Platform, StyleSheet, View } from 'react-native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { createRideOverlayStore } from './rideOverlayStore';
-import { RideOverlayContext, RideOverlayScopeContext } from './rideOverlayContext';
+import { RideOverlayContext, RideOverlayScopeContext, RideOverlayVisibilityContext } from './rideOverlayContext';
 import { RideNoticeBanner } from './RideNoticeBanner';
 
 const subscribeNothing = () => () => {};
@@ -53,7 +53,9 @@ function RideOverlayHost({ scope }: { scope: string }) {
     return <View key={entry.id} style={[styles.overlay, !visible && styles.hidden]}
       pointerEvents={visible ? 'auto' : 'none'} accessibilityViewIsModal={visible}
       accessibilityElementsHidden={!visible} importantForAccessibility={visible ? 'yes' : 'no-hide-descendants'}
-      onAccessibilityEscape={entry.onRequestClose}>{entry.children}</View>;
+      onAccessibilityEscape={entry.onRequestClose}>
+      <RideOverlayVisibilityContext.Provider value={visible}>{entry.children}</RideOverlayVisibilityContext.Provider>
+    </View>;
   })}</>;
 }
 

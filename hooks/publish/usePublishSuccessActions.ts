@@ -44,6 +44,7 @@ export function usePublishSuccessActions({
     form.resetSeats();
     form.setIsFreeTrip(false);
     form.setPrice('');
+    form.setHasEditedPrice(false);
     form.setDescription('');
     form.setIsRecurringTrip(false);
     form.setRecurringWeekdays([]);

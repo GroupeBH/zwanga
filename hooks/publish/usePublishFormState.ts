@@ -44,6 +44,7 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
   const [acceptedPaymentModes, setAcceptedPaymentModes] = useState<TripPaymentMode[]>(['electronic', 'points']);
   const [requiresPassengerKyc, setRequiresPassengerKyc] = useState(false);
   const [price, setPrice] = useState('');
+  const [hasEditedPrice, setHasEditedPrice] = useState(false);
   const [description, setDescription] = useState('');
   const [isRecurringTrip, setIsRecurringTrip] = useState(false);
   const [recurringWeekdays, setRecurringWeekdays] = useState<number[]>([]);
@@ -106,6 +107,7 @@ export function usePublishFormState(selectedVehicleType: TripRequestVehicleType 
     isRecurringTrip,
     isFreeTrip,
     price,
+    hasEditedPrice, setHasEditedPrice,
     seats,
     description,
     requiresPassengerKyc,

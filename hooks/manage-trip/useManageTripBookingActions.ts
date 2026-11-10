@@ -60,9 +60,10 @@ export function useManageTripBookingActions({
     const booking = current.current.bookings?.find(candidate => candidate.id === bookingId);
     if (!mounted.current || !isScreenActive || !userId || trip?.driverId !== userId ||
       current.current.userId !== userId || !current.current.isScreenActive || current.current.trip?.id !== trip.id ||
+      current.current.trip.status !== trip.status || current.current.trip.isExpired ||
       !booking || booking.tripId !== trip.id || booking.status !== 'pending' ||
       (trip.status !== 'upcoming' && trip.status !== 'ongoing') || decisionLock.current ||
-      cancelLock.current || completed.current.has(bookingId)) return;
+      cancelLock.current || completed.current.has(bookingId)) return false;
     decisionLock.current = true;
     const version = getTokenSessionVersion();
     const isCurrent = () => mounted.current && current.current.isScreenActive &&
@@ -82,18 +83,20 @@ export function useManageTripBookingActions({
     try {
       const result = status === 'accepted' ? await acceptBooking(bookingAcceptanceArgument(booking)).unwrap()
         : await rejectBooking({ id: bookingId, reason: 'Refus du conducteur' }).unwrap();
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       commit(result);
       void trackEvent(status === 'accepted' ? 'booking_accepted' : 'booking_rejected', {
         booking_id: bookingId, trip_id: trip.id, source_screen: 'trip_manage',
       }).catch(() => {});
+      return true;
     } catch (error: unknown) {
-      if (!isCurrent()) return;
+      if (!isCurrent()) return false;
       const reconciled = await reconcileBookingStatus(error, bookingId, [status]).catch(() => null);
-      if (!isCurrent()) return;
-      if (reconciled) { commit(reconciled); return; }
+      if (!isCurrent()) return false;
+      if (reconciled) { commit(reconciled); return true; }
       showFeedback('error', getApiErrorMessage(error, status === 'accepted'
         ? 'Impossible d’accepter cette réservation. Réessayez.' : 'Impossible de refuser cette réservation. Réessayez.'));
+      return false;
     } finally {
       decisionLock.current = false;
       if (mounted.current) setProcessingBookingId(null);

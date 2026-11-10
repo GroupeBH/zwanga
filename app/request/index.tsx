@@ -26,10 +26,12 @@ import { RequestScheduleFields } from '@/components/trip-request/RequestSchedule
 import { RequestSuccessModal } from '@/components/trip-request/RequestSuccessModal';
 import { useRequestTripController } from '@/hooks/trip-request/useRequestTripController';
 import { useRequestFormNavigation } from '@/hooks/trip-request/useRequestFormNavigation';
+import { HomeRequestScreen } from '@/components/trip-request/HomeRequestScreen';
 
 export default function RequestTripScreen() {
   const form = useRequestTripController();
   const navigation = useRequestFormNavigation(form);
+  if (form.isHomeEntry) return <HomeRequestScreen form={form} navigation={navigation} />;
   return (
     <FormScreen style={styles.container}>
       <View style={styles.header}>
@@ -65,6 +67,8 @@ export default function RequestTripScreen() {
               applyQuickPlaceToNextSlot={form.applyQuickPlaceToNextSlot}
               applySelectionToNextSlot={form.applySelectionToNextSlot}
               arrivalAddress={form.arrivalAddress}
+              arrivalLocation={form.arrivalLocation}
+              departureLocation={form.departureLocation}
               arrivalManualAddress={form.arrivalManualAddress}
               arrivalManualGeocodeStatus={form.arrivalManualGeocodeStatus}
               arrivalReference={form.arrivalReference}
@@ -87,6 +91,9 @@ export default function RequestTripScreen() {
               setDepartureReference={form.setDepartureReference}
               setSelectedVehicleTypes={form.setSelectedVehicleTypes}
               numberOfSeats={form.numberOfSeats}
+              vehicleOptions={form.vehicleOptions}
+              isPriceLoading={form.isPriceLoading}
+              isVehicleOptionsError={form.isVehicleOptionsError}
               setShowQuickLandmarks={form.setShowQuickLandmarks}
               showQuickLandmarks={form.showQuickLandmarks}
               swapRoutePoints={form.swapRoutePoints}
@@ -132,7 +139,6 @@ export default function RequestTripScreen() {
                   budgetLabel={form.budgetLabel}
                   budgetHintLabel={form.budgetHintLabel}
                   totalBudgetLabel={form.totalBudgetLabel}
-                  requestSeatsLabel={form.requestSeatsLabel}
                   hasSpecifiedNumberOfSeats={form.hasSpecifiedNumberOfSeats}
                   numberOfSeats={form.numberOfSeats}
                   selectedVehicleTypes={form.selectedVehicleTypes}

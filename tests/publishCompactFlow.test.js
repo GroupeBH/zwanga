@@ -11,11 +11,14 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const base = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/utils/reanimated': { default: { View: 'Animated' } },
   'react-native-maps': { __esModule: true, default: 'Map', Marker: 'Marker', Polyline: 'Polyline' },
-  '@react-native-community/datetimepicker': {} };
+  '@react-native-community/datetimepicker': {},
+  '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+  '@/components/forms/FormLayout': { FormModal: 'Modal' },
+  'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) } };
 
-test('three stages keep itinerary/date and vehicle/price together with one persistent footer', () => {
+test('two stages keep itinerary/date then summary/vehicle/price with one direct publication footer', () => {
   for (const [step, expected] of [['route', ['PublishRouteStep', 'PublishScheduleStep']],
-    ['pricing', ['PublishVehicleStep', 'PublishPricingStep']], ['confirm', ['PublishConfirmationStep']]]) {
+    ['pricing', ['PublishConfirmationStep', 'PublishVehicleStep', 'PublishPricingStep']]]) {
     const model = publishCompactFixture(step);
     const names = ['PublishRouteStep', 'PublishScheduleStep', 'PublishVehicleStep', 'PublishPricingStep', 'PublishConfirmationStep'];
     const mocks = Object.fromEntries(names.map(name => [`../features/publish/${name}`, { [name]: name }]));
@@ -27,7 +30,10 @@ test('three stages keep itinerary/date and vehicle/price together with one persi
     assert.deepEqual(nodes.filter(n => names.includes(n.type)).map(n => n.type), expected);
     assert.equal(nodes.filter(n => n.props.onPress === model.handleFooterPrimary).length, 1);
     assert.equal(nodes.find(n => n.type === 'ScrollView').key, step, 'new step starts at the top');
-    if (step === 'confirm') assert.equal(nodes.find(n => n.type === 'PublishConfirmationStep').props.selectedVehicle.id, model.vehicle.selectedVehicleId);
+    if (step === 'pricing') {
+      assert.equal(nodes.find(n => n.type === 'PublishConfirmationStep').props.compact, true);
+      assert.equal(nodes.find(n => n.type === 'PublishPricingStep').props.estimate, model.pricing);
+    }
   }
 });
 
@@ -81,17 +87,21 @@ test('recurrence, note, free fare and passenger verification are not dropped fro
   const result = text(f.render());
   for (const content of ['Lun · Mer · Ven', 'Sans date de fin', 'Gratuit', 'Petit bagage', 'Passagers vérifiés', 'Entrée principale']) assert.ok(result.includes(content), content);
 });
-test('repeating a trip reveals weekdays and end-date controls only when enabled', () => {
+test('repetition opens a separate draft modal and keeps the first step compact even when enabled', () => {
   const m = publishCompactFixture(), selected = [];
   const f = componentFixture('PublishScheduleStep', { ...m.form, ...m.presentation, ...m.schedule,
-    toggleRecurringWeekday: day => selected.push(day), setRecurringEndDate: day => selected.push(day) });
+    onSaveRecurrence: choice => selected.push(choice) });
   assert.equal(all(f.render()).filter(n => n.props.accessibilityRole === 'checkbox').length, 0);
   f.props.isRecurringTrip = true; f.props.recurringEndDate = new Date(2030, 6, 1);
-  const days = all(f.render()).filter(n => n.props.accessibilityRole === 'checkbox');
-  assert.equal(days.length, 7); assert.equal(days[0].props.accessibilityState.checked, true);
-  days[1].props.onPress();
-  all(f.render()).find(n => n.props.accessibilityLabel === 'Retirer la date de fin').props.onPress();
-  assert.deepEqual(selected, [2, null]);
+  assert.equal(all(f.render()).filter(n => n.props.accessibilityRole === 'checkbox').length, 0);
+  all(f.render()).find(n => n.props.accessibilityLabel === 'Répéter ce trajet').props.onPress();
+  const modal = all(f.render()).find(n => n.type?.name === 'PublishRecurrenceModal');
+  assert.ok(modal); assert.equal(modal.props.enabled, true);
+  assert.deepEqual(modal.props.weekdays, [1, 3, 5]); assert.deepEqual(selected, []);
+  modal.props.onClose(); assert.ok(!all(f.render()).some(n => n.type?.name === 'PublishRecurrenceModal'));
+  all(f.render()).find(n => n.props.accessibilityLabel === 'Répéter ce trajet').props.onPress();
+  all(f.render()).find(n => n.type?.name === 'PublishRecurrenceModal').props.onSave(null);
+  assert.deepEqual(selected, [null]);
 });
 
 test('compact route removes only redundant confirmation text, not actionable GPS warnings', () => {
@@ -104,4 +114,17 @@ test('compact route removes only redundant confirmation text, not actionable GPS
   assert.equal(presentation.renderGpsStatus(false, false, false, 'Départ'), null);
   assert.match(text(presentation.renderGpsStatus(true, true, false, 'Départ')), /vérifiez le point/);
   assert.match(text(presentation.renderGpsStatus(true, false, false, 'Départ')), /à confirmer/);
+});
+
+test('inline final recap retains route, date and references without duplicating the vehicle or price form', () => {
+  const m = publishCompactFixture(), edits = [];
+  const f = componentFixture('PublishConfirmationStep', { ...m.form, ...m.presentation, ...m.route, ...m.schedule,
+    compact: true, publicationSuccess: null, departureReference: 'Entrée principale',
+    selectedVehicle: m.vehicle.activeVehicles[0], goToStep: step => edits.push(step) });
+  const result = text(f.render());
+  for (const value of ['Départ', 'Arrivée', 'Gare Centrale', 'Kintambo', '17:30', 'Entrée principale']) assert.ok(result.includes(value));
+  assert.doesNotMatch(result, /Tout est correct|Toyota|Corolla|FC \/ place/);
+  assert.equal(all(f.render()).filter(n => n.type === 'Map').length, 0);
+  all(f.render()).find(n => n.props.accessibilityLabel?.startsWith('Modifier')).props.onPress();
+  assert.deepEqual(edits, ['route']);
 });

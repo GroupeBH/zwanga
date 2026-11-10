@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { formatPrice, getTripRequestStatusMeta, placeName } from '@/features/home/homeModel';
 import { homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import type { TripRequestPreviewCardProps } from '@/features/home/homeTypes';
@@ -10,14 +11,14 @@ export const TripRequestPreviewCard = React.memo(function TripRequestPreviewCard
 }: TripRequestPreviewCardProps) {
   const passengerName = request.passengerName?.trim() || 'Passager Zwanga';
   const pendingOffers = request.offers?.filter(offer => offer.status === 'pending').length ?? 0;
-  const budget = Number(request.maxPricePerSeat);
-  const hasBudget = Number.isFinite(budget) && budget > 0;
+  const budget = requestTotalPrice(request.selectedPricePerSeat ?? request.maxPricePerSeat, request.numberOfSeats);
+  const hasBudget = budget !== null && budget > 0;
   return (
     <CompactTripCard
       width={cardWidth}
       label={homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax)}
       priceText={hasBudget ? formatPrice(budget) : undefined}
-      priceHint={hasBudget ? 'max / place' : undefined}
+      priceHint={hasBudget ? 'pour le trajet' : undefined}
       departure={placeName(request.departure)}
       arrival={placeName(request.arrival)}
       metadata={[homeSeatsLabel(request.numberOfSeats), requestVehicleLabel(request)].filter(Boolean).join(' · ')}

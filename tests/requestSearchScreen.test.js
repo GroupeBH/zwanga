@@ -40,9 +40,10 @@ test('search screen exposes real drivers, route, price and existing actions outs
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   const tree = app.render();
   assert.match(words(tree), /3 véhicules · positions connues · 5 km/);
-  assert.match(words(tree), /2 500 FC \/ place/);
+  assert.match(words(tree), /2 500 FC pour le trajet/);
   assert.doesNotMatch(words(tree), /Touchez une voiture/);
   assert.equal(elements(tree).find(node => node.type === 'Map').props.vehicles.length, 3);
+  assert.equal(elements(tree).find(node => node.type === 'Map').props.searching, true);
   const scroll = elements(tree).find(node => node.type === 'ScrollView');
   assert.ok(elements(scroll).some(node => node.type === 'Sharing'), 'shared ride consent is still accessible');
   assert.equal(elements(scroll).some(node => node.type === 'Actions'), false);
@@ -112,6 +113,7 @@ test('an overdue request guides editing instead of promising more driver invitat
   assert.deepEqual(elements(tree).find(node => node.type === 'Map').props.vehicles, []);
   assert.ok(elements(tree).some(node => node.type === 'Actions'));
   app.model.tripRequest.departureDateMax = new Date(Date.now() + 600000).toISOString();
+  assert.equal(elements(tree).find(node => node.type === 'Map').props.searching, false);
   assert.match(words(app.render()), /Recherche en cours/);
 });
 
@@ -119,6 +121,7 @@ test('a server-stopped search does not claim that drivers are being contacted', 
   const app = screenFixture(); t.after(() => app.hooks.unmount()); app.state.data.searching = false;
   assert.match(words(app.render()), /Votre commande a changé/);
   assert.doesNotMatch(words(app.render()), /Recherche en cours|Vous serez prévenu dès/);
+  assert.equal(elements(app.render()).find(node => node.type === 'Map').props.searching, false);
 });
 
 test('search reads stop offline; GPS and native map stop when hidden or editing, without inventing drivers', t => {

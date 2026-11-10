@@ -36,8 +36,8 @@ function fixture(t) {
 test('sent offer list displays server price and opens its request; pages remain bounded', t => {
   const f = fixture(t), tree = f.render(), card = tree.props.renderItem({ item: offer });
   assert.equal(card.props.label, 'En attente du passager');
-  assert.equal(card.props.priceText.replace(/\D/g, ''), '1500');
-  assert.equal(card.props.priceHint, 'proposé / place');
+  assert.equal(card.props.priceText.replace(/\D/g, ''), '3000');
+  assert.equal(card.props.priceHint, 'pour le trajet');
   card.props.onPress(); assert.deepEqual(f.opened, ['request']);
   assert.equal(f.queries[0].args.limit, 20); assert.equal(tree.props.initialNumToRender, 6);
   tree.props.ListFooterComponent.props.onNext(); f.render();
@@ -74,7 +74,8 @@ test('pending offer withdrawal stays visible independently of vehicle, KYC, or d
   let withdrawals = 0;
   const model = { tripRequest: { ...request, offers: [offer] }, userId: 'driver', isScreenActive: true,
     canRespondToRequest: true, canAcceptDirectly: false, isIdentityVerified: false, handleDeclineTripRequest: () => { withdrawals++; } };
-  const tree = RequestPendingOfferActions({ model }); assert.match(words(tree), /Votre prix.*1500 FC/);
+  const tree = RequestPendingOfferActions({ model }); assert.match(words(tree), /Votre prix.*3 000 FC.*pour le trajet/);
+  assert.doesNotMatch(words(tree), /par place|\/ place/);
   nodes(tree).find(n => n.type === 'Button').props.onPress(); assert.equal(withdrawals, 1);
   const busy = RequestPendingOfferActions({ model: { ...model, isDecliningTripRequest: true } });
   const button = nodes(busy).find(n => n.type === 'Button'); assert.equal(button.props.disabled, true);

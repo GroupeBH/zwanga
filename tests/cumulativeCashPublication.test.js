@@ -36,6 +36,11 @@ test('publication removes a selected cash mode after price, seats or debt invali
   render(); assert.deepEqual(props.value, [], 'do not silently enable a different payment mode');
   props.seats = 1; props.value = ['points','cash']; response.currentData = finance(26);
   render(); assert.deepEqual(props.value, ['points']);
+  response.currentData.cash.creditAllowance = { eligible: true, remainingTrips: 5, tripLimit: 6, completedTrips: 0, reservedTrips: 1, oneTime: true };
+  props.value = ['cash']; props.price = 500000;
+  render(); assert.deepEqual(props.value, ['cash'], 'server offer allows cash without a top-up, even with old debt');
+  response.currentData.cash.creditAllowance.eligible = false;
+  render(); assert.deepEqual(props.value, [], 'normal safeguards resume when the offer is exhausted');
   hooks.unmount();
 });
 
@@ -75,6 +80,15 @@ for (const recurring of [false, true]) {
       assert.deepEqual(publications, []);
       assert.equal(dialogs[0].title, 'Vérification du cash indisponible');
       assert.equal(props.publishInFlightRef.current, false);
+      props.acceptedPaymentModes = []; dialogs.length = 0;
+      await hooks.render(() => usePublishSubmission(props)).handlePublish();
+      assert.equal(calls.length, 0); assert.equal(dialogs[0].title, 'Paiement requis');
+      props.isFreeTrip = true; dialogs.length = 0;
+      await hooks.render(() => usePublishSubmission(props)).handlePublish();
+      assert.equal(calls.length, 1, 'free single/recurring trips work even after cash became unavailable');
+      assert.equal(calls[0].pricePerSeat, 0); assert.equal(calls[0].isFree, true);
+      assert.equal(calls[0].acceptedPaymentModes, undefined, 'omit irrelevant modes: the API rejects an empty array');
+      assert.equal(dialogs.length, 0); assert.equal(props.publishInFlightRef.current, false);
     });
   }
 }

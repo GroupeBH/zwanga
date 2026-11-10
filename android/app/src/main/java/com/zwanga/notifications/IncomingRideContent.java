@@ -12,12 +12,13 @@ import java.util.TimeZone;
 final class IncomingRideContent {
   final String price, priceLabel, departure, arrival, seats, schedule, reference, passenger;
   IncomingRideContent(Map<String, String> data) {
-    String amount = data.get("ridePricePerSeat"), kind = data.get("ridePriceKind");
-    boolean hasPrice = amount != null && amount.matches("[0-9]{1,10}(\\.[0-9]{1,2})?") &&
-      ("fare".equals(kind) || "budget".equals(kind));
-    price = hasPrice ? (Double.parseDouble(amount) == 0 ? "Gratuit" :
-      NumberFormat.getNumberInstance(Locale.FRANCE).format(Double.parseDouble(amount)) + " FC") : "Prix à consulter";
-    priceLabel = hasPrice ? ("budget".equals(kind) ? "Budget par place" : "par place") : "dans Zwanga";
+    String kind = data.get("ridePriceKind");
+    Double total = displayedPrice(data);
+    boolean booking = "new_booking".equals(data.get("type"));
+    price = total != null ? (total == 0 ? "Gratuit" :
+      NumberFormat.getNumberInstance(Locale.FRANCE).format(total) + " FC") : "Prix à consulter";
+    priceLabel = total != null ? (booking ? ("budget".equals(kind) ? "Budget par place" : "par place") :
+      ("budget".equals(kind) ? "Budget du trajet" : "pour le trajet")) : "dans Zwanga";
     departure = label(data.get("rideDeparture"), 160); arrival = label(data.get("rideArrival"), 160);
     String count = data.get("rideSeats");
     seats = count != null && count.matches("[1-9][0-9]?") ? count + ("1".equals(count) ? " place" : " places") : "";
@@ -26,6 +27,16 @@ final class IncomingRideContent {
     reference = id != null && id.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
       ? "Réf. " + id.substring(0, 8).toUpperCase(Locale.ROOT) : "";
     passenger = label(data.get("passengerName"), 80);
+  }
+  /** Unit payload remains unchanged; missing seats must not become a guessed total. */
+  static Double displayedPrice(Map<String, String> data) {
+    String price = data.get("ridePricePerSeat"), kind = data.get("ridePriceKind");
+    if (price == null || !price.matches("[0-9]{1,10}(\\.[0-9]{1,2})?") ||
+        (!"fare".equals(kind) && !"budget".equals(kind))) return null;
+    double amount = Double.parseDouble(price);
+    if ("new_booking".equals(data.get("type"))) return amount;
+    String seats = data.get("rideSeats");
+    return seats != null && seats.matches("[1-9][0-9]?") ? amount * Integer.parseInt(seats) : null;
   }
   static String label(String value, int limit) {
     if (value == null) return "";

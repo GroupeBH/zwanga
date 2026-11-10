@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { formatPrice, placeName } from '@/features/home/homeModel';
 import { homeDistanceLabel, homeRequestDepartureLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import { formatRequestDistance } from '@/features/trip-request/requestPriority';
@@ -19,15 +20,15 @@ export const HomeRequestHighlightCard = React.memo(function HomeRequestHighlight
   const passengerName = request.passengerName?.trim() || 'Passager Zwanga';
   const distance = homeDistanceLabel(distanceMeters);
   const distanceDescription = formatRequestDistance(distanceMeters);
-  const budget = Number(request.maxPricePerSeat);
-  const hasBudget = Number.isFinite(budget) && budget > 0;
+  const budget = requestTotalPrice(request.selectedPricePerSeat ?? request.maxPricePerSeat, request.numberOfSeats);
+  const hasBudget = budget !== null && budget > 0;
   return (
     <CompactTripCard
       inlineRoute
       priorityAppearance="request"
       label={distance ? `Commande · ${distance}` : 'Commande à accepter'}
       priceText={hasBudget ? formatPrice(budget) : undefined}
-      priceHint={hasBudget ? 'max / place' : undefined}
+      priceHint={hasBudget ? 'pour le trajet' : undefined}
       departure={placeName(request.departure)}
       arrival={placeName(request.arrival)}
       metadata={[homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax), homeSeatsLabel(request.numberOfSeats),

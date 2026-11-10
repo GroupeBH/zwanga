@@ -2,19 +2,17 @@ import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import {
   RequestRouteMapData,
-  TRIP_REQUEST_VEHICLE_LABELS,
   TRIP_REQUEST_VEHICLE_ICONS,
   formatCdfPrice,
 } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
-import type { TripRequestVehicleType } from '@/types';
+import type { TripRequestVehicleType, TripRequest } from '@/types';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
-import type { TripRequest } from '@/types';
 import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 
@@ -155,7 +153,7 @@ export function RequestPassengerSummary({
             <View style={styles.driverFactDivider} />
             <View style={styles.driverFact}>
               <Ionicons name="wallet-outline" size={18} color={Colors.primary} />
-              <Text style={styles.driverFactLabel}>Budget</Text>
+              <Text style={styles.driverFactLabel}>Budget du trajet</Text>
               <Text style={styles.driverFactValue}>{formatCdfPrice(ownerDisplayedBudget)}</Text>
             </View>
           </>

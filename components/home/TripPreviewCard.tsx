@@ -1,3 +1,4 @@
+import { requestTripPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { placeName, vehicleLabel } from '@/features/home/homeModel';
 import { homeDepartureLabel, homePriceLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
 import type { TripPreviewCardProps } from '@/features/home/homeTypes';
@@ -15,8 +16,8 @@ export const TripPreviewCard = React.memo(function TripPreviewCard({
       width={cardWidth}
       selected={isSelected}
       label={homeDepartureLabel(trip.departureTime)}
-      priceText={homePriceLabel(trip.price)}
-      priceHint={trip.price > 0 ? '/ place' : undefined}
+      priceText={trip.tripRequestId ? requestTripPriceLabel(trip) : homePriceLabel(trip.price)}
+      priceHint={trip.price > 0 ? (trip.tripRequestId ? 'pour le trajet' : '/ place') : undefined}
       departure={placeName(trip.departure)}
       arrival={placeName(trip.arrival)}
       metadata={`${homeSeatsLabel(trip.availableSeats, true)} · ${vehicleLabel[trip.vehicleType || 'car']}`}

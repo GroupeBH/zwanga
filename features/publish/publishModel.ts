@@ -7,8 +7,8 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
-export type PublishStep = 'route' | 'pricing' | 'confirm';
-export type PublicationSuccess = { recurring: boolean } | null;
+export type PublishStep = 'route' | 'pricing';
+export type PublicationSuccess = { recurring: boolean; id?: string } | null;
 export type LatLng = { latitude: number; longitude: number };
 export type RoutePointStatus = 'confirmed' | 'suggested' | null;
 export type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker> & {
@@ -19,7 +19,7 @@ export type IOSDateTimePickerProps = React.ComponentProps<typeof DateTimePicker>
   textColor?: string;
   themeVariant?: 'dark' | 'light';
 };
-export const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'pricing', 'confirm'];
+export const PUBLISH_STEP_ORDER: PublishStep[] = ['route', 'pricing'];
 export const IOSDateTimePicker = DateTimePicker as React.ComponentType<IOSDateTimePickerProps>;
 export const DEFAULT_PUBLISH_REGION: Region = {
   latitude: -4.441931,

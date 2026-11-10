@@ -22,6 +22,8 @@ export type DriverPaymentNotice = {
   cashRemainder?: number;
   partial?: boolean;
   cashReceived?: boolean;
+  /** Passenger declaration, never proof that the driver received cash. */
+  cashDeclared?: boolean;
 };
 
 export function getStorageKey(userId: string) {

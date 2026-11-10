@@ -86,6 +86,21 @@ test('early receipt uses pre-arrival acknowledgement; invoice transition remains
   g.hooks.unmount();
 });
 
+test('mixed cash instructions declare only the remainder after an explicit tap, and stay open on failure', async () => {
+  const f = navigation({ ...build({ paymentMode: 'cash', paymentStatus: 'not_required' }), cashRemainder: 2850, mixedTokenAmount: 650 });
+  const sent = []; let finish;
+  f.params.setPaymentError = message => f.events.push(['error', message]);
+  f.params.declareCashPayment = (...args) => { sent.push(args); return new Promise(resolve => { finish = resolve; }); };
+  const actions = f.render(); const pending = actions.handleDismissSummary(); await actions.handleDismissSummary();
+  assert.deepEqual(sent, [['booking', 2850, 'CDF']]); assert.equal(f.events.some(e => e[0] === 'ack'), false);
+  finish({}); await pending; assert.equal(f.events.some(e => e[0] === 'ack'), true); f.hooks.unmount();
+  const g = navigation(build({ paymentMode: 'cash', paymentStatus: 'not_required' }));
+  g.params.setPaymentError = message => g.events.push(['error', message]);
+  g.params.declareCashPayment = async () => { throw Error('offline'); };
+  await g.render().handleDismissSummary(); assert.equal(g.events.some(e => e[0] === 'ack'), false);
+  assert.ok(g.events.find(e => e[0] === 'error' && e[1])); g.hooks.unmount();
+});
+
 const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
 const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join('') : words(node?.props?.children ?? '');
 test('paid footer offers rating, optional dismissal and invoice without initiating another payment', () => {

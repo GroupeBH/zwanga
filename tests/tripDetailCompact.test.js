@@ -63,6 +63,16 @@ test('driver photo, profile, vehicle details and contact keep their actions and 
     ['vehicle', true], 'message', ['contact', true]]);
 });
 
+test('the owner sees route, price and vehicle but cannot contact or message themselves', () => {
+  const result = render({ isTripDriver: true });
+  assert.ok(result.texts.includes(trip.departure.name));
+  assert.ok(result.texts.includes(trip.arrival.name));
+  assert.ok(result.texts.includes('4000 FC / place'));
+  assert.equal(result.texts.includes(trip.driverName), false);
+  result.buttons.forEach(button => button.props.onPress());
+  assert.deepEqual(result.calls, [['vehicle', true]]);
+});
+
 test('busy messaging is disabled but contact stays accessible without a phone; free fares stay unchanged', () => {
   const result = render({ isOpeningConversation: true, driverPhone: null,
     trip: { ...trip, price: 0, requiresPassengerKyc: false }, tripPriceLabel: 'Gratuit' });

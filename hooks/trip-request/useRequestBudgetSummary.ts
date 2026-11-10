@@ -1,3 +1,4 @@
+import type { TripRequestVehicleType } from '@/types';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import {
   formatCdfPrice,
@@ -7,6 +8,7 @@ import {
 } from '@/features/trip-request/requestFormModel';
 import { useMemo } from 'react';
 import { useRequestVehicleOptions } from './useRequestVehicleOptions';
+import { requestPricingDescription } from '@/features/trip-request/pricingDescription';
 
 interface Params {
   departureLocation: MapLocationSelection | null;
@@ -45,7 +47,7 @@ export function useRequestBudgetSummary({
 
   const hasArrivalAddress = arrivalAddress.length > 0;
 
-  const { vehicleOptions, routeDistanceMeters, isPriceLoading, isVehicleOptionsError, retryVehicleOptions } = useRequestVehicleOptions({
+  const { vehicleOptions, pricing, routeDistanceMeters, isPriceLoading, isVehicleOptionsError, retryVehicleOptions } = useRequestVehicleOptions({
     departureAddress, arrivalAddress, departureReference, arrivalReference, departureLocation, arrivalLocation,
     numberOfSeats, hasSpecifiedNumberOfSeats,
   });
@@ -81,10 +83,10 @@ export function useRequestBudgetSummary({
   const budgetHintLabel = selectedVehicleTypes?.length > 1
     ? 'Même budget pour tous les véhicules choisis'
     : hasEditedBudget
-    ? 'Votre budget maximum par place'
+    ? 'Votre budget pour le trajet'
     : isVehicleOptionsError && vehicleOptions.length === 0
       ? 'Fixez votre budget pour continuer'
-      : 'Prix recommandé par place';
+      : requestPricingDescription(pricing) ?? 'Prix recommandé pour le trajet';
 
   const routeDistanceLabel = formatDistanceKm(routeDistanceMeters);
 
@@ -108,4 +110,3 @@ export function useRequestBudgetSummary({
     totalBudgetLabel,
   };
 }
-import type { TripRequestVehicleType } from '@/types';

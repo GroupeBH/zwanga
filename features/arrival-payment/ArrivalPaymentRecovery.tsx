@@ -37,7 +37,7 @@ export function ArrivalPaymentRecovery(props: Props) {
   const cashAllowed = (!props.pending || props.pendingCashAllowed) && !props.beforeArrival && props.amount !== null && !isError &&
     options?.acceptedPaymentModes.includes('cash') && options.availablePaymentModes.includes('cash');
   const total = props.amount === null ? 'Montant à vérifier' : formatMoney(props.amount, props.currency);
-  const busyLabel = props.savingCash ? 'Passage aux espèces…' : 'Vérification du paiement…';
+  const busyLabel = props.savingCash ? 'Passage au cash…' : 'Vérification du paiement…';
   const primaryBusy = props.busy || Boolean(props.pending && props.verifying);
   return <View style={s.container}>
     <View style={s.header}>
@@ -58,21 +58,21 @@ export function ArrivalPaymentRecovery(props: Props) {
       </View>
       <View style={s.status}>
         <Ionicons name={props.pending ? 'time-outline' : 'alert-circle-outline'} size={22} color={Colors.primaryDark} />
-        <Text style={s.title}>{props.savingCash ? 'Paiement en espèces' : props.pending ? props.topUpConfirmed ? 'Complément reçu' : 'Vérifions votre paiement' : 'Le paiement n’a pas abouti'}</Text>
+        <Text style={s.title}>{props.savingCash ? 'Paiement en cash' : props.pending ? props.topUpConfirmed ? 'Complément reçu' : 'Vérifions votre paiement' : 'Le paiement n’a pas abouti'}</Text>
       </View>
       <Text style={s.message} accessibilityLiveRegion="polite">{props.savingCash
-        ? 'Nous enregistrons votre choix. La remise des espèces se fait au conducteur.'
+        ? 'Nous enregistrons votre choix. La remise du cash se fait au conducteur.'
         : props.topUpConfirmed ? props.message || 'Votre complément Mobile Money est reçu. Nous devons encore confirmer le règlement du trajet avec vos jetons. Ne payez pas une seconde fois.'
         : props.message || (props.pending && cashAllowed
-          ? 'Si vous avez validé Mobile Money, vérifiez le paiement. Sinon, vous pouvez choisir les espèces ; vos jetons et toute recharge reçue resteront dans votre portefeuille.'
+          ? 'Si vous avez validé Mobile Money, vérifiez le paiement. Sinon, vous pouvez choisir le cash ; vos jetons et toute recharge reçue resteront dans votre portefeuille.'
           : props.pending
           ? props.onResumeCard ? 'Terminez le paiement par carte, ou vérifiez son résultat si vous avez déjà payé.'
             : 'Nous attendons le résultat du paiement. Vérifiez avant de payer une deuxième fois.'
-          : cashAllowed ? 'Vous pouvez payer le conducteur en espèces ou choisir un autre moyen.' : 'Choisissez un autre moyen de paiement ou réessayez.')}</Text>
+          : cashAllowed ? 'Vous pouvez payer le conducteur en cash ou choisir un autre moyen.' : 'Choisissez un autre moyen de paiement ou réessayez.')}</Text>
       {!(props.pending && cashAllowed) && <Text style={s.reassurance}>Vous pouvez fermer cette fenêtre et reprendre plus tard.</Text>}
       <View style={s.actions}>
         {props.mixedCashLabel && props.onMixedCash && <>
-          <Text style={s.message}>La recharge en attente restera dans votre portefeuille si elle aboutit. Vous pouvez utiliser vos jetons disponibles et compléter en espèces.</Text>
+          <Text style={s.message}>La recharge en attente restera dans votre portefeuille si elle aboutit. Vous pouvez utiliser vos jetons disponibles et compléter en cash.</Text>
           <TouchableOpacity accessibilityRole="button" disabled={props.busy}
             style={s.secondary} onPress={() => { if (!props.busy) props.onMixedCash?.(); }}>
             <Text style={s.link}>{props.mixedCashLabel}</Text>
@@ -87,11 +87,11 @@ export function ArrivalPaymentRecovery(props: Props) {
           {primaryBusy && <ActivityIndicator color={Colors.gray[700]} />}
           <Text style={[s.primaryText, primaryBusy && s.busyText]}>{primaryBusy ? busyLabel : props.pending
             ? props.topUpConfirmed ? 'Finaliser le paiement du trajet' : 'Vérifier mon paiement'
-            : cashAllowed ? `Payer ${total} en espèces` : 'Choisir comment payer'}</Text>
+            : cashAllowed ? `Payer ${total} en cash` : 'Choisir comment payer'}</Text>
         </TouchableOpacity>
         {props.pending && cashAllowed && <TouchableOpacity accessibilityRole="button" disabled={props.busy}
           style={s.secondary} onPress={() => { if (!props.busy) void props.onCash(); }}>
-          <Text style={s.link}>Choisir les espèces · {total}</Text>
+          <Text style={s.link}>Choisir le cash · {total}</Text>
         </TouchableOpacity>}
         {props.pending && props.onResumeCard && <TouchableOpacity accessibilityRole="button"
           disabled={props.busy} style={s.secondary} onPress={() => { if (!props.busy) props.onResumeCard?.(); }}>

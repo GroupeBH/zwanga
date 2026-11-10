@@ -96,5 +96,13 @@ export function usePublishScheduleActions(props: Params) {
     if (p.iosPickerMode) commit(p.iosPickerMode, p.iosPickerTarget, p.iosPickerValue);
     closeIosPicker();
   };
-  return { openDateOrTimePicker, closeIosPicker, handleIosPickerChange, confirmIosPicker, pickerError };
+  const selectDepartureIn = (minutes: number) => {
+    if (!mounted.current || !latest.current.isScreenActive || opening.current || latest.current.iosPickerMode ||
+        ![5, 15, 30].includes(minutes)) return;
+    const date = new Date(Math.ceil((Date.now() + minutes * 60_000) / 60_000) * 60_000);
+    latest.current.setDepartureDateTime(date);
+    latest.current.setHasChosenDepartureTime(true);
+    setPickerError(null);
+  };
+  return { openDateOrTimePicker, closeIosPicker, handleIosPickerChange, confirmIosPicker, pickerError, selectDepartureIn };
 }

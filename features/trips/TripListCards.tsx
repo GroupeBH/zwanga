@@ -1,3 +1,4 @@
+import { requestTripPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
 import { Colors } from '@/constants/styles';
 import { homeDepartureLabel, homePriceLabel, homeSeatsLabel } from '@/features/home/homeCardPresentation';
@@ -93,8 +94,8 @@ export const PublishedTripCard = React.memo(function PublishedTripCard({
         departure={getPlaceName(trip.departure)}
         arrival={getPlaceName(trip.arrival)}
         metadata={`${homeDepartureLabel(trip.departureTime)} · ${homeSeatsLabel(trip.availableSeats, true)}`}
-        priceText={homePriceLabel(trip.price)}
-        priceHint={trip.price > 0 ? '/ place' : undefined}
+        priceText={trip.tripRequestId ? requestTripPriceLabel(trip) : homePriceLabel(trip.price)}
+        priceHint={trip.price > 0 ? (trip.tripRequestId ? 'pour le trajet' : '/ place') : undefined}
         accessibilityLabel="Gérer ce trajet"
         onPress={() => onDetails(trip.id)}
       />

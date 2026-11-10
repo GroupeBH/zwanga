@@ -12,7 +12,7 @@ export function notificationEffects(input: Record<string, unknown> | null | unde
   const type = typeof data.type === 'string' ? data.type.toLowerCase().replace(/-/g, '_') : '';
   const tags: Tag[] = ['AccountActivity'];
   let href: Href | null = null;
-  if (type === 'driver_booking_payment_confirmed' || (type === 'cash_payment_confirmed' && data.role === 'driver')) {
+  if (type === 'driver_booking_payment_confirmed' || (['cash_payment_confirmed', 'cash_payment_declared'].includes(type) && data.role === 'driver')) {
     tags.push('Notification', 'DriverSettlement');
     if (typeof data.tripId === 'string' && /^[a-zA-Z0-9_-]+$/.test(data.tripId))
       href = { pathname: '/trip/manage/[id]', params: { id: data.tripId } };

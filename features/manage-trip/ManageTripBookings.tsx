@@ -17,9 +17,13 @@ const styles = { ...baseStyles, ...bookingStyles };
 
 interface ManageTripBookingsProps {
   tracking: { visibleBookings: Booking[] | undefined; };
-  state: ReturnType<typeof useManageTripState>;
+  state: Pick<ReturnType<typeof useManageTripState>, 'trip' | 'processingBookingId' | 'isAccepting' | 'isRejecting' |
+    'focusBookingId' | 'bookingsPartial' | 'bookingsLoading' | 'bookingsFetching' | 'bookingsError' | 'bookingsOffline' |
+    'canRetryBookings' | 'router' | 'setContactBookingId' | 'isCancellingBooking'> & { refetchBookings: () => unknown };
+  compact?: boolean;
+  actionsDisabled?: boolean;
   actions: { handleOpenNavigation: () => void; handleStartTrip: () => Promise<void>; handleOpenTripEdit: () => void; handleCancelTrip: () => void; handlePauseTrip: () => Promise<void>; };
-  bookingsActions: { showFeedback: (type: "success" | "error", message: string | string[]) => void; handleRejectBooking: (booking: Booking) => Promise<void>; handleAcceptBooking: (bookingId: string) => Promise<void>; handleCancelBookingBeforePickup: (booking: Booking) => void; };
+  bookingsActions: { showFeedback: (type: "success" | "error", message: string | string[]) => void; handleRejectBooking: (booking: Booking) => Promise<unknown>; handleAcceptBooking: (bookingId: string) => Promise<unknown>; handleCancelBookingBeforePickup: (booking: Booking) => void; };
 }
 
 export function ManageTripBookings({
@@ -27,15 +31,18 @@ export function ManageTripBookings({
   state,
   actions,
   bookingsActions,
+  compact = false,
+  actionsDisabled = false,
 }: ManageTripBookingsProps) {
   const trip = state.trip;
   if (!trip) return null;
-  const busy = Boolean(state.processingBookingId || state.isAccepting || state.isRejecting);
+  const busy = Boolean(actionsDisabled || state.processingBookingId || state.isAccepting || state.isRejecting);
   const bookings = [...(tracking.visibleBookings ?? [])].sort((a, b) =>
     Number(b.id === state.focusBookingId) - Number(a.id === state.focusBookingId) ||
     Number(b.status === 'pending') - Number(a.status === 'pending'));
   return (
-    <View style={styles.sectionCard}>
+    <View style={compact ? { gap: 8 } : styles.sectionCard}>
+      {!compact && <>
       <View style={styles.sectionHeader}>
         <View>
           <Text style={styles.sectionTitle}>Passagers</Text>
@@ -56,6 +63,7 @@ export function ManageTripBookings({
           </TouchableOpacity>
         )}
       </View>
+      </>}
 
       <ManageTripBookingsReadState loading={state.bookingsLoading || state.bookingsFetching}
         failed={state.bookingsError} offline={state.bookingsOffline} partial={state.bookingsPartial}
@@ -175,7 +183,7 @@ export function ManageTripBookings({
                     accessibilityRole="button"
                     onPress={() => bookingsActions.handleCancelBookingBeforePickup(booking)}
                     disabled={
-                      state.isCancellingBooking ||
+                      actionsDisabled || state.isCancellingBooking ||
                       state.processingBookingId === booking.id
                     }
                   >
@@ -216,8 +224,8 @@ export function ManageTripBookings({
           </View>
         ))
       ) : tracking.visibleBookings && !state.bookingsLoading && !state.bookingsFetching && !state.bookingsError && !state.bookingsOffline ? (
-        <View style={{ alignItems: 'center', padding: Spacing.xl }}>
-          <Ionicons name="people-outline" size={48} color={Colors.gray[300]} />
+        <View style={{ alignItems: 'center', padding: compact ? Spacing.sm : Spacing.xl }}>
+          {!compact && <Ionicons name="people-outline" size={48} color={Colors.gray[300]} />}
           <Text style={[styles.emptyText, { marginTop: Spacing.sm }]}>
             Aucune réservation pour le moment.
           </Text>

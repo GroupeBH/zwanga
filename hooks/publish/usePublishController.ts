@@ -1,4 +1,5 @@
 import { usePublishSuccessActions } from './usePublishSuccessActions';
+import { usePublishSuccessRedirect } from './usePublishSuccessRedirect';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { usePublishStepNavigation } from './usePublishStepNavigation';
 import { usePublishVehicleCreation } from './usePublishVehicleCreation';
@@ -11,6 +12,7 @@ import { usePublishPresentation } from './usePublishPresentation';
 import { usePublishRoutePreview } from './usePublishRoutePreview';
 import { usePublishFormState } from './usePublishFormState';
 import { usePublishSubmission } from './usePublishSubmission';
+import { usePublishPriceEstimate } from './usePublishPriceEstimate';
 import { useLazyDriverFinanceSummaryQuery } from '@/store/api/driverFinanceApi';
 import { usePublishLocationActions } from './usePublishLocationActions';
 import { usePublishScheduleActions } from './usePublishScheduleActions';
@@ -47,6 +49,7 @@ export function usePublishController() {
   const publishInFlightRef = useRef(false);
   const publicationSuccessActionRef = useRef(false);
   const [publicationSuccess, setPublicationSuccess] = useState<PublicationSuccess>(null);
+  const publicationRedirect = usePublishSuccessRedirect(publicationSuccess, isScreenActive, router);
   const { showDialog } = useDialog();
   const { getCurrentLocation, lastKnownLocation } = useUserLocation({
     autoRequest: false,
@@ -101,6 +104,15 @@ export function usePublishController() {
     getCurrentLocation,
   });
 
+  const pricing = usePublishPriceEstimate({
+    enabled: isScreenActive && step === 'pricing' && !form.isFreeTrip && publicationSuccess === null,
+    departureAddress: route.departureAddress, arrivalAddress: route.arrivalAddress,
+    departureLocation: form.departureLocation, arrivalLocation: form.arrivalLocation,
+    departureReference: form.departureReference, arrivalReference: form.arrivalReference,
+    numberOfSeats: Number(form.seats), hasSpecifiedNumberOfSeats: true, vehicleType: selectedVehicleType,
+    price: form.price, hasEditedPrice: form.hasEditedPrice,
+    setPrice: form.setPrice, setHasEditedPrice: form.setHasEditedPrice,
+  });
   const presentation = usePublishPresentation({
     departureAddress: route.departureAddress,
     departureLocation: form.departureLocation,
@@ -222,7 +234,8 @@ export function usePublishController() {
     recurringEndDate: form.recurringEndDate,
     selectedVehicleId: vehicle.selectedVehicleId,
     isFreeTrip: form.isFreeTrip,
-    price: form.price,
+    price: pricing.price,
+    acceptedPaymentModes: form.acceptedPaymentModes,
   });
 
   const submission = usePublishSubmission({
@@ -234,7 +247,7 @@ export function usePublishController() {
     showDialog,
     seats: form.seats,
     isFreeTrip: form.isFreeTrip,
-    price: form.price,
+    price: pricing.price,
     departureDateTime: form.hasChosenDepartureTime ? form.departureDateTime : null,
     isRecurringTrip: form.isRecurringTrip,
     recurringWeekdays: form.recurringWeekdays,
@@ -277,10 +290,7 @@ export function usePublishController() {
   const footerPrimaryDisabled = (identity.isCheckingIdentity && !identity.isPublishIdentityVerified) || (
     step === 'route'
       ? !route.hasDepartureAddress || !route.hasArrivalAddress
-      : step === 'confirm'
-        ? schedule.isSubmittingTrip || submission.isResolvingAddresses ||
-          !identity.isPublishIdentityVerified
-        : false);
+      : schedule.isSubmittingTrip || submission.isResolvingAddresses || !identity.isPublishIdentityVerified);
 
   const footerPrimaryLabel = (() => {
     if (identity.isCheckingIdentity && !identity.isPublishIdentityVerified) return 'Mise à jour du profil…';
@@ -288,19 +298,17 @@ export function usePublishController() {
       if (!route.hasDepartureAddress) return 'Indiquez le départ';
       if (!route.hasArrivalAddress) return "Indiquez l'arrivée";
       if (!form.hasChosenDepartureTime) return 'Choisir l’heure';
-      return 'Continuer';
+      return 'Choisir mon prix';
     }
-    if (step === 'confirm') {
-      if (submission.isResolvingAddresses) return 'Recherche des adresses…';
-      if (!identity.isPublishIdentityVerified) return 'Identité à vérifier';
-      return form.isRecurringTrip ? 'Publier mes trajets' : 'Publier mon trajet';
-    }
-    return 'Continuer';
+    if (submission.isResolvingAddresses) return 'Recherche des adresses…';
+    if (!identity.isPublishIdentityVerified) return 'Identité à vérifier';
+    return form.isRecurringTrip ? 'Publier mes trajets' : 'Publier mon trajet';
   })();
 
   const handleFooterPrimary = () => {
-    if (step === 'confirm') {
-      submission.handlePublish();
+    if (footerPrimaryDisabled) return;
+    if (step === 'pricing') {
+      if (navigation.validateForPublish()) void submission.handlePublish();
       return;
     }
     if (step === 'route' && route.hasDepartureAddress && route.hasArrivalAddress &&
@@ -335,7 +343,8 @@ export function usePublishController() {
     step,
     stepEntering,
     route,
-    form,
+    form: { ...form, price: pricing.price, setPrice: pricing.setPrice },
+    pricing,
     locationActions,
     departureTouchedRef,
     routeResolution,
@@ -350,6 +359,7 @@ export function usePublishController() {
     vehicleEditor,
     publicationSuccess,
     submission,
+    publicationRedirect,
     previousStep,
     footerPrimaryDisabled,
     handleFooterPrimary,

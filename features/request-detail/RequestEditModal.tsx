@@ -1,4 +1,5 @@
 import { RequestEditFields } from './RequestEditFields';
+import type { RequestEditReferenceProps } from './RequestEditReferences';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { FormModal as Modal } from '@/components/forms/FormLayout';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
@@ -98,7 +99,8 @@ export function RequestEditModal({
   isEditFormValid,
   handleUpdateRequest,
   isUpdating,
-}: RequestEditModalProps) {
+  ...references
+}: RequestEditModalProps & RequestEditReferenceProps) {
   return (
     <Modal
       visible={showEditForm}
@@ -138,6 +140,7 @@ export function RequestEditModal({
 
           {/* Contenu Scrollable */}
           <RequestEditFields
+            {...references}
             editAddressInputMode={editAddressInputMode}
             setEditAddressInputMode={setEditAddressInputMode}
             editDepartureManualAddress={editDepartureManualAddress}

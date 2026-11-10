@@ -1,5 +1,6 @@
 import React from 'react';
 import { OtpCodeInput } from '../OtpCodeInput';
+import { PasswordCodeInput } from '../PasswordCodeInput';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,14 +58,14 @@ export function ResetPinStep({
       style={[styles.stepContainer, codeStyles.step, keyboardVisible && codeStyles.keyboardStep]}>
       <AuthCodeHeading icon="key-outline" keyboardVisible={keyboardVisible}
         title={resetPinStep === 'otp' ? 'Mot de passe oublié' : 'Nouveau mot de passe'}
-        subtitle={resetPinStep === 'otp' ? `Numéro à vérifier : ${phone}` : 'Choisissez quatre chiffres, puis saisissez-les à nouveau.'} />
+        subtitle={resetPinStep === 'otp' ? `Numéro à vérifier : ${phone}` : 'Choisissez 4 chiffres à retenir pour vous connecter.'} />
 
       {resetPinStep === 'otp' ? (
         <>
           <OtpDeliveryNotice compact />
           <View>
             <OtpCodeInput code={otpCode} onChange={onOtpChange} inputRefs={otpInputRefs}
-              compact label="Code à 6 chiffres" disabled={isLoading || isResending}
+              compact label="Code reçu par SMS (6 chiffres)" disabled={isLoading || isResending}
               containerStyle={codeStyles.codeRow}
               inputStyle={[styles.smsInput, codeStyles.codeInput, keyboardVisible && codeStyles.keyboardCodeInput]}
               filledStyle={styles.smsInputFilled} />
@@ -104,42 +105,16 @@ export function ResetPinStep({
         </>
       ) : (
         <>
-          <View style={codeStyles.fields}>
-            <View style={codeStyles.field}>
+          <View style={codeStyles.passwordFields}>
+            <View style={codeStyles.passwordFieldGroup}>
               <Text style={codeStyles.label}>Nouveau mot de passe</Text>
-              <View style={[styles.inputWrapper, codeStyles.inputWrapper]}>
-                <TextInput
-                  ref={pinInputRef}
-                  style={[styles.input, codeStyles.input]}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  secureTextEntry
-                  value={newPin}
-                  onChangeText={onPinChange}
-                  placeholder="4 chiffres"
-                  accessibilityLabel="Nouveau mot de passe à quatre chiffres"
-                  editable={!isLoading}
-                  placeholderTextColor={Colors.gray[400]}
-                />
-              </View>
+              <PasswordCodeInput inputRef={pinInputRef} value={newPin} onChange={onPinChange}
+                label="Nouveau mot de passe à quatre chiffres" newPassword compact disabled={isLoading} />
             </View>
-            <View style={codeStyles.field}>
-              <Text style={codeStyles.label}>Confirmer</Text>
-              <View style={[styles.inputWrapper, codeStyles.inputWrapper]}>
-                <TextInput
-                  ref={pinConfirmInputRef}
-                  style={[styles.input, codeStyles.input]}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  secureTextEntry
-                  value={newPinConfirm}
-                  onChangeText={onPinConfirmChange}
-                  placeholder="4 chiffres"
-                  accessibilityLabel="Confirmation du mot de passe à quatre chiffres"
-                  editable={!isLoading}
-                  placeholderTextColor={Colors.gray[400]}
-                />
-              </View>
+            <View style={codeStyles.passwordFieldGroup}>
+              <Text style={codeStyles.label}>Confirmez votre mot de passe</Text>
+              <PasswordCodeInput inputRef={pinConfirmInputRef} value={newPinConfirm} onChange={onPinConfirmChange}
+                label="Confirmation du mot de passe à quatre chiffres" newPassword compact disabled={isLoading} />
             </View>
           </View>
           <TouchableOpacity

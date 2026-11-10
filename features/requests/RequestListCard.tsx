@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { CompactTripCard } from '@/components/trip/CompactTripCard';
 import { styles } from '@/components/trip/CompactListCard.styles';
 import { Colors } from '@/constants/styles';
@@ -37,8 +38,8 @@ export const RequestListCard = React.memo(function RequestListCard({
     ? (request.selectedDriverId ? request.selectedDriverName || 'Conducteur Zwanga' : undefined)
     : request.passengerName || 'Passager Zwanga';
   const vehicle = requestVehicleLabel(request);
-  const budget = Number(request.maxPricePerSeat);
-  const hasBudget = Number.isFinite(budget) && budget > 0;
+  const budget = requestTotalPrice(request.selectedPricePerSeat ?? request.maxPricePerSeat, request.numberOfSeats);
+  const hasBudget = budget !== null && budget > 0;
   const canReviewForAcceptance = !own && canAccept && isRequestUnassigned(request) && isTripRequestWithinAcceptanceWindow(request);
   return (
     <View style={[styles.card, featured && styles.featured]}>
@@ -49,7 +50,7 @@ export const RequestListCard = React.memo(function RequestListCard({
         departure={placeName(request.departure)}
         arrival={placeName(request.arrival)}
         priceText={hasBudget ? homePriceLabel(budget) : undefined}
-        priceHint={hasBudget ? 'max / place' : undefined}
+        priceHint={hasBudget ? 'pour le trajet' : undefined}
         metadata={`${homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax)} · ${homeSeatsLabel(request.numberOfSeats)}`}
         secondary={[name, vehicle, own && request.tripId ? 'Course créée' : null].filter(Boolean).join(' · ')}
         avatarName={name}

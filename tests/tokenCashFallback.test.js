@@ -102,7 +102,7 @@ test('pending token complement prioritizes verification and preserves an explici
     currency: 'CDF', onCash: async () => cash++, onVerify: () => verify++ });
   assert.ok(!skip); assert.match(words(tree), /Si vous avez validé Mobile Money, vérifiez/);
   assert.match(words(tree), /recharge reçue resteront/); assert.doesNotMatch(words(tree), /Payez le montant total/);
-  walk(tree).find(node => node.type === 'Button' && /Choisir les espèces.*4.*500/.test(words(node))).props.onPress();
+  walk(tree).find(node => node.type === 'Button' && /Choisir le cash.*4.*500/.test(words(node))).props.onPress();
   assert.equal(cash, 1); assert.equal(verify, 0);
   walk(tree).find(node => node.type === 'Button' && words(node) === 'Vérifier mon paiement').props.onPress();
   assert.equal(verify, 1);

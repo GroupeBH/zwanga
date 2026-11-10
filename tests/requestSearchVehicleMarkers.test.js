@@ -18,10 +18,11 @@ test('the map renders distinct vehicle images at unrounded positions with age in
       shouldRenderMap: enabled, isMapReady: false,
       runMapCommand: command => command({ fitToCoordinates: bounds => commands.push(bounds) }), onMapReady() {}, onMapLayout() {},
     }) },
-    '@/hooks/home/useLocationPermissionPulse': { useLocationPermissionPulse: () => 1 },
+    './RequestPickupBeacon': { RequestPickupBeacon: 'Beacon' },
     '@/components/TrackingMapMarkers': { getVehicleTrackingMarkerImage: type => `${type}.png` },
     '@/assets/images/map-markers/trip-detail-marker-departure.png': 'departure.png',
     '@/assets/images/map-markers/home-position-dot.png': 'position.png',
+    '@/assets/images/map-markers/user-location-marker.png': 'gps.png',
   });
   const MemoMap = load('features/request-detail/RequestSearchMap.tsx').RequestSearchMap;
   const Map = MemoMap.type;
@@ -51,7 +52,7 @@ test('the map renders distinct vehicle images at unrounded positions with age in
   assert.ok(commands[0][1].longitude > crowded.vehicles[0].longitude);
   assert.equal(MemoMap.compare(props, { ...props, departure: { ...props.departure } }), true,
     'parent query refreshes do not redraw unchanged map data');
-  for (const patch of [{ active: false }, { requestId: 'other' }, { vehicles: [...props.vehicles] },
+  for (const patch of [{ active: false }, { searching: false }, { requestId: 'other' }, { vehicles: [...props.vehicles] },
     { departure: { ...props.departure, latitude: -4.4 } }, { position: { latitude: -4.31, longitude: 15.3 } }])
     assert.equal(MemoMap.compare(props, { ...props, ...patch }), false);
   const distributed = { ...props, vehicles: Array.from({ length: 500 }, (_, i) => ({ ...props.vehicles[0], id: `v-${i}`,

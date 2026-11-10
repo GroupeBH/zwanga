@@ -71,6 +71,22 @@ test('loading stays readable and other actions remain disabled until completion'
 });
 
 for (const os of ['android', 'ios']) {
+  test(`${os}: an obsolete reminder cannot dismiss a newer dialog or cancel a chosen action`, async () => {
+    const { show, draw } = setup(os);
+    show({ title: 'Retard', ownerKey: 'old-order' });
+    show({ title: 'Paiement confirmé', ownerKey: 'payment' });
+    draw().props.value.hideDialogFor('old-order');
+    assert.equal(modal(draw()).props.visible, true);
+    draw().props.value.hideDialogFor('payment');
+    assert.equal(modal(draw()).props.visible, false);
+    let calls = 0;
+    buttons(show({ title: 'Retard', ownerKey: 'old-order', actions: [
+      { label: 'Relancer', onPress: () => { calls++; } },
+    ] }))[0].props.onPress();
+    draw().props.value.hideDialogFor('old-order');
+    modal(draw()).props.onDismiss(); await Promise.resolve();
+    assert.equal(calls, 1, 'targeted cleanup leaves the selected iOS/Android action intact');
+  });
   test(`${os}: cancel is harmless and confirmation preserves native dismissal sequencing`, async () => {
     const { show, draw } = setup(os);
     let calls = 0;

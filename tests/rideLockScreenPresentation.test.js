@@ -38,12 +38,19 @@ public class RideContentCheck {
     fields.put("passengerName", "Passager de test");
     TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Honolulu"));
     IncomingRideContent fare = new IncomingRideContent(fields);
-    check(fare.price.replaceAll("[\\\\s\\\\p{Z}]", "").equals("11000FC") && fare.priceLabel.equals("par place"));
+    check(fare.price.replaceAll("[\\\\s\\\\p{Z}]", "").equals("11000FC") && fare.priceLabel.equals("pour le trajet"));
     check(fare.departure.equals("Ngafula") && fare.arrival.equals("Gare Centrale, Gombe"));
     check(fare.seats.equals("1 place") && fare.schedule.endsWith("09:30"));
     check(fare.reference.equals("Réf. 00000000") && fare.passenger.equals("Passager de test"));
     fields.put("ridePriceKind", "budget"); fields.put("rideSeats", "2");
+    check(new IncomingRideContent(fields).priceLabel.equals("Budget du trajet"));
+    check(new IncomingRideContent(fields).price.replaceAll("[\\\\s\\\\p{Z}]", "").equals("22000FC"));
+    fields.put("type", "new_booking");
     check(new IncomingRideContent(fields).priceLabel.equals("Budget par place"));
+    check(IncomingRideContent.displayedPrice(fields) == 11000);
+    fields.put("type", "trip_request_nearby");
+    fields.remove("rideSeats"); check(IncomingRideContent.displayedPrice(fields) == null);
+    fields.put("rideSeats", "2");
     check(new IncomingRideContent(fields).seats.equals("2 places"));
     fields.put("ridePricePerSeat", "0"); check(new IncomingRideContent(fields).price.equals("Gratuit"));
     for (String invalid : new String[]{"-5", "NaN", "Infinity", "0.001", "1e3", "99999999999", "<b>10</b>"}) {

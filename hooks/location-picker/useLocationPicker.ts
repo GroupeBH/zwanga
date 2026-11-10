@@ -10,7 +10,8 @@ import { DEFAULT_PICKER_LOCATION, getPickerCoordinate, pointSelection, readableS
 import { readableLocation, type ReadableLocation } from '@/utils/readableLocation';
 import { requestCurrentLocation } from '@/services/currentLocationRequest';
 
-const addresses = new BoundedCache<ReadableLocation>(40);
+type AddressLabel = ReadableLocation & Pick<MapLocationSelection, 'addressComponents'>;
+const addresses = new BoundedCache<AddressLabel>(40);
 const EMPTY_ROUTE: PickerCoordinate[] = [];
 const ignoreMutationState = () => ({});
 
@@ -116,7 +117,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     const point = { latitude: selection.latitude, longitude: selection.longitude };
     const selectedAtStart = selectionRef.current;
     const key = `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`;
-    const apply = (label: ReadableLocation) => {
+    const apply = (label: AddressLabel) => {
       if (current && activeRef.current && selectionRef.current === selectedAtStart) {
         const next = { ...selectionRef.current, ...label };
         selectionRef.current = next;
@@ -130,7 +131,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     const timer = setTimeout(() => {
       request = reverseGeocode({ lat: point.latitude, lng: point.longitude, language: 'fr', region: 'cd' });
       void request.unwrap().then(response => {
-        const label = readableLocation(response);
+        const label = { ...readableLocation(response), ...(response.addressComponents ? { addressComponents: response.addressComponents } : {}) };
         if (current) addresses.set(key, label, 300_000);
         apply(label);
       }).catch(() => { /* The coordinate remains valid and can be confirmed offline. */ })
@@ -163,6 +164,8 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
         ? getPickerCoordinate(suggestion.coordinates.latitude, suggestion.coordinates.longitude) : null;
       let name = suggestion?.name || text;
       let address = suggestion?.fullAddress || name;
+      let placeTypes = suggestion?.placeType;
+      let addressComponents: MapLocationSelection['addressComponents'];
       // A result already containing coordinates is usable immediately, even offline.
       if (!point && suggestion) {
         const detail = await getGoogleMapsPlaceDetails(suggestion.id, controller.signal);
@@ -171,6 +174,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
           point = getPickerCoordinate(detail.coordinates.latitude, detail.coordinates.longitude);
           name = detail.name || name;
           address = detail.fullAddress || address;
+          placeTypes = detail.placeType;
         }
       }
       if (!point) {
@@ -180,11 +184,13 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
         if (!token.isCurrent()) return;
         point = getPickerCoordinate(result.lat, result.lng);
         const label = readableLocation({ ...result, name });
+        addressComponents = result.addressComponents;
         name = label.title;
         address = label.address;
       }
       if (!token.isCurrent()) return;
-      if (point) choose({ ...point, title: name, address });
+      if (point) choose({ ...point, title: name, address,
+        ...(placeTypes ? { placeTypes } : {}), ...(addressComponents ? { addressComponents } : {}) });
       else setNotice('Ce lieu n’a pas pu être localisé. Choisissez un point sur la carte.');
     } catch {
       if (token.isCurrent()) setNotice('Impossible de localiser ce lieu pour le moment. Réessayez ou utilisez la carte.');

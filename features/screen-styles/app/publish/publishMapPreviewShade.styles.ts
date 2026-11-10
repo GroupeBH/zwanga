@@ -35,7 +35,7 @@ export const styles = StyleSheet.create({
   publishRouteSheet: {
     marginHorizontal: 0,
     marginTop: 0,
-    gap: 8,
+    gap: 0,
   },
   rideSheetHeader: {
     flexDirection: 'row',
@@ -68,10 +68,10 @@ export const styles = StyleSheet.create({
     marginBottom: 0,
   },
   routeVisual: {
-    width: 24,
+    width: 44,
     alignItems: 'center',
-    paddingTop: 22,
-    paddingBottom: 22,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
   dotGreen: {
     width: 13,
@@ -93,13 +93,13 @@ export const styles = StyleSheet.create({
     flex: 1,
     width: 3,
     backgroundColor: Colors.gray[200],
-    marginVertical: Spacing.sm,
+    marginVertical: 2,
     borderRadius: BorderRadius.full,
   },
   routeInputs: {
     flex: 1,
-    marginLeft: Spacing.md,
-    gap: Spacing.sm,
+    marginLeft: 0,
+    gap: 0,
   },
   addressBlock: {
     gap: Spacing.sm,
@@ -280,15 +280,15 @@ export const styles = StyleSheet.create({
   },
   // === NOUVEAUX STYLES UX ROUTE ===
   addressField: {
-    gap: Spacing.sm,
-    borderWidth: 1,
+    gap: 4,
+    borderWidth: 0,
     borderColor: Colors.gray[200],
-    backgroundColor: Colors.gray[50],
+    backgroundColor: 'transparent',
     borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
+    padding: 8,
   },
   addressFieldDepartureReady: {
     borderColor: Colors.success + '40',
-    backgroundColor: Colors.success + '06',
+    backgroundColor: 'transparent',
   }
 });

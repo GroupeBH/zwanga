@@ -9,7 +9,7 @@ test('old order cards show commande while booking labels and action IDs stay unc
     const data = { invitationText: 'Nouvelle demande : 1 200 FC', sharedTrip: true };
     const card = driverNotificationCard(kind, data);
     assert.match(card.title, /Commande/);
-    assert.match(card.body, /Nouvelle commande : 1 200 FC/);
+    assert.match(card.body, /Nouvelle commande : Prix à consulter dans Zwanga/);
     assert.equal(data.invitationText, 'Nouvelle demande : 1 200 FC');
   }
   assert.deepEqual(driverNotificationActions('nearby', { sharedTrip: true }).map(action => [action.title, action.pressAction.id]),

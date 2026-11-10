@@ -83,6 +83,12 @@ export const styles = StyleSheet.create({
     zIndex: 80,
     elevation: 80,
   },
+  ownerHeader: { paddingVertical: 8 },
+  ownerHeaderRow: { paddingTop: 0 },
+  ownerHeaderTitle: { flexShrink: 1, marginHorizontal: 12, textAlign: 'center' },
+  ownerMapExpand: { top: 12, bottom: undefined, right: 12 },
+  ownerEditButton: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray[300], flex: 1 },
+  ownerEditButtonText: { color: Colors.gray[800] },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',

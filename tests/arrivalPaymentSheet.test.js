@@ -29,7 +29,8 @@ test('one payment modal keeps the same content component from selection through 
   let announcement;
   const done = () => {};
   const { PassengerArrivalPaymentCoordinator } = loader({ ...mocks, react: { ...React, ...hooks.react },
-    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { announcement = { message, visible }; } },
+    '@/components/PaymentModalAnnouncement': { PaymentModalAnnouncement: 'Announcement' },
+    '@/hooks/arrival-payment/usePassengerCashDeclaration': { usePassengerCashDeclaration: () => ({ declare: noop, busy: false }) },
     'expo-web-browser': { maybeCompleteAuthSession: noop }, '@/components/forms/FormLayout': { FormModal: 'Modal' },
     '@/store/hooks': { useAppSelector: fn => fn() }, '@/store/selectors': { selectUser: () => ({ id: 'passenger' }), selectIsAuthenticated: () => true },
     '../hooks/arrival-payment/useArrivalPaymentState': { useArrivalPaymentState: () => state },
@@ -49,7 +50,12 @@ test('one payment modal keeps the same content component from selection through 
     '@/store/slices/tripsSlice': { openInterruptionChoice: noop },
   })('components/PassengerArrivalPaymentCoordinator.tsx');
   const session = PassengerArrivalPaymentCoordinator();
-  const render = () => hooks.render(() => session.type());
+  const render = () => {
+    const tree = hooks.render(() => session.type());
+    const voice = all(tree).find(node => node.type === 'Announcement');
+    announcement = { message: voice.props.message, visible: voice.props.enabled };
+    return tree;
+  };
   const find = (tree, type) => all(tree).find(node => node.type === type);
   let tree = render(); assert.equal(all(tree).filter(node => node.type === 'Modal').length, 1);
   assert.equal(announcement.visible, true); assert.match(announcement.message.text, /montant à régler/);
@@ -71,7 +77,7 @@ test('one payment modal keeps the same content component from selection through 
   state.isCheckingPayment = true;
   assert.equal(find(render(), 'Recovery').props.verifying, true, 'a status read must be visible even when cash remains selectable');
   state.isCheckingPayment = false; canSwitch = false;
-  recoveryMessage = 'Résultat encore inconnu. Ne payez pas en espèces.';
+  recoveryMessage = 'Résultat encore inconnu. Ne payez pas en cash.';
   assert.equal(find(render(), 'Recovery').props.message, recoveryMessage);
   state.hasPendingProviderPayment = false;
   state.canChangeFailedPaymentMode = true;
@@ -86,6 +92,11 @@ test('one payment modal keeps the same content component from selection through 
   assert.equal(find(tree, 'Fields').props.completionSummary.paymentReference, 'REF-TEST');
   assert.match(announcement.message.text, /Paiement de 3\s000 francs congolais confirmé/);
   assert.equal(find(tree, 'Actions').props.onDone, done); assert.equal(find(tree, 'Modal').props.onRequestClose, done);
+  state.completionSummary = { bookingId: 'booking', mode: 'cash', amount: 3000, currency: 'CDF', cashInstructions: true };
+  state.arrivalBooking = { ...booking, paymentMode: 'cash', paymentStatus: 'not_required' };
+  state.paymentAlreadySucceeded = false;
+  assert.equal(find(render(), 'Modal').props.onRequestClose, state.deferPayment, 'back/close never declares cash paid');
+  state.completionSummary = null;
   state.isPaymentDeferred = true; assert.equal(find(render(), 'Modal').props.visible, false);
   assert.equal(announcement.visible, false);
   state.isPaymentDeferred = false; state.isBeforeArrival = true; state.paymentAlreadySucceeded = false;

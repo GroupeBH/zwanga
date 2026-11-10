@@ -73,8 +73,27 @@ test('recurring end date keeps its own minimum and never changes or confirms dep
   assert.equal(f.props.hasChosenDepartureTime, false);
 });
 
+for (const platform of ['android', 'ios']) test(`${platform}: quick departure is an explicit future choice without a native picker`, t => {
+  const f = fixture(t, platform);
+  assert.equal(f.props.hasChosenDepartureTime, false);
+  for (const minutes of [5, 15, 30]) {
+    const before = Date.now(); f.render().selectDepartureIn(minutes);
+    assert.ok(f.props.departureDateTime.getTime() >= before + minutes * 60_000);
+    assert.ok(f.props.departureDateTime.getTime() < Date.now() + (minutes + 1) * 60_000);
+    assert.equal(f.props.departureDateTime.getSeconds(), 0);
+    assert.equal(f.props.hasChosenDepartureTime, true);
+    assert.equal(f.opened.length, 0); assert.equal(f.props.iosPickerMode, null);
+  }
+  const date = f.props.departureDateTime;
+  f.render().selectDepartureIn(-1); assert.equal(f.props.departureDateTime, date);
+  f.props.isScreenActive = false; f.render().selectDepartureIn(5);
+  assert.equal(f.props.departureDateTime, date);
+});
+
 test('publication shares the request fields and picker without a duplicate step footer', () => {
-  const calls = [], load = loader({ 'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button',
+  const hooks = hookHarness();
+  const calls = [], load = loader({ react: hooks.react, '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button',
     StyleSheet: { create: value => value } }, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/utils/reanimated': { default: { View: 'Animated' } },
     '@react-native-community/datetimepicker': { default: 'DateTimePicker' },
@@ -84,11 +103,12 @@ test('publication shares the request fields and picker without a duplicate step 
   const all = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(all) : [node, ...all(node.props?.children)];
   const { PublishScheduleStep } = load('features/publish/PublishScheduleStep.tsx');
   const props = { formattedDateLabel: 'Aujourd’hui', formattedTimeLabel: 'Choisir l’heure', hasChosenDepartureTime: false,
+    recurringWeekdayOptions: [], recurringWeekdays: [],
     insets: { bottom: 24 }, handleNextStep: () => calls.push('continue'), openDateOrTimePicker: mode => calls.push(mode) };
   const fields = load('components/forms/DepartureDateTimeFields.tsx').DepartureDateTimeFields;
-  const tree = PublishScheduleStep(props);
+  const tree = hooks.render(() => PublishScheduleStep(props));
   assert.ok(all(tree).some(node => node.type === fields));
-  assert.equal(all(tree).filter(node => node.type === 'Button').length, 0);
+  assert.deepEqual(all(tree).filter(node => node.type === 'Button').map(node => node.props.accessibilityLabel), ['Répéter ce trajet']);
   all(tree).find(node => node.type === fields).props.onOpen('time');
   assert.deepEqual(calls, ['time']);
   const modal = load('features/publish/PublishDateTimeModal.tsx').PublishDateTimeModal({ iosPickerMode: 'date', iosPickerTarget: 'recurringEndDate',

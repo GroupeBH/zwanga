@@ -17,10 +17,10 @@ test('notification card shows destination, seats and explicit budget/fare, never
   const { driverNotificationCard: card } = loader()('features/notifications/driverNotificationCard.ts');
   const data = { rideDeparture: 'Place centrale', rideArrival: 'Gare', rideSeats: '2', ridePricePerSeat: '2500.50', ridePriceKind: 'budget' };
   const view = card('dispatch', data);
-  assert.match(view.title.replace(/[\u202f\u00a0]/g, ' '), /^Zwanga · Budget : 2 500,5 FC \/ place$/);
+  assert.match(view.title.replace(/[\u202f\u00a0]/g, ' '), /^Zwanga · Budget : 5 001 FC pour le trajet$/);
   assert.equal(card('booking', {}).title, 'Zwanga · Nouvelle réservation');
   assert.match(view.body, /Ouvrez Zwanga pour répondre\.$/);
-  assert.match(view.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 2 500,5 FC \/ place/);
+  assert.match(view.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 5 001 FC pour le trajet/);
   assert.match(view.body, /Place centrale → Gare\n2 places/);
   assert.match(card('booking', { ...data, ridePricePerSeat: '0', ridePriceKind: 'fare' }).body, /^Gratuit/);
   for (const value of [undefined, null, '', ' ', '-2', 'NaN', '1e3', '<b>2000</b>']) {
@@ -30,7 +30,9 @@ test('notification card shows destination, seats and explicit budget/fare, never
   assert.doesNotMatch(card('booking', { ridePricePerSeat: '1000' }).body, /FC/);
   assert.match(card('nearby', { ...data, rideDepartureAt: '2026-10-21T09:00:00.000Z' }).body, /21\/10.*10:00/);
   const old = card('dispatch', { invitationText: 'Place → Gare · 2500 FC/place · Accepter ou refuser ?' });
-  assert.match(old.body, /2500 FC\/place/);
+  assert.doesNotMatch(old.body, /2500|FC\/place/);
+  assert.match(card('booking', { ...data, ridePriceKind: 'fare' }).body.replace(/[\u202f\u00a0]/g, ' '), /2 500,5 FC \/ place/);
+  assert.doesNotMatch(card('dispatch', { ...data, rideSeats: undefined }).body, /FC|Gratuit/);
   const hostile = card('booking', { rideArrival: '<b>Gare</b>\n'.repeat(100), invitationText: '<b>Texte</b>'.repeat(1000) });
   assert.doesNotMatch(hostile.body, /<b>/); assert.ok(hostile.body.length <= 1000);
 });

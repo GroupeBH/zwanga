@@ -349,8 +349,22 @@ test('an unchanged shared summary can retry a failed verification once per refre
 
 test('payment, chat, SOS, forms, notification actions and existing guidance retain control', async t => {
   for (const path of ['/booking/payment', '/chat/thread', '/rate/booking', '/security',
-    '/publish', '/request/index', '/incoming-driver', '/trip/navigate/trip', '/booking/navigate/booking']) {
+    '/publish', '/request/index', '/incoming-driver', '/trip/navigate/trip', '/booking/navigate/booking',
+    '/request/new-command', '/request-details/new-command', '/trip/another-trip', '/trip/manage/another-trip']) {
     const app = fixture(t, { path }); app.render(); await flush(); assert.deepEqual(app.reads, [], path);
     app.options.path = '/'; app.render(); await flush(); assert.deepEqual(app.calls, [], path);
   }
+});
+
+test('a late old-ride verification cannot replace an explicitly opened command', async t => {
+  const pending = deferred(), app = fixture(t, { readTrip: () => pending.promise });
+  app.render();
+  app.options.path = '/request-details/new-command';
+  assert.equal(app.render().visible, false);
+  pending.resolve(trip()); await flush();
+  assert.deepEqual(app.calls, []);
+  app.options.path = '/'; app.render(); await flush();
+  assert.deepEqual(app.calls, [], 'returning voluntarily to Home does not restart the old redirect');
+  app.options.active = false; app.render(); app.options.active = true; app.render(); await flush();
+  assert.deepEqual(app.calls, ['/trip/navigate/trip'], 'a new Home visit still resumes a genuine ongoing trip');
 });

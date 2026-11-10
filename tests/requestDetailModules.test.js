@@ -110,7 +110,7 @@ test('edit submission sends the displayed per-seat price and refuses a pending c
     parsedEditNumberOfSeats: 4, editSeatCapacity: 5, isEditVehicleSelectionValid: true,
     isIdentityVerified: true, parsedEditBudget: 2250, isEditBudgetValid: true,
     updateTripRequest: input => { calls.push(input); return { unwrap: async () => {} }; },
-    editDepartureReference: '  station ', editArrivalReference: '', editAddressInputMode: 'manual',
+    editDepartureReference: '  station ', editArrivalReference: 'Portail bleu', editAddressInputMode: 'manual',
     editVehicleType: 'car', editVehicleTypes: ['car'], editDescription: '', setShowEditForm: noop, refetch: noop,
   };
   await useRequestPassengerActions(params).handleUpdateRequest();
@@ -122,6 +122,10 @@ test('edit submission sends the displayed per-seat price and refuses a pending c
   await useRequestPassengerActions({ ...params, isEditVehicleOptionsLoading: true }).handleUpdateRequest();
   assert.equal(calls.length, 1);
   assert.equal(dialogs.at(-1).title, 'Calcul du prix en cours');
+  await useRequestPassengerActions({ ...params, editArrivalReference: '  ' }).handleUpdateRequest();
+  assert.equal(calls.length, 1);
+  assert.equal(dialogs.at(-1).title, 'Repère obligatoire');
+  assert.match(dialogs.at(-1).message, /à l’arrivée/);
 });
 
 test('form state retains edits across renders and releases both location-picker timers on unmount', () => {

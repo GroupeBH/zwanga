@@ -51,6 +51,7 @@ export function useRequestVehicleOptions(options: Options) {
   const result = queryArgs === skipToken ? undefined : currentData;
   return {
     pricingKey: key,
+    pricing: result?.pricing,
     vehicleOptions: result?.options ?? EMPTY_OPTIONS,
     vehiclePriceMultiplier: result?.weatherImpact?.priceMultiplier ?? 1,
     routeDistanceMeters: result?.distanceMeters ?? null,

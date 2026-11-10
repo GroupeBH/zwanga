@@ -10,17 +10,19 @@ export function paymentInbox(response: unknown, userId: string): DriverPaymentNo
     if (!data || data.role !== 'driver' || data.driverId !== userId || !isInvitationId(data.notificationId) ||
         !isInvitationId(data.bookingId) || !isInvitationId(data.tripId)) return [];
     const cash = data.type === 'cash_payment_confirmed';
-    if (!cash && data.type !== 'driver_booking_payment_confirmed') return [];
-    if (!['points', 'electronic', 'cash'].includes(data.paymentMode) || (cash !== (data.paymentMode === 'cash'))) return [];
+    const cashDeclared = data.type === 'cash_payment_declared';
+    if (!cash && !cashDeclared && data.type !== 'driver_booking_payment_confirmed') return [];
+    if (!['points', 'electronic', 'cash'].includes(data.paymentMode) || ((cash || cashDeclared) !== (data.paymentMode === 'cash'))) return [];
     const amount = data.amount;
     if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0 || typeof data.currency !== 'string' || !/^[A-Z]{3}$/.test(data.currency)) return [];
     const partial = data.partial === true;
-    if (partial && (cash || data.paymentMode !== 'points' || typeof data.cashRemainder !== 'number' ||
+    if (cashDeclared && !['CDF', 'USD'].includes(data.currency)) return [];
+    if (partial && (cash || cashDeclared || data.paymentMode !== 'points' || typeof data.cashRemainder !== 'number' ||
         !Number.isFinite(data.cashRemainder) || data.cashRemainder < 0)) return [];
-    return [{ key: `booking-payment:${data.bookingId}${cash ? ':cash' : partial ? ':tokens' : ''}`,
+    return [{ key: `booking-payment:${data.bookingId}${cash ? ':cash' : cashDeclared ? `:cash-declared:${amount}:${data.currency}` : partial ? ':tokens' : ''}`,
       notificationId: data.notificationId, bookingId: data.bookingId, tripId: data.tripId,
-      passengerName: 'un passager', amount, currency: data.currency, mode: data.paymentMode,
-      paidAt: data.createdAt, cashReceived: cash, partial, cashRemainder: partial ? data.cashRemainder : undefined }];
+      passengerName: typeof data.passengerName === 'string' && data.passengerName.trim() ? data.passengerName.trim().slice(0, 100) : 'un passager', amount, currency: data.currency, mode: data.paymentMode,
+      paidAt: data.createdAt, cashReceived: cash, cashDeclared, partial, cashRemainder: partial ? data.cashRemainder : undefined }];
   });
 }
 

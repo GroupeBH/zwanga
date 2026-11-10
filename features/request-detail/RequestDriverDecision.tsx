@@ -1,3 +1,4 @@
+import { requestTotalPrice } from '@/features/trip-request/requestPriceDisplay';
 import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
@@ -8,7 +9,7 @@ import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { CashCommissionNotice } from '@/features/driver-payments/CashCommissionNotice';
 import { RequestPassengerContact } from './RequestPassengerContact';
-import { TRIP_REQUEST_VEHICLE_LABELS, formatCdfPrice } from './requestDetailModel';
+import { formatCdfPrice } from './requestDetailModel';
 import { RequestDecisionVehiclePicker } from './RequestDecisionVehiclePicker';
 import { RequestDecisionOptions } from './RequestDecisionOptions';
 import { RequestCounterOffer } from './RequestCounterOffer';
@@ -25,7 +26,7 @@ export function RequestDriverDecision({ model, presentation }: {
   const { height } = useWindowDimensions();
   const route = useRouteLocationLabels(request);
   const busy = model.isAcceptingTripRequest || model.isStartingTrip || !model.canRespondToRequest;
-  const price = request.maxPricePerSeat;
+  const price = requestTotalPrice(request.maxPricePerSeat, request.numberOfSeats);
   return <View style={styles.content}>
     <View style={styles.map}>
       <CollapsibleRouteMap
@@ -43,7 +44,7 @@ export function RequestDriverDecision({ model, presentation }: {
         </View>
         <View style={styles.fare}>
           <Text style={styles.amount}>{price != null ? formatCdfPrice(price) : 'Prix à convenir'}</Text>
-          {price != null && <Text style={styles.priceLabel}>Budget par place</Text>}
+          {price != null && <Text style={styles.priceLabel}>Budget du trajet</Text>}
         </View>
       </View>
       <Text style={styles.schedule}>{formatDateWithRelativeLabel(request.departureDateMin, true)}</Text>
@@ -52,7 +53,7 @@ export function RequestDriverDecision({ model, presentation }: {
     </View>
     <View style={styles.secondary}>
     {model.canAcceptDirectly && request.paymentMode === 'cash' && price != null &&
-      <CashCommissionNotice amount={Number(price) * request.numberOfSeats} />}
+      <CashCommissionNotice amount={price} />}
     {model.isIdentityVerified && <RequestPassengerContact requestId={request.id} enabled={!busy && !model.showDirectAcceptModal} />}
     {model.canAcceptDirectly && <RequestDecisionOptions model={model} disabled={busy} />}
     </View>

@@ -106,8 +106,24 @@ test('native GPS geocoding uses a readable street and preserves coordinates', as
       return [{ name: 'J83F+5G4', street: 'Av. Bakole 1', district: 'Salongo', city: 'Kinshasa', region: 'Kinshasa' }];
     },
   } })('utils/currentLocationSelection.ts');
-  assert.deepEqual(await buildCurrentLocationSelection(point), { ...point, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Salongo, Kinshasa' });
+  assert.deepEqual(await buildCurrentLocationSelection(point), { ...point, title: 'Av. Bakole 1', address: 'Av. Bakole 1, Salongo, Kinshasa',
+    addressComponents: [{ longName: 'Av. Bakole 1', types: ['route'] }, { longName: 'Salongo', types: ['neighborhood'] },
+      { longName: 'Kinshasa', types: ['locality'] }, { longName: 'Kinshasa', types: ['administrative_area_level_1'] }] });
   assert.equal(calls, 1);
+});
+
+test('GPS and manual geocoding preserve administrative metadata for reference validation', async () => {
+  const point = { latitude: -4.38, longitude: 15.32 };
+  const load = loader({ 'expo-location': { reverseGeocodeAsync: async () => [{ district: 'Quartier test', city: 'Ville test' }] } });
+  const { requiresRequestReference } = load('features/trip-request/requestReference.ts');
+  const gps = await load('utils/currentLocationSelection.ts').buildCurrentLocationSelection(point);
+  assert.equal(requiresRequestReference(gps.title, gps), true);
+  const manual = load('utils/manualAddressGeocode.ts').mapGeocodeResponseToSelection('Commune test', {
+    lat: point.latitude, lng: point.longitude, formattedAddress: 'Commune test, Kinshasa',
+    addressComponents: [{ longName: 'Commune test', types: ['sublocality'] }],
+  });
+  assert.deepEqual(manual.addressComponents, [{ longName: 'Commune test', types: ['sublocality'] }]);
+  assert.equal(requiresRequestReference(manual.title, manual), true);
 });
 
 test('offline native geocoding retains a usable GPS point with no invented place', async () => {

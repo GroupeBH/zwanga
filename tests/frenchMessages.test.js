@@ -43,7 +43,7 @@ test('les erreurs techniques ne sont pas affichées en anglais', () => {
 });
 
 test('les libellés de paiement sont français sans modifier les valeurs techniques', () => {
-  assert.equal(payments.getPaymentModeLabel('cash'), 'Paiement en espèces');
+  assert.equal(payments.getPaymentModeLabel('cash'), 'Paiement en cash');
   assert.equal(payments.getPaymentModeLabel('points'), 'Jetons Zwanga');
   assert.equal(payments.getPaymentMethodForChannel('card'), 'card');
   assert.equal(payments.getPaymentMethodForChannel('mpesa'), 'mobile_money');

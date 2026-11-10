@@ -38,19 +38,19 @@ test('compact payment choices keep the commission visible and reveal full terms 
   assert.doesNotMatch(words(tree), /sans débiter|revérifiée/);
   const boxes = nodes(tree).filter(n => n.props.accessibilityRole === 'checkbox');
   assert.equal(boxes.length, 3);
-  assert.deepEqual(boxes.map(n => n.props.accessibilityLabel), ['Paiement électronique', 'Jetons Zwanga', 'Espèces (cash)']);
+  assert.deepEqual(boxes.map(n => n.props.accessibilityLabel), ['Paiement électronique', 'Jetons Zwanga', 'Cash']);
   const disclosure = nodes(tree).find(n => n.props.accessibilityState?.expanded === false);
   assert.ok(disclosure.props.style.minHeight >= 44);
   disclosure.props.onPress(); tree = f.render();
   assert.match(words(tree), /sans débiter votre portefeuille/);
-  assert.match(words(tree), /réservés sur vos jetons à l’acceptation, bonus inclus/);
+  assert.match(words(tree), /réservés sur vos jetons disponibles, bonus inclus/);
   nodes(tree).find(n => n.props.accessibilityState?.expanded === true).props.onPress();
   assert.doesNotMatch(words(f.render()), /sans débiter/);
 });
 
 test('cash failure, loading and insufficient reserve are distinct; wallet and refresh stay available', () => {
   const f = paymentFixture(); f.response.currentData.cash.availableTokens = 0;
-  let tree = f.render(); assert.match(words(tree), /Rechargez/);
+  let tree = f.render(); assert.match(words(tree), /rechargez/i);
   nodes(tree).find(n => n.type === 'Button' && words(n) === 'Recharger').props.onPress();
   assert.deepEqual(f.paths, ['/wallet']);
   nodes(tree).find(n => n.props.accessibilityLabel === 'Actualiser la disponibilité du cash').props.onPress();
@@ -64,7 +64,7 @@ test('cash failure, loading and insufficient reserve are distinct; wallet and re
 
 test('cash selection still uses the entered price and can be removed if eligibility changes', () => {
   const f = paymentFixture();
-  const cash = () => nodes(f.render()).find(n => n.props.accessibilityLabel === 'Espèces (cash)');
+  const cash = () => nodes(f.render()).find(n => n.props.accessibilityLabel === 'Cash');
   assert.equal(cash().props.disabled, false);
   f.props.price = 20000; assert.equal(cash().props.disabled, true);
   f.props.price = 10000; cash().props.onPress();
@@ -104,13 +104,15 @@ test('optional note expands without losing text; passenger identity toggle is al
   const Component = loader({ react: { ...React, ...hooks.react }, 'react-native': native })('features/publish/PublishPassengerOptions.tsx').PublishPassengerOptions;
   const render = () => hooks.render(() => Component(props));
   assert.ok(!nodes(render()).some(n => n.type === 'Input'));
+  assert.ok(!nodes(render()).some(n => n.type === 'Switch'));
+  nodes(render()).find(n => n.type === 'Button').props.onPress();
   nodes(render()).find(n => n.type === 'Switch').props.onValueChange(true);
   assert.match(words(render()), /Identité vérifiée/);
-  nodes(render()).find(n => n.type === 'Button').props.onPress();
+  nodes(render()).filter(n => n.type === 'Button')[1].props.onPress();
   nodes(render()).find(n => n.type === 'Input').props.onChangeText('Petit bagage accepté');
-  nodes(render()).find(n => n.type === 'Button').props.onPress();
+  nodes(render()).filter(n => n.type === 'Button')[1].props.onPress();
   assert.equal(props.description, 'Petit bagage accepté');
-  nodes(render()).find(n => n.type === 'Button').props.onPress();
+  nodes(render()).filter(n => n.type === 'Button')[1].props.onPress();
   assert.equal(nodes(render()).find(n => n.type === 'Input').props.value, props.description);
   hooks.unmount();
 });

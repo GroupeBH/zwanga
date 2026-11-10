@@ -5,9 +5,10 @@ import { PublishPassengerOptions } from './PublishPassengerOptions';
 import type { TripPaymentMode, TripRequestVehicleType } from '@/types';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 import React from 'react';
-import { StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface PublishPricingStepProps {
+  estimate?: { recommendation: number | null; description?: string | null; loading: boolean; retry: () => void; useEstimate: () => void };
   acceptedPaymentModes: TripPaymentMode[];
   setAcceptedPaymentModes: React.Dispatch<React.SetStateAction<TripPaymentMode[]>>;
   stepEntering: FadeInDown | undefined;
@@ -28,6 +29,7 @@ export function PublishPricingStep({
   acceptedPaymentModes, setAcceptedPaymentModes, stepEntering,
   setSeats, seats, vehicleType, isFreeTrip, price, setPrice, setIsFreeTrip,
   requiresPassengerKyc, setRequiresPassengerKyc, description, setDescription,
+  estimate,
 }: PublishPricingStepProps) {
   return <Animated.View entering={stepEntering} style={s.container}>
     <View style={s.essentials}>
@@ -37,11 +39,22 @@ export function PublishPricingStep({
         <Text style={s.title}>Prix par place</Text>
         <View style={s.priceField}>
           <TextInput accessibilityLabel="Prix par place en francs congolais" style={s.priceInput}
-            placeholder={isFreeTrip ? 'Gratuit' : '2 000'} placeholderTextColor={Colors.gray[500]}
+            placeholder={isFreeTrip ? 'Gratuit' : 'Votre prix'} placeholderTextColor={Colors.gray[500]}
             keyboardType="number-pad" value={price} onChangeText={setPrice} editable={!isFreeTrip} />
           {!isFreeTrip && <Text style={s.currency}>FC</Text>}
         </View>
       </View>
+      {!isFreeTrip && estimate && <View style={s.estimate}>
+        <Text style={s.hint} accessibilityLiveRegion="polite">{estimate.loading ? 'Calcul du prix estimatif…'
+          : estimate.recommendation === null ? 'Estimation indisponible. Vous pouvez saisir votre prix.'
+          : `Prix estimatif : ${estimate.recommendation.toLocaleString('fr-FR')} FC / place. Modifiable.`}</Text>
+        {!estimate.loading && estimate.description && <Text style={s.hint}>{estimate.description}</Text>}
+        {!estimate.loading && (estimate.recommendation === null || Number(price) !== estimate.recommendation) &&
+          <TouchableOpacity accessibilityRole="button" style={s.estimateAction}
+            onPress={estimate.recommendation === null ? estimate.retry : estimate.useEstimate}>
+            <Text style={s.link}>{estimate.recommendation === null ? 'Réessayer' : 'Utiliser ce prix'}</Text>
+          </TouchableOpacity>}
+      </View>}
       <View style={s.freeRow}>
         <Text style={s.label}>Trajet gratuit</Text>
         <Switch accessibilityLabel="Trajet gratuit" value={isFreeTrip}
@@ -55,6 +68,9 @@ export function PublishPricingStep({
   </Animated.View>;
 }
 const s = StyleSheet.create({
+  estimate: { gap: 2 }, hint: { color: Colors.gray[600], fontSize: 12, lineHeight: 18 },
+  estimateAction: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  link: { color: Colors.primaryDark, fontSize: 13, fontWeight: '600' },
   container: { gap: 4 },
   essentials: { backgroundColor: Colors.white, borderRadius: 16, padding: 14, gap: 8 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: Colors.gray[200], marginVertical: 2 },

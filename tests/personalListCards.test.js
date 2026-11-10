@@ -45,13 +45,14 @@ function reservation(overrides = {}, options = {}) {
   return { ...result, calls };
 }
 
-test('personal requests preserve their status, departure window, per-seat budget and pending offers', () => {
+test('personal requests preserve status, departure window and pending offers while showing the whole command budget', () => {
   const calls = [];
   const result = render(RequestListCard, { request, own: true, featured: true, onOpen: id => calls.push(id) });
-  for (const value of ['Offres reçues', 'Avenue Matadi', 'Gombe', '2.500 FC', 'max / place', '2 places', '1 offre']) {
+  for (const value of ['Offres reçues', 'Avenue Matadi', 'Gombe', '5.000 FC', 'pour le trajet', '2 places', '1 offre']) {
     assert.ok(result.text.includes(value), value);
   }
   assert.equal(result.buttons.length, 1);
+  assert.doesNotMatch(result.text, /2\.500|\/ place/);
   result.buttons[0].props.onPress(); assert.deepEqual(calls, ['request']);
   assert.ok(result.buttons[0].props.accessibilityHint.includes('Voiture'));
   assert.ok(result.buttons[0].props.accessibilityHint.includes('–'));

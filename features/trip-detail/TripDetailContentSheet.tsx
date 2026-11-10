@@ -41,6 +41,7 @@ export function TripDetailContentSheet({
       <View style={styles.tripSheetHandle} />
 
       <TripSummary
+        isTripDriver={data.isTripDriver}
         config={config}
         routeLabels={presentation.routeLabels}
         tripPriceLabel={presentation.tripPriceLabel}

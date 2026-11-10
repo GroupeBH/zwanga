@@ -8,9 +8,9 @@ import { selectUser } from '@/store/selectors';
 import { useDriverFinanceSummaryQuery } from '@/store/api/driverFinanceApi';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
-import { estimateCashCommission } from '@/utils/cashCommission';
+import { estimateCashCommission, hasCashCreditAllowance } from '@/utils/cashCommission';
 
-export const paymentModeLabels: Record<TripPaymentMode, string> = { electronic: 'Paiement électronique', points: 'Jetons Zwanga', cash: 'Espèces (cash)' };
+export const paymentModeLabels: Record<TripPaymentMode, string> = { electronic: 'Paiement électronique', points: 'Jetons Zwanga', cash: 'Cash' };
 const shortLabels: Record<TripPaymentMode, string> = { electronic: 'Électronique', points: 'Jetons', cash: 'Cash' };
 
 export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {
@@ -46,11 +46,14 @@ export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {
         </TouchableOpacity>;
       })}
     </View>
+    {value.length === 0 && <Text style={s.required} accessibilityRole="alert" accessibilityLiveRegion="polite">
+      Choisissez Électronique ou Jetons pour continuer, ou rechargez pour accepter le cash.
+    </Text>}
     {!cashAvailable && <View>
       <Text style={s.copy} accessibilityLiveRegion="polite">
         {isFetching ? 'Vérification du cash…' : !readsEnabled || isError || !finance
           ? 'Cash : vérification indisponible.'
-          : `Cash indisponible pour ce trajet : la commission doit rester dans la limite cumulée de ${finance.cash.debtLimitTokens ?? 25} jetons de dette. Rechargez ou choisissez un autre paiement.`}
+          : 'Cash indisponible : régularisez les commissions dues et rechargez les jetons nécessaires.'}
       </Text>
       <View style={s.actions}>
         {readsEnabled && !isFetching && !isError && finance && <TouchableOpacity accessibilityRole="button" style={s.action}
@@ -63,9 +66,10 @@ export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {
       </View>
     </View>}
     {cashAvailable && value.includes('cash') && estimate && <>
+      {hasCashCreditAllowance(finance) && <Text style={s.copy}>Avance unique sur les six premiers trajets cash. Encore {finance?.cash.creditAllowance?.remainingTrips} trajet(s) disponible(s), en cours déduits. Commission due, pas offerte.</Text>}
       <Text style={s.copy}>Cash : {estimate.required.toLocaleString('fr-FR')} jetons de commission pour {seats} place(s).</Text>
       {estimate.debt > 0 ? <Text style={s.copy} accessibilityLiveRegion="polite">
-        Dette totale estimée : {estimate.totalDebt.toLocaleString('fr-FR')} jetons, dans la limite de {finance?.cash.debtLimitTokens ?? 25} jetons. Les prochains jetons reçus régularisent le dû.
+        Dette totale estimée : {estimate.totalDebt.toLocaleString('fr-FR')} jetons. Les prochains jetons reçus régularisent le dû.
       </Text> : <Text style={s.copy}>Cash : commission réservée sur vos jetons.</Text>}
     </>}
     <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded }} style={s.detailsButton}
@@ -75,8 +79,8 @@ export function PublishPaymentModes({ value, onChange, price, seats = 1 }: {
     {expanded && <View style={s.details}>
       <Text style={s.copy}>Le passager choisit parmi vos modes activés. Gardez au moins un mode.</Text>
       <Text style={s.copy}>Électronique et jetons : les 5 % sont retenus sur le paiement, sans débiter votre portefeuille.</Text>
-      <Text style={s.copy}>Cash : les 5 % sont réservés sur vos jetons à l’acceptation, bonus inclus. La réserve est revérifiée pour chaque réservation.</Text>
-      {!!finance?.cash.debtLimitTokens && <Text style={s.copy}>Tolérance : {finance.cash.debtLimitTokens} jetons de dette cumulée maximum, tous trajets confondus. Chaque nouvelle commission doit respecter la marge restante.</Text>}
+      <Text style={s.copy}>Cash : les 5 % sont réservés sur vos jetons disponibles, bonus inclus. Pendant les six premiers trajets cash, la part non couverte reste due.</Text>
+      <Text style={s.copy}>Après vos six premiers trajets cash : commissions régularisées et réserve en jetons obligatoire, sans renouvellement de l’avance.</Text>
       {cashAvailable && <View style={s.actions}>
         <TouchableOpacity accessibilityRole="button" style={s.action} onPress={() => router.push('/wallet')}>
           <Text style={s.link}>Recharger les jetons</Text>
@@ -102,6 +106,7 @@ const s = StyleSheet.create({
   label: { fontSize: 13, textAlign: 'center', fontWeight: '600', color: Colors.gray[800] },
   selectedText: { color: Colors.primaryDark },
   copy: { fontSize: 12, lineHeight: 18, color: Colors.gray[600] },
+  required: { fontSize: 13, lineHeight: 19, color: Colors.danger, fontWeight: '600' },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   action: { minHeight: 44, justifyContent: 'center' },
   link: { color: Colors.primaryDark, fontWeight: '600', fontSize: 13 },

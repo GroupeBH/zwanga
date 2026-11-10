@@ -47,6 +47,9 @@ export interface ProQuote {
   terms: { version: string; text: string } | null;
 }
 export interface ProCase extends ProCaseRow {
+  updatedAt: string;
+  canEdit?: boolean;
+  editMode?: 'full' | 'add_documents';
   application: ProApplication;
   quote: ProQuote | null;
   canAccept: boolean;
@@ -73,4 +76,7 @@ export interface ProCase extends ProCaseRow {
     returnReceipt: string;
   }[];
   events: { id: string; action: string; createdAt: string }[];
+}
+export interface CurrentDocumentCase {
+  request: { id: string; status: ServiceStatus; canEdit: boolean } | null;
 }

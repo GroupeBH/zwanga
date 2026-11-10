@@ -52,6 +52,6 @@ export async function verifyPendingBookingEntry(candidate: PendingBookingEntry, 
   if (trip.status === 'ongoing') return `/trip/navigate/${trip.id}` as const;
   if (trip.status !== 'upcoming' || trip.startedAt) return null;
   onVerified?.({ booking, trip });
-  return { pathname: '/trip/manage/[id]' as const,
+  return { pathname: '/trip/[id]' as const,
     params: { id: trip.id, bookingId: booking.id, section: 'passengers' } };
 }

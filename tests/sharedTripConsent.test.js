@@ -31,7 +31,7 @@ test('viewing a shared offer never consents; explicit confirmation discloses sha
   elements(tree).find(e => e.type === 'Button' && words(e).includes('Voir et accepter')).props.onPress();
   assert.equal(f.calls.length, 0);
   assert.match(f.dialogs[0].message, /déjà en trajet/);
-  assert.match(f.dialogs[0].message, /2000 FC/);
+  assert.match(f.dialogs[0].message, /2 000 FC/);
   assert.match(f.dialogs[0].message, /arrêts supplémentaires/);
   f.dialogs[0].actions[1].onPress(); await flush();
   assert.deepEqual(f.calls, [['decide', { requestId: 'request', offerId: 'offer', accept: true }]]);

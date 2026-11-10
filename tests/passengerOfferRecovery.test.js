@@ -6,7 +6,7 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const now = Date.parse('2026-11-06T12:00:00Z');
 const iso = delta => new Date(now + delta).toISOString();
-const request = () => ({ id: id(1), passengerId: id(2), status: 'offers_received', departureDateMax: iso(3600000),
+const request = () => ({ id: id(1), passengerId: id(2), numberOfSeats: 2, status: 'offers_received', departureDateMax: iso(3600000),
   responseWindow: { phase: 'passenger', serverNow: iso(0), expiresAt: iso(110000) },
   offers: [{ id: id(3), tripRequestId: id(1), driverId: id(4), status: 'pending', pricePerSeat: 1500, createdAt: iso(-10000) }] });
 
@@ -22,7 +22,9 @@ test('REST discovers a pending price without push/socket; duplicate reads/transp
   render(detail); render({ ...detail });
   const [alert] = session.pendingRideResponseNotices(id(2));
   assert.ok(alert); assert.equal(session.pendingRideAlerts(id(2)).length, 1);
-  assert.match(load('features/notifications/passengerResponseNotice.ts').passengerResponseNotice(alert).message, /1.500 FC par place/);
+  const message = load('features/notifications/passengerResponseNotice.ts').passengerResponseNotice(alert).message;
+  assert.match(message, /Prix proposé pour le trajet : 3.000 FC/);
+  assert.doesNotMatch(message, /par place|\/ place/);
   const push = load('features/notifications/rideAlert.ts').parseRideAlert(alert.data);
   session.rememberRideAlert(push); assert.equal(session.pendingRideResponseNotices(id(2)).length, 1);
   session.dismissRideResponseNotice(alert); render({ ...detail }); session.rememberRideAlert(push);

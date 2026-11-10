@@ -16,7 +16,7 @@ interface ManageTripContentProps {
   routeEditor: { openEditRouteModal: () => void; closeEditRouteModal: () => void; handleSaveRouteAddresses: () => Promise<void>; };
   tracking: { visibleBookings: Booking[] | undefined; };
   actions: { handleOpenNavigation: () => void; handleStartTrip: () => Promise<void>; handleOpenTripEdit: () => void; handleCancelTrip: () => void; handlePauseTrip: () => Promise<void>; };
-  bookingsActions: { showFeedback: (type: "success" | "error", message: string | string[]) => void; handleRejectBooking: (booking: Booking) => Promise<void>; handleAcceptBooking: (bookingId: string) => Promise<void>; handleCancelBookingBeforePickup: (booking: Booking) => void; };
+  bookingsActions: { showFeedback: (type: "success" | "error", message: string | string[]) => void; handleRejectBooking: (booking: Booking) => Promise<unknown>; handleAcceptBooking: (bookingId: string) => Promise<unknown>; handleCancelBookingBeforePickup: (booking: Booking) => void; };
   openTripSecurityModal: () => void;
 }
 

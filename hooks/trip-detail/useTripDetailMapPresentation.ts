@@ -1,6 +1,5 @@
 import {
   TRIP_DETAIL_MAP_MIN_DELTA,
-  TRIP_DETAIL_MAP_MAX_DELTA,
   TRIP_DETAIL_MAP_PADDING,
   DEFAULT_MAP_REGION,
   isValidMapCoordinate,
@@ -8,11 +7,12 @@ import {
 import type { Booking } from '@/types';
 import type { RouteInfo } from '@/utils/routeApi';
 import { useTripDetailArrivalEstimate } from './useTripDetailArrivalEstimate';
-import { splitRouteByProgress } from '@/utils/routeHelpers';
+import { splitRouteByProgress } from '@/utils/routes/routeGeometry';
 import React, { useMemo } from 'react';
 import type { Trip } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { getRouteStopLabel } from '@/utils/routeLocationLabels';
+import { boundedRoutePoints, routeBounds } from '@/utils/routes/safePolyline';
 
 interface Params {
   isScreenActive: boolean;
@@ -68,14 +68,15 @@ export function useTripDetailMapPresentation({
   }, [routeCoordinates, trip?.status, currentCoordinate]);
 
   const routeMapCoordinates = useMemo(() => {
-    const validRouteCoordinates = (routeCoordinates ?? []).filter(isValidMapCoordinate);
+    const validRouteCoordinates = boundedRoutePoints(routeCoordinates);
     if (validRouteCoordinates.length >= 2) {
       return validRouteCoordinates;
     }
     return hasValidRouteEndpoints ? [departureCoordinate, arrivalCoordinate] : [];
   }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeCoordinates]);
 
-  const hasDetailedRouteMapCoordinates = (routeCoordinates ?? []).filter(isValidMapCoordinate).length >= 2;
+  // Two points are the shared route API's offline/failed-calculation fallback.
+  const hasDetailedRouteMapCoordinates = routeMapCoordinates.length > 2;
 
   const passengerDestinationMarkers = useMemo(() => {
     const markers: {
@@ -117,32 +118,14 @@ export function useTripDetailMapPresentation({
     if (!hasValidRouteEndpoints) {
       return DEFAULT_MAP_REGION;
     }
-    const routeFocusCoordinate =
-      routeMapCoordinates.length > 2
-        ? routeMapCoordinates[Math.floor(routeMapCoordinates.length / 2)]
-        : null;
-    const latitudeCenter =
-      routeFocusCoordinate?.latitude ?? (departureCoordinate.latitude + arrivalCoordinate.latitude) / 2;
-    const longitudeCenter =
-      routeFocusCoordinate?.longitude ?? (departureCoordinate.longitude + arrivalCoordinate.longitude) / 2;
-    const rawLatitudeDelta =
-      Math.abs(departureCoordinate.latitude - arrivalCoordinate.latitude) * TRIP_DETAIL_MAP_PADDING;
-    const rawLongitudeDelta =
-      Math.abs(departureCoordinate.longitude - arrivalCoordinate.longitude) * TRIP_DETAIL_MAP_PADDING;
-    const latitudeDelta = Math.min(
-      Math.max(rawLatitudeDelta, TRIP_DETAIL_MAP_MIN_DELTA),
-      TRIP_DETAIL_MAP_MAX_DELTA,
-    );
-    const longitudeDelta = Math.min(
-      Math.max(rawLongitudeDelta, TRIP_DETAIL_MAP_MIN_DELTA),
-      TRIP_DETAIL_MAP_MAX_DELTA,
-    );
-
+    const bounds = routeBounds([departureCoordinate, ...routeMapCoordinates, arrivalCoordinate]);
+    if (!bounds) return DEFAULT_MAP_REGION;
+    const padding = Math.max(1.6, TRIP_DETAIL_MAP_PADDING);
     return {
-      latitude: latitudeCenter,
-      longitude: longitudeCenter,
-      latitudeDelta,
-      longitudeDelta,
+      latitude: (bounds.minLatitude + bounds.maxLatitude) / 2,
+      longitude: (bounds.minLongitude + bounds.maxLongitude) / 2,
+      latitudeDelta: Math.min(180, Math.max(TRIP_DETAIL_MAP_MIN_DELTA, (bounds.maxLatitude - bounds.minLatitude) * padding)),
+      longitudeDelta: Math.min(360, Math.max(TRIP_DETAIL_MAP_MIN_DELTA, (bounds.maxLongitude - bounds.minLongitude) * padding)),
     };
   }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeMapCoordinates]);
 

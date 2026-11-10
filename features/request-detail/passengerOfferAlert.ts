@@ -19,7 +19,7 @@ export function passengerOfferAlerts(request: TripRequest, userId: string, readS
     if (!Number.isFinite(created) || created > serverNow + 5000 || !Number.isFinite(expires) || expires <= now) return [];
     const alert = parseRideAlert({ type: 'driver_offer', ringAlert: 'counter-offer-v1', role: 'passenger',
       passengerId: userId, driverId: offer.driverId, tripRequestId: request.id, offerId: offer.id,
-      pricePerSeat: offer.pricePerSeat, ringUntil: new Date(ringUntil).toISOString(),
+      pricePerSeat: offer.pricePerSeat, numberOfSeats: request.numberOfSeats, ringUntil: new Date(ringUntil).toISOString(),
       alertExpiresAt: new Date(expires).toISOString() });
     return alert ? [alert] : [];
   });

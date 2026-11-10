@@ -12,6 +12,8 @@ export interface DialogAction {
 }
 
 export interface DialogOptions {
+  /** Optional owner key for targeted dismissal; never closes a newer dialog. */
+  ownerKey?: string;
   title: string;
   message?: string;
   icon?: keyof typeof Ionicons.glyphMap;
@@ -34,4 +36,5 @@ export interface PendingDialogAction {
 export interface DialogContextValue {
   showDialog: (options: DialogOptions) => void;
   hideDialog: () => void;
+  hideDialogFor: (ownerKey: string) => void;
 }

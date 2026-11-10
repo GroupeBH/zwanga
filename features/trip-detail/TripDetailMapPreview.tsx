@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { tripDetailMapHeight } from './tripDetailLayout';
 
 interface TripDetailMapPreviewProps {
   model: ReturnType<typeof useTripDetailController>;
@@ -28,7 +29,7 @@ export function TripDetailMapPreview({
       accessibilityRole="button"
       accessibilityLabel="Agrandir la carte du trajet"
     >
-      <View style={[styles.mapPreview, { height: Math.min(214, Math.max(172, model.data.viewportHeight * 0.27)) }]}>
+      <View style={[styles.mapPreview, { height: tripDetailMapHeight(model.data.viewportHeight, model.data.isTripDriver) }]}>
         <MapView
           provider={TRIP_DETAIL_MAP_PROVIDER}
           style={styles.mapView}
@@ -36,6 +37,7 @@ export function TripDetailMapPreview({
           zoomEnabled={false}
           pitchEnabled={false}
           rotateEnabled={false}
+          toolbarEnabled={false}
           region={model.mapPresentation.mapRegion}
         >
           {model.mapPresentation.routeMapCoordinates.length >= 2 && (
@@ -100,10 +102,11 @@ export function TripDetailMapPreview({
           ))}
         </MapView>
 
-        <View style={styles.expandButton}>
+        <View style={[styles.expandButton, model.data.isTripDriver && styles.ownerMapExpand]}>
           <View style={styles.expandButtonInner}>
             <Ionicons name="expand" size={16} color={Colors.gray[700]} />
-            <Text style={styles.mapOverlayText}>Voir la carte</Text>
+            <Text style={styles.mapOverlayText}>{model.bookingState.isLoadingRoute ? 'Calcul de l’itinéraire…'
+              : model.mapPresentation.hasDetailedRouteMapCoordinates ? 'Voir l’itinéraire' : 'Tracé routier indisponible'}</Text>
           </View>
         </View>
       </View>

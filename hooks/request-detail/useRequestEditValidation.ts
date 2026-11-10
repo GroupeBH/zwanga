@@ -1,4 +1,5 @@
 import { getLocationText } from '../../features/request-detail/requestLocation';
+import { missingRequestReference } from '@/features/trip-request/requestReference';
 import { getEditScheduleError } from '../../features/request-detail/requestDetailModel';
 import type { AddressInputMode } from '@/components/AddressEntryModeSelector';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
@@ -94,6 +95,8 @@ export function useRequestEditValidation({
   const isEditFormValid = Boolean(
     editDepartureAddress &&
     editArrivalAddress &&
+    !missingRequestReference(editDepartureAddress, editDepartureReference, editAddressInputMode === 'map' ? editDepartureLocation : null) &&
+    !missingRequestReference(editArrivalAddress, editArrivalReference, editAddressInputMode === 'map' ? editArrivalLocation : null) &&
     !editScheduleError &&
     Number.isFinite(parsedEditNumberOfSeats) &&
     parsedEditNumberOfSeats >= 1 &&

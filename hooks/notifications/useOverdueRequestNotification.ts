@@ -9,6 +9,7 @@ import type { User } from '@/types';
 import type { Router } from 'expo-router';
 
 interface Params {
+  pathnameRef: React.RefObject<string>;
   activeOverdueAccountIdRef: React.RefObject<string | null>;
   activeOverdueRequestIdRef: React.RefObject<string | null>;
   releaseOverdueDriver: ReturnType<typeof useReleaseOverdueDriverMutation>[0];
@@ -19,7 +20,13 @@ interface Params {
   refetchMyTripRequests: ReturnType<typeof useGetMyActivityRequestsQuery>['refetch'];
 }
 
+/** A reminder must not cover another command, payment, chat or driver navigation. */
+export function canPresentOverdueRequest(path: string, requestId: string) {
+  return path === '/' || path === '/(tabs)' || path === `/request/${requestId}` || path === `/request-details/${requestId}`;
+}
+
 export function useOverdueRequestNotification({
+  pathnameRef,
   activeOverdueAccountIdRef,
   activeOverdueRequestIdRef,
   releaseOverdueDriver,
@@ -75,7 +82,7 @@ export function useOverdueRequestNotification({
   const presentPassengerOverdueModal = useCallback(
     (request: TripRequest, fallbackBody?: string | null): boolean => {
       const accountId = currentUserRef.current?.id;
-      if (!accountId || !isOverdueRequestForAccount(request, accountId)) {
+      if (!accountId || !isOverdueRequestForAccount(request, accountId) || !canPresentOverdueRequest(pathnameRef.current, request.id)) {
         return false;
       }
 
@@ -88,6 +95,7 @@ export function useOverdueRequestNotification({
       activeOverdueRequestIdRef.current = request.id;
 
       showDialog({
+        ownerKey: `overdue:${accountId}:${request.id}`,
         title: 'Prise en charge en retard',
         message:
           fallbackBody ||
@@ -118,11 +126,11 @@ export function useOverdueRequestNotification({
       });
       return true;
     },
-    [isOverdueRequestForAccount, releaseDriverAndOpenRequest, showDialog],
+    [isOverdueRequestForAccount, releaseDriverAndOpenRequest, showDialog, pathnameRef],
   );
 
   const handlePassengerOverdueNotification = useCallback(
-    async (data: Record<string, any>, fallbackBody?: string | null): Promise<boolean> => {
+    async (data: Record<string, any>, fallbackBody?: string | null, explicitOpen = false): Promise<boolean> => {
       if (data.type !== 'trip_request_driver_overdue') {
         return false;
       }
@@ -154,15 +162,18 @@ export function useOverdueRequestNotification({
         isOverdueRequestForAccount(candidate, accountId, requestId),
       );
 
-      if (request) {
-        presentPassengerOverdueModal(request, fallbackBody);
+      if (request && currentUserRef.current?.id === accountId) {
+        // An explicit notification tap opens its verified command. Passive reminders
+        // remain deferred until Home or this command is actually visible.
+        if (explicitOpen) router.push(getTripRequestDetailHref(request.id));
+        else presentPassengerOverdueModal(request, fallbackBody);
       }
 
       // Cette notification est consommée même si elle est obsolète ou destinée
       // à un autre compte, afin d'empêcher toute navigation fondée sur le token.
       return true;
     },
-    [isOverdueRequestForAccount, presentPassengerOverdueModal, refetchMyTripRequests],
+    [isOverdueRequestForAccount, presentPassengerOverdueModal, refetchMyTripRequests, currentUserRef, router],
   );
 
   return {

@@ -244,12 +244,14 @@ test("Services reads still pause on blur/background and reuse the same catalogue
     },
     "@/store/api/proServicesApi": {
       useGetMyProCasesQuery: query("cases"),
+      useGetCurrentDocumentCaseQuery: query("currentCase"),
       useGetProOfferingsQuery: query("catalogue"),
     },
   })("features/pro-services/ServicesScreen.tsx");
   const render = () =>
     hooks.render(() => ServicesScreen({ embedded: true, bottomOverlay: 0 }));
   render();
+  assert.deepEqual(calls.map(call => call.endpoint).sort(), ["cases", "catalogue", "currentCase"]);
   assert.ok(calls.every((call) => call.options.skip === false));
   active = false;
   calls.length = 0;
@@ -278,7 +280,7 @@ test("public search stays unambiguous and separate from the home request actions
   const home = fs.readFileSync(
     path.join(__dirname, "../components/home/HomeTripsSheet.tsx"), "utf8",
   );
-  assert.equal((home.match(/router.push\(getTripRequestCreateHref\(\)\)/g) || []).length, 2);
+  assert.equal((home.match(/router.push\(getTripRequestCreateHref\(\{ entry: 'home' \}\)\)/g) || []).length, 2);
   const layout = fs.readFileSync(
     path.join(__dirname, "../components/ProtectedAppStack.tsx"),
     "utf8",

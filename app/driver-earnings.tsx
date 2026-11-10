@@ -159,7 +159,7 @@ export default function DriverEarningsScreen() {
             <Ionicons name={showBalanceDetails ? 'chevron-up' : 'chevron-down'} size={16} color={Colors.gray[600]} />
           </TouchableOpacity>
           {showBalanceDetails && <Text style={styles.balanceHint}>
-            Paiements électroniques et jetons, après commission{summary ? ` (${commissionPercent} %)` : ''}, plus les participations Zwanga créditées. Les espèces reçues des passagers ne sont pas incluses.
+            Paiements électroniques et jetons, après commission{summary ? ` (${commissionPercent} %)` : ''}, plus les participations Zwanga créditées. Le cash reçu des passagers n’est pas inclus.
           </Text>}
         </View>
 

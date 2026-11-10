@@ -22,7 +22,7 @@ export function DriverEarningRow({ earning }: { earning: DriverEarning }) {
         <Text style={styles.rowTitle}>{label}</Text>
         <Text style={styles.rowMeta}>{formatDate(earning.availableAt ?? earning.createdAt)}</Text>
         <Text style={styles.rowMeta}>
-          {subsidy ? 'Financée par Zwanga, hors espèces reçues' : `Brut ${formatAmount(earning.grossAmount, earning.currency)}`}
+          {subsidy ? 'Financée par Zwanga, hors cash reçu' : `Brut ${formatAmount(earning.grossAmount, earning.currency)}`}
         </Text>
         <Text style={[styles.earningAmount, cancelled && styles.cancelledAmount]}>
           {status} : {cancelled ? '' : '+'}{formatAmount(earning.netAmount, earning.currency)}

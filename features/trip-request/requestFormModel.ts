@@ -33,7 +33,7 @@ export const DEFAULT_REQUEST_FLEXIBILITY_MINUTES = 30;
 
 export const MIN_REQUEST_SEATS = 1;
 
-export const MIN_REQUEST_PRICE = 500;
+export const MIN_REQUEST_PRICE = 2500;
 
 export const REQUEST_PRICE_STEP = 500;
 
@@ -77,7 +77,7 @@ export const TRIP_PAYMENT_MODE_OPTIONS: {
       : []),
     {
       id: 'cash',
-      label: 'Espèces (cash)',
+      label: 'Cash',
       description: 'Réglez directement auprès du conducteur',
       icon: 'cash-outline',
     },
@@ -175,8 +175,9 @@ export function clampRequestPrice(value: number | undefined) {
     return MIN_REQUEST_PRICE;
   }
 
-  const steppedValue = Math.round(value / REQUEST_PRICE_STEP) * REQUEST_PRICE_STEP;
-  return Math.max(MIN_REQUEST_PRICE, steppedValue);
+  // Buttons already add/subtract REQUEST_PRICE_STEP. Re-quantizing here would
+  // turn a 500 FC increment from a 11200 FC quote into only 300 FC.
+  return Math.max(MIN_REQUEST_PRICE, Math.round(value));
 }
 
 /** A missing estimate must not block a valid user budget. Known seat limits still apply. */
@@ -202,7 +203,7 @@ export function getRequestBudgetState(
     // reuse a recommendation left in the draft for a different route/vehicle.
     budgetValue: hasEditedBudget
       ? hasValidManualBudget ? clampRequestPrice(parsedManualBudget) : 0
-      : hasValidRecommendation ? clampRequestPrice(recommendedPricePerSeat) : 0,
+      : hasValidRecommendation ? Math.max(MIN_REQUEST_PRICE, Math.round(recommendedPricePerSeat)) : 0,
   };
 }
 

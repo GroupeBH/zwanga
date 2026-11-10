@@ -116,7 +116,7 @@ test('reset OTP groups actions and puts paste beside the label without removing 
   const tree = ResetPinStep({ ...resetProps, resetPinStep: 'otp' }), all = nodes(tree);
   const otp = all.find(n => n.type === 'OtpInput');
   assert.equal(otp.props.compact, true);
-  assert.equal(otp.props.label, 'Code à 6 chiffres');
+  assert.equal(otp.props.label, 'Code reçu par SMS (6 chiffres)');
   assert.equal(flatten(otp.props.inputStyle).minHeight, 48);
   assert.equal(flatten(otp.props.inputStyle).flex, 1, 'six cases fit a narrow viewport');
   assert.equal(flatten(otp.props.containerStyle).marginVertical, 0);
@@ -132,20 +132,18 @@ test('reset OTP groups actions and puts paste beside the label without removing 
   }
 });
 
-test('new PIN fields share a wrapping row, stay labeled and keep secure entry/busy locks', () => {
+test('new password fields are full-width, labeled and use the shared masked entry with busy locks', () => {
   const { ResetPinStep } = loadUI()('components/auth/steps/ResetPinStep.tsx');
   for (const isLoading of [false, true]) {
     const all = nodes(ResetPinStep({ ...resetProps, resetPinStep: 'newPin', isLoading }));
-    const fields = all.find(n => flatten(n.props.style).flexWrap === 'wrap');
-    const inputs = nodes(fields).filter(n => n.type === 'Input');
+    const inputs = all.filter(n => n.type === 'PasswordInput');
     assert.equal(inputs.length, 2);
     for (const input of inputs) {
-      assert.equal(input.props.secureTextEntry, true);
-      assert.equal(input.props.maxLength, 4);
-      assert.equal(input.props.editable, !isLoading);
-      assert.match(input.props.accessibilityLabel, /mot de passe à quatre chiffres/);
-      assert.equal(flatten(input.props.style).height, 'auto');
+      assert.equal(input.props.newPassword, true);
+      assert.equal(input.props.disabled, isLoading);
+      assert.match(input.props.label, /mot de passe à quatre chiffres/);
     }
+    assert.equal(all.some(n => n.type === 'OtpInput'), false);
     assert.equal(all.find(n => n.type === 'Button').props.disabled, isLoading);
   }
 });
@@ -162,7 +160,7 @@ test('keyboard heading removes illustration only; text scaling and wrapping rema
   }
 });
 
-test('login PIN uses compact boxes/actions without changing signup layout', () => {
+test('login and signup use password fields, never OTP boxes, with compact login actions', () => {
   const { PinStep } = loadUI()('components/auth/steps/PinStep.tsx');
   const login = nodes(PinStep({ mode: 'login', pin: '', pinConfirm: '', onForgotPin() {}, isLoading: false, keyboardVisible: true }));
   assert.equal(flatten(login[0].props.style).flex, 0);
@@ -171,4 +169,7 @@ test('login PIN uses compact boxes/actions without changing signup layout', () =
   const signup = nodes(PinStep({ mode: 'signup', pin: '', pinConfirm: '', isLoading: false }));
   assert.equal(signup.some(n => typeof n.type === 'function' && n.type.name === 'AuthCodeHeading'), false);
   assert.equal(signup.filter(n => n.type === 'PasswordInput').length, 2);
+  assert.ok(signup.filter(n => n.type === 'PasswordInput').every(n => n.props.newPassword));
+  assert.equal(login.find(n => n.type === 'PasswordInput').props.newPassword, false);
+  assert.equal([...login, ...signup].some(n => n.type === 'OtpInput'), false);
 });

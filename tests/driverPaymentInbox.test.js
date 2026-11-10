@@ -115,13 +115,19 @@ test('receipt modal works without recent trips, queues payments, dismisses once 
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '@react-native-async-storage/async-storage': { getItem: async () => null, setItem: async () => { throw Error('storage unavailable'); } },
     '@/features/navigation/RideModal': { RideModal: 'Modal' }, '@/hooks/useAppIsActive': { useAppIsActive: () => active },
+    '@/features/driver-payments/CashPaymentRequestNotice': { CashPaymentRequestNotice: 'CashNotice' },
     '@/store/selectors': { selectUser: () => user, selectIsAuthenticated: () => true },
     '@/store/hooks': { useAppSelector: fn => fn() },
     '@/store/api/tripApi': { useGetMyActivityTripsQuery: (_arg, options) => { tripQuerySkipped = options.skip; return { data: [] }; } },
-    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { spoken = { message, visible }; } },
+    '@/components/PaymentModalAnnouncement': { PaymentModalAnnouncement: 'Announcement' },
     '@/hooks/notifications/useDriverPaymentInbox': { useDriverPaymentInbox: (_user, _enabled, dismissed) => { seen = dismissed; return { notices: user.id === 'driver-1' ? notices : [], legacy: false }; } },
   })('components/DriverPaymentNoticeCoordinator.tsx').DriverPaymentNoticeCoordinator;
-  const render = () => hooks.render(Component);
+  const render = () => {
+    const tree = hooks.render(Component);
+    const voice = tree.props.children.props.children[0];
+    spoken = { message: voice.props.message, visible: voice.props.enabled };
+    return tree;
+  };
   render(); await tick(); render(); let tree = render();
   assert.equal(tripQuerySkipped, true); assert.equal(tree.props.visible, true);
   assert.match(spoken.message.text, /800 francs congolais/); assert.equal(seen[notices[0].key], undefined);
@@ -132,5 +138,46 @@ test('receipt modal works without recent trips, queues payments, dismisses once 
   active = true; assert.equal(render().props.visible, true);
   user = { id: 'driver-2', role: 'driver' }; assert.equal(render().props.visible, false);
   await tick(); render(); assert.equal(render().props.visible, false);
+  hooks.unmount();
+});
+
+test('cash declaration opens the root modal, queues other payments and does not repeat the confirmed receipt', async () => {
+  const React = require('react'), hooks = hookHarness();
+  let seen;
+  const cashRow = { ...row, type: 'cash_payment_declared', paymentMode: 'cash', amount: 2850 };
+  let notices = paymentInbox(snapshot([cashRow]), 'driver-1');
+  const Component = loader({ react: { ...React, ...hooks.react },
+    'react-native': { View: 'View', Text: 'Text', ScrollView: 'Scroll', TouchableOpacity: 'Button', StyleSheet: { create: x => x, hairlineWidth: 1 } },
+    '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-router': { useRouter: () => ({ push() {} }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
+    '@react-native-async-storage/async-storage': { getItem: async () => null, setItem: async () => {} },
+    '@/features/navigation/RideModal': { RideModal: 'Modal' }, '@/hooks/useAppIsActive': { useAppIsActive: () => true },
+    '@/features/driver-payments/CashPaymentRequestNotice': { CashPaymentRequestNotice: 'CashNotice' },
+    '@/store/selectors': { selectUser: () => ({ id: 'driver-1', role: 'driver' }), selectIsAuthenticated: () => true },
+    '@/store/hooks': { useAppSelector: fn => fn() },
+    '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: [] }) },
+    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement() {} },
+    '@/hooks/notifications/useDriverPaymentInbox': { useDriverPaymentInbox: (_user, _enabled, dismissed) => {
+      seen = dismissed; return { notices, legacy: false };
+    } },
+  })('components/DriverPaymentNoticeCoordinator.tsx').DriverPaymentNoticeCoordinator;
+  const render = () => hooks.render(Component);
+  const all = n => !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatMap(all) : [n, ...all(n.props?.children)];
+  render(); await tick(); render(); let tree = render();
+  assert.equal(tree.props.visible, true);
+  const cash = all(tree).find(n => n.type === 'CashNotice');
+  assert.equal(cash.props.active, true); assert.equal(cash.props.notice.amount, 2850);
+  assert.equal(seen[cash.props.notice.key], undefined);
+  cash.props.onBusyChange(true); tree.props.onRequestClose(); render(); tree = render();
+  assert.equal(tree.props.visible, true, 'Android Back cannot dismiss an in-flight cash confirmation');
+  cash.props.onBusyChange(false);
+  cash.props.onConfirmed(); render(); tree = render();
+  assert.equal(tree.props.visible, false); assert.ok(seen[cash.props.notice.key]);
+  assert.ok(seen[`booking-payment:${id(3)}:cash`]);
+  notices = paymentInbox(snapshot([{ ...cashRow, type: 'cash_payment_confirmed' },
+    { ...row, bookingId: id(7), notificationId: id(8) }]), 'driver-1');
+  render(); tree = render();
+  assert.equal(tree.props.visible, true); assert.equal(all(tree).some(n => n.type === 'CashNotice'), false);
+  tree.props.onRequestClose(); render(); assert.equal(render().props.visible, false);
   hooks.unmount();
 });

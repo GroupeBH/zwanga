@@ -6,6 +6,7 @@ import { HomeMap } from '@/components/home/HomeMap';
 import { HomeTripsSheet } from '@/components/home/HomeTripsSheet';
 import { HomeOngoingTripSheet } from '@/components/home/HomeOngoingTripSheet';
 import { HomeActivityCards } from '@/components/home/HomeActivityCards';
+import { HomeRequestModal } from '@/components/home/HomeRequestModal';
 import { styles } from '@/features/home/HomeScreen.styles';
 import { useHomeController } from '@/hooks/home/useHomeController';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,8 +53,6 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
         mapLayout={home.mapPriorityLayout}
         dismissPriority={home.dismissPriority}
         prioritiesEnabled={home.isScreenActive}
-        highlightedDriverRequest={home.highlightedDriverRequest}
-        highlightedRequestDistance={home.highlightedRequestDistance}
         featuredDriverReservation={home.featuredDriverReservation}
         featuredDriverReservationStatus={home.featuredDriverReservationStatus}
         router={home.router}
@@ -93,7 +92,6 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       openSheetIndex={home.openSheetIndex}
       isDriver={home.isDriver}
       isScreenActive={home.isScreenActive}
-      highlightedDriverRequest={home.highlightedDriverRequest}
       prioritiesEnabled={home.isScreenActive}
       dismissPriority={home.dismissPriority}
       availableDriverRequests={home.availableDriverRequests}
@@ -107,6 +105,10 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       bookedTripIds={home.bookedTripIds}
       openTripDetail={home.openTripDetail}
     />}
+    <HomeRequestModal key={home.currentUser?.id} userId={home.currentUser?.id}
+      request={home.highlightedDriverRequest} router={home.router} dismissPriority={home.dismissPriority}
+      onOpenRequestDetail={home.openTripRequestDetail}
+      enabled={home.isScreenActive && home.isDriver && !home.activeHomeTrip && !home.availableTripRequestsError} />
     <AppUpdatePrompt enabled={home.isScreenActive && !home.ongoingDriverTrip && !home.ongoingBookedTrip && !home.highlightedDriverRequest && !home.featuredDriverReservation} />
   </SafeAreaView>;
 }

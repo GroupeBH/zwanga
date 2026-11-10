@@ -344,7 +344,7 @@ test('foreground and background cards carry the same price/destination and launc
     await f.loaded.displayDriverInvitation({ ...data, ridePricePerSeat: '5600', ridePriceKind: 'budget',
       rideDeparture: 'Place centrale', rideArrival: 'Gare', rideSeats: '2' });
     const card = f.displays[0];
-    assert.match(card.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 5 600 FC \/ place/);
+    assert.match(card.body.replace(/[\u202f\u00a0]/g, ' '), /Budget : 11 200 FC pour le trajet/);
     assert.match(card.body, /Place centrale → Gare/);
     assert.equal(card.android.style.text, card.body);
     assert.equal(card.data.ridePricePerSeat, '5600');

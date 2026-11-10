@@ -17,9 +17,9 @@ const textContent = node => node == null || typeof node === 'boolean' ? '' : Arr
 test('cash is explicitly non-withdrawable, confirmed and separate from credits, without an action', () => {
   const tree = CashRevenueSummary({ amount: 12000, currency: 'CDF' });
   const text = textContent(tree);
-  assert.match(text, /Espèces reçues des passagers/);
+  assert.match(text, /Cash reçu des passagers/);
   assert.match(text, /Non retirable/);
-  assert.match(text, /Déjà reçues et confirmées/);
+  assert.match(text, /Déjà reçu et confirmé/);
   assert.ok(text.includes(formatAmount(12000, 'CDF')));
   assert.equal(elements(tree).filter(node => node.type === 'Button').length, 0);
 });
@@ -40,7 +40,7 @@ const earning = { id: 'earning-A', paymentMode: 'cash', status: 'available', gro
 test('cash-mode ledger entry is presented as a Zwanga-funded credit, never passenger cash', () => {
   const text = textContent(DriverEarningRow({ earning }));
   assert.match(text, /Participation Zwanga/);
-  assert.match(text, /Financée par Zwanga, hors espèces reçues/);
+  assert.match(text, /Financée par Zwanga, hors cash reçu/);
   assert.match(text, /Crédit net : \+/);
   assert.doesNotMatch(text, /Non retirable/);
 });

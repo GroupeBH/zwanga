@@ -50,7 +50,7 @@ export function WalletOverview({ wallet, withdrawal, isDriver = false }: Props) 
     </Text>}
     {isDriver && wallet.cashDebt && <View style={styles.cashDebt} accessibilityLiveRegion="polite">
       <Text style={styles.cashDebtTitle}>Commission à régler : {formatWalletAmount(wallet.cashDebt.tokens)}{wallet.cashDebt.amount !== undefined ? ` (${formatWalletAmount(wallet.cashDebt.amount, 'FC')})` : ''}</Text>
-      <Text style={styles.cashDebtText}>Tolérance cumulée : 25 jetons. Le cash reste possible si la prochaine commission ne fait pas dépasser ce plafond. Les prochains jetons reçus couvrent ce dû.</Text>
+      <Text style={styles.cashDebtText}>Avance unique sur les six premiers trajets cash. Ensuite, régularisez les commissions et provisionnez vos jetons. Les prochains jetons reçus couvrent ce dû.</Text>
     </View>}
     {expanded && <View style={styles.breakdown}>
       {summary && Number(summary.account.reservedCashCommissionBalance) > 0 &&

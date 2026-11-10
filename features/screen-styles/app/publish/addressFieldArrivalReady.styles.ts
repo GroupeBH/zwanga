@@ -4,14 +4,13 @@ import { StyleSheet } from "react-native";
 export const styles = StyleSheet.create({
   addressFieldArrivalReady: {
     borderColor: Colors.primary + '35',
-    backgroundColor: Colors.primary + '06',
+    backgroundColor: 'transparent',
   },
   addressFieldLabel: {
     fontSize: FontSizes.xs,
     fontWeight: FontWeights.bold,
     color: Colors.gray[500],
     letterSpacing: 0,
-    textTransform: 'uppercase',
   },
   addressFieldLabelReady: {
     color: Colors.gray[800],
@@ -56,9 +55,9 @@ export const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: BorderRadius.full,
-    borderWidth: 1,
+    borderWidth: 0,
     borderColor: Colors.gray[200],
-    backgroundColor: Colors.gray[50],
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -153,8 +152,8 @@ export const styles = StyleSheet.create({
   swapButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    height: 32,
-    marginVertical: -1,
+    minHeight: 44,
+    width: 44,
   },
   swapButtonInner: {
     width: 32,
@@ -176,14 +175,14 @@ export const styles = StyleSheet.create({
   },
   quickLandmarksOpenButton: {
     alignSelf: 'flex-start',
-    minHeight: 34,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
     paddingHorizontal: Spacing.sm,
     borderRadius: BorderRadius.full,
-    backgroundColor: Colors.primary + '08',
-    borderWidth: 1,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
     borderColor: Colors.primary + '14',
   },
   quickLandmarksOpenText: {

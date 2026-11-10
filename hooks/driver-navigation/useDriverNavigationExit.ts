@@ -293,6 +293,7 @@ export function useDriverNavigationExit({
   }, [isTripOngoing]);
 
   return {
+    navigateSafely,
     navigateBackSafely,
     navigateHomeSafely,
     cleanupNavigationUi,

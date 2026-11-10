@@ -2,14 +2,13 @@ import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import {
   RequestRouteMapData,
-  TRIP_REQUEST_VEHICLE_LABELS,
   TRIP_REQUEST_VEHICLE_ICONS,
-  formatCdfPrice,
 } from './requestDetailModel';
 import { styles } from '../screen-styles/app/request/detail/index';
 import { Colors } from '@/constants/styles';
 import { formatDateWithRelativeLabel } from '@/utils/dateHelpers';
 import { Ionicons } from '@expo/vector-icons';
+import { requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import React from 'react';
 import { ActivityIndicator, Image, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from '@/utils/reanimated';
@@ -82,7 +81,7 @@ export function RequestDriverSummary({
         {!!myOffer?.pricePerSeat && (
           <View style={styles.ownerHeroCounter}>
             <Ionicons name="cash-outline" size={14} color={Colors.white} />
-            <Text style={styles.ownerHeroCounterText}>{myOffer.pricePerSeat} FC</Text>
+            <Text style={styles.ownerHeroCounterText}>{requestPriceLabel(myOffer.pricePerSeat, tripRequest.numberOfSeats)} pour le trajet</Text>
           </View>
         )}
       </View>
@@ -160,8 +159,8 @@ export function RequestDriverSummary({
             <View style={styles.driverFactDivider} />
             <View style={styles.driverFact}>
               <Ionicons name="wallet-outline" size={18} color={Colors.primary} />
-              <Text style={styles.driverFactLabel}>Budget max.</Text>
-              <Text style={styles.driverFactValue}>{formatCdfPrice(tripRequest.maxPricePerSeat)}</Text>
+              <Text style={styles.driverFactLabel}>Budget du trajet</Text>
+              <Text style={styles.driverFactValue}>{requestPriceLabel(tripRequest.maxPricePerSeat, tripRequest.numberOfSeats)}</Text>
             </View>
           </>
         ) : null}

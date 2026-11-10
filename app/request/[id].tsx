@@ -1,3 +1,4 @@
+import { requestPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { useRequestDetailController } from '../../hooks/request-detail/useRequestDetailController';
 import { buildRequestDetailPresentation } from '../../features/request-detail/requestPresentation';
 import { RequestDriverSummary } from '../../features/request-detail/RequestDriverSummary';
@@ -27,7 +28,6 @@ import { showRequestSearchMap } from '@/features/request-detail/requestSearchMod
 import { canUseCachedRequestLink } from '@/features/trip-request/assignedTripNavigation';
 import { pendingDriverOffer } from '@/features/request-detail/counterOfferPolicy';
 import { RequestPendingOfferActions } from '@/features/request-detail/RequestPendingOfferActions';
-
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
   const readsEnabled = useDisplayReadsEnabled(model.isScreenActive);
@@ -238,8 +238,8 @@ export default function TripRequestDetailsScreen() {
                 <View style={styles.detailRow}>
                   <Ionicons name="cash-outline" size={20} color={Colors.gray[600]} />
                   <View style={styles.detailInfo}>
-                    <Text style={styles.detailLabel}>Prix maximum par place</Text>
-                    <Text style={styles.detailValue}>{presentation.request.maxPricePerSeat} FC</Text>
+                    <Text style={styles.detailLabel}>Budget du trajet</Text>
+                    <Text style={styles.detailValue}>{requestPriceLabel(presentation.request.maxPricePerSeat, presentation.request.numberOfSeats)}</Text>
                   </View>
                 </View>
               </>
@@ -306,50 +306,7 @@ export default function TripRequestDetailsScreen() {
 
         {/* Modal de modification de la commande */}
         {model.showEditForm && model.tripRequest && (
-            <RequestEditModal
-              showEditForm={model.showEditForm}
-              setShowEditForm={model.setShowEditForm}
-              editAddressInputMode={model.editAddressInputMode}
-              setEditAddressInputMode={model.setEditAddressInputMode}
-              editDepartureManualAddress={model.editDepartureManualAddress}
-              setEditDepartureManualAddress={model.setEditDepartureManualAddress}
-              editArrivalManualAddress={model.editArrivalManualAddress}
-              setEditArrivalManualAddress={model.setEditArrivalManualAddress}
-              openEditLocationPicker={model.openEditLocationPicker}
-              editDepartureAddress={model.editDepartureAddress}
-              editArrivalAddress={model.editArrivalAddress}
-              openEditDateOrTimePickerMin={model.openEditDateOrTimePickerMin}
-              editDepartureDateMin={model.editDepartureDateMin}
-              openEditDateOrTimePickerMax={model.openEditDateOrTimePickerMax}
-              editDepartureDateMax={model.editDepartureDateMax}
-              editScheduleError={model.editScheduleError}
-              editIosPickerModeMin={model.editIosPickerModeMin}
-              handleEditIosPickerChangeMin={model.handleEditIosPickerChangeMin}
-              editIosPickerModeMax={model.editIosPickerModeMax}
-              handleEditIosPickerChangeMax={model.handleEditIosPickerChangeMax}
-              editVehiclePriceMultiplier={model.editVehiclePriceMultiplier}
-              isEditVehicleOptionsLoading={model.isEditVehicleOptionsLoading}
-              editVehicleOptions={model.editVehicleOptions}
-              isEditVehicleOptionsError={model.isEditVehicleOptionsError}
-              retryEditVehicleOptions={model.retryEditVehicleOptions}
-              editVehicleTypes={model.editVehicleTypes}
-              parsedEditNumberOfSeats={model.parsedEditNumberOfSeats}
-              handleSelectEditVehicle={model.handleSelectEditVehicle}
-              editNumberOfSeats={model.editNumberOfSeats}
-              setEditNumberOfSeats={model.setEditNumberOfSeats}
-              editMaxPricePerSeat={model.editMaxPricePerSeat}
-              setEditMaxPricePerSeat={model.setEditMaxPricePerSeat}
-              isEditBudgetValid={model.isEditBudgetValid}
-              parsedEditBudget={model.parsedEditBudget}
-              editSeatCapacity={model.editSeatCapacity}
-              isIdentityVerified={model.isIdentityVerified}
-              openEditIdentityVerification={model.openEditIdentityVerification}
-              editDescription={model.editDescription}
-              setEditDescription={model.setEditDescription}
-              isEditFormValid={model.isEditFormValid}
-              handleUpdateRequest={model.handleUpdateRequest}
-              isUpdating={model.isUpdating}
-            />
+            <RequestEditModal {...model} />
           )}
         {/* Location Picker Modal pour la modification */}
         {model.editLocationPickerType && (

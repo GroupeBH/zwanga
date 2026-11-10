@@ -1,9 +1,11 @@
 import { StyleSheet } from 'react-native';
 import { Colors } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 
 export const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.white },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14, gap: 12 },
+  compactHeader: { paddingTop: 8, paddingBottom: 8 },
   heading: { flex: 1 },
   title: { fontSize: 21, fontWeight: '700', color: Colors.gray[900] },
   subtitle: { fontSize: 13, color: Colors.gray[600], marginTop: 4 },
@@ -34,14 +36,16 @@ export const styles = StyleSheet.create({
   resultArrow: { transform: [{ rotate: '45deg' }] },
   empty: { color: Colors.gray[600], fontSize: 14, lineHeight: 20, padding: 20 },
   footer: { paddingHorizontal: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: Colors.gray[100], backgroundColor: Colors.white },
+  compactFooter: { paddingTop: 8 },
   notice: { fontSize: 13, lineHeight: 18, color: Colors.gray[700], paddingBottom: 10 },
   selection: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  compactSelection: { marginBottom: 8 },
   selectionIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#FFF1EB', alignItems: 'center', justifyContent: 'center' },
   selectionCopy: { flex: 1, minWidth: 0 },
   selectionLabel: { fontSize: 10, letterSpacing: 0.8, fontWeight: '600', color: Colors.gray[600] },
   selectionTitle: { fontSize: 16, fontWeight: '700', color: Colors.gray[900], marginTop: 3 },
   selectionAddress: { fontSize: 12, color: Colors.gray[600], marginTop: 3 },
-  confirm: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: Colors.primary },
+  confirm: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 14, borderRadius: 14, backgroundColor: ACTION_COLORS.orange },
   confirmDisabled: { backgroundColor: Colors.gray[400] },
-  confirmText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
+  confirmText: { color: Colors.white, fontSize: 16, fontWeight: '700', flexShrink: 1, textAlign: 'center' },
 });

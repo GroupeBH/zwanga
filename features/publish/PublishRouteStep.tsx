@@ -97,12 +97,6 @@ export function PublishRouteStep({
   return (
     <Animated.View entering={stepEntering} style={[styles.stepContainer, styles.routeStepContainer]}>
       <View style={styles.publishRouteSheet}>
-        <View style={styles.rideSheetHeader}>
-          <View style={styles.routeSheetHeaderCopy}>
-            <Text style={styles.sectionTitle}>Départ et arrivée</Text>
-          </View>
-        </View>
-
       {/* Carte récap itinéraire */}
       <PublishRouteFields
         hasDepartureCoordinates={hasDepartureCoordinates}
@@ -139,17 +133,26 @@ export function PublishRouteStep({
         setArrivalReference={setArrivalReference}
       />
 
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' }}>
+        <TouchableOpacity style={styles.referenceAddButton} accessibilityRole="button"
+          accessibilityLabel="Ajouter des références de départ et d’arrivée"
+          onPress={() => { setShowDepartureReference(true); setShowArrivalReference(true); }}>
+          <Ionicons name="add" size={16} color={Colors.gray[600]} />
+          <Text style={styles.referenceAddText}>Ajouter un repère</Text>
+        </TouchableOpacity>
       {!showQuickLandmarks && (
         <TouchableOpacity
           style={styles.quickLandmarksOpenButton}
+          accessibilityRole="button" accessibilityLabel="Références rapides"
           onPress={() => setShowQuickLandmarks(true)}
           activeOpacity={0.85}
         >
           <Ionicons name="navigate-outline" size={15} color={Colors.primary} />
-          <Text style={styles.quickLandmarksOpenText}>Références rapides</Text>
+          <Text style={styles.quickLandmarksOpenText}>Lieux connus</Text>
           <Ionicons name="chevron-down" size={15} color={Colors.gray[500]} />
         </TouchableOpacity>
       )}
+      </View>
 
       {/* Références rapides Kinshasa */}
       {showQuickLandmarks && (

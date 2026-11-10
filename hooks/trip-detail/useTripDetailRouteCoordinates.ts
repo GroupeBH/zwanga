@@ -97,6 +97,9 @@ export function useTripDetailRouteCoordinates({
       return;
     }
     setIsLoadingRoute(true);
+    setRouteCoordinates(null);
+    setRouteInfo(null);
+    setCalculatedArrivalTime(null);
     let cancelled = false;
     getRouteInfo(departureCoordinate, arrivalCoordinate)
       .then((info) => {
@@ -119,6 +122,7 @@ export function useTripDetailRouteCoordinates({
         if (cancelled) return;
         // Fallback to straight line if route API fails
         setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        setRouteInfo(null);
         setCalculatedArrivalTime(null);
         setIsLoadingRoute(false);
       });

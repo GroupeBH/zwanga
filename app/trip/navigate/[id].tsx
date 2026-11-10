@@ -18,6 +18,7 @@ import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { DriverPaidRequestCompletionPrompt } from '@/features/driver-navigation/DriverPaidRequestCompletionPrompt';
+import { NextRequestAfterTrip } from '@/components/trip/NextRequestAfterTrip';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
@@ -177,6 +178,16 @@ function DriverNavigationScreen() {
 
       <DriverPaidRequestCompletionPrompt model={model}
         blocked={assistanceOrSecurityVisible || model.session.foundation.mapState.backgroundDisclosureVisible} />
+
+      <NextRequestAfterTrip trip={model.session.foundation.data.trip}
+        active={model.session.foundation.data.isScreenActive}
+        coordinate={model.presentation.currentDriverCoordinate}
+        onOpenRequestDetail={id => model.session.foundation.exitActions.navigateSafely({
+          pathname: '/request-details/[id]', params: { id },
+        })}
+        blocked={assistanceOrSecurityVisible || model.session.foundation.data.offlineTrip ||
+          model.session.foundation.data.offlineBookings || Boolean(model.session.foundation.mapState.tripEndNotice) ||
+          model.session.foundation.mapState.backgroundDisclosureVisible} />
 
       <NavigationPickupBypassModal
         pickupBypassConfirmation={model.session.foundation.mapState.pickupBypassConfirmation}

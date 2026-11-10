@@ -6,7 +6,14 @@ import type { ServerBooking } from './serverTypes';
 import { bookingListTag, myTripsListTag, tripListTag } from './cachePolicy';
 
 export function buildCashReceiptEndpoints(builder: BaseEndpointBuilder) {
-  return { confirmCashReceipt: builder.mutation<Booking, { bookingId: string; amount: number; currency: string }>({
+  return {
+    declareCashPayment: builder.mutation<Booking, { bookingId: string; amount: number; currency: string }>({
+      query: ({ bookingId, amount, currency }) => ({ url: `/bookings/${bookingId}/cash-declaration`,
+        method: 'PUT', body: { amount, currency }, timeout: CRITICAL_MUTATION_TIMEOUT_MS }),
+      transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
+      invalidatesTags: result => result ? [bookingListTag, 'AccountActivity', { type: 'Booking', id: result.id }] : [],
+    }),
+    confirmCashReceipt: builder.mutation<Booking, { bookingId: string; amount: number; currency: string }>({
     query: ({ bookingId, amount, currency }) => ({
       url: `/bookings/${bookingId}/cash-receipt`, method: 'PUT', body: { amount, currency },
       timeout: CRITICAL_MUTATION_TIMEOUT_MS,
@@ -14,6 +21,6 @@ export function buildCashReceiptEndpoints(builder: BaseEndpointBuilder) {
     transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
     invalidatesTags: (result) => result ? [bookingListTag, myTripsListTag, tripListTag, 'AccountActivity',
       { type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId },
-      { type: 'DriverSettlement', id: 'ME' }] : [],
+      { type: 'DriverSettlement', id: 'ME' }, { type: 'Notification', id: 'DRIVER_PAYMENTS' }] : [],
   }) };
 }

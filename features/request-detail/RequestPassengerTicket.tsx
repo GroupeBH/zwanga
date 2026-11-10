@@ -62,7 +62,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
         <View style={[local.notch, { left: -12 }]} /><View style={[local.notch, { right: -12 }]} />
       </View>
       <CollapsibleRouteMap variant="light" mapData={presentation.requestRouteMapData} routeCoordinates={presentation.displayedRouteCoordinates}
-        summary={<View style={s.side}><Text style={s.muted}>{confirmed ? 'Prix par place' : 'Budget par place'}</Text>
+        summary={<View style={s.side}><Text style={s.muted}>{confirmed ? 'Prix du trajet' : 'Budget du trajet'}</Text>
           <Text style={s.amount}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>}
         departureName={labels.departure.address} arrivalName={labels.arrival.address} />
     </View>

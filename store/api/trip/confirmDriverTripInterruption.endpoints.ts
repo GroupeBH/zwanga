@@ -53,11 +53,13 @@ rejectDriverTripInterruption: builder.mutation<
         timeout: CRITICAL_MUTATION_TIMEOUT_MS,
       }),
       transformResponse: (response: ServerTrip) => mapServerTripToClient(response),
-      invalidatesTags: (_result, _error, id: string) => [
+      invalidatesTags: (result, _error, id: string) => [
         { type: 'Trip', id },
         { type: 'MyTrips', id },
         tripListTag,
         myTripsListTag,
+        // Finishing frees the driver: refresh availability, not the audio/dispatch path.
+        ...(result?.status === 'completed' ? [{ type: 'TripRequest' as const, id: 'LIST' }] : []),
       ],
     }),
 // Mettre à jour la position du conducteur

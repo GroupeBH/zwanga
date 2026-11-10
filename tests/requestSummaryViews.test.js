@@ -24,14 +24,14 @@ const request = { id: 'order', passengerId: 'passenger', passengerName: 'Client 
   departureDateMin: '2099-01-01T19:30:00', departureDateMax: '2099-01-01T20:00:00', maxPricePerSeat: 2000 };
 const model = { tripRequest: request, requestedVehicleType: 'car', compatibleActiveVehicles: [], isIdentityVerified: true,
   canAcceptDirectly: true, directAcceptVehicle: { id: 'vehicle' }, canEdit: true, canCancel: true };
-const presentation = { ownerDisplayedBudget: 2000, pendingOffersCount: 0, ownerHero: {}, displayedRouteCoordinates: [], requestRouteMapData: null };
+const presentation = { ownerDisplayedBudget: 4000, pendingOffersCount: 0, ownerHero: {}, displayedRouteCoordinates: [], requestRouteMapData: null };
 
-test('passenger ticket uses real times, per-seat budget, references and actual expiration, with a collapsed map', () => {
+test('passenger ticket uses real times, total budget, references and actual expiration, with a collapsed map', () => {
   const { RequestPassengerTicket } = loader(mocks)('features/request-detail/RequestPassengerTicket.tsx');
   const tree = RequestPassengerTicket({ model, presentation });
   const routeMap = elements(tree).find(item => item.type === 'RouteMap');
   const text = words(tree) + ' ' + words(routeMap.props.summary);
-  for (const value of ['19:30', '20:00', '23:00', 'Budget par place', '2 000 FC', 'Portail', 'Quartier', 'Recherche d’un conducteur']) assert.ok(text.includes(value), value);
+  for (const value of ['19:30', '20:00', '23:00', 'Budget du trajet', '4 000 FC', 'Portail', 'Quartier', 'Recherche d’un conducteur']) assert.ok(text.includes(value), value);
   assert.equal(routeMap.props.initiallyExpanded, undefined);
   assert.doesNotMatch(text, /un à la fois|3 heures après|Étape/);
 });

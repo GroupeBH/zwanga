@@ -1,3 +1,4 @@
+import { requestTripPriceLabel } from '@/features/trip-request/requestPriceDisplay';
 import { TripEditVehicleList } from './TripEditVehicleList';
 import { EditTripStep } from './tripDetailModel';
 import { styles } from '../screen-styles/app/trip/detail/index';
@@ -303,9 +304,9 @@ export function TripEditFields({
             keyboardType="numeric"
             placeholder="5000"
             placeholderTextColor={Colors.gray[400]}
-            value={trip?.tripRequestId ? String(trip.price) : editPrice}
+            value={trip?.tripRequestId ? requestTripPriceLabel(trip) : editPrice}
             editable={!trip?.tripRequestId}
-            accessibilityLabel={trip?.tripRequestId ? 'Prix par place validé par le passager, non modifiable' : 'Prix par place'}
+            accessibilityLabel={trip?.tripRequestId ? 'Prix du trajet validé par le passager, non modifiable' : 'Prix par place'}
             onChangeText={setEditPrice}
           />
         </View>

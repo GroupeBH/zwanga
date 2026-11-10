@@ -82,6 +82,7 @@ export const bookingApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useDeclareCashPaymentMutation,
   useSwitchTokenPaymentToCashMutation,
   usePayTokensCashMutation,
   useConfirmCashReceiptMutation,

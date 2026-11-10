@@ -1,4 +1,6 @@
+import { RequestTotalBudgetInput } from '@/components/trip-request/RequestTotalBudgetInput';
 import { RequestEditVehicleOptions } from './RequestEditVehicleOptions';
+import { RequestEditReferences, type RequestEditReferenceProps } from './RequestEditReferences';
 import { FormDisclosure } from '@/components/forms/FormDisclosure';
 import { REGISTERED_VEHICLE_TYPE_OPTIONS } from '@/constants/vehicleTypes';
 import { formatCdfPrice } from './requestDetailModel';
@@ -92,7 +94,8 @@ export function RequestEditFields({
   openEditIdentityVerification,
   editDescription,
   setEditDescription,
-}: RequestEditFieldsProps) {
+  ...references
+}: RequestEditFieldsProps & RequestEditReferenceProps) {
   return (
     <ScrollView
       style={styles.editModalScrollView}
@@ -197,6 +200,8 @@ export function RequestEditFields({
       )}
 
       {/* Fenêtre horaire */}
+      <RequestEditReferences {...references} editAddressInputMode={editAddressInputMode}
+        editDepartureAddress={editDepartureAddress} editArrivalAddress={editArrivalAddress} />
       <FormDisclosure title="Quand partir ?" forceOpen={Boolean(editScheduleError || editIosPickerModeMin || editIosPickerModeMax)}
         summary={editDepartureDateMin && editDepartureDateMax
           ? `${editDepartureDateMin.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} → ${editDepartureDateMax.toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
@@ -282,20 +287,18 @@ export function RequestEditFields({
             />
           </View>
           <View style={{flex: 1}}>
-            <Text style={styles.editLabel}>Votre prix / place (FC)</Text>
-            <TextInput
-              style={styles.editInput}
-              keyboardType="numeric"
-              placeholder="Votre prix"
-              value={editMaxPricePerSeat}
-              onChangeText={setEditMaxPricePerSeat}
+            <Text style={styles.editLabel}>Prix du trajet (FC)</Text>
+            <RequestTotalBudgetInput
+              style={styles.editInput} hintStyle={styles.editScheduleError}
+              pricePerSeat={editMaxPricePerSeat} seats={parsedEditNumberOfSeats}
+              onChangePricePerSeat={setEditMaxPricePerSeat}
             />
           </View>
         </View>
         <Text style={styles.editVehicleSubtitle}>
           {isEditBudgetValid && parsedEditBudget !== undefined && Number.isSafeInteger(parsedEditNumberOfSeats) && parsedEditNumberOfSeats > 0
               ? `Total : ${formatCdfPrice(parsedEditBudget * parsedEditNumberOfSeats)}`
-              : 'Indiquez un budget par place avant de confirmer.'}
+              : 'Indiquez le prix total du trajet avant de confirmer.'}
         </Text>
       </View>
 

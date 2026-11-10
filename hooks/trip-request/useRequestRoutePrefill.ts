@@ -11,8 +11,12 @@ import {
   RequestFormStep,
 } from '@/features/trip-request/requestFormModel';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
+import { getRequestArrivalSelection, getRequestDepartureSelection, type RequestArrivalParams, type RequestDepartureParams } from '@/utils/requestNavigation';
 import { useEffect, useMemo } from 'react';
 import { type Region } from 'react-native-maps';
+import type { FavoriteLocation } from '@/types';
+import type { LocationObject } from 'expo-location';
+import type { useUserLocation } from '@/hooks/useUserLocation';
 
 interface Params {
   screenMountedRef: React.RefObject<boolean>;
@@ -21,7 +25,7 @@ interface Params {
   routeCoordinates: LatLng[];
   favoriteLocations: FavoriteLocation[];
   hasAppliedRoutePrefill: boolean;
-  requestParams: { arrival?: string; departure?: string; minSeats?: string; seats?: string; };
+  requestParams: RequestDepartureParams & RequestArrivalParams & { entry?: string; minSeats?: string; seats?: string; };
   setNumberOfSeats: (next: React.SetStateAction<number>) => void;
   setHasAppliedRoutePrefill: React.Dispatch<React.SetStateAction<boolean>>;
   setAddressInputMode: React.Dispatch<React.SetStateAction<AddressInputMode>>;
@@ -66,7 +70,7 @@ export function useRequestRoutePrefill({
     return () => {
       screenMountedRef.current = false;
     };
-  }, []);
+  }, [screenMountedRef]);
 
   const routePreviewRegion = useMemo<Region>(() => {
     const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
@@ -90,39 +94,43 @@ export function useRequestRoutePrefill({
 
     const departureParam = typeof requestParams.departure === 'string' ? requestParams.departure.trim() : '';
     const arrivalParam = typeof requestParams.arrival === 'string' ? requestParams.arrival.trim() : '';
+    const confirmedDeparture = getRequestDepartureSelection(requestParams);
+    const confirmedArrival = getRequestArrivalSelection(requestParams);
     const seatsParam = parseNumberParam(requestParams.seats) ?? parseNumberParam(requestParams.minSeats);
 
     if (seatsParam !== undefined) {
       setNumberOfSeats(clampRequestSeats(seatsParam));
     }
 
-    if (!departureParam && !arrivalParam) {
+    if (!departureParam && !arrivalParam && !confirmedDeparture && !confirmedArrival) {
       setHasAppliedRoutePrefill(true);
       return;
     }
 
-    setAddressInputMode('manual');
+    setAddressInputMode(confirmedArrival || (confirmedDeparture && !arrivalParam) ? 'map' : 'manual');
     setRequestFormStep('route');
 
-    if (departureParam) {
+    if (departureParam || confirmedDeparture) {
       departureTouchedRef.current = true;
-      setDepartureLocation(null);
-      setDepartureManualAddress(departureParam);
+      setDepartureLocation(confirmedDeparture);
+      setDepartureManualAddress(confirmedDeparture?.title || departureParam);
     }
 
-    if (arrivalParam) {
-      setArrivalLocation(null);
-      setArrivalManualAddress(arrivalParam);
+    if (arrivalParam || confirmedArrival) {
+      setArrivalLocation(confirmedArrival);
+      setArrivalManualAddress(confirmedArrival?.title || arrivalParam);
     }
 
-    setAddressSectionStep(!departureParam ? 'departure' : 'arrival');
+    setAddressSectionStep(!departureParam && !confirmedDeparture ? 'departure' : 'arrival');
     setHasAppliedRoutePrefill(true);
   }, [
     hasAppliedRoutePrefill,
-    requestParams.arrival,
-    requestParams.departure,
-    requestParams.minSeats,
-    requestParams.seats,
+    requestParams,
+    departureTouchedRef,
+    setAddressInputMode,
+    setAddressSectionStep,
+    setHasAppliedRoutePrefill,
+    setRequestFormStep,
     setArrivalLocation,
     setArrivalManualAddress,
     setDepartureLocation,
@@ -132,6 +140,7 @@ export function useRequestRoutePrefill({
 
   useEffect(() => {
     if (
+      requestParams.entry === 'home' || // Home owns a bounded current-position flow, with an explicit manual fallback.
       !hasAppliedRoutePrefill ||
       departureAutoFillStartedRef.current ||
       departureTouchedRef.current ||
@@ -190,8 +199,14 @@ export function useRequestRoutePrefill({
       await applyCoordinate(currentCoordinate);
     };
 
-    void initializeDeparture();
+    // GPS and reverse lookup are conveniences, not prerequisites for manual map selection.
+    void initializeDeparture().catch(() => {});
   }, [
+    requestParams.entry,
+    departureAutoFillStartedRef,
+    departureTouchedRef,
+    screenMountedRef,
+    setAddressSectionStep,
     departureLocation,
     departureManualAddress,
     getCurrentLocation,
@@ -206,6 +221,3 @@ export function useRequestRoutePrefill({
     routePreviewRegion,
   };
 }
-import type { FavoriteLocation } from '@/types';
-import type { LocationObject } from 'expo-location';
-import type { useUserLocation } from '@/hooks/useUserLocation';

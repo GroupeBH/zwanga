@@ -48,15 +48,21 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [runningActionLabel, setRunningActionLabel] = useState<string | null>(null);
   const pendingDismissActionRef = useRef<PendingDialogAction | null>(null);
+  const ownerKeyRef = useRef<string | undefined>(undefined);
 
   const hideDialog = useCallback(() => {
+    ownerKeyRef.current = undefined;
     pendingDismissActionRef.current = null;
     setDialog(null);
     setRunningActionLabel(null);
   }, []);
+  const hideDialogFor = useCallback((ownerKey: string) => {
+    if (ownerKeyRef.current === ownerKey) hideDialog();
+  }, [hideDialog]);
 
   const showDialog = useCallback(
     (options: DialogOptions) => {
+      ownerKeyRef.current = options.ownerKey;
       // A new dialog supersedes an action awaiting dismissal of an older one.
       pendingDismissActionRef.current = null;
       const variant = options.variant ?? 'info';
@@ -88,7 +94,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const value = useMemo(() => ({ showDialog, hideDialog }), [showDialog, hideDialog]);
+  const value = useMemo(() => ({ showDialog, hideDialog, hideDialogFor }), [showDialog, hideDialog, hideDialogFor]);
 
   const currentVariant = dialog?.variant ?? 'info';
   const variantStyle = VARIANT_CONFIG[currentVariant];
@@ -143,6 +149,8 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 
     setRunningActionLabel(action.label);
 
+    // The chosen action now owns dismissal, including the iOS onDismiss callback.
+    ownerKeyRef.current = undefined;
     if (Platform.OS === 'ios') {
       // iOS must finish dismissing the current native modal before another
       // modal or screen is presented. Otherwise, an invisible modal layer can

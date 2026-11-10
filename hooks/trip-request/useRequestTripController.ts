@@ -30,8 +30,15 @@ export function useRequestTripController() {
   const router = useRouter();
 
   const requestParams = useLocalSearchParams<{
+    entry?: string;
     arrival?: string;
+    arrivalAddress?: string;
+    arrivalLat?: string;
+    arrivalLng?: string;
     departure?: string;
+    departureAddress?: string;
+    departureLat?: string;
+    departureLng?: string;
     minSeats?: string;
     seats?: string;
     targetDriverId?: string;
@@ -264,6 +271,10 @@ export function useRequestTripController() {
       : 'send';
 
   return {
+    getCurrentLocation,
+    isHomeEntry: requestParams.entry === 'home',
+    isScreenActive,
+    hasAppliedRoutePrefill,
     directDriverPrefill,
     targetDriver: draft.targetDriver,
     setTargetDriver: draft.setTargetDriver,
@@ -282,6 +293,7 @@ export function useRequestTripController() {
     budgetLabel,
     budgetValue,
     createdRequestId,
+    canSubmitRequestDetails: canSubmitRequestDetails && !directDriverPrefill.blocked,
     departureAddress,
     departureDateMin: draft.departureDateMin,
     departureLocation: draft.departureLocation,
@@ -343,6 +355,7 @@ export function useRequestTripController() {
     setDescription: draft.setDescription,
     setFlexibilityMinutes: draft.setFlexibilityMinutes,
     setHasSpecifiedNumberOfSeats: draft.setHasSpecifiedNumberOfSeats,
+    setHasChosenDepartureTime: draft.setHasChosenDepartureTime,
     setNumberOfSeats: draft.setNumberOfSeats,
     setRequestFormStep,
     setRequestPaymentMode: draft.setRequestPaymentMode,

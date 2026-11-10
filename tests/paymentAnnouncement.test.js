@@ -17,7 +17,7 @@ test('mixed tokens/cash only announces the remainder as cash due, never as recei
   const receipt = { bookingId: 'test', amount: 4500, cashInstructions: true, currency: 'CDF', mixedTokenAmount: 580, cashRemainder: 3920 };
   const voice = model.passengerPaymentAnnouncement({ ...base, receipt });
   assert.match(voice.text, /part en jetons est réglée/);
-  assert.match(voice.text, /3\s920 francs congolais en espèces/);
+  assert.match(voice.text, /3\s920 francs congolais en cash/);
   assert.doesNotMatch(voice.text, /Paiement.*confirmé/);
   assert.match(model.passengerPaymentAnnouncement({ ...base, receipt: { ...receipt, cashInstructions: false } }).text, /Paiement de 4\s500.*confirmé/);
   assert.match(model.passengerPaymentAnnouncement({ ...base, receipt: { ...receipt, amount: 0, cashInstructions: false } }).text, /gratuit/);
@@ -57,14 +57,24 @@ test('driver notice speaks only the displayed confirmed payment for the current 
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '@react-native-async-storage/async-storage': { getItem: async () => null, setItem: async () => {} },
     '@/features/navigation/RideModal': { RideModal: 'Modal' }, '@/hooks/useAppIsActive': { useAppIsActive: () => active },
+    '@/features/driver-payments/CashPaymentRequestNotice': { CashPaymentRequestNotice: 'CashNotice' },
     '@/store/selectors': { selectUser: () => user, selectIsAuthenticated: () => true },
     '@/store/hooks': { useAppSelector: fn => fn() }, '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: trips }) },
-    '@/hooks/notifications/usePaymentAnnouncement': { usePaymentAnnouncement: (message, visible) => { spoken = { message, visible }; } },
+    '@/components/PaymentModalAnnouncement': { PaymentModalAnnouncement: 'Announcement' },
     '@/hooks/notifications/useDriverPaymentInbox': { useDriverPaymentInbox: () => ({ notices: [], legacy: true }) },
   })('components/DriverPaymentNoticeCoordinator.tsx').DriverPaymentNoticeCoordinator;
-  const render = () => hooks.render(Component);
+  const render = () => {
+    const tree = hooks.render(Component);
+    const announcement = tree.props.children.props.children[0];
+    spoken = { message: announcement.props.message, visible: announcement.props.enabled };
+    return tree;
+  };
   render(); await new Promise(resolve => setImmediate(resolve)); render(); render();
   assert.equal(spoken.visible, true); assert.match(spoken.message.text, /800 francs congolais.*jetons/);
+  const all = node => Array.isArray(node) ? node.flatMap(all) : React.isValidElement(node) ? [node, ...all(node.props.children)] : [];
+  const primary = all(render()).find(node => node.type === 'Button' && node.props.style.backgroundColor === '#D1430F');
+  const label = all(primary).find(node => node.type === 'Text');
+  assert.ok(require('./helpers/contrast.cjs').contrast(primary.props.style.backgroundColor, label.props.style.color) >= 4.5);
   active = false; render(); assert.equal(spoken.visible, false);
   active = true; user = { id: 'other-driver', role: 'driver' }; render();
   assert.equal(spoken.visible, false, 'old-account cached trips cannot describe a payment to the next account');

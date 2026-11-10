@@ -14,6 +14,7 @@ test('trip detail reads active passenger bookings, history only when needed, and
     calls[key].push(options);
     return {
       data: options.skip ? undefined : data[key],
+      currentData: options.skip ? undefined : data[key],
       refetch: () => { calls.refresh.push(key); return Promise.resolve(); },
     };
   };

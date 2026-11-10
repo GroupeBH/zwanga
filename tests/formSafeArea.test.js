@@ -124,6 +124,7 @@ test('vehicle submission locking and Android back dismissal are preserved', () =
 
 for (const [file, footers] of [
   ['app/request/index.tsx', ['styles.footer', 'styles.offerStickyFooter']],
+  ['components/trip-request/HomeRequestScreen.tsx', ['s.footer']],
   ['app/publish.tsx', ['styles.fixedBottomBar']],
 ]) {
   test(`${file}: action footers are inside the safe screen and keyboard-avoiding area`, () => {
@@ -149,7 +150,7 @@ test('creation and update modals consistently use the protected layout', () => {
     'features/request-detail/RequestAcceptModal.tsx', 'features/request-detail/RequestEditModal.tsx',
     'features/security/EmergencyContactFormModal.tsx', 'app/favorite-locations.tsx',
     'features/support/SupportTicketModal.tsx',
-    'app/trip/manage/[id].tsx', 'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
+    'components/VehicleFormModal.tsx', 'components/auth/VehicleModal.tsx',
     'components/LocationPickerModal.tsx', 'components/profile/ProfilePinModal.tsx',
     'components/profile/ProfileSubscriptionModal.tsx', 'components/PassengerArrivalPaymentCoordinator.tsx',
   ]) assert.match(read(file), /import \{ FormModal as Modal \} from '@\/components\/forms\/FormLayout'/, file);
