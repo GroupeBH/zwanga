@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { Keyboard, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Platform, TextInput, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Colors } from '@/constants/styles';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
-import { authStyles as styles } from './styles';
 import { authCodeStyles as codeStyles } from '@/features/auth/authCode.styles';
 
-/** One secure native field, four touchable visual slots; no secret in accessibility text. */
+/** Passwords use one visible native field; digit boxes are reserved for SMS codes. */
 export function PasswordCodeInput({ value, inputRef, onChange, label, disabled = false,
-  compact = false, login = false, error }: {
+  compact = false, newPassword = false, error }: {
   value: string; inputRef: RefObject<TextInput | null>; onChange: (value: string) => void;
-  label: string; disabled?: boolean; compact?: boolean; login?: boolean; error?: string | null;
+  label: string; disabled?: boolean; compact?: boolean; newPassword?: boolean; error?: string | null;
 }) {
   const active = useScreenIsActive();
   const [focused, setFocused] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   const frame = useRef<number | null>(null);
   const live = useRef({ active, disabled, mounted: true });
   live.current.active = active; live.current.disabled = disabled;
@@ -44,27 +46,28 @@ export function PasswordCodeInput({ value, inputRef, onChange, label, disabled =
     // Restore only after React has made the input editable, without a modal above it.
     else if (error) focus();
   }, [active, disabled, error, focus, cancelFocus, inputRef]);
+  useEffect(() => {
+    if (!active || disabled || !value) setRevealed(false);
+  }, [active, disabled, value]);
 
-  return <TouchableOpacity activeOpacity={0.8} style={styles.pinEntryContainer}
-    onPress={focus} disabled={disabled || !active} accessibilityRole="button"
-    accessibilityLabel={label} accessibilityHint="Touchez pour ouvrir le clavier numérique"
-    accessibilityState={{ disabled: disabled || !active }}
-    accessibilityValue={{ text: `${value.length} chiffres saisis sur 4` }}>
-    <TextInput ref={inputRef} style={[styles.pinHiddenInput, codeStyles.nativePasswordInput]}
-      pointerEvents="none" keyboardType="number-pad" maxLength={4} secureTextEntry
+  const editable = active && !disabled;
+  const visible = revealed && editable;
+  return <View style={[codeStyles.passwordField, compact && codeStyles.passwordFieldCompact,
+    focused && codeStyles.passwordFieldFocused, !!error && codeStyles.passwordFieldError]}>
+    <Ionicons name="lock-closed-outline" size={20} color={Colors.gray[600]} accessible={false} />
+    <TextInput ref={inputRef} style={codeStyles.passwordInput}
+      onPressIn={focus} keyboardType="number-pad" maxLength={4} secureTextEntry={!visible}
+      placeholder="4 chiffres" placeholderTextColor={Colors.gray[500]}
       value={value} onChangeText={text => { if (live.current.mounted && live.current.active && !live.current.disabled) onChange(text.replace(/\D/g, '').slice(0, 4)); }}
-      textContentType="password" autoComplete="off" autoCorrect={false} spellCheck={false}
-      showSoftInputOnFocus editable={!disabled && active} accessible={false} importantForAccessibility="no"
+      textContentType={newPassword ? 'newPassword' : 'password'} autoComplete="off" importantForAutofill="no" autoCorrect={false} spellCheck={false}
+      accessibilityLabel={label} accessibilityHint="Votre mot de passe personnel à quatre chiffres, pas le code reçu par SMS."
+      showSoftInputOnFocus editable={editable}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
-    <View style={[styles.pinCodeContainer, compact && styles.pinCodeContainerCompact, login && codeStyles.pinRow]}
-      pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {[0, 1, 2, 3].map(slot => <View key={slot} style={[styles.pinInput,
-        compact && styles.pinInputCompact, login && codeStyles.pinBox,
-        value[slot] ? styles.pinInputFilled : null,
-        focused && slot === Math.min(value.length, 3) && codeStyles.passwordBoxFocused,
-        error && codeStyles.passwordBoxError]}>
-        <Text style={[styles.pinDot, compact && styles.pinDotCompact, value[slot] ? styles.pinDotFilled : styles.pinDotEmpty]}>•</Text>
-      </View>)}
-    </View>
-  </TouchableOpacity>;
+    <TouchableOpacity style={codeStyles.passwordVisibility} disabled={!editable}
+      accessibilityRole="button" accessibilityLabel={`${visible ? 'Masquer' : 'Afficher'} : ${label}`}
+      accessibilityState={{ disabled: !editable }}
+      onPress={() => { if (live.current.mounted && live.current.active && !live.current.disabled) setRevealed(previous => !previous); }}>
+      <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={22} color={Colors.gray[700]} accessible={false} />
+    </TouchableOpacity>
+  </View>;
 }

@@ -1,4 +1,4 @@
-import { useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
+import { canPresentOverdueRequest, useOverdueRequestNotification } from '../hooks/notifications/useOverdueRequestNotification';
 import { useDriverNotifications } from '@/hooks/notifications/useDriverNotifications';
 import { useRideRinging } from '@/hooks/notifications/useRideRinging';
 import { useIosRideAlertRecovery } from '@/hooks/notifications/useIosRideAlertRecovery';
@@ -29,7 +29,7 @@ import { InteractionManager, Linking, Platform } from 'react-native';
 export function NotificationHandler() {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const { showDialog, hideDialog } = useDialog();
+  const { showDialog, hideDialogFor } = useDialog();
   const pathname = usePathname();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const { data: currentUser } = useGetCurrentUserQuery(undefined, {
@@ -49,11 +49,13 @@ export function NotificationHandler() {
   useIosRideAlertRecovery(isAuthenticated ? currentUser?.id : undefined, isDriverAccount(currentUser));
   const myTripRequestsRef = useRef(myTripRequests);
   const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const shownOverdueRequestsRef = useRef(new Set<string>());
   const activeOverdueAccountIdRef = useRef<string | null>(null);
   const activeOverdueRequestIdRef = useRef<string | null>(null);
 
   const { isOverdueRequestForAccount, presentPassengerOverdueModal, handlePassengerOverdueNotification } = useOverdueRequestNotification({
+    pathnameRef,
     activeOverdueAccountIdRef,
     activeOverdueRequestIdRef,
     releaseOverdueDriver,
@@ -71,18 +73,18 @@ export function NotificationHandler() {
 
     if (previousAccountId !== nextAccountId) {
       shownOverdueRequestsRef.current.clear();
-      activeOverdueRequestIdRef.current = null;
       if (
         activeOverdueAccountIdRef.current &&
         activeOverdueAccountIdRef.current !== nextAccountId
       ) {
+        hideDialogFor(`overdue:${activeOverdueAccountIdRef.current}:${activeOverdueRequestIdRef.current}`);
         activeOverdueAccountIdRef.current = null;
-        hideDialog();
       }
+      activeOverdueRequestIdRef.current = null;
     }
 
     currentUserRef.current = nextUser;
-  }, [currentUser, hideDialog, isAuthenticated]);
+  }, [currentUser, hideDialogFor, isAuthenticated]);
 
   useEffect(() => {
     myTripRequestsRef.current = myTripRequests;
@@ -97,17 +99,15 @@ export function NotificationHandler() {
     );
     if (
       !activeRequest ||
-      !isOverdueRequestForAccount(activeRequest, accountId, activeRequestId)
+      !isOverdueRequestForAccount(activeRequest, accountId, activeRequestId) ||
+      !canPresentOverdueRequest(pathname, activeRequestId)
     ) {
       activeOverdueAccountIdRef.current = null;
       activeOverdueRequestIdRef.current = null;
-      hideDialog();
+      if (activeRequest) shownOverdueRequestsRef.current.delete(`${accountId}:${activeRequestId}:${activeRequest.driverPickupOverdueNotifiedAt}`);
+      hideDialogFor(`overdue:${accountId}:${activeRequestId}`);
     }
-  }, [hideDialog, isOverdueRequestForAccount, myTripRequests]);
-
-  useEffect(() => {
-    pathnameRef.current = pathname;
-  }, [pathname]);
+  }, [hideDialogFor, isOverdueRequestForAccount, myTripRequests, pathname]);
 
   useEffect(() => {
     const accountId = currentUserRef.current?.id;
@@ -116,7 +116,7 @@ export function NotificationHandler() {
     }
 
     const overdueRequest = myTripRequests.find(
-      (request) => isOverdueRequestForAccount(request, accountId),
+      (request) => isOverdueRequestForAccount(request, accountId) && canPresentOverdueRequest(pathname, request.id),
     );
 
     if (!overdueRequest?.driverPickupOverdueNotifiedAt) {
@@ -124,7 +124,7 @@ export function NotificationHandler() {
     }
 
     presentPassengerOverdueModal(overdueRequest);
-  }, [isOverdueRequestForAccount, myTripRequests, presentPassengerOverdueModal]);
+  }, [isOverdueRequestForAccount, myTripRequests, presentPassengerOverdueModal, pathname]);
 
   useEffect(() => {
     Notifications.setNotificationHandler({
@@ -240,7 +240,7 @@ export function NotificationHandler() {
       if (isTripInterruptionNotification(data) || data.type === 'new_booking') {
         dispatch(baseApi.util.invalidateTags(['Booking', 'Trip', 'MyTrips']));
       }
-      if (await handlePassengerOverdueNotification(data, fallbackBody)) {
+      if (await handlePassengerOverdueNotification(data, fallbackBody, true)) {
         return;
       }
 

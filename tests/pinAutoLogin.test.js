@@ -212,10 +212,11 @@ const uiMocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Ico
 function nodes(tree) { return Array.isArray(tree) ? tree.flatMap(nodes) : React.isValidElement(tree) ? typeof tree.type === 'function' ? nodes(tree.type(tree.props)) : [tree, ...nodes(tree.props.children)] : []; }
 const text = tree => typeof tree === 'string' ? tree : Array.isArray(tree) ? tree.map(text).join('') : React.isValidElement(tree) ? text(typeof tree.type === 'function' ? tree.type(tree.props) : tree.props.children) : '';
 
-test('PIN UI explains automatic login and locks inputs/recovery while submitting, without changing signup copy', () => {
+test('password UI distinguishes SMS, explains automatic login and locks inputs/recovery while submitting', () => {
   const { PinStep } = loader(uiMocks)('components/auth/steps/PinStep.tsx');
   const tree = PinStep({ mode: 'login', pin: '1234', isLoading: true, onForgotPin() {} });
-  assert.match(text(tree), /connexion démarre au dernier chiffre/);
+  assert.match(text(tree), /Connexion au dernier chiffre/);
+  assert.match(text(tree), /pas le code SMS/);
   assert.doesNotMatch(text(tree), /\bPIN\b/);
   assert.match(text(tree), /Connexion en cours/);
   assert.ok(nodes(tree).filter(node => node.type === 'Input').every(node => node.props.editable === false));

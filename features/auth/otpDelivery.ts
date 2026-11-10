@@ -1,4 +1,4 @@
-// Phone verification uses SMS (Mobishastra/legacy Keccel); PIN reset uses Keccel.
+// SMS providers are selected by the backend, separately for phone and PIN flows.
 // Do not expose provider names or promise an expiry shared by both flows.
 export const otpDeliveryCopy = {
   title: 'Code par SMS',

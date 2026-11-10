@@ -56,7 +56,7 @@ export function PinStep({
     compact = false
   ) => (
     <PasswordCodeInput value={value} inputRef={inputRef} onChange={onChangeText}
-      label={accessibilityLabel} compact={compact} login={!isSignup} disabled={isLoading}
+      label={accessibilityLabel} compact={compact} newPassword={isSignup} disabled={isLoading}
       error={!isSignup ? error : null} />
   );
 
@@ -78,9 +78,9 @@ export function PinStep({
           Créez votre mot de passe
         </Text>
         <Text style={[styles.heroSubtitle, styles.pinSignupSubtitle]}>
-          Choisissez quatre chiffres, puis saisissez-les à nouveau.
+          Choisissez 4 chiffres à retenir pour vous connecter.
         </Text>
-      </View> : <AuthCodeHeading title="Votre mot de passe" subtitle="Quatre chiffres. La connexion démarre au dernier chiffre."
+      </View> : <AuthCodeHeading title="Votre mot de passe" subtitle="Vos 4 chiffres personnels, pas le code SMS. Connexion au dernier chiffre."
         icon="lock-closed-outline" keyboardVisible={keyboardVisible} />}
 
       {mode === 'login' ? (
@@ -133,7 +133,7 @@ export function PinStep({
           </View>
 
           <View style={[styles.formSection, styles.pinSignupField]}>
-            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Saisissez les mêmes chiffres</Text>
+            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Confirmez votre mot de passe</Text>
             {renderPinInput(pinConfirm, pinConfirmInputRef, onPinConfirmChange, 'Confirmation du mot de passe à quatre chiffres', true)}
           </View>
 

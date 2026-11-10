@@ -40,6 +40,8 @@ test('root gate keeps navigation mounted, blocks Back and pauses private coordin
   const f = fixture();
   assert.deepEqual(f.render().props.children[0], { navigatorMounted: true, blocked: true });
   assert.equal(f.modal().props.visible, true);
+  assert.equal(f.modal().props.transparent, true);
+  assert.equal(f.modal().props.presentationStyle, 'overFullScreen');
   f.modal().props.onRequestClose(); assert.equal(f.modal().props.visible, true);
   f.io.profile.currentData.isPhoneVerified = true;
   assert.equal(f.modal().props.visible, false);

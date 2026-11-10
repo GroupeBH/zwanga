@@ -42,13 +42,13 @@ export function AccountPhoneVerificationGate({ children }: { children: (blocked:
 
   return <>
     {children(blocked)}
-    <Modal visible={visible} animationType="none" presentationStyle="fullScreen" onRequestClose={() => {}}>
+    <Modal visible={visible} transparent animationType="none" presentationStyle="overFullScreen" onRequestClose={() => {}}>
       <PhoneVerificationShell onLogout={() => dispatch(performLogout()).unwrap()}>
         {status === 'required' && user ? <AccountPhoneVerification key={`${user.id}:${user.phone}`}
           phone={user.phone} refreshProfile={refreshProfile} /> : <View style={styles.form}>
-          <Text style={styles.title}>{checking ? 'Vérification de votre compte' : 'Vérification indisponible'}</Text>
-          <Text style={styles.body}>{checking ? 'Nous vérifions si votre numéro a déjà été confirmé.' :
-            'Impossible de vérifier votre numéro pour le moment. Vérifiez votre connexion, puis réessayez. Votre compte est conservé.'}</Text>
+          <Text style={styles.title} accessibilityRole="header">{checking ? 'Un instant…' : 'Vérification indisponible'}</Text>
+          <Text style={styles.body}>{checking ? 'Nous vérifions votre compte.' :
+            'Impossible de vérifier votre compte. Réessayez avec une connexion internet.'}</Text>
           {checking ? <ActivityIndicator /> : <TouchableOpacity style={styles.primary} accessibilityRole="button"
             onPress={() => { void profile.refetch().unwrap().catch(() => {}); }}>
             <Text style={styles.primaryText}>Réessayer</Text>
