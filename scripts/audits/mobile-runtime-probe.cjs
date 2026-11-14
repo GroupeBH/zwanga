@@ -40,20 +40,34 @@ async function inspect() {
   const localHosts = ['127.0.0.1', '10.0.2.2', 'localhost', ...Object.values(os.networkInterfaces()).flat().map(x => x.address)];
   return { ...safe, apiConfigured: !!apiUrl, localApi: url.protocol === 'http:' && url.port === '5200' && localHosts.includes(url.hostname) };
 }
-function capture(label) {
+function capture(label, options = {}) {
   if (!/^[a-z0-9-]+$/.test(label)) throw Error('Invalid capture label');
   const adb = process.env.RIDE_AUDIT_ADB;
   const serial = process.env.RIDE_AUDIT_SERIAL || 'emulator-5554';
   if (!adb || !/^emulator-\d+$/.test(serial)) throw Error('Explicit local emulator required');
   const output = path.resolve(__dirname, '../../.expo/global-e2e-ui-20261103');
   fs.mkdirSync(output, { recursive: true });
-  execFileSync(adb, ['-s', serial, 'shell', 'uiautomator', 'dump', '/sdcard/window-audit.xml'], { timeout: 15000 });
-  fs.writeFileSync(path.join(output, label + '.xml'), execFileSync(adb, ['-s', serial, 'shell', 'cat', '/sdcard/window-audit.xml'], { timeout: 15000 }));
+  const remote = `/sdcard/zwanga-capture-${Date.now()}.xml`;
+  let hierarchy = false;
+  try {
+    const response = options.screenshotOnly ? '' : execFileSync(adb, ['-s', serial, 'shell', 'uiautomator', 'dump', remote], { timeout: 15000, encoding: 'utf8' });
+    if (response.includes(remote)) {
+      const xml = execFileSync(adb, ['-s', serial, 'shell', 'cat', remote], { timeout: 5000, encoding: 'utf8' });
+      if (xml.includes('<hierarchy')) {
+        fs.writeFileSync(path.join(output, label + '.xml'), xml);
+        hierarchy = true;
+      }
+    }
+  } catch { /* Animating screens may not yield a hierarchy: keep the screenshot, never reuse an old dump. */ }
+  finally {
+    execFileSync(adb, ['-s', serial, 'shell', 'rm', '-f', remote], { timeout: 5000 });
+    if (!hierarchy && fs.existsSync(path.join(output, label + '.xml'))) fs.unlinkSync(path.join(output, label + '.xml'));
+  }
   fs.writeFileSync(path.join(output, label + '.png'), execFileSync(adb, ['-s', serial, 'exec-out', 'screencap', '-p'], { timeout: 15000, maxBuffer: 12 * 1024 * 1024 }));
-  return { capture: label };
+  return { capture: label, hierarchy };
 }
 module.exports = { evaluate, findModule, inspect, capture };
 if (require.main === module) {
-  Promise.resolve(process.argv[2] === 'capture' ? capture(process.argv[3]) : inspect())
+  Promise.resolve(process.argv[2] === 'capture' ? capture(process.argv[3], { screenshotOnly: process.argv.includes('--screenshot-only') }) : inspect())
     .then(result => console.log(JSON.stringify(result))).catch(error => { console.error(error.message); process.exitCode = 1; });
 }

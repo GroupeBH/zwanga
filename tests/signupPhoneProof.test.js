@@ -133,9 +133,10 @@ function registrationFixture(method, proof = verified()) {
     '@/config/env': { isSignupOtpVerificationEnabled: true },
     '../../features/auth/authModel': { getAuthErrorMessage: (_error, fallback) => fallback, ensureAuthNotifeeLoaded: noop },
     '@/services/analytics': { trackEvent: async () => {} }, '@/store/slices/authSlice': { saveTokensAndUpdateState: noop },
+    '@/services/installationAnnouncements': { setAnnouncementPreference: async () => {} },
     '@/utils/referralAttribution': { getPendingReferralAttribution: async () => null },
   })('hooks/auth/useRegistrationActions.ts');
-  const props = { firstName: 'Test', lastName: 'Example', phone, pin: '1234', role: 'passenger', profilePicture: null,
+  const props = { updatesAccepted: true, firstName: 'Test', lastName: 'Example', phone, pin: '1234', role: 'passenger', profilePicture: null,
     googleIdToken: method === 'phone' ? null : 'id-token', isGooglePhoneVerified: method !== 'phone', socialProvider: method,
     signupPhoneProof: proof, restartPhoneVerification: () => steps.push('phone'),
     showDialog: dialog => dialogs.push(dialog), register: submit, googleMobile: submit, appleMobile: submit };

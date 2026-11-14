@@ -18,7 +18,7 @@ import { calculateDistanceMeters } from '@/utils/navigation/routeProgress';
 import { DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS } from '@/utils/navigation/tripCompletion';
 import * as Location from 'expo-location';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { useAppDispatch } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
@@ -70,6 +70,12 @@ export function useDriverCompletionActions({
   refetchBookings,
 }: Params) {
   const dispatch = useAppDispatch();
+  // A rejected completion invalidates the trip cache. Its next render/GPS fix
+  // must not immediately submit the same mutation again.
+  const automaticCompletion = useRef({ tripId, retryAt: 0, confirmed: false });
+  if (automaticCompletion.current.tripId !== tripId) {
+    automaticCompletion.current = { tripId, retryAt: 0, confirmed: false };
+  }
   const presentTripDestinationNotice = useCallback(
     (
       event: BookingAutoProgressEvent,
@@ -276,7 +282,9 @@ export function useDriverCompletionActions({
         completedWhileAppInactive?: boolean;
       } = {},
     ) => {
-      if (!tripId || autoCompletingTripRef.current || trip?.status !== 'ongoing') {
+      const attempt = automaticCompletion.current;
+      if (!isMountedRef.current || !tripId || attempt.tripId !== tripId || attempt.confirmed ||
+        Date.now() < attempt.retryAt || autoCompletingTripRef.current || trip?.status !== 'ongoing') {
         return;
       }
 
@@ -290,13 +298,15 @@ export function useDriverCompletionActions({
       };
 
       autoCompletingTripRef.current = true;
+      attempt.retryAt = Date.now() + 30_000;
       void complete()
         .then((didComplete) => {
           if (!didComplete) {
             return;
           }
-
+          attempt.confirmed = true;
           void stopDriverBackgroundLocationTracking(tripId);
+          if (!isMountedRef.current || automaticCompletion.current !== attempt) return;
           presentTripDestinationNotice({
             type: 'driver_arrived_destination',
             tripId,
@@ -313,7 +323,7 @@ export function useDriverCompletionActions({
           console.warn('[Navigation] Finalisation automatique du trajet non persistée:', error);
         })
         .finally(() => {
-          autoCompletingTripRef.current = false;
+          if (automaticCompletion.current === attempt) autoCompletingTripRef.current = false;
         });
     },
     [
@@ -326,6 +336,7 @@ export function useDriverCompletionActions({
       refetchTrip,
       trip?.status,
       tripId,
+      isMountedRef,
     ],
   );
 

@@ -1,4 +1,3 @@
-/* global __dirname */
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -90,8 +89,37 @@ test("profile access keeps Services available to passengers, without KYC or subs
   assert.match(source, /router.navigate\(href/);
 });
 
+test("earnings are a transport-driver tab, not a passenger flag or a temporary trip role", () => {
+  for (const role of ['driver', 'both']) {
+    for (const driverCategory of ['transport', 'private', null, undefined, 'unknown']) {
+      const user = { role, driverCategory, currentTripRole: 'passenger' };
+      assert.equal(policy.usesEarningsTab(user), driverCategory === 'transport');
+      assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), driverCategory === 'transport');
+      assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), false);
+    }
+  }
+  for (const user of [null, undefined, { role: 'admin', driverCategory: 'transport' },
+    { role: 'passenger', driverCategory: 'transport', isDriver: true }]) {
+    assert.equal(policy.usesEarningsTab(user), false);
+    assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), user?.role === 'passenger');
+  }
+});
+
+test("tab selectors react to category/account changes but not GPS or balance updates", () => {
+  const user = { role: 'driver', driverCategory: 'transport' };
+  for (let sequence = 0; sequence < 50; sequence++) {
+    assert.equal(policy.selectUsesEarningsTab({ auth: { user }, location: { sequence } }), true);
+  }
+  user.driverCategory = 'private';
+  assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), false);
+  user.role = 'passenger';
+  assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), true);
+  assert.equal(policy.selectUsesEarningsTab({ auth: { user: null } }), false);
+  assert.equal(policy.selectUsesTripSearchTab({ auth: { user: null } }), false);
+});
+
 for (const platform of ["ios", "android"]) {
-  test(`${platform}: exactly five stable tabs, matching labels/icons, and native stability settings preserved`, () => {
+  test(`${platform}: five visible tabs with role-specific destinations, icons and unchanged native stability settings`, () => {
     const state = { auth: { user: { role: "passenger" } } };
     const Tabs = Object.assign(() => null, { Screen: "TabScreen" });
     const { default: TabLayout } = loader({
@@ -105,14 +133,30 @@ for (const platform of ["ios", "android"]) {
       "@/store/hooks": { useAppSelector: (selector) => selector(state) },
       "@/store/selectors": { selectUnreadMessagesCount: () => 4 },
     })("app/(tabs)/_layout.tsx");
-    for (const role of ["passenger", "driver", "both"]) {
-      state.auth.user = { role };
+    for (const user of [
+      { role: 'passenger' }, { role: 'passenger', driverCategory: 'transport' },
+      { role: 'driver' }, { role: 'driver', driverCategory: 'private' },
+      { role: 'driver', driverCategory: 'transport' }, { role: 'both' },
+      { role: 'both', driverCategory: 'transport' },
+    ]) {
+      state.auth.user = user;
+      const { role } = user;
+      const earnings = policy.usesEarningsTab(user);
       const elements = nodes(TabLayout());
-      const screens = elements.filter((node) => node.type === "TabScreen");
+      const routes = elements.filter((node) => node.type === "TabScreen");
+      const screens = routes.filter(node => node.props.options.href !== null);
       assert.deepEqual(
         screens.map((node) => node.props.name),
-        ["index", "discover", "trips", "messages", "profile"],
+        ["index", "discover", earnings ? "earnings" : "trips", "messages", "profile"],
       );
+      assert.deepEqual(routes.map(node => node.props.name), ['index', 'discover', 'trips', 'earnings', 'messages', 'profile']);
+      assert.equal(screens[2].props.options.title, earnings ? 'Revenus' : role === 'passenger' ? 'Trajet' : 'Mes trajets');
+      assert.equal(screens[2].props.options.href, earnings ? '/(tabs)/earnings' : role === 'passenger' ? '/search' : '/(tabs)/trips');
+      for (const focused of [true, false]) {
+        const thirdIcon = screens[2].props.options.tabBarIcon({ focused, color: '#000', size: 24 });
+        assert.equal(nodes(thirdIcon).find(node => node.type === 'Icon').props.name,
+          `${earnings ? 'wallet' : 'car'}${focused ? '' : '-outline'}`);
+      }
       assert.equal(
         screens[1].props.options.title,
         role === "passenger" ? "Recherche" : "Services",
@@ -145,6 +189,27 @@ for (const platform of ["ios", "android"]) {
         elements.filter((node) => node.type === "RideBanner").length,
         1,
       );
+    }
+  });
+
+  test(`${platform}: earnings tab shares the real gains screen and exits after a category/account change`, () => {
+    const state = { auth: { user: { role: 'driver', driverCategory: 'transport' } } };
+    const { default: EarningsTab } = loader({
+      'react-native': native(platform),
+      'expo-router': { Redirect: 'Redirect' },
+      '@react-navigation/bottom-tabs': { useBottomTabBarHeight: () => 92 },
+      '@/store/hooks': { useAppSelector: selector => selector(state) },
+      '../driver-earnings': { default: 'Earnings', __esModule: true },
+    })('app/(tabs)/earnings.tsx');
+    const tree = EarningsTab();
+    assert.equal(tree.type, 'Earnings');
+    assert.equal(tree.props.embedded, true);
+    assert.equal(tree.props.bottomOverlay, platform === 'ios' ? 92 : 0);
+    for (const user of [{ role: 'driver', driverCategory: 'private' }, { role: 'passenger' }, null]) {
+      state.auth.user = user;
+      const fallback = EarningsTab();
+      assert.equal(fallback.type, 'Redirect', 'do not mount earnings queries for another role');
+      assert.equal(fallback.props.href, '/(tabs)/trips');
     }
   });
 
@@ -229,6 +294,7 @@ test("Services reads still pause on blur/background and reuse the same catalogue
   };
   const { default: ServicesScreen } = loader({
     react: hooks.react,
+    "expo-router": { router: { push() {} } },
     "react-native": native("android"),
     "@expo/vector-icons": { Ionicons: "Icon" },
     "@/hooks/useAppIsActive": { useScreenIsActive: () => active },
@@ -238,9 +304,8 @@ test("Services reads still pause on blur/background and reuse the same catalogue
       s: {},
     },
     "@/features/pro-services/ServiceCatalogue": {
-      OpenService: "Service",
+      ServiceDirectory: "Directory",
       ServiceCaseLink: "Case",
-      UpcomingServices: "Future",
     },
     "@/store/api/proServicesApi": {
       useGetMyProCasesQuery: query("cases"),

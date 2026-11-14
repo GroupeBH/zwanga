@@ -17,9 +17,10 @@ export function NavigationContactModal(props: Props) {
 }
 
 export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = true, active, title, hint, closeLabel,
-  loading = false, loadError, onRetry }: Props & {
+  loading = false, loadError, onRetry, summary }: Props & {
   active: boolean; title?: string; hint?: string; closeLabel?: string;
   loading?: boolean; loadError?: string; onRetry?: () => void;
+  summary?: React.ReactNode;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +60,7 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
           </TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {summary}
           {loading && <ActivityIndicator color={Colors.primary} accessibilityLabel="Chargement du contact" />}
           {loadError && <>
             <Text style={styles.error} accessibilityRole="alert">{loadError}</Text>

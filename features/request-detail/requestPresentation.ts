@@ -108,6 +108,10 @@ export function buildRequestDetailPresentation({
       };
     }
     if (tripRequest.status === 'offers_received' || pendingOffersCount > 0) {
+      if (tripRequest.offers?.some(offer => offer.status === 'pending' && offer.negotiationStage === 'passenger_counter')) return {
+        title: 'Votre prix a été envoyé',
+        subtitle: 'Le conducteur peut accepter ou proposer son prix ferme.',
+      };
       return {
         title:
           pendingOffersCount > 1
@@ -157,9 +161,14 @@ export function buildRequestDetailPresentation({
       };
     }
     if (myOffer?.status === 'pending') {
+      if (myOffer.negotiationStage === 'passenger_counter') return {
+        badge: 'À vous de répondre',
+        title: 'Le passager propose un prix',
+        subtitle: 'Acceptez son prix ou proposez votre prix ferme.',
+      };
       return {
         badge: 'En attente',
-        title: 'Votre proposition attend la réponse du passager',
+        title: myOffer.negotiationStage === 'driver_final' ? 'Votre prix ferme attend la réponse du passager' : 'Votre proposition attend la réponse du passager',
         subtitle: 'Vous serez notifié dès que son statut évoluera.',
       };
     }

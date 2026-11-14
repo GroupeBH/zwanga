@@ -218,6 +218,7 @@ test('actual request screen keeps the decision footer outside the scrollable det
     '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '@/features/request-detail/SharedTripPanel': { SharedTripPanel: 'SharedTripPanel' },
     '@/features/request-detail/RequestSearchScreen': { RequestSearchScreen: 'RequestSearchScreen' },
+    '@/features/request-detail/RequestPendingOfferActions': { RequestPendingOfferActions: 'PendingOfferActions' },
     '@/store/api/sharedTripApi': { useSharedTripContextQuery: () => ({}) },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true, displayReadOptions: () => ({}) },
     '@/services/rideAlertSession': { acknowledgeRideAlerts: () => {} },

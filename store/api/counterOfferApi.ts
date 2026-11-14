@@ -9,7 +9,7 @@ import { isRequestUnassigned } from '@/features/trip-request/requestExpiration';
 
 export const counterOfferApi = baseApi.injectEndpoints({ endpoints: builder => ({
   proposeCounterOffer: builder.mutation<DriverOffer, { requestId: string; vehicleId: string; pricePerSeat: number }>({
-    query: ({ requestId, ...body }) => ({ url: `/trip-requests/${requestId}/counter-offer`, method: 'POST', body, timeout: 15000 }),
+    query: ({ requestId, ...body }) => ({ url: `/trip-requests/${requestId}/counter-offer`, method: 'POST', body: { ...body, negotiationVersion: 1 }, timeout: 15000 }),
     // Older servers omit the parent ID in a sanitized offer; the mutation URL is authoritative.
     transformResponse: (response: ServerDriverOffer, _meta, { requestId }) =>
       mapServerDriverOfferToClient({ ...response, tripRequestId: response.tripRequestId ?? requestId }),

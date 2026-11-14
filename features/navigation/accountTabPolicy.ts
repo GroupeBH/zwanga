@@ -12,6 +12,18 @@ export function usesServicesTab(
 export const selectUsesServicesTab = (state: RootState) =>
   usesServicesTab(state.auth?.user);
 
+export function usesEarningsTab(
+  user?: { role?: string; driverCategory?: string | null } | null,
+) {
+  return isDriverAccount(user) && user?.driverCategory === 'transport';
+}
+
+export const selectUsesEarningsTab = (state: RootState) =>
+  usesEarningsTab(state.auth?.user);
+
+export const selectUsesTripSearchTab = (state: RootState) =>
+  state.auth?.user?.role === 'passenger';
+
 export const getServicesEntryHref = (driver: boolean) =>
   driver ? ("/(tabs)/discover" as const) : ("/services" as const);
 

@@ -10,7 +10,8 @@ import { trackEvent } from '@/services/analytics';
 import { useAppleMobileMutation, useGoogleMobileMutation, useRegisterMutation } from '@/store/api/zwangaApi';
 import { useAppDispatch } from '@/store/hooks';
 import { saveTokensAndUpdateState } from '@/store/slices/authSlice';
-import type { TripRequestVehicleType, UserGender } from '@/types';
+import type { DriverCategory, TripRequestVehicleType, UserGender } from '@/types';
+import { readDriverCategory } from '@/features/profile/driverCategory';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import { isValidVehiclePlate, normalizeVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import { getPendingReferralAttribution } from '@/utils/referralAttribution';
@@ -22,8 +23,11 @@ import type { StartDiditKycOptions, DiditKycFlowOutcome } from '@/features/ident
 import type { AuthResponse } from '@/store/api/authApi';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { SignupPhoneProofError, type SignupPhoneProof } from '@/features/auth/signupPhoneProof';
+import { setAnnouncementPreference } from '@/services/installationAnnouncements';
 
 interface Params {
+  updatesAccepted: boolean;
+  driverCategory: DriverCategory | null;
   signupPhoneProof?: SignupPhoneProof;
   restartPhoneVerification?: () => void;
   firstName: string;
@@ -56,6 +60,8 @@ interface Params {
 }
 
 export function useRegistrationActions({
+  updatesAccepted,
+  driverCategory,
   signupPhoneProof,
   restartPhoneVerification,
   firstName,
@@ -118,6 +124,9 @@ export function useRegistrationActions({
   const completeRegistration = async (result: AuthResponse, method: 'phone' | SocialAuthProvider, userName: string) => {
     if (mounted.current) setHasCreatedAccount(true);
     resumeFinalization.current = async () => {
+      // Record the explicit choice without requiring OS permission or network availability.
+      // A storage failure retries this finalization, never the registration POST.
+      await setAnnouncementPreference(true);
       const saved = await dispatch(saveTokensAndUpdateState({ accessToken: result.accessToken, refreshToken: result.refreshToken })).unwrap();
       if (!saved) throw new Error('La session n’a pas pu être confirmée.');
       // Optional side effects must not turn a created account into a failed signup.
@@ -149,6 +158,11 @@ export function useRegistrationActions({
         await resumeFinalization.current();
         return;
       }
+      if (!updatesAccepted) {
+        setStep('profile');
+        showDialog({ variant: 'warning', title: 'Mises à jour', message: 'Cochez « Me prévenir des mises à jour » pour créer votre compte.' });
+        return;
+      }
       const legalFirstName = normalizeLegalName(firstName);
       const legalLastName = normalizeLegalName(lastName);
       if (!hasCompleteLegalIdentity(legalFirstName, legalLastName)) {
@@ -175,6 +189,12 @@ export function useRegistrationActions({
           ? { referralCode: legacyReferralCode }
           : {};
       const requiresVehicle = role === 'driver';
+      if (requiresVehicle && !readDriverCategory(driverCategory)) {
+        setStep('profile');
+        showDialog({ variant: 'warning', title: 'Type de conducteur', message: 'Choisissez « Conducteur privé » ou « Taxi / moto-taxi ».' });
+        return;
+      }
+      const categoryPayload = requiresVehicle && driverCategory ? { driverCategory } : {};
       if (requiresVehicle && !vehicleType) {
         showDialog({
           variant: 'warning',
@@ -214,6 +234,7 @@ export function useRegistrationActions({
               lastName: legalLastName,
               gender: gender ?? undefined,
               role,
+              ...categoryPayload,
               vehicle: signupVehicle,
               ...referralSignupPayload,
               ...phoneProofPayload,
@@ -225,6 +246,7 @@ export function useRegistrationActions({
               lastName: legalLastName,
               gender: gender ?? undefined,
               role,
+              ...categoryPayload,
               vehicle: signupVehicle,
               ...referralSignupPayload,
               ...phoneProofPayload,
@@ -241,6 +263,7 @@ export function useRegistrationActions({
       formData.append('lastName', legalLastName);
       if (gender) formData.append('gender', gender);
       formData.append('role', role);
+      if (requiresVehicle && driverCategory) formData.append('driverCategory', driverCategory);
       Object.entries(referralSignupPayload).forEach(([key, value]) => {
         if (value) formData.append(key, value);
       });

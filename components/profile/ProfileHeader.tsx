@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/styles';
+import { driverCategoryLabel } from '@/features/profile/driverCategory';
 import { styles } from '@/features/profile/ProfileHeader.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
 import { Ionicons } from '@expo/vector-icons';
@@ -110,6 +111,9 @@ export function ProfileHeader({
             </View>
           ) : null}
         </View>
+        {driverCategoryLabel(currentUser?.driverCategory) && <Text style={styles.userPhone}>
+          {driverCategoryLabel(currentUser?.driverCategory)}
+        </Text>}
       </View>
     </View>
   </View>);

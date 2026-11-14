@@ -44,7 +44,7 @@ async function clearCards(){shell('am','broadcast','-n','com.zwanga.audit/.Audit
   assert.match(first.body.replace(/[\u202f\u00a0]/g,' '),/2 500 FC/);assert.match(first.body,/2 places/);assert.match(first.body,/10:00/);
   assert.deepEqual(first.actionTitles,['Refuser','Accepter']);record('unlocked_summary_contains_price_seats_schedule');
   const shared=await inject(fresh({type:'trip_request_nearby',tripRequestId:randomUUID(),sharedTrip:'true'}));valid(shared);
-  assert.deepEqual(shared.actionTitles,['Refuser','Voir la demande']);record('shared_actions_match_mobile');
+  assert.deepEqual(shared.actionTitles,['Refuser','Voir la commande']);record('shared_actions_match_mobile');
   const deniedRequest=await inject(fresh({type:'trip_request_nearby',tripRequestId:randomUUID(),ringValidationToken:'local-test-denied'}));
   assert.equal(deniedRequest.count,0);record('explicit_verifier_denial_never_posts_card');
   const offlineRequest=await inject(fresh({type:'trip_request_nearby',tripRequestId:randomUUID(),ringValidationToken:'local-test-unavailable'}));

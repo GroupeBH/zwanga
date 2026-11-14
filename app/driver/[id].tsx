@@ -4,6 +4,7 @@ import { useGetAverageRatingQuery } from '@/store/api/reviewApi';
 import { usePublicReviewPage } from '@/hooks/usePublicReviewPage';
 import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import { DriverProfileRequestAction } from '@/components/trip-request/DriverProfileRequestAction';
+import { driverCategoryLabel } from '@/features/profile/driverCategory';
 import { driverProfileContext, routeUuid } from '@/features/trip-request/directDriverRequest';
 import { useRequestMapDriverQuery } from '@/store/api/requestDriverApi';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
@@ -145,6 +146,9 @@ export default function DriverDetailsScreen() {
               )}
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{driverName}</Text>
+                {driverCategoryLabel(driver.driverCategory) && (
+                  <Text style={styles.reviewCount}>{driverCategoryLabel(driver.driverCategory)}</Text>
+                )}
                 <View style={styles.ratingRow}>
                   <Ionicons name="star" size={20} color={Colors.secondary} />
                   <Text style={styles.ratingText}>{averageRating.toFixed(1)}</Text>

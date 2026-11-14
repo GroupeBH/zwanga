@@ -1,5 +1,6 @@
 import { useAuthDraftPersistence } from './useAuthDraftPersistence';
 import { useSignupPhoneProof } from './useSignupPhoneProof';
+import { useSignupAnnouncements } from './useSignupAnnouncements';
 import { useSignupProfileActions } from './useSignupProfileActions';
 import { useAuthFormNavigation } from './useAuthFormNavigation';
 import { useAuthFormState } from './useAuthFormState';
@@ -48,6 +49,10 @@ export function useAuthController() {
 
   const draftPersistence = useAuthDraftPersistence(form, isAuthenticated);
   const signupPhoneProof = useSignupPhoneProof(JSON.stringify([
+    form.mode, form.socialProvider, form.googleIdToken,
+    (form.googleIdToken ? form.googlePhone : form.phone).trim(),
+  ]));
+  const announcements = useSignupAnnouncements(JSON.stringify([
     form.mode, form.socialProvider, form.googleIdToken,
     (form.googleIdToken ? form.googlePhone : form.phone).trim(),
   ]));
@@ -242,6 +247,8 @@ export function useAuthController() {
 
   // Notifications
   const registration = useRegistrationActions({
+    driverCategory: form.driverCategory,
+    updatesAccepted: announcements.updatesAccepted,
     firstName: form.firstName,
     lastName: form.lastName,
     setStep: form.setStep,
@@ -282,6 +289,8 @@ export function useAuthController() {
 
   // Profile Handlers
   const profileActions = useSignupProfileActions({
+    driverCategory: form.driverCategory,
+    updatesAccepted: announcements.updatesAccepted,
     photoEnabled: form.step === 'profile' && form.mode === 'signup' && !registration.isRegistrationPending && !registration.hasCreatedAccount,
     showDialog,
     setProfilePicture: form.setProfilePicture,
@@ -321,5 +330,6 @@ export function useAuthController() {
     isGoogleSignupActive,
     profileActions,
     registration,
+    announcements,
   };
 }

@@ -91,6 +91,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       sheetTitle={home.sheetTitle}
       openSheetIndex={home.openSheetIndex}
       isDriver={home.isDriver}
+      driverCategory={home.currentUser?.driverCategory}
       isScreenActive={home.isScreenActive}
       prioritiesEnabled={home.isScreenActive}
       dismissPriority={home.dismissPriority}

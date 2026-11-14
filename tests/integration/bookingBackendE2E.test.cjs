@@ -41,7 +41,7 @@ async function raw(actor, path, method = 'GET', body) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   return { status: response.status, body: await response.json() };
 }
-async function create(f, proposedPricePerSeat = 2000, seats = 2) {
+async function create(f, proposedPricePerSeat = 2500, seats = 2) {
   const passenger = mobile(f.passenger), driver = mobile(f.driver);
   const booking = await passenger.call('createBooking', { tripId: f.trip.id,
     numberOfSeats: seats, paymentMode: 'cash',
@@ -51,14 +51,14 @@ async function create(f, proposedPricePerSeat = 2000, seats = 2) {
 
 test('mobile → HTTP → PostgreSQL → outbox → mobile routing → explicit consent → passenger fare', async () => {
   const f = await backend.fixture(), { passenger, driver, booking } = await create(f);
-  assert.equal(booking.proposedPricePerSeat, 2000);
+  assert.equal(booking.proposedPricePerSeat, 2500);
   assert.equal(booking.status, 'pending');
-  assert.equal(policy.bookingPassengerTotal(booking, 3000), 4000);
+  assert.equal(policy.bookingPassengerTotal(booking, 3000), 5000);
   assert.equal((await backend.trip(f.trip.id)).availableSeats, 4);
   const [invitation] = await backend.notices(booking.id);
   assert.equal(invitation.userId, f.driver.id);
   assert.equal(invitation.data.type, 'new_booking');
-  assert.equal(invitation.data.ridePricePerSeat, '2000');
+  assert.equal(invitation.data.ridePricePerSeat, '2500');
   assert.equal(invitation.data.ridePriceKind, 'budget');
   assert.equal(card.driverNotificationActions('booking', invitation.data).at(-1).pressAction.id, 'default');
   const pending = await driver.call('getBookingById', booking.id);
@@ -68,11 +68,11 @@ test('mobile → HTTP → PostgreSQL → outbox → mobile routing → explicit 
     params: { id: f.trip.id, bookingId: booking.id, section: 'passengers' } });
   const accepted = await driver.call('acceptBooking', policy.bookingAcceptanceArgument(pending));
   assert.equal(accepted.status, 'accepted');
-  assert.equal(Number(accepted.grossPaymentAmount), 4000);
+  assert.equal(Number(accepted.grossPaymentAmount), 5000);
   // Real first-trip policy is applied to the negotiated fare, not the public fare.
-  assert.equal(policy.bookingPassengerTotal(accepted, 3000), 1600);
+  assert.equal(policy.bookingPassengerTotal(accepted, 3000), 2000);
   const mine = await passenger.call('getMyBookingsForTrip', f.trip.id);
-  assert.equal(policy.bookingPassengerTotal(mine[0], 3000), 1600);
+  assert.equal(policy.bookingPassengerTotal(mine[0], 3000), 2000);
   assert.equal((await backend.trip(f.trip.id)).availableSeats, 2);
   assert.equal(Number((await backend.trip(f.trip.id)).pricePerSeat), 3000);
   const saved = await backend.booking(booking.id);
@@ -82,7 +82,7 @@ test('mobile → HTTP → PostgreSQL → outbox → mobile routing → explicit 
 
 test('legacy/native acceptance cannot accept an unseen lower fare; exact acknowledgement succeeds', async () => {
   const f = await backend.fixture(), { driver, booking } = await create(f);
-  for (const [route, body] of [['accept', {}], ['accept', { acceptedPricePerSeat: 1999 }],
+  for (const [route, body] of [['accept', {}], ['accept', { acceptedPricePerSeat: 2499 }],
     ['respond-invitation', { accept: true }], ['status', { status: 'accepted' }]]) {
     const r = await raw(f.driver, `/bookings/${booking.id}/${route}`, 'PUT', body);
     assert.equal(r.status, 409); assert.equal(r.body.code, 'BOOKING_PRICE_CONFIRMATION_REQUIRED');
@@ -128,7 +128,7 @@ test('unrelated driver cannot accept; passenger identity and total cannot be for
 
 test('invalid proposals fail through real DTO and business validation without an alert', async () => {
   const f = await backend.fixture(), start = (await backend.notifications()).length;
-  for (const proposedPricePerSeat of [0, -1, 1.5, 3000, 4000, 100000000]) {
+  for (const proposedPricePerSeat of [0, -1, 1.5, 2000, 3000, 4000, 100000000]) {
     const r = await raw(f.passenger, '/bookings', 'POST', { tripId: f.trip.id, numberOfSeats: 1, proposedPricePerSeat });
     assert.equal(r.status, 400, `Invalid proposal ${proposedPricePerSeat}`);
   }

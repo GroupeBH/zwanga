@@ -57,6 +57,8 @@ export type ServerTripRequest = {
 };
 
 export type ServerDriverOffer = {
+  negotiationStage?: 'driver_initial' | 'passenger_counter' | 'driver_final' | null;
+  previousOfferId?: string | null;
   existingTripId?: string | null;
   id: string;
   tripRequestId: string;
@@ -95,6 +97,8 @@ export type ServerDriverOffer = {
 };
 
 export type ServerDriverOfferWithTripRequest = {
+  negotiationStage?: 'driver_initial' | 'passenger_counter' | 'driver_final' | null;
+  previousOfferId?: string | null;
   id: string;
   tripRequestId: string;
   driver: {

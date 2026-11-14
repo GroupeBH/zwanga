@@ -51,6 +51,24 @@ test('search screen exposes real drivers, route, price and existing actions outs
   assert.equal(app.reads.at(-1).options.pollingInterval, 30000);
 });
 
+test('offer and targeting siblings have distinct stable keys, reset only for a different request', t => {
+  const app = screenFixture(); t.after(() => app.hooks.unmount());
+  const keys = () => {
+    const scroll = elements(app.render()).find(node => node.type === 'ScrollView');
+    const children = scroll.props.children.filter(React.isValidElement);
+    const keyed = children.filter(node => node.key !== null);
+    assert.equal(new Set(keyed.map(node => node.key)).size, keyed.length, 'all sibling keys must be unique');
+    return ['PriceOffers', 'Target'].map(type => children.find(node => node.type === type).key);
+  };
+  const initial = keys();
+  assert.ok(initial.every(key => typeof key === 'string' && key.length > 0));
+  app.model.tripRequest = { ...app.model.tripRequest, status: 'offers_received', offers: [{ id: 'new-offer', status: 'pending' }] };
+  assert.deepEqual(keys(), initial, 'polling or an offer must not remount in-flight controls');
+  app.model.tripRequest = { ...app.model.tripRequest, id: 'next-request' };
+  const next = keys();
+  assert.ok(next.every((key, index) => key !== initial[index]), 'switching request must reset both controls');
+});
+
 test('a new price restores the top of the panel and exposes the decision instead of hiding below the map', t => {
   const app = screenFixture(); t.after(() => app.hooks.unmount());
   const scrolls = [];

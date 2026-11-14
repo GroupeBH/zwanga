@@ -27,7 +27,7 @@ export function usePublishPriceEstimate(props: Props) {
     props.setHasEditedPrice(true);
     props.setPrice(typeof next === 'function' ? next(price) : next);
   };
-  return { price, setPrice, recommendation, description: requestPricingDescription(quote.pricing), loading: quote.isPriceLoading,
+  return { price, setPrice, recommendation, description: requestPricingDescription(option?.pricing ?? quote.pricing), loading: quote.isPriceLoading,
     retry: quote.retryVehicleOptions,
     useEstimate: () => {
       if (recommendation === null) return;

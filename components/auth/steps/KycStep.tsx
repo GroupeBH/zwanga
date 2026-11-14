@@ -4,6 +4,8 @@ import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
+import { authSimpleStyles as simple } from '@/features/auth/authSimple.styles';
+import { AuthCodeHeading } from '../AuthCodeHeading';
 
 interface KycStepProps {
   onFinish: () => void;
@@ -23,44 +25,17 @@ export function KycStep({
   lastName,
 }: KycStepProps) {
   return (
-    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={styles.stepContainer}>
-      <View style={styles.heroSection}>
-        <View style={[styles.logoContainer, { backgroundColor: Colors.info + '15' }]}>
-          <Ionicons name="shield-checkmark" size={48} color={Colors.info} />
-        </View>
-        <Text style={styles.heroTitle}>Vérification d’identité requise</Text>
-        <Text style={styles.heroSubtitle}>
-          Pour devenir conducteur, vous devez vérifier votre identité avec Didit.
-        </Text>
-      </View>
+    <Animated.View entering={FadeInDown.springify()} exiting={FadeOutUp} style={simple.step}>
+      <AuthCodeHeading title="Vérifiez votre identité" icon="lock-closed-outline"
+        subtitle="Obligatoire avant de conduire sur Zwanga." />
+      <Text style={simple.subtitle}>Préparez votre pièce d’identité. Didit vous guide pour la vérification.</Text>
 
-      <View style={styles.kycBenefitsContainer}>
-        <View style={styles.benefitRow}>
-          <Ionicons name="shield-checkmark" size={24} color={Colors.success} style={{ marginBottom: 2 }} />
-          <Text style={styles.benefitText}>Vérification sécurisée par Didit</Text>
-        </View>
-        <View style={styles.benefitRow}>
-          <Ionicons name="flash" size={24} color={Colors.warning} style={{ marginBottom: 2 }} />
-          <Text style={styles.benefitText}>Contrôle d’identité rapide et guidé</Text>
-        </View>
-        <View style={styles.benefitRow}>
-          <Ionicons name="heart" size={24} color={Colors.danger} style={{ marginBottom: 2 }} />
-          <Text style={styles.benefitText}>Plus de confiance des membres</Text>
-        </View>
-      </View>
-
-      <View style={styles.kycIdentityCard}>
-        <Text style={styles.kycIdentityEyebrow}>IDENTITÉ À CONTRÔLER</Text>
-        <Text style={styles.kycIdentityLabel}>Prénom(s)</Text>
-        <Text style={styles.kycIdentityValue}>{firstName}</Text>
-        <Text style={styles.kycIdentityLabel}>Nom</Text>
-        <Text style={styles.kycIdentityValue}>{lastName}</Text>
-        <Text style={styles.kycIdentityHint}>
-          Ces informations doivent correspondre à votre pièce d’identité. Le post-nom est facultatif.
-        </Text>
+      <View style={simple.identity}>
+        <Text style={simple.label}>Nom sur votre pièce d’identité</Text>
+        <Text style={simple.identityName}>{firstName} {lastName}</Text>
         {onEditIdentity ? (
           <TouchableOpacity
-            style={styles.kycIdentityEditButton}
+            style={[styles.kycIdentityEditButton, simple.edit]}
             onPress={onEditIdentity}
             disabled={isLoading || hasCreatedAccount}
           >
@@ -72,7 +47,7 @@ export function KycStep({
 
       <View style={{ gap: 16 }}>
         <TouchableOpacity
-          style={[styles.mainButton, styles.mainButtonActive, { backgroundColor: Colors.primary }]}
+          style={[styles.mainButton, styles.mainButtonActive, simple.button]}
           onPress={onFinish}
           disabled={isLoading}
           accessibilityRole="button"
@@ -85,8 +60,8 @@ export function KycStep({
             </>
           ) : (
             <>
-              <Text style={styles.mainButtonText}>
-                {hasCreatedAccount ? 'Finaliser la connexion' : 'Confirmer et vérifier avec Didit'}
+              <Text style={[styles.mainButtonText, simple.buttonText]}>
+                {hasCreatedAccount ? 'Finaliser la connexion' : 'Vérifier mon identité'}
               </Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </>

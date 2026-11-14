@@ -2,13 +2,13 @@ import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/styles';
 import { authStyles as styles } from '../styles';
 import { AuthMode } from '../types';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
 import { AuthCodeHeading } from '../AuthCodeHeading';
 import { authCodeStyles as codeStyles } from '@/features/auth/authCode.styles';
 import { PasswordCodeInput } from '../PasswordCodeInput';
+import { authSimpleStyles as simple } from '@/features/auth/authSimple.styles';
 
 interface PinStepProps {
   mode: AuthMode;
@@ -64,24 +64,11 @@ export function PinStep({
     <Animated.View
       entering={FadeInDown.springify()}
       exiting={FadeOutUp}
-      style={[styles.stepContainer, isSignup ? styles.pinSignupStepContainer : codeStyles.step]}
+      style={[codeStyles.step, keyboardVisible && codeStyles.keyboardStep]}
     >
-      {isSignup ? <View style={[styles.pinHeroSection, styles.pinHeroSectionCompact]}>
-        <View style={[styles.secureIllustration, styles.secureIllustrationCompact]}>
-          <View style={[styles.secureRing, styles.secureRingCompact]} />
-          <View style={[styles.secureConnector, styles.secureConnectorCompact]} />
-          <View style={[styles.secureTile, styles.secureTileCompact]}>
-            <Ionicons name="lock-closed" size={30} color={Colors.white} />
-          </View>
-        </View>
-        <Text style={[styles.heroTitle, styles.pinSignupTitle]}>
-          Créez votre mot de passe
-        </Text>
-        <Text style={[styles.heroSubtitle, styles.pinSignupSubtitle]}>
-          Choisissez 4 chiffres à retenir pour vous connecter.
-        </Text>
-      </View> : <AuthCodeHeading title="Votre mot de passe" subtitle="Vos 4 chiffres personnels, pas le code SMS. Connexion au dernier chiffre."
-        icon="lock-closed-outline" keyboardVisible={keyboardVisible} />}
+      <AuthCodeHeading title={isSignup ? 'Créez votre mot de passe' : 'Votre mot de passe'}
+        subtitle={isSignup ? 'Choisissez 4 chiffres à retenir.' : 'Vos 4 chiffres, pas le code SMS. Connexion au dernier chiffre.'}
+        icon="lock-closed-outline" keyboardVisible={keyboardVisible} />
 
       {mode === 'login' ? (
         // Mode login : un seul champ PIN
@@ -128,12 +115,12 @@ export function PinStep({
         // Mode signup : deux champs PIN (création et confirmation)
         <View style={styles.pinSignupForm}>
           <View style={[styles.formSection, styles.pinSignupField]}>
-            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Mot de passe à quatre chiffres</Text>
+            <Text style={simple.label}>Mot de passe · 4 chiffres</Text>
             {renderPinInput(pin, pinInputRef, onPinChange, 'Nouveau mot de passe à quatre chiffres', true)}
           </View>
 
           <View style={[styles.formSection, styles.pinSignupField]}>
-            <Text style={[styles.inputLabel, styles.pinSignupLabel]}>Confirmez votre mot de passe</Text>
+            <Text style={simple.label}>Répétez le mot de passe</Text>
             {renderPinInput(pinConfirm, pinConfirmInputRef, onPinConfirmChange, 'Confirmation du mot de passe à quatre chiffres', true)}
           </View>
 
@@ -142,6 +129,7 @@ export function PinStep({
               styles.mainButton,
               styles.pinSignupButton,
               isValid ? styles.mainButtonActive : styles.mainButtonDisabled,
+              simple.button,
             ]}
             onPress={onSubmit}
             disabled={!isValid || isLoading}

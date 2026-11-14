@@ -8,12 +8,13 @@ export function requestResponseDeadline(window: TripRequest['responseWindow'], r
   return readStartedAt! + Math.max(0, remaining);
 }
 
-export function requestResponseLabel(phase: NonNullable<TripRequest['responseWindow']>['phase'], seconds: number, passenger = false) {
+export function requestResponseLabel(phase: NonNullable<TripRequest['responseWindow']>['phase'], seconds: number, passenger = false, driverTurn = false) {
   if (phase === 'accepting') return 'Confirmation du trajet en cours…';
   if (seconds <= 0) return passenger
     ? 'Cette offre a expiré. Recherche d’un autre conducteur…'
     : 'Délai écoulé. Cette proposition n’est plus disponible.';
   if (phase === 'passenger') return passenger
-    ? `Choisissez cette offre sous ${seconds} s` : `Le passager a ${seconds} s pour répondre à votre offre`;
+    ? driverTurn ? `Le conducteur a ${seconds} s pour répondre` : `Choisissez cette offre sous ${seconds} s`
+    : driverTurn ? `Répondez au passager sous ${seconds} s` : `Le passager a ${seconds} s pour répondre à votre offre`;
   return `Répondez sous ${seconds} s`;
 }

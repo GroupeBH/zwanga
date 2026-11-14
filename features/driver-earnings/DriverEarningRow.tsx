@@ -27,6 +27,9 @@ export function DriverEarningRow({ earning }: { earning: DriverEarning }) {
         <Text style={[styles.earningAmount, cancelled && styles.cancelledAmount]}>
           {status} : {cancelled ? '' : '+'}{formatAmount(earning.netAmount, earning.currency)}
         </Text>
+        {!cancelled && Number(earning.assetRepaymentAmount ?? 0) > 0 && <Text style={styles.rowMeta}>
+          Matériel remboursé : {formatAmount(earning.assetRepaymentAmount!, earning.currency)} (déjà déduit)
+        </Text>}
       </View>
     </View>
   );

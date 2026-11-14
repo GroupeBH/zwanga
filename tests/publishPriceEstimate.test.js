@@ -32,6 +32,28 @@ test('publication suggests the server price per seat for the selected vehicle, n
   f.props.vehicleType = 'motorcycle_2_wheels'; assert.equal(f.render().price, '1200');
 });
 
+test('publication describes the selected vehicle tariff and preserves legacy quote fallback', t => {
+  const f = fixture(t);
+  const pricing = { pricePerKmPerPassenger: 1500, minimumPricePerSeat: 2500,
+    trafficDataAvailable: true, distanceSource: 'road', billableDelaySeconds: 0 };
+  f.state.quote.pricing = pricing;
+  f.state.quote.vehicleOptions = [
+    option('car', 7500, { pricing }),
+    option('motorcycle_2_wheels', 6000, { pricing: { ...pricing, pricePerKmPerPassenger: 1200 } }),
+    option('motorcycle_3_wheels', 5000, { pricing: { ...pricing, pricePerKmPerPassenger: 1000 } }),
+  ];
+  f.render().setPrice('8000');
+  for (const [index, rate] of ['1 500', '1 200', '1 000'].entries()) {
+    f.props.vehicleType = f.state.quote.vehicleOptions[index].vehicleType;
+    assert.ok(f.render().description.replace(/[\u00a0\u202f]/g, ' ').startsWith(`${rate} FC/km`));
+    assert.equal(f.render().price, '8000', 'descriptions never change the manual price');
+  }
+  delete f.state.quote.vehicleOptions[2].pricing;
+  assert.ok(f.render().description.replace(/[\u00a0\u202f]/g, ' ').startsWith('1 500 FC/km'), 'legacy server fallback');
+  delete f.state.quote.pricing;
+  assert.equal(f.render().description, null, 'no fabricated description without a server tariff');
+});
+
 test('an explicit price including an empty edit survives new quotes, route, seats and vehicle changes', t => {
   const f = fixture(t); f.render().setPrice('1800');
   f.state.quote.vehicleOptions = [option('car', 6000), option('motorcycle_2_wheels', 3500)];

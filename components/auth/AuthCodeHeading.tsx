@@ -5,7 +5,7 @@ import { Colors } from '@/constants/styles';
 import { authCodeStyles as styles } from '@/features/auth/authCode.styles';
 
 export function AuthCodeHeading({ title, subtitle, icon, keyboardVisible = false }: {
-  title: string; subtitle: string; icon: 'key-outline' | 'lock-closed-outline'; keyboardVisible?: boolean;
+  title: string; subtitle: string; icon: 'key-outline' | 'lock-closed-outline' | 'chatbubble-outline'; keyboardVisible?: boolean;
 }) {
   return <View style={styles.heading}>
     {!keyboardVisible && <View style={styles.headingIcon} accessible={false}>

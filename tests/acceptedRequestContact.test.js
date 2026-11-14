@@ -100,6 +100,7 @@ function coordinator(t, overrides = {}) {
     '@/store/api/tripRequestApi': { useGetTripRequestByIdQuery: (id, options) => { queries.push(['request', id, options]); return env.request; } },
     '@/store/api/tripApi': { useGetTripByIdQuery: (id, options) => { queries.push(['trip', id, options]); return env.trip; } },
     '@/features/navigation/NavigationContactModal': { ContactModalContent: 'Contacts' },
+    '@/features/request-detail/RequestPickupSummaryCard': { RequestPickupSummaryCard: 'PickupSummary' },
   })('components/AcceptedRequestContactCoordinator.tsx');
   t.after(() => hooks.unmount());
   const render = () => {
@@ -113,6 +114,8 @@ test('confirmed acceptance opens existing contact choices with an explicit Plus 
   const app = coordinator(t); const view = app.render();
   assert.equal(view.type, 'Contacts'); assert.equal(view.props.title, 'Contactez votre passager');
   assert.equal(view.props.closeLabel, 'Plus tard'); assert.equal(view.props.contacts[0].id, 'passenger');
+  assert.equal(view.props.summary.type, 'PickupSummary');
+  assert.deepEqual(view.props.summary.props, { requestId: 'request', active: true });
   assert.deepEqual(app.calls, []); assert.equal(app.queries[1][2].skip, true, 'dispatch can be accepted before a trip is created');
   view.props.onClose(); assert.equal(app.calls[0].type, 'rideEntry/dismissAcceptedRequestContact');
 });

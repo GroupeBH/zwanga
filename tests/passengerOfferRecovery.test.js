@@ -77,6 +77,7 @@ test('a pre-notification detail cache cannot dismiss the price; only a fresh ser
     '@/store/api/tripRequestApi': { useGetTripRequestByIdQuery: () => io.read },
     '@/hooks/useDisplayReads': { displayReadOptions: enabled => ({ skip: !enabled }), useDisplayReadsEnabled: enabled => enabled },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
+    '@/features/request-detail/RequestPickupSummaryCard': { RequestPickupSummaryCard: 'PickupSummary' },
     '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({}) },
   });
   const session = load('services/rideAlertSession.ts');

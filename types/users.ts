@@ -1,5 +1,6 @@
 import type { UserGender, UserRole } from './common';
 import type { Vehicle } from './trips';
+export type DriverCategory = 'private' | 'transport';
 
 export interface User {
   id: string;
@@ -8,6 +9,7 @@ export interface User {
   email?: string;
   gender?: UserGender | null;
   role: UserRole;
+  driverCategory?: DriverCategory | null;
   avatar?: string;
   profilePicture?: string | null;
   firstName?: string;

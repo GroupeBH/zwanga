@@ -7,6 +7,7 @@ import { useGetTripRequestByIdQuery } from '@/store/api/tripRequestApi';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { dismissAcceptedRequestContact, type AcceptedRequestContactIntent } from '@/store/slices/rideEntrySlice';
 import { ContactModalContent } from '@/features/navigation/NavigationContactModal';
+import { RequestPickupSummaryCard } from '@/features/request-detail/RequestPickupSummaryCard';
 import { getAcceptedRequestContact } from '@/features/request-detail/acceptedRequestContact';
 import { ownsTrip } from '@/features/activity/tripParticipation';
 import { canResumeRideFromPath, isRideNavigationPath } from '@/features/navigation/activeRideResume';
@@ -43,6 +44,7 @@ function AcceptedContactPrompt({ intent }: { intent: AcceptedRequestContactInten
   const error = request.isError || Boolean(tripId && trip.isError);
   if ((fresh && request.currentData && !person) || (tripReady && !tripAllowed)) return null;
   return <ContactModalContent active contacts={person && tripReady && tripAllowed ? [person] : []}
+    summary={person && tripReady && tripAllowed ? <RequestPickupSummaryCard requestId={intent.requestId} active /> : undefined}
     role="driver" onClose={close} title="Contactez votre passager"
     hint="Commande acceptée ! Confirmez ensemble le lieu de prise en charge. À utiliser à l’arrêt."
     closeLabel="Plus tard" loading={!error && (!fresh || !tripReady)}

@@ -12,6 +12,7 @@ function uiLoader(enabled = true, os = 'android') {
   const load = loader({
     react: { ...React, ...otpHooks.react },
     '../OtpCodeInput': otpComponent,
+    './OtpCodeInput': otpComponent,
     '../PasswordCodeInput': { PasswordCodeInput: 'PasswordInput' },
     '@/components/auth/OtpCodeInput': otpComponent,
     'expo-clipboard': { getStringAsync: async () => '' },
@@ -101,7 +102,7 @@ for (const os of ['android', 'ios']) {
         isVerifying: false, isLoading: false, isResending: false, ...extra,
       });
       let tree = render();
-      assert.match(text(tree), /Code par SMS/);
+      assert.match(text(tree), /Code (par SMS|SMS)/);
       assert.match(text(tree), /SMS/);
       assert.match(text(tree), /\+243000000000/);
       assert.match(text(tree), new RegExp(`${size} chiffres`));

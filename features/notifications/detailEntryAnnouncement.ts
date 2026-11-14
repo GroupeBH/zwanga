@@ -26,6 +26,15 @@ export function buildRequestDetailEntry(input: {
   const key = `request-detail:${request.id}:${request.status}:${own}:${canAccept}:${assigned}`;
   if (request.status === 'cancelled' || request.status === 'expired') return { key, text: 'Cette commande n’est plus disponible. Revenez à l’accueil.' };
   const addresses = route(request.departure.address, request.arrival.address);
+  const negotiating = request.offers?.find(offer => offer.status === 'pending' && !offer.existingTripId &&
+    offer.negotiationStage && (own || offer.driverId === userId));
+  if (negotiating && !request.selectedDriverId && !request.tripId && ['pending', 'offers_received'].includes(request.status)) return {
+    key: `${key}:${negotiating.id}`,
+    text: negotiating.negotiationStage === 'passenger_counter'
+      ? own ? 'Votre prix a été envoyé. Le conducteur doit maintenant répondre.' : 'Le passager propose un prix. Acceptez-le ou proposez votre prix ferme.'
+      : own ? negotiating.negotiationStage === 'driver_final' ? 'Le conducteur propose son prix ferme. Acceptez ou cherchez un autre conducteur.' : 'Le conducteur propose un prix. Acceptez ou proposez votre prix.'
+        : 'Votre prix a été envoyé. En attente de la réponse du passager.',
+  };
   if (own) return { key, text: request.status === 'driver_selected'
     ? 'Un conducteur a accepté votre commande. Ouvrez votre trajet pour le retrouver.'
     : request.status === 'offers_received'

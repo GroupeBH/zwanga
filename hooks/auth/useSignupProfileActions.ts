@@ -1,5 +1,5 @@
 import { useDialog } from '@/components/ui/DialogProvider';
-import type { TripRequestVehicleType } from '@/types';
+import type { DriverCategory, TripRequestVehicleType } from '@/types';
 import { hasCompleteLegalIdentity, normalizeLegalName } from '@/utils/legalIdentity';
 import { isValidVehiclePlate, VEHICLE_PLATE_FORMAT_MESSAGE } from '@/utils/vehiclePlate';
 import { useProfilePhotoSelection } from '@/hooks/profile/useProfilePhotoSelection';
@@ -9,6 +9,8 @@ import { claimPendingProfileImageUri } from '@/features/profile/profilePhotoReco
 import { AuthStep } from '@/components/auth';
 
 interface Params {
+  updatesAccepted: boolean;
+  driverCategory: DriverCategory | null;
   photoEnabled?: boolean;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   setProfilePicture: React.Dispatch<React.SetStateAction<string | null>>;
@@ -28,6 +30,8 @@ interface Params {
 }
 
 export function useSignupProfileActions({
+  updatesAccepted,
+  driverCategory,
   photoEnabled = true,
   showDialog,
   setProfilePicture,
@@ -85,7 +89,15 @@ export function useSignupProfileActions({
     }
     setFirstName(legalFirstName);
     setLastName(legalLastName);
+    if (!updatesAccepted) {
+      showDialog({ variant: 'warning', title: 'Mises à jour', message: 'Cochez « Me prévenir des mises à jour » pour continuer.' });
+      return;
+    }
     if (role === 'driver') {
+      if (!driverCategory) {
+        showDialog({ variant: 'warning', title: 'Type de conducteur', message: 'Choisissez « Conducteur privé » ou « Taxi / moto-taxi ».' });
+        return;
+      }
       if (!vehicleType) {
         showDialog({ variant: 'warning', title: 'Véhicule', message: 'Veuillez sélectionner un type de véhicule.' });
         return;

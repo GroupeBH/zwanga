@@ -13,6 +13,7 @@ import { formatCdfPrice } from './requestDetailModel';
 import { formatRequestDay, formatRequestTime } from './RequestPassengerTicket';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
 import { WithdrawRequestDriverButton } from './WithdrawRequestDriverButton';
+import { RequestPickupSummaryCard } from './RequestPickupSummaryCard';
 
 type Model = ReturnType<typeof useRequestDetailController>;
 export function RequestDriverCourse({ model, presentation }: { model: Model; presentation: ReturnType<typeof buildRequestDetailPresentation> }) {
@@ -24,6 +25,7 @@ export function RequestDriverCourse({ model, presentation }: { model: Model; pre
   const closed = model.assignedTrip && !['upcoming', 'ongoing'].includes(model.assignedTrip.status);
   const name = request.passengerName || 'Votre passager';
   return <>
+    {!closed && <RequestPickupSummaryCard requestId={request.id} active={model.isScreenActive} />}
     <View style={s.card}>
       <Text style={local.confirmed}><Ionicons name="checkmark" size={16} color="#12813C" /> {closed ? 'COURSE TERMINÉE OU ANNULÉE' : live ? 'COURSE EN COURS' : 'COURSE CONFIRMÉE'}</Text>
       <Text style={s.muted}>Prise en charge · {formatRequestDay(time)}</Text>

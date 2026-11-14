@@ -4,13 +4,20 @@ import Animated, { FadeInDown, FadeOutUp } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { GenderSelector } from '@/components/GenderSelector';
-import type { UserGender } from '@/types';
+import type { DriverCategory, UserGender } from '@/types';
+import { DriverCategoryPicker } from '@/components/profile/DriverCategoryPicker';
 import { authStyles as styles } from '../styles';
 import { VehicleType, vehicleOptions } from '../types';
+import { SignupAnnouncementsCheckbox } from '../SignupAnnouncementsCheckbox';
+import { authSimpleStyles as simple } from '@/features/auth/authSimple.styles';
 
 const SIGNUP_GENDERS = ['male', 'female'] as const satisfies readonly UserGender[];
 
 interface ProfileStepProps {
+  updatesAccepted: boolean;
+  driverCategory: DriverCategory | null;
+  onDriverCategoryChange: (category: DriverCategory) => void;
+  onUpdatesAcceptedChange: (accepted: boolean) => void;
   isLoading?: boolean;
   isSelectingPhoto?: boolean;
   hasCreatedAccount?: boolean;
@@ -38,6 +45,10 @@ interface ProfileStepProps {
 }
 
 export function ProfileStep({
+  updatesAccepted,
+  driverCategory,
+  onDriverCategoryChange,
+  onUpdatesAcceptedChange,
   isLoading = false,
   isSelectingPhoto = false,
   hasCreatedAccount = false,
@@ -72,7 +83,6 @@ export function ProfileStep({
     >
       <View style={styles.profileCompactHeader}>
         <View style={styles.profileCompactHeading}>
-          <Text style={styles.profileCompactEyebrow}>DERNIÈRE ÉTAPE</Text>
           <Text style={styles.profileCompactTitle}>Votre profil</Text>
         </View>
         <TouchableOpacity style={styles.avatarUpload} onPress={onSelectProfilePicture} disabled={fieldsLocked || isSelectingPhoto}
@@ -96,7 +106,7 @@ export function ProfileStep({
           <View style={styles.legalIdentityNotice}>
             <Ionicons name="id-card-outline" size={18} color={Colors.primary} />
             <Text style={styles.legalIdentityNoticeText}>
-              Saisissez vos prénom(s) et votre nom comme sur votre pièce d’identité. Le post-nom est facultatif.
+              Vos noms comme sur votre pièce d’identité.
             </Text>
           </View>
           <View style={styles.profileNameRow}>
@@ -105,6 +115,7 @@ export function ProfileStep({
               <TextInput
                 style={styles.input}
                 placeholder="Prénom(s)"
+                accessibilityLabel="Prénom(s)"
                 placeholderTextColor={Colors.gray[400]}
                 value={firstName}
                 editable={!fieldsLocked}
@@ -116,7 +127,8 @@ export function ProfileStep({
               <Ionicons name="person-outline" size={17} color={Colors.gray[500]} style={styles.profileInputIcon} />
               <TextInput
                 style={styles.input}
-                placeholder="Nom (post-nom facultatif)"
+                placeholder="Nom"
+                accessibilityLabel="Nom, post-nom facultatif"
                 placeholderTextColor={Colors.gray[400]}
                 value={lastName}
                 editable={!fieldsLocked}
@@ -146,18 +158,14 @@ export function ProfileStep({
           </View>
           <View style={styles.referralAppliedCopy}>
             <Text style={styles.referralAppliedTitle}>Invitation prise en compte</Text>
-            <Text style={styles.referralAppliedHint}>
-              {referrerFirstName
-                ? `${referrerFirstName} sera automatiquement enregistre comme votre parrain.`
-                : 'Votre parrain sera automatiquement enregistre a la creation du compte.'}
-            </Text>
+            {referrerFirstName && <Text style={styles.referralAppliedHint}>{referrerFirstName}</Text>}
           </View>
           <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
         </View>
       )}
 
       <View style={styles.roleSelection}>
-        <Text style={styles.profileSectionLabel}>Statut</Text>
+        <Text style={styles.profileSectionLabel}>Je suis</Text>
         <View style={styles.roleCards}>
           <TouchableOpacity
             style={[styles.roleCard, role === 'passenger' && styles.roleCardActive]}
@@ -197,6 +205,7 @@ export function ProfileStep({
 
       {role === 'driver' && (
         <Animated.View entering={FadeInDown} style={styles.vehicleSection}>
+          <DriverCategoryPicker value={driverCategory} onChange={onDriverCategoryChange} disabled={fieldsLocked} />
           <Text style={styles.profileSectionLabel}>Votre véhicule</Text>
           <View style={styles.vehicleTypesScroll}>
             {vehicleOptions.map((opt) => (
@@ -242,16 +251,17 @@ export function ProfileStep({
         </Animated.View>
       )}
 
+      <SignupAnnouncementsCheckbox checked={updatesAccepted} disabled={fieldsLocked} onChange={onUpdatesAcceptedChange} />
       <TouchableOpacity
-        style={[styles.mainButton, styles.mainButtonActive, styles.profileContinueButton]}
+        style={[styles.mainButton, styles.mainButtonActive, styles.profileContinueButton, simple.button]}
         onPress={onContinue}
         disabled={isLoading || isSelectingPhoto}
         accessibilityRole="button"
         accessibilityState={{ disabled: isLoading || isSelectingPhoto, busy: isLoading || isSelectingPhoto }}
       >
         {isLoading && <ActivityIndicator color="white" />}
-        <Text style={styles.mainButtonText}>
-          {isLoading ? 'Finalisation en cours…' : hasCreatedAccount ? 'Finaliser la connexion' : 'Continuer'}
+        <Text style={[styles.mainButtonText, simple.buttonText]}>
+          {isLoading ? 'Finalisation en cours…' : hasCreatedAccount ? 'Finaliser la connexion' : role === 'driver' ? 'Continuer vers la vérification' : 'Créer mon compte'}
         </Text>
       </TouchableOpacity>
     </Animated.View>

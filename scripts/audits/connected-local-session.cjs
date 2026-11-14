@@ -159,6 +159,27 @@ async function action(input) {
     return { created: !!request.id, status: request.status, index: state.requests.length - 1, acceptedViaUi };
   }
   const request = state.requests[input.index ?? state.requests.length - 1];
+  if (input.action === 'offer' && request) {
+    if (input.confirm !== 'local-targeted-test' || !Number.isSafeInteger(input.price) || input.price < 2500 || input.price > 10000) {
+      throw Error('Explicit synthetic offer with bounded valid price required');
+    }
+    const vehicle = state.driver.vehicles.find(item => item.isActive);
+    if (!vehicle) throw Error('No active test vehicle');
+    await api('/trip-requests/' + request.id + '/counter-offer', state.driver, 'POST', {
+      vehicleId: vehicle.id, pricePerSeat: input.price, negotiationVersion: 1,
+    });
+    return { initialDriverOfferSent: true, price: input.price, method: 'driver API, synthetic request only' };
+  }
+  if (input.action === 'negotiation-status' && request) {
+    const view = await api('/trip-requests/' + request.id, request.passenger);
+    const response = await api('/trip-requests/' + request.id + '/offers', request.passenger);
+    const offers = Array.isArray(response) ? response : response.data ?? response.offers;
+    if (!Array.isArray(offers)) throw Error('Unexpected offers response');
+    return { requestStatus: view.status, selectedDriverIsTestDriver: view.selectedDriverId === state.driver.user.id,
+      offers: offers.map(offer => ({ status: offer.status, stage: offer.negotiationStage,
+        price: Number(offer.pricePerSeat), expectedDriver: (offer.driverId ?? offer.driver?.id) === state.driver.user.id,
+        expiresAt: offer.responseExpiresAt ?? offer.expiresAt })) };
+  }
   if (input.action === 'cancel' && request) {
     await api('/trip-requests/' + request.id, request.passenger, 'DELETE');
     return { syntheticRequestCancelled: true };

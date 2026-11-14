@@ -8,6 +8,7 @@ import { isCoordinateAllowedForNavigationRoute } from '../../features/driver-nav
 import { trackingSocket, type PassengerLocationPayload } from '@/services/trackingSocket';
 import { areTripMapCoordinatesSame, normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { useEffect, useRef } from 'react';
+import { createDriverProgressRefresh } from '@/features/driver-navigation/progressRefresh';
 
 interface Params {
   data: ReturnType<typeof useDriverNavigationData>;
@@ -86,6 +87,11 @@ export function useDriverTrackingSocket({
       console.warn('[Navigation] Erreur tracking:', message);
     });
 
+    const progressRefresh = createDriverProgressRefresh(async () => {
+      if (isCancelled || !latest.current.mapState.isMountedRef.current) return;
+      const { data } = latest.current;
+      await Promise.all([data.refetchBookings(), data.refetchTrip()]);
+    });
     const unsubscribeAutoProgress = trackingSocket.subscribeToBookingAutoProgress((payload) => {
       const { data, mapState, refs, notices, completion } = latest.current;
       if (!mapState.isMountedRef.current || isCancelled || payload.tripId !== data.tripId) return;
@@ -188,8 +194,7 @@ export function useDriverTrackingSocket({
             notices.presentPassengerDestinationNotice(event, waypoint ?? null);
           }
         });
-        data.refetchBookings();
-        data.refetchTrip();
+        progressRefresh.receive(payload.events);
       }
     });
 
@@ -274,6 +279,7 @@ export function useDriverTrackingSocket({
 
     return () => {
       isCancelled = true;
+      progressRefresh.dispose();
       // Quitter le canal et se déconnecter proprement
       trackingSocket.leaveTrip(data.tripId);
       unsubscribeConnection();
