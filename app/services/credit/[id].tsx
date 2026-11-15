@@ -18,6 +18,7 @@ import { proError } from "@/features/pro-services/model";
 import {
   creditMoney,
   creditStatus,
+  creditEquipmentLabel,
   repaymentMinor,
   definitiveRepaymentFailure,
 } from "@/features/pro-services/assetCreditModel";
@@ -30,6 +31,10 @@ import { useScreenIsActive } from "@/hooks/useAppIsActive";
 import { useWalletScreenScope } from "@/hooks/wallet/useWalletScreenScope";
 import { useAppSelector } from "@/store/hooks";
 import { selectUser } from "@/store/selectors";
+import { CreditRepaymentSummary, hasValidCreditRates } from '@/features/pro-services/CreditRepaymentSummary';
+import { CreditCostPreview } from '@/features/pro-services/CreditCostPreview';
+import { CreditContractCosts } from '@/features/pro-services/CreditContractCosts';
+import { hasValidCostDisclosure } from '@/features/pro-services/creditCostDisclosure';
 
 type Intent = { mutationId: string; amountMinor: number };
 export default function CreditDetail() {
@@ -94,6 +99,9 @@ export default function CreditDetail() {
     };
   }, [key]);
   const c = query.data?.id === id ? query.data : undefined;
+  const ratesReady = Boolean(c && hasValidCreditRates(c) && hasValidCostDisclosure(c)) && !query.isError && !query.isFetching;
+  useEffect(() => { setConsent(false); }, [c?.policyVersion, c?.repaymentBps, c?.totalRepaymentBps, c?.terms, c?.principalMinor,
+    c?.cashPriceMinor, c?.creditFeeMinor, c?.installmentCount, c?.installmentPeriod, c?.costDisclosureVersion]);
   const remaining = c ? Number(c.principalMinor) - Number(c.paidMinor) : 0;
   const minor = repaymentMinor(amount);
   const busy = payment.isLoading || decision.isLoading;
@@ -103,14 +111,17 @@ export default function CreditDetail() {
       !current() ||
       !c ||
       c.status !== "offered" ||
-      (accept && !consent) ||
+      (accept && (!consent || !ratesReady)) ||
       inFlight.current
     )
       return;
     inFlight.current = true;
     setMessage("");
     try {
-      await decide({ id, accept, policyVersion: c.policyVersion }).unwrap();
+      await decide({ id, accept, policyVersion: c.policyVersion,
+        ...(accept && c.costDisclosureVersion ? { costDisclosureVersion: c.costDisclosureVersion } : {}),
+        ...(accept && c.policyVersion === 'asset-credit-v2' ? { expectedTotalRepaymentBps: c.totalRepaymentBps } : {}),
+      }).unwrap();
       if (current()) setConsent(false);
     } catch (e) {
       if (current()) setMessage(proError(e));
@@ -183,16 +194,20 @@ export default function CreditDetail() {
       {c && (
         <>
           <Text style={s.badge}>{creditStatus[c.status]}</Text>
+          <Text style={s.eyebrow}>{creditEquipmentLabel(c.assetKind)}</Text>
           <Text style={s.title}>{c.label}</Text>
           <View style={s.notice}>
             <Text style={s.text}>
               {c.status === "offered"
-                ? "Montant proposé"
+                ? "Coût total du crédit"
                 : c.status === "accepted"
-                  ? "Montant du matériel"
+                  ? "Coût total du crédit"
                   : "Reste à rembourser"}
             </Text>
             <Text style={s.title}>{creditMoney(remaining)}</Text>
+            {['offered', 'accepted'].includes(c.status) && <Text style={s.text}>
+              Total à rembourser pour ce bien. La commission Zwanga sur les trajets est séparée.
+            </Text>}
             {["active", "settled"].includes(c.status) && (
               <Text style={s.text}>
                 {creditMoney(c.paidMinor)} remboursés sur{" "}
@@ -206,6 +221,9 @@ export default function CreditDetail() {
               </Text>
             )}
           </View>
+          <CreditRepaymentSummary credit={c} />
+          <CreditCostPreview key={`${user?.id}:${c.id}`} credit={c} />
+          <CreditContractCosts key={`cost:${user?.id}:${c.id}`} credit={c} />
           <Text style={s.text}>{c.policyText}</Text>
           {c.status === "offered" ? (
             <>
@@ -239,7 +257,7 @@ export default function CreditDetail() {
               <ServiceButton
                 title="Accepter le contrat"
                 busy={busy}
-                disabled={!consent || !active}
+                disabled={!consent || !active || !ratesReady}
                 onPress={() => decideNow(true)}
               />
               <ServiceButton
@@ -252,7 +270,7 @@ export default function CreditDetail() {
           )}
           {c.status === "accepted" && (
             <Text style={s.text}>
-              Aucun prélèvement avant la remise du matériel enregistrée par
+              Aucun prélèvement avant la remise du bien enregistrée par
               Zwanga.
             </Text>
           )}

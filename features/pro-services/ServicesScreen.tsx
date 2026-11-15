@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import {
   ServiceLayout,
   ServiceButton,
@@ -9,6 +9,7 @@ import {
 import {
   ServiceDirectory,
   ServiceCaseLink,
+  CreditServiceEntry,
 } from "@/features/pro-services/ServiceCatalogue";
 import { proError } from "@/features/pro-services/model";
 import {
@@ -17,7 +18,7 @@ import {
   useGetCurrentDocumentCaseQuery,
 } from "@/store/api/proServicesApi";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
-import { router, type Href } from 'expo-router';
+import { CreditRepaymentsLink } from '@/features/pro-services/CreditRepaymentsLink';
 
 export default function ServicesScreen({
   embedded = false,
@@ -36,7 +37,7 @@ export default function ServicesScreen({
     skip: !active,
     refetchOnMountOrArgChange: 30,
   });
-  const offerings = catalogue.data ?? [];
+  const offerings = catalogue.currentData ?? [];
   const currentDocuments = useGetCurrentDocumentCaseQuery(undefined, {
     skip: !active,
     refetchOnMountOrArgChange: true,
@@ -44,17 +45,10 @@ export default function ServicesScreen({
   const catalogueState = catalogue.isLoading ? 'loading' : catalogue.isError ? 'error' : 'ready';
   return (
     <ServiceLayout
-      title="Services pro"
+      title="Services"
       embedded={embedded}
       bottomOverlay={bottomOverlay}
     >
-      <Text style={s.text}>Choisissez votre service.</Text>
-      <TouchableOpacity accessibilityRole="button" style={[s.section,s.row]} disabled={!active}
-        onPress={()=>router.push('/services/credit' as Href)}>
-        <Ionicons name="phone-portrait-outline" size={28} color="#C34412"/>
-        <View style={s.flex}><Text style={s.label}>Téléphone à crédit</Text><Text style={s.text}>Votre offre, votre solde et vos remboursements.</Text></View>
-        <Ionicons name="chevron-forward" size={20} color="#C34412"/>
-      </TouchableOpacity>
       {catalogue.isLoading && (
         <ActivityIndicator
           color="#D84D16"
@@ -75,18 +69,24 @@ export default function ServicesScreen({
           />
         </View>
       )}
-      <ServiceDirectory
-        items={offerings}
-        state={catalogueState}
-        current={currentDocuments.currentData?.request}
-        checking={currentDocuments.isFetching}
-        active={active}
-      />
-      <View style={[s.row, { alignItems: "flex-start" }]}>
-        <Ionicons name="shield-checkmark-outline" size={19} color="#647582" />
-        <Text style={[s.text, s.flex]}>
-          Documents et flottes : vous validez le devis et le contrat avant tout engagement.
-        </Text>
+      <View style={styles.group}>
+        <Text accessibilityRole="header" style={styles.heading}>Documents</Text>
+        <ServiceDirectory group="documents"
+          items={offerings}
+          state={catalogueState}
+          current={currentDocuments.currentData?.request}
+          checking={currentDocuments.isFetching}
+          active={active}
+        />
+      </View>
+      <View style={styles.group}>
+        <Text accessibilityRole="header" style={styles.heading}>Acheter à crédit</Text>
+        <CreditServiceEntry active={active} />
+        <CreditRepaymentsLink active={active} />
+      </View>
+      <View style={styles.group}>
+        <Text accessibilityRole="header" style={styles.heading}>Pour les entreprises</Text>
+        <ServiceDirectory group="business" items={offerings} state={catalogueState} active={active} />
       </View>
       <View style={{ gap: 0 }}>
         <View style={[s.row, s.between]}>
@@ -157,7 +157,11 @@ export default function ServicesScreen({
           onPress={() => setCursor(undefined)}
         />
       )}
-      <ServiceDirectory secondary items={offerings} active={active} state={catalogueState} />
     </ServiceLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  group: { gap: 2 },
+  heading: { fontSize: 14, fontWeight: '700', color: '#647582' },
+});

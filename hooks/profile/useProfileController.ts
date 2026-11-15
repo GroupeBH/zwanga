@@ -197,6 +197,12 @@ export function useProfileController() {
       ]
       : []),
     {
+      icon: 'card-outline' as keyof typeof Ionicons.glyphMap,
+      label: 'Mes remboursements',
+      meta: 'Crédits et historique',
+      onPress: () => router.push('/services/credit/repayments'),
+    },
+    {
       icon: 'person-outline' as keyof typeof Ionicons.glyphMap,
       label: 'Infos',
       meta: 'Profil personnel',

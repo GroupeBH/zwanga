@@ -30,7 +30,7 @@ const trip = { id: 'trip', departure: { name: 'Départ' }, arrival: { name: 'Arr
 
 test('transport Home hides publication only: orders, earnings and order navigation remain available', () => {
   const request = { id: 'order-test', status: 'pending', offers: [] };
-  for (const driverCategory of ['transport', 'private', null, undefined]) {
+  for (const driverCategory of ['transport', 'private', 'intercity', null, undefined]) {
     const calls = [];
     const tree = HomeTripsSheet.type({ ...base, isDriver: true, driverCategory,
       availableDriverRequests: [request], openTripRequestDetail: item => calls.push(item.id),

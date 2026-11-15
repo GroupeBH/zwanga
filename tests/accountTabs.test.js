@@ -91,7 +91,7 @@ test("profile access keeps Services available to passengers, without KYC or subs
 
 test("earnings are a transport-driver tab, not a passenger flag or a temporary trip role", () => {
   for (const role of ['driver', 'both']) {
-    for (const driverCategory of ['transport', 'private', null, undefined, 'unknown']) {
+    for (const driverCategory of ['transport', 'private', 'intercity', null, undefined, 'unknown']) {
       const user = { role, driverCategory, currentTripRole: 'passenger' };
       assert.equal(policy.usesEarningsTab(user), driverCategory === 'transport');
       assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), driverCategory === 'transport');
@@ -138,6 +138,7 @@ for (const platform of ["ios", "android"]) {
       { role: 'driver' }, { role: 'driver', driverCategory: 'private' },
       { role: 'driver', driverCategory: 'transport' }, { role: 'both' },
       { role: 'both', driverCategory: 'transport' },
+      { role: 'driver', driverCategory: 'intercity' }, { role: 'both', driverCategory: 'intercity' },
     ]) {
       state.auth.user = user;
       const { role } = user;
@@ -305,6 +306,7 @@ test("Services reads still pause on blur/background and reuse the same catalogue
     },
     "@/features/pro-services/ServiceCatalogue": {
       ServiceDirectory: "Directory",
+      CreditServiceEntry: "Credit",
       ServiceCaseLink: "Case",
     },
     "@/store/api/proServicesApi": {

@@ -19,7 +19,7 @@ const pgFlags = ['ASSET', 'AUDIT', 'INSTALLATION_UPDATES', 'APP_UPDATES', 'MIXED
 const env = minimalEnvironment({ NODE_ENV: 'test', TZ: 'UTC', AWS_EC2_METADATA_DISABLED: 'true' });
 const guard = path.join(mobile, 'tests/helpers/localOnlyNetwork.cjs');
 let args, cwd = mobile;
-if (!['release', 'postgres', 'postgres-recovery', 'backend-regressions', 'auth', 'booking', 'sequential', 'sequential-probe', 'bargaining'].includes(mode)) throw Error('Unknown isolated audit mode');
+if (!['release', 'postgres', 'postgres-recovery', 'backend-regressions', 'auth', 'booking', 'credits', 'sequential', 'sequential-probe', 'bargaining'].includes(mode)) throw Error('Unknown isolated audit mode');
 if (mode !== 'release') {
   if (!bin || !fs.existsSync(path.join(bin, process.platform === 'win32' ? 'pg_ctl.exe' : 'pg_ctl'))) throw Error('Explicit local PostgreSQL binaries required');
   for (const flag of pgFlags) env[`${flag}_TEST_POSTGRES_BIN`] = path.resolve(bin);
@@ -46,6 +46,7 @@ if (mode === 'sequential' || mode === 'sequential-probe' || mode === 'bargaining
   ...(mode === 'bargaining' ? ['--testNamePattern=bargaining'] : [])];
 if (mode === 'auth') args = [path.join(mobile, 'scripts/test-auth-local.cjs'), path.resolve(bin)];
 if (mode === 'booking') args = ['--test', path.join(mobile, 'tests/integration/bookingBackendE2E.test.cjs')];
+if (mode === 'credits') args = ['--test', path.join(mobile, 'tests/integration/assetCreditBackendE2E.test.cjs')];
 const log = fs.createWriteStream(output + '.log');
 const start = Date.now();
 const child = spawn(process.execPath, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });

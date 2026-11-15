@@ -36,6 +36,10 @@ interface Props {
   condensed?: boolean;
   /** Driver navigation keeps the next action obvious without changing declaration rules. */
   driverNavigation?: boolean;
+  /** Small map panel; same handlers, queue and confirmation rules. */
+  mapCompact?: boolean;
+  /** Hide ordinary arrival controls while cruising; pending/error states stay visible. */
+  hideWhenCruising?: boolean;
   secondaryActions?: React.ReactNode;
   driverOverviewOnly?: boolean;
   preferredBookingId?: string;
@@ -44,7 +48,7 @@ interface Props {
   destination?: { latitude: number; longitude: number } | null;
 }
 
-export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, booking, bookings = EMPTY_BOOKINGS, actor, compact, condensed, driverNavigation, secondaryActions, driverOverviewOnly, preferredBookingId, preferredStage, fix, destination }: Props) {
+export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, booking, bookings = EMPTY_BOOKINGS, actor, compact, condensed, driverNavigation, mapCompact, hideWhenCruising, secondaryActions, driverOverviewOnly, preferredBookingId, preferredStage, fix, destination }: Props) {
   const active = useScreenIsActive();
   const feedback = useRideActionFeedback();
   const online = useAppSelector(state => state.zwangaApi.config.online);
@@ -148,14 +152,19 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const entryLabel = overview ? 'Mes passagers' : !directStage && actor === 'driver'
     ? bookingRows.length > 1 ? 'Mes passagers' : driverNavigation ? 'Voir la réponse du passager' : 'Voir les confirmations'
     : trigger.label;
-  const actionLabel = directStage ? saving ? 'Enregistrement…' : saved ? 'Confirmation enregistrée' : RIDE_CONFIRM_LABEL : entryLabel;
+  const smallMap = Boolean(mapCompact && driverNavigation && actor === 'driver');
+  const cruising = Boolean(smallMap && hideWhenCruising && !hasPending && online && !isError &&
+    !error && !recovery.error && !saving && !visible);
+  const actionLabel = directStage ? saving ? 'Enregistrement…' : saved ? 'Confirmation enregistrée'
+    : smallMap ? directStage.stage === 'pickup' ? 'Confirmer : passager à bord' : 'Confirmer l’arrivée du passager'
+    : RIDE_CONFIRM_LABEL : entryLabel;
   const triggerButton =
     <TouchableOpacity disabled={!active || saving || saved} onPress={() => {
       if (!active || savingRef.current) return;
       if (directStage && directRow) {
         if (!saved && savedStageRef.current !== directKey) void saveChoice({ bookingId: directRow.item.id, stage: directStage.stage, decision: 'confirm' });
       } else setVisible(true);
-    }} style={[styles.trigger, compact && styles.compact, highlighted && styles.triggerHighlighted, Boolean(directStage) && styles.primaryTrigger, driverNavigation && styles.navigationTrigger, overview && styles.navigationOverview]}
+    }} style={[styles.trigger, compact && styles.compact, highlighted && styles.triggerHighlighted, Boolean(directStage) && styles.primaryTrigger, driverNavigation && styles.navigationTrigger, overview && styles.navigationOverview, smallMap && styles.mapTrigger]}
       accessibilityRole="button" accessibilityLabel={directStage
         ? `${saving || saved ? actionLabel : `${directStage.question} ${actionLabel}`}${actor === 'driver' ? ` : ${directRow?.item.passengerName || 'Passager'}` : ''}`
         : actor === 'driver' ? entryLabel : trigger.accessibilityLabel}
@@ -166,11 +175,13 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       {!overview && !compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
     </TouchableOpacity>;
   return <>
-    {directStage && <Text testID="ride-action-question" style={[styles.actionQuestion, compact && styles.compactQuestion]}>{directStage.question}</Text>}
+    {!cruising && <>
+    {directStage && !smallMap && <Text testID="ride-action-question" style={[styles.actionQuestion, compact && styles.compactQuestion]}>{directStage.question}</Text>}
     {!overview && triggerButton}
     {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
       ? rideStageMessage(inlineStage, actor)
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
+      : smallMap ? 'À confirmer uniquement à l’arrêt.'
       : driverNavigation && actor === 'driver' ? directStage?.stage === 'pickup'
         ? 'Appuyez quand le passager est dans le véhicule. Véhicule à l’arrêt.'
         : 'Appuyez quand le passager est descendu. Véhicule à l’arrêt.'
@@ -182,9 +193,14 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       : directStage?.stage === 'dropoff' ? 'Appuyez une fois à destination. Le conducteur confirme aussi votre arrivée à destination ; la détection automatique reste active.'
       : 'Appuyez une fois dans le véhicule. Le conducteur confirme aussi de son côté ; la détection automatique reste active.'}</Text>
       : !compact && !overview && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
-    <View style={driverNavigation ? styles.navigationSecondary : undefined}>
+    </>}
+    <View style={[driverNavigation && styles.navigationSecondary, smallMap && styles.mapSecondary]}>
+    {cruising && <TouchableOpacity disabled={!active} accessibilityRole="button" accessibilityLabel="Voir les confirmations des passagers"
+      style={styles.navigationPassengers} onPress={() => { if (active && !savingRef.current) setVisible(true); }}>
+      <Text style={styles.rejectLabel}>Passagers</Text>
+    </TouchableOpacity>}
     {overview && triggerButton}
-    {((actor === 'driver' && bookingRows.length > 1 && directStage) ||
+    {!cruising && ((actor === 'driver' && bookingRows.length > 1 && directStage) ||
       (directRow && directStage && directRow.stages.some(stage => stage.other === 'confirm' && !stage.unavailable))) &&
       <TouchableOpacity disabled={!active || saving} accessibilityRole="button" style={[styles.refresh, condensed && styles.condensedRefresh, driverNavigation && styles.navigationPassengers]}
         onPress={() => { if (active && !savingRef.current) setVisible(true); }}>
@@ -260,8 +276,10 @@ const styles = StyleSheet.create({
   triggerHighlighted: { borderColor: Colors.primary, backgroundColor: '#FFF4EC' },
   primaryTrigger: { minHeight: 48, backgroundColor: ACTION_ORANGE, borderColor: ACTION_ORANGE },
   navigationTrigger: { minHeight: 52, paddingVertical: 12 },
+  mapTrigger: { minHeight: 44, paddingVertical: 8 },
+  mapSecondary: { marginTop: 4 },
   navigationSecondary: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginTop: 8 },
-  navigationPassengers: { marginRight: 'auto', paddingHorizontal: 4 },
+  navigationPassengers: { marginRight: 'auto', paddingHorizontal: 4, minHeight: 44, justifyContent: 'center' },
   navigationOverview: { flex: 1, minHeight: 48, paddingVertical: 8, paddingHorizontal: 4, borderWidth: 0, backgroundColor: Colors.gray[100] },
   triggerLabel: { color: Colors.primaryDark, fontWeight: '700', fontSize: 12, textAlign: 'center', flexShrink: 1 },
   primaryLabel: { color: Colors.white, fontSize: 15 },

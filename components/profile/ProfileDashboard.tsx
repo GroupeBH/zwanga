@@ -118,6 +118,8 @@ export function ProfileDashboard({
       {quickActionItems.map((item) => (
         <TouchableOpacity
           key={item.label}
+          accessibilityRole="button"
+          accessibilityLabel={item.label}
           activeOpacity={0.85}
           onPress={item.onPress}
           style={styles.quickActionButton}

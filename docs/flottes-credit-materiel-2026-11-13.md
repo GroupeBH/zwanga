@@ -1,5 +1,7 @@
 # Flottes et crédit matériel — 13 novembre 2026
 
+> Suivi du 15 novembre : le flux est désormais préparé aussi pour les casques, traceurs GPS, matériels de livraison et autres équipements, avec catalogue serveur et offres correspondantes dans le portail. Les véhicules restent à venir. Voir l'entrée « Conducteurs interurbains et acquisition de matériel à crédit » du [journal technique](CHANGEMENTS_TECHNIQUES.md). Le présent document conserve les résultats historiques des 13 et 14 novembre, sans activation en production.
+
 ## Périmètre et décisions validées
 
 Préparation locale du mobile, de `zwanga-backend` et de `zwanga-partner`. Aucun déploiement, aucune migration sur une base existante, aucun prélèvement ni message réel.

@@ -36,14 +36,17 @@ function driverModel() {
 }
 
 test('driver header reserves safe-area space and puts confirmation outside the duration/distance block', () => {
+  const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ ...defaults,
+    react: { ...React, ...hooks.react },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const model = driverModel();
   model.session.foundation.mapState.currentWaypointIndex = 0;
   model.session.foundation.mapState.waypoints = [{ booking: { id: 'next-passenger' }, type: 'pickup', completed: false }];
-  const tree = DriverNavigationTopPanel({ model, assistance });
+  const render = (nextAssistance = assistance) => hooks.render(() => DriverNavigationTopPanel({ model, assistance: nextAssistance }));
+  const tree = render();
   assert.equal(flatStyle(tree.props.style).top, 55);
   const header = tree.props.children[0];
   assert.match(words(header), /Trajet en cours.*Connecté.*37 min.*12,6 km/);
@@ -66,45 +69,48 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(buttons.props.onContact, assistance.openContacts);
   const contacted = [];
   model.session.foundation.mapState.waypoints[0].booking.passengerId = 'next-holder';
-  const normal = all(DriverNavigationTopPanel({ model, assistance: { ...assistance, openContact: id => contacted.push(id) } })).find(n => n.type === 'Recovery');
+  const normal = all(render({ ...assistance, openContact: id => contacted.push(id) })).find(n => n.type === 'Recovery');
   normal.props.secondaryActions.props.onContact();
   assert.deepEqual(contacted, ['next-holder']);
   model.session.foundation.passengers.activePendingBooking = { id: 'new-request' };
-  const incoming = all(DriverNavigationTopPanel({ model, assistance })).find(n => n.type === 'Recovery');
+  const incoming = all(render()).find(n => n.type === 'Recovery');
   assert.equal(incoming.props.driverOverviewOnly, true);
   assert.equal(incoming.props.secondaryActions.props.onContact, assistance.openContacts);
   model.session.foundation.passengers.activePendingBooking = undefined;
   const scroll = all(tree).find(node => node.type === 'ScrollView');
-  assert.equal(all(scroll).find(node => node.type === 'Recovery'), undefined, 'keep confirmations outside the bounded details');
+  assert.equal(all(scroll).find(node => node.type === 'Recovery'), recovery, 'ordinary confirmations stay reachable by scrolling at large text sizes');
   assert.equal(all(tree).find(node => node.type === 'DropoffReceipts'), undefined, 'in-progress gains stay in Options');
   assert.equal(flatStyle(scroll.props.style).flexGrow, 0); assert.equal(flatStyle(scroll.props.style).flexShrink, 1);
-  assert.equal(flatStyle(scroll.props.style).minHeight, 64, 'the next stop never collapses to zero height');
+  assert.equal(flatStyle(scroll.props.style).minHeight, 0, 'allow the bounded action region to shrink on small screens');
   assert.ok(flatStyle(tree.props.style).maxHeight <= 340, 'the ordinary top panel leaves map space');
   model.session.foundation.mapState.waypoints[0].completed = true;
-  const completedStop = all(DriverNavigationTopPanel({ model, assistance })).find(node => node.type === 'Recovery');
+  const completedStop = all(render()).find(node => node.type === 'Recovery');
   assert.equal(completedStop.props.preferredBookingId, undefined);
   assert.equal(completedStop.props.preferredStage, undefined);
   model.session.foundation.data.trip.status = 'completed';
   model.session.foundation.data.isTripOngoing = false;
-  const receipts = all(DriverNavigationTopPanel({ model, assistance })).find(node => node.type === 'DropoffReceipts');
+  const receipts = all(render()).find(node => node.type === 'DropoffReceipts');
   assert.equal(receipts.props.bookings, model.session.foundation.data.bookings);
   assert.equal(receipts.props.active, true);
   model.session.foundation.data.offlineTrip = true;
-  assert.match(words(DriverNavigationTopPanel({ model, assistance })), /Sans connexion/);
+  assert.match(words(render()), /Sans connexion/);
+  hooks.unmount();
 });
 
 test('driver header retains passenger actions without permanent route selection buttons', () => {
-  const load = loader({ ...defaults, '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
+  const hooks = hookHarness();
+  const load = loader({ ...defaults, react: { ...React, ...hooks.react }, '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' } });
   const { DriverNavigationTopPanel } = load('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const model = driverModel();
   model.session.foundation.mapState.waypoints = [{ id: 'waypoint' }];
-  const tree = DriverNavigationTopPanel({ model, assistance });
+  const tree = hooks.render(() => DriverNavigationTopPanel({ model, assistance }));
   assert.equal(all(tree).filter(node => node.type === 'Button' && ['Prochain arrêt', 'Reste du trajet'].includes(words(node))).length, 0);
   const passengers = all(tree).find(node => node.type === 'Passengers');
   assert.equal(passengers.props.foundation, model.session.foundation); assert.equal(passengers.props.bookingActions, model.bookingActions);
   const { styles } = load('features/screen-styles/app/trip/navigate/detail/passengerLocationMarker.styles.ts');
   assert.equal(styles.passengersBar.position, undefined); assert.equal(styles.passengersBar.top, undefined);
+  hooks.unmount();
 });
 
 test('passenger header contact/SOS stays available with the expanded map and uses measured layout', () => {

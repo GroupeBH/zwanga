@@ -33,6 +33,10 @@ test('trip filters remain compact; search expands on demand and closing it clear
   })('features/trips/TripsHeader.tsx');
   const draw = () => nodes(hooks.render(() => TripsHeader(props)));
   let view = draw();
+  assert.equal(view.some(node => node.props.accessibilityLabel === 'Voir mes revenus'), false);
+  props.onEarnings = () => calls.push(['earnings']);
+  draw().find(node => node.props.accessibilityLabel === 'Voir mes revenus').props.onPress();
+  assert.deepEqual(calls.at(-1), ['earnings']);
   assert.equal(view.some((node) => node.type === 'Input'), false);
   view.find((node) => node.props.accessibilityLabel === 'Rechercher dans mes trajets').props.onPress();
   view = draw();
@@ -59,6 +63,7 @@ test('compact header keeps accessible targets and one conditional search row', (
   const native = { StyleSheet: { create: (value) => value } };
   const styles = loader({ 'react-native': native })('features/screen-styles/app/tabs/trips/container.styles.ts').styles;
   assert.ok(styles.headerPublishButton.minHeight >= 44);
+  assert.ok(styles.headerEarningsLink.minHeight >= 44);
   assert.ok(styles.subTab.minHeight >= 44);
   assert.ok(styles.searchToggle.width >= 44 && styles.searchToggle.height >= 44);
   assert.ok(styles.mainTab.minHeight >= 44);

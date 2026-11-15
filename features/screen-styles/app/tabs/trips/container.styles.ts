@@ -42,6 +42,8 @@ export const styles = StyleSheet.create({
     fontSize: FontSizes.sm,
     fontWeight: FontWeights.bold,
   },
+  headerEarningsLink: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', gap: 6, minHeight: 44 },
+  headerEarningsText: { color: Colors.primary, fontSize: FontSizes.sm, fontWeight: FontWeights.semibold },
   mainTabsContainer: {
     flexDirection: 'row',
     backgroundColor: Colors.gray[100],

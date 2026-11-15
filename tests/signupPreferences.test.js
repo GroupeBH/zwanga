@@ -60,9 +60,11 @@ test('checkbox and driver choices are accessible, controlled and disabled during
   const { DriverCategoryPicker } = load('components/profile/DriverCategoryPicker.tsx');
   const picker = DriverCategoryPicker({ value: 'transport', onChange: value => values.push(value) });
   const radios = nodes(picker).filter(node => node.props.accessibilityRole === 'radio');
-  assert.equal(radios.length, 2);
-  assert.deepEqual(radios.map(node => node.props.accessibilityState.selected), [false, true]);
+  assert.equal(radios.length, 3);
+  assert.deepEqual(radios.map(node => node.props.accessibilityState.selected), [false, true, false]);
   radios[0].props.onPress(); assert.equal(values.at(-1), 'private');
+  radios[2].props.onPress(); assert.equal(values.at(-1), 'intercity');
+  assert.match(text(picker), /Transport interurbain/);
   assert.match(text(picker), /Conducteur privé/); assert.match(text(picker), /Taxi \/ moto-taxi/);
   const locked = DriverCategoryPicker({ value: null, disabled: true });
   assert.ok(nodes(locked).filter(node => node.type === 'Button').every(node => node.props.disabled));
@@ -75,13 +77,17 @@ test('old profiles and unknown categories are never classified automatically', (
     assert.equal(driverCategoryLabel(value), undefined);
   }
   assert.equal(readDriverCategory('transport'), 'transport');
+  assert.equal(readDriverCategory('intercity'), 'intercity');
+  assert.equal(driverCategoryLabel('intercity'), 'Transport interurbain');
   assert.equal(driverCategoryLabel('private'), 'Conducteur privé');
 });
 
 test('API profile mapping retains the declared category but never grants driver rights', () => {
   const { mapServerUser } = loader({ '@react-native-async-storage/async-storage': {} })('store/api/user/profileMapper.ts');
-  const pending = mapServerUser({ id: 'test', role: 'passenger', driverCategory: 'transport' });
-  assert.equal(pending.driverCategory, 'transport'); assert.equal(pending.isDriver, false);
+  for (const driverCategory of ['transport', 'private', 'intercity']) {
+    const pending = mapServerUser({ id: 'test', role: 'passenger', driverCategory });
+    assert.equal(pending.driverCategory, driverCategory); assert.equal(pending.isDriver, false);
+  }
   assert.equal(mapServerUser({ id: 'old', role: 'driver' }).driverCategory, null);
 });
 

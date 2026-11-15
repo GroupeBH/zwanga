@@ -13,6 +13,7 @@ interface TripsHeaderProps {
   onSubTabChange: (tab: SubTab) => void;
   onSearchChange: (query: string) => void;
   onPublish: () => void;
+  onEarnings?: () => void;
 }
 
 export function TripsHeader({
@@ -23,6 +24,7 @@ export function TripsHeader({
   onSubTabChange,
   onSearchChange,
   onPublish,
+  onEarnings,
 }: TripsHeaderProps) {
   const [searchExpanded, setSearchExpanded] = useState(false);
   const searchInputRef = useRef<TextInput>(null);
@@ -61,6 +63,13 @@ export function TripsHeader({
           <Text style={styles.headerPublishText}>Publier</Text>
         </TouchableOpacity>
       </View>
+
+      {onEarnings && <TouchableOpacity style={styles.headerEarningsLink} onPress={onEarnings}
+        accessibilityRole="button" accessibilityLabel="Voir mes revenus">
+        <Ionicons name="wallet-outline" size={19} color={Colors.primary} />
+        <Text style={styles.headerEarningsText}>Mes revenus</Text>
+        <Ionicons name="chevron-forward" size={17} color={Colors.primary} />
+      </TouchableOpacity>}
 
       <View style={styles.mainTabsContainer} accessibilityRole="tablist">
         <TouchableOpacity

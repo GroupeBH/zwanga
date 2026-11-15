@@ -108,6 +108,7 @@ function harness({
   })("app/services/credit/[id].tsx");
   const render = () => nodes(hooks.render(() => Screen()));
   return {
+    credit: c,
     render,
     unmount: () => hooks.unmount(),
     disk,
@@ -122,6 +123,66 @@ function harness({
     },
   };
 }
+
+test('new contracts show their individual rate and cumulative total before explicit consent', async () => {
+  const h = harness({ status: 'offered' });
+  Object.assign(h.credit, { policyVersion: 'asset-credit-v2', repaymentBps: 750, totalRepaymentBps: 2250, commissionBps: 500 });
+  h.render(); await tick();
+  let tree = h.render();
+  tree.find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  await h.render().find(n => n.props?.title === 'Accepter le contrat').props.onPress();
+  assert.equal(h.decisions[0].expectedTotalRepaymentBps, 2250);
+  assert.equal(h.decisions[0].policyVersion, 'asset-credit-v2');
+  h.unmount();
+});
+
+test('changed totals clear consent; invalid or missing rates cannot be accepted', async () => {
+  const h = harness({ status: 'offered' });
+  Object.assign(h.credit, { policyVersion: 'asset-credit-v2', repaymentBps: 500, totalRepaymentBps: 500, commissionBps: 500 });
+  h.render(); await tick();
+  h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  h.credit.totalRepaymentBps = 1500;
+  h.render();
+  assert.equal(h.render().find(n => n.props?.title === 'Accepter le contrat').props.disabled, true);
+  for (const total of [undefined, NaN, -1, 100, 9501]) {
+    h.credit.totalRepaymentBps = total;
+    h.render(); h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+    const action = h.render().find(n => n.props?.title === 'Accepter le contrat');
+    assert.equal(action.props.disabled, true);
+    await action.props.onPress();
+  }
+  assert.equal(h.decisions.length, 0);
+  h.unmount();
+});
+
+test('repayment summary distinguishes the credit rate, all credits, and commission', () => {
+  const { CreditRepaymentSummary } = loader({
+    'react-native': { View: 'View', Text: 'Text' },
+    '@/features/pro-services/ServiceLayout': { s: {} },
+  })('features/pro-services/CreditRepaymentSummary.tsx');
+  const credit = { status: 'offered', policyVersion: 'asset-credit-v2', repaymentBps: 750, totalRepaymentBps: 2250, commissionBps: 500 };
+  const text = nodes(CreditRepaymentSummary({ credit })).filter(n => typeof n === 'string').join(' ');
+  assert.match(text, /7,5 %/); assert.match(text, /22,5 %/); assert.match(text, /27,5 %/);
+  assert.equal(CreditRepaymentSummary({ credit: { ...credit, status: 'settled', totalRepaymentBps: 0 } }), null);
+});
+
+test('new cost disclosure requires complete terms, resets consent on change and acknowledges its version', async () => {
+  const h = harness({ status: 'offered' });
+  Object.assign(h.credit, { policyVersion: 'asset-credit-v2', repaymentBps: 500, totalRepaymentBps: 500, commissionBps: 500,
+    cashPriceMinor: '90000', creditFeeMinor: '10000', costDisclosureVersion: 'asset-credit-cost-v1' });
+  h.render(); await tick();
+  h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  h.credit.creditFeeMinor = '11000'; h.render();
+  assert.equal(h.render().find(n => n.props?.title === 'Accepter le contrat').props.disabled, true);
+  h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  await h.render().find(n => n.props?.title === 'Accepter le contrat').props.onPress();
+  assert.equal(h.decisions.length, 0, 'inconsistent totals cannot be consented to');
+  h.credit.creditFeeMinor = '10000'; h.render();
+  h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  await h.render().find(n => n.props?.title === 'Accepter le contrat').props.onPress();
+  assert.equal(h.decisions[0].costDisclosureVersion, 'asset-credit-cost-v1');
+  h.unmount();
+});
 
 test("leaving or changing session during intent persistence never sends a new debit", async () => {
   for (const transition of ["background", "logout", "unmount"]) {
@@ -246,6 +307,10 @@ test("API mutations use authenticated base query and invalidate balances only on
     { amountMinor: 50000, mutationId: "m" },
   );
   assert.ok(endpoints.repayAssetCredit.invalidatesTags.includes("Wallet"));
+  assert.equal(endpoints.getAssetCreditProducts.query(), '/asset-credits/products');
+  for (const assetKind of ['phone', 'helmet', 'gps_tracker', 'delivery_equipment', 'equipment']) {
+    assert.deepEqual(endpoints.requestAssetCredit.query({ assetKind, notes: 'test' }).body, { assetKind, notes: 'test' });
+  }
   assert.equal(
     endpoints.decideAssetCredit.query({
       id: "c",

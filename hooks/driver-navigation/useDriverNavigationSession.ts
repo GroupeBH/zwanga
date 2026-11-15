@@ -121,7 +121,7 @@ export function useDriverNavigationSession() {
   });
 
   // Demander les permissions de localisation
-  useDriverLocationTracking({
+  const locationTracking = useDriverLocationTracking({
     data: foundation.data,
     mapState: foundation.mapState,
     refs: foundation.refs,
@@ -139,6 +139,7 @@ export function useDriverNavigationSession() {
 
   return {
     foundation,
+    locationTracking,
     notices,
     completion,
   };

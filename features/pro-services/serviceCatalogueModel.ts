@@ -11,11 +11,11 @@ export type CatalogueEntry = {
 };
 
 const descriptions: Record<DisplayServiceCode, { title: string; description: string }> = {
-  documents: { title: 'Documents', description: 'Permis, assurance et documents du véhicule.' },
-  fleet: { title: 'Flottes', description: 'Accompagnement des propriétaires de véhicules.' },
+  documents: { title: 'Obtenir mes documents', description: 'Permis, assurance et papiers du véhicule.' },
+  fleet: { title: 'Gérer ma flotte', description: 'Véhicules, conducteurs et versements.' },
   delivery: { title: 'Zwanga Livraison', description: 'Envoi et livraison de colis.' },
-  schools: { title: 'Zwanga Schools', description: 'Transport scolaire.' },
-  health: { title: 'Zwanga Health', description: 'Déplacements pour vos soins.' },
+  schools: { title: 'Transport scolaire', description: 'Zwanga Schools · Trajets des élèves.' },
+  health: { title: 'Transport santé', description: 'Zwanga Health · Déplacements pour les soins.' },
   vehicles: { title: 'Véhicules', description: 'Accès à un véhicule et financement.' },
   equipment: { title: 'Équipements', description: 'Matériel pour conducteurs et livreurs.' },
 };

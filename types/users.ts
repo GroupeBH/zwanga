@@ -1,6 +1,6 @@
 import type { UserGender, UserRole } from './common';
 import type { Vehicle } from './trips';
-export type DriverCategory = 'private' | 'transport';
+export type DriverCategory = 'private' | 'transport' | 'intercity';
 
 export interface User {
   id: string;

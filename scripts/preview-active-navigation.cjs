@@ -26,6 +26,9 @@ const load = loader({
     { style: { fontSize: size, color, lineHeight: 1 } }, icons[name] ?? '•') },
   '@/components/forms/FormLayout': { FormModal: () => null },
   '@/features/navigation/RideModal': { RideModal: () => null },
+  '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: () => null },
+  '../request-detail/ChangeRequestDriverButton': { PickupDriverChange: () => null },
+  'expo-router': { useRouter: () => ({ push: noop }) },
   '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
   '@/hooks/navigation/useRideActionFeedback': { useRideActionFeedback: () => ({ saved: noop, failed: noop }) },
   '@/store/hooks': { useAppSelector: selector => selector(state()) },
@@ -48,14 +51,14 @@ const directory = path.resolve(__dirname, '../.expo/active-navigation-preview');
 fs.mkdirSync(directory, { recursive: true });
 const previews = [];
 const cases = [390, 320].flatMap(width => [
-  ...['pickup', 'dropoff', 'pending', 'empty', 'offline'].map(mode => ({ width, actor: 'driver', mode })),
+  ...['pickup', 'dropoff', 'cruising', 'pending', 'empty', 'offline'].map(mode => ({ width, actor: 'driver', mode })),
   { width, actor: 'passenger', mode: 'default' },
 ]);
 for (const { width, actor, mode } of cases) {
   account = actor; viewport = { width, height: width === 320 ? 568 : 760 };
   const insets = { top: 24, bottom: 24, left: 0, right: 0 };
   const booking = { id: 'preview-booking', tripId: 'preview-trip', passengerId: 'passenger', status: 'accepted',
-    passengerName: 'Passager exemple', numberOfSeats: 2, pickedUp: actor === 'passenger' || mode === 'dropoff',
+    passengerName: 'Passager exemple', numberOfSeats: 2, pickedUp: actor === 'passenger' || mode === 'dropoff' || mode === 'cruising',
     passengerOrigin: 'Rond-point Ngaba', passengerDestination: 'Grand Marché de Kinshasa' };
   const trip = { id: booking.tripId, status: 'ongoing', driverName: 'Conducteur exemple',
     departure: { address: booking.passengerOrigin }, arrival: { address: booking.passengerDestination } };
@@ -64,13 +67,14 @@ for (const { width, actor, mode } of cases) {
   const tripActions = { handleShareTrip: noop, handlePauseTripFromNavigation: noop, handleEditTripFromNavigation: noop };
   const passengerPresentation = { passengerStats: { totalPassengers: 3, inVehicle: 1, pendingPickups: 2 }, fitVehicleAndPassengers: noop };
   const foundation = { data, mapState: { currentWaypointIndex: 0, isSocketConnected: true, isVoiceGuidanceEnabled: true,
-    waypoints: [{ type: 'pickup', completed: false, booking, passenger: { name: booking.passengerName }, address: booking.passengerOrigin }] },
+    waypoints: [{ id: 'preview-stop', type: 'pickup', location: { lat: -4.3, lng: 15.3 }, completed: false, booking, passenger: { name: booking.passengerName }, address: booking.passengerOrigin }] },
     passengers: { passengerMapLocations: [] }, refs: { currentLocationRef: { current: null } } };
   const model = { session: { foundation }, presentation: { displayedDurationText: '8 min', displayedDistanceText: '2,4 km', displayedEtaText: '15:10' },
     passengerPresentation, tripActions, bookingActions: {}, handleExitNavigation: noop };
-  if (mode === 'dropoff') {
+  if (mode === 'dropoff' || mode === 'cruising') {
     foundation.mapState.waypoints[0].type = 'dropoff';
     foundation.mapState.waypoints[0].address = booking.passengerDestination;
+    foundation.mapState.currentLocation = { timestamp: Date.now(), coords: { latitude: mode === 'cruising' ? -4.4 : -4.3001, longitude: 15.3, accuracy: 10 } };
   }
   if (mode === 'pending') Object.assign(foundation.passengers, {
     activePendingBooking: { ...booking, id: 'pending', passengerName: 'Nouveau passager', status: 'pending', paymentMode: 'cash' },
@@ -93,7 +97,7 @@ for (const { width, actor, mode } of cases) {
     h(native.View, { style: { width, height: viewport.height, backgroundColor: '#E8EEE8', overflow: 'hidden' } },
       h('div', { className: 'map-placeholder' }, 'Carte · aperçu sans GPS'), content))));
 }
-const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Navigation — aperçu statique</title>
+const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navigation — aperçu statique</title>
 <style>${native.StyleSheet.getSheet().textContent}body{margin:0;background:#f4f5f6;font-family:Arial,sans-serif}
 main{display:flex;flex-wrap:wrap;gap:18px;padding:18px;align-items:flex-start}h2{font-size:14px;font-weight:500}
 .map-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#67756c;

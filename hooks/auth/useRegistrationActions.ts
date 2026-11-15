@@ -191,7 +191,7 @@ export function useRegistrationActions({
       const requiresVehicle = role === 'driver';
       if (requiresVehicle && !readDriverCategory(driverCategory)) {
         setStep('profile');
-        showDialog({ variant: 'warning', title: 'Type de conducteur', message: 'Choisissez « Conducteur privé » ou « Taxi / moto-taxi ».' });
+        showDialog({ variant: 'warning', title: 'Type de conducteur', message: 'Choisissez votre type de conducteur.' });
         return;
       }
       const categoryPayload = requiresVehicle && driverCategory ? { driverCategory } : {};

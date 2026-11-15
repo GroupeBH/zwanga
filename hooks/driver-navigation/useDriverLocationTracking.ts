@@ -19,7 +19,7 @@ import {
 } from '@/utils/navigation/tripCompletion';
 import * as Location from 'expo-location';
 import { subscribeBootstrappedRideLocation } from '@/services/rideLocationBootstrap';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { isAppActive } from '@/services/appActivity';
 import { requestLocationPermission } from '@/services/locationPermissionWait';
@@ -42,6 +42,7 @@ export function useDriverLocationTracking({
   sendDriverLocationToTracking,
 }: Params) {
   const active = useAppIsActive();
+  const [backgroundFailureTrip, setBackgroundFailureTrip] = useState<string | null>(null);
   useEffect(() => {
     if (!data.isFocused || !data.tripId || !data.isTripOngoing) {
       if (mapState.locationSubscription.current) {
@@ -129,6 +130,10 @@ export function useDriverLocationTracking({
           autoCompleteDistanceMeters: DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
           autoCompleteDwellMs: DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
           requestMissingPermissions: false,
+        }).then(started => {
+          if (current()) setBackgroundFailureTrip(started ? null : data.tripId);
+        }).catch(() => {
+          if (current()) setBackgroundFailureTrip(data.tripId);
         });
 
       // Reuse native samples; a shared foreground watcher takes over if they stop.
@@ -188,6 +193,6 @@ export function useDriverLocationTracking({
   ]);
 
   return {
-
+    backgroundTrackingUnavailable: backgroundFailureTrip === data.tripId && Boolean(data.tripId),
   };
 }

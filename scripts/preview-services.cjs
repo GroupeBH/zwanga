@@ -28,7 +28,7 @@ function renderFixture({ textScale = 1, fleetOpen = false, error = false, embedd
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/store/api/proServicesApi': {
       useGetProOfferingsQuery: () => ({ isError: error, error: { data: { message: 'Connexion indisponible. Réessayez.' } },
-        data: error ? undefined : ['documents', 'fleet', 'vehicles', 'equipment'].map(code => ({ code, availability: code === 'documents' || (code === 'fleet' && fleetOpen) ? 'open' : 'coming_soon' })), refetch() {} }),
+        currentData: error ? undefined : ['documents', 'fleet', 'vehicles', 'equipment'].map(code => ({ code, availability: code === 'documents' || (code === 'fleet' && fleetOpen) ? 'open' : 'coming_soon' })), refetch() {} }),
       useGetMyProCasesQuery: () => ({ currentData: { items: [] }, refetch() {} }),
       useGetCurrentDocumentCaseQuery: () => ({ currentData: { request: null } }),
     },
@@ -72,13 +72,13 @@ async function run() {
       let report;
       for (let attempt = 0; attempt < 100; attempt++) {
         const result = await send('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression: `(async () => {
-          const directory = document.querySelector('[data-testid="pro-main-services"]'); if(!directory) return null;
+          const directory = document.querySelector('[data-testid="pro-business-services"]'); if(!directory) return null;
           await document.fonts.ready;
           const scroll = [...document.querySelectorAll('div')].find(el => ['auto','scroll'].includes(getComputedStyle(el).overflowY));
           const frame = scroll.getBoundingClientRect();
           const bottom = Math.min(frame.bottom, document.querySelector('footer')?.getBoundingClientRect().top ?? innerHeight);
           const inside = el => {const b=el.getBoundingClientRect();return b.top>=frame.top-1&&b.bottom<=bottom+1&&b.left>=0&&b.right<=innerWidth+1};
-          const services = [...directory.querySelectorAll('[data-testid^="pro-service-"]')];
+          const services = [...document.querySelectorAll('[data-testid^="pro-service-"]')];
           const initiallyVisible = services.filter(inside).length;
           const actions = [...document.querySelectorAll('[role="button"]')];
           const actionsReachable = actions.every(el => {
@@ -103,7 +103,7 @@ async function run() {
       reports.push({ ...scenario, ...report });
       const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       fs.writeFileSync(path.join(directory, `${scenario.name}.png`), Buffer.from(screenshot.data, 'base64'));
-      if (report.serviceCount !== 5 || !report.actionsReachable || !report.noPreviewButtons || report.horizontalOverflow > 1) throw Error(`Clipped controls: ${scenario.name}`);
+      if (report.serviceCount !== 6 || !report.actionsReachable || !report.noPreviewButtons || report.horizontalOverflow > 1) throw Error(`Clipped controls: ${scenario.name}`);
       await session.send('Target.closeTarget', { targetId });
     }
   } finally { await session.close(); }

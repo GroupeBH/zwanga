@@ -5,6 +5,8 @@ import { styles } from '../../features/screen-styles/app/tabs/trips/index';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { Colors } from '@/constants/styles';
+import { useAppSelector } from '@/store/hooks';
+import { selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
 import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -31,6 +33,7 @@ export default function TripsScreen() {
 
 function TripsContent() {
   const model = useTripsController();
+  const isDriver = useAppSelector(selectUsesServicesTab);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -42,6 +45,7 @@ function TripsContent() {
         onSubTabChange={model.state.setSubTab}
         onSearchChange={model.state.setSearchQuery}
         onPublish={() => model.state.router.push('/publish')}
+        onEarnings={isDriver ? () => model.state.router.push('/driver-earnings') : undefined}
       />
 
       {model.list.isError && (

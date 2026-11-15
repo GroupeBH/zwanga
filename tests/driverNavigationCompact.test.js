@@ -26,6 +26,7 @@ test('shared bounds separate guidance, commands and normal/priority panels with 
     assert.ok(layout.controlsBottom >= layout.guidanceBottom + layout.guidanceMaxHeight + 8);
     assert.ok(top + 8 + layout.priorityPanelMaxHeight + 12 <= height - layout.controlsBottom - layout.controlsHeight + 0.01);
     assert.ok(layout.panelMaxHeight < layout.priorityPanelMaxHeight, 'reserve clear map space except for an urgent decision');
+    assert.ok(layout.panelMaxHeight <= 292, 'ordinary navigation never takes more than 292 logical pixels');
     assert.equal(layout.controlsWidth, 248); assert.equal(layout.controlsHeight, 56);
   }
 });
@@ -107,8 +108,25 @@ test('route view choices move to Options without changing their handlers; a diff
   hooks.unmount();
 });
 
+test('compact passenger summary limits map coverage but full address remains accessible without confirming', () => {
+  const { DriverNavigationPassengersBar } = load('features/driver-navigation/DriverNavigationPassengersBar.tsx');
+  const calls = [], next = { id: 'stop', type: 'pickup', passenger: { name: 'Nom long synthétique' }, address: 'Adresse complète très longue', completed: false };
+  const foundation = { data: { isScreenActive: true }, passengers: {}, refs: { waypointModalVisibleRef: { current: false } },
+    mapState: { waypoints: [next], currentWaypointIndex: 0, setActiveWaypoint: stop => calls.push(stop.id), setWaypointModalVisible: visible => calls.push(visible) } };
+  const tree = DriverNavigationPassengersBar({ foundation, compact: true });
+  assert.equal(tree.type, 'Button');
+  assert.match(tree.props.accessibilityLabel, /Nom long synthétique.*Adresse complète très longue/);
+  assert.deepEqual(all(tree).filter(n => n.type === 'Text').map(n => n.props.numberOfLines), [1, 2]);
+  tree.props.onPress(); assert.deepEqual(calls, ['stop', true]);
+  assert.equal(next.completed, false);
+  foundation.data.isScreenActive = false;
+  tree.props.onPress(); assert.equal(calls.length, 2);
+});
+
 test('a new reservation does not move/remount the ongoing confirmation control', () => {
+  const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ ...base,
+    react: { ...React, ...hooks.react },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
@@ -118,15 +136,17 @@ test('a new reservation does not move/remount the ongoing confirmation control',
   const foundation = { data: { insets: { top: 24, bottom: 24, left: 0, right: 0 }, tripId: 'trip', bookings: [{ id: 'active' }], isTripOngoing: true },
     passengers: {}, mapState: { waypoints: [] } };
   const props = { model: { session: { foundation }, presentation: {}, tripActions: {}, passengerPresentation: {}, bookingActions: {} }, assistance: {} };
-  const ordinary = DriverNavigationTopPanel(props);
+  const render = () => hooks.render(() => DriverNavigationTopPanel(props));
+  const ordinary = render();
   const index = ordinary.props.children.findIndex(node => all(node).some(n => n.type === 'Recovery'));
   foundation.passengers.activePendingBooking = { id: 'new' };
-  const pending = DriverNavigationTopPanel(props);
+  const pending = render();
   assert.ok(index >= 0);
   assert.ok(all(pending.props.children[index]).find(n => n.type === 'Recovery'));
   assert.equal(pending.props.children[index].type, ordinary.props.children[index].type);
   assert.equal(all(pending).filter(n => n.type === 'Recovery').length, 1);
   foundation.passengers.activePendingBooking = undefined;
   foundation.data.bookings = [];
-  assert.equal(all(DriverNavigationTopPanel(props)).find(n => n.type === 'Recovery'), undefined);
+  assert.equal(all(render()).find(n => n.type === 'Recovery'), undefined);
+  hooks.unmount();
 });

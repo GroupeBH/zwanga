@@ -24,7 +24,7 @@ function ui() {
 test('main directory has the five named services once; legacy offerings stay available separately', () => {
   const result = buildServiceCatalogue([offer('vehicles'), offer('fleet'), offer('documents'), offer('fleet'), offer('equipment')], 'ready');
   assert.deepEqual(codes(result.primary), ['documents', 'fleet', 'delivery', 'schools', 'health']);
-  assert.deepEqual(result.primary.map(item => item.title), ['Documents', 'Flottes', 'Zwanga Livraison', 'Zwanga Schools', 'Zwanga Health']);
+  assert.deepEqual(result.primary.map(item => item.title), ['Obtenir mes documents', 'Gérer ma flotte', 'Zwanga Livraison', 'Transport scolaire', 'Transport santé']);
   assert.deepEqual(codes(result.secondary), ['vehicles', 'equipment']);
   assert.ok(result.secondary.every(item => item.availability === 'open'));
 });
@@ -109,7 +109,8 @@ test('screen keeps services before cases, retry and pagination; it preserves tab
     react: hooks.react, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
     '@/features/pro-services/ServiceLayout': { ServiceLayout: 'Layout', ServiceButton: 'Action', s: {} },
-    '@/features/pro-services/ServiceCatalogue': { ServiceDirectory: 'Directory', ServiceCaseLink: 'Case' },
+    '@/features/pro-services/ServiceCatalogue': { ServiceDirectory: 'Directory', ServiceCaseLink: 'Case', CreditServiceEntry: 'Credit' },
+    '@/features/pro-services/CreditRepaymentsLink': { CreditRepaymentsLink: 'Repayments' },
     '@/store/api/proServicesApi': {
       useGetProOfferingsQuery: () => queries.catalogue,
       useGetCurrentDocumentCaseQuery: () => queries.current,
@@ -119,6 +120,7 @@ test('screen keeps services before cases, retry and pagination; it preserves tab
   const tree = nodes(hooks.render(() => ServicesScreen({ embedded: true, bottomOverlay: 92 })));
   assert.equal(tree[0].props.embedded, true);
   assert.equal(tree[0].props.bottomOverlay, 92);
+  assert.equal(tree[0].props.title, 'Services');
   const main = tree.find(node => node.type === 'Directory' && !node.props.secondary);
   assert.equal(main.props.state, 'error');
   assert.equal(main.props.current.id, 'fixture-case');
@@ -127,5 +129,37 @@ test('screen keeps services before cases, retry and pagination; it preserves tab
   assert.ok(tree.find(node => node.props?.title === 'Dossiers suivants'));
   tree.find(node => node.props?.title === 'Recharger les services').props.onPress();
   assert.equal(reloads, 1);
+  assert.equal(tree.filter(node => node.type === 'Credit').length, 1);
+  assert.equal(tree.filter(node => node.type === 'Repayments').length, 1);
+  assert.equal(tree.find(node => node.type === 'Repayments').props.active, true);
+  assert.ok(tree.indexOf(tree.find(node => node.type === 'Repayments')) < tree.indexOf('Pour les entreprises'));
+  assert.deepEqual(tree.filter(node => node.type === 'Directory').map(node => node.props.group), ['documents', 'business']);
+  assert.ok(tree.indexOf('Documents') < tree.indexOf('Acheter à crédit'));
+  assert.ok(tree.indexOf('Acheter à crédit') < tree.indexOf('Pour les entreprises'));
+  assert.equal(tree.some(node => node.props?.secondary && node.type === 'Directory'), false);
   hooks.unmount();
+});
+
+test('credit has a single route for equipment and vehicles, and cannot open in background', () => {
+  const { CreditServiceEntry, routes } = ui();
+  const row = nodes(CreditServiceEntry({}))[0];
+  row.props.onPress();
+  assert.deepEqual(routes, ['/services/credit']);
+  assert.match(row.props.accessibilityLabel, /équipements et véhicules/i);
+  const disabled = nodes(CreditServiceEntry({ active: false }))[0];
+  assert.equal(disabled.props.disabled, true);
+  disabled.props.onPress();
+  assert.equal(routes.length, 1);
+});
+
+test('documents and enterprise groups partition the directory without financing duplicates', () => {
+  const { ServiceDirectory, OpenService, FleetServiceEntry, UnavailableService } = ui();
+  const items = [offer('documents'), offer('vehicles'), offer('equipment')];
+  const documents = nodes(ServiceDirectory({ items, state: 'ready', group: 'documents' }));
+  const business = nodes(ServiceDirectory({ items, state: 'ready', group: 'business' }));
+  assert.equal(documents.filter(n => n.type === OpenService).length, 1);
+  assert.equal(documents.filter(n => n.type === FleetServiceEntry).length, 0);
+  assert.equal(business.filter(n => n.type === FleetServiceEntry).length, 1);
+  assert.equal(business.filter(n => n.type === UnavailableService).length, 3);
+  assert.equal(business.filter(n => n.type === OpenService).length, 0);
 });

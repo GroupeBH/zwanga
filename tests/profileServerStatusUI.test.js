@@ -106,6 +106,8 @@ test('controller never labels an existing driver as becoming a driver and retry 
     '@/features/profile/profileModel': { formatReferralTokens: () => '0' },
   })('hooks/profile/useProfileController.ts');
   const render = () => hooks.render(useProfileController);
+  render().quickActionItems.find(item => item.label === 'Mes remboursements').onPress();
+  assert.equal(calls.pop(), '/services/credit/repayments');
   assert.equal(render().priorityCta.label, 'Actualiser le profil');
   await render().priorityCta.onPress();
   await render().handleSubscribePro();
@@ -120,6 +122,8 @@ test('controller never labels an existing driver as becoming a driver and retry 
   data.profileState = profileState('verify_identity');
   assert.equal(render().priorityCta.label, 'Vérifier mon identité');
   data.isDriver = false;
+  render().quickActionItems.find(item => item.label === 'Mes remboursements').onPress();
+  assert.equal(calls.pop(), '/services/credit/repayments', 'Historical credits remain accessible without an active driver role');
   data.profileState = profileState('start');
   assert.equal(render().priorityCta.label, 'Commencer');
   hooks.unmount();

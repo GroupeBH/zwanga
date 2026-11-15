@@ -57,6 +57,19 @@ test('late role reads never resurrect a logout, affect another account or undo a
   }
 });
 
+test('confirmed profile category updates the taxi tab without changing private or intercity rules', async () => {
+  const { usesEarningsTab } = load('features/navigation/accountTabPolicy.ts');
+  for (const category of ['transport', 'private', 'intercity', null]) {
+    const f = roleSyncFixture();
+    f.state.auth.user = { id: 'a', role: 'driver', driverCategory: 'private' };
+    const work = f.start();
+    f.resolve({ data: { user: { id: 'a', role: 'driver', driverCategory: category } } });
+    await work;
+    assert.equal(f.actions[0].payload.driverCategory, category);
+    assert.equal(usesEarningsTab({ ...f.state.auth.user, ...f.actions[0].payload }), category === 'transport');
+  }
+});
+
 function authFixture() {
   const mod = loader({
     '../../services/tokenRefresh': {}, '../../services/tokenStorage': {},

@@ -23,6 +23,7 @@ export async function syncAccountRole<T extends User | { user: User }>(
     if (current.updatedAt && user.updatedAt && Date.parse(current.updatedAt) > Date.parse(user.updatedAt)) return;
     lifecycle.dispatch({ type: 'auth/updateUser', payload: {
       id: user.id, role: user.role, isDriver: user.role === 'driver' || user.role === 'both',
+      driverCategory: user.driverCategory,
       driverOnboardingRequestedAt: user.driverOnboardingRequestedAt,
       driverActivatedAt: user.driverActivatedAt, updatedAt: user.updatedAt,
     } });

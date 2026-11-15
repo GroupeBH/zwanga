@@ -95,7 +95,7 @@ export function useSignupProfileActions({
     }
     if (role === 'driver') {
       if (!driverCategory) {
-        showDialog({ variant: 'warning', title: 'Type de conducteur', message: 'Choisissez « Conducteur privé » ou « Taxi / moto-taxi ».' });
+        showDialog({ variant: 'warning', title: 'Type de conducteur', message: 'Choisissez votre type de conducteur.' });
         return;
       }
       if (!vehicleType) {

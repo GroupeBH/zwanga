@@ -29,7 +29,7 @@ const icons: Record<DisplayServiceCode, keyof typeof Ionicons.glyphMap> = {
 };
 
 export function ServiceDirectory({
-  items, state, current, checking = false, active = true, secondary = false,
+  items, state, current, checking = false, active = true, secondary = false, group,
 }: {
   items: ProOffering[];
   state: CatalogueState;
@@ -37,12 +37,14 @@ export function ServiceDirectory({
   checking?: boolean;
   active?: boolean;
   secondary?: boolean;
+  group?: 'documents' | 'business';
 }) {
   const catalogue = buildServiceCatalogue(items, state);
-  const entries = secondary ? catalogue.secondary : catalogue.primary;
+  const entries = secondary ? catalogue.secondary : catalogue.primary.filter(entry =>
+    !group || (group === 'documents' ? entry.code === 'documents' : entry.code !== 'documents'));
   if (!entries.length) return null;
   return (
-    <View style={c.directory} testID={secondary ? 'pro-other-services' : 'pro-main-services'}>
+    <View style={c.directory} testID={secondary ? 'pro-other-services' : group ? `pro-${group}-services` : 'pro-main-services'}>
       {secondary && <Text accessibilityRole="header" style={c.sectionTitle}>Autres services</Text>}
       {entries.map(entry => entry.code === 'fleet' ? <FleetServiceEntry key={entry.code} active={active}/> : entry.offering && entry.availability === 'open'
         ? <OpenService
@@ -83,10 +85,10 @@ export function OpenService({ item, current, checking = false, active = true }: 
       <View style={c.content}>
         <View style={c.titleRow}>
           <Text style={c.title}>{copy.title}</Text>
-          <Text style={c.openBadge}>{current ? 'Mon dossier' : 'Disponible'}</Text>
+          {current && <Text style={c.openBadge}>Mon dossier</Text>}
         </View>
         <Text style={c.description}>{copy.description}</Text>
-        <Text style={c.action}>{action}</Text>
+        {(current || checking) && <Text style={c.action}>{action}</Text>}
       </View>
       <Ionicons name="chevron-forward" size={19} color="#C34412" />
     </TouchableOpacity>
@@ -95,11 +97,27 @@ export function OpenService({ item, current, checking = false, active = true }: 
 
 /** Fleet membership is an account service, separate from the legacy financing intake. */
 export function FleetServiceEntry({active=true}:{active?:boolean}) {
-  return <TouchableOpacity style={c.offering} accessibilityRole="button" accessibilityLabel="Flottes. Véhicules et affectations" accessibilityState={{disabled:!active}} disabled={!active} testID="pro-service-fleet"
+  return <TouchableOpacity style={c.offering} accessibilityRole="button" accessibilityLabel="Gérer ma flotte. Véhicules, conducteurs et versements" accessibilityState={{disabled:!active}} disabled={!active} testID="pro-service-fleet"
     onPress={()=>{if(active)router.push('/services/fleet' as Href);}}>
     <View style={c.icon}><Ionicons name="car-sport-outline" size={27} color="#C34412"/></View>
-    <View style={c.content}><Text style={c.title}>Flottes</Text><Text style={c.description}>Vos véhicules et affectations.</Text><Text style={c.action}>Ouvrir ma flotte</Text></View>
+    <View style={c.content}><Text style={c.title}>Gérer ma flotte</Text><Text style={c.description}>Véhicules, conducteurs et versements.</Text></View>
     <Ionicons name="chevron-forward" size={19} color="#C34412"/>
+  </TouchableOpacity>;
+}
+
+/** Equipment and vehicles use the same catalogue, consent and repayment screens. */
+export function CreditServiceEntry({ active = true }: { active?: boolean }) {
+  return <TouchableOpacity style={c.offering} accessibilityRole="button"
+    accessibilityLabel="Équipements et véhicules à crédit. Voir les offres et mes remboursements"
+    accessibilityState={{ disabled: !active }} disabled={!active} testID="pro-service-credit"
+    onPress={() => { if (active) router.push('/services/credit' as Href); }}>
+    <View style={c.icon}><Ionicons name="construct-outline" size={27} color="#C34412" /></View>
+    <View style={c.content}>
+      <Text style={c.title}>Équipements et véhicules</Text>
+      <Text style={c.description}>Téléphone, casque, GPS, véhicule…</Text>
+      <Text style={c.action}>Choisir ou suivre mon crédit</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={19} color="#C34412" />
   </TouchableOpacity>;
 }
 
@@ -157,28 +175,27 @@ export function ServiceCaseLink({ item }: { item: ProCaseRow }) {
 }
 
 const c = StyleSheet.create({
-  directory: { gap: 8 },
+  directory: { gap: 0 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#172D3B', marginBottom: 4 },
   content: { flex: 1, minWidth: 0, gap: 5 },
   titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   offering: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    paddingVertical: 12,
     gap: 12,
-    backgroundColor: "#FFF8F3",
-    borderRadius: 16,
+    minHeight: 72,
   },
   icon: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     flexShrink: 0,
-    borderRadius: 14,
+    borderRadius: 12,
     backgroundColor: "#FFE8DA",
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 19, fontWeight: '700', color: '#172D3B', flexShrink: 1 },
+  title: { fontSize: 17, fontWeight: '700', color: '#172D3B', flexShrink: 1 },
   description: { fontSize: 13, lineHeight: 19, color: '#556570' },
   action: { color: '#B33E10', fontSize: 13, fontWeight: '700', marginTop: 2 },
   openBadge: { color: '#9B3B14', backgroundColor: '#FFE8DA', fontSize: 11, fontWeight: '600', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
@@ -187,8 +204,7 @@ const c = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#EDF0F2",
   },
