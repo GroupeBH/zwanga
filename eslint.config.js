@@ -5,7 +5,8 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/**', '.expo/**', 'docs/backend-examples/**'],
+    // Third-party Python packages used to generate printable PDFs are not app sources.
+    ignores: ['dist/**', '.expo/**', 'docs/backend-examples/**', 'tmp/pdfs/deps/**'],
   },
   {
     files: ['tests/**/*.{js,cjs}'],
