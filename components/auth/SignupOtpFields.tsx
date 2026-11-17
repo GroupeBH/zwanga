@@ -1,4 +1,5 @@
 import React from 'react';
+import { OtpCountdown } from './OtpCountdown';
 import { ActivityIndicator, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Colors } from '@/constants/styles';
 import { authCodeStyles as compact } from '@/features/auth/authCode.styles';
@@ -32,6 +33,7 @@ export function SignupOtpFields({ phone, code, inputRefs, onChange, onVerify, on
       compact label="Code SMS · 5 chiffres" containerStyle={compact.codeRow}
       inputStyle={[styles.smsInput, compact.codeInput, keyboardVisible && compact.keyboardCodeInput]}
       filledStyle={styles.smsInputFilled} />
+    <OtpCountdown purpose="phone_verification" phone={phone} />
     <View style={compact.actions}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel={submitLabel}
         accessibilityState={{ disabled: !complete || busy, busy: isVerifying }}

@@ -7,8 +7,12 @@ import { getApiErrorMessage, isPassengerKycRequiredError } from '@/utils/errorHe
 import React from 'react';
 import type { Trip } from '@/types';
 import { isTripExpired } from '@/features/trip-detail/tripDetailAvailability';
+import type { TripEditReferences } from '@/hooks/trips/useTripEditReferences';
+import { getTripEditReferenceError } from '@/features/trips/tripEditReferences';
 
 interface Params {
+  editReferences: TripEditReferences;
+  setEditStep: (step: 1 | 2) => void;
   trip: Trip | undefined;
   editDateTime: Date | null;
   isTripDriver: boolean;
@@ -31,6 +35,8 @@ interface Params {
 }
 
 export function useTripDetailEditSubmission({
+  editReferences,
+  setEditStep,
   trip,
   editDateTime,
   isTripDriver,
@@ -124,6 +130,16 @@ export function useTripDetailEditSubmission({
     let resolvedDepartureSelection = editDepartureSelection;
     let resolvedArrivalSelection = editArrivalSelection;
 
+    const validateReferences = () => {
+      const error = getTripEditReferenceError(editReferences, departureAddress, arrivalAddress,
+        resolvedDepartureSelection, resolvedArrivalSelection);
+      if (!error) return true;
+      setEditStep(1);
+      showDialog({ variant: 'warning', title: 'Repère requis', message: error });
+      return false;
+    };
+    if (!validateReferences()) return;
+
     if (editRouteMode === 'manual') {
       if (departureAddressChanged || !getLocationCoordinatesTuple(resolvedDepartureSelection)) {
         const selection = await resolveManualAddressSelection(departureAddress, 'departure');
@@ -154,7 +170,12 @@ export function useTripDetailEditSubmission({
       }
     }
 
+    // Manual geocoding may reveal an administrative-only place.
+    if (!validateReferences()) return;
+
     const updates: {
+      departureReference: string;
+      arrivalReference: string;
       totalSeats: number;
       pricePerSeat?: number;
       departureDate: string;
@@ -165,6 +186,8 @@ export function useTripDetailEditSubmission({
       vehicleId?: string;
       requiresPassengerKyc?: boolean;
     } = {
+      departureReference: editReferences.departureReference.trim(),
+      arrivalReference: editReferences.arrivalReference.trim(),
       totalSeats: seatsValue,
       ...(trip.tripRequestId ? {} : { pricePerSeat: priceValue }),
       departureDate: editDateTime.toISOString(),

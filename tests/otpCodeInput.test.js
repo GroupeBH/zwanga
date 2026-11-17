@@ -65,6 +65,34 @@ for (const size of [5, 6]) {
 }
 
 for (const os of ['android', 'ios']) {
+  for (const size of [5, 6]) {
+    for (const keyEvent of ['before-change', 'after-change', 'none']) {
+      test(`${os}, ${size} boxes: successive deletions return focus without tapping cells (${keyEvent})`, () => {
+        const app = fixture(size, os);
+        app.props.code = '012345'.slice(0, size).split('');
+        // Reuse handlers to exercise rapid native events before a React rerender.
+        const inputs = app.inputs();
+        let focused = size - 1;
+        for (let remaining = size - 1; remaining >= 0; remaining--) {
+          assert.equal(focused, remaining);
+          const input = inputs[focused];
+          if (keyEvent === 'before-change') input.props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+          input.props.onChangeText('');
+          if (keyEvent === 'after-change') input.props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+          assert.deepEqual(app.props.code, [
+            ...'012345'.slice(0, remaining).split(''), ...Array(size - remaining).fill(''),
+          ], 'each deletion clears only its own digit');
+          focused = app.focuses.at(-1);
+          assert.equal(focused, Math.max(0, remaining - 1));
+        }
+        inputs[0].props.onChangeText('9');
+        assert.equal(app.props.code.join(''), '9');
+        assert.equal(app.focuses.at(-1), 1, 'typing still advances after deleting the code');
+        app.hooks.unmount();
+      });
+    }
+  }
+
   test(`${os}: only one autofill target; native paste stays available in all boxes`, () => {
     const app = fixture(6, os), inputs = app.inputs();
     assert.equal(inputs[0].props.autoComplete, os === 'android' ? 'sms-otp' : 'one-time-code');
@@ -102,10 +130,34 @@ test('partial paste, deletion and backspace preserve other digits', () => {
   const inputs = app.inputs(); inputs[2].props.onChangeText('3 4');
   assert.deepEqual(app.props.code, ['1', '2', '3', '4', '', '']);
   assert.deepEqual(app.focuses, []);
-  inputs[2].props.onChangeText('');
   inputs[2].props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+  inputs[2].props.onChangeText('');
   assert.deepEqual(app.props.code, ['1', '2', '', '4', '', '']);
   assert.deepEqual(app.focuses, [1]); app.hooks.unmount();
+});
+
+test('backspace on empty boxes moves back without erasing adjacent digits or leaving the first box', () => {
+  const app = fixture(); app.props.code = ['1', '2', '', '', '', ''];
+  const inputs = app.inputs();
+  inputs[2].props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+  assert.deepEqual(app.focuses, [1]);
+  assert.deepEqual(app.props.code, ['1', '2', '', '', '', '']);
+  inputs[1].props.onChangeText('');
+  assert.deepEqual(app.focuses, [1, 0]);
+  inputs[0].props.onChangeText('');
+  inputs[0].props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+  assert.deepEqual(app.focuses, [1, 0]);
+  assert.deepEqual(app.props.code, Array(6).fill(''));
+  app.hooks.unmount();
+});
+
+test('unmounted inputs ignore late deletion and backspace events', () => {
+  const app = fixture(); app.props.code = ['1', '2', '', '', '', ''];
+  const inputs = app.inputs(); app.hooks.unmount();
+  inputs[1].props.onChangeText('');
+  inputs[2].props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+  assert.deepEqual(app.changes, []);
+  assert.deepEqual(app.focuses, []);
 });
 
 test('empty/wrong clipboard content and read failure preserve input and show French guidance', async () => {
@@ -133,8 +185,12 @@ test('late clipboard cannot overwrite typing, reset, resend or a closed screen',
 });
 
 test('verification/resend disables native changes and explicit clipboard access', () => {
-  const app = fixture(), oldInputs = app.inputs(); app.props.disabled = true;
+  const app = fixture(); app.props.code = ['0', '1', '', '', '', ''];
+  const oldInputs = app.inputs(); app.props.disabled = true;
   assert.ok(app.inputs().every(node => node.props.editable === false));
   app.paste(); oldInputs[0].props.onChangeText('012345');
+  oldInputs[1].props.onChangeText('');
+  oldInputs[2].props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+  assert.deepEqual(app.focuses, []);
   assert.deepEqual(app.changes, []); assert.deepEqual(app.reads, []); app.hooks.unmount();
 });

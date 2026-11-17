@@ -11,12 +11,13 @@ function fixture(t) {
   const hooks = hookHarness('recovery');
   const counts = { trips: 0, bookings: 0, snapshots: 0, gps: 0, writes: 0, presentations: 0 };
   let listener, resolveTrip;
-  const state = { deferred: false, status: 'ongoing' };
+  const state = { deferred: false, status: 'ongoing', startedAt: null, snapshot: { coordinates: null }, deviceLocation: null };
+  const completions = [];
   const load = loader({ react: hooks.react,
     'react-native': { Platform: { OS: 'ios' }, AppState: {
       addEventListener: (_event, fn) => { listener = fn; return { remove: () => { listener = null; } }; },
     } },
-    'expo-location': { Accuracy: { High: 4 }, getCurrentPositionAsync: async () => { counts.gps++; return null; } },
+    'expo-location': { Accuracy: { High: 4 }, getCurrentPositionAsync: async () => { counts.gps++; return state.deviceLocation; } },
     '@/services/trackingSocket': { trackingSocket: { resumeBoardingDetection: async () => {} } },
   });
   const { useDriverForegroundCompletion } = load('hooks/driver-navigation/useDriverForegroundCompletion.ts');
@@ -25,16 +26,16 @@ function fixture(t) {
     tripId: 'trip', isScreenActive: false, trip: { id: 'trip', status: 'ongoing' },
     tripArrivalCoordinate: { latitude: -4.4, longitude: 15.4 },
     isRestCompletionCheckRunningRef: ref(false), lastRestCompletionCheckAtRef: ref(0),
-    refetchTrip: async () => { counts.trips++; return state.deferred ? new Promise(r => { resolveTrip = r; }) : { data: { status: state.status } }; },
+    refetchTrip: async () => { counts.trips++; return state.deferred ? new Promise(r => { resolveTrip = r; }) : { data: { status: state.status, startedAt: state.startedAt } }; },
     refetchBookings: async () => { counts.bookings++; return { data: [] }; },
-    getDriverLocationSnapshot: () => ({ abort: noop, unwrap: async () => { counts.snapshots++; return { coordinates: null }; } }),
+    getDriverLocationSnapshot: () => ({ abort: noop, unwrap: async () => { counts.snapshots++; return state.snapshot; } }),
     bookingsRef: ref([]), presentCompletedTripFromServerSync: () => { counts.presentations++; },
     completedDuringInactiveCandidateRef: ref(false), lastAcceptedDriverTimestampRef: ref(null), isMountedRef: ref(true),
     lastTripCompletionCheckCoordinateRef: ref(null), lastAcceptedDriverCoordinateRef: ref(null),
     tripDestinationNearSinceMsRef: ref(null), getTripDestinationReferenceRoute: () => [],
     currentLocationRef: ref(null), setCurrentLocation: noop,
     updateDriverLocation: () => { counts.writes++; return { unwrap: async () => ({}) }; },
-    tryCompleteTripFromNavigation: noop, appStateRef: ref('active'),
+    tryCompleteTripFromNavigation: distance => completions.push(distance), appStateRef: ref('active'),
   };
   const mapState = { ...params, isTripOngoingRef: ref(true), pickupNotice: null, setPickupNoticeCountdown: noop };
   const refs = { previousTripStatusRef: ref('ongoing') };
@@ -46,7 +47,7 @@ function fixture(t) {
     return foregroundCompletion;
   });
   t.after(() => hooks.unmount());
-  return { params, state, counts, render, hooks, appState: next => listener(next),
+  return { params, state, counts, completions, render, hooks, appState: next => listener(next),
     release: status => resolveTrip({ data: { status } }) };
 }
 
@@ -105,4 +106,49 @@ test('rapid return starts a new recovery without an obsolete promise unlocking i
   pending[1]({ data: { status: 'completed' } }); await flush();
   assert.equal(f.counts.presentations, 1);
   assert.equal(f.params.isRestCompletionCheckRunningRef.current, false);
+});
+
+for (const [label, timestamp] of [['stale', 60_000], ['before start', 98_000], ['future', 110_000], ['missing', null]]) {
+  test(`foreground recovery rejects a ${label} REST arrival rather than closing a new trip`, async t => {
+    const f = fixture(t);
+    f.params.isScreenActive = true;
+    f.state.startedAt = new Date(99_000).toISOString();
+    f.state.snapshot = { coordinates: [15.4, -4.4], updatedAt: timestamp === null ? null : new Date(timestamp).toISOString() };
+    f.render(); await flush();
+    assert.equal(f.completions.length, 0);
+    assert.equal(f.counts.presentations, 0);
+  });
+}
+
+test('foreground recovery never interprets an extrapolated route as arrival', async t => {
+  const f = fixture(t); f.params.isScreenActive = true;
+  const destination = f.params.tripArrivalCoordinate;
+  const beyond = { latitude: destination.latitude + .01, longitude: destination.longitude };
+  f.params.getTripDestinationReferenceRoute = () => [
+    beyond, { latitude: destination.latitude - .001, longitude: destination.longitude }, destination,
+  ];
+  f.state.snapshot = { coordinates: [beyond.longitude, beyond.latitude], updatedAt: new Date(Date.now()).toISOString() };
+  f.state.deviceLocation = { timestamp: Date.now(), coords: { ...beyond, accuracy: 5 } };
+  f.render(); await flush();
+  assert.equal(f.completions.length, 0); assert.equal(f.counts.writes, 1);
+});
+
+for (const [label, overrides] of [
+  ['stale', { timestamp: 60_000 }], ['before start', { timestamp: 98_000 }],
+  ['future', { timestamp: 110_000 }], ['mocked', { mocked: true }],
+  ['unknown accuracy', { coords: { latitude: -4.4, longitude: 15.4, accuracy: null } }],
+]) {
+  test(`foreground recovery ignores a ${label} device fix at arrival`, async t => {
+    const f = fixture(t); f.params.isScreenActive = true; f.state.startedAt = new Date(99_000).toISOString();
+    f.state.deviceLocation = { timestamp: Date.now(), coords: { latitude: -4.4, longitude: 15.4, accuracy: 5 }, ...overrides };
+    f.render(); await flush();
+    assert.equal(f.completions.length, 0); assert.equal(f.counts.writes, 0);
+  });
+}
+
+test('foreground recovery retains automatic completion for a fresh accurate arrival', async t => {
+  const f = fixture(t); f.params.isScreenActive = true;
+  f.state.deviceLocation = { timestamp: Date.now(), coords: { latitude: -4.4, longitude: 15.4, accuracy: 5 } };
+  f.render(); await flush();
+  assert.equal(f.completions.length, 1); assert.equal(f.counts.writes, 1);
 });

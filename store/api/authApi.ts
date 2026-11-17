@@ -1,4 +1,5 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { trackOtpCountdown } from '@/features/auth/otpCountdown';
 import { getTokens } from '../../services/tokenStorage';
 import { refreshAccessToken } from '../../services/tokenRefresh';
 import { getTokenSessionVersion } from '../../services/tokenSession';
@@ -78,7 +79,8 @@ export const authApi = baseApi.injectEndpoints({
       invalidatesTags: [currentUserTag],
     }),
 
-    requestPinResetOtp: builder.mutation<{ message: string }, { phone: string }>({
+    requestPinResetOtp: builder.mutation<{ message: string; expiresInSeconds?: number }, { phone: string }>({
+      onQueryStarted: trackOtpCountdown('pin_reset'),
       query: ({ phone }) => ({
         url: '/auth/pin/reset/request-otp',
         method: 'POST',

@@ -6,7 +6,9 @@ import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { Colors } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
-import { selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
+import { getTabContentOverlay, selectIsDriverAccount, selectUsesTripSearchTab } from '@/features/navigation/accountTabPolicy';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import SearchScreen from '../search';
 import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -26,6 +28,11 @@ import { RideModal as Modal } from '@/features/navigation/RideModal';
 
 export default function TripsScreen() {
   const focused = useIsFocused();
+  const usesTripSearch = useAppSelector(selectUsesTripSearchTab);
+  const tabBarHeight = useBottomTabBarHeight();
+  if (usesTripSearch) {
+    return <SearchScreen embedded bottomOverlay={getTabContentOverlay(Platform.OS, tabBarHeight)} />;
+  }
   return <RideOverlayScope scopeKey="my-trips" active={focused}>
     <TripsContent />
   </RideOverlayScope>;
@@ -33,7 +40,7 @@ export default function TripsScreen() {
 
 function TripsContent() {
   const model = useTripsController();
-  const isDriver = useAppSelector(selectUsesServicesTab);
+  const isDriver = useAppSelector(selectIsDriverAccount);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -192,6 +199,9 @@ function TripsContent() {
       />
 
       <TripsEditModal
+        editReferences={model.state.editReferences}
+        editDepartureSelection={model.state.editDepartureSelection}
+        editArrivalSelection={model.state.editArrivalSelection}
         editingTrip={model.state.editingTrip}
         editModalSuspended={model.state.editModalSuspended}
         closeEditModal={model.editor.closeEditModal}
@@ -240,9 +250,11 @@ function TripsContent() {
           const target = model.state.editRoutePickerTarget;
           model.state.setEditRouteMode('map');
           if (target === 'departure') {
+            model.state.editReferences.clearIfLocationChanged(target, location, model.state.editDepartureSelection);
             model.state.setEditDepartureSelection(location);
             model.state.setEditDepartureManualAddress(location.title || location.address);
           } else if (target === 'arrival') {
+            model.state.editReferences.clearIfLocationChanged(target, location, model.state.editArrivalSelection);
             model.state.setEditArrivalSelection(location);
             model.state.setEditArrivalManualAddress(location.title || location.address);
           }

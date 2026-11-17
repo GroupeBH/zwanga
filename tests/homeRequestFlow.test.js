@@ -7,14 +7,19 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const departure = { latitude: -4.31, longitude: 15.29, title: 'Départ test', address: 'Rue test A' };
 const arrival = { latitude: -4.33, longitude: 15.32, title: 'Arrivée test', address: 'Rue test B' };
+const selectedDriver = { id: '11111111-1111-4111-8111-111111111111', role: 'driver', firstName: 'Conducteur',
+  vehicles: [{ type: 'motorcycle_2_wheels', isActive: true, brand: 'Test', model: 'Moto' }] };
+const { getTripRequestCreateHref } = loader()('utils/requestNavigation.ts');
 
 function fixture(t, { withDeparture = true, entry = 'home', gpsFails = false } = {}) {
   const hooks = hookHarness('home-command'), posts = [], routes = [], dialogs = [], listeners = new Set();
   const slice = loader()('store/slices/requestDraftsSlice.ts');
-  const store = configureStore({ reducer: { requestDrafts: slice.default } });
+  const store = configureStore({ reducer: { requestDrafts: slice.default,
+    auth: (state = { user: { id: 'passenger' } }) => state } });
   const state = { active: true, params: { entry }, response: () => Promise.resolve({ id: 'synthetic-command' }), gps: 0,
     gpsRead: async () => { if (gpsFails) throw Error('GPS unavailable'); return null; },
-    address: async point => ({ ...point, title: 'Position test', address: 'Rue GPS test' }) };
+    address: async point => ({ ...point, title: 'Position test', address: 'Rue GPS test' }),
+    driverQuery: { currentData: selectedDriver, isError: false, isFetching: false, refetch() {} } };
   if (withDeparture) Object.assign(state.params, { departure: departure.title, departureAddress: departure.address,
     departureLat: String(departure.latitude), departureLng: String(departure.longitude) });
   const load = loader({ react: { ...hooks.react, startTransition: fn => fn() },
@@ -30,11 +35,11 @@ function fixture(t, { withDeparture = true, entry = 'home', gpsFails = false } =
     '@/hooks/useUserLocation': { useUserLocation: () => ({ getCurrentLocation: async () => {
       state.gps++; return state.gpsRead();
     } }) },
-    '@/store/api/userApi': { useGetFavoriteLocationsQuery: () => ({ data: [] }) },
+    '@/store/api/userApi': { useGetFavoriteLocationsQuery: () => ({ data: [] }), useGetPublicUserInfoQuery: () => state.driverQuery },
+    '@/hooks/useDisplayReads': { useDisplayReadsEnabled: x => x, displayReadOptions: x => ({ skip: !x }) },
     '@/store/api/googleMapsApi': { useGeocodeMutation: () => [() => assert.fail('unexpected geocode')] },
     './useRequestRouteEffects': { useRequestRouteEffects: () => ({}) },
     './useRequestQuickPlaces': { useRequestQuickPlaces: () => ({}) },
-    './useDirectDriverPrefill': { useDirectDriverPrefill: () => ({ blocked: false }) },
     './useRequestVehicleOptions': { useRequestVehicleOptions: () => ({ vehicleOptions: [
       { vehicleType: 'car', recommendedPricePerSeat: 2500, availableForRequestedSeats: true },
       { vehicleType: 'motorcycle_2_wheels', recommendedPricePerSeat: 1500, availableForRequestedSeats: true },
@@ -71,6 +76,58 @@ function fixture(t, { withDeparture = true, entry = 'home', gpsFails = false } =
 }
 
 const gpsFix = () => ({ coords: { latitude: departure.latitude, longitude: departure.longitude, accuracy: 20 }, timestamp: Date.now() });
+
+for (const gpsAvailable of [true, false]) test('direct driver uses destination then quote, with pickup fallback and references; GPS=' + gpsAvailable, async t => {
+  const f = fixture(t, { withDeparture: false });
+  f.state.params = getTripRequestCreateHref({ entry: 'home', targetDriverId: selectedDriver.id,
+    targetVehicleType: 'motorcycle_2_wheels' }).params;
+  f.state.gpsRead = async () => gpsAvailable ? gpsFix() : null;
+  const pickup = { ...departure, title: 'Gombe', address: 'Gombe' };
+  const destination = { ...arrival, title: 'Lemba', address: 'Lemba' };
+  f.state.address = async () => pickup;
+  let view = f.settle();
+  assert.equal(view.form.isHomeEntry, true); assert.equal(view.flow.pickerTarget, 'arrival');
+  assert.equal(view.form.targetDriver.id, selectedDriver.id);
+  assert.deepEqual(view.form.selectedVehicleTypes, ['motorcycle_2_wheels']);
+  assert.equal(view.form.timePreset, 'now'); await tick();
+  view = f.select(destination);
+  if (!gpsAvailable) {
+    assert.equal(view.flow.pickerTarget, 'departure'); view = f.select(pickup);
+  }
+  assert.equal(f.state.gps, 1, 'no duplicate legacy GPS lookup');
+  assert.equal(view.flow.pickerTarget, null); assert.equal(view.form.requestFormStep, 'details');
+  assert.deepEqual(view.form.departureLocation, pickup); assert.deepEqual(view.form.arrivalLocation, destination);
+  assert.equal(f.posts.length, 0, 'choosing the destination must not order automatically');
+  await view.flow.submit(); assert.equal(f.posts.length, 0);
+  assert.match(f.settle().form.submissionError, /repère au départ/);
+  view.form.setDepartureReference('  Pharmacie test  '); view = f.settle();
+  await view.flow.submit(); assert.equal(f.posts.length, 0);
+  assert.match(f.settle().form.submissionError, /repère à l’arrivée/);
+  view.form.setArrivalReference('  École test  '); view.form.updateBudget(3500); view = f.settle();
+  const pending = view.flow.submit(); await view.flow.submit(); await pending;
+  assert.equal(f.posts.length, 1);
+  assert.equal(f.posts[0].targetDriverId, selectedDriver.id);
+  assert.deepEqual(f.posts[0].vehicleTypes, ['motorcycle_2_wheels']);
+  assert.equal(f.posts[0].maxPricePerSeat, 3500);
+  assert.equal(f.posts[0].departureReference, 'Pharmacie test'); assert.equal(f.posts[0].arrivalReference, 'École test');
+  assert.deepEqual(f.routes, [{ pathname: '/request-details/[id]', params: { id: 'synthetic-command' } }]);
+});
+
+test('simplified direct order waits for the driver lookup and never silently broadcasts on lookup failure', async t => {
+  const f = fixture(t);
+  Object.assign(f.state.params, getTripRequestCreateHref({ entry: 'home', targetDriverId: selectedDriver.id,
+    targetVehicleType: 'motorcycle_2_wheels' }).params);
+  f.state.driverQuery.currentData = undefined;
+  f.settle(); let view = f.select(arrival);
+  assert.equal(view.form.directDriverPrefill.blocked, true); assert.equal(view.form.canSubmitRequestDetails, false);
+  await view.flow.submit(); assert.equal(f.posts.length, 0);
+  f.state.driverQuery.isError = true; view = f.settle();
+  assert.equal(view.form.directDriverPrefill.error, true);
+  await view.flow.submit(); assert.equal(f.posts.length, 0);
+  f.state.driverQuery.isError = false; f.state.driverQuery.currentData = selectedDriver; view = f.settle();
+  assert.equal(view.form.directDriverPrefill.blocked, false); assert.equal(view.form.targetDriver.id, selectedDriver.id);
+  await view.flow.submit(); assert.equal(f.posts.length, 1); assert.equal(f.posts[0].targetDriverId, selectedDriver.id);
+});
 
 test('destination selection goes straight to the quote without any dismiss callback or price step', t => {
   const f = fixture(t); let view = f.settle();

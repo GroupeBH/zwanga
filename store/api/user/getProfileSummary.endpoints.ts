@@ -1,3 +1,4 @@
+import { trackOtpCountdown } from '@/features/auth/otpCountdown';
 import {
   currentUserTag,
   kycStatusTag,
@@ -115,6 +116,7 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
     }),
 // Envoyer un code OTP pour la vérification du numéro de téléphone
     sendPhoneVerificationOtp: builder.mutation<{ message: string; codeLength?: number; expiresInSeconds?: number }, { phone: string; context: 'registration' | 'login' | 'update' }>({
+      onQueryStarted: trackOtpCountdown('phone_verification'),
       queryFn: async (data: { phone: string; context: 'registration' | 'login' | 'update' }, _api, _extraOptions, baseQuery) => {
         // S'assurer que le contexte est bien défini
         if (!data.context || (data.context !== 'login' && data.context !== 'registration' && data.context !== 'update')) {
@@ -153,6 +155,7 @@ updateFcmToken: builder.mutation<{ message: string }, { fcmToken: string }>({
     }),
 // Le destinataire est le numéro du compte authentifié, jamais fourni par le mobile.
     requestPinChangeOtp: builder.mutation<{ message: string; codeLength: number; expiresInSeconds: number }, void>({
+      onQueryStarted: trackOtpCountdown('pin_change'),
       query: () => ({ url: '/users/pin/change/request-otp', method: 'POST' }),
     }),
 // L'ancien PIN et l'OTP dédié sont tous deux obligatoires.

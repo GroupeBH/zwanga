@@ -5,8 +5,10 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import React, { useEffect } from 'react';
 import { InteractionManager } from 'react-native';
 import type { Trip } from '@/types';
+import type { TripEditReferences } from '@/hooks/trips/useTripEditReferences';
 
 interface Params {
+  editReferences: TripEditReferences;
   trip: Trip | undefined;
   isTripDriver: boolean;
   setEditSeats: React.Dispatch<React.SetStateAction<string>>;
@@ -34,6 +36,7 @@ interface Params {
 }
 
 export function useTripDetailEditorLifecycle({
+  editReferences,
   trip,
   isTripDriver,
   setEditSeats,
@@ -61,6 +64,7 @@ export function useTripDetailEditorLifecycle({
 }: Params) {
   const openEditModal = () => {
     if (!trip || !isTripDriver) return;
+    editReferences.reset(trip);
 
     const departureLat = Number(trip.departure?.lat);
     const departureLng = Number(trip.departure?.lng);
@@ -104,6 +108,7 @@ export function useTripDetailEditorLifecycle({
   };
 
   const closeEditModal = () => {
+    editReferences.reset();
     setEditTripModalVisible(false);
     setEditStep(1);
     setEditSeats('');

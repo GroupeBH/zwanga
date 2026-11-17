@@ -12,10 +12,12 @@ import type { Trip } from '@/types';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTripEditReferences } from './useTripEditReferences';
 
 
 
 export function useTripsScreenState() {
+  const editReferences = useTripEditReferences();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [mainTab, setMainTab] = useState<MainTab>('published');
@@ -56,6 +58,7 @@ export function useTripsScreenState() {
   const [tripsGuideVisible, setTripsGuideVisible] = useState(false);
 
   return {
+    editReferences,
     feeds,
     shouldShowTripsGuide,
     setTripsGuideVisible,

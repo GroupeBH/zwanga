@@ -120,6 +120,15 @@ for (const os of ['android', 'ios']) {
       assert.equal(focused, null, 'bulk paste does not race the OS by changing focus');
       tree = render();
       assert.equal(verifyButton(tree).props.disabled, false);
+      const lastInput = nodes(tree).filter(node => node.type === 'TextInput').at(-1);
+      lastInput.props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+      lastInput.props.onChangeText('');
+      assert.equal(focused, size - 2, 'deleting a digit returns to the previous box');
+      tree = render();
+      assert.equal(verifyButton(tree).props.disabled, true, 'an edited incomplete code cannot be verified');
+      nodes(tree).filter(node => node.type === 'TextInput').at(-1).props.onChangeText(String(size));
+      tree = render();
+      assert.equal(verifyButton(tree).props.disabled, false);
       const resendButton = buttons(tree).find(node => /Renvoyer/.test(text(node)));
       resendButton.props.onPress();
       assert.equal(resends, 1);

@@ -28,6 +28,7 @@ import { estimateCashCommission } from '@/utils/cashCommission';
 import { resolveSharedRouteAddresses } from '@/services/sharedRouteAddresses';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { MIN_REQUEST_PRICE } from '@/features/trip-request/requestFormModel';
+import { missingRequestReference } from '@/features/trip-request/requestReference';
 
 interface Params {
   acceptedPaymentModes: TripPaymentMode[];
@@ -36,6 +37,7 @@ interface Params {
   isSubmittingTrip: boolean;
   hasDepartureAddress: boolean;
   hasArrivalAddress: boolean;
+  onMissingReference: (target: 'departure' | 'arrival') => void;
   setAddressSectionStep: React.Dispatch<React.SetStateAction<AddressSectionStep>>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   seats: string;
@@ -80,6 +82,7 @@ export function usePublishSubmission({
   isSubmittingTrip,
   hasDepartureAddress,
   hasArrivalAddress,
+  onMissingReference,
   setAddressSectionStep,
   showDialog,
   seats,
@@ -120,6 +123,13 @@ export function usePublishSubmission({
   React.useEffect(() => { const value = scope.current; value.active = true; return () => { value.active = false; }; }, []);
   const [isResolvingAddresses, setResolvingAddresses] = React.useState(false);
   const isCurrent = () => scope.current.active && scope.current.version === getTokenSessionVersion();
+  const validateReferences = (departure = departureAddress, arrival = arrivalAddress) => {
+    const target = missingRequestReference(departure, departureReference, departureLocation) ? 'departure'
+      : missingRequestReference(arrival, arrivalReference, arrivalLocation) ? 'arrival' : null;
+    if (!target) return true;
+    onMissingReference(target);
+    return false;
+  };
   const handlePublish = async () => {
     // RTK Query's isLoading is updated on the next render. The ref also blocks
     // two taps occurring in the same frame from creating duplicate trips.
@@ -135,6 +145,7 @@ export function usePublishSubmission({
       return;
     }
 
+    if (!validateReferences()) return;
     const seatsValue = parseInt(seats, 10);
     const priceValue = isFreeTrip ? 0 : parseFloat(price);
     if (!isFreeTrip && (!Number.isFinite(priceValue) || priceValue < MIN_REQUEST_PRICE)) {
@@ -220,6 +231,9 @@ export function usePublishSubmission({
         { text: departureAddress, point: departureLocation }, { text: arrivalAddress, point: arrivalLocation });
       if (!isCurrent()) return;
       setResolvingAddresses(false);
+      // Geocoding can resolve a placeholder to a commune-only address.
+      // No write has been attempted: stop without ambiguous-write recovery.
+      if (!validateReferences(shared.departureAddress, shared.arrivalAddress)) return;
       const departureCoordinates = getLocationCoordinates(departureLocation);
       const arrivalCoordinates = getLocationCoordinates(arrivalLocation);
 

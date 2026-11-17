@@ -1,4 +1,5 @@
 import React from 'react';
+import { OtpCountdown } from '../OtpCountdown';
 import { OtpCodeInput } from '../OtpCodeInput';
 import { PasswordCodeInput } from '../PasswordCodeInput';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
@@ -63,6 +64,7 @@ export function ResetPinStep({
       {resetPinStep === 'otp' ? (
         <>
           <OtpDeliveryNotice compact />
+          <OtpCountdown purpose="pin_reset" phone={phone} />
           <View>
             <OtpCodeInput code={otpCode} onChange={onOtpChange} inputRefs={otpInputRefs}
               compact label="Code reçu par SMS (6 chiffres)" disabled={isLoading || isResending}

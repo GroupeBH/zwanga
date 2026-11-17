@@ -1,4 +1,5 @@
 import type { Href } from 'expo-router';
+import type { TripRequestVehicleType } from '@/types';
 import { getPickerCoordinate, type MapLocationSelection } from '@/features/location-picker/locationPickerModel';
 
 type TripRequestCreateParams = {
@@ -8,6 +9,8 @@ type TripRequestCreateParams = {
   seats?: number;
   departureLocation?: MapLocationSelection;
   arrivalLocation?: MapLocationSelection;
+  targetDriverId?: string;
+  targetVehicleType?: TripRequestVehicleType;
 };
 
 export function getTripRequestCreateHref(params?: TripRequestCreateParams): Href {
@@ -30,6 +33,8 @@ export function getTripRequestCreateHref(params?: TripRequestCreateParams): Href
       arrivalLat: String(destinationPoint.latitude), arrivalLng: String(destinationPoint.longitude),
     } : {}),
     ...(params?.seats ? { seats: String(params.seats) } : {}),
+    ...(params?.targetDriverId ? { targetDriverId: params.targetDriverId,
+      ...(params.targetVehicleType ? { targetVehicleType: params.targetVehicleType } : {}) } : {}),
   };
 
   return {

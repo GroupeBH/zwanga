@@ -23,6 +23,7 @@ export function useTripDetailEditor({
   });
 
   const editor = useTripDetailEditorLifecycle({
+    editReferences: edit.editReferences,
     trip: data.trip,
     isTripDriver: data.isTripDriver,
     setEditSeats: edit.setEditSeats,
@@ -50,6 +51,7 @@ export function useTripDetailEditor({
   });
 
   const editRoute = useTripDetailEditRoute({
+    editReferences: edit.editReferences,
     setEditDepartureSelection: edit.setEditDepartureSelection,
     editArrivalSelection: edit.editArrivalSelection,
     setEditArrivalSelection: edit.setEditArrivalSelection,
@@ -68,6 +70,8 @@ export function useTripDetailEditor({
   });
 
   const editSubmission = useTripDetailEditSubmission({
+    editReferences: edit.editReferences,
+    setEditStep: edit.setEditStep,
     trip: data.trip,
     editDateTime: edit.editDateTime,
     isTripDriver: data.isTripDriver,

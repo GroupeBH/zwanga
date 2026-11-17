@@ -15,6 +15,7 @@ import { usePublishSubmission } from './usePublishSubmission';
 import { usePublishPriceEstimate } from './usePublishPriceEstimate';
 import { useLazyDriverFinanceSummaryQuery } from '@/store/api/driverFinanceApi';
 import { usePublishLocationActions } from './usePublishLocationActions';
+import { requestReferenceMessage } from '@/features/trip-request/requestReference';
 import { usePublishScheduleActions } from './usePublishScheduleActions';
 import { PublishStep, PublicationSuccess, PUBLISH_STEP_ORDER } from '../../features/publish/publishModel';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -218,12 +219,21 @@ export function usePublishController() {
     refetchVehicles: vehicle.refetchVehicles,
   });
 
+  const onMissingReference = (target: 'departure' | 'arrival') => {
+    setStep('route');
+    form.setAddressSectionStep(target);
+    if (target === 'departure') form.setShowDepartureReference(true);
+    else form.setShowArrivalReference(true);
+    showDialog({ variant: 'warning', title: 'Référence requise', message: requestReferenceMessage(target) });
+  };
   const navigation = usePublishStepNavigation({
     stepNumber,
     step,
     setStep,
     hasDepartureAddress: route.hasDepartureAddress,
     hasArrivalAddress: route.hasArrivalAddress,
+    missingReferenceTarget: route.missingReferenceTarget,
+    onMissingReference,
     setAddressSectionStep: form.setAddressSectionStep,
     showDialog,
     isPublishIdentityVerified: identity.isPublishIdentityVerified,
@@ -239,6 +249,7 @@ export function usePublishController() {
   });
 
   const submission = usePublishSubmission({
+    onMissingReference,
     publishInFlightRef,
     isSubmittingTrip: schedule.isSubmittingTrip,
     hasDepartureAddress: route.hasDepartureAddress,
@@ -297,6 +308,7 @@ export function usePublishController() {
     if (step === 'route') {
       if (!route.hasDepartureAddress) return 'Indiquez le départ';
       if (!route.hasArrivalAddress) return "Indiquez l'arrivée";
+      if (route.missingReferenceTarget) return route.missingReferenceTarget === 'departure' ? 'Préciser le départ' : 'Préciser l’arrivée';
       if (!form.hasChosenDepartureTime) return 'Choisir l’heure';
       return 'Choisir mon prix';
     }
@@ -312,7 +324,7 @@ export function usePublishController() {
       return;
     }
     if (step === 'route' && route.hasDepartureAddress && route.hasArrivalAddress &&
-        identity.isPublishIdentityVerified && !form.hasChosenDepartureTime) {
+        identity.isPublishIdentityVerified && !route.missingReferenceTarget && !form.hasChosenDepartureTime) {
       scheduleActions.openDateOrTimePicker('time');
       return;
     }

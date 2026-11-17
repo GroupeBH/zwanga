@@ -41,6 +41,7 @@ export function ProtectedAppStack() {
         <Stack.Screen name="chat/[id]" />
         <Stack.Screen name="driver/[id]" />
         <Stack.Screen name="driver-earnings" />
+        <Stack.Screen name="driver-qr" />
         <Stack.Screen name="edit-profile" />
         <Stack.Screen name="favorite-locations" />
         <Stack.Screen name="invite" options={{ presentation: modalPresentation }} />

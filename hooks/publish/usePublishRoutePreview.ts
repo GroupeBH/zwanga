@@ -9,6 +9,7 @@ import {
 import { type AddressSectionStep } from '@/components/AddressSectionSlider';
 import { MapLocationSelection } from '@/components/LocationPickerModal';
 import { buildCurrentLocationSelection } from '@/utils/currentLocationSelection';
+import { requiresRequestReference } from '@/features/trip-request/requestReference';
 import React, { useEffect, useMemo } from 'react';
 import { type Region } from 'react-native-maps';
 
@@ -73,8 +74,12 @@ export function usePublishRoutePreview({
   const hasArrivalGpsSuggestion = Boolean(getMapCoordinate(arrivalLocation));
   const hasDepartureCoordinates = hasDepartureGpsSuggestion && departurePointStatus === 'confirmed';
   const hasArrivalCoordinates = hasArrivalGpsSuggestion && arrivalPointStatus === 'confirmed';
-  const shouldShowDepartureReference = showDepartureReference || departureReference.trim().length > 0;
-  const shouldShowArrivalReference = showArrivalReference || arrivalReference.trim().length > 0;
+  const departureReferenceRequired = requiresRequestReference(departureAddress, departureLocation);
+  const arrivalReferenceRequired = requiresRequestReference(arrivalAddress, arrivalLocation);
+  const shouldShowDepartureReference = departureReferenceRequired || showDepartureReference || departureReference.trim().length > 0;
+  const shouldShowArrivalReference = arrivalReferenceRequired || showArrivalReference || arrivalReference.trim().length > 0;
+  const missingReferenceTarget: 'departure' | 'arrival' | null = departureReferenceRequired && !departureReference.trim() ? 'departure'
+    : arrivalReferenceRequired && !arrivalReference.trim() ? 'arrival' : null;
   const routePreviewRegion = useMemo<Region>(() => {
     const selectedPoints = [getMapCoordinate(departureLocation), getMapCoordinate(arrivalLocation)].filter(
       (point): point is LatLng => Boolean(point),
@@ -160,6 +165,9 @@ export function usePublishRoutePreview({
     hasDepartureAddress,
     hasArrivalAddress,
     hasDepartureGpsSuggestion,
+    departureReferenceRequired,
+    arrivalReferenceRequired,
+    missingReferenceTarget,
     shouldShowDepartureReference,
     hasArrivalGpsSuggestion,
     shouldShowArrivalReference,

@@ -5,8 +5,12 @@ import { useAppDispatch } from '@/store/hooks';
 import type { Trip } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { reconcileAmbiguousMutation } from '@/utils/mutationReconciliation';
+import type { TripEditReferences } from './useTripEditReferences';
+import { getTripEditReferenceError } from '@/features/trips/tripEditReferences';
 
 interface Params {
+  editReferences: TripEditReferences;
+  setEditStep: (step: 1 | 2) => void;
   showFeedback: (type: 'success' | 'error', message: string | string[]) => void;
   editingTrip: Trip | null;
   editDateTime: Date | null;
@@ -27,6 +31,8 @@ interface Params {
 }
 
 export function useTripsManagementActions({
+  editReferences,
+  setEditStep,
   showFeedback,
   editingTrip,
   editDateTime,
@@ -83,8 +89,17 @@ export function useTripsManagementActions({
     }
 
     const currentDepartureAddress = (editingTrip.departure?.address || editingTrip.departure?.name || '').trim();
+    const referenceError = getTripEditReferenceError(editReferences, departureAddress, arrivalAddress,
+      editDepartureSelection, editArrivalSelection);
+    if (referenceError) {
+      setEditStep(1);
+      showFeedback('error', referenceError);
+      return;
+    }
     const currentArrivalAddress = (editingTrip.arrival?.address || editingTrip.arrival?.name || '').trim();
     const updates: {
+      departureReference: string;
+      arrivalReference: string;
       totalSeats: number;
       pricePerSeat: number;
       departureDate: string;
@@ -94,6 +109,8 @@ export function useTripsManagementActions({
       arrivalCoordinates?: [number, number];
       vehicleId?: string;
     } = {
+      departureReference: editReferences.departureReference.trim(),
+      arrivalReference: editReferences.arrivalReference.trim(),
       totalSeats: seatsValue,
       pricePerSeat: priceValue,
       departureDate: editDateTime.toISOString(),

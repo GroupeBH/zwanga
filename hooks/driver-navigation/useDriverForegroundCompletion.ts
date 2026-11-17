@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationRequestGuard';
 import { type AppStateStatus } from 'react-native';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { isTripCompletionLocation, isTripCompletionTimestamp, TRIP_COMPLETION_FIX_MAX_AGE_MS } from '@/utils/navigation/tripCompletionObservation';
 
 interface Params {
   isScreenActive: boolean;
@@ -162,11 +163,11 @@ export function useDriverForegroundCompletion(params: Params) {
         );
         const restTimestamp = restLocationSnapshot.updatedAt
           ? new Date(restLocationSnapshot.updatedAt).getTime()
-          : now;
+          : NaN;
 
         if (
           restCoordinate &&
-          Number.isFinite(restTimestamp) &&
+          isTripCompletionTimestamp(restTimestamp, refreshedTrip.startedAt) &&
           restTimestamp + 2000 >= previousAcceptedTimestamp
         ) {
           completionCandidates.push({
@@ -183,18 +184,16 @@ export function useDriverForegroundCompletion(params: Params) {
       // The shared ride stream already owns GPS. Do not request another fix while it is fresh.
       let location = normalizeDriverLocationObject(currentLocationRef.current);
       const age = location ? Date.now() - location.timestamp : Infinity;
-      const accuracy = location?.coords.accuracy;
       if (
-        age < 0 ||
-        age > 10_000 ||
-        (typeof accuracy === 'number' && accuracy > MAX_ACCEPTABLE_GPS_ACCURACY_METERS)
+        !isTripCompletionLocation(location, refreshedTrip.startedAt) ||
+        age > 10_000
       ) {
         try {
           location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
         } catch {
           if (!isCurrent()) return;
           location = await Location.getLastKnownPositionAsync({
-            maxAge: 15 * 60_000,
+            maxAge: TRIP_COMPLETION_FIX_MAX_AGE_MS,
             requiredAccuracy: MAX_ACCEPTABLE_GPS_ACCURACY_METERS,
           });
         }
@@ -205,26 +204,18 @@ export function useDriverForegroundCompletion(params: Params) {
       }
 
       const normalizedLocation = normalizeDriverLocationObject(location);
-      if (normalizedLocation) {
-        const accuracy = normalizedLocation.coords.accuracy;
-        if (
-          typeof accuracy !== 'number' ||
-          !Number.isFinite(accuracy) ||
-          accuracy <= MAX_ACCEPTABLE_GPS_ACCURACY_METERS
-        ) {
-          const locationTimestamp = Number(normalizedLocation.timestamp);
-          const safeLocationTimestamp = Number.isFinite(locationTimestamp) ? locationTimestamp : now;
-          if (safeLocationTimestamp + 2000 >= previousAcceptedTimestamp) {
-            completionCandidates.push({
-              source: 'device',
-              coordinate: {
-                latitude: normalizedLocation.coords.latitude,
-                longitude: normalizedLocation.coords.longitude,
-              },
-              timestampMs: safeLocationTimestamp,
-              location: normalizedLocation,
-            });
-          }
+      if (isTripCompletionLocation(normalizedLocation, refreshedTrip.startedAt)) {
+        const locationTimestamp = Number(normalizedLocation.timestamp);
+        if (locationTimestamp + 2000 >= previousAcceptedTimestamp) {
+          completionCandidates.push({
+            source: 'device',
+            coordinate: {
+              latitude: normalizedLocation.coords.latitude,
+              longitude: normalizedLocation.coords.longitude,
+            },
+            timestampMs: locationTimestamp,
+            location: normalizedLocation,
+          });
         }
       }
 
@@ -234,8 +225,10 @@ export function useDriverForegroundCompletion(params: Params) {
 
       const orderedCandidates = completionCandidates.sort((a, b) => a.timestampMs - b.timestampMs);
       const firstCandidate = orderedCandidates[0];
-      let previousDriverCoordinate =
-        lastTripCompletionCheckCoordinateRef.current ?? lastAcceptedDriverCoordinateRef.current;
+      let previousDriverCoordinate = isTripCompletionTimestamp(previousAcceptedTimestamp, refreshedTrip.startedAt) &&
+        previousAcceptedTimestamp < firstCandidate.timestampMs
+        ? lastTripCompletionCheckCoordinateRef.current ?? lastAcceptedDriverCoordinateRef.current : null;
+      let previousTimestamp = previousAcceptedTimestamp;
       let nearDestinationSinceMs = tripDestinationNearSinceMsRef.current;
       let completionDistanceMeters: number | null = null;
       const destinationReferenceRoute = getTripDestinationReferenceRoute();
@@ -244,7 +237,7 @@ export function useDriverForegroundCompletion(params: Params) {
         const passage = evaluateDestinationPassage({
           destinationCoordinate: tripArrivalCoordinate,
           driverCoordinate: candidate.coordinate,
-          previousDriverCoordinate,
+          previousDriverCoordinate: candidate.timestampMs > previousTimestamp ? previousDriverCoordinate : null,
           routeCoordinates: destinationReferenceRoute,
           directDistanceThresholdMeters: DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS,
           parallelDistanceThresholdMeters: DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
@@ -258,6 +251,7 @@ export function useDriverForegroundCompletion(params: Params) {
 
         nearDestinationSinceMs = dwellEvaluation.nearDestinationSinceMs;
         previousDriverCoordinate = candidate.coordinate;
+        previousTimestamp = candidate.timestampMs;
 
         if (passage.shouldComplete || dwellEvaluation.shouldComplete) {
           completionDistanceMeters = Math.round(

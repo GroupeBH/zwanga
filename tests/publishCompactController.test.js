@@ -115,6 +115,32 @@ test('identity approval cannot skip required recurring settings or hour choice',
   assert.deepEqual(f.calls, ['Jours manquants']);
 });
 
+test('missing references take priority over the time picker and return pricing to the route fields', () => {
+  for (const target of ['departure', 'arrival']) {
+    const f = controllerFixture(), revealed = [];
+    f.state.form.setAddressSectionStep = value => revealed.push(value);
+    f.state.form.setShowDepartureReference = value => revealed.push(['departure', value]);
+    f.state.form.setShowArrivalReference = value => revealed.push(['arrival', value]);
+    f.state.route.missingReferenceTarget = target;
+    f.state.form.hasChosenDepartureTime = false;
+    let m = f.render();
+    assert.equal(m.footerPrimaryLabel, target === 'departure' ? 'Préciser le départ' : 'Préciser l’arrivée');
+    m.handleFooterPrimary();
+    assert.deepEqual(f.calls, ['Référence requise']);
+    assert.deepEqual(revealed, [target, [target, true]]);
+    assert.equal(f.render().step, 'route');
+    f.state.form.hasChosenDepartureTime = true;
+    f.state.route.missingReferenceTarget = null;
+    f.render().handleFooterPrimary(); assert.equal(f.render().step, 'pricing');
+    f.state.route.missingReferenceTarget = target;
+    f.render().handleFooterPrimary();
+    assert.equal(f.render().step, 'route'); assert.ok(!f.calls.includes('publish'));
+    f.render().navigation.goToStep('pricing');
+    f.captured.Submission.onMissingReference(target);
+    assert.equal(f.render().step, 'route', 'post-geocode validation reveals the route too');
+  }
+});
+
 test('direct publication retains every validation and cannot bypass a busy or unresolved state', () => {
   for (const patch of [{ hasChosenDepartureTime: false }, { acceptedPaymentModes: [] },
     { isRecurringTrip: true, recurringWeekdays: [] }, { price: 'Infinity' }]) {

@@ -163,6 +163,7 @@ function editorEnvironment() {
     '@/utils/errorHelpers': { getApiErrorMessage: () => 'Erreur', isPassengerKycRequiredError: () => false },
   })('hooks/trip-detail/useTripDetailEditSubmission.ts');
   const props = { trip: { ...expired, price: 2000 }, editDateTime: new Date(future), isTripDriver: true,
+    editReferences: { departureReference: '', arrivalReference: '' }, setEditStep() {},
     showDialog: dialog => calls.dialogs.push(dialog), editVehicleId: 'vehicle', editSeats: '2', editPrice: '2500',
     editRouteMode: 'map', editDepartureSelection: { address: 'Départ test' }, editArrivalSelection: { address: 'Arrivée test' },
     editRequiresPassengerKyc: false, updateTripMutation: payload => { calls.update.push(payload); return { unwrap: async () => ({}) }; },

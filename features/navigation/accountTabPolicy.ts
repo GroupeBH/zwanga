@@ -1,16 +1,9 @@
 import type { RootState } from "@/store";
 import { isDriverAccount } from '@/utils/accountRole';
 
-// Account capability, not the role played in the current trip or KYC status.
-export function usesServicesTab(
-  user?: { role?: string; isDriver?: boolean } | null,
-) {
-  return isDriverAccount(user);
-}
-
-// A primitive selector avoids redrawing the navigator on GPS, wallet or profile-photo updates.
-export const selectUsesServicesTab = (state: RootState) =>
-  usesServicesTab(state.auth?.user);
+// Driver-only actions must not depend on access to the Services tab, shared by all accounts.
+export const selectIsDriverAccount = (state: RootState) =>
+  isDriverAccount(state.auth?.user);
 
 export function usesEarningsTab(
   user?: { role?: string; driverCategory?: string | null } | null,
@@ -24,8 +17,7 @@ export const selectUsesEarningsTab = (state: RootState) =>
 export const selectUsesTripSearchTab = (state: RootState) =>
   state.auth?.user?.role === 'passenger';
 
-export const getServicesEntryHref = (driver: boolean) =>
-  driver ? ("/(tabs)/discover" as const) : ("/services" as const);
+export const getServicesEntryHref = () => "/(tabs)/discover" as const;
 
 export function getTabContentOverlay(platform: string, tabBarHeight: number) {
   // Android's relative tab bar already reserves its own space. iOS overlays the content.

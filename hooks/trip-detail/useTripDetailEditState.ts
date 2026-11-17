@@ -4,10 +4,12 @@ import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { useUpdateTripMutation } from '@/store/api/tripApi';
 import { useGetVehiclesQuery } from '@/store/api/vehicleApi';
 import { useMemo, useRef, useState } from 'react';
+import { useTripEditReferences } from '@/hooks/trips/useTripEditReferences';
 
 
 
 export function useTripDetailEditState() {
+  const editReferences = useTripEditReferences();
   const [updateTripMutation, { isLoading: isSavingTrip }] = useUpdateTripMutation();
   const [geocodeManualAddress] = useGeocodeMutation();
   const { data: userVehicles = [], isLoading: editVehiclesLoading } = useGetVehiclesQuery();
@@ -33,6 +35,7 @@ export function useTripDetailEditState() {
   const handledOpenEditParamKeyRef = useRef<string | null>(null);
 
   return {
+    editReferences,
     editDateTime,
     setEditDateTime,
     setIosPickerMode,

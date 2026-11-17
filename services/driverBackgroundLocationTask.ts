@@ -1,4 +1,5 @@
 import { evaluateBackgroundTripEnd } from './background/driverTripCompletion';
+import { locationBatch } from './background/locationBatch';
 import { latestLocation as selectLatestLocation } from './background/latestLocation';
 import { isDriverBackgroundLocationAvailable } from './background/driverTaskLifecycle';
 import { reserveDriverGpsStart, startDriverGpsProfile, stopDriverGpsProfile, stopDriverGpsIfIdle } from './background/driverGpsProfile';
@@ -41,7 +42,7 @@ type StartDriverBackgroundLocationTrackingOptions = {
   requestMissingPermissions?: boolean;
 };
 
-async function putDriverLocation(tripId: string, location: Location.LocationObject) {
+async function putDriverLocation(tripId: string, location: Location.LocationObject, locations: Location.LocationObject[] = [location]) {
   const coordinate = normalizeTripMapCoordinate(
     location.coords.latitude,
     location.coords.longitude,
@@ -74,6 +75,7 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
     }
 
     const payload = {
+      samples: locationBatch(locations),
       tripId,
       coordinates: [coordinate.longitude, coordinate.latitude] as [number, number],
       ...(typeof location.coords.accuracy === 'number' &&
@@ -182,7 +184,7 @@ const defineDriverBackgroundLocationTask = () => {
         }
 
         publishNativeRideLocation(`driver:${tripId}`, latestLocation);
-        await putDriverLocation(tripId, latestLocation);
+        await putDriverLocation(tripId, latestLocation, locations);
         await evaluateBackgroundTripEnd(tripId, locations);
       } catch (taskError) {
         console.warn('[DriverBackgroundLocation] Tâche ignorée après une erreur :', taskError);

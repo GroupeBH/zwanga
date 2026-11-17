@@ -26,6 +26,7 @@ interface PublishRouteStepProps {
   renderGpsStatus: (hasAddress: boolean, hasGpsSuggestion: boolean, isConfirmed: boolean, label: string) => React.JSX.Element | null;
   hasDepartureGpsSuggestion: boolean;
   shouldShowDepartureReference: boolean;
+  departureReferenceRequired: boolean;
   departureReference: string;
   setShowDepartureReference: React.Dispatch<React.SetStateAction<boolean>>;
   setDepartureReference: React.Dispatch<React.SetStateAction<string>>;
@@ -40,6 +41,7 @@ interface PublishRouteStepProps {
   arrivalManualGeocodeStatus: ManualGeocodeStatus;
   hasArrivalGpsSuggestion: boolean;
   shouldShowArrivalReference: boolean;
+  arrivalReferenceRequired: boolean;
   arrivalReference: string;
   setShowArrivalReference: React.Dispatch<React.SetStateAction<boolean>>;
   setArrivalReference: React.Dispatch<React.SetStateAction<string>>;
@@ -69,6 +71,7 @@ export function PublishRouteStep({
   renderGpsStatus,
   hasDepartureGpsSuggestion,
   shouldShowDepartureReference,
+  departureReferenceRequired,
   departureReference,
   setShowDepartureReference,
   setDepartureReference,
@@ -83,6 +86,7 @@ export function PublishRouteStep({
   arrivalManualGeocodeStatus,
   hasArrivalGpsSuggestion,
   shouldShowArrivalReference,
+  arrivalReferenceRequired,
   arrivalReference,
   setShowArrivalReference,
   setArrivalReference,
@@ -114,6 +118,7 @@ export function PublishRouteStep({
         renderGpsStatus={renderGpsStatus}
         hasDepartureGpsSuggestion={hasDepartureGpsSuggestion}
         shouldShowDepartureReference={shouldShowDepartureReference}
+        departureReferenceRequired={departureReferenceRequired}
         departureReference={departureReference}
         setShowDepartureReference={setShowDepartureReference}
         setDepartureReference={setDepartureReference}
@@ -128,6 +133,7 @@ export function PublishRouteStep({
         arrivalManualGeocodeStatus={arrivalManualGeocodeStatus}
         hasArrivalGpsSuggestion={hasArrivalGpsSuggestion}
         shouldShowArrivalReference={shouldShowArrivalReference}
+        arrivalReferenceRequired={arrivalReferenceRequired}
         arrivalReference={arrivalReference}
         setShowArrivalReference={setShowArrivalReference}
         setArrivalReference={setArrivalReference}

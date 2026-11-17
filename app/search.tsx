@@ -61,7 +61,8 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
   return (
     <SafeAreaView style={styles.container} edges={embedded ? ['top', 'left', 'right'] : ['top']}>
       <View style={styles.header}>
-        {!embedded && <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
+        {!embedded && <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(tabs)')} activeOpacity={0.75}
+          accessibilityRole="button" accessibilityLabel="Retour à l’accueil">
           <Ionicons name="arrow-back" size={24} color={Colors.primaryDark} />
         </TouchableOpacity>}
         <Text style={styles.headerTitle} accessibilityRole="header">

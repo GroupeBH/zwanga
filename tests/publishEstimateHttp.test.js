@@ -11,11 +11,12 @@ const { createApi, fetchBaseQuery } = require('@reduxjs/toolkit/query');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 
-for (const scenario of ['estimate', 'manual', 'unavailable', 'recurring', 'free', 'recovered', 'recurring-recovered']) {
+for (const scenario of ['estimate', 'manual', 'unavailable', 'recurring', 'free', 'recovered', 'recurring-recovered', 'reference', 'recurring-reference']) {
   test(`quote -> price choice -> ${scenario} publication uses the real mobile HTTP contracts`, async t => {
     const received = [], hooks = hookHarness();
     let publicationSuccess, createdSnapshot;
     const recurring = scenario.startsWith('recurring');
+    const referencesRequired = scenario.endsWith('reference'), missing = [];
     const server = createServer(async (req, res) => {
       const chunks = []; for await (const chunk of req) chunks.push(chunk);
       const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
@@ -50,7 +51,7 @@ for (const scenario of ['estimate', 'manual', 'unavailable', 'recurring', 'free'
       '@/hooks/useDisplayReads': { useDisplayReadsEnabled: enabled => enabled },
       '@/hooks/trip-request/useRequestVehicleOptions': { useRequestVehicleOptions: () => ({ vehicleOptions: quote.options ?? [],
         isPriceLoading: false, isVehicleOptionsError: quoteError, retryVehicleOptions() {} }) },
-      '@/services/sharedRouteAddresses': { resolveSharedRouteAddresses: async () => ({ departureAddress: 'Départ fictif', arrivalAddress: 'Arrivée fictive' }) },
+      '@/services/sharedRouteAddresses': { resolveSharedRouteAddresses: async (departure, arrival) => ({ departureAddress: departure.text, arrivalAddress: arrival.text }) },
       '@/services/tokenSession': { getTokenSessionVersion: () => 0 },
       '@/services/analytics': { trackEvent() {} }, '@/services/driverPermissionOnboarding': { recordDriverPublication() {} },
     });
@@ -73,7 +74,8 @@ for (const scenario of ['estimate', 'manual', 'unavailable', 'recurring', 'free'
     const submission = { publishInFlightRef: { current: false }, hasDepartureAddress: true, hasArrivalAddress: true,
       seats: '3', departureDateTime: new Date('2030-01-01T12:00:00Z'), isDriver: true, selectedVehicleId: 'synthetic-car',
       isPublishIdentityVerified: true, isRecurringTrip: recurring, recurringWeekdays: [1, 3],
-      departureAddress: 'Départ fictif', arrivalAddress: 'Arrivée fictive', departureReference: '', arrivalReference: '', description: '',
+      departureAddress: referencesRequired ? 'Gombe' : 'Départ fictif', arrivalAddress: referencesRequired ? 'Matadi' : 'Arrivée fictive',
+      departureReference: '', arrivalReference: '', description: '', onMissingReference: target => missing.push(target),
       acceptedPaymentModes: ['points'], isFreeTrip: scenario === 'free',
       formatDateOnlyValue: () => '2030-01-01', formatTimeOnlyValue: () => '12:00',
       createTrip: body => send('createTrip', body), createRecurringTrip: body => send('createRecurringTrip', body),
@@ -84,6 +86,15 @@ for (const scenario of ['estimate', 'manual', 'unavailable', 'recurring', 'free'
     });
     assert.equal(render().pricing.price, scenario === 'unavailable' ? '' : '2500');
     if (['manual', 'unavailable'].includes(scenario)) render().pricing.setPrice('3000');
+    if (referencesRequired) {
+      await render().submission.handlePublish();
+      submission.departureReference = '  Devant la pharmacie  ';
+      submission.arrivalReference = '   ';
+      await render().submission.handlePublish();
+      assert.deepEqual(missing, ['departure', 'arrival']);
+      assert.equal(received.filter(item => item.url.startsWith('/trips')).length, 0, 'neither POST nor recovery GET before both references');
+      submission.arrivalReference = '  Entrée du marché  ';
+    }
     const current = render(); await Promise.all([current.submission.handlePublish(), current.submission.handlePublish()]);
     const posts = received.filter(item => item.url.startsWith('/trips') && item.method === 'POST');
     assert.equal(posts.length, 1);
@@ -92,6 +103,12 @@ for (const scenario of ['estimate', 'manual', 'unavailable', 'recurring', 'free'
     assert.equal(posts[0].body.totalSeats, 3);
     assert.deepEqual(posts[0].body.acceptedPaymentModes, scenario === 'free' ? undefined : ['points']);
     assert.deepEqual(publicationSuccess, { recurring, id: 'synthetic-trip' });
+    if (referencesRequired) {
+      assert.equal(posts[0].body.departureLocation, 'Gombe');
+      assert.equal(posts[0].body.arrivalLocation, 'Matadi');
+      assert.equal(posts[0].body.departureReference, 'Devant la pharmacie');
+      assert.equal(posts[0].body.arrivalReference, 'Entrée du marché');
+    }
     if (scenario.endsWith('recovered')) assert.equal(received.filter(item => item.method === 'GET').length, 1);
   });
 }

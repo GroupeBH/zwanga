@@ -313,6 +313,9 @@ function TripDetailsView({ model, workspace }: DetailProps) {
       />
 
       <TripEditModal
+        editReferences={model.editing.edit.editReferences}
+        editDepartureSelection={model.editing.edit.editDepartureSelection}
+        editArrivalSelection={model.editing.edit.editArrivalSelection}
         editTripModalVisible={model.editing.edit.editTripModalVisible}
         closeEditModal={model.editing.editor.closeEditModal}
         editModalBottomPadding={model.editing.editLabels.editModalBottomPadding}
@@ -363,12 +366,14 @@ function TripDetailsView({ model, workspace }: DetailProps) {
           const target = model.editing.edit.editRoutePickerTarget;
           model.editing.edit.setEditRouteMode('map');
           if (target === 'departure') {
+            model.editing.edit.editReferences.clearIfLocationChanged(target, location, model.editing.edit.editDepartureSelection);
             model.editing.edit.setEditDepartureSelection(location);
             model.editing.edit.setEditDepartureManualAddress(location.title || location.address);
             model.editing.editRoute.restoreEditModalAfterRoutePicker();
             return;
           }
           if (target === 'arrival') {
+            model.editing.edit.editReferences.clearIfLocationChanged(target, location, model.editing.edit.editArrivalSelection);
             model.editing.edit.setEditArrivalSelection(location);
             model.editing.edit.setEditArrivalManualAddress(location.title || location.address);
           }

@@ -4,8 +4,11 @@ import type { Trip } from '@/types';
 import { getTripLocationCoordinate } from '@/utils/tripCoordinates';
 import React, { useCallback } from 'react';
 import { Keyboard } from 'react-native';
+import type { TripEditReferences } from './useTripEditReferences';
+import { getTripEditReferenceError } from '@/features/trips/tripEditReferences';
 
 interface Params {
+  editReferences: TripEditReferences;
   setEditingTrip: React.Dispatch<React.SetStateAction<Trip | null>>;
   setEditSeats: React.Dispatch<React.SetStateAction<string>>;
   setEditPrice: React.Dispatch<React.SetStateAction<string>>;
@@ -29,6 +32,7 @@ interface Params {
 }
 
 export function useTripEditorNavigation({
+  editReferences,
   setEditingTrip,
   setEditSeats,
   setEditPrice,
@@ -50,7 +54,9 @@ export function useTripEditorNavigation({
   editRouteMode,
   showFeedback,
 }: Params) {
+  const resetReferences = editReferences.reset;
   const openEditModal = useCallback((trip: Trip) => {
+    resetReferences(trip);
     const departureCoordinate = getTripLocationCoordinate(trip.departure);
     const arrivalCoordinate = getTripLocationCoordinate(trip.arrival);
 
@@ -90,9 +96,12 @@ export function useTripEditorNavigation({
     setEditRoutePickerTarget(null);
     setEditVehicleId(trip.vehicle?.id ?? trip.vehicleId ?? null);
     setEditStep(1);
-  }, []);
+  }, [resetReferences, setEditingTrip, setEditSeats, setEditPrice, setEditDateTime,
+    setEditDepartureSelection, setEditArrivalSelection, setEditDepartureManualAddress,
+    setEditArrivalManualAddress, setEditRouteMode, setEditRoutePickerTarget, setEditVehicleId, setEditStep]);
 
   const closeEditModal = () => {
+    resetReferences();
     setEditingTrip(null);
     setEditStep(1);
     setEditSeats('');
@@ -110,6 +119,7 @@ export function useTripEditorNavigation({
   };
 
   const swapEditRoutePoints = () => {
+    editReferences.swap();
     setEditDepartureSelection(editArrivalSelection);
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
@@ -148,6 +158,12 @@ export function useTripEditorNavigation({
       return;
     }
 
+    const referenceError = getTripEditReferenceError(editReferences, departureAddress, arrivalAddress,
+      editDepartureSelection, editArrivalSelection);
+    if (referenceError) {
+      showFeedback('error', referenceError);
+      return;
+    }
     Keyboard.dismiss();
     setIosPickerMode(null);
     setEditStep(2);

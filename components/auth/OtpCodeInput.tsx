@@ -36,9 +36,13 @@ export function OtpCodeInput({ code, onChange, inputRefs, disabled = false, comp
   };
   const change = (text: string, index: number) => {
     if (!mounted.current || latest.current.disabled) return;
+    // A filled box loses its digit in onChangeText, not necessarily in onKeyPress.
+    // Return to the preceding box so repeated deletions need no manual taps.
+    const focusPrevious = text === '' && !!latest.current.code[index] && index > 0;
     const next = applyOtpInput(latest.current.code, text, index);
     commit(next.code);
-    if (next.focusNext) inputRefs.current[index + 1]?.focus();
+    if (focusPrevious) inputRefs.current[index - 1]?.focus();
+    else if (next.focusNext) inputRefs.current[index + 1]?.focus();
   };
   const paste = async () => {
     if (!mounted.current || latest.current.disabled || reading.current) return;
