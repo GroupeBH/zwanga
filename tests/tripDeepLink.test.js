@@ -53,7 +53,7 @@ test('the mounted notification handler routes actual Linking events through the 
       Linking: { addEventListener: (type, callback) => {
         assert.equal(type, 'url'); onUrl = callback; return { remove: () => { removed = true; } };
       } } },
-    'expo-router': { usePathname: () => '/', useRouter: () => ({ push: value => pushed.push(value) }) },
+    'expo-router': { usePathname: () => '/', useRootNavigationState: () => ({ key: 'root' }), useRouter: () => ({ push: value => pushed.push(value) }) },
     'expo-notifications': { setNotificationHandler: noop,
       addNotificationReceivedListener: subscription, addNotificationResponseReceivedListener: subscription },
     '@/components/ui/DialogProvider': { useDialog: () => ({ showDialog: noop, hideDialog: noop }) },

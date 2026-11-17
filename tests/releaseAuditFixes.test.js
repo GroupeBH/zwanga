@@ -94,14 +94,16 @@ test('release gate fails closed and both production builds depend on it', () => 
 
 test('a native failure in a background notification action cannot reject the headless callback', async () => {
   let handler;
-  loader({ 'react-native': { Linking: { openURL: async () => { throw Error('native'); } } },
+  let linkAttempts = 0;
+  loader({ 'react-native': { Platform: { OS: 'android' }, Linking: { openURL: async () => { linkAttempts++; throw Error('native'); } } },
     './ongoingTripNotification': { ONGOING_TRIP_NOTIFICATION_ID: 'ongoing' },
     './driverNotificationResponse': { respondToDriverNotification: async () => { throw Error('network'); } },
     './driverNotifications': { dismissDriverInvitation: async () => { throw Error('storage'); } },
-    '@/features/notifications/rideSound': { parseNearbyPhoneAlert: () => ({ id: 'synthetic' }) },
+    '@/features/notifications/rideSound': { parseNearbyPhoneAlert: () => ({ id: 'synthetic' }), isRemoteNearbyRequestAlert: () => false },
     '@notifee/react-native': { default: { onBackgroundEvent: fn => { handler = fn; } }, EventType: { PRESS: 1, ACTION_PRESS: 2 } },
   })('services/notifeeBackgroundHandler.ts');
   await assert.doesNotReject(() => handler({ type: 2, detail: { notification: { data: {} }, pressAction: { id: 'driver-ignore-nearby' } } }));
   await assert.doesNotReject(() => handler({ type: 1, detail: { notification: { data: {} } } }));
+  assert.equal(linkAttempts, 2, 'exercise the native failure and fallback, not an incomplete mock');
   await assert.doesNotReject(() => handler({ type: 1, detail: null }));
 });

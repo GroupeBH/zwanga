@@ -4,12 +4,13 @@
  * pour que les événements de notification soient gérés même quand l'app est fermée
  */
 
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { ONGOING_TRIP_NOTIFICATION_ID } from './ongoingTripNotification';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import { notificationDecision, parseDriverInvitation } from '@/features/notifications/driverInvitation';
 import { respondToDriverNotification } from './driverNotificationResponse';
 import { rememberPendingDriverOpen } from '@/features/notifications/pendingDriverOpen';
+import { rememberIosNotificationOpen } from '@/features/notifications/pendingIosNotificationOpen';
 import { parseNearbyPhoneAlert } from '@/features/notifications/rideSound';
 import { handleNearbyNotificationAction, isNearbyNotificationAction } from './nearbyNotificationAction';
 import { reportRideAudioFailure } from './rideAudioDiagnostics';
@@ -23,6 +24,9 @@ let notifee: NotifeeDefault | null = null;
 let EventTypeEnum: NotifeeEventTypeEnum | null = null;
 
 async function openAppDeepLink(deepLink: string): Promise<void> {
+  // iOS already opens the app on a notification tap. Reopening its own scheme
+  // from a delayed callback must never bring it forward a second time.
+  if (Platform.OS === 'ios') return;
   try {
     await Linking.openURL(deepLink);
     return;
@@ -43,10 +47,12 @@ async function openAppDeepLink(deepLink: string): Promise<void> {
 
 // Charger Notifee dynamiquement
 try {
+  // Optional in older binaries: preserve the guarded native-module load.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const notifeeModule = require('@notifee/react-native') as NotifeeModule;
   notifee = notifeeModule.default ?? (notifeeModule as unknown as NotifeeDefault);
   EventTypeEnum = notifeeModule.EventType;
-} catch (error) {
+} catch {
   console.warn('[NotifeeBackgroundHandler] Notifee non disponible');
 }
 
@@ -58,7 +64,10 @@ if (notifee && EventTypeEnum) {
   // Register before Expo Router: an iOS cold-start action must not wait for profile hydration.
   notifee.onForegroundEvent?.(({ type, detail }) => {
     const data = detail.notification?.data;
-    if (type === EventTypeEnum!.PRESS) rememberPendingDriverOpen(data);
+    if (type === EventTypeEnum!.PRESS) {
+      rememberPendingDriverOpen(data);
+      rememberIosNotificationOpen(data, detail.notification?.body);
+    }
     const invitation = parseDriverInvitation(data);
     if (invitation && type === EventTypeEnum!.ACTION_PRESS && notificationDecision(detail.pressAction?.id))
       void respondToDriverNotification(invitation, detail.pressAction?.id).catch(() => reportRideAudioFailure('DRIVER_ALERT_ACTION_FAILED'));
@@ -93,6 +102,14 @@ if (notifee && EventTypeEnum) {
             return;
           }
           await openAppDeepLink(`zwanga://incoming-driver?kind=${invitation.kind}&id=${invitation.id}&driverId=${invitation.driverId}&actionEvent=${Date.now()}`);
+          return;
+        }
+
+        if (Platform.OS === 'ios') {
+          // Driver taps/actions above retain their existing authenticated queue.
+          // Other known destinations wait for the mounted, active UI as well.
+          // Unknown actions or empty payloads must not fall back to opening Home.
+          if (type === EventTypeEnum!.PRESS) rememberIosNotificationOpen(data, notification?.body);
           return;
         }
 

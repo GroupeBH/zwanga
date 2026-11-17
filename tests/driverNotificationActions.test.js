@@ -59,7 +59,7 @@ function app(options = {}) {
     react: hooks.react, 'expo-router': { useRouter: () => router },
     './useRideRealtime': { useRideRealtime() {} },
     '@/services/iosFirebaseMessaging': { subscribeIosFirebaseMessages: () => () => {} },
-    'react-native': { Platform: { OS: 'android' }, Linking: { openURL: async () => assert.fail('native action launchActivity opens the app') },
+    'react-native': { Platform: { OS: options.platform ?? 'android' }, Linking: { openURL: async () => assert.fail('native action opens the app without a second OS link') },
       AppState: { get currentState() { return io.state; }, addEventListener: (_event, callback) => {
         stateListeners.add(callback); return { remove: () => stateListeners.delete(callback) };
       } } },
@@ -184,6 +184,33 @@ test('a background action in an already mounted app waits for foreground before 
   f.resume(); await tick(); assert.equal(f.io.routes.length, 1);
   f.resume(); await tick(); assert.equal(f.io.routes.length, 1);
   f.hooks.unmount();
+});
+
+test('iOS driver decisions retain authenticated mutations and route only after activation, without self-opening URLs', async () => {
+  for (const kind of ['dispatch', 'booking', 'nearby']) {
+    for (const accept of [true, false]) {
+      const f = app({ platform: 'ios', state: 'background' }); f.mount(); await tick();
+      const action = kind === 'nearby' ? (accept ? 'driver-review-nearby' : 'driver-ignore-nearby')
+        : (accept ? 'driver-accept' : 'driver-decline');
+      await f.background(push(kind), action); await tick();
+      assert.equal(f.io.mutations.length, kind === 'nearby' && accept ? 0 : 1);
+      assert.equal(f.io.routes.length, 0, 'no navigation over another app');
+      f.resume(); await tick(); assert.equal(f.io.routes.length, 1);
+      f.resume(); await tick(); assert.equal(f.io.routes.length, 1, 'resume is not another decision');
+      f.hooks.unmount();
+    }
+  }
+});
+
+test('late iOS driver notification taps retain their destination without reopening the application', async () => {
+  for (const kind of ['dispatch', 'booking', 'nearby']) {
+    const f = app({ platform: 'ios' }); f.mount(); await tick();
+    await f.backgroundBody(push(kind)); await tick();
+    assert.equal(f.io.routes.length, 1, kind);
+    assert.equal(f.io.mutations.length, 0);
+    f.resume(); await tick(); assert.equal(f.io.routes.length, 1);
+    f.hooks.unmount();
+  }
 });
 
 test('old initial actions are read-only and do not restart the alert or send a decision', async () => {

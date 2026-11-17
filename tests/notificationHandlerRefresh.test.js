@@ -9,7 +9,7 @@ test('actual foreground and tap listeners refresh financial and KYC data through
   let foreground, pressed;
   const user = { id: 'user', role: 'passenger' };
   const load = loader({ react: hooks.react,
-    'expo-router': { usePathname: () => '/home', useRouter: () => ({ push: href => routes.push(href) }) },
+    'expo-router': { usePathname: () => '/home', useRootNavigationState: () => ({ key: 'root' }), useRouter: () => ({ push: href => routes.push(href) }) },
     'react-native': { Platform: { OS: 'android' }, InteractionManager: { runAfterInteractions: () => ({ cancel() {} }) },
       Linking: { addEventListener: () => ({ remove() {} }) } },
     'expo-notifications': { setNotificationHandler() {},

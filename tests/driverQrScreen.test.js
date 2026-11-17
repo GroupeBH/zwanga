@@ -102,16 +102,37 @@ test('web shares the public URL instead of opening native file modules', async (
   app.hooks.unmount();
 });
 
-test('profile entry is driver-only and keeps referral actions separate', () => {
+for (const os of ['android', 'ios']) test(`${os}: QR shortcut is driver-only in the profile header, without a duplicate menu entry`, () => {
   const routes = [];
-  const { ProfileMenu } = loader({
-    'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', StyleSheet: { create: x => x } },
+  const load = loader({
+    'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', Image: 'Image',
+      Platform: { OS: os }, StyleSheet: { create: x => x } },
     '@expo/vector-icons': { Ionicons: 'Icon' }, './ProfileStoreReviewButton': { ProfileStoreReviewButton: 'Review' },
     './ProfileDriverAvailabilityEntry': { ProfileDriverAvailabilityEntry: 'Availability' },
-  })('components/profile/ProfileMenu.tsx');
-  const props = { menuItems: [], router: { push: route => routes.push(route) }, isDriver: false };
-  assert.equal(text(ProfileMenu(props)).includes('Mon QR conducteur'), false);
-  props.isDriver = true;
-  nodes(ProfileMenu(props)).find(n => n.props.accessibilityLabel === 'Mon QR conducteur').props.onPress();
-  assert.deepEqual(routes, ['/driver-qr']);
+  });
+  const { ProfileMenu } = load('components/profile/ProfileMenu.tsx');
+  const { ProfileHeader } = load('components/profile/ProfileHeader.tsx');
+  const { getProfileStatus } = load('features/profile/profileStatusModel.ts');
+  const router = { push: route => routes.push(route) };
+  for (const role of ['driver', 'both', 'passenger']) {
+    // The server role, not legacy flags or KYC, still controls access.
+    const profile = getProfileStatus({ user: { id, role, isDriver: role === 'passenger' } }, id);
+    const tree = ProfileHeader({ ...profile, router });
+    const headerTop = tree.props.children[0];
+    const qrButtons = nodes(headerTop).filter(n => n.props.accessibilityLabel === 'Mon QR conducteur');
+    assert.equal(qrButtons.length, role === 'passenger' ? 0 : 1);
+    if (qrButtons.length) {
+      const button = qrButtons[0];
+      assert.equal(button.props.accessibilityRole, 'button');
+      assert.equal(text(button), 'Mon QR');
+      assert.ok(nodes(button).some(n => n.type === 'Icon' && n.props.name === 'qr-code-outline'));
+      assert.ok(button.props.style.minHeight >= 44);
+      button.props.onPress();
+      assert.equal(routes.at(-1), '/driver-qr', 'public driver QR, not the referral QR');
+    }
+    nodes(headerTop).find(n => n.props.accessibilityLabel === 'Ouvrir les paramètres').props.onPress();
+    assert.equal(routes.at(-1), '/settings');
+    const menu = ProfileMenu({ isDriver: profile.isDriver, router, menuItems: [] });
+    assert.equal(nodes(menu).some(n => n.props.accessibilityLabel === 'Mon QR conducteur'), false);
+  }
 });

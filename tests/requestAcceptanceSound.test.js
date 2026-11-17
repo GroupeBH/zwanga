@@ -68,8 +68,8 @@ test('foreground notification presentation leaves sound to the shared player and
     let user = { id: nearby.driverId, role: 'driver' };
     const loadComponent = loader({
       react: hooks.react,
-      'expo-router': { usePathname: () => '/home', useRouter: () => ({}) },
-      'react-native': { Platform: { OS: platform }, InteractionManager: { runAfterInteractions: () => ({ cancel() {} }) },
+      'expo-router': { usePathname: () => '/home', useRootNavigationState: () => ({ key: 'root' }), useRouter: () => ({}) },
+      'react-native': { Platform: { OS: platform }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, InteractionManager: { runAfterInteractions: () => ({ cancel() {} }) },
         Linking: { addEventListener: () => ({ remove() {} }) } },
       'expo-notifications': { setNotificationHandler: value => { handler = value; },
         addNotificationReceivedListener: () => ({ remove() {} }), addNotificationResponseReceivedListener: () => ({ remove() {} }) },

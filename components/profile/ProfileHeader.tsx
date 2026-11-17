@@ -1,4 +1,5 @@
 import { Colors } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { driverCategoryLabel } from '@/features/profile/driverCategory';
 import { styles } from '@/features/profile/ProfileHeader.styles';
 import type { useProfileController } from '@/hooks/profile/useProfileController';
@@ -39,15 +40,31 @@ export function ProfileHeader({
     <View style={styles.headerTop}>
       <View style={styles.headerTitleGroup}>
         <View style={styles.headerTitleAccent} />
-        <Text style={styles.headerTitle}>Mon profil</Text>
+        <Text testID="profile-header-title" style={styles.headerTitle}>Mon profil</Text>
       </View>
-      <TouchableOpacity
-        accessibilityLabel="Ouvrir les paramètres"
-        style={styles.settingsButton}
-        onPress={() => router.push('/settings')}
-      >
-        <Ionicons name="settings-outline" size={22} color={Colors.gray[800]} />
-      </TouchableOpacity>
+      <View style={styles.headerActions}>
+        {displaysDriverRole && (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Mon QR conducteur"
+            accessibilityHint="Afficher votre code QR et votre fiche publique"
+            style={styles.qrButton}
+            activeOpacity={0.75}
+            onPress={() => router.push('/driver-qr')}
+          >
+            <Ionicons name="qr-code-outline" size={22} color={ACTION_COLORS.orange} />
+            <Text style={styles.qrButtonText}>Mon QR</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Ouvrir les paramètres"
+          style={styles.settingsButton}
+          onPress={() => router.push('/settings')}
+        >
+          <Ionicons name="settings-outline" size={22} color={Colors.gray[800]} />
+        </TouchableOpacity>
+      </View>
     </View>
 
     <View style={styles.userInfo}>
