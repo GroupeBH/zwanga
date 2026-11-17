@@ -159,7 +159,7 @@
       "confirmDriverTripInterruption": "2e2f866242d3643fc68a70ee1737bb640eedf750bb079f859b5b87efb2542f3d",
       "rejectDriverTripInterruption": "129e629f9ab82b4e6897c137330d7bd1fc547316d57437946f78e43a7b08d11f",
       "completeTrip": "8fd3c33b6bbe5fcacaad7fff867cfce3b2b1a43f1adbae1cd6e1758bd5a338cb",
-      "updateDriverLocation": "c8eedbe3693e34f01bbe5f304a0226f79412d70c5bc9cdd5917d16e727920236",
+      "updateDriverLocation": "ef36d6f953041903f11b6ea102d67f6bfb4288e43f026417417933ccc183063d",
       "getDriverLocation": "8a0c5474198bc2a14f94686e0c6e74a0cee5c14ff4e00bdc7ec54ec5bcc7e86d",
       "bookTrip": "8bdd76c860b19eb4778251f2990dfceb8b1d6b97c7c71c77c0bdb2ed38db1798",
       "setDriverEmergencyContacts": "f8091a488815b85cbda4611b791389c876e7fb9981c189f8dd0bb5e6bf2fc08c"
@@ -193,7 +193,7 @@
       "cancelPassengerTripInterruption": "8eb942bd2a9c3b3332ad464833740930c8cc22cdbca3dfeb75b32c11a4e95537",
       "confirmPassengerTripInterruption": "ac6b3e30d6b50cd99cf2b1124ac6f43854b1b60a2addc1060f4ff4ac24852f1f",
       "rejectPassengerTripInterruption": "b76d949e1f7b9d3694feab7bad20af35e943dbeaf629bcd38fe53b5cb9970530",
-      "updatePassengerLocation": "b264b53284316fa749a6d83eee245f2b4c84b0837989ece97f004454d2709d92"
+      "updatePassengerLocation": "1f839d32da4136875c61ddc0b1657aaafcb079dccdc8b7a0d3604637e18ea140"
     },
     "store/api/tripRequestApi.ts": {
       "createTripRequest": "77757fead5b82802e4e38d7d1980063a0299117afef4b0244898138a7f524d77",
@@ -255,9 +255,9 @@
       "createDiditKycSession": "d35e21590ae5f111201d28287eafcb5683180b62b145c3c36d92fd1a4b3a33f8",
       "syncDiditKycSession": "392cd5c91ad2d9a5ef2b58f4b2b9c1b993dae256f6868ffd32284026b6f6a601",
       "updateFcmToken": "c16b433263f85bfea2280df22c8eb8adfc3ad2d8eb6ac656d6fd595fadb9084a",
-      "sendPhoneVerificationOtp": "cf7bedf43414291576641ddb624106acb6e1cc506adfaf2422eefd756132edeb",
+      "sendPhoneVerificationOtp": "fef1f096ba0883cbb6a71f80f4fe4b40eb5524b4b89286b457eacc05f5321383",
       "verifyPhoneOtp": "2dcf823123a648e1a8daeec27698d7a57a27be04d519750d9b4a4e531c7f056e",
-      "requestPinChangeOtp": "a63f7aec2c2d9617c40e605a6a2f39eb9889ac9d247c29191cba95e2cc1fb981",
+      "requestPinChangeOtp": "42ee54475249d33c818785ea3ebbdf0cd0522ea549329ef6a4016241055d684d",
       "updatePin": "194d76a712d78413f5fbd86387b94027ce798b4f47d979a8d4c52deab67bf7db",
       "getFavoriteLocations": "55ca5af8afc60552041c4a96c06159cc38948ea9bf5d84004f52fe46cb7204e6",
       "getDefaultFavoriteLocation": "79c9336add9fb983ed5eaae041e176fdf2b5d33000089a13dde5b427ddaf2bb4",

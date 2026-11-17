@@ -29,7 +29,9 @@ test('availability is a driver-only profile menu setting; existing menu navigati
   for (const isDriver of [true, false]) {
     const tree = ProfileMenu({ ...props, isDriver });
     assert.equal(nodes(tree).some(node => node.type === 'Availability'), isDriver);
-    nodes(tree).find(node => node.type === 'Button').props.onPress();
+    const notifications = nodes(tree).find(node => node.type === 'Button' && text(node) === 'Notifications');
+    assert.ok(notifications, 'the Notifications menu entry remains available for both roles');
+    notifications.props.onPress();
   }
   assert.deepEqual(calls, ['/notifications', '/notifications']);
 });
