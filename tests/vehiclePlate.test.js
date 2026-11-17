@@ -94,10 +94,11 @@ function signupFixture() {
     '@/hooks/profile/useProfilePhotoSelection': { useProfilePhotoSelection: () => ({ choosePhoto: async () => null, isSelecting: false }) },
     '../../features/auth/authModel': { ensureAuthNotifeeLoaded: noop, notifeeInstance: null, getAuthErrorMessage: (_error, message) => message },
     '@/services/analytics': { trackEvent: async () => {} },
+    '@/services/installationAnnouncements': { setAnnouncementPreference: async () => {} },
     '@/store/slices/authSlice': { saveTokensAndUpdateState: noop },
     '@/utils/referralAttribution': { getPendingReferralAttribution: async () => null, consumePendingReferralAttribution: async () => {} },
   });
-  const props = { firstName: 'Eugene', lastName: 'Bosuku', role: 'driver', vehicleType: 'car',
+  const props = { updatesAccepted: true, driverCategory: 'private', firstName: 'Eugene', lastName: 'Bosuku', role: 'driver', vehicleType: 'car',
     vehicleBrand: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Bleu', vehiclePlate: '1234ab56',
     setStep: step => steps.push(step), showDialog: dialog => dialogs.push(dialog),
     setFirstName: noop, setLastName: noop, handleFinalRegister: () => calls.push('register-from-profile'),

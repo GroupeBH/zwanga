@@ -30,7 +30,7 @@ export function HomeRequestScreen({ form, navigation }: Props) {
     return <FormScreen style={s.screen}>
       {form.isScreenActive && <LocationPickerContent key={flow.pickerTarget} visible mapEnabled={form.hasAppliedRoutePrefill}
         compact={height < 650 || fontScale > 1.2}
-        title={departure ? 'Où vous chercher ?' : 'Où allez-vous ?'}
+        title={departure ? 'D’où partez-vous ?' : 'Où allez-vous ?'}
         contextLabel={departure ? `Arrivée : ${form.arrivalAddress}` : form.departureLocation ? `Départ : ${form.departureAddress}` : undefined}
         confirmLabel={departure ? 'Me chercher ici' : 'Aller ici'}
         initialLocation={departure ? form.departureLocation : form.arrivalLocation}

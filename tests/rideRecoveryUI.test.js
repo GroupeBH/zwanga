@@ -64,6 +64,30 @@ function assertAction(h, actor, stage) {
   assert.equal(h.question().props.numberOfLines, undefined, 'the question can wrap, including large text');
 }
 
+test('cruising hides ordinary manual action, not assistance or unsent confirmations', () => {
+  const h = setup(); h.state.zwangaApi.config.online = true;
+  h.state.auth.user.id = h.state.rideRecovery.userId = 'driver';
+  h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: true }], actor: 'driver',
+    condensed: true, driverNavigation: true, mapCompact: true, hideWhenCruising: true,
+    secondaryActions: React.createElement('Assistance') });
+  const foreground = () => all(h.render()).filter(node => node.type !== 'Modal' && node.props?.accessibilityLabel?.includes('Confirmer l’arrivée'));
+  assert.equal(foreground().length, 0);
+  assert.ok(all(h.tree()).some(node => node.type === 'Assistance'));
+  assert.ok(all(h.tree()).some(node => node.props?.accessibilityLabel === 'Voir les confirmations des passagers'));
+  h.state.zwangaApi.config.online = false;
+  assert.equal(foreground().length, 1, 'offline fallback remains visible');
+  h.state.zwangaApi.config.online = true;
+  h.state.rideRecovery.entries = [{ id: 'pending', tripId: 'trip', bookingId: 'booking', stage: 'dropoff', state: 'queued', decision: 'confirm', actor: 'driver' }];
+  h.render();
+  assert.notEqual(h.trigger().props.accessibilityLabel, 'Fermer les confirmations', 'queued action status remains visible outside the sheet');
+  assert.equal(h.sent.length, 0, 'visibility cannot submit a declaration');
+  h.state.rideRecovery.entries = []; h.render();
+  all(h.tree()).find(node => node.props?.accessibilityLabel === 'Voir les confirmations des passagers').props.onPress(); h.render();
+  assert.equal(all(h.tree()).find(node => node.type === 'Modal').props.visible, true);
+  assert.equal(h.sent.length, 0, 'opening manual fallback never confirms');
+  h.hooks.unmount();
+});
+
 for (const actor of ['driver', 'passenger']) {
   for (const stage of ['pickup', 'dropoff']) {
     test(`${actor} ${stage}: action, saving and saved labels remain distinct and accessible`, async () => {
@@ -158,6 +182,25 @@ test('an incoming reservation cannot label another passenger one-tap confirmatio
   h.props({ ...props, driverOverviewOnly: false }); h.render();
   assertAction(h, 'driver', 'pickup');
   h.hooks.unmount();
+});
+
+test('compact map uses one explicit confirmation button, preserves double-tap guards and offline feedback', async () => {
+  for (const stage of ['pickup', 'dropoff']) {
+    const h = setup(); h.state.auth.user.id = 'driver'; h.state.rideRecovery.userId = 'driver';
+    h.props({ tripId: 'trip', bookings: [{ ...h.booking, pickedUp: stage === 'dropoff' }], actor: 'driver',
+      driverNavigation: true, mapCompact: true, preferredBookingId: 'booking', preferredStage: stage });
+    h.render();
+    assert.equal(h.question(), undefined, 'no duplicate question above the action');
+    assert.equal(words(h.trigger()), stage === 'pickup' ? 'Confirmer : passager à bord' : 'Confirmer l’arrivée du passager');
+    assert.match(h.trigger().props.accessibilityLabel, /Test/);
+    assert.match(words(h.tree()), /À confirmer uniquement à l’arrêt/);
+    h.trigger().props.onPress(); h.trigger().props.onPress();
+    await new Promise(resolve => setImmediate(resolve)); h.render();
+    assert.equal(h.sent.length, 1); assert.equal(h.sent[0].stage, stage);
+    assert.equal(words(h.trigger()), 'Confirmation enregistrée');
+    assert.match(words(h.tree()), /Enregistré sur ce téléphone/);
+    h.hooks.unmount();
+  }
 });
 
 test('condensed passenger controls retain both confirmations and the offline receipt', async () => {

@@ -310,6 +310,7 @@ export function useProfilePin({
     }
   };
   return {
+    forgotPinMode,
     handleResendPinOtp,
     handleForgotPin,
     handleNewPinChange,

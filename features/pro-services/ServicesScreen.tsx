@@ -1,15 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useState } from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import {
   ServiceLayout,
   ServiceButton,
   s,
 } from "@/features/pro-services/ServiceLayout";
 import {
-  OpenService,
+  ServiceDirectory,
   ServiceCaseLink,
-  UpcomingServices,
+  CreditServiceEntry,
 } from "@/features/pro-services/ServiceCatalogue";
 import { proError } from "@/features/pro-services/model";
 import {
@@ -18,6 +18,7 @@ import {
   useGetCurrentDocumentCaseQuery,
 } from "@/store/api/proServicesApi";
 import { useScreenIsActive } from "@/hooks/useAppIsActive";
+import { CreditRepaymentsLink } from '@/features/pro-services/CreditRepaymentsLink';
 
 export default function ServicesScreen({
   embedded = false,
@@ -36,15 +37,18 @@ export default function ServicesScreen({
     skip: !active,
     refetchOnMountOrArgChange: 30,
   });
-  const offerings = catalogue.data ?? [];
-  const currentDocuments = useGetCurrentDocumentCaseQuery(undefined, { skip: !active, refetchOnMountOrArgChange: true });
+  const offerings = catalogue.currentData ?? [];
+  const currentDocuments = useGetCurrentDocumentCaseQuery(undefined, {
+    skip: !active,
+    refetchOnMountOrArgChange: true,
+  });
+  const catalogueState = catalogue.isLoading ? 'loading' : catalogue.isError ? 'error' : 'ready';
   return (
     <ServiceLayout
-      title="Services pro"
+      title="Services"
       embedded={embedded}
       bottomOverlay={bottomOverlay}
     >
-      <Text style={s.text}>Vos démarches et leur suivi, au même endroit.</Text>
       {catalogue.isLoading && (
         <ActivityIndicator
           color="#D84D16"
@@ -65,27 +69,24 @@ export default function ServicesScreen({
           />
         </View>
       )}
-      {offerings
-        .filter((item) => item.availability === "open")
-        .map((item) => (
-          <OpenService key={item.code} item={item}
-            current={item.code === 'documents' ? currentDocuments.currentData?.request : undefined}
-            checking={item.code === 'documents' && currentDocuments.isFetching} />
-        ))}
-      {!catalogue.isLoading &&
-        !catalogue.isError &&
-        !offerings.some((item) => item.availability === "open") && (
-          <Text style={s.text}>
-            Les nouvelles demandes ne sont pas encore ouvertes. Vos dossiers
-            restent accessibles ci-dessous.
-          </Text>
-        )}
-      <View style={[s.row, { alignItems: "flex-start" }]}>
-        <Ionicons name="shield-checkmark-outline" size={19} color="#647582" />
-        <Text style={[s.text, s.flex]}>
-          Aucun paiement à la demande. Vous validez un devis et un contrat avant
-          tout engagement.
-        </Text>
+      <View style={styles.group}>
+        <Text accessibilityRole="header" style={styles.heading}>Documents</Text>
+        <ServiceDirectory group="documents"
+          items={offerings}
+          state={catalogueState}
+          current={currentDocuments.currentData?.request}
+          checking={currentDocuments.isFetching}
+          active={active}
+        />
+      </View>
+      <View style={styles.group}>
+        <Text accessibilityRole="header" style={styles.heading}>Acheter à crédit</Text>
+        <CreditServiceEntry active={active} />
+        <CreditRepaymentsLink active={active} />
+      </View>
+      <View style={styles.group}>
+        <Text accessibilityRole="header" style={styles.heading}>Pour les entreprises</Text>
+        <ServiceDirectory group="business" items={offerings} state={catalogueState} active={active} />
       </View>
       <View style={{ gap: 0 }}>
         <View style={[s.row, s.between]}>
@@ -129,11 +130,10 @@ export default function ServicesScreen({
               <Ionicons name="folder-open-outline" size={24} color="#647582" />
               <View style={s.flex}>
                 <Text style={s.label}>
-                  {cursor ? "Aucun autre dossier" : "Pas encore de demande"}
+                  {cursor ? "Aucun autre dossier" : "Pas encore de dossier"}
                 </Text>
                 <Text style={s.text}>
-                  Retrouvez ici vos demandes, les devis et les réponses de
-                  l’équipe.
+                  Vos démarches et les réponses de l’équipe apparaîtront ici.
                 </Text>
               </View>
             </View>
@@ -157,9 +157,11 @@ export default function ServicesScreen({
           onPress={() => setCursor(undefined)}
         />
       )}
-      <UpcomingServices
-        items={offerings.filter((item) => item.availability !== "open")}
-      />
     </ServiceLayout>
   );
 }
+
+const styles = StyleSheet.create({
+  group: { gap: 2 },
+  heading: { fontSize: 14, fontWeight: '700', color: '#647582' },
+});

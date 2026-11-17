@@ -47,6 +47,10 @@ export function buildHomeEntryAnnouncement(events: HomeEvents): RideEntryMessage
   const request = events.activeTripRequest;
   if (!request || request.passengerId !== events.userId) return null;
   const offers = request.status === 'offers_received' || request.offers?.some(offer => offer.status === 'pending');
+  const waitingDriver = request.offers?.find(offer => offer.status === 'pending' && offer.negotiationStage === 'passenger_counter');
+  if (waitingDriver && !request.selectedDriverId && !request.tripId && ['pending', 'offers_received'].includes(request.status)) return {
+    key: `own-request:${request.id}:${waitingDriver.id}`, text: 'Votre prix a été envoyé. Le conducteur doit maintenant répondre. Retrouvez cet échange dans votre commande.',
+  };
   return {
     key: `own-request:${request.id}:${request.status}:${Boolean(offers)}`,
     text: `${request.status === 'driver_selected' ? 'Un conducteur est confirmé pour votre commande.' : offers

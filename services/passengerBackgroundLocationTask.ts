@@ -1,4 +1,5 @@
 import { getBookingSnapshot, getTripSnapshot } from './background/passengerTrackingReads';
+import { locationBatch } from './background/locationBatch';
 import { latestLocation as selectLatestLocation } from './background/latestLocation';
 import { FETCH_TIMEOUT_MS, LOCATION_FAILURE_BACKOFF_MS, BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS } from './background/passengerTrackingPolicy';
 import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
@@ -133,6 +134,7 @@ const getPassengerTrackingReadiness = (session: PassengerTrackingSession) => {
 async function putPassengerLocation(
   bookingId: string,
   location: Location.LocationObject,
+  locations: Location.LocationObject[] = [location],
 ) {
   const coordinate = normalizeTripMapCoordinate(
     location.coords.latitude,
@@ -161,6 +163,7 @@ async function putPassengerLocation(
     }
 
     const payload = {
+      samples: locationBatch(locations),
       bookingId,
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
@@ -281,7 +284,7 @@ const definePassengerBackgroundLocationTask = () => {
           const latestLocation = selectLatestLocation(data?.locations);
           if (latestLocation) {
             publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
-            await putPassengerLocation(session.bookingId, latestLocation);
+            await putPassengerLocation(session.bookingId, latestLocation, data?.locations ?? [latestLocation]);
           }
         } catch (taskError) {
           console.warn('[PassengerBackgroundLocation] Tâche ignorée après une erreur :', taskError);

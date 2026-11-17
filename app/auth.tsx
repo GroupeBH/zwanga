@@ -22,8 +22,9 @@ import {
 } from '@/components/auth';
 
 export default function AuthScreen() {
-  const { isAuthenticated, draftPersistence, form, navigation, canGoBack, progress, motivationalMessage, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration } = useAuthController();
-  const compactCodeStep = form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
+  const { isAuthenticated, draftPersistence, form, navigation, canGoBack, progress, showPhoneStep, phoneActions, social, isAppleAuthLoading, legacyReferralCode, isGoogleSignupActive, profileActions, registration, announcements } = useAuthController();
+  const signupOtpStep = isSignupOtpVerificationEnabled && (form.step === 'sms' || (isGoogleSignupActive && form.googleSignupStep === 'otp'));
+  const compactCodeStep = signupOtpStep || form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
   const keyboard = useAuthKeyboardLayout(compactCodeStep, `${form.step}:${form.resetPinStep}`);
   const resetPending = form.step === 'resetPin' && (phoneActions.isResettingPin || form.isSendingResetOtp);
   if (isAuthenticated && form.step !== 'kyc') return <Redirect href="/(tabs)" />;
@@ -37,11 +38,11 @@ export default function AuthScreen() {
         mode={form.mode}
         onModeChange={(mode) => { if (!resetPending && !social.isSocialAuthInFlight() && !phoneActions.isPinLoginInFlight() && !registration.isRegistrationLocked()) navigation.handleModeChange(mode); }}
         canGoBack={compactCodeStep || canGoBack}
-        compact={keyboard.keyboardVisible}
+        compact
         onBack={() => { if (!resetPending && !social.isSocialAuthInFlight() && !phoneActions.isPinLoginInFlight() && !registration.isRegistrationLocked()) navigation.handlePreviousStep(); }}
         disabled={resetPending || social.isGoogleLoading || isAppleAuthLoading || phoneActions.isPinLoginPending || form.isLoggingIn || registration.isRegistrationPending || registration.hasCreatedAccount}
         progress={progress}
-        motivationalMessage={motivationalMessage}
+        motivationalMessage=""
       />
 
       {form.isResumingProfile && form.step === 'pin' && <Text style={{ paddingHorizontal: 20, paddingVertical: 8 }}>
@@ -100,6 +101,7 @@ export default function AuthScreen() {
           {/* Google OTP Step */}
           {isSignupOtpVerificationEnabled && isGoogleSignupActive && form.googleSignupStep === 'otp' && (
             <GoogleOtpStep
+              keyboardVisible={keyboard.keyboardVisible}
               phone={form.googlePhone}
               otp={form.googleOtp}
               otpRefs={form.googleOtpRefs}
@@ -115,6 +117,7 @@ export default function AuthScreen() {
           {/* Phone verification step */}
           {isSignupOtpVerificationEnabled && form.step === 'sms' && (
             <SmsStep
+              keyboardVisible={keyboard.keyboardVisible}
               mode={form.mode}
               phone={form.phone}
               smsCode={form.smsCode}
@@ -173,6 +176,10 @@ export default function AuthScreen() {
           {/* Profile Step - Normal signup ou Google signup après OTP */}
           {form.step === 'profile' && form.mode === 'signup' && (!isGoogleSignupActive || form.googleSignupStep === 'profile') && (
             <ProfileStep
+              updatesAccepted={announcements.updatesAccepted}
+              driverCategory={form.driverCategory}
+              onDriverCategoryChange={form.setDriverCategory}
+              onUpdatesAcceptedChange={announcements.setUpdatesAccepted}
               firstName={form.firstName}
               lastName={form.lastName}
               profilePicture={form.profilePicture}

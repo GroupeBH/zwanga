@@ -75,9 +75,9 @@ const location = { name: 'Gombe', address: 'Gombe Kinshasa', lat: -4.325, lng: 1
 const trip = id => ({ id, driverId: 'driver', departure: location, arrival: location, departureTime: '2026-09-20T10:00:00Z', availableSeats: 2, price: 2000 });
 const request = (id, extra = {}) => ({ id, passengerId: 'passenger', status: 'pending', departure: location, arrival: location, departureDateMin: '2026-09-20T10:00:00Z', createdAt: '2026-09-12T10:00:00Z', numberOfSeats: 2, maxPricePerSeat: 2000, ...extra });
 
-function screenApp() {
-  const hooks = hookHarness(), params = {}, queryCalls = [], routes = [];
-  const router = { push: value => routes.push(value), back() {} };
+function screenApp(os = 'android') {
+  const hooks = hookHarness(), params = {}, queryCalls = [], routes = [], replacements = [], backCalls = [];
+  const router = { push: value => routes.push(value), replace: value => replacements.push(value), back: () => backCalls.push(true) };
   const app = { trips: [trip('trip')], requests: [request('request')], coordinateReads: 0, isDriver: true, profileUnavailable: false, active: true };
   let lastTrips, tripPages;
   const coords = { latitude: -4.325, longitude: 15.3222 };
@@ -87,7 +87,7 @@ function screenApp() {
     location: { get lastKnownLocation() { app.coordinateReads++; return { coords }; } },
   };
   const load = loader({
-    react: { ...React, ...hooks.react }, 'react-native': native,
+    react: { ...React, ...hooks.react }, 'react-native': { ...native, Platform: { OS: os } },
     '@expo/vector-icons': { Ionicons: 'Ionicons' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '@react-navigation/native': { useFocusEffect: callback => hooks.react.useEffect(callback, [callback]) },
@@ -120,7 +120,28 @@ function screenApp() {
   const list = tree => nodes(tree).find(node => node.type === 'FlatList');
   const toolbar = tree => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === Toolbar);
   const switchMode = (tree, mode) => nodes(list(tree).props.ListHeaderComponent).find(node => node.type === 'TouchableOpacity' && text(node) === (mode === 'requests' ? 'Clients' : 'Trajets')).props.onPress();
-  return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes });
+  return Object.assign(app, { hooks, params, render, list, toolbar, switchMode, queryCalls, routes, replacements, backCalls });
+}
+
+for (const os of ['android', 'ios']) {
+  for (const account of ['passenger', 'driver-trips', 'driver-requests']) {
+    test(`${os}: search back arrow targets home explicitly for ${account}, never the previous published-trips screen`, t => {
+      t.mock.timers.enable({ apis: ['setTimeout'] });
+      const app = screenApp(os); app.isDriver = account !== 'passenger';
+      let tree = app.render();
+      if (account === 'driver-requests') { app.switchMode(tree, 'requests'); tree = app.render(); }
+      const back = nodes(tree).find(node => node.type === 'TouchableOpacity' &&
+        nodes(node).some(child => child.props.name === 'arrow-back'));
+      assert.ok(back);
+      back.props.onPress();
+      assert.deepEqual(app.replacements, ['/(tabs)']);
+      assert.deepEqual(app.backCalls, [], 'do not pop the navigation history');
+      assert.deepEqual(app.routes, [], 'do not add a new screen to the stack');
+      assert.equal(back.props.accessibilityLabel, 'Retour à l’accueil');
+      assert.equal(back.props.accessibilityRole, 'button');
+      app.hooks.unmount();
+    });
+  }
 }
 
 test('opening search as a driver starts with published trips to travel as a passenger', t => {

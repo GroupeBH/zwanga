@@ -38,13 +38,14 @@ export function DriverOffersList({ onOpen }: { onOpen: (requestId: string) => vo
     const open = (offer.status === 'pending' && ['pending', 'offers_received'].includes(request.status) &&
       isTripRequestWithinAcceptanceWindow(request)) || (offer.status === 'accepted' && request.status === 'driver_selected');
     const name = [request.passenger.firstName, request.passenger.lastName].filter(Boolean).join(' ') || 'Passager Zwanga';
-    return <CompactTripCard label={!open && offer.status === 'pending' ? 'Commande fermée' : labels[offer.status]}
+    const label = offer.status === 'pending' && offer.negotiationStage === 'passenger_counter' ? 'Le passager propose un prix' : labels[offer.status];
+    return <CompactTripCard label={!open && offer.status === 'pending' ? 'Commande fermée' : label}
       labelColor={open ? Colors.primary : Colors.gray[600]} disabled={!open}
       departure={request.departureLocation} arrival={request.arrivalLocation}
       priceText={requestPriceLabel(offer.pricePerSeat, request.numberOfSeats)} priceHint="pour le trajet"
       metadata={`${homeRequestDepartureLabel(request.departureDateMin, request.departureDateMax)} · ${homeSeatsLabel(request.numberOfSeats)}`}
       avatarName={name} avatarUri={request.passenger.profilePicture} secondary={name}
-      badge={open ? 'Voir la commande' : undefined} accessibilityLabel={`${labels[offer.status]} : ${request.departureLocation} vers ${request.arrivalLocation}`}
+      badge={open ? 'Voir la commande' : undefined} accessibilityLabel={`${label} : ${request.departureLocation} vers ${request.arrivalLocation}`}
       onPress={() => { if (open) onOpen(request.id); }} />;
   }, [onOpen]);
   return <FlatList data={offers} keyExtractor={keyFor} renderItem={renderItem}

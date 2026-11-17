@@ -107,9 +107,14 @@ export async function evaluateBackgroundTripEnd(
   const scope = `${getTokenSessionVersion()}:${tripId}`;
   // A durable checkpoint has no reliable observation time in older installs.
   // Never infer a crossing from an arbitrarily old saved coordinate.
+  const durableFixAt = session.lastDriverFixAt;
   let previousDriverCoordinate = lastTrustedFix?.scope === scope &&
     Date.now() - lastTrustedFix.timestamp <= TRIP_END_LOCATION_MAX_AGE_MS
-    ? lastTrustedFix.coordinate : null;
+    ? lastTrustedFix.coordinate : typeof durableFixAt === 'number' && durableFixAt <= Date.now() &&
+      Date.now()-durableFixAt<=TRIP_END_LOCATION_MAX_AGE_MS ? session.lastDriverCoordinate ?? null : null;
+  let pendingCompletionAt = typeof session.pendingCompletionAt === 'number' &&
+    session.pendingCompletionAt <= Date.now() && Date.now()-session.pendingCompletionAt<=90_000
+    ? session.pendingCompletionAt : null;
   let lastDistanceMeters: number | null = null;
   const sortedLocations = locations
     .filter((location) => location?.mocked !== true &&
@@ -150,7 +155,14 @@ export async function evaluateBackgroundTripEnd(
     lastDistanceMeters = passage.distanceMeters ?? évaluation.distanceMeters;
     previousDriverCoordinate = driverCoordinate;
 
-    if (!évaluation.shouldComplete && !passage.shouldComplete) {
+    if (évaluation.shouldComplete || passage.shouldComplete) {
+      pendingCompletionAt ??= location.timestamp;
+      // Persist the intent before the request: a timeout must not consume the crossing.
+      await updateActiveDriverBackgroundTripSession(current => current.tripId !== tripId ? current : {
+        ...current, pendingCompletionAt, lastDriverCoordinate: driverCoordinate, lastDriverFixAt: location.timestamp,
+      });
+    }
+    if (pendingCompletionAt === null) {
       continue;
     }
 
@@ -173,6 +185,10 @@ export async function evaluateBackgroundTripEnd(
     return {
       ...currentSession,
       lastDriverCoordinate: previousDriverCoordinate,
+      lastDriverFixAt: previousDriverCoordinate?.latitude !== currentSession.lastDriverCoordinate?.latitude ||
+        previousDriverCoordinate?.longitude !== currentSession.lastDriverCoordinate?.longitude
+        ? lastTrustedFix?.scope === scope ? lastTrustedFix.timestamp : null : currentSession.lastDriverFixAt,
+      pendingCompletionAt,
       nearDestinationSinceMs,
     };
   });

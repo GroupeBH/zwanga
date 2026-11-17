@@ -19,7 +19,9 @@ export function parseRideAlert(data: Record<string, unknown> | undefined): RideA
     expiresAt: typeof data.alertExpiresAt === 'string' ? data.alertExpiresAt : undefined };
   const driverAcceptance = isDriverOfferAcceptanceAlert(data);
   const id = driverAcceptance ? data.tripRequestId : data.bookingId ?? data.tripRequestId;
-  const recipientId = driverAcceptance ? data.driverId : data.passengerId;
+  const passengerCounter = isCounterOfferAlert(data) && data.negotiationStage === 'passenger_counter';
+  if (passengerCounter && (!isInvitationId(data.driverId) || !isInvitationId(data.passengerId) || data.driverId === data.passengerId)) return null;
+  const recipientId = driverAcceptance || passengerCounter ? data.driverId : data.passengerId;
   if (!isRemoteRequestAcceptanceAlert(data) || !isInvitationId(recipientId) || !isInvitationId(id)) return null;
   return { kind: 'response', id, recipientId,
     key: `ride-response-${data.type}-${id}-${isCounterOfferAlert(data) || driverAcceptance ? data.offerId : data.status ?? 'accepted'}`, data,

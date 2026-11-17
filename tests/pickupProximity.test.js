@@ -138,7 +138,7 @@ test('driver approach works at 300m per booking; 80m arrival and boarded exclusi
   const waypoints = [booking, { ...booking, id: 'second' }, { ...booking, id: 'boarded', pickedUp: true }].map(item => ({
     id: `${item.id}:pickup`, type: 'pickup', booking: item, passenger: { id: item.passengerId }, location: { lat: -4.3, lng: 15.3 },
   }));
-  const props = { data: { isTripOngoing: true, tripId: 'trip' }, refs: { currentLocationRef: { current: null } },
+  const props = { data: { isTripOngoing: true, tripId: 'trip' }, refs: { currentLocationRef: { current: null }, tripDestinationNearSinceMsRef: { current: null } },
     mapState: { waypoints, lastTripCompletionCheckCoordinateRef: { current: null }, livePassengerLocations: {} },
     notices: { presentPickupNotice: event => events.push(event) }, completion: {} };
   const render = () => { props.mapState.currentLocation = { coords: { latitude: -4.3, longitude: 15.301 } };

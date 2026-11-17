@@ -20,6 +20,8 @@ test('two stages keep itinerary/date then summary/vehicle/price with one direct 
   for (const [step, expected] of [['route', ['PublishRouteStep', 'PublishScheduleStep']],
     ['pricing', ['PublishConfirmationStep', 'PublishVehicleStep', 'PublishPricingStep']]]) {
     const model = publishCompactFixture(step);
+    Object.assign(model.route, { departureReferenceRequired: true, arrivalReferenceRequired: false,
+      shouldShowDepartureReference: true, shouldShowArrivalReference: false });
     const names = ['PublishRouteStep', 'PublishScheduleStep', 'PublishVehicleStep', 'PublishPricingStep', 'PublishConfirmationStep'];
     const mocks = Object.fromEntries(names.map(name => [`../features/publish/${name}`, { [name]: name }]));
     const load = loader({ ...base, ...mocks, ...hiddenPublishModals,
@@ -30,6 +32,12 @@ test('two stages keep itinerary/date then summary/vehicle/price with one direct 
     assert.deepEqual(nodes.filter(n => names.includes(n.type)).map(n => n.type), expected);
     assert.equal(nodes.filter(n => n.props.onPress === model.handleFooterPrimary).length, 1);
     assert.equal(nodes.find(n => n.type === 'ScrollView').key, step, 'new step starts at the top');
+    if (step === 'route') {
+      const fields = nodes.find(n => n.type === 'PublishRouteStep').props;
+      assert.equal(fields.departureReferenceRequired, true);
+      assert.equal(fields.arrivalReferenceRequired, false);
+      assert.equal(fields.shouldShowDepartureReference, true);
+    }
     if (step === 'pricing') {
       assert.equal(nodes.find(n => n.type === 'PublishConfirmationStep').props.compact, true);
       assert.equal(nodes.find(n => n.type === 'PublishPricingStep').props.estimate, model.pricing);

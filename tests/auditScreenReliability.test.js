@@ -57,24 +57,52 @@ test('recurring trips: a rejected analytics event does not invalidate a confirme
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(nodes(f.render()).some(n => n.props.accessibilityRole === 'alert'), false);
 });
-function profile(t) {
+function profile(t, extraUser = {}) {
   const update = deferred(), calls = [], dispatched = [];
+  const summary = { user: { id: 'user', firstName: 'Test', lastName: 'Example', ...extraUser } };
   const f = screenFixture('app/edit-profile.tsx', {
     '../features/screen-styles/app/edit-profile/index': { styles: {} },
     '@/features/navigation/RideModal': { RideModal: 'Modal' }, '@/components/GenderSelector': { GenderSelector: 'Gender' },
+    '@/components/profile/DriverCategoryPicker': { DriverCategoryPicker: 'DriverCategory' },
     '@/hooks/useProfilePhoto': { useProfilePhoto: () => ({ changeProfilePhoto: async () => false }) },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeInDown: { delay: () => ({}) } },
     '@/store/hooks': { useAppDispatch: () => v => dispatched.push(v) }, '@/store/slices/authSlice': { updateUser: v => v },
     '@/store/api/userApi': {
-      useGetProfileSummaryQuery: () => ({ data: { user: { id: 'user', firstName: 'Test', lastName: 'Example' } }, refetch() {} }),
+      useGetProfileSummaryQuery: () => ({ data: summary, refetch() {} }),
       useGetKycStatusQuery: () => ({ data: {} }),
       useUpdateUserMutation: () => [v => { calls.push(v); return { unwrap: () => update.promise }; }, {}],
     },
   });
   t.after(() => f.hooks.unmount()); f.render();
-  return { ...f, update, calls, dispatched, save: () => nodes(f.render()).find(n => n.type === 'Button' && text(n) === 'Enregistrer').props.onPress,
+  return { ...f, update, calls, dispatched, summary, save: () => nodes(f.render()).find(n => n.type === 'Button' && text(n) === 'Enregistrer').props.onPress,
     modal: () => nodes(f.render()).find(n => n.type === 'Modal') };
 }
+
+test('a legacy driver can choose its category in profile; refetches keep the unsaved choice and saving preserves role', async t => {
+  const f = profile(t, { role: 'driver', driverCategory: null });
+  const picker = () => nodes(f.render()).find(n => n.type === 'DriverCategory');
+  assert.equal(picker().props.value, null);
+  picker().props.onChange('transport');
+  f.summary.user = { ...f.summary.user, profilePicture: 'https://example.invalid/photo.jpg' };
+  f.render(); assert.equal(picker().props.value, 'transport');
+  const work = f.save()();
+  assert.equal(f.calls[0].get('driverCategory'), 'transport');
+  assert.equal(f.calls[0].has('role'), false);
+  f.update.resolve({ ...f.summary.user, driverCategory: 'transport' }); await work;
+  assert.equal(f.dispatched[0].driverCategory, 'transport');
+  assert.equal(Object.hasOwn(f.dispatched[0], 'role'), false);
+});
+
+test('a legacy driver can still edit its profile without a category; passengers see no category control', async t => {
+  for (const role of ['driver', 'passenger']) {
+    const f = profile(t, { role });
+    assert.equal(nodes(f.render()).some(n => n.type === 'DriverCategory'), role === 'driver');
+    const work = f.save()();
+    assert.equal(f.calls[0].has('driverCategory'), false);
+    f.update.resolve(f.summary.user); await work;
+    assert.equal(f.modal().props.visible, true);
+  }
+});
 test('profile feedback: no native modal, back dismisses, navigation waits for dismissal and runs once', async t => {
   const f = profile(t), save = f.save(), work = save(); await save(); assert.equal(f.calls.length, 1);
   f.update.resolve({ id: 'user', firstName: 'Test', lastName: 'Example' }); await work;

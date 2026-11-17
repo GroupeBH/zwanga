@@ -155,7 +155,10 @@ test('creation and update modals consistently use the protected layout', () => {
     'components/profile/ProfileSubscriptionModal.tsx', 'components/PassengerArrivalPaymentCoordinator.tsx',
   ]) assert.match(read(file), /import \{ FormModal as Modal \} from '@\/components\/forms\/FormLayout'/, file);
   for (const file of ['features/trip-detail/TripEditModal.tsx', 'features/trips/TripsEditModal.tsx']) {
-    assert.match(read(file), /<FormModal\s+transparent=\{Platform.OS === 'android'\}/, file);
     assert.doesNotMatch(read(file), /editModalKeyboardOffset|setEditKeyboardHeight/, file);
   }
+  assert.match(read('features/trip-detail/TripEditModal.tsx'), /<FormModal\s+transparent=\{Platform.OS === 'android'\}/);
+  // The list now delegates to the same protected sheet rather than duplicating its native wrapper.
+  assert.match(read('features/trips/TripsEditModal.tsx'), /import \{ TripEditModal/);
+  assert.match(read('features/trips/TripsEditModal.tsx'), /<TripEditModal/);
 });

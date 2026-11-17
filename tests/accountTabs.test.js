@@ -1,4 +1,3 @@
-/* global __dirname */
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -25,7 +24,7 @@ const native = (platform) => ({
   KeyboardAvoidingView: "Keyboard",
 });
 
-test("the second tab depends on driver capability, never identity verification, vehicles or a current ride", () => {
+test("driver-only actions remain separate from shared Services access, KYC and current trip roles", () => {
   for (const user of [
     null,
     undefined,
@@ -39,15 +38,15 @@ test("the second tab depends on driver capability, never identity verification, 
       currentTripRole: "driver",
     },
   ]) {
-    assert.equal(policy.usesServicesTab(user), false);
+    assert.equal(policy.selectIsDriverAccount({ auth: { user } }), false);
   }
   for (const user of [
     { role: "driver" },
     { role: "both" },
   ]) {
-    assert.equal(policy.usesServicesTab(user), true);
+    assert.equal(policy.selectIsDriverAccount({ auth: { user } }), true);
     assert.equal(
-      policy.usesServicesTab({ ...user, currentTripRole: "passenger" }),
+      policy.selectIsDriverAccount({ auth: { user: { ...user, currentTripRole: "passenger" } } }),
       true,
     );
   }
@@ -55,10 +54,10 @@ test("the second tab depends on driver capability, never identity verification, 
 
 test("account selector stays primitive across unrelated store updates and resets for another account", () => {
   const state = { auth: { user: { id: "driver", role: "both" } } };
-  const selected = policy.selectUsesServicesTab(state);
+  const selected = policy.selectIsDriverAccount(state);
   for (let i = 0; i < 50; i++) {
     assert.equal(
-      policy.selectUsesServicesTab({
+      policy.selectIsDriverAccount({
         ...state,
         location: { sequence: i },
         wallet: { balance: i },
@@ -67,31 +66,95 @@ test("account selector stays primitive across unrelated store updates and resets
     );
   }
   assert.equal(
-    policy.selectUsesServicesTab({
+    policy.selectIsDriverAccount({
       auth: { user: { id: "passenger", role: "passenger" } },
     }),
     false,
   );
-  assert.equal(policy.selectUsesServicesTab({ auth: { user: null } }), false);
+  assert.equal(policy.selectIsDriverAccount({ auth: { user: null } }), false);
   assert.equal(
-    policy.selectUsesServicesTab({ auth: { user: { role: "driver" } } }),
+    policy.selectIsDriverAccount({ auth: { user: { role: "driver" } } }),
     true,
   );
 });
 
 test("profile access keeps Services available to passengers, without KYC or subscription gating", () => {
-  assert.equal(policy.getServicesEntryHref(true), "/(tabs)/discover");
-  assert.equal(policy.getServicesEntryHref(false), "/services");
+  assert.equal(policy.getServicesEntryHref(), "/(tabs)/discover");
   const source = fs.readFileSync(
     path.join(__dirname, "../hooks/profile/useProfileController.ts"),
     "utf8",
   );
-  assert.match(source, /getServicesEntryHref\(usesServices\)/);
-  assert.match(source, /router.navigate\(href/);
+  assert.match(source, /router.navigate\(getServicesEntryHref\(\)\)/);
+});
+
+test("earnings are a transport-driver tab, not a passenger flag or a temporary trip role", () => {
+  for (const role of ['driver', 'both']) {
+    for (const driverCategory of ['transport', 'private', 'intercity', null, undefined, 'unknown']) {
+      const user = { role, driverCategory, currentTripRole: 'passenger' };
+      assert.equal(policy.usesEarningsTab(user), driverCategory === 'transport');
+      assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), driverCategory === 'transport');
+      assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), false);
+    }
+  }
+  for (const user of [null, undefined, { role: 'admin', driverCategory: 'transport' },
+    { role: 'passenger', driverCategory: 'transport', isDriver: true }]) {
+    assert.equal(policy.usesEarningsTab(user), false);
+    assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), user?.role === 'passenger');
+  }
+});
+
+test("tab selectors react to category/account changes but not GPS or balance updates", () => {
+  const user = { role: 'driver', driverCategory: 'transport' };
+  for (let sequence = 0; sequence < 50; sequence++) {
+    assert.equal(policy.selectUsesEarningsTab({ auth: { user }, location: { sequence } }), true);
+  }
+  user.driverCategory = 'private';
+  assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), false);
+  user.role = 'passenger';
+  assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), true);
+  assert.equal(policy.selectUsesEarningsTab({ auth: { user: null } }), false);
+  assert.equal(policy.selectUsesTripSearchTab({ auth: { user: null } }), false);
 });
 
 for (const platform of ["ios", "android"]) {
-  test(`${platform}: exactly five stable tabs, matching labels/icons, and native stability settings preserved`, () => {
+  test(`${platform}: third tab embeds passenger search and preserves the driver workspace`, () => {
+    const state = { auth: { user: { role: 'passenger' } } };
+    let focused = true;
+    const { default: TripsTab } = loader({
+      'react-native': native(platform),
+      '@react-navigation/native': { useIsFocused: () => focused },
+      '@react-navigation/bottom-tabs': { useBottomTabBarHeight: () => 92 },
+      'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+      '@expo/vector-icons': { Ionicons: 'Icon' },
+      '@/store/hooks': { useAppSelector: selector => selector(state) },
+      '../search': { default: 'Search', __esModule: true },
+      '../../hooks/trips/useTripsController': { useTripsController: () => assert.fail('passenger must not mount trip-management queries') },
+      '../../features/trips/TripsEditModal': { TripsEditModal: 'Editor' },
+      '../../features/trips/TripsHeader': { TripsHeader: 'Header' },
+      '@/components/LocationPickerModal': { default: 'Picker', __esModule: true },
+      '@/components/TutorialOverlay': { TutorialOverlay: 'Tutorial' },
+      '@/components/ui/HistoryPaginationFooter': { HistoryPaginationFooter: 'Pagination' },
+      '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'Scope' },
+      '@/features/navigation/RideModal': { RideModal: 'Modal' },
+    })('app/(tabs)/trips.tsx');
+    for (const role of ['passenger', 'driver', 'both', 'passenger']) {
+      state.auth.user = { role, driverCategory: 'intercity' };
+      const tree = TripsTab();
+      if (role === 'passenger') {
+        assert.equal(tree.type, 'Search');
+        assert.equal(tree.props.embedded, true);
+        assert.equal(tree.props.bottomOverlay, platform === 'ios' ? 92 : 0);
+      } else {
+        assert.equal(tree.type, 'Scope');
+        assert.equal(tree.props.scopeKey, 'my-trips');
+        assert.equal(tree.props.active, focused);
+        assert.equal(tree.props.children.type.name, 'TripsContent');
+      }
+      focused = !focused;
+    }
+  });
+
+  test(`${platform}: five visible tabs with role-specific destinations, icons and unchanged native stability settings`, () => {
     const state = { auth: { user: { role: "passenger" } } };
     const Tabs = Object.assign(() => null, { Screen: "TabScreen" });
     const { default: TabLayout } = loader({
@@ -105,17 +168,34 @@ for (const platform of ["ios", "android"]) {
       "@/store/hooks": { useAppSelector: (selector) => selector(state) },
       "@/store/selectors": { selectUnreadMessagesCount: () => 4 },
     })("app/(tabs)/_layout.tsx");
-    for (const role of ["passenger", "driver", "both"]) {
-      state.auth.user = { role };
+    for (const user of [
+      { role: 'passenger' }, { role: 'passenger', driverCategory: 'transport' },
+      { role: 'driver' }, { role: 'driver', driverCategory: 'private' },
+      { role: 'driver', driverCategory: 'transport' }, { role: 'both' },
+      { role: 'both', driverCategory: 'transport' },
+      { role: 'driver', driverCategory: 'intercity' }, { role: 'both', driverCategory: 'intercity' },
+    ]) {
+      state.auth.user = user;
+      const { role } = user;
+      const earnings = policy.usesEarningsTab(user);
       const elements = nodes(TabLayout());
-      const screens = elements.filter((node) => node.type === "TabScreen");
+      const routes = elements.filter((node) => node.type === "TabScreen");
+      const screens = routes.filter(node => node.props.options.href !== null);
       assert.deepEqual(
         screens.map((node) => node.props.name),
-        ["index", "discover", "trips", "messages", "profile"],
+        ["index", "discover", earnings ? "earnings" : "trips", "messages", "profile"],
       );
+      assert.deepEqual(routes.map(node => node.props.name), ['index', 'discover', 'trips', 'earnings', 'messages', 'profile']);
+      assert.equal(screens[2].props.options.title, earnings ? 'Revenus' : role === 'passenger' ? 'Trajets' : 'Mes trajets');
+      assert.equal(screens[2].props.options.href, earnings ? '/(tabs)/earnings' : '/(tabs)/trips');
+      for (const focused of [true, false]) {
+        const thirdIcon = screens[2].props.options.tabBarIcon({ focused, color: '#000', size: 24 });
+        assert.equal(nodes(thirdIcon).find(node => node.type === 'Icon').props.name,
+          `${earnings ? 'wallet' : 'car'}${focused ? '' : '-outline'}`);
+      }
       assert.equal(
         screens[1].props.options.title,
-        role === "passenger" ? "Recherche" : "Services",
+        "Services",
       );
       const icon = screens[1].props.options.tabBarIcon({
         focused: true,
@@ -124,7 +204,7 @@ for (const platform of ["ios", "android"]) {
       });
       assert.equal(
         nodes(icon).find((node) => node.type === "Icon").props.name,
-        role === "passenger" ? "search" : "briefcase",
+        "briefcase",
       );
       const tabs = elements.find((node) => node.type === Tabs);
       assert.equal(tabs.props.initialRouteName, 'index');
@@ -148,7 +228,28 @@ for (const platform of ["ios", "android"]) {
     }
   });
 
-  test(`${platform}: contextual content uses the same account selector and reserves only the overlay space`, () => {
+  test(`${platform}: earnings tab shares the real gains screen and exits after a category/account change`, () => {
+    const state = { auth: { user: { role: 'driver', driverCategory: 'transport' } } };
+    const { default: EarningsTab } = loader({
+      'react-native': native(platform),
+      'expo-router': { Redirect: 'Redirect' },
+      '@react-navigation/bottom-tabs': { useBottomTabBarHeight: () => 92 },
+      '@/store/hooks': { useAppSelector: selector => selector(state) },
+      '../driver-earnings': { default: 'Earnings', __esModule: true },
+    })('app/(tabs)/earnings.tsx');
+    const tree = EarningsTab();
+    assert.equal(tree.type, 'Earnings');
+    assert.equal(tree.props.embedded, true);
+    assert.equal(tree.props.bottomOverlay, platform === 'ios' ? 92 : 0);
+    for (const user of [{ role: 'driver', driverCategory: 'private' }, { role: 'passenger' }, null]) {
+      state.auth.user = user;
+      const fallback = EarningsTab();
+      assert.equal(fallback.type, 'Redirect', 'do not mount earnings queries for another role');
+      assert.equal(fallback.props.href, '/(tabs)/trips');
+    }
+  });
+
+  test(`${platform}: passengers and all driver categories share Services with the tab bar retained`, () => {
     const state = { auth: { user: { role: "driver" } } };
     const { default: DiscoverTab } = loader({
       "react-native": native(platform),
@@ -160,12 +261,19 @@ for (const platform of ["ios", "android"]) {
       },
       "../search": { default: "Search", __esModule: true },
     })("app/(tabs)/discover.tsx");
-    assert.equal(DiscoverTab().type, "Services");
-    state.auth.user = { role: "passenger" };
-    const search = DiscoverTab();
-    assert.equal(search.type, "Search");
-    assert.equal(search.props.embedded, true);
-    assert.equal(search.props.bottomOverlay, platform === "ios" ? 92 : 0);
+    for (const user of [
+      { role: 'passenger', identityVerified: false },
+      { role: 'driver', driverCategory: 'private' },
+      { role: 'driver', driverCategory: 'transport' },
+      { role: 'both', driverCategory: 'intercity' },
+      { role: 'passenger' },
+    ]) {
+      state.auth.user = user;
+      const services = DiscoverTab();
+      assert.equal(services.type, "Services");
+      assert.equal(services.props.embedded, true);
+      assert.equal(services.props.bottomOverlay, platform === "ios" ? 92 : 0);
+    }
   });
 }
 
@@ -229,6 +337,7 @@ test("Services reads still pause on blur/background and reuse the same catalogue
   };
   const { default: ServicesScreen } = loader({
     react: hooks.react,
+    "expo-router": { router: { push() {} } },
     "react-native": native("android"),
     "@expo/vector-icons": { Ionicons: "Icon" },
     "@/hooks/useAppIsActive": { useScreenIsActive: () => active },
@@ -238,9 +347,9 @@ test("Services reads still pause on blur/background and reuse the same catalogue
       s: {},
     },
     "@/features/pro-services/ServiceCatalogue": {
-      OpenService: "Service",
+      ServiceDirectory: "Directory",
+      CreditServiceEntry: "Credit",
       ServiceCaseLink: "Case",
-      UpcomingServices: "Future",
     },
     "@/store/api/proServicesApi": {
       useGetMyProCasesQuery: query("cases"),
@@ -271,7 +380,7 @@ test("public search stays unambiguous and separate from the home request actions
     false,
   );
   assert.ok(fs.existsSync(path.join(__dirname, "../app/search.tsx")));
-  // Published trips remain reachable through discovery; the two main home
+  // Published trips remain reachable through the trips tab; the two main home
   // actions now create a request, as exercised in homeCompactLayout.test.js.
   assert.match(
     fs.readFileSync(path.join(__dirname, "../hooks/home/useHomeSheet.ts"), "utf8"),

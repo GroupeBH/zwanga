@@ -1,9 +1,9 @@
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Colors } from '@/constants/styles';
 
-export function RequestReferenceField({ target, value, onChangeText, required = false, disabled = false }: {
+export function RequestReferenceField({ target, value, onChangeText, required = false, disabled = false, keepHintVisible = false }: {
   target: 'departure' | 'arrival'; value: string; onChangeText: (value: string) => void;
-  required?: boolean; disabled?: boolean;
+  required?: boolean; disabled?: boolean; keepHintVisible?: boolean;
 }) {
   const label = `Repère ${target === 'departure' ? 'au départ' : 'à l’arrivée'}`;
   return <View style={s.field}>
@@ -12,7 +12,7 @@ export function RequestReferenceField({ target, value, onChangeText, required = 
       editable={!disabled} accessibilityLabel={`${label}, ${required ? 'obligatoire' : 'facultatif'}`}
       placeholder={target === 'departure' ? 'Ex. Devant la pharmacie, avenue…' : 'Ex. École, avenue, portail…'}
       placeholderTextColor={Colors.gray[500]} maxLength={200} autoCapitalize="sentences" returnKeyType="done" />
-    {required && !value?.trim() ? <Text style={s.hint}>La commune seule ne suffit pas pour vous retrouver.</Text> : null}
+    {required && (keepHintVisible || !value?.trim()) ? <Text style={s.hint}>La commune seule ne suffit pas pour vous retrouver.</Text> : null}
   </View>;
 }
 

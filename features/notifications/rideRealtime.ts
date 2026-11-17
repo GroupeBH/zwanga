@@ -19,7 +19,8 @@ export function parseRideRealtimeEvent(raw: unknown): Exclude<RideRealtimeEvent,
     const data = value.data as Record<string, unknown>;
     const alert = parseRideAlert(data);
     if (!alert || alert.recipientId !== value.recipientId ||
-        (alert.kind === 'response' && !isCounterOfferAlert(data) && !isDriverOfferAcceptanceAlert(data))) return null;
+        (alert.kind === 'response' && !isCounterOfferAlert(data) && !isDriverOfferAcceptanceAlert(data) &&
+          !(data.type === 'trip_request_accepted' && data.ringAlert === 'request-accepted-v1'))) return null;
     return { kind: 'incoming', recipientId: value.recipientId, eventId: value.eventId, data };
   }
   if (value.kind === 'changed' && typeof value.terminal === 'boolean' &&

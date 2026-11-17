@@ -9,7 +9,7 @@ import {
   useLoginMutation,
   useRegisterMutation,
 } from '@/store/api/zwangaApi';
-import type { UserGender } from '@/types';
+import type { DriverCategory, UserGender } from '@/types';
 import { type PendingReferralAttribution } from '@/utils/referralAttribution';
 import { useEffect, useRef, useState } from 'react';
 import { TextInput } from 'react-native';
@@ -57,6 +57,8 @@ export function useAuthFormState({
   const [email, setEmail] = useState(draft?.email ?? '');
   const [gender, setGender] = useState<UserGender | null>(draft?.gender ?? null);
   const [role, setRole] = useState<'driver' | 'passenger'>(draft?.role ?? 'passenger');
+  const [driverCategory, setDriverCategory] = useState<DriverCategory | null>(draft?.driverCategory ?? null);
+  useEffect(() => { if (role !== 'driver') setDriverCategory(null); }, [role]);
   const [profilePicture, setProfilePicture] = useState<string | null>(draft?.profilePicture ?? null);
   const [referralAttribution, setReferralAttribution] =
     useState<PendingReferralAttribution | null>(null);
@@ -111,6 +113,8 @@ export function useAuthFormState({
     googleIdToken,
     isGooglePhoneVerified,
     role,
+    driverCategory,
+    setDriverCategory,
     step,
     setIsAppleAvailable,
     focusInteractionRef,

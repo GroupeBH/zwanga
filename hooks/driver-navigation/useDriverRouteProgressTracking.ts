@@ -20,7 +20,8 @@ import {
   evaluateDestinationAutoComplete,
   evaluateDestinationPassage,
 } from '@/utils/navigation/tripCompletion';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { isTripCompletionLocation, isTripCompletionTimestamp } from '@/utils/navigation/tripCompletionObservation';
 
 interface Params {
   data: ReturnType<typeof useDriverNavigationData>;
@@ -39,12 +40,17 @@ export function useDriverRouteProgressTracking({
   notices,
   completion,
 }: Params) {
+  const previousFix = useRef<{ tripId: string; timestamp: number } | null>(null);
+  const { getTripDestinationReferenceRoute, presentTripDestinationNotice, tryCompleteTripFromNavigation } = completion;
+  const { presentPassengerDestinationApproachNotice, presentPassengerDestinationNotice, presentPickupNotice } = notices;
+  const { currentLocationRef, routeCoordinatesRef, tripDestinationNearSinceMsRef } = refs;
+  const { lastTripCompletionCheckCoordinateRef } = mapState;
   useEffect(() => {
     if (!data.isTripOngoing || !data.tripId) {
       return;
     }
 
-    const latestDriverLocation = refs.currentLocationRef.current ?? mapState.currentLocation;
+    const latestDriverLocation = currentLocationRef.current ?? mapState.currentLocation;
     if (!latestDriverLocation) {
       return;
     }
@@ -53,14 +59,18 @@ export function useDriverRouteProgressTracking({
       latitude: latestDriverLocation.coords.latitude,
       longitude: latestDriverLocation.coords.longitude,
     };
-    const previousDriverCoordinate = mapState.lastTripCompletionCheckCoordinateRef.current;
+    const canDetectArrival = isTripCompletionLocation(latestDriverLocation, data.trip?.startedAt);
+    const previousDriverCoordinate = canDetectArrival && previousFix.current?.tripId === data.tripId &&
+      isTripCompletionTimestamp(previousFix.current.timestamp, data.trip?.startedAt) &&
+      previousFix.current.timestamp < latestDriverLocation.timestamp
+      ? lastTripCompletionCheckCoordinateRef.current : null;
     const detectedAt = new Date().toISOString();
 
     mapState.waypoints.forEach((waypoint) => {
       const booking = waypoint.booking;
 
       if (waypoint.type === 'dropoff') {
-        if (!hasBookingPickupCompleted(booking) || hasBookingDropoffCompleted(booking)) {
+        if (!canDetectArrival || !hasBookingPickupCompleted(booking) || hasBookingDropoffCompleted(booking)) {
           return;
         }
 
@@ -75,7 +85,7 @@ export function useDriverRouteProgressTracking({
           previousDriverCoordinate,
           routeCoordinates:
             activeNavigationDestination?.id === waypoint.id
-              ? refs.routeCoordinatesRef.current
+              ? routeCoordinatesRef.current
               : [data.tripDepartureCoordinate, dropoffCoordinate].filter(
                   (coordinate): coordinate is RouteCoordinate => Boolean(coordinate),
                 ),
@@ -86,7 +96,7 @@ export function useDriverRouteProgressTracking({
         });
 
         if (driverDropoffDistanceKm <= DRIVER_DROPOFF_APPROACH_DISTANCE_KM) {
-          notices.presentPassengerDestinationApproachNotice(
+          presentPassengerDestinationApproachNotice(
             {
               type: 'passenger_near_destination',
               bookingId: booking.id,
@@ -100,7 +110,7 @@ export function useDriverRouteProgressTracking({
         }
 
         if (dropoffPassage.shouldComplete) {
-          notices.presentPassengerDestinationNotice(
+          presentPassengerDestinationNotice(
             {
               type: 'dropoff_confirmed',
               bookingId: booking.id,
@@ -134,7 +144,7 @@ export function useDriverRouteProgressTracking({
       const driverPickupDistanceKm = calculateDistance(driverCoordinate, pickupCoordinate);
 
       if (driverPickupDistanceKm <= DRIVER_NEAR_PICKUP_DISTANCE_KM) {
-        notices.presentPickupNotice(
+        presentPickupNotice(
           {
             type: driverPickupDistanceKm <= DRIVER_PICKUP_ARRIVAL_DISTANCE_KM
               ? 'driver_arrived_pickup' : 'driver_near_pickup',
@@ -160,7 +170,7 @@ export function useDriverRouteProgressTracking({
       if (
         Math.min(driverPassengerDistanceKm, passengerPickupDistanceKm) <= PASSENGER_READY_DISTANCE_KM
       ) {
-        notices.presentPickupNotice(
+        presentPickupNotice(
           {
             type: 'parties_nearby',
             bookingId: booking.id,
@@ -178,7 +188,7 @@ export function useDriverRouteProgressTracking({
       // La confirmation pickup est decidee par le backend a partir de l'historique Redis.
     });
 
-    if (data.tripArrivalCoordinate) {
+    if (data.tripArrivalCoordinate && canDetectArrival) {
       const driverTripEndDistanceMeters = calculateDistanceMeters(
         driverCoordinate,
         data.tripArrivalCoordinate,
@@ -186,7 +196,7 @@ export function useDriverRouteProgressTracking({
       const roundedTripEndDistanceMeters = Math.round(driverTripEndDistanceMeters);
 
       if (driverTripEndDistanceMeters <= DRIVER_TRIP_END_APPROACH_DISTANCE_METERS) {
-        completion.presentTripDestinationNotice({
+        presentTripDestinationNotice({
           type: 'driver_near_destination',
           tripId: data.tripId,
           distanceMeters: roundedTripEndDistanceMeters,
@@ -197,17 +207,17 @@ export function useDriverRouteProgressTracking({
       const destinationAutoComplete = evaluateDestinationAutoComplete({
         destinationCoordinate: data.tripArrivalCoordinate,
         driverCoordinate,
-        nearDestinationSinceMs: refs.tripDestinationNearSinceMsRef.current,
+        nearDestinationSinceMs: tripDestinationNearSinceMsRef.current,
       });
       const destinationPassage = evaluateDestinationPassage({
         destinationCoordinate: data.tripArrivalCoordinate,
         driverCoordinate,
         previousDriverCoordinate,
-        routeCoordinates: completion.getTripDestinationReferenceRoute(),
+        routeCoordinates: getTripDestinationReferenceRoute(),
         directDistanceThresholdMeters: DRIVER_TRIP_END_DIRECT_COMPLETE_DISTANCE_METERS,
         parallelDistanceThresholdMeters: DRIVER_TRIP_END_PARALLEL_COMPLETE_DISTANCE_METERS,
       });
-      refs.tripDestinationNearSinceMsRef.current =
+      tripDestinationNearSinceMsRef.current =
         destinationAutoComplete.nearDestinationSinceMs;
 
       if (
@@ -215,26 +225,37 @@ export function useDriverRouteProgressTracking({
         destinationAutoComplete.shouldComplete ||
         destinationPassage.shouldComplete
       ) {
-        completion.tryCompleteTripFromNavigation(roundedTripEndDistanceMeters);
+        tryCompleteTripFromNavigation(roundedTripEndDistanceMeters);
       }
     }
 
-    mapState.lastTripCompletionCheckCoordinateRef.current = driverCoordinate;
+    if (canDetectArrival) {
+      lastTripCompletionCheckCoordinateRef.current = driverCoordinate;
+      previousFix.current = { tripId: data.tripId, timestamp: latestDriverLocation.timestamp };
+    } else {
+      previousFix.current = null;
+      tripDestinationNearSinceMsRef.current = null;
+    }
   }, [
     activeNavigationDestination?.id,
     mapState.currentLocation,
-    completion.getTripDestinationReferenceRoute,
+    getTripDestinationReferenceRoute,
     data.isTripOngoing,
     mapState.livePassengerLocations,
-    notices.presentPassengerDestinationApproachNotice,
-    notices.presentPassengerDestinationNotice,
-    notices.presentPickupNotice,
-    completion.presentTripDestinationNotice,
+    presentPassengerDestinationApproachNotice,
+    presentPassengerDestinationNotice,
+    presentPickupNotice,
+    presentTripDestinationNotice,
     data.tripDepartureCoordinate,
     data.tripId,
+    data.trip?.startedAt,
     data.tripArrivalCoordinate,
-    completion.tryCompleteTripFromNavigation,
+    tryCompleteTripFromNavigation,
     mapState.waypoints,
+    currentLocationRef,
+    routeCoordinatesRef,
+    tripDestinationNearSinceMsRef,
+    lastTripCompletionCheckCoordinateRef,
   ]);
 
   return {

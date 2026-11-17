@@ -11,6 +11,8 @@ interface Params {
   setStep: React.Dispatch<React.SetStateAction<PublishStep>>;
   hasDepartureAddress: boolean;
   hasArrivalAddress: boolean;
+  missingReferenceTarget: 'departure' | 'arrival' | null;
+  onMissingReference: (target: 'departure' | 'arrival') => void;
   setAddressSectionStep: React.Dispatch<React.SetStateAction<AddressSectionStep>>;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
   isPublishIdentityVerified: boolean;
@@ -31,6 +33,8 @@ export function usePublishStepNavigation({
   setStep,
   hasDepartureAddress,
   hasArrivalAddress,
+  missingReferenceTarget,
+  onMissingReference,
   setAddressSectionStep,
   showDialog,
   isPublishIdentityVerified,
@@ -70,6 +74,10 @@ export function usePublishStepNavigation({
           title: 'Itinéraire incomplet',
           message: 'Indiquez une adresse de départ et une destination, ou choisissez-les sur la carte.',
         });
+        return false;
+      }
+      if (missingReferenceTarget) {
+        onMissingReference(missingReferenceTarget);
         return false;
       }
       if (!isPublishIdentityVerified) {

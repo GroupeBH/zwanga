@@ -1,4 +1,5 @@
 import { RECENT_TRIPS_LIMIT } from '@/features/home/homeModel';
+import type { DriverCategory } from '@/types/users';
 import { homePriorityKeys } from '@/features/home/homePriorityDismissal';
 import { HOME_DASHBOARD_COLORS, styles } from '@/features/home/HomeTripsSheet.styles';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
@@ -29,12 +30,12 @@ type Props =
   & Pick<ReturnType<typeof useHomePassengerActivity>, 'availableDriverRequests' | 'bookedTripIds' | 'recentDestinations'>
   & Pick<ReturnType<typeof useHomePriorityDismissals>, 'dismissPriority' | 'hiddenHomePriorities'>
   & Pick<ReturnType<typeof useHomeMapNavigation>, 'openTripRequestDetail' | 'openTripDetail'>
-  & { prioritiesEnabled: boolean };
+  & { prioritiesEnabled: boolean; driverCategory?: DriverCategory | null };
 
 export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   suggestionScopeLabel, sheetBottomOffset, sheetHeight, onSheetLayout,
   effectiveTripsSheetOpen, toggleTripsSheet, isHomeSheetLockedRetracted, sheetTitle,
-  openSheetIndex, isDriver, isScreenActive,
+  openSheetIndex, isDriver, isScreenActive, driverCategory,
   dismissPriority, hiddenHomePriorities, prioritiesEnabled,
   availableDriverRequests, sheetLoading,
   sheetError, sheetOffline, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
@@ -65,11 +66,11 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           <HomeEntryStatus />
           {isDriver ? (
             <>
-              <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.publishButton}
+              {driverCategory !== 'transport' && <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.publishButton}
                 onPress={() => router.push('/publish')}>
                 <Ionicons name="add" size={20} color="#FFFFFF" accessible={false} />
                 <Text style={styles.publishButtonText}>Publier un trajet</Text>
-              </TouchableOpacity>
+              </TouchableOpacity>}
               <View style={styles.metricsRow}>
                 <TouchableOpacity activeOpacity={0.8} style={styles.metricCard} accessibilityRole="button"
                   accessibilityLabel={countUnknown ? 'Voir les clients, nombre indisponible' : `${clientCountLabel} clients disponibles`}

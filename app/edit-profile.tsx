@@ -5,7 +5,8 @@ import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { useGetKycStatusQuery, useGetProfileSummaryQuery, useUpdateUserMutation } from '@/store/api/userApi';
 import { useAppDispatch } from '@/store/hooks';
 import { updateUser as updateUserAction } from '@/store/slices/authSlice';
-import type { UserGender } from '@/types';
+import type { DriverCategory, UserGender } from '@/types';
+import { DriverCategoryPicker } from '@/components/profile/DriverCategoryPicker';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { normalizeLegalName } from '@/utils/legalIdentity';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +42,7 @@ export default function EditProfileScreen() {
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState<UserGender | null>(null);
+  const [driverCategory, setDriverCategory] = useState<DriverCategory | null>(null);
   const [feedback, setFeedback] = useState<{ visible: boolean; success: boolean; message: string }>({
     visible: false,
     success: false,
@@ -60,10 +62,12 @@ export default function EditProfileScreen() {
     setLastName(current => sameAccount && current !== (previous?.lastName ?? '') ? current : user.lastName ?? '');
     setPhone(current => sameAccount && current !== (previous?.phone ?? '') ? current : user.phone ?? '');
     setGender(current => sameAccount && current !== (previous?.gender ?? null) ? current : user.gender ?? null);
+    setDriverCategory(current => sameAccount && current !== (previous?.driverCategory ?? null) ? current : user.driverCategory ?? null);
     previousProfile.current = user;
   }, [user]);
 
   const isCurrentlyDriver = isDriverAccount(user);
+  const hasDriverProfile = isCurrentlyDriver || Boolean(user?.driverOnboardingRequestedAt);
 
   const handleSave = async () => {
     if (!active || saving.current) return;
@@ -91,6 +95,7 @@ export default function EditProfileScreen() {
       }
       formData.append('phone', phone.trim());
       if (gender) formData.append('gender', gender);
+      if (hasDriverProfile && driverCategory) formData.append('driverCategory', driverCategory);
       // Editing personal information never requests or changes a driver role.
       const updated = await updateUserMutation(formData).unwrap();
       if (!current()) return;
@@ -102,6 +107,7 @@ export default function EditProfileScreen() {
           lastName: updated.lastName,
           phone: updated.phone,
           gender: updated.gender,
+          driverCategory: updated.driverCategory,
           avatar: updated.profilePicture ?? updated.avatar,
           profilePicture: updated.profilePicture,
           updatedAt: updated.updatedAt,
@@ -209,6 +215,9 @@ export default function EditProfileScreen() {
           <GenderSelector value={gender} onChange={setGender} />
         </Animated.View>
 
+        {hasDriverProfile && <View style={styles.card}>
+          <DriverCategoryPicker value={driverCategory} onChange={setDriverCategory} disabled={isSaving} />
+        </View>}
         <Animated.View entering={FadeInDown.delay(200)} style={styles.card}>
           <View style={styles.toggleRow}>
             <View style={styles.toggleText}>

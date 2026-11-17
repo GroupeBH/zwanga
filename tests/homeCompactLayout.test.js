@@ -28,6 +28,29 @@ const base = { firstName: 'Alex', effectiveTripsSheetOpen: true, sheetHeight: 47
 const trip = { id: 'trip', departure: { name: 'Départ' }, arrival: { name: 'Arrivée' }, departureTime: '2026-12-02T12:00:00Z',
   driverName: 'Conducteur test', availableSeats: 2, vehicleType: 'car', price: 0 };
 
+test('transport Home hides publication only: orders, earnings and order navigation remain available', () => {
+  const request = { id: 'order-test', status: 'pending', offers: [] };
+  for (const driverCategory of ['transport', 'private', 'intercity', null, undefined]) {
+    const calls = [];
+    const tree = HomeTripsSheet.type({ ...base, isDriver: true, driverCategory,
+      availableDriverRequests: [request], openTripRequestDetail: item => calls.push(item.id),
+      openSheetIndex: () => calls.push('list'), router: { push: route => calls.push(route) } });
+    const all = nodes(tree);
+    const publish = all.find(n => n.type === 'Button' && text(n) === 'Publier un trajet');
+    assert.equal(Boolean(publish), driverCategory !== 'transport');
+    if (publish) { publish.props.onPress(); assert.equal(calls.pop(), '/publish'); }
+    all.find(n => n.type === 'HomeDriverEarnings').props.onPress();
+    assert.equal(calls.pop(), '/driver-earnings');
+    const card = all.find(n => n.type === HomeSuggestionCard);
+    assert.equal(card.props.item, request);
+    card.props.onOpen(request);
+    assert.equal(calls.pop(), request.id);
+    all.find(n => n.props.accessibilityLabel === 'Voir tous les clients').props.onPress();
+    assert.equal(calls.pop(), 'list');
+    assert.match(text(HomeTripsSheet.type({ ...base, isDriver: false, driverCategory })), /Où allez-vous/);
+  }
+});
+
 test('free fare text keeps at least 4.5:1 contrast on its pale green background', () => {
   const colors = load('features/home/homeDashboardTheme.ts').HOME_DASHBOARD_COLORS;
   const luminance = hex => hex.match(/[a-f\d]{2}/gi).map(c => parseInt(c, 16) / 255)

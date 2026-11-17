@@ -200,6 +200,7 @@ function ProfileContent() {
       />
 
       <ProfilePinModal
+        forgotPinMode={profile.forgotPinMode}
         currentUser={profile.currentUser}
         handleForgotPin={profile.handleForgotPin}
         handleResendPinOtp={profile.handleResendPinOtp}

@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isDriverAccount } from '@/utils/accountRole';
 import { mapProfileIdentity } from './profileIdentityMapper';
 import { readProfileState } from '@/features/profile/profileStateContract';
+import { readDriverCategory } from '@/features/profile/driverCategory';
 
 export type ServerUser = Record<string, any>;
 export const FAVORITE_LOCATION_NOTES_KEY = 'favorite_location_local_notes';
@@ -45,6 +46,7 @@ export const mapServerUser = (user: ServerUser): User => {
     email: user.email ?? undefined,
     gender: user.gender ?? null,
     role: (user.role ?? 'passenger') as UserRole,
+    driverCategory: readDriverCategory(user.driverCategory),
     avatar: user.profilePicture ?? user.avatar ?? undefined,
     profilePicture: user.profilePicture ?? null,
     rating: user.rating ?? 0,

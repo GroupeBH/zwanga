@@ -42,27 +42,29 @@ for (const os of ['android', 'ios']) {
     assert.equal(listeners.size, 0);
   });
 
-  for (const form of [{ mode: 'login', step: 'pin' }, { mode: 'login', step: 'resetPin', resetPinStep: 'otp' }, { mode: 'login', step: 'resetPin', resetPinStep: 'newPin' }, { mode: 'signup', step: 'pin' }, { mode: 'login', step: 'phone' }]) {
+  for (const form of [{ mode: 'login', step: 'pin' }, { mode: 'login', step: 'resetPin', resetPinStep: 'otp' }, { mode: 'login', step: 'resetPin', resetPinStep: 'newPin' }, { mode: 'signup', step: 'pin' }, { mode: 'login', step: 'phone' }, { mode: 'signup', step: 'sms' }, { mode: 'signup', step: 'phone', googleSignupStep: 'otp' }]) {
     test(`${os}: viewport policy for ${form.mode}/${form.step}/${form.resetPinStep ?? ''}`, () => {
       let keyboardVisible = true, enabled, key;
       const ref = { current: null };
-      const components = ['AuthHeader', 'PinStep', 'ResetPinStep', 'VehicleModal'];
+      const components = ['AuthHeader', 'PinStep', 'ResetPinStep', 'VehicleModal', 'SmsStep', 'GoogleOtpStep'];
       const Screen = loader({ 'react-native': { ...native, Platform: { OS: os } },
         'expo-router': { Redirect: 'Redirect' },
-        'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, '@/config/env': {},
+        'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, '@/config/env': { isSignupOtpVerificationEnabled: true },
         '@/components/auth': { ...Object.fromEntries(components.map(name => [name, name])), authStyles: {} },
         '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: (active, stage) => {
           enabled = active; key = stage; return { scrollRef: ref, keyboardVisible: active && keyboardVisible };
         } },
         '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false }, form, canGoBack: false,
-          social: {}, phoneActions: {}, registration: {}, profileActions: {}, navigation: {} }) },
+          isGoogleSignupActive: Boolean(form.googleSignupStep), social: {}, phoneActions: {}, registration: {}, profileActions: {}, navigation: {} }) },
       })('app/auth.tsx').default;
-      const compact = form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
+      const signupOtp = form.step === 'sms' || form.googleSignupStep === 'otp';
+      const compact = signupOtp || form.step === 'resetPin' || (form.step === 'pin' && form.mode === 'login');
       const tree = nodes(Screen()), header = tree.find(n => n.type === 'AuthHeader'), scroll = tree.find(n => n.type === 'Scroll');
       assert.equal(enabled, compact);
       assert.equal(key, `${form.step}:${form.resetPinStep}`);
       assert.equal(header.props.canGoBack, compact, 'recovery has a back button instead of mode tabs');
-      assert.equal(header.props.compact, compact);
+      assert.equal(header.props.compact, true, 'all stages keep a compact header');
+      assert.equal(header.props.motivationalMessage, '', 'the current field instructions replace repeated motivational copy');
       const avoider = tree.find(n => n.type === 'Avoider');
       assert.equal(avoider.props.enabled, os === 'ios' || !compact, 'only native resize owns keyboard avoidance on Android code steps');
       assert.equal(avoider.props.keyboardVerticalOffset, compact || os === 'ios' ? 0 : 20);
@@ -75,6 +77,12 @@ for (const os of ['android', 'ios']) {
       assert.equal(tree[0].props.edges.includes('bottom'), !compact);
       keyboardVisible = false;
       assert.equal(nodes(Screen())[0].props.edges.includes('bottom'), true);
+      if (signupOtp) {
+        const closed = nodes(Screen());
+        assert.equal(closed.find(n => n.type === 'AuthHeader').props.compact, true);
+        assert.equal(header.props.motivationalMessage, '');
+        assert.equal(tree.find(n => n.type === 'SmsStep' || n.type === 'GoogleOtpStep').props.keyboardVisible, true);
+      }
     });
   }
 }
@@ -107,6 +115,34 @@ test('the recovery back button cannot leave while OTP/PIN requests are pending',
   header = nodes(Screen()).find(n => n.type === 'Header');
   header.props.onBack();
   assert.deepEqual(calls, ['back']);
+});
+
+test('signup OTP stays compact, preserves callbacks and locks all actions during verify/resend', () => {
+  const { SignupOtpFields } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    './OtpCodeInput': { OtpCodeInput: 'OtpInput' } })('components/auth/SignupOtpFields.tsx');
+  const calls = [];
+  const props = { phone: '+243000000000', code: Array(5).fill('1'), inputRefs: { current: [] },
+    onChange() {}, onVerify: () => calls.push('verify'), onResend: () => calls.push('resend'), onBack: () => calls.push('back') };
+  for (const keyboardVisible of [false, true]) {
+    const tree = nodes(SignupOtpFields({ ...props, keyboardVisible }));
+    const input = tree.find(n => n.type === 'OtpInput');
+    assert.equal(input.props.compact, true);
+    assert.equal(input.props.code, props.code);
+    assert.equal(flatten(input.props.inputStyle).minHeight, keyboardVisible ? 48 : 52);
+    assert.equal(flatten(input.props.containerStyle).marginVertical, 0);
+    for (const button of tree.filter(n => n.type === 'Button')) {
+      assert.ok(flatten(button.props.style).minHeight >= 44);
+      button.props.onPress();
+    }
+  }
+  assert.deepEqual(calls, ['verify', 'resend', 'back', 'verify', 'resend', 'back']);
+  for (const state of [{ isVerifying: true }, { isResending: true }]) {
+    const tree = nodes(SignupOtpFields({ ...props, ...state }));
+    assert.equal(tree.find(n => n.type === 'OtpInput').props.disabled, true);
+    assert.ok(tree.filter(n => n.type === 'Button').every(n => n.props.disabled));
+  }
+  const incomplete = nodes(SignupOtpFields({ ...props, code: ['1', '', '', '', ''] }));
+  assert.equal(incomplete.find(n => n.props.accessibilityLabel === 'Vérifier').props.disabled, true);
 });
 const resetProps = { phone: '+243000000000', otpCode: Array(6).fill('1'), newPin: '1234', newPinConfirm: '1234',
   onVerifyOtp() {}, onResendOtp() {}, isLoading: false, isResending: false, keyboardVisible: true };
@@ -167,7 +203,7 @@ test('login and signup use password fields, never OTP boxes, with compact login 
   const actions = login.find(n => flatten(n.props.style).flexWrap === 'wrap');
   assert.equal(nodes(actions).filter(n => n.type === 'Button').length, 2);
   const signup = nodes(PinStep({ mode: 'signup', pin: '', pinConfirm: '', isLoading: false }));
-  assert.equal(signup.some(n => typeof n.type === 'function' && n.type.name === 'AuthCodeHeading'), false);
+  assert.equal(signup.some(n => typeof n.type === 'function' && n.type.name === 'AuthCodeHeading'), true);
   assert.equal(signup.filter(n => n.type === 'PasswordInput').length, 2);
   assert.ok(signup.filter(n => n.type === 'PasswordInput').every(n => n.props.newPassword));
   assert.equal(login.find(n => n.type === 'PasswordInput').props.newPassword, false);

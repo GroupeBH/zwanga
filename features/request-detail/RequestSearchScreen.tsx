@@ -34,6 +34,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
   const request = model.tripRequest!;
   const budget = requestTotalPrice(request.maxPricePerSeat, request.numberOfSeats);
   const priceOffers = pendingPriceOffers(request);
+  const waitingDriver = priceOffers.some(offer => offer.negotiationStage === 'passenger_counter');
   const router = useRouter();
   const active = model.isScreenActive && !model.showEditForm && !model.editLocationPickerType;
   const offerIds = priceOffers.map(offer => offer.id).sort().join(',');
@@ -74,16 +75,16 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
       <Pressable accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={s.back}>
         <Ionicons name="arrow-back" size={22} color="#1C2433" />
       </Pressable><Text style={s.heading}>Votre commande</Text>
-      <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{priceOffers.length ? 'Nouveau prix' : phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
+      <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>{waitingDriver ? 'Prix envoyé' : priceOffers.length ? 'Nouveau prix' : phase === 'past-departure' ? 'Horaire à modifier' : 'En attente'}</Text></View>
     </View>
     <RequestSearchMap requestId={request.id} active={active} searching={phase === 'searching' && !readFailed}
       departure={departure} position={position} vehicles={vehicles} onSelectVehicle={selectVehicle} />
     <View style={[s.panel, (expanded || priceOffers.length > 0) && s.expandedPanel]} testID="request-search-panel">
-      <ScrollView ref={contentScroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <PassengerPriceOffers key={request.id} request={request} enabled={readsEnabled && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
+      <ScrollView ref={contentScroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false} automaticallyAdjustKeyboardInsets keyboardShouldPersistTaps="handled">
+        <PassengerPriceOffers key={`offers:${request.id}`} request={request} enabled={readsEnabled && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
         <View style={s.statusRow}>
           <View style={s.status}>
-            <Text accessibilityRole="header" style={s.title}>{priceOffers.length ? 'Choisissez le prix qui vous convient' : phase === 'past-departure' ? 'L’heure de départ est dépassée' :
+            <Text accessibilityRole="header" style={s.title}>{waitingDriver ? 'En attente de sa réponse' : priceOffers.length ? 'Choisissez le prix qui vous convient' : phase === 'past-departure' ? 'L’heure de départ est dépassée' :
               phase === 'inactive' ? 'Votre commande a changé' : request.targetDriverDeclined ? 'Choisissez un autre conducteur' :
               request.targetDriverId ? 'En attente du conducteur' : 'Recherche en cours'}</Text>
             <Text style={s.hint}>{phase === 'past-departure' ? 'Modifiez l’heure de départ pour reprendre.' :
@@ -113,7 +114,7 @@ export function RequestSearchScreen({ model, presentation, onLayout }: {
         </View>}
         <ResponseWindow model={model} />
         {canChoose && total > 0 && <Text style={s.hint}>Touchez un véhicule pour choisir ce conducteur.</Text>}
-        <RequestTargetDriver key={request.id} request={request} disabled={!active || !readsEnabled || model.isCancelling || model.isUpdating} />
+        <RequestTargetDriver key={`target:${request.id}`} request={request} disabled={!active || !readsEnabled || model.isCancelling || model.isUpdating} />
         <View style={s.route}>
           <View style={s.routeLine}><Ionicons name="radio-button-on" size={14} color="#30805C" /><Text accessibilityLabel={`Départ : ${labels.departure.title}`} style={s.address} numberOfLines={expanded ? undefined : 1}>{labels.departure.title}</Text></View>
           <View style={s.routeLine}><Ionicons name="location" size={14} color="#DB4D1B" /><Text accessibilityLabel={`Destination : ${labels.arrival.title}`} style={s.address} numberOfLines={expanded ? undefined : 1}>{labels.arrival.title}</Text></View>

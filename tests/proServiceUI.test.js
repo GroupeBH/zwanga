@@ -18,16 +18,16 @@ const offering = { code: 'documents', name: 'Documents', availability: 'open', d
 
 test('catalogue opens the matching service and future services have no submit action', () => {
   const routes = [];
-  const { OpenService, UpcomingServices } = loader({
+  const { OpenService, UnavailableService } = loader({
     'react-native': nativeUI(),
     '@expo/vector-icons': { Ionicons: 'Icon' },
     'expo-router': { router: { push: route => routes.push(route) } },
     './ServiceLayout': { ServiceButton: 'ServiceButton', s: {} },
   })('features/pro-services/ServiceCatalogue.tsx');
-  const button = nodes(OpenService({ item: offering })).find(node => node.type === 'ServiceButton');
+  const button = nodes(OpenService({ item: offering })).find(node => node.type === 'Button');
   button.props.onPress();
   assert.equal(routes[0].params.service, 'documents');
-  const future = nodes(UpcomingServices({ items: [{ ...offering, code: 'fleet', availability: 'coming_soon' }] }));
+  const future = nodes(UnavailableService({ item: { code: 'fleet', title: 'Flottes', description: 'Véhicules', availability: 'coming_soon' } }));
   assert.equal(future.filter(node => node.props?.onPress).length, 0);
   assert.ok(future.includes('À venir'));
 });
@@ -57,8 +57,8 @@ test('an existing document dossier replaces the create button, including a compl
   })('features/pro-services/ServiceCatalogue.tsx');
   for (const status of ['submitted', 'completed', 'rejected', 'cancelled']) {
     const tree = nodes(OpenService({ item: offering, current: { id: 'existing', status, canEdit: true } }));
-    const button = tree.find(node => node.type === 'ServiceButton');
-    assert.equal(button.props.title, 'Modifier ma demande');
+    const button = tree.find(node => node.type === 'Button');
+    assert.ok(tree.includes('Modifier mon dossier'));
     button.props.onPress();
     assert.equal(routes.at(-1), '/services/edit?id=existing');
   }

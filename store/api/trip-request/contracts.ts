@@ -60,6 +60,7 @@ export type TripRequestPricing = {
 };
 
 export type TripRequestVehiclePriceOption = {
+  pricing?: TripRequestPricing;
   vehicleType: TripRequestVehicleType;
   displayName: string;
   maximumSeats: number | null;

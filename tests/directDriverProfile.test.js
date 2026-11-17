@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const id = '11111111-1111-4111-8111-111111111111';
@@ -38,4 +39,32 @@ test('prefill waits for the server, blocks silent broadcast on failure and does 
   query.isError = false; query.currentData = driver; render();
   assert.equal(render().blocked, false); assert.equal(choices[0].id, id); assert.deepEqual(types[0], ['motorcycle_2_wheels']);
   render().dismiss(); render(); assert.deepEqual(choices.map(value => value?.id ?? null), [id, null]);
+});
+
+for (const platform of ['android', 'ios']) test(platform + ': profile orders use the simplified form with the selected driver, not the published trip', t => {
+  const hooks = hookHarness(), routes = [];
+  t.after(() => hooks.unmount());
+  const { DriverProfileRequestAction } = loader({ react: { ...React, ...hooks.react },
+    'react-native': { Platform: { OS: platform }, View: 'View', Text: 'Text', Pressable: 'Button', StyleSheet: { create: x => x } },
+    'expo-router': { useRouter: () => ({ push: route => routes.push(route), replace: route => routes.push(route) }) },
+    '@/store/hooks': { useAppSelector: select => select({ auth: { user: { id: 'passenger' } } }) },
+    '@/store/api/tripRequestApi': { useGetTripRequestByIdQuery: () => ({}) },
+    '@/hooks/useDisplayReads': { useDisplayReadsEnabled: x => x, displayReadOptions: x => ({ skip: !x }) },
+    '@/features/request-detail/MapDriverSelection': { MapDriverSelection: 'MapSelection' },
+  })('components/trip-request/DriverProfileRequestAction.tsx');
+  const props = { driver, active: true, sourceTripId: requestId, preferredType: 'motorcycle_2_wheels' };
+  const render = () => hooks.render(() => DriverProfileRequestAction(props));
+  const order = render().props.children.find(node => node.type === 'Button');
+  order.props.onPress(); order.props.onPress();
+  assert.deepEqual(routes, [{ pathname: '/request-create', params: {
+    entry: 'home', targetDriverId: id, targetVehicleType: 'motorcycle_2_wheels',
+  } }], 'one opening, with no published-trip address, price or date forced into the order');
+  props.active = false;
+  assert.equal(render().props.children.find(node => node.type === 'Button').props.disabled, true);
+  render().props.children.find(node => node.type === 'Button').props.onPress(); assert.equal(routes.length, 1);
+  props.active = true; render().props.children.find(node => node.type === 'Button').props.onPress();
+  assert.equal(routes.length, 2, 'returning to the profile permits another explicit opening');
+  props.requestId = requestId; props.markerId = 'a'.repeat(64);
+  assert.equal(React.Children.toArray(render().props.children).some(node => node.type === 'Button'), false,
+    'an existing order uses targeting, not a second creation');
 });

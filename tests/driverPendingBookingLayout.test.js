@@ -27,7 +27,9 @@ function model() {
 }
 
 test('pending booking takes priority over scrolling details without removing confirmation or SOS', () => {
+  const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ ...mocks,
+    react: { ...React, ...hooks.react },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
@@ -35,8 +37,8 @@ test('pending booking takes priority over scrolling details without removing con
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const value = model();
   const assistance = { openContact() {} };
-  const tree = DriverNavigationTopPanel({ model: value, assistance });
-  assert.equal(all(tree).filter(n => n.type === 'Scroll').length, 0);
+  const tree = hooks.render(() => DriverNavigationTopPanel({ model: value, assistance }));
+  assert.ok(all(tree).filter(n => n.type === 'Scroll').every(scroll => !all(scroll).some(n => n.type === 'Passengers')), 'urgent booking actions remain outside the ordinary scroll');
   assert.equal(all(tree).filter(n => n.type === 'Passengers').length, 1);
   assert.equal(all(tree).find(n => n.type === 'Passengers').props.onContact, assistance.openContact);
   assert.equal(all(tree).filter(n => n.type === 'Recovery').length, 1);
@@ -44,6 +46,7 @@ test('pending booking takes priority over scrolling details without removing con
   const frame = flat(tree.props.style);
   const layout = loader()('features/driver-navigation/driverNavigationLayout.ts').getDriverNavigationLayout(640, 24, 24);
   assert.ok(frame.top + frame.maxHeight + 12 <= 640 - layout.controlsBottom - 48, 'reserve a separate row for map commands');
+  hooks.unmount();
 });
 
 test('pending card targets a single booking and yields to urgent dropoff', () => {

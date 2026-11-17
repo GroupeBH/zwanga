@@ -51,6 +51,8 @@ test('invalid, empty and busy forms cannot proceed; valid alternative can be con
 
 test('earnings main button and failed-payout retry both open the recipient form; the overlay is outside the scroll', () => {
   const hooks = hookHarness(); const opens = [];
+  let active = true;
+  const reads = [];
   const state = { canSubmit: true, busy: false, openPayoutForm: amount => opens.push(amount),
     payoutForm: { amount: '5000', phone: '+243991234567' }, setPayoutPhone() {}, setPayoutAmount() {}, confirmPayoutForm() {}, closePayoutForm() {} };
   const summary = { payoutPhone: '0891234567', availableBalance: 9500, pendingPayoutBalance: 1200,
@@ -59,15 +61,15 @@ test('earnings main button and failed-payout retry both open the recipient form;
     react: { ...React, ...hooks.react }, 'react-native': native,
     '@/store/hooks': { useAppSelector: selector => selector({ zwangaApi: { config: { online: true } } }) },
     'react-native-safe-area-context': { SafeAreaView: 'SafeArea' }, 'expo-router': { useRouter: () => ({}) },
-    '@expo/vector-icons': { Ionicons: 'Icon' }, '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@expo/vector-icons': { Ionicons: 'Icon' }, '@/hooks/useAppIsActive': { useScreenIsActive: () => active },
     '@/utils/reanimated': { default: { View: 'AnimatedView' }, FadeInDown: { delay: () => null } },
-    '@/hooks/driver-earnings/useDriverPayout': { useDriverPayout: props => { assert.equal(props.isActive, true); return state; } },
+    '@/hooks/driver-earnings/useDriverPayout': { useDriverPayout: props => { assert.equal(props.isActive, active); return state; } },
     '@/features/driver-earnings/PayoutHistory': { PayoutHistory: 'History' },
     '@/features/driver-earnings/CashRevenueSummary': { CashRevenueSummary: 'CashSummary' },
     '@/features/driver-earnings/PayoutDestinationModal': { PayoutDestinationModal: 'DestinationModal' },
-    '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: () => ({ data: summary }),
-      useGetDriverEarningsPageQuery: () => ({ currentData: { data: [], total: 0, nextCursor: null } }),
-      useGetDriverPayoutsPageQuery: () => ({ currentData: { data: [], total: 0, nextCursor: null } }) },
+    '@/store/api/driverSettlementsApi': { useGetMyDriverSettlementQuery: (_, options) => { reads.push(options); return { data: summary }; },
+      useGetDriverEarningsPageQuery: (_, options) => { reads.push(options); return { currentData: { data: [], total: 0, nextCursor: null } }; },
+      useGetDriverPayoutsPageQuery: (_, options) => { reads.push(options); return { currentData: { data: [], total: 0, nextCursor: null } }; } },
   })('app/driver-earnings.tsx');
   const tree = hooks.render(Screen), nodes = elements(tree);
   assert.equal(nodes.some(node => node.props?.children === 'Actualisé'), false, 'no unconditional network success badge');
@@ -97,6 +99,21 @@ test('earnings main button and failed-payout retry both open the recipient form;
   assert.equal(modal.props.availableBalance, 9500);
   assert.equal(modal.props.defaultPhone, '0891234567');
   assert.ok(!elements(nodes.find(node => node.type === 'List')).includes(modal));
+  assert.ok(nodes.some(node => node.props?.accessibilityLabel === 'Retour'));
+  assert.ok(nodes.some(node => node.props?.children === 'Mes gains'));
+  for (const bottomOverlay of [0, 92]) {
+    const embedded = hooks.render(() => Screen({ embedded: true, bottomOverlay }));
+    const embeddedNodes = elements(embedded);
+    assert.equal(embeddedNodes.some(node => node.props?.accessibilityLabel === 'Retour'), false);
+    assert.ok(embeddedNodes.some(node => node.props?.children === 'Revenus'));
+    assert.equal(embedded.props.style[1].paddingBottom, bottomOverlay, 'reserve the iOS bar for content and withdrawal overlay');
+  }
+  assert.ok(reads.every(options => options.skip === false && options.pollingInterval === 60000));
+  reads.length = 0;
+  active = false;
+  hooks.render(() => Screen({ embedded: true, bottomOverlay: 92 }));
+  assert.equal(reads.length, 3);
+  assert.ok(reads.every(options => options.skip === true && options.pollingInterval === 0));
   modal.props.onClose(); hooks.unmount();
 });
 

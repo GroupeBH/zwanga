@@ -15,6 +15,6 @@ export function getDriverNavigationLayout(height: number, topInset: number, bott
     menuBottom: controlsHeight + 8,
     priorityPanelMaxHeight,
     // Leave a clear map band in ordinary navigation. Long content remains scrollable.
-    panelMaxHeight: Math.max(0, Math.min(priorityPanelMaxHeight - 12, Math.max(330, usableHeight * 0.52))),
+    panelMaxHeight: Math.max(0, Math.min(priorityPanelMaxHeight - 12, Math.min(292, Math.max(270, usableHeight * 0.38)))),
   };
 }

@@ -91,7 +91,9 @@ test('preview is a read-only RTK query with no long-lived coordinate cache', () 
 });
 
 test('urgent driver prompt stays outside the clipped route scroll and keeps assistance available', () => {
+  const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    react: { ...React, ...hooks.react },
     '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
@@ -100,11 +102,12 @@ test('urgent driver prompt stays outside the clipped route scroll and keeps assi
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');
   const foundation = { data: { isTripOngoing: true, insets: { top: 20, left: 0, right: 0 } },
     mapState: { waypoints: [], isSocketConnected: true }, passengers: { activePassengerInterruptionBooking: booking } };
-  const tree = DriverNavigationTopPanel({ model: { session: { foundation }, presentation: {}, bookingActions: {}, passengerPresentation: {} }, assistance: {} });
-  assert.equal(all(tree).filter(node => node.type === 'Scroll').length, 0);
+  const tree = hooks.render(() => DriverNavigationTopPanel({ model: { session: { foundation }, presentation: {}, bookingActions: {}, passengerPresentation: {} }, assistance: {} }));
+  assert.ok(all(tree).filter(node => node.type === 'Scroll').every(scroll => !all(scroll).some(node => node.type === 'Passengers')));
   assert.equal(all(tree).filter(node => node.type === 'Passengers').length, 1);
   assert.equal(all(tree).filter(node => node.type === 'Recovery').length, 0);
   assert.ok(all(tree).some(node => node.type === 'Assistance'));
+  hooks.unmount();
 });
 
 test('compact driver prompt preserves both actions, minimum touch targets and mutation guards', () => {

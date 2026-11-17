@@ -10,12 +10,15 @@ export function passengerResponseNotice(alert: RideAlert) {
     return { title, message, speech: { key: `response-notice:${alert.key}`, text: `${title}. ${message}` } };
   }
   if (alert.data.type === 'driver_offer') {
-    const title = 'Un conducteur propose un autre prix';
+    const title = alert.data.negotiationStage === 'passenger_counter' ? 'Le passager propose un prix'
+      : alert.data.negotiationStage === 'driver_final' ? 'Le conducteur propose son prix ferme' : 'Un conducteur propose un autre prix';
     const price = Number(alert.data.pricePerSeat);
     const total = Number.isSafeInteger(price) && price > 0 && price <= 1000000
       ? requestTotalPrice(price, alert.data.numberOfSeats ?? alert.data.rideSeats) : null;
     const amount = total !== null ? `Prix proposé pour le trajet : ${total.toLocaleString('fr-FR')} FC. ` : '';
-    const message = `${amount}Ouvrez votre commande pour choisir « Accepter ce prix » ou « Refuser ce prix ».`;
+    const message = `${amount}${alert.data.negotiationStage === 'passenger_counter'
+      ? 'Ouvrez la commande pour accepter ou proposer votre prix ferme.'
+      : 'Ouvrez votre commande pour choisir « Accepter ce prix » ou « Chercher un autre conducteur ».'}`;
     return { title, message, speech: { key: `response-notice:${alert.key}`, text: `${title}. ${message}` } };
   }
   const rejected = alert.data.status === 'rejected';

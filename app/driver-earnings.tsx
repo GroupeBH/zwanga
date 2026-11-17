@@ -23,7 +23,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const pageInsets = { paddingHorizontal: Spacing.xl };
 
-export default function DriverEarningsScreen() {
+export default function DriverEarningsScreen({ embedded = false, bottomOverlay = 0 }: {
+  embedded?: boolean;
+  bottomOverlay?: number;
+} = {}) {
   const isScreenActive = useScreenIsActive();
   const enabled = useDisplayReadsEnabled(isScreenActive);
   const router = useRouter();
@@ -83,13 +86,13 @@ export default function DriverEarningsScreen() {
     useDriverPayout({ summary, payouts, refresh, isActive: isScreenActive });
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={[styles.container, embedded && { paddingBottom: bottomOverlay }]} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity accessibilityLabel="Retour" onPress={() => router.back()} style={styles.headerButton}>
+        {!embedded && <TouchableOpacity accessibilityLabel="Retour" onPress={() => router.back()} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
-        </TouchableOpacity>
+        </TouchableOpacity>}
         <View style={styles.headerCopy}>
-          <Text style={styles.title}>Mes gains</Text>
+          <Text style={styles.title}>{embedded ? 'Revenus' : 'Mes gains'}</Text>
         </View>
         <TouchableOpacity
           accessibilityRole="button" accessibilityLabel="Contacter l’assistance pour mes gains"

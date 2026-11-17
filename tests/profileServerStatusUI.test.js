@@ -81,7 +81,7 @@ test('without a matching server profile the screen renders neither badges nor on
 });
 
 test('controller never labels an existing driver as becoming a driver and retry does not mutate the account', async () => {
-  const hooks = hookHarness(), calls = [];
+  const hooks = hookHarness(), calls = [], navigations = [];
   const data = { isDriver: true, isKycApproved: true, isProfileStatusKnown: true, isIdentityStatusKnown: true,
     isProfileStatusAvailable: false, hasVehicle: true, knownVehicleCount: 1, isPremiumActive: false,
     needsDriverOnboarding: false, tripRequestsStats: { activeRequests: 0 },
@@ -96,7 +96,7 @@ test('controller never labels an existing driver as becoming a driver and retry 
     ...['Card', 'Checkout', 'Lifecycle', 'Monitor', 'Recovery', 'State', 'Storage', 'View'].map(suffix => stubHook(`useProfileSubscription${suffix}`)),
   ]);
   const { useProfileController } = loader({ ...mocks, ...hookMocks, react: hooks.react,
-    'expo-router': { useRouter: () => ({ push: route => calls.push(route) }) },
+    'expo-router': { useRouter: () => ({ push: route => calls.push(route), navigate: route => navigations.push(route) }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({}) },
     '@/components/ui/DialogProvider': { useDialog: () => ({}) },
     '@/contexts/TutorialContext': { useTutorialGuide: () => ({ shouldShow: false }) },
@@ -106,6 +106,10 @@ test('controller never labels an existing driver as becoming a driver and retry 
     '@/features/profile/profileModel': { formatReferralTokens: () => '0' },
   })('hooks/profile/useProfileController.ts');
   const render = () => hooks.render(useProfileController);
+  render().handleOpenDocumentsPack();
+  assert.deepEqual(navigations, ['/(tabs)/discover']);
+  render().quickActionItems.find(item => item.label === 'Mes remboursements').onPress();
+  assert.equal(calls.pop(), '/services/credit/repayments');
   assert.equal(render().priorityCta.label, 'Actualiser le profil');
   await render().priorityCta.onPress();
   await render().handleSubscribePro();
@@ -120,6 +124,10 @@ test('controller never labels an existing driver as becoming a driver and retry 
   data.profileState = profileState('verify_identity');
   assert.equal(render().priorityCta.label, 'Vérifier mon identité');
   data.isDriver = false;
+  render().handleOpenDocumentsPack();
+  assert.deepEqual(navigations, ['/(tabs)/discover', '/(tabs)/discover'], 'passengers reuse the same Services tab');
+  render().quickActionItems.find(item => item.label === 'Mes remboursements').onPress();
+  assert.equal(calls.pop(), '/services/credit/repayments', 'Historical credits remain accessible without an active driver role');
   data.profileState = profileState('start');
   assert.equal(render().priorityCta.label, 'Commencer');
   hooks.unmount();

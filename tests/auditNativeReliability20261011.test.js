@@ -65,7 +65,8 @@ test('trip editor switches overlay panels synchronously without delayed reopenin
   const hooks = hookHarness(), state = {};
   const { useTripEditorNavigation } = loader({ react: hooks.react, 'react-native': { Keyboard: { dismiss() {} } },
     '../../features/trips/tripsModel': {} })('hooks/trips/useTripEditorNavigation.ts');
-  const params = new Proxy({}, { get: (_target, key) => key.startsWith('set') ? value => { state[key] = value; } : undefined });
+  const params = new Proxy({}, { get: (_target, key) => key === 'editReferences' ? { reset() {} }
+    : key.startsWith('set') ? value => { state[key] = value; } : undefined });
   const editor = hooks.render(() => useTripEditorNavigation(params));
   editor.openEditRoutePicker('departure');
   assert.equal(state.setEditModalSuspended, true); assert.equal(state.setEditRoutePickerTarget, 'departure');

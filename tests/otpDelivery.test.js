@@ -12,6 +12,7 @@ function uiLoader(enabled = true, os = 'android') {
   const load = loader({
     react: { ...React, ...otpHooks.react },
     '../OtpCodeInput': otpComponent,
+    './OtpCodeInput': otpComponent,
     '../PasswordCodeInput': { PasswordCodeInput: 'PasswordInput' },
     '@/components/auth/OtpCodeInput': otpComponent,
     'expo-clipboard': { getStringAsync: async () => '' },
@@ -101,7 +102,7 @@ for (const os of ['android', 'ios']) {
         isVerifying: false, isLoading: false, isResending: false, ...extra,
       });
       let tree = render();
-      assert.match(text(tree), /Code par SMS/);
+      assert.match(text(tree), /Code (par SMS|SMS)/);
       assert.match(text(tree), /SMS/);
       assert.match(text(tree), /\+243000000000/);
       assert.match(text(tree), new RegExp(`${size} chiffres`));
@@ -117,6 +118,15 @@ for (const os of ['android', 'ios']) {
       inputs[0].props.onChangeText('1 2-3x456');
       assert.equal(code.join(''), '123456'.slice(0, size));
       assert.equal(focused, null, 'bulk paste does not race the OS by changing focus');
+      tree = render();
+      assert.equal(verifyButton(tree).props.disabled, false);
+      const lastInput = nodes(tree).filter(node => node.type === 'TextInput').at(-1);
+      lastInput.props.onKeyPress({ nativeEvent: { key: 'Backspace' } });
+      lastInput.props.onChangeText('');
+      assert.equal(focused, size - 2, 'deleting a digit returns to the previous box');
+      tree = render();
+      assert.equal(verifyButton(tree).props.disabled, true, 'an edited incomplete code cannot be verified');
+      nodes(tree).filter(node => node.type === 'TextInput').at(-1).props.onChangeText(String(size));
       tree = render();
       assert.equal(verifyButton(tree).props.disabled, false);
       const resendButton = buttons(tree).find(node => /Renvoyer/.test(text(node)));

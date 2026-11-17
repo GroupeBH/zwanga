@@ -5,10 +5,11 @@ import { DriverInterruptionPrompt } from './DriverInterruptionPrompt';
 import { DriverPendingBookingPrompt } from './DriverPendingBookingPrompt';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import type { Booking } from '@/types';
 
 interface DriverNavigationPassengersBarProps {
+  compact?: boolean;
   onContact: (passengerId: string) => void;
   foundation: ReturnType<typeof useDriverNavigationFoundation>;
   passengerPresentation: { passengerStats: { totalPassengers: number; pendingPickups: number; pendingDropoffs: number; completedPickups: number; completedDropoffs: number; inVehicle: number; passengers: { name: string; pickedUp: boolean; droppedOff: boolean; id: string; }[]; }; fitVehicleAndPassengers: () => void; };
@@ -19,6 +20,7 @@ export function DriverNavigationPassengersBar({
   foundation,
   bookingActions,
   onContact,
+  compact: compactMode = false,
 }: DriverNavigationPassengersBarProps) {
   const interruption = foundation.passengers.activePassengerInterruptionBooking;
   if (interruption) {
@@ -51,6 +53,24 @@ export function DriverNavigationPassengersBar({
   const showNext = next && !next.completed;
   const allStopsCompleted = waypoints.every(point => point.completed);
   const nextLabel = next?.type === 'pickup' ? 'Allez chercher le passager' : 'Emmenez le passager à l’arrivée';
+  if (compactMode && showNext && !foundation.passengers.activeDriverInterruptionRequest) {
+    return <TouchableOpacity style={compact.summary} accessibilityRole="button"
+      accessibilityLabel={`${nextLabel} : ${next.passenger.name || 'Passager'}. ${next.address || 'Adresse à préciser'}. Voir les détails.`}
+      accessibilityHint="Affiche l’adresse complète sans confirmer l’arrivée ni la prise en charge."
+      onPress={() => {
+        if (!foundation.data.isScreenActive) return;
+        foundation.mapState.setActiveWaypoint(next);
+        foundation.refs.waypointModalVisibleRef.current = true;
+        foundation.mapState.setWaypointModalVisible(true);
+      }}>
+      <Ionicons name={next.type === 'pickup' ? 'person-outline' : 'flag-outline'} size={20} color={Colors.primaryDark} />
+      <View style={compact.identity}>
+        <Text style={compact.compactName} numberOfLines={1}>{next.passenger.name || 'Passager'}</Text>
+        <Text style={compact.compactAddress} numberOfLines={2}>{next.type === 'pickup' ? 'Départ' : 'Arrivée'} · {next.address || 'Adresse à préciser'}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={Colors.gray[500]} />
+    </TouchableOpacity>;
+  }
   return (
     <View style={compact.bar}>
       <View style={compact.row}>
@@ -82,6 +102,10 @@ export function DriverNavigationPassengersBar({
 }
 
 const compact = StyleSheet.create({
+  summary: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  identity: { flex: 1, minWidth: 0, gap: 2 },
+  compactName: { color: Colors.gray[900], fontSize: 16, lineHeight: 21, fontWeight: '700' },
+  compactAddress: { color: Colors.gray[600], fontSize: 13, lineHeight: 18 },
   bar: { gap: 4 },
   row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', columnGap: 8 },
   stop: { minWidth: 0, gap: 3 },

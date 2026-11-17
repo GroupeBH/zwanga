@@ -9,13 +9,16 @@ const native = require('react-native-web');
 const { loader } = require('../tests/helpers/loadTypeScript.cjs');
 const h = React.createElement, noop = () => {};
 const load = loader({ 'react-native': native,
+  '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
   '@expo/vector-icons': { Ionicons: ({ name, size, color }) => h('span', { style: { fontSize: size, color } }, name === 'arrow-back' ? '←' : '◈') },
   'expo-clipboard': { getStringAsync: async () => '' },
-  '@/utils/reanimated': { __esModule: true, default: { View: ({ entering, exiting, ...props }) => h(native.View, props) }, FadeInDown: { springify: noop }, FadeOutUp: {} },
+  '@/utils/reanimated': { __esModule: true, default: { View: ({ entering, exiting, ...props }) => h(native.View, props) }, FadeInDown: { springify: noop }, FadeOutUp: {}, FadeIn: { duration: noop }, FadeOut: { duration: noop } },
 });
 const { AuthHeader } = load('components/auth/AuthHeader.tsx');
 const { ResetPinStep } = load('components/auth/steps/ResetPinStep.tsx');
 const { PinStep } = load('components/auth/steps/PinStep.tsx');
+const { SmsStep } = load('components/auth/steps/SmsStep.tsx');
+const { GoogleOtpStep } = load('components/auth/steps/GoogleOtpStep.tsx');
 const { authStyles } = load('components/auth/styles.ts');
 const { authCodeStyles } = load('features/auth/authCode.styles.ts');
 const ref = { current: null }, noopRef = { current: [] };
@@ -24,6 +27,7 @@ const resetProps = { phone: '+243000000000', otpCode: ['1', '2', '', '', '', '']
   onOtpChange: noop, onPinChange: noop, onPinConfirmChange: noop, onVerifyOtp: noop, onResetPin: noop,
   onResendOtp: noop, isLoading: false, isResending: false, keyboardVisible: true };
 const variants = [
+  { width: 320, height: 568, keyboard: 0, scale: 1 },
   { width: 320, height: 568, keyboard: 240, scale: 1 },
   { width: 360, height: 640, keyboard: 320, scale: 1 },
   { width: 390, height: 844, keyboard: 346, scale: 1 },
@@ -31,22 +35,27 @@ const variants = [
 ];
 function phone(variant, stage) {
   const { width, height, keyboard, scale } = variant;
-  const step = stage === 'login' ? h(PinStep, { ...resetProps, mode: 'login', pin: '12', pinConfirm: '', onForgotPin: noop, onSubmit: noop })
+  const signup = stage === 'sms' || stage === 'social';
+  const signupProps = { phone: resetProps.phone, mode: 'signup', smsCode: ['1', '2', '', '', ''], otp: ['1', '2', '', '', ''],
+    smsInputRefs: noopRef, otpRefs: noopRef, onSmsCodeChange: noop, onOtpChange: noop, onSubmit: noop, onVerify: noop,
+    onResend: noop, onBack: noop, isVerifying: false, isResending: false, keyboardVisible: keyboard > 0 };
+  const step = signup ? h(stage === 'sms' ? SmsStep : GoogleOtpStep, signupProps)
+    : stage === 'login' ? h(PinStep, { ...resetProps, mode: 'login', pin: '12', pinConfirm: '', onForgotPin: noop, onSubmit: noop })
     : h(ResetPinStep, { ...resetProps, resetPinStep: stage });
-  return h('section', { 'data-case': `${stage}-${width}-${scale}`, 'data-scale': scale,
+  return h('section', { 'data-case': `${stage}-${width}-${scale}-kb${keyboard}`, 'data-scale': scale,
     style: { width, flexShrink: 0, margin: 12 } },
   h('p', null, `${stage} · ${width}×${height} · texte ${scale}×`),
   h(native.View, { style: { width, height, backgroundColor: '#F8F9FA', border: '1px solid #ccd0d4', overflow: 'hidden' } },
     h(native.View, { style: { height: height - keyboard, minHeight: 0 } },
       h(native.View, { style: { height: 24 } }),
-      h(AuthHeader, { mode: 'login', canGoBack: true, compact: true, onBack: noop, onModeChange: noop, progress: 0 }),
+      h(AuthHeader, { mode: signup ? 'signup' : 'login', canGoBack: true, compact: true, onBack: noop, onModeChange: noop, progress: signup ? 50 : 0 }),
       h(native.ScrollView, { testID: 'viewport', style: authCodeStyles.viewport,
         contentContainerStyle: [authStyles.scrollViewContent, authCodeStyles.content] }, step)),
     h(native.View, { style: { height: keyboard, backgroundColor: '#E1E5EB', alignItems: 'center', justifyContent: 'center' } },
       h(native.Text, { style: { fontSize: 15, color: '#586174' } }, 'Clavier simulé'))));
 }
 const markup = renderToStaticMarkup(h('main', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start' } },
-  ...variants.flatMap(variant => ['otp', 'login', 'newPin'].map(stage => phone(variant, stage)))));
+  ...variants.flatMap(variant => ['sms', 'social', 'otp', 'login', 'newPin'].map(stage => phone(variant, stage)))));
 function measure() {
   document.querySelectorAll('[data-scale]').forEach(section => {
     const scale = Number(section.getAttribute('data-scale'));

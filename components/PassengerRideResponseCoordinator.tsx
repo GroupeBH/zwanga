@@ -11,6 +11,7 @@ import { useRideOverlay } from '@/features/navigation/RideOverlayProvider';
 import { RIDE_OVERLAY_PRIORITY } from '@/features/navigation/rideOverlayStore';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { passengerResponseNotice } from '@/features/notifications/passengerResponseNotice';
+import { RequestPickupSummaryCard } from '@/features/request-detail/RequestPickupSummaryCard';
 import { isCounterOfferAlert, isDriverOfferAcceptanceAlert } from '@/features/notifications/rideSound';
 import { useGetTripRequestByIdQuery } from '@/store/api/tripRequestApi';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
@@ -55,9 +56,10 @@ export function PassengerRideResponseCoordinator() {
     if (driverAcceptance && (current.selectedDriverId !== user?.id || current.status !== 'driver_selected' ||
         !current.offers?.some(offer => offer.id === notice.data.offerId && offer.driverId === user?.id && offer.status === 'accepted')))
       dismissRideResponseNotice(notice);
-    if (counterOffer && current.passengerId === user?.id && (current.selectedDriverId || current.tripId ||
+    if (counterOffer && notice.recipientId === user?.id && (current.selectedDriverId || current.tripId ||
         !['pending', 'offers_received'].includes(current.status) ||
-        !current.offers?.some(offer => offer.id === notice.data.offerId && offer.status === 'pending')))
+        !current.offers?.some(offer => offer.id === notice.data.offerId && offer.status === 'pending' &&
+          (offer.negotiationStage === 'passenger_counter' ? offer.driverId === user?.id : current.passengerId === user?.id))))
       dismissRideResponseNotice(notice);
   }, [counterOffer, driverAcceptance, notice, request.currentData, request.isFetching, request.isError, request.startedTimeStamp, observedAt, user?.id]);
   const visible = Boolean(active && authenticated && notice);
@@ -92,6 +94,8 @@ function PassengerResponsePanel({ alert, onClose, onOpen }: { alert: RideAlert; 
       <ScrollView bounces={false}>
         <Text style={styles.title} accessibilityRole="header">{notice.title}</Text>
         <Text style={styles.message}>{notice.message}</Text>
+        {alert.data.type === 'trip_request_accepted' && typeof alert.data.tripRequestId === 'string' &&
+          <RequestPickupSummaryCard requestId={alert.data.tripRequestId} active={shown} />}
       </ScrollView>
       <TouchableOpacity accessibilityRole="button" style={styles.primary} onPress={onOpen}>
         <Text style={styles.primaryText}>{isCounterOfferAlert(alert.data) || alert.data.type === 'offer_accepted' ? 'Voir la commande' : 'Voir mon trajet'}</Text>

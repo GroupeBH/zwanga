@@ -23,6 +23,8 @@ export type ActiveDriverBackgroundTripSession = {
   tripId: string;
   arrivalCoordinate?: DriverBackgroundLocationCoordinate | null;
   lastDriverCoordinate?: DriverBackgroundLocationCoordinate | null;
+  lastDriverFixAt?: number | null;
+  pendingCompletionAt?: number | null;
   nearDestinationSinceMs?: number | null;
   autoCompleteDistanceMeters?: number | null;
   autoCompleteDwellMs?: number | null;
@@ -77,6 +79,8 @@ const normalizeSession = (value: unknown): ActiveDriverBackgroundTripSession | n
     tripId,
     arrivalCoordinate: normalizeCoordinate(candidate.arrivalCoordinate),
     lastDriverCoordinate: normalizeCoordinate(candidate.lastDriverCoordinate),
+    lastDriverFixAt: normalizeNumber(candidate.lastDriverFixAt),
+    pendingCompletionAt: normalizeNumber(candidate.pendingCompletionAt),
     nearDestinationSinceMs: normalizeNumber(candidate.nearDestinationSinceMs),
     autoCompleteDistanceMeters: normalizeNumber(candidate.autoCompleteDistanceMeters),
     autoCompleteDwellMs: normalizeNumber(candidate.autoCompleteDwellMs),

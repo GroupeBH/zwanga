@@ -5,15 +5,17 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture(t) {
-  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: 100_000 });
+  t.mock.timers.enable({ apis: ['Date', 'setInterval', 'setTimeout'], now: 100_000 });
   const hooks = hookHarness(), locations = new Set(), connections = new Set();
+  const progress = new Set(), reads = [], notices = [];
   let requests = 0, joins = 0, leaves = 0;
   const socket = {
     joinTrip: async () => { joins++; }, leaveTrip: () => { leaves++; },
     requestPassengerLocations: async () => { requests++; },
     subscribeToConnectionState: fn => { connections.add(fn); fn(true); return () => connections.delete(fn); },
     subscribeToPassengerLocation: fn => { locations.add(fn); return () => locations.delete(fn); },
-    subscribeToErrors: () => () => {}, subscribeToBookingAutoProgress: () => () => {},
+    subscribeToErrors: () => () => {},
+    subscribeToBookingAutoProgress: fn => { progress.add(fn); return () => progress.delete(fn); },
   };
   const { useDriverTrackingSocket } = loader({
     react: hooks.react,
@@ -23,16 +25,35 @@ function fixture(t) {
   })('hooks/driver-navigation/useDriverTrackingSocket.ts');
   let positions = {};
   const props = {
-    data: { isScreenActive: true, tripId: 'trip', isTripOngoing: true },
+    data: { isScreenActive: true, tripId: 'trip', isTripOngoing: true,
+      refetchTrip: async () => reads.push('trip'), refetchBookings: async () => reads.push('bookings') },
     mapState: { isMountedRef: { current: true }, setIsSocketConnected() {},
       setLivePassengerLocations: value => { positions = typeof value === 'function' ? value(positions) : value; } },
-    completion: {}, notices: {}, refs: { waypointsRef: { current: [{ booking: { id: 'a' } }, { booking: { id: 'b' } }] } },
+    completion: { presentTripDestinationNotice: event => notices.push(event.type) },
+    notices: { presentPassengerBoardedNotice: event => notices.push(event.type) },
+    refs: { waypointsRef: { current: [{ booking: { id: 'a' } }, { booking: { id: 'b' } }] } },
   };
   const render = () => hooks.render(() => useDriverTrackingSocket(props));
   const emit = bookingId => locations.forEach(fn => fn({ tripId: 'trip', bookingId, coordinates: [15.3, -4.32], updatedAt: new Date().toISOString() }));
   t.after(() => hooks.unmount());
-  return { props, render, emit, hooks, locations, requests: () => requests, joins: () => joins, leaves: () => leaves };
+  const emitProgress = (type, tripId = 'trip') => progress.forEach(fn => fn({ tripId, events: [{ tripId, type, bookingId: 'a' }] }));
+  return { props, render, emit, hooks, locations, emitProgress, reads, notices, requests: () => requests, joins: () => joins, leaves: () => leaves };
 }
+
+test('the real socket hook preserves notices, batches business refreshes and cancels queued reads on blur', async t => {
+  const f = fixture(t); f.render(); await flush();
+  for (let i = 0; i < 50; i++) f.emitProgress('driver_near_destination');
+  t.mock.timers.tick(1000); await flush();
+  assert.equal(f.notices.length, 50); assert.deepEqual(f.reads, []);
+  f.emitProgress('pickup_confirmed', 'different-trip');
+  t.mock.timers.tick(1000); await flush(); assert.deepEqual(f.reads, []);
+  f.emitProgress('pickup_confirmed'); f.emitProgress('pickup_confirmed');
+  t.mock.timers.tick(1000); await flush();
+  assert.deepEqual(f.reads.sort(), ['bookings', 'trip']);
+  assert.equal(f.notices.at(-1), 'pickup_confirmed');
+  f.emitProgress('pickup_confirmed'); f.props.data.isScreenActive = false; f.render();
+  t.mock.timers.tick(1000); await flush(); assert.equal(f.reads.length, 2);
+});
 
 test('driver requests missing passenger positions but does not poll over healthy realtime feeds', async t => {
   const env = fixture(t);

@@ -11,6 +11,7 @@ import { DriverDropoffReceipts } from './DriverDropoffReceipts';
 import { getDriverPendingBookingLayout } from './driverPendingBookingLayout';
 import { getDriverNavigationLayout } from './driverNavigationLayout';
 import { TripDriverWithdrawal } from '@/features/request-detail/WithdrawRequestDriverButton';
+import { usePassengerPanelVisibility } from '@/hooks/driver-navigation/usePassengerPanelVisibility';
 
 const EMPTY_BOOKINGS: NonNullable<Props['model']['session']['foundation']['data']['bookings']> = [];
 
@@ -29,19 +30,22 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const pendingLayout = getDriverPendingBookingLayout(height, data.insets.top, data.insets.bottom);
   const layout = getDriverNavigationLayout(height, data.insets.top, data.insets.bottom);
   const nextStop = mapState.waypoints[mapState.currentWaypointIndex];
+  const hidePassengerPanel = usePassengerPanelVisibility(data.tripId, nextStop, mapState.currentLocation,
+    data.isTripOngoing && data.isScreenActive && !offline && !hasPendingBooking && !hasUrgentDropoff &&
+    !passengers.activeDriverInterruptionRequest);
   const nextPassengerId = !nextStop?.completed ? nextStop?.booking?.passengerId : undefined;
   const contactActions = <NavigationAssistanceButtons inline role="driver"
     onContact={nextPassengerId && !hasPendingBooking && !hasUrgentDropoff ? () => assistance.openContact(nextPassengerId) : assistance.openContacts}
     onSos={assistance.openSos} disabled={!assistance.enabled} />;
   const recovery = data.isTripOngoing && !hasUrgentDropoff && Boolean(data.bookings?.length) ? <View style={styles.confirmation}>
     <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
-      condensed driverNavigation secondaryActions={contactActions} driverOverviewOnly={hasPendingBooking}
+      condensed driverNavigation mapCompact hideWhenCruising={hidePassengerPanel} secondaryActions={contactActions} driverOverviewOnly={hasPendingBooking}
       preferredBookingId={!nextStop?.completed ? nextStop?.booking?.id : undefined}
       preferredStage={!nextStop?.completed ? nextStop?.type : undefined}
       fix={mapState.currentLocation ? { ...mapState.currentLocation.coords, recordedAt: mapState.currentLocation.timestamp, accuracy: mapState.currentLocation.coords.accuracy ?? undefined } : null}
       destination={data.tripArrivalCoordinate} />
   </View> : null;
-  return <View pointerEvents="box-none" style={[styles.panel, {
+  return <View testID="driver-navigation-top-panel" pointerEvents="box-none" style={[styles.panel, {
     top: data.insets.top + 8, left: Math.max(data.insets.left, 12), right: Math.max(data.insets.right, 12),
     maxHeight: hasPendingBooking || hasUrgentDropoff ? pendingLayout.panelMaxHeight : layout.panelMaxHeight,
   }]}>
@@ -66,22 +70,27 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
       </View>
     </View>
     <View style={styles.journey}>
+    {data.isTripOngoing && (hasUrgentDropoff || hasPendingBooking) && <DriverNavigationPassengersBar
+      onContact={assistance.openContact}
+      foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
+    <ScrollView style={[styles.bodyScroll, (hasUrgentDropoff || hasPendingBooking) && styles.priorityFooter]}
+      contentContainerStyle={styles.journeyContent} showsVerticalScrollIndicator bounces={false}>
+    {model.session.locationTracking?.backgroundTrackingUnavailable && data.isTripOngoing &&
+      <Text accessibilityLiveRegion="polite" style={styles.gpsWarning}>Suivi en veille à vérifier. Gardez Zwanga ouvert et vérifiez l’autorisation de localisation « Toujours ».</Text>}
     {data.trip?.tripRequestId && <TripDriverWithdrawal trip={data.trip} bookings={data.bookings}
       active={data.isScreenActive && !offline && !data.isRestartingTrip && !data.isPausingTrip &&
         !data.isCancellingPickupBypassBooking && !data.isRequestingDriverInterruption && !data.isCancellingDriverInterruption}
       onWithdrawn={model.session.foundation.exitActions.navigateHomeSafely} />}
-    {(data.isTripOngoing || data.trip?.status === 'completed') && (hasUrgentDropoff || hasPendingBooking ? <DriverNavigationPassengersBar
-      onContact={assistance.openContact}
-      foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />
-      : <ScrollView style={[styles.scroll, mapState.waypoints.length > 0 && styles.stopsScroll]} contentContainerStyle={styles.details}
-      showsVerticalScrollIndicator bounces={false}>
+    {(data.isTripOngoing || data.trip?.status === 'completed') && !hasUrgentDropoff && !hasPendingBooking && <View style={styles.details}>
       {data.trip?.status === 'completed' && <DriverDropoffReceipts bookings={data.bookings ?? EMPTY_BOOKINGS} tripId={data.tripId} active={data.isScreenActive} />}
-      {data.isTripOngoing && <DriverNavigationPassengersBar
+      {data.isTripOngoing && !hidePassengerPanel && <DriverNavigationPassengersBar
+        compact
         onContact={assistance.openContact}
         foundation={model.session.foundation} passengerPresentation={model.passengerPresentation} bookingActions={model.bookingActions} />}
-    </ScrollView>)}
+    </View>}
     {recovery}
     {!recovery && <View style={styles.actions}>{contactActions}</View>}
+    </ScrollView>
     </View>
   </View>;
 }
@@ -98,10 +107,12 @@ const styles = StyleSheet.create({
   connectedText: { color: Colors.successDark },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 4 },
   metric: { color: Colors.gray[600], fontSize: 13, flexShrink: 1 },
-  journey: { flexShrink: 1, minHeight: 0, backgroundColor: Colors.white, borderRadius: 20, padding: 10, gap: 8 },
+  journey: { flexGrow: 0, flexShrink: 1, minHeight: 0, backgroundColor: Colors.white, borderRadius: 18, padding: 10 },
+  journeyContent: { gap: 6 },
+  bodyScroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
+  priorityFooter: { flexShrink: 0 },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', flexShrink: 0 },
-  confirmation: { flexShrink: 0, minWidth: 130, paddingTop: 4 },
-  scroll: { flexGrow: 0, flexShrink: 1, minHeight: 0 },
-  stopsScroll: { minHeight: 64 },
+  confirmation: { flexShrink: 0, minWidth: 130 },
   details: { gap: 6, paddingBottom: 2 },
+  gpsWarning: { color: Colors.dangerDark, fontSize: 12, lineHeight: 17 },
 });

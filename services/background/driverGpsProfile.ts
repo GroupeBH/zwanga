@@ -37,6 +37,8 @@ export function startDriverGpsProfile(tripId: string, generation: number,
       const stored = await mutateLocationNative('driver-session', () => setActiveDriverBackgroundTripId(tripId, {
         arrivalCoordinate: options.arrivalCoordinate ?? previous?.arrivalCoordinate ?? null,
         lastDriverCoordinate: options.lastDriverCoordinate ?? previous?.lastDriverCoordinate ?? null,
+        lastDriverFixAt: options.lastDriverCoordinate ? null : previous?.lastDriverFixAt ?? null,
+        pendingCompletionAt: previous?.pendingCompletionAt ?? null,
         autoCompleteDistanceMeters: options.autoCompleteDistanceMeters ?? previous?.autoCompleteDistanceMeters ?? DRIVER_TRIP_END_AUTO_COMPLETE_DISTANCE_METERS,
         autoCompleteDwellMs: options.autoCompleteDwellMs ?? previous?.autoCompleteDwellMs ?? DRIVER_TRIP_END_AUTO_COMPLETE_DWELL_MS,
         nearDestinationSinceMs: previous?.nearDestinationSinceMs ?? null,

@@ -1,9 +1,10 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { trackOtpCountdown } from '@/features/auth/otpCountdown';
 import { getTokens } from '../../services/tokenStorage';
 import { refreshAccessToken } from '../../services/tokenRefresh';
 import { getTokenSessionVersion } from '../../services/tokenSession';
 import { saveTokensAndUpdateState, setUser } from '../../store/slices/authSlice';
-import type { TripRequestVehicleType, User, UserGender } from '../../types';
+import type { DriverCategory, TripRequestVehicleType, User, UserGender } from '../../types';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
 import { userApi } from './userApi';
@@ -78,7 +79,8 @@ export const authApi = baseApi.injectEndpoints({
       invalidatesTags: [currentUserTag],
     }),
 
-    requestPinResetOtp: builder.mutation<{ message: string }, { phone: string }>({
+    requestPinResetOtp: builder.mutation<{ message: string; expiresInSeconds?: number }, { phone: string }>({
+      onQueryStarted: trackOtpCountdown('pin_reset'),
       query: ({ phone }) => ({
         url: '/auth/pin/reset/request-otp',
         method: 'POST',
@@ -154,6 +156,7 @@ export const authApi = baseApi.injectEndpoints({
       lastName?: string;
       gender?: UserGender;
       role?: 'driver' | 'passenger';
+      driverCategory?: DriverCategory;
       isDriver?: boolean;
       vehicle?: {
         type: TripRequestVehicleType;
@@ -212,6 +215,7 @@ export const authApi = baseApi.injectEndpoints({
       lastName?: string;
       gender?: UserGender;
       role?: 'driver' | 'passenger';
+      driverCategory?: DriverCategory;
       isDriver?: boolean;
       vehicle?: {
         type: TripRequestVehicleType;
@@ -230,6 +234,7 @@ export const authApi = baseApi.injectEndpoints({
         lastName,
         gender,
         role,
+        driverCategory,
         isDriver,
         vehicle,
         referralCode,
@@ -249,6 +254,7 @@ export const authApi = baseApi.injectEndpoints({
           ...(lastName ? { lastName } : {}),
           ...(gender ? { gender } : {}),
           ...(role ? { role } : {}),
+          ...(driverCategory ? { driverCategory } : {}),
           ...(typeof isDriver === 'boolean' ? { isDriver } : {}),
           ...(vehicle ? { vehicle } : {}),
           ...(referralCode ? { referralCode } : {}),

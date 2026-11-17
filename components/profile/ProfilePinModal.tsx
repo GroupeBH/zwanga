@@ -1,4 +1,5 @@
 import { FormModal as Modal } from '@/components/forms/FormLayout';
+import { OtpCountdown } from '@/components/auth/OtpCountdown';
 import { OtpDeliveryNotice } from '@/components/auth/OtpDeliveryNotice';
 import { OtpCodeInput } from '@/components/auth/OtpCodeInput';
 import { otpDeliveryCopy } from '@/features/auth/otpDelivery';
@@ -21,6 +22,7 @@ import {
 
 type Props = Pick<ReturnType<typeof useProfileController>,
   | 'currentUser'
+  | 'forgotPinMode'
   | 'handleForgotPin'
   | 'handleResendPinOtp'
   | 'handleNewPinChange'
@@ -47,6 +49,7 @@ type Props = Pick<ReturnType<typeof useProfileController>,
 >;
 
 export function ProfilePinModal({
+  forgotPinMode,
   currentUser,
   handleForgotPin,
   handleResendPinOtp,
@@ -139,6 +142,7 @@ export function ProfilePinModal({
               </Text>
               <View style={styles.formSection}>
                 <OtpDeliveryNotice />
+                <OtpCountdown purpose={forgotPinMode ? 'pin_reset' : 'pin_change'} phone={forgotPinMode ? currentUser?.phone : ''} />
                 <Text style={styles.inputLabel}>Code de vérification</Text>
                 <Text style={styles.inputLabelSmall}>Saisissez les 6 chiffres du code reçu</Text>
                 <OtpCodeInput code={otpCode} onChange={setOtpCode} inputRefs={otpInputRefs}

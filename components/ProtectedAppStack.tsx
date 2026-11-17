@@ -41,6 +41,7 @@ export function ProtectedAppStack() {
         <Stack.Screen name="chat/[id]" />
         <Stack.Screen name="driver/[id]" />
         <Stack.Screen name="driver-earnings" />
+        <Stack.Screen name="driver-qr" />
         <Stack.Screen name="edit-profile" />
         <Stack.Screen name="favorite-locations" />
         <Stack.Screen name="invite" options={{ presentation: modalPresentation }} />
@@ -63,6 +64,11 @@ export function ProtectedAppStack() {
         <Stack.Screen name="services/[id]" />
         <Stack.Screen name="services/edit" />
         <Stack.Screen name="services/index" />
+        <Stack.Screen name="services/credit/index" />
+        <Stack.Screen name="services/credit/repayments" />
+        <Stack.Screen name="services/credit/[id]" />
+        <Stack.Screen name="services/fleet" />
+        <Stack.Screen name="services/fleet-payments/[id]" />
         <Stack.Screen name="services/new" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="subscriptions/payment" />

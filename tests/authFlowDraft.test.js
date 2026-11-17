@@ -41,11 +41,14 @@ test('a fresh JS process restores the phone OTP step, never PIN, OTP digits or r
 test('retained profile/vehicle data resumes regular signup at PIN; a reset resumes only its OTP step', async () => {
   const e = fixture();
   await e.service.saveAuthFlowDraft({ ...seed, step: 'profile', firstName: 'Test', lastName: 'Example',
-    gender: 'prefer_not_to_say', role: 'driver', vehicleType: 'motorcycle_3_wheels', vehiclePlate: 'TEST-ONLY', profilePicture: 'file:///test.jpg' });
+    gender: 'prefer_not_to_say', role: 'driver', driverCategory: 'transport', updatesAccepted: true,
+    vehicleType: 'motorcycle_3_wheels', vehiclePlate: 'TEST-ONLY', profilePicture: 'file:///test.jpg' });
   const state = await fixture(e.disk).service.restoreAuthFlowDraft();
   assert.equal(state.step, 'pin'); assert.equal(state.firstName, 'Test');
   assert.equal(state.vehicleType, 'motorcycle_3_wheels'); assert.equal(state.gender, 'prefer_not_to_say');
   assert.equal(state.profilePicture, 'file:///test.jpg');
+  assert.equal(state.driverCategory, 'transport');
+  assert.equal(Object.hasOwn(state, 'updatesAccepted'), false, 'a resumed signup requires its own explicit checkbox');
   await e.service.saveAuthFlowDraft({ ...seed, mode: 'login', step: 'resetPin', resetPinStep: 'newPin' });
   const reset = await fixture(e.disk).service.restoreAuthFlowDraft();
   assert.equal(reset.step, 'resetPin'); assert.equal(Object.hasOwn(reset, 'resetPinStep'), false);

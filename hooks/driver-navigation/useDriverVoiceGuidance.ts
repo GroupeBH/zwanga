@@ -17,9 +17,6 @@ interface Params {
   isTripOngoingRef: React.RefObject<boolean>;
   isVoiceGuidanceEnabledRef: React.RefObject<boolean>;
   lastSpeechAtRef: React.RefObject<number>;
-  waypointModalVisible: boolean;
-  activeWaypoint: Waypoint | null;
-  announcedWaypointIdsRef: React.RefObject<Set<string>>;
   spokenInstructionKeysRef: React.RefObject<Set<string>>;
   setIsVoiceGuidanceEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   steps: RouteStep[];
@@ -33,9 +30,6 @@ export function useDriverVoiceGuidance({
   isTripOngoingRef,
   isVoiceGuidanceEnabledRef,
   lastSpeechAtRef,
-  waypointModalVisible,
-  activeWaypoint,
-  announcedWaypointIdsRef,
   spokenInstructionKeysRef,
   setIsVoiceGuidanceEnabled,
   steps,
@@ -96,18 +90,8 @@ export function useDriverVoiceGuidance({
     return `Nous sommes arriv\u00e9s au point de destination de ${passengerName}. La d\u00e9pose se confirme automatiquement.${address}`;
   }, []);
 
-  useEffect(() => {
-    if (
-      !waypointModalVisible ||
-      !activeWaypoint ||
-      announcedWaypointIdsRef.current.has(activeWaypoint.id)
-    ) {
-      return;
-    }
-
-    announcedWaypointIdsRef.current.add(activeWaypoint.id);
-    void speakNavigationMessage(buildWaypointSpeech(activeWaypoint), { force: true });
-  }, [activeWaypoint, buildWaypointSpeech, speakNavigationMessage, waypointModalVisible]);
+  // Arrival is announced by the GPS progress observer. Opening the stop manually
+  // (including the compact map card) must not announce an arrival or consume its key.
 
   const announceInstruction = useCallback((step: RouteStep, index: number, intro?: string) => {
     const instruction = cleanHtmlInstructions(step.html_instructions);

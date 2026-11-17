@@ -25,6 +25,13 @@ export function ProfileMenu({
   return (<View style={styles.menuContainer}>
     <View style={styles.menuCard}>
       {isDriver && <ProfileDriverAvailabilityEntry />}
+      {isDriver && <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]}
+        accessibilityRole="button" accessibilityLabel="Mon QR conducteur"
+        onPress={() => router.push('/driver-qr')}>
+        <View style={styles.menuIcon}><Ionicons name="qr-code-outline" size={20} color={Colors.primary} /></View>
+        <Text style={styles.menuText}>Mon QR conducteur</Text>
+        <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
+      </TouchableOpacity>}
       {menuItems.map((item, index) => (
         <TouchableOpacity
           key={index}

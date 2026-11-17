@@ -126,9 +126,10 @@ updatePassengerLocation: builder.mutation<
         speed?: number;
         heading?: number;
         recordedAt?: string;
+        samples?: import('@/services/background/locationBatch').LocationHistorySample[];
       }
     >({
-      query: ({ bookingId, latitude, longitude, accuracy, speed, heading, recordedAt }) => ({
+      query: ({ bookingId, latitude, longitude, accuracy, speed, heading, recordedAt, samples }) => ({
         url: `/bookings/${bookingId}/passenger-location`,
         method: 'PUT',
         body: {
@@ -138,6 +139,7 @@ updatePassengerLocation: builder.mutation<
           speed,
           heading,
           recordedAt,
+          samples,
         },
       }),
       invalidatesTags: (result, _error, { bookingId }) =>

@@ -24,6 +24,7 @@ interface PublishRouteFieldsProps {
   renderGpsStatus: (hasAddress: boolean, hasGpsSuggestion: boolean, isConfirmed: boolean, label: string) => React.JSX.Element | null;
   hasDepartureGpsSuggestion: boolean;
   shouldShowDepartureReference: boolean;
+  departureReferenceRequired: boolean;
   departureReference: string;
   setShowDepartureReference: React.Dispatch<React.SetStateAction<boolean>>;
   setDepartureReference: React.Dispatch<React.SetStateAction<string>>;
@@ -38,6 +39,7 @@ interface PublishRouteFieldsProps {
   arrivalManualGeocodeStatus: ManualGeocodeStatus;
   hasArrivalGpsSuggestion: boolean;
   shouldShowArrivalReference: boolean;
+  arrivalReferenceRequired: boolean;
   arrivalReference: string;
   setShowArrivalReference: React.Dispatch<React.SetStateAction<boolean>>;
   setArrivalReference: React.Dispatch<React.SetStateAction<string>>;
@@ -59,6 +61,7 @@ export function PublishRouteFields({
   renderGpsStatus,
   hasDepartureGpsSuggestion,
   shouldShowDepartureReference,
+  departureReferenceRequired,
   departureReference,
   setShowDepartureReference,
   setDepartureReference,
@@ -73,6 +76,7 @@ export function PublishRouteFields({
   arrivalManualGeocodeStatus,
   hasArrivalGpsSuggestion,
   shouldShowArrivalReference,
+  arrivalReferenceRequired,
   arrivalReference,
   setShowArrivalReference,
   setArrivalReference,
@@ -164,8 +168,8 @@ export function PublishRouteFields({
           {shouldShowDepartureReference ? (
             <View style={styles.referenceField}>
               <View style={styles.referenceHeader}>
-                <Text style={styles.referenceLabel}>Référence de départ</Text>
-                {!departureReference.trim() && (
+                <Text style={styles.referenceLabel}>Référence de départ{departureReferenceRequired ? ' · obligatoire' : ''}</Text>
+                {!departureReferenceRequired && !departureReference.trim() && (
                   <TouchableOpacity onPress={() => setShowDepartureReference(false)}>
                     <Ionicons name="close" size={16} color={Colors.gray[500]} />
                   </TouchableOpacity>
@@ -174,7 +178,8 @@ export function PublishRouteFields({
               <TextInput
                 style={styles.referenceInput}
                 value={departureReference}
-                accessibilityLabel="Référence de départ, facultative"
+                accessibilityLabel={`Référence de départ, ${departureReferenceRequired ? 'obligatoire' : 'facultative'}`}
+                maxLength={200}
                 onChangeText={setDepartureReference}
                 placeholder="Ex: station, portail bleu"
                 placeholderTextColor={Colors.gray[400]}
@@ -255,8 +260,8 @@ export function PublishRouteFields({
           {shouldShowArrivalReference ? (
             <View style={styles.referenceField}>
               <View style={styles.referenceHeader}>
-                <Text style={styles.referenceLabel}>Référence d’arrivée</Text>
-                {!arrivalReference.trim() && (
+                <Text style={styles.referenceLabel}>Référence d’arrivée{arrivalReferenceRequired ? ' · obligatoire' : ''}</Text>
+                {!arrivalReferenceRequired && !arrivalReference.trim() && (
                   <TouchableOpacity onPress={() => setShowArrivalReference(false)}>
                     <Ionicons name="close" size={16} color={Colors.gray[500]} />
                   </TouchableOpacity>
@@ -265,7 +270,8 @@ export function PublishRouteFields({
               <TextInput
                 style={styles.referenceInput}
                 value={arrivalReference}
-                accessibilityLabel="Référence d’arrivée, facultative"
+                accessibilityLabel={`Référence d’arrivée, ${arrivalReferenceRequired ? 'obligatoire' : 'facultative'}`}
+                maxLength={200}
                 onChangeText={setArrivalReference}
                 placeholder="Ex: entrée principale"
                 placeholderTextColor={Colors.gray[400]}

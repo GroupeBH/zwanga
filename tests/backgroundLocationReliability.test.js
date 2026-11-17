@@ -4,14 +4,15 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const destination = { latitude: -4.3, longitude: 15.3 };
 
-function completionFixture(extraSession = {}) {
+function completionFixture(extraSession = {}, responses = []) {
   const requests = [], stops = [];
+  let session = { tripId: 'test-trip', arrivalCoordinate: destination, ...extraSession };
   const load = loader({
     'expo-location': {},
     './driverGpsProfile': { stopDriverGpsProfile: async id => { stops.push(id); } },
     '@/services/driverBackgroundLocationSession': {
-      getActiveDriverBackgroundTripSession: async () => ({ tripId: 'test-trip', arrivalCoordinate: destination, ...extraSession }),
-      updateActiveDriverBackgroundTripSession: async () => {},
+      getActiveDriverBackgroundTripSession: async () => session,
+      updateActiveDriverBackgroundTripSession: async updater => { session = updater(session); return session; },
     },
     '@/services/tokenRefresh': { hasRecoverableSession: async options => {
       assert.equal(options?.throwOnError, true); return true;
@@ -19,11 +20,46 @@ function completionFixture(extraSession = {}) {
     '@/store/api/tripApi': { tripApi: { endpoints: { completeTrip: { initiate: id => id } } } },
     '@/store': { store: { dispatch: id => {
       requests.push(id);
-      return Object.assign(Promise.resolve({ data: {} }), { reset() {}, abort() {} });
+      return Object.assign(Promise.resolve(responses.shift() ?? { data: {} }), { reset() {}, abort() {} });
     } } },
   });
   return { api: load('services/background/driverTripCompletion.ts'), requests, stops };
 }
+
+test('a failed arrival is retried after backoff even after moving beyond destination', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  const f = completionFixture({}, [{ error: { status: 503 } }, { data: {} }]);
+  assert.equal(await f.api.evaluateBackgroundTripEnd('test-trip', [
+    { timestamp: Date.now(), coords: { ...destination, accuracy: 5 } },
+  ]), false);
+  t.mock.timers.tick(46000);
+  assert.equal(await f.api.evaluateBackgroundTripEnd('test-trip', [
+    { timestamp: Date.now(), coords: { latitude: destination.latitude + .003, longitude: destination.longitude, accuracy: 5 } },
+  ]), true);
+  assert.equal(f.requests.length, 2);
+});
+
+test('a recent persisted pending arrival survives process restart but expires after 90 seconds', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
+  for (const [age, expected] of [[46000, true], [91000, false]]) {
+    const f = completionFixture({ pendingCompletionAt: Date.now()-age });
+    assert.equal(await f.api.evaluateBackgroundTripEnd('test-trip', [
+      { timestamp: Date.now(), coords: { latitude: destination.latitude + .003, longitude: destination.longitude, accuracy: 5 } },
+    ]), expected);
+  }
+});
+
+test('native GPS batches retain only ten recent accurate real observations in time order', () => {
+  const { locationBatch } = loader()('services/background/locationBatch.ts');
+  const now = Date.now();
+  const point = age => ({ timestamp: now-age, coords: { ...destination, accuracy: 5 } });
+  const points = Array.from({length: 12}, (_, i) => point(i*4000));
+  const batch = locationBatch([...points, point(100000), point(-1000),
+    { ...point(1000), mocked: true }, { ...point(2000), coords: { ...destination, accuracy: 100 } }], now);
+  assert.equal(batch.length, 10);
+  assert.equal(batch.at(-1).recordedAt, new Date(now).toISOString());
+  assert.equal(batch[0].recordedAt, new Date(now-36000).toISOString());
+});
 
 test('old, future, simulated and uncertain positions never complete a trip', async () => {
   const now = Date.now(), fix = { timestamp: now, coords: { ...destination, accuracy: 5 } };
@@ -50,8 +86,9 @@ test('a recent accurate arrival retains the existing automatic completion', asyn
 
 test('an old saved checkpoint cannot invent a crossing, while two fresh observations still detect it', async t => {
   t.mock.timers.enable({ apis: ['Date'], now: 1_000_000 });
-  const before = { latitude: destination.latitude - 0.002, longitude: destination.longitude };
-  const after = { latitude: destination.latitude + 0.002, longitude: destination.longitude };
+  // A short observed segment (222m), below the 250m GPS-jump safety limit.
+  const before = { latitude: destination.latitude - 0.001, longitude: destination.longitude };
+  const after = { latitude: destination.latitude + 0.001, longitude: destination.longitude };
   const f = completionFixture({ lastDriverCoordinate: before });
   assert.equal(await f.api.evaluateBackgroundTripEnd('test-trip', [
     { timestamp: Date.now(), coords: { ...after, accuracy: 5 } },

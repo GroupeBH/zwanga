@@ -140,6 +140,12 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     assert.equal(nodes(render()).some(node => node.type === 'HomeActivityCards'), false);
   }
   Object.assign(home, { hasMapPriorities: false, shouldRenderHomeMap: true });
+  for (const driverCategory of ['transport', 'private', null]) {
+    home.currentUser = { id: 'driver-test', driverCategory };
+    const rendered = nodes(render());
+    assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.driverCategory, driverCategory);
+    assert.equal(rendered.find(node => node.type === 'HomeRequestModal').props.request.id, 'nearby');
+  }
   for (const role of ['driver', 'passenger']) {
     home.activeHomeTrip = { id: 'ride', status: 'ongoing' };
     home.ongoingDriverTrip = role === 'driver' ? home.activeHomeTrip : null;

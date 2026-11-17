@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { OtpCountdown } from './OtpCountdown';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,6 +26,7 @@ export function AccountPhoneVerification({ phone, refreshProfile }: {
       <Text style={styles.phone} selectable>{phone}</Text>
     </View>
     {flow.sent && !flow.confirmed && <>
+      <OtpCountdown purpose="phone_verification" phone={phone} />
       <OtpCodeInput code={flow.code} onChange={flow.setCode} inputRefs={inputRefs}
         disabled={flow.busy} compact containerStyle={styles.codeRow} inputStyle={styles.digit} filledStyle={styles.filled} />
       <Text style={styles.hint}>Ce n’est pas votre mot de passe.</Text>

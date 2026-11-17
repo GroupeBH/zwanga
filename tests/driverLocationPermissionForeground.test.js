@@ -6,7 +6,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture(t) {
   const hooks = hookHarness(), calls = [];
-  const app = { currentState: 'active' }, env = { foreground: true, background: false, disclosure: null };
+  const app = { currentState: 'active' }, env = { foreground: true, background: false, disclosure: null, startResult: true };
   const params = {
     data: { isFocused: true, isTripOngoing: true, tripId: 'synthetic-trip',
       showDialog: () => calls.push('error'), router: {} },
@@ -29,7 +29,7 @@ function fixture(t) {
     },
     '../../features/driver-navigation/driverLocationListener': { createDriverLocationListener: () => () => {} },
     '@/services/driverBackgroundLocationTask': {
-      startDriverBackgroundLocationTracking: async () => { calls.push('start'); return true; },
+      startDriverBackgroundLocationTracking: async () => { calls.push('start'); return env.startResult; },
       stopDriverBackgroundLocationTracking: async () => calls.push('stop'),
     },
     '@/services/rideLocationBootstrap': { subscribeBootstrappedRideLocation: () => {
@@ -48,6 +48,16 @@ test('driver navigation does not present a location dialog after leaving during 
   assert.deepEqual(f.calls, ['disclosure']);
   f.app.currentState = 'active'; f.env.disclosure = null; f.render(); await tick();
   assert.deepEqual(f.calls, ['disclosure', 'disclosure', 'background', 'start', 'subscribe']);
+});
+
+test('background GPS start failure is visible without disabling foreground GPS; resume can recover', async t => {
+  const f = fixture(t); f.env.background = true; f.env.startResult = false;
+  f.render(); await tick(); assert.equal(f.render().backgroundTrackingUnavailable, true);
+  assert.ok(f.calls.includes('subscribe'));
+  f.app.currentState = 'background'; f.render();
+  f.app.currentState = 'active'; f.env.startResult = true; f.render(); await tick();
+  assert.equal(f.render().backgroundTrackingUnavailable, false);
+  assert.ok(!f.calls.includes('stop'), 'no background GPS stop on screen lock');
 });
 
 test('navigation never requests a fresh permission on an inactive screen and preserves live background GPS', async t => {

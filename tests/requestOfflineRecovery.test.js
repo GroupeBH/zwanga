@@ -29,6 +29,7 @@ test('request error screen keeps a guarded working trip link for both parties, w
     '@/hooks/useMainScreenReady': { useMainScreenReady: enabled => () => ready.push(enabled) },
     '@/features/request-detail/SharedTripPanel': { SharedTripPanel: 'Shared' },
     '@/features/request-detail/RequestSearchScreen': { RequestSearchScreen: 'Search' },
+    '@/features/request-detail/RequestPendingOfferActions': { RequestPendingOfferActions: 'PendingOfferActions' },
     '@/store/api/sharedTripApi': { useSharedTripContextQuery: () => ({}) },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true, displayReadOptions: () => ({}) },
     '@/services/rideAlertSession': { acknowledgeRideAlerts() {} },

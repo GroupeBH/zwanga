@@ -22,6 +22,7 @@ function fixture(t) {
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
     '@/store/api/counterOfferApi': { useProposeCounterOfferMutation: () => [mutation('propose'), {}], useDeclineCounterOfferMutation: () => [mutation('decline'), {}] },
     '@/store/api/tripRequestApi': { useAcceptDriverOfferMutation: () => [mutation('accept'), {}] },
+    '@/store/api/priceNegotiationApi': { useGetPriceAlternativesQuery: () => ({}), useNegotiateRequestPriceMutation: () => [mutation('negotiate'), {}], useAcceptPassengerPriceMutation: () => [mutation('accept-passenger'), {}] },
     '@/services/tokenSession': { getTokenSessionVersion: () => version },
     '@/services/rideAlertSession': { acknowledgeRideAlerts: filter => acknowledged.push(filter), dismissRideResponseNotice() {}, pendingRideResponseNotices: () => [] },
     '@/utils/errorHelpers': { getApiErrorMessage: (_cause, fallback) => fallback },
@@ -49,10 +50,15 @@ test('driver sends the selected vehicle and price once; server success stops onl
   assert.equal(match({ recipientId: 'other-driver', kind: 'nearby', id: 'request' }), false);
 });
 
+function passengerPanel(f, Component) {
+  const child = nodes(Component({ request, enabled: true, refresh: f.refresh })).find(node => typeof node.type === 'function');
+  return f.hooks.render(() => child.type(child.props));
+}
 for (const accept of [true, false]) test(`passenger ${accept ? 'acceptance' : 'refusal'} is explicit and serializes double taps`, async t => {
   const f = fixture(t), { PassengerPriceOffers } = f.load('features/request-detail/PassengerPriceOffers.tsx');
-  const tree = f.hooks.render(() => PassengerPriceOffers({ request, enabled: true, refresh: f.refresh }));
+  let tree = passengerPanel(f, PassengerPriceOffers);
   assert.match(words(tree).replace(/\s+/g, ' '), /Conducteur de test propose un prix.*3 000 FC pour le trajet.*Pour 2 passager\(s\)/);
+  if (!accept) { press(tree, 'Chercher un autre conducteur').props.onPress(); tree = passengerPanel(f, PassengerPriceOffers); assert.match(words(tree), /Disponibilité des autres conducteurs inconnue/); }
   const action = press(tree, accept ? 'Accepter ce prix' : 'Refuser et chercher un autre'); action.props.onPress(); action.props.onPress();
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0].kind, accept ? 'accept' : 'decline');
   f.resolve(request); await flush();
@@ -63,7 +69,7 @@ for (const accept of [true, false]) test(`passenger ${accept ? 'acceptance' : 'r
 
 test('network failure retains a readable error and a new session cannot acknowledge an old price decision', async t => {
   const f = fixture(t), { PassengerPriceOffers } = f.load('features/request-detail/PassengerPriceOffers.tsx');
-  const render = () => f.hooks.render(() => PassengerPriceOffers({ request, enabled: true, refresh: f.refresh }));
+  const render = () => passengerPanel(f, PassengerPriceOffers);
   press(render(), 'Accepter ce prix').props.onPress(); f.reject(); await flush();
   assert.match(words(render()), /Réponse non confirmée/); assert.equal(f.acknowledged.length, 0);
   press(render(), 'Accepter ce prix').props.onPress(); f.changeSession(); f.resolve(request); await flush();

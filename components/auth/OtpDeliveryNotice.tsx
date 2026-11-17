@@ -9,7 +9,7 @@ export function OtpDeliveryNotice({ beforeSend = false, compact = false }: { bef
     <View style={styles.compactNotice}>
       <Ionicons name="chatbubble-outline" size={18} color={Colors.gray[800]} accessible={false} />
       <Text style={styles.compactBody}>
-        <Text style={styles.compactTitle}>{otpDeliveryCopy.title}.</Text>{' '}Consultez vos SMS.
+        <Text style={styles.compactTitle}>{otpDeliveryCopy.title}.</Text>{' '}{beforeSend ? 'Pour vérifier votre numéro.' : 'Consultez vos SMS.'}
       </Text>
     </View>
   );

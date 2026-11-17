@@ -13,6 +13,7 @@ import { RequestTargetDriver } from './RequestTargetDriver';
 import { PassengerPriceOffers } from './PassengerPriceOffers';
 import { ChangeRequestDriverButton } from './ChangeRequestDriverButton';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
+import { RequestPickupSummaryCard } from './RequestPickupSummaryCard';
 
 type Model = ReturnType<typeof useRequestDetailController>;
 type Presentation = ReturnType<typeof buildRequestDetailPresentation>;
@@ -36,6 +37,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
   const stage = confirmed ? 2 : 1; // A created trip is not proof that it has started.
   const steps = ['Commande envoyée', presentation.pendingOffersCount ? 'Réponse reçue' : request.targetDriverId ? 'Réponse du conducteur choisi' : 'Recherche d’un conducteur', 'Conducteur confirmé', 'Départ'];
   return <>
+    {confirmed && <RequestPickupSummaryCard requestId={request.id} active={model.isScreenActive} />}
     <PassengerPriceOffers key={request.id} request={request} enabled={model.isScreenActive && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
     {request.responseWindow?.phase === 'passenger' && !!response.label && <Text style={local.hint}>{response.label}</Text>}
     <View style={s.card}>

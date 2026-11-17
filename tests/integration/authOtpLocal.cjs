@@ -21,6 +21,7 @@ const { ConfigService } = br('@nestjs/config');
 const { JwtService } = br('@nestjs/jwt');
 const { DataSource, EntitySchema } = br('typeorm');
 const { IsolatedPostgres } = br('./test/isolated-postgres.ts');
+const { CanonicalPhoneIdentity1780000119000 } = br('./src/database/migrations/1780000119000-CanonicalPhoneIdentity.ts');
 const { AuthService } = br('./src/auth/auth.service.ts');
 const { AuthController } = br('./src/auth/auth.controller.ts');
 const { OAuthExchangeService } = br('./src/auth/oauth-exchange.service.ts');
@@ -37,7 +38,7 @@ client.on('error', () => {});
 const forbidden = () => { throw Error('Unexpected external dependency in local auth test'); };
 const external = new Proxy({}, { get: (_target, key) => key === 'then' ? undefined : forbidden });
 let app, db, boundary, passed = 0;
-async function check(name, task) { await task(); passed++; console.log(`PASS ${name}`); }
+async function check(name, task) { console.log(`START ${name}`); await task(); passed++; console.log(`PASS ${name}`); }
 
 async function run() {
   Logger.overrideLogger(false);
@@ -55,7 +56,13 @@ async function run() {
       accessToken: { ...text, select: false }, lastPinResetTokenHash: { ...text, select: false }, fcmToken: text,
     },
   })] });
-  await db.initialize(); await client.connect();
+  await db.initialize();
+  // Current account lookups use the canonical-phone SQL function and its real
+  // uniqueness guard. Entity synchronization alone does not install migrations.
+  const identityRunner = db.createQueryRunner();
+  try { await new CanonicalPhoneIdentity1780000119000().up(identityRunner); }
+  finally { await identityRunner.release(); }
+  await client.connect();
   const redis = Object.assign(Object.create(RedisService.prototype), { client });
   const config = new ConfigService({ OTP_PROVIDER: 'mobishastra', OTP_PIN_RESET_PROVIDER: 'mobishastra',
     OTP_CODE_HMAC_SECRET: randomBytes(32).toString('hex'), OTP_SEND_COOLDOWN_SECONDS: 1,

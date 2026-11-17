@@ -1,65 +1,137 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import type {
   ProCaseRow,
   ProOffering,
-  ServiceCode,
   ServiceStatus,
   CurrentDocumentCase,
 } from "@/types/proServices";
 import { serviceNames, statusNames } from "./model";
-import { ServiceButton, s } from "./ServiceLayout";
+import { s } from "./ServiceLayout";
+import {
+  buildServiceCatalogue,
+  servicePresentation,
+  type CatalogueEntry,
+  type CatalogueState,
+  type DisplayServiceCode,
+} from './serviceCatalogueModel';
 
-const icons: Record<ServiceCode, keyof typeof Ionicons.glyphMap> = {
+const icons: Record<DisplayServiceCode, keyof typeof Ionicons.glyphMap> = {
   documents: "documents-outline",
   vehicles: "car-outline",
   equipment: "bag-handle-outline",
-  fleet: "bus-outline",
+  fleet: "car-sport-outline",
+  delivery: "cube-outline",
+  schools: "school-outline",
+  health: "medkit-outline",
 };
 
-export function OpenService({ item, current, checking = false }: { item: ProOffering; current?: CurrentDocumentCase['request']; checking?: boolean }) {
+export function ServiceDirectory({
+  items, state, current, checking = false, active = true, secondary = false, group,
+}: {
+  items: ProOffering[];
+  state: CatalogueState;
+  current?: CurrentDocumentCase['request'];
+  checking?: boolean;
+  active?: boolean;
+  secondary?: boolean;
+  group?: 'documents' | 'business';
+}) {
+  const catalogue = buildServiceCatalogue(items, state);
+  const entries = secondary ? catalogue.secondary : catalogue.primary.filter(entry =>
+    !group || (group === 'documents' ? entry.code === 'documents' : entry.code !== 'documents'));
+  if (!entries.length) return null;
   return (
-    <View style={c.offering}>
-      <View style={s.row}>
-        <View style={c.icon}>
-          <Ionicons name={icons[item.code]} size={24} color="#C34412" />
-        </View>
-        <View style={s.flex}>
-          <Text style={c.availability}>{current ? 'DEMANDE EN COURS' : 'DEMANDES OUVERTES'}</Text>
-          <Text style={c.title}>{item.name}</Text>
-        </View>
-      </View>
-      <Text style={s.text}>{item.description}</Text>
-      <ServiceButton
-        title={current ? current.canEdit ? 'Modifier ma demande' : 'Voir ma demande' : 'Faire une demande'}
-        disabled={checking}
-        onPress={() =>
-          current ? router.push((current.canEdit ? `/services/edit?id=${current.id}` : `/services/${current.id}`) as any) : router.push({
-            pathname: "/services/new",
-            params: { service: item.code },
-          } as any)
-        }
-      />
+    <View style={c.directory} testID={secondary ? 'pro-other-services' : group ? `pro-${group}-services` : 'pro-main-services'}>
+      {secondary && <Text accessibilityRole="header" style={c.sectionTitle}>Autres services</Text>}
+      {entries.map(entry => entry.code === 'fleet' ? <FleetServiceEntry key={entry.code} active={active}/> : entry.offering && entry.availability === 'open'
+        ? <OpenService
+            key={entry.code}
+            item={entry.offering}
+            active={active}
+            current={entry.code === 'documents' ? current : undefined}
+            checking={entry.code === 'documents' && checking}
+          />
+        : <UnavailableService key={entry.code} item={entry} />)}
     </View>
   );
 }
 
-export function UpcomingServices({ items }: { items: ProOffering[] }) {
-  if (!items.length) return null;
+export function OpenService({ item, current, checking = false, active = true }: {
+  item: ProOffering;
+  current?: CurrentDocumentCase['request'];
+  checking?: boolean;
+  active?: boolean;
+}) {
+  const copy = servicePresentation(item.code);
+  const disabled = checking || !active || item.availability !== 'open';
+  const action = checking ? 'Vérification du dossier…' : current
+    ? current.canEdit ? 'Modifier mon dossier' : 'Voir mon dossier' : 'Ouvrir le service';
   return (
-    <View style={c.futureSection}>
-      <Text style={s.heading}>Autres services</Text>
-      {items.map((item) => (
-        <View key={item.code} style={c.futureRow}>
-          <Ionicons name={icons[item.code]} size={22} color="#647582" />
-          <Text style={[s.text, s.flex]}>{item.name}</Text>
-          <Text style={c.futureState}>
-            {item.availability === "paused" ? "En pause" : "À venir"}
-          </Text>
+    <TouchableOpacity style={c.offering} activeOpacity={0.75} disabled={disabled}
+      accessibilityRole="button" accessibilityLabel={`${copy.title}. ${copy.description} ${action}`}
+      accessibilityState={{ disabled, busy: checking }} testID={`pro-service-${item.code}`}
+      onPress={() => {
+        if (disabled) return;
+        if (current) {
+          router.push((current.canEdit ? `/services/edit?id=${current.id}` : `/services/${current.id}`) as Href);
+        } else {
+          router.push({ pathname: '/services/new', params: { service: item.code } } as Href);
+        }
+      }}>
+      <View style={c.icon}><Ionicons name={icons[item.code]} size={27} color="#C34412" /></View>
+      <View style={c.content}>
+        <View style={c.titleRow}>
+          <Text style={c.title}>{copy.title}</Text>
+          {current && <Text style={c.openBadge}>Mon dossier</Text>}
         </View>
-      ))}
+        <Text style={c.description}>{copy.description}</Text>
+        {(current || checking) && <Text style={c.action}>{action}</Text>}
+      </View>
+      <Ionicons name="chevron-forward" size={19} color="#C34412" />
+    </TouchableOpacity>
+  );
+}
+
+/** Fleet membership is an account service, separate from the legacy financing intake. */
+export function FleetServiceEntry({active=true}:{active?:boolean}) {
+  return <TouchableOpacity style={c.offering} accessibilityRole="button" accessibilityLabel="Gérer ma flotte. Véhicules, conducteurs et versements" accessibilityState={{disabled:!active}} disabled={!active} testID="pro-service-fleet"
+    onPress={()=>{if(active)router.push('/services/fleet' as Href);}}>
+    <View style={c.icon}><Ionicons name="car-sport-outline" size={27} color="#C34412"/></View>
+    <View style={c.content}><Text style={c.title}>Gérer ma flotte</Text><Text style={c.description}>Véhicules, conducteurs et versements.</Text></View>
+    <Ionicons name="chevron-forward" size={19} color="#C34412"/>
+  </TouchableOpacity>;
+}
+
+/** Equipment and vehicles use the same catalogue, consent and repayment screens. */
+export function CreditServiceEntry({ active = true }: { active?: boolean }) {
+  return <TouchableOpacity style={c.offering} accessibilityRole="button"
+    accessibilityLabel="Équipements et véhicules à crédit. Voir les offres et mes remboursements"
+    accessibilityState={{ disabled: !active }} disabled={!active} testID="pro-service-credit"
+    onPress={() => { if (active) router.push('/services/credit' as Href); }}>
+    <View style={c.icon}><Ionicons name="construct-outline" size={27} color="#C34412" /></View>
+    <View style={c.content}>
+      <Text style={c.title}>Équipements et véhicules</Text>
+      <Text style={c.description}>Téléphone, casque, GPS, véhicule…</Text>
+      <Text style={c.action}>Choisir ou suivre mon crédit</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={19} color="#C34412" />
+  </TouchableOpacity>;
+}
+
+export function UnavailableService({ item }: { item: CatalogueEntry }) {
+  const status = item.availability === 'paused' ? 'En pause' : item.availability === 'checking'
+    ? 'Vérification…' : item.availability === 'unavailable' ? 'Indisponible' : 'À venir';
+  return (
+    <View style={c.futureRow} accessible accessibilityLabel={`${item.title}. ${item.description} ${status}`}
+      testID={`pro-service-${item.code}`}>
+      <View style={[c.icon, c.futureIcon]}><Ionicons name={icons[item.code]} size={27} color="#405568" /></View>
+      <View style={c.content}>
+        <View style={c.titleRow}><Text style={c.title}>{item.title}</Text><Text style={c.futureState}>{status}</Text></View>
+        <Text style={c.description}>{item.description}</Text>
+      </View>
     </View>
   );
 }
@@ -103,40 +175,40 @@ export function ServiceCaseLink({ item }: { item: ProCaseRow }) {
 }
 
 const c = StyleSheet.create({
+  directory: { gap: 0 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#172D3B', marginBottom: 4 },
+  content: { flex: 1, minWidth: 0, gap: 5 },
+  titleRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   offering: {
-    padding: 18,
-    gap: 16,
-    backgroundColor: "#FFF8F3",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#F5DFD1",
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+    minHeight: 72,
   },
   icon: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    flexShrink: 0,
+    borderRadius: 12,
     backgroundColor: "#FFE8DA",
     alignItems: "center",
     justifyContent: "center",
   },
-  availability: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    color: "#9B3B14",
-    marginBottom: 5,
-  },
-  title: { fontSize: 20, fontWeight: "700", color: "#172D3B" },
-  futureSection: { marginTop: 8, gap: 4 },
+  title: { fontSize: 17, fontWeight: '700', color: '#172D3B', flexShrink: 1 },
+  description: { fontSize: 13, lineHeight: 19, color: '#556570' },
+  action: { color: '#B33E10', fontSize: 13, fontWeight: '700', marginTop: 2 },
+  openBadge: { color: '#9B3B14', backgroundColor: '#FFE8DA', fontSize: 11, fontWeight: '600', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
+  futureIcon: { backgroundColor: '#EDF2F5' },
   futureRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#EDF0F2",
   },
-  futureState: { fontSize: 12, color: "#647582" },
+  futureState: { fontSize: 11, fontWeight: '600', color: '#52616C', backgroundColor: '#EDF2F5', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, overflow: 'hidden' },
   caseRow: {
     flexDirection: "row",
     alignItems: "center",

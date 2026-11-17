@@ -1,9 +1,9 @@
+import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { getTabBarMetrics } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { selectUsesEarningsTab, selectUsesTripSearchTab } from '@/features/navigation/accountTabPolicy';
 import { useAppSelector } from '@/store/hooks';
 import { selectUnreadMessagesCount } from '@/store/selectors';
-import { selectUsesServicesTab } from '@/features/navigation/accountTabPolicy';
-import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -15,7 +15,8 @@ type TabIconName = keyof typeof Ionicons.glyphMap;
 
 export default function TabLayout() {
   const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
-  const usesServices = useAppSelector(selectUsesServicesTab);
+  const usesEarnings = useAppSelector(selectUsesEarningsTab);
+  const usesTripSearch = useAppSelector(selectUsesTripSearchTab);
   const insets = useSafeAreaInsets();
   const tabBarMetrics = getTabBarMetrics(insets.bottom);
 
@@ -93,11 +94,11 @@ export default function TabLayout() {
         <Tabs.Screen
           name="discover"
           options={{
-            title: usesServices ? 'Services' : 'Recherche',
+            title: 'Services',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: usesServices ? 'briefcase' : 'search',
-                inactiveIcon: usesServices ? 'briefcase-outline' : 'search-outline',
+                activeIcon: 'briefcase',
+                inactiveIcon: 'briefcase-outline',
                 color,
                 focused,
                 size,
@@ -108,11 +109,28 @@ export default function TabLayout() {
         <Tabs.Screen
           name="trips"
           options={{
-            title: 'Mes trajets',
+            title: usesTripSearch ? 'Trajets' : 'Mes trajets',
+            href: usesEarnings ? null : '/(tabs)/trips',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
                 activeIcon: 'car',
                 inactiveIcon: 'car-outline',
+                color,
+                focused,
+                size,
+              })
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="earnings"
+          options={{
+            title: 'Revenus',
+            href: usesEarnings ? '/(tabs)/earnings' : null,
+            tabBarIcon: ({ color, focused, size }) => (
+              renderTabIcon({
+                activeIcon: 'wallet',
+                inactiveIcon: 'wallet-outline',
                 color,
                 focused,
                 size,

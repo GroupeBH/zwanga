@@ -20,6 +20,7 @@ function setup({ reprogram = true, publish } = {}) {
   const trip = { id: 'old-trip', canReprogram: reprogram, departure: { address: 'Gombe', lng: 15.31, lat: -4.31 },
     arrival: { address: 'Limete', lng: 15.32, lat: -4.32 }, price: 5000 };
   const params = { trip, isTripDriver: true, editDateTime: new Date('2030-10-09T08:00:00Z'),
+    editReferences: { departureReference: 'Devant la pharmacie', arrivalReference: 'Entrée du marché' }, setEditStep() {},
     editVehicleId: 'vehicle', editSeats: '3', editPrice: '6000', editRouteMode: 'map',
     editDepartureSelection: point, editArrivalSelection: { address: 'Limete', longitude: 15.32, latitude: -4.32 },
     showDialog: dialog => calls.dialogs.push(dialog), editRequiresPassengerKyc: false,

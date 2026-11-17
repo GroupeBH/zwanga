@@ -142,6 +142,7 @@ test('response panel appears only in-app, speaks only when visible and opens the
     '@/store/api/tripRequestApi': { useGetTripRequestByIdQuery: () => ({}) },
     '@/hooks/useDisplayReads': { displayReadOptions: enabled => ({ skip: !enabled }), useDisplayReadsEnabled: enabled => enabled },
     '@/features/navigation/RideModal': { RideModal: 'RideModal' },
+    '@/features/request-detail/RequestPickupSummaryCard': { RequestPickupSummaryCard: 'PickupSummary' },
     '@/features/navigation/RideOverlayProvider': { useRideOverlay: () => ({ active: io.overlay }) },
   });
   const session = load('services/rideAlertSession.ts');
@@ -153,6 +154,9 @@ test('response panel appears only in-app, speaks only when visible and opens the
   panel.type(panel.props); assert.equal(io.speech.at(-1)[1], false, 'covered panels stay silent');
   io.overlay = { children: panel };
   const content = panel.type(panel.props); assert.equal(io.speech.at(-1)[1], true);
+  const elements = node => Array.isArray(node) ? node.flatMap(elements) : React.isValidElement(node) ? [node, ...elements(node.props.children)] : [];
+  const summary = elements(content).find(node => node.type === 'PickupSummary');
+  assert.deepEqual(summary.props, { requestId, active: true });
   assert.equal(io.speech.at(-1)[2], 'response');
   ui.props.onShow(); assert.equal(session.pendingRideAlerts(userId).length, 0);
   assert.equal(session.pendingRideResponseNotices(userId).length, 1);

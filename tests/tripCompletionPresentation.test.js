@@ -48,8 +48,45 @@ function completion() {
     routeCoordinatesRef: { current: [] }, tripDepartureCoordinate: null, autoCompletingTripRef: { current: false },
     trip: { id: 'trip', status: 'ongoing' }, completeTrip: () => ({ unwrap: async () => ({ status: 'completed' }) }),
     reconcileTripStatus: async () => null, refetchTrip() {}, refetchBookings() {} };
-  return { hook: hooks.render(() => useDriverCompletionActions(args)), args, spoken, dialogs, stopped, notices };
+  return { hook: hooks.render(() => useDriverCompletionActions(args)), render: () => hooks.render(() => useDriverCompletionActions(args)), hooks, args, spoken, dialogs, stopped, notices };
 }
+
+test('failed automatic completion cannot loop on REST rerenders or repeated GPS fixes', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100_000 });
+  const f = completion(); let requests = 0;
+  f.args.completeTrip = () => ({ unwrap: async () => { requests++; throw { status: 409 }; } });
+  for (let i = 0; i < 50; i++) { f.render().tryCompleteTripFromNavigation(5); await tick(); }
+  assert.equal(requests, 1);
+  t.mock.timers.tick(29_999); f.render().tryCompleteTripFromNavigation(5); await tick();
+  assert.equal(requests, 1);
+  t.mock.timers.tick(1); f.render().tryCompleteTripFromNavigation(5); await tick();
+  assert.equal(requests, 2, 'a later GPS fix can retry without a permanent lock');
+  f.args.tripId = 'next-trip'; f.render().tryCompleteTripFromNavigation(5); await tick();
+  assert.equal(requests, 3, 'a different trip has its own retry budget');
+  f.hooks.unmount();
+});
+
+test('confirmed automatic completion is not submitted twice while REST status catches up', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100_000 });
+  const f = completion(); let requests = 0;
+  f.args.completeTrip = () => ({ unwrap: async () => { requests++; return { status: 'completed' }; } });
+  f.render().tryCompleteTripFromNavigation(5); await tick();
+  t.mock.timers.tick(60_000);
+  f.render().tryCompleteTripFromNavigation(5); await tick();
+  assert.equal(requests, 1);
+  f.hooks.unmount();
+});
+
+test('a late confirmed completion still stops that trip GPS without showing UI after unmount', async () => {
+  const f = completion(); let resolve;
+  f.args.completeTrip = () => ({ unwrap: () => new Promise(done => { resolve = done; }) });
+  f.render().tryCompleteTripFromNavigation(5);
+  f.args.isMountedRef.current = false;
+  resolve({ status: 'completed' }); await tick();
+  assert.deepEqual(f.stopped, ['trip']);
+  assert.deepEqual(f.notices, []); assert.deepEqual(f.spoken, []);
+  f.hooks.unmount();
+});
 
 test('server-confirmed completion uses neutral speech once and hydrates the real cash receipt', async () => {
   const f = completion();

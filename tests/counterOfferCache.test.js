@@ -9,8 +9,9 @@ const offer = { id: 'offer', tripRequestId: 'request', driverId: 'driver', statu
 
 async function fixture(t, user = 'driver', realMapper = false) {
   let reply;
+  const requests = [];
   const state = { user, version: 1 };
-  const api = createApi({ reducerPath: 'api', baseQuery: () => new Promise(resolve => { reply = resolve; }),
+  const api = createApi({ reducerPath: 'api', baseQuery: args => { requests.push(args); return new Promise(resolve => { reply = resolve; }); },
     tagTypes: ['TripRequest', 'MyDriverOffers', 'MyTripRequests', 'AccountActivity', 'Notification'],
     endpoints: b => ({ getTripRequestById: b.query({ query: id => id }) }) });
   const load = loader({ './baseApi': { baseApi: api }, './tripRequestApi': { tripRequestApi: api },
@@ -24,11 +25,12 @@ async function fixture(t, user = 'driver', realMapper = false) {
   await seed(initial);
   const send = reject => store.dispatch(counterOfferApi.endpoints[reject ? 'declineCounterOffer' : 'proposeCounterOffer'].initiate(
     reject ? { requestId: 'request', offerId: 'offer' } : { requestId: 'request', vehicleId: 'vehicle', pricePerSeat: 1500 }));
-  return { state, send, seed, reply: result => reply(result), read: () => api.endpoints.getTripRequestById.select('request')(store.getState()).data };
+  return { state, send, seed, requests, reply: result => reply(result), read: () => api.endpoints.getTripRequestById.select('request')(store.getState()).data };
 }
 
 test('confirmed proposed price immediately exposes withdrawal without waiting for a refetch', async t => {
   const f = await fixture(t), work = f.send();
+  assert.equal(f.requests.at(-1).body.negotiationVersion, 1, 'only a capable driver build opts into passenger counter-proposals');
   assert.deepEqual(f.read(), initial, 'do not claim a price was sent before confirmation');
   f.reply({ data: offer }); await work.unwrap(); await tick();
   assert.equal(f.read().status, 'offers_received'); assert.deepEqual(f.read().offers, [offer]);

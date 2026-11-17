@@ -77,12 +77,13 @@ rejectDriverTripInterruption: builder.mutation<
         speed?: number;
         heading?: number;
         recordedAt?: string;
+        samples?: import('@/services/background/locationBatch').LocationHistorySample[];
       }
     >({
-      query: ({ tripId, coordinates, accuracy, speed, heading, recordedAt }) => ({
+      query: ({ tripId, coordinates, accuracy, speed, heading, recordedAt, samples }) => ({
         url: `/trips/${tripId}/driver-location`,
         method: 'PUT',
-        body: { coordinates, accuracy, speed, heading, recordedAt },
+        body: { coordinates, accuracy, speed, heading, recordedAt, samples },
       }),
       invalidatesTags: (result, _error, { tripId }) =>
         result?.autoProgress?.events.length

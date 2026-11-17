@@ -9,6 +9,7 @@ const native = { View: 'View', Text: 'Text', Pressable: 'Pressable', ActivityInd
 const labels = { departure: { title: 'Départ test', address: 'Départ test', reference: 'Portail' }, arrival: { title: 'Arrivée test', address: 'Arrivée test', context: 'Quartier' } };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   './WithdrawRequestDriverButton': { WithdrawRequestDriverButton: 'DriverWithdrawal' },
+  './RequestPickupSummaryCard': { RequestPickupSummaryCard: 'PickupSummary' },
   '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ blocked: false, closed: false, label: null }) },
   './RequestTargetDriver': { RequestTargetDriver: 'RequestTargetDriver' },
   './RequestCounterOffer': { RequestCounterOffer: 'CounterOffer' },
@@ -43,6 +44,8 @@ test('closed requests replace progress with their closed status; a selected driv
   assert.match(words(closed), /Commande expirée/); assert.doesNotMatch(words(closed), /Recherche d’un conducteur/);
   const confirmed = RequestPassengerTicket({ model: { ...model, tripRequest: { ...request, status: 'driver_selected', tripId: 'trip' } }, presentation });
   const completedIcons = elements(confirmed).filter(item => item.type === 'Icon' && item.props.name === 'checkmark');
+  assert.equal(elements(closed).some(item => item.type === 'PickupSummary'), false);
+  assert.equal(elements(confirmed).find(item => item.type === 'PickupSummary').props.requestId, request.id);
   assert.equal(completedIcons.length, 2, 'only sent/search stages complete, not departure');
 });
 
@@ -119,6 +122,7 @@ test('driver confirmed course uses authorized contact and its actual pickup time
   const driver = { ...model, userId: 'driver', tripRequest: { ...request, selectedDriverId: 'driver', status: 'driver_selected', tripId: 'trip' },
     assignedTrip: { id: 'trip', departureTime: '2099-01-01T10:05:00', status: 'upcoming' } };
   const tree = hooks.render(() => module.RequestDriverCourse({ model: driver, presentation }));
+  assert.equal(elements(tree).find(item => item.type === 'PickupSummary').props.requestId, request.id);
   assert.match(words(tree), /COURSE CONFIRMÉE/); assert.match(words(tree), /10:05/);
   assert.equal(elements(tree).find(item => item.type === 'RouteMap').props.initiallyExpanded, true);
   const button = elements(tree).find(item => item.type === 'Pressable'); button.props.onPress();

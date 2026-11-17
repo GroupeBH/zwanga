@@ -82,6 +82,7 @@ export default function PublishScreen() {
             renderGpsStatus={model.presentation.renderGpsStatus}
             hasDepartureGpsSuggestion={model.route.hasDepartureGpsSuggestion}
             shouldShowDepartureReference={model.route.shouldShowDepartureReference}
+            departureReferenceRequired={model.route.departureReferenceRequired}
             departureReference={model.form.departureReference}
             setShowDepartureReference={model.form.setShowDepartureReference}
             setDepartureReference={model.form.setDepartureReference}
@@ -96,6 +97,7 @@ export default function PublishScreen() {
             arrivalManualGeocodeStatus={model.routeResolution.arrivalManualGeocodeStatus}
             hasArrivalGpsSuggestion={model.route.hasArrivalGpsSuggestion}
             shouldShowArrivalReference={model.route.shouldShowArrivalReference}
+            arrivalReferenceRequired={model.route.arrivalReferenceRequired}
             arrivalReference={model.form.arrivalReference}
             setShowArrivalReference={model.form.setShowArrivalReference}
             setArrivalReference={model.form.setArrivalReference}

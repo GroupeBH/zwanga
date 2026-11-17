@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { decodeJWT } from '@/utils/jwt';
 import type { AuthMode, AuthStep } from '@/components/auth/types';
-import type { TripRequestVehicleType, UserGender } from '@/types';
+import type { DriverCategory, TripRequestVehicleType, UserGender } from '@/types';
+import { readDriverCategory } from '@/features/profile/driverCategory';
 
 const KEY = 'zwanga_auth_flow_v1';
 export const AUTH_DRAFT_TTL_MS = 30 * 60 * 1000;
@@ -10,6 +11,7 @@ const nullableFields = ['profilePicture', 'googleIdToken', 'googleProfileName', 
 export type DraftState = Record<typeof textFields[number], string> & Record<typeof nullableFields[number], string | null> & {
   mode: AuthMode; step: AuthStep; gender: UserGender | null;
   role: 'driver' | 'passenger'; vehicleType: TripRequestVehicleType | null;
+  driverCategory: DriverCategory | null;
   googleFlow: 'signup' | null; googleSignupStep: 'phone' | 'otp' | 'profile';
   isGooglePhoneVerified: boolean; socialProvider: 'google' | 'apple' | null;
 };
@@ -35,6 +37,7 @@ export function selectAuthDraftState(input: unknown): DraftState {
     step: choice(source.step, ['phone', 'sms', 'pin', 'profile', 'kyc', 'resetPin'], 'phone'),
     gender: ['male', 'female', 'other', 'prefer_not_to_say'].includes(source.gender as string) ? source.gender : null,
     role: choice(source.role, ['driver', 'passenger'], 'passenger'),
+    driverCategory: source.role === 'driver' ? readDriverCategory(source.driverCategory) : null,
     vehicleType: ['car', 'motorcycle_2_wheels', 'motorcycle_3_wheels'].includes(source.vehicleType as string) ? source.vehicleType : null,
     googleFlow: source.googleFlow === 'signup' ? 'signup' : null,
     googleSignupStep: choice(source.googleSignupStep, ['phone', 'otp', 'profile'], 'phone'),

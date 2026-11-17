@@ -30,6 +30,7 @@ export function useRequestResponseWindow(request: TripRequest | undefined, readS
   return {
     blocked: !!window && (window.phase !== 'driver' || seconds === null || seconds === 0),
     closed: !!window && (window.phase === 'accepting' || seconds === null || seconds === 0),
-    label: window ? seconds === null ? 'Actualisation de la commande…' : requestResponseLabel(window.phase, seconds, passenger) : null,
+    label: window ? seconds === null ? 'Actualisation de la commande…'
+      : requestResponseLabel(window.phase, seconds, passenger, request?.offers?.some(offer => offer.status === 'pending' && offer.negotiationStage === 'passenger_counter')) : null,
   };
 }

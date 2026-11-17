@@ -15,6 +15,9 @@ export interface DriverEarning {
   commissionRate: number | string;
   commissionAmount: number | string;
   netAmount: number | string;
+  /** Already deducted from netAmount by the server, never subtract again in the UI. */
+  assetRepaymentAmount?: number | string;
+  netBeforeCredit?: number | string;
   currency: string;
   status: DriverEarningStatus;
   availableAt?: string | null;

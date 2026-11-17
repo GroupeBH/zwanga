@@ -123,7 +123,7 @@ for (const target of ['arrival', 'departure']) test('inline ' + target + ' selec
   f.form[target + 'Location'] = null;
   const all = nodes(f.render()), picker = all.find(n => n.type === 'InlinePicker');
   assert.ok(picker);
-  assert.equal(picker.props.title, target === 'departure' ? 'Où vous chercher ?' : 'Où allez-vous ?');
+  assert.equal(picker.props.title, target === 'departure' ? 'D’où partez-vous ?' : 'Où allez-vous ?');
   assert.equal(picker.props.confirmLabel, target === 'departure' ? 'Me chercher ici' : 'Aller ici');
   assert.equal(picker.props.focusSearchOnOpen, target === 'arrival');
   assert.equal(picker.props.initialLocation, null);

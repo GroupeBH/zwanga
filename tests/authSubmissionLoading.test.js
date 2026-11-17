@@ -10,10 +10,10 @@ const tokens = { accessToken: 'test-access', refreshToken: 'test-refresh' };
 function signupFixture(method = 'phone', extra = {}) {
   const hooks = hookHarness(), dialogs = [], calls = [];
   const request = deferred(), storage = deferred(), kyc = deferred(), notification = deferred();
-  const io = { readReferral: async () => null, consumeReferral: async () => {}, analytics: async () => {},
+  const io = { consent: [], saveConsent: async () => {}, readReferral: async () => null, consumeReferral: async () => {}, analytics: async () => {},
     storage: () => storage.promise, notification: () => notification.promise, requests: [] };
   const mutation = provider => body => ({ unwrap: () => { calls.push(provider); io.requests.push({ provider, body }); return request.promise; } });
-  const props = { firstName: 'Test', lastName: 'Example', role: 'passenger', gender: null,
+  const props = { updatesAccepted: true, driverCategory: 'private', firstName: 'Test', lastName: 'Example', role: 'passenger', gender: null,
     vehicleType: 'car', vehicleBrand: 'Test', vehicleModel: 'Test', vehicleColor: 'Bleu', vehiclePlate: '0000AA00',
     phone: '+243000000000', pin: '1234', email: '', legacyReferralCode: '', profilePicture: null,
     googleIdToken: method === 'phone' ? null : 'test-id-token', isGooglePhoneVerified: method !== 'phone', socialProvider: method,
@@ -24,6 +24,7 @@ function signupFixture(method = 'phone', extra = {}) {
     router: { replace: () => calls.push('redirect') }, ...extra };
   const { useRegistrationActions } = loader({ react: hooks.react, 'react-native': { Platform: { OS: 'ios' } },
     '@/config/env': { isSignupOtpVerificationEnabled: false },
+    '@/services/installationAnnouncements': { setAnnouncementPreference: async value => { await io.saveConsent(); io.consent.push(value); } },
     '../../features/auth/authModel': { ensureAuthNotifeeLoaded() {},
       notifeeInstance: { requestPermission: async () => {}, displayNotification: () => io.notification() },
       getAuthErrorMessage: (_error, fallback) => fallback },
@@ -36,6 +37,39 @@ function signupFixture(method = 'phone', extra = {}) {
 }
 
 for (const method of ['phone', 'google', 'apple']) {
+  test(`${method} signup requires an explicit updates checkbox before account creation`, async () => {
+    const app = signupFixture(method, { updatesAccepted: false });
+    await app.render().handleFinalRegister();
+    assert.equal(app.io.requests.length, 0);
+    assert.deepEqual(app.io.consent, []);
+    assert.match(app.dialogs[0].message, /Cochez/);
+    assert.deepEqual(app.calls, ['step']);
+    app.hooks.unmount();
+  });
+
+  test(`${method} signup persists the explicit choice and sends only the chosen driver category`, async () => {
+    const app = signupFixture(method, { role: 'driver', driverCategory: 'transport' });
+    app.request.resolve(tokens); app.storage.resolve(true); app.notification.resolve(); app.kyc.resolve(null);
+    await app.render().handleFinalRegister();
+    const body = app.io.requests[0].body;
+    assert.equal(method === 'phone' ? body.get('driverCategory') : body.driverCategory, 'transport');
+    assert.deepEqual(app.io.consent, [true]);
+    app.hooks.unmount();
+  });
+
+  test(`${method} signup rejects an absent driver category but never sends one for passengers`, async () => {
+    const app = signupFixture(method, { role: 'driver', driverCategory: null });
+    await app.render().handleFinalRegister();
+    assert.equal(app.io.requests.length, 0);
+    assert.equal(app.dialogs[0].title, 'Type de conducteur');
+    app.props.role = 'passenger'; app.props.driverCategory = 'private';
+    app.request.resolve(tokens); app.storage.resolve(true); app.notification.resolve();
+    await app.render().handleFinalRegister();
+    const body = app.io.requests[0].body;
+    assert.equal(method === 'phone' ? body.has('driverCategory') : Object.hasOwn(body, 'driverCategory'), false);
+    app.hooks.unmount();
+  });
+
   test(`${method} signup stays busy through preparation, network, session, notification and pending navigation`, async () => {
     const app = signupFixture(method), referral = deferred();
     app.io.readReferral = () => referral.promise;
@@ -79,6 +113,22 @@ for (const method of ['phone', 'google', 'apple']) {
     app.hooks.unmount();
   });
 }
+
+test('a local updates-preference write failure retries finalization, never the accepted account POST', async () => {
+  const app = signupFixture();
+  app.io.saveConsent = async () => { throw new Error('storage unavailable'); };
+  app.request.resolve(tokens); app.storage.resolve(true); app.notification.resolve();
+  await app.render().handleFinalRegister();
+  assert.equal(app.render().hasCreatedAccount, true);
+  assert.equal(app.dialogs[0].title, 'Connexion à finaliser');
+  assert.equal(app.calls.includes('redirect'), false);
+  app.io.saveConsent = async () => {};
+  await app.render().handleFinalRegister();
+  assert.equal(app.io.requests.length, 1);
+  assert.deepEqual(app.io.consent, [true]);
+  assert.equal(app.calls.at(-1), 'redirect');
+  app.hooks.unmount();
+});
 
 test('validation and backend rejection release signup for correction/retry', async () => {
   const app = signupFixture('phone', { firstName: '' });
@@ -225,6 +275,7 @@ test('screen uses finalization state for profile/KYC and locks header even after
       '../hooks/auth/useAuthKeyboardLayout': { useAuthKeyboardLayout: () => ({ keyboardVisible: false, scrollRef: { current: null } }) },
       '@/components/auth': { ...Object.fromEntries(componentNames.map(name => [name, name])), authStyles: {} },
       '../hooks/auth/useAuthController': { useAuthController: () => ({ draftPersistence: { saveFailed: false },
+        announcements: { updatesAccepted: false, setUpdatesAccepted() {} },
         form: { mode: 'signup', step, role: 'driver', firstName: 'Test', lastName: 'Example', isAppleSignupFlow: true,
           setStep: step => calls.push(step), isRegistering: false, isStartingDiditKyc: false },
         navigation: { handleModeChange: () => calls.push('mode'), handlePreviousStep: () => calls.push('back') },

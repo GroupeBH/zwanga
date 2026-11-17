@@ -65,6 +65,7 @@ export function useTripsController() {
   };
 
   const editor = useTripEditorNavigation({
+    editReferences: state.editReferences,
     setEditingTrip: state.setEditingTrip,
     setEditSeats: state.setEditSeats,
     setEditPrice: state.setEditPrice,
@@ -138,6 +139,8 @@ export function useTripsController() {
   const editModalBottomPadding = Platform.OS === 'android' ? 16 : Math.max(state.insets.bottom, 16) + 8;
 
   const actions = useTripsManagementActions({
+    editReferences: state.editReferences,
+    setEditStep: state.setEditStep,
     showFeedback,
     editingTrip: state.editingTrip,
     editDateTime: state.editDateTime,

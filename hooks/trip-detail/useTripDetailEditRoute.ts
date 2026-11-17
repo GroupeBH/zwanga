@@ -9,8 +9,11 @@ import { useGeocodeMutation } from '@/store/api/googleMapsApi';
 import { buildManualGeocodeQuery, mapGeocodeResponseToSelection } from '@/utils/manualAddressGeocode';
 import React, { useCallback } from 'react';
 import { Keyboard } from 'react-native';
+import type { TripEditReferences } from '@/hooks/trips/useTripEditReferences';
+import { getTripEditReferenceError } from '@/features/trips/tripEditReferences';
 
 interface Params {
+  editReferences: TripEditReferences;
   setEditDepartureSelection: React.Dispatch<React.SetStateAction<MapLocationSelection | null>>;
   editArrivalSelection: MapLocationSelection | null;
   setEditArrivalSelection: React.Dispatch<React.SetStateAction<MapLocationSelection | null>>;
@@ -29,6 +32,7 @@ interface Params {
 }
 
 export function useTripDetailEditRoute({
+  editReferences,
   setEditDepartureSelection,
   editArrivalSelection,
   setEditArrivalSelection,
@@ -46,6 +50,7 @@ export function useTripDetailEditRoute({
   setEditStep,
 }: Params) {
   const swapEditRoutePoints = () => {
+    editReferences.swap();
     setEditDepartureSelection(editArrivalSelection);
     setEditArrivalSelection(editDepartureSelection);
     setEditDepartureManualAddress(editArrivalManualAddress);
@@ -116,6 +121,12 @@ export function useTripDetailEditRoute({
       return;
     }
 
+    const referenceError = getTripEditReferenceError(editReferences, departureAddress, arrivalAddress,
+      editDepartureSelection, editArrivalSelection);
+    if (referenceError) {
+      showDialog({ variant: 'warning', title: 'Repère requis', message: referenceError });
+      return;
+    }
     Keyboard.dismiss();
     setIosPickerMode(null);
     setEditStep(2);

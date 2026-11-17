@@ -1,5 +1,6 @@
 import {
   calculateDistanceMeters,
+  MAX_PLAUSIBLE_LOCATION_JUMP_METERS,
   normalizeCoordinateList,
   normalizeCoordinateObject,
   type NavigationCoordinate,
@@ -85,7 +86,8 @@ function evaluateMovementCrossing(
     y: end.y - start.y,
   };
   const lengthSquared = movement.x * movement.x + movement.y * movement.y;
-  if (lengthSquared < 1) {
+  // A cached fix on the other side of town is not evidence of passing here.
+  if (lengthSquared < 9 || lengthSquared > MAX_PLAUSIBLE_LOCATION_JUMP_METERS ** 2) {
     return {
       hasCrossedDestinationParallel: false,
       movementClosestDistanceMeters: Math.hypot(end.x, end.y),
@@ -286,14 +288,16 @@ export function evaluateDestinationPassage({
     isInsideDirectCompleteZone,
     hasCrossedDestinationParallel:
       movementPassage.hasCrossedDestinationParallel,
-    hasPassedDestinationOnRoute: routePassage.hasPassedDestinationOnRoute,
+    // The last road segment extends infinitely. Being on that extension (even
+    // kilometres away at trip start) proves nothing without observed movement.
+    hasPassedDestinationOnRoute:
+      movementPassage.hasCrossedDestinationParallel && routePassage.hasPassedDestinationOnRoute,
     movementClosestDistanceMeters:
       movementPassage.movementClosestDistanceMeters,
     routeParallelDistanceMeters: routePassage.routeParallelDistanceMeters,
     routeAheadDistanceMeters: routePassage.routeAheadDistanceMeters,
     shouldComplete:
       isInsideDirectCompleteZone ||
-      movementPassage.hasCrossedDestinationParallel ||
-      routePassage.hasPassedDestinationOnRoute,
+      movementPassage.hasCrossedDestinationParallel,
   };
 }

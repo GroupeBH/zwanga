@@ -86,7 +86,7 @@ export function useRequestBudgetSummary({
     ? 'Votre budget pour le trajet'
     : isVehicleOptionsError && vehicleOptions.length === 0
       ? 'Fixez votre budget pour continuer'
-      : requestPricingDescription(pricing) ?? 'Prix recommandé pour le trajet';
+      : requestPricingDescription(selectedVehicleOption?.pricing ?? pricing) ?? 'Prix recommandé pour le trajet';
 
   const routeDistanceLabel = formatDistanceKm(routeDistanceMeters);
 

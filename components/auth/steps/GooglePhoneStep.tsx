@@ -7,6 +7,7 @@ import { authStyles as styles } from '../styles';
 import { isSignupOtpVerificationEnabled } from '@/config/env';
 import { OtpDeliveryNotice } from '../OtpDeliveryNotice';
 import { authPhoneCopy, isAuthPhoneValid } from '@/features/auth/authPhone';
+import { authSimpleStyles as simple } from '@/features/auth/authSimple.styles';
 
 interface GooglePhoneStepProps {
   profileName: string | null;
@@ -20,7 +21,6 @@ interface GooglePhoneStepProps {
 }
 
 export function GooglePhoneStep({
-  profileName,
   provider = 'google',
   phone,
   onPhoneChange,
@@ -31,34 +31,25 @@ export function GooglePhoneStep({
 }: GooglePhoneStepProps) {
   const isPhoneValid = isAuthPhoneValid(phone);
   const providerName = provider === 'apple' ? 'Apple' : 'Google';
-  const providerIcon = provider === 'apple' ? 'logo-apple' : 'logo-google';
-  const providerColor = provider === 'apple' ? '#111827' : '#4285F4';
 
   return (
     <Animated.View
       key="google-phone-step"
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(150)}
-      style={styles.stepContainer}
+      style={simple.step}
     >
-      <View style={styles.heroSection}>
-        <View style={[styles.logoContainer, { backgroundColor: `${providerColor}20` }]}>
-          <Ionicons name={providerIcon} size={40} color={providerColor} />
-        </View>
-        <Text style={styles.heroTitle}>Inscription {providerName}</Text>
-        <Text style={styles.heroSubtitle}>
-          {profileName ? `Bienvenue ${profileName} !` : 'Connectez votre numéro de téléphone'}
-        </Text>
+      <View style={simple.heading}>
+        <Text style={simple.title} accessibilityRole="header">Votre numéro de téléphone</Text>
+        <Text style={simple.subtitle}>À associer à votre compte {providerName}.</Text>
       </View>
 
-      <View style={styles.authCard}>
-        <Text style={styles.inputLabel}>Numéro de téléphone</Text>
-        <Text style={styles.inputLabelSmall}>Ce numéro sera associé à votre compte</Text>
+      <View style={simple.form}>
 
-        <View style={styles.inputWrapper}>
+        <View style={[styles.inputWrapper, simple.inputWrapper]}>
           <Ionicons name="call-outline" size={20} color={Colors.gray[500]} style={styles.inputIcon} />
           <TextInput
-            style={styles.input}
+            style={[styles.input, simple.input]}
             placeholder="Votre numéro de téléphone"
             placeholderTextColor={Colors.gray[400]}
             keyboardType="phone-pad"
@@ -68,6 +59,7 @@ export function GooglePhoneStep({
             accessibilityLabel="Numéro de téléphone"
             accessibilityHint={authPhoneCopy.hint}
             value={phone}
+            editable={!isLoading}
             onChangeText={onPhoneChange}
             autoFocus={Platform.OS !== 'android'}
           />
@@ -75,12 +67,13 @@ export function GooglePhoneStep({
 
         <Text style={styles.phoneHint}>{authPhoneCopy.hint}</Text>
 
-        {isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend />}
+        {isSignupOtpVerificationEnabled && <OtpDeliveryNotice beforeSend compact />}
 
         <TouchableOpacity
           style={[
             styles.mainButton,
             isPhoneValid && !isLoading ? styles.mainButtonActive : styles.mainButtonDisabled,
+            simple.button,
           ]}
           onPress={onSubmit}
           disabled={!isPhoneValid || isLoading}
@@ -89,13 +82,13 @@ export function GooglePhoneStep({
             <ActivityIndicator color="white" />
           ) : (
             <>
-              <Text style={styles.mainButtonText}>{submitLabel}</Text>
+              <Text style={[styles.mainButtonText, simple.buttonText]}>{submitLabel}</Text>
               <Ionicons name="arrow-forward" size={20} color="white" />
             </>
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
+        <TouchableOpacity style={[styles.secondaryButton, simple.button]} onPress={onCancel} disabled={isLoading}>
           <Ionicons name="arrow-back" size={18} color={Colors.primaryDark} />
           <Text style={styles.secondaryButtonText}>Annuler</Text>
         </TouchableOpacity>

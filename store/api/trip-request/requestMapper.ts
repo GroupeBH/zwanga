@@ -150,6 +150,8 @@ export const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOf
     id: offer.id,
     tripRequestId: offer.tripRequestId,
     existingTripId: offer.existingTripId,
+    negotiationStage: offer.negotiationStage,
+    previousOfferId: offer.previousOfferId,
     driverId: offer.driver.id,
     driverName: formatFullName(offer.driver),
     driverAvatar: offer.driver.profilePicture ?? undefined,
@@ -178,6 +180,8 @@ export const mapServerDriverOfferToClient = (offer: ServerDriverOffer): DriverOf
 
 export const mapServerDriverOfferWithTripRequestToClient = (offer: ServerDriverOfferWithTripRequest): DriverOfferWithTripRequest => {
   const baseOffer = mapServerDriverOfferToClient({
+    negotiationStage: offer.negotiationStage,
+    previousOfferId: offer.previousOfferId,
     id: offer.id,
     tripRequestId: offer.tripRequestId,
     driver: offer.driver,

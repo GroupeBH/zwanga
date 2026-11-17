@@ -4,7 +4,7 @@ const React = require('react');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const native = { View: 'View', Text: 'Text', Pressable: 'Button', FlatList: 'List', RefreshControl: 'Refresh',
-  ActivityIndicator: 'Spinner', StyleSheet: { create: s => s } };
+  KeyboardAvoidingView: 'Keyboard', Platform: { OS: 'ios' }, ScrollView: 'Scroll', ActivityIndicator: 'Spinner', StyleSheet: { create: s => s } };
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : React.isValidElement(tree) ? [tree, ...nodes(tree.props.children)] : [];
 const words = tree => typeof tree === 'string' || typeof tree === 'number' ? String(tree) : Array.isArray(tree)
   ? tree.map(words).join(' ') : words(tree?.props?.children ?? '');
@@ -67,17 +67,21 @@ test('closed or rejected proposals cannot accept a closed request; accepted assi
   assert.equal(assigned.props.disabled, false); assigned.props.onPress(); assert.deepEqual(f.opened, ['request']);
 });
 
-test('pending offer withdrawal stays visible independently of vehicle, KYC, or driver deadline', () => {
-  const load = loader({ react: React, 'react-native': native,
+test('pending offer withdrawal stays visible independently of vehicle, KYC, or driver deadline', t => {
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const load = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
+    './NegotiationPriceInput': { NegotiationPriceInput: 'Negotiation' },
+    '@/hooks/request-detail/useRequestResponseWindow': { useRequestResponseWindow: () => ({ closed: false }) },
     './requestDetailModel': { formatCdfPrice: price => `${price} FC` } });
   const { RequestPendingOfferActions } = load('features/request-detail/RequestPendingOfferActions.tsx');
   let withdrawals = 0;
   const model = { tripRequest: { ...request, offers: [offer] }, userId: 'driver', isScreenActive: true,
     canRespondToRequest: true, canAcceptDirectly: false, isIdentityVerified: false, handleDeclineTripRequest: () => { withdrawals++; } };
-  const tree = RequestPendingOfferActions({ model }); assert.match(words(tree), /Votre prix.*3 000 FC.*pour le trajet/);
+  const render = model => { const child = RequestPendingOfferActions({ model }); return child && hooks.render(() => child.type(child.props)); };
+  const tree = render(model); assert.match(words(tree), /Votre prix.*3 000 FC.*pour le trajet/);
   assert.doesNotMatch(words(tree), /par place|\/ place/);
   nodes(tree).find(n => n.type === 'Button').props.onPress(); assert.equal(withdrawals, 1);
-  const busy = RequestPendingOfferActions({ model: { ...model, isDecliningTripRequest: true } });
+  const busy = render({ ...model, isDecliningTripRequest: true });
   const button = nodes(busy).find(n => n.type === 'Button'); assert.equal(button.props.disabled, true);
   button.props.onPress(); assert.equal(withdrawals, 1);
   for (const patch of [{ userId: 'passenger' }, { userId: 'other' }, { tripRequest: { ...model.tripRequest, selectedDriverId: 'driver', status: 'driver_selected' } }]) {

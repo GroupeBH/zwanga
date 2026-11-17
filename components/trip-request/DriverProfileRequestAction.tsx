@@ -7,7 +7,7 @@ import { profileRequestDriver, routeUuid } from '@/features/trip-request/directD
 import { MapDriverSelection } from '@/features/request-detail/MapDriverSelection';
 import { useGetTripRequestByIdQuery } from '@/store/api/tripRequestApi';
 import { displayReadOptions, useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
-import { getTripRequestDetailHref } from '@/utils/requestNavigation';
+import { getTripRequestCreateHref, getTripRequestDetailHref } from '@/utils/requestNavigation';
 
 export function DriverProfileRequestAction({ driver, active, requestId, markerId, sourceTripId, preferredType }: {
   driver: User; active: boolean; requestId?: string; markerId?: string; sourceTripId?: string; preferredType?: unknown;
@@ -30,7 +30,7 @@ export function DriverProfileRequestAction({ driver, active, requestId, markerId
     <Pressable accessibilityRole="button" disabled={!active} style={s.button} onPress={() => {
       if (!active || opening.current) return;
       opening.current = true;
-      router.push({ pathname: '/request', params: { targetDriverId: choice.id, targetVehicleType: choice.vehicleType } });
+      router.push(getTripRequestCreateHref({ entry: 'home', targetDriverId: choice.id, targetVehicleType: choice.vehicleType }));
     }}><Text style={s.buttonText}>Commander un trajet avec ce conducteur</Text></Pressable>
     {!!routeUuid(sourceTripId) && <Pressable accessibilityRole="button" style={s.link}
       onPress={() => { if (active) router.push({ pathname: '/trip/[id]', params: { id: sourceTripId! } }); }}>
