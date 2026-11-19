@@ -8,6 +8,7 @@ const assets = {
   getTripRequestMarkerImage: gender => `request-${gender ?? 'neutral'}`,
 };
 const load = loader({ './homeMapAssets': assets,
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', StyleSheet: { create: value => value } },
   '@expo/vector-icons': { Ionicons: 'Icon' },
   './HomeDriverStatus': { HomeDriverStatus: 'HomeDriverStatus' } });

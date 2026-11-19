@@ -91,7 +91,7 @@ module.exports = {
         // NSUserTrackingUsageDescription: "Votre identifiant peut être utilisé pour fournir une meilleure expérience publicitaire.",
         ITSAppUsesNonExemptEncryption: false,
         LSApplicationQueriesSchemes: ['whatsapp'],
-        UIBackgroundModes: ['remote-notification', 'fetch', 'location'],
+        UIBackgroundModes: ['remote-notification', 'fetch', 'location', 'audio'],
       },
     },
 

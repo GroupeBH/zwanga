@@ -20,7 +20,13 @@ const load = loader({
   '@/assets/images/map-markers/trip-detail-marker-departure.png': 1,
   '@/assets/images/map-markers/trip-detail-marker-passenger.png': 2,
   '@/assets/images/map-markers/trip-detail-marker-arrival.png': 3,
-  'react-native': { ...native, useWindowDimensions: () => viewport },
+  'react-native': { ...native, useWindowDimensions: () => viewport,
+    Text: ({ style, ...props }) => {
+      const flat = native.StyleSheet.flatten(style) || {};
+      return h(native.Text, { ...props, style: [style, { fontSize: (flat.fontSize || 14) * viewport.fontScale,
+        ...(flat.lineHeight ? { lineHeight: flat.lineHeight * viewport.fontScale } : {}) }] });
+    } },
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: () => null },
   'react-native-safe-area-context': { SafeAreaView: ({ edges: _edges, ...props }) => h(native.View, props) },
   '@expo/vector-icons': { Ionicons: ({ name, size, color }) => h('span',
     { style: { fontSize: size, color, lineHeight: 1 } }, icons[name] ?? '•') },
@@ -43,19 +49,19 @@ const load = loader({
 });
 const { DriverNavigationTopPanel } = load('features/driver-navigation/DriverNavigationTopPanel.tsx');
 const { DriverNavigationControls } = load('features/driver-navigation/DriverNavigationControls.tsx');
+const { DriverNavigationGuidance } = load('features/driver-navigation/DriverNavigationGuidance.tsx');
 const { PassengerNavigationHeader } = load('features/passenger-navigation/PassengerNavigationHeader.tsx');
 const { PassengerNavigationInfoCard } = load('features/passenger-navigation/PassengerNavigationInfoCard.tsx');
-const { getDriverNavigationLayout } = load('features/driver-navigation/driverNavigationLayout.ts');
 const assistance = { enabled: true, openContacts: noop, openContact: noop, openSos: noop };
 const directory = path.resolve(__dirname, '../.expo/active-navigation-preview');
 fs.mkdirSync(directory, { recursive: true });
 const previews = [];
-const cases = [390, 320].flatMap(width => [
-  ...['pickup', 'dropoff', 'cruising', 'pending', 'empty', 'offline'].map(mode => ({ width, actor: 'driver', mode })),
-  { width, actor: 'passenger', mode: 'default' },
-]);
-for (const { width, actor, mode } of cases) {
-  account = actor; viewport = { width, height: width === 320 ? 568 : 760 };
+const cases = [390, 320].flatMap(width => [1, 2].flatMap(fontScale => [
+  ...['pickup', 'dropoff', 'cruising', 'pending', 'empty', 'offline'].map(mode => ({ width, actor: 'driver', mode, fontScale })),
+  { width, actor: 'passenger', mode: 'default', fontScale },
+]));
+for (const { width, actor, mode, fontScale } of cases) {
+  account = actor; viewport = { width, height: width === 320 ? 568 : 760, fontScale };
   const insets = { top: 24, bottom: 24, left: 0, right: 0 };
   const booking = { id: 'preview-booking', tripId: 'preview-trip', passengerId: 'passenger', status: 'accepted',
     passengerName: 'Passager exemple', numberOfSeats: 2, pickedUp: actor === 'passenger' || mode === 'dropoff' || mode === 'cruising',
@@ -85,14 +91,15 @@ for (const { width, actor, mode } of cases) {
   const passenger = { data, state: { isSocketConnected: true, navigateBackSafely: noop },
     presentation: { tripStatus: 'in_transit', displayedRouteDistance: '2,4 km', displayedRouteDuration: '8 min' },
     tripActions, interruption: {}, pickupEstimate: null };
-  const layout = getDriverNavigationLayout(viewport.height, insets.top, insets.bottom);
   const content = actor === 'driver' ? [h(DriverNavigationTopPanel, { key: 'top', model, assistance }),
     h(DriverNavigationControls, { key: 'controls', foundation, passengerPresentation, tripActions, voice: {}, forceRecalculateRoute: noop }),
-    h(native.View, { key: 'guidance', style: { position: 'absolute', left: 12, right: 12, bottom: layout.guidanceBottom,
-      padding: 18, borderRadius: 18, backgroundColor: '#26363D' } }, h(native.Text, { style: { color: 'white' } }, '↗ Dans 200 m, tournez à droite'))]
+    h(DriverNavigationGuidance, { key: 'guidance', insets, status: 'Trajet en cours', connection: mode === 'offline' ? 'Sans connexion' : 'Connecté',
+      duration: '8 min', distance: '2,4 km', active: true, onExit: noop, onSos: noop, assistanceEnabled: true, loading: false, rerouting: false,
+      step: { distance: { text: '200 m' }, html_instructions: 'Tournez à droite sur l’avenue de la Victoire' },
+      getManeuverIcon: () => 'navigate-outline' })]
     : [h(PassengerNavigationHeader, { key: 'header', model: passenger, assistance }),
       h(native.View, { key: 'bottom', style: { position: 'absolute', bottom: 0, left: 0, right: 0 } }, h(PassengerNavigationInfoCard, passenger))];
-  previews.push(renderToStaticMarkup(h('section', { 'data-case': `${actor}-${mode}-${width}` },
+  previews.push(renderToStaticMarkup(h('section', { 'data-case': `${actor}-${mode}-${width}-${fontScale}` },
     h('h2', null, `${actor === 'driver' ? 'Conducteur' : 'Passager'} · ${mode} · ${width} px`),
     h(native.View, { style: { width, height: viewport.height, backgroundColor: '#E8EEE8', overflow: 'hidden' } },
       h('div', { className: 'map-placeholder' }, 'Carte · aperçu sans GPS'), content))));

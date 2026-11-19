@@ -28,14 +28,15 @@ export function HomeRequestScreen({ form, navigation }: Props) {
   if (flow.pickerTarget) {
     const departure = flow.pickerTarget === 'departure';
     return <FormScreen style={s.screen}>
-      {form.isScreenActive && <LocationPickerContent key={flow.pickerTarget} visible mapEnabled={form.hasAppliedRoutePrefill}
+      <LocationPickerContent key={flow.pickerTarget} visible active={form.isScreenActive}
+        mapEnabled={form.hasAppliedRoutePrefill && form.isScreenActive}
         compact={height < 650 || fontScale > 1.2}
         title={departure ? 'D’où partez-vous ?' : 'Où allez-vous ?'}
         contextLabel={departure ? `Arrivée : ${form.arrivalAddress}` : form.departureLocation ? `Départ : ${form.departureAddress}` : undefined}
         confirmLabel={departure ? 'Me chercher ici' : 'Aller ici'}
         initialLocation={departure ? form.departureLocation : form.arrivalLocation}
         focusSearchOnOpen={!departure && !form.arrivalLocation} autoLocateOnOpen={false}
-        onClose={flow.closePicker} onSelect={flow.onSelect} />}
+        onClose={flow.closePicker} onSelect={flow.onSelect} />
     </FormScreen>;
   }
   const ready = Boolean(form.departureLocation && form.arrivalLocation);

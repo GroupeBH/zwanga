@@ -17,7 +17,8 @@ export type ApproachState = {
 export function passengerApproachContext(userId?: string, trip?: Trip | null, booking?: Booking | null) {
   if (!userId || !trip || !booking || trip.status !== 'ongoing' || booking.status !== 'accepted' ||
     booking.passengerId !== userId || booking.tripId !== trip.id || !trip.driverId || trip.driverId === userId ||
-    booking.pickedUp || booking.pickedUpConfirmedByPassenger || booking.droppedOff || booking.droppedOffConfirmedByPassenger) return null;
+    booking.pickedUp || booking.pickedUpAt || booking.pickedUpConfirmedByPassenger || booking.pickedUpConfirmedAt ||
+    booking.droppedOff || booking.droppedOffAt || booking.droppedOffConfirmedByPassenger || booking.droppedOffConfirmedAt) return null;
   const pickup = normalizeTripMapCoordinate(booking.passengerOriginCoordinates?.latitude, booking.passengerOriginCoordinates?.longitude) ??
     normalizeTripMapCoordinate(trip.departure?.lat, trip.departure?.lng);
   if (!pickup) return null;

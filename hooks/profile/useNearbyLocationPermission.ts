@@ -5,6 +5,8 @@ import { getTokenSessionVersion } from '@/services/tokenSession';
 import { ensureNearbyDriverLocation, isNearbyDriverLocationEnabled,
   setNearbyDriverLocationEnabled } from '@/services/nearbyDriverLocation';
 import { requestLocationPermission, waitForLocationPermission as wait } from '@/services/locationPermissionWait';
+import { usePermissionReturn } from '@/hooks/usePermissionReturn';
+import { notifyLocationAccessChanged } from '@/services/locationAccessSignal';
 
 export function useNearbyLocationPermission(options: {
   userId?: string; driver: boolean; active: boolean; available: boolean;
@@ -13,6 +15,7 @@ export function useNearbyLocationPermission(options: {
 }) {
   const [, update] = useState(0);
   const [attempt, retry] = useState(0);
+  usePermissionReturn(() => retry(value => value + 1));
   const version = getTokenSessionVersion();
   const passenger = options.purpose === 'passenger-trip';
   const eligible = options.driver || passenger;
@@ -38,6 +41,7 @@ export function useNearbyLocationPermission(options: {
       // Permission only: never enable driver discovery or start GPS before a ride.
       entry.permission = true; entry.loaded = true; entry.settingsRequired = false;
       entry.consent = false; entry.message = 'Autorisation enregistrée.';
+      notifyLocationAccessChanged();
       return;
     }
     await wait(setNearbyDriverLocationEnabled(entry.userId!, true, entry.version, valid), controller.signal);
@@ -46,6 +50,7 @@ export function useNearbyLocationPermission(options: {
     if (!valid()) return;
     entry.enabled = saved; entry.permission = true; entry.settingsRequired = false; entry.loaded = true;
     entry.consent = false; entry.message = saved ? 'Autorisation enregistrée.' : 'Activation non enregistrée. Réessayez.';
+    if (saved) notifyLocationAccessChanged();
     if (saved && !latest.current.options.deferTrackingToCoordinator && AppState.currentState === 'active') {
       const started = await wait(ensureNearbyDriverLocation(entry.userId!, valid), controller.signal);
       if (valid() && !started) entry.message = 'L’envoi n’a pas encore démarré. Vérifiez le GPS ou réessayez après votre trajet.';
@@ -55,7 +60,7 @@ export function useNearbyLocationPermission(options: {
   const finish = useCallback((controller: AbortController) => {
     if (entry.action !== controller) return;
     controller.abort(); entry.action = null; entry.busy = false;
-    if (current() && entry.checkAfterAction) retry(value => value + 1);
+    if (current() && entry.checkAfterAction) { entry.checkAfterAction = false; retry(value => value + 1); }
     touch();
   }, [current, entry, touch]);
 

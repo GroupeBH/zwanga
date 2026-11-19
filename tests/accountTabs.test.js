@@ -313,8 +313,8 @@ test("Services tab removes only the stack header/back control and keeps standalo
   const tabScroll = nodes(tab).find((node) => node.type === "Scroll");
   const fullScroll = nodes(full).find((node) => node.type === "Scroll");
   assert.equal(
-    tabScroll.props.contentContainerStyle[1].paddingBottom -
-      fullScroll.props.contentContainerStyle[1].paddingBottom,
+    tabScroll.props.contentContainerStyle.at(-1).paddingBottom -
+      fullScroll.props.contentContainerStyle.at(-1).paddingBottom,
     92,
   );
   assert.ok(
@@ -332,13 +332,16 @@ test("Services reads still pause on blur/background and reuse the same catalogue
     calls.push({ endpoint, options });
     return {
       data: endpoint === "catalogue" ? [] : undefined,
-      currentData: { items: [] },
+      currentData: endpoint === 'catalogue' ? [] : { items: [] },
     };
   };
   const { default: ServicesScreen } = loader({
+    '@/store/hooks': { useAppSelector: fn => fn({ zwangaApi: { config: { online: true } } }) },
+    '@/store/selectors': { selectUser: () => ({ id: 'fixture-driver', isDriver: true }) },
+    '@/store/api/assetCreditApi': { useGetAssetCreditsQuery: query('credits'), useGetAssetCreditQuery: query('credit') },
     react: hooks.react,
     "expo-router": { router: { push() {} } },
-    "react-native": native("android"),
+    "react-native": { ...native("android"), useWindowDimensions: () => ({ fontScale: 1 }) },
     "@expo/vector-icons": { Ionicons: "Icon" },
     "@/hooks/useAppIsActive": { useScreenIsActive: () => active },
     "@/features/pro-services/ServiceLayout": {
@@ -360,8 +363,9 @@ test("Services reads still pause on blur/background and reuse the same catalogue
   const render = () =>
     hooks.render(() => ServicesScreen({ embedded: true, bottomOverlay: 0 }));
   render();
-  assert.deepEqual(calls.map(call => call.endpoint).sort(), ["cases", "catalogue", "currentCase"]);
-  assert.ok(calls.every((call) => call.options.skip === false));
+  assert.deepEqual(calls.map(call => call.endpoint).sort(), ["catalogue", "credit", "credits", "currentCase"]);
+  assert.ok(calls.filter(call => call.endpoint !== 'credit').every((call) => call.options.skip === false));
+  assert.equal(calls.find(call => call.endpoint === 'credit').options.skip, true);
   active = false;
   calls.length = 0;
   render();

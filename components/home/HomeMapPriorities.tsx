@@ -1,7 +1,7 @@
 import { HOME_DASHBOARD_COLORS as c } from '@/features/home/homeDashboardTheme';
 import { Ionicons } from '@expo/vector-icons';
 import React, { Children, isValidElement, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 export type HomeMapPriorityLayout = { top: number; bottom: number; compact?: boolean };
 
@@ -13,6 +13,7 @@ type Props = {
 
 /** One mounted priority, outside MapView. Paging never competes with swipe-to-dismiss. */
 export function HomeMapPriorities({ layout, enabled, children }: Props) {
+  const { fontScale } = useWindowDimensions();
   const cards = Children.toArray(children).filter(isValidElement);
   const [selectedKey, setSelectedKey] = useState<React.Key | null>(null);
   const index = Math.max(0, cards.findIndex(card => card.key === selectedKey));
@@ -20,7 +21,8 @@ export function HomeMapPriorities({ layout, enabled, children }: Props) {
   return (
     <View testID="home-map-priorities" pointerEvents="box-none"
       style={[styles.overlay, { top: layout.top, bottom: layout.bottom }, layout.compact && styles.compact]}>
-      <ScrollView key={cards[index].key} style={[styles.cardViewport, cards.length > 1 && styles.pagedViewport]}
+      <ScrollView key={cards[index].key} style={[styles.cardViewport, cards.length > 1 && styles.pagedViewport,
+        fontScale > 1.3 && { maxHeight: '100%' }]}
         showsVerticalScrollIndicator nestedScrollEnabled keyboardShouldPersistTaps="handled">
         {cards[index]}
       {cards.length > 1 && <View style={styles.pager}>

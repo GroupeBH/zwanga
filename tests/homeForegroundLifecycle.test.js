@@ -13,7 +13,7 @@ function controllerFixture() {
   const dispatch = () => {};
   const showDialog = () => {};
   const hookNames = ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity', 'useHomeTripSelection',
-    'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals', 'useHomeMapMarkers'];
+    'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals', 'useHomeMapMarkers', 'useHomeSupportingData'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, {
     [name]: props => {
       received[name] = props;
@@ -23,6 +23,7 @@ function controllerFixture() {
   }]));
   const load = loader({ ...mocks, react: hooks.react,
     '@/features/navigation/appEntryContext': { useAppEntryPending: () => Boolean(state.entryPending) },
+    '@/features/navigation/homePreparationContext': { useHomePreparationAllowed: () => state.preparationAllowed !== false },
     'react-native': { Platform: { OS: 'android' }, useWindowDimensions: () => ({ width: 400, height: 800 }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 20 }) },
     '@react-navigation/native': { useIsFocused: () => state.focused },
@@ -78,6 +79,27 @@ test('leaving the Home route still removes its map and releases the location lif
   app.hooks.unmount();
 });
 
+test('entry prepares display reads under the cover but keeps modal, speech, camera and tracking work paused', () => {
+  const app = controllerFixture(); app.state.entryPending = true;
+  const home = app.render();
+  assert.equal(home.isScreenActive, false); assert.equal(home.isDataActive, true);
+  for (const name of ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity']) {
+    assert.equal(app.received[name].isFocused, true, name);
+  }
+  for (const name of ['useHomeTracking', 'useHomeMap', 'useHomeUserLocation']) {
+    assert.equal(app.received[name].isFocused, false, name);
+  }
+  assert.equal(app.received.useHomeRequestHighlight.enabled, false);
+  assert.equal(app.received.locationOptions.promptOnMount, false);
+  app.state.preparationAllowed = false; app.render();
+  assert.equal(app.received.useHomeTripFeed.isFocused, false, 'phone/auth security gate still blocks preparatory reads');
+  assert.equal(app.received.locationOptions.autoRequest, false, 'no GPS startup behind a security gate');
+  app.state.preparationAllowed = true;
+  app.state.active = false; app.render();
+  assert.equal(app.received.useHomeTripFeed.isFocused, false);
+  app.hooks.unmount();
+});
+
 test('backgrounding cancels pending detail navigation without hiding the Home map', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = controllerFixture();
@@ -103,11 +125,39 @@ function nodes(element) {
   return [element, ...nodes(element.props.children)];
 }
 
+test('Home readiness requires its real layout, core data and native map initialization', () => {
+  const hooks = hookHarness(); let reports = 0;
+  const home = { shouldRenderHomeMap: true, homeDataPrepared: false, isScreenActive: false, onHomeLayout() {} };
+  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestModal'];
+  const { HomeDashboard } = loader({
+    react: hooks.react,
+    ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
+    '@/features/navigation/homePreparationContext': { useReportHomePrepared: () => report },
+    '@/hooks/home/useHomeController': { useHomeController: () => home },
+    '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
+    '@/features/home/HomeScreen.styles': { styles: {} },
+    'react-native': { View: 'View' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
+  })('components/home/HomeDashboard.tsx');
+  const report = () => { reports++; };
+  const context = { isHomeRoleReady: true, isDataActive: true };
+  const render = () => hooks.render(() => HomeDashboard({ context }));
+  let tree = render(); const mapReady = tree.props.children[0].props.onReady;
+  tree.props.onLayout({}); tree = render(); assert.equal(reports, 0);
+  home.homeDataPrepared = true; tree = render(); assert.equal(reports, 0);
+  mapReady(); tree = render(); assert.equal(reports, 1);
+  assert.equal(tree.props.children[0].props.onReady, mapReady, 'stable callback preserves memoized map rendering');
+  home.isScreenActive = true; render(); render(); assert.equal(reports, 1);
+  hooks.unmount();
+});
+
 test('slow, empty, failed and refreshing trip queries keep the same map position in the Home render tree', () => {
+  const hooks = hookHarness();
   const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true, width: 390,
     hasMapPriorities: true, mapPriorityLayout: { top: 100, bottom: 400 }, highlightedDriverRequest: { id: 'nearby' } };
   const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestModal'];
   const load = loader({
+    react: hooks.react,
+    '@/features/navigation/homePreparationContext': { useReportHomePrepared: () => null },
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
     '@/hooks/home/useHomeController': { useHomeController: () => home },
@@ -116,11 +166,13 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     'react-native': { View: 'View' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
   });
   const { HomeDashboard } = load('components/home/HomeDashboard.tsx');
-  const render = () => HomeDashboard({ context: {} });
+  const render = () => hooks.render(() => HomeDashboard({ context: {} }));
   for (const update of [{}, { showInitialHomeLoader: false, sheetLoading: false },
     { sheetLoading: true }, { sheetLoading: false, sheetError: true }, { sheetError: false }]) {
     Object.assign(home, update);
     const tree = render(), rendered = nodes(tree);
+    const keys = tree.props.children.filter(node => node?.key != null).map(node => node.key);
+    assert.equal(new Set(keys).size, keys.length, 'sibling keys distinguish components, even without an account');
     assert.equal(tree.type, 'SafeArea');
     assert.equal(tree.props.children[0].type, 'HomeMap');
     assert.equal(rendered.filter(node => node.type === 'HomeMap').length, 1);
@@ -140,6 +192,11 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     assert.equal(nodes(render()).some(node => node.type === 'HomeActivityCards'), false);
   }
   Object.assign(home, { hasMapPriorities: false, shouldRenderHomeMap: true });
+  home.currentUser = { id: 'first' };
+  const beforeKeys = render().props.children.filter(node => node?.key != null).map(node => node.key);
+  home.currentUser = { id: 'second' };
+  const afterKeys = render().props.children.filter(node => node?.key != null).map(node => node.key);
+  assert.equal(beforeKeys.some(key => afterKeys.includes(key)), false, 'a new account resets all scoped children');
   for (const driverCategory of ['transport', 'private', null]) {
     home.currentUser = { id: 'driver-test', driverCategory };
     const rendered = nodes(render());
@@ -164,4 +221,6 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
   assert.equal(render().props.children[0].type, 'HomeMap');
   assert.equal(restored.some(node => node.type === 'HomeOngoingTripSheet'), false);
   assert.equal(restored.some(node => node.type === 'HomeTripsSheet'), true);
+  assert.equal(restored.some(node => node.type === 'UpdatePrompt'), false, 'no optional store modal on Home');
+  hooks.unmount();
 });

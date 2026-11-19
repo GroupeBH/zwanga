@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as Location from 'expo-location';
 import { Keyboard } from 'react-native';
 import { useGeocodeMutation, useReverseGeocodeMutation, type LandmarkPlace } from '@/store/api/googleMapsApi';
 import { getGoogleMapsPlaceDetails, searchGoogleMapsPlaces, type GoogleMapsSearchSuggestion } from '@/utils/googleMapsPlaces';
@@ -9,6 +8,9 @@ import { useNavigationRequestGuard } from '@/hooks/navigation/useNavigationReque
 import { DEFAULT_PICKER_LOCATION, getPickerCoordinate, pointSelection, readableSelection, samePickerPoint, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
 import { readableLocation, type ReadableLocation } from '@/utils/readableLocation';
 import { requestCurrentLocation } from '@/services/currentLocationRequest';
+import { checkForegroundLocationAccess } from '@/services/foregroundLocationAccess';
+import { locationAccessMessage } from '@/features/location-picker/locationAccessMessage';
+import { useLocationRecovery } from './useLocationRecovery';
 
 type AddressLabel = ReadableLocation & Pick<MapLocationSelection, 'addressComponents'>;
 const addresses = new BoundedCache<AddressLabel>(40);
@@ -16,10 +18,10 @@ const EMPTY_ROUTE: PickerCoordinate[] = [];
 const ignoreMutationState = () => ({});
 
 /** Mounted for one modal session. Only validated selections escape to the parent form. */
-export function useLocationPicker({ initialLocation, initialSearchQuery = '', routeCoordinates, autoLocateOnOpen = false, onSelect, onClose }: {
+export function useLocationPicker({ initialLocation, initialSearchQuery = '', routeCoordinates, autoLocateOnOpen = false, active = true, onSelect, onClose }: {
   initialLocation?: MapLocationSelection | null; initialSearchQuery?: string;
-  routeCoordinates?: PickerCoordinate[]; autoLocateOnOpen?: boolean;
-  onSelect: (selection: MapLocationSelection) => void; onClose: () => void;
+  routeCoordinates?: PickerCoordinate[]; autoLocateOnOpen?: boolean; active?: boolean;
+  onSelect: (selection: MapLocationSelection) => void | boolean; onClose: () => void;
 }) {
   const route = useMemo(() => (routeCoordinates ?? EMPTY_ROUTE)
     .map(point => getPickerCoordinate(point.latitude, point.longitude))
@@ -54,6 +56,9 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
   const panningRef = useRef(false);
   const touchedRef = useRef(false);
   const searchAbortRef = useRef<AbortController | null>(null);
+  const locateAgain = useRef<() => void>(() => {});
+  const recovery = useLocationRecovery(() => locateAgain.current(), active);
+  const { clear: clearRecovery, setIssue } = recovery;
   const { begin, cancel } = useNavigationRequestGuard(true, 'picker-selection');
   const [geocode] = useGeocodeMutation({ selectFromResult: ignoreMutationState });
   const [reverseGeocode] = useReverseGeocodeMutation({ selectFromResult: ignoreMutationState });
@@ -63,11 +68,20 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     return () => { activeRef.current = false; };
   }, []);
 
+  // Keep the draft while the native map is suspended. Reopening must center on
+  // the user's last pan/tap, not the camera target from before that gesture.
+  useEffect(() => {
+    if (active) return;
+    setCameraTarget({ ...selectionRef.current });
+    panningRef.current = false; setPanning(false);
+  }, [active]);
+
   const closeSearch = useCallback(() => { setSearchOpen(false); Keyboard.dismiss(); }, []);
   const choose = useCallback((value: MapLocationSelection, lookupAddress = false, moveCamera = true) => {
     if (!activeRef.current) return;
     const point = normalize(value);
     if (!point) { setNotice('Choisissez un lieu situé en République démocratique du Congo.'); return; }
+    clearRecovery();
     cancel();
     touchedRef.current = true;
     const changedBySnap = !samePickerPoint(point, getPickerCoordinate(value.latitude, value.longitude)!);
@@ -82,7 +96,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     panningRef.current = false;
     if (moveCamera || changedBySnap) setCameraTarget(point);
     closeSearch();
-  }, [cancel, closeSearch, normalize]);
+  }, [cancel, clearRecovery, closeSearch, normalize]);
 
   // Search depends on what was typed, never on map movement or a returned address.
   useEffect(() => {
@@ -201,24 +215,22 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
   }, [begin, choose, closeSearch, geocode]);
 
   const locate = useCallback(async () => {
+    if (!activeRef.current || !active) return;
     const token = begin('gps');
     if (!token) return;
     setLocating(true);
     setResolving(false);
     setNotice(null);
     const controller = new AbortController();
-    const timeout = setTimeout(() => {
-      if (!token.isCurrent()) return;
-      cancel();
-      setLocating(false);
-      setNotice('Votre position tarde à arriver. Vous pouvez choisir un point sur la carte.');
-    }, 15_000);
-    token.attach({ abort: () => { clearTimeout(timeout); controller.abort(); } });
+    token.attach({ abort: () => controller.abort() });
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      // Bound native reads, not the user's time in a permission dialog. GPS
+      // itself already has a bounded, cancellable watch in requestCurrentLocation.
+      const issue = await checkForegroundLocationAccess(controller.signal, token.isCurrent, true);
       if (!token.isCurrent()) return;
-      if (permission.status !== 'granted') {
-        setNotice('Localisation non autorisée. Recherchez un lieu ou choisissez sur la carte.');
+      setIssue(issue);
+      if (issue) {
+        setNotice(locationAccessMessage(issue));
         return;
       }
       const position = await requestCurrentLocation(true, controller.signal, {
@@ -232,11 +244,11 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     } catch {
       if (token.isCurrent()) setNotice('Position indisponible. Vérifiez le GPS ou choisissez sur la carte.');
     } finally {
-      clearTimeout(timeout);
       if (token.isCurrent()) setLocating(false);
       token.finish();
     }
-  }, [begin, cancel, choose]);
+  }, [active, begin, choose, setIssue]);
+  locateAgain.current = () => { void locate(); };
 
   const initialAutoLocate = useRef(autoLocateOnOpen && !initialLocation);
   useEffect(() => {
@@ -255,6 +267,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
 
   const startPanning = useCallback(() => {
     if (panningRef.current) return;
+    clearRecovery();
     touchedRef.current = true;
     cancel();
     setLocating(false);
@@ -262,7 +275,7 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
     panningRef.current = true;
     setPanning(true);
     closeSearch();
-  }, [cancel, closeSearch]);
+  }, [cancel, clearRecovery, closeSearch]);
   const settleMap = useCallback((point: PickerCoordinate) => {
     panningRef.current = false;
     setPanning(false);
@@ -273,30 +286,31 @@ export function useLocationPicker({ initialLocation, initialSearchQuery = '', ro
 
   const close = useCallback(() => {
     activeRef.current = false;
+    clearRecovery();
     searchAbortRef.current?.abort();
     cancel();
     closeSearch();
     onClose();
-  }, [cancel, closeSearch, onClose]);
+  }, [cancel, clearRecovery, closeSearch, onClose]);
   const confirm = useCallback(() => {
-    if (committedRef.current || !activeRef.current || panningRef.current || resolving || locating || searchOpen) return;
+    if (!active || committedRef.current || !activeRef.current || panningRef.current || resolving || locating || searchOpen) return;
     const point = normalize(selectionRef.current);
     if (!point) return;
     committedRef.current = true;
     try {
-      onSelect({ ...selectionRef.current, ...point });
+      if (onSelect({ ...selectionRef.current, ...point }) === false) { committedRef.current = false; return; }
       close();
     } catch {
       committedRef.current = false;
       setNotice('Impossible de valider ce lieu. Réessayez.');
     }
-  }, [close, locating, normalize, onSelect, resolving, searchOpen]);
+  }, [active, close, locating, normalize, onSelect, resolving, searchOpen]);
 
   return {
     selection, cameraTarget, route, query, searchOpen, suggestions, searching, searchNotice,
-    resolving, locating, panning, addressLoading, notice,
-    setQuery: (text: string) => { touchedRef.current = true; cancel(); setLocating(false); setResolving(false); setQuery(text); setSearchOpen(true); },
-    openSearch: () => { touchedRef.current = true; cancel(); setLocating(false); setResolving(false); setSearchOpen(true); }, closeSearch, choose, locate, resolvePlace,
+    resolving, locating, panning, addressLoading, notice, recovery,
+    setQuery: (text: string) => { clearRecovery(); touchedRef.current = true; cancel(); setLocating(false); setResolving(false); setQuery(text); setSearchOpen(true); },
+    openSearch: () => { clearRecovery(); touchedRef.current = true; cancel(); setLocating(false); setResolving(false); setSearchOpen(true); }, closeSearch, choose, locate, resolvePlace,
     selectLandmark: (landmark: LandmarkPlace) => resolvePlace(landmark.query || landmark.name),
     startPanning, settleMap, confirm, close,
   };

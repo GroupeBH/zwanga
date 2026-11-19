@@ -35,12 +35,12 @@ export function DriverNavigationControls({
   const closeReceipts = useCallback(() => setReceiptsTrip(null), []);
   useEffect(closeReceipts, [isScreenActive, tripId, closeReceipts]);
   const receiptsVisible = isScreenActive && receiptsTrip === tripId && completed.length > 0;
-  const { width, height } = useWindowDimensions();
-  const layout = getDriverNavigationLayout(height, foundation.data.insets.top, foundation.data.insets.bottom);
-  const controlsWidth = Math.min(340, width - Math.max(foundation.data.insets.left, 16) - Math.max(foundation.data.insets.right, 16));
-  const commandSize = { width: (controlsWidth - 24 - 96) / 3, minHeight: layout.controlsHeight, height: 'auto' as const, borderRadius: 16 };
-  const menuWidth = Math.min(240, width - foundation.data.insets.left - foundation.data.insets.right - 96);
-  const menuMaxHeight = height * 0.35;
+  const { width, height, fontScale } = useWindowDimensions();
+  const layout = getDriverNavigationLayout(height, foundation.data.insets.top, foundation.data.insets.bottom, fontScale);
+  const controlsWidth = width - Math.max(foundation.data.insets.left, 12) - Math.max(foundation.data.insets.right, 12);
+  const commandSize = { width: (controlsWidth - 8) / 2, minHeight: layout.controlsHeight, height: 'auto' as const, borderRadius: 18 };
+  const menuWidth = Math.min(320, controlsWidth);
+  const menuMaxHeight = Math.max(80, height - layout.controlsBottom - layout.menuBottom - layout.guidanceTop - 12);
   useEffect(() => { setOptionsVisible(false); }, [isScreenActive, tripId]);
   const recenterOnMyPosition = () => {
     if (!foundation.data.isScreenActive) return;
@@ -59,10 +59,13 @@ export function DriverNavigationControls({
   };
   const pausing = foundation.data.isPausingTrip || foundation.data.isRequestingDriverInterruption || foundation.data.isCancellingDriverInterruption;
   const interruptionPending = Boolean(foundation.passengers.activeDriverInterruptionRequest);
-  const options: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; action: () => void; disabled?: boolean; selected?: boolean; busy?: boolean }[] = [
+  const options: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; action: () => void; disabled?: boolean; selected?: boolean; busy?: boolean; danger?: boolean; hint?: string }[] = [
     { label: foundation.mapState.isVoiceGuidanceEnabled ? 'Couper le son' : 'Activer le son',
       icon: foundation.mapState.isVoiceGuidanceEnabled ? 'volume-high' : 'volume-mute', action: voice.toggleVoiceGuidance },
     { label: 'Les arrêts', icon: 'people-outline', action: () => foundation.mapState.setPassengersPanelVisible(true) },
+    { label: 'Partager le trajet', icon: 'share-social-outline', disabled: foundation.data.isCreatingTripShareLink,
+      busy: foundation.data.isCreatingTripShareLink, hint: 'Envoyer le lien de ce trajet à un proche.',
+      action: () => { if (!foundation.data.isCreatingTripShareLink) void tripActions.handleShareTrip(); } },
     { label: 'Actualiser la route', icon: 'refresh', disabled: foundation.mapState.isLoadingRoute, busy: foundation.mapState.isLoadingRoute,
       action: () => { if (!foundation.mapState.isLoadingRoute && foundation.data.isScreenActive) forceRecalculateRoute(); } },
     { label: 'Modifier le trajet', icon: 'create-outline', action: tripActions.handleEditTripFromNavigation },
@@ -74,10 +77,18 @@ export function DriverNavigationControls({
       selected: foundation.mapState.routeSectionFocus === section,
       action: () => foundation.mapState.setRouteSectionFocus(section),
     })) : []),
+    { label: interruptionPending ? 'Voir la demande d’arrêt' : 'Arrêter le trajet', icon: 'stop-circle-outline',
+      disabled: pausing, busy: pausing, danger: true,
+      hint: interruptionPending ? 'Voir la réponse des passagers.' : 'Une confirmation sera demandée avant de mettre en pause ou demander un arrêt.',
+      action: () => {
+        if (!foundation.data.isPausingTrip && !foundation.data.isRequestingDriverInterruption && !foundation.data.isCancellingDriverInterruption) {
+          tripActions.handlePauseTripFromNavigation();
+        }
+      } },
   ];
   return (
     <View pointerEvents="box-none" style={[styles.floatingButtons, {
-      right: Math.max(foundation.data.insets.right, 16), alignItems: 'flex-end', justifyContent: 'flex-end',
+      right: Math.max(foundation.data.insets.right, 12), alignItems: 'flex-end', justifyContent: 'flex-end',
       // Keep the popup within its parent's touch bounds, especially on Android.
       flexDirection: 'row', gap: 8, bottom: layout.controlsBottom, zIndex: 45,
       width: optionsVisible ? Math.max(menuWidth, controlsWidth) : controlsWidth,
@@ -87,58 +98,25 @@ export function DriverNavigationControls({
         <ScrollView bounces={false} contentContainerStyle={menuStyles.content}>
           {options.map(option => <TouchableOpacity key={option.label} style={[menuStyles.option, option.disabled && styles.floatingButtonDisabled]}
             disabled={Boolean(option.disabled || !isScreenActive)} onPress={() => { if (!foundation.data.isScreenActive || option.disabled) return; setOptionsVisible(false); option.action(); }}
-            accessibilityRole="button" accessibilityLabel={option.label} accessibilityState={{ selected: option.selected, disabled: Boolean(option.disabled || !isScreenActive), busy: option.busy }}>
-            {option.busy ? <ActivityIndicator size="small" color={Colors.primaryDark} /> : <Ionicons name={option.icon} size={21} color={Colors.gray[700]} />}
-            <Text style={menuStyles.label}>{option.label}</Text>
+            accessibilityRole="button" accessibilityLabel={option.label} accessibilityHint={option.hint} accessibilityState={{ selected: option.selected, disabled: Boolean(option.disabled || !isScreenActive), busy: option.busy }}>
+            {option.busy ? <ActivityIndicator size="small" color={Colors.primaryDark} /> : <Ionicons name={option.icon} size={21} color={option.danger ? Colors.dangerDark : Colors.gray[700]} />}
+            <Text style={[menuStyles.label, option.danger && menuStyles.dangerLabel]}>{option.label}</Text>
             {option.selected && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
           </TouchableOpacity>)}
         </ScrollView>
       </View>}
 
-      <TouchableOpacity style={[styles.floatingButton, commandSize]} onPress={recenterOnMyPosition}
+      <TouchableOpacity style={[menuStyles.command, commandSize]} onPress={recenterOnMyPosition}
         disabled={!isScreenActive} accessibilityRole="button" accessibilityLabel="Ma position">
         <Ionicons name="locate" size={22} color={Colors.primaryDark} />
         <Text style={menuStyles.caption}>Ma position</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={[styles.floatingButton, commandSize, foundation.data.isCreatingTripShareLink && styles.floatingButtonDisabled]}
-        accessibilityRole="button" accessibilityLabel="Partager le trajet"
-        accessibilityHint="Envoyer le lien de ce trajet à un proche."
-        disabled={Boolean(!isScreenActive || foundation.data.isCreatingTripShareLink)}
-        accessibilityState={{ disabled: Boolean(!isScreenActive || foundation.data.isCreatingTripShareLink), busy: Boolean(foundation.data.isCreatingTripShareLink) }}
-        onPress={() => {
-          if (!foundation.data.isScreenActive || foundation.data.isCreatingTripShareLink) return;
-          setOptionsVisible(false);
-          void tripActions.handleShareTrip();
-        }}>
-        {foundation.data.isCreatingTripShareLink ? <ActivityIndicator size="small" color={Colors.primaryDark} />
-          : <Ionicons name="share-social-outline" size={22} color={Colors.primaryDark} />}
-        <Text style={menuStyles.caption}>Partager le trajet</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.floatingButton, commandSize, menuStyles.stopButton, (pausing || !isScreenActive) && styles.floatingButtonDisabled]}
-        onPress={() => {
-          if (!foundation.data.isScreenActive || foundation.data.isPausingTrip
-            || foundation.data.isRequestingDriverInterruption || foundation.data.isCancellingDriverInterruption) return;
-          setOptionsVisible(false);
-          tripActions.handlePauseTripFromNavigation();
-        }} disabled={Boolean(pausing || !isScreenActive)}
-        accessibilityRole="button"
-        accessibilityLabel={interruptionPending ? 'Voir la demande d’arrêt' : 'Arrêter le trajet'}
-        accessibilityHint={interruptionPending ? 'Voir la réponse des passagers.' : 'Une confirmation sera demandée avant de mettre en pause ou demander un arrêt.'}
-        accessibilityState={{ disabled: Boolean(pausing || !isScreenActive), busy: Boolean(pausing) }}
-      >
-        {pausing ? <ActivityIndicator size="small" color={Colors.white} />
-          : <Ionicons name={interruptionPending ? 'hourglass-outline' : 'stop-circle-outline'} size={22} color={Colors.white} />}
-        <Text style={[menuStyles.caption, menuStyles.stopLabel]}>{interruptionPending ? 'Arrêt demandé' : 'Arrêter le trajet'}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[styles.floatingButton, commandSize]} onPress={() => { if (foundation.data.isScreenActive) setOptionsVisible(value => !value); }} disabled={!isScreenActive}
+      <TouchableOpacity style={[menuStyles.command, commandSize]} onPress={() => { if (foundation.data.isScreenActive) setOptionsVisible(value => !value); }} disabled={!isScreenActive}
         accessibilityRole="button" accessibilityLabel={optionsVisible ? 'Fermer les options' : 'Options de navigation'}
         accessibilityState={{ expanded: optionsVisible }}>
         <Ionicons name={optionsVisible ? 'close' : 'ellipsis-horizontal'} size={22} color={Colors.primary} />
-        <Text style={menuStyles.caption}>Plus</Text>
+        <Text style={menuStyles.caption}>{optionsVisible ? 'Fermer' : 'Plus'}</Text>
       </TouchableOpacity>
 
       <RideModal inApp visible={receiptsVisible} transparent animationType="none" onRequestClose={closeReceipts}>
@@ -154,7 +132,7 @@ const menuStyles = StyleSheet.create({
   content: { padding: 6 },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, minHeight: 48 },
   label: { color: Colors.gray[800], fontSize: 13, fontWeight: '600', flex: 1 },
-  caption: { color: Colors.gray[800], fontSize: 12, fontWeight: '600', textAlign: 'center', flexShrink: 1 },
-  stopButton: { width: 96, paddingHorizontal: 6, paddingVertical: 6, backgroundColor: Colors.dangerDark },
-  stopLabel: { color: Colors.white, fontWeight: '700' },
+  caption: { color: Colors.gray[800], fontSize: 13, fontWeight: '600', flexShrink: 1 },
+  command: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.white, gap: 8, paddingHorizontal: 8, paddingVertical: 8 },
+  dangerLabel: { color: Colors.dangerDark },
 });

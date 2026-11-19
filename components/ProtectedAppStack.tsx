@@ -64,10 +64,12 @@ export function ProtectedAppStack() {
         <Stack.Screen name="services/[id]" />
         <Stack.Screen name="services/edit" />
         <Stack.Screen name="services/index" />
+        <Stack.Screen name="services/history" />
         <Stack.Screen name="services/credit/index" />
         <Stack.Screen name="services/credit/repayments" />
         <Stack.Screen name="services/credit/[id]" />
         <Stack.Screen name="services/fleet" />
+        <Stack.Screen name="services/fleet-applications" />
         <Stack.Screen name="services/fleet-payments/[id]" />
         <Stack.Screen name="services/new" />
         <Stack.Screen name="settings" />

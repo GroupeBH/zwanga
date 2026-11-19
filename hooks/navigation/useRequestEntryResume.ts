@@ -19,6 +19,8 @@ import { canAutoOpenBookingFromPath, isPendingBookingEntryListed, selectBookingE
 interface Options {
   userId?: string; active: boolean; online: boolean; ready: boolean; path: string; overlayBusy: boolean;
   since?: number;
+  /** Passive history stays on Home; only incoming orders/bookings interrupt entry. */
+  resumePreviousRequests?: boolean;
   ridePending: boolean; hasOngoingRide: boolean; driver: boolean; profileReady: boolean;
   requests: { data?: TripRequest[]; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number };
   trips: { data?: Trip[]; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number };
@@ -109,15 +111,16 @@ export function useRequestEntryResume(options: Options) {
     // Wait for fresh publications before deciding that none starts earlier.
     // Once this entry has settled, later normal activity must not hijack Home.
     if (!booking && !alert && !dispatchId && !entry.checked && driverTrips === undefined) return;
-    const accepted = !booking && !alert && !dispatchId && options.driver && !entry.checked
+    const resumePrevious = options.resumePreviousRequests !== false;
+    const accepted = resumePrevious && !booking && !alert && !dispatchId && options.driver && !entry.checked
       ? selectAcceptedRequestTrip(driverTrips ?? [], userId, entry.rejected) : undefined;
     const requestsReady = isEntryActivityListReady('requests', options.requests, {
       userId, since: entry.since, summary, summaryTime: options.activity.fulfilledTimeStamp, reconciled: options.reconciled,
     });
-    if (!booking && !accepted && !alert && !dispatchId && !requestsReady) return;
-    const request = !booking && !accepted && !alert && !dispatchId && summary?.requests?.count !== 0
+    if (resumePrevious && !booking && !accepted && !alert && !dispatchId && !requestsReady) return;
+    const request = resumePrevious && !booking && !accepted && !alert && !dispatchId && summary?.requests?.count !== 0
       ? selectWaitingRequest(options.requests.data ?? [], userId, entry.rejected) : undefined;
-    const offerFallback = !booking && !accepted && !alert && !dispatchId && !request &&
+    const offerFallback = resumePrevious && !booking && !accepted && !alert && !dispatchId && !request &&
       options.driver && !entry.checked && options.readOffers && !entry.rejected.has('driver-offers');
     if (!booking && !accepted && !alert && !dispatchId && !request && !offerFallback) {
       // A native alert can finish restoring after the account summary. Keep listening

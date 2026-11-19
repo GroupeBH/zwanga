@@ -11,7 +11,7 @@ export const styles = StyleSheet.create({
   },
   locationLegend: {
     position: 'absolute', left: 16, bottom: 68, maxWidth: '72%',
-    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14,
     backgroundColor: Colors.white,
   },

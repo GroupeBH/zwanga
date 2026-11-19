@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { apiDestination } from './apiDestination';
 
 /**
  * Configuration des variables d'environnement
@@ -17,8 +18,6 @@ interface EnvConfig {
   chottuLinkDomain: string;
 }
 
-const DEFAULT_API_URL = 'https://compute-api.zwanga-app.com/api/v1';
-
 /**
  * Récupère la configuration depuis les variables d'environnement
  */
@@ -27,14 +26,12 @@ function getEnvConfig(): EnvConfig {
   const extra = Constants.expoConfig?.extra || {};
   
   // Récupérer depuis process.env (fallback pour développement)
-  const apiUrl = 
-    extra.EXPO_PUBLIC_API_URL || 
-    process.env.EXPO_PUBLIC_API_URL || 
-    DEFAULT_API_URL;
+  const apiUrl = apiDestination(extra.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_URL,
+    __DEV__, extra.EXPO_PUBLIC_ENV || process.env.EXPO_PUBLIC_ENV);
 
   if (__DEV__ && !extra.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_URL) {
     console.warn(
-      `[env.ts] EXPO_PUBLIC_API_URL absent. Utilisation du fallback: ${DEFAULT_API_URL}`,
+      '[env.ts] EXPO_PUBLIC_API_URL absent. Configurez explicitement le backend de test ; aucun repli vers la production.',
     );
   }
   

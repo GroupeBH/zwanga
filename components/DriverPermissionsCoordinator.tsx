@@ -25,7 +25,8 @@ import { DriverFullScreenApproval } from '@/components/permissions/DriverFullScr
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
-const quietRoutes = new Set(['/', '/(tabs)', '/trips', '/recurring-trips']);
+// Home stays quiet; permissions remain actionable in Profile and location buttons.
+const quietRoutes = new Set(['/trips', '/recurring-trips']);
 
 export function DriverPermissionsCoordinator() {
   const authenticated = useAppSelector(selectIsAuthenticated);

@@ -291,16 +291,18 @@ test('profile reads keep server data in RTK Query and skip driver-only refreshes
     '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans', []), useGetPremiumOverviewQuery: query('premium') },
     '@/store/api/reviewApi': { useGetReviewPageQuery: query('reviews', { data: [], total: 0 }), useGetAverageRatingQuery: query('rating', {}) },
-    '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests', []), useGetMyDriverOffersQuery: query('offers', []) },
+    '@/store/api/tripRequestApi': { useGetMyRequestStatsQuery: query('requestStats', { totalRequests: 800, activeRequests: 2, requestsWithOffers: 1, completedRequests: 10, pendingOffersCount: 0 }) },
   });
   const { useProfileData } = app.load('hooks/profile/useProfileData.ts');
   const profile = app.hooks.render(useProfileData);
   assert.equal(profile.currentUser, user);
   assert.equal(profile.reviewAverage, 4);
+  assert.equal(profile.tripRequestsStats.totalRequests, 800);
+  assert.equal(profile.tripRequestsCount, 2);
   for (const name of ['premium', 'payments', 'settlements']) assert.equal(calls.find(call => call.name === name).options.skip, true);
   assert.equal(new Set(calls.map(call => call.name)).size, calls.length);
   await profile.handleRefresh();
-  assert.deepEqual(refreshes.sort(), ['kyc', 'profile', 'referrals', 'vehicles']);
+  assert.deepEqual(refreshes.sort(), ['kyc', 'profile', 'referrals', 'requestStats', 'vehicles']);
   app.hooks.unmount();
 });
 

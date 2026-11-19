@@ -14,23 +14,29 @@ const glyphs = require('@expo/vector-icons/build/vendor/react-native-vector-icon
 const font = fs.readFileSync(path.resolve(__dirname, '../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf')).toString('base64');
 
 function renderFixture({ textScale = 1, fleetOpen = false, error = false, embedded = true } = {}) {
+  const credit = { id: 'fixture-credit', label: 'Téléphone Android', status: 'active', principalMinor: '25000000', paidMinor: '10000000',
+    installments: Array.from({ length: 10 }, (_, index) => ({ ordinal: index + 1, amountMinor: 2500000, remainingMinor: index < 4 ? 0 : 2500000, dueAt: `2026-12-${String(index + 10).padStart(2, '0')}T12:00:00Z` })) };
   const native = { ...web, Text: ({ style, ...props }) => {
     const flat = web.StyleSheet.flatten(style) || {};
     return h(web.Text, { ...props, style: [style, {
       ...(flat.fontSize ? { fontSize: flat.fontSize * textScale } : {}),
       ...(flat.lineHeight ? { lineHeight: flat.lineHeight * textScale } : {}),
     }] });
-  } };
+  }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: textScale }) };
   const { default: ServicesScreen } = loader({
     'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: ({ edges: _edges, style, ...props }) => h(web.View, { ...props, style: [style, { paddingTop: 24, paddingBottom: embedded ? 0 : 24 }] }) },
     'expo-router': { router: {}, Stack: { Screen: () => null } },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
+    '@/store/hooks': { useAppSelector: fn => fn({ zwangaApi: { config: { online: true } } }) },
+    '@/store/selectors': { selectUser: () => ({ id: 'fixture-driver', isDriver: true }) },
+    '@/store/api/assetCreditApi': { useGetAssetCreditsQuery: () => ({ currentData: error ? undefined : { items: fleetOpen ? [credit] : [] }, isError: error, refetch() {} }),
+      useGetAssetCreditQuery: () => ({ currentData: fleetOpen ? credit : undefined }) },
     '@/store/api/proServicesApi': {
       useGetProOfferingsQuery: () => ({ isError: error, error: { data: { message: 'Connexion indisponible. Réessayez.' } },
         currentData: error ? undefined : ['documents', 'fleet', 'vehicles', 'equipment'].map(code => ({ code, availability: code === 'documents' || (code === 'fleet' && fleetOpen) ? 'open' : 'coming_soon' })), refetch() {} }),
       useGetMyProCasesQuery: () => ({ currentData: { items: [] }, refetch() {} }),
-      useGetCurrentDocumentCaseQuery: () => ({ currentData: { request: null } }),
+      useGetCurrentDocumentCaseQuery: () => ({ currentData: { request: fleetOpen ? { id: 'fixture-doc', status: 'needs_info' } : null } }),
     },
     '@expo/vector-icons': { Ionicons: ({ name, size, color }) => h('span', { 'aria-hidden': true,
       style: { fontFamily: 'Ionicons', fontSize: size, color, flexShrink: 0 } }, String.fromCodePoint(glyphs[name])) },
@@ -54,9 +60,9 @@ async function run() {
   const reports = [];
   const scenarios = [
     { name: 'standard', width: 390, height: 844 },
-    { name: 'fleet-open', width: 390, height: 844, fleetOpen: true },
+    { name: 'active-credit', width: 390, height: 844, fleetOpen: true },
     { name: 'small', width: 320, height: 568 },
-    { name: 'large-text', width: 320, height: 568, textScale: 1.6 },
+    { name: 'large-text', width: 320, height: 568, textScale: 2, fleetOpen: true },
     { name: 'offline', width: 390, height: 844, error: true },
     { name: 'standalone', width: 390, height: 844, embedded: false },
   ];
@@ -72,7 +78,7 @@ async function run() {
       let report;
       for (let attempt = 0; attempt < 100; attempt++) {
         const result = await send('Runtime.evaluate', { returnByValue: true, awaitPromise: true, expression: `(async () => {
-          const directory = document.querySelector('[data-testid="pro-business-services"]'); if(!directory) return null;
+          const directory = document.querySelector('[data-testid="services-dashboard"]'); if(!directory) return null;
           await document.fonts.ready;
           const scroll = [...document.querySelectorAll('div')].find(el => ['auto','scroll'].includes(getComputedStyle(el).overflowY));
           const frame = scroll.getBoundingClientRect();
@@ -88,12 +94,11 @@ async function run() {
           });
           const overflow = Math.max(document.documentElement.scrollWidth-innerWidth, scroll.scrollWidth-scroll.clientWidth,
             ...services.map(el=>el.scrollWidth-el.clientWidth));
-          const noPreviewButtons = ['delivery','schools','health'].every(code=>{
-            const row=document.querySelector('[data-testid="pro-service-'+code+'"]');
-            return row.getAttribute('role')!=='button'&&!row.querySelector('[role="button"]');
-          });
+          const soon=document.querySelector('[data-testid="services-coming-soon"]');
+          const noPreviewButtons = soon.getAttribute('role')!=='button'&&!soon.querySelector('[role="button"]');
+          const scrollNeeded = scroll.scrollHeight>scroll.clientHeight+1;
           scroll.scrollTop=0;
-          return {serviceCount:services.length, initiallyVisible, actionsReachable, horizontalOverflow:overflow, noPreviewButtons};
+          return {serviceCount:services.length, initiallyVisible, actionsReachable, horizontalOverflow:overflow, noPreviewButtons, scrollNeeded};
         })()` });
         if (result.result?.value) { report = result.result.value; break; }
         await new Promise(resolve => setTimeout(resolve, 50));
@@ -103,7 +108,8 @@ async function run() {
       reports.push({ ...scenario, ...report });
       const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       fs.writeFileSync(path.join(directory, `${scenario.name}.png`), Buffer.from(screenshot.data, 'base64'));
-      if (report.serviceCount !== 6 || !report.actionsReachable || !report.noPreviewButtons || report.horizontalOverflow > 1) throw Error(`Clipped controls: ${scenario.name}`);
+      if (!report.actionsReachable || !report.noPreviewButtons || report.horizontalOverflow > 1) throw Error(`Clipped controls: ${scenario.name}`);
+      if (['standard', 'active-credit'].includes(scenario.name) && report.scrollNeeded) throw Error(`Unexpected scroll: ${scenario.name}`);
       await session.send('Target.closeTarget', { targetId });
     }
   } finally { await session.close(); }

@@ -14,10 +14,11 @@ function text(node) {
 }
 function environment() {
   const hooks = hookHarness(), routes = [], queries = [];
-  const state = { active: true, online: true, favorites: [], recent: [], version: 0 };
+  const state = { active: true, focused: true, online: true, favorites: [], recent: [], version: 0 };
   const load = loader({ react: { ...React, ...hooks.react },
     'react-native': { View: 'View', Text: 'Text', TouchableOpacity: 'Button', StyleSheet: { create: value => value } },
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-router': { useRouter: () => ({ push: route => routes.push(route) }) },
+    '@react-navigation/native': { useIsFocused: () => state.focused },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: active => active && state.online },
     '@/components/LocationPickerModal': { __esModule: true, default: 'Picker' },
     '@/services/tokenSession': { getTokenSessionVersion: () => state.version },
@@ -89,5 +90,21 @@ test('favorite queries are cached and skipped while Home is inactive or offline'
   assert.deepEqual(app.queries.at(-1), { skip: false, refetchOnMountOrArgChange: 60 });
   app.state.active = false; app.draw(); assert.equal(app.queries.at(-1).skip, true);
   app.state.active = true; app.state.online = false; app.draw(); assert.equal(app.queries.at(-1).skip, true);
+  app.hooks.unmount();
+});
+
+test('a Settings interruption preserves the shortcut picker, but actual navigation discards it', () => {
+  const app = environment();
+  app.state.favorites = [{ type: 'home', name: 'Home', coordinates: { latitude: -4.3, longitude: 15.2 } }];
+  app.press('Maison'); const initial = app.picker().initialLocation;
+  app.state.active = false;
+  assert.equal(app.picker().visible, true); assert.equal(app.picker().active, false);
+  assert.equal(app.picker().onSelect(initial), false);
+  app.state.active = true;
+  assert.deepEqual(app.picker().initialLocation, initial);
+  assert.equal(app.picker().onSelect(initial), true); app.picker().onDismiss();
+  assert.equal(app.routes.length, 1);
+  app.press('Maison'); app.state.focused = false; app.draw();
+  app.state.focused = true; assert.equal(app.picker().visible, false);
   app.hooks.unmount();
 });

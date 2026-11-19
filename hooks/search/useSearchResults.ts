@@ -12,6 +12,7 @@ import {
 } from '@/features/search/searchModel';
 
 interface Params {
+  serverOrderedRequests?: boolean;
   isScreenActive?: boolean;
   advancedTrips: Trip[] | null;
   remoteTrips: Trip[] | undefined;
@@ -29,7 +30,7 @@ interface Params {
 
 export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, searchMode,
   departure, arrival, desiredSeats, sortMode, driverCoordinate, availableTripRequests,
-  isDriverAccount, currentUser, isScreenActive = true }: Params) {
+  isDriverAccount, currentUser, isScreenActive = true, serverOrderedRequests = false }: Params) {
   const previous = useRef({ userId: currentUser?.id, baseTrips: EMPTY_SEARCH_TRIPS,
     filteredTrips: EMPTY_SEARCH_TRIPS, filteredTripRequests: EMPTY_SEARCH_REQUESTS });
   const baseTrips = useMemo(() => {
@@ -117,6 +118,7 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
       return request.numberOfSeats >= desiredSeats && matchesSearch(routeText, routeQuery);
     });
 
+    if (serverOrderedRequests) return visibleRequests;
     if (sortMode === 'nearby') return rankRequestsByProximity(visibleRequests, driverCoordinate);
 
     return visibleRequests.sort((a, b) => {
@@ -147,6 +149,7 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
     searchMode,
     sortMode,
     isScreenActive,
+    serverOrderedRequests,
   ]);
 
   // Keep the existing list/scroll state, without sorting GPS or cache updates in

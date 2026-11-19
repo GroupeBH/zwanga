@@ -38,22 +38,24 @@ function fixture() {
     background: () => { active = false; }, defer: fn => { send = fn; }, unmount: () => hooks.unmount() };
 }
 
-test('equipment selection sends the chosen kind, never creates consent or a debit', async () => {
-  for (const [label, kind] of [['Téléphone', 'phone'], ['Casque', 'helmet'], ['Traceur GPS', 'gps_tracker'],
-    ['Matériel de livraison', 'delivery_equipment'], ['Autre équipement', 'equipment']]) {
+test('phone selection sends a comment, never creates consent or a debit; other equipment is coming soon', async () => {
+  for (const [label, kind] of [['Téléphone', 'phone']]) {
     const h = fixture();
     assert.equal(h.render().filter(n => n.props?.accessibilityRole === 'radio').length, 6);
     h.choose(label);
-    if (kind === 'equipment') {
-      assert.equal(h.submit().props.disabled, true);
-      h.render().find(n => n.type === 'Input').props.onChangeText('  Sac de travail  ');
-    }
+    h.render().find(n => n.type === 'Input').props.onChangeText('  Mon commentaire  ');
     assert.equal(h.submit().props.disabled, false);
     await h.submit().props.onPress();
-    assert.deepEqual(h.sends, [{ assetKind: kind, notes: kind === 'equipment' ? 'Sac de travail' : '' }]);
+    assert.deepEqual(h.sends, [{ assetKind: kind, notes: 'Mon commentaire' }]);
     assert.equal(h.submit(), undefined);
     h.unmount();
   }
+  const h = fixture();
+  for (const label of ['Casque', 'Traceur GPS', 'Matériel de livraison', 'Autre équipement']) {
+    assert.equal(h.render().find(n => n.props?.accessibilityLabel === label).props.disabled, true);
+    h.choose(label); assert.equal(h.submit(), undefined);
+  }
+  assert.ok(h.render().includes('À venir')); h.unmount();
 });
 
 test('vehicles use the same request flow only when the server opens that product', async () => {
@@ -63,6 +65,8 @@ test('vehicles use the same request flow only when the server opens that product
   row.props.onPress();
   assert.equal(h.submit(), undefined);
   h.products.currentData.items.find(p => p.kind === 'vehicle').enabled = true;
+  h.choose('Véhicule'); assert.equal(h.submit(), undefined, 'old server without eligibility cannot enable vehicle intake');
+  h.products.currentData.items.find(p => p.kind === 'vehicle').eligibility = { eligible: true };
   h.choose('Véhicule');
   assert.match(h.render().find(n => n.type === 'Input').props.placeholder, /Voiture, moto/);
   await h.submit().props.onPress();
@@ -77,26 +81,27 @@ test('repayment disclosure uses backend policy, not an invented per-product perc
   h.render().find(n => n.props?.accessibilityState?.expanded === false).props.onPress();
   const tree = h.render();
   assert.ok(tree.includes(h.products.currentData.policyText));
-  assert.ok(tree.some(n => typeof n === 'string' && n.includes('Recharger seul ne rembourse pas le crédit')));
+  const explainer = tree.find(n => typeof n.type === 'function' && n.type.name === 'CreditHowItWorks');
+  assert.ok(nodes(explainer.type()).some(n => typeof n === 'string' && n.includes('Recharger seul ne rembourse pas le crédit')));
   assert.equal(tree.some(n => typeof n === 'string' && n.includes('5 %')), false);
   h.unmount();
 });
 
 test('paused products, missing catalogue, non-driver and pending same-kind requests cannot submit', async () => {
-  for (const change of [h => { h.products.currentData.items.find(p => p.kind === 'helmet').enabled = false; },
+  for (const change of [h => { h.products.currentData.items.find(p => p.kind === 'phone').enabled = false; },
     h => { h.products.currentData = undefined; }, h => { h.products.isError = true; },
     h => { h.products.currentData.canRequest = false; }, h => { h.requests.isError = true; },
     h => { h.requests.currentData = undefined; }, h => { h.credits.currentData = undefined; }, h => { h.credits.isError = true; },
-    h => { h.requests.currentData.items.push({ assetKind: 'helmet', status: 'submitted' }); }]) {
-    const h = fixture(); h.choose('Casque'); change(h);
+    h => { h.requests.currentData.items.push({ assetKind: 'phone', status: 'submitted' }); }]) {
+    const h = fixture(); h.choose('Téléphone'); change(h);
     assert.equal(h.submit().props.disabled, true);
     await h.submit().props.onPress(); assert.equal(h.sends.length, 0);
     h.unmount();
   }
   const h = fixture();
-  h.requests.currentData.items.push({ assetKind: 'phone', status: 'submitted' });
-  h.choose('Casque'); assert.equal(h.submit().props.disabled, false);
-  await h.submit().props.onPress(); assert.equal(h.sends[0].assetKind, 'helmet'); h.unmount();
+  h.requests.currentData.items.push({ assetKind: 'helmet', status: 'submitted' });
+  h.choose('Téléphone'); assert.equal(h.submit().props.disabled, false);
+  await h.submit().props.onPress(); assert.equal(h.sends[0].assetKind, 'phone'); h.unmount();
 });
 
 test('selecting equipment with an existing priced offer opens its terms instead of sending another request', () => {
@@ -113,7 +118,7 @@ test('selecting equipment with an existing priced offer opens its terms instead 
 test('double taps send once and old session responses do not overwrite the new screen', async () => {
   const h = fixture(); let release;
   h.defer(() => new Promise(resolve => { release = resolve; }));
-  h.choose('Traceur GPS'); const button = h.submit();
+  h.choose('Téléphone'); const button = h.submit();
   const work = button.props.onPress(); await button.props.onPress(); assert.equal(h.sends.length, 1);
   h.changeSession(); release({}); await work;
   assert.equal(h.submit(), undefined);
@@ -123,7 +128,7 @@ test('double taps send once and old session responses do not overwrite the new s
 
 test('reads pause offline and in background and stale submit closures are inert', async () => {
   for (const transition of [h => h.background(), h => { h.state.zwangaApi.config.online = false; }]) {
-    const h = fixture(); h.choose('Casque'); const old = h.submit(); transition(h); h.queries.length = 0; h.render();
+    const h = fixture(); h.choose('Téléphone'); const old = h.submit(); transition(h); h.queries.length = 0; h.render();
     assert.ok(h.queries.every(q => q.skip === true));
     assert.equal(h.submit().props.disabled, true);
     await old.props.onPress(); assert.equal(h.sends.length, 0); h.unmount();

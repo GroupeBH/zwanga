@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, NativeModules, Platform } from 'react-native';
 import { boundedRideAudio } from '@/services/rideAudioDiagnostics';
 import { openDriverAlertSettings } from '@/services/driverAlertChannel';
+import { usePermissionReturn } from '@/hooks/usePermissionReturn';
 
 export type DriverFullScreenPermission = { optIn: boolean; allowed: boolean; notificationsAllowed: boolean; channelReady?: boolean };
 function parseState(value: unknown): DriverFullScreenPermission | null {
@@ -17,6 +18,7 @@ export function useDriverFullScreenPermission(driverId: string | undefined, acti
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [attempt, retry] = useState(0);
+  usePermissionReturn(() => retry(value => value + 1));
   const bridge = NativeModules?.ZwangaDriverAlerts;
   const settingsReviewAvailable = Platform.OS === 'android' && Number(Platform.Version) >= 34 &&
     typeof bridge?.requestFullScreenPermission === 'function';

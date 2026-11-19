@@ -34,6 +34,15 @@ test('a server-confirmed reschedule replaces an expired cached request on the sa
   assert.equal(ctx.read('getTripRequestById', 'reopened').status, 'expired');
 });
 
+test('paged discovery removes expired rows locally without requesting another history', async t => {
+  const ctx = setup(t), args = { page: 1, sort: 'nearby' };
+  await ctx.put('getRequestDiscovery', { data: [request('due', 1000), request('later', 60000)], total: 2, page: 1, limit: 30, hasMore: false }, args);
+  t.mock.timers.tick(1000);
+  assert.deepEqual(ctx.read('getRequestDiscovery', args).data.map(row => row.id), ['later']);
+  assert.equal(ctx.read('getRequestDiscovery', args).total, 1);
+  assert.equal(ctx.queries(), 0);
+});
+
 function setup(t) {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: NOW });
   let queries = 0;
@@ -43,6 +52,7 @@ function setup(t) {
     keepUnusedDataFor: 3600,
     endpoints: builder => ({
       getAvailableTripRequests: builder.query({ query: () => '/requests' }),
+      getRequestDiscovery: builder.query({ query: () => '/requests/discovery' }),
       getHomeTripRequests: builder.query({ query: () => '/requests?scope=home' }),
       getMyTripRequests: builder.query({ query: () => '/mine' }),
       getMyActivityRequests: builder.query({ query: () => '/mine?scope=activity' }),

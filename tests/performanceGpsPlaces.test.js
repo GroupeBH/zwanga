@@ -9,9 +9,11 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 function picker(t) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), reads = [], pending = deferred();
-  const permission = { value: Promise.resolve({ status: 'granted' }) };
-  const { useLocationPicker } = loader({ react: hooks.react, 'react-native': { Keyboard: { dismiss: noop } },
+  const permission = { value: Promise.resolve({ status: 'granted', granted: true }) };
+  const { useLocationPicker } = loader({ react: hooks.react, 'react-native': {
+    AppState: { currentState: 'active' }, Platform: { OS: 'android' }, Keyboard: { dismiss: noop } },
     'expo-location': { Accuracy: { Balanced: 3 }, requestForegroundPermissionsAsync: () => permission.value,
+      getForegroundPermissionsAsync: () => permission.value, hasServicesEnabledAsync: async () => true,
       getLastKnownPositionAsync: async () => null, watchPositionAsync: async (options, callback) => {
         const watch = { options, removed: false, remove() { this.removed = true; } };
         reads.push(watch); void pending.promise.then(callback); return watch;

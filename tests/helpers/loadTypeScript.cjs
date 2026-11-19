@@ -15,6 +15,10 @@ function loader(mocks = {}, options = {}) {
     cache.set(filename, module);
     const localRequire = createRequire(filename);
     const requireModule = (name) => {
+      // Normal-size viewport for presentation tests; accessibility cases override it.
+      if (name === 'react-native' && Object.hasOwn(mocks, name)) return {
+        useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1, scale: 3 }), ...mocks[name],
+      };
       if (Object.hasOwn(mocks, name)) return mocks[name];
       if (name === 'expo-crypto') return { randomUUID: require('node:crypto').randomUUID };
       if (name.startsWith('@/') || name.startsWith('.')) {

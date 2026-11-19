@@ -341,6 +341,8 @@ export const tripRequestApi = baseApi.injectEndpoints({
 
 export const {
   useGetAvailableRequestPageQuery,
+  useGetMyRequestStatsQuery,
+  useGetRequestDiscoveryQuery,
   useGetMyRequestPageQuery,
   useGetMyOfferPageQuery,
     useCreateTripRequestMutation,

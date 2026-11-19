@@ -14,6 +14,8 @@ import { useAppSelector } from '@/store/hooks';
 import { selectUser } from '@/store/selectors';
 import { CreditRepaymentsLink } from '@/features/pro-services/CreditRepaymentsLink';
 import { SelectedCreditOffer } from '@/features/pro-services/SelectedCreditOffer';
+import { CreditHowItWorks } from '@/features/pro-services/CreditHowItWorks';
+import { CreditRequestComment } from '@/features/pro-services/CreditRequestComment';
 
 export default function CreditsScreen() {
   const active = useScreenIsActive();
@@ -37,8 +39,8 @@ export default function CreditsScreen() {
   const canSend = enabled && !failed && !credits.isError && Boolean(credits.currentData)
     && catalogue?.canRequest === true && Boolean(requests.currentData)
     && catalogue.items.some(item => item.kind === selected && item.enabled)
-    && !pending.some(item => item.assetKind === selected)
-    && (selected !== 'equipment' || notes.trim().length >= 3);
+    && (selected === 'phone' || (selected === 'vehicle' && catalogue.items.find(item => item.kind === 'vehicle')?.eligibility?.eligible === true))
+    && !pending.some(item => item.assetKind === selected);
   const submit = async () => {
     const current = captureScope();
     if (!current() || !canSend || !selected || selectedOffer || lock.current) return;
@@ -56,17 +58,16 @@ export default function CreditsScreen() {
       if (enabled && !credits.isError) router.push(('/services/credit/' + selectedOffer.id) as Href);
     }} /> : selected ? <ServiceButton title="Envoyer mon choix" disabled={!canSend} busy={state.isLoading} onPress={submit} /> : undefined}>
     <CreditRepaymentsLink active={active} />
-    <Text style={s.text}>Choisissez un équipement ou un véhicule, sans engagement. Votre offre chiffrée vous permet de voir le coût et de simuler le remboursement avant d’accepter.</Text>
+    <Text style={s.text}>Téléphone à crédit : choisissez votre formule après réception de l’offre, sans engagement avant votre accord.</Text>
     <View>
       <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: details }} style={[s.option, { minHeight: 44 }]}
         onPress={() => setDetails(value => !value)}>
-        <Text style={[s.label, s.flex]}>Comment rembourser ?</Text>
+        <Text style={[s.label, s.flex]}>Comment ça marche ?</Text>
         <Ionicons name={details ? 'chevron-up' : 'chevron-down'} size={18} color="#A84318" />
       </TouchableOpacity>
-      {details && <View style={s.notice}>
+      {details && <View>
+        <CreditHowItWorks />
         <Text style={s.text}>{catalogue?.policyText || 'Les conditions de remboursement sont indiquées dans chaque offre.'}</Text>
-        <Text style={s.text}>Vous pouvez aussi choisir un montant à rembourser depuis votre solde rechargé.
-          {' '}Recharger seul ne rembourse pas le crédit. Aucun prélèvement avant votre accord et la remise du bien.</Text>
       </View>}
     </View>
     {products.isLoading && <ActivityIndicator accessibilityLabel="Chargement des offres à crédit" />}
@@ -80,9 +81,11 @@ export default function CreditsScreen() {
     <View accessibilityRole="radiogroup">
       {creditEquipment.map(item => {
         const quote = credits.currentData?.items.find(credit => credit.assetKind === item.kind && credit.status === 'offered');
-        const available = catalogue?.items.some(product => product.kind === item.kind && product.enabled) === true;
+        const product = catalogue?.items.find(product => product.kind === item.kind);
+        const future = !['phone', 'vehicle'].includes(item.kind);
+        const available = !future && product?.enabled === true && (item.kind !== 'vehicle' || product.eligibility?.eligible === true);
         const waiting = pending.some(entry => entry.assetKind === item.kind);
-        const disabled = !enabled || !available || !catalogue?.canRequest || waiting || state.isLoading;
+        const disabled = !enabled || (!quote && (!available || !catalogue?.canRequest || waiting)) || state.isLoading;
         return <TouchableOpacity key={item.kind} style={[s.section, s.row]} accessibilityRole="radio"
           accessibilityLabel={item.label} accessibilityState={{ selected: selected === item.kind, disabled }} disabled={disabled}
           onPress={() => { if (!disabled) { setSelected(item.kind); setNotes(''); setMessage(''); } }}>
@@ -90,7 +93,8 @@ export default function CreditsScreen() {
           <View style={s.flex}><Text style={s.label}>{item.label}</Text>
             {quote && <Text style={s.text}>Offre reçue · {creditMoney(quote.principalMinor)} au total</Text>}
             {waiting ? <Text style={s.badge}>Dossier en cours</Text> : !available &&
-              <Text style={s.text}>{products.isLoading ? 'Vérification…' : 'Indisponible'}</Text>}</View>
+              <Text style={s.text}>{future ? 'À venir' : products.isLoading ? 'Vérification…' : item.kind === 'vehicle' ? 'Sous conditions d’activité' : 'Indisponible'}</Text>}
+            {item.kind === 'vehicle' && <Text style={s.text}>9 mois minimum, avec au moins un trajet terminé avec passager tous les deux jours.</Text>}</View>
           <Ionicons name={selected === item.kind ? 'radio-button-on' : 'radio-button-off'} size={22} color="#C34412" />
         </TouchableOpacity>;
       })}
@@ -98,11 +102,12 @@ export default function CreditsScreen() {
     {selectedOffer && <SelectedCreditOffer key={`${user?.id}:${selectedOffer.id}`} id={selectedOffer.id} enabled={enabled} />}
     {selected && !selectedOffer && <View style={{ gap: 8 }}>
       <Text style={s.text}>Prix et taux à préciser par Zwanga selon le bien. Aucun crédit n’est engagé par cet envoi.</Text>
-      <Text style={s.label}>{creditEquipmentLabel(selected)} · {selected === 'equipment' ? 'Précisez votre besoin' : 'Précision facultative'}</Text>
+      <Text style={s.label}>{creditEquipmentLabel(selected)} · Votre commentaire (facultatif)</Text>
       <TextInput style={s.input} accessibilityLabel="Précision sur le bien souhaité" placeholder={creditEquipment.find(item => item.kind === selected)?.hint}
-        value={notes} onChangeText={setNotes} maxLength={1000} editable={!state.isLoading} />
+        value={notes} onChangeText={setNotes} maxLength={1000} multiline textAlignVertical="top" editable={!state.isLoading} />
     </View>}
     {!!message && <Text accessibilityRole="alert" style={s.text}>{message}</Text>}
+    {pending.map(item => <CreditRequestComment key={`${user?.id}:${item.id}`} request={item} scope={`${user?.id}:${item.id}`} enabled={enabled && !!user?.id && !requests.isError} />)}
     {!!credits.currentData?.items.length && <Text style={s.label}>Mes offres et crédits</Text>}
     {credits.currentData?.items.map(item => <TouchableOpacity key={item.id} accessibilityRole="button" style={s.section}
       onPress={() => router.push(('/services/credit/' + item.id) as Href)}>

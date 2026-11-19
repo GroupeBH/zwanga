@@ -21,6 +21,7 @@ import { useActivityTrackingSignal } from '@/hooks/useActivityTrackingSignal';
 import { usePathname } from 'expo-router';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
 import { subscribeBootstrappedRideLocation } from '@/services/rideLocationBootstrap';
+import { useLocationAccessRevision } from '@/hooks/useLocationAccessRevision';
 
 const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
 
@@ -30,6 +31,7 @@ const ACTIVE_RIDE_DETAIL_REFRESH_INTERVAL_MS = 30_000;
  */
 export function ActiveRideLocationCoordinator() {
   const isAppActive = useAppIsActive();
+  const locationAccessRevision = useLocationAccessRevision();
   const pathname = usePathname();
   const passengerNavigationVisible = pathname.startsWith('/booking/navigate/');
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
@@ -38,6 +40,7 @@ export function ActiveRideLocationCoordinator() {
   const activeDriverTripIdRef = useRef<string | null>(null);
   const driverPermissionAttemptRef = useRef<string | null>(null);
   const activePassengerBookingIdRef = useRef<string | null>(null);
+  const passengerPermissionAttemptRef = useRef<string | null>(null);
   const passengerStartRef = useRef<Promise<boolean> | null>(null);
   const passengerForegroundSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
@@ -126,6 +129,7 @@ export function ActiveRideLocationCoordinator() {
     isAppActive,
     isAuthenticated,
     passengerBookingId,
+    locationAccessRevision,
   ]);
 
   useEffect(() => {
@@ -135,6 +139,7 @@ export function ActiveRideLocationCoordinator() {
 
     if (!isAuthenticated) {
       passengerStartRef.current = null;
+      passengerPermissionAttemptRef.current = null;
       void stopPassengerBackgroundLocationTracking();
       return;
     }
@@ -142,6 +147,7 @@ export function ActiveRideLocationCoordinator() {
 
     if (!passengerBookingId) {
       passengerStartRef.current = null;
+      passengerPermissionAttemptRef.current = null;
       void stopPassengerBackgroundLocationTracking();
       return;
     }
@@ -149,9 +155,11 @@ export function ActiveRideLocationCoordinator() {
     // Foreground resume forces a native health check, even with unchanged ride data.
     if (!isAppActive) return;
 
+    const requestMissingPermissions = passengerPermissionAttemptRef.current !== passengerBookingId;
+    passengerPermissionAttemptRef.current = passengerBookingId;
     return retryGpsStart(async attempt => {
       const startPromise = startPassengerBackgroundLocationTracking(passengerBookingId, {
-        requestMissingPermissions: attempt === 0,
+        requestMissingPermissions: attempt === 0 && requestMissingPermissions,
         tripId: passengerTripId,
         waitForActiveTrip: passengerTripStatus !== 'ongoing',
         departureTimeMs: new Date(activePassengerBooking?.trip?.departureTime ?? '').getTime(),
@@ -171,6 +179,7 @@ export function ActiveRideLocationCoordinator() {
     passengerTripId,
     passengerTripStatus,
     activePassengerBooking?.trip?.departureTime,
+    locationAccessRevision,
   ]);
 
   useEffect(() => {
@@ -242,6 +251,7 @@ export function ActiveRideLocationCoordinator() {
     isAuthenticated,
     passengerBookingId,
     passengerTripStatus,
+    locationAccessRevision,
   ]);
 
   return null;

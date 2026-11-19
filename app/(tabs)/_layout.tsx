@@ -7,7 +7,7 @@ import { selectUnreadMessagesCount } from '@/store/selectors';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Animated import removed to fix Android crash with New Architecture
 
@@ -18,7 +18,8 @@ export default function TabLayout() {
   const usesEarnings = useAppSelector(selectUsesEarningsTab);
   const usesTripSearch = useAppSelector(selectUsesTripSearchTab);
   const insets = useSafeAreaInsets();
-  const tabBarMetrics = getTabBarMetrics(insets.bottom);
+  const { fontScale } = useWindowDimensions();
+  const tabBarMetrics = getTabBarMetrics(insets.bottom, fontScale);
 
   const renderTabIcon = ({
     activeIcon,
@@ -46,7 +47,7 @@ export default function TabLayout() {
       {badgeCount ? (
         <View style={styles.badgeContainer}>
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+            <Text maxFontSizeMultiplier={1} style={styles.badgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
           </View>
         </View>
       ) : null}
@@ -71,7 +72,9 @@ export default function TabLayout() {
             tabBarMetrics,
           ],
           tabBarLabelStyle: styles.tabBarLabel,
-          tabBarAllowFontScaling: false,
+          tabBarAllowFontScaling: true,
+          tabBarLabel: ({ children, color }) => <Text maxFontSizeMultiplier={1.35}
+            style={[styles.tabBarLabel, { color, textAlign: 'center' }]}>{children}</Text>,
           tabBarItemStyle: styles.tabBarItem,
           tabBarHideOnKeyboard: true,
         }}>

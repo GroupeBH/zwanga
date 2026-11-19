@@ -49,12 +49,14 @@ async function startAssetCreditBackend() {
     await db.query(`CREATE EXTENSION "uuid-ossp";
       CREATE TABLE users(id uuid PRIMARY KEY,role text,"isDriver" boolean DEFAULT true,"isActive" boolean DEFAULT true);
       CREATE TABLE kyc_documents(id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),"userId" uuid,status text,"createdAt" timestamptz DEFAULT now());
-      CREATE TABLE trips(id uuid PRIMARY KEY,"driverId" uuid);
-      CREATE TABLE bookings(id uuid PRIMARY KEY,"tripId" uuid,"paymentMode" text DEFAULT 'cash',status text DEFAULT 'completed',"paymentCurrency" text DEFAULT 'CDF',"cashReceivedAt" timestamptz,"cashReceivedAmount" numeric(12,2),"cashReceivedByDriverId" uuid);
+      CREATE TABLE trips(id uuid PRIMARY KEY,"driverId" uuid,status text DEFAULT 'upcoming');
+      CREATE INDEX ON trips("driverId");
+      CREATE TABLE bookings(id uuid PRIMARY KEY,"tripId" uuid,"passengerId" uuid,"pickedUp" boolean DEFAULT false,"droppedOff" boolean DEFAULT false,"pickedUpAt" timestamp,"droppedOffAt" timestamp,"paymentMode" text DEFAULT 'cash',status text DEFAULT 'completed',"paymentCurrency" text DEFAULT 'CDF',"cashReceivedAt" timestamptz,"cashReceivedAmount" numeric(12,2),"cashReceivedByDriverId" uuid);
+      CREATE INDEX ON bookings("tripId");
       CREATE TABLE wallet_accounts(id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),"userId" uuid,type text DEFAULT 'points',balance numeric(12,2) DEFAULT 0,"withdrawableBalance" numeric(12,2) DEFAULT 0,"reservedCashCommissionBalance" numeric(12,2) DEFAULT 0,"withdrawalsBlocked" boolean DEFAULT false,currency text DEFAULT 'PTS',"updatedAt" timestamptz DEFAULT now(), UNIQUE("userId",type), CHECK(balance>=0 AND "withdrawableBalance">=0 AND "withdrawableBalance"<=balance));
       CREATE TABLE wallet_ledger_entries(id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),"accountId" uuid,"userId" uuid,"accountType" text,type text,amount numeric(12,2),"withdrawableAmount" numeric(12,2),"balanceAfter" numeric(12,2),currency text,"relatedEntityType" text,"relatedEntityId" uuid,description text,CONSTRAINT "CHK_wallet_ledger_type" CHECK(type IN ('top_up')));
       CREATE TABLE driver_earnings(id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),"driverId" uuid,"bookingId" uuid UNIQUE,"grossAmount" numeric(12,2),"netAmount" numeric(12,2),"commissionAmount" numeric(12,2),currency text DEFAULT 'CDF',status text DEFAULT 'available',"createdAt" timestamptz DEFAULT clock_timestamp(), CHECK("grossAmount"="netAmount"+"commissionAmount"));`);
-    for (const [stamp, name] of [['1780000124000', 'AssetCredits'], ['1780000127000', 'EquipmentAssetCredits'], ['1780000129000', 'ContractAssetCreditRates'], ['1780000130000', 'AssetCreditCostDisclosure']]) {
+    for (const [stamp, name] of [['1780000124000', 'AssetCredits'], ['1780000127000', 'EquipmentAssetCredits'], ['1780000129000', 'ContractAssetCreditRates'], ['1780000130000', 'AssetCreditCostDisclosure'], ['1780000133000', 'AssetRepaymentPlans']]) {
       const Migration = load(`src/database/migrations/${stamp}-${name}.ts`)[name + stamp];
       await db.transaction(manager => new Migration().up(manager.queryRunner));
     }
@@ -78,14 +80,26 @@ async function startAssetCreditBackend() {
     const port = app.getHttpServer().address().port;
     protection.restore(); protection = restrictConnections([db.options.port, port]);
     const jwt = new JwtService({ secret });
-    const actor = async (role = 'driver', approved = true) => {
+    const actor = async (role = 'driver', approved = true, withVehicleHistory = true) => {
       const id = randomUUID();
       await db.query('INSERT INTO users(id,role,"isDriver") VALUES($1,$2,$3)', [id, role, role === 'driver']);
       if (approved) await db.query('INSERT INTO kyc_documents("userId",status) VALUES($1,$2)', [id, 'approved']);
       await db.query('INSERT INTO wallet_accounts("userId",balance,"withdrawableBalance") VALUES($1,100000,100000)', [id]);
+      if (role === 'driver' && withVehicleHistory) {
+        const tripId = randomUUID(), passengerId = randomUUID();
+        await db.query(`INSERT INTO trips(id,"driverId",status) VALUES($1,$2,'completed')`, [tripId, id]);
+        await db.query(`INSERT INTO bookings(id,"tripId","passengerId","pickedUp","droppedOff","pickedUpAt","droppedOffAt")
+          SELECT uuid_generate_v4(),$1,$2,true,true,at-interval '30 minutes',at
+          FROM generate_series(now() AT TIME ZONE 'UTC'-interval '10 months',now() AT TIME ZONE 'UTC',interval '1 day') AS at`, [tripId, passengerId]);
+      }
       return { id, token: jwt.sign({ sub: id }, { expiresIn: '15m' }) };
     };
     return { actor, close, baseUrl: `http://127.0.0.1:${port}/api/v1`, blockedConnections: () => protection.count(),
+      // Fixture only: represent a contract signed before intake closed. Never an application API bypass.
+      legacyKind: async (id, kind) => {
+        if (!['helmet', 'gps_tracker', 'delivery_equipment', 'equipment'].includes(kind)) throw Error('Invalid legacy fixture');
+        await db.query('UPDATE asset_credits SET "assetKind"=$2 WHERE id=$1', [id, kind]);
+      },
       wallet: async userId => (await db.query('SELECT balance,"withdrawableBalance" FROM wallet_accounts WHERE "userId"=$1', [userId]))[0] };
   } catch (error) { await close(); throw error; }
 }

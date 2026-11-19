@@ -4,15 +4,16 @@ import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { styles } from '@/features/home/HomeOngoingTripSheet.styles';
 import { HOME_DASHBOARD_COLORS as colors } from '@/features/home/homeDashboardTheme';
 import type { useHomeController } from '@/hooks/home/useHomeController';
+import { LocationAccessBanner } from '@/components/location/LocationAccessBanner';
 
 type Props = Pick<ReturnType<typeof useHomeController>,
   'activeHomeTrip' | 'ongoingDriverTrip' | 'ongoingBookingId' | 'activeBookings'
-  | 'router' | 'width' | 'sheetHeight' | 'sheetBottomOffset' | 'onSheetLayout'>;
+  | 'router' | 'width' | 'sheetHeight' | 'sheetBottomOffset' | 'onSheetLayout' | 'isScreenActive'>;
 
 /** Uses the existing, account-scoped participation selection; no additional reads. */
 export const HomeOngoingTripSheet = React.memo(function HomeOngoingTripSheet({
   activeHomeTrip, ongoingDriverTrip, ongoingBookingId, activeBookings,
-  router, width, sheetHeight, sheetBottomOffset, onSheetLayout,
+  router, width, sheetHeight, sheetBottomOffset, onSheetLayout, isScreenActive,
 }: Props) {
   if (!activeHomeTrip) return null;
   const isDriving = ongoingDriverTrip?.id === activeHomeTrip.id;
@@ -43,6 +44,7 @@ export const HomeOngoingTripSheet = React.memo(function HomeOngoingTripSheet({
           </View>
         </View>
         <View style={[styles.itinerary, horizontal && styles.horizontalItinerary]}>
+          <LocationAccessBanner active={isScreenActive} background="ride" />
           <View style={styles.routeRow}>
             <View style={styles.routeTrack} accessible={false}>
               <View style={styles.departureMarker} />

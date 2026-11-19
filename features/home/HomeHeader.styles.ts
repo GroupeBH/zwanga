@@ -17,6 +17,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  largeMapHeader: { flexDirection: 'column-reverse', alignItems: 'stretch', gap: 8 },
   profileButton: {
     width: 44,
     height: 44,
@@ -62,8 +63,9 @@ export const styles = StyleSheet.create({
     fontWeight: FontWeights.bold,
     lineHeight: 12,
   },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: Spacing.sm },
   driverStatusSlot: { flex: 1, minWidth: 0, marginRight: Spacing.sm, alignItems: 'flex-start' },
+  largeDriverStatusSlot: { flex: 0, marginRight: 0, alignSelf: 'stretch' },
   driverStatus: {
     maxWidth: '100%', minHeight: 44, paddingHorizontal: 12, paddingVertical: 5,
     flexDirection: 'row', alignItems: 'center', gap: 8,

@@ -14,8 +14,8 @@ async function main() {
   const browser = await chromium(browserPath, fs.mkdtempSync(path.join(dir, 'session-')));
   const reports = [];
   try {
-    for (const width of [320, 390]) for (const mode of ['pickup', 'dropoff', 'cruising', 'pending', 'offline', 'empty']) {
-      const name = `driver-${mode}-${width}`;
+    for (const width of [320, 390]) for (const fontScale of [1, 2]) for (const mode of ['pickup', 'dropoff', 'cruising', 'pending', 'offline', 'empty']) {
+      const name = `driver-${mode}-${width}-${fontScale}`;
       const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' });
       const { sessionId } = await browser.send('Target.attachToTarget', { targetId, flatten: true });
       const send = (method, params) => browser.send(method, params, sessionId);
@@ -28,22 +28,23 @@ async function main() {
           const panel=document.querySelector('[data-testid="driver-navigation-top-panel"]');if(!panel)return null;
           document.querySelector('h2')?.remove();document.querySelector('main').style.padding='0';
           const box=panel.getBoundingClientRect();const controls=document.querySelector('[aria-label="Options de navigation"]');
-          const sos=panel.querySelector('[aria-label^="SOS"]')?.getBoundingClientRect();
-          const assistanceInitiallyVisible=!!sos&&sos.top>=box.top&&sos.bottom<=box.bottom;
+          const sos=document.querySelector('[aria-label^="SOS"]')?.getBoundingClientRect();
+          const assistanceInitiallyVisible=!!sos&&sos.top>=0&&sos.bottom<=innerHeight;
           const overflow=Math.max(0,document.documentElement.scrollWidth-innerWidth);
           const actions=[...panel.querySelectorAll('[role="button"]')];
           const reachable=actions.every(e=>{e.scrollIntoView({block:'nearest'});const r=e.getBoundingClientRect();return r.height>=44&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;});
           panel.querySelectorAll('div').forEach(e=>{e.scrollTop=0});
-          return {width:innerWidth,height:box.height,overlap:box.bottom>controls.getBoundingClientRect().top,horizontalOverflow:overflow,reachable,assistanceInitiallyVisible,actions:actions.length,
+          const guidance=document.querySelector('[data-testid="driver-navigation-guidance"]').getBoundingClientRect();
+          return {width:innerWidth,height:box.height,overlap:box.bottom>controls.getBoundingClientRect().top||box.top<guidance.bottom,mapVisibleHeight:box.top-guidance.bottom,horizontalOverflow:overflow,reachable,assistanceInitiallyVisible,actions:actions.length,
             confirms:panel.textContent.includes('Confirmer l’arrivée'),passengerSummary:!!panel.querySelector('[aria-label^="Arrivée :"]')};})()` });
         report = result.result?.value;
         if (report) break;
         await new Promise(resolve => setTimeout(resolve, 50));
       }
-      if (!report || report.width !== width || report.overlap || report.horizontalOverflow > 1 || !report.reachable || !report.assistanceInitiallyVisible || (mode === 'cruising' && report.confirms)) throw Error(`${name}: ${JSON.stringify(report)}`);
-      reports.push({ name, ...report }); console.log(name, report);
       const png = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
       fs.writeFileSync(path.join(dir, name + '.png'), Buffer.from(png.data, 'base64'));
+      if (!report || report.width !== width || report.overlap || report.horizontalOverflow > 1 || !report.reachable || !report.assistanceInitiallyVisible || (mode === 'cruising' && report.confirms)) throw Error(`${name}: ${JSON.stringify(report)}`);
+      reports.push({ name, ...report }); console.log(name, report);
       await browser.send('Target.closeTarget', { targetId });
     }
     fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(reports, null, 2));

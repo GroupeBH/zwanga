@@ -35,6 +35,7 @@ import { CreditRepaymentSummary, hasValidCreditRates } from '@/features/pro-serv
 import { CreditCostPreview } from '@/features/pro-services/CreditCostPreview';
 import { CreditContractCosts } from '@/features/pro-services/CreditContractCosts';
 import { hasValidCostDisclosure } from '@/features/pro-services/creditCostDisclosure';
+import { CreditPlanChoice, creditWithSelectedPlan } from '@/features/pro-services/CreditPlanChoice';
 
 type Intent = { mutationId: string; amountMinor: number };
 export default function CreditDetail() {
@@ -56,6 +57,7 @@ export default function CreditDetail() {
     [consent, setConsent] = useState(false),
     [confirm, setConfirm] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('');
   const [message, setMessage] = useState(""),
     [intent, setIntent] = useState<Intent | null>(null),
     [ready, setReady] = useState(false);
@@ -70,6 +72,7 @@ export default function CreditDetail() {
     setIntent(null);
     setMessage("");
     setShowTerms(false);
+    setSelectedPlan('');
     AsyncStorage.getItem(key)
       .then((raw) => {
         if (!mounted) return;
@@ -98,10 +101,12 @@ export default function CreditDetail() {
       mounted = false;
     };
   }, [key]);
-  const c = query.data?.id === id ? query.data : undefined;
-  const ratesReady = Boolean(c && hasValidCreditRates(c) && hasValidCostDisclosure(c)) && !query.isError && !query.isFetching;
+  const original = query.data?.id === id ? query.data : undefined;
+  const selectedCredit = original?.status === 'offered' ? creditWithSelectedPlan(original, selectedPlan) : original;
+  const c = selectedCredit ?? original;
+  const ratesReady = Boolean(selectedCredit && c && hasValidCreditRates(c) && hasValidCostDisclosure(c)) && !query.isError && !query.isFetching;
   useEffect(() => { setConsent(false); }, [c?.policyVersion, c?.repaymentBps, c?.totalRepaymentBps, c?.terms, c?.principalMinor,
-    c?.cashPriceMinor, c?.creditFeeMinor, c?.installmentCount, c?.installmentPeriod, c?.costDisclosureVersion]);
+    c?.cashPriceMinor, c?.creditFeeMinor, c?.installmentCount, c?.installmentPeriod, c?.costDisclosureVersion, selectedPlan]);
   const remaining = c ? Number(c.principalMinor) - Number(c.paidMinor) : 0;
   const minor = repaymentMinor(amount);
   const busy = payment.isLoading || decision.isLoading;
@@ -119,6 +124,7 @@ export default function CreditDetail() {
     setMessage("");
     try {
       await decide({ id, accept, policyVersion: c.policyVersion,
+        ...(accept && c.repaymentPlans?.length ? { selectedPlanId: selectedPlan } : {}),
         ...(accept && c.costDisclosureVersion ? { costDisclosureVersion: c.costDisclosureVersion } : {}),
         ...(accept && c.policyVersion === 'asset-credit-v2' ? { expectedTotalRepaymentBps: c.totalRepaymentBps } : {}),
       }).unwrap();
@@ -222,8 +228,10 @@ export default function CreditDetail() {
             )}
           </View>
           <CreditRepaymentSummary credit={c} />
+          {original && <CreditPlanChoice credit={original} selected={selectedPlan} disabled={busy || !active || query.isFetching || query.isError}
+            onSelect={value => { setSelectedPlan(value); setConsent(false); }} />}
           <CreditCostPreview key={`${user?.id}:${c.id}`} credit={c} />
-          <CreditContractCosts key={`cost:${user?.id}:${c.id}`} credit={c} />
+          {selectedCredit && <CreditContractCosts key={`cost:${user?.id}:${c.id}:${selectedPlan}`} credit={selectedCredit} />}
           <Text style={s.text}>{c.policyText}</Text>
           {c.status === "offered" ? (
             <>

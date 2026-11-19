@@ -111,7 +111,15 @@ function screenApp(os = 'android') {
       useSearchTripsByCoordinatesMutation: () => [() => { throw new Error('Unexpected coordinate request'); }, { isLoading: false }],
     },
     '@/store/api/tripRequestApi': {
-      useGetAvailableTripRequestsQuery: (args, options) => { queryCalls.push({ name: 'requests', args, options }); return { data: app.requests, isLoading: false, isFetching: false, isError: false, refetch() {} }; },
+      useGetRequestDiscoveryQuery: (args, options) => {
+        queryCalls.push({ name: 'requests', args, options });
+        if (options.skip) return { isLoading: false, isFetching: false, refetch() {} };
+        // Simulated server ordering; actual SQL is covered by the backend PostgreSQL suite.
+        let rows = app.requests.filter(row => row.numberOfSeats >= args.minSeats);
+        if (args.sort === 'nearby') rows = load('features/trip-request/requestPriority.ts').rankRequestsByProximity(rows, coords);
+        else rows = [...rows].sort((a, b) => (args.sort === 'cheap' ? (b.maxPricePerSeat ?? -Infinity) - (a.maxPricePerSeat ?? -Infinity) : 0) || Date.parse(a.departureDateMin) - Date.parse(b.departureDateMin));
+        return { currentData: { data: rows.slice((args.page - 1) * 30, args.page * 30), total: rows.length, hasMore: args.page * 30 < rows.length }, isLoading: false, isFetching: false, isError: false, refetch() {} };
+      },
     },
   });
   const Screen = load('app/search.tsx').default;
@@ -384,6 +392,21 @@ test('leaving search pauses display subscriptions and GPS sorting while retainin
   assert.equal(app.toolbar(tree).props.sortMode, 'nearby');
   assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, false);
   assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.refetchOnMountOrArgChange, 30);
+  app.hooks.unmount();
+});
+
+test('request pages expose server totals, next/previous controls, and reset after a sort change', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const app = screenApp(); app.requests = Array.from({ length: 65 }, (_, i) => request(`request-${i}`, { maxPricePerSeat: i + 1 }));
+  let tree = app.render(); app.switchMode(tree, 'requests'); tree = app.render();
+  assert.equal(app.list(tree).props.data.length, 30);
+  assert.equal(app.toolbar(tree).props.resultsCountLabel, '65 commandes');
+  nodes(app.list(tree).props.ListFooterComponent).find(node => node.type === 'TouchableOpacity' && text(node) === 'Commandes suivantes').props.onPress();
+  tree = app.render(); assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).args.page, 2);
+  assert.equal(app.list(tree).props.data.length, 30);
+  app.toolbar(tree).props.onSortChange('cheap'); tree = app.render();
+  assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).args.page, 1);
+  assert.equal(app.list(tree).props.data[0].request.maxPricePerSeat, 65);
   app.hooks.unmount();
 });
 

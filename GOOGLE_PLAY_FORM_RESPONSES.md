@@ -103,23 +103,14 @@ Le service est utilisé UNIQUEMENT pendant les trajets actifs :
 
 ## ⚠️ IMPORTANT : FOREGROUND_SERVICE_MEDIA_PLAYBACK
 
-Si Google Play détecte encore `FOREGROUND_SERVICE_MEDIA_PLAYBACK` :
+**Mise à jour du 18 novembre 2026 : cette permission est utilisée.** Ne pas déclarer qu'elle est bloquée ou inutilisée. Les deux services Expo inutilisés sont retirés ; le service audio Zwanga reste nécessaire aux alertes de trajet. Vérifier le manifeste du nouveau binaire et filmer son comportement réel avant soumission.
 
-**Dans le formulaire, vous pouvez :**
-
-1. **Option 1 - Indiquer que vous ne l'utilisez pas :**
-   - Dans la section où Google liste les permissions détectées
-   - Ajoutez une note : "FOREGROUND_SERVICE_MEDIA_PLAYBACK is detected but not used. It comes from a dependency (expo-audio) that is installed but not actively used. We have blocked this permission in our app.config.js."
-
-2. **Option 2 - Après le rebuild :**
-   - Rebuild votre application avec le plugin amélioré qui supprime cette permission
-   - Soumettez une nouvelle version à Google Play
-   - La permission ne devrait plus apparaître
-
-**Texte à utiliser si Google demande une explication :**
+**Description technique à vérifier sur le binaire soumis :**
 ```
-FOREGROUND_SERVICE_MEDIA_PLAYBACK is detected in our manifest but we do not use it. This permission is added by the expo-audio dependency which is installed in our project but not actively used for media playback in foreground services. We have explicitly blocked this permission in our app configuration (app.config.js blockedPermissions). We will remove this dependency or ensure it is properly excluded in our next app update.
+Zwanga uses its own bounded foreground audio service for incoming ride alerts. The notification identifies the ride and provides response actions. Unused Expo audio playback-control and background-recording services are removed from the Android application manifest. The media playback permission remains required by Zwanga's ride-alert service.
 ```
+
+Ce texte décrit l'implémentation ; il ne garantit pas l'éligibilité ou l'approbation par Google Play. Détails et recette : [services audio au démarrage](docs/android-boot-audio-2026-11-18.md).
 
 ---
 
@@ -130,7 +121,8 @@ FOREGROUND_SERVICE_MEDIA_PLAYBACK is detected in our manifest but we do not use 
 - [ ] Toutes les cases appropriées cochées (Background location updates, Navigation, Other)
 - [ ] Texte "Other tasks" rempli
 - [ ] Justification complète remplie
-- [ ] Vérifier que FOREGROUND_SERVICE_MEDIA_PLAYBACK est bien bloquée dans le prochain build
+- [ ] Vérifier l'absence des deux services Expo inutilisés dans le manifeste final et la présence du service d'alerte Zwanga
+- [ ] Tester les alertes après redémarrage sous Android 15/16 et démontrer l'usage réel de FOREGROUND_SERVICE_MEDIA_PLAYBACK
 
 ---
 

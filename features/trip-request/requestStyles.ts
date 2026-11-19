@@ -281,7 +281,7 @@ export const requestStyles = StyleSheet.create({
   mainButton: { minHeight: 56, borderRadius: BorderRadius.lg, backgroundColor: ACTION_COLORS.orange, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.sm, shadowColor: ACTION_COLORS.orange, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.24, shadowRadius: 12, elevation: 5 },
   mainButtonCompact: { minHeight: 52, marginTop: 0 },
   mainButtonDisabled: { opacity: 0.65 },
-  mainButtonText: { color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
+  mainButtonText: { flexShrink: 1, paddingVertical: 10, paddingHorizontal: 8, textAlign: 'center', color: Colors.white, fontSize: FontSizes.base, fontWeight: FontWeights.bold },
   submissionErrorBanner: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.sm, backgroundColor: Colors.danger + '10' },
   submissionErrorText: { flex: 1, fontSize: FontSizes.sm, lineHeight: 18, color: Colors.danger },
   requestSuccessOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.lg, backgroundColor: 'rgba(15, 23, 42, 0.82)' },

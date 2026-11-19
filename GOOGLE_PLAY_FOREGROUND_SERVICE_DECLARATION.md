@@ -56,11 +56,17 @@ Utilisée uniquement pendant les trajets actifs pour :
 
 ---
 
-## Permissions Bloquées
+## Service audio des alertes — mise à jour du 18 novembre 2026
 
 ### FOREGROUND_SERVICE_MEDIA_PLAYBACK
 
-Cette permission est **explicitement bloquée** car notre application n'utilise pas de lecture audio en arrière-plan. Si cette permission apparaît dans le manifest, elle provient d'une dépendance (expo-audio) qui n'est pas activement utilisée dans notre application.
+Cette permission est **conservée** : `com.zwanga.notifications.RideAlertAudioService` l'utilise pour la sonnerie bornée des alertes de trajet. La précédente indication « permission bloquée et inutilisée » est obsolète et ne doit pas être soumise à Google Play.
+
+Les services Expo inutilisés `AudioControlsService` et `AudioRecordingService` sont retirés de la fusion du manifeste Android. Cela ne retire ni le service de sonnerie Zwanga ni les récepteurs nécessaires aux notifications et à la localisation. Aucun appel d'enregistrement ou de commandes multimédias Expo n'a été trouvé dans le code applicatif actuel.
+
+La déclaration Play doit décrire le comportement réel des alertes, avec une démonstration sur le nouveau binaire. Le retrait des deux services ne garantit pas, à lui seul, l'acceptation de cette déclaration par Google. Voir le [diagnostic et la recette Android](docs/android-boot-audio-2026-11-18.md).
+
+## Permissions bloquées
 
 ### ACTIVITY_RECOGNITION
 

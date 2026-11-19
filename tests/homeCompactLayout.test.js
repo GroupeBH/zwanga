@@ -7,6 +7,7 @@ const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollV
   StyleSheet: { create: value => value }, Platform: { OS: 'ios', select: value => value.ios } };
 const parts = ['HomeDriverStatus', 'HomeDriverEarnings', 'HomeDestinationShortcuts', 'HomeSheetLoadingState', 'SwipeableHomePriority'];
 const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   './HomeBackgroundLocationButton': { HomeBackgroundLocationButton: 'LocationPermission' },
   ...Object.fromEntries(parts.map(name => [`./${name}`, { [name]: name }])) });
 const { HomeHeader } = load('components/home/HomeHeader.tsx');

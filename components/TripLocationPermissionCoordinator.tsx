@@ -39,6 +39,7 @@ export function TripLocationPermissionSession({ userId, offer }: { userId: strin
     userId, driver: false, purpose: 'passenger-trip', active, available: true, deferTrackingToCoordinator: true,
   });
   const safe = active && !entryPending && !alerts.length && !Keyboard.isVisible() &&
+    path !== '/' && path !== '/(tabs)' &&
     !/\/(?:navigate|payment|kyc|auth)(?:\/|$)/.test(path) && offer.version === getTokenSessionVersion();
   const latest = useRef({ safe, location }); latest.current = { safe, location };
   useEffect(() => {

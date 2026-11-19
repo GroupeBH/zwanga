@@ -1,5 +1,5 @@
 import { Spacing } from './styles';
-import { Platform } from 'react-native';
+import { PixelRatio, Platform } from 'react-native';
 
 const IOS_TAB_BAR_TOP_PADDING = 10;
 const ANDROID_TAB_BAR_TOP_PADDING = 8;
@@ -8,7 +8,7 @@ const ANDROID_TAB_BAR_MIN_BOTTOM_PADDING = 10;
 const IOS_TAB_BAR_CONTENT_HEIGHT = 54;
 const ANDROID_TAB_BAR_CONTENT_HEIGHT = 56;
 
-export const getTabBarMetrics = (bottomInset = 0) => {
+export const getTabBarMetrics = (bottomInset = 0, fontScale = PixelRatio?.getFontScale?.() ?? 1) => {
   const isIOS = Platform.OS === 'ios';
   const paddingTop = isIOS ? IOS_TAB_BAR_TOP_PADDING : ANDROID_TAB_BAR_TOP_PADDING;
   const paddingBottom = Math.max(
@@ -18,7 +18,7 @@ export const getTabBarMetrics = (bottomInset = 0) => {
   const contentHeight = isIOS ? IOS_TAB_BAR_CONTENT_HEIGHT : ANDROID_TAB_BAR_CONTENT_HEIGHT;
 
   return {
-    height: contentHeight + paddingTop + paddingBottom,
+    height: contentHeight + paddingTop + paddingBottom + (fontScale > 1.3 ? 24 : 0),
     paddingTop,
     paddingBottom,
   };

@@ -8,6 +8,7 @@ function fixture(t, platform = 'ios') {
   const starts = [], sent = [], published = [];
   let failStart = false, authError = false, bookingWait;
   const io = { storage: 0, availability: 0, native: 0 };
+  let approachWakeups = 0;
   const location = { Accuracy: { High: 4, Balanced: 3 }, ActivityType: { Other: 1, AutomotiveNavigation: 2 },
     PermissionStatus: { GRANTED: 'granted' },
     getForegroundPermissionsAsync: async () => ({ status: 'granted' }),
@@ -20,6 +21,7 @@ function fixture(t, platform = 'ios') {
     stopLocationUpdatesAsync: async () => { running = false; },
   };
   const load = loader({
+    './background/passengerApproachWakeup': { checkBackgroundPassengerApproach: async () => { approachWakeups++; } },
     '../nearbyDriverLocation': { pauseNearbyDriverLocation: async () => {} },
     '@react-native-async-storage/async-storage': { getItem: async () => {
       io.storage++;
@@ -42,6 +44,7 @@ function fixture(t, platform = 'ios') {
   const module = load('services/passengerBackgroundLocationTask.ts');
   const profile = load('services/background/passengerGpsProfile.ts');
   return { module, profile, starts, sent, published, io, lifecycle: load('services/background/passengerTaskLifecycle.ts'),
+    approachWakeups: () => approachWakeups,
     replaceStored: value => { stored = value; },
     loseNativeTask: () => { running = false; },
     reads: () => reads, session: () => stored && JSON.parse(stored),
@@ -68,6 +71,7 @@ test('failed promotion keeps waiting state and never uploads a coarse batch', as
   f.failStart(false); t.mock.timers.tick(30000);
   await f.sample(); assert.equal(f.session().waitForActiveTrip, false); assert.equal(f.sent.length, 0);
   await f.sample(); assert.equal(f.sent.length, 1);
+  assert.equal(f.approachWakeups(), 1, 'optional approach runs only with the active GPS batch');
 });
 
 test('storage failure preserves both waiting and active passenger GPS until recovery', async t => {

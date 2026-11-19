@@ -4,12 +4,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
+function localMetroPort(value = process.env.RIDE_AUDIT_METRO_PORT || '8081') {
+  if (!/^\d+$/.test(value) || Number(value) < 1024 || Number(value) > 65535) {
+    throw Error('Explicit local Metro port required');
+  }
+  return String(Number(value));
+}
 async function evaluate(expression) {
-  const pages = await fetch('http://127.0.0.1:8081/json/list', { signal: AbortSignal.timeout(5000) }).then(r => r.json());
+  const port = localMetroPort();
+  const pages = await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(5000) }).then(r => r.json());
   const page = pages.find(p => p.description.includes('Bridgeless'));
   if (!page) throw Error('No local development runtime');
   const url = new URL(page.webSocketDebuggerUrl);
-  if (url.hostname !== '127.0.0.1' || url.port !== '8081') throw Error('Non-local debugger rejected');
+  if (url.hostname !== '127.0.0.1' || url.port !== port) throw Error('Non-local debugger rejected');
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url);
     const timer = setTimeout(() => { socket.close(); reject(Error('Runtime timeout')); }, 15000);
@@ -66,7 +73,7 @@ function capture(label, options = {}) {
   fs.writeFileSync(path.join(output, label + '.png'), execFileSync(adb, ['-s', serial, 'exec-out', 'screencap', '-p'], { timeout: 15000, maxBuffer: 12 * 1024 * 1024 }));
   return { capture: label, hierarchy };
 }
-module.exports = { evaluate, findModule, inspect, capture };
+module.exports = { evaluate, findModule, inspect, capture, localMetroPort };
 if (require.main === module) {
   Promise.resolve(process.argv[2] === 'capture' ? capture(process.argv[3], { screenshotOnly: process.argv.includes('--screenshot-only') }) : inspect())
     .then(result => console.log(JSON.stringify(result))).catch(error => { console.error(error.message); process.exitCode = 1; });

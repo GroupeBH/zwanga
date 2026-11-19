@@ -23,6 +23,9 @@ test('approach belongs to the passenger reservation, including a driver account 
   for (const flag of ['pickedUp', 'pickedUpConfirmedByPassenger', 'droppedOff', 'droppedOffConfirmedByPassenger']) {
     assert.equal(model.passengerApproachContext('passenger', trip, { ...booking, [flag]: true }), null);
   }
+  for (const field of ['pickedUpAt', 'pickedUpConfirmedAt', 'droppedOffAt', 'droppedOffConfirmedAt']) {
+    assert.equal(model.passengerApproachContext('passenger', trip, { ...booking, [field]: new Date().toISOString() }), null);
+  }
   assert.equal(model.passengerApproachContext('passenger', trip, { ...booking, tripId: 'other' }), null);
   assert.equal(model.passengerApproachContext('passenger', { ...trip, driverId: 'passenger' }, booking), null);
   assert.equal(model.passengerApproachContext('passenger', { ...trip, departure: {} }, { ...booking, passengerOriginCoordinates: null }), null);

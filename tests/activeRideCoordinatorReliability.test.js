@@ -7,9 +7,10 @@ function fixture(t) {
   const h = hookHarness(), starts = [], stops = [], sent = [];
   let subscriber, removes = 0;
   const state = { active: true, user: { id: 'me' }, trips: [{ id: 'own', driverId: 'me', status: 'ongoing' }],
-    driverResult: true, driverOptions: [], bookings: [{ id: 'booking', tripId: 'other', passengerId: 'me', status: 'accepted',
+    driverResult: true, driverOptions: [], passengerOptions: [], bookings: [{ id: 'booking', tripId: 'other', passengerId: 'me', status: 'accepted',
       trip: { id: 'other', driverId: 'another', status: 'ongoing' } }], snapshot: undefined };
   const load = loader({ react: h.react,
+    '@/hooks/useLocationAccessRevision': { useLocationAccessRevision: () => state.permissionRevision ?? 0 },
     '@/store/hooks': { useAppSelector: select => select(state) },
     '@/store/selectors': { selectIsAuthenticated: s => Boolean(s.user), selectUser: s => s.user },
     '@/store/api/tripApi': { useGetMyActivityTripsQuery: () => ({ data: state.trips, isSuccess: true }),
@@ -24,7 +25,7 @@ function fixture(t) {
       startDriverBackgroundLocationTracking: async (id, options) => { starts.push(`driver:${id}`); state.driverOptions.push(options); return state.driverResult; },
       stopDriverBackgroundLocationTracking: async id => { stops.push(['driver', id]); } },
     '@/services/passengerBackgroundLocationTask': {
-      startPassengerBackgroundLocationTracking: async id => { starts.push(`passenger:${id}`); return true; },
+      startPassengerBackgroundLocationTracking: async (id, options) => { starts.push(`passenger:${id}`); state.passengerOptions.push(options); return true; },
       stopPassengerBackgroundLocationTracking: async id => { stops.push(['passenger', id]); },
       sendPassengerLocationSample: async (id, fix) => { sent.push([id, fix]); } },
     '@/services/rideLocationBootstrap': { subscribeBootstrappedRideLocation: (_key, _options, listener) => {
@@ -67,8 +68,21 @@ test('terminal trip detail stops tracking even when the activity booking is stil
   assert.equal(f.removes(), 1); assert.equal(f.starts.length, 1);
 });
 
+test('permission recovery retries unchanged ride immediately without a second driver prompt', async t => {
+  const f = fixture(t); f.state.bookings = []; f.state.driverResult = false;
+  f.render(); await tick();
+  f.state.driverResult = true; f.state.permissionRevision = 1;
+  f.render(); await tick();
+  assert.deepEqual(f.starts, ['driver:own', 'driver:own']);
+  assert.equal(f.state.driverOptions[1].requestMissingPermissions, false);
+  f.render(); await tick(); assert.equal(f.starts.length, 2);
+  f.state.trips = []; f.render(); await tick();
+  f.state.permissionRevision++; f.render(); await tick(); assert.equal(f.starts.length, 2);
+});
+
 test('foreground resume rechecks the unchanged passenger GPS session without stopping background tracking', async t => {
   const f = fixture(t); f.state.trips = []; f.render(); await tick();
+  assert.equal(f.state.passengerOptions[0].requestMissingPermissions, true);
   const stopsBefore = f.stops.length;
   f.state.active = false; f.render(); await tick();
   assert.equal(f.starts.length, 1);
@@ -76,5 +90,17 @@ test('foreground resume rechecks the unchanged passenger GPS session without sto
   assert.equal(f.removes(), 1);
   f.state.active = true; f.render(); await tick();
   assert.deepEqual(f.starts, ['passenger:booking', 'passenger:booking']);
+  assert.equal(f.state.passengerOptions[1].requestMissingPermissions, false);
   assert.equal(f.stops.length, stopsBefore);
+});
+
+test('passenger permission recovery retries without prompting again and stops after dropoff', async t => {
+  const f = fixture(t); f.state.trips = []; f.render(); await tick();
+  f.state.permissionRevision = 1; f.render(); await tick();
+  assert.deepEqual(f.starts, ['passenger:booking', 'passenger:booking']);
+  assert.equal(f.state.passengerOptions[1].requestMissingPermissions, false);
+  f.render(); await tick(); assert.equal(f.starts.length, 2);
+  f.state.bookings = [{ ...f.state.bookings[0], droppedOffAt: '2026-11-18' }];
+  f.render(); await tick(); f.state.permissionRevision++; f.render(); await tick();
+  assert.equal(f.starts.length, 2);
 });

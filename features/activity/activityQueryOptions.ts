@@ -10,8 +10,8 @@ const sharedActivityQueryOptions = {
   refetchOnReconnect: false,
   refetchOnMountOrArgChange: false,
 };
-const selectData = <T,>(result: { data?: T; isSuccess: boolean; isLoading: boolean }) => ({
-  data: result.data, isSuccess: result.isSuccess, isLoading: result.isLoading,
+const selectData = <T,>(result: { data?: T; isSuccess: boolean; isLoading: boolean; isError: boolean }) => ({
+  data: result.data, isSuccess: result.isSuccess, isLoading: result.isLoading, isError: result.isError,
 });
 export const sharedTripsOptions = { ...sharedActivityQueryOptions, selectFromResult: selectData<ActivityTrip[]> };
 export const sharedBookingsOptions = { ...sharedActivityQueryOptions, selectFromResult: selectData<Booking[]> };

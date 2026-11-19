@@ -9,7 +9,7 @@ function entryRecoveryHarness(t) {
   react.useSyncExternalStore = (_subscribe, getSnapshot) => getSnapshot();
   const now = Date.now(), section = count => ({ count, revision: 'a'.repeat(64) });
   let foregroundSince = now, wasActive = true;
-  const trip = { id: 'trip', driverId: 'driver', tripRequestId: 'request', status: 'upcoming', departureTime: '2026-10-19T10:00:00Z' };
+  const trip = { id: 'trip', driverId: 'driver', tripRequestId: 'request', status: 'ongoing', departureTime: '2026-10-19T10:00:00Z' };
   const request = { id: 'request', passengerId: 'passenger', selectedDriverId: 'driver', tripId: 'trip',
     status: 'driver_selected', departureDateMin: trip.departureTime, departureDateMax: '2026-10-19T11:00:00Z' };
   const summary = { schemaVersion: 1, userId: 'driver', hasLiveActivity: true, passengerTrackingBookingId: null,
@@ -17,7 +17,7 @@ function entryRecoveryHarness(t) {
   const env = { active: true, path: '/', busy: false, trip, request, summary, reads: [], routes: [],
     state: { auth: { isAuthenticated: true, user: { id: 'driver' } }, zwangaApi: { config: { online: true } } },
     activity: { data: summary, currentData: summary, isSuccess: true, startedTimeStamp: now - 1000, fulfilledTimeStamp: now - 1000 },
-    trips: { data: [trip], isSuccess: true, startedTimeStamp: now - 1000, fulfilledTimeStamp: now - 1000 },
+    trips: { data: [{ ...trip, status: 'upcoming' }], isSuccess: true, startedTimeStamp: now - 1000, fulfilledTimeStamp: now - 1000 },
     bookings: { data: [], isSuccess: true, startedTimeStamp: now - 1000, fulfilledTimeStamp: now - 1000 },
     requests: { data: [], isSuccess: true, startedTimeStamp: now - 1000, fulfilledTimeStamp: now - 1000 },
     profile: { data: { id: 'driver', role: 'driver' }, isSuccess: true },
@@ -35,7 +35,8 @@ function entryRecoveryHarness(t) {
       if (env.fail?.(action.name)) throw { status: 503 };
       const category = listNames[action.name];
       if (category) {
-        env[category] = { ...env[category], isSuccess: true, isFetching: false, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+        env[category] = { ...env[category], ...(category === 'trips' ? { data: [env.trip] } : {}),
+          isSuccess: true, isFetching: false, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
         return env[category].data;
       }
       if (action.name === 'getAccountActivity') {
@@ -74,6 +75,7 @@ function entryRecoveryHarness(t) {
     // Actual native banner rendering is covered by driverBookingAlertBanner.test.js.
     '@/components/DriverBookingAlertBanner': { DriverBookingAlertBanner: 'BookingBanner' },
     '@/features/navigation/homeEntryStatusContext': { HomeEntryStatusContext: { Provider: 'StatusProvider' } },
+    '@/features/navigation/homePreparationContext': { HomePreparationContext: { Provider: 'PreparationProvider' } },
     '@/features/navigation/appEntryContext': { AppEntryContext: { Provider: 'EntryProvider' } },
     '@/features/navigation/RideOverlayProvider': { useRideOverlayStore: () => ({
       subscribe: () => () => {}, isBusy: () => env.busy,
@@ -86,7 +88,12 @@ function entryRecoveryHarness(t) {
   t.after(() => { producerHooks.unmount(); entryHooks.unmount(); });
   return Object.assign(env, {
     produce: () => { prepareForeground(); currentHooks = producerHooks; return producerHooks.render(Producer); },
-    enter: () => { prepareForeground(); currentHooks = entryHooks; return entryHooks.render(() => Entry({ children: 'navigator' })).props.children[1] || null; },
+    enter: () => {
+      prepareForeground(); currentHooks = entryHooks;
+      const tree = entryHooks.render(() => Entry({ children: 'navigator' }));
+      tree.props.children[0].props.children[1].props.value.reportPrepared();
+      return entryHooks.render(() => Entry({ children: 'navigator' })).props.children[1] || null;
+    },
     banner: () => { currentHooks = entryHooks; const status = entryHooks.render(() => Entry({ children: 'navigator' })).props.children[0].props.value;
       return status ? { props: status } : null; },
     load,

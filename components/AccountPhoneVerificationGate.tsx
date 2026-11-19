@@ -10,6 +10,8 @@ import { performLogout } from '@/store/slices/authSlice';
 import { userApi, useGetCurrentUserQuery } from '@/store/api/userApi';
 import { AccountPhoneVerification, PhoneVerificationShell, accountPhoneStyles as styles } from './auth/AccountPhoneVerification';
 
+const selectPhoneProfile = userApi.endpoints.getCurrentUser.select();
+
 /** Keep the navigator mounted, but deny interaction until the server confirms ownership. */
 export function AccountPhoneVerificationGate({ children }: { children: (blocked: boolean) => ReactNode }) {
   const authenticated = useAppSelector(selectHasAuthenticatedSession);
@@ -17,8 +19,12 @@ export function AccountPhoneVerificationGate({ children }: { children: (blocked:
   const enabled = isAccountPhoneVerificationRequired && authenticated;
   const dispatch = useAppDispatch();
   const segments = useSegments();
+  const cachedProfile = useAppSelector(selectPhoneProfile).data;
+  const waitingForValidation = enabled && segments[0] !== 'auth' &&
+    cachedProfile?.id === userId && cachedProfile?.isPhoneVerified === false;
   const profile = useGetCurrentUserQuery(undefined, { skip: !enabled,
-    refetchOnMountOrArgChange: true, refetchOnReconnect: true });
+    refetchOnMountOrArgChange: true, refetchOnReconnect: true,
+    pollingInterval: waitingForValidation ? 15_000 : 0, skipPollingIfUnfocused: true });
   const user = profile.currentData?.id === userId ? profile.currentData : undefined;
   const status = accountPhoneGate({ enabled, authenticated, userId, profile: user });
   const blocked = status !== 'off' && status !== 'verified';

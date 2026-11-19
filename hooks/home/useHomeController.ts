@@ -12,6 +12,7 @@ import { useHomeUserLocation } from './useHomeUserLocation';
 import { useHomeRequestHighlight } from './useHomeRequestHighlight';
 import { useHomePriorityDismissals } from './useHomePriorityDismissals';
 import { useHomeMapMarkers } from './useHomeMapMarkers';
+import { useHomeSupportingData } from './useHomeSupportingData';
 import { buildHomeEntryAnnouncement } from '@/features/notifications/homeEntryAnnouncement';
 import { useRideEntryAnnouncement } from '@/hooks/notifications/useRideEntryAnnouncement';
 
@@ -20,10 +21,13 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
   // Queries, sockets and camera commands pause outside the foreground. Map ownership
   // and the GPS lifecycle follow route focus; useUserLocation handles AppState itself.
   const foregroundContext = { ...context, isFocused: context.isScreenActive };
-  const driverActivity = useHomeDriverActivity({ ...foregroundContext, ...priorities });
-  const location = useHomeLocation({ ...context, ...driverActivity });
-  const passengerActivity = useHomePassengerActivity({ ...foregroundContext, ...priorities, driverCoordinate: location.liveUserCoordinate });
-  const tripFeed = useHomeTripFeed({ ...location, ...foregroundContext, ...passengerActivity });
+  const preparationContext = { ...context, isFocused: context.isDataActive };
+  const supportingDataPrepared = useHomeSupportingData({ active: context.isDataActive, isDriver: context.isDriver });
+  const driverActivity = useHomeDriverActivity({ ...preparationContext, ...priorities });
+  const location = useHomeLocation({ ...context, ...driverActivity,
+    isFocused: context.isFocused && (!context.entryPending || context.preparationAllowed) });
+  const passengerActivity = useHomePassengerActivity({ ...preparationContext, ...priorities, driverCoordinate: location.liveUserCoordinate });
+  const tripFeed = useHomeTripFeed({ ...location, ...preparationContext, ...passengerActivity });
   const tripSelection = useHomeTripSelection({ ...tripFeed, ...context, ...passengerActivity, ...driverActivity, ...priorities, liveUserCoordinate: location.liveUserCoordinate });
   const requestHighlight = useHomeRequestHighlight({
     enabled: context.isScreenActive && context.isDriver && !tripSelection.isHomeSheetLockedRetracted
@@ -47,9 +51,11 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
   const sheet = useHomeSheet({ ...context, ...tripSelection, ...passengerActivity, ...driverActivity, ...tripFeed, hasMapPriorities });
   useRideEntryAnnouncement(context.currentUser?.id, context.isScreenActive,
     context.isHomeRoleReady && driverActivity.driverAnnouncementReady && passengerActivity.passengerAnnouncementReady && !tripSelection.activeHomeTrip &&
-      (Boolean(tripSelection.featuredDriverReservation || tripSelection.featuredDriverUpcomingTrip || tripSelection.featuredPassengerTrip) || passengerActivity.driverRequestsAnnouncementReady),
-    context.currentUser && (hasMapPriorities || requestHighlight.highlightedDriverRequest) ? buildHomeEntryAnnouncement({
-      userId: context.currentUser.id, isDriver: context.isDriver, ...tripSelection, ...passengerActivity, ...requestHighlight,
+      (Boolean(tripSelection.featuredDriverReservation) || passengerActivity.driverRequestsAnnouncementReady),
+    context.currentUser && (tripSelection.featuredDriverReservation || requestHighlight.highlightedDriverRequest) ? buildHomeEntryAnnouncement({
+      userId: context.currentUser.id, isDriver: context.isDriver, activeBookings: [],
+      featuredDriverReservation: tripSelection.featuredDriverReservation,
+      highlightedDriverRequest: requestHighlight.highlightedDriverRequest,
     }) : null);
   return {
     ...context,
@@ -66,5 +72,7 @@ export function useHomeController(context: ReturnType<typeof useHomeContext>) {
     ...userLocation,
     ...sheet,
     hasMapPriorities,
+    homeDataPrepared: supportingDataPrepared && driverActivity.driverDataPrepared && passengerActivity.passengerDataPrepared &&
+      (context.isDriver ? !passengerActivity.availableTripRequestsLoading : !tripFeed.tripsLoading),
   };
 }

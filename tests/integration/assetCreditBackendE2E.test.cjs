@@ -29,10 +29,13 @@ async function raw(actor, route, method = 'GET', body) {
   return { status: response.status, body: await response.json() };
 }
 async function offer(driver, kind, rate = 500) {
+  const legacy = !['phone', 'vehicle'].includes(kind);
   const result = await raw(admin, '/asset-credits/admin', 'POST', { mutationId: randomUUID(), driverId: driver.id,
-    assetKind: kind, label: 'Bien synthétique ' + kind, principalMinor: 100000, repaymentBps: rate,
+    assetKind: legacy ? 'phone' : kind, label: 'Bien synthétique ' + kind, principalMinor: 100000, repaymentBps: rate,
     terms: 'Contrat synthétique pour recette locale isolée, aucun bien réel ni paiement externe.', validationReference: 'test-only' });
-  assert.equal(result.status, 201, JSON.stringify(result.body)); return result.body.id;
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  if (legacy) await backend.legacyKind(result.body.id, kind);
+  return result.body.id;
 }
 async function accept(client, id) {
   const credit = await client.call('getAssetCredit', id);
@@ -43,10 +46,53 @@ async function deliver(id) {
     { assetReference: 'synthetic-' + id, deliveryReference: 'local-test-only' })).status, 201);
 }
 
+test('mobile application comments and vehicle eligibility are enforced through real HTTP', async () => {
+  const driver = await backend.actor('driver', true, false), client = mobile(driver), stranger = mobile(await backend.actor());
+  const products = await client.call('getAssetCreditProducts');
+  assert.equal(products.items.find(p => p.kind === 'vehicle').eligibility.eligible, false);
+  await assert.rejects(client.call('requestAssetCredit', { assetKind: 'vehicle', notes: '' }), e => e.status === 409);
+  const request = await client.call('requestAssetCredit', { assetKind: 'phone', notes: 'Premier commentaire' });
+  await assert.rejects(stranger.call('updateCreditRequestComment', { id: request.id, notes: 'Intrusion' }), e => e.status === 409);
+  await client.call('updateCreditRequestComment', { id: request.id, notes: '  Ma préférence  ' });
+  assert.equal((await client.call('getAssetCreditRequests')).items[0].notes, 'Ma préférence');
+  await offer(driver, 'phone');
+  await assert.rejects(client.call('updateCreditRequestComment', { id: request.id, notes: 'Trop tard' }), e => e.status === 409);
+});
+
+test('monthly offer choices cross mobile API, consent, delivered schedule and voluntary repayment', async () => {
+  const driver = await backend.actor(), client = mobile(driver);
+  const result = await raw(admin, '/asset-credits/admin', 'POST', { mutationId: randomUUID(), driverId: driver.id,
+    assetKind: 'phone', label: 'Téléphone test', principalMinor: 120000, cashPriceMinor: 100000, creditFeeMinor: 20000,
+    installmentCount: 3, installmentPeriod: 'month', repaymentBps: 500,
+    repaymentPlans: [{ id: 'm3', months: 3 }, { id: 'm6', months: 6 }],
+    terms: 'Contrat synthétique : choix de durée, même total. Aucun bien réel.', validationReference: 'local-plan-test' });
+  assert.equal(result.status, 201, JSON.stringify(result.body));
+  const id = result.body.id, quote = await client.call('getAssetCredit', id);
+  const { creditWithSelectedPlan } = loader({ '@expo/vector-icons': { Ionicons: 'Icon' },
+    'react-native': { Text: 'Text', View: 'View', TouchableOpacity: 'Press' },
+    '@/features/pro-services/ServiceLayout': { s: {} } })('features/pro-services/CreditPlanChoice.tsx');
+  const selected = creditWithSelectedPlan(quote, 'm6');
+  assert.equal(selected.installments.length, 6); assert.equal(selected.installments[0].amountMinor, 20000);
+  const consent = { id, accept: true, policyVersion: quote.policyVersion, costDisclosureVersion: quote.costDisclosureVersion,
+    expectedTotalRepaymentBps: quote.totalRepaymentBps };
+  await assert.rejects(client.call('decideAssetCredit', consent), e => e.status === 409);
+  await client.call('decideAssetCredit', { ...consent, selectedPlanId: 'm6' }); await deliver(id);
+  await client.call('repayAssetCredit', { id, mutationId: randomUUID(), amountMinor: 20000 });
+  const after = await client.call('getAssetCredit', id);
+  assert.equal(after.selectedPlanId, 'm6'); assert.equal(after.installments.length, 6);
+  assert.equal(after.installments[0].remainingMinor, 0); assert.equal(after.paidMinor, '20000');
+  assert.ok(after.installments.every(row => row.dueAt));
+  const listed = (await client.call('getAssetCredits')).items.find(item => item.id === id);
+  assert.deepEqual(listed.nextInstallment, after.installments[1]);
+  assert.equal(listed.installments, undefined, 'list returns a bounded summary, not every installment');
+  const { creditNextInstallment } = loader()('features/pro-services/servicesDashboardModel.ts');
+  assert.equal(creditNextInstallment(listed).ordinal, 2);
+});
+
 test('priced offer with fees and minimums crosses real HTTP, mobile consent and repayment without double debt', async () => {
   const driver = await backend.actor(), client = mobile(driver);
   const result = await raw(admin, '/asset-credits/admin', 'POST', { mutationId: randomUUID(), driverId: driver.id,
-    assetKind: 'helmet', label: 'Casque synthétique', principalMinor: 110000, cashPriceMinor: 100000, creditFeeMinor: 10000,
+    assetKind: 'phone', label: 'Téléphone synthétique', principalMinor: 110000, cashPriceMinor: 100000, creditFeeMinor: 10000,
     installmentCount: 4, installmentPeriod: 'week', repaymentBps: 750,
     terms: 'Contrat de test avec frais fixes inclus et minimums, remboursement précoce compté sans double paiement.', validationReference: 'local-cost-test' });
   assert.equal(result.status, 201, JSON.stringify(result.body));
@@ -69,12 +115,15 @@ test('priced offer with fees and minimums crosses real HTTP, mobile consent and 
   assert.equal(after.installments.reduce((sum, row) => sum + row.remainingMinor, 0), 80000);
 });
 
-test('all six products follow mobile endpoints → HTTP/JWT/DTO → PostgreSQL; no debit before delivery', async () => {
+test('open products and grandfathered equipment cross mobile HTTP/JWT/DTO with no debit before delivery', async () => {
   for (const kind of ['phone', 'helmet', 'gps_tracker', 'delivery_equipment', 'equipment', 'vehicle']) {
     const driver = await backend.actor(), client = mobile(driver);
-    assert.equal((await client.call('getAssetCreditProducts')).items.find(p => p.kind === kind).enabled, true);
-    await client.call('requestAssetCredit', { assetKind: kind, notes: 'Besoin synthétique local' });
-    assert.equal((await client.call('getAssetCreditRequests')).items[0].assetKind, kind);
+    const open = ['phone', 'vehicle'].includes(kind);
+    assert.equal((await client.call('getAssetCreditProducts')).items.find(p => p.kind === kind).enabled, open);
+    if (open) {
+      await client.call('requestAssetCredit', { assetKind: kind, notes: 'Besoin synthétique local' });
+      assert.equal((await client.call('getAssetCreditRequests')).items[0].assetKind, kind);
+    } else await assert.rejects(client.call('requestAssetCredit', { assetKind: kind, notes: '' }), e => e.status === 409);
     const id = await offer(driver, kind);
     assert.equal((await client.call('getAssetCredits')).items[0].id, id);
     await assert.rejects(client.call('repayAssetCredit', { id, mutationId: randomUUID(), amountMinor: 10000 }), e => e.status === 409);
@@ -145,6 +194,7 @@ test('actual detail screen confirms a chosen amount and safely resumes a committ
   const hooks = hookHarness();
   let lost = true;
   const Screen = loader({ react: hooks.react,
+    '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native': { Text: 'Text', View: 'View', TextInput: 'Input', TouchableOpacity: 'Press', ActivityIndicator: 'Loading' },
     'expo-router': { useLocalSearchParams: () => ({ id }) },
     '@/features/pro-services/ServiceLayout': { ServiceLayout: 'Layout', ServiceButton: 'Button', s: {} },
