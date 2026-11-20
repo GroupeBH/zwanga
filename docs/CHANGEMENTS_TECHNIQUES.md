@@ -1,5 +1,12 @@
 # Journal des changements techniques
 
+## 2026-11-19 — Audit fiabilité et fiche des équipements à crédit
+
+- Problème UX : le choix d'une catégorie d'équipement ne présentait pas de fiche expliquant le bien et les modalités avant l'envoi. Le catalogue ouvre désormais une route dédiée, avec usage, informations produit à confirmer, disponibilité, conditions véhicule, commentaire facultatif et accès à l'offre réelle/contrat existant. Le serveur ne fournissant pas encore de références commerciales détaillées, aucun modèle, photo, prix ou échéancier fictif n'est ajouté.
+- Fichiers, protections et limites dans [l'audit et le détail de l'implémentation](audit-performance-fiabilite-2026-11-19.md). Catégories à venir lisibles mais non commandables, éligibilité serveur conservée, envoi volontaire avec verrou et garde de session. Présentation en sections courtes, action principale unique et titre adapté aux grandes polices ; aucune modification du backend, des règles financières ou des alertes.
+- Validation : 40 tests crédit ciblés et un test de transport Android sur JVM réussis ; cinq aperçus RN-Web contrôlés, dont 320 px à 200 %. TypeScript, ESLint, frontières réseau et taille des sources réussis. Ces contrôles ne certifient pas le rendu ou la stabilité native.
+- Audit : double envoi possible d'un devis de service et temporisation GPS conservée entre trajets reproduits avec dépendances simulées ; invalidations Services trop larges constatées dans le code. Ce sont des correctifs proposés, non appliqués dans cette intervention. Le contrôle global reste incomplet ; backend de test indisponible et binaire Android installé ancien, sans recette iPhone physique ni déploiement.
+
 ## 2026-11-19 — Navigation conducteur et ouverture de l'accueil
 
 - Navigation inspirée de la référence fournie : carte prioritaire, bandeau de guidage contrasté avec SOS, panneau passager compact et deux commandes fixes. Actions, confirmations et visibilité à 500 m conservées. Voir [le périmètre, les fichiers et la validation](navigation-conducteur-2026-11-19.md) : 138 tests ciblés et 24 aperçus RN-Web, pas de certification native.

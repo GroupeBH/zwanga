@@ -66,6 +66,7 @@ export function ProtectedAppStack() {
         <Stack.Screen name="services/index" />
         <Stack.Screen name="services/history" />
         <Stack.Screen name="services/credit/index" />
+        <Stack.Screen name="services/credit/product/[kind]" />
         <Stack.Screen name="services/credit/repayments" />
         <Stack.Screen name="services/credit/[id]" />
         <Stack.Screen name="services/fleet" />
