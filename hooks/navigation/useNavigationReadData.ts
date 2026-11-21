@@ -13,7 +13,7 @@ export function useNavigationReadData<T>(scope: string, read: { currentData?: T;
   const saved = useRef<{ scope: string; session: number; snapshot: Snapshot<T> }>({ scope, session, snapshot: {} });
   if (saved.current.scope !== scope || saved.current.session !== session) saved.current = { scope, session, snapshot: {} };
   const status = (read.error as { status?: number | string } | undefined)?.status;
-  if ([401, 403, 404].includes(Number(status))) saved.current.snapshot = { error: read.error };
+  if ([401, 403, 404, 410].includes(Number(status))) saved.current.snapshot = { error: read.error };
   else if (read.currentData !== undefined || read.error) saved.current.snapshot = {
     data: read.currentData ?? saved.current.snapshot.data, error: read.error,
   };

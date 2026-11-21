@@ -24,6 +24,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { applyDriverInterruptionResponse } from '@/store/api/trip/interruptionResponseCache';
 import type { Trip } from '@/types';
 import { useCallback } from 'react';
+import { passengerNavigationAvailability } from '@/features/passenger-navigation/passengerNavigationAvailability';
 
 
 
@@ -54,7 +55,10 @@ export function usePassengerNavigationData() {
   const { data: liveTrip, error: tripError } = useNavigationReadData(`${passengerId}:trip:${tripId}`, tripRead, isOnline);
   const refetchTrip = useDisplayRefetch(readsEnabled && !!tripId, `${passengerId}:${tripId}`, tripRead.refetch);
   const { data: trip, offline: offlineTrip } = useOfflineRideData(`trip:${tripId}`, liveTrip, tripError, liveTrip?.status === 'ongoing');
-  const isTripOngoing = trip?.status === 'ongoing';
+  const availability = passengerNavigationAvailability({ bookingId, booking, trip, bookingError, tripError,
+    online: isOnline, loading: Boolean(readsEnabled && ((!booking && (bookingLoading || bookingFetching || bookingRead.isUninitialized)) ||
+      (booking && !trip && (tripLoading || tripFetching || tripRead.isUninitialized)))) });
+  const isTripOngoing = !availability.feedback && trip?.status === 'ongoing';
   const driverLocationSnapshot = useDriverLocationFallback(tripId, isScreenActive && isOnline && isTripOngoing);
   const commitDriverInterruptionResponse = useCallback((response: Trip, requestId: string) => {
     if (passengerId) dispatch(applyDriverInterruptionResponse(response, { tripId, bookingId, passengerId, requestId }));
@@ -72,6 +76,7 @@ export function usePassengerNavigationData() {
     useCreateTripShareLinkMutation();
 
   return {
+    availability,
     passengerId,
     bookingFetching,
     tripFetching,

@@ -124,6 +124,8 @@ export function usePassengerNavigationState({
   const navigateToRequestSafely = useCallback((requestId: string) => navigateSafely(() => {
     router.replace({ pathname: '/request/[id]', params: { id: requestId } });
   }), [navigateSafely, router]);
+  const navigateHomeSafely = useCallback(() => navigateSafely(() => router.replace('/(tabs)')), [navigateSafely, router]);
+  const navigateBookingsSafely = useCallback(() => navigateSafely(() => router.replace('/bookings')), [navigateSafely, router]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -148,6 +150,8 @@ export function usePassengerNavigationState({
   }, [isFocused, navigateBackSafely]);
 
   return {
+    navigateHomeSafely,
+    navigateBookingsSafely,
     driverLocation,
     passengerLocation,
     isMountedRef,

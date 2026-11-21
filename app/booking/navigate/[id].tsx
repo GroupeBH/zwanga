@@ -17,6 +17,7 @@ import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
 import { useMainScreenReady } from '@/hooks/useMainScreenReady';
 import { LocationAccessBanner } from '@/components/location/LocationAccessBanner';
+import { PassengerNavigationUnavailable } from '@/features/passenger-navigation/PassengerNavigationUnavailable';
 
 export default function PassengerNavigationScreen() {
   const { height } = useWindowDimensions();
@@ -26,23 +27,17 @@ export default function PassengerNavigationScreen() {
     booking: model.data.booking, isScreenActive: model.data.isScreenActive });
 
   // Loading
-  if ((model.data.bookingLoading && !model.data.booking) || (model.data.tripLoading && !model.data.trip)) {
+  if (model.data.availability.loading) {
     return <NavigationLoading onExit={model.state.navigateBackSafely} />;
   }
 
-  // Erreur
-  if (!model.data.booking || !model.data.trip) {
-    return (
-      <View style={styles.errorContainer}>
-        <StatusBar barStyle="dark-content" />
-        <Ionicons name="alert-circle" size={64} color={Colors.danger} />
-        <Text style={styles.errorText}>Réservation introuvable</Text>
-        <TouchableOpacity style={styles.backButton} onPress={model.state.navigateBackSafely}>
-          <Text style={styles.backButtonText}>Retour</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  if (model.data.availability.feedback) {
+    return <PassengerNavigationUnavailable feedback={model.data.availability.feedback}
+      busy={model.data.bookingFetching || model.data.tripFetching} online={model.data.isOnline} active={model.data.isScreenActive}
+      onRetry={() => { void model.data.refetchBooking(); if (model.data.tripId) void model.data.refetchTrip(); }}
+      onHome={model.state.navigateHomeSafely} onBookings={model.state.navigateBookingsSafely} />;
   }
+  if (!model.data.booking || !model.data.trip) return <NavigationLoading onExit={model.state.navigateBackSafely} />;
 
   return (
     <RideOverlayScope scopeKey={`passenger:${model.data.bookingId}`} active={model.data.isScreenActive}>

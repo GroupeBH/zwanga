@@ -14,7 +14,9 @@ interface Props {
 }
 export function PassengerNavigationHeader({ model, assistance }: Props) {
   const { data, state, presentation, tripActions } = model;
-  const title = presentation.tripStatus === 'waiting_pickup' ? 'Votre rendez-vous' :
+  const title = data.trip?.status === 'completed' || data.booking?.status === 'completed' ? 'Trajet terminé' :
+    data.trip?.status === 'upcoming' && data.trip.startedAt ? 'Trajet en pause' :
+    presentation.tripStatus === 'waiting_pickup' ? 'Votre rendez-vous' :
     presentation.tripStatus === 'pickup_confirmation_needed' ? 'Êtes-vous à bord ?' :
     presentation.tripStatus === 'in_transit' ? 'En route' :
     presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Êtes-vous arrivé ?' :

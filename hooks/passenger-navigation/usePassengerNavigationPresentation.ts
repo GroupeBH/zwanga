@@ -49,6 +49,7 @@ export function usePassengerNavigationPresentation({
 }: Params) {
   const tripStatus = useMemo(() => {
     if (!booking || !trip) return 'loading';
+    if (trip.status === 'completed' || booking.status === 'completed') return 'completed';
     if (trip.status !== 'ongoing') return 'not_started';
     if (booking.droppedOff) return 'completed';
     if (booking.droppedOffConfirmedByPassenger) return 'awaiting_dropoff_confirmation';
