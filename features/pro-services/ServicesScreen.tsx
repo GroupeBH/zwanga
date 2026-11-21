@@ -52,7 +52,7 @@ export default function ServicesScreen({ embedded = false, bottomOverlay = 0 }: 
       documentAction={documentsOpen ? 'Préparer mon dossier' : 'Service bientôt disponible'} documentsEnabled={documentsEnabled}
       credits={items} creditDetail={detail.isError ? undefined : detail.currentData} creditsReady={!!credits.currentData && !credits.isError}
       onDocuments={() => { if (documentsEnabled) go(current ? current.canEdit ? `/services/edit?id=${current.id}` : `/services/${current.id}` : '/services/new?service=documents'); }}
-      onCredits={() => go('/services/credit/repayments')} onBuy={() => go('/services/credit')} onFleet={() => go('/services/fleet')}
+      onCredits={() => go('/services/credit/repayments')} onBuy={() => go('/services/catalogue')} onFleet={() => go('/services/fleet')}
       onCredit={id => go(`/services/credit/${id}`)} />
   </ServiceLayout>;
 }

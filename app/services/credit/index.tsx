@@ -20,6 +20,7 @@ export default function CreditsScreen() {
   const failed = products.isError || requests.isError || credits.isError;
   const go = (path: string) => { if (active) router.push(path as Href); };
   return <ServiceLayout title="Acheter à crédit">
+    <ServiceButton title="Catalogue : produits, prix et formules" onPress={() => router.push('/services/catalogue' as Href)} />
     <CreditRepaymentsLink active={active} />
     <Text style={s.text}>Ouvrez un équipement pour découvrir son usage et les conditions avant d’envoyer votre choix.</Text>
     {products.isLoading && <ActivityIndicator accessibilityLabel="Chargement des équipements" />}
