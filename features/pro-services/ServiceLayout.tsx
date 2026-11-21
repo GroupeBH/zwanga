@@ -22,6 +22,8 @@ export function ServiceLayout({
   allowBackGesture,
   embedded = false,
   bottomOverlay = 0,
+  headerActions,
+  compact = false,
 }: React.PropsWithChildren<{
   title: string;
   footer?: React.ReactNode;
@@ -30,6 +32,8 @@ export function ServiceLayout({
   allowBackGesture?: boolean;
   embedded?: boolean;
   bottomOverlay?: number;
+  headerActions?: React.ReactNode;
+  compact?: boolean;
 }>) {
   return (
     <SafeAreaView
@@ -46,7 +50,7 @@ export function ServiceLayout({
           }}
         />
       )}
-      <View style={s.header}>
+      <View style={[s.header, compact && { borderBottomWidth: 0, paddingHorizontal: 16 }]}>
         {!embedded && (
           <TouchableOpacity
             accessibilityLabel="Retour"
@@ -64,6 +68,7 @@ export function ServiceLayout({
           </TouchableOpacity>
         )}
         <Text style={s.heading}>{title}</Text>
+        {headerActions}
       </View>
       <KeyboardAvoidingView
         style={s.flex}
@@ -76,6 +81,7 @@ export function ServiceLayout({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             s.content,
+            compact && { padding: 16, gap: 18 },
             { paddingBottom: s.content.paddingBottom + bottomOverlay },
           ]}
           scrollIndicatorInsets={{ bottom: bottomOverlay }}

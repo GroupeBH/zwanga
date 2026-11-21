@@ -1,5 +1,6 @@
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
-import { AppUpdatePrompt } from '@/components/AppUpdatePrompt';
+import { useCallback, useEffect, useState } from 'react';
+import { useReportHomePrepared } from '@/features/navigation/homePreparationContext';
 import { HomeHeader } from '@/components/home/HomeHeader';
 import { HomeLocationButton } from '@/components/home/HomeLocationButton';
 import { HomeMap } from '@/components/home/HomeMap';
@@ -11,11 +12,24 @@ import { styles } from '@/features/home/HomeScreen.styles';
 import { useHomeController } from '@/hooks/home/useHomeController';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMainScreenReady } from '@/hooks/useMainScreenReady';
+import { useWindowDimensions } from 'react-native';
 export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeContext> }) {
   const home = useHomeController(context);
-  const reportLayout = useMainScreenReady(home.isScreenActive && context.isHomeRoleReady, 'home');
+  const { fontScale } = useWindowDimensions();
+  const largeText = fontScale > 1.3;
+  const reportPrepared = useReportHomePrepared();
+  const [laidOut, setLaidOut] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const reportMapReady = useCallback(() => setMapReady(true), []);
+  const prepared = home.homeDataPrepared && (mapReady || !home.shouldRenderHomeMap);
+  const reportLayout = useMainScreenReady(home.isScreenActive && context.isHomeRoleReady && prepared, 'home');
+  useEffect(() => {
+    if (laidOut && prepared && context.isDataActive) reportPrepared?.();
+  }, [laidOut, prepared, context.isDataActive, reportPrepared]);
   // Trip reads must never replace/remount the native map, including on a slow network.
-  return <SafeAreaView style={styles.container} edges={[]} onLayout={event => { home.onHomeLayout(event); reportLayout(); }}>
+  return <SafeAreaView style={styles.container} edges={[]} onLayout={event => {
+    home.onHomeLayout(event); setLaidOut(true); reportLayout();
+  }}>
     <HomeMap
       shouldRenderHomeMap={home.shouldRenderHomeMap}
       mapRef={home.mapRef}
@@ -30,8 +44,11 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       markers={home.homeMapMarkers}
       markerSummary={home.homeMapMarkerSummary}
       onMarkerPress={home.openHomeMapMarker}
+      onReady={reportMapReady}
     />
     <HomeLocationButton
+      key={`location:${home.currentUser?.id}`}
+      active={home.isScreenActive}
       locationButtonBottom={home.locationButtonBottom}
       handleReturnToUserLocation={home.handleReturnToUserLocation}
       isCenteringOnUser={home.isCenteringOnUser}
@@ -48,8 +65,8 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       isDriver={home.isDriver}
       isScreenActive={home.isScreenActive}
     />
-    {home.shouldRenderHomeMap && home.hasMapPriorities && <HomeActivityCards
-        key={home.currentUser?.id}
+    {home.shouldRenderHomeMap && home.hasMapPriorities && !largeText && <HomeActivityCards
+        key={`activity:${home.currentUser?.id}`}
         mapLayout={home.mapPriorityLayout}
         dismissPriority={home.dismissPriority}
         prioritiesEnabled={home.isScreenActive}
@@ -67,6 +84,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
         openTripDetail={home.openTripDetail}
       />}
     {home.activeHomeTrip ? <HomeOngoingTripSheet
+      isScreenActive={home.isScreenActive}
       activeHomeTrip={home.activeHomeTrip}
       ongoingDriverTrip={home.ongoingDriverTrip}
       ongoingBookingId={home.ongoingBookingId}
@@ -77,6 +95,14 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       sheetHeight={home.sheetHeight}
       onSheetLayout={home.onSheetLayout}
     /> : <HomeTripsSheet
+      priorityContent={largeText && home.hasMapPriorities ? <HomeActivityCards
+        key={`activity:${home.currentUser?.id}`} dismissPriority={home.dismissPriority} prioritiesEnabled={home.isScreenActive}
+        featuredDriverReservation={home.featuredDriverReservation} featuredDriverReservationStatus={home.featuredDriverReservationStatus}
+        router={home.router} featuredDriverReservationPassengerName={home.featuredDriverReservationPassengerName}
+        featuredDriverReservationSeatsLabel={home.featuredDriverReservationSeatsLabel}
+        featuredDriverUpcomingTrip={home.featuredDriverUpcomingTrip} featuredDriverUpcomingTripSeatsLabel={home.featuredDriverUpcomingTripSeatsLabel}
+        activeTripRequest={home.activeTripRequest} activeRequestStatus={home.activeRequestStatus} openTripRequestDetail={home.openTripRequestDetail}
+        featuredPassengerTrip={home.featuredPassengerTrip} openTripDetail={home.openTripDetail} /> : undefined}
       recentDestinations={home.recentDestinations}
       hiddenHomePriorities={home.hiddenHomePriorities}
       featuredPassengerTrip={home.featuredPassengerTrip}
@@ -106,10 +132,9 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       bookedTripIds={home.bookedTripIds}
       openTripDetail={home.openTripDetail}
     />}
-    <HomeRequestModal key={home.currentUser?.id} userId={home.currentUser?.id}
+    <HomeRequestModal key={`request:${home.currentUser?.id}`} userId={home.currentUser?.id}
       request={home.highlightedDriverRequest} router={home.router} dismissPriority={home.dismissPriority}
       onOpenRequestDetail={home.openTripRequestDetail}
       enabled={home.isScreenActive && home.isDriver && !home.activeHomeTrip && !home.availableTripRequestsError} />
-    <AppUpdatePrompt enabled={home.isScreenActive && !home.ongoingDriverTrip && !home.ongoingBookedTrip && !home.highlightedDriverRequest && !home.featuredDriverReservation} />
   </SafeAreaView>;
 }

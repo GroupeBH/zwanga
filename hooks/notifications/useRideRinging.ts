@@ -41,7 +41,7 @@ export function useRideRinging(userId: string | undefined) {
     const retryingHandoffs = new Set<string>();
     const reconcile = () => {
       if (!current() || AppState.currentState !== 'active') {
-        stopRideAnnouncement(); stopForegroundRideSound();
+        stopRideAnnouncement(true); stopForegroundRideSound();
         if (current()) void reconcileBackgroundRideRinging(userId);
       } else {
         for (const handoff of pendingRideAlertHandoffs(userId)) {
@@ -210,7 +210,7 @@ export function useRideRinging(userId: string | undefined) {
         }).catch(() => reportRideAudioFailure('RING_RECONCILE_FAILED'));
         void restore().catch(() => reportRideAudioFailure('RESTORE_FAILED'));
       }
-      else { stopRideAnnouncement(); stopForegroundRideSound(); }
+      else { stopRideAnnouncement(true); stopForegroundRideSound(); }
       if (state === 'background') void reconcileBackgroundRideRinging(userId);
       updateExpiry();
     });

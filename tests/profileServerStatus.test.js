@@ -129,7 +129,7 @@ function profileFixture() {
     '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans'), useGetPremiumOverviewQuery: query('premium') },
     '@/store/api/reviewApi': { useGetReviewPageQuery: query('reviews'), useGetAverageRatingQuery: query('rating') },
-    '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests'), useGetMyDriverOffersQuery: query('offers') },
+    '@/store/api/tripRequestApi': { useGetMyRequestStatsQuery: query('requestStats') },
   })('hooks/profile/useProfileData.ts');
   return { hooks, state, values, calls, refreshes, render: () => hooks.render(useProfileData) };
 }
@@ -148,7 +148,7 @@ test('slow first load and first-load failure never use a locally remembered driv
   assert.equal(profile.isProfileStatusAvailable, false);
   assert.equal(getProfilePriorityAction(profile), 'refresh');
   await profile.handleRefresh();
-  assert.deepEqual(app.refreshes.sort(), ['kyc', 'profile', 'referrals', 'vehicles']);
+  assert.deepEqual(app.refreshes.sort(), ['kyc', 'profile', 'referrals', 'requestStats', 'vehicles']);
   app.hooks.unmount();
 });
 

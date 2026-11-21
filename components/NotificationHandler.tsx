@@ -10,6 +10,7 @@ import { isDriverAccount } from '@/utils/accountRole';
 import { sharedRequestsOptions as sharedActivityQueryOptions } from '@/features/activity/activityQueryOptions';
 import { getTripRevenueMessage } from '@/features/driver-payments/tripRevenuePresentation';
 import { notificationEffects } from '@/features/notifications/notificationEffects';
+import { rememberIosNotificationOpen, subscribeIosNotificationOpen } from '@/features/notifications/pendingIosNotificationOpen';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { ensureAndroidChannel } from '@/services/pushNotifications';
 import { registerBackgroundNotificationTask } from '@/services/backgroundNotificationTask';
@@ -22,13 +23,14 @@ import { handleNotificationNavigation, isTripInterruptionNotification } from '@/
 import { getTripDeepLinkHref } from '@/utils/tripDeepLink';
 import { getTripRequestDetailHref } from '@/utils/requestNavigation';
 import * as Notifications from 'expo-notifications';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname, useRootNavigationState, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { InteractionManager, Linking, Platform } from 'react-native';
 
 export function NotificationHandler() {
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const navigationReady = useRootNavigationState()?.key;
   const { showDialog, hideDialogFor } = useDialog();
   const pathname = usePathname();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
@@ -270,8 +272,16 @@ export function NotificationHandler() {
     const responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
       console.log('[NotificationHandler] Notification pressed from background.');
       const data = response.notification.request.content.data || {};
+      if (rememberIosNotificationOpen(data, response.notification.request.content.body)) return;
       void handleNotificationPress(data, response.notification.request.content.body);
     });
+
+    const unsubscribeIosOpen = subscribeIosNotificationOpen(
+      data => Boolean(navigationReady && currentUserRef.current && data.type !== 'app_update'),
+      ({ data, body }) => { void handleNotificationPress(data, body).catch(() => {
+        console.warn('[NotificationHandler] Impossible d’ouvrir la notification.');
+      }); },
+    );
 
     const linkingListener = Linking.addEventListener('url', (event) => {
       const { url } = event;
@@ -344,9 +354,10 @@ export function NotificationHandler() {
       startupTask.cancel();
       foregroundListener.remove();
       responseListener.remove();
+      unsubscribeIosOpen();
       linkingListener.remove();
     };
-  }, [dispatch, handlePassengerOverdueNotification, router, showDialog]);
+  }, [dispatch, handlePassengerOverdueNotification, router, showDialog, navigationReady, currentUser?.id, isAuthenticated]);
 
   return null;
 }

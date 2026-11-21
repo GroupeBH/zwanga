@@ -2,7 +2,7 @@ import { Spacing } from '@/constants/styles';
 import { HOME_DASHBOARD_COLORS } from '@/features/home/homeDashboardTheme';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { styles } from '@/features/home/HomeHeader.styles';
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
 import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
@@ -21,6 +21,7 @@ export const HomeHeader = React.memo(function HomeHeader({
   insets, router, profileInitial, ongoingDriverTrip, ongoingBookedTrip, unreadNotifications,
   ongoingBookingId, isDriver = false, isScreenActive = true, showOngoingShortcut = true,
 }: Props) {
+  const { fontScale } = useWindowDimensions();
   const ongoing = Boolean(ongoingDriverTrip || ongoingBookedTrip);
   // Same destinations as the global ongoing-trip banner.
   const ongoingRoute = ongoingDriverTrip?.id ? `/trip/navigate/${ongoingDriverTrip.id}` as const
@@ -31,21 +32,21 @@ export const HomeHeader = React.memo(function HomeHeader({
       onPress={() => router.push('/notifications')}>
       <Ionicons name="notifications-outline" size={24} color={HOME_DASHBOARD_COLORS.ink} />
       {unreadNotifications > 0 && <View style={styles.notificationBadge}>
-        <Text style={styles.notificationBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text>
+        <Text maxFontSizeMultiplier={1} style={styles.notificationBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text>
       </View>}
     </TouchableOpacity>
   );
   const profile = (
     <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Ouvrir le profil"
       style={styles.profileButton} onPress={() => router.push('/profile')}>
-      <Text style={styles.userAvatarText}>{profileInitial}</Text>
+      <Text maxFontSizeMultiplier={1} style={styles.userAvatarText}>{profileInitial}</Text>
     </TouchableOpacity>
   );
   return (
     <View style={[styles.topOverlay, { top: insets.top + Spacing.lg }]} pointerEvents="box-none">
       {isDriver && !ongoing ? (
-        <View style={styles.mapHeader} pointerEvents="box-none">
-          <View style={styles.driverStatusSlot} pointerEvents="box-none">
+        <View style={[styles.mapHeader, fontScale > 1.3 && styles.largeMapHeader]} pointerEvents="box-none">
+          <View style={[styles.driverStatusSlot, fontScale > 1.3 && styles.largeDriverStatusSlot]} pointerEvents="box-none">
             <HomeDriverStatus active={isScreenActive} onPress={() => router.push('/driver-availability')} />
           </View>
           <View style={styles.headerActions} pointerEvents="box-none">{notifications}{profile}</View>

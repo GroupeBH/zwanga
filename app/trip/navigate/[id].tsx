@@ -138,14 +138,22 @@ function DriverNavigationScreen() {
 
       <DriverNavigationTopPanel model={model} assistance={assistance} />
 
-      {model.session.foundation.data.isTripOngoing && <DriverNavigationGuidance
-        step={currentStep}
-        nextStep={model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex + 1]}
-        loading={model.session.foundation.mapState.isLoadingRoute}
+      <DriverNavigationGuidance
+        step={model.session.foundation.data.isTripOngoing ? currentStep : undefined}
+        nextStep={model.session.foundation.data.isTripOngoing ? model.session.foundation.mapState.steps[model.session.foundation.mapState.currentStepIndex + 1] : undefined}
+        loading={model.session.foundation.data.isTripOngoing && model.session.foundation.mapState.isLoadingRoute}
         rerouting={model.session.foundation.mapState.isReroutingRoute}
         insets={model.session.foundation.data.insets}
         getManeuverIcon={model.routeFormatting.getManeuverIcon}
-      />}
+        status={model.session.foundation.data.trip?.status === 'completed' ? 'Trajet terminé' : model.session.foundation.data.isTripOngoing ? 'Trajet en cours' : 'Votre trajet'}
+        connection={model.session.foundation.data.offlineTrip || model.session.foundation.data.offlineBookings ? 'Sans connexion' : model.session.foundation.mapState.isSocketConnected ? 'Connecté' : 'Connexion…'}
+        duration={model.presentation.displayedDurationText}
+        distance={model.presentation.displayedDistanceText}
+        active={model.session.foundation.data.isScreenActive}
+        onExit={model.handleExitNavigation}
+        onSos={assistance.openSos}
+        assistanceEnabled={assistance.enabled}
+      />
 
       {/* Boutons d'action flottants */}
       {model.session.foundation.data.isTripOngoing && (

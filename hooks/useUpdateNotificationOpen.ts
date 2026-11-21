@@ -4,6 +4,7 @@ import notifee, { EventType } from '@notifee/react-native';
 import { usePathname, useRootNavigationState, useRouter } from 'expo-router';
 import { useAppDispatch } from '@/store/hooks';
 import { baseApi } from '@/store/api/baseApi';
+import { subscribeIosNotificationOpen } from '@/features/notifications/pendingIosNotificationOpen';
 
 /** Public update destination; never consumes a ride notification or requires login. */
 export function useUpdateNotificationOpen() {
@@ -25,6 +26,9 @@ export function useUpdateNotificationOpen() {
       return true;
     };
     const safeOpen = (value: unknown) => { try { return open(value); } catch { return false; } };
+    const unsubscribeIosOpen = subscribeIosNotificationOpen(
+      data => data.type === 'app_update', ({ data }) => { safeOpen(data); },
+    );
     // A received push is only a hint: re-read the current release before showing
     // the Home modal. Never navigate or trust the push's version/URL on receipt.
     const refresh = (value: unknown) => {
@@ -42,6 +46,6 @@ export function useUpdateNotificationOpen() {
     }).catch(() => {});
     // Ordinary remote update pushes use Expo's launch response. Do not consume
     // Notifee's single initial-notification slot, which belongs to ride alerts.
-    return () => { disposed = true; received.remove(); expo.remove(); native(); };
+    return () => { disposed = true; received.remove(); expo.remove(); native(); unsubscribeIosOpen(); };
   }, [ready, router, dispatch]);
 }

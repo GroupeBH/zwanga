@@ -2,20 +2,21 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
+const { nativeAppState } = require('./helpers/nativeAppState.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 
 function fixture(t) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), calls = [];
-  const env = { read: null, prompt: null, save: null, active: true, enabled: false, granted: false };
-  const appState = { currentState: 'active' };
+  const env = { read: null, prompt: null, save: null, active: true, enabled: false, granted: false, canAskAgain: true };
+  const appState = nativeAppState();
   const { useNearbyLocationPermission } = loader({ react: hooks.react,
     'react-native': { AppState: appState, Platform: { OS: 'android' }, Linking: { openSettings: async () => {} } },
     '@/services/tokenSession': { getTokenSessionVersion: () => 0 },
     'expo-location': {
       getForegroundPermissionsAsync: async () => { if (env.read) await env.read; return { granted: true }; },
-      getBackgroundPermissionsAsync: async () => ({ granted: env.granted, canAskAgain: true }),
+      getBackgroundPermissionsAsync: async () => ({ granted: env.granted, canAskAgain: env.canAskAgain }),
       requestBackgroundPermissionsAsync: async () => { calls.push('prompt'); if (env.prompt) await env.prompt; env.granted = true; return { granted: true }; },
     },
     '@/services/nearbyDriverLocation': {
@@ -79,4 +80,25 @@ test('timed-out persistence cannot reactivate an opt-out or start GPS when it fi
   assert.deepEqual(f.calls, ['save']); t.mock.timers.tick(8000); await task;
   assert.equal(f.render().busy, false); old.resolve(); await tick();
   assert.deepEqual(f.calls, ['save']); assert.equal(f.env.enabled, false);
+});
+
+test('focus-only return rereads the background grant without prompting or silently opting in', async t => {
+  const f = fixture(t); f.render(); await tick();
+  assert.equal(f.render().permission, false);
+  f.env.granted = true; f.appState.emit('blur'); f.appState.emit('focus'); f.render(); await tick();
+  assert.equal(f.render().permission, true); assert.equal(f.render().enabled, false);
+  assert.deepEqual(f.calls, []);
+  f.env.granted = false; f.appState.emit('blur'); f.appState.emit('focus'); f.render(); await tick();
+  assert.equal(f.render().permission, false);
+});
+
+test('consented background activation completes after a focus-only return from Settings', async t => {
+  const f = fixture(t); f.env.canAskAgain = false; f.render(); await tick();
+  f.render().setConsent(true); await f.render().openSettings();
+  assert.equal(f.render().busy, false); assert.deepEqual(f.calls, []);
+  f.env.granted = true; f.appState.emit('blur'); f.appState.emit('focus'); f.render(); await tick();
+  assert.deepEqual(f.calls, ['save', 'saved', 'GPS']);
+  assert.equal(f.render().enabled, true); assert.equal(f.render().consent, false);
+  f.appState.emit('focus'); f.render(); await tick();
+  assert.deepEqual(f.calls, ['save', 'saved', 'GPS'], 'no duplicate activation');
 });

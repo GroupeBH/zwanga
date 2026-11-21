@@ -4,6 +4,7 @@ import { tripRequestApi } from '../api/tripRequestApi';
 
 const requestEndpoints = [
   'getAvailableTripRequests', 'getHomeTripRequests', 'getMyTripRequests', 'getMyActivityRequests', 'getTripRequestById',
+  'getRequestDiscovery', 'getAvailableRequestPage',
 ];
 type ExpirationState = { [tripRequestApi.reducerPath]: ReturnType<typeof tripRequestApi.reducer> };
 // A single local wake-up for all cached screens, without any HTTP polling.
@@ -42,6 +43,19 @@ export function createTripRequestExpirationMiddleware(): Middleware<
           if (expiredIds.size) {
             store.dispatch(api.util.updateQueryData(endpoint, undefined,
               draft => draft.filter(request => !expiredIds.has(request.id))));
+          }
+        }
+
+        for (const endpoint of ['getRequestDiscovery', 'getAvailableRequestPage'] as const) {
+          if (!api.endpoints[endpoint]) continue;
+          for (const args of api.util.selectCachedArgsForQuery(state, endpoint)) {
+            const page = api.endpoints[endpoint].select(args as never)(state).data;
+            if (!page) continue;
+            const expiredIds = new Set(page.data.filter(inspect).map(request => request.id));
+            if (expiredIds.size) store.dispatch(api.util.updateQueryData(endpoint, args, draft => {
+              draft.data = draft.data.filter(request => !expiredIds.has(request.id));
+              draft.total = Math.max(0, draft.total - expiredIds.size);
+            }));
           }
         }
 

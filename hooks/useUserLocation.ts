@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { subscribeRideLocation } from '@/services/rideLocationStream';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { requestCurrentLocation } from '@/services/currentLocationRequest';
+import { requestLocationPermission } from '@/services/locationPermissionWait';
 
 import { selectPermissionStatus, selectUserTrackedLocation } from '@/store/selectors';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -15,6 +16,8 @@ import {
 
 type UserLocationOptions = {
   autoRequest?: boolean;
+  /** Home can observe existing access without opening an OS dialog on launch. */
+  promptOnMount?: boolean;
   trackingProfile?: 'nearby' | 'navigation';
   rideLocationKey?: string | null;
 };
@@ -56,7 +59,8 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
       if (mountedRef.current && generation === watcherGenerationRef.current
         && AppState.currentState === 'active' && allowPrompt && permission.status !== Location.PermissionStatus.GRANTED
         && permission.canAskAgain !== false) {
-        permission = await Location.requestForegroundPermissionsAsync();
+        permission = await requestLocationPermission(() => Location.requestForegroundPermissionsAsync(),
+          () => mountedRef.current && generation === watcherGenerationRef.current, true);
       }
       return permission;
     })();
@@ -203,7 +207,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
           return;
         }
 
-        const allowPrompt = !automaticPermissionAttemptedRef.current;
+        const allowPrompt = options.promptOnMount !== false && !automaticPermissionAttemptedRef.current;
         automaticPermissionAttemptedRef.current = true;
         const started = requestPermission(allowPrompt);
         pendingStart = started;
@@ -230,7 +234,7 @@ export function useUserLocation(options: UserLocationOptions = { autoRequest: tr
       clearBackgroundStop();
       stopWatching();
     };
-  }, [options.autoRequest, requestPermission, stopWatching]);
+  }, [options.autoRequest, options.promptOnMount, requestPermission, stopWatching]);
 
   return {
     permissionStatus,

@@ -55,6 +55,8 @@ export const styles = StyleSheet.create({
   proposeLinkText: { color: c.muted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   proposeLinkAction: { color: c.blue, fontWeight: '700' },
   metricsRow: { flexDirection: 'row', gap: 10 },
+  metricsStack: { flexDirection: 'column' },
+  stackedMetricCard: { flex: 0 },
   metricCard: {
     flex: 1, minHeight: 88, paddingHorizontal: 12, paddingVertical: 12,
     borderRadius: 18, borderWidth: 1, borderColor: c.line, backgroundColor: '#FFFFFF',

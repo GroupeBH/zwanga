@@ -15,13 +15,13 @@ import type { useHomeContext } from '@/hooks/home/useHomeContext';
 type Props = Pick<ReturnType<typeof useHomeContext>, 'isDriver' | 'isFocused' | 'currentUser' | 'trackedTripInfo'> & { hiddenHomePriorities?: HiddenHomePriorities };
 export function useHomeDriverActivity({ isDriver, isFocused, currentUser, trackedTripInfo, hiddenHomePriorities = EMPTY_HIDDEN_HOME_PRIORITIES }: Props) {
   const enabled = useDisplayReadsEnabled(isFocused);
-  const { data: myBookings } = useGetMyActivityBookingsQuery(undefined, {
+  const { data: myBookings, isError: bookingsFailed, isSuccess: bookingsReady } = useGetMyActivityBookingsQuery(undefined, {
     ...sharedBookingsOptions, skip: !enabled || !currentUser?.id,
   });
   const ongoingPassengerBooking = useMemo(
     () => findOngoingPassengerBooking(myBookings, currentUser?.id), [myBookings, currentUser?.id],
   );
-  const { data: myDriverTrips = EMPTY_HOME_TRIPS, isSuccess: tripsReady } = useGetMyTripsQuery(undefined, {
+  const { data: myDriverTrips = EMPTY_HOME_TRIPS, isSuccess: tripsReady, isError: tripsFailed } = useGetMyTripsQuery(undefined, {
     ...sharedActivityQueryOptions,
     skip: !enabled || !isDriver,
   });
@@ -82,6 +82,7 @@ export function useHomeDriverActivity({ isDriver, isFocused, currentUser, tracke
     },
   );
   return {
+    driverDataPrepared: (bookingsReady || bookingsFailed) && (!isDriver || tripsReady || tripsFailed),
     driverAnnouncementReady: !isDriver || (tripsReady && (!driverReservationHighlightTrip || (highlightReady && !highlightFetching))),
     ongoingDriverTrip,
     ongoingPassengerBooking,

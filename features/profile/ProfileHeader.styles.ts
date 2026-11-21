@@ -1,4 +1,5 @@
 import { BorderRadius, Colors, CommonStyles, FontSizes, FontWeights, Spacing } from '@/constants/styles';
+import { ACTION_COLORS } from '@/constants/actionColors';
 import { StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
@@ -16,12 +17,17 @@ export const styles = StyleSheet.create({
   },
   headerTop: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.sm,
     marginBottom: Spacing.sm,
     zIndex: 1,
   },
   headerTitleGroup: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
@@ -33,13 +39,39 @@ export const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   headerTitle: {
+    flexShrink: 1,
     fontSize: FontSizes.xl,
     fontWeight: FontWeights.bold,
     color: Colors.gray[900],
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexShrink: 0,
+  },
+  qrButton: {
+    minHeight: 44,
+    minWidth: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: '#EEDFD7',
+  },
+  qrButtonText: {
+    fontSize: FontSizes.sm,
+    fontWeight: FontWeights.semibold,
+    color: ACTION_COLORS.orange,
+  },
   settingsButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     backgroundColor: Colors.white,
     borderRadius: BorderRadius.full,
     alignItems: 'center',

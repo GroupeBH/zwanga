@@ -22,7 +22,8 @@ test('pricing text describes the applied server rates, delay and incomplete obse
     pricePerDelayMinute: 120, trafficDelaySurchargePerSeat: 1200, billableDelaySeconds: 600,
     heavyTraffic: true, heavyRain: true, trafficDataAvailable: true, distanceSource: 'google_directions' };
   assert.equal(requestPricingDescription(pricing),
-    '2 000 FC/km (trafic lourd et forte pluie) + 1 200 FC de retard estimé · minimum 2 500 FC/place');
+    '2 000 FC/km (trafic lourd et forte pluie) + 1 200 FC de retard estimé · minimum 2 500 FC pour le trajet');
+  assert.match(requestPricingDescription(pricing, 'seat'), /minimum 2 500 FC\/place$/);
   assert.equal(requestPricingDescription(), null);
   const fallback = requestPricingDescription({ ...pricing, heavyTraffic: false, heavyRain: false,
     billableDelaySeconds: 0, pricePerKmPerPassenger: 1500, distanceSource: 'straight_line', trafficDataAvailable: false });

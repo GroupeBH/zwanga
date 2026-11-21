@@ -1,6 +1,10 @@
 // Use only for the explicitly confirmed local test account. Never tap stale coordinates.
 const { execFileSync } = require('node:child_process');
 const label = process.argv[2];
+const packageName = process.argv[3] || 'com.zwanga';
+if (!['com.zwanga', 'android', 'com.android.settings', 'com.android.systemui',
+  'com.google.android.permissioncontroller', 'com.android.permissioncontroller', 'com.google.android.gms'].includes(packageName))
+  throw Error('Only Zwanga and explicit Android permission/settings screens are allowed');
 const adb = process.env.RIDE_AUDIT_ADB;
 const withoutDecorativeIcon = value => value?.replace(/^[\uE000-\uF8FF], /, '').replace(/, [\uE000-\uF8FF]$/, '');
 if (!adb || !label) throw Error('Explicit emulator ADB and action label required');
@@ -13,7 +17,7 @@ try {
   if (!run('uiautomator', 'dump', file).includes(file)) throw Error('Fresh hierarchy unavailable');
   const xml = run('cat', file);
   const candidates = [...xml.matchAll(/<node\s[^>]*>/g)].map(x => x[0]).filter(x =>
-    x.includes('package="com.zwanga"') && x.includes('clickable="true"') && x.includes('enabled="true"') &&
+    x.includes(`package="${packageName}"`) && x.includes('clickable="true"') && x.includes('enabled="true"') &&
     (withoutDecorativeIcon(x.match(/content-desc="([^"]*)"/)?.[1]) === label || x.match(/text="([^"]*)"/)?.[1] === label));
   if (candidates.length !== 1) throw Error('Expected exactly one enabled action; refusing blind tap');
   const b = candidates[0].match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);

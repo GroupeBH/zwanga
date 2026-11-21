@@ -18,22 +18,26 @@ const base = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' 
 const load = loader(base);
 const { getDriverNavigationLayout } = load('features/driver-navigation/driverNavigationLayout.ts');
 
-test('shared bounds separate guidance, commands and normal/priority panels with safe areas', () => {
+test('shared bounds reserve the map between top directions and bottom actions with safe areas', () => {
   for (const [height, top, bottom] of [[568, 20, 0], [640, 24, 24], [700, 47, 34], [852, 59, 34], [1024, 24, 20]]) {
     const layout = getDriverNavigationLayout(height, top, bottom);
-    assert.ok(layout.guidanceBottom >= bottom + 8);
-    assert.ok(layout.guidanceMaxHeight >= 64 && layout.guidanceMaxHeight <= 124);
-    assert.ok(layout.controlsBottom >= layout.guidanceBottom + layout.guidanceMaxHeight + 8);
-    assert.ok(top + 8 + layout.priorityPanelMaxHeight + 12 <= height - layout.controlsBottom - layout.controlsHeight + 0.01);
+    assert.equal(layout.guidanceTop, top + 8);
+    assert.ok(layout.guidanceMaxHeight >= 64 && layout.guidanceMaxHeight <= 196);
+    assert.ok(layout.controlsBottom >= bottom + 4);
+    assert.ok(layout.panelBottom >= layout.controlsBottom + layout.controlsHeight);
+    assert.ok(layout.guidanceTop + layout.guidanceMaxHeight + 24 <= height - layout.panelBottom - layout.priorityPanelMaxHeight + 0.01);
     assert.ok(layout.panelMaxHeight < layout.priorityPanelMaxHeight, 'reserve clear map space except for an urgent decision');
     assert.ok(layout.panelMaxHeight <= 292, 'ordinary navigation never takes more than 292 logical pixels');
-    assert.equal(layout.controlsWidth, 248); assert.equal(layout.controlsHeight, 56);
+    assert.equal(layout.controlsWidth, 120); assert.equal(layout.controlsHeight, 56);
   }
 });
 
-test('guidance preserves full directions in a bounded scroll region above the home indicator', () => {
+test('top guidance preserves full directions, metrics and a guarded return without confirming the trip', () => {
   const { DriverNavigationGuidance } = loader({ ...base, './navigationPresentation': { cleanHtmlInstructions: value => value.replace(/<[^>]*>/g, '') } })('features/driver-navigation/DriverNavigationGuidance.tsx');
+  const calls = [];
   const props = { insets: { top: 24, bottom: 24, left: 20, right: 0 }, loading: false, rerouting: false,
+    status: 'Trajet en cours', connection: 'Sans connexion', duration: '8 min', distance: '2,4 km', active: true, onExit: () => calls.push('exit'),
+    assistanceEnabled: true, onSos: () => calls.push('sos'),
     step: { html_instructions: 'Tournez à <b>droite</b> sur une avenue très longue', distance: { text: '200 m' } },
     nextStep: { html_instructions: 'Continuez tout droit' }, getManeuverIcon: () => 'arrow-forward' };
   const tree = DriverNavigationGuidance(props);
@@ -42,13 +46,39 @@ test('guidance preserves full directions in a bounded scroll region above the ho
   assert.ok(all(tree).filter(n => n.type === 'Text').every(n => n.props.numberOfLines === undefined));
   const layout = getDriverNavigationLayout(640, 24, 24);
   assert.equal(flat(tree.props.style).maxHeight, layout.guidanceMaxHeight);
-  assert.equal(flat(tree.props.style).bottom, layout.guidanceBottom);
+  assert.equal(flat(tree.props.style).top, layout.guidanceTop);
+  assert.equal(flat(tree.props.style).bottom, undefined);
   assert.equal(flat(tree.props.style).left, 20);
   const pending = DriverNavigationGuidance({ ...props, loading: true, rerouting: true });
   assert.match(words(pending), /Recalcul de l’itinéraire/);
   assert.doesNotMatch(words(pending), /Tournez/);
   assert.ok(all(pending).find(n => n.type === 'Spinner'));
-  assert.equal(DriverNavigationGuidance({ ...props, step: undefined }), null);
+  assert.match(words(tree), /Trajet en cours.*Sans connexion/);
+  assert.match(words(tree), /8 min.*2,4 km/);
+  all(tree).find(n => n.type === 'Button').props.onPress();
+  assert.deepEqual(calls, ['exit']);
+  all(DriverNavigationGuidance({ ...props, active: false })).find(n => n.type === 'Button').props.onPress();
+  assert.deepEqual(calls, ['exit']);
+  assert.match(words(DriverNavigationGuidance({ ...props, step: undefined })), /Guidage indisponible/);
+  const sos = all(tree).find(n => n.props.accessibilityLabel?.startsWith('SOS'));
+  assert.ok(flat(sos.props.style).minHeight >= 44);
+  sos.props.onPress(); assert.deepEqual(calls, ['exit', 'sos']);
+  const disabledSos = all(DriverNavigationGuidance({ ...props, assistanceEnabled: false })).find(n => n.props.accessibilityLabel?.startsWith('SOS'));
+  assert.equal(disabledSos.props.disabled, true);
+  disabledSos.props.onPress(); assert.deepEqual(calls, ['exit', 'sos']);
+  const scroll = all(tree).find(n => n.type === 'Scroll');
+  assert.ok(!all(scroll).includes(sos), 'SOS never scrolls away with directions');
+  assert.doesNotMatch(words(scroll), /8 min/, 'remaining time stays fixed below long instructions');
+});
+
+test('portrait, landscape and large-text layout keep directions separate from the action dock', () => {
+  for (const height of [360, 568, 640, 844]) for (const fontScale of [1, 1.5, 2]) {
+    const layout = getDriverNavigationLayout(height, 24, 34, fontScale);
+    const dockTop = height - layout.panelBottom - layout.panelMaxHeight;
+    assert.ok(dockTop - layout.guidanceTop - layout.guidanceMaxHeight >= 48 - 0.01);
+    assert.ok(layout.panelMaxHeight > 0);
+    assert.ok(layout.panelBottom >= 34 + 56);
+  }
 });
 
 test('next stop is readable without opening a modal or confirming anything', () => {
@@ -126,6 +156,7 @@ test('compact passenger summary limits map coverage but full address remains acc
 test('a new reservation does not move/remount the ongoing confirmation control', () => {
   const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ ...base,
+    '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
     react: { ...React, ...hooks.react },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
@@ -138,12 +169,13 @@ test('a new reservation does not move/remount the ongoing confirmation control',
   const props = { model: { session: { foundation }, presentation: {}, tripActions: {}, passengerPresentation: {}, bookingActions: {} }, assistance: {} };
   const render = () => hooks.render(() => DriverNavigationTopPanel(props));
   const ordinary = render();
-  const index = ordinary.props.children.findIndex(node => all(node).some(n => n.type === 'Recovery'));
+  const recoveryParent = tree => all(tree).find(node => node.type === 'Scroll' && all(node).some(n => n.type === 'Recovery'));
+  const index = recoveryParent(ordinary).props.children.findIndex(node => all(node).some(n => n.type === 'Recovery'));
   foundation.passengers.activePendingBooking = { id: 'new' };
   const pending = render();
   assert.ok(index >= 0);
-  assert.ok(all(pending.props.children[index]).find(n => n.type === 'Recovery'));
-  assert.equal(pending.props.children[index].type, ordinary.props.children[index].type);
+  assert.ok(all(recoveryParent(pending).props.children[index]).find(n => n.type === 'Recovery'));
+  assert.equal(recoveryParent(pending).props.children[index].type, recoveryParent(ordinary).props.children[index].type);
   assert.equal(all(pending).filter(n => n.type === 'Recovery').length, 1);
   foundation.passengers.activePendingBooking = undefined;
   foundation.data.bookings = [];

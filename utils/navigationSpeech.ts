@@ -1,5 +1,6 @@
 import * as Device from 'expo-device';
 import * as ExpoSpeech from 'expo-speech';
+import { AppState } from 'react-native';
 import { getNavigationSpeechRevision, interruptRideSpeechForNavigation } from '@/services/navigationSpeechPriority';
 import { holdRideAudio } from '@/services/rideAudioFocus';
 import { boundedRideAudio } from '@/services/rideAudioDiagnostics';
@@ -47,12 +48,12 @@ export const NavigationSpeech = {
     const revision = getNavigationSpeechRevision();
     const speak = () => {
       if (revision !== getNavigationSpeechRevision()) { finish(); return; }
-      // iOS keeps this flag on the shared synthesizer. Restore navigation's
-      // normal session after an entry announcement used an independent session.
+      // The shared app session is foreground-only. In sleep, let iOS manage an
+      // independent speech session; restore the app session on the next foreground instruction.
       timer = setTimeout(finish, 60000);
       // Avoid keeping Node test processes alive; native timers have no unref.
       (timer as unknown as { unref?: () => void }).unref?.();
-      try { ExpoSpeech.speak(text, { useApplicationAudioSession: true, ...options,
+      try { ExpoSpeech.speak(text, { ...options, useApplicationAudioSession: AppState?.currentState !== 'background',
         onDone: () => { finish(); options?.onDone?.(); },
         onStopped: () => { finish(); options?.onStopped?.(); },
         onError: error => { finish(); options?.onError?.(error); },

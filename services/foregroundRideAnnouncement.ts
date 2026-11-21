@@ -1,19 +1,19 @@
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import type * as ExpoSpeech from 'expo-speech';
 import { buildRideAnnouncement } from '@/features/notifications/rideAnnouncement';
 import { isAppActive } from './appActivity';
 import { canPlayForegroundRideAudio, isForegroundRideSoundReady, pauseForegroundRideSoundForSpeech } from './foregroundRideSound';
 import { consumeRideSpeechEntry, isRideSpeechEntryCurrent, readRideSpeechEntry } from './rideEntryAnnouncement';
 import { getNavigationSpeechRevision, registerRideSpeechInterruption } from './navigationSpeechPriority';
-import { pendingRideAlerts } from './rideAlertSession';
+import { pendingRideAlerts, subscribeRideAlerts } from './rideAlertSession';
 import { getTokenSessionVersion } from './tokenSession';
 import { boundedRideAudio, reportRideAudioFailure } from './rideAudioDiagnostics';
 import { consumePaymentSpeech, paymentSpeechPending, readPaymentSpeech } from './paymentSpeechSource';
 
 type Attempt = {
   key: string; revision: number; spoken: boolean; speech?: typeof ExpoSpeech;
-  valid: () => boolean;
+  valid: () => boolean; background?: boolean; cleanup?: () => void;
   resume?: () => void; unregister?: () => void; timeout?: ReturnType<typeof setTimeout>;
 };
 let current: Attempt | undefined;
@@ -29,7 +29,7 @@ function markAnnounced(key: string) {
   while (announced.size > 100) announced.delete(announced.values().next().value!);
 }
 function release(attempt: Attempt) {
-  clearTimeout(attempt.timeout); attempt.unregister?.();
+  clearTimeout(attempt.timeout); attempt.unregister?.(); attempt.cleanup?.();
   if (current !== attempt) return;
   current = undefined; nextAllowedAt = Math.max(nextAllowedAt, Date.now() + 2000);
   attempt.resume?.();
@@ -70,15 +70,53 @@ function screenSpeech(userId: string, version: number) {
   return source;
 }
 
+function selectOwner(userId?: string) {
+  if (session === getTokenSessionVersion() && owner === userId) return;
+  void cancelCurrent(); announced.clear(); failures.clear(); nextAllowedAt = 0;
+  session = getTokenSessionVersion(); owner = userId;
+}
+
+/** Called during an existing location-task wakeup, never a background timer.
+ * Same synthesizer, ownership and deduplication as foreground announcements. */
+export async function announceBackgroundApproach(userId: string, message: { key: string; text: string }, isCurrent: () => boolean) {
+  selectOwner(userId);
+  const version = session;
+  const allowed = () => AppState.currentState === 'background' && version === getTokenSessionVersion() &&
+    owner === userId && isCurrent() && !pendingRideAlerts(userId).length;
+  if (!Device.isDevice || Platform.OS === 'web' || !allowed() || current || stopping ||
+      announced.has(message.key) || Date.now() < nextAllowedAt) return;
+  const attempt: Attempt = { key: message.key, revision: getNavigationSpeechRevision(), spoken: false,
+    background: true, valid: allowed };
+  current = attempt;
+  const valid = () => current === attempt && allowed() && attempt.revision === getNavigationSpeechRevision();
+  const cancelIfInvalid = () => { if (current === attempt && !valid()) void cancelCurrent(); };
+  attempt.unregister = registerRideSpeechInterruption(cancelCurrent);
+  const appState = AppState.addEventListener('change', cancelIfInvalid);
+  const unsubscribe = subscribeRideAlerts(cancelIfInvalid);
+  attempt.cleanup = () => { appState.remove(); unsubscribe(); };
+  attempt.timeout = setTimeout(() => { if (current === attempt) void cancelCurrent(); }, 20000);
+  try {
+    const { speech, voice } = await loadVoice();
+    if (!valid() || !voice || await boundedRideAudio(speech.isSpeakingAsync()) || !valid()) return;
+    attempt.speech = speech; attempt.spoken = true;
+    // No ringtone pause, player, forced volume or application-wide audio mode.
+    speech.speak(message.text, { language: 'fr-FR', voice, rate: 0.95, pitch: 1,
+      useApplicationAudioSession: false,
+      onStart: () => { if (valid()) markAnnounced(message.key); else if (current === attempt) void cancelCurrent(); },
+      onDone: () => { if (valid()) markAnnounced(message.key); release(attempt); },
+      onStopped: () => release(attempt), onError: () => release(attempt) });
+  } catch {
+    reportRideAudioFailure('ANNOUNCEMENT_UNAVAILABLE');
+    if (current === attempt) void cancelCurrent();
+  } finally { if (!attempt.spoken) release(attempt); }
+}
+
 /** Called only by the foreground notification coordinator, never by a headless task. */
 export function reconcileRideAnnouncement(userId?: string) {
-  if (session !== getTokenSessionVersion() || owner !== userId) {
-    void cancelCurrent(); announced.clear(); failures.clear(); nextAllowedAt = 0;
-    session = getTokenSessionVersion(); owner = userId;
-  }
+  selectOwner(userId);
   const pending = userId ? pendingRideAlerts(userId) : [];
   const payment = userId ? screenSpeech(userId, session) : undefined;
-  if (current && (!isAppActive() || !current.valid())) void cancelCurrent();
+  if (current && ((current.background ? isAppActive() : !isAppActive()) || !current.valid())) void cancelCurrent();
   if (!userId || !Device.isDevice || Platform.OS === 'web' || !isAppActive() ||
       current || stopping || Date.now() < nextAllowedAt) return;
   const entry = readRideSpeechEntry(userId);
@@ -156,7 +194,9 @@ export function reconcileRideAnnouncement(userId?: string) {
   })();
 }
 
-export function stopRideAnnouncement() { void cancelCurrent(); }
+export function stopRideAnnouncement(foregroundOnly = false) {
+  if (!foregroundOnly || !current?.background) void cancelCurrent();
+}
 /** Restored cards are described by the resolved entry priority, not read as a queue. */
 export function silenceRestoredRideAnnouncement(key: string) { markAnnounced(key); }
 export function clearRideAnnouncementSession() {

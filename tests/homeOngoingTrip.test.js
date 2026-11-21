@@ -7,6 +7,7 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 const native = { View: 'View', Text: 'Text', ScrollView: 'Scroll', TouchableOpacity: 'Button',
   StyleSheet: { create: value => value }, Platform: { OS: 'android' } };
 const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   './HomeDriverStatus': { HomeDriverStatus: 'DriverStatus' } });
 const { HomeOngoingTripSheet } = load('components/home/HomeOngoingTripSheet.tsx');
 const { HomeHeader } = load('components/home/HomeHeader.tsx');

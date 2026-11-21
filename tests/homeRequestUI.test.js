@@ -134,7 +134,13 @@ for (const target of ['arrival', 'departure']) test('inline ' + target + ' selec
   assert.equal(all.some(n => n.props.testID === 'home-request-footer'), false);
   picker.props.onClose(); assert.deepEqual(f.calls, ['close']);
   f.form.isScreenActive = false;
-  assert.equal(nodes(f.render()).some(n => n.type === 'InlinePicker'), false, 'no active map when hidden');
+  const paused = nodes(f.render()).find(n => n.type === 'InlinePicker');
+  assert.ok(paused, 'keep the draft mounted through permission prompts and Settings');
+  assert.equal(paused.key, picker.key);
+  assert.equal(paused.props.active, false);
+  assert.equal(paused.props.mapEnabled, false, 'suspend only the native map when hidden');
+  f.form.isScreenActive = true;
+  assert.equal(nodes(f.render()).find(n => n.type === 'InlinePicker').key, picker.key);
 });
 
 test('slow GPS leaves useful quote options visible and disables ordering until a real pickup is available', t => {

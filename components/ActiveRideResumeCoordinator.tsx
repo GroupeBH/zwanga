@@ -32,6 +32,8 @@ import { useEntryPresentation } from '@/hooks/navigation/useEntryPresentation';
 import { HomeEntryStatusContext } from '@/features/navigation/homeEntryStatusContext';
 import { primePendingBookingTrip } from '@/store/api/booking/entrySnapshot';
 import { DriverBookingAlertBanner } from '@/components/DriverBookingAlertBanner';
+import { useHomePreparation } from '@/hooks/navigation/useHomePreparation';
+import { HomePreparationContext } from '@/features/navigation/homePreparationContext';
 
 const noSubscribe = () => () => {};
 const busyWithoutHost = () => true;
@@ -123,6 +125,12 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
       start: () => dispatch(userApi.endpoints.getCurrentUser.initiate(undefined, { subscribe: false, forceRefetch: true })) });
   }, [dispatch, reduxStore, userId, currentRead]);
   const entryNavigationReady = Boolean(navigation?.key && segments[0] && !STARTUP_ROUTES.has(segments[0]));
+  const onHome = path === '/' || path === '/(tabs)';
+  const preparation = useHomePreparation({ userId: authenticated ? userId : undefined, active, onHome,
+    ready: entryNavigationReady && !isRideResumeEntryTransition(path), online,
+    profileFailed: !homeRoleReady && !profile.isFetching && (profile.isError || profile.isSuccess) });
+  const preparationContext = useMemo(() => ({ allowed: authenticated, reportPrepared: preparation.reportPrepared }),
+    [authenticated, preparation.reportPrepared]);
   const freshActivity = freshEntryData(activity, Date.now(), since);
   const presentation = useEntryPresentation({ userId: authenticated ? userId : undefined, active, path, since,
     ready: entryNavigationReady && !isRideResumeEntryTransition(path), replace: router.replace,
@@ -138,6 +146,7 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
     replace: presentation.replace, refreshActivity,
     homeRole: { ready: homeRoleReady, failed: !profile.isFetching && (profile.isError || profile.isSuccess), retry: retryProfile } });
   const requestResume = useRequestEntryResume({ userId: authenticated ? userId : undefined, active, online, path, since,
+    resumePreviousRequests: false,
     ready: entryNavigationReady, overlayBusy, ridePending: resume.pending,
     hasOngoingRide: Boolean((typeof presentation.proposal === 'string' && isRideNavigationPath(presentation.proposal)) ||
       (resume.pending && userId && findRideToResume(userId, trips.data, bookings.data))),
@@ -150,21 +159,20 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
     replace: presentation.replaceRequest, replaceBooking: presentation.replaceBooking, refresh: refreshActivity });
   const entryPending = resume.pending || requestResume.pending;
   const failed = resume.pending ? resume.failed : requestResume.failed;
-  const blocking = entryPending && !presentation.released && !failed && online;
+  const blocking = preparation.pending || (entryPending && !presentation.released && !failed && online);
   const { reveal } = presentation;
   useEffect(() => {
     if (entryNavigationReady && !isRideResumeEntryTransition(path) && (!entryPending || failed || !online)) reveal();
   }, [entryNavigationReady, path, entryPending, failed, online, reveal]);
   const retry = () => { if (resume.pending) resume.retry(); else requestResume.retry(); };
-  const onHome = path === '/' || path === '/(tabs)';
   const proposal = presentation.proposal;
   const actionLabel = proposal ? typeof proposal === 'string' && /\/(trip|booking)\/navigate\//.test(proposal)
     ? 'Reprendre mon trajet' : typeof proposal === 'object' && ['/trip/[id]', '/trip/manage/[id]'].includes(proposal.pathname)
       ? 'Voir la réservation' : 'Voir la commande' : undefined;
   useEffect(() => {
     if (authenticated && userId) setRideSpeechEntryGate({ userId, path,
-      blocked: !active || !entryNavigationReady || isRideResumeEntryTransition(path) || entryPending || overlayBusy });
-  }, [authenticated, userId, path, active, entryNavigationReady, entryPending, overlayBusy]);
+      blocked: !active || !entryNavigationReady || isRideResumeEntryTransition(path) || entryPending || blocking || overlayBusy });
+  }, [authenticated, userId, path, active, entryNavigationReady, entryPending, blocking, overlayBusy]);
   // A sibling above the mounted navigator, not a native modal or a replacement
   // navigator: route changes can complete without revealing the Home in between.
   return <AppEntryContext.Provider value={!enabled || blocking}>
@@ -172,7 +180,7 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
       ? { failed, offline: !online, actionLabel, onAction: proposal ? presentation.open : retry } : null}>
       <DriverBookingAlertBanner userId={userId} alerts={alerts} path={path}
         visible={active && authenticated && entryNavigationReady && !overlayBusy} />
-      {children}
+      <HomePreparationContext.Provider value={preparationContext}>{children}</HomePreparationContext.Provider>
     </HomeEntryStatusContext.Provider>
     {blocking && active && !overlayBusy && <View style={styles.cover} accessibilityViewIsModal testID="active-ride-entry">
       <HomeRoleLoader failed={false} retrying={false} active={active}

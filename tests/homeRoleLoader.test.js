@@ -13,6 +13,7 @@ function fixture() {
   const load = loader({
     react: hooks.react,
     '@/features/navigation/appEntryContext': { useAppEntryPending: () => Boolean(state.entryPending) },
+    '@/features/navigation/homePreparationContext': { useHomePreparationAllowed: () => state.preparationAllowed !== false },
     '@/components/home/HomeDashboard': { HomeDashboard: 'Dashboard' },
     '@/components/home/HomeRoleLoader': { HomeRoleLoader: 'RoleLoader' },
     '@/components/home/HomeEntryPlaceholder': { HomeEntryPlaceholder: 'RoleLoader' },
@@ -42,11 +43,15 @@ test('only a known role and a nonempty user ID can reveal Home, including legacy
   for (const role of ['driver', 'passenger', 'both']) assert.equal(isHomeProfileReady({ id: 'me', role }), true);
 });
 
-test('a resolved profile cannot mount Home until the shared ride decision is complete', () => {
+test('the resolved Home prepares under the shared cover without running interactive work', () => {
   const app = fixture(); app.state.entryPending = true;
   Object.assign(app.profile, { data: { id: 'me', role: 'driver' }, isFetching: false, isSuccess: true });
-  assert.equal(app.render(), null, 'the global loader is the only loading surface');
-  app.state.active = false; assert.equal(app.render(), null, 'backgrounding cannot mount the dashboard');
+  const prepared = app.render();
+  assert.equal(prepared.type, 'Dashboard');
+  assert.equal(prepared.props.context.isDataActive, true);
+  assert.equal(prepared.props.context.isScreenActive, false);
+  app.state.active = false;
+  assert.equal(app.render().props.context.isDataActive, false, 'backgrounding pauses preparation');
   app.state.active = true; app.state.entryPending = false;
   const dashboard = app.render(); assert.equal(dashboard.type, 'Dashboard');
   app.state.entryPending = true;
@@ -56,12 +61,20 @@ test('a resolved profile cannot mount Home until the shared ride decision is com
   app.hooks.unmount();
 });
 
+test('a known role cannot start a new dashboard behind phone verification', () => {
+  const app = fixture(); app.state.entryPending = true; app.state.preparationAllowed = false;
+  Object.assign(app.profile, { data: { id: 'me', role: 'driver' }, isSuccess: true });
+  assert.equal(app.render(), null);
+  app.state.preparationAllowed = true; assert.equal(app.render().type, 'Dashboard');
+  app.hooks.unmount();
+});
+
 test('profile and ride discovery may finish in either order without flashing the wrong Home', () => {
   for (const role of ['driver', 'passenger']) {
     const app = fixture(); app.state.entryPending = true;
     assert.equal(app.render(), null);
     Object.assign(app.profile, { data: { id: 'me', role }, isFetching: false, isSuccess: true });
-    assert.equal(app.render(), null);
+    assert.equal(app.render().props.context.isScreenActive, false);
     app.state.entryPending = false;
     assert.equal(app.render().props.context.isDriver, role === 'driver');
     app.state.auth.tokenPayload.sub = 'other'; app.state.entryPending = true;

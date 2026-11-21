@@ -9,7 +9,7 @@ function nodes(tree) {
 function fixture() {
   const hooks = hookHarness(), calls = [];
   const state = { auth: { isAuthenticated: true, tokenPayload: { sub: 'driver' } } };
-  const context = { active: true, path: '/', pending: false, keyboard: false, busy: false, alerts: [] };
+  const context = { active: true, path: '/trips', pending: false, keyboard: false, busy: false, alerts: [] };
   const queries = {
     profile: { data: { id: 'driver', role: 'driver' } },
     activity: { data: { userId: 'driver', hasLiveActivity: false }, fulfilledTimeStamp: 1000 },
@@ -66,6 +66,7 @@ test('only the authenticated account with a server-confirmed driver role mounts 
 
 test('priority work, stale data, forms and background always hide permission prompts', () => {
   const blockers = [
+    f => { f.context.path = '/'; }, f => { f.context.path = '/(tabs)'; },
     f => { f.context.active = false; }, f => { f.context.pending = true; }, f => { f.context.keyboard = true; },
     f => { f.context.path = '/publish'; }, f => { f.context.path = '/booking/payment'; },
     f => { f.queries.activity.fulfilledTimeStamp = 999; }, f => { f.queries.activity.isError = true; },

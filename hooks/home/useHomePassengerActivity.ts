@@ -24,13 +24,13 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     ...displayReadOptions(enabled),
   });
 
-  const { data: myBookings, refetch: rawRefetchMyBookings, isSuccess: bookingsReady } = useGetMyBookingsQuery(undefined, {
+  const { data: myBookings, refetch: rawRefetchMyBookings, isSuccess: bookingsReady, isError: bookingsFailed } = useGetMyBookingsQuery(undefined, {
     ...sharedBookingsOptions,
     skip: !enabled,
   });
   const refetchMyBookings = useDisplayRefetch(enabled, 'activity', rawRefetchMyBookings);
 
-  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS, isSuccess: requestsReady } = useGetMyActivityRequestsQuery(undefined, {
+  const { data: myTripRequests = EMPTY_HOME_TRIP_REQUESTS, isSuccess: requestsReady, isError: requestsFailed } = useGetMyActivityRequestsQuery(undefined, {
     ...sharedRequestsOptions,
     skip: !enabled || !currentUser?.id,
   });
@@ -207,6 +207,7 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     return [...unique.values()];
   }, [myBookings, myTripRequests, currentUser?.id]);
   return {
+    passengerDataPrepared: (bookingsReady || bookingsFailed) && (requestsReady || requestsFailed),
     passengerAnnouncementReady: bookingsReady && requestsReady,
     driverRequestsAnnouncementReady: !isDriver || (availableReady && !availableFetching),
     recentDestinations,

@@ -64,6 +64,7 @@ export default function FleetScreen() {
     ) ?? [];
   return (
     <ServiceLayout title="Flottes">
+      <ServiceButton title="Devenir chauffeur dans une flotte" secondary disabled={!active} onPress={() => router.push('/services/fleet-applications')} />
       <Text style={s.title}>Mes véhicules de flotte</Text>
       <Text style={s.text}>
         Consultez les conditions du propriétaire avant d’accepter une

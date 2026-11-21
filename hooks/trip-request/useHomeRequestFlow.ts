@@ -46,8 +46,8 @@ export function useHomeRequestFlow(form: RequestTripController) {
   };
   const onSelect = (location: MapLocationSelection) => {
     if (!mounted.current || !latest.current.form.isScreenActive || locked || !pickerTarget ||
-        latest.current.pickerTarget !== pickerTarget || selection.current.committed) return;
-    if (!getPickerCoordinate(location.latitude, location.longitude)) return;
+        latest.current.pickerTarget !== pickerTarget || selection.current.committed) return false;
+    if (!getPickerCoordinate(location.latitude, location.longitude)) return false;
     selection.current.committed = true;
     form.setAddressInputMode('map');
     if (pickerTarget === 'departure') {
@@ -64,6 +64,7 @@ export function useHomeRequestFlow(form: RequestTripController) {
       form.departureTouchedRef.current = true;
       form.setRequestFormStep('details');
     }
+    return true;
   };
   const handleBack = () => {
     if (!mounted.current || locked) return;

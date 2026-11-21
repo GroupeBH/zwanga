@@ -10,11 +10,13 @@ import { useLocationPicker } from '@/hooks/location-picker/useLocationPicker';
 import { LocationPickerMap } from '@/components/location-picker/LocationPickerMap';
 import { pointSelection, readableSelection, type MapLocationSelection, type PickerCoordinate } from '@/features/location-picker/locationPickerModel';
 import { styles } from '@/features/location-picker/LocationPicker.styles';
+import { LocationRecoveryAction } from '@/components/location/LocationRecoveryAction';
+import { locationAccessMessage } from '@/features/location-picker/locationAccessMessage';
 
 export type { MapLocationSelection } from '@/features/location-picker/locationPickerModel';
 type Props = {
   visible: boolean; title?: string; initialLocation?: MapLocationSelection | null;
-  onClose: () => void; onSelect: (location: MapLocationSelection) => void;
+  onClose: () => void; onSelect: (location: MapLocationSelection) => void | boolean; active?: boolean;
   onDismiss?: () => void; confirmLabel?: string; focusSearchOnOpen?: boolean;
   contextLabel?: string; compact?: boolean;
   routeCoordinates?: PickerCoordinate[]; restrictToRoute?: boolean; autoLocateOnOpen?: boolean; initialSearchQuery?: string;
@@ -50,8 +52,9 @@ export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', r
   const { choose } = picker;
   const onMapPress = useCallback((point: PickerCoordinate) => choose(pointSelection(point), true), [choose]);
   const busy = picker.resolving || picker.locating;
-  const confirmDisabled = busy || picker.panning || picker.searchOpen;
+  const confirmDisabled = props.active === false || busy || picker.panning || picker.searchOpen;
   const panelOpen = picker.searchOpen || favoritesOpen;
+  const notice = picker.recovery.issue ? locationAccessMessage(picker.recovery.issue) : picker.notice;
   const showSearchFavorites = props.focusSearchOnOpen && picker.searchOpen && picker.query.trim().length < 3;
   const rows: { id: string; title: string; address: string; onPress: () => void }[] = picker.searchOpen && !showSearchFavorites
     ? picker.suggestions.map(item => ({ id: item.id, title: item.name, address: item.fullAddress, onPress: () => void picker.resolvePlace(item) }))
@@ -127,7 +130,8 @@ export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', r
       </View>
 
       <View style={[styles.footer, props.compact && styles.compactFooter, { paddingBottom: Math.max(insets.bottom, 12) }]} testID="location-picker-footer">
-        {picker.notice && <Text style={styles.notice} accessibilityLiveRegion="polite">{picker.notice}</Text>}
+        {notice && <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text>}
+        <LocationRecoveryAction recovery={picker.recovery} />
         {!picker.searchOpen && <View style={[styles.selection, props.compact && styles.compactSelection]}>
           <View style={styles.selectionIcon}><Ionicons name="location" size={23} color={Colors.primary} /></View>
           <View style={styles.selectionCopy}>

@@ -2,12 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
+const { nativeAppState } = require('./helpers/nativeAppState.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
 function fixture(t, os = 'android', modern = false, api = 36) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness(), calls = [];
-  const appState = { currentState: 'active' };
+  const appState = nativeAppState();
   const env = { active: true, owner: 'driver', failure: false, settings: async () => {},
     bound: promise => promise,
     status: { optIn: false, allowed: false, notificationsAllowed: true } };
@@ -169,4 +170,18 @@ test('channel settings are explicit, do not grant fullscreen and reject malforme
   assert.equal(f.calls.some(c => c[0] === 'set'), false);
   f.env.status.channelReady = 'true'; f.render().retry(); f.render(); await tick();
   assert.equal(f.render().error, true);
+});
+
+test('Android focus-only Settings return rereads fullscreen, notification and channel grants', async t => {
+  const f = fixture(t, 'android', true); f.render(); await tick();
+  await f.render().setOptIn(true);
+  f.env.status = { optIn: true, allowed: true, notificationsAllowed: true, channelReady: true };
+  f.appState.emit('blur'); f.appState.emit('focus'); f.render(); await tick();
+  assert.deepEqual(f.render().permission, f.env.status);
+  const reads = f.calls.filter(x => x[0] === 'read').length;
+  f.appState.emit('focus'); f.render(); await tick();
+  assert.equal(f.calls.filter(x => x[0] === 'read').length, reads, 'duplicate focus does not loop');
+  f.env.status.allowed = false;
+  f.appState.emit('blur'); f.appState.emit('focus'); f.render(); await tick();
+  assert.equal(f.render().permission.allowed, false);
 });

@@ -56,6 +56,21 @@ test('fifty brief Android permission/activity transitions keep one watcher and n
   assert.equal(app.listeners.size, 0);
 });
 
+test('quiet Home checks access without prompting; its explicit location action can still request permission', async () => {
+  const app = fixture({}, { promptOnMount: false });
+  app.state.permission = { status: 'undetermined', canAskAgain: true };
+  app.render(); await tick();
+  assert.deepEqual(app.calls, ['get-permission']); assert.equal(app.watches.length, 0);
+  app.setAppState('inactive'); app.setAppState('active'); await tick();
+  assert.equal(app.calls.includes('request-permission'), false);
+  await app.render().requestPermission(true);
+  assert.equal(app.calls.filter(value => value === 'request-permission').length, 1);
+  app.state.permission = { status: 'granted', canAskAgain: true };
+  await app.render().requestPermission(false);
+  assert.equal(app.watches.length, 1);
+  app.hooks.unmount();
+});
+
 test('real background stops GPS after two seconds; resume restarts without a permission prompt and rejects stale callbacks', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = fixture(); app.render(); await tick();

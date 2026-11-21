@@ -25,7 +25,7 @@ function fixture() {
     '@/store/api/userApi': {
       useGetCurrentUserQuery: (_arg, options) => { io.options = options; return io.profile; },
       userApi: { util: { getRunningQueryThunk: () => ({ kind: 'running' }) },
-        endpoints: { getCurrentUser: { initiate: (_arg, options) => ({ kind: 'get', options }) } } },
+        endpoints: { getCurrentUser: { select: () => () => ({ data: io.profile.currentData }), initiate: (_arg, options) => ({ kind: 'get', options }) } } },
     },
     './auth/AccountPhoneVerification': { AccountPhoneVerification: 'Form', PhoneVerificationShell: 'Shell', accountPhoneStyles: {} },
   });
@@ -47,6 +47,26 @@ test('root gate keeps navigation mounted, blocks Back and pauses private coordin
   assert.equal(f.modal().props.visible, false);
   assert.equal(f.render().props.children[0].blocked, false);
   f.io.authenticated = false; f.render(); assert.equal(f.io.options.skip, true);
+});
+
+test('manual admin validation is detected by polling only while this account is blocked', () => {
+  const f = fixture();
+  f.render();
+  assert.equal(f.io.options.pollingInterval, 15_000);
+  assert.equal(f.io.options.skipPollingIfUnfocused, true);
+  assert.equal(f.render().props.children[0].blocked, true);
+  f.io.profile.currentData.isPhoneVerified = true;
+  assert.equal(f.render().props.children[0].blocked, false);
+  assert.equal(f.io.options.pollingInterval, 0);
+  assert.equal(f.modal().props.visible, false);
+  assert.deepEqual(f.calls, [], 'no SMS or verification mutation is sent');
+  f.io.profile.currentData.isPhoneVerified = false;
+  f.io.segments = ['auth']; f.render();
+  assert.equal(f.io.options.pollingInterval, 0);
+  f.io.segments = ['(tabs)']; f.io.profile.currentData.id = 'another-account'; f.render();
+  assert.equal(f.io.options.pollingInterval, 0);
+  f.io.authenticated = false; f.render();
+  assert.equal(f.io.options.pollingInterval, 0);
 });
 
 test('unknown profile, wrong account or network error never unlock the gate', () => {

@@ -59,6 +59,7 @@ function trackingFixture(role, foregroundGranted) {
     './background/passengerGpsProfile': { reservePassengerGpsStart: () => 1, startPassengerGpsProfile: async () => { calls.push('start'); return true; } },
     './background/passengerTaskLifecycle': { getActiveTrackingSession: async () => null },
     './background/driverTripCompletion': {}, './background/passengerTrackingReads': {},
+    './background/passengerApproachWakeup': { checkBackgroundPassengerApproach: async () => {} },
     '@/services/driverBackgroundLocationSession': {}, '@/services/tokenRefresh': {},
     './locationDelivery': {}, './rideLocationStream': {}, '@/store': {}, '@/store/api/tripApi': {}, '@/store/api/bookingApi': {},
   });

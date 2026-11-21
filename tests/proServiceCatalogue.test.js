@@ -10,7 +10,7 @@ function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
   return [tree, ...nodes(tree.props?.children)];
 }
-const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: value => value } };
+const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: value => value }, useWindowDimensions: () => ({ fontScale: 1 }) };
 function ui() {
   const routes = [];
   const components = loader({
@@ -96,15 +96,18 @@ test('documents open readonly dossiers and disabled actions cannot navigate', ()
   assert.equal(routes.length, 0);
 });
 
-test('screen keeps services before cases, retry and pagination; it preserves tab safe-area space', () => {
+test('dashboard preserves tab space and retry, moves cases to a dedicated history entry', () => {
   const hooks = hookHarness();
   let reloads = 0;
   const queries = {
     catalogue: { isError: true, error: { data: { message: 'Connexion indisponible' } }, refetch() { reloads++; } },
-    current: { currentData: { request: { id: 'fixture-case', canEdit: true } } },
+    current: { currentData: { request: { id: 'fixture-case', canEdit: true } }, refetch() {} },
     cases: { currentData: { items: [{ id: 'fixture-case' }], nextCursor: 'fixture-page' } },
   };
   const { default: ServicesScreen } = loader({
+    '@/store/hooks': { useAppSelector: fn => fn({ zwangaApi: { config: { online: true } } }) },
+    '@/store/selectors': { selectUser: () => ({ id: 'fixture-driver', isDriver: true }) },
+    '@/store/api/assetCreditApi': { useGetAssetCreditsQuery: () => ({ currentData: { items: [] }, refetch() {} }), useGetAssetCreditQuery: () => ({}) },
     'expo-router': { router: {push() {}} },
     react: hooks.react, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
@@ -121,22 +124,14 @@ test('screen keeps services before cases, retry and pagination; it preserves tab
   assert.equal(tree[0].props.embedded, true);
   assert.equal(tree[0].props.bottomOverlay, 92);
   assert.equal(tree[0].props.title, 'Services');
-  const main = tree.find(node => node.type === 'Directory' && !node.props.secondary);
-  assert.equal(main.props.state, 'error');
-  assert.equal(main.props.current.id, 'fixture-case');
-  assert.ok(tree.indexOf(main) < tree.indexOf('Mes dossiers'));
-  assert.ok(tree.find(node => node.type === 'Case'));
-  assert.ok(tree.find(node => node.props?.title === 'Dossiers suivants'));
+  const main = tree.find(node => typeof node.type === 'function' && node.type.name === 'ServicesDashboard');
+  assert.equal(main.props.driver, true);
+  assert.equal(main.props.documentsEnabled, true, 'existing dossier is reachable during catalogue failure');
+  assert.equal(tree.some(node => node.type === 'Case'), false);
+  assert.ok(nodes(tree[0].props.headerActions).find(node => node.props?.accessibilityLabel === 'Historique de mes dossiers'));
   tree.find(node => node.props?.title === 'Recharger les services').props.onPress();
   assert.equal(reloads, 1);
-  assert.equal(tree.filter(node => node.type === 'Credit').length, 1);
-  assert.equal(tree.filter(node => node.type === 'Repayments').length, 1);
-  assert.equal(tree.find(node => node.type === 'Repayments').props.active, true);
-  assert.ok(tree.indexOf(tree.find(node => node.type === 'Repayments')) < tree.indexOf('Pour les entreprises'));
-  assert.deepEqual(tree.filter(node => node.type === 'Directory').map(node => node.props.group), ['documents', 'business']);
-  assert.ok(tree.indexOf('Documents') < tree.indexOf('Acheter à crédit'));
-  assert.ok(tree.indexOf('Acheter à crédit') < tree.indexOf('Pour les entreprises'));
-  assert.equal(tree.some(node => node.props?.secondary && node.type === 'Directory'), false);
+  assert.equal(tree.filter(node => typeof node.type === 'function' && node.type.name === 'ServicesDashboard').length, 1);
   hooks.unmount();
 });
 

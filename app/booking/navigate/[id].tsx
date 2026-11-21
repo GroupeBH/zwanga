@@ -16,6 +16,7 @@ import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
 import { PickupVehicleDetails } from '@/features/navigation/PickupVehicleDetails';
 import { NavigationLoading } from '@/features/navigation/NavigationLoading';
 import { useMainScreenReady } from '@/hooks/useMainScreenReady';
+import { LocationAccessBanner } from '@/components/location/LocationAccessBanner';
 
 export default function PassengerNavigationScreen() {
   const { height } = useWindowDimensions();
@@ -50,6 +51,8 @@ export default function PassengerNavigationScreen() {
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView style={{ maxHeight: height * 0.4, flexGrow: 0 }} showsVerticalScrollIndicator>
         <PassengerNavigationHeader model={model} assistance={assistance} />
+        <LocationAccessBanner active={model.data.isScreenActive && !model.context.hasPassengerDroppedOff &&
+          !['completed', 'cancelled'].includes(model.data.trip.status)} background="ride" />
       </ScrollView>
       
       {/* Carte */}

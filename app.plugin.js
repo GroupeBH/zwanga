@@ -76,6 +76,7 @@ const withIOSUserScriptSandboxingDisabled = (config) => {
 module.exports = (config) => {
   config = require('./plugins/withPatchedReactAndroid')(config);
   config = withAndroidLocationPermissions(config);
+  config = require('./plugins/withUnusedExpoAudioServicesRemoved')(config);
   config = withAndroidLargeScreenCompatibility(config);
   config = withModernEdgeToEdgeGradleProperties(config);
   config = withIOSUserScriptSandboxingDisabled(config);

@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { isDriverAccount } from '@/utils/accountRole';
 import { isHomeProfileReady } from '@/features/home/homeRolePolicy';
 import { useAppEntryPending } from '@/features/navigation/appEntryContext';
+import { useHomePreparationAllowed } from '@/features/navigation/homePreparationContext';
 import { useCallback } from 'react';
 import {
   useWindowDimensions
@@ -25,6 +26,8 @@ export function useHomeContext() {
   const isFocused = useIsFocused();
   const isAppActive = useAppIsActive();
   const entryPending = useAppEntryPending();
+  const preparationAllowed = useHomePreparationAllowed();
+  const isDataActive = isFocused && isAppActive && (!entryPending || preparationAllowed);
   const isScreenActive = isFocused && isAppActive && !entryPending;
 
   const dispatch = useAppDispatch();
@@ -62,8 +65,10 @@ export function useHomeContext() {
   const isDriver = isDriverAccount(currentUser);
   return {
     entryPending,
+    preparationAllowed,
     isDriver,
     isFocused,
+    isDataActive,
     isScreenActive,
     currentUser,
     isHomeRoleReady,

@@ -15,11 +15,14 @@ export const hideRefusedRequest = (requestId: string, sharedApi: typeof baseApi)
     requests => requests.filter(request => request.id !== requestId)));
   dispatch(api.util.updateQueryData('getHomeTripRequests', undefined,
     requests => requests.filter(request => request.id !== requestId)));
-  for (const args of api.util.selectCachedArgsForQuery(state, 'getAvailableRequestPage')) {
-    dispatch(api.util.updateQueryData('getAvailableRequestPage', args, page => {
+  for (const endpoint of ['getAvailableRequestPage', 'getRequestDiscovery'] as const) {
+    if (!api.endpoints[endpoint]) continue;
+    for (const args of api.util.selectCachedArgsForQuery(state, endpoint)) {
+    dispatch(api.util.updateQueryData(endpoint, args, page => {
       const previous = page.data.length;
       page.data = page.data.filter(request => request.id !== requestId);
       if (page.data.length !== previous) page.total = Math.max(0, page.total - 1);
     }));
+    }
   }
 };

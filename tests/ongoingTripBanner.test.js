@@ -144,11 +144,11 @@ test('the ongoing notification retains the passenger booking and its navigation 
   service.stopOngoingTripTracking();
 });
 
-test('background notification taps use the same passenger route, including the quick action', async () => {
+test('Android background notification taps use the same passenger route, including the quick action', async () => {
   let handler;
   const links = [];
   loader({
-    'react-native': { Linking: { openURL: async href => links.push(href) } },
+    'react-native': { Platform: { OS: 'android' }, Linking: { openURL: async href => links.push(href) } },
     './ongoingTripNotification': { ONGOING_TRIP_NOTIFICATION_ID: 'ongoing' },
     './driverNotificationResponse': { respondToDriverNotification: async () => {} },
     './driverNotifications': { dismissDriverInvitation: async () => {} },

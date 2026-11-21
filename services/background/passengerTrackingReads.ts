@@ -5,7 +5,7 @@ import { store } from '@/store';
 import { bookingApi } from '@/store/api/bookingApi';
 import { tripApi } from '@/store/api/tripApi';
 
-export const getBookingSnapshot = async (bookingId: string) => {
+export const getBookingSnapshot = async (bookingId: string, timeoutMs = FETCH_TIMEOUT_MS, retryAuth = true) => {
   const dispatchRequest = async () => {
     const request = store.dispatch(
       bookingApi.endpoints.getBookingById.initiate(bookingId, {
@@ -13,7 +13,7 @@ export const getBookingSnapshot = async (bookingId: string) => {
         subscribe: false,
       }),
     );
-    const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
+    const timeout = setTimeout(() => request.abort(), timeoutMs);
 
     try {
       return await request;
@@ -24,14 +24,14 @@ export const getBookingSnapshot = async (bookingId: string) => {
   };
 
   let result = await dispatchRequest();
-  if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+  if (retryAuth && getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
     result = await dispatchRequest();
   }
 
   return result;
 };
 
-export const getTripSnapshot = async (tripId: string) => {
+export const getTripSnapshot = async (tripId: string, timeoutMs = FETCH_TIMEOUT_MS, retryAuth = true) => {
   const dispatchRequest = async () => {
     const request = store.dispatch(
       tripApi.endpoints.getTripById.initiate(tripId, {
@@ -39,7 +39,7 @@ export const getTripSnapshot = async (tripId: string) => {
         subscribe: false,
       }),
     );
-    const timeout = setTimeout(() => request.abort(), FETCH_TIMEOUT_MS);
+    const timeout = setTimeout(() => request.abort(), timeoutMs);
 
     try {
       return await request;
@@ -50,7 +50,7 @@ export const getTripSnapshot = async (tripId: string) => {
   };
 
   let result = await dispatchRequest();
-  if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+  if (retryAuth && getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
     result = await dispatchRequest();
   }
 

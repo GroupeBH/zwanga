@@ -85,6 +85,16 @@ function fixture(t, serverRecovery = false) {
   };
 }
 
+test('iOS interruption without a pending alert never requests foreground activation, navigation or sound', async t => {
+  const f = fixture(t, true); f.render(); await tick();
+  for (const state of ['inactive', 'background', 'inactive', 'background', 'active', 'inactive', 'active']) {
+    f.state(state); f.render(); await tick();
+    assert.deepEqual(f.io.links, [], state);
+    assert.deepEqual(f.io.routes, [], state);
+    assert.equal(f.io.players.length, 0, state);
+  }
+});
+
 test('missing card and press event recover a fresh server alert and resume audio on iOS app entry', async t => {
   const f = fixture(t, true);
   const alert = loader()('features/notifications/rideAlert.ts').parseRideAlert(payload());
@@ -104,11 +114,13 @@ test('missing card and press event recover a fresh server alert and resume audio
 for (const type of ['trip_request_nearby', 'new_booking']) test(`iOS lock-screen ${type} tap survives a removed card and resumes without answering`, async t => {
   const f = fixture(t);
   await f.press(payload(type));
+  assert.deepEqual(f.io.links, [], 'iOS owns opening the app; no self deep-link');
   assert.equal(f.io.players.length, 0, 'no foreground audio while locked');
   f.state('active'); f.render(); await tick();
   assert.equal(f.io.nativeReads, 0, 'iOS restoration does not depend on the Android handoff provider');
   assert.equal(f.io.players.length, 1); assert.equal(f.io.players[0].playing, true);
   assert.equal(f.io.routes.length, 1); assert.deepEqual(f.io.decisions, []);
+  assert.deepEqual(f.io.links, [], 'routing in the mounted UI must not relaunch the app');
   assert.equal(f.session.pendingRideAlerts(driverId).length, 1);
   f.session.acknowledgeRideAlerts(a => a.id === requestId);
   assert.equal(f.io.players[0].removed, true);

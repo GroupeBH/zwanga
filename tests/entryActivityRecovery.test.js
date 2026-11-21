@@ -5,7 +5,7 @@ const { ENTRY_LOAD_TIMEOUT_MS } = require('./helpers/loadTypeScript.cjs').loader
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const now = Date.parse('2026-10-19T08:00:00Z');
 
-test('foreground: old summary is refreshed before reconciling lists and accepted-course entry', async t => {
+test('foreground: old summary is refreshed before reconciling lists and ongoing-ride entry', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
   const app = entryRecoveryHarness(t);
   app.produce(); app.enter(); await flush();
@@ -13,9 +13,9 @@ test('foreground: old summary is refreshed before reconciling lists and accepted
   t.mock.timers.tick(25);
   app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); await flush(); t.mock.timers.tick(25); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request']);
+  assert.deepEqual(app.routes, ['/trip/navigate/trip']);
   assert.equal(app.reads.filter(name => name === 'getMyActivityTrips').length, 1, 'no redundant list polling');
-  app.path = '/request-details/request'; assert.equal(app.enter(), null);
+  app.path = '/trip/navigate/trip'; assert.equal(app.enter(), null);
 });
 
 test('a refresh completed just before entry mounts remains valid when its revision is revalidated', async t => {
@@ -25,7 +25,7 @@ test('a refresh completed just before entry mounts remains valid when its revisi
   t.mock.timers.tick(25);
   app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); await flush(); t.mock.timers.tick(25); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request']);
+  assert.deepEqual(app.routes, ['/trip/navigate/trip']);
 });
 
 test('a brief background/foreground resumes once without reloading already reconciled lists', async t => {
@@ -34,14 +34,14 @@ test('a brief background/foreground resumes once without reloading already recon
   app.activity.startedTimeStamp = now; app.activity.fulfilledTimeStamp = now;
   app.produce(); app.enter(); await flush(); app.enter(); app.enter(); await flush();
   assert.equal(app.routes.length, 1);
-  app.path = '/request-details/request'; app.enter(); app.path = '/'; app.enter();
+  app.path = '/trip/navigate/trip'; app.enter(); app.path = '/'; app.enter();
   app.active = false; app.produce(); app.enter();
   assert.equal(app.load('services/activityReadiness.ts').getActivityReadiness(), null);
   t.mock.timers.tick(1000);
   app.active = true; app.produce(); app.enter(); await flush();
   t.mock.timers.tick(25); app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request', '/request-details/request']);
+  assert.deepEqual(app.routes, ['/trip/navigate/trip', '/trip/navigate/trip']);
   assert.equal(app.reads.filter(name => name === 'getMyActivityTrips').length, 1, 'unchanged verified lists are retained');
 });
 
@@ -61,23 +61,23 @@ test('changed revisions and failed reconciliation cannot certify the old cache, 
   assert.equal(error.failed, true);
   app.fail = undefined; error.onAction(); await flush();
   app.produce(); app.enter(); await flush(); app.enter(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request'], 'retry opens the verified request without a second tap');
+  assert.deepEqual(app.routes, ['/trip/navigate/trip'], 'retry opens the verified ride without a second tap');
 });
 
-test('a request-detail failure can be retried with the same revision without another list read', async t => {
+test('a trip-detail failure can be retried with the same revision without another list read', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
   const app = entryRecoveryHarness(t);
   app.activity.startedTimeStamp = now; app.activity.fulfilledTimeStamp = now;
-  app.fail = name => name === 'getTripRequestById';
+  app.fail = name => name === 'getTripById';
   app.produce(); app.enter(); await flush(); app.enter(); app.enter(); await flush();
   assert.deepEqual(app.routes, []); assert.equal(app.enter(), null); assert.equal(app.banner().props.failed, true);
   t.mock.timers.tick(25); app.fail = undefined; app.banner().props.onAction(); await flush();
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request']);
+  assert.deepEqual(app.routes, ['/trip/navigate/trip']);
   assert.equal(app.reads.filter(name => name === 'getMyActivityTrips').length, 1);
 });
 
-test('passenger waiting-request discovery uses the same receipts, not HTTP response order', async t => {
+test('passenger waiting-request discovery fills the shared cache without forcing a detail at entry', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
   const app = entryRecoveryHarness(t);
   app.profile.data.role = 'passenger';
@@ -89,12 +89,12 @@ test('passenger waiting-request discovery uses the same receipts, not HTTP respo
   app.produce(); await flush(); t.mock.timers.tick(25);
   app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request']);
+  assert.deepEqual(app.routes, []);
   assert.equal(app.reads.filter(name => name === 'getMyActivityRequests').length, 1);
   app.path = '/request-details/request'; app.enter(); app.path = '/'; app.enter();
-  assert.equal(app.routes.length, 1, 'a deliberate exit still reaches Home');
+  assert.equal(app.routes.length, 0, 'a deliberate exit still reaches Home');
   app.active = false; app.produce(); app.enter(); t.mock.timers.tick(1000);
   app.active = true; app.produce(); app.enter(); await flush();
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, ['/request-details/request', '/request-details/request']);
+  assert.deepEqual(app.routes, []);
 });

@@ -4,7 +4,7 @@ import { useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { HOME_MAP_PADDING } from '@/features/home/homeMapAppearance';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Platform, type LayoutChangeEvent,
+  Platform, useWindowDimensions, type LayoutChangeEvent,
 } from 'react-native';
 
 import type { useHomeContext } from '@/hooks/home/useHomeContext';
@@ -57,6 +57,7 @@ export function useHomeSheet({
   router,
   hasMapPriorities = false,
 }: Props) {
+  const { fontScale } = useWindowDimensions();
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
   const sheetOffline = !useDisplayReadsEnabled(true);
 
@@ -67,7 +68,7 @@ export function useHomeSheet({
 
   const unreadNotifications = notificationsData?.unreadCount ?? 0;
 
-  const tabBarMetrics = getTabBarMetrics(insets.bottom);
+  const tabBarMetrics = getTabBarMetrics(insets.bottom, fontScale);
 
   const sheetBottomOffset = Platform.OS === 'ios' ? Math.max(tabBarMetrics.height - 2, 0) : 0;
 
@@ -125,7 +126,7 @@ export function useHomeSheet({
     && sheetMeasurement.open === effectiveTripsSheetOpen && sheetMeasurement.expectedHeight === sheetHeight ? sheetMeasurement.height : sheetHeight;
   const locationButtonBottom = sheetBottomOffset + displayedSheetHeight + Spacing.md;
   const mapBottomOffset = sheetBottomOffset + sheetHeight - 26;
-  const priorityTop = (insets.top || 0) + Spacing.lg + 56;
+  const priorityTop = (insets.top || 0) + Spacing.lg + (fontScale > 1.3 && isDriver ? 150 : 56);
   const priorityBottom = sheetBottomOffset + sheetHeight + 72;
   // On short screens use the space BESIDE the location control instead of
   // changing the map/panel heights. The complete priority deck can scroll.

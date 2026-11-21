@@ -1,20 +1,22 @@
-/** Shared bounds: guidance and map commands must not overlap, even with a bottom inset. */
-export function getDriverNavigationLayout(height: number, topInset: number, bottomInset: number) {
-  const guidanceBottom = Math.max(12, bottomInset + 8);
-  const usableHeight = Math.max(0, height - topInset - guidanceBottom);
-  const guidanceMaxHeight = Math.min(124, Math.max(64, usableHeight * (height < 620 ? 0.125 : 0.18)));
-  const controlsBottom = guidanceBottom + guidanceMaxHeight + 8;
+/** Directions at the top, actions at the bottom, an unobstructed map between them. */
+export function getDriverNavigationLayout(height: number, topInset: number, bottomInset: number, fontScale = 1) {
+  const guidanceTop = topInset + 8;
+  const controlsBottom = Math.max(8, bottomInset + 4);
+  const usableHeight = Math.max(0, height - guidanceTop - controlsBottom);
+  const guidanceMaxHeight = Math.min(fontScale > 1.3 ? 240 : 196, usableHeight * 0.32);
   const controlsHeight = 56;
-  const priorityPanelMaxHeight = Math.max(0, height - (topInset + 8) - controlsBottom - controlsHeight - 12);
+  const panelBottom = controlsBottom + controlsHeight + 6;
+  const priorityPanelMaxHeight = Math.max(0, height - panelBottom - guidanceTop - guidanceMaxHeight - 24);
   return {
-    guidanceBottom,
+    guidanceTop,
     guidanceMaxHeight,
+    panelBottom,
     controlsBottom,
     controlsHeight,
-    controlsWidth: 4 * controlsHeight + 3 * 8,
+    controlsWidth: 2 * controlsHeight + 8,
     menuBottom: controlsHeight + 8,
     priorityPanelMaxHeight,
     // Leave a clear map band in ordinary navigation. Long content remains scrollable.
-    panelMaxHeight: Math.max(0, Math.min(priorityPanelMaxHeight - 12, Math.min(292, Math.max(270, usableHeight * 0.38)))),
+    panelMaxHeight: Math.max(0, Math.min(priorityPanelMaxHeight - 24, fontScale > 1.3 ? 300 : 240, usableHeight * 0.38)),
   };
 }

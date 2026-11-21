@@ -11,10 +11,11 @@ import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 import { getTripRequestCreateHref } from '@/utils/requestNavigation';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { HomeDestinationShortcuts } from './HomeDestinationShortcuts';
 import { HomeDriverEarnings } from './HomeDriverEarnings';
 import { HomeEntryStatus } from './HomeEntryStatus';
+import { LocationAccessBanner } from '@/components/location/LocationAccessBanner';
 import { HomeSheetLoadingState } from './HomeSheetLoadingState';
 import { HomeSuggestionCard } from './HomeSuggestionCard';
 import { SwipeableHomePriority } from './SwipeableHomePriority';
@@ -30,17 +31,18 @@ type Props =
   & Pick<ReturnType<typeof useHomePassengerActivity>, 'availableDriverRequests' | 'bookedTripIds' | 'recentDestinations'>
   & Pick<ReturnType<typeof useHomePriorityDismissals>, 'dismissPriority' | 'hiddenHomePriorities'>
   & Pick<ReturnType<typeof useHomeMapNavigation>, 'openTripRequestDetail' | 'openTripDetail'>
-  & { prioritiesEnabled: boolean; driverCategory?: DriverCategory | null };
+  & { prioritiesEnabled: boolean; driverCategory?: DriverCategory | null; priorityContent?: React.ReactNode };
 
 export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   suggestionScopeLabel, sheetBottomOffset, sheetHeight, onSheetLayout,
   effectiveTripsSheetOpen, toggleTripsSheet, isHomeSheetLockedRetracted, sheetTitle,
-  openSheetIndex, isDriver, isScreenActive, driverCategory,
+  openSheetIndex, isDriver, isScreenActive, driverCategory, priorityContent,
   dismissPriority, hiddenHomePriorities, prioritiesEnabled,
   availableDriverRequests, sheetLoading,
   sheetError, sheetOffline, refetchSheetContent, openTripRequestDetail, latestTrips, bookedTripIds,
   openTripDetail, router, recentDestinations, featuredPassengerTrip,
 }: Props) {
+  const { fontScale } = useWindowDimensions();
   const showRequests = isDriver;
   const clientCount = availableDriverRequests.length;
   const countUnknown = !clientCount && (sheetOffline || sheetLoading || sheetError);
@@ -64,6 +66,8 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
         <ScrollView style={styles.dashboardScroll} contentContainerStyle={styles.dashboardContent}
           showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <HomeEntryStatus />
+          {priorityContent}
+          <LocationAccessBanner active={isScreenActive} background={isDriver ? 'discovery' : undefined} />
           {isDriver ? (
             <>
               {driverCategory !== 'transport' && <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.publishButton}
@@ -71,15 +75,15 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
                 <Ionicons name="add" size={20} color="#FFFFFF" accessible={false} />
                 <Text style={styles.publishButtonText}>Publier un trajet</Text>
               </TouchableOpacity>}
-              <View style={styles.metricsRow}>
-                <TouchableOpacity activeOpacity={0.8} style={styles.metricCard} accessibilityRole="button"
+              <View style={[styles.metricsRow, fontScale > 1.3 && styles.metricsStack]}>
+                <TouchableOpacity activeOpacity={0.8} style={[styles.metricCard, fontScale > 1.3 && styles.stackedMetricCard]} accessibilityRole="button"
                   accessibilityLabel={countUnknown ? 'Voir les clients, nombre indisponible' : `${clientCountLabel} clients disponibles`}
                   onPress={openSheetIndex}>
                   <Text style={styles.metricLabel}>Clients près de vous</Text>
                   <Text style={styles.metricValue}>{clientCountLabel}</Text>
                   <Text style={styles.metricHint}>commandes</Text>
                 </TouchableOpacity>
-                <HomeDriverEarnings active={isScreenActive} onPress={() => router.push('/driver-earnings')} />
+                <HomeDriverEarnings active={isScreenActive} stacked={fontScale > 1.3} onPress={() => router.push('/driver-earnings')} />
               </View>
             </>
           ) : (

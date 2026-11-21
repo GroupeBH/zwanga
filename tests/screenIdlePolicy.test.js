@@ -8,7 +8,7 @@ function profileFixture() {
   const state = { active: true, user: { id: 'driver', role: 'driver' } };
   const values = {
     profile: { user: state.user, stats: { vehicles: 1 }, identity: { status: 'approved' } }, vehicles: [{ id: 'car' }],
-    kyc: { status: 'approved' }, requests: [{ status: 'pending' }], offers: [],
+    kyc: { status: 'approved' }, requestStats: { totalRequests: 1000, activeRequests: 1, requestsWithOffers: 0, completedRequests: 500, pendingOffersCount: 0 },
     referrals: {}, plans: [], premium: { isPremium: false }, payments: [],
     settlements: { availableBalance: 2000 }, reviews: [], rating: {},
   };
@@ -42,20 +42,20 @@ function profileFixture() {
     '@/store/api/paymentApi': { useGetPendingSubscriptionPaymentsQuery: query('payments') },
     '@/store/api/subscriptionApi': { useGetSubscriptionPlansQuery: query('plans'), useGetPremiumOverviewQuery: query('premium') },
     '@/store/api/reviewApi': { useGetReviewPageQuery: query('reviews'), useGetAverageRatingQuery: query('rating') },
-    '@/store/api/tripRequestApi': { useGetMyTripRequestsQuery: query('requests'), useGetMyDriverOffersQuery: query('offers') },
+    '@/store/api/tripRequestApi': { useGetMyRequestStatsQuery: query('requestStats') },
   });
   const { useProfileData } = load('hooks/profile/useProfileData.ts');
   return { hooks, state, calls, values, dispatches, render: () => hooks.render(useProfileData) };
 }
 
-test('profile pauses nine display reads on blur/background but keeps payment dependencies alive', () => {
+test('profile pauses eight display reads on blur/background but keeps payment dependencies alive', () => {
   const app = profileFixture(), initial = app.render();
   assert.equal(initial.knownVehicleCount, 1);
   assert.equal(initial.tripRequestsCount, 1);
   app.state.active = false; app.calls.length = 0;
   const hidden = app.render();
   const displayReads = app.calls.filter(call => !['premium', 'payments'].includes(call.name));
-  assert.equal(displayReads.length, 9);
+  assert.equal(displayReads.length, 8);
   for (const { options } of displayReads) {
     assert.equal(options.skip, true);
     assert.equal(options.pollingInterval, 0);

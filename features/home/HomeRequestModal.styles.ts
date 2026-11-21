@@ -11,7 +11,7 @@ export const styles = StyleSheet.create({
   orderIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.warm, alignItems: 'center', justifyContent: 'center' },
   title: { flex: 1, fontSize: 20, fontWeight: '700', color: colors.ink },
   passengerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  passenger: { fontSize: 15, fontWeight: '600', color: colors.ink },
+  passenger: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
   priceRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8 },
   price: { fontSize: 34, fontWeight: '800', letterSpacing: -1, color: colors.ink },
   muted: { fontSize: 13, color: colors.muted },

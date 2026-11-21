@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { useGetFavoriteLocationsQuery } from '@/store/api/userApi';
 import { useDisplayReadsEnabled } from '@/hooks/useDisplayReads';
 import { HOME_DASHBOARD_COLORS, styles } from '@/features/home/HomeTripsSheet.styles';
@@ -15,6 +16,8 @@ export const HomeDestinationShortcuts = React.memo(function HomeDestinationShort
   active: boolean; recentDestinations: Location[];
 }) {
   const router = useRouter();
+  const focused = useIsFocused();
+  const version = getTokenSessionVersion();
   const enabled = useDisplayReadsEnabled(active);
   const { data: favorites } = useGetFavoriteLocationsQuery(undefined, {
     skip: !enabled, refetchOnMountOrArgChange: 60,
@@ -25,9 +28,11 @@ export const HomeDestinationShortcuts = React.memo(function HomeDestinationShort
   const session = useRef(getTokenSessionVersion());
   const accepting = useRef(false);
   useEffect(() => {
-    if (!active) { accepting.current = false; confirmed.current = null; setPicker(null); setRecentOpen(false); }
+    if (!focused || session.current !== version) {
+      accepting.current = false; confirmed.current = null; setPicker(null); setRecentOpen(false);
+    }
     return () => { accepting.current = false; confirmed.current = null; };
-  }, [active]);
+  }, [focused, version]);
   const chooseDestination = (name: string, latitude?: number, longitude?: number) => {
     if (!active) return;
     setRecentOpen(false);
@@ -67,13 +72,14 @@ export const HomeDestinationShortcuts = React.memo(function HomeDestinationShort
         </TouchableOpacity>
       )) : <Text style={styles.recentText}>Vos prochaines destinations apparaîtront ici.</Text>}
     </View>}
-    <LocationPickerModal visible={active && picker !== null} title="Où allez-vous ?" confirmLabel="Confirmer cette destination"
+    <LocationPickerModal visible={focused && session.current === version && picker !== null} active={active} title="Où allez-vous ?" confirmLabel="Confirmer cette destination"
       initialLocation={picker?.location} initialSearchQuery={picker?.query} autoLocateOnOpen={false}
       onClose={() => { accepting.current = false; setPicker(null); }}
       onSelect={location => {
-        if (!active || !accepting.current || session.current !== getTokenSessionVersion()) return;
-        if (!getPickerCoordinate(location.latitude, location.longitude)) return;
+        if (!active || !accepting.current || session.current !== getTokenSessionVersion()) return false;
+        if (!getPickerCoordinate(location.latitude, location.longitude)) return false;
         accepting.current = false; confirmed.current = location; setPicker(null);
+        return true;
       }}
       onDismiss={() => {
         const location = confirmed.current; confirmed.current = null;

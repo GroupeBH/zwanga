@@ -12,10 +12,11 @@ const suggestion = { id: 'gombe', name: 'Gombe', fullAddress: 'Gombe, Kinshasa',
 function pickerApp(t, extra = {}) {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const hooks = hookHarness();
+  const appState = { currentState: 'active' };
   const calls = { search: [], details: [], geocode: [], reverse: [], selected: [], closed: 0, permissions: 0, positions: 0 };
   const io = {
     search: async () => [suggestion], details: async () => suggestion,
-    permission: async () => ({ status: 'granted' }), cached: async () => ({ coords: point }),
+    permission: async () => ({ status: 'granted', granted: true }), cached: async () => ({ coords: point }),
     position: async () => ({ coords: point }),
   };
   const mutation = name => args => {
@@ -27,10 +28,12 @@ function pickerApp(t, extra = {}) {
   const geocode = mutation('geocode'), reverse = mutation('reverse');
   const load = loader({
     react: { ...React, ...hooks.react },
-    'react-native': { Keyboard: { dismiss() {} } },
+    'react-native': { AppState: appState, Platform: { OS: 'android' }, Keyboard: { dismiss() {} } },
     '@/store': { store: {} },
     'expo-location': {
       Accuracy: { Balanced: 3 }, requestForegroundPermissionsAsync: () => { calls.permissions++; return io.permission(); },
+      getForegroundPermissionsAsync: async () => ({ granted: false, canAskAgain: true }),
+      hasServicesEnabledAsync: async () => true,
       getLastKnownPositionAsync: () => io.cached(), watchPositionAsync: async (_options, callback, error) => {
         calls.positions++; void io.position().then(callback, error); return { remove() {} };
       },
@@ -45,7 +48,7 @@ function pickerApp(t, extra = {}) {
   const props = { initialLocation: place, onSelect: value => calls.selected.push(value), onClose: () => calls.closed++, ...extra };
   const render = () => hooks.render(() => useLocationPicker(props));
   t.after(() => hooks.unmount());
-  return { hooks, calls, io, props, render, load };
+  return { hooks, calls, io, props, render, load, appState };
 }
 
 test('typing is debounced, moving the map does not restart search and stale results are ignored', async t => {
@@ -234,12 +237,56 @@ test('denied and slow GPS never block manual map selection; repeated taps make o
   app.io.permission = () => pending.promise;
   const gps = app.render().locate();
   void app.render().locate();
-  assert.equal(app.calls.permissions, 2);
+  await flush(); assert.equal(app.calls.permissions, 2);
   t.mock.timers.tick(15_000);
-  assert.equal(app.render().locating, false);
+  assert.equal(app.render().locating, true, 'the OS prompt must not expire while the user is deciding');
   app.render().choose({ ...place, title: 'Mon choix' });
-  pending.resolve({ status: 'granted' }); await gps;
+  pending.resolve({ status: 'granted', granted: true }); await gps;
   assert.equal(app.render().selection.title, 'Mon choix');
+});
+
+test('Ma position survives a long native permission interruption and commits its GPS point on return', async t => {
+  const app = pickerApp(t, { active: true });
+  const permission = deferred(), gpsPoint = { latitude: -4.4, longitude: 15.4 };
+  app.io.permission = () => permission.promise;
+  app.io.cached = async () => ({ coords: gpsPoint });
+  const locating = app.render().locate();
+  await flush();
+  assert.equal(app.calls.permissions, 1);
+  app.appState.currentState = 'inactive'; app.props.active = false; app.render();
+  t.mock.timers.tick(120_000);
+  assert.equal(app.render().locating, true, 'human time in the prompt does not discard the GPS action');
+  assert.equal(app.calls.closed, 0);
+  app.appState.currentState = 'active';
+  permission.resolve({ status: 'granted', granted: true }); await locating;
+  assert.deepEqual(app.render().cameraTarget, gpsPoint);
+  assert.equal(app.render().selection.title, 'Ma position');
+  app.render().confirm(); assert.equal(app.calls.selected.length, 0, 'wait for the screen to become active');
+  app.props.active = true; app.render().confirm();
+  assert.equal(app.calls.selected.length, 1);
+  assert.equal(app.calls.selected[0].latitude, gpsPoint.latitude);
+  assert.equal(app.calls.selected[0].longitude, gpsPoint.longitude);
+  assert.equal(app.calls.closed, 1);
+});
+
+test('a paused picker keeps the selected coordinates and restores the camera to the panned point', t => {
+  const app = pickerApp(t), next = { latitude: -4.4, longitude: 15.4 };
+  app.render().startPanning(); app.render().settleMap(next); app.render();
+  app.props.active = false; app.render();
+  assert.equal(app.render().selection.latitude, next.latitude);
+  assert.equal(app.render().cameraTarget.latitude, next.latitude);
+  app.render().confirm(); assert.equal(app.calls.selected.length, 0);
+  app.props.active = true; app.render().confirm();
+  assert.equal(app.calls.selected[0].latitude, next.latitude);
+});
+
+test('an explicit parent rejection keeps the selected draft open and permits retry', t => {
+  const app = pickerApp(t); app.props.onSelect = () => false;
+  app.render().choose({ ...place, title: 'Mon point' }); app.render().confirm();
+  assert.equal(app.calls.closed, 0);
+  app.props.onSelect = value => app.calls.selected.push(value);
+  app.render().confirm();
+  assert.equal(app.calls.selected[0].title, 'Mon point'); assert.equal(app.calls.closed, 1);
 });
 
 test('a recent cached GPS location avoids a new GPS fix and does not wait for reverse geocoding', async t => {
@@ -374,6 +421,7 @@ test('search overlays the map without resizing it and preserves its props; foote
   const state = {
     selection: place, cameraTarget: point, route: [], query: '', searchOpen: false, suggestions: [],
     searching: false, resolving: false, locating: false, panning: false, addressLoading: false,
+    recovery: { issue: null, error: '', busy: false, recover() {} },
     choose: (...args) => mapSelections.push(args), close() {}, locate() {}, resolvePlace() {}, startPanning() {}, settleMap() {}, confirm() {},
   };
   const react = { ...React, ...Object.fromEntries(Object.keys(hooks.react).map(key => [key, (...args) => hooks.react[key](...args)])) };

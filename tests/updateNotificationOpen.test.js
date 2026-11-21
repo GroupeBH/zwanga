@@ -8,6 +8,7 @@ function fixture(initial) {
   const io = { ready: 'root', path: '/auth-entry' };
   const router = { push: route => routes.push(route) }, dispatch = value => tags.push(value);
   const useOpen = loader({ react: h.react,
+    'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     'expo-router': { useRouter: () => router, usePathname: () => io.path, useRootNavigationState: () => io.ready ? { key: io.ready } : undefined },
     '@/store/hooks': { useAppDispatch: () => dispatch }, '@/store/api/baseApi': { baseApi: { util: { invalidateTags: value => value } } },
     'expo-notifications': {

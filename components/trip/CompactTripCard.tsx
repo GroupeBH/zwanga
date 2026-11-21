@@ -4,7 +4,7 @@ import { CompactCardAvatar } from './CompactCardAvatar';
 import { accentStyles, priorityAccents, prioritySurfaces, type HomePriorityAppearance, type SearchCardAppearance } from './CompactTripCard.variants';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Text, TouchableOpacity, View, type AccessibilityProps } from 'react-native';
+import { Text, TouchableOpacity, useWindowDimensions, View, type AccessibilityProps } from 'react-native';
 
 type Props = {
   label: string;
@@ -37,7 +37,9 @@ export const CompactTripCard = React.memo(function CompactTripCard({
   width, selected, disabled = false, inlineRoute = false, onPress, accessibilityLabel,
   accessibilityActions, onAccessibilityAction,
 }: Props) {
-  const stackedPriceHint = Boolean(priceHint && priceText && priceText.length > 8);
+  const { fontScale } = useWindowDimensions();
+  const largeText = fontScale > 1.3;
+  const stackedPriceHint = Boolean(priceHint && priceText && (largeText || priceText.length > 8));
   const priority = priorityAppearance ? priorityAccents[priorityAppearance] : undefined;
   const fullMetadata = metadataPrefix ? `${metadataPrefix} · ${metadata}` : metadata;
   const metadataContent = metadataPrefix ? <>
@@ -64,24 +66,24 @@ export const CompactTripCard = React.memo(function CompactTripCard({
     >
       {priority ? <View pointerEvents="none" accessible={false}
         style={[accentStyles.priorityRail, { backgroundColor: priority.color }]} /> : null}
-      <View style={styles.header}>
+      <View style={[styles.header, largeText && styles.stackedHeader]}>
         {priority ? (
-          <View style={accentStyles.priorityLabel}>
+          <View style={[accentStyles.priorityLabel, largeText && styles.stackedLabel]}>
             <Ionicons name={priority.icon} size={14} color={priority.color} style={accentStyles.priorityIcon} accessible={false} />
-            <Text style={[styles.label, { color: priority.color }]} numberOfLines={2}>{label}</Text>
+            <Text style={[styles.label, { color: priority.color }]} numberOfLines={largeText ? undefined : 2}>{label}</Text>
           </View>
-        ) : <Text style={[styles.label, searchAppearance && accentStyles.searchDate,
-          labelColor ? { color: labelColor } : undefined]} numberOfLines={2}>{label}</Text>}
+        ) : <Text style={[styles.label, largeText && styles.stackedLabel, searchAppearance && accentStyles.searchDate,
+          labelColor ? { color: labelColor } : undefined]} numberOfLines={largeText ? undefined : 2}>{label}</Text>}
         {priceText ? (
-          <View style={styles.priceBlock}>
-            <Text style={[styles.price, searchAppearance && accentStyles.searchPrice]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.9}>
+          <View style={[styles.priceBlock, largeText && styles.fullPriceBlock]}>
+            <Text style={[styles.price, searchAppearance && accentStyles.searchPrice]}>
               {priceText}{priceHint && !stackedPriceHint ? <Text style={styles.priceHint}> {priceHint}</Text> : null}
             </Text>
             {stackedPriceHint ? <Text style={styles.priceHint}>{priceHint}</Text> : null}
           </View>
         ) : null}
       </View>
-      {inlineRoute ? (
+      {inlineRoute && !largeText ? (
         <View style={styles.inlineRoute}>
           <Text style={styles.place} numberOfLines={1}>{departure}</Text>
           <Ionicons name="arrow-forward" size={14} color={Colors.gray[500]} />
@@ -91,11 +93,11 @@ export const CompactTripCard = React.memo(function CompactTripCard({
         <View style={styles.route}>
           <View style={styles.routeRow}>
             <View style={styles.departureDot} />
-            <Text style={styles.place} numberOfLines={1}>{departure}</Text>
+            <Text style={styles.place} numberOfLines={largeText ? undefined : 1}>{departure}</Text>
           </View>
           <View style={styles.routeRow}>
             <View style={styles.arrivalDot} />
-            <Text style={styles.place} numberOfLines={1}>{arrival}</Text>
+            <Text style={styles.place} numberOfLines={largeText ? undefined : 1}>{arrival}</Text>
           </View>
         </View>
       )}
@@ -104,15 +106,15 @@ export const CompactTripCard = React.memo(function CompactTripCard({
           <>
             <CompactCardAvatar name={avatarName} uri={avatarUri} />
             <View style={styles.identityCopy}>
-              {secondary ? <Text style={styles.secondary} numberOfLines={1}>{secondary}</Text> : null}
-              <Text style={styles.identityMetadata} numberOfLines={2}>{metadataContent}</Text>
+              {secondary ? <Text style={styles.secondary} numberOfLines={largeText ? undefined : 1}>{secondary}</Text> : null}
+              <Text style={styles.identityMetadata} numberOfLines={largeText ? undefined : 2}>{metadataContent}</Text>
             </View>
           </>
-        ) : <Text style={styles.metadata} numberOfLines={2}>{metadataContent}</Text>}
-        {badge ? <Text style={[styles.badge, searchAppearance && accentStyles.offers]} numberOfLines={1}>{badge}</Text> : null}
+        ) : <Text style={styles.metadata} numberOfLines={largeText ? undefined : 2}>{metadataContent}</Text>}
+        {badge ? <Text style={[styles.badge, searchAppearance && accentStyles.offers]} numberOfLines={largeText ? undefined : 1}>{badge}</Text> : null}
         <Ionicons name="chevron-forward" size={16} color={priority?.color ?? Colors.primary} />
       </View>
-      {secondary && !avatarName ? <Text style={styles.secondary} numberOfLines={1}>{secondary}</Text> : null}
+      {secondary && !avatarName ? <Text style={styles.secondary} numberOfLines={largeText ? undefined : 1}>{secondary}</Text> : null}
     </TouchableOpacity>
   );
 });

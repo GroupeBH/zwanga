@@ -6,7 +6,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function environment() {
   const hooks = hookHarness(), values = new Map(), calls = [];
-  const env = { hooks, calls, foreground: true, pathname: '/', overlayBusy: false,
+  const env = { hooks, calls, foreground: true, pathname: '/profile', overlayBusy: false,
     auth: { user: { id: 'passenger' }, isAuthenticated: true }, bookings: [], trips: [], keyboard: false,
     ratings: { userId: 'passenger', ratedTripIds: ['trip'] }, ratingsFetching: false, ratingsError: false };
   const overlay = { subscribe: () => () => {}, isBusy: () => env.overlayBusy };
@@ -41,13 +41,16 @@ function environment() {
       pickedUp: true, droppedOff: true, droppedOffAt: new Date().toISOString(), paymentMode: 'points', paymentStatus: 'succeeded' }]; } });
 }
 
-test('a full trip queues a native request only after quiet foreground home; navigation and payment dismissals defer it', async t => {
+test('a full trip queues a native request only in quiet Profile, never on Home', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-09-22T10:00:00Z') });
   const env = environment(); env.render(); await flush(); env.render();
   t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0);
   env.pathname = '/trip/passenger/one'; env.complete(); env.render(); await flush(); env.render();
   t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0);
-  env.pathname = '/'; env.overlayBusy = true; env.render();
+  env.pathname = '/'; env.render(); await flush(); env.render();
+  t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0);
+  assert.equal(env.ratingQuery.options.skip, true);
+  env.pathname = '/profile'; env.overlayBusy = true; env.render();
   t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0);
   env.overlayBusy = false; env.render(); t.mock.timers.tick(2999); await flush(); assert.equal(env.calls.length, 0);
   t.mock.timers.tick(1); await flush(); assert.equal(env.calls.length, 1);
@@ -97,7 +100,7 @@ test('a scheduled request is cancelled on blur, background, logout and unmount',
     env => { env.auth = { isAuthenticated: false, user: null }; }, env => { env.hooks.unmount(); }]) {
     const env = environment(); env.render(); await flush(); t.mock.timers.tick(1000);
     env.complete(); env.render(); await flush(); env.render(); change(env);
-    if (env.pathname !== '/' || !env.foreground) env.render();
+    if (env.pathname !== '/profile' || !env.foreground) env.render();
     t.mock.timers.tick(5000); await flush(); assert.equal(env.calls.length, 0); env.hooks.unmount();
   }
 });
@@ -124,7 +127,7 @@ test('returning from sleep waits for a fresh server activity snapshot before req
   assert.equal(env.calls.length, 1); env.hooks.unmount();
 });
 
-test('rating lookup is bounded and only queries eligible completed rides while Home is foreground', async t => {
+test('rating lookup is bounded and only queries eligible completed rides while Profile is foreground', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.parse('2026-09-22T10:00:00Z') });
   const env = environment(); env.render(); await flush(); t.mock.timers.tick(1000);
   env.trips = Array.from({ length: 150 }, (_, index) => ({ driverId: 'passenger', status: 'completed',

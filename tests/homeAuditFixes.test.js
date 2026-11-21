@@ -7,6 +7,7 @@ const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollV
   ActivityIndicator: 'Spinner', StyleSheet: { create: value => value }, Platform: { OS: 'ios' } };
 const parts = ['HomeDriverStatus', 'HomeDriverEarnings', 'HomeDestinationShortcuts', 'HomeSheetLoadingState', 'SwipeableHomePriority'];
 const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   ...Object.fromEntries(parts.map(name => [`./${name}`, { [name]: name }])) });
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);

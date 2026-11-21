@@ -284,6 +284,7 @@ test('Home forwards its existing location to the published-trip selection', () =
     'useHomeTripSelection', 'useHomeUserLocation', 'useHomeRequestHighlight', 'useHomePriorityDismissals', 'useHomeMapMarkers'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, { [name]: () => ({}) }]));
   mocks['./useHomeLocation'].useHomeLocation = () => ({ liveUserCoordinate: origin });
+  mocks['./useHomeSupportingData'] = { useHomeSupportingData: () => true };
   mocks['@/hooks/notifications/useRideEntryAnnouncement'] = { useRideEntryAnnouncement() {} };
   mocks['./useHomeTripSelection'].useHomeTripSelection = props => { selectedProps = props; return {}; };
   loader(mocks)('hooks/home/useHomeController.ts').useHomeController({});

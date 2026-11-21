@@ -2,7 +2,10 @@ import { baseApi } from "./baseApi";
 import type { BaseEndpointBuilder } from "./types";
 
 export type AssetKind = 'phone' | 'helmet' | 'gps_tracker' | 'delivery_equipment' | 'equipment' | 'vehicle';
-export interface AssetProduct { kind: AssetKind; label: string; enabled: boolean }
+export interface AssetProduct {
+  kind: AssetKind; label: string; enabled: boolean; comingSoon?: boolean;
+  eligibility?: { eligible: boolean; requiredMonths?: number; maximumGapHours?: number; rule?: string };
+}
 export interface AssetCreditRequest { id: string; assetKind: AssetKind; notes: string; status: string }
 
 export interface AssetCredit {
@@ -15,7 +18,11 @@ export interface AssetCredit {
   costDisclosureVersion?: string | null;
   installmentCount?: number | null;
   installmentPeriod?: 'week' | 'month' | null;
+  repaymentPlans?: { id: string; months: number }[];
+  selectedPlanId?: string | null;
+  repaymentPlanPreviews?: { id: string; months: number; minimumDueMinor: number; installments: NonNullable<AssetCredit['installments']> }[];
   minimumDueMinor?: number;
+  nextInstallment?: { ordinal: number; dueAt: string | null; amountMinor: number; remainingMinor: number } | null;
   installments?: { ordinal: number; dueAt: string | null; amountMinor: number; remainingMinor: number }[];
   paidMinor: string;
   dueMinor: string;
@@ -67,14 +74,19 @@ export const assetCreditApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: ["ProServices"],
     }),
+    updateCreditRequestComment: b.mutation<{ id: string; notes: string }, { id: string; notes: string }>({
+      query: ({ id, notes }) => ({ url: `/asset-credits/requests/${encodeURIComponent(id)}/comment`, method: 'PATCH', body: { notes } }),
+      invalidatesTags: ['ProServices'],
+    }),
     decideAssetCredit: b.mutation<
       { id: string },
-      { id: string; accept: boolean; policyVersion: string; expectedTotalRepaymentBps?: number; costDisclosureVersion?: string }
+      { id: string; accept: boolean; policyVersion: string; expectedTotalRepaymentBps?: number; costDisclosureVersion?: string; selectedPlanId?: string }
     >({
-      query: ({ id, accept, policyVersion, expectedTotalRepaymentBps, costDisclosureVersion }) => ({
+      query: ({ id, accept, policyVersion, expectedTotalRepaymentBps, costDisclosureVersion, selectedPlanId }) => ({
         url: `/asset-credits/mine/${encodeURIComponent(id)}/${accept ? "accept" : "decline"}`,
         method: "POST",
         body: accept ? { consent: true, policyVersion,
+          ...(selectedPlanId ? { selectedPlanId } : {}),
           ...(costDisclosureVersion ? { costDisclosureVersion } : {}),
           ...(policyVersion === 'asset-credit-v2' ? { expectedTotalRepaymentBps } : {}),
         } : undefined,
@@ -101,6 +113,7 @@ export const {
   useGetAssetCreditQuery,
   useGetAssetCreditRequestsQuery,
   useRequestAssetCreditMutation,
+  useUpdateCreditRequestCommentMutation,
   useDecideAssetCreditMutation,
   useRepayAssetCreditMutation,
 } = assetCreditApi;

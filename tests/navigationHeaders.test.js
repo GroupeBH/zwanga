@@ -12,6 +12,7 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const insets = { top: 47, bottom: 34, left: 0, right: 0 };
 const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openContact() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
   '@/components/trip/TripShareAction': { TripShareAction: 'ShareAction' },
   './DriverDropoffReceipts': { DriverDropoffReceipts: 'DropoffReceipts' },
@@ -35,7 +36,7 @@ function driverModel() {
     routeFormatting: { getManeuverIcon: () => 'navigate' }, handleExitNavigation() {}, forceRecalculateRoute() {} };
 }
 
-test('driver header reserves safe-area space and puts confirmation outside the duration/distance block', () => {
+test('driver bottom dock reserves safe-area space and keeps confirmation separate from guidance', () => {
   const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ ...defaults,
     react: { ...React, ...hooks.react },
@@ -47,11 +48,9 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   model.session.foundation.mapState.waypoints = [{ booking: { id: 'next-passenger' }, type: 'pickup', completed: false }];
   const render = (nextAssistance = assistance) => hooks.render(() => DriverNavigationTopPanel({ model, assistance: nextAssistance }));
   const tree = render();
-  assert.equal(flatStyle(tree.props.style).top, 55);
-  const header = tree.props.children[0];
-  assert.match(words(header), /Trajet en cours.*Connecté.*37 min.*12,6 km/);
-  assert.equal(all(header).find(node => node.type === 'Recovery'), undefined);
-  for (const text of all(header).filter(node => node.type === 'Text')) assert.equal(text.props.numberOfLines, undefined);
+  assert.equal(flatStyle(tree.props.style).top, undefined);
+  assert.ok(flatStyle(tree.props.style).bottom > insets.bottom + 56);
+  assert.doesNotMatch(words(tree), /37 min|12,6 km/, 'route metrics belong to the top guidance strip');
   const recovery = all(tree).find(node => node.type === 'Recovery');
   assert.equal(recovery.props.bookings, model.session.foundation.data.bookings);
   assert.equal(recovery.props.actor, 'driver'); assert.equal(recovery.props.compact, undefined);
@@ -66,6 +65,7 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(confirmationStyle.height, undefined, 'allow confirmation and its hint to wrap with larger text');
   const buttons = all(tree).find(node => node.type === 'AssistanceButtons');
   assert.equal(buttons.props.role, 'driver'); assert.equal(buttons.props.onSos, assistance.openSos);
+  assert.equal(buttons.props.showSos, false, 'driver SOS lives in the fixed guidance header, not twice in the dock');
   assert.equal(buttons.props.onContact, assistance.openContacts);
   const contacted = [];
   model.session.foundation.mapState.waypoints[0].booking.passengerId = 'next-holder';
@@ -93,7 +93,7 @@ test('driver header reserves safe-area space and puts confirmation outside the d
   assert.equal(receipts.props.bookings, model.session.foundation.data.bookings);
   assert.equal(receipts.props.active, true);
   model.session.foundation.data.offlineTrip = true;
-  assert.match(words(render()), /Sans connexion/);
+  assert.equal(all(render()).find(node => node.type === 'Recovery'), undefined);
   hooks.unmount();
 });
 
@@ -152,7 +152,7 @@ test('passenger map top offset follows actual header height, including larger te
   hooks.unmount();
 });
 
-test('stop and sharing are directly visible with location and Plus, retaining guards and touch bounds', () => {
+test('stop and sharing move into Plus while retaining guards and touch bounds', () => {
   const hooks = hookHarness(); const calls = [];
   const { DriverNavigationControls } = loader({ ...defaults, react: { ...React, ...hooks.react },
     '../screen-styles/app/trip/navigate/detail/index': { styles: {} },
@@ -169,20 +169,22 @@ test('stop and sharing are directly visible with location and Plus, retaining gu
   const button = label => all(tree).find(node => node.type === 'Button' && node.props.accessibilityLabel === label);
   const open = () => { (button('Options de navigation') ?? button('Fermer les options')).props.onPress(); render(); };
   render();
-  assert.equal(all(tree).filter(node => node.type === 'Button').length, 4);
-  assert.match(words(tree), /Ma position.*Partager le trajet.*Arrêter le trajet.*Plus/);
+  assert.equal(all(tree).filter(node => node.type === 'Button').length, 2);
+  assert.match(words(tree), /Ma position.*Plus/);
+  assert.equal(button('Arrêter le trajet'), undefined);
+  assert.equal(button('Partager le trajet'), undefined);
   const directButtons = all(tree).filter(node => node.type === 'Button');
   const directStyles = directButtons.map(button => flatStyle(button.props.style));
   assert.ok(directStyles.every(style => style.width >= 44 && style.minHeight >= 44));
-  assert.equal(directStyles.reduce((sum, style) => sum + style.width, 0) + 3 * 8, flatStyle(tree.props.style).width);
-  assert.ok(flatStyle(tree.props.style).width + flatStyle(tree.props.style).right <= 320 - 16);
+  assert.equal(directStyles.reduce((sum, style) => sum + style.width, 0) + 8, flatStyle(tree.props.style).width);
+  assert.ok(flatStyle(tree.props.style).width + flatStyle(tree.props.style).right <= 320 - 12);
   assert.equal(button('Mettre le trajet en pause'), undefined);
   assert.equal(button('Actualiser la route'), undefined);
   assert.equal(button('Activer le son'), undefined);
-  button('Arrêter le trajet').props.onPress(); render();
-  assert.equal(calls.pop(), 'pause', 'stop is directly available without opening Plus');
-  button('Partager le trajet').props.onPress(); render();
-  assert.equal(calls.pop(), 'share', 'sharing is directly available without opening Plus');
+  open(); button('Arrêter le trajet').props.onPress(); render();
+  assert.equal(calls.pop(), 'pause', 'stop still uses the existing confirmation handler');
+  open(); button('Partager le trajet').props.onPress(); render();
+  assert.equal(calls.pop(), 'share', 'sharing still uses the trip sharing handler');
   open(); button('Activer le son').props.onPress(); render();
   button('Ma position').props.onPress();
   assert.equal(calls[0], 'voice');
@@ -196,13 +198,13 @@ test('stop and sharing are directly visible with location and Plus, retaining gu
   open(); button('Les arrêts').props.onPress(); render(); assert.deepEqual(calls.at(-1), ['stops', true]);
   props.passengerPresentation.passengerStats.inVehicle = 1;
   render(); assert.equal(button('Mettre le trajet en pause'), undefined);
-  button('Arrêter le trajet').props.onPress(); render(); assert.equal(calls.at(-1), 'pause');
+  open(); button('Arrêter le trajet').props.onPress(); render(); assert.equal(calls.at(-1), 'pause');
   foundation.passengers.activeDriverInterruptionRequest = { id: 'request' };
-  render(); assert.ok(button('Voir la demande d’arrêt'));
-  assert.match(words(button('Voir la demande d’arrêt')), /Arrêt demandé/);
+  open(); assert.ok(button('Voir la demande d’arrêt'));
+  assert.match(words(button('Voir la demande d’arrêt')), /Voir la demande d’arrêt/);
   foundation.data.isCreatingTripShareLink = true; foundation.mapState.isLoadingRoute = true;
   foundation.data.isRequestingDriverInterruption = true;
-  open();
+  render();
   const popup = tree.props.children[0], popupStyle = flatStyle(popup.props.style), frame = flatStyle(tree.props.style);
   assert.ok(frame.width >= popupStyle.width + popupStyle.right);
   assert.ok(frame.minHeight >= popupStyle.maxHeight + popupStyle.bottom);
@@ -225,9 +227,9 @@ test('stop and sharing are directly visible with location and Plus, retaining gu
   const staleShare = button('Partager le trajet').props.onPress;
   foundation.refs.currentLocationRef.current = latest; foundation.mapState.isLoadingRoute = false;
   foundation.data.isScreenActive = false; render(); render();
-  assert.equal(button('Partager le trajet').props.disabled, true);
+  assert.equal(button('Partager le trajet'), undefined);
   assert.equal(button('Ma position').props.disabled, true);
-  assert.equal(button('Voir la demande d’arrêt').props.disabled, true);
+  assert.equal(button('Voir la demande d’arrêt'), undefined);
   staleRecenter(); staleReroute(); staleStop(); staleShare(); assert.equal(calls.length, count);
   hooks.unmount();
 });

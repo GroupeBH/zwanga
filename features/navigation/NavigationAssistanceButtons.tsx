@@ -9,19 +9,20 @@ interface Props {
   onSos: () => void;
   disabled?: boolean;
   inline?: boolean;
+  showSos?: boolean;
 }
-export const NavigationAssistanceButtons = memo(function NavigationAssistanceButtons({ role, onContact, onSos, disabled, inline }: Props) {
+export const NavigationAssistanceButtons = memo(function NavigationAssistanceButtons({ role, onContact, onSos, disabled, inline, showSos = true }: Props) {
   return <View style={styles.row}>
     <TouchableOpacity style={[styles.button, inline && styles.inline, disabled && styles.disabled]} onPress={onContact} disabled={disabled}
       accessibilityRole="button" accessibilityLabel={role === 'driver' ? 'Contacter un passager' : 'Contacter le conducteur'}>
       <Ionicons name="call-outline" size={19} color={Colors.primaryDark} />
       <Text style={styles.label}>Contacter</Text>
     </TouchableOpacity>
-    <TouchableOpacity style={[styles.button, styles.sos, disabled && styles.disabled]} onPress={onSos} disabled={disabled}
+    {showSos && <TouchableOpacity style={[styles.button, styles.sos, disabled && styles.disabled]} onPress={onSos} disabled={disabled}
       accessibilityRole="button" accessibilityLabel="SOS : afficher les numéros d’urgence"
       accessibilityHint="Aucun appel n’est lancé avant votre choix.">
       <Text style={styles.sosLabel}>SOS</Text>
-    </TouchableOpacity>
+    </TouchableOpacity>}
   </View>;
 });
 

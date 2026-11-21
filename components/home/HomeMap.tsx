@@ -21,7 +21,8 @@ type Props =
   & Pick<ReturnType<typeof useHomeUserLocation>, 'userLocationMarker' | 'userLocationMarkerRef' | 'showUserLocationCallout'>
   & Pick<ReturnType<typeof useHomeLocation>, 'liveUserCoordinate'>
   & { homeMapPadding?: typeof HOME_MAP_PADDING; showLocationLegend?: boolean;
-    markers?: HomeMapMarker[]; markerSummary?: string | null; onMarkerPress?: (marker: HomeMapMarker) => void };
+    markers?: HomeMapMarker[]; markerSummary?: string | null; onMarkerPress?: (marker: HomeMapMarker) => void;
+    onReady?: () => void };
 
 const NO_MARKERS: HomeMapMarker[] = [];
 
@@ -32,7 +33,7 @@ export const HomeMap = React.memo(function HomeMap({
   userLocationMarker, liveUserCoordinate, userLocationMarkerRef, showUserLocationCallout,
   homeMapPadding = HOME_MAP_PADDING,
   showLocationLegend = true,
-  markers = NO_MARKERS, markerSummary = null, onMarkerPress,
+  markers = NO_MARKERS, markerSummary = null, onMarkerPress, onReady,
 }: Props) {
   const coordinate = normalizeTripMapCoordinate(liveUserCoordinate?.latitude, liveUserCoordinate?.longitude)
     ?? normalizeTripMapCoordinate(userLocationMarker?.coordinate.latitude, userLocationMarker?.coordinate.longitude);
@@ -42,7 +43,7 @@ export const HomeMap = React.memo(function HomeMap({
         <MapView ref={mapRef} provider={HOME_MAP_PROVIDER} style={styles.map}
           initialRegion={mapRegion} customMapStyle={IS_ANDROID ? HOME_MAP_STYLE : undefined}
           mapType={IS_ANDROID ? 'standard' : 'mutedStandard'} mapPadding={homeMapPadding}
-          onMapReady={() => mapRef.current?.animateToRegion(mapRegion, 0)}
+          onMapReady={() => { mapRef.current?.animateToRegion(mapRegion, 0); onReady?.(); }}
           showsCompass={false} showsTraffic={false} showsBuildings={false} showsIndoors={false}
           showsPointsOfInterest={false} showsUserLocation={false} showsMyLocationButton={false}
           moveOnMarkerPress={false} toolbarEnabled={false}>

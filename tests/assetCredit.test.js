@@ -51,6 +51,7 @@ function harness({
   };
   const decisions = [];
   const { default: Screen } = loader({
+    '@expo/vector-icons': { Ionicons: 'Icon' },
     react: hooks.react,
     "react-native": {
       Text: "Text",
@@ -184,6 +185,24 @@ test('new cost disclosure requires complete terms, resets consent on change and 
   h.unmount();
 });
 
+test('monthly plan must be selected before consent; changing it requires fresh agreement', async () => {
+  const h = harness({ status: 'offered' });
+  const preview = months => ({ id: `m${months}`, months, minimumDueMinor: 0,
+    installments: Array.from({ length: months }, (_, i) => ({ ordinal: i+1, dueAt: null, amountMinor: 100000/months, remainingMinor: 100000/months })) });
+  Object.assign(h.credit, { cashPriceMinor: '90000', creditFeeMinor: '10000', costDisclosureVersion: 'asset-credit-cost-v1',
+    repaymentPlans: [{ id: 'm2', months: 2 }, { id: 'm4', months: 4 }], repaymentPlanPreviews: [preview(2), preview(4)] });
+  h.render(); await tick();
+  const accept = () => h.render().find(n => n.props?.title === 'Accepter le contrat');
+  h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  assert.equal(accept().props.disabled, true); await accept().props.onPress(); assert.equal(h.decisions.length, 0);
+  const select = value => h.render().find(n => typeof n.type === 'function' && n.type.name === 'CreditPlanChoice').props.onSelect(value);
+  select('m2'); h.render(); h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  assert.equal(accept().props.disabled, false);
+  select('m4'); assert.equal(accept().props.disabled, true);
+  h.render().find(n => n.props?.accessibilityRole === 'checkbox').props.onPress();
+  await accept().props.onPress(); assert.equal(h.decisions[0].selectedPlanId, 'm4'); assert.equal(h.attempts.length, 0);
+  h.unmount();
+});
 test("leaving or changing session during intent persistence never sends a new debit", async () => {
   for (const transition of ["background", "logout", "unmount"]) {
     let release;

@@ -39,19 +39,80 @@ function fixture(t) {
   const speech = { getAvailableVoicesAsync: () => { io.loads++; return io.voices(); },
     isSpeakingAsync: async () => io.busy,
     speak: (text, options) => io.spoken.push({ text, options }), stop: async () => { io.stops++; } };
+  const stateListeners = new Set(), alertListeners = new Set();
+  io.changeState = active => { io.active = active; stateListeners.forEach(fn => fn(active ? 'active' : 'background')); };
+  io.alertChanged = () => alertListeners.forEach(fn => fn());
   const load = loader({ 'expo-device': { get isDevice() { return io.device; } },
-    'react-native': { Platform: { OS: 'android' } }, 'expo-speech': speech,
+    'react-native': { Platform: { OS: 'android' }, AppState: {
+      get currentState() { return io.active ? 'active' : 'background'; },
+      addEventListener: (_type, fn) => { stateListeners.add(fn); return { remove: () => stateListeners.delete(fn) }; },
+    } }, 'expo-speech': speech,
     './appActivity': { isAppActive: () => io.active },
     './foregroundRideSound': { isForegroundRideSoundReady: () => io.ready,
       canPlayForegroundRideAudio: async () => io.allowed,
       pauseForegroundRideSoundForSpeech: () => { io.pauses++; return () => { io.resumes++; }; } },
     './tokenSession': { getTokenSessionVersion: () => io.version },
-    './rideAlertSession': { pendingRideAlerts: user => io.pending.filter(item => item.recipientId === user) },
+    './rideAlertSession': { pendingRideAlerts: user => io.pending.filter(item => item.recipientId === user),
+      subscribeRideAlerts: fn => { alertListeners.add(fn); return () => alertListeners.delete(fn); } },
   });
   const service = load('services/foregroundRideAnnouncement.ts');
   return { io, load, ...service, run: () => service.reconcileRideAnnouncement(userId),
     advance: async (ms = 2001) => { t.mock.timers.tick(ms); await tick(); } };
 }
+
+test('background approach shares deduplication, never pauses ringing and yields on return', async t => {
+  const f = fixture(t); f.io.pending = []; f.io.active = false;
+  const message = { key: 'approach:100', text: 'Votre conducteur approche.' };
+  await f.announceBackgroundApproach(userId, message, () => true);
+  assert.equal(f.io.spoken.length, 1); assert.equal(f.io.pauses, 0);
+  assert.equal(f.io.spoken[0].options.useApplicationAudioSession, false);
+  f.io.spoken[0].options.onStart();
+  f.stopRideAnnouncement(true); assert.equal(f.io.stops, 0, 'background reconciliation cannot stop this owner');
+  f.io.changeState(true); await tick(); assert.equal(f.io.stops, 1);
+  const source = f.load('services/paymentSpeechSource.ts');
+  source.publishPaymentSpeech({}, userId, 0, message, 'approach');
+  await f.advance(); f.run(); await tick(); assert.equal(f.io.spoken.length, 1);
+});
+
+test('background voice rejects alerts, foreground, old session, busy engine and delayed initialization', async t => {
+  const f = fixture(t), message = { key: 'approach:50', text: 'Proximité' };
+  await f.announceBackgroundApproach(userId, message, () => true); assert.equal(f.io.spoken.length, 0);
+  f.io.active = false;
+  await f.announceBackgroundApproach(userId, message, () => true); assert.equal(f.io.spoken.length, 0);
+  f.io.pending = []; f.io.busy = true;
+  await f.announceBackgroundApproach(userId, message, () => true); assert.equal(f.io.spoken.length, 0);
+  f.io.busy = false; await f.advance();
+  await f.announceBackgroundApproach(userId, message, () => false); assert.equal(f.io.spoken.length, 0);
+  await f.announceBackgroundApproach(userId, message, () => true);
+  f.io.pending = [alert()]; f.io.alertChanged(); await tick(); assert.equal(f.io.stops, 1);
+  f.io.pending = []; await f.advance();
+  await f.announceBackgroundApproach(userId, message, () => true);
+  const late = f.io.spoken.at(-1).options;
+  f.io.version++; f.clearRideAnnouncementSession(); await tick();
+  f.io.active = true; f.run(); await tick(); const stopped = f.io.stops;
+  late.onStart(); late.onDone(); assert.equal(f.io.stops, stopped, 'late native callbacks cannot cancel a new owner');
+});
+
+test('background navigation selects the independent iOS speech session without changing foreground policy', async t => {
+  const f = fixture(t); f.io.pending = [];
+  const navigation = f.load('utils/navigationSpeech.ts').NavigationSpeech;
+  f.io.active = false; navigation.speak('Continuez.'); await tick();
+  assert.equal(f.io.spoken.at(-1).options.useApplicationAudioSession, false);
+  f.io.spoken.at(-1).options.onDone();
+  f.io.active = true; navigation.speak('Tournez.'); await tick();
+  assert.equal(f.io.spoken.at(-1).options.useApplicationAudioSession, true);
+  f.io.spoken.at(-1).options.onDone();
+});
+
+test('background TTS initialization cannot queue speech after wakeup expiry or logout', async t => {
+  const f = fixture(t); f.io.active = false; f.io.pending = [];
+  let resolveVoice;
+  f.io.voices = () => new Promise(resolve => { resolveVoice = resolve; });
+  const work = f.announceBackgroundApproach(userId, { key: 'approach:late', text: 'Ancienne position' }, () => true);
+  await tick(); f.io.version++; f.clearRideAnnouncementSession();
+  resolveVoice([{ language: 'fr-FR', identifier: 'french' }]); await work;
+  assert.equal(f.io.spoken.length, 0); assert.equal(f.io.stops, 0);
+});
 
 test('a visible passenger reply speaks once without a ringtone and yields on background or dismissal', async t => {
   const f = fixture(t); f.io.pending = []; f.io.ready = false; f.io.allowed = false;

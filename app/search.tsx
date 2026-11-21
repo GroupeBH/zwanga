@@ -91,15 +91,15 @@ export default function SearchScreen({ embedded = false, bottomOverlay = 0 }: {
             : getSafeTripRequestId(item.request) ?? `request-${item.request.createdAt}-${item.request.passengerId}`
         }
         ItemSeparatorComponent={SearchResultSeparator}
-        ListFooterComponent={searchMode === 'trips' && (hasNextPage || hasPreviousPage) ? (
+        ListFooterComponent={(hasNextPage || hasPreviousPage) ? (
           <View style={{ gap: Spacing.md, paddingVertical: Spacing.lg }}>
             {hasPreviousPage && <TouchableOpacity accessibilityRole="button" style={styles.retryButton}
               disabled={isRefreshingResults} onPress={loadPreviousTrips}>
-              <Text style={styles.retryText}>Trajets précédents</Text>
+              <Text style={styles.retryText}>{searchMode === 'requests' ? 'Commandes précédentes' : 'Trajets précédents'}</Text>
             </TouchableOpacity>}
             {hasNextPage && <TouchableOpacity accessibilityRole="button" style={styles.retryButton}
               disabled={isRefreshingResults} onPress={loadNextTrips}>
-              <Text style={styles.retryText}>{isRefreshingResults ? 'Chargement…' : 'Voir plus de trajets'}</Text>
+              <Text style={styles.retryText}>{isRefreshingResults ? 'Chargement…' : searchMode === 'requests' ? 'Commandes suivantes' : 'Voir plus de trajets'}</Text>
             </TouchableOpacity>}
           </View>
         ) : null}

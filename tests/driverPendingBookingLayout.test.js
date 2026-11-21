@@ -10,6 +10,7 @@ const flat = style => Object.assign({}, ...(Array.isArray(style) ? style.flat(In
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ScrollView: 'Scroll', ActivityIndicator: 'Spinner',
   StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 320, height: 640 }) };
 const mocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
   '../screen-styles/app/trip/navigate/detail/index': { styles: { floatingButtons: { bottom: 180, gap: 8 } } },
   './navigationPresentation': { formatSeatCount: count => `${count} places`, formatPendingBookingPayment: () => 'Cash' },
@@ -45,7 +46,8 @@ test('pending booking takes priority over scrolling details without removing con
   assert.equal(all(tree).filter(n => n.type === 'Assistance').length, 1);
   const frame = flat(tree.props.style);
   const layout = loader()('features/driver-navigation/driverNavigationLayout.ts').getDriverNavigationLayout(640, 24, 24);
-  assert.ok(frame.top + frame.maxHeight + 12 <= 640 - layout.controlsBottom - 48, 'reserve a separate row for map commands');
+  assert.ok(frame.bottom >= layout.controlsBottom + layout.controlsHeight, 'reserve a separate row for map commands');
+  assert.ok(640 - frame.bottom - frame.maxHeight >= layout.guidanceTop + layout.guidanceMaxHeight + 24 - 0.01, 'urgent actions never cover directions');
   hooks.unmount();
 });
 
@@ -108,12 +110,13 @@ test('map controls use one row for pending booking and preserve their actions an
   let tree = render();
   assert.equal(flat(tree.props.style).flexDirection, 'row');
   const buttons = all(tree).filter(n => n.type === 'Button');
-  assert.equal(buttons.length, 4);
-  buttons[2].props.onPress();
+  assert.equal(buttons.length, 2);
+  buttons[1].props.onPress(); tree = render();
+  all(tree).find(n => n.props.accessibilityLabel === 'Arrêter le trajet').props.onPress();
   assert.deepEqual(calls, ['pause']);
-  assert.equal(buttons[2].props.accessibilityLabel, 'Arrêter le trajet');
-  assert.equal(buttons[1].props.accessibilityLabel, 'Partager le trajet');
-  buttons[3].props.onPress(); tree = render();
+  render();
+  all(render()).find(n => n.props.accessibilityLabel === 'Options de navigation').props.onPress(); tree = render();
+  assert.ok(all(tree).find(n => n.props.accessibilityLabel === 'Partager le trajet'));
   const popup = tree.props.children[0]; const popupStyle = flat(popup.props.style); const frame = flat(tree.props.style);
   assert.ok(popupStyle.bottom >= 48);
   assert.ok(frame.minHeight >= popupStyle.maxHeight + popupStyle.bottom);

@@ -65,7 +65,7 @@ function ReviewSession({ userId }: { userId: string }) {
   const tripIds = useMemo(() => [...new Set([...completions]
     .sort((a, b) => b.completedAt - a.completedAt).map(item => item.tripId))].slice(0, 100).sort(), [completions]);
   const ratings = useGetMyRatedTripsQuery({ userId, tripIds }, {
-    skip: !foreground || pathname !== '/' || tripIds.length === 0,
+    skip: !foreground || pathname !== '/profile' || tripIds.length === 0,
     refetchOnMountOrArgChange: 60, refetchOnReconnect: true,
   });
   const ratingsReady = ratings.currentData?.userId === userId && !ratings.isFetching && !ratings.isError;
@@ -76,7 +76,7 @@ function ReviewSession({ userId }: { userId: string }) {
     || bookings?.some(booking => booking.passengerId === userId && booking.status === 'accepted' && booking.trip?.status === 'ongoing');
   // A cached "no active ride" from before sleep is insufficient for another native window.
   const fresh = activity?.userId === userId && (fulfilledTimeStamp ?? 0) >= resumedAt.current && !activityFetching && !activityError;
-  const safe = foreground && fresh && pathname === '/' && !overlayBusy && !live && !bookingsFetching && !tripsFetching
+  const safe = foreground && fresh && pathname === '/profile' && !overlayBusy && !live && !bookingsFetching && !tripsFetching
     && ratingsReady && ratedCompletions.length > 0;
   const safeRef = useRef(safe);
   safeRef.current = safe;

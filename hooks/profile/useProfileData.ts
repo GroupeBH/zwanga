@@ -11,7 +11,7 @@ import {
   useGetPremiumOverviewQuery,
   useGetSubscriptionPlansQuery
 } from '@/store/api/subscriptionApi';
-import { useGetMyDriverOffersQuery, useGetMyTripRequestsQuery } from '@/store/api/tripRequestApi';
+import { useGetMyRequestStatsQuery } from '@/store/api/tripRequestApi';
 import {
   useGetProfileSummaryQuery
 } from '@/store/api/userApi';
@@ -25,13 +25,12 @@ import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { screenReadOptions } from '@/features/performance/screenReadPolicy';
 import { useProfileRefresh } from './useProfileRefresh';
 import type {
-  Vehicle, TripRequest, DriverOfferWithTripRequest, SubscriptionPlanSummary
+  Vehicle, SubscriptionPlanSummary
 } from '@/types';
 import { useMemo, useState } from 'react';
 
 const EMPTY_VEHICLES: Vehicle[] = [];
-const EMPTY_REQUESTS: TripRequest[] = [];
-const EMPTY_OFFERS: DriverOfferWithTripRequest[] = [];
+const EMPTY_REQUEST_STATS = { totalRequests: 0, activeRequests: 0, requestsWithOffers: 0, completedRequests: 0, pendingOffersCount: 0 };
 const EMPTY_PLANS: SubscriptionPlanSummary[] = [];
 
 export function useProfileData() {
@@ -54,9 +53,7 @@ export function useProfileData() {
     isError: vehiclesLoadError,
   } = useGetVehiclesQuery(undefined, reads);
 
-  const { data: myTripRequests = EMPTY_REQUESTS } = useGetMyTripRequestsQuery(undefined, reads);
-
-  const { data: myDriverOffers = EMPTY_OFFERS } = useGetMyDriverOffersQuery(undefined, reads);
+  const { data: requestStats, refetch: refetchRequestStats } = useGetMyRequestStatsQuery(undefined, reads);
 
   const status = getProfileStatus(profileSummary, user?.id);
   const { currentUser, stats, isDriver, displaysDriverRole, kycStatus,
@@ -143,22 +140,7 @@ export function useProfileData() {
 
   const proEndDateLabel = formatSubscriptionEndDate(premiumOverview?.endDate);
 
-  const tripRequestsStats = useMemo(() => {
-    const totalRequests = myTripRequests.length;
-    const activeRequests = myTripRequests.filter(
-      (req) => req.status === 'pending' || req.status === 'offers_received',
-    ).length;
-    const requestsWithOffers = myTripRequests.filter(
-      (req) => req.status === 'offers_received' && (req.offers?.length || 0) > 0,
-    ).length;
-    const completedRequests = myTripRequests.filter((req) => req.status === 'driver_selected').length;
-    return {
-      totalRequests,
-      activeRequests,
-      requestsWithOffers,
-      completedRequests,
-    };
-  }, [myTripRequests]);
+  const tripRequestsStats = requestStats ?? EMPTY_REQUEST_STATS;
 
   const handleRefresh = async () => {
     if (!isScreenActive || !user?.id) return;
@@ -169,6 +151,7 @@ export function useProfileData() {
         Promise.resolve(refetchVehicles()),
         Promise.resolve(refetchKycStatus()),
         Promise.resolve(refetchReferralSummary()),
+        Promise.resolve(refetchRequestStats()),
       ];
       if (isDriver) {
         refreshTasks.push(Promise.resolve(refetchPremiumOverview()));
@@ -181,14 +164,8 @@ export function useProfileData() {
     }
   };
 
-  const tripRequestsCount = useMemo(() => {
-    const activeRequests = myTripRequests.filter((req) => req.status === 'pending' || req.status === 'offers_received');
-    return activeRequests.length;
-  }, [myTripRequests]);
-
-  const pendingOffersCount = useMemo(() => {
-    return myDriverOffers.filter((offer) => offer.status === 'pending').length;
-  }, [myDriverOffers]);
+  const tripRequestsCount = tripRequestsStats.activeRequests;
+  const pendingOffersCount = tripRequestsStats.pendingOffersCount;
 
   const driverTripsCount = stats?.tripsAsDriver ?? currentUser?.totalTrips ?? 0;
 

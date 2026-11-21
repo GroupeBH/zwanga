@@ -58,6 +58,9 @@
     </activity>
     <uses-library android:name="org.apache.http.legacy" android:required="false"/>
     <service android:name="com.zwanga.notifications.RideAlertAudioService" android:exported="false" android:foregroundServiceType="mediaPlayback" android:stopWithTask="true"/>
+    <!-- Unused Expo audio FGS: keep Zwanga ringing, location and boot receivers. -->
+    <service android:name="expo.modules.audio.service.AudioControlsService" tools:node="remove"/>
+    <service android:name="expo.modules.audio.service.AudioRecordingService" tools:node="remove"/>
     <service android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService" tools:node="remove"/>
     <service android:name="com.zwanga.notifications.RideFirebaseMessagingService" android:exported="false">
       <intent-filter android:priority="-1">

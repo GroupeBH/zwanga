@@ -8,7 +8,7 @@ type Props = {
   visible: boolean; busy: boolean; loaded: boolean; loadError: boolean;
   permission: boolean; foregroundPermission: boolean; settingsRequired: boolean; message: string;
   onConfirm: () => void; onClose: () => void; onShow?: () => void; priority?: number;
-  audience?: 'driver' | 'passenger';
+  audience?: 'driver' | 'passenger' | 'ride';
 };
 
 /** In-app validation, not an imitation of the OS permission dialog. */
@@ -17,7 +17,7 @@ export function BackgroundLocationApproval(props: Props) {
   const blocked = busy || (!loaded && !loadError);
   const choice = Platform.OS === 'ios' ? 'Toujours' : 'Toujours autoriser';
   const androidSettings = Platform.OS === 'android' && Number(Platform.Version) >= 30;
-  const passenger = props.audience === 'passenger';
+  const passenger = props.audience === 'passenger' || props.audience === 'ride';
   return <RideModal visible={visible} inApp transparent animationType="fade" priority={props.priority} onRequestClose={onClose} onShow={props.onShow}>
     <View style={styles.overlay}>
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
@@ -59,7 +59,8 @@ export function BackgroundLocationApproval(props: Props) {
             style={styles.later} onPress={onClose}>
             <Text style={styles.laterText}>Plus tard</Text>
           </TouchableOpacity>
-          <Text style={styles.footnote}>{passenger
+          <Text style={styles.footnote}>{props.audience === 'ride'
+            ? 'Sans cet accès, le suivi en veille et la détection automatique des arrivées peuvent s’interrompre. Les confirmations manuelles restent accessibles.' : passenger
             ? 'Facultatif. Votre commande ou réservation reste enregistrée.'
             : 'Facultatif. Modifiable dans les réglages du téléphone.'}</Text>
         </ScrollView>

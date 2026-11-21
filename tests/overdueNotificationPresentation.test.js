@@ -16,7 +16,7 @@ test('the mounted handler defers unrelated reminders, selects the matching comma
     hideDialogFor: key => { hidden.push(key); if (env.dialog?.ownerKey === key) env.dialog = null; },
   };
   const { NotificationHandler } = loader({ react: hooks.react,
-    'expo-router': { usePathname: () => env.path, useRouter: () => ({ push: path => routes.push(path) }) },
+    'expo-router': { usePathname: () => env.path, useRootNavigationState: () => ({ key: 'root' }), useRouter: () => ({ push: path => routes.push(path) }) },
     'react-native': { Platform: { OS: 'android' }, InteractionManager: { runAfterInteractions: () => ({ cancel: noop }) },
       Linking: { addEventListener: () => ({ remove: noop }) } },
     'expo-notifications': { setNotificationHandler: noop, addNotificationReceivedListener: () => ({ remove: noop }),

@@ -5,11 +5,12 @@ import { useRef } from 'react';
 
 export default function HomeScreen() {
   const context = useHomeContext();
-  const revealedAccount = useRef<string | undefined>(undefined);
-  if (!context.entryPending && context.isHomeRoleReady) revealedAccount.current = context.currentUser?.id;
-  // Keep the profile subscription, but do not start a dashboard/map before the
-  // shared entry decision. A previously shown Home stays mounted and idle.
-  if (context.entryPending && (!context.currentUser?.id || revealedAccount.current !== context.currentUser.id)) return null;
+  const mountedAccount = useRef<string | undefined>(undefined);
+  if (context.isHomeRoleReady && (!context.entryPending || context.preparationAllowed)) mountedAccount.current = context.currentUser?.id;
+  // Prepare the correct account's Home under the shared cover. Reads may run,
+  // but alerts, voice and interactive work wait until the entry decision settles.
+  if (context.entryPending && !context.isHomeRoleReady) return null;
+  if (context.entryPending && !context.preparationAllowed && mountedAccount.current !== context.currentUser?.id) return null;
   // Never mount a passenger dashboard as a placeholder for an unresolved role.
   // Cached, known profiles bypass this gate even during a background refetch.
   if (!context.isHomeRoleReady) return <HomeEntryPlaceholder

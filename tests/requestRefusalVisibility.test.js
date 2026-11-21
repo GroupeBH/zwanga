@@ -8,7 +8,7 @@ async function fixture(t) {
   const env = { user: 'driver', version: 1, respond: async () => ({ data: { status: 'declined', requestId: 'request' } }) };
   const api = createApi({ reducerPath: 'api', baseQuery: () => env.respond(),
     tagTypes: ['DriverDispatch', 'Notification', 'TripRequest', 'MyTripRequests', 'MyDriverOffers', 'AccountActivity', 'Wallet'],
-    endpoints: b => Object.fromEntries(['getAvailableTripRequests', 'getHomeTripRequests', 'getAvailableRequestPage', 'getMyTripRequests']
+    endpoints: b => Object.fromEntries(['getAvailableTripRequests', 'getHomeTripRequests', 'getAvailableRequestPage', 'getRequestDiscovery', 'getMyTripRequests']
       .map(name => [name, b.query({ query: () => '/requests' })])),
   });
   const load = loader({ './baseApi': { baseApi: api }, '../baseApi': { baseApi: api },
@@ -24,6 +24,7 @@ async function fixture(t) {
     ['getAvailableRequestPage', args, { data: [{ id: 'request' }, { id: 'other' }], total: 2, nextCursor: 'cursor' }],
     ['getAvailableRequestPage', secondArgs, { data: [{ id: 'last' }], total: 2, nextCursor: null }],
     ['getMyTripRequests', undefined, [{ id: 'request' }]],
+    ['getRequestDiscovery', { page: 1, sort: 'nearby' }, { data: [{ id: 'request' }, { id: 'other' }], total: 2, page: 1, limit: 30, hasMore: false }],
   ]) await store.dispatch(api.util.upsertQueryData(endpoint, arg, data));
   const read = (name, arg) => api.endpoints[name].select(arg)(store.getState()).data;
   const refuse = (dispatchOffer = false) => store.dispatch(dispatchOffer
@@ -35,6 +36,7 @@ async function fixture(t) {
 for (const dispatchOffer of [false, true]) test(`confirmed refusal removes available cards only (dispatch=${dispatchOffer})`, async t => {
   const f = await fixture(t); await f.refuse(dispatchOffer).unwrap();
   assert.deepEqual(f.read('getAvailableTripRequests'), [{ id: 'other' }]);
+  assert.deepEqual(f.read('getRequestDiscovery', { page: 1, sort: 'nearby' }).data, [{ id: 'other' }]);
   assert.deepEqual(f.read('getHomeTripRequests'), [{ id: 'other' }]);
   assert.deepEqual(f.read('getAvailableRequestPage', f.args), { data: [{ id: 'other' }], total: 1, nextCursor: 'cursor' });
   assert.deepEqual(f.read('getAvailableRequestPage', f.secondArgs).data, [{ id: 'last' }]);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isDriverAccount as hasDriverRole } from '@/utils/accountRole';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useDialog } from '@/components/ui/DialogProvider';
@@ -8,7 +8,7 @@ import { screenReadOptions } from '@/features/performance/screenReadPolicy';
 import { useAppSelector } from '@/store/hooks';
 import { selectTrips, selectUser, selectUserCoordinates } from '@/store/selectors';
 import { useGetCurrentUserQuery } from '@/store/api/userApi';
-import { useGetAvailableTripRequestsQuery } from '@/store/api/tripRequestApi';
+import { useGetRequestDiscoveryQuery } from '@/store/api/tripRequestApi';
 import {
   useGetTripDiscoveryInfiniteQuery,
   type TripSearchParams,
@@ -86,7 +86,7 @@ export function useSearchController() {
     sort: tripSortMode === 'cheap' ? 'price' : 'date',
   }), [lastAdvancedPayload, queryParams, querySeats, tripSortMode]);
   useEffect(() => {
-    if (!isScreenActive || searchMode !== 'trips') return;
+    if (!isScreenActive) return;
     const timer = setTimeout(() => setQuerySeats(desiredSeats), 350);
     return () => clearTimeout(timer);
   }, [desiredSeats, isScreenActive, searchMode]);
@@ -110,16 +110,30 @@ export function useSearchController() {
   const loadNextTrips = () => { if (isScreenActive && !queryFetching && hasNextPage) void fetchNextPage(); };
   const loadPreviousTrips = () => { if (isScreenActive && !queryFetching && hasPreviousPage) void fetchPreviousPage(); };
 
+  const requestKey = `${currentUser?.id}:${departure}:${arrival}:${querySeats}:${requestSortMode}`;
+  const [requestPaging, setRequestPaging] = useState({ key: requestKey, page: 1 });
+  const requestPage = requestPaging.key === requestKey ? requestPaging.page : 1;
   const {
-    data: availableTripRequests = EMPTY_SEARCH_REQUESTS,
+    currentData: fetchedRequestResults,
     isLoading: requestsLoading,
     isFetching: requestsFetching,
     isError: requestsError,
     refetch: refetchAvailableTripRequests,
-  } = useGetAvailableTripRequestsQuery(undefined, {
+  } = useGetRequestDiscoveryQuery({ page: requestPage, search: [departure, arrival].filter(Boolean).join(' ') || undefined, minSeats: querySeats, sort: requestSortMode === 'early' ? 'soon' : requestSortMode }, {
     ...reads,
     skip: reads.skip || !isDriverAccount || searchMode !== 'requests',
   });
+  const retainedRequestPage = useRef<{ key: string; data: typeof fetchedRequestResults } | null>(null);
+  const visibleRequestKey = `${requestKey}:${requestPage}`;
+  if (isScreenActive && searchMode === 'requests') {
+    retainedRequestPage.current = { key: visibleRequestKey, data: fetchedRequestResults };
+  }
+  // Keep totals with the retained list while subscriptions are paused. Never
+  // reuse another user's/filter's page, or retain driver results after demotion.
+  const requestResults = isScreenActive ? fetchedRequestResults
+    : isDriverAccount && retainedRequestPage.current?.key === visibleRequestKey
+      ? retainedRequestPage.current.data : undefined;
+  const availableTripRequests = requestResults?.data ?? EMPTY_SEARCH_REQUESTS;
 
   useEffect(() => {
     const departureParam = typeof searchParams.departure === 'string' ? searchParams.departure : '';
@@ -200,7 +214,7 @@ export function useSearchController() {
   const { baseTrips, filteredTrips, filteredTripRequests } = useSearchResults({
     advancedTrips, remoteTrips, storedTrips, searchMode, departure, arrival, desiredSeats,
     sortMode, driverCoordinate, availableTripRequests, isDriverAccount, currentUser,
-    isScreenActive,
+    isScreenActive, serverOrderedRequests: true,
   });
 
   const requestSearchError =
@@ -307,7 +321,7 @@ export function useSearchController() {
     return filteredTrips.map((trip) => ({ kind: 'trip' as const, trip }));
   }, [currentError, filteredTripRequests, filteredTrips, isLoadingResults, searchMode]);
 
-  const resultsCount = searchMode === 'requests' ? filteredTripRequests.length : filteredTrips.length;
+  const resultsCount = searchMode === 'requests' ? requestResults?.total ?? 0 : filteredTrips.length;
   const resultsCountLabel =
     searchMode === 'requests'
       ? `${resultsCount} commande${resultsCount > 1 ? 's' : ''}`
@@ -321,6 +335,9 @@ export function useSearchController() {
     sortMode, setSortMode, resultsCountLabel, isRefreshingResults,
     isLoadingResults, currentError, handleRetry, handleApplySearch,
     filteredTrips, filteredTripRequests, handleCreateTripRequest, isDriverAccount,
-    hasNextPage, hasPreviousPage, loadNextTrips, loadPreviousTrips,
+    hasNextPage: searchMode === 'requests' ? Boolean(requestResults?.hasMore) : hasNextPage,
+    hasPreviousPage: searchMode === 'requests' ? requestPage > 1 : hasPreviousPage,
+    loadNextTrips: searchMode === 'requests' ? () => { if (isScreenActive && !requestsFetching && requestResults?.hasMore) setRequestPaging({ key: requestKey, page: requestPage + 1 }); } : loadNextTrips,
+    loadPreviousTrips: searchMode === 'requests' ? () => { if (isScreenActive && !requestsFetching && requestPage > 1) setRequestPaging({ key: requestKey, page: requestPage - 1 }); } : loadPreviousTrips,
   };
 }

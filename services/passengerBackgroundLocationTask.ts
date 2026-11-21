@@ -23,6 +23,7 @@ import { bookingApi } from '@/store/api/bookingApi';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation';
 import { passengerWaitingInterval } from './background/passengerWaitingPolicy';
+import { checkBackgroundPassengerApproach } from './background/passengerApproachWakeup';
 export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
 let lastSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
@@ -284,7 +285,10 @@ const definePassengerBackgroundLocationTask = () => {
           const latestLocation = selectLatestLocation(data?.locations);
           if (latestLocation) {
             publishNativeRideLocation(`passenger:${session.bookingId}`, latestLocation);
-            await putPassengerLocation(session.bookingId, latestLocation, data?.locations ?? [latestLocation]);
+            await Promise.all([
+              putPassengerLocation(session.bookingId, latestLocation, data?.locations ?? [latestLocation]),
+              checkBackgroundPassengerApproach(session),
+            ]);
           }
         } catch (taskError) {
           console.warn('[PassengerBackgroundLocation] Tâche ignorée après une erreur :', taskError);
