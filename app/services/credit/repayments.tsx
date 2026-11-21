@@ -33,6 +33,7 @@ export default function RepaymentsScreen() {
     <Text style={s.eyebrow}>{item.status === 'active' ? 'Gérer mon remboursement' : item.status === 'offered' ? 'Voir mon offre' : 'Voir le détail'} →</Text>
   </TouchableOpacity>);
   return <ServiceLayout title="Mes remboursements">
+    <ServiceButton title="Mes achats et nouveaux contrats" secondary onPress={() => router.push('/services/purchases' as Href)} />
     <Text style={s.text}>Choisissez un crédit pour voir son solde, son historique ou rembourser un montant.</Text>
     {(query.isLoading || query.isFetching) && <ActivityIndicator accessibilityLabel="Actualisation des remboursements" />}
     {!enabled && active && user?.id && <Text accessibilityRole="alert" style={s.text}>Connectez-vous à Internet pour actualiser vos remboursements.</Text>}
