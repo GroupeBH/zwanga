@@ -10,10 +10,10 @@ const booking = { id: 'booking', tripId: 'trip', passengerId: 'passenger', statu
 
 function navigation(t, role) {
   const hooks = hookHarness();
-  const state = { active: true, focused: true, online: true, userId: role, session: 1, id: role === 'driver' ? 'trip' : 'booking' };
+  const state = { failures: {}, active: true, focused: true, online: true, userId: role, session: 1, id: role === 'driver' ? 'trip' : 'booking' };
   const counts = { trip: 0, booking: 0, bookings: 0, writes: 0 }, options = {};
   const api = createApi({ reducerPath: 'navAudit', tagTypes: ['Trip', 'Booking'],
-    baseQuery: async name => { counts[name]++; return { data: name === 'trip' ? trip : name === 'booking' ? booking : [booking] }; },
+    baseQuery: async name => { counts[name]++; return state.failures[name] ? { error: state.failures[name] } : { data: name === 'trip' ? trip : name === 'booking' ? booking : [booking] }; },
     endpoints: build => ({
       trip: build.query({ query: () => 'trip', providesTags: ['Trip'] }),
       booking: build.query({ query: () => 'booking', providesTags: ['Booking'] }),
@@ -32,8 +32,8 @@ function navigation(t, role) {
       }));
       return () => { handle.current.unsubscribe(); handle.current = undefined; };
     }, [id, opts.skip, opts.pollingInterval]);
-    const data = opts.skip ? undefined : api.endpoints[name].select(id)(store.getState()).data;
-    return { currentData: data, refetch: () => {
+    const selected = opts.skip ? {} : api.endpoints[name].select(id)(store.getState());
+    return { currentData: selected.data, error: selected.error, isLoading: selected.isLoading, isFetching: selected.isLoading, isUninitialized: selected.isUninitialized, refetch: () => {
       assert.ok(handle.current, 'a skipped query must never be refetched'); return handle.current.refetch();
     } };
   };
@@ -135,4 +135,45 @@ test('offline cold start uses the account snapshot; access denial survives blur 
   read = {}; online = false; assert.equal(render().data, undefined, 'blur cannot erase the server denial');
   scope = 'other-booking'; session++; assert.equal(render().data, undefined);
   hooks.unmount();
+});
+
+test('passenger data distinguishes either failed read and recovers through read-only retry', async t => {
+  const f = navigation(t, 'passenger'); f.state.failures.booking = { status: 'FETCH_ERROR' };
+  f.render(); let view = await f.settle();
+  assert.equal(view.availability.feedback.title, 'Connexion au trajet interrompue');
+  assert.equal(f.counts.trip, 0);
+  delete f.state.failures.booking; f.state.failures.trip = { status: 503 };
+  await view.refetchBooking(); view = await f.settle();
+  assert.equal(view.booking.id, 'booking'); assert.equal(view.availability.feedback.title, 'Chargement du trajet impossible');
+  delete f.state.failures.trip; await view.refetchTrip(); view = await f.settle();
+  assert.equal(view.availability.feedback, null); assert.equal(view.isTripOngoing, true);
+  f.state.failures.trip = { status: 410 }; await view.refetchTrip(); view = await f.settle();
+  assert.equal(view.trip, undefined); assert.equal(view.isTripOngoing, false);
+  assert.equal(view.availability.feedback.title, 'Trajet indisponible');
+  f.state.focused = false; f.state.online = false; view = f.render();
+  assert.equal(view.trip, undefined, 'a gone trip must not reappear on blur or offline');
+  assert.equal(f.counts.writes, 0);
+});
+
+test('a definitive refusal removes the offline snapshot and cancels an older disk read', async () => {
+  for (const status of [401, 403, 404, 410]) {
+    const hooks = hookHarness(); let error = { status: 'FETCH_ERROR' }, finishLoad, disk = booking;
+    const removed = [];
+    const { useOfflineRideData } = loader({ react: hooks.react,
+      '@/store/hooks': { useAppSelector: fn => fn({ auth: { user: { id: 'passenger' } } }) },
+      '@/features/ride-recovery/offlineRideSnapshots': {
+        loadRideSnapshot: () => new Promise(resolve => { finishLoad = resolve; }),
+        removeRideSnapshot: async (user, scope) => { removed.push([user, scope]); disk = undefined; },
+        saveRideSnapshot: async () => assert.fail('must not persist rejected data'),
+      },
+    })('hooks/navigation/useOfflineRideData.ts');
+    const render = () => hooks.render(() => useOfflineRideData('booking:booking', undefined, error, true));
+    render(); const oldLoad = finishLoad;
+    error = { status }; assert.equal(render().data, undefined);
+    oldLoad(booking); await tick(); assert.equal(render().data, undefined);
+    assert.deepEqual(removed, [['passenger', 'booking:booking']]); assert.equal(disk, undefined);
+    error = { status: 'FETCH_ERROR' }; render(); finishLoad(disk); await tick();
+    assert.equal(render().data, undefined, 'deleted or forbidden data cannot return from disk while offline');
+    hooks.unmount();
+  }
 });

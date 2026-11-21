@@ -314,9 +314,10 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
 
 test('passenger navigation wires its own booking, keeps contacts on expanded map and defers pickup notices', () => {
   const received = [];
-  const model = { data: { tripId: 't', bookingId: 'b', trip: { id: 't', departure: { address: 'Départ' } }, booking: { id: 'b', tripId: 't' }, insets, isScreenActive: true },
+  const model = { data: { availability: { loading: false, feedback: null }, tripId: 't', bookingId: 'b', trip: { id: 't', departure: { address: 'Départ' } }, booking: { id: 'b', tripId: 't' }, insets, isScreenActive: true },
     state: { isMapExpanded: true, mapTopOffset: 200, pickupNotice: {}, setPickupNotice() {} }, presentation: {}, context: {}, tripActions: {}, camera: {} };
   const mocked = { ...defaults,
+    '@/features/passenger-navigation/PassengerNavigationUnavailable': { PassengerNavigationUnavailable: 'Unavailable' },
     '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     '@/features/navigation/RideOverlayProvider': { RideOverlayScope: 'RideOverlayScope' },
     '@/features/navigation/RideModal': { RideModal: 'Modal' },
@@ -330,11 +331,29 @@ test('passenger navigation wires its own booking, keeps contacts on expanded map
     'react-native': { ...native, Modal: 'Modal' },
   };
   mocked['@/hooks/useMainScreenReady'] = { useMainScreenReady: () => () => {} };
-  const tree = loader(mocked)('app/booking/navigate/[id].tsx').default();
+  const Screen = loader(mocked)('app/booking/navigate/[id].tsx').default;
+  const tree = Screen();
   assert.equal(received[0].role, 'passenger'); assert.equal(received[0].booking, model.data.booking);
   assert.ok(all(tree).find(node => node.type === 'Header')); assert.equal(all(tree).find(node => node.type === 'InfoCard'), undefined);
   assert.equal(all(tree).find(node => node.type === 'Modal').props.visible, false);
   assert.equal(all(tree).find(node => node.type === 'AssistanceModals').props.role, 'passenger');
   const result = all(tree).find(node => node.type === 'RideResult');
   assert.equal(result.props.actor, 'passenger'); assert.equal(result.props.bookingId, 'b'); assert.equal(result.props.tripId, 't');
+  model.data.availability = { loading: true, feedback: null };
+  assert.equal(Screen().type, 'NavigationLoading');
+  model.data.availability = { loading: false, feedback: { title: 'Trajet indisponible' } };
+  assert.equal(Screen().type, 'Unavailable', 'an unavailable route must not render a stale map');
+  const refreshed = [];
+  model.data.refetchBooking = () => refreshed.push('booking'); model.data.refetchTrip = () => refreshed.push('trip');
+  Screen().props.onRetry(); assert.deepEqual(refreshed, ['booking', 'trip']);
+  model.data.tripId = ''; refreshed.length = 0;
+  Screen().props.onRetry(); assert.deepEqual(refreshed, ['booking'], 'do not refetch a skipped dependent trip');
+});
+
+test('passenger header clearly identifies a completed or paused ride without hiding its controls', () => {
+  const { PassengerNavigationHeader } = loader(defaults)('features/passenger-navigation/PassengerNavigationHeader.tsx');
+  const model = { data: { insets, trip: { status: 'completed' }, booking: {} }, presentation: { tripStatus: 'not_started' }, state: {}, tripActions: {} };
+  assert.match(words(PassengerNavigationHeader({ model, assistance })), /Trajet terminé/);
+  model.data.trip = { status: 'upcoming', startedAt: '2000-01-01' };
+  assert.match(words(PassengerNavigationHeader({ model, assistance })), /Trajet en pause/);
 });

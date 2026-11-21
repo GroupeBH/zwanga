@@ -22,7 +22,7 @@ test('only an identifiable, refreshable session can open private routes', () => 
   assert.equal(policy.hasRecoverableAuthSession(jwt({ sub: 'account-1', exp: past }), refresh), true);
 });
 
-test('every non-public app route is inside the session guard', () => {
+for (const platform of ['android', 'ios']) test(`every non-public app route is inside the session guard on ${platform}`, () => {
   let authenticated = false;
   function Stack() { return null; }
   Stack.Screen = function Screen() { return null; };
@@ -31,7 +31,7 @@ test('every non-public app route is inside the session guard', () => {
     '@/store/selectors': { selectHasAuthenticatedSession: () => authenticated },
     '@/store/hooks': { useAppSelector: (selector) => selector() },
     'expo-router': { Stack },
-    'react-native': { Platform: { OS: 'android' } },
+    'react-native': { Platform: { OS: platform } },
     '@/hooks/navigation/useHomeRootNavigation': { useHomeRootNavigation: () => true },
   })('components/ProtectedAppStack.tsx');
   const tree = ProtectedAppStack();
@@ -42,6 +42,9 @@ test('every non-public app route is inside the session guard', () => {
   authenticated = true;
   const activeChildren = ProtectedAppStack().props.children;
   assert.equal(activeChildren.find(isPrivateGroup).props.guard, true);
+  authenticated = false;
+  assert.equal(ProtectedAppStack().props.children.find(isPrivateGroup).props.guard, false,
+    'logging out must revoke access to all private screens');
   const protectedScreens = new Set(protectedGroup.props.children.map((child) => child.props.name));
   assert.ok(protectedScreens.has('(tabs)'));
   assert.ok(protectedScreens.has('publish'));
@@ -61,11 +64,8 @@ test('every non-public app route is inside the session guard', () => {
     }
   }
   visit(appRoot);
-  for (const route of routes) {
-    if (route.startsWith('(tabs)/')) continue;
-    if (publicRoutes.has(route)) continue;
-    assert.ok(protectedScreens.has(route), `${route} needs a session guard`);
-  }
+  const unguarded = routes.filter(route => !route.startsWith('(tabs)/') && !publicRoutes.has(route) && !protectedScreens.has(route));
+  assert.deepEqual(unguarded, [], `Routes needing a session guard: ${unguarded.join(', ')}`);
 });
 
 test('invalid login tokens are rejected before storage or Redux authentication', async () => {
