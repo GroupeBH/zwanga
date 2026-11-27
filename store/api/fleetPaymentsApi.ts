@@ -33,7 +33,7 @@ export const fleetPaymentsApi = baseApi.injectEndpoints({
         url: `/partners/fleet-assignments/${encodeURIComponent(id)}/payments`,
         params,
       }),
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'FLEET' }],
     }),
     declareFleetPayment: b.mutation<
       { id: string; status: string },
@@ -44,7 +44,7 @@ export const fleetPaymentsApi = baseApi.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'FLEET' }],
     }),
   }),
 });

@@ -1,5 +1,6 @@
 import { getBookingSnapshot, getTripSnapshot } from './background/passengerTrackingReads';
 import { locationBatch } from './background/locationBatch';
+import { createLocationSendGate } from './background/locationSendGate';
 import { latestLocation as selectLatestLocation } from './background/latestLocation';
 import { FETCH_TIMEOUT_MS, LOCATION_FAILURE_BACKOFF_MS, BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS } from './background/passengerTrackingPolicy';
 import { getActiveTrackingSession } from './background/passengerTaskLifecycle';
@@ -25,13 +26,11 @@ import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation'
 import { passengerWaitingInterval } from './background/passengerWaitingPolicy';
 import { checkBackgroundPassengerApproach } from './background/passengerApproachWakeup';
 export { PASSENGER_BACKGROUND_LOCATION_TASK } from './background/passengerTaskName';
-let lastSentAt = 0;
+const passengerLocationGate = createLocationSendGate();
 let lastBackgroundPermissionDeniedAt = 0;
 let lastTripStatusCheckAt = 0;
 let lastCheckedBookingId: string | null = null;
 let readinessFlight: { key: string; promise: Promise<PassengerTrackingReadiness> } | null = null;
-let passengerLocationRequestInFlight = false;
-let passengerLocationBackoffUntil = 0;
 
 type BackgroundLocationTaskData = {
   locations?: Location.LocationObject[];
@@ -112,7 +111,7 @@ const readPassengerTrackingReadiness = async (
       waitForActiveTrip: false,
     };
     await updatePassengerGpsProfile(activeSession);
-    lastSentAt = 0;
+    passengerLocationGate.reset(session.bookingId);
     // This batch was acquired in the waiting profile. Only deliver the next precise samples.
     return 'waiting';
   } catch (error) {
@@ -145,23 +144,20 @@ async function putPassengerLocation(
   if (
     !coordinate ||
     isLocationDeliveryPending(`passenger:${bookingId}`) ||
-    wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'rest') ||
-    now - lastSentAt < ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
+    wasLocationDeliveredRecently(`passenger:${bookingId}`, 6000, 'rest')
   ) {
     return false;
   }
 
-  if (passengerLocationRequestInFlight || now < passengerLocationBackoffUntil) {
-    return false;
-  }
-
-  passengerLocationRequestInFlight = true;
+  const lease = passengerLocationGate.acquire(bookingId, now, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS);
+  if (!lease) return false;
 
   try {
     if (!(await hasRecoverableSession({ throwOnError: true }))) {
-      await stopTrackingSession(bookingId);
+      if (lease.isCurrent()) await stopTrackingSession(bookingId);
       return false;
     }
+    if (!lease.isCurrent()) return false;
 
     const payload = {
       samples: locationBatch(locations),
@@ -201,12 +197,14 @@ async function putPassengerLocation(
     };
 
     let result = await send();
-    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+    if (!lease.isCurrent()) return false;
+    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error()) && lease.isCurrent()) {
       result = await send();
     }
+    if (!lease.isCurrent()) return false;
 
     if (result.error || !result.data) {
-      lastSentAt = now;
+      lease.record(now);
       const responseStatus = getRtkErrorStatus(result.error);
       const responseMessage = getRtkErrorMessage(result.error);
       if (isInactiveTripResponse(responseStatus, responseMessage)) {
@@ -218,7 +216,7 @@ async function putPassengerLocation(
       } else if (isTerminalPassengerTrackingResponse(responseStatus, responseMessage)) {
         await stopTrackingSession(bookingId);
       } else if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
-        passengerLocationBackoffUntil = Date.now() + LOCATION_FAILURE_BACKOFF_MS;
+        lease.record(Date.now(), LOCATION_FAILURE_BACKOFF_MS);
       }
       console.warn('[PassengerBackgroundLocation] Position non envoyée :', {
         bookingId,
@@ -227,16 +225,15 @@ async function putPassengerLocation(
       return false;
     }
 
-    lastSentAt = now;
+    lease.record(now);
     recordLocationDelivery(`passenger:${bookingId}`);
     return true;
   } catch (error) {
-    lastSentAt = now;
-    passengerLocationBackoffUntil = Date.now() + LOCATION_FAILURE_BACKOFF_MS;
+    lease.record(Date.now(), LOCATION_FAILURE_BACKOFF_MS);
     console.warn('[PassengerBackgroundLocation] Envoi impossible:', error);
     return false;
   } finally {
-    passengerLocationRequestInFlight = false;
+    lease.release();
   }
 }
 
@@ -357,7 +354,7 @@ export async function startPassengerBackgroundLocationTracking(
         ? options.departureTimeMs : null,
     };
     if (previousSession?.bookingId !== bookingId) {
-      lastSentAt = 0;
+      passengerLocationGate.reset(bookingId);
       lastTripStatusCheckAt = 0;
     } else if (previousSession.waitForActiveTrip && !nextSession.waitForActiveTrip) {
       lastTripStatusCheckAt = 0;
@@ -372,6 +369,7 @@ export async function startPassengerBackgroundLocationTracking(
 export async function stopPassengerBackgroundLocationTracking(
   bookingId?: string | null,
 ) {
+  passengerLocationGate.reset(bookingId);
   try {
     await stopTrackingSession(bookingId);
   } catch (error) {

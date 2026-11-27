@@ -16,14 +16,14 @@ import type { FavoriteLocation } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from '@/utils/reanimated';
 
 export default function FavoriteLocationsScreen() {
   const router = useRouter();
   const { showDialog } = useDialog();
-  const { data: favoriteLocations = [], isLoading, refetch } = useGetFavoriteLocationsQuery();
+  const { data: favoriteLocations = [], isLoading, isFetching, isError, refetch } = useGetFavoriteLocationsQuery();
   const [createFavoriteLocation, { isLoading: isCreating }] = useCreateFavoriteLocationMutation();
   const [updateFavoriteLocation, { isLoading: isUpdating }] = useUpdateFavoriteLocationMutation();
   const [deleteFavoriteLocation, { isLoading: isDeleting }] = useDeleteFavoriteLocationMutation();
@@ -139,13 +139,25 @@ export default function FavoriteLocationsScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollViewContent}
+        refreshControl={<RefreshControl refreshing={isFetching && !isLoading} onRefresh={() => { void refetch(); }} />}>
+        {isError && <View style={styles.emptyContainer}>
+          <Text accessibilityRole="alert" style={styles.emptyTitle}>
+            {favoriteLocations.length ? 'Actualisation impossible' : 'Lieux favoris indisponibles'}
+          </Text>
+          <Text style={styles.emptyDescription}>{favoriteLocations.length
+            ? 'Vos derniers lieux restent affichés.' : 'Vérifiez votre connexion et réessayez.'}</Text>
+          <TouchableOpacity style={styles.emptyButton} accessibilityRole="button"
+            disabled={isFetching} onPress={() => { void refetch(); }}>
+            <Text style={styles.emptyButtonText}>{isFetching ? 'Actualisation…' : 'Réessayer'}</Text>
+          </TouchableOpacity>
+        </View>}
         {isLoading ? (
           <View style={styles.loaderContainer}>
             <ActivityIndicator size="large" color={Colors.primary} />
             <Text style={styles.loaderText}>Chargement des lieux favoris...</Text>
           </View>
-        ) : favoriteLocations.length === 0 ? (
+        ) : favoriteLocations.length === 0 && !isError ? (
           <View style={styles.emptyContainer}>
             <View style={styles.emptyIcon}>
               <Ionicons name="location-outline" size={48} color={Colors.gray[400]} />
@@ -226,6 +238,7 @@ export default function FavoriteLocationsScreen() {
         presentationStyle="pageSheet"
         onDismiss={handleFormModalDismiss}
         onRequestClose={() => {
+          if (isCreating || isUpdating) return;
           setShowAddModal(false);
           setShowEditModal(false);
         }}
@@ -233,6 +246,7 @@ export default function FavoriteLocationsScreen() {
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity
+              disabled={isCreating || isUpdating}
               onPress={() => {
                 setShowAddModal(false);
                 setShowEditModal(false);

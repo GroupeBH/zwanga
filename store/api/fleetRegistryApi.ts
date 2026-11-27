@@ -21,7 +21,7 @@ export const fleetRegistryApi = baseApi.injectEndpoints({
         url: "/partners/fleet-assignments/history",
         params: args || undefined,
       }),
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'FLEET' }],
     }),
     decideFleetAssignment: b.mutation<
       { id: string },
@@ -32,7 +32,7 @@ export const fleetRegistryApi = baseApi.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'FLEET' }],
     }),
     getMyFleetOrganizations: b.query<
       {
@@ -46,7 +46,7 @@ export const fleetRegistryApi = baseApi.injectEndpoints({
       void
     >({
       query: () => "/partners/me/organizations",
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'FLEET' }],
     }),
     createFleetOrganization: b.mutation<
       { id: string },
@@ -61,7 +61,7 @@ export const fleetRegistryApi = baseApi.injectEndpoints({
           partnerTypes: ["FLEET_OWNER"],
         },
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'FLEET' }],
     }),
   }),
 });

@@ -179,7 +179,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, t
         ? `${saving || saved ? actionLabel : `${directStage.question} ${actionLabel}`}${actor === 'driver' ? ` : ${directRow?.item.passengerName || 'Passager'}` : ''}`
         : actor === 'driver' ? entryLabel : trigger.accessibilityLabel}
       accessibilityState={{ disabled: !active || saving || saved, busy: saving || pendingStage?.entry?.state === 'sending' }}
-      accessibilityHint={directStage?.arrivalPromptId ? 'Confirme votre dépose réelle, termine votre course et ouvre le paiement après validation du serveur.' : directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}.${directStage.driverOnly ? ' Votre confirmation suffit ; la détection automatique reste active.' : ' L’autre personne confirme de son côté.'}` : 'Consulte les confirmations du trajet.'}>
+      accessibilityHint={directStage?.arrivalPromptId ? 'Confirme votre arrivée réelle, termine votre course et ouvre le paiement après validation du serveur.' : directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}.${directStage.driverOnly ? ' Votre confirmation suffit ; la détection automatique reste active.' : ' L’autre personne confirme de son côté.'}` : 'Consulte les confirmations du trajet.'}>
       {saving ? <ActivityIndicator color={directStage ? Colors.white : Colors.primaryDark} /> : !overview && <Ionicons name={directStage ? directStage.stage === 'pickup' ? 'car-outline' : 'flag-outline' : trigger.icon} size={20} color={directStage ? Colors.white : Colors.primaryDark} />}
       <Text style={[styles.triggerLabel, Boolean(directStage) && styles.primaryLabel]}>{actionLabel}</Text>
       {!overview && !compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
@@ -230,7 +230,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, t
             initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3} removeClippedSubviews={false}
             contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
             ListHeaderComponent={<>
-            <Text style={styles.explanation}>{arrivalPrompt ? 'Votre accord suffit pour valider cette dépose près de la destination. Ne confirmez pas si vous êtes encore en route.' : driverOnly ? 'Le conducteur confirme l’embarquement et l’arrivée. La détection automatique reste active.' : 'Chaque personne confirme de son côté. Un appui suffit pour toutes les places de la réservation.'}</Text>
+            <Text style={styles.explanation}>{arrivalPrompt ? 'Votre accord suffit pour valider votre arrivée près de la destination. Ne confirmez pas si vous êtes encore en route.' : driverOnly ? 'Le conducteur confirme l’embarquement et l’arrivée. La détection automatique reste active.' : 'Chaque personne confirme de son côté. Un appui suffit pour toutes les places de la réservation.'}</Text>
             {isError && <Text style={styles.notice}>Le serveur n’est pas joignable pour le moment. Les informations ci-dessous peuvent ne pas être à jour.</Text>}
             {relevant.length === 0 && <Text style={styles.explanation}>Aucune réservation à confirmer pour ce trajet.</Text>}
             </>}

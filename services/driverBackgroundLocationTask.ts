@@ -1,5 +1,6 @@
 import { evaluateBackgroundTripEnd } from './background/driverTripCompletion';
 import { locationBatch } from './background/locationBatch';
+import { createLocationSendGate } from './background/locationSendGate';
 import { latestLocation as selectLatestLocation } from './background/latestLocation';
 import { isDriverBackgroundLocationAvailable } from './background/driverTaskLifecycle';
 import { reserveDriverGpsStart, startDriverGpsProfile, stopDriverGpsProfile, stopDriverGpsIfIdle } from './background/driverGpsProfile';
@@ -25,10 +26,8 @@ const BACKGROUND_LOCATION_FETCH_TIMEOUT_MS = 18_000;
 const BACKGROUND_LOCATION_FAILURE_BACKOFF_MS = 30_000;
 const BACKGROUND_PERMISSION_RETRY_COOLDOWN_MS = 10 * 60_000;
 
-let lastBackgroundLocationSentAt = 0;
 let lastBackgroundPermissionDeniedAt = 0;
-let driverLocationRequestInFlight = false;
-let driverLocationBackoffUntil = 0;
+const driverLocationGate = createLocationSendGate();
 
 type BackgroundLocationTaskData = {
   locations?: Location.LocationObject[];
@@ -55,24 +54,20 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
   const now = Date.now();
   if (
     isLocationDeliveryPending(`driver:${tripId}`) ||
-    wasLocationDeliveredRecently(`driver:${tripId}`, 4000, 'rest') ||
-    now - lastBackgroundLocationSentAt <
-    ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS
+    wasLocationDeliveredRecently(`driver:${tripId}`, 4000, 'rest')
   ) {
     return false;
   }
 
-  if (driverLocationRequestInFlight || now < driverLocationBackoffUntil) {
-    return false;
-  }
-
-  driverLocationRequestInFlight = true;
+  const lease = driverLocationGate.acquire(tripId, now, ACTIVE_RIDE_BACKGROUND_SEND_INTERVAL_MS);
+  if (!lease) return false;
 
   try {
     if (!(await hasRecoverableSession({ throwOnError: true }))) {
-      await stopDriverGpsProfile(tripId);
+      if (lease.isCurrent()) await stopDriverGpsProfile(tripId);
       return false;
     }
+    if (!lease.isCurrent()) return false;
 
     const payload = {
       samples: locationBatch(locations),
@@ -116,18 +111,20 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
     };
 
     let result = await send();
-    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error())) {
+    if (!lease.isCurrent()) return false;
+    if (getRtkErrorStatus(result.error) === 401 && (await handle401Error()) && lease.isCurrent()) {
       result = await send();
     }
+    if (!lease.isCurrent()) return false;
 
     if (result.error || !result.data) {
-      lastBackgroundLocationSentAt = now;
+      lease.record(now);
       const responseStatus = getRtkErrorStatus(result.error);
       const responseMessage = getRtkErrorMessage(result.error);
       if (isTerminalDriverTrackingResponse(responseStatus, responseMessage)) {
         await stopDriverGpsProfile(tripId);
       } else if (shouldBackOffAfterBackgroundResponse(responseStatus)) {
-        driverLocationBackoffUntil = Date.now() + BACKGROUND_LOCATION_FAILURE_BACKOFF_MS;
+        lease.record(Date.now(), BACKGROUND_LOCATION_FAILURE_BACKOFF_MS);
       }
       console.warn('[DriverBackgroundLocation] Position non envoyée:', {
         status: responseStatus,
@@ -136,16 +133,15 @@ async function putDriverLocation(tripId: string, location: Location.LocationObje
       return false;
     }
 
-    lastBackgroundLocationSentAt = now;
+    lease.record(now);
     recordLocationDelivery(`driver:${tripId}`);
     return true;
   } catch (error) {
-    lastBackgroundLocationSentAt = now;
-    driverLocationBackoffUntil = Date.now() + BACKGROUND_LOCATION_FAILURE_BACKOFF_MS;
+    lease.record(Date.now(), BACKGROUND_LOCATION_FAILURE_BACKOFF_MS);
     console.warn('[DriverBackgroundLocation] Envoi impossible:', error);
     return false;
   } finally {
-    driverLocationRequestInFlight = false;
+    lease.release();
   }
 }
 
@@ -284,6 +280,7 @@ export async function updateDriverBackgroundLocationCheckpoint(
 }
 
 export async function stopDriverBackgroundLocationTracking(tripId?: string | null) {
+  driverLocationGate.reset(tripId);
   try {
     await stopDriverGpsProfile(tripId);
   } catch (error) {

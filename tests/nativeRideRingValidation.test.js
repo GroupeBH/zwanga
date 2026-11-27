@@ -43,6 +43,7 @@ public class RingCheck {
   static void expect(int n,int actual){System.out.println("verdict="+actual);if(n!=actual)throw new AssertionError(n+" != "+actual);}
   public static void main(String[] args)throws Exception {
     var server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+    server.createContext("/warmup", exchange->{ exchange.sendResponseHeaders(204,-1); exchange.close(); });
     server.createContext("/notifications/ride-alerts/validate",exchange->{
       calls++; if(!exchange.getRequestMethod().equals("POST"))throw new AssertionError();
       if(exchange.getRequestHeaders().getFirst("Authorization")!=null)throw new AssertionError();
@@ -54,6 +55,12 @@ public class RingCheck {
     server.start();
     try {
       Context c=new Context(); String base="http://127.0.0.1:"+server.getAddress().getPort();
+      // Start the fixture HTTP/JVM plumbing before measuring the native 1500 ms
+      // timeout. Production deadlines below remain unchanged, even on a busy host.
+      var warm=(java.net.HttpURLConnection)new URL(base+"/warmup").openConnection();
+      warm.setConnectTimeout(10000);warm.setReadTimeout(10000);
+      try { if(warm.getResponseCode()!=204)throw new AssertionError("fixture readiness"); }
+      finally { warm.disconnect(); }
       if(!RideRingValidation.configure(c,"driver",base))throw new AssertionError("debug loopback");
       c.info.flags=0;if(RideRingValidation.configure(c,"driver",base))throw new AssertionError("release HTTP");c.info.flags=2;
       if(RideRingValidation.configure(c,"driver","https://user:secret@example.invalid"))throw new AssertionError();

@@ -13,7 +13,7 @@ export const proServicesApi = baseApi.injectEndpoints({
   endpoints: (builder: BaseEndpointBuilder) => ({
     getProOfferings: builder.query<ProOffering[], void>({
       query: () => "/pro-services/catalogue",
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     getMyProCases: builder.query<
       { items: ProCaseRow[]; nextCursor: string | null },
@@ -23,15 +23,15 @@ export const proServicesApi = baseApi.injectEndpoints({
         url: "/pro-services/mine",
         params: cursor ? { cursor } : undefined,
       }),
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     getProCase: builder.query<ProCase, string>({
       query: (id) => `/pro-services/mine/${encodeURIComponent(id)}`,
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     getCurrentDocumentCase: builder.query<CurrentDocumentCase, void>({
       query: () => "/pro-services/mine/current-documents",
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     updateDocumentCase: builder.mutation<{ id: string }, {
       id: string; mutationId: string; expectedUpdatedAt: string;
@@ -41,7 +41,7 @@ export const proServicesApi = baseApi.injectEndpoints({
         url: `/pro-services/mine/${encodeURIComponent(id)}`,
         method: "PATCH", body, timeout: 15000,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     createProCase: builder.mutation<
       { id: string },
@@ -58,7 +58,7 @@ export const proServicesApi = baseApi.injectEndpoints({
         body,
         timeout: 15000,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     acceptProQuote: builder.mutation<
       { id: string },
@@ -70,7 +70,7 @@ export const proServicesApi = baseApi.injectEndpoints({
         body,
         timeout: 15000,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
     cancelProCase: builder.mutation<{ id: string }, string>({
       query: (id) => ({
@@ -78,7 +78,7 @@ export const proServicesApi = baseApi.injectEndpoints({
         method: "POST",
         timeout: 15000,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'DOCUMENTS' }],
     }),
   }),
 });

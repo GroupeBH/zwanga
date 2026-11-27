@@ -5,15 +5,17 @@ import { useLazyGetPaymentDetailsQuery } from '@/store/api/paymentApi';
 import type { PaymentHistoryItem } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
 import * as FileSystem from 'expo-file-system/legacy';
-import React from 'react';
-import { Platform, Share } from 'react-native';
+import * as Sharing from 'expo-sharing';
+import React, { useEffect } from 'react';
+import { Platform } from 'react-native';
+import { useAccountScreenScope } from '@/hooks/useAccountScreenScope';
 
 interface Params {
   isDownloadingRef: React.RefObject<boolean>;
   setDownloadingPaymentId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedPayment: PaymentHistoryItem | null;
   getPaymentDetails: ReturnType<typeof useLazyGetPaymentDetailsQuery>[0];
-  setSelectedPayment: React.Dispatch<React.SetStateAction<PaymentHistoryItem | null>>;
+  closeDetails: (onlyPaymentId?: string) => void;
   showDialog: ReturnType<typeof useDialog>['showDialog'];
 }
 
@@ -22,11 +24,14 @@ export function usePaymentReceiptDownload({
   setDownloadingPaymentId,
   selectedPayment,
   getPaymentDetails,
-  setSelectedPayment,
+  closeDetails,
   showDialog,
 }: Params) {
+  const captureScope = useAccountScreenScope();
+  useEffect(() => { setDownloadingPaymentId(null); }, [captureScope, setDownloadingPaymentId]);
   const handleDownloadPayment = async (payment: PaymentHistoryItem) => {
-    if (isDownloadingRef.current) {
+    const isCurrent = captureScope();
+    if (isDownloadingRef.current || !isCurrent()) {
       return;
     }
 
@@ -38,11 +43,23 @@ export function usePaymentReceiptDownload({
         selectedPayment?.id === payment.id
           ? selectedPayment
           : await getPaymentDetails(payment.id).unwrap();
+      if (!isCurrent()) return;
+      if (details.id !== payment.id) throw new Error('Le reçu ne correspond pas au paiement choisi.');
 
       const shouldCloseDetailBeforeShare = selectedPayment?.id === details.id;
       if (shouldCloseDetailBeforeShare) {
-        setSelectedPayment(null);
+        closeDetails(details.id);
         await waitForNativePresentation();
+      }
+      if (!isCurrent()) return;
+
+      if (Platform.OS === 'web') {
+        throw new Error('Pour télécharger ce reçu, utilisez l’application mobile.');
+      }
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (!isCurrent()) return;
+      if (!sharingAvailable) {
+        throw new Error('Le partage de fichiers n’est pas disponible sur cet appareil.');
       }
 
       const pdfBase64 = buildPaymentPdfBase64(details);
@@ -55,36 +72,25 @@ export function usePaymentReceiptDownload({
       const fileName = `zwanga-paiement-${sanitizeFileSegment(details.reference)}.pdf`;
       const fileUri = `${directory}${fileName}`;
       await FileSystem.writeAsStringAsync(fileUri, pdfBase64, {
-        encoding: FileSystem.EncodingType?.Base64 || ('base64' as any),
+        encoding: FileSystem.EncodingType.Base64,
       });
-      let sharedUri = fileUri;
 
-      if (Platform.OS === 'android' && FileSystem.getContentUriAsync) {
-        try {
-          sharedUri = await FileSystem.getContentUriAsync(fileUri);
-        } catch (error) {
-          console.warn('[PaymentHistory] Failed to create Android content URI:', error);
-        }
-      }
-
-      await Share.share({
-        title: `Détail paiement ${details.reference}`,
-        message:
-          Platform.OS === 'android'
-            ? `Détail du paiement ${details.reference}\n${sharedUri}`
-            : `Détail du paiement ${details.reference}`,
-        url: Platform.OS === 'ios' ? sharedUri : undefined,
+      if (!isCurrent()) return;
+      // Expo Sharing attaches the file and grants read access on Android.
+      // A content URI in Share.share({ message }) would only send plain text.
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/pdf',
+        UTI: 'com.adobe.pdf',
+        dialogTitle: `Détail paiement ${details.reference}`,
       });
-      if (!shouldCloseDetailBeforeShare && selectedPayment?.id === details.id) {
-        setSelectedPayment(details);
-      }
-
+      if (!isCurrent()) return;
       showDialog({
         variant: 'success',
         title: 'Détail généré',
         message: `Le détail du paiement a été préparé.\n\nFichier: ${fileName}`,
       });
     } catch (error: any) {
+      if (!isCurrent()) return;
       showDialog({
         variant: 'danger',
         title: 'Téléchargement impossible',
@@ -95,7 +101,7 @@ export function usePaymentReceiptDownload({
       });
     } finally {
       isDownloadingRef.current = false;
-      setDownloadingPaymentId(null);
+      if (isCurrent()) setDownloadingPaymentId(null);
     }
   };
 

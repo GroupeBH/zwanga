@@ -7,6 +7,7 @@ import { TripImageModal } from '../../features/trip-detail/TripImageModal';
 import { TripContactModal } from '../../features/trip-detail/TripContactModal';
 import { TripReviewsModal } from '../../features/trip-detail/TripReviewsModal';
 import { TripEditModal } from '../../features/trip-detail/TripEditModal';
+import { TripEditLocationPicker } from '../../features/trip-detail/TripEditLocationPicker';
 import { TripBookingSuccessModal } from '../../features/trip-detail/TripBookingSuccessModal';
 import { TripMapModal } from '../../features/trip-detail/TripMapModal';
 import { TripBookingModal } from '../../features/trip-detail/TripBookingModal';
@@ -369,32 +370,7 @@ function TripDetailsView({ model, workspace }: DetailProps) {
         handleSaveTrip={model.editing.editSubmission.handleSaveTrip}
       />
 
-      <LocationPickerModal
-        visible={model.editing.edit.editRoutePickerTarget !== null}
-        title={model.editing.edit.editRoutePickerTarget === 'departure' ? 'Choisir le départ' : "Choisir l'arrivée"}
-        initialLocation={
-          model.editing.edit.editRoutePickerTarget === 'departure' ? model.editing.edit.editDepartureSelection : model.editing.edit.editArrivalSelection
-        }
-        autoLocateOnOpen={false}
-        onClose={model.editing.editRoute.restoreEditModalAfterRoutePicker}
-        onSelect={(location) => {
-          const target = model.editing.edit.editRoutePickerTarget;
-          model.editing.edit.setEditRouteMode('map');
-          if (target === 'departure') {
-            model.editing.edit.editReferences.clearIfLocationChanged(target, location, model.editing.edit.editDepartureSelection);
-            model.editing.edit.setEditDepartureSelection(location);
-            model.editing.edit.setEditDepartureManualAddress(location.title || location.address);
-            model.editing.editRoute.restoreEditModalAfterRoutePicker();
-            return;
-          }
-          if (target === 'arrival') {
-            model.editing.edit.editReferences.clearIfLocationChanged(target, location, model.editing.edit.editArrivalSelection);
-            model.editing.edit.setEditArrivalSelection(location);
-            model.editing.edit.setEditArrivalManualAddress(location.title || location.address);
-          }
-          model.editing.editRoute.restoreEditModalAfterRoutePicker();
-        }}
-      />
+      <TripEditLocationPicker editing={model.editing} />
     </SafeAreaView>
     </RideOverlayScope>
   );

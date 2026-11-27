@@ -16,7 +16,7 @@ test('services API uses the authenticated RTK transport and isolated cache tags'
   assert.equal(endpoints.createProCase.query({ test: true }).method, 'POST');
   assert.equal(endpoints.createProCase.query({ test: true }).timeout, 15000);
   assert.equal(endpoints.acceptProQuote.query({ id: 'case', quoteVersion: 2, consent: true }).url, '/pro-services/mine/case/accept');
-  assert.deepEqual(endpoints.acceptProQuote.invalidatesTags, ['ProServices']);
+  assert.deepEqual(endpoints.acceptProQuote.invalidatesTags, [{ type: 'ProServices', id: 'DOCUMENTS' }]);
   assert.match(endpoints.getProCase.query('case/a'), /case%2Fa/);
   assert.equal(endpoints.getCurrentDocumentCase.query(), '/pro-services/mine/current-documents');
   const update = endpoints.updateDocumentCase.query({ id: 'case/a', mutationId: 'edit', expectedUpdatedAt: 'date', application: {} });
@@ -24,7 +24,7 @@ test('services API uses the authenticated RTK transport and isolated cache tags'
   assert.equal(update.url, '/pro-services/mine/case%2Fa');
   assert.equal(update.body.id, undefined);
   assert.equal(update.body.expectedUpdatedAt, 'date');
-  assert.deepEqual(endpoints.updateDocumentCase.invalidatesTags, ['ProServices']);
+  assert.deepEqual(endpoints.updateDocumentCase.invalidatesTags, [{ type: 'ProServices', id: 'DOCUMENTS' }]);
 });
 test('services screens introduce no global polling, native modals or automatic payment', () => {
   for (const filename of ['features/pro-services/ServicesScreen.tsx', 'app/services/new.tsx', 'app/services/[id].tsx']) {

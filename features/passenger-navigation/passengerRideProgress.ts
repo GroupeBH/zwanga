@@ -34,7 +34,7 @@ export function passengerProgressNotice(booking: Booking): PassengerRideNotice |
     title: stage === 'pickup' ? 'Embarquement confirmé' : 'Arrivée confirmée',
     message: stage === 'pickup'
       ? `${byDriver ? 'Le conducteur a confirmé votre embarquement. ' : ''}Vous êtes en route vers votre destination.`
-      : `${byDriver ? 'Le conducteur a confirmé votre dépose. ' : ''}Vous êtes arrivé à destination.` };
+      : `${byDriver ? 'Le conducteur a confirmé votre arrivée. ' : ''}Vous êtes arrivé à destination.` };
 }
 
 /** Shared by all passenger screens for this session; a refresh cannot replay or reverse a stage. */

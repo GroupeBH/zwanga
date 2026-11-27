@@ -21,7 +21,7 @@ function setup(t) {
     './tripApi': { mapServerTripToClient: identity },
     './tripMapper': { mapServerTripToClient: identity, mapServerRecurringTripToClient: identity },
     './trip/tripMapper': { mapServerTripToClient: identity },
-    './activityTripMapper': { mapActivityTrip: identity },
+    './activityTripMapper': { mapActivityTrips: identity },
     './trip-request/requestMapper': { mapServerTripRequestToClient: identity },
   });
   load('store/api/tripApi.ts');

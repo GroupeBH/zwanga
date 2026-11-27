@@ -40,7 +40,7 @@ export function rideBookingStages(item: Booking, snapshot: RideSnapshot | undefi
 export function rideStageMessage(stage: ReturnType<typeof rideBookingStages>[number], actor: RideActor) {
   const { entry, status, own, other } = stage;
   if (stage.arrivalPromptId && !entry && status !== 'confirmed' && status !== 'disputed') {
-    return 'Le véhicule est arrêté près de votre destination. Confirmez uniquement si la dépose est réellement effectuée. Sans réponse, cette proposition ne termine pas la course.';
+    return 'Le véhicule est arrêté près de votre destination. Confirmez uniquement si vous êtes bien arrivé. Sans réponse, cette proposition ne termine pas la course.';
   }
   if (stage.readOnly && !['confirmed', 'disputed'].includes(status ?? '')) {
     return 'Le conducteur confirme votre embarquement et votre arrivée. La détection automatique reste active.';

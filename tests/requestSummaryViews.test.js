@@ -125,9 +125,9 @@ test('driver confirmed course uses authorized contact and its actual pickup time
     assignedTrip: { id: 'trip', departureTime: '2099-01-01T10:05:00', status: 'upcoming' } };
   const tree = hooks.render(() => module.RequestDriverCourse({ model: driver, presentation }));
   assert.equal(elements(tree).find(item => item.type === 'PickupSummary').props.requestId, request.id);
-  assert.match(words(tree), /COURSE CONFIRMÉE/); assert.match(words(tree), /10:05/);
-  assert.equal(elements(tree).find(item => item.type === 'RouteMap').props.initiallyExpanded, true);
-  const button = elements(tree).find(item => item.type === 'Pressable'); button.props.onPress();
+  assert.match(words(tree), /Course confirmée/i); assert.match(words(tree), /10:05/);
+  assert.equal(elements(tree).find(item => item.type === 'RouteMap').props.displayMode, 'overview');
+  const button = elements(tree).find(item => item.type === 'Pressable' && /Contacter le passager/.test(item.props.accessibilityLabel)); button.props.onPress();
   const updated = hooks.render(() => module.RequestDriverCourse({ model: driver, presentation }));
   assert.equal(elements(updated).find(item => item.type === 'Contact').props.contacts[0].id, 'passenger');
   const footerHooks = hookHarness();

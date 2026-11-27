@@ -9,7 +9,8 @@ import {
 } from '@/store/api/userApi';
 import type { FavoriteLocation } from '@/types';
 import { getApiErrorMessage } from '@/utils/errorHelpers';
-import React from 'react';
+import React, { useRef } from 'react';
+import { useAccountScreenScope } from '@/hooks/useAccountScreenScope';
 
 interface Params {
   selectedLocation: MapLocationSelection | null;
@@ -54,7 +55,11 @@ export function useFavoriteLocationActions({
   refetch,
   deleteFavoriteLocation,
 }: Params) {
+  const saving = useRef(false);
+  const captureScope = useAccountScreenScope();
   const handleSaveLocation = async () => {
+    const isCurrent = captureScope();
+    if (saving.current || !isCurrent()) return;
     if (!selectedLocation) {
       showDialog({
         variant: 'warning',
@@ -73,6 +78,7 @@ export function useFavoriteLocationActions({
       return;
     }
 
+    saving.current = true;
     try {
       if (editingLocation) {
         // Mise à jour
@@ -88,7 +94,7 @@ export function useFavoriteLocationActions({
           isDefault,
           notes: notes.trim() || undefined,
         }).unwrap();
-
+        if (!isCurrent()) return;
         showDialog({
           variant: 'success',
           title: 'Lieu favori modifié',
@@ -108,7 +114,7 @@ export function useFavoriteLocationActions({
           isDefault,
           notes: notes.trim() || undefined,
         }).unwrap();
-
+        if (!isCurrent()) return;
         showDialog({
           variant: 'success',
           title: 'Lieu favori ajouté',
@@ -126,11 +132,14 @@ export function useFavoriteLocationActions({
       setEditingLocation(null);
       refetch();
     } catch (error: any) {
+      if (!isCurrent()) return;
       showDialog({
         variant: 'danger',
         title: 'Erreur',
         message: getApiErrorMessage(error, 'Impossible de sauvegarder le lieu favori.'),
       });
+    } finally {
+      saving.current = false;
     }
   };
 

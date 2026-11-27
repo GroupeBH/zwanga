@@ -16,13 +16,13 @@ import { ServerTrip } from './serverTypes';
 import type { InterruptionFareQuote, RecurringTripTemplate, Trip, TripInterruptionReason } from '../../../types';
 import { CRITICAL_MUTATION_TIMEOUT_MS } from '@/constants/network';
 import type { BaseEndpointBuilder } from '../types';
-import { mapActivityTrip, type ActivityTrip, type ServerActivityTrip } from './activityTripMapper';
+import { mapActivityTrips, type ActivityTrip, type ActivityTripResponse } from './activityTripMapper';
 
 export function buildGetTripsEndpoints(builder: BaseEndpointBuilder) {
   return {
     getMyActivityTrips: builder.query<ActivityTrip[], void>({
-      query: () => ({ url: '/trips/my-trips', params: { scope: 'activity' } }),
-      transformResponse: (response: ServerActivityTrip[]) => response.map(mapActivityTrip),
+      query: () => ({ url: '/trips/my-trips', params: { scope: 'activity', view: 'compact' } }),
+      transformResponse: (response: ActivityTripResponse) => mapActivityTrips(response),
       providesTags: result => [...(result ?? []).map(({ id }) => ({ type: 'MyTrips' as const, id })), myTripsListTag],
     }),
 // Rechercher des trajets avec filtres

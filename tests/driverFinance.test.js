@@ -32,13 +32,13 @@ test('arrival choices obey server availability without selecting a different pay
     '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-linking': { createURL: () => 'zwanga://test' },
     '@/store/api/driverFinanceApi': { useBookingPaymentOptionsQuery: () => ({ currentData: { acceptedPaymentModes: ['cash','points'], availablePaymentModes: available } }) },
   })('features/arrival-payment/ArrivalPaymentFields.tsx');
-  const render = () => hooks.render(() => ArrivalPaymentFields({ arrivalBooking: { id: 'booking', paymentMode: 'points' },
+  const render = () => hooks.render(() => ArrivalPaymentFields({ arrivalBooking: { id: 'booking', paymentMode: 'points', droppedOff: true },
     paymentAmount: 10000, paymentCurrency: 'CDF', selectedMode: 'points', setSelectedMode: x => selected.push(x), setPaymentError() {}, setStatusMessage() {} }));
   const cards = () => nodes(render()).filter(n => n.props?.accessibilityRole === 'radio');
-  let cash = cards().find(n => n.props.accessibilityLabel === 'Cash');
+  let cash = cards().find(n => /cash/i.test(n.props.accessibilityLabel));
   assert.equal(cash.props.disabled, true); cash.props.onPress(); assert.deepEqual(selected, []);
   assert.equal(cards().length, 2);
-  available = ['points','cash']; cash = cards().find(n => n.props.accessibilityLabel === 'Cash');
+  available = ['points','cash']; cash = cards().find(n => /cash/i.test(n.props.accessibilityLabel));
   cash.props.onPress(); assert.deepEqual(selected, ['cash']); hooks.unmount();
 });
 

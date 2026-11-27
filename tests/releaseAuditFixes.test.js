@@ -13,7 +13,7 @@ test('driver passenger entry is orange and all action labels remain readable', (
   const load = loader({ 'react-native': { StyleSheet: { create: x => x } } });
   const { ACTION_COLORS: colors } = load('constants/actionColors.ts');
   const { styles } = load('features/home/HomeTripsSheet.styles.ts');
-  assert.equal(styles.publishButton.backgroundColor, colors.blue);
+  assert.equal(styles.publishButton.backgroundColor, colors.orange);
   assert.equal(styles.secondaryAction.backgroundColor, colors.orange);
   assert.ok(styles.secondaryAction.borderWidth > 0);
   for (const label of ['secondaryActionTitle', 'secondaryActionHint']) {

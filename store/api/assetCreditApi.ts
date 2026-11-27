@@ -46,25 +46,25 @@ export const assetCreditApi = baseApi.injectEndpoints({
   endpoints: (b: BaseEndpointBuilder) => ({
     getAssetCreditProducts: b.query<{ items: AssetProduct[]; canRequest: boolean; policyText: string }, void>({
       query: () => '/asset-credits/products',
-      providesTags: ['ProServices'],
+      providesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     getAssetCredits: b.query<
       { items: AssetCredit[]; policyText: string },
       void
     >({
       query: () => "/asset-credits/mine",
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     getAssetCredit: b.query<AssetCredit, string>({
       query: (id) => `/asset-credits/mine/${encodeURIComponent(id)}`,
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     getAssetCreditRequests: b.query<
       { items: AssetCreditRequest[] },
       void
     >({
       query: () => "/asset-credits/requests",
-      providesTags: ["ProServices"],
+      providesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     requestAssetCredit: b.mutation<{ id: string }, { assetKind: AssetKind; notes: string }>({
       query: (body) => ({
@@ -72,11 +72,11 @@ export const assetCreditApi = baseApi.injectEndpoints({
         method: "POST",
         body,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     updateCreditRequestComment: b.mutation<{ id: string; notes: string }, { id: string; notes: string }>({
       query: ({ id, notes }) => ({ url: `/asset-credits/requests/${encodeURIComponent(id)}/comment`, method: 'PATCH', body: { notes } }),
-      invalidatesTags: ['ProServices'],
+      invalidatesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     decideAssetCredit: b.mutation<
       { id: string },
@@ -91,7 +91,7 @@ export const assetCreditApi = baseApi.injectEndpoints({
           ...(policyVersion === 'asset-credit-v2' ? { expectedTotalRepaymentBps } : {}),
         } : undefined,
       }),
-      invalidatesTags: ["ProServices"],
+      invalidatesTags: [{ type: 'ProServices', id: 'CREDITS' }],
     }),
     repayAssetCredit: b.mutation<
       { id: string; replayed: boolean },
@@ -103,7 +103,7 @@ export const assetCreditApi = baseApi.injectEndpoints({
         body,
         timeout: 15000,
       }),
-      invalidatesTags: ["ProServices", "Wallet"],
+      invalidatesTags: [{ type: 'ProServices', id: 'CREDITS' }, "Wallet"],
     }),
   }),
 });

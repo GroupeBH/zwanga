@@ -94,6 +94,7 @@ test('urgent driver prompt stays outside the clipped route scroll and keeps assi
   const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
     './DriverNearArrivalPaymentNotice': { DriverNearArrivalPaymentNotice: 'NearArrivalPayment' },
+    '@/features/ride-payment/RidePaymentNotice': { RidePaymentNotice: 'PaymentNotice' },
     '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
     '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
     react: { ...React, ...hooks.react },

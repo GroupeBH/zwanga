@@ -62,28 +62,38 @@ async function activate(l, body) {
 const nodes = t => t == null || typeof t === 'boolean' ? [] : Array.isArray(t) ? t.flatMap(nodes) : [t, ...nodes(t.props?.children), ...nodes(t.props?.footer)];
 
 test('real admin form callbacks create the public product through admin API and real backend', async () => {
-  const hooks = hookHarness();
+  const hooks = hookHarness(); const notices = []; let closed = false;
   const config = await admin.call('commerceConfiguration'), categories = await admin.call('adminCommerceCategories');
-  const query = { currentData: { items: [] }, refetch() {} };
   const mutation = name => [arg => ({ unwrap: () => admin.call(name, arg) })];
-  const Screen = loader({ react: hooks.react, 'next/link': 'Link',
-    '../../styles/page.module.css': {}, '../../asset-credits/asset-credits.module.css': {},
+  const Screen = loader({ react: hooks.react, '../../terrain-agents/Dialog': { default: 'Dialog' },
+    '../../styles/page.module.css': {}, './catalogue.module.css': {},
+    '@/lib/features/assetCredits/assetCreditModel': loader()('../zwanga-admin/lib/features/assetCredits/assetCreditModel.ts'),
+    '@/lib/features/assetCredits/cataloguePricing': loader()('../zwanga-admin/lib/features/assetCredits/cataloguePricing.ts'),
+    '@/app/components/ui/Feedback': { confirmAction: async () => true, notify: message => notices.push(message) },
     '@/lib/utils/apiErrors': { getApiErrorMessage: e => JSON.stringify(e) },
     '@/lib/features/assetCredits/commerceApi': {
-      useCommerceConfigurationQuery: () => ({ currentData: config }), useAdminCommerceCategoriesQuery: () => ({ currentData: categories }), useAdminCommerceProductsQuery: () => query,
+      useCommerceConfigurationQuery: () => ({ currentData: config }), useAdminCommerceCategoriesQuery: () => ({ currentData: categories }),
       useCreateCommerceProductMutation: () => mutation('createCommerceProduct'), useConfigureCommerceProductMutation: () => mutation('configureCommerceProduct'), useEnableCommerceProductMutation: () => mutation('enableCommerceProduct'), useSaveCommerceCategoryMutation: () => mutation('saveCommerceCategory'),
     },
-  })('../zwanga-admin/app/(admin)/zwanga-pro/catalogue/page.tsx').default;
-  const render = () => nodes(hooks.render(Screen));
-  const inputs = render().filter(n => n.type === 'input' && n.props.onChange && n.props.inputMode === 'decimal');
-  inputs[0].props.onChange({ target: { value: '600' } }); inputs[1].props.onChange({ target: { value: '0' } }); inputs[2].props.onChange({ target: { value: '400' } });
+  })('../zwanga-admin/app/(admin)/zwanga-pro/catalogue/ProductEditor.tsx').default;
+  const render = () => nodes(hooks.render(() => Screen({ product: null, onClose: () => { closed = true; } })));
+  const field = (label, value) => {
+    const wrapper = render().find(n => label.test(n.props?.label ?? ''));
+    assert.ok(wrapper, String(label));
+    const input = nodes(wrapper.props.children).find(n => ['input', 'select', 'textarea'].includes(n.type));
+    if (input) input.props.onChange({ target: { value } }); else wrapper.props.onChange(value);
+  };
+  field(/^Nom affich/, 'Téléphone créé par interface'); field(/^Description$/, 'Fiche de test créée par le vrai formulaire admin');
+  field(/^Marque$/, 'Test'); field(/^Modèle$/, 'Test');
+  field(/^Coût/, '600'); field(/^Frais/, '0'); field(/^Gain souhait/, '400'); field(/^Gain minimum/, '100'); field(/^Acompte/, '100');
+  field(/^Catégorie/, categories.items.find(c => c.kind === 'phone').id);
+  field(/^Fournisseur$/, backend.partyId); field(/^Vendeur$/, backend.partyId); field(/^Financeur$/, backend.partyId);
+  field(/^Conditions du contrat$/, backend.policyId);
   const code = `test-ui-${randomUUID()}`;
-  const fields = new Map(Object.entries({ kind: 'phone', code, name: 'Téléphone créé par interface', description: 'Fiche de test créée par le vrai formulaire admin', supplier: backend.partyId, seller: backend.partyId, creditor: backend.partyId, policy: backend.policyId, model: 'ZWANGA_DIRECT', brand: 'Test', deviceModel: 'Test', days: '1', minimumMargin: '100', deposit: '100', category: categories.items.find(c => c.kind === 'phone').id }));
-  const original = global.FormData;
-  try { global.FormData = class { constructor(values) { this.values = values; } get(key) { return this.values.get(key); } }; await render().find(n => n.type === 'form').props.onSubmit({ preventDefault() {}, currentTarget: fields }); }
-  finally { global.FormData = original; }
-  const text = render().filter(n => typeof n === 'string').join(' ');
-  assert.match(text, /Offre enregistrée/);
+  field(/^Code produit$/, code);
+  await render().find(n => n.type === 'form').props.onSubmit({ preventDefault() {} });
+  assert.equal(closed, true, render().filter(n => typeof n === 'string').join(' '));
+  assert.match(notices.join(' '), /Produit créé/); hooks.unmount();
   const p = (await admin.call('adminCommerceProducts')).items.find(p => p.name === 'Téléphone créé par interface');
   assert.ok(p); assert.equal(p.enabled, false); assert.equal(p.commerce.acquisitionMinor, '60000');
   await admin.call('enableCommerceProduct', { id: p.id, enabled: true });
@@ -116,7 +126,9 @@ test('credit: daily partial payments, stale quote rejection, 10 percent discount
   const body = { id: l.id, mutationId: randomUUID(), quoteHash: quote.quoteHash };
   await l.mobile.call('commerceSettle', body); await l.mobile.call('commerceSettle', body);
   const mobile = await l.mobile.call('commerceContract', l.id), dashboard = await admin.call('getProContract', l.id);
-  assert.deepEqual(mobile, dashboard); assert.equal(mobile.paidMinor, '81100'); assert.equal(mobile.discountMinor, '8900'); assert.equal(mobile.remainingMinor, '0');
+  for (const key of Object.keys(mobile)) assert.deepEqual(mobile[key], dashboard[key], key);
+  for (const key of ['driverId', 'debtor', 'overdueDays', 'overdueMinor']) assert.equal(Object.hasOwn(mobile, key), false, key);
+  assert.equal(mobile.paidMinor, '81100'); assert.equal(mobile.discountMinor, '8900'); assert.equal(mobile.remainingMinor, '0');
   assert.deepEqual((await admin.call('getProOverview')).reconciliation.mismatches, []);
 });
 

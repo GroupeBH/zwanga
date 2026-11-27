@@ -5,7 +5,7 @@ const { existsSync } = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
-const suites = ['bookingBackendE2E.test.cjs', 'assetCreditBackendE2E.test.cjs']
+const suites = ['bookingBackendE2E.test.cjs', 'assetCreditBackendE2E.test.cjs', 'commerceBackendE2E.test.cjs']
   .map(file => path.join('tests', 'integration', file));
 function runIntegration(run = spawnSync, environment = process.env, exists = existsSync) {
   const bin = environment.AUDIT_POSTGRES_BIN;
@@ -20,6 +20,10 @@ function runIntegration(run = spawnSync, environment = process.env, exists = exi
       { cwd: root, env: environment, stdio: 'inherit', timeout: 10 * 60_000 });
     if (result.error || result.signal || result.status !== 0) return 1;
   }
+  // Authentication needs its own disposable Redis lifecycle as well as PostgreSQL.
+  const auth = run(process.execPath, [path.join('scripts', 'test-auth-local.cjs'), bin],
+    { cwd: root, env: environment, stdio: 'inherit', timeout: 10 * 60_000 });
+  if (auth.error || auth.signal || auth.status !== 0) return 1;
   return 0;
 }
 if (require.main === module) process.exitCode = runIntegration();

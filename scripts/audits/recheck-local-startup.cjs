@@ -13,10 +13,22 @@ const run = (...args) => execFileSync(adb, ['-s', serial, ...args], {
 });
 const shell = (...args) => run('shell', ...args);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const output = path.resolve(__dirname, '../../.expo/recheck-startup-20261103' + (mode === 'resume' ? '-resume' : ''));
+const suffix = process.env.RIDE_AUDIT_RUN_SUFFIX || '';
+if (suffix && !/^[a-z0-9-]+$/.test(suffix)) throw Error('Invalid audit output suffix');
+const output = path.resolve(__dirname, '../../.expo/recheck-startup-20261103' + (mode === 'resume' ? '-resume' : '') + (suffix ? '-' + suffix : ''));
 const report = { scope: 'existing local dev build, not release or physical device', mode, steps: [] };
 const events = () => run('logcat', '-b', 'events', '-d', '-v', 'epoch', '-s', 'am_anr:I', 'am_crash:I')
   .split(/\r?\n/).filter(line => /\bcom\.zwanga(?:,|\])/.test(line));
+async function waitForSession() {
+  const started = Date.now();
+  while (Date.now() - started < 45000) {
+    const runtime = await inspect().catch(() => null);
+    if (runtime?.authenticated && runtime.localApi && runtime.queries.some(q =>
+      q.endpoint === 'getCurrentUser' && q.status === 'fulfilled')) return Date.now() - started;
+    await sleep(1500);
+  }
+  return null;
+}
 async function observe(label, baseline) {
   shell('uiautomator', 'dump', '/sdcard/recheck-startup.xml');
   const xml = shell('cat', '/sdcard/recheck-startup.xml');
@@ -50,7 +62,8 @@ async function observe(label, baseline) {
     const launch = shell('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d',
       'exp+zwanga-app://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081', 'com.zwanga');
     fs.writeFileSync(path.join(output, `cold-${n}-launch.log`), launch);
-    await sleep(12000);
+    report.steps.push({ label: 'cold-readiness-' + n, readinessMs: await waitForSession(),
+      scope: 'dev Metro and current host; not release startup benchmark' });
     await observe('cold-' + n, baseline);
   }
   for (let n = 1; n <= 3; n++) {

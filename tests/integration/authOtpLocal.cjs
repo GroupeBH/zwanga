@@ -22,6 +22,7 @@ const { JwtService } = br('@nestjs/jwt');
 const { DataSource, EntitySchema } = br('typeorm');
 const { IsolatedPostgres } = br('./test/isolated-postgres.ts');
 const { CanonicalPhoneIdentity1780000119000 } = br('./src/database/migrations/1780000119000-CanonicalPhoneIdentity.ts');
+const { ReserveDeletedAccountPhones1780000144000 } = br('./src/database/migrations/1780000144000-ReserveDeletedAccountPhones.ts');
 const { AuthService } = br('./src/auth/auth.service.ts');
 const { AuthController } = br('./src/auth/auth.controller.ts');
 const { OAuthExchangeService } = br('./src/auth/oauth-exchange.service.ts');
@@ -41,7 +42,8 @@ let app, db, boundary, passed = 0;
 async function check(name, task) { console.log(`START ${name}`); await task(); passed++; console.log(`PASS ${name}`); }
 
 async function run() {
-  Logger.overrideLogger(false);
+  // Only synthetic fixtures are used; preserve server errors for audit diagnosis.
+  Logger.overrideLogger(['error']);
   const empty = await pg.start();
   await empty.destroy();
   const text = { type: 'text', nullable: true };
@@ -49,6 +51,7 @@ async function run() {
     name: 'User', target: User, tableName: 'users', columns: {
       id: { type: 'uuid', primary: true, generated: 'uuid' }, phone: { ...text, unique: true },
       email: { ...text, unique: true }, firstName: { type: 'text' }, lastName: { type: 'text' }, gender: text,
+      googleId: text, appleId: text, deletedAt: { type: 'timestamptz', nullable: true },
       role: { type: 'text' }, status: { type: 'text' }, isDriver: { type: 'boolean', default: false },
       isActive: { type: 'boolean', default: true }, isPhoneVerified: { type: 'boolean', default: false },
       driverOnboardingRequestedAt: { type: 'timestamptz', nullable: true }, lastLoginAt: { type: 'timestamptz', nullable: true },
@@ -60,7 +63,10 @@ async function run() {
   // Current account lookups use the canonical-phone SQL function and its real
   // uniqueness guard. Entity synchronization alone does not install migrations.
   const identityRunner = db.createQueryRunner();
-  try { await new CanonicalPhoneIdentity1780000119000().up(identityRunner); }
+  try {
+    await new CanonicalPhoneIdentity1780000119000().up(identityRunner);
+    await new ReserveDeletedAccountPhones1780000144000().up(identityRunner);
+  }
   finally { await identityRunner.release(); }
   await client.connect();
   const redis = Object.assign(Object.create(RedisService.prototype), { client });
@@ -79,7 +85,7 @@ async function run() {
     { provide: AuthService, useValue: auth }, { provide: UsersService, useValue: users },
     { provide: OAuthExchangeService, useValue: {} }, { provide: DiditKycService, useValue: {} },
   ] }).compile();
-  app = module.createNestApplication({ logger: false });
+  app = module.createNestApplication({ logger: ['error'] });
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: true } }));
   await app.listen(0, '127.0.0.1');

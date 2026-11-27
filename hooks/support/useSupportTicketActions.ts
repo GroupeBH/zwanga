@@ -7,7 +7,8 @@ import {
   useGetSupportFaqQuery,
 } from '@/store/api/supportApi';
 import type { SupportTicketCategory } from '@/types';
-import React from 'react';
+import React, { useRef } from 'react';
+import { useAccountScreenScope } from '@/hooks/useAccountScreenScope';
 
 interface Params {
   setTicketSubject: React.Dispatch<React.SetStateAction<string>>;
@@ -40,6 +41,8 @@ export function useSupportTicketActions({
   refetchSupportConfig,
   refetchFaq,
 }: Params) {
+  const submitting = useRef(false);
+  const captureScope = useAccountScreenScope();
   const resetTicketForm = () => {
     setTicketSubject('');
     setTicketMessage('');
@@ -47,11 +50,14 @@ export function useSupportTicketActions({
   };
 
   const handleCloseTicketModal = () => {
+    if (submitting.current) return;
     setShowTicketModal(false);
     resetTicketForm();
   };
 
   const handleSubmitTicket = async () => {
+    const isCurrent = captureScope();
+    if (submitting.current || !isCurrent()) return;
     if (!ticketSubject.trim()) {
       showDialog({
         variant: 'warning',
@@ -70,6 +76,7 @@ export function useSupportTicketActions({
       return;
     }
 
+    submitting.current = true;
     try {
       await createSupportTicket({
         subject: ticketSubject.trim(),
@@ -77,9 +84,11 @@ export function useSupportTicketActions({
         category: ticketCategory,
         priority: 'medium',
       }).unwrap();
-
+      if (!isCurrent()) return;
       await persistFavoriteContact('ticket');
-      handleCloseTicketModal();
+      if (!isCurrent()) return;
+      setShowTicketModal(false);
+      resetTicketForm();
       refetchTickets();
 
       showDialog({
@@ -88,6 +97,7 @@ export function useSupportTicketActions({
         message: 'Votre demande a bien été envoyée. Vous retrouverez son statut dans cette page.',
       });
     } catch (error) {
+      if (!isCurrent()) return;
       showDialog({
         variant: 'danger',
         title: 'Envoi impossible',
@@ -96,6 +106,8 @@ export function useSupportTicketActions({
           "Le ticket n'a pas pu être créé. Réessayez dans quelques instants.",
         ),
       });
+    } finally {
+      submitting.current = false;
     }
   };
 

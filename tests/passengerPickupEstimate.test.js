@@ -97,6 +97,9 @@ const elements = node => !node || typeof node !== 'object' ? [] : Array.isArray(
 const words = node => typeof node === 'string' ? node : Array.isArray(node) ? node.map(words).join(' ') : node?.props ? words(node.props.children) : '';
 test('arrival banner is visible in the header even on expanded maps, wraps text and leaves contact/SOS intact', () => {
   const load = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '@/components/trip/TripShareAction': { TripShareAction: 'Share' },
+    './PassengerCoPassengersAccess': { PassengerCoPassengersAccess: 'Passengers' },
+    '@/features/ride-payment/RidePaymentNotice': { RidePaymentNotice: 'PaymentNotice' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' } });
   const { PassengerNavigationHeader } = load('features/passenger-navigation/PassengerNavigationHeader.tsx');
   const estimate = getPickupArrivalEstimate(params);

@@ -110,8 +110,11 @@ test('changing route IDs cannot display previous details; failures distinguish n
 });
 
 const native = { View: 'View', Text: 'Text', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner',
+  ScrollView: 'ScrollView', useWindowDimensions: () => ({ height: 780, fontScale: 1 }),
   StyleSheet: { create: x => x, hairlineWidth: 1 }, Platform: { OS: 'ios', select: x => x.ios } };
-const ui = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+const uiHooks = hookHarness();
+const ui = loader({ react: { ...React, ...uiHooks.react }, 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/features/request-detail/ChangeRequestDriverButton': { PickupDriverChange: 'PickupDriverChange' },
   'react-native-safe-area-context': { SafeAreaView: 'SafeArea' } });
 function nodes(tree) {
   if (Array.isArray(tree)) return tree.flatMap(nodes);
@@ -129,11 +132,12 @@ test('owner can open the expired-trip editor, but no edit action is shown to ano
   let opened = 0;
   const props = { data: { trip: expired, isTripDriver: true, insets: { bottom: 0 }, router: { push() {} } },
     access: {}, activity: {}, editor: { openEditModal: () => opened++ }, pricing: {}, bookingState: {} };
-  const owner = nodes(TripDetailActionsFooter(props));
+  const owner = nodes(uiHooks.render(() => TripDetailActionsFooter(props)));
   const edit = owner.find(n => n.type === 'Button' && text(n).includes('Modifier'));
   assert.ok(edit); edit.props.onPress(); assert.equal(opened, 1);
-  const passenger = nodes(TripDetailActionsFooter({ ...props, data: { ...props.data, isTripDriver: false } }));
+  const passenger = nodes(uiHooks.render(() => TripDetailActionsFooter({ ...props, data: { ...props.data, isTripDriver: false } })));
   assert.equal(passenger.some(n => n.type === 'Button' && text(n).includes('Modifier')), false);
+  uiHooks.unmount();
 });
 
 test('expiry message is concise and retry appears only for temporary failures', () => {

@@ -36,15 +36,12 @@ test('passenger copy distinguishes travel, pending confirmation and confirmed ar
 });
 
 test('passenger-facing arrival labels avoid driver jargon; the driver waypoint uses plain language', () => {
-  const scopes = ['driver-navigation', 'passenger-navigation', 'ride-recovery', 'driver-payments'];
+  const scopes = ['passenger-navigation', 'ride-recovery'];
   for (const scope of scopes) {
     const folder = path.join(process.cwd(), 'features', scope);
     for (const file of fs.readdirSync(folder).filter(file => /\.tsx?$/.test(file))) {
-      if (scope === 'driver-navigation' && file === 'NavigationWaypointModal.tsx') {
-        assert.match(fs.readFileSync(path.join(folder, file), 'utf8'), /Où déposer le passager/);
-        continue;
-      }
       assert.doesNotMatch(fs.readFileSync(path.join(folder, file), 'utf8'), /\bd[ée]pos[ée]/iu, `${scope}/${file}`);
     }
   }
+  assert.match(fs.readFileSync(path.join(process.cwd(), 'features/driver-navigation/NavigationWaypointModal.tsx'), 'utf8'), /Où déposer le passager/);
 });

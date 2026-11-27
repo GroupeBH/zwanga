@@ -21,7 +21,8 @@ test('integration gate requires explicit disposable binaries and fails immediate
   const env = { AUDIT_POSTGRES_BIN: path.resolve('synthetic-pg-bin') };
   assert.equal(runIntegration(run, env, () => false), 1); assert.equal(calls.length, 0);
   assert.equal(runIntegration(run, env, () => true), 0);
-  assert.equal(calls.length, 2); assert.deepEqual(calls.map(args => args.at(-1)), suites);
+  assert.equal(calls.length, 4); assert.deepEqual(calls.slice(0, 3).map(args => args.at(-1)), suites);
+  assert.deepEqual(calls[3], [path.join('scripts', 'test-auth-local.cjs'), env.AUDIT_POSTGRES_BIN]);
   for (const result of [{ status: 1 }, { status: null, signal: 'SIGTERM' }, { error: Error('test') }]) {
     let attempts = 0;
     assert.equal(runIntegration(() => { attempts++; return result; }, env, () => true), 1);

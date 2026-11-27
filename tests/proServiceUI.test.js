@@ -16,6 +16,28 @@ function nativeUI(extra = {}) {
 }
 const offering = { code: 'documents', name: 'Documents', availability: 'open', documentOptions: [{ code: 'permis', label: 'Permis' }] };
 
+test('service buttons keep their accessible title while idle, busy or disabled', () => {
+  const { ServiceButton } = loader({
+    'react-native': nativeUI({ ActivityIndicator: 'Spinner' }),
+    '@expo/vector-icons': { Ionicons: 'Icon' },
+    'expo-router': { router: {}, Stack: {} },
+    'react-native-safe-area-context': { SafeAreaView: 'Safe' },
+  })('features/pro-services/ServiceLayout.tsx');
+  let calls = 0;
+  for (const state of [{}, { busy: true }, { disabled: true }, { busy: true, disabled: true }, { busy: false }]) {
+    const tree = ServiceButton({ title: 'Actualiser mes dossiers', onPress: () => calls++, ...state });
+    const disabled = !!(state.busy || state.disabled);
+    assert.equal(tree.props.accessibilityLabel, 'Actualiser mes dossiers');
+    assert.equal(tree.props.accessibilityRole, 'button');
+    assert.deepEqual(tree.props.accessibilityState, { disabled, busy: !!state.busy });
+    assert.equal(tree.props.disabled, disabled);
+    assert.ok(nodes(tree).includes('Actualiser mes dossiers'));
+    if (state.busy) assert.equal(nodes(tree).find(n => n.type === 'Spinner').props.accessible, false);
+    if (!disabled) tree.props.onPress();
+  }
+  assert.equal(calls, 2);
+});
+
 test('catalogue opens the matching service and future services have no submit action', () => {
   const routes = [];
   const { OpenService, UnavailableService } = loader({

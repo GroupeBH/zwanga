@@ -109,17 +109,18 @@ export function ServiceButton({
   return (
     <TouchableOpacity
       accessibilityRole="button"
-      accessibilityState={{ disabled: disabled || busy, busy }}
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: !!(disabled || busy), busy: !!busy }}
       onPress={onPress}
       activeOpacity={0.75}
-      disabled={disabled || busy}
+      disabled={!!(disabled || busy)}
       style={[
         s.button,
         secondary && s.secondary,
         (disabled || busy) && s.disabled,
       ]}
     >
-      {busy && <ActivityIndicator color={secondary ? "#172D3B" : "#FFF"} />}
+      {busy && <ActivityIndicator accessible={false} color={secondary ? "#172D3B" : "#FFF"} />}
       <Text style={[s.buttonText, secondary && s.secondaryText]}>{title}</Text>
     </TouchableOpacity>
   );

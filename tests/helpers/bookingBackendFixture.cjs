@@ -11,6 +11,7 @@ const load = name => backend(path.join(root, name));
 const { IsolatedPostgres } = load('test/isolated-postgres.ts');
 const { restrictConnections } = load('test/load/isolation.cjs');
 const { Test } = backend('@nestjs/testing');
+const { getRepositoryToken } = backend('@nestjs/typeorm');
 const { Logger, ValidationPipe } = backend('@nestjs/common');
 const { ConfigService } = backend('@nestjs/config');
 const { PassportModule, PassportStrategy } = backend('@nestjs/passport');
@@ -81,6 +82,8 @@ async function startBookingBackend() {
     }
     const module = await Test.createTestingModule({ imports: [PassportModule],
       controllers: [BookingsController], providers: [TestJwtStrategy,
+        // Keep the real response interceptor and its fresh access-control query.
+        { provide: getRepositoryToken(Booking), useValue: repo(Booking) },
         { provide: BookingsService, useValue: service },
         { provide: RideDeclarationsService, useValue: {} }],
     }).compile();

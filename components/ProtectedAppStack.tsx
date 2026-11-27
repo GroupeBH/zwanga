@@ -48,6 +48,7 @@ export function ProtectedAppStack() {
         <Stack.Screen name="my-requests" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="passenger/[id]" />
+        <Stack.Screen name="public-profile/[id]" />
         <Stack.Screen name="payment-history" />
         <Stack.Screen name="publish" options={{ presentation: 'card' }} />
         <Stack.Screen name="rate/[id]" options={{ presentation: 'card' }} />

@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams, type Href } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
 import {
   ServiceLayout,
@@ -38,12 +38,25 @@ export default function ServiceCaseScreen() {
   const item = result.currentData,
     quote = item?.quote;
   const busy = accepting.isLoading || cancelling.isLoading;
+  const actionInFlight = useRef(false);
+  const completedAction = useRef("");
+  const mounted = useRef(true);
+  const canAct = !!item && item.id === id && active && !result.isError &&
+    !result.isLoading && !result.isFetching && !busy;
+  const current = useRef({ id, version: quote?.version, canAct });
+  current.current = { id, version: quote?.version, canAct };
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     setConsent(false);
     setConfirmCancel(false);
   }, [id, quote?.version]);
   const action = async (kind: "accept" | "cancel") => {
-    if (busy || !item) return;
+    const key = `${id}:${quote?.version}:${kind}`;
+    const isCurrent = () => mounted.current && current.current.id === id && current.current.version === quote?.version;
+    if (!canAct || !current.current.canAct || !isCurrent() || actionInFlight.current ||
+      completedAction.current === key || !item) return;
+    if (kind === "accept" && (!quote || !consent)) return;
+    actionInFlight.current = true;
     setError("");
     try {
       if (kind === "accept" && quote && consent)
@@ -53,10 +66,15 @@ export default function ServiceCaseScreen() {
           consent: true,
         }).unwrap();
       else if (kind === "cancel") await cancel(id).unwrap();
-      setConsent(false);
-      setConfirmCancel(false);
+      completedAction.current = key;
+      if (isCurrent()) {
+        setConsent(false);
+        setConfirmCancel(false);
+      }
     } catch (reason) {
-      setError(proError(reason));
+      if (isCurrent()) setError(proError(reason));
+    } finally {
+      actionInFlight.current = false;
     }
   };
   return (
@@ -76,7 +94,7 @@ export default function ServiceCaseScreen() {
           <Text style={s.title}>{serviceNames[item.serviceCode]}</Text>
           <Text style={s.text}>Référence : {item.id}</Text>
           {item.canEdit && <ServiceButton title="Modifier ma demande" secondary
-            disabled={busy || !active || result.isFetching}
+            disabled={!canAct}
             onPress={() => router.push(`/services/edit?id=${item.id}` as Href)} />}
           {!!item.customerMessage && (
             <View style={s.notice}>
@@ -163,7 +181,7 @@ export default function ServiceCaseScreen() {
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: consent }}
                       style={s.option}
-                      disabled={busy}
+                      disabled={!canAct}
                       onPress={() => setConsent(!consent)}
                     >
                       <Ionicons
@@ -180,7 +198,7 @@ export default function ServiceCaseScreen() {
                     <ServiceButton
                       title="Accepter ce devis"
                       busy={accepting.isLoading}
-                      disabled={!consent || busy}
+                      disabled={!consent || !canAct}
                       onPress={() => action("accept")}
                     />
                   </>
@@ -272,7 +290,7 @@ export default function ServiceCaseScreen() {
                     : "Annuler ma demande"
                 }
                 busy={cancelling.isLoading}
-                disabled={busy}
+                disabled={!canAct}
                 onPress={() =>
                   confirmCancel ? action("cancel") : setConfirmCancel(true)
                 }

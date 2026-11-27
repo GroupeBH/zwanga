@@ -117,7 +117,10 @@ export function getTechnicalErrorMessage(rawMessage: string, status: number | st
     return 'Ces informations existent d\u00e9j\u00e0. V\u00e9rifiez puis r\u00e9essayez.';
   }
 
-  if (/\b(date|departure date|departure time|start date|past)\b/.test(message)) {
+  // "date" also occurs in ordinary French warnings. Translate only an actual
+  // technical validation error, never overwrite an overdue-pickup explanation.
+  if (/\b(date|departure date|departure time|start date|past)\b/.test(message) &&
+      /\b(invalid|required|must|cannot|past|validation|iso ?8601)\b/.test(message)) {
     return 'Choisissez une date et une heure de d\u00e9part valides, puis r\u00e9essayez.';
   }
 

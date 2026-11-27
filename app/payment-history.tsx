@@ -1,4 +1,5 @@
 import { usePaymentReceiptDownload } from '../hooks/payment-history/usePaymentReceiptDownload';
+import { usePaymentDetailsSelection } from '@/hooks/payment-history/usePaymentDetailsSelection';
 import {
   PaymentFilter,
   FILTERS,
@@ -18,7 +19,6 @@ import { useHistoryCursor } from '@/hooks/useHistoryCursor';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { HistoryPagination } from '@/components/ui/HistoryPagination';
 import type { PaymentHistoryItem } from '@/types';
-import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -37,8 +37,6 @@ export default function PaymentHistoryScreen() {
   const [activeFilter, setActiveFilter] = useState<PaymentFilter>('all');
   const isScreenActive = useScreenIsActive();
   const cursor = useHistoryCursor(activeFilter);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentHistoryItem | null>(null);
-  const [loadingDetailsPaymentId, setLoadingDetailsPaymentId] = useState<string | null>(null);
   const [downloadingPaymentId, setDownloadingPaymentId] = useState<string | null>(null);
   const {
     currentData: paymentPage,
@@ -55,51 +53,23 @@ export default function PaymentHistoryScreen() {
   });
   const [getPaymentDetails] = useLazyGetPaymentDetailsQuery();
 
-  const handleOpenPaymentDetails = async (payment: PaymentHistoryItem) => {
-    try {
-      setLoadingDetailsPaymentId(payment.id);
-      const details = await getPaymentDetails(payment.id).unwrap();
-      setSelectedPayment(details);
-    } catch (error: any) {
-      showDialog({
-        variant: 'danger',
-        title: 'Détail indisponible',
-        message: getApiErrorMessage(
-          error,
-          'Impossible de charger le détail du paiement pour le moment.',
-        ),
-      });
-    } finally {
-      setLoadingDetailsPaymentId(null);
-    }
-  };
+  const { selectedPayment, loadingDetailsPaymentId, openDetails, closeDetails } =
+    usePaymentDetailsSelection(getPaymentDetails, showDialog);
 
   useEffect(() => {
     const requestedPaymentId = Array.isArray(paymentId) ? paymentId[0] : paymentId;
-    if (!requestedPaymentId || openedPaymentIdRef.current === requestedPaymentId) return;
+    if (!isScreenActive || !requestedPaymentId || openedPaymentIdRef.current === requestedPaymentId) return;
 
     openedPaymentIdRef.current = requestedPaymentId;
-    setLoadingDetailsPaymentId(requestedPaymentId);
-    void getPaymentDetails(requestedPaymentId)
-      .unwrap()
-      .then((details) => setSelectedPayment(details))
-      .catch((error: any) => {
-        openedPaymentIdRef.current = null;
-        showDialog({
-          variant: 'danger',
-          title: 'Detail indisponible',
-          message: getApiErrorMessage(error, 'Impossible de charger la facture pour le moment.'),
-        });
-      })
-      .finally(() => setLoadingDetailsPaymentId(null));
-  }, [getPaymentDetails, paymentId, showDialog]);
+    void openDetails(requestedPaymentId);
+  }, [isScreenActive, openDetails, paymentId]);
 
   const { handleDownloadPayment } = usePaymentReceiptDownload({
     isDownloadingRef,
     setDownloadingPaymentId,
     selectedPayment,
     getPaymentDetails,
-    setSelectedPayment,
+    closeDetails,
     showDialog,
   });
 
@@ -113,7 +83,7 @@ export default function PaymentHistoryScreen() {
       <View key={payment.id} style={[styles.paymentRow, rowBackground]}>
         <TouchableOpacity
           style={styles.paymentMain}
-          onPress={() => handleOpenPaymentDetails(payment)}
+          onPress={() => openDetails(payment.id)}
           disabled={isLoadingDetails}
           activeOpacity={0.75}
           accessibilityLabel="Voir le détail du paiement"
@@ -257,7 +227,7 @@ export default function PaymentHistoryScreen() {
           visible={Boolean(selectedPayment)}
           animationType="slide"
           transparent
-          onRequestClose={() => setSelectedPayment(null)}
+          onRequestClose={() => closeDetails()}
         >
           <View style={styles.detailOverlay}>
             <View style={styles.detailSheet}>
@@ -270,7 +240,7 @@ export default function PaymentHistoryScreen() {
                 </View>
                 <TouchableOpacity
                   style={styles.detailCloseButton}
-                  onPress={() => setSelectedPayment(null)}
+                  onPress={() => closeDetails()}
                   accessibilityLabel="Fermer le détail du paiement"
                 >
                   <Ionicons name="close" size={22} color={Colors.gray[700]} />
@@ -320,7 +290,7 @@ export default function PaymentHistoryScreen() {
               <View style={styles.detailActions}>
                 <TouchableOpacity
                   style={styles.detailSecondaryButton}
-                  onPress={() => setSelectedPayment(null)}
+                  onPress={() => closeDetails()}
                 >
                   <Text style={styles.detailSecondaryButtonText}>Fermer</Text>
                 </TouchableOpacity>

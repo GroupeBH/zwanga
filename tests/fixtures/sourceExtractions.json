@@ -33,8 +33,8 @@
       "sha256": "dfab64ae87a794db5ebfc67074151d70b07c90dbd915ac95736db173d83675c2"
     },
     "features/screen-styles/app/notifications/index.ts": {
-      "keys": 49,
-      "sha256": "edb873ca19691d3e0c063ffaf1f27636c7e292e5e735f6a10f3bddf54801575f"
+      "keys": 50,
+      "sha256": "e357cac4a0f9c67688568a99e82419353e88429566d80bdc31c7fc532d23fcfd"
     },
     "features/screen-styles/app/passenger/detail/index.ts": {
       "keys": 45,
@@ -81,16 +81,16 @@
       "sha256": "19c0f0ce8d230c027881fd0bcbc0762c9fcdd5794959a78c6c6cfe554fcfa823"
     },
     "features/screen-styles/app/tabs/messages/index.ts": {
-      "keys": 30,
-      "sha256": "d18c5853ffcf14ebbbedd5f589b9f73e4aaa52336869cc5c9c72f79b3be8a65f"
+      "keys": 31,
+      "sha256": "a004cf448dff9bdecee25705f2884082b74d4a8ecfddfb54a2ddaea949aa1fda"
     },
     "features/screen-styles/app/tabs/trips/index.ts": {
       "keys": 151,
       "sha256": "85525211d1929a9df0c4bb04c440dee697e8674cc64ded6e1651cc74041b9352"
     },
     "features/screen-styles/app/trip/detail/index.ts": {
-      "keys": 545,
-      "sha256": "6fba2bd97c1665804a591a8ab61ebce3c0cf84577cb88148c5fe400cf85436db"
+      "keys": 555,
+      "sha256": "ac5b2da63e0a4c29bbaa2936011fa5a6f84a71d7b725727a362eae29da539729"
     },
     "features/screen-styles/app/trip/manage/detail/index.ts": {
       "keys": 111,
@@ -138,7 +138,7 @@
       "getTrips": "4a1fb3117db14f20783c6f470cb3500a76c3d5c6b17fd67b2593dcbbdcc5b2ad",
       "getAllTrips": "da14591bee14313537229643279bc5d38711303aae294147a56bbe00bc14bf1b",
       "getMyTrips": "a2bd082e088a0d3f0d1ca26f6a65de978dd20e511a8bd9c0a0152d364fd74ba3",
-      "getMyActivityTrips": "8e1aac383d53ddadbacccbbca7d6cac6cc277c8fe14e442427cfa311e8127af8",
+      "getMyActivityTrips": "3ff19419937a221c8bdc09497f4b13dd78e3d881df8aff3c9a440b3bc77fb468",
       "getMyRecurringTrips": "031aa9160a0a8b333d6938f3df04e2258034efbea9e8e4d6ca93f75cc4701de0",
       "searchTripsByCoordinates": "56a72403d9e53eb702bd593a921b6e7faf1e57734775864775262b3dc9c4b912",
       "getTripsByCoordinates": "f682a7d2e263a469d8151bc2401d33a4c1803bb10d9980e58630f48d6a3e7713",
@@ -173,6 +173,10 @@
       "getMyBookingsForTrip": "f0310b56d356b4c410cdfabd9038b083d18a1c962f2d6a936020b33c10b78adb",
       "getTripBookings": "c94d382891128dca142b042c13e25acd9b585cf76638386204c493bcddad0790",
       "initiateBookingPayment": "edf682498af3026ab51fd689f8175ee4a1ab82f6671a990be4118894efcc610f",
+      "payTokensCash": "5fb13a12eb213ac5328f10ac5f2cf961c0cce73a57165f6eb8f0705d7e459178",
+      "switchTokenPaymentToCash": "0a4ff3183d30ecac259ada6c19f2c5507f312dc4117b756e901ff136ed55c61f",
+      "getBookingPaymentRequest": "70a1abe7ec985fd8d00eb917020acac94a11fc1143f666f26b365df5e53a6948",
+      "requestBookingPayment": "3ccebfe7871f0ad5bd22a07df18d99c8b41628dbe54face0409e1bbc730875b8",
       "updateBookingPaymentMode": "f2831d040b8c3aa43f8cfadce8d67ca7575198c11cb22977c4ae4971e03d83b2",
       "checkBookingPaymentStatus": "f50275b6813e7394db325229f341cc4ef68a768796a9b6742322ad1b71292fe4",
       "getBookingById": "f914acaf2be3558e3f601f59b9132346c5d70a5127b0974129ad9cb51290e0b5",
@@ -186,7 +190,7 @@
       "confirmPickupByPassenger": "e4fa535c7c04a3e39903b340e05f6bb93f7db49a6b25406ccdb3c3af9253324d",
       "confirmDropoff": "f13e77b03b41b64b0bbbc99b5c2036be4c995cbe8c14887ca08704e13850b7f9",
       "declareCashPayment": "bb385b19ea6142465d17f36aa0ec6b403d648afb1c599b57ba513d221ab18f2f",
-      "confirmCashReceipt": "e421a7138587ce1e36f50363739449547c8883489436c3ca192182d90d4ea71e",
+      "confirmCashReceipt": "b1b29466e91fa8287b2fd4443a474c336a127b04dadef39df9ab06ec4f113053",
       "confirmDropoffByPassenger": "0da76855d8156244520c6d63f68180e8481354505fb48a7031e2ab87a7007afc",
       "requestPassengerTripInterruption": "2a806c2359610fee3b1dabab996157d18d2399c46d46681e4e5ba51c31bed44e",
       "getPassengerInterruptionFarePreview": "88f44e03f4119e9af4019f368093db58db6dae6f7bce9cd54334cf217ae6a44f",

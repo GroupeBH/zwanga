@@ -69,5 +69,5 @@ test('API routes use authenticated identity, encoded IDs and shared invalidation
   assert.deepEqual(endpoints.applyToFleet.query({ organizationId: 'o/r', message: 'Ma présentation' }), { url: '/partners/fleets/o%2Fr/applications', method: 'POST', body: { message: 'Ma présentation' } });
   assert.deepEqual(endpoints.withdrawFleetApplication.query({ id: 'a/b' }), { url: '/partners/fleet-applications/a%2Fb/withdraw', method: 'POST', body: {} });
   assert.deepEqual(endpoints.getMyFleetApplications.query({ page: 2 }), { url: '/partners/fleet-applications/mine', params: { page: 2, limit: 20 } });
-  assert.deepEqual(endpoints.applyToFleet.invalidatesTags, ['ProServices']);
+  assert.deepEqual(endpoints.applyToFleet.invalidatesTags, [{ type: 'ProServices', id: 'FLEET' }]);
 });

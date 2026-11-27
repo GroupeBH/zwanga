@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { router, useLocalSearchParams, type Href } from "expo-router";
 import {
@@ -20,7 +20,16 @@ export default function NewServiceScreen() {
   const catalogue = useGetProOfferingsQuery(undefined, { skip: !active });
   const current = useGetCurrentDocumentCaseQuery(undefined, { skip: !active || service !== 'documents', refetchOnMountOrArgChange: true });
   const offering = catalogue.data?.find((item) => item.code === service);
-  if (service === 'documents' && (current.isFetching || !current.currentData || current.isError || current.currentData.request)) {
+  // Check uniqueness before opening the form, not during its own cache invalidation.
+  // Keep the wizard (draft, idempotency key and success receipt) mounted once admitted.
+  const formScope = useMemo(() => ({ userId: user?.id, service }), [user?.id, service]);
+  const [admittedScope, setAdmittedScope] = useState<typeof formScope>();
+  const canOpenDocumentForm = active && !current.isFetching && !current.isError &&
+    !!current.currentData && !current.currentData.request;
+  useEffect(() => {
+    if (service === 'documents' && canOpenDocumentForm) setAdmittedScope(formScope);
+  }, [service, canOpenDocumentForm, formScope]);
+  if (service === 'documents' && admittedScope !== formScope && !canOpenDocumentForm) {
     const request = current.currentData?.request;
     return <ServiceLayout title="Ma demande de documents">
       {current.isFetching ? <ActivityIndicator /> : current.isError || !current.currentData ? <>

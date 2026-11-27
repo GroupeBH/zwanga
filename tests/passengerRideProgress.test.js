@@ -41,7 +41,7 @@ test('each confirmed transition notifies once; late REST responses, duplicate so
   assert.equal(tracker.observe({ ...dropped, updatedAt: booking.updatedAt }), null);
   assert.equal(tracker.observe({ ...dropped, passengerId: 'other' }), null);
   assert.equal(tracker.observe({ ...dropped, tripId: 'replacement' }), null);
-  assert.match(tracker.observe(dropped).message, /dépose/);
+  assert.match(tracker.observe(dropped).message, /conducteur.*arrivée/);
   assert.equal(tracker.observe({ ...picked, updatedAt: '2026-11-25T11:00:00Z' }), null);
   assert.equal(tracker.observe(dropped), null);
 });

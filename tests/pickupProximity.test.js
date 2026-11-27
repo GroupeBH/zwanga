@@ -32,6 +32,7 @@ function passengerNotices() {
     '@/utils/navigationSpeech': { NavigationSpeech: { stop: async () => {}, speak: text => spoken.push(text) } },
   })('hooks/passenger-navigation/usePassengerNavigationNotices.ts');
   const props = { bookingId: booking.id, booking, trip: { id: 'trip', vehicle }, isScreenActive: true,
+    refetchBooking() {}, refetchTrip() {},
     isMountedRef: { current: true }, presentedPickupNoticeKeysRef: { current: new Set() },
     highestPickupNoticePriorityRef: { current: new Map() }, hasDisplayedDriverNearNotificationRef: { current: false },
     setPickupNotice: notice => shown.push(notice) };
@@ -93,9 +94,10 @@ test('passenger ignores foreign, boarded, cancelled, dropped-off and background 
   h.hooks.unmount();
 });
 
-test('manual pickup acknowledgement is inline only; automatic boarding keeps its normal notice', async () => {
+test('boarding acknowledgement refetches once and leaves the modal to the global coordinator', async () => {
   for (const mode of ['local', 'server', 'dual', 'automatic', 'foreign-entry', 'blocked-entry']) {
-    const h = passengerNotices(), notices = [];
+    const h = passengerNotices(), notices = []; let reads = 0;
+    h.props.refetchBooking = () => { reads++; };
     h.props.hasPresentedBoardedNoticeRef = { current: false };
     h.props.setPickupNoticeCountdown = () => {};
     h.props.showNotice = notice => notices.push(notice);
@@ -106,7 +108,8 @@ test('manual pickup acknowledgement is inline only; automatic boarding keeps its
       stage: 'pickup', decision: 'confirm', state: mode === 'blocked-entry' ? 'blocked' : 'queued',
     }];
     h.render().presentBoardedNotice(); h.render().presentBoardedNotice(); await flush();
-    assert.equal(notices.length, ['local', 'server', 'dual'].includes(mode) ? 0 : 1, mode);
+    assert.equal(notices.length, 0, mode);
+    assert.equal(reads, 1, mode);
     assert.equal(h.props.hasPresentedBoardedNoticeRef.current, true);
     h.hooks.unmount();
   }

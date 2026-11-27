@@ -11,6 +11,19 @@ import { hasPassengerFinishedRide } from '@/features/activity/tripParticipation'
 // instead of fetching every trip's bookings again from a global timer.
 export type ActivityTrip = Trip & { paymentNotices: DriverPaymentNotice[]; reviewCompletion: ReviewCompletion | null };
 export type ServerActivityTrip = Omit<ServerTrip, 'bookings'> & { bookings?: ServerBooking[] };
+export type ActivityTripResponse = ServerActivityTrip[] | {
+  format: 'driver-activity-v1';
+  drivers: Record<string, ServerActivityTrip['driver']>;
+  items: Omit<ServerActivityTrip, 'driver'>[];
+};
+
+/** Accept old servers as well as the opt-in compact wire format. */
+export function mapActivityTrips(response: ActivityTripResponse): ActivityTrip[] {
+  const items = Array.isArray(response) ? response : response.items.map(trip => ({
+    ...trip, driver: response.drivers[trip.driverId] ?? null,
+  }));
+  return items.map(mapActivityTrip);
+}
 
 export function mapActivityTrip(response: ServerActivityTrip): ActivityTrip {
   const trip = mapServerTripToClient(response as ServerTrip);
