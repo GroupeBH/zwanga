@@ -13,6 +13,7 @@ import {
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { Colors } from '@/constants/styles';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
 import React from 'react';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import type { MapMarker } from 'react-native-maps';
@@ -59,6 +60,8 @@ export function PassengerNavigationMap({
       showsBuildings={false}
       showsIndoors={false}
       showsPointsOfInterest={false}
+      moveOnMarkerPress={false}
+      toolbarEnabled={false}
     >
     {/* Position du passager */}
     {state.passengerLocation && !context.isPassengerOnboard && (
@@ -105,40 +108,24 @@ export function PassengerNavigationMap({
 
     {/* Point de récupération */}
     {coordinates.pickupCoordinate && !booking.pickedUp && (
-      <Marker
-        ref={state.pickupMarkerRef}
+      <RoutePointMarker kind="departure"
         key="pickup-location"
         coordinate={coordinates.pickupCoordinate}
-        anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
         title="Point de prise en charge"
         description={booking.passengerOrigin || trip.departure.address}
-        tracksViewChanges={IS_ANDROID && !state.isTrackingMarkerLoaded('pickup-location')}
         zIndex={22}
-      >
-        <PassengerTrackingMarker
-          status="pickup"
-          onReady={() => handleTrackingMarkerReady('pickup-location', state.pickupMarkerRef)}
-        />
-      </Marker>
+      />
     )}
 
     {/* Point d'arrivée */}
     {coordinates.dropoffCoordinate && (
-      <Marker
-        ref={state.dropoffMarkerRef}
+      <RoutePointMarker kind="arrival"
         key="dropoff-location"
         coordinate={coordinates.dropoffCoordinate}
-        anchor={PASSENGER_TRACKING_MARKER_ANCHOR}
         title="Destination"
         description={booking.passengerDestination || trip.arrival.address}
-        tracksViewChanges={IS_ANDROID && !state.isTrackingMarkerLoaded('dropoff-location')}
         zIndex={21}
-      >
-        <PassengerTrackingMarker
-          status="arrived"
-          onReady={() => handleTrackingMarkerReady('dropoff-location', state.dropoffMarkerRef)}
-        />
-      </Marker>
+      />
     )}
     {/* Route complete */}
     {presentation.displayedRouteCoordinates.length > 1 && (

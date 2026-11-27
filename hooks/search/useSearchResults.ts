@@ -3,6 +3,8 @@ import type { SearchMode, SearchSortMode as SortMode } from '@/components/search
 import type { Trip, TripRequest, User } from '@/types';
 import type { selectUserCoordinates } from '@/store/selectors';
 import { rankRequestsByProximity } from '@/features/trip-request/requestPriority';
+import { sortSearchTrips } from '@/features/search/sortSearchTrips';
+import type { MapCoordinate } from '@/utils/tripCoordinates';
 import {
   EMPTY_SEARCH_TRIPS,
   EMPTY_SEARCH_REQUESTS,
@@ -12,6 +14,8 @@ import {
 } from '@/features/search/searchModel';
 
 interface Params {
+  serverOrderedTrips?: boolean;
+  tripCoordinate?: MapCoordinate | null;
   serverOrderedRequests?: boolean;
   isScreenActive?: boolean;
   advancedTrips: Trip[] | null;
@@ -30,7 +34,8 @@ interface Params {
 
 export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, searchMode,
   departure, arrival, desiredSeats, sortMode, driverCoordinate, availableTripRequests,
-  isDriverAccount, currentUser, isScreenActive = true, serverOrderedRequests = false }: Params) {
+  isDriverAccount, currentUser, isScreenActive = true, serverOrderedRequests = false,
+  serverOrderedTrips = false, tripCoordinate }: Params) {
   const previous = useRef({ userId: currentUser?.id, baseTrips: EMPTY_SEARCH_TRIPS,
     filteredTrips: EMPTY_SEARCH_TRIPS, filteredTripRequests: EMPTY_SEARCH_REQUESTS });
   const baseTrips = useMemo(() => {
@@ -70,24 +75,10 @@ export function useSearchResults({ advancedTrips, remoteTrips, storedTrips, sear
       return trip.availableSeats >= desiredSeats && matchesSearch(routeText, routeQuery);
     });
 
-    return visibleTrips.sort((a, b) => {
-      if (sortMode === 'cheap') {
-        const priceA = Number(a.price ?? 0);
-        const priceB = Number(b.price ?? 0);
-
-        if (priceA !== priceB) {
-          return priceA - priceB;
-        }
-      }
-
-      const departureA = new Date(a.departureTime).getTime();
-      const departureB = new Date(b.departureTime).getTime();
-      const safeDepartureA = Number.isFinite(departureA) ? departureA : Number.MAX_SAFE_INTEGER;
-      const safeDepartureB = Number.isFinite(departureB) ? departureB : Number.MAX_SAFE_INTEGER;
-
-      return safeDepartureA - safeDepartureB;
-    });
-  }, [arrival, baseTrips, currentUser?.id, departure, desiredSeats, searchMode, sortMode, isScreenActive]);
+    if (serverOrderedTrips && (remoteTrips || advancedTrips)) return visibleTrips;
+    return sortSearchTrips(visibleTrips, sortMode === 'cheap', tripCoordinate);
+  }, [arrival, baseTrips, currentUser?.id, departure, desiredSeats, searchMode, sortMode, isScreenActive,
+    serverOrderedTrips, remoteTrips, advancedTrips, tripCoordinate]);
 
   const filteredTripRequests = useMemo(() => {
     if (!isDriverAccount) return EMPTY_SEARCH_REQUESTS;

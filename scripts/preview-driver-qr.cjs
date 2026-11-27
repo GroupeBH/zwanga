@@ -1,5 +1,5 @@
 /* global __dirname */
-// Synthetic fixtures only: React Native Web + backend HTML, no user/API/network data.
+// Synthetic fixtures only: React Native Web + zwanga-web component, no user/API/network data.
 const fs = require('node:fs');
 const path = require('node:path');
 const { Buffer } = require('node:buffer');
@@ -35,7 +35,7 @@ function renderMobile({ width, textScale = 1 }) {
     },
   };
   const load = loader({ 'react-native': native, 'react-native-qrcode-svg': qrSvg,
-    '@/config/env': { API_BASE_URL: 'https://api.example.test/api/v1' },
+    '@/config/env': { PUBLIC_WEB_URL: 'https://web.example.test' },
     '@/store/api/publicDriverApi': { useGetPublicDriverCardQuery: () => ({ currentData: card, isFetching: false, refetch: noop }) },
     '@/services/tokenSession': { getTokenSessionVersion: () => 1 }, '@/utils/shareDriverQr': { shareDriverQr: noop },
   });
@@ -48,8 +48,14 @@ function renderMobile({ width, textScale = 1 }) {
 }
 async function run() {
   const directory = path.resolve(__dirname, '../.expo/driver-qr-preview'); fs.mkdirSync(directory, { recursive: true });
-  const backend = path.resolve(__dirname, '../../zwanga-backend/src/users/public-driver/public-driver.html.ts');
-  const { renderDriverCard } = loader()(backend);
+  const site = path.resolve(__dirname, '../../zwanga-web');
+  const publicModel = loader()(path.join(site, 'lib/public-driver.ts'));
+  const classes = new Proxy({}, { get: (_, key) => key === '__esModule' ? false : key });
+  // Fixture uses the mobile renderer's React runtime; the website has its own React version.
+  const { DriverPublicCard } = loader({ '@/lib/public-driver': publicModel, './profile.module.css': classes,
+    'react/jsx-runtime': require('react/jsx-runtime') })(path.join(site, 'app/conducteurs/[id]/DriverPublicCard.tsx'));
+  const css = fs.readFileSync(path.join(site, 'app/styles/globals.css'), 'utf8') + fs.readFileSync(path.join(site, 'app/conducteurs/[id]/profile.module.css'), 'utf8');
+  const renderDriverCard = value => `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}:root{--font-inter:Arial;--font-serif:Georgia}</style><main class="page"><header class="header"><span class="brand">Zwanga</span>Fiche publique</header>${value ? renderToStaticMarkup(h(DriverPublicCard, { card: value })) : '<h1>Fiche indisponible</h1><p>Ce profil conducteur n’est plus accessible.</p>'}</main></html>`;
   const scenarios = [
     { name: 'mobile-standard', width: 390, height: 844 }, { name: 'mobile-small', width: 320, height: 568 },
     { name: 'mobile-large-text', width: 320, height: 568, textScale: 1.5 },

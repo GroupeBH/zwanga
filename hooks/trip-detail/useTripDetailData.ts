@@ -9,6 +9,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectTripById, selectUser } from '@/store/selectors';
 import { useIsFocused } from '@react-navigation/native';
 import { useAppIsActive } from '@/hooks/useAppIsActive';
+import { useRequestDetailExit } from '@/hooks/request-detail/useRequestDetailExit';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
@@ -36,6 +37,11 @@ export function useTripDetailData() {
   const passengersFirst = params.section === 'passengers' || Boolean(focusBookingId);
   const tripFromStore = useAppSelector((state) => selectTripById(tripId)(state));
   const user = useAppSelector(selectUser);
+  const requestReturn = useRequestDetailExit(router, isScreenActive, `${user?.id}:${tripId}`);
+  const navigateToRequest = requestReturn.navigate;
+  const returnToRequest = useCallback((id: string) => {
+    navigateToRequest({ pathname: '/request/[id]', params: { id } });
+  }, [navigateToRequest]);
 
   // Récupérer le trajet depuis l'API si pas dans le store
   // Polling intelligent basé sur le statut du trajet
@@ -153,6 +159,8 @@ export function useTripDetailData() {
   }, [trip?.lastLocationUpdateAt]);
 
   return {
+    returnToRequest,
+    isReturningToRequest: requestReturn.leaving,
     trip,
     isTripDriver,
     shouldOpenEditFromParams,

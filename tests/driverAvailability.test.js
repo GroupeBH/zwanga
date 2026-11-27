@@ -47,8 +47,8 @@ test('profile entry explains its purpose, honors the server flag and skips reads
     } },
   })('components/profile/ProfileDriverAvailabilityEntry.tsx');
   const tree = ProfileDriverAvailabilityEntry();
-  assert.match(text(tree), /Alertes conducteur/);
-  assert.match(text(tree), /Réservations et commandes proches, automatiquement/);
+  assert.match(text(tree), /Localisation et alertes/);
+  assert.match(text(tree), /Partage de position et réglages des notifications/);
   tree.props.onPress();
   assert.deepEqual(calls, ['/driver-availability']);
   assert.equal(options.skip, false);
@@ -216,15 +216,16 @@ test('settings explain last-known positions while remaining compatible with lega
     }) },
   })('app/driver-availability.tsx').default;
   let tree = hooks.render(Screen);
-  assert.match(text(tree), /Aucun réglage supplémentaire n’est nécessaire/);
+  assert.match(text(tree), /Son et notifications/);
   assert.doesNotMatch(text(tree), /5 minute|position trop ancienne/);
   assert.doesNotMatch(text(tree), /Places proposées|Avec quel véhicule|Me rendre disponible/);
+  assert.doesNotMatch(text(tree), /dès la connexion/);
+  nodes(tree).find(node => node.props.accessibilityLabel === 'Régler le son et les notifications').props.onPress();
+  assert.deepEqual(calls, ['alert-settings']);
+  nodes(tree).find(node => node.type === 'Button' && /Comprendre les alertes/.test(text(node))).props.onPress();
+  tree = hooks.render(Screen);
   assert.match(text(tree), /dès la connexion/);
   assert.match(text(tree), /après votre autorisation/);
-  nodes(tree).find(node => node.type === 'Button' && /Personnaliser les alertes \(facultatif\)/.test(text(node))).props.onPress();
-  assert.deepEqual(calls, ['alert-settings']);
-  nodes(tree).find(node => node.type === 'Button' && /En savoir plus/.test(text(node))).props.onPress();
-  tree = hooks.render(Screen);
   assert.match(text(tree), /Aucune disponibilité à activer/);
   assert.match(text(tree), /5 minute/);
   assert.match(text(tree), /position trop ancienne/);

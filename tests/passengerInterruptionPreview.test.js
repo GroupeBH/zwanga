@@ -93,6 +93,8 @@ test('preview is a read-only RTK query with no long-lived coordinate cache', () 
 test('urgent driver prompt stays outside the clipped route scroll and keeps assistance available', () => {
   const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    './DriverNearArrivalPaymentNotice': { DriverNearArrivalPaymentNotice: 'NearArrivalPayment' },
+    '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
     '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
     react: { ...React, ...hooks.react },
     '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
@@ -131,7 +133,7 @@ test('passenger sees price before requesting, with a coordinate snapshot and dup
   const { usePassengerNavigationInterruption } = loader({ react: { ...React, ...hooks.react },
     '@/features/passenger-navigation/PassengerInterruptionFarePreview': { PassengerInterruptionFarePreview: 'Preview' },
   })('hooks/passenger-navigation/usePassengerNavigationInterruption.ts');
-  const params = { isScreenActive: true, booking, trip: { status: 'ongoing' }, passengerLocation: { latitude: -4.3, longitude: 15.3 },
+  const params = { isScreenActive: true, booking: { ...booking, pickedUpConfirmedByPassenger: false, pickupDetectionMethod: 'manual_driver_confirmation' }, trip: { status: 'ongoing' }, passengerLocation: { latitude: -4.3, longitude: 15.3 },
     isRequestingPassengerInterruption: false, showDialog: d => dialogs.push(d), refetchBooking: async () => {}, refetchTrip: async () => {},
     requestPassengerTripInterruption: payload => { sent.push(payload); return { unwrap: () => pending }; } };
   hooks.render(() => usePassengerNavigationInterruption(params)).openPassengerInterruptionDialog();

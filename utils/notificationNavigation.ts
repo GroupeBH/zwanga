@@ -93,7 +93,7 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
   }
   if (type === 'wallet_transfer_in' || type === 'wallet_transfer_out') return '/wallet';
   if (type === 'wallet_loyalty_reward' && data.relatedEntityType === 'welcome_bonus') return '/wallet';
-  if (['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started'].includes(type)) return '/wallet';
+  if (['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started', 'cash_exception_warning'].includes(type)) return '/wallet';
   const invitation = parseDriverInvitation({ ...data, actionProtocol: 'driver-v1' });
   if (invitation && (!currentUser || currentUser.id === invitation.driverId)) return invitationHref(invitation);
   const tripId = getId(data.tripId, data.trip_id, data.trip?.id);
@@ -105,7 +105,7 @@ export function getNotificationHref(input: NotificationData, currentUser?: User)
     return `/booking/navigate/${bookingId}`;
   }
 
-  if (type === 'ride_confirmation_required') {
+  if (type === 'ride_confirmation_required' || type === 'arrival_confirmation_requested') {
     if (data.role === 'passenger' && bookingId) return `/booking/navigate/${bookingId}`;
     if (data.role === 'driver' && tripId) return `/trip/navigate/${tripId}`;
   }

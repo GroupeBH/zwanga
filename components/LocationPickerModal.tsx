@@ -20,6 +20,7 @@ type Props = {
   onDismiss?: () => void; confirmLabel?: string; focusSearchOnOpen?: boolean;
   contextLabel?: string; compact?: boolean;
   routeCoordinates?: PickerCoordinate[]; restrictToRoute?: boolean; autoLocateOnOpen?: boolean; initialSearchQuery?: string;
+  routeStatus?: 'loading' | 'ready' | 'unavailable'; onRetryRoute?: () => void;
 };
 
 export default function LocationPickerModal(props: Props) {
@@ -35,7 +36,9 @@ export default function LocationPickerModal(props: Props) {
 /** Also usable directly in a form: no modal transition or intermediary screen is required. */
 export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', restrictToRoute = false, ...props }: Props & { mapEnabled: boolean }) {
   const insets = useSafeAreaInsets();
-  const picker = useLocationPicker(props);
+  const picker = useLocationPicker({ ...props,
+    routeCoordinates: props.routeStatus && props.routeStatus !== 'ready' ? undefined : props.routeCoordinates,
+  });
   const searchInput = useRef<TextInput>(null);
   const focusedOnce = useRef(false);
   useEffect(() => {
@@ -52,7 +55,8 @@ export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', r
   const { choose } = picker;
   const onMapPress = useCallback((point: PickerCoordinate) => choose(pointSelection(point), true), [choose]);
   const busy = picker.resolving || picker.locating;
-  const confirmDisabled = props.active === false || busy || picker.panning || picker.searchOpen;
+  const routeBlocked = props.routeStatus !== undefined && props.routeStatus !== 'ready';
+  const confirmDisabled = props.active === false || busy || picker.panning || picker.searchOpen || routeBlocked;
   const panelOpen = picker.searchOpen || favoritesOpen;
   const notice = picker.recovery.issue ? locationAccessMessage(picker.recovery.issue) : picker.notice;
   const showSearchFavorites = props.focusSearchOnOpen && picker.searchOpen && picker.query.trim().length < 3;
@@ -104,6 +108,7 @@ export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', r
 
       <View style={styles.workspace} testID="location-picker-workspace">
         <LocationPickerMap enabled={mapEnabled} target={picker.cameraTarget} route={picker.route} restrictToRoute={restrictToRoute}
+          preserveRouteGeometry={props.routeStatus === 'ready'}
           onPanStart={picker.startPanning} onSettle={picker.settleMap} onPress={onMapPress} />
         {!panelOpen && <TouchableOpacity style={styles.locate} accessibilityRole="button" accessibilityLabel="Utiliser ma position actuelle" accessibilityState={{ busy: picker.locating, disabled: picker.locating }} disabled={picker.locating} onPress={() => void picker.locate()}>
           {picker.locating ? <ActivityIndicator color={Colors.primary} size="small" /> : <Ionicons name="locate-outline" color={Colors.primaryDark} size={22} />}
@@ -130,6 +135,17 @@ export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', r
       </View>
 
       <View style={[styles.footer, props.compact && styles.compactFooter, { paddingBottom: Math.max(insets.bottom, 12) }]} testID="location-picker-footer">
+        {routeBlocked && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {props.routeStatus === 'loading' && <ActivityIndicator size="small" color={Colors.primary} />}
+          <Text style={[styles.notice, { flex: 1 }]} accessibilityLiveRegion="polite">
+            {props.routeStatus === 'loading' ? 'Chargement de l’itinéraire routier…' : 'Tracé indisponible. Rechargez-le pour choisir votre point.'}
+          </Text>
+          {props.routeStatus === 'unavailable' && props.onRetryRoute && <TouchableOpacity
+            accessibilityRole="button" accessibilityLabel="Réessayer le chargement de l’itinéraire" onPress={props.onRetryRoute}
+            style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 }}>
+            <Text style={styles.locateText}>Réessayer</Text>
+          </TouchableOpacity>}
+        </View>}
         {notice && <Text style={styles.notice} accessibilityLiveRegion="polite">{notice}</Text>}
         <LocationRecoveryAction recovery={picker.recovery} />
         {!picker.searchOpen && <View style={[styles.selection, props.compact && styles.compactSelection]}>
@@ -142,7 +158,7 @@ export function LocationPickerContent({ mapEnabled, title = 'Choisir un lieu', r
           {busy && <ActivityIndicator size="small" color={Colors.primary} />}
         </View>}
         <TouchableOpacity style={[styles.confirm, confirmDisabled && styles.confirmDisabled]} accessibilityRole="button" accessibilityState={{ disabled: confirmDisabled }} disabled={confirmDisabled} onPress={picker.confirm}>
-          <Text style={styles.confirmText}>{picker.searchOpen ? 'Choisissez un résultat' : picker.panning ? 'Relâchez la carte' : props.confirmLabel ?? 'Utiliser ce lieu'}</Text><Ionicons name="checkmark" size={21} color={Colors.white} />
+          <Text style={styles.confirmText}>{routeBlocked ? 'Itinéraire requis' : picker.searchOpen ? 'Choisissez un résultat' : picker.panning ? 'Relâchez la carte' : props.confirmLabel ?? 'Utiliser ce lieu'}</Text><Ionicons name="checkmark" size={21} color={Colors.white} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

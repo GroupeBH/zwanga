@@ -5,7 +5,7 @@ import { formatRelativeTime } from '@/utils/dateHelpers';
 import { orderNotificationText } from './requestVisibility';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 export const notificationTypeConfig: Record<
   string,
@@ -70,35 +70,34 @@ export const NotificationListItem = React.memo(function NotificationListItem({
   onDelete,
   onPress,
 }: NotificationListItemProps) {
+  const { fontScale } = useWindowDimensions();
   const notificationType = notification.data?.type || 'default';
   const config = notificationTypeConfig[notificationType] ?? notificationTypeConfig.default;
   const isUnread = !notification.isRead;
 
   return (
-    <TouchableOpacity
-      style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}
-      onPress={() => onPress(notification)}
-      activeOpacity={0.85}
-    >
-      <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
+    <View style={[styles.notificationCard, isUnread && styles.notificationCardUnread]}>
+      <TouchableOpacity style={styles.notificationOpen} onPress={() => onPress(notification)}
+        activeOpacity={0.85} accessibilityRole="button">
+      {fontScale <= 1.3 && <View style={[styles.notificationIcon, { backgroundColor: config.background }]}>
         <Ionicons name={config.icon} size={20} color={config.color} />
-      </View>
+      </View>}
       <View style={styles.notificationContent}>
         <View style={styles.notificationHeader}>
-          <Text style={styles.notificationTitle} numberOfLines={1}>
+          <Text style={styles.notificationTitle} numberOfLines={fontScale > 1.3 ? undefined : 2}>
             {orderNotificationText(notification.title, notification.data)}
-          </Text>
-          <Text style={styles.notificationTime} numberOfLines={1}>
-            {formatRelativeTime(notification.createdAt)}
           </Text>
         </View>
         <Text style={styles.notificationMessage} numberOfLines={2}>
           {orderNotificationText(notification.body, notification.data)}
         </Text>
+        <Text style={styles.notificationTime}>{formatRelativeTime(notification.createdAt)}</Text>
       </View>
       {isUnread && <View style={styles.unreadDot} />}
+      </TouchableOpacity>
       <TouchableOpacity
         accessibilityLabel="Supprimer la notification"
+        accessibilityRole="button"
         activeOpacity={0.8}
         hitSlop={8}
         onPress={(event) => {
@@ -107,8 +106,8 @@ export const NotificationListItem = React.memo(function NotificationListItem({
         }}
         style={styles.inlineDeleteButton}
       >
-        <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+        <Ionicons name="trash-outline" size={18} color={Colors.gray[600]} />
       </TouchableOpacity>
-    </TouchableOpacity>
+    </View>
   );
 });

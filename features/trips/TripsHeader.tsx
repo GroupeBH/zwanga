@@ -12,7 +12,7 @@ interface TripsHeaderProps {
   onMainTabChange: (tab: MainTab) => void;
   onSubTabChange: (tab: SubTab) => void;
   onSearchChange: (query: string) => void;
-  onPublish: () => void;
+  onPublish?: () => void;
   onEarnings?: () => void;
 }
 
@@ -53,7 +53,7 @@ export function TripsHeader({
     <View style={styles.header}>
       <View style={styles.headerTopRow}>
         <Text style={styles.headerTitle}>Mes trajets</Text>
-        <TouchableOpacity
+        {onPublish && <TouchableOpacity
           style={styles.headerPublishButton}
           onPress={onPublish}
           accessibilityRole="button"
@@ -61,7 +61,7 @@ export function TripsHeader({
         >
           <Ionicons name="add" size={20} color={Colors.white} />
           <Text style={styles.headerPublishText}>Publier</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
       </View>
 
       {onEarnings && <TouchableOpacity style={styles.headerEarningsLink} onPress={onEarnings}
@@ -71,7 +71,7 @@ export function TripsHeader({
         <Ionicons name="chevron-forward" size={17} color={Colors.primary} />
       </TouchableOpacity>}
 
-      <View style={styles.mainTabsContainer} accessibilityRole="tablist">
+      {onPublish && <View style={styles.mainTabsContainer} accessibilityRole="tablist">
         <TouchableOpacity
           style={[styles.mainTab, mainTab === 'published' && styles.mainTabActive]}
           onPress={() => selectMainTab('published')}
@@ -92,7 +92,7 @@ export function TripsHeader({
             Réservations
           </Text>
         </TouchableOpacity>
-      </View>
+      </View>}
 
       <View style={styles.filterRow}>
         <View style={styles.subTabsContainer} accessibilityRole="tablist">

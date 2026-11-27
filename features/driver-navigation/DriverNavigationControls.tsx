@@ -18,6 +18,7 @@ interface DriverNavigationControlsProps {
   passengerPresentation: { passengerStats: { totalPassengers: number; pendingPickups: number; pendingDropoffs: number; completedPickups: number; completedDropoffs: number; inVehicle: number; passengers: { name: string; pickedUp: boolean; droppedOff: boolean; id: string; }[]; }; fitVehicleAndPassengers: () => void; };
   forceRecalculateRoute: () => void;
   canToggleRouteSections?: boolean;
+  onCompleteTrip?: () => void;
 }
 
 export function DriverNavigationControls({
@@ -27,6 +28,7 @@ export function DriverNavigationControls({
   passengerPresentation,
   forceRecalculateRoute,
   canToggleRouteSections = false,
+  onCompleteTrip,
 }: DriverNavigationControlsProps) {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const { bookings, tripId, isScreenActive } = foundation.data;
@@ -72,6 +74,8 @@ export function DriverNavigationControls({
     ...(foundation.passengers.passengerMapLocations.length > 0 ? [{ label: 'Passagers sur la carte', icon: 'people' as const, action: passengerPresentation.fitVehicleAndPassengers }] : []),
     ...(completed.length > 0 ? [{ label: 'Mes gains', icon: 'receipt-outline' as const,
       action: () => { if (isScreenActive) setReceiptsTrip(tripId); }, disabled: !isScreenActive }] : []),
+    ...(onCompleteTrip ? [{ label: 'Terminer le trajet', icon: 'checkmark-circle-outline' as const,
+      hint: 'Confirmer la fin après la dépose et le paiement de tous les passagers.', action: onCompleteTrip }] : []),
     ...(canToggleRouteSections ? (['next', 'remaining'] as const).map(section => ({
       label: section === 'next' ? 'Prochain arrêt' : 'Reste du trajet', icon: 'map-outline' as const,
       selected: foundation.mapState.routeSectionFocus === section,

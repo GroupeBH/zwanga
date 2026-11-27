@@ -26,4 +26,7 @@ export const requestSummaryStyles = StyleSheet.create({
   cancelText: { color: '#BF1B20', fontSize: 14, fontWeight: '700' },
   secondary: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   secondaryText: { fontSize: 14, color: '#536071' }, disabled: { opacity: 0.5 },
+  contactSummary: { gap: 8, marginTop: 12 },
+  contactPickup: { gap: 4 },
+  contactMapLink: { fontSize: 14, fontWeight: '600', color: ACTION_COLORS.orange },
 });

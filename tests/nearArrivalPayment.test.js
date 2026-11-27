@@ -45,7 +45,8 @@ function app(t, patch = {}) {
     react: hooks.react,
     './useSyncArrivedPaymentBooking': { useSyncArrivedPaymentBooking() {} },
     '@/features/arrival-payment/paymentModel': { normalizeAmount: value => value == null ? null : Number(value) },
-    '@/store/api/bookingApi': { useGetBookingByIdQuery: () => ({ currentData: props.live, refetch }) },
+    '@/store/api/bookingApi': { useGetBookingByIdQuery: () => ({ currentData: props.live, refetch }),
+      useGetBookingPaymentRequestQuery: () => ({ currentData: props.paymentRequest }) },
     '@/store/api/tripApi': { useGetTripByIdQuery: () => ({}) },
     '@/hooks/passenger-navigation/useDriverLocationFallback': { useDriverLocationFallback: () => props.snapshot },
     '@/services/trackingSocket': { trackingSocket: {
@@ -110,6 +111,17 @@ test('unboarded, cash, paid, free and other-account bookings never open an early
     env.render(); env.emit(100);
     assert.equal(env.render(), null);
   }
+});
+
+test('driver invitation reopens a previously deferred payment exactly until the next dismissal', t => {
+  const env = app(t, { stored: { booking: { preArrivalDismissedAt: new Date(now - 1000).toISOString() } },
+    paymentRequest: { bookingId: 'booking', requestedAt: new Date(now).toISOString() } });
+  assert.equal(env.render()?.id, 'booking');
+  env.props.stored.booking.preArrivalDismissedAt = new Date(now + 1000).toISOString();
+  assert.equal(env.render(), null);
+  env.props.paymentRequest.bookingId = 'other';
+  env.props.stored.booking.preArrivalDismissedAt = new Date(now - 1000).toISOString();
+  assert.equal(env.render(), null);
 });
 
 test('backgrounding/account changes release listeners; resuming an in-progress sheet preserves the stored transaction', t => {

@@ -18,6 +18,7 @@ import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { DriverPaidRequestCompletionPrompt } from '@/features/driver-navigation/DriverPaidRequestCompletionPrompt';
+import { useDriverPaidTripCompletion } from '@/hooks/driver-navigation/useDriverPaidTripCompletion';
 import { NextRequestAfterTrip } from '@/components/trip/NextRequestAfterTrip';
 import { RideOverlayScope } from '@/features/navigation/RideOverlayProvider';
 import { RideActionResult } from '@/features/ride-recovery/RideActionResult';
@@ -37,6 +38,8 @@ function DriverNavigationScreen() {
     isScreenActive: model.session.foundation.data.isScreenActive,
   });
   const assistanceOrSecurityVisible = assistance.isOpen || model.session.foundation.mapState.securityModalVisible;
+  const paidCompletion = useDriverPaidTripCompletion({ model,
+    blocked: assistanceOrSecurityVisible || model.session.foundation.mapState.backgroundDisclosureVisible });
   const reportLayout = useMainScreenReady(model.session.foundation.data.isScreenActive &&
     Boolean(model.session.foundation.data.trip) && model.presentation.hasValidTripCoordinates &&
     !(model.session.foundation.data.bookingsLoading && !model.session.foundation.data.bookings), 'driver_navigation');
@@ -164,6 +167,7 @@ function DriverNavigationScreen() {
         passengerPresentation={model.passengerPresentation}
         forceRecalculateRoute={model.forceRecalculateRoute}
         canToggleRouteSections={model.presentation.canToggleRouteSections}
+        onCompleteTrip={paidCompletion.available ? paidCompletion.reopen : undefined}
       />
       )}
 
@@ -184,8 +188,7 @@ function DriverNavigationScreen() {
         handleRatePassengersFromTripEnd={model.handleRatePassengersFromTripEnd}
       />
 
-      <DriverPaidRequestCompletionPrompt model={model}
-        blocked={assistanceOrSecurityVisible || model.session.foundation.mapState.backgroundDisclosureVisible} />
+      <DriverPaidRequestCompletionPrompt prompt={paidCompletion} insets={model.session.foundation.data.insets} />
 
       <NextRequestAfterTrip trip={model.session.foundation.data.trip}
         active={model.session.foundation.data.isScreenActive}

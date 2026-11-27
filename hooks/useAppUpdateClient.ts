@@ -23,12 +23,16 @@ export function useAppUpdateClient(userId: string | undefined, active: boolean) 
             ? await getStoredFcmToken() : null;
           retry = permission.granted && !token;
           if (cancelled || session !== getTokenSessionVersion()) return;
-          const key = `${userId}:${installed.platform}:${installed.version}:${installed.build}:${token ?? ''}`;
+          const key = `${session}:${userId}:${installed.platform}:${installed.version}:${installed.build}:${token ?? ''}`;
           if (last.current?.key === key && Date.now() - last.current.at < 3600000) return;
           const request = register({ ...installed, ...(token ? { pushToken: token } : {}) });
           try {
-            await request.unwrap();
-            if (!cancelled && session === getTokenSessionVersion()) last.current = { key, at: Date.now() };
+            const response = await request.unwrap();
+            // Disabled rollout is HTTP 200 too; it must not suppress the next
+            // registration after activation. A missing authorized token also
+            // remains retryable instead of becoming a one-hour false success.
+            retry = retry || response?.registered !== true;
+            if (!retry && !cancelled && session === getTokenSessionVersion()) last.current = { key, at: Date.now() };
           } finally { request.reset(); }
         } catch { retry = true; /* Optional feature: never blocks authentication. */ }
         finally {

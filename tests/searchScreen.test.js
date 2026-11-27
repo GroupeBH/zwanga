@@ -59,7 +59,7 @@ test('request filters preserve labels, selection and actions; trips retain their
   requestButtons.forEach(button => button.props.onPress());
   assert.deepEqual(changes, ['nearby', 'cheap', 'early']);
   assert.equal(requestButtons.every(button => button.props.accessibilityRole === 'button'), true);
-  assert.deepEqual(nodes(render('trips')).filter(node => node.type === 'TouchableOpacity').map(text), ['Moins cher', 'Plus tôt']);
+  assert.deepEqual(nodes(render('trips')).filter(node => node.type === 'TouchableOpacity').map(text), ['Prochains départs', 'Moins cher']);
 });
 
 test('refreshing adds only the small count-row indicator and keeps the toolbar memoized', () => {
@@ -161,6 +161,10 @@ test('opening search as a driver starts with published trips to travel as a pass
   assert.equal(app.queryCalls.filter(call => call.name === 'trips').at(-1).options.skip, false);
   assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
   assert.equal(app.isDriver, true, 'searching never changes account role');
+  const query = app.queryCalls.filter(call => call.name === 'trips').at(-1).args;
+  assert.equal(query.sort, 'soonest');
+  assert.deepEqual(query.sortOriginCoordinates, [15.3222, -4.325]);
+  assert.equal(query.departureCoordinates, undefined, 'position must not silently add a radius filter');
   app.hooks.unmount();
 });
 
@@ -171,7 +175,7 @@ test('passenger search exposes only published trips and never subscribes to the 
   assert.equal(nodes(tree).some(node => node.type === 'TouchableOpacity' && text(node) === 'Clients'), false);
   assert.deepEqual(app.list(tree).props.data.map(item => item.trip.id), ['trip']);
   assert.equal(app.queryCalls.filter(call => call.name === 'requests').at(-1).options.skip, true);
-  assert.equal(app.coordinateReads, 0);
+  assert.equal(app.coordinateReads, 1, 'read an already-known origin once, without starting GPS');
   app.profileUnavailable = true;
   assert.equal(nodes(app.render()).some(node => node.type === 'TouchableOpacity' && text(node) === 'Clients'), false,
     'a legacy stored driver identity must not grant access without a server profile');
@@ -323,7 +327,7 @@ test('typing keeps the result data stable until the existing debounce applies th
   app.hooks.unmount();
 });
 
-test('hidden tabs are not filtered and GPS is read only for nearby request ordering', t => {
+test('hidden tabs are not filtered; trip sort origin is captured once and request GPS reads stay scoped', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = screenApp();
   let requestReads = 0, tripReads = 0;
@@ -331,7 +335,8 @@ test('hidden tabs are not filtered and GPS is read only for nearby request order
   app.requests = [{ ...request('request'), get departure() { requestReads++; return location; } }];
   let tree = app.render();
   assert.equal(requestReads, 0);
-  assert.equal(app.coordinateReads, 0);
+  assert.equal(app.coordinateReads, 1);
+  app.render(); assert.equal(app.coordinateReads, 1, 'trip origin remains stable while paging');
   assert.ok(tripReads > 0);
   app.switchMode(tree, 'requests');
   tripReads = 0;

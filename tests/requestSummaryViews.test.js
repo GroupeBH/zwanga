@@ -30,6 +30,8 @@ const presentation = { ownerDisplayedBudget: 4000, pendingOffersCount: 0, ownerH
 test('passenger ticket uses real times, total budget, references and actual expiration, with a collapsed map', () => {
   const { RequestPassengerTicket } = loader(mocks)('features/request-detail/RequestPassengerTicket.tsx');
   const tree = RequestPassengerTicket({ model, presentation });
+  const keys = tree.props.children.filter(child => React.isValidElement(child) && child.key !== null).map(child => child.key);
+  assert.equal(new Set(keys).size, keys.length, 'offers and targeted-driver siblings must not share the request id as their key');
   const routeMap = elements(tree).find(item => item.type === 'RouteMap');
   const text = words(tree) + ' ' + words(routeMap.props.summary);
   for (const value of ['19:30', '20:00', '23:00', 'Budget du trajet', '4 000 FC', 'Portail', 'Quartier', 'Recherche d’un conducteur']) assert.ok(text.includes(value), value);

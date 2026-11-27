@@ -13,14 +13,14 @@ export function buildCashReceiptEndpoints(builder: BaseEndpointBuilder) {
       transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
       invalidatesTags: result => result ? [bookingListTag, 'AccountActivity', { type: 'Booking', id: result.id }] : [],
     }),
-    confirmCashReceipt: builder.mutation<Booking, { bookingId: string; amount: number; currency: string }>({
-    query: ({ bookingId, amount, currency }) => ({
-      url: `/bookings/${bookingId}/cash-receipt`, method: 'PUT', body: { amount, currency },
+    confirmCashReceipt: builder.mutation<Booking, { bookingId: string; amount: number; currency: string; cashExceptionOccurrence?: number }>({
+    query: ({ bookingId, amount, currency, cashExceptionOccurrence }) => ({
+      url: `/bookings/${bookingId}/cash-receipt`, method: 'PUT', body: { amount, currency, ...(cashExceptionOccurrence ? { cashExceptionOccurrence } : {}) },
       timeout: CRITICAL_MUTATION_TIMEOUT_MS,
     }),
     transformResponse: (response: ServerBooking) => mapServerBookingToClient(response),
     invalidatesTags: (result) => result ? [bookingListTag, myTripsListTag, tripListTag, 'AccountActivity',
       { type: 'Booking', id: result.id }, { type: 'Trip', id: result.tripId },
-      { type: 'DriverSettlement', id: 'ME' }, { type: 'Notification', id: 'DRIVER_PAYMENTS' }] : [],
+      'Wallet', { type: 'DriverSettlement', id: 'ME' }, { type: 'Notification', id: 'DRIVER_PAYMENTS' }] : [],
   }) };
 }

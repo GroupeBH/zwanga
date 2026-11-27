@@ -1,12 +1,16 @@
 import type { TrackedLocation } from '@/store/slices/locationSlice';
-import { getLocationText } from '../../features/trip-detail/tripDetailModel';
+import { bookingLocationSource, bookingPointLabel } from '@/features/trip-detail/bookingLocationLabels';
+import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
+import { getRouteLocationCoordinates } from '@/utils/routeLocationLabels';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
-import type { TripPaymentMode } from '@/types';
+import type { Trip, TripPaymentMode } from '@/types';
+import type { useIdentityCheck } from '@/hooks/useIdentityCheck';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
 import React, { useMemo } from 'react';
-import type { Trip } from '@/types';
 
 interface Params {
+  resetBookingReferences?: () => void;
+  bookingModalVisible: boolean;
   lastKnownLocation: TrackedLocation | null;
   trip: Trip | undefined;
   passengerOrigin: MapLocationSelection | null;
@@ -29,6 +33,8 @@ interface Params {
 }
 
 export function useTripBookingLocationForm({
+  resetBookingReferences,
+  bookingModalVisible,
   lastKnownLocation,
   trip,
   passengerOrigin,
@@ -50,11 +56,11 @@ export function useTripBookingLocationForm({
   requestDriverLocationPermission,
 }: Params) {
   const defaultPassengerOriginSelection = useMemo<MapLocationSelection | null>(() => {
-    const latitude = Number(lastKnownLocation?.coords?.latitude);
-    const longitude = Number(lastKnownLocation?.coords?.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const coordinate = normalizeTripMapCoordinate(lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude);
+    if (!coordinate) {
       return null;
     }
+    const { latitude, longitude } = coordinate;
     return {
       title: 'Ma position actuelle',
       address: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
@@ -63,35 +69,31 @@ export function useTripBookingLocationForm({
     };
   }, [lastKnownLocation?.coords?.latitude, lastKnownLocation?.coords?.longitude]);
   const defaultPassengerDestinationSelection = useMemo<MapLocationSelection | null>(() => {
-    const coordinate = normalizeTripMapCoordinate(trip?.arrival?.lat, trip?.arrival?.lng);
+    const point = getRouteLocationCoordinates({ lat: trip?.arrival?.lat, lng: trip?.arrival?.lng,
+      hasCoordinates: trip?.arrival?.hasCoordinates });
+    const coordinate = point && normalizeTripMapCoordinate(point.lat, point.lng);
     if (!coordinate) {
       return null;
     }
     return {
-      title: trip?.arrival?.name || trip?.arrival?.address || 'Arrivée du trajet',
+      title: trip?.arrival?.name || trip?.arrival?.address || 'Destination',
       address:
         trip?.arrival?.address ||
         `${coordinate.latitude.toFixed(5)}, ${coordinate.longitude.toFixed(5)}`,
       latitude: coordinate.latitude,
       longitude: coordinate.longitude,
     };
-  }, [trip?.arrival?.address, trip?.arrival?.lat, trip?.arrival?.lng, trip?.arrival?.name]);
-  const passengerOriginDisplay = useMemo(
-    () =>
-      getLocationText(passengerOrigin, passengerOriginManualAddress) ||
-      trip?.departure?.address ||
-      trip?.departure?.name ||
-      '',
-    [passengerOrigin, passengerOriginManualAddress, trip?.departure?.address, trip?.departure?.name],
-  );
-  const passengerDestinationDisplay = useMemo(
-    () =>
-      getLocationText(passengerDestination, passengerDestinationManualAddress) ||
-      trip?.arrival?.address ||
-      trip?.arrival?.name ||
-      '',
-    [passengerDestination, passengerDestinationManualAddress, trip?.arrival?.address, trip?.arrival?.name],
-  );
+  }, [trip?.arrival?.address, trip?.arrival?.lat, trip?.arrival?.lng, trip?.arrival?.name, trip?.arrival?.hasCoordinates]);
+  const originSource = bookingLocationSource(passengerOrigin, passengerOriginManualAddress, trip?.departure);
+  const destinationSource = bookingLocationSource(passengerDestination, passengerDestinationManualAddress, trip?.arrival);
+  // Resolve the selected coordinates, not live GPS: a later location update must not move the pickup.
+  const resolvedLabels = useRouteLocationLabels({ departure: originSource, arrival: destinationSource }, bookingModalVisible);
+  const bookingLocationLabels = {
+    origin: bookingPointLabel(originSource, resolvedLabels.departure),
+    destination: bookingPointLabel(destinationSource, resolvedLabels.arrival),
+  };
+  const passengerOriginDisplay = bookingLocationLabels.origin.text;
+  const passengerDestinationDisplay = bookingLocationLabels.destination.text;
   const openBookingModal = () => {
     if (trip?.requiresPassengerKyc && !isIdentityVerified) {
       checkIdentity('book');
@@ -99,6 +101,7 @@ export function useTripBookingLocationForm({
     }
 
     const autoOrigin = defaultPassengerOriginSelection;
+    resetBookingReferences?.();
     setBookingSeats('1');
     setBookingPaymentMode('cash');
     setBookingModalError('');
@@ -119,6 +122,6 @@ export function useTripBookingLocationForm({
     openBookingModal,
     passengerOriginDisplay,
     passengerDestinationDisplay,
+    bookingLocationLabels,
   };
 }
-import type { useIdentityCheck } from '@/hooks/useIdentityCheck';

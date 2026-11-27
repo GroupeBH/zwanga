@@ -38,6 +38,7 @@ export const LEDGER_META: Record<
 > = {
   top_up: { label: 'Recharge', icon: 'add-circle-outline', color: Colors.successDark },
   cash_commission: { label: 'Commission cash (5 %)', icon: 'cash-outline', color: Colors.danger },
+  cash_penalty: { label: 'Pénalité cash (hors commission)', icon: 'alert-circle-outline', color: Colors.danger },
   cash_commission_refund: { label: 'Commission cash régularisée', icon: 'return-down-back-outline', color: Colors.successDark },
   withdrawal: { label: 'Retrait de jetons achetés', icon: 'cash-outline', color: Colors.danger },
   withdrawal_refund: { label: 'Retrait non effectué : jetons restitués', icon: 'return-down-back-outline', color: Colors.successDark },

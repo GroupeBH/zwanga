@@ -6,9 +6,7 @@ import LocationPickerModal from '@/components/LocationPickerModal';
 import { TutorialOverlay } from '@/components/TutorialOverlay';
 import { Colors } from '@/constants/styles';
 import { useAppSelector } from '@/store/hooks';
-import { getTabContentOverlay, selectIsDriverAccount, selectUsesTripSearchTab } from '@/features/navigation/accountTabPolicy';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import SearchScreen from '../search';
+import { selectIsDriverAccount } from '@/features/navigation/accountTabPolicy';
 import { HistoryPaginationFooter } from '@/components/ui/HistoryPaginationFooter';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
@@ -28,13 +26,10 @@ import { RideModal as Modal } from '@/features/navigation/RideModal';
 
 export default function TripsScreen() {
   const focused = useIsFocused();
-  const usesTripSearch = useAppSelector(selectUsesTripSearchTab);
-  const tabBarHeight = useBottomTabBarHeight();
-  if (usesTripSearch) {
-    return <SearchScreen embedded bottomOverlay={getTabContentOverlay(Platform.OS, tabBarHeight)} />;
-  }
+  const accountId = useAppSelector(state => state.auth.user?.id);
+  const isDriver = useAppSelector(selectIsDriverAccount);
   return <RideOverlayScope scopeKey="my-trips" active={focused}>
-    <TripsContent />
+    <TripsContent key={`${accountId}:${isDriver}`} />
   </RideOverlayScope>;
 }
 
@@ -51,7 +46,7 @@ function TripsContent() {
         onMainTabChange={model.state.setMainTab}
         onSubTabChange={model.state.setSubTab}
         onSearchChange={model.state.setSearchQuery}
-        onPublish={() => model.state.router.push('/publish')}
+        onPublish={isDriver ? () => model.state.router.push('/publish') : undefined}
         onEarnings={isDriver ? () => model.state.router.push('/driver-earnings') : undefined}
       />
 
@@ -192,6 +187,11 @@ function TripsContent() {
                 >
                   <Text style={styles.emptyButtonText}>Publier un trajet</Text>
                 </TouchableOpacity>
+              ) : !isDriver && !model.list.isError && model.state.subTab === 'upcoming' ? (
+                <TouchableOpacity style={styles.emptyButton} accessibilityRole="button"
+                  onPress={() => model.state.router.navigate('/(tabs)/explore')}>
+                  <Text style={styles.emptyButtonText}>Rechercher un trajet</Text>
+                </TouchableOpacity>
               ) : null}
             </View>
           )
@@ -303,7 +303,8 @@ function TripsContent() {
       <TutorialOverlay
         visible={model.state.tripsGuideVisible}
         title="Gérez vos trajets"
-        message="Retrouvez vos trajets publiés, modifiez-les ou publiez un nouveau trajet depuis ce tableau de bord."
+        message={isDriver ? 'Retrouvez vos trajets publiés, modifiez-les ou publiez un nouveau trajet depuis ce tableau de bord.'
+          : 'Retrouvez vos réservations à venir et l’historique de vos trajets.'}
         onDismiss={model.dismissTripsGuide}
       />
     </SafeAreaView>

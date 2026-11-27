@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import type { Router } from 'expo-router';
 
-/** Release the request's native map before mounting Home's map. */
+/** Release the detail's native map before mounting the destination's map. */
 export function useRequestDetailExit(router: Router, active: boolean, scope: string) {
   const [leaving, setLeaving] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -19,16 +19,17 @@ export function useRequestDetailExit(router: Router, active: boolean, scope: str
       timer.current = null;
     };
   }, [active, scope]);
-  const goHome = useCallback(() => {
+  const navigate = useCallback((destination: Parameters<Router['replace']>[0]) => {
     if (!live.current || currentScope.current !== scope || timer.current) return;
     setLeaving(true);
     timer.current = setTimeout(() => {
       timer.current = null;
       if (!live.current) return;
-      try { router.replace('/(tabs)'); }
-      catch { console.warn('Retour à l’accueil impossible. Réessayez.'); }
+      try { router.replace(destination); }
+      catch { console.warn('Changement d’écran impossible. Réessayez.'); }
       finally { setLeaving(false); }
     }, Platform.OS === 'ios' ? 260 : 40);
   }, [router, scope]);
-  return { goHome, leaving };
+  const goHome = useCallback(() => navigate('/(tabs)'), [navigate]);
+  return { goHome, navigate, leaving };
 }

@@ -11,6 +11,7 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const base = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/utils/reanimated': { default: { View: 'Animated' } },
   'react-native-maps': { __esModule: true, default: 'Map', Marker: 'Marker', Polyline: 'Polyline' },
+  '@/components/maps/RoutePointMarker': { RoutePointMarker: 'Marker' },
   '@react-native-community/datetimepicker': {},
   '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
   '@/components/forms/FormLayout': { FormModal: 'Modal' },

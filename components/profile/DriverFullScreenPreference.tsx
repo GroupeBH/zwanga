@@ -56,15 +56,15 @@ export function DriverFullScreenPreference() {
   };
   return <View style={{ gap: 8 }}>
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-      <Text style={{ flex: 1, fontSize: 17, color: Colors.gray[900], fontWeight: '600' }}>Commandes en plein écran</Text>
+      <Text style={{ flex: 1, fontSize: 16, color: Colors.gray[900], fontWeight: '600' }}>Alertes sur écran verrouillé</Text>
       <Switch value={!error && permission.optIn && permission.allowed && permission.notificationsAllowed && permission.channelReady !== false}
         disabled={busy || !active} accessibilityLabel="Autoriser les commandes sur l’écran verrouillé"
         onValueChange={change} />
     </View>
     <Text style={{ fontSize: 15, lineHeight: 22, color: Colors.gray[700] }}>
       {!error && permission.optIn && permission.allowed && permission.notificationsAllowed && permission.channelReady !== false
-        ? 'Autorisation activée. Les commandes peuvent s’afficher sur l’écran verrouillé, selon les réglages du téléphone.'
-        : 'Affichez une commande ou une réservation sur l’écran verrouillé. Sans cette option, vous gardez les notifications habituelles.'}
+        ? 'Autorisation activée. Affichage plein écran selon les réglages Android.'
+        : 'Plein écran facultatif. Les notifications habituelles restent disponibles.'}
     </Text>
     {permission.optIn && !permission.allowed && <TouchableOpacity accessibilityRole="button" disabled={busy || !active}
       style={{ minHeight: 48, justifyContent: 'center' }} onPress={() => change(true)}>

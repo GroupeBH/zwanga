@@ -57,6 +57,7 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
   return (
     <View onLayout={onSheetLayout} style={[styles.tripsSheet, { bottom: sheetBottomOffset, height: sheetHeight }]}>
       <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"
+        hitSlop={{ top: 10, bottom: 10, left: 0, right: 0 }}
         accessibilityLabel={effectiveTripsSheetOpen ? 'Agrandir la carte' : 'Afficher les suggestions'}
         accessibilityState={{ expanded: effectiveTripsSheetOpen, disabled: isHomeSheetLockedRetracted }}
         style={styles.sheetHandleButton} onPress={toggleTripsSheet} disabled={isHomeSheetLockedRetracted}>
@@ -68,6 +69,20 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           <HomeEntryStatus />
           {priorityContent}
           <LocationAccessBanner active={isScreenActive} background={isDriver ? 'discovery' : undefined} />
+          <View style={styles.roleLinks}>
+            <TouchableOpacity style={[styles.roleLink, isDriver && styles.roleActive]} accessibilityRole="button"
+              accessibilityState={{ selected: Boolean(isDriver) }} accessibilityLabel={isDriver ? 'Accueil conducteur' : 'Proposer un trajet'}
+              accessibilityHint={isDriver ? 'Afficher les commandes proches.' : 'Ouvrir la publication et les conditions pour devenir conducteur.'}
+              onPress={() => { if (!isDriver) router.push('/publish'); else openSheetIndex(); }}>
+              <Text style={[styles.roleText, isDriver && styles.roleActiveText]}>Conducteur</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.roleLink, !isDriver && styles.roleActive]} accessibilityRole="button"
+              accessibilityState={{ selected: !isDriver }} accessibilityLabel="Commander un trajet"
+              accessibilityHint="Ouvrir le formulaire de commande de trajet."
+              onPress={() => router.push(getTripRequestCreateHref({ entry: 'home' }))}>
+              <Text style={[styles.roleText, !isDriver && styles.roleActiveText]}>Passager</Text>
+            </TouchableOpacity>
+          </View>
           {isDriver ? (
             <>
               {driverCategory !== 'transport' && <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.publishButton}
@@ -79,10 +94,10 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
                 <TouchableOpacity activeOpacity={0.8} style={[styles.metricCard, fontScale > 1.3 && styles.stackedMetricCard]} accessibilityRole="button"
                   accessibilityLabel={countUnknown ? 'Voir les clients, nombre indisponible' : `${clientCountLabel} clients disponibles`}
                   onPress={openSheetIndex}>
-                  <Text style={styles.metricLabel}>Clients près de vous</Text>
+                  <Text style={styles.metricLabel}>Commandes proches</Text>
                   <Text style={styles.metricValue}>{clientCountLabel}</Text>
-                  <Text style={styles.metricHint}>commandes</Text>
                 </TouchableOpacity>
+                <View style={[styles.metricDivider, fontScale > 1.3 && styles.metricDividerStack]} />
                 <HomeDriverEarnings active={isScreenActive} stacked={fontScale > 1.3} onPress={() => router.push('/driver-earnings')} />
               </View>
             </>
@@ -94,16 +109,16 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
                 <Ionicons name="search-outline" size={24} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
                 <View style={styles.searchCopy}>
                   <Text style={styles.searchPlaceholder}>Où allez-vous ?</Text>
-                  <Text style={styles.searchHint}>Un conducteur vient vous chercher</Text>
                 </View>
               </TouchableOpacity>
               <HomeDestinationShortcuts active={isScreenActive} recentDestinations={recentDestinations} />
             </>
           )}
           <View testID="home-discovery-actions" style={styles.feedHeading}>
-            <Text style={styles.feedTitle} accessibilityRole="header">
-              {isDriver ? 'Clients' : suggestionScopeLabel ? 'Trajets pour vous' : 'Trajets près de vous'}
+            <View style={styles.feedCopy}><Text style={styles.feedTitle} accessibilityRole="header">
+              {isDriver ? 'Clients' : 'Départs près de vous'}
             </Text>
+            {!isDriver && suggestionScopeLabel ? <Text style={styles.scopeLabel}>{suggestionScopeLabel}</Text> : null}</View>
             <TouchableOpacity style={styles.seeAllButton} activeOpacity={0.8}
               accessibilityRole="button" accessibilityLabel={showRequests ? 'Voir tous les clients' : 'Voir tous les trajets'}
               accessibilityHint="Ouvrir la liste complète." onPress={openSheetIndex}>
@@ -129,12 +144,13 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           ) : null}
           {!sheetOffline && !sheetLoading && !sheetError && !hasSuggestion ? (
             <View style={styles.emptyState}>
-              <Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_DASHBOARD_COLORS.rust} accessible={false} />
-              <Text style={styles.emptyText}>
+              <View style={styles.emptyIcon}><Ionicons name={showRequests ? 'people-outline' : 'car-outline'} size={22} color={HOME_DASHBOARD_COLORS.rust} accessible={false} /></View>
+              <View style={styles.emptyCopy}><Text style={styles.emptyTitle}>
                 {showRequests
-                  ? 'Aucun nouveau client pour le moment.'
+                  ? 'Aucune commande à proximité'
                   : featuredPassengerTrip ? 'Votre réservation est sur la carte.' : 'Aucun trajet disponible pour le moment.'}
               </Text>
+              {showRequests && <Text style={styles.emptyText}>Vous serez alerté lorsqu’une commande correspond à votre disponibilité.</Text>}</View>
             </View>
           ) : null}
           {showRequests && featuredRequest ? (
@@ -147,27 +163,6 @@ export const HomeTripsSheet = React.memo(function HomeTripsSheet({
           {!showRequests && suggestionTrip ? (
             <HomeSuggestionCard kind="trip" item={suggestionTrip} onOpen={openTripDetail} booked={bookedTripIds.has(suggestionTrip.id)} />
           ) : null}
-          {!isDriver && suggestionScopeLabel ? <Text style={styles.scopeLabel}>{suggestionScopeLabel}</Text> : null}
-          {isDriver ? (
-            <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.secondaryAction}
-              accessibilityLabel="Commander un trajet" accessibilityHint="Ouvrir le formulaire de commande de trajet."
-              onPress={() => router.push(getTripRequestCreateHref({ entry: 'home' }))}>
-              <Ionicons name="person-outline" size={20} color="#FFFFFF" accessible={false} />
-              <View style={styles.secondaryActionCopy}>
-                <Text style={styles.secondaryActionTitle}>Commander un trajet</Text>
-                <Text style={styles.secondaryActionHint}>Un conducteur vient vous chercher</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color="#FFFFFF" accessible={false} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.proposeLink}
-              accessibilityLabel="Proposer un trajet" accessibilityHint="Vous avez un véhicule : publier un trajet."
-              onPress={() => router.push('/publish')}>
-              <Text style={styles.proposeLinkText}>
-                Vous avez un véhicule ? <Text style={styles.proposeLinkAction}>Proposer un trajet</Text>
-              </Text>
-            </TouchableOpacity>
-          )}
         </ScrollView>
       ) : (
         <TouchableOpacity activeOpacity={0.8} accessibilityRole="button"

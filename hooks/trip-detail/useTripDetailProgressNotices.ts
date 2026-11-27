@@ -3,10 +3,9 @@ import {
   TRIP_DETAIL_AUTO_PROGRESS_PRIORITY,
 } from '../../features/trip-detail/tripDetailModel';
 import { useDialog } from '@/components/ui/DialogProvider';
-import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback } from 'react';
-import type { Trip, User } from '@/types';
+import type { Booking, Trip, User } from '@/types';
 import { isPickupAwarenessEvent } from '@/features/navigation/pickupAwareness';
 import { pickupPassengerDialog } from '@/features/navigation/pickupPassengerDialog';
 
@@ -104,6 +103,8 @@ export function useTripDetailProgressNotices({
       if (!isTripDriver && !isPassengerEvent) {
         return;
       }
+      // Global passenger receipts cover Home/navigation and deduplicate REST/socket delivery.
+      if (!isTripDriver && ['pickup_confirmed', 'dropoff_confirmed'].includes(event.type)) return;
 
       if (event.type === 'passenger_ready_pickup' && !isTripDriver) {
         return;
@@ -225,7 +226,9 @@ export function useTripDetailProgressNotices({
       activeBooking?.id,
       bookingForTrip?.id,
       getTripDetailPassengerName,
+      highestTripDetailAutoProgressPriorityRef,
       isTripDriver,
+      presentedTripDetailAutoProgressKeysRef,
       showDialog,
       trip,
       user,

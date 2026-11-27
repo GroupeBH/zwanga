@@ -6,10 +6,13 @@ import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors, Spacing } from '@/constants/styles';
 import { isTripExpired } from './tripDetailAvailability';
 import { bookingPassengerTotal, bookingProposalPrice } from './bookingPriceProposal';
+import { PickupDriverChange } from '@/features/request-detail/ChangeRequestDriverButton';
+import { isAwaitingPassengerPickup } from '@/features/passenger-navigation/pickupArrivalEstimate';
+import { rideColors } from '@/features/ride-design/rideDesign';
 import type { Booking } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 
 interface TripDetailActionsFooterProps {
   data: ReturnType<typeof useTripDetailData>;
@@ -21,6 +24,8 @@ interface TripDetailActionsFooterProps {
   bookingState: ReturnType<typeof useTripDetailBookingState>;
   bookingSubmission: { confirmCancelBooking: () => void; handleConfirmBooking: () => Promise<void>; };
   bookingLocation: { defaultPassengerOriginSelection: MapLocationSelection | null; openBookingModal: () => void; passengerOriginDisplay: string; passengerDestinationDisplay: string; };
+  /** Hauteur réelle du footer, pour réserver la place sous le contenu défilant. */
+  onHeightChange?: (height: number) => void;
 }
 
 export function TripDetailActionsFooter({
@@ -33,13 +38,19 @@ export function TripDetailActionsFooter({
   bookingState,
   bookingSubmission,
   bookingLocation,
+  onHeightChange,
 }: TripDetailActionsFooterProps) {
+  const [changingDriver, setChangingDriver] = useState(false);
+  const { height, fontScale } = useWindowDimensions();
   const activeBooking = activity.activeBooking;
   const trip = data.trip;
   if (!trip) return null;
   return (
-    <View style={[styles.stickyFooter, { paddingBottom: Math.max(data.insets.bottom, 10) + 10 }]}>
-      {(() => {
+    <View
+      style={[styles.stickyFooter, { paddingBottom: Math.max(data.insets.bottom, 10) + 10, maxHeight: height * (fontScale > 1.3 ? 0.5 : 0.45) }]}
+      onLayout={onHeightChange ? event => onHeightChange(Math.round(event.nativeEvent.layout.height)) : undefined}
+    >
+      <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">{(() => {
         // Vérifier si le trajet est expiré (date de départ passée)
         const isExpired = isTripExpired(trip);
         // Vérifier si le trajet peut être réservé (pas complété, pas annulé, pas expiré)
@@ -90,7 +101,7 @@ export function TripDetailActionsFooter({
                   </TouchableOpacity>
                 ) : (
                   <View style={styles.bookingCard}>
-                    <View style={styles.bookingCardHeader}>
+                    {activeBooking.status !== 'accepted' && <View style={styles.bookingCardHeader}>
                       <View style={styles.bookingHeaderIdentity}>
                         <View style={styles.bookingHeaderIcon}>
                           <Ionicons name="ticket-outline" size={20} color={Colors.primary} />
@@ -120,16 +131,16 @@ export function TripDetailActionsFooter({
                           {access.activeBookingStatus.label}
                         </Text>
                       </View>
-                    </View>
+                    </View>}
 
                     {/* Indicateur de confirmation en attente */}
                     {activeBooking.status === 'accepted' && (
                       <>
-                        {activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
+                        {activeBooking.pickedUp && !activeBooking.droppedOff && (
                           <View style={styles.confirmationBanner}>
                             <Ionicons name="checkmark-circle" size={20} color={Colors.secondary} />
                             <Text style={styles.confirmationBannerText}>
-                              Prise en charge détectée
+                              Embarquement confirmé · En route
                             </Text>
                           </View>
                         )}
@@ -149,7 +160,7 @@ export function TripDetailActionsFooter({
                         <TouchableOpacity
                           style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionPayment]}
                           onPress={payment.handlePayActiveBooking}
-                          disabled={bookingState.isInitiatingBookingPayment}
+                          disabled={bookingState.isInitiatingBookingPayment || changingDriver}
                         >
                           {bookingState.isInitiatingBookingPayment ? (
                             <ActivityIndicator size="small" color={Colors.white} />
@@ -164,37 +175,23 @@ export function TripDetailActionsFooter({
                         </TouchableOpacity>
                       )}
 
-                      {activeBooking.status === 'accepted' && activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger && (
-                        <View
-                          style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
-                        >
-                          <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
-                          <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>
-                            À bord
-                          </Text>
-                        </View>
+                      {trip.tripRequestId && isAwaitingPassengerPickup(activeBooking, trip) && (
+                        <PickupDriverChange key={`${trip.id}:${activeBooking.id}`} requestId={trip.tripRequestId}
+                          booking={activeBooking} trip={trip} onPendingChange={setChangingDriver}
+                          active={data.isScreenActive && !bookingState.isCancellingBooking && !bookingState.isInitiatingBookingPayment}
+                          onChanged={data.returnToRequest} />
                       )}
-
-                      {activeBooking.status === 'accepted' && activeBooking.pickedUp && activeBooking.pickedUpConfirmedByPassenger && !activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff && (
-                        <View
-                          style={[styles.bookingActionButton, styles.bookingActionPrimary, styles.bookingActionConfirm]}
-                        >
-                          <Ionicons name="flag" size={19} color={Colors.white} />
-                          <Text style={[styles.bookingActionText, styles.bookingActionConfirmText]}>Arrivée en cours</Text>
-
-                        </View>
-                      )}
-
-                      <View style={styles.bookingSecondaryActionsRow}>
+                      <View style={[styles.bookingSecondaryActionsRow, { flexDirection: 'column' }]}>
                         {/* Le passager peut consulter l'arrivée dès l'acceptation. */}
                         {activeBooking.status === 'accepted' && ['upcoming', 'ongoing'].includes(trip.status) &&
-                          !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                          !activeBooking.droppedOff &&
                           !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
                             <TouchableOpacity
                               activeOpacity={0.82}
-                              style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionNavigation]}
+                              style={[styles.bookingActionButton, styles.bookingActionNavigation, { minHeight: 54, height: 'auto', paddingVertical: 14, borderRadius: 28, backgroundColor: rideColors.orange, borderColor: rideColors.orange }]}
                               onPress={() => data.router.push(`/booking/navigate/${activeBooking.id}`)}
                               accessibilityRole="button"
+                              disabled={changingDriver}
                               accessibilityLabel={!activeBooking.pickedUp ? 'Voir l’arrivée estimée du conducteur' : 'Suivre le trajet'}
                             >
                               <Ionicons name="navigate" size={18} color={Colors.white} />
@@ -204,31 +201,17 @@ export function TripDetailActionsFooter({
                             </TouchableOpacity>
                           )}
 
-                        {activeBooking.status === 'accepted' &&
-                          !(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
+                        {!activeBooking.pickedUp && !activeBooking.pickedUpAt && !activeBooking.pickedUpConfirmedByPassenger &&
                           !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
                             <TouchableOpacity
                               activeOpacity={0.82}
-                              style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionCall]}
-                              onPress={() => bookingState.setContactModalVisible(true)}
-                            >
-                              <Ionicons name="chatbubbles-outline" size={18} color={Colors.primary} />
-                              <Text style={[styles.bookingActionText, styles.bookingActionCallText]}>Contacter</Text>
-                            </TouchableOpacity>
-                          )}
-
-                        {!(activeBooking.pickedUp && !activeBooking.pickedUpConfirmedByPassenger) &&
-                          !(activeBooking.droppedOffConfirmedByPassenger && !activeBooking.droppedOff) && (
-                            <TouchableOpacity
-                              activeOpacity={0.82}
-                              style={[styles.bookingActionButton, styles.bookingActionSecondary, styles.bookingActionDanger]}
+                              style={[styles.bookingActionButton, { borderWidth: 0, minHeight: 44, height: 'auto', paddingVertical: 10 }]}
                               onPress={bookingSubmission.confirmCancelBooking}
-                              disabled={bookingState.isCancellingBooking}
+                              disabled={bookingState.isCancellingBooking || changingDriver}
                             >
                               {bookingState.isCancellingBooking ? <ActivityIndicator size="small" color={Colors.danger} /> : (
                                 <>
-                                  <Ionicons name="close-circle-outline" size={18} color={Colors.danger} />
-                                  <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>Annuler</Text>
+                                  <Text style={[styles.bookingActionText, styles.bookingActionDangerText]}>Annuler la réservation</Text>
                                 </>
                               )}
                             </TouchableOpacity>
@@ -239,12 +222,12 @@ export function TripDetailActionsFooter({
                 )
               ) : access.availableSeats <= 0 ? (
                 <View style={[styles.actionButton, styles.actionButtonDisabled]}>
-                  <Ionicons name="close-circle" size={20} color={Colors.white} />
-                  <Text style={styles.actionButtonText}>Complet • Plus de places disponibles</Text>
+                  <Ionicons name="close-circle" size={20} color={Colors.gray[500]} />
+                  <Text style={[styles.actionButtonText, styles.actionButtonTextDisabled]}>Complet • Plus de places disponibles</Text>
                 </View>
               ) : (
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  style={[styles.actionButton, { backgroundColor: rideColors.ink, shadowOpacity: 0, elevation: 0 }]}
                   onPress={bookingLocation.openBookingModal}
                 >
                   <Ionicons name="car-sport-outline" size={20} color={Colors.white} />
@@ -269,7 +252,12 @@ export function TripDetailActionsFooter({
                 </TouchableOpacity>
               ) : (
                 <View style={[styles.actionButton, styles.actionButtonDisabled]}>
-                  <Text style={styles.actionButtonText}>
+                  <Ionicons
+                    name={trip.status === 'completed' ? 'checkmark-circle-outline' : trip.status === 'cancelled' ? 'close-circle-outline' : 'time-outline'}
+                    size={20}
+                    color={Colors.gray[500]}
+                  />
+                  <Text style={[styles.actionButtonText, styles.actionButtonTextDisabled]}>
                     {trip.status === 'completed' ? 'Trajet terminé' : trip.status === 'cancelled' ? 'Trajet annulé' : 'Trajet expiré'}
                   </Text>
                 </View>
@@ -279,7 +267,7 @@ export function TripDetailActionsFooter({
         }
 
         return null;
-      })()}
+      })()}</ScrollView>
     </View>
   );
 }

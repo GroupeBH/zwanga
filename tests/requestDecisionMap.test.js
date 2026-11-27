@@ -22,6 +22,7 @@ function preview(t, getRoute = async () => road) {
     Platform: { OS: 'android' }, InteractionManager: { runAfterInteractions: callback => { callback(); return { cancel() {} }; } } },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-maps': { __esModule: true, default: 'MapView', Marker: 'Marker', Polyline: 'Polyline' },
+    '@/components/maps/RoutePointMarker': { RoutePointMarker: 'Marker' },
     '@/hooks/useAppIsActive': { useScreenIsActive: () => f.active },
     '@/assets/images/map-markers/trip-detail-marker-departure.png': 'departure-image',
     '@/assets/images/map-markers/trip-detail-marker-arrival.png': 'arrival-image',
@@ -36,7 +37,18 @@ function preview(t, getRoute = async () => road) {
   }, unmount: () => hooks.unmount() };
 }
 
-test('camera waits for native ready AND valid layout; static markers never track child views', t => {
+test('short overview leaves room for the route instead of spending its height on camera padding', t => {
+  const f = preview(t); Object.assign(f.f.props, { displayMode: 'overview', overviewHeight: 125, showRecenter: true, routeCoordinates: road });
+  const map = elements(f.render()).find(item => item.type === 'MapView');
+  map.props.onMapReady(); map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 125 } } });
+  f.render();
+  const padding = f.camera.at(-1)[1].edgePadding;
+  assert.ok(padding.top + padding.bottom < 63);
+  const recenter = elements(f.render()).find(item => item.props.accessibilityLabel === 'Recentrer l’itinéraire');
+  recenter.props.onPress(); assert.deepEqual(f.camera.at(-1)[1].edgePadding, padding);
+});
+
+test('camera waits for native ready AND valid layout; endpoints use the shared compact markers', t => {
   const f = preview(t); f.f.props.routeCoordinates = road;
   const tree = f.render(), map = elements(tree).find(item => item.type === 'MapView');
   assert.equal(f.camera.length, 0);
@@ -46,10 +58,9 @@ test('camera waits for native ready AND valid layout; static markers never track
   map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 154 } } });
   f.render(); assert.equal(f.camera.length, 1); assert.deepEqual(f.camera[0][0], road);
   f.render(); assert.equal(f.camera.length, 1, 'ordinary renders do not recenter');
-  for (const marker of elements(tree).filter(item => item.type === 'Marker')) {
-    assert.equal(marker.props.tracksViewChanges, false);
-    assert.ok(marker.props.image); assert.equal(marker.props.children, undefined);
-  }
+  const markers = elements(tree).filter(item => item.type === 'Marker');
+  assert.deepEqual(markers.map(item => item.props.kind), ['departure', 'arrival']);
+  assert.ok(markers.every(item => !item.props.image));
   f.f.active = false; f.render();
   map.props.onMapReady(); map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 154 } } });
   f.f.active = true; f.render(); assert.equal(f.camera.length, 1, 'stale ready events cannot target the reopened map');
@@ -178,6 +189,35 @@ test('route service failure leaves a dotted departure/destination preview, not a
   assert.deepEqual(line.props.coordinates, [departure, arrival]);
   assert.deepEqual(line.props.lineDashPattern, [4, 4]);
   assert.match(words(tree), /Départ et destination/); assert.doesNotMatch(words(tree), /Itinéraire demandé/);
+});
+
+test('identical road responses do not recenter, reopen or resend the native polyline', t => {
+  const f = preview(t); f.f.props.routeCoordinates = road;
+  const tree = f.render(), map = elements(tree).find(item => item.type === 'MapView');
+  map.props.onMapReady(); map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 154 } } });
+  f.render();
+  for (let n = 0; n < 100; n++) {
+    f.f.props.routeCoordinates = road.map(point => ({ ...point }));
+    const next = f.render();
+    assert.equal(elements(next).find(item => item.type === 'Polyline').props.coordinates, road);
+    assert.equal(elements(next).find(item => item.type === 'MapView').props.onMapReady, map.props.onMapReady);
+  }
+  assert.equal(f.camera.length, 1);
+});
+
+test('manual pan survives late route responses; a new destination fits without recreating the native map', t => {
+  const f = preview(t); f.f.props.routeCoordinates = road;
+  const map = elements(f.render()).find(item => item.type === 'MapView');
+  map.props.onMapReady(); map.props.onLayout({ nativeEvent: { layout: { width: 320, height: 154 } } });
+  f.render(); map.props.onPanDrag();
+  f.f.props.routeCoordinates = [departure, { latitude: -4.6, longitude: 15.6 }, arrival];
+  f.render(); assert.equal(f.camera.length, 1, 'no snapping back during exploration');
+  f.f.props.mapData = { ...mapData, arrivalCoordinate: { latitude: -4.6, longitude: 15.6 } };
+  const nextMap = elements(f.render()).find(item => item.type === 'MapView');
+  assert.equal(nextMap.props.onMapReady, map.props.onMapReady);
+  assert.equal(f.camera.length, 2);
+  assert.equal(nextMap.props.moveOnMarkerPress, false);
+  assert.equal(nextMap.props.toolbarEnabled, false);
 });
 
 test('inactive or coordinate-free detail mounts no map and requests no route', t => {

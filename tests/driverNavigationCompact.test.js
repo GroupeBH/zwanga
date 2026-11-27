@@ -153,6 +153,31 @@ test('compact passenger summary limits map coverage but full address remains acc
   tree.props.onPress(); assert.equal(calls.length, 2);
 });
 
+test('completion remains accessible in Options after continuing and disappears when no longer eligible', () => {
+  const hooks = hookHarness(); let opens = 0;
+  const { DriverNavigationControls } = loader({ ...base, react: { ...React, ...hooks.react },
+    './navigationBooking': { normalizeDriverLocationObject: value => value },
+    './DriverDropoffReceiptsSheet': { DriverDropoffReceiptsSheet: 'Receipts' }, '@/features/navigation/RideModal': { RideModal: 'Modal' },
+  })('features/driver-navigation/DriverNavigationControls.tsx');
+  const foundation = { data: { insets: { top: 24, bottom: 24, left: 0, right: 0 }, tripId: 'trip', isScreenActive: true },
+    passengers: { passengerMapLocations: [] }, mapState: {} };
+  const props = { foundation, tripActions: {}, voice: {}, passengerPresentation: {}, onCompleteTrip: () => opens++ };
+  const render = () => hooks.render(() => DriverNavigationControls(props));
+  const button = label => all(render()).find(n => n.type === 'Button' && n.props.accessibilityLabel === label);
+  render();
+  assert.equal(button('Terminer le trajet'), undefined, 'keep the map clear outside the options menu');
+  button('Options de navigation').props.onPress();
+  assert.match(button('Terminer le trajet').props.accessibilityHint, /paiement de tous les passagers/);
+  button('Terminer le trajet').props.onPress(); assert.equal(opens, 1);
+  assert.equal(button('Terminer le trajet'), undefined, 'menu closes before opening the confirmation');
+  props.onCompleteTrip = undefined;
+  button('Options de navigation').props.onPress(); assert.equal(button('Terminer le trajet'), undefined);
+  props.onCompleteTrip = () => opens++;
+  const oldButton = button('Terminer le trajet');
+  foundation.data.isScreenActive = false; oldButton.props.onPress(); assert.equal(opens, 1);
+  hooks.unmount();
+});
+
 test('a new reservation does not move/remount the ongoing confirmation control', () => {
   const hooks = hookHarness();
   const { DriverNavigationTopPanel } = loader({ ...base,
@@ -160,6 +185,9 @@ test('a new reservation does not move/remount the ongoing confirmation control',
     react: { ...React, ...hooks.react },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
+    './DriverNearArrivalPaymentNotice': { DriverNearArrivalPaymentNotice: 'PaymentReminder' },
+    '@/features/ride-payment/RidePaymentNotice': { RidePaymentNotice: 'PaymentNotice' },
+    '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
     '@/components/trip/TripShareAction': { TripShareAction: 'Share' },

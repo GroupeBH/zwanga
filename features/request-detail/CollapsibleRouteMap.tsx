@@ -5,7 +5,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { LatLng } from 'react-native-maps';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
+import { useStableMapRoute } from '@/hooks/maps/useStableMapRoute';
+import { useRouteOverviewCamera } from '@/hooks/maps/useRouteOverviewCamera';
 import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
 import { getRouteCoordinates } from '@/utils/routeApi';
@@ -22,6 +25,7 @@ export type CollapsibleRouteMapProps = {
   toggleAppearance?: 'button' | 'text';
   displayMode?: 'collapsible' | 'overview';
   overviewHeight?: number;
+  showRecenter?: boolean;
 };
 
 export function CollapsibleRouteMap({
@@ -36,6 +40,7 @@ export function CollapsibleRouteMap({
   toggleAppearance = 'button',
   displayMode = 'collapsible',
   overviewHeight = 280,
+  showRecenter = false,
 }: CollapsibleRouteMapProps) {
   const [isExpanded, setIsExpanded] = useState(initiallyExpanded);
   const overview = displayMode === 'overview';
@@ -46,8 +51,8 @@ export function CollapsibleRouteMap({
   const fromLat = mapData?.departureCoordinate.latitude, fromLng = mapData?.departureCoordinate.longitude;
   const toLat = mapData?.arrivalCoordinate.latitude, toLng = mapData?.arrivalCoordinate.longitude;
   const routeKey = `${fromLat}:${fromLng}:${toLat}:${toLng}`;
-  const { shouldRenderMap, isMapReady, onMapReady, onMapLayout, runMapCommand } = useNavigationMapLifecycle({
-    screenKey: routeKey, enabled: visible && active && !!mapData, mapRef,
+  const { shouldRenderMap, isMapReady, onMapReady, onMapLayout, runMapCommand, mapLayoutRef } = useNavigationMapLifecycle({
+    screenKey: 'route-overview', enabled: visible && active && !!mapData, mapRef,
   });
   const suppliedRoute = routeCoordinates.length > 1;
   useEffect(() => {
@@ -60,17 +65,13 @@ export function CollapsibleRouteMap({
   const displayedCoordinates = suppliedRoute ? routeCoordinates : loadedRoute?.key === routeKey ? loadedRoute.coordinates : undefined;
   const fallbackCoordinates = useMemo(() => fromLat === undefined || fromLng === undefined || toLat === undefined || toLng === undefined
     ? [] : [{ latitude: fromLat, longitude: fromLng }, { latitude: toLat, longitude: toLng }], [fromLat, fromLng, toLat, toLng]);
-  const visibleCoordinates = displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : fallbackCoordinates;
+  const visibleCoordinates = useStableMapRoute(displayedCoordinates && displayedCoordinates.length > 1 ? displayedCoordinates : fallbackCoordinates);
+  const fitPadding = useMemo(() => overview && overviewHeight < 180
+    ? { top: 16, right: 26, bottom: 26, left: 26 }
+    : { top: showRecenter ? 80 : 34, right: 34, bottom: 34, left: 34 }, [overview, overviewHeight, showRecenter]);
 
-  useEffect(() => {
-    if (!isMapReady || visibleCoordinates.length < 2) return;
-    runMapCommand(map => {
-      map.fitToCoordinates(visibleCoordinates, {
-        edgePadding: { top: 34, right: 34, bottom: 34, left: 34 },
-        animated: false,
-      });
-    });
-  }, [visibleCoordinates, isMapReady, runMapCommand, overviewHeight]);
+  const camera = useRouteOverviewCamera({ routeKey, coordinates: visibleCoordinates, isReady: isMapReady,
+    edgePadding: fitPadding, runMapCommand, mapLayoutRef, layoutKey: overviewHeight });
 
   const toggleMap = useCallback(() => {
     setIsExpanded((currentValue) => !currentValue);
@@ -138,6 +139,11 @@ export function CollapsibleRouteMap({
             rotateEnabled={false}
             pitchEnabled={false}
             showsPointsOfInterest={false}
+            moveOnMarkerPress={false}
+            toolbarEnabled={false}
+            onPanDrag={camera.onPanDrag}
+            onTouchStart={camera.onPanDrag}
+            onRegionChangeComplete={camera.onRegionChangeComplete}
           >
             <Polyline
               coordinates={visibleCoordinates}
@@ -145,26 +151,22 @@ export function CollapsibleRouteMap({
               strokeWidth={5}
               lineDashPattern={displayedCoordinates && displayedCoordinates.length > 2 ? undefined : [4, 4]}
             />
-            <Marker
+            <RoutePointMarker kind="departure"
               coordinate={mapData.departureCoordinate}
               title="Départ"
               description={departureName}
-              image={require('@/assets/images/map-markers/trip-detail-marker-departure.png')}
-              anchor={{ x: 0.5, y: 0.86 }}
-              tracksViewChanges={false}
             />
-            <Marker
+            <RoutePointMarker kind="arrival"
               coordinate={mapData.arrivalCoordinate}
               title="Destination"
               description={arrivalName}
-              image={require('@/assets/images/map-markers/trip-detail-marker-arrival.png')}
-              anchor={{ x: 0.5, y: 0.86 }}
-              tracksViewChanges={false}
             />
           </MapView>}
           {overview && !isMapReady && <View pointerEvents="none" style={light.loading}>
             <Text style={light.loadingText}>Chargement de la carte…</Text>
           </View>}
+          {overview && showRecenter && <Pressable style={light.recenter} accessibilityRole="button" accessibilityLabel="Recentrer l’itinéraire"
+            disabled={!isMapReady} accessibilityState={{ disabled: !isMapReady }} onPress={camera.recenter}><Ionicons name="locate-outline" size={23} color="#1E294A" /></Pressable>}
           <View pointerEvents="none" style={styles.driverMapCaption}>
             <Ionicons name="navigate" size={12} color={Colors.primaryDark} />
             <Text style={styles.driverMapCaptionText}>{displayedCoordinates && displayedCoordinates.length > 2 ? 'Itinéraire demandé' : 'Départ et destination'}</Text>
@@ -187,4 +189,5 @@ const light = StyleSheet.create({
   unavailable: { padding: 16, flexDirection: 'row', gap: 10, alignItems: 'center', backgroundColor: '#F2F4F6' },
   loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: Colors.gray[700], fontSize: 13, backgroundColor: '#FFFFFF', padding: 10, borderRadius: 12 },
+  recenter: { position: 'absolute', bottom: 32, right: 16, width: 46, height: 46, borderRadius: 23, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
 });

@@ -37,3 +37,16 @@ test('a failed route replacement is contained and Home can be retried', t => {
   app.render().goHome(); t.mock.timers.tick(40);
   assert.deepEqual(app.routes, ['/(tabs)']); app.hooks.unmount();
 });
+
+test('return to the reopened order releases the old trip map before Android/iOS navigation', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const target = { pathname: '/request/[id]', params: { id: 'order' } };
+  for (const [platform, delay] of [['android', 40], ['ios', 260]]) {
+    const app = fixture(platform);
+    app.render().navigate(target);
+    assert.equal(app.render().leaving, true); assert.deepEqual(app.routes, []);
+    t.mock.timers.tick(delay - 1); assert.deepEqual(app.routes, []);
+    t.mock.timers.tick(1); assert.deepEqual(app.routes, [target]);
+    app.hooks.unmount();
+  }
+});

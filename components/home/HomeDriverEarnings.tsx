@@ -19,9 +19,9 @@ export const HomeDriverEarnings = React.memo(function HomeDriverEarnings({ activ
   return (
     <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" onPress={onPress}
       accessibilityLabel={`Mes gains : ${valid ? label + ' disponibles' : 'voir les revenus'}`} style={[styles.metricCard, stacked && styles.stackedMetricCard]}>
-      <Text style={styles.metricLabel}>Mes gains</Text>
+      <Text style={styles.metricLabel}>Gains disponibles</Text>
       <Text style={styles.metricValue}>{label}</Text>
-      <Text style={styles.metricHint}>{valid ? 'disponibles' : 'Voir mes revenus'}</Text>
+      {!valid && <Text style={styles.metricHint}>Voir mes revenus</Text>}
     </TouchableOpacity>
   );
 });

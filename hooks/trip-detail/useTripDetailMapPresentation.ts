@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
 import type { Trip } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import { getRouteStopLabel } from '@/utils/routeLocationLabels';
-import { boundedRoutePoints, routeBounds } from '@/utils/routes/safePolyline';
+import { boundedRoutePoints, isValidRoutePoint, MAX_DECODED_ROUTE_POINTS, routeBounds } from '@/utils/routes/safePolyline';
 
 interface Params {
   isScreenActive: boolean;
@@ -68,15 +68,20 @@ export function useTripDetailMapPresentation({
   }, [routeCoordinates, trip?.status, currentCoordinate]);
 
   const routeMapCoordinates = useMemo(() => {
+    if (routeInfo?.geometry === 'detailed' && routeCoordinates && routeCoordinates.length >= 2 &&
+        routeCoordinates.length <= MAX_DECODED_ROUTE_POINTS && routeCoordinates.every(isValidRoutePoint)) {
+      return routeCoordinates;
+    }
     const validRouteCoordinates = boundedRoutePoints(routeCoordinates);
     if (validRouteCoordinates.length >= 2) {
       return validRouteCoordinates;
     }
     return hasValidRouteEndpoints ? [departureCoordinate, arrivalCoordinate] : [];
-  }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeCoordinates]);
+  }, [arrivalCoordinate, departureCoordinate, hasValidRouteEndpoints, routeCoordinates, routeInfo?.geometry]);
 
   // Two points are the shared route API's offline/failed-calculation fallback.
-  const hasDetailedRouteMapCoordinates = routeMapCoordinates.length > 2;
+  const hasDetailedRouteMapCoordinates = routeInfo?.geometry === 'detailed'
+    ? Boolean(routeCoordinates && routeMapCoordinates === routeCoordinates) : routeMapCoordinates.length > 2;
 
   const passengerDestinationMarkers = useMemo(() => {
     const markers: {

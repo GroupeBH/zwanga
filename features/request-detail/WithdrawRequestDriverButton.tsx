@@ -12,9 +12,10 @@ import type { Booking, Trip, TripRequest } from '@/types';
 import { canWithdrawRequestDriver } from './requestDriverChangePolicy';
 
 type Props = { request?: TripRequest; trip?: Trip; bookings?: Booking[]; disabled?: boolean;
+  appearance?: 'button' | 'link';
   onWithdrawn: () => void; onPendingChange?: (pending: boolean) => void };
 
-export function WithdrawRequestDriverButton({ request, trip, bookings, disabled, onWithdrawn, onPendingChange }: Props) {
+export function WithdrawRequestDriverButton({ request, trip, bookings, disabled, onWithdrawn, onPendingChange, appearance = 'button' }: Props) {
   const userId = useAppSelector(state => state.auth.user?.id);
   const enabled = useDisplayReadsEnabled(!disabled);
   const dispatch = useAppDispatch();
@@ -62,7 +63,7 @@ export function WithdrawRequestDriverButton({ request, trip, bookings, disabled,
     });
   };
   return <View><Pressable accessibilityRole="button" accessibilityState={{ disabled: blocked || isLoading, busy: isLoading }}
-    disabled={blocked || isLoading} onPress={confirm} style={[s.button, (blocked || isLoading) && s.disabled]}>
+    disabled={blocked || isLoading} onPress={confirm} style={[s.button, appearance === 'link' && { borderWidth: 0 }, (blocked || isLoading) && s.disabled]}>
     {isLoading ? <ActivityIndicator color="#B42318" /> : <Text style={s.label}>Annuler ma prise en charge</Text>}
   </Pressable>{error && <Text accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}</View>;
 }

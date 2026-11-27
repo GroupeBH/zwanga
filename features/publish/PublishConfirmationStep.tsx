@@ -6,7 +6,8 @@ import Animated, { type FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, Polyline, type Region } from 'react-native-maps';
+import MapView, { Polyline, type Region } from 'react-native-maps';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
 
 interface PublishConfirmationStepProps {
   compact?: boolean;
@@ -131,22 +132,20 @@ export function PublishConfirmationStep(props: PublishConfirmationStepProps) {
             toolbarEnabled={false}
           >
             {departureLocation ? (
-              <Marker
+              <RoutePointMarker kind="departure"
                 coordinate={{
                   latitude: departureLocation.latitude,
                   longitude: departureLocation.longitude,
                 }}
-                pinColor={Colors.success}
                 title="Départ"
               />
             ) : null}
             {arrivalLocation ? (
-              <Marker
+              <RoutePointMarker kind="arrival"
                 coordinate={{
                   latitude: arrivalLocation.latitude,
                   longitude: arrivalLocation.longitude,
                 }}
-                pinColor={Colors.primary}
                 title="Destination"
               />
             ) : null}

@@ -17,6 +17,8 @@ const genericPoint = /^(?:ma position|votre position|position actuelle|localisat
 
 /** Validate the label actually shared with the driver, not coordinates alone. */
 export function requiresRequestReference(address: string | null | undefined, location?: Location): boolean {
+  // A latitude/longitude pair locates the pin, but is not a usable meeting landmark.
+  if (/^[+-]?\d{1,3}(?:\.\d+)?\s*[,;]\s*[+-]?\d{1,3}(?:\.\d+)?$/.test(address?.trim() || '')) return true;
   const text = cleanLocationText(address || '');
   if (!text) return Boolean(address?.trim());
   if (street.test(text) || /^\d+\s+\S/.test(text)) return false;

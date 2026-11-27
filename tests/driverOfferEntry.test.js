@@ -75,6 +75,26 @@ test('accepted offers selected for another driver cannot reopen a request', asyn
   f.render(); await flush(); assert.deepEqual(f.routes, []);
 });
 
+test('accepted-only recovery ignores pending prices and verifies any linked trip', async t => {
+  const f = fixture(t);
+  Object.assign(f.options, { resumePreviousRequests: false, resumeOwnRequests: true, resumeAcceptedRequests: true });
+  const accepted = offer('agreed', { status: 'accepted' }); accepted.tripRequest.status = 'driver_selected';
+  f.env.offers = [offer('newer'), accepted];
+  f.options.readRequest = async () => ({ ...detail(accepted), status: 'driver_selected', selectedDriverId: 'driver', tripId: 'trip' });
+  f.options.readTrip = async id => { f.reads.push(id); return { id, driverId: 'driver', status: 'upcoming' }; };
+  f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/request-agreed']);
+  assert.deepEqual(f.reads, ['offers', 'trip']);
+});
+
+test('an accepted price never reopens a completed linked trip', async t => {
+  const f = fixture(t), accepted = offer('agreed', { status: 'accepted' });
+  accepted.tripRequest.status = 'driver_selected'; f.env.offers = [accepted];
+  f.options.readRequest = async () => ({ ...detail(accepted), status: 'driver_selected', selectedDriverId: 'driver', tripId: 'trip' });
+  f.options.readTrip = async () => ({ id: 'trip', driverId: 'driver', status: 'completed' });
+  f.render(); await flush(); assert.deepEqual(f.routes, []);
+});
+
 test('detail revalidation rejects an offer withdrawn or assigned elsewhere after list discovery', async t => {
   const f = fixture(t);
   f.options.readRequest = async () => ({ ...detail(offer()), status: 'driver_selected', selectedDriverId: 'another', tripId: 'trip' });

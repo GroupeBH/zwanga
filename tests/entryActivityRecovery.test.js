@@ -77,10 +77,10 @@ test('a trip-detail failure can be retried with the same revision without anothe
   assert.equal(app.reads.filter(name => name === 'getMyActivityTrips').length, 1);
 });
 
-test('passenger waiting-request discovery fills the shared cache without forcing a detail at entry', async t => {
+for (const role of ['passenger', 'driver']) test(`${role} waiting-request discovery opens its verified detail from the shared cache`, async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
   const app = entryRecoveryHarness(t);
-  app.profile.data.role = 'passenger';
+  app.profile.data.role = role;
   app.request = { ...app.request, passengerId: 'driver', selectedDriverId: undefined, tripId: undefined, status: 'pending' };
   app.trips.data = []; app.requests.data = [app.request];
   app.summary.trips.count = 0; app.summary.requests.count = 1;
@@ -89,12 +89,15 @@ test('passenger waiting-request discovery fills the shared cache without forcing
   app.produce(); await flush(); t.mock.timers.tick(25);
   app.activity = { ...app.activity, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, []);
+  assert.deepEqual(app.routes, ['/request-details/request']);
   assert.equal(app.reads.filter(name => name === 'getMyActivityRequests').length, 1);
+  assert.equal(app.reads.filter(name => name === 'getTripRequestById').length, 1);
   app.path = '/request-details/request'; app.enter(); app.path = '/'; app.enter();
-  assert.equal(app.routes.length, 0, 'a deliberate exit still reaches Home');
+  assert.equal(app.routes.length, 1, 'a deliberate exit still reaches Home without looping');
   app.active = false; app.produce(); app.enter(); t.mock.timers.tick(1000);
   app.active = true; app.produce(); app.enter(); await flush();
   app.produce(); app.enter(); await flush(); app.enter(); await flush();
-  assert.deepEqual(app.routes, []);
+  assert.deepEqual(app.routes, ['/request-details/request', '/request-details/request']);
+  assert.equal(app.reads.filter(name => name === 'getMyActivityRequests').length, 1, 'unchanged request lists are still reused');
+  assert.equal(app.reads.filter(name => name === 'getTripRequestById').length, 2, 'each foreground verifies the selected detail');
 });

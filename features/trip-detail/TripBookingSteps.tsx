@@ -1,4 +1,3 @@
-import { TRIP_PAYMENT_MODE_OPTIONS, getTripPaymentModeLabel } from './tripDetailModel';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { Colors } from '@/constants/styles';
 import type { Trip, TripPaymentMode } from '@/types';
@@ -6,14 +5,19 @@ import { PassengerSeatNotice } from '@/components/PassengerSeatNotice';
 import { FormDisclosure } from '@/components/forms/FormDisclosure';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { useTripPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
-import { useScreenIsActive } from '@/hooks/useAppIsActive';
 import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getRouteStopLabel } from '@/utils/routeLocationLabels';
 import { BookingPriceProposalField } from './BookingPriceProposalField';
 import { compactBookingStyles as s } from './compactBookingStyles';
+import type { BookingLocationLabels } from './bookingLocationLabels';
+import type { TripBookingReferences } from '@/hooks/trip-detail/useTripBookingReferences';
+import { RequestReferenceField } from '@/components/trip-request/RequestReferenceField';
 
 interface TripBookingStepsProps {
+  bookingReferences?: TripBookingReferences;
+  bookingLocationLabels?: BookingLocationLabels;
+  header?: React.ReactNode;
+  footer?: React.ReactNode;
   viewportHeight: number;
   bookingStep: 1 | 2 | 3;
   adjustBookingSeats: (delta: number) => void;
@@ -44,32 +48,39 @@ interface TripBookingStepsProps {
 
 
 export function TripBookingSteps(props: TripBookingStepsProps) {
-  const { trip, bookingSeats, estimatedTotal, bookingPaymentMode, bookingProposedPrice = '' } = props;
-  const active = useScreenIsActive();
+  const { trip, bookingSeats, bookingProposedPrice = '' } = props;
   const busy = props.isBooking || props.isValidatingDestination;
-  const { currentData: options, isFetching, isError, refetch } = useTripPaymentOptionsQuery(
-    { tripId: trip?.id ?? '', numberOfSeats: Math.max(1, Number(bookingSeats) || 1) },
-    { skip: !active || !trip?.id || estimatedTotal <= 0, refetchOnMountOrArgChange: true },
-  );
-  const accepted = trip?.acceptedPaymentModes ?? ['cash', 'electronic', 'points'];
-  const paymentUnavailable = Boolean(options && !options.availablePaymentModes.includes(bookingPaymentMode));
   const points = [
-    { key: 'origin' as const, label: 'Départ', value: props.passengerOriginDisplay || trip?.departure?.address },
-    { key: 'destination' as const, label: 'Arrivée', value: props.passengerDestinationDisplay || trip?.arrival?.address },
+    { key: 'origin' as const, label: 'Départ', value: props.bookingLocationLabels?.origin ?? {
+      text: getRouteStopLabel({ address: props.passengerOriginDisplay || trip?.departure?.address }, 'Point de départ').address } },
+    { key: 'destination' as const, label: 'Arrivée', value: props.bookingLocationLabels?.destination ?? {
+      text: getRouteStopLabel({ address: props.passengerDestinationDisplay || trip?.arrival?.address }, 'Destination').address } },
   ];
   return <ScrollView style={{ flexShrink: 1, maxHeight: Math.min(560, props.viewportHeight * 0.6) }}
     contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-    <Text style={s.hint}>Vérifiez les points du trajet avant de réserver.</Text>
-    {points.map(point => <TouchableOpacity key={point.key} accessibilityRole="button"
+    {props.header}
+    <Text style={s.hint}>{trip?.tripRequestId
+      ? 'Vérifiez les points du trajet avant de réserver.'
+      : 'Point de récupération : à 100 m maximum de l’itinéraire.'}</Text>
+    <View style={s.routePanel}>{points.map((point, index) => <React.Fragment key={point.key}>
+      {index > 0 && <View style={s.routeSeparator} />}
+      <TouchableOpacity accessibilityRole="button"
       accessibilityLabel={`Modifier le point de ${point.key === 'origin' ? 'départ' : 'destination'}`}
       style={s.routeRow} disabled={busy} onPress={() => props.openBookingLocationPicker(point.key)}>
-      <Ionicons name={point.key === 'origin' ? 'location-outline' : 'flag-outline'} size={22} color={Colors.primary} />
+      <View style={[s.routeDot, point.key === 'destination' && s.arrivalDot]} />
       <View style={s.copy}><Text style={s.hint}>{point.label}</Text>
-        <Text style={s.value} numberOfLines={2}>{getRouteStopLabel({ address: point.value }, point.key === 'origin' ? 'Point de départ' : 'Destination').address}</Text>
+        <Text style={s.value} numberOfLines={2}>{point.value.text}</Text>
+        {point.value.hint && <Text style={s.hint}>{point.value.hint}</Text>}
       </View>
-      <Ionicons name="chevron-forward" size={18} color={Colors.gray[500]} />
-    </TouchableOpacity>)}
-    <FormDisclosure title="Saisir une adresse" summary="Si vous ne trouvez pas le lieu sur la carte"
+      <Ionicons name="create-outline" size={21} color="#5E697B" />
+    </TouchableOpacity>
+    {props.bookingReferences && <RequestReferenceField
+      target={point.key === 'origin' ? 'departure' : 'arrival'}
+      value={props.bookingReferences[point.key].value}
+      onChangeText={props.bookingReferences[point.key].onChangeText}
+      required={props.bookingReferences[point.key].required} disabled={busy} keepHintVisible />}
+    </React.Fragment>)}</View>
+    <FormDisclosure title="Lieu introuvable ? Saisir une adresse"
       forceOpen={Boolean(props.passengerOriginManualAddress || props.passengerDestinationManualAddress)}>
       <TextInput accessibilityLabel="Adresse de départ" style={s.input} placeholder="Adresse de départ"
         value={props.passengerOriginManualAddress} editable={!busy} onChangeText={value => {
@@ -85,49 +96,23 @@ export function TripBookingSteps(props: TripBookingStepsProps) {
     <View style={s.row}>
       <View style={s.copy}><Text style={s.value}>Places</Text>
         <Text style={s.hint}>{props.seatLimit} disponible{props.seatLimit > 1 ? 's' : ''}</Text></View>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Une place en moins" style={s.stepper}
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Une place en moins" style={[s.stepper, (busy || Number(bookingSeats) <= 1) && s.disabled]}
         disabled={busy || Number(bookingSeats) <= 1} onPress={() => props.adjustBookingSeats(-1)}>
         <Ionicons name="remove" size={20} color={Colors.primary} />
       </TouchableOpacity>
       <TextInput accessibilityLabel="Nombre de places" value={bookingSeats} style={s.seats}
         keyboardType="number-pad" editable={!busy} onChangeText={props.handleBookingSeatsChange}
         maxLength={String(Math.max(1, props.seatLimit)).length} />
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Une place en plus" style={s.stepper}
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Une place en plus" style={[s.stepper, s.plus, (busy || Number(bookingSeats) >= props.seatLimit) && s.disabled]}
         disabled={busy || Number(bookingSeats) >= props.seatLimit} onPress={() => props.adjustBookingSeats(1)}>
         <Ionicons name="add" size={20} color={Colors.primary} />
       </TouchableOpacity>
     </View>
     {Number(bookingSeats) >= 3 && <PassengerSeatNotice isIdentityVerified={props.isIdentityVerified}
       capacity={props.seatLimit} onVerify={() => props.openPassengerIdentityVerification()} />}
-    <View style={s.row}><Text style={s.value}>{bookingProposedPrice.trim() ? 'Total proposé' : 'Total'}</Text>
-      <Text style={s.price}>{estimatedTotal === 0 ? 'Gratuit' : `${estimatedTotal.toLocaleString('fr-FR')} FC`}</Text>
-    </View>
     {props.setBookingProposedPrice && !trip?.tripRequestId && <BookingPriceProposalField listedPrice={trip?.price ?? 0}
       seats={Number(bookingSeats)} value={bookingProposedPrice} onChange={props.setBookingProposedPrice} disabled={busy} />}
-    {estimatedTotal > 0 && <FormDisclosure title="Paiement" summary={getTripPaymentModeLabel(bookingPaymentMode)}
-      forceOpen={isError || paymentUnavailable || !accepted.includes(bookingPaymentMode)}>
-      {isFetching && <Text style={s.hint}>Vérification des modes disponibles…</Text>}
-      {isError && <TouchableOpacity accessibilityRole="button" disabled={isFetching || busy || !active}
-        style={s.routeRow} onPress={() => { void refetch(); }}>
-        <Text style={s.error}>Vérification indisponible · Réessayer</Text>
-      </TouchableOpacity>}
-      {!!options?.cashUnavailableReason && <Text style={s.hint}>{options.cashUnavailableReason}</Text>}
-      {TRIP_PAYMENT_MODE_OPTIONS.filter(option => accepted.includes(option.id)).map(option => {
-        const selected = option.id === bookingPaymentMode;
-        const unavailable = !options || isError || !options.availablePaymentModes.includes(option.id);
-        return <TouchableOpacity key={option.id} accessibilityRole="radio" accessibilityState={{ checked: selected, disabled: busy || unavailable }}
-          disabled={busy || unavailable} onPress={() => props.setBookingPaymentMode(option.id)}
-          style={[s.routeRow, unavailable && s.disabled]}>
-          <Ionicons name={option.icon} size={20} color={Colors.primary} />
-          <View style={s.copy}><Text style={s.value}>{option.label}</Text>
-            {unavailable && <Text style={s.hint}>Indisponible actuellement</Text>}</View>
-          <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={22} color={selected ? Colors.primary : Colors.gray[500]} />
-        </TouchableOpacity>;
-      })}
-    </FormDisclosure>}
     {trip?.requiresPassengerKyc && <Text style={s.hint}>Identité vérifiée requise pour ce trajet.</Text>}
-    <Text style={s.hint}>{bookingProposedPrice.trim()
-      ? 'Le conducteur doit accepter votre prix. Aucun paiement maintenant.'
-      : 'Le conducteur recevra votre réservation. Aucun paiement maintenant.'}</Text>
+    {props.footer}
   </ScrollView>;
 }

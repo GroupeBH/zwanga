@@ -7,6 +7,7 @@ export type RouteLocationSource = {
 export type RouteStopLabel = {
   title: string; address: string; context: string; reference: string;
   isResolved: boolean;
+  isResolving?: boolean;
 };
 export type RouteLocationLabels = { departure: RouteStopLabel; arrival: RouteStopLabel };
 

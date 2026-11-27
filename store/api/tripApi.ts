@@ -1,6 +1,7 @@
 import { buildGetTripsEndpoints } from './trip/getTrips.endpoints';
 import { buildTripHistory } from './trip/history';
 import { buildTripDiscovery } from './trip/discovery';
+import { buildTripCoPassengers } from './trip/coPassengers';
 import { buildConfirmDriverTripInterruptionEndpoints } from './trip/confirmDriverTripInterruption.endpoints';
 import { baseApi } from './baseApi';
 import type { BaseEndpointBuilder } from './types';
@@ -26,6 +27,7 @@ export const tripApi = baseApi.injectEndpoints({
     ...buildGetTripsEndpoints(builder),
     ...buildTripHistory(builder),
     ...buildTripDiscovery(builder),
+    ...buildTripCoPassengers(builder),
     ...buildConfirmDriverTripInterruptionEndpoints(builder),
   }),
 });
@@ -50,6 +52,7 @@ tripApi.enhanceEndpoints({ endpoints: { startTrip: {
 } } });
 
 export const {
+  useGetTripCoPassengersQuery,
   useGetTripDiscoveryInfiniteQuery,
   useGetMyTripHistoryInfiniteQuery,
   useGetMyActivityTripsQuery,

@@ -28,6 +28,7 @@ import { showRequestSearchMap } from '@/features/request-detail/requestSearchMod
 import { canUseCachedRequestLink } from '@/features/trip-request/assignedTripNavigation';
 import { pendingDriverOffer } from '@/features/request-detail/counterOfferPolicy';
 import { RequestPendingOfferActions } from '@/features/request-detail/RequestPendingOfferActions';
+import { RequestConfirmedScreen } from '@/features/request-detail/RequestConfirmedScreen';
 export default function TripRequestDetailsScreen() {
   const model = useRequestDetailController();
   const readsEnabled = useDisplayReadsEnabled(model.isScreenActive);
@@ -135,9 +136,12 @@ export default function TripRequestDetailsScreen() {
   if (showRequestSearchMap(model.tripRequest, model.userId)) return <RequestSearchScreen key={`${model.userId}:${model.tripRequest.id}`}
     model={model} presentation={presentation} onLayout={reportLayout} />;
 
+  if (model.isOwner && model.tripRequest.status === 'driver_selected') return <RequestConfirmedScreen
+    key={`${model.userId}:${model.tripRequest.id}`} model={model} presentation={presentation} onLayout={reportLayout} />;
+
   return (
     <SafeAreaView onLayout={reportLayout} style={[styles.container, model.isOwner ? requestSummaryStyles.passengerScreen : requestSummaryStyles.driverScreen]}>
-      <View style={[styles.header, requestSummaryStyles.header]}>
+      {!showCourse && <View style={[styles.header, requestSummaryStyles.header]}>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retour à l’accueil" onPress={model.goHome} style={[styles.backButton, requestSummaryStyles.back]}>
           <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
         </TouchableOpacity>
@@ -146,11 +150,11 @@ export default function TripRequestDetailsScreen() {
           <View style={[requestSummaryStyles.dot, { backgroundColor: presentation.statusConfig.color }]} />
           <Text style={requestSummaryStyles.badgeText}>{presentation.statusConfig.label}</Text>
         </View>}
-      </View>
+      </View>}
 
       <ScrollView
         style={showDecision ? requestSummaryStyles.decisionScroll : undefined}
-        contentContainerStyle={[requestSummaryStyles.content, showDecision && requestSummaryStyles.decisionContent]}
+        contentContainerStyle={[requestSummaryStyles.content, showDecision && requestSummaryStyles.decisionContent, showCourse && { padding: 0, gap: 0, backgroundColor: '#FFFFFF' }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"

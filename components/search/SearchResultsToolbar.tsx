@@ -8,8 +8,8 @@ export type SearchSortMode = 'cheap' | 'early' | 'nearby';
 type SortOption = { value: SearchSortMode; label: string };
 
 const TRIP_SORT_OPTIONS: readonly SortOption[] = [
+  { value: 'early', label: 'Prochains départs' },
   { value: 'cheap', label: 'Moins cher' },
-  { value: 'early', label: 'Plus tôt' },
 ];
 const REQUEST_SORT_OPTIONS: readonly SortOption[] = [
   { value: 'nearby', label: 'Plus proches' },

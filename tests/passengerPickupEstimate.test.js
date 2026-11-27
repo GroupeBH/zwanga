@@ -118,8 +118,11 @@ test('arrival banner is visible in the header even on expanded maps, wraps text 
   assert.equal(node.type({ estimate: null }), null);
 });
 
-test('the accepted-trip action opens the same passenger screen for upcoming, ongoing and request-created trips', () => {
-  const { TripDetailActionsFooter } = loader({ 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+test('the accepted-trip action opens the same passenger screen for upcoming, ongoing and request-created trips', t => {
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const { TripDetailActionsFooter } = loader({ react: { ...require('react'), ...hooks.react },
+    'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+    '@/features/request-detail/ChangeRequestDriverButton': { PickupDriverChange: 'PickupDriverChange' },
     '../screen-styles/app/trip/detail/index': { styles: {} } })('features/trip-detail/TripDetailActionsFooter.tsx');
   for (const status of ['upcoming', 'ongoing']) {
     for (const tripRequestId of [undefined, 'request']) {
@@ -127,7 +130,7 @@ test('the accepted-trip action opens the same passenger screen for upcoming, ong
       const props = { data: { trip: { ...trip, status, tripRequestId }, insets: { bottom: 0 }, router: { push: href => calls.push(href) } },
         access: { activeBookingStatus: { label: 'Acceptée' } }, activity: { activeBooking: booking },
         editor: {}, pricing: {}, payment: {}, bookingState: {}, bookingSubmission: {}, bookingLocation: {} };
-      const tree = TripDetailActionsFooter(props);
+      const tree = hooks.render(() => TripDetailActionsFooter(props));
       const button = elements(tree).find(item => item.props?.accessibilityLabel === 'Voir l’arrivée estimée du conducteur');
       assert.ok(button); assert.match(words(button), /Voir l’arrivée/);
       button.props.onPress(); assert.deepEqual(calls, ['/booking/navigate/booking']);

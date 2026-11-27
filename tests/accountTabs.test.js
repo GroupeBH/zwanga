@@ -93,13 +93,11 @@ test("earnings are a transport-driver tab, not a passenger flag or a temporary t
       const user = { role, driverCategory, currentTripRole: 'passenger' };
       assert.equal(policy.usesEarningsTab(user), driverCategory === 'transport');
       assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), driverCategory === 'transport');
-      assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), false);
     }
   }
   for (const user of [null, undefined, { role: 'admin', driverCategory: 'transport' },
     { role: 'passenger', driverCategory: 'transport', isDriver: true }]) {
     assert.equal(policy.usesEarningsTab(user), false);
-    assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), user?.role === 'passenger');
   }
 });
 
@@ -111,13 +109,12 @@ test("tab selectors react to category/account changes but not GPS or balance upd
   user.driverCategory = 'private';
   assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), false);
   user.role = 'passenger';
-  assert.equal(policy.selectUsesTripSearchTab({ auth: { user } }), true);
+  assert.equal(policy.selectUsesEarningsTab({ auth: { user } }), false);
   assert.equal(policy.selectUsesEarningsTab({ auth: { user: null } }), false);
-  assert.equal(policy.selectUsesTripSearchTab({ auth: { user: null } }), false);
 });
 
 for (const platform of ["ios", "android"]) {
-  test(`${platform}: third tab embeds passenger search and preserves the driver workspace`, () => {
+  test(`${platform}: third tab opens personal trips for passengers and drivers, isolated per account`, () => {
     const state = { auth: { user: { role: 'passenger' } } };
     let focused = true;
     const { default: TripsTab } = loader({
@@ -140,16 +137,11 @@ for (const platform of ["ios", "android"]) {
     for (const role of ['passenger', 'driver', 'both', 'passenger']) {
       state.auth.user = { role, driverCategory: 'intercity' };
       const tree = TripsTab();
-      if (role === 'passenger') {
-        assert.equal(tree.type, 'Search');
-        assert.equal(tree.props.embedded, true);
-        assert.equal(tree.props.bottomOverlay, platform === 'ios' ? 92 : 0);
-      } else {
-        assert.equal(tree.type, 'Scope');
-        assert.equal(tree.props.scopeKey, 'my-trips');
-        assert.equal(tree.props.active, focused);
-        assert.equal(tree.props.children.type.name, 'TripsContent');
-      }
+      assert.equal(tree.type, 'Scope');
+      assert.equal(tree.props.scopeKey, 'my-trips');
+      assert.equal(tree.props.active, focused);
+      assert.equal(tree.props.children.type.name, 'TripsContent');
+      assert.equal(tree.props.children.key, `undefined:${role !== 'passenger'}`);
       focused = !focused;
     }
   });
@@ -176,17 +168,19 @@ for (const platform of ["ios", "android"]) {
       { role: 'driver', driverCategory: 'intercity' }, { role: 'both', driverCategory: 'intercity' },
     ]) {
       state.auth.user = user;
-      const { role } = user;
       const earnings = policy.usesEarningsTab(user);
       const elements = nodes(TabLayout());
       const routes = elements.filter((node) => node.type === "TabScreen");
       const screens = routes.filter(node => node.props.options.href !== null);
       assert.deepEqual(
         screens.map((node) => node.props.name),
-        ["index", "discover", earnings ? "earnings" : "trips", "messages", "profile"],
+        ["index", "explore", earnings ? "earnings" : "trips", "discover", "profile"],
       );
-      assert.deepEqual(routes.map(node => node.props.name), ['index', 'discover', 'trips', 'earnings', 'messages', 'profile']);
-      assert.equal(screens[2].props.options.title, earnings ? 'Revenus' : role === 'passenger' ? 'Trajets' : 'Mes trajets');
+      assert.deepEqual(routes.map(node => node.props.name), ['index', 'explore', 'trips', 'earnings', 'discover', 'profile', 'messages']);
+      assert.equal(routes.find(node => node.props.name === 'messages').props.options.href, null);
+      assert.equal(screens[3].props.options.title, 'Services');
+      assert.equal(nodes(screens[3].props.options.tabBarIcon({ focused: true, color: '#000', size: 24 })).find(node => node.type === 'Icon').props.name, 'briefcase');
+      assert.equal(screens[2].props.options.title, earnings ? 'Revenus' : 'Mes trajets');
       assert.equal(screens[2].props.options.href, earnings ? '/(tabs)/earnings' : '/(tabs)/trips');
       for (const focused of [true, false]) {
         const thirdIcon = screens[2].props.options.tabBarIcon({ focused, color: '#000', size: 24 });
@@ -195,7 +189,7 @@ for (const platform of ["ios", "android"]) {
       }
       assert.equal(
         screens[1].props.options.title,
-        "Services",
+        "Recherche",
       );
       const icon = screens[1].props.options.tabBarIcon({
         focused: true,
@@ -204,7 +198,7 @@ for (const platform of ["ios", "android"]) {
       });
       assert.equal(
         nodes(icon).find((node) => node.type === "Icon").props.name,
-        "briefcase",
+        "search",
       );
       const tabs = elements.find((node) => node.type === Tabs);
       assert.equal(tabs.props.initialRouteName, 'index');
@@ -220,7 +214,6 @@ for (const platform of ["ios", "android"]) {
         platform !== "android",
       );
       assert.equal(screens[0].props.options.freezeOnBlur, false);
-      assert.equal(screens[3].props.options.freezeOnBlur, false);
       assert.equal(
         elements.filter((node) => node.type === "RideBanner").length,
         1,

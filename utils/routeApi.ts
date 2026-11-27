@@ -3,6 +3,7 @@ import { googleMapsApi, TravelMode } from '@/store/api/googleMapsApi';
 import { calculateDistance } from '@/utils/routeHelpers';
 import { BoundedCache } from '@/utils/boundedCache';
 import { decodeSafePolyline } from '@/utils/routes/safePolyline';
+import { bookingRouteCoordinates } from '@/utils/routes/bookingRouteGeometry';
 
 type LatLng = { latitude: number; longitude: number };
 
@@ -10,6 +11,7 @@ export interface RouteInfo {
   coordinates: LatLng[];
   duration: number;
   distance: number;
+  geometry?: 'detailed' | 'overview' | 'fallback';
 }
 
 const ROUTE_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -44,6 +46,7 @@ function buildFallbackRouteInfo(origin: LatLng, destination: LatLng): RouteInfo 
     coordinates: [origin, destination],
     duration: estimatedDuration,
     distance,
+    geometry: 'fallback',
   };
 }
 
@@ -112,10 +115,11 @@ export async function getRouteCoordinates(origin: LatLng, destination: LatLng): 
   return routeInfo.coordinates;
 }
 
-export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise<RouteInfo> {
+export async function getRouteInfo(origin: LatLng, destination: LatLng, options: { requireDetailedRoute?: boolean } = {}): Promise<RouteInfo> {
+  const detailed = options.requireDetailedRoute === true;
   const safeOrigin = origin ?? { latitude: 0, longitude: 0 };
   const safeDestination = destination ?? { latitude: 0, longitude: 0 };
-  const cacheKey = buildRouteCacheKey(safeOrigin, safeDestination);
+  const cacheKey = `${detailed ? 'booking:' : ''}${buildRouteCacheKey(safeOrigin, safeDestination)}`;
   const cachedRouteInfo = getCachedRouteInfo(cacheKey);
   if (cachedRouteInfo) {
     return cachedRouteInfo;
@@ -126,7 +130,10 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
     return inFlightRequest;
   }
 
-  const fallbackRouteInfo = buildFallbackRouteInfo(safeOrigin, safeDestination);
+  // A straight line is not an itinerary on which a passenger can choose a stop.
+  const fallbackRouteInfo: RouteInfo = detailed
+    ? { coordinates: [], duration: 0, distance: 0, geometry: 'fallback' }
+    : buildFallbackRouteInfo(safeOrigin, safeDestination);
 
   if (
     !origin ||
@@ -165,7 +172,7 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
   }
 
   if (routeApiCooldownUntil > Date.now()) {
-    setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
+    if (!detailed) setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
     return fallbackRouteInfo;
   }
 
@@ -188,7 +195,7 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
     const softTimeout = setTimeout(() => {
       didSoftTimeout = true;
       request.abort();
-    }, ROUTE_REQUEST_SOFT_TIMEOUT_MS);
+    }, detailed ? 6_000 : ROUTE_REQUEST_SOFT_TIMEOUT_MS);
 
     try {
       const result = await request;
@@ -201,21 +208,23 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
           // The route polyline is secondary UI. Keep the form responsive and
           // avoid noisy "aborted" logs when the mobile network is unstable.
         } else {
-          console.warn('No route found from backend, using straight line:', result.error || result.data?.status);
+          console.warn(detailed ? 'Booking road route unavailable:' : 'No route found from backend, using straight line:', result.error || result.data?.status);
         }
 
-        setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
+        if (!detailed) setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
         return fallbackRouteInfo;
       }
 
       const route = result.data.routes[0];
       const leg = route.legs?.[0];
-      const decodedCoordinates = decodeSafePolyline(route.overviewPolyline);
+      const decodedCoordinates = detailed ? bookingRouteCoordinates(route) : decodeSafePolyline(route.overviewPolyline);
+      if (detailed && decodedCoordinates.length < 2) return fallbackRouteInfo;
 
       const routeInfo: RouteInfo = {
         coordinates: decodedCoordinates.length > 0 ? decodedCoordinates : fallbackRouteInfo.coordinates,
         duration: leg?.duration || fallbackRouteInfo.duration,
         distance: leg?.distance || fallbackRouteInfo.distance,
+        geometry: detailed ? 'detailed' : decodedCoordinates.length >= 2 ? 'overview' : 'fallback',
       };
 
       setCachedRouteInfo(cacheKey, routeInfo, ROUTE_CACHE_TTL_MS);
@@ -227,10 +236,10 @@ export async function getRouteInfo(origin: LatLng, destination: LatLng): Promise
         enterRouteApiSoftCooldown();
         // Silent fallback: route drawing must not block forms or overload weak devices.
       } else {
-        console.warn('Failed to fetch route from backend, using straight line:', error);
+        console.warn(detailed ? 'Failed to fetch booking road route:' : 'Failed to fetch route from backend, using straight line:', error);
       }
 
-      setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
+      if (!detailed) setCachedRouteInfo(cacheKey, fallbackRouteInfo, FALLBACK_CACHE_TTL_MS);
       return fallbackRouteInfo;
     } finally {
       clearTimeout(softTimeout);

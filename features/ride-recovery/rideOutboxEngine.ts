@@ -67,9 +67,12 @@ export function createRideOutbox(deps: Dependencies) {
       return exclusive(async () => {
         if (!userId) throw new RideOutboxError('Connectez-vous pour enregistrer votre confirmation.');
         if (deps.userId() !== userId) throw new RideOutboxError('Le compte a changé. Rouvrez le trajet avant de confirmer.');
-        const entries = await read(userId);
+        let entries = await read(userId);
         const existing = entries.find(entry => entry.bookingId === input.bookingId && entry.stage === input.stage);
-        if (existing) {
+        if (existing?.state === 'blocked' && input.stage === 'dropoff' && input.arrivalPromptId && input.arrivalPromptId !== existing.arrivalPromptId) {
+          // A new explicit server proposal replaces a rejected old-client tap, not an in-flight receipt.
+          entries = entries.filter(entry => entry !== existing);
+        } else if (existing) {
           if (existing.decision !== input.decision) throw new RideOutboxError('Votre réponse est déjà enregistrée. Contactez l’assistance pour la corriger.');
           return existing;
         }
@@ -122,6 +125,12 @@ export function createRideOutbox(deps: Dependencies) {
               const status = snapshot[entry.stage]?.status;
               if (snapshot.bookingId !== entry.bookingId || !['none', 'awaiting_other', 'ready', 'confirmed', 'disputed'].includes(status)) throw new Error('Invalid acknowledgement');
               snapshots.set(entry.bookingId, snapshot);
+              if (snapshot.confirmationMode === 'driver_only' && snapshot.actor === 'passenger' && entry.decision === 'confirm' &&
+                  !entry.arrivalPromptId && !['confirmed', 'disputed'].includes(status)) {
+                const blocked = rideRetry({ status: 403, data: { code: 'RIDE_DRIVER_CONFIRMATION_REQUIRED' } }, entry.attempts, deps.now());
+                await update(userId, entry.eventId, blocked);
+                continue;
+              }
               // Reconcile a ready dual receipt using its SAME key, never invent the other vote.
               if (entry.state === 'received' && entry.decision === 'confirm' && status === 'ready' &&
                   snapshot.pickup.status !== 'disputed' && snapshot.dropoff.status !== 'disputed') {

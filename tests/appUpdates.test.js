@@ -165,7 +165,7 @@ test('client registration deduplicates successful sync and cancels pending foreg
   const timers = new Map(); let timerId = 0;
   t.mock.method(global, 'setTimeout', (fn, delay) => { timers.set(++timerId, { fn, delay }); return timerId; });
   t.mock.method(global, 'clearTimeout', id => timers.delete(id));
-  const register = payload => { calls.push(payload); return { unwrap: async () => ({}), reset() {} }; };
+  const register = payload => { calls.push(payload); return { unwrap: async () => ({ registered: true }), reset() {} }; };
   const { useAppUpdateClient } = loader({ react: h.react,
     'expo-notifications': { getPermissionsAsync: async () => ({ granted: true }), IosAuthorizationStatus: { PROVISIONAL: 3 } },
     '@/services/tokenStorage': { getStoredFcmToken: async () => 'test-token' },
@@ -188,7 +188,7 @@ test('client retries delayed push registration once, never requests permissions'
   const h = hookHarness(); const calls = [], timers = []; let fail = true;
   t.mock.method(global, 'setTimeout', (fn, delay) => { timers.push({ fn, delay }); return timers.length; });
   t.mock.method(global, 'clearTimeout', () => {});
-  const register = payload => { calls.push(payload); return { unwrap: async () => { if (fail) throw new Error('token pending'); }, reset() {} }; };
+  const register = payload => { calls.push(payload); return { unwrap: async () => { if (fail) throw new Error('token pending'); return { registered: true }; }, reset() {} }; };
   const { useAppUpdateClient } = loader({ react: h.react,
     'expo-notifications': { getPermissionsAsync: async () => ({ granted: false }), IosAuthorizationStatus: { PROVISIONAL: 3 } },
     '@/services/tokenStorage': { getStoredFcmToken: async () => { throw new Error('must not read denied token'); } },

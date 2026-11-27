@@ -1,5 +1,7 @@
 import { getLocationText, getLocationCoordinatesObject } from '../../features/trip-detail/tripDetailModel';
 import { bookingProposalError } from '@/features/trip-detail/bookingPriceProposal';
+import { bookingReferenceContext, bookingReferenceError } from '@/features/trip-detail/bookingReferences';
+import { missingRequestReference, requestReferenceMessage } from '@/features/trip-request/requestReference';
 import { type MapLocationSelection } from '@/components/LocationPickerModal';
 import { useDialog } from '@/components/ui/DialogProvider';
 import { trackEvent } from '@/services/analytics';
@@ -16,6 +18,8 @@ import React from 'react';
 import { useLazyTripPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
 
 interface Params {
+  passengerOriginReference?: string;
+  passengerDestinationReference?: string;
   isBooking: boolean;
   trip: Trip | undefined;
   isValidatingDestination: boolean;
@@ -52,6 +56,8 @@ interface Params {
 }
 
 export function useTripBookingSubmission({
+  passengerOriginReference,
+  passengerDestinationReference,
   isBooking,
   trip,
   isValidatingDestination,
@@ -116,11 +122,19 @@ export function useTripBookingSubmission({
 
     const proposalError = bookingProposalError(bookingProposedPrice, trip.price, seatsValue);
     if (proposalError) { setBookingModalError(proposalError); setBookingStep(1); return; }
+    const originContext = bookingReferenceContext(trip, 'origin', passengerOrigin, passengerOriginManualAddress);
+    const destinationContext = bookingReferenceContext(trip, 'destination', passengerDestination, passengerDestinationManualAddress);
+    const originReference = (passengerOriginReference ?? originContext.inheritedReference).trim();
+    const destinationReference = (passengerDestinationReference ?? destinationContext.inheritedReference).trim();
+    const referenceError = bookingReferenceError(originContext, originReference, destinationContext, destinationReference);
+    if (referenceError) { setBookingModalError(referenceError); setBookingStep(1); return; }
     if (estimatedTotal > 0) {
       try {
         const options = await getPaymentOptions({ tripId: trip.id, numberOfSeats: seatsValue }, false).unwrap();
         if (!options.availablePaymentModes.includes(bookingPaymentMode)) {
-          setBookingModalError(options.cashUnavailableReason ?? 'Choisissez un mode de paiement accepté et disponible.');
+          setBookingModalError(options.availablePaymentModes.length === 0
+            ? 'Aucun mode de paiement disponible. Réessayez ou choisissez un autre trajet.'
+            : 'Choisissez une option dans « Mode de paiement ».');
           setBookingStep(1); return;
         }
       } catch {
@@ -150,8 +164,9 @@ export function useTripBookingSubmission({
         );
         return;
       }
-      resolvedPassengerOrigin = selection;
-      setPassengerOrigin(selection);
+      // Keep the submitted manual label bound to its freshly resolved place metadata.
+      resolvedPassengerOrigin = { ...selection, title: manualPassengerOrigin };
+      setPassengerOrigin(resolvedPassengerOrigin);
     }
 
     if (manualPassengerDestination) {
@@ -166,12 +181,20 @@ export function useTripBookingSubmission({
         );
         return;
       }
-      resolvedPassengerDestination = selection;
-      setPassengerDestination(selection);
+      resolvedPassengerDestination = { ...selection, title: manualPassengerDestination };
+      setPassengerDestination(resolvedPassengerDestination);
     }
 
     if (shouldResolveManualPassengerPoints) {
       setIsValidatingDestination(false);
+    }
+
+    // A provider may reveal that an unfamiliar typed name is only a locality.
+    if (missingRequestReference(originContext.address, originReference, resolvedPassengerOrigin)) {
+      setBookingModalError(requestReferenceMessage('departure')); setBookingStep(1); return;
+    }
+    if (missingRequestReference(destinationContext.address, destinationReference, resolvedPassengerDestination)) {
+      setBookingModalError(requestReferenceMessage('arrival')); setBookingStep(1); return;
     }
 
     const tripDepartureCoordinate = normalizeTripMapCoordinate(
@@ -266,7 +289,9 @@ export function useTripBookingSubmission({
         numberOfSeats: seatsValue,
         ...(bookingProposedPrice.trim() ? { proposedPricePerSeat: Number(bookingProposedPrice) } : {}),
         passengerOrigin: passengerOriginText || undefined,
+        passengerOriginReference: originReference || undefined,
         passengerOriginCoordinates: getLocationCoordinatesObject(resolvedPassengerOrigin),
+        passengerDestinationReference: destinationReference || undefined,
         passengerDestination: hasCustomPassengerDestination
           ? passengerDestinationText || undefined
           : undefined,

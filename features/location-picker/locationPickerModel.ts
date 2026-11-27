@@ -31,7 +31,9 @@ export function readableSelection(value: MapLocationSelection): MapLocationSelec
 }
 
 /** Only the rendered line is sampled. Snapping always uses the complete validated route. */
-export function pickerDisplayRoute(route: PickerCoordinate[], limit = 400): PickerCoordinate[] {
+export function pickerDisplayRoute(route: PickerCoordinate[], limit = 400, preserveGeometry = false): PickerCoordinate[] {
+  // Booking uses detailed, already bounded geometry: sampling could cut across bends by >100 m.
+  if (preserveGeometry) return route.length <= 10_000 ? route : [];
   if (route.length <= limit) return route;
   return Array.from({ length: limit }, (_, index) => route[Math.round(index * (route.length - 1) / (limit - 1))]);
 }

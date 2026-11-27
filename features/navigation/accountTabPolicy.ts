@@ -14,9 +14,6 @@ export function usesEarningsTab(
 export const selectUsesEarningsTab = (state: RootState) =>
   usesEarningsTab(state.auth?.user);
 
-export const selectUsesTripSearchTab = (state: RootState) =>
-  state.auth?.user?.role === 'passenger';
-
 export const getServicesEntryHref = () => "/(tabs)/discover" as const;
 
 export function getTabContentOverlay(platform: string, tabBarHeight: number) {

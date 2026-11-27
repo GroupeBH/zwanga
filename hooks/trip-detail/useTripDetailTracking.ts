@@ -68,7 +68,7 @@ export function useTripDetailTracking({
     const nextState = new Map(tripDetailBookingStateRef.current);
 
     relevantBookings.forEach((booking) => {
-      const pickupConfirmed = Boolean(booking.pickedUp && booking.pickedUpConfirmedByPassenger);
+      const pickupConfirmed = Boolean(booking.pickedUp || booking.pickedUpAt);
       const dropoffConfirmed = Boolean(
         booking.droppedOff || booking.droppedOffConfirmedByPassenger || booking.status === 'completed',
       );

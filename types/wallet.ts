@@ -48,6 +48,7 @@ export type WalletLedgerEntryType =
   | "withdrawal"
   | "withdrawal_refund"
   | "cash_commission"
+  | "cash_penalty"
   | "cash_commission_refund";
 // Cash commissions use the same immutable wallet history as other movements.
 

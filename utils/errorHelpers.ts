@@ -1,10 +1,19 @@
 import { getStatusErrorMessage, isTechnicalOrEnglishMessage, getTechnicalErrorMessage } from './errors/errorPresentation';
 import { getErrorMessageText, getErrorStatus, getRawErrorMessage } from './errors/errorParsing';
-export { getErrorStatus } from './errors/errorParsing';
 import { EXTRA_SEATS_IDENTITY_MESSAGE } from '@/utils/passengerSeats';
+export { getErrorStatus } from './errors/errorParsing';
 
 function getKnownBusinessErrorMessage(error: any): string | null {
   const code = error?.data?.code ?? error?.data?.error?.code ?? error?.error?.code ?? error?.code;
+  if (code === 'BOOKING_PICKUP_OFF_ROUTE') {
+    return 'Point de récupération trop éloigné : choisissez un départ à 100 m maximum de l’itinéraire.';
+  }
+  if (code === 'BOOKING_PICKUP_ROUTE_UNAVAILABLE') {
+    return 'Itinéraire non vérifiable pour le moment. Réessayez avant de réserver.';
+  }
+  if (code === 'BOOKING_PICKUP_LOCATION_REQUIRED') {
+    return 'Choisissez votre point de récupération sur la carte.';
+  }
   if (code === 'DRIVER_EARNING_RECONCILIATION_REQUIRED') {
     return 'Ce paiement nécessite une vérification. Actualisez le trajet. Si le problème persiste, contactez l’assistance.';
   }

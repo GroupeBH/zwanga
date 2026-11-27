@@ -4,6 +4,8 @@ import { useTripDetailBookingState } from '../../hooks/trip-detail/useTripDetail
 import { useTripDetailAccess } from '../../hooks/trip-detail/useTripDetailAccess';
 import { useTripDetailPresentation } from '../../hooks/trip-detail/useTripDetailPresentation';
 import { TripSummary } from './TripSummary';
+import { TripCoPassengers } from './TripCoPassengers';
+import { RidePaymentNotice } from '@/features/ride-payment/RidePaymentNotice';
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors } from '@/constants/styles';
 import { trackingSocket } from '@/services/trackingSocket';
@@ -12,6 +14,13 @@ import Animated, { FadeInDown } from '@/utils/reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Image, Text, TouchableOpacity, View } from 'react-native';
+
+// Les sections apparaissaient 460–560 ms après l'ouverture : l'écran semblait lent.
+const SECTION_ENTER_DELAY = 120;
+const PAYMENT_MODE_LABELS: Record<string, string> = { cash: 'Cash', electronic: 'Électronique', points: 'Jetons' };
+const PAYMENT_MODE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  cash: 'cash-outline', electronic: 'card-outline', points: 'wallet-outline',
+};
 
 interface TripDetailContentSheetProps {
   hasRenderableTripMap: boolean;
@@ -37,10 +46,14 @@ export function TripDetailContentSheet({
   safety,
 }: TripDetailContentSheetProps) {
   return (
-    <View style={[styles.tripDetailSheet, !hasRenderableTripMap && styles.tripDetailSheetNoMap]}>
+    <View style={[styles.tripDetailSheet, !hasRenderableTripMap && styles.tripDetailSheetNoMap,
+      !data.isTripDriver && !activity.activeBooking && { backgroundColor: '#FFFBF7' }]}>
       <View style={styles.tripSheetHandle} />
 
       <TripSummary
+        paymentNotice={<RidePaymentNotice booking={activity.activeBooking} active={data.isScreenActive} />}
+        booking={activity.activeBooking}
+        tripArrivalClockLabel={presentation.tripArrivalClockLabel}
         isTripDriver={data.isTripDriver}
         config={config}
         routeLabels={presentation.routeLabels}
@@ -64,6 +77,9 @@ export function TripDetailContentSheet({
         setContactModalVisible={bookingState.setContactModalVisible}
       />
 
+    {!data.isTripDriver && <TripCoPassengers key={`${data.user?.id}:${data.tripId}:${activity.activeBooking?.id}`}
+      trip={data.trip} booking={activity.activeBooking} active={data.isScreenActive} />}
+
     {data.isTripDriver && data.tripExpired && <View style={styles.section}>
       <Text style={styles.trackingSubtitle}>
         {data.trip?.canReprogram
@@ -72,9 +88,16 @@ export function TripDetailContentSheet({
       </Text>
     </View>}
 
-    {!!data.trip?.acceptedPaymentModes?.length && Number(data.trip.price) > 0 && <View style={styles.section}>
-      <Text style={styles.sectionTitle}>PAIEMENTS ACCEPTÉS</Text>
-      <Text>{data.trip.acceptedPaymentModes.map(mode => ({ cash: 'Cash', electronic: 'Électronique', points: 'Jetons' })[mode]).join(' · ')}</Text>
+    {(data.isTripDriver || !activity.activeBooking) && !!data.trip?.acceptedPaymentModes?.length && Number(data.trip.price) > 0 && <View style={styles.section}>
+      <Text style={styles.sectionTitle} accessibilityRole="header">PAIEMENTS ACCEPTÉS</Text>
+      <View style={styles.paymentModesRow}>
+        {data.trip.acceptedPaymentModes.map(mode => (
+          <View key={mode} style={styles.paymentModeChip}>
+            <Ionicons name={PAYMENT_MODE_ICONS[mode] ?? 'cash-outline'} size={15} color={Colors.successDark} />
+            <Text style={styles.paymentModeChipText}>{PAYMENT_MODE_LABELS[mode] ?? mode}</Text>
+          </View>
+        ))}
+      </View>
     </View>}
 
     {activity.canTrackTrip && data.trip?.status !== 'ongoing' && (
@@ -86,7 +109,7 @@ export function TripDetailContentSheet({
               data.liveDriverCoordinate ? styles.trackingStatusDotActive : styles.trackingStatusDotIdle,
             ]}
           />
-          <View>
+          <View style={styles.trackingBannerCopy}>
             <Text style={styles.trackingTitle}>{access.trackingStatusTitle}</Text>
             <Text style={styles.trackingSubtitle}>{access.trackingStatusSubtitle}</Text>
           </View>
@@ -94,6 +117,9 @@ export function TripDetailContentSheet({
         {!data.isTripDriver && (
           <TouchableOpacity
             style={styles.trackingRefreshButton}
+            accessibilityRole="button"
+            accessibilityLabel="Actualiser la position du conducteur"
+            hitSlop={{ top: 4, right: 4, bottom: 4, left: 4 }}
             onPress={() => {
               if (data.trip) {
                 trackingSocket.requestDriverLocation(data.trip.id);
@@ -106,8 +132,13 @@ export function TripDetailContentSheet({
       </View>
     )}
 
-    {access.showPassengerSecurityAccess && (
-      <Animated.View entering={FadeInDown.delay(460)} style={styles.section}>
+    {access.showPassengerSecurityAccess && access.isPassengerSecurityLocked && <View style={{ marginHorizontal: 16, marginBottom: 12, borderRadius: 14, backgroundColor: '#EDF5F0', padding: 12, flexDirection: 'row', gap: 10 }}>
+      <Ionicons name="shield-checkmark-outline" size={20} color="#116E3A" />
+      <View style={{ flex: 1 }}><Text style={{ color: '#1E294A', fontWeight: '700', fontSize: 13 }}>Partage du trajet et bouton SOS</Text>
+        <Text style={{ color: '#5E697B', fontSize: 12, lineHeight: 18 }}>Activés dès que votre réservation est confirmée.</Text></View>
+    </View>}
+    {access.showPassengerSecurityAccess && !access.isPassengerSecurityLocked && !hasRenderableTripMap && (
+      <Animated.View entering={FadeInDown.delay(SECTION_ENTER_DELAY)} style={styles.section}>
         <View style={[styles.sectionCard, styles.tripSafetyPassengerCard]}>
           <TouchableOpacity
             style={[
@@ -117,6 +148,9 @@ export function TripDetailContentSheet({
             onPress={safety.openSosModal}
             disabled={access.isPassengerSecurityLocked}
             activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel="SOS, contacter les urgences"
+            accessibilityState={{ disabled: access.isPassengerSecurityLocked }}
           >
             <Ionicons
               name="call"
@@ -139,10 +173,10 @@ export function TripDetailContentSheet({
     )}
 
     {/* Passagers */}
-    {data.tripBookings && data.tripBookings.length > 0 && (
-      <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
+    {data.isTripDriver && data.tripBookings && data.tripBookings.length > 0 && (
+      <Animated.View entering={FadeInDown.delay(SECTION_ENTER_DELAY + 40)} style={styles.section}>
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>PASSAGERS</Text>
+          <Text style={styles.sectionTitle} accessibilityRole="header">PASSAGERS</Text>
           <View style={styles.passengersContainer}>
             {data.tripBookings
               .filter((booking) => booking.status === 'accepted')
@@ -191,12 +225,15 @@ export function TripDetailContentSheet({
     )}
 
     {access.showPassengerVehicleReminder && (
-      <Animated.View entering={FadeInDown.delay(550)} style={styles.section}>
+      <Animated.View entering={FadeInDown.delay(SECTION_ENTER_DELAY + 80)} style={styles.section}>
         <View style={[styles.sectionCard, styles.securityReminderCard]}>
           {/* <View style={styles.securityReminderHeader}>
             <Ionicons name="shield-checkmark" size={20} color={Colors.secondary} />
             <Text style={styles.securityReminderTitle}>Vérification avant embarquement</Text>
           </View> */}
+          <View style={styles.securityReminderIcon}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={Colors.secondaryDark} />
+          </View>
           <Text style={styles.securityReminderText}>
             Avant de monter, vérifiez que le véhicule devant vous correspond exactement à celui du trajet.
           </Text>
@@ -209,7 +246,7 @@ export function TripDetailContentSheet({
     )}
 
     {access.showDriverVehicleReminder && (
-      <Animated.View entering={FadeInDown.delay(560)} style={styles.section}>
+      <Animated.View entering={FadeInDown.delay(SECTION_ENTER_DELAY + 80)} style={styles.section}>
         <View style={[styles.sectionCard, styles.tripSafetyCard]}>
           <View style={styles.tripSafetyHeader}>
             <View style={styles.tripSafetyIconWrap}>

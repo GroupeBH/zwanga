@@ -35,7 +35,7 @@ export const HomeDriverStatus = React.memo(function HomeDriverStatus({ active, o
   const tone = view.tone === 'ok' ? styles.driverStatusOk : view.tone === 'warn' ? styles.driverStatusWarn : styles.driverStatusOff;
   return (
     <TouchableOpacity accessibilityRole="button" activeOpacity={0.8}
-      accessibilityLabel={`Alertes conducteur : ${title}${detail ? `, ${detail}` : ''}`}
+      accessibilityLabel={`Partage de localisation : ${title}${detail ? `, ${detail}` : ''}`}
       accessibilityHint={canRefresh ? 'Envoyer votre position actuelle pour les commandes proches.' : 'Ouvrir les réglages des alertes conducteur.'}
       accessibilityState={{ disabled, busy: refresh.busy }} disabled={disabled}
       onPress={canRefresh ? refresh.refresh : onPress} style={styles.driverStatus}>
@@ -45,7 +45,7 @@ export const HomeDriverStatus = React.memo(function HomeDriverStatus({ active, o
         {detail ? <Text style={styles.driverStatusDetail}>{detail}</Text> : null}
       </View>
       {refresh.busy ? <ActivityIndicator size="small" color={HOME_DASHBOARD_COLORS.muted} /> :
-        <Ionicons name={canRefresh ? 'refresh-outline' : 'chevron-forward'} size={16} color={HOME_DASHBOARD_COLORS.muted} accessible={false} />}
+        <Ionicons name={canRefresh ? 'refresh-outline' : 'settings-outline'} size={18} color={HOME_DASHBOARD_COLORS.muted} accessible={false} />}
     </TouchableOpacity>
   );
 });

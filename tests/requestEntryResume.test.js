@@ -39,12 +39,70 @@ test('passenger entry verifies and opens its own pending order once, even with a
   f.options.active = false; f.render(); f.options.active = true; f.render(); await flush(); assert.equal(f.routes.length, 2);
 });
 
+test('own-request entry can be enabled without reviving driver offers or accepted command history', async t => {
+  for (const driver of [false, true]) {
+    const f = fixture(t); Object.assign(f.options, { driver, resumePreviousRequests: false, resumeOwnRequests: true });
+    let offerReads = 0; f.options.readOffers = async () => { offerReads++; return []; };
+    f.options.trips.data = [{ id: 'accepted-trip', driverId: 'user', tripRequestId: 'someone-else-order', status: 'upcoming' }];
+    f.render(); await flush();
+    assert.deepEqual(f.routes, ['/request-details/order']); assert.deepEqual(f.reads, ['order']); assert.equal(offerReads, 0);
+  }
+  const f = fixture(t); Object.assign(f.options, { driver: true, resumePreviousRequests: false, resumeOwnRequests: true });
+  f.options.requests.data = []; f.options.activity.data.requests.count = 0;
+  f.options.readOffers = async () => { throw Error('Historical proposals must not be fetched'); };
+  f.render(); await flush(); assert.deepEqual(f.routes, []); assert.deepEqual(f.reads, []);
+  assert.equal(f.render().failed, false); assert.equal(f.render().pending, false);
+});
+
+test('own-only recovery ignores foreign, cancelled and expired orders', async t => {
+  for (const patch of [{ passengerId: 'another-user' }, { status: 'cancelled' }, { status: 'expired' },
+    { departureDateMax: iso(-86400000) }]) {
+    const f = fixture(t); Object.assign(f.options, { resumePreviousRequests: false, resumeOwnRequests: true });
+    f.options.requests.data = [{ ...request(), ...patch }];
+    f.render(); await flush(); assert.deepEqual(f.routes, []); assert.deepEqual(f.reads, []);
+  }
+});
+
 test('the most recently created active order wins; foreign, expired and assigned orders do not', async t => {
   const f = fixture(t);
   f.options.requests.data = [request('old'), { ...request('new'), createdAt: iso(-1) }, request('foreign', 'other'),
     { ...request('cancelled'), status: 'cancelled' }, { ...request('expired'), departureDateMax: iso(-86400000) },
     { ...request('assigned'), selectedDriverId: 'driver' }];
   f.render(); await flush(); assert.deepEqual(f.reads, ['new']); assert.deepEqual(f.routes, ['/request-details/new']);
+});
+
+test('a linked personal order needs a live trip with the same selected driver', async t => {
+  for (const patch of [{ status: 'cancelled' }, { status: 'completed' }, { isExpired: true },
+    { startedAt: iso(-1000) }, { completedAt: iso(-1000) }, { id: 'other' }, { driverId: 'other' },
+    { driver: { id: 'other' } }]) {
+    const f = fixture(t), order = { ...request(), status: 'driver_selected', selectedDriverId: 'driver', tripId: 'trip' };
+    f.options.requests.data = [order]; f.options.readRequest = async () => order;
+    f.options.readTrip = async () => ({ id: 'trip', driverId: 'driver', status: 'upcoming', ...patch });
+    f.render(); await flush(); assert.deepEqual(f.routes, [], JSON.stringify(patch));
+  }
+});
+
+test('acceptance during a pending-order read keeps the confirmed order visible', async t => {
+  const f = fixture(t);
+  f.options.readRequest = async () => ({ ...request(), status: 'driver_selected', selectedDriverId: 'driver', tripId: 'trip' });
+  f.options.readTrip = async () => ({ id: 'trip', driverId: 'driver', status: 'upcoming' });
+  f.render(); await flush(); assert.deepEqual(f.routes, ['/request-details/order']);
+});
+
+test('late assigned-trip verification cannot navigate after account, path, overlay or session changes', async t => {
+  for (const change of ['account', 'path', 'overlay', 'session', 'background']) {
+    const f = fixture(t), wait = deferred();
+    const order = { ...request(), status: 'driver_selected', selectedDriverId: 'driver', tripId: 'trip' };
+    f.options.requests.data = [order]; f.options.readRequest = async () => order; f.options.readTrip = () => wait.promise;
+    f.render(); await flush();
+    if (change === 'account') f.options.userId = 'other';
+    if (change === 'path') f.options.path = '/chat/person';
+    if (change === 'overlay') f.options.overlayBusy = true;
+    if (change === 'session') f.env.version++;
+    if (change === 'background') f.options.active = false;
+    f.render(); wait.resolve({ id: 'trip', driverId: 'driver', status: 'upcoming' }); await flush();
+    assert.deepEqual(f.routes, [], change);
+  }
 });
 
 test('passenger returns to the accepted-price request while the driver has not started', async t => {

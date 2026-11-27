@@ -1,23 +1,17 @@
 import { Colors } from '@/constants/styles';
-import { REQUEST_MAP_MARKER_ANCHOR } from '@/features/trip-request/requestFormModel';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
 import { requestStyles as styles } from '@/features/trip-request/requestStyles';
 import { Ionicons } from '@expo/vector-icons';
 import React, { memo, useState } from 'react';
 import {
   ActivityIndicator,
-  type ImageRequireSource,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
-
-const requestMapMarkerImages: Record<'departure' | 'arrival', ImageRequireSource> = {
-  departure: require('@/assets/images/map-markers/trip-detail-marker-departure.png'),
-  arrival: require('@/assets/images/map-markers/trip-detail-marker-arrival.png'),
-};
 
 type Props = Pick<RequestTripController, 'arrivalAddress' | 'arrivalLocation' | 'arrivalReference' | 'departureAddress' | 'departureLocation' | 'departureReference' | 'isRouteLoading' | 'routeCoordinates' | 'routeDistanceLabel' | 'routePreviewRegion'> & {
   onEditRoute: () => void;
@@ -79,10 +73,8 @@ export const RequestRoutePreview = memo(function RequestRoutePreview({
     {showMap && <View style={styles.offerMap}>
       <MapView style={styles.mapPreviewMap} provider={PROVIDER_GOOGLE} region={routePreviewRegion}
         scrollEnabled={false} zoomEnabled={false} rotateEnabled={false} pitchEnabled={false} toolbarEnabled={false}>
-        {departureLocation && <Marker coordinate={{ latitude: departureLocation.latitude, longitude: departureLocation.longitude }}
-          anchor={REQUEST_MAP_MARKER_ANCHOR} image={requestMapMarkerImages.departure} title="Départ" tracksViewChanges={false} />}
-        {arrivalLocation && <Marker coordinate={{ latitude: arrivalLocation.latitude, longitude: arrivalLocation.longitude }}
-          anchor={REQUEST_MAP_MARKER_ANCHOR} image={requestMapMarkerImages.arrival} title="Destination" tracksViewChanges={false} />}
+        {departureLocation && <RoutePointMarker kind="departure" coordinate={{ latitude: departureLocation.latitude, longitude: departureLocation.longitude }} title="Départ" />}
+        {arrivalLocation && <RoutePointMarker kind="arrival" coordinate={{ latitude: arrivalLocation.latitude, longitude: arrivalLocation.longitude }} title="Destination" />}
         {routeCoordinates.length > 1 && <Polyline coordinates={routeCoordinates} strokeColor={Colors.primaryDark} strokeWidth={5} />}
       </MapView>
     </View>}

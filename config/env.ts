@@ -121,3 +121,7 @@ export const chottuLinkReferralConfig = {
  * URL de base de l'API
  */
 export const API_BASE_URL = envConfig.apiUrl;
+
+/** Browser profiles live on zwanga-web. Never share a production URL for a local fixture by default. */
+export const PUBLIC_WEB_URL = String(Constants.expoConfig?.extra?.EXPO_PUBLIC_WEB_URL ??
+  process.env.EXPO_PUBLIC_WEB_URL ?? (__DEV__ ? '' : 'https://zwanga-app.com')).trim();

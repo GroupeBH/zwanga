@@ -33,7 +33,7 @@ function screen(t, kind) {
     '@/store/api/notificationApi': { useGetNotificationPagesInfiniteQuery: () => query,
       useDisableNotificationsMutation: () => [mutation], useMarkNotificationsAsReadMutation: () => [mutation],
       useMarkAllNotificationsAsReadMutation: () => [mutation] },
-  })(kind === 'messages' ? 'app/(tabs)/messages.tsx' : 'app/notifications.tsx').default;
+  })(kind === 'messages' ? 'features/messages/MessagesInbox.tsx' : 'features/notifications/NotificationActivity.tsx').default;
   const render = () => hooks.render(() => Screen());
   const list = () => elements(render()).find(e => e.type === 'FlatList').props;
   const controls = () => {

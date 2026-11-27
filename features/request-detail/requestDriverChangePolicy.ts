@@ -1,12 +1,14 @@
 import type { Booking, Trip, TripRequest } from '@/types';
 
 /** UI only; the server rechecks boarding, financial records and selection under locks. */
-export function canChangeRequestDriver(request: TripRequest | undefined, userId: string | undefined, booking?: Booking) {
+export function canChangeRequestDriver(request: TripRequest | undefined, userId: string | undefined, booking?: Booking, trip?: Trip) {
   if (!request || !userId || request.passengerId !== userId || request.status !== 'driver_selected' ||
       !request.selectedDriverId || !request.selectedAt) return false;
+  if (trip && (trip.id !== request.tripId || trip.driverId !== request.selectedDriverId ||
+      !['upcoming', 'ongoing'].includes(trip.status))) return false;
   if (!booking) return true;
   return booking.passengerId === userId && booking.tripId === request.tripId &&
-    ['pending', 'accepted'].includes(booking.status) && !booking.pickedUp && !booking.pickedUpAt &&
+    ['pending', 'accepted'].includes(booking.status) && !booking.cancelledAt && !booking.pickedUp && !booking.pickedUpAt &&
     !booking.pickedUpConfirmedByPassenger && !booking.pickedUpConfirmedAt && !booking.droppedOff &&
     !booking.droppedOffAt && !booking.droppedOffConfirmedByPassenger && !booking.paidAt &&
     !booking.paymentTransactionId && !booking.paymentReference && !booking.cashReceivedAt &&

@@ -14,12 +14,22 @@ test('only the owner can change a selected, unboarded, unpaid request driver', (
   for (const patch of [{ status: 'cancelled' }, { status: 'pending' }, { selectedDriverId: null }, { selectedAt: null }])
     assert.equal(canChangeRequestDriver({ ...request, ...patch }, 'owner', booking), false);
   for (const patch of [{ passengerId: 'other' }, { tripId: 'other' }, { status: 'completed' },
+    { cancelledAt: 'date' },
     { pickedUp: true }, { pickedUpAt: 'date' }, { pickedUpConfirmedByPassenger: true }, { pickedUpConfirmedAt: 'date' },
     { droppedOff: true }, { droppedOffAt: 'date' }, { droppedOffConfirmedByPassenger: true },
     { paidAt: 'date' }, { paymentTransactionId: 'tx' }, { paymentReference: 'ref' }, { cashReceivedAt: 'date' },
     { cashReceivedAmount: '100' }, { mixedPaymentAt: 'date' }, { mixedTokenQuantity: 10 },
     { paymentStatus: 'initiated' }, { paymentStatus: 'succeeded' }])
     assert.equal(canChangeRequestDriver(request, 'owner', { ...booking, ...patch }), false, JSON.stringify(patch));
+});
+
+test('a linked upcoming trip may change driver, but not a closed or mismatched assignment', () => {
+  const trip = { id: 'trip', driverId: 'driver', status: 'upcoming' };
+  assert.equal(canChangeRequestDriver(request, 'owner', booking, trip), true);
+  // A driver en route to pickup is still not a boarded passenger: preserve the existing policy.
+  assert.equal(canChangeRequestDriver(request, 'owner', booking, { ...trip, status: 'ongoing' }), true);
+  for (const patch of [{ id: 'other' }, { driverId: 'other' }, { status: 'completed' }, { status: 'cancelled' }])
+    assert.equal(canChangeRequestDriver(request, 'owner', booking, { ...trip, ...patch }), false);
 });
 
 test('map selection carries the displayed request revision and an opaque marker, never a driver ID', () => {

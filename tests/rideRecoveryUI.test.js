@@ -64,6 +64,61 @@ function assertAction(h, actor, stage) {
   assert.equal(h.question().props.numberOfLines, undefined, 'the question can wrap, including large text');
 }
 
+for (const origin of ['prop', 'booking', 'snapshot']) {
+  test(`request-origin passenger is read-only via ${origin}, including offline`, async () => {
+    const h = setup();
+    if (origin === 'booking') h.booking.trip = { tripRequestId: 'request' };
+    if (origin === 'snapshot') h.snapshots([{ bookingId: 'booking', confirmationMode: 'driver_only', pickup: { status: 'none' }, dropoff: { status: 'none' } }]);
+    h.props({ tripId: 'trip', ...(origin === 'prop' ? { tripRequestId: 'request' } : {}), booking: h.booking, actor: 'passenger' });
+    h.state.rideRecovery.entries = [{ bookingId: 'booking', tripId: 'trip', stage: 'pickup', decision: 'confirm', state: 'queued' }];
+    h.render();
+    assert.equal(words(h.trigger()), 'Voir les confirmations');
+    assert.match(words(h.tree()), /Le conducteur confirme/);
+    h.trigger().props.onPress(); h.render();
+    assert.equal(h.confirm('pickup'), undefined);
+    assert.equal(h.confirm('dropoff'), undefined);
+    assert.equal(h.sent.length, 0);
+    h.hooks.unmount();
+  });
+}
+
+test('request driver confirms without a misleading passenger approval instruction', async () => {
+  const h = setup(); h.state.auth.user.id = h.state.rideRecovery.userId = 'driver';
+  h.props({ tripId: 'trip', tripRequestId: 'request', bookings: [h.booking], actor: 'driver' });
+  h.render(); assertAction(h, 'driver', 'pickup');
+  assert.match(h.trigger().props.accessibilityHint, /Votre confirmation suffit/);
+  assert.doesNotMatch(words(h.tree()), /Chaque personne confirme|Le passager confirme de son côté/);
+  await h.trigger().props.onPress(); await Promise.resolve();
+  assert.equal(h.sent[0].stage, 'pickup');
+  h.hooks.unmount();
+});
+
+test('near-destination proposal asks the passenger, never sends consent automatically, then sends its server ID', async () => {
+  const h = setup(); h.booking.pickedUp = true; h.state.zwangaApi.config.online = true;
+  h.props({ tripId: 'trip', tripRequestId: 'request', booking: h.booking, actor: 'passenger' });
+  h.snapshots([{ bookingId: 'booking', confirmationMode: 'driver_only', pickup: { status: 'confirmed' }, dropoff: { status: 'none' },
+    arrivalAssistance: { id: 'prompt', expiresAt: new Date(Date.now()+600000).toISOString(), canAccept: true } }]);
+  h.render(); h.render();
+  assert.equal(all(h.tree()).find(n => n.type === 'Modal').props.visible, true);
+  assert.equal(h.sent.length, 0);
+  assert.match(words(h.tree()), /Confirmer termine votre course et ouvre le paiement/);
+  assert.ok(h.confirm('dropoff')); assert.equal(h.confirm('pickup'), undefined);
+  await h.confirm('dropoff').props.onPress(); await Promise.resolve();
+  assert.equal(h.sent[0].arrivalPromptId, 'prompt'); assert.equal(h.sent[0].stage, 'dropoff');
+  h.hooks.unmount();
+});
+
+for (const condition of ['offline', 'expired', 'not-eligible']) {
+  test(`near-destination proposal cannot override driver-only validation when ${condition}`, () => {
+    const h = setup(); h.booking.pickedUp = true; h.state.zwangaApi.config.online = condition !== 'offline';
+    h.props({ tripId: 'trip', tripRequestId: 'request', booking: h.booking, actor: 'passenger' });
+    h.snapshots([{ bookingId: 'booking', confirmationMode: 'driver_only', pickup: { status: 'confirmed' }, dropoff: { status: 'none' },
+      arrivalAssistance: { id: 'prompt', expiresAt: new Date(Date.now()+(condition === 'expired' ? -1000 : 600000)).toISOString(), canAccept: condition !== 'not-eligible' } }]);
+    h.render(); h.trigger().props.onPress(); h.render();
+    assert.equal(h.confirm('dropoff'), undefined); assert.equal(h.sent.length, 0); h.hooks.unmount();
+  });
+}
+
 test('cruising hides ordinary manual action, not assistance or unsent confirmations', () => {
   const h = setup(); h.state.zwangaApi.config.online = true;
   h.state.auth.user.id = h.state.rideRecovery.userId = 'driver';
@@ -289,6 +344,8 @@ test('driver bypass modal explains dual confirmation and preserves cancellation 
   button.props.onPress(); assert.equal(confirmed, 1);
   assert.match(words(tree), /Annuler la réservation/);
   assert.match(words(NavigationPickupBypassModal({ ...props, trip: { tripRequestId: 'request' } })), /Arrêter le trajet/);
+  const requestedCopy = words(NavigationPickupBypassModal({ ...props, trip: { tripRequestId: 'request' } }));
+  assert.match(requestedCopy, /votre confirmation suffit/); assert.doesNotMatch(requestedCopy, /deux confirmations/);
   const paused = NavigationPickupBypassModal({ ...props, isPausingTrip: true });
   assert.equal(all(paused).find(node => node.type === 'Button' && words(node) === 'Oui, confirmer').props.disabled, true);
 });

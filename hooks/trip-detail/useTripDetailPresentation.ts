@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Trip } from '@/types';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
+import { rideArrivalTime } from '@/features/ride-design/rideDesign';
 
 interface Params {
   trip: Trip | undefined;
@@ -96,6 +97,7 @@ export function useTripDetailPresentation({
     tripArrivalName,
     tripPriceLabel,
     tripArrivalTimeLabel,
+    tripArrivalClockLabel: rideArrivalTime(trip?.departureTime, calculatedArrivalTime?.toISOString() || trip?.arrivalTime),
     tripSeatsLabel,
     tripRouteDistanceLabel,
     tripVehicleIconName,

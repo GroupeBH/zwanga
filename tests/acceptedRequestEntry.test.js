@@ -46,10 +46,10 @@ test('accepted same-day course is verified and opened once per foreground withou
   assert.equal(f.routes.length, 2, 'new foreground resumes the confirmed request');
 });
 
-test('fresh earlier publication prevents the accepted request from replacing Home', async t => {
+test('another unstarted publication does not hide the accepted order', async t => {
   clock(t); const f = fixture(t); f.options.trips.data.push(publication());
   f.render(); await flush(); f.render();
-  assert.deepEqual(f.routes, []); assert.equal(f.render().pending, false);
+  assert.deepEqual(f.routes, ['/request-details/order']);
 });
 
 test('a ringing nearby/dispatch request precedes an accepted but unstarted course and own waiting requests', async t => {
@@ -107,9 +107,9 @@ test('request cancelled, reassigned, detached or expired after discovery never b
   }
 });
 
-test('publication arriving while request verification is pending is considered before routing', async t => {
+test('assignment cancelled while request verification is pending prevents routing', async t => {
   clock(t); const f = fixture(t), wait = deferred(); f.options.readRequest = () => wait.promise;
-  f.render(); await flush(); f.options.trips = { ...f.options.trips, data: [acceptedTrip(), publication()] }; f.render();
+  f.render(); await flush(); f.options.trips = { ...f.options.trips, data: [acceptedTrip({ status: 'cancelled' }), publication()] }; f.render();
   wait.resolve(acceptedRequest()); await flush(); f.render(); assert.deepEqual(f.routes, []); assert.equal(f.render().pending, false);
 });
 
@@ -117,7 +117,7 @@ test('refreshing publications mid-verification waits for reconciliation and does
   clock(t); const f = fixture(t), wait = deferred(); f.options.readRequest = () => wait.promise;
   f.render(); await flush(); f.options.trips.isFetching = true; f.render();
   wait.resolve(acceptedRequest()); await flush(); f.render(); assert.deepEqual(f.routes, []);
-  f.options.trips.isFetching = false; f.options.trips.data.push(publication()); f.render(); await flush(); f.render();
+  f.options.trips.isFetching = false; f.options.trips.data = [acceptedTrip({ status: 'cancelled' }), publication()]; f.render(); await flush(); f.render();
   assert.deepEqual(f.routes, []); assert.equal(f.render().pending, false);
 });
 
@@ -137,7 +137,7 @@ test('a changed trip revision requires reconciliation even after a previously fr
   f.options.activity.fulfilledTimeStamp = now + 2000;
   f.options.activity.data.trips.revision = 'trips-v2'; f.render();
   wait.resolve(acceptedRequest()); await flush(); f.render(); assert.deepEqual(f.routes, []);
-  f.options.trips = { ...f.options.trips, data: [acceptedTrip(), publication()], fulfilledTimeStamp: now + 2001 };
+  f.options.trips = { ...f.options.trips, data: [acceptedTrip({ status: 'cancelled' }), publication()], fulfilledTimeStamp: now + 2001 };
   f.render(); await flush(); f.render(); assert.deepEqual(f.routes, []); assert.equal(f.render().pending, false);
 });
 

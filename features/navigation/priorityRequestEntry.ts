@@ -5,12 +5,13 @@ import { isSelfDriverAlert } from '@/features/notifications/requestOwnership';
 
 // Explicit detail links, forms, chat, payment and navigation keep their own flow.
 export function canResumeRequestFromPath(path: string) {
-  return ['/', '/(tabs)', '/trips', '/profile', '/discover', '/requests', '/my-requests', '/search', '/notifications'].includes(path);
+  return ['/', '/(tabs)', '/trips', '/profile', '/discover', '/requests', '/my-requests', '/search', '/explore', '/notifications'].includes(path);
 }
 
 export function isOwnWaitingRequest(request: TripRequest, userId: string) {
-  // Accepting a price selects the driver; the trip is only created on start.
-  const awaitingStart = request.status === 'driver_selected' && !!request.selectedDriverId && !request.tripId;
+  // Direct acceptance can create an upcoming trip immediately. Its presence
+  // alone does not mean that the ride has started; entry verifies that trip.
+  const awaitingStart = request.status === 'driver_selected' && !!request.selectedDriverId;
   return request.passengerId === userId && (isRequestUnassigned(request) || awaitingStart) && isTripRequestWithinAcceptanceWindow(request);
 }
 

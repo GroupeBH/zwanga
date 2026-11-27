@@ -26,6 +26,7 @@ import {
 } from '@/features/search/searchModel';
 import { useSearchNavigation } from './useSearchNavigation';
 import { useSearchResults } from './useSearchResults';
+import { useSearchSortOrigin } from './useSearchSortOrigin';
 
 export function useSearchController() {
   const isScreenActive = useScreenIsActive();
@@ -68,10 +69,11 @@ export function useSearchController() {
   const [lastAdvancedPayload, setLastAdvancedPayload] = useState<TripSearchByPointsPayload | null>(null);
   const clearAdvancedSearch = useCallback(() => setLastAdvancedPayload(null), []);
   const runAdvancedSearch = useCallback((payload: TripSearchByPointsPayload) => setLastAdvancedPayload(payload), []);
-  const [tripSortMode, setTripSortMode] = useState<SortMode>('cheap');
+  const [tripSortMode, setTripSortMode] = useState<SortMode>('early');
   const [requestSortMode, setRequestSortMode] = useState<SortMode>('nearby');
   const sortMode = searchMode === 'requests' ? requestSortMode : tripSortMode;
   const setSortMode = searchMode === 'requests' ? setRequestSortMode : setTripSortMode;
+  const tripCoordinate = useSearchSortOrigin(currentUser?.id, isScreenActive && searchMode === 'trips' && tripSortMode === 'early');
   // GPS updates need not redraw the trips tab or a budget/time-sorted request list.
   const driverCoordinate = useAppSelector(state =>
     isScreenActive && searchMode === 'requests' && sortMode === 'nearby' ? selectUserCoordinates(state) : null,
@@ -83,8 +85,10 @@ export function useSearchController() {
   const discoveryParams = useMemo<TripSearchParams>(() => ({
     ...(lastAdvancedPayload ? Object.fromEntries(Object.entries(lastAdvancedPayload).filter(([, value]) => value != null)) : queryParams),
     minSeats: querySeats,
-    sort: tripSortMode === 'cheap' ? 'price' : 'date',
-  }), [lastAdvancedPayload, queryParams, querySeats, tripSortMode]);
+    sort: tripSortMode === 'cheap' ? 'price' : 'soonest',
+    ...(tripSortMode === 'early' && tripCoordinate
+      ? { sortOriginCoordinates: [tripCoordinate.longitude, tripCoordinate.latitude] as [number, number] } : {}),
+  }), [lastAdvancedPayload, queryParams, querySeats, tripSortMode, tripCoordinate]);
   useEffect(() => {
     if (!isScreenActive) return;
     const timer = setTimeout(() => setQuerySeats(desiredSeats), 350);
@@ -214,7 +218,9 @@ export function useSearchController() {
   const { baseTrips, filteredTrips, filteredTripRequests } = useSearchResults({
     advancedTrips, remoteTrips, storedTrips, searchMode, departure, arrival, desiredSeats,
     sortMode, driverCoordinate, availableTripRequests, isDriverAccount, currentUser,
-    isScreenActive, serverOrderedRequests: true,
+    isScreenActive, serverOrderedRequests: true, serverOrderedTrips: true,
+    tripCoordinate: lastAdvancedPayload?.departureCoordinates
+      ? { longitude: lastAdvancedPayload.departureCoordinates[0], latitude: lastAdvancedPayload.departureCoordinates[1] } : tripCoordinate,
   });
 
   const requestSearchError =

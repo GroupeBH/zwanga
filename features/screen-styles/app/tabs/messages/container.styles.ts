@@ -4,7 +4,7 @@ import { StyleSheet } from "react-native";
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
   },
   header: {
     backgroundColor: Colors.white,
@@ -21,13 +21,13 @@ export const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   headerTitle: {
-    fontSize: FontSizes.xxl,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
     color: Colors.gray[800],
   },
   addButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     backgroundColor: Colors.gray[100],
     borderRadius: BorderRadius.full,
     alignItems: 'center',
@@ -52,12 +52,14 @@ export const styles = StyleSheet.create({
   },
   scrollViewContent: {
     flexGrow: 1,
-    paddingBottom: 120, // Increased for edge-to-edge
+    paddingBottom: Spacing.xl,
   },
   conversationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
   },
   loadingBanner: {
     flexDirection: 'row',
@@ -75,12 +77,13 @@ export const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.xxl * 2,
+    paddingVertical: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
   },
   emptyIcon: {
-    width: 96,
-    height: 96,
-    backgroundColor: Colors.gray[200],
+    width: 64,
+    height: 64,
+    backgroundColor: Colors.gray[100],
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -103,8 +106,6 @@ export const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.lg,
     backgroundColor: Colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray[100],
     flex: 1,
   },
   avatarContainer: {
@@ -112,11 +113,13 @@ export const styles = StyleSheet.create({
     marginRight: Spacing.md,
   },
   avatar: {
-    width: 56,
-    height: 56,
-    backgroundColor: Colors.gray[300],
+    width: 48,
+    height: 48,
+    backgroundColor: '#FFF1E9',
     borderRadius: BorderRadius.full,
+    alignItems: 'center', justifyContent: 'center',
   },
+  avatarText: { color: '#AE3907', fontSize: FontSizes.lg, fontWeight: FontWeights.bold },
   onlineBadge: {
     position: 'absolute',
     bottom: 0,
@@ -144,8 +147,9 @@ export const styles = StyleSheet.create({
     fontSize: FontSizes.base,
   },
   conversationTime: {
+    marginTop: Spacing.xs,
     fontSize: FontSizes.xs,
-    color: Colors.gray[500],
+    color: Colors.gray[600],
   },
   conversationFooter: {
     flexDirection: 'row',
@@ -163,8 +167,9 @@ export const styles = StyleSheet.create({
   unreadBadge: {
     backgroundColor: Colors.primary,
     borderRadius: BorderRadius.full,
-    width: 24,
-    height: 24,
+    minWidth: 24,
+    minHeight: 24,
+    paddingHorizontal: 5,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: Spacing.sm,

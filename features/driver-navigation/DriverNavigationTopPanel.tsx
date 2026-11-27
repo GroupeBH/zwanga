@@ -12,6 +12,10 @@ import { getDriverNavigationLayout } from './driverNavigationLayout';
 import { TripDriverWithdrawal } from '@/features/request-detail/WithdrawRequestDriverButton';
 import { usePassengerPanelVisibility } from '@/hooks/driver-navigation/usePassengerPanelVisibility';
 import { LocationAccessBanner } from '@/components/location/LocationAccessBanner';
+import { DriverNearArrivalPaymentNotice } from './DriverNearArrivalPaymentNotice';
+import { driverPaymentReminder, requestCashToCollect } from './driverPaymentReminder';
+import { ConfirmCashReceipt } from '@/features/driver-payments/ConfirmCashReceipt';
+import { RidePaymentNotice } from '@/features/ride-payment/RidePaymentNotice';
 
 const EMPTY_BOOKINGS: NonNullable<Props['model']['session']['foundation']['data']['bookings']> = [];
 
@@ -29,6 +33,9 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
   const pendingLayout = getDriverPendingBookingLayout(height, data.insets.top, data.insets.bottom, fontScale);
   const layout = getDriverNavigationLayout(height, data.insets.top, data.insets.bottom, fontScale);
   const nextStop = mapState.waypoints[mapState.currentWaypointIndex];
+  const nextPaymentBooking = !nextStop?.completed && nextStop?.booking
+    ? data.bookings?.find(booking => booking.id === nextStop.booking!.id) : undefined;
+  const cashToCollect = requestCashToCollect(data.trip, data.driverId, data.bookings);
   const hidePassengerPanel = usePassengerPanelVisibility(data.tripId, nextStop, mapState.currentLocation,
     data.isTripOngoing && data.isScreenActive && !offline && !hasPendingBooking && !hasUrgentDropoff &&
     !passengers.activeDriverInterruptionRequest);
@@ -37,7 +44,7 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
     onContact={nextPassengerId && !hasPendingBooking && !hasUrgentDropoff ? () => assistance.openContact(nextPassengerId) : assistance.openContacts}
     onSos={assistance.openSos} disabled={!assistance.enabled} />;
   const recovery = data.isTripOngoing && !hasUrgentDropoff && Boolean(data.bookings?.length) ? <View style={styles.confirmation}>
-    <RideRecoveryControl tripId={data.tripId} bookings={data.bookings} actor="driver"
+    <RideRecoveryControl tripId={data.tripId} tripRequestId={data.trip?.tripRequestId} bookings={data.bookings} actor="driver"
       condensed driverNavigation mapCompact hideWhenCruising={hidePassengerPanel} secondaryActions={contactActions} driverOverviewOnly={hasPendingBooking}
       preferredBookingId={!nextStop?.completed ? nextStop?.booking?.id : undefined}
       preferredStage={!nextStop?.completed ? nextStop?.type : undefined}
@@ -56,6 +63,16 @@ export function DriverNavigationTopPanel({ model, assistance }: Props) {
     {urgent && (fontScale > 1.3 ? <ScrollView style={styles.urgentScroll} bounces={false} showsVerticalScrollIndicator>{urgent}</ScrollView> : urgent)}
     <ScrollView style={[styles.bodyScroll, (hasUrgentDropoff || hasPendingBooking) && styles.priorityFooter]}
       contentContainerStyle={styles.journeyContent} showsVerticalScrollIndicator bounces={false}>
+    {!hasUrgentDropoff && !hasPendingBooking && nextPaymentBooking && <View>
+      <Text style={styles.collectionTitle}>{nextPaymentBooking.passengerName || 'Prochain passager'}</Text>
+      <RidePaymentNotice booking={nextPaymentBooking} active={data.isScreenActive} offline={Boolean(offline)} />
+    </View>}
+    <DriverNearArrivalPaymentNotice booking={driverPaymentReminder(data.trip, data.driverId, data.bookings, nextStop, mapState.currentLocation)}
+      active={data.isScreenActive && !offline && !hasUrgentDropoff && !hasPendingBooking} />
+    {cashToCollect && data.isScreenActive && !offline && !hasUrgentDropoff && !hasPendingBooking && <View>
+      <Text style={styles.collectionTitle}>Arrivée confirmée · Confirmez le cash reçu pour terminer.</Text>
+      <ConfirmCashReceipt booking={cashToCollect} />
+    </View>}
     {model.session.locationTracking?.backgroundTrackingUnavailable && data.isTripOngoing &&
       <Text accessibilityLiveRegion="polite" style={styles.gpsWarning}>Suivi en veille à vérifier. Gardez Zwanga ouvert et vérifiez l’autorisation de localisation « Toujours ».</Text>}
     {data.trip?.tripRequestId && <TripDriverWithdrawal trip={data.trip} bookings={data.bookings}
@@ -87,4 +104,5 @@ const styles = StyleSheet.create({
   confirmation: { flexShrink: 0, minWidth: 130 },
   details: { gap: 6, paddingBottom: 2 },
   gpsWarning: { color: Colors.dangerDark, fontSize: 12, lineHeight: 17 },
+  collectionTitle: { color: Colors.gray[800], fontSize: 13, fontWeight: '700' },
 });

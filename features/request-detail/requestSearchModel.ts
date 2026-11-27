@@ -72,8 +72,7 @@ export function searchPassengerPosition(location: TrackedLocation | null, now = 
 export function assignedPassengerNavigation(request: TripRequest | undefined, trip: Trip | undefined,
   bookings: Booking[] | undefined, userId: string | undefined) {
   if (!userId || request?.passengerId !== userId || !request.tripId || request.tripId !== trip?.id ||
-    request.status === 'cancelled' || (trip.status === 'upcoming' && request.status !== 'driver_selected') ||
-    !['upcoming', 'ongoing'].includes(trip.status) || trip.driverId === userId) return null;
+    request.status === 'cancelled' || trip.status !== 'ongoing' || trip.driverId === userId) return null;
   const booking = bookings?.find(item => item.tripId === trip.id && item.passengerId === userId &&
     item.status === 'accepted' && !item.cancelledAt && !item.droppedOff && !item.droppedOffConfirmedByPassenger);
   return booking ? `/booking/navigate/${booking.id}` as const : null;

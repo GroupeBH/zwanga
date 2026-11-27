@@ -60,6 +60,8 @@ for (const event of ['logout', 'background', 'unmount']) test(`late cash reply a
 test('cash modal offers exactly one explicit receipt action and a not-yet exit, with no confirmation modal', async () => {
   const hooks = hookHarness(); let confirmed = 0, closed = 0, submitted = 0;
   const { CashPaymentRequestNotice } = loader({ react: { ...React, ...hooks.react },
+    './useCashExceptionDisclosure': { useCashExceptionDisclosure: () => ({ canConfirm: true, refresh() {} }) },
+    './CashExceptionDisclosure': { CashExceptionDisclosure: () => null },
     'react-native': { View: 'View', Text: 'Text', ScrollView: 'Scroll', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
     './useCashReceiptConfirmation': { useCashReceiptConfirmation: () => ({ busy: false, error: '', submit: async () => { submitted++; return true; } }) },
   })('features/driver-payments/CashPaymentRequestNotice.tsx');

@@ -113,7 +113,7 @@ test('empty activity does not reveal Home before its own data and layout are rea
   f.render(); await flush(); f.render(); t.mock.timers.tick(2500);
   assert.ok(f.render(), 'the same entry cover owns Home preparation');
   f.env.prepared = true; assert.equal(f.render(), null);
-  assert.deepEqual(f.routes, []); assert.deepEqual(f.reads, []);
+  assert.deepEqual(f.routes, []); assert.deepEqual(f.reads.map(read => read.name), ['getMyOfferPage']);
 });
 
 test('a verified ongoing ride bypasses slow Home preparation', async t => {
@@ -224,7 +224,7 @@ test('a status-only offer is verified by entry, but cannot replace ongoing guida
   }
 });
 
-test('accepted but not started orders remain on Home instead of forcing another detail', async t => {
+test('accepted but not started orders reopen their confirmed detail for the driver', async t => {
   const now = Date.parse('2026-10-19T08:00:00Z');
   t.mock.timers.enable({ apis: ['Date'], now });
   const f = fixture(t); f.env.segments = ['(tabs)'];
@@ -235,12 +235,26 @@ test('accepted but not started orders remain on Home instead of forcing another 
   f.env.trips.fulfilledTimeStamp = now + 1001;
   assert.equal(f.wrapper().props.value, true); f.render(); await flush();
   f.render(); await flush();
-  assert.deepEqual(f.routes, []);
-  assert.deepEqual(f.reads, [], 'no historical offer/detail read added to startup');
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripById', 'getTripRequestById']);
+  f.env.path = '/request-details/order';
   assert.equal(f.render(), null);
 });
 
-test('earlier published departure keeps Home instead of forcing accepted-request detail', async t => {
+for (const passenger of [true, false]) test(`accepted personal order with an unstarted trip replaces Home for a ${passenger ? 'passenger' : 'driver'} account`, async t => {
+  const f = fixture(t, passenger), userId = f.env.state.auth.user.id;
+  f.env.segments = ['(tabs)']; f.env.trips.data = []; f.env.bookings.data = [];
+  const trip = { id: 'accepted-trip', driverId: 'assigned-driver', tripRequestId: 'order', status: 'upcoming' };
+  f.env.request = { id: 'order', passengerId: userId, selectedDriverId: trip.driverId, tripId: trip.id,
+    status: 'driver_selected', departureDateMax: new Date(Date.now() + 3600000).toISOString() };
+  f.env.requests.data = [f.env.request]; f.env.tripDetails = { [trip.id]: trip };
+  Object.assign(f.env.activity.data, { hasLiveActivity: false, trips: { count: 0 }, bookings: { count: 0 }, requests: { count: 1 } });
+  f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById', 'getTripById']);
+});
+
+test('an earlier unstarted publication does not hide an accepted request', async t => {
   const now = Date.parse('2026-10-19T08:00:00Z');
   t.mock.timers.enable({ apis: ['Date'], now });
   const f = fixture(t); f.env.segments = ['(tabs)'];
@@ -251,7 +265,27 @@ test('earlier published departure keeps Home instead of forcing accepted-request
   f.env.trips.fulfilledTimeStamp = now + 1001;
   Object.assign(f.env.activity.data, { trips: { count: 2 }, bookings: { count: 0 }, requests: { count: 0 } });
   f.render(); f.render(); await flush(); f.render(); await flush(); f.render();
-  assert.equal(f.render(), null); assert.deepEqual(f.routes, []);
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  f.env.path = '/request-details/order'; assert.equal(f.render(), null);
+});
+
+test('acceptance discovered after an empty Home opens the confirmed course without a restart', async t => {
+  const now = Date.parse('2026-11-25T08:00:00Z');
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now });
+  const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
+  f.env.activity = { data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: now, fulfilledTimeStamp: now };
+  f.render(); f.render(); await flush(); f.render(); await flush(); assert.deepEqual(f.routes, []);
+  t.mock.timers.tick(3000);
+  Object.assign(f.trip, { status: 'upcoming', tripRequestId: 'order', departureTime: new Date(now + 3600000).toISOString() });
+  f.env.trips = { data: [f.trip], isSuccess: true, fulfilledTimeStamp: Date.now() };
+  f.env.activity = { data: { ...emptyActivity('driver'), trips: { count: 1 } },
+    isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.env.request = { id: 'order', passengerId: 'passenger', selectedDriverId: 'driver', tripId: 'trip', status: 'driver_selected',
+    departureDateMax: f.trip.departureTime };
+  f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  for (let index = 0; index < 5; index++) f.render();
+  await flush(); assert.equal(f.routes.length, 1, 'no repeated navigation on a rerender');
 });
 
 test('entry speech stays blocked on startup/auth, unmounted navigation and overlays even with ready screen data', async t => {
@@ -414,19 +448,49 @@ test('queued verification after an existing read never leaks into a different se
   }
 });
 
-test('a waiting passenger order stays available on Home without another automatic screen', async t => {
+for (const passenger of [true, false]) test(`a waiting own order replaces Home for a ${passenger ? 'passenger' : 'driver'} account after verification`, async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
-  const f = fixture(t, true), pending = deferred(); f.env.segments = ['(tabs)'];
-  f.env.bookings.data = []; f.env.pending = pending.promise;
+  const f = fixture(t, passenger), pending = deferred(); f.env.segments = ['(tabs)'];
+  const userId = f.env.state.auth.user.id;
+  f.env.trips.data = []; f.env.bookings.data = []; f.env.pending = pending.promise;
   Object.assign(f.env.activity.data, { passengerTrackingBookingId: null, trips: { count: 0 }, bookings: { count: 0 }, requests: { count: 1 } });
-  f.env.request = { id: 'order', passengerId: 'passenger', status: 'pending', departureDateMax: new Date(200000).toISOString() };
+  f.env.request = { id: 'order', passengerId: userId, status: 'pending', departureDateMax: new Date(200000).toISOString() };
   f.env.requests.data = [f.env.request];
   f.render(); f.render(); t.mock.timers.tick(3000); assert.equal(f.render(), null, 'the cover remains bounded');
   pending.resolve(); await flush(); f.render(); await flush();
-  assert.deepEqual(f.routes, []);
-  assert.deepEqual(f.reads.map(read => read.name), []);
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
   f.env.path = '/request-details/order'; f.render(); f.env.path = '/'; f.render(); await flush();
-  assert.equal(f.routes.length, 0, 'the user can still deliberately return Home');
+  assert.equal(f.routes.length, 1, 'the user can still deliberately return Home without a redirect loop');
+});
+
+for (const passenger of [true, false]) test(`returning to the app resumes an own order with offers for a ${passenger ? 'passenger' : 'driver'} account`, async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t, passenger); f.env.segments = ['(tabs)'];
+  const userId = f.env.state.auth.user.id;
+  f.env.trips.data = []; f.env.bookings.data = [];
+  f.env.activity = { data: emptyActivity(userId), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.render(); f.render(); await flush(); assert.deepEqual(f.routes, []);
+  f.env.active = false; f.render(); t.mock.timers.tick(1000);
+  f.env.active = true; f.render(); await flush(); assert.deepEqual(f.routes, [], 'old empty activity cannot settle a new entry');
+  f.env.request = { id: 'own-offers', passengerId: userId, status: 'offers_received', departureDateMax: new Date(200000).toISOString() };
+  f.env.requests = { data: [f.env.request], isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.env.activity = { data: { ...emptyActivity(userId), hasLiveActivity: true, requests: { count: 1 } },
+    isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
+  f.render(); f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/own-offers']);
+  assert.deepEqual(f.reads.map(read => read.name), passenger ? ['getTripRequestById'] : ['getMyOfferPage', 'getTripRequestById']);
+});
+
+test('an ongoing ride wins over the account own waiting order', async t => {
+  for (const passenger of [true, false]) {
+    const f = fixture(t, passenger); f.env.segments = ['(tabs)'];
+    f.env.request = { id: 'own-order', passengerId: f.env.state.auth.user.id, status: 'pending', departureDateMax: new Date(Date.now() + 3600000).toISOString() };
+    f.env.requests.data = [f.env.request]; f.env.activity.data.requests = { count: 1 };
+    f.render(); await flush(); f.render(); await flush();
+    assert.deepEqual(f.routes, [passenger ? '/booking/navigate/booking' : '/trip/navigate/trip']);
+    assert.equal(f.reads.some(read => read.name === 'getTripRequestById'), false);
+  }
 });
 
 test('a ringing nearby request restored after fast Home opens its decision screen without acknowledging the sound', async t => {
@@ -439,7 +503,7 @@ test('a ringing nearby request restored after fast Home opens its decision scree
     data: { ringUntil: new Date(130000).toISOString() } }, true);
   f.render(); await flush(); f.render(); await flush();
   assert.deepEqual(f.routes, ['/request-details/nearby']);
-  assert.deepEqual(f.reads.map(read => read.name), ['getTripRequestById']);
+  assert.deepEqual(f.reads.map(read => read.name), ['getMyOfferPage', 'getTripRequestById']);
   f.env.path = '/request-details/nearby'; f.render();
   assert.equal(f.alerts.pendingRideAlerts('driver').length, 1, 'opening is not accepting or refusing');
 });
@@ -466,7 +530,7 @@ for (const returning of [false, true]) {
     f.render(); f.render(); await flush(); f.render(); await flush();
     assert.deepEqual(f.routes, [], 'historical proposals do not take over entry');
     const offersRead = f.reads.filter(read => read.name === 'getMyOfferPage');
-    assert.equal(offersRead.length, 0, 'no extra offer history fetch at entry');
+    assert.equal(offersRead.length, returning ? 2 : 1, 'one bounded accepted-price lookup per entry, never a polling loop');
     assert.deepEqual(f.reads.filter(read => read.name === 'getTripRequestById'), []);
     f.env.path = '/request-details/order-latest'; f.render();
     f.env.path = '/'; f.render(); await flush();
@@ -496,7 +560,24 @@ test('a quick return rechecks a cached empty account and opens newly ongoing dri
   }
 });
 
-test('returning Home with an own pending order does not trigger a new automatic redirect', async t => {
+for (const returning of [false, true]) test(`a confirmed negotiated price without a created trip resumes on driver ${returning ? 'return' : 'startup'}`, async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
+  const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
+  const fresh = () => ({ data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() });
+  f.env.activity = fresh();
+  if (returning) {
+    f.render(); f.render(); await flush(); f.render(); await flush();
+    f.env.active = false; f.render(); t.mock.timers.tick(1000); f.env.active = true; f.env.activity = fresh();
+  }
+  const offer = { id: 'price', tripRequestId: 'order', driverId: 'driver', status: 'accepted', createdAt: new Date(90000).toISOString(),
+    tripRequest: { id: 'order', passenger: { id: 'passenger' }, status: 'driver_selected', departureDateMax: new Date(200000).toISOString() } };
+  f.env.offers = [offer]; f.env.request = { ...offer.tripRequest, passengerId: 'passenger', selectedDriverId: 'driver', offers: [offer] };
+  f.render(); f.render(); await flush(); f.render(); await flush();
+  assert.deepEqual(f.routes, ['/request-details/order']);
+  assert.equal(f.reads.filter(read => read.name === 'getTripById').length, 0, 'a trip is not invented for the agreed price');
+});
+
+test('a fresh own pending order resumes even when hasLiveActivity is false', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 100000 });
   const f = fixture(t); f.env.segments = ['(tabs)']; f.env.trips.data = [];
   f.env.activity = { data: emptyActivity('driver'), isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
@@ -507,7 +588,7 @@ test('returning Home with an own pending order does not trigger a new automatic 
   f.env.activity = { data: { userId: 'driver', hasLiveActivity: false, trips: { count: 0 }, bookings: { count: 0 },
     requests: { count: 1 } }, isSuccess: true, startedTimeStamp: Date.now(), fulfilledTimeStamp: Date.now() };
   f.render(); f.render(); await flush(); f.render(); await flush();
-  assert.deepEqual(f.routes, []);
+  assert.deepEqual(f.routes, ['/request-details/order']);
 });
 
 test('an upcoming detail cached before foreground cannot hide a just-started trip', async t => {

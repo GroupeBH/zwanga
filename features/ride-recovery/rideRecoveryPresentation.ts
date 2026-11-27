@@ -13,19 +13,25 @@ export function rideActionQuestion(actor: RideActor, stage: RideStage) {
 }
 
 /** Share the existing sheet's availability rules with its entry-point label. */
-export function rideBookingStages(item: Booking, snapshot: RideSnapshot | undefined, entries: RideOutboxEntry[], actor: RideActor) {
-  const localPickup = entries.some(value => value.bookingId === item.id && value.stage === 'pickup' && value.decision === 'confirm' && !['blocked', 'disputed'].includes(value.state));
+export function rideBookingStages(item: Booking, snapshot: RideSnapshot | undefined, entries: RideOutboxEntry[], actor: RideActor, tripRequestId?: string | null, online = false) {
+  // Keep the origin available offline, even before the declarations endpoint answers.
+  const driverOnly = snapshot?.confirmationMode === 'driver_only' || Boolean(tripRequestId || item.trip?.tripRequestId);
+  const readOnly = driverOnly && actor === 'passenger';
+  const localPickup = !readOnly && entries.some(value => value.bookingId === item.id && value.stage === 'pickup' && value.decision === 'confirm' && !['blocked', 'disputed'].includes(value.state));
   const canArrive = Boolean(item.pickedUp || snapshot?.pickup.status === 'confirmed' || localPickup);
   return STAGES.map(stage => {
-    const entry = entries.find(value => value.bookingId === item.id && value.stage === stage);
+    const prompt = snapshot?.arrivalAssistance;
+    const arrivalPromptId = actor === 'passenger' && stage === 'dropoff' && online && prompt?.canAccept && Date.parse(prompt.expiresAt) > Date.now() ? prompt.id : undefined;
+    const storedEntry = entries.find(value => value.bookingId === item.id && value.stage === stage);
+    const entry = arrivalPromptId && storedEntry?.state === 'blocked' && storedEntry.arrivalPromptId !== arrivalPromptId ? undefined : storedEntry;
     const serverStage = snapshot?.[stage];
     const status = (stage === 'pickup' ? item.pickedUp : item.droppedOff) ? 'confirmed' as const : serverStage?.status;
     return {
-      stage, entry, status, canArrive,
-      unavailable: Boolean(item.status !== 'accepted' || item.droppedOff || item.droppedOffAt || entry || serverStage?.[actor] || status === 'confirmed' || status === 'disputed' || (stage === 'dropoff' && !canArrive)),
+      stage, entry, status, canArrive, driverOnly, readOnly: readOnly && !arrivalPromptId, arrivalPromptId,
+      unavailable: Boolean((readOnly && !arrivalPromptId) || item.status !== 'accepted' || item.droppedOff || item.droppedOffAt || entry || serverStage?.[actor] || status === 'confirmed' || status === 'disputed' || (stage === 'dropoff' && !canArrive)),
       own: serverStage?.[actor],
       other: serverStage?.[actor === 'driver' ? 'passenger' : 'driver'],
-      question: rideActionQuestion(actor, stage),
+      question: arrivalPromptId ? 'Êtes-vous descendu ici ? Confirmer termine votre course et ouvre le paiement.' : rideActionQuestion(actor, stage),
     };
   });
 }
@@ -33,6 +39,16 @@ export function rideBookingStages(item: Booking, snapshot: RideSnapshot | undefi
 /** Never describe the other person's receipt as the current user's confirmation. */
 export function rideStageMessage(stage: ReturnType<typeof rideBookingStages>[number], actor: RideActor) {
   const { entry, status, own, other } = stage;
+  if (stage.arrivalPromptId && !entry && status !== 'confirmed' && status !== 'disputed') {
+    return 'Le véhicule est arrêté près de votre destination. Confirmez uniquement si la dépose est réellement effectuée. Sans réponse, cette proposition ne termine pas la course.';
+  }
+  if (stage.readOnly && !['confirmed', 'disputed'].includes(status ?? '')) {
+    return 'Le conducteur confirme votre embarquement et votre arrivée. La détection automatique reste active.';
+  }
+  if (stage.driverOnly && status !== 'confirmed' && status !== 'disputed' &&
+      (entry?.state === 'received' || (!entry && own === 'confirm'))) {
+    return 'Votre validation est reçue. Validation du serveur en cours…';
+  }
   if (status === 'awaiting_other' && !entry && !own && other === 'confirm') {
     return `${actor === 'driver' ? 'Le passager' : 'Le conducteur'} a confirmé. Votre validation est attendue.`;
   }

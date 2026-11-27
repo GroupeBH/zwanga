@@ -1,16 +1,17 @@
 import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import type { buildRequestDetailPresentation } from './requestPresentation';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
-import { RouteLocationDetails } from '@/components/trip/RouteLocationDetails';
+import { RideRouteTimeline } from '@/features/ride-design/RideRouteTimeline';
+import { rideColors as c, rideInitials, rideStyles as r } from '@/features/ride-design/rideDesign';
 import { NavigationContactModal } from '@/features/navigation/NavigationContactModal';
 import { getAcceptedRequestContact } from './acceptedRequestContact';
 import { CollapsibleRouteMap } from './CollapsibleRouteMap';
 import { formatCdfPrice } from './requestDetailModel';
-import { formatRequestDay, formatRequestTime } from './RequestPassengerTicket';
+import { formatRequestDay, formatRequestTime } from './requestDateLabels';
 import { requestSummaryStyles as s } from './requestSummaryStyles';
 import { WithdrawRequestDriverButton } from './WithdrawRequestDriverButton';
 import { RequestPickupSummaryCard } from './RequestPickupSummaryCard';
@@ -24,31 +25,39 @@ export function RequestDriverCourse({ model, presentation }: { model: Model; pre
   const live = model.assignedTrip?.status === 'ongoing';
   const closed = model.assignedTrip && !['upcoming', 'ongoing'].includes(model.assignedTrip.status);
   const name = request.passengerName || 'Votre passager';
+  const { height, fontScale } = useWindowDimensions();
   return <>
-    {!closed && <RequestPickupSummaryCard requestId={request.id} active={model.isScreenActive} />}
-    <View style={s.card}>
-      <Text style={local.confirmed}><Ionicons name="checkmark" size={16} color="#12813C" /> {closed ? 'COURSE TERMINÉE OU ANNULÉE' : live ? 'COURSE EN COURS' : 'COURSE CONFIRMÉE'}</Text>
-      <Text style={s.muted}>Prise en charge · {formatRequestDay(time)}</Text>
-      <Text style={local.time}>{formatRequestTime(time)}</Text>
-      <View style={local.person}>
-        <View style={local.avatar}><Text style={local.initials}>{name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toLocaleUpperCase('fr-FR')}</Text></View>
-        <View style={s.side}><Text style={s.name}>{name}</Text><Text style={local.meta}>Passager · {request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text></View>
-        {contact && !closed && <Pressable accessibilityRole="button" accessibilityLabel="Contacter le passager" onPress={() => setContactOpen(true)} style={local.contact}>
-          <Ionicons name="call-outline" size={21} color="#111827" />
-        </Pressable>}
+    <View>
+      <CollapsibleRouteMap variant="light" displayMode="overview" showRecenter overviewHeight={Math.min(330, Math.max(240, height * 0.36))}
+        mapData={presentation.requestRouteMapData} routeCoordinates={presentation.displayedRouteCoordinates}
+        departureName={labels.departure.address} arrivalName={labels.arrival.address} />
+      <View style={local.mapHeader} pointerEvents="box-none">
+        <Pressable onPress={model.goHome} style={[r.circle, local.white]} accessibilityRole="button" accessibilityLabel="Retour à l’accueil">
+          <Ionicons name="arrow-back" size={23} color={c.text} />
+        </Pressable>
+        <View style={[r.pill, local.status, closed && { backgroundColor: c.pale }]}><Ionicons name={closed ? 'information-circle-outline' : live ? 'navigate-outline' : 'checkmark'} size={18} color={closed ? c.muted : c.greenInk} />
+          <Text style={[r.pillText, closed && { color: c.muted }]}>{closed ? model.assignedTrip?.status === 'cancelled' ? 'Course annulée' : 'Course terminée' : live ? 'Course en cours' : 'Course confirmée'}</Text></View>
       </View>
     </View>
-    <View style={s.card}>
-      <CollapsibleRouteMap variant="light" initiallyExpanded mapData={presentation.requestRouteMapData}
-        routeCoordinates={presentation.displayedRouteCoordinates} departureName={labels.departure.address} arrivalName={labels.arrival.address} />
-      <RouteLocationDetails labels={labels} />
-    </View>
-    <View style={s.card}>
-      <View style={s.row}><Text style={s.muted}>Véhicule demandé</Text><Text style={s.name}>{requestVehicleLabel(request)}</Text></View>
-      <View style={local.rule} />
-      <View style={s.row}><Text style={s.muted}>Passagers</Text><Text style={s.name}>{request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''}</Text></View>
-      <View style={local.rule} />
-      <View style={s.row}><Text style={s.muted}>Prix du trajet</Text><Text style={s.name}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>
+    <View style={[r.sheet, local.sheet]}>
+      <View style={r.handle} />
+      <View style={[r.row, fontScale > 1.3 && r.stack]}>
+        <View style={r.copy}><Text style={r.muted}>Prise en charge · {formatRequestDay(time)}</Text><Text style={r.time}>{formatRequestTime(time)}</Text></View>
+        <View style={r.copy}><Text style={[r.muted, fontScale <= 1.3 && r.right]}>Prix du trajet</Text>
+          <Text style={[r.amount, fontScale <= 1.3 && r.right]}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>
+      </View>
+      <View style={r.row}>
+        <View style={r.avatar}><Text style={r.initials}>{rideInitials(name)}</Text></View>
+        <View style={r.copy}><Text style={r.name}>{name}</Text><Text style={r.muted}>Passager · {request.numberOfSeats} place{request.numberOfSeats > 1 ? 's' : ''} · {requestVehicleLabel(request)}</Text></View>
+        {contact && !closed && <Pressable accessibilityRole="button" accessibilityLabel="Contacter le passager par message ou téléphone" onPress={() => setContactOpen(true)} style={r.circle}>
+          <Ionicons name="call-outline" size={22} color={c.text} />
+        </Pressable>}
+      </View>
+      <RideRouteTimeline labels={labels} outlined />
+      {!closed && <RequestPickupSummaryCard requestId={request.id} active={model.isScreenActive} compact />}
+      {request.tripId && <Pressable accessibilityRole="button" style={s.secondary} onPress={() => model.handleViewTrip(request.tripId!)}>
+        <Text style={s.secondaryText}>Voir les détails du trajet</Text>
+      </Pressable>}
     </View>
     {contactOpen && contact && !closed && <NavigationContactModal role="driver" contacts={[contact]} onClose={() => setContactOpen(false)} />}
   </>;
@@ -64,19 +73,14 @@ export function RequestCourseActions({ model }: { model: Model }) {
       {busy ? <ActivityIndicator color="#FFFFFF" /> : <Ionicons name="navigate-outline" size={20} color="#FFFFFF" />}
       <Text style={s.primaryText}>{model.assignedTrip?.status === 'ongoing' ? 'Reprendre la course' : 'Aller chercher le passager'}</Text>
     </Pressable>}
-    {model.tripRequest?.tripId && <Pressable accessibilityRole="button" disabled={busy} style={s.secondary} onPress={() => model.handleViewTrip(model.tripRequest!.tripId!)}>
-      <Text style={s.secondaryText}>{canGo ? 'Voir les détails du trajet' : 'Voir le trajet'}</Text>
-    </Pressable>}
     <WithdrawRequestDriverButton request={model.tripRequest} trip={model.assignedTrip}
+      appearance="link"
       disabled={!model.isScreenActive || model.isStartingTrip || model.isStartingTripFromRequest}
       onWithdrawn={model.goHome} onPendingChange={setWithdrawing} />
   </View>;
 }
 const local = StyleSheet.create({
-  confirmed: { color: '#12813C', fontSize: 12, fontWeight: '800' }, time: { color: '#111827', fontSize: 42, fontWeight: '800' },
-  person: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingTop: 14, borderTopWidth: 1, borderColor: '#F0F2F5' },
-  avatar: { width: 46, height: 46, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFE5D5' },
-  initials: { color: '#A63C11', fontSize: 16, fontWeight: '700' }, meta: { color: '#536071', fontSize: 13 },
-  contact: { width: 44, height: 44, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F3F5F8' },
-  rule: { height: 1, backgroundColor: '#F0F2F5' },
+  mapHeader: { position: 'absolute', top: 16, left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  status: { flexShrink: 1 }, white: { backgroundColor: '#FFFFFF' },
+  sheet: { marginTop: -20 },
 });

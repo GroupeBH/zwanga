@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/styles';
 import { formatMoney } from './paymentModel';
 import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
+import { canChooseCash } from './cashFallback';
 
 type Props = {
   mixedCashLabel?: string;
@@ -34,8 +35,8 @@ export function ArrivalPaymentRecovery(props: Props) {
     skip: (props.pending && !props.pendingCashAllowed) || props.beforeArrival,
     refetchOnMountOrArgChange: true,
   });
-  const cashAllowed = (!props.pending || props.pendingCashAllowed) && !props.beforeArrival && props.amount !== null && !isError &&
-    options?.acceptedPaymentModes.includes('cash') && options.availablePaymentModes.includes('cash');
+  const cashAllowed = (!props.pending || props.pendingCashAllowed) && !props.beforeArrival && props.amount !== null && props.amount > 0 && !isError &&
+    canChooseCash(options);
   const total = props.amount === null ? 'Montant à vérifier' : formatMoney(props.amount, props.currency);
   const busyLabel = props.savingCash ? 'Passage au cash…' : 'Vérification du paiement…';
   const primaryBusy = props.busy || Boolean(props.pending && props.verifying);
@@ -71,6 +72,7 @@ export function ArrivalPaymentRecovery(props: Props) {
           : cashAllowed ? 'Vous pouvez payer le conducteur en cash ou choisir un autre moyen.' : 'Choisissez un autre moyen de paiement ou réessayez.')}</Text>
       {!(props.pending && cashAllowed) && <Text style={s.reassurance}>Vous pouvez fermer cette fenêtre et reprendre plus tard.</Text>}
       <View style={s.actions}>
+        {cashAllowed && options?.cashException && <Text style={s.message}>{options.cashException.message}</Text>}
         {props.mixedCashLabel && props.onMixedCash && <>
           <Text style={s.message}>La recharge en attente restera dans votre portefeuille si elle aboutit. Vous pouvez utiliser vos jetons disponibles et compléter en cash.</Text>
           <TouchableOpacity accessibilityRole="button" disabled={props.busy}

@@ -2,6 +2,8 @@ import { TripShareAction } from '@/components/trip/TripShareAction';
 import { Colors } from '@/constants/styles';
 import { NavigationAssistanceButtons } from '@/features/navigation/NavigationAssistanceButtons';
 import { PassengerPickupEstimateBanner } from './PassengerPickupEstimateBanner';
+import { PassengerCoPassengersAccess } from './PassengerCoPassengersAccess';
+import { RidePaymentNotice } from '@/features/ride-payment/RidePaymentNotice';
 import type { useNavigationAssistance } from '@/hooks/navigation/useNavigationAssistance';
 import type { usePassengerNavigationController } from '@/hooks/passenger-navigation/usePassengerNavigationController';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,12 +16,12 @@ interface Props {
 }
 export function PassengerNavigationHeader({ model, assistance }: Props) {
   const { data, state, presentation, tripActions } = model;
-  const title = data.trip?.status === 'completed' || data.booking?.status === 'completed' ? 'Trajet terminé' :
+  const title = data.trip?.status === 'completed' ? 'Trajet terminé' :
+    data.booking?.status === 'completed' || data.booking?.droppedOff ? 'Arrivée confirmée' :
     data.trip?.status === 'upcoming' && data.trip.startedAt ? 'Trajet en pause' :
     presentation.tripStatus === 'waiting_pickup' ? 'Votre rendez-vous' :
-    presentation.tripStatus === 'pickup_confirmation_needed' ? 'Êtes-vous à bord ?' :
     presentation.tripStatus === 'in_transit' ? 'En route' :
-    presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Êtes-vous arrivé ?' :
+    presentation.tripStatus === 'awaiting_dropoff_confirmation' ? 'Arrivée à confirmer' :
     presentation.tripStatus === 'completed' ? 'Arrivé' : 'Suivi du trajet';
   return <View onLayout={state.onHeaderLayout} style={[styles.header, {
     paddingTop: data.insets.top + 8,
@@ -35,6 +37,10 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
         {state.isSocketConnected && !data.offlineBooking && !data.offlineTrip && <Text style={styles.live}>Connecté</Text>}
         {(data.offlineBooking || data.offlineTrip) && <Text style={styles.subtitle}>Hors connexion</Text>}
       </View>
+      <PassengerCoPassengersAccess key={`${data.passengerId}:${data.tripId}:${data.bookingId}`}
+        trip={data.trip} booking={data.booking ?? null}
+        active={data.isScreenActive && !data.offlineBooking && !data.offlineTrip}
+        blocked={assistance.isOpen || Boolean(state.pickupNotice)} />
     </View>
     <View style={styles.row}>
       <View style={styles.driver}>
@@ -47,6 +53,8 @@ export function PassengerNavigationHeader({ model, assistance }: Props) {
       <View style={styles.driver}><PassengerPickupEstimateBanner compact estimate={model.pickupEstimate} /></View>
       <TripShareAction compact inline onShare={tripActions.handleShareTrip} disabled={data.isCreatingTripShareLink} />
     </View>
+    <RidePaymentNotice booking={data.booking} active={data.isScreenActive}
+      offline={data.offlineBooking || data.offlineTrip} />
   </View>;
 }
 

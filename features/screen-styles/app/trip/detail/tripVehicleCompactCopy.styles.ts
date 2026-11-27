@@ -7,16 +7,16 @@ export const styles = StyleSheet.create({
     minWidth: 0,
   },
   tripVehicleCompactName: {
-    marginTop: 1,
+    marginTop: 2,
     color: Colors.gray[900],
-    fontSize: FontSizes.sm,
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.bold,
   },
   tripVehicleCompactMeta: {
     marginTop: 1,
-    color: Colors.gray[600],
-    fontSize: 11,
-    fontWeight: FontWeights.medium,
+    color: Colors.gray[700],
+    fontSize: FontSizes.xs,
+    fontWeight: FontWeights.semibold,
   },
   vehicleDetailModalOverlay: {
     flex: 1,
@@ -235,11 +235,14 @@ export const styles = StyleSheet.create({
   passengerKycTripNotice: {
     marginTop: Spacing.sm,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: Spacing.sm,
-    padding: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primary + '08',
+    backgroundColor: Colors.primary + '0D',
+    borderWidth: 1,
+    borderColor: Colors.primary + '24',
   },
   passengerKycTripNoticeIcon: {
     width: 34,
@@ -254,9 +257,9 @@ export const styles = StyleSheet.create({
     minWidth: 0,
   },
   passengerKycTripNoticeTitle: {
-    color: Colors.gray[700],
-    fontSize: FontSizes.xs,
-    lineHeight: 18,
+    color: Colors.gray[800],
+    fontSize: FontSizes.sm,
+    lineHeight: 19,
     fontWeight: FontWeights.semibold,
   },
   passengerKycTripNoticeText: {
@@ -266,15 +269,15 @@ export const styles = StyleSheet.create({
     lineHeight: 17,
   },
   tripInlineActions: {
-    marginTop: Spacing.sm,
+    marginTop: Spacing.md,
     flexDirection: 'row',
     gap: Spacing.sm,
   },
   tripInlineActionButton: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 46,
     paddingVertical: Spacing.xs,
-    paddingHorizontal: Spacing.xs,
+    paddingHorizontal: Spacing.sm,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -282,7 +285,15 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.xs,
+    gap: 6,
+  },
+  // Action directe (messagerie) mise en avant ; « Contacter » reste neutre.
+  tripInlineActionButtonPrimary: {
+    borderColor: Colors.primary + '40',
+    backgroundColor: Colors.primary + '0F',
+  },
+  tripInlineActionTextPrimary: {
+    color: Colors.primaryDark,
   },
   tripInlineActionButtonDisabled: {
     backgroundColor: Colors.gray[50],

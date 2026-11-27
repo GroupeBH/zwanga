@@ -33,7 +33,9 @@ export const requestDriverApi = baseApi.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/trip-requests/${id}/change-driver`, method: 'PUT', body, timeout: 15000 }),
       transformResponse: (response: ServerTripRequest) => mapServerTripRequestToClient(response),
       // Refresh on an ambiguous timeout too: the transaction may have committed.
-      invalidatesTags: () => ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification'],
+      invalidatesTags: (_result, error) => error
+        ? ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification', 'Booking', 'Trip']
+        : ['TripRequest', 'MyTripRequests', 'AccountActivity', 'Notification'],
     }),
     withdrawRequestDriver: builder.mutation<{ id: string; withdrawn: true }, { id: string; selectedAt: string }>({
       query: ({ id, ...body }) => ({ url: `/trip-requests/${id}/withdraw-driver`, method: 'PUT', body, timeout: 15000 }),

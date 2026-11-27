@@ -95,9 +95,10 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 8,
   },
+  // Même taille que le bouton de partage pour un en-tête équilibré au-dessus de la carte.
   headerCircleButton: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.94)',
     alignItems: 'center',
@@ -119,7 +120,8 @@ export const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     backgroundColor: 'rgba(255,255,255,0.94)',
     overflow: 'hidden',
-    fontSize: FontSizes.base,
+    fontSize: FontSizes.sm,
+    color: Colors.gray[800],
   },
   headerActions: {
     flexDirection: 'row',

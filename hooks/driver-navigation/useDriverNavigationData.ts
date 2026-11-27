@@ -191,6 +191,8 @@ export function useDriverNavigationData() {
 
   return {
     driverId,
+    isOnline,
+    navigationReadsFailed: Boolean(tripError || bookingsError),
     bookingsFetching,
     tripId,
     focusBookingId: typeof bookingId === 'string' ? bookingId : undefined,

@@ -74,8 +74,9 @@ export function NavigationPickupBypassModal({
           </View>
           <Text style={styles.waypointModalWaitingText}>
             Vous avez dépassé le point de prise en charge sans confirmation automatique.
-            {' '}Si le passager est dans le véhicule, confirmez ci-dessous. Il répond aussi dans son application.
-            {' '}Cette étape est validée après vos deux confirmations, ou par la détection automatique.
+            {' '}{trip?.tripRequestId
+              ? 'Si le passager est dans le véhicule, votre confirmation suffit. La détection automatique reste active.'
+              : 'Si le passager est dans le véhicule, confirmez ci-dessous. Il répond aussi dans son application. Cette étape est validée après vos deux confirmations, ou par la détection automatique.'}
           </Text>
           <View style={[styles.waypointGpsStatus, styles.pickupBypassStatus]}>
             <Ionicons name="navigate-circle" size={18} color={Colors.warningDark} />

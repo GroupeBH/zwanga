@@ -101,10 +101,13 @@ test('a failed navigation leaves the trip button usable instead of an endless sp
   app.hooks.unmount();
 });
 
-test('confirmed acceptance opens passenger navigation before departure, exactly once', t => {
+test('confirmed acceptance stays on the order until departure, then opens passenger navigation once', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = setup('android');
   app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
+  assert.equal(app.render().isOpeningAssignedTrip, false);
+  t.mock.timers.tick(1000); assert.deepEqual(app.routes, []);
+  app.props.assignedTrip = { ...trip, status: 'ongoing' };
   assert.equal(app.render().isOpeningAssignedTrip, true);
   t.mock.timers.tick(40);
   assert.deepEqual(app.routes, ['/booking/navigate/booking']);
@@ -128,6 +131,7 @@ test('booking authorization failure or background cancels acceptance navigation'
   t.mock.timers.enable({ apis: ['setTimeout'] });
   for (const failure of ['background', 'forbidden']) {
     const app = setup();
+    app.props.assignedTrip = { ...trip, status: 'ongoing' };
     app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
     app.render();
     if (failure === 'background') app.props.isScreenActive = false;
@@ -153,6 +157,7 @@ test('an ongoing trip waits for its booking lookup instead of visiting an interm
 test('a silently ignored navigation restores the trip actions instead of leaving an endless loader', t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = setup('android');
+  app.props.assignedTrip = { ...trip, status: 'ongoing' };
   app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
   assert.equal(app.render().isOpeningAssignedTrip, true);
   t.mock.timers.tick(40); t.mock.timers.tick(2000);
@@ -163,6 +168,7 @@ test('a silently ignored navigation restores the trip actions instead of leaving
 for (const platform of ['android', 'ios']) test(`${platform}: background after an ignored transition preserves recovery on return`, t => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const app = setup(platform);
+  app.props.assignedTrip = { ...trip, status: 'ongoing' };
   app.props.bookings = [{ id: 'booking', tripId: 'trip', passengerId: 'passenger', status: 'accepted' }];
   app.render(); t.mock.timers.tick(platform === 'ios' ? 260 : 40);
   app.props.isScreenActive = false; app.render();

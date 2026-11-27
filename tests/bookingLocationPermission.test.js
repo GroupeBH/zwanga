@@ -5,6 +5,7 @@ const { hookHarness } = require('./helpers/hookHarness.cjs');
 
 function fixture(t, create) {
   const h = hookHarness(), calls = [];
+  const paymentOptions = { availablePaymentModes: ['cash'] };
   let version = 1;
   const load = loader({
     react: h.react,
@@ -15,7 +16,7 @@ function fixture(t, create) {
     '@/services/tokenSession': { getTokenSessionVersion: () => version },
     '@/services/analytics': { trackEvent: async () => {} },
     '@/store/api/driverFinanceApi': { useLazyTripPaymentOptionsQuery: () =>
-      [() => ({ unwrap: async () => ({ availablePaymentModes: ['cash'] }) })] },
+      [() => ({ unwrap: async () => paymentOptions })] },
     '@/utils/errorHelpers': { getApiErrorMessage: () => 'error', isPassengerKycRequiredError: () => false },
   });
   const queue = load('services/tripLocationPermission.ts');
@@ -33,7 +34,7 @@ function fixture(t, create) {
     refetchKycStatus() {}, openPassengerIdentityVerification() {}, activeBooking: null, cancelBookingMutation() {}, showDialog() {},
   };
   t.after(() => h.unmount());
-  return { calls, queue, props, changeSession: () => { version++; },
+  return { calls, queue, props, paymentOptions, changeSession: () => { version++; },
     submit: () => h.render(() => useTripBookingSubmission(props)).handleConfirmBooking() };
 }
 
@@ -50,6 +51,17 @@ test('failed booking never offers location and does not show a false success', a
   const f = fixture(t, async () => { throw Error('failed'); }); await f.submit();
   assert.equal(f.queue.getTripLocationPermissionOffer(), null);
   assert.equal(f.calls.some(c => c[0] === 'success'), false);
+});
+
+test('payment is revalidated before booking and an unavailable option cannot be submitted', async t => {
+  let created = 0; const f = fixture(t, async () => { created++; return { id: 'booked' }; });
+  f.paymentOptions.availablePaymentModes = [];
+  await f.submit(); assert.equal(created, 0);
+  assert.match(f.calls.at(-1)[1], /Aucun mode de paiement disponible/);
+  f.paymentOptions.availablePaymentModes = ['points'];
+  await f.submit(); assert.equal(created, 0);
+  assert.match(f.calls.at(-1)[1], /Mode de paiement/);
+  f.props.bookingPaymentMode = 'points'; await f.submit(); assert.equal(created, 1);
 });
 
 test('a booking confirmed for a departed account cannot prompt the next logged-in user', async t => {

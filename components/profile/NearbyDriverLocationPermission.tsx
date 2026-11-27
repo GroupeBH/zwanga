@@ -18,6 +18,7 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
   const active = useScreenIsActive();
   const flow = useNearbyLocationPermission({ userId, driver, active, available });
   const [deliveryMessage, setDeliveryMessage] = useState('');
+  const [showUsage, setShowUsage] = useState(false);
   useEffect(() => {
     setDeliveryMessage('');
     if (!active || !userId || !driver || !flow.enabled || !flow.permission) return;
@@ -42,9 +43,7 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
   const disabled = flow.busy || !flow.loaded || (!authorized && (!available || !flow.consent));
   const settingsChoice = Platform.OS === 'ios' ? '« Toujours »' : '« Toujours autoriser »';
   return <View style={styles.section}>
-    <Text style={styles.title}>Recevoir les commandes près de vous</Text>
-    <Text style={styles.copy}>Même quand l’écran est éteint ou que vous utilisez une autre application.</Text>
-    <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes pour trouver les commandes proches. Le téléphone peut retarder ces envois.</Text>
+    <Text style={styles.title}>Localisation en arrière-plan</Text>
     {authorized ? <>
       <View style={styles.authorized}>
         <View style={styles.dot} />
@@ -52,15 +51,15 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
       </View>
       {deliveryMessage ? <Text accessibilityLiveRegion="polite" style={styles.status}>{deliveryMessage}</Text> : null}
     </> : flow.loaded && !flow.loadError ? <>
-      {!flow.enabled && <Text style={styles.status}>Vous avez désactivé cette option. Vous pouvez la réactiver ici.</Text>}
+      {!flow.enabled && <Text style={styles.status}>Vous avez désactivé le partage hors trajet.</Text>}
+      <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes pour trouver les commandes proches, même quand l’écran est éteint ou dans une autre application. Le téléphone peut retarder ces envois.</Text>
       <BackgroundLocationConsent checked={flow.consent} disabled={flow.busy || !available}
         onChange={flow.setConsent} />
-      <Text style={styles.step}>{flow.permission ? 'Il reste à valider' : 'Puis, sur le téléphone'}</Text>
       <Text style={styles.copy}>{flow.permission
-        ? 'Le téléphone a déjà donné son autorisation. Validez pour relancer l’envoi de position hors trajet.'
+        ? 'Validez pour reprendre le partage hors trajet.'
         : flow.settingsRequired
-        ? `Dans les réglages de Zwanga, ouvrez « Autorisations » ou « Position », puis choisissez ${settingsChoice}. Revenez ensuite dans Zwanga.`
-        : `Autorisez d’abord votre position si le téléphone le demande, puis choisissez ${settingsChoice}. La case seule ne donne pas cette autorisation.`}</Text>
+        ? `Dans les réglages de position de Zwanga, choisissez ${settingsChoice}, puis revenez ici.`
+        : `Sur le téléphone, choisissez ${settingsChoice}. La case seule ne donne pas cette autorisation.`}</Text>
       {!available && <Text style={styles.status}>Le service est momentanément indisponible. Vous pourrez réessayer plus tard.</Text>}
     </> : <Text accessibilityLiveRegion="polite" style={styles.status}>{flow.loadError
       ? 'Impossible de vérifier les autorisations.' : 'Vérification des autorisations…'}</Text>}
@@ -81,15 +80,20 @@ export function NearbyDriverLocationPermission({ available }: { available: boole
       onPress={flow.defer}>
       <Text style={styles.optOutText}>Pas maintenant</Text>
     </TouchableOpacity> : null}
-    <Text style={styles.footnote}>Facultatif. Vous pouvez utiliser l’application sans cette autorisation et changer d’avis ici à tout moment.</Text>
+    {authorized ? <>
+      <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showUsage }}
+        style={styles.optOut} onPress={() => setShowUsage(value => !value)}>
+        <Text style={styles.usageText}>{showUsage ? 'Masquer les détails' : 'Utilisation de ma position'}</Text>
+      </TouchableOpacity>
+      {showUsage && <Text style={styles.copy}>Hors trajet, Zwanga collecte et envoie votre position au serveur environ toutes les 3 minutes pour trouver les commandes proches, même en veille. Le téléphone peut retarder ces envois. Désactiver ce partage ne coupe pas le suivi d’un trajet en cours.</Text>}
+    </> : <Text style={styles.footnote}>Facultatif et modifiable à tout moment. L’application reste accessible sans cette autorisation.</Text>}
     {flow.message ? <Text accessibilityLiveRegion="polite" style={styles.copy}>{flow.message}</Text> : null}
   </View>;
 }
 const styles = StyleSheet.create({
-  section: { gap: 14 }, title: { fontSize: 21, lineHeight: 28, fontWeight: '700', color: Colors.gray[900] },
-  copy: { fontSize: 15, lineHeight: 22, color: Colors.gray[700] },
+  section: { gap: 10 }, title: { fontSize: 18, lineHeight: 24, fontWeight: '700', color: Colors.gray[900] },
+  copy: { fontSize: 14, lineHeight: 21, color: Colors.gray[700] },
   status: { fontSize: 14, lineHeight: 20, color: Colors.gray[600] },
-  step: { fontSize: 14, fontWeight: '700', color: Colors.gray[900] },
   authorized: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ACTION_COLORS.green },
   authorizedText: { fontSize: 15, fontWeight: '600', color: Colors.gray[900] },
@@ -99,6 +103,7 @@ const styles = StyleSheet.create({
   progress: { flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center' },
   optOut: { minHeight: 44, justifyContent: 'center' },
   optOutText: { textAlign: 'center', fontSize: 15, color: Colors.gray[700] },
+  usageText: { fontSize: 14, fontWeight: '600', color: Colors.gray[700] },
   buttonText: { textAlign: 'center', fontSize: 16, fontWeight: '700', color: Colors.white },
   footnote: { fontSize: 13, lineHeight: 19, color: Colors.gray[600] },
 });

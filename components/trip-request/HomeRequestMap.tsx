@@ -1,8 +1,9 @@
 import { memo } from 'react';
 import { Text, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
 import { ACTION_COLORS } from '@/constants/actionColors';
-import { REQUEST_MAP_MARKER_ANCHOR, getMapCoordinate } from '@/features/trip-request/requestFormModel';
+import { getMapCoordinate } from '@/features/trip-request/requestFormModel';
 import { homeRequestStyles as s } from '@/features/trip-request/homeRequestStyles';
 import type { RequestTripController } from '@/hooks/trip-request/useRequestTripController';
 
@@ -15,10 +16,8 @@ export const HomeRequestMap = memo(function HomeRequestMap({ enabled, height, ..
   return <View style={[s.map, { height }]} testID="home-request-map">
     {enabled && <MapView style={s.mapFill} provider={PROVIDER_GOOGLE} region={form.routePreviewRegion}
       scrollEnabled={false} zoomEnabled={false} rotateEnabled={false} pitchEnabled={false} toolbarEnabled={false}>
-      {departure && <Marker coordinate={departure} title="Départ" anchor={REQUEST_MAP_MARKER_ANCHOR}
-        image={require('@/assets/images/map-markers/trip-detail-marker-departure.png')} tracksViewChanges={false} />}
-      {arrival && <Marker coordinate={arrival} title="Destination" anchor={REQUEST_MAP_MARKER_ANCHOR}
-        image={require('@/assets/images/map-markers/trip-detail-marker-arrival.png')} tracksViewChanges={false} />}
+      {departure && <RoutePointMarker kind="departure" coordinate={departure} title="Départ" />}
+      {arrival && <RoutePointMarker kind="arrival" coordinate={arrival} title="Destination" />}
       {form.routeCoordinates.length > 1 && <Polyline coordinates={form.routeCoordinates} strokeWidth={4} strokeColor={ACTION_COLORS.orange} />}
     </MapView>}
     <View style={s.mapStatus}>

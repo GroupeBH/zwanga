@@ -37,7 +37,7 @@ test('large driver header gives status its own row; decorative counters retain a
   assert.ok(nodes(tree).some(n => flat(n.props.style).flexDirection === 'column-reverse'));
   const statusSlot = nodes(tree).find(n => n.type === 'View' && n.props.children?.type === 'DriverStatus');
   assert.equal(flat(statusSlot.props.style).flex, 0, 'status keeps intrinsic height in a vertical header');
-  assert.ok(nodes(tree).some(n => n.props.accessibilityLabel === 'Notifications, 14 non lues'));
+  assert.ok(nodes(tree).some(n => n.props.accessibilityLabel === 'Notifications et messages, 14 notifications non lues, 0 messages non lus'));
 });
 
 test('large text priorities belong to scrollable Home content, not the constrained map overlay', () => {

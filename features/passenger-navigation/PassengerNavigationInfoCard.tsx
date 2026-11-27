@@ -46,12 +46,12 @@ export function PassengerNavigationInfoCard({
       style={[styles.infoCard, compact.panel, { maxHeight: height * (expanded ? 0.5 : 0.36) }]}
     >
       <ScrollView showsVerticalScrollIndicator contentContainerStyle={{ paddingBottom: data.insets.bottom + 8 }}>
-      {trip.tripRequestId && <PickupDriverChange requestId={trip.tripRequestId} booking={booking}
+      {trip.tripRequestId && <PickupDriverChange requestId={trip.tripRequestId} booking={booking} trip={trip}
         onChanged={state.navigateToRequestSafely}
         active={awaitingPickup && data.isScreenActive && data.isOnline && !data.offlineBooking && !data.offlineTrip && !data.isCancellingBooking} />}
       {/* Projection du trajet (compact) */}
       {(data.offlineBooking || data.offlineTrip) && <Text style={{ color: Colors.gray[600], fontSize: 12, marginBottom: 8 }}>Dernières informations enregistrées. La carte et le suivi en direct nécessitent une connexion.</Text>}
-      {data.isTripOngoing && <RideRecoveryControl condensed tripId={data.tripId} booking={booking} actor="passenger" fix={state.recoveryFix} destination={booking.passengerDestinationCoordinates} />}
+      {data.isTripOngoing && <RideRecoveryControl condensed tripId={data.tripId} tripRequestId={trip.tripRequestId} booking={booking} actor="passenger" fix={state.recoveryFix} destination={booking.passengerDestinationCoordinates} />}
       <TouchableOpacity style={compact.summary} accessibilityRole="button" accessibilityLabel="Détails du trajet"
         accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} activeOpacity={0.7}>
         <Ionicons name="flag-outline" size={18} color={Colors.primaryDark} />

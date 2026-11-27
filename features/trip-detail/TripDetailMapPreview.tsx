@@ -1,17 +1,14 @@
 import { useTripDetailController } from '../../hooks/trip-detail/useTripDetailController';
 import {
-  USE_CUSTOM_MAP_MARKERS,
-  USE_ANDROID_MAP_MARKER_IMAGES,
   TRIP_DETAIL_MAP_PROVIDER,
-  ANDROID_TRIP_DETAIL_MARKER_ANCHOR,
-  androidTripDetailMarkerImages,
 } from './tripDetailModel';
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Polyline } from 'react-native-maps';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
 import { tripDetailMapHeight } from './tripDetailLayout';
 
 interface TripDetailMapPreviewProps {
@@ -38,9 +35,10 @@ export function TripDetailMapPreview({
           pitchEnabled={false}
           rotateEnabled={false}
           toolbarEnabled={false}
+          showsPointsOfInterest={false}
           region={model.mapPresentation.mapRegion}
         >
-          {model.mapPresentation.routeMapCoordinates.length >= 2 && (
+          {model.mapPresentation.hasDetailedRouteMapCoordinates && model.mapPresentation.routeMapCoordinates.length >= 2 && (
             <Polyline
               coordinates={model.mapPresentation.routeMapCoordinates}
               strokeColor={Colors.primary}
@@ -49,62 +47,41 @@ export function TripDetailMapPreview({
             />
           )}
 
-          <Marker
+          <RoutePointMarker kind="departure"
             coordinate={model.route.departureCoordinate}
-            anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-            image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
-            pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
             title={`Départ · ${model.presentation.routeLabels.departure.title}`}
             description={model.presentation.routeLabels.departure.address}
-            tracksViewChanges={false}
-          >
-            {USE_CUSTOM_MAP_MARKERS ? (
-              <View style={styles.markerStartCircle}>
-                <Ionicons name="location" size={18} color={Colors.white} />
-              </View>
-            ) : null}
-          </Marker>
+          />
 
-          <Marker
+          <RoutePointMarker kind="arrival"
             coordinate={model.route.arrivalCoordinate}
-            anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-            image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
-            pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
             title={`Arrivée · ${model.presentation.routeLabels.arrival.title}`}
             description={model.presentation.routeLabels.arrival.address}
-            tracksViewChanges={false}
-          >
-            {USE_CUSTOM_MAP_MARKERS ? (
-              <View style={styles.markerEndCircle}>
-                <Ionicons name="navigate" size={18} color={Colors.white} />
-              </View>
-            ) : null}
-          </Marker>
+          />
 
           {/* Destinations des passagers */}
           {model.mapPresentation.passengerDestinationMarkers.map((marker) => (
-            <Marker
+            <RoutePointMarker kind="passenger"
               key={`passenger-dest-${marker.id}`}
               coordinate={marker.coordinate}
-              anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-              image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.passenger : undefined}
-              pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.secondary}
               title={marker.title}
               description={marker.description}
-              tracksViewChanges={false}
-            >
-              {USE_CUSTOM_MAP_MARKERS ? (
-                <View style={styles.markerPassengerDestCircle}>
-                  <Ionicons name="person" size={14} color={Colors.white} />
-                </View>
-              ) : null}
-            </Marker>
+            />
           ))}
         </MapView>
 
+        {!model.data.isTripDriver && model.access.showPassengerSecurityAccess && !model.access.isPassengerSecurityLocked &&
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="SOS, contacter les urgences"
+            onPress={event => { event.stopPropagation(); model.safety.openSosModal(); }}
+            style={{ position: 'absolute', left: 16, bottom: 90, minHeight: 44, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 24, backgroundColor: '#D9291C', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="call-outline" size={20} color="#FFFFFF" /><Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 16 }}>SOS</Text>
+          </TouchableOpacity>}
         <View style={[styles.expandButton, model.data.isTripDriver && styles.ownerMapExpand]}>
           <View style={styles.expandButtonInner}>
-            <Ionicons name="expand" size={16} color={Colors.gray[700]} />
+            {/* L'icône suit l'état affiché : chargement, tracé disponible ou tracé indisponible. */}
+            {model.bookingState.isLoadingRoute
+              ? <ActivityIndicator size="small" color={Colors.primary} />
+              : <Ionicons name={model.mapPresentation.hasDetailedRouteMapCoordinates ? 'expand' : 'map-outline'} size={16} color={Colors.gray[700]} />}
             <Text style={styles.mapOverlayText}>{model.bookingState.isLoadingRoute ? 'Calcul de l’itinéraire…'
               : model.mapPresentation.hasDetailedRouteMapCoordinates ? 'Voir l’itinéraire' : 'Tracé routier indisponible'}</Text>
           </View>

@@ -218,6 +218,7 @@ test('actual request screen keeps the decision footer outside the scrollable det
     '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '@/features/request-detail/SharedTripPanel': { SharedTripPanel: 'SharedTripPanel' },
     '@/features/request-detail/RequestSearchScreen': { RequestSearchScreen: 'RequestSearchScreen' },
+    '@/features/request-detail/RequestConfirmedScreen': { RequestConfirmedScreen: 'ConfirmedScreen' },
     '@/features/request-detail/RequestPendingOfferActions': { RequestPendingOfferActions: 'PendingOfferActions' },
     '@/store/api/sharedTripApi': { useSharedTripContextQuery: () => ({}) },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true, displayReadOptions: () => ({}) },
@@ -254,4 +255,11 @@ test('actual request screen keeps the decision footer outside the scrollable det
     model.userId = request.passengerId;
     assert.equal(Screen().type, 'RequestSearchScreen', 'the same persisted detail route becomes the owner search map');
   } finally { model.userId = previousId; }
+  const wasOwner = model.isOwner;
+  try {
+    model.isOwner = true; model.userId = request.passengerId;
+    model.tripRequest = { ...request, status: 'driver_selected', selectedDriverId: 'chosen', tripId: 'trip' };
+    assert.equal(Screen().type, 'ConfirmedScreen', 'accepted passenger order gets the map-first screen even for a driver account');
+    assert.equal(Screen().props.model, model);
+  } finally { model.userId = previousId; model.isOwner = wasOwner; model.tripRequest = previousRequest; }
 });

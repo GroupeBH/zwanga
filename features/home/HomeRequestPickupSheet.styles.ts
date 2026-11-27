@@ -1,0 +1,32 @@
+import { StyleSheet } from 'react-native';
+import { HOME_DASHBOARD_COLORS as c } from './homeDashboardTheme';
+
+export const styles = StyleSheet.create({
+  sheet: { position: 'absolute', left: 0, right: 0, zIndex: 11, borderTopLeftRadius: 26,
+    borderTopRightRadius: 26, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  scroll: { flex: 1, minHeight: 0 },
+  content: { paddingTop: 16, paddingHorizontal: 18, paddingBottom: 8, gap: 10 },
+  confirmed: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  confirmedText: { flexShrink: 1, color: c.greenInk, fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  driver: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFEBDF', alignItems: 'center', justifyContent: 'center' },
+  initials: { color: c.rust, fontSize: 16, fontWeight: '700' },
+  copy: { flex: 1, minWidth: 0, gap: 3 },
+  name: { color: c.ink, fontSize: 18, lineHeight: 24, fontWeight: '700' },
+  vehicle: { color: c.muted, fontSize: 13, lineHeight: 18 },
+  plate: { alignSelf: 'flex-start', maxWidth: '100%', paddingVertical: 2, paddingHorizontal: 7,
+    borderRadius: 5, borderWidth: 1, borderColor: c.line, marginTop: 2 },
+  plateText: { color: c.ink, fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  status: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F5F6F8', borderRadius: 12, padding: 10 },
+  statusText: { color: c.muted, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+  estimate: { color: c.ink, fontSize: 19, lineHeight: 25, fontWeight: '700' },
+  pickup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  label: { color: c.muted, fontSize: 12, lineHeight: 16 },
+  place: { color: c.ink, fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  footer: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 12 },
+  action: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: c.orange },
+  actionText: { flexShrink: 1, textAlign: 'center', color: '#FFFFFF', fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  horizontalSheet: { flexDirection: 'row' },
+  horizontalFooter: { width: 180, justifyContent: 'center', paddingHorizontal: 12 },
+});

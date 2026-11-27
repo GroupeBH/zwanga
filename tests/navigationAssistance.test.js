@@ -131,6 +131,43 @@ test('contact sheet shows each person, reserves the bottom safe area and never o
   assert.deepEqual(h.calls.at(-1), ['whatsapp', '0999000111']); h.hooks.unmount();
 });
 
+test('accepted contact uses one identity and short actions while keeping contact channels and dismissal', async () => {
+  const h = contactModal();
+  h.props.contacts = [h.props.contacts[0]];
+  h.props.compact = true; h.props.title = 'Joindre le passager';
+  h.props.hint = 'À l’arrêt uniquement.'; h.props.closeLabel = 'Plus tard';
+  h.props.summary = React.createElement('Text', null, 'DÉPART · Avenue de test · Approche · environ 3 min');
+  let closed = 0; h.props.onClose = () => closed++;
+  h.render(); const copy = words(h.tree());
+  assert.equal(copy.match(/Alice/g).length, 1);
+  assert.equal(copy.match(/DÉPART/g).length, 1);
+  assert.match(copy, /Joindre le passager.*À l’arrêt uniquement.*Alice.*DÉPART.*Message.*Appeler.*WhatsApp.*Plus tard/);
+  assert.doesNotMatch(copy, /À bord|Échangez sans quitter|L’appel utilise|nécessitent Internet|Message dans Zwanga/);
+  assert.deepEqual(h.calls, []);
+  h.button('Envoyer un message dans Zwanga à Alice').props.onPress(); await flush(); h.render();
+  h.button('Appeler Alice').props.onPress(); await flush(); h.render();
+  h.button('Contacter sur WhatsApp Alice').props.onPress(); await flush(); h.render();
+  assert.deepEqual(h.calls, [['message', 'one'], ['phone', '0999000111'], ['whatsapp', '0999000111']]);
+  all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Plus tard').props.onPress();
+  assert.equal(closed, 1); assert.deepEqual(h.calls.at(-1), ['cancel']);
+  h.hooks.unmount();
+});
+
+test('compact contact retains missing-number, loading, error and retry states', () => {
+  const h = contactModal(); h.props.compact = true; h.props.contacts = [h.props.contacts[2]];
+  h.render(); assert.match(words(h.tree()), /Numéro indisponible/);
+  assert.equal(h.button('Appeler Charles').props.disabled, true);
+  assert.equal(h.button('Envoyer un message dans Zwanga à Charles').props.disabled, false);
+  h.props.contacts = []; h.props.loading = true; h.render();
+  assert.ok(all(h.tree()).some(node => node.type === 'Spinner'));
+  assert.doesNotMatch(words(h.tree()), /Aucun contact/);
+  h.props.loading = false; h.props.loadError = 'Contact indisponible.';
+  let retries = 0; h.props.onRetry = () => retries++;
+  h.render(); assert.match(words(h.tree()), /Contact indisponible/);
+  all(h.tree()).find(node => node.type === 'Button' && words(node) === 'Réessayer').props.onPress();
+  assert.equal(retries, 1); h.hooks.unmount();
+});
+
 test('contact sheet locks double taps synchronously and tolerates leaving during an external call', async () => {
   let resolve;
   const h = contactModal({ phone: () => new Promise(done => { resolve = done; }) });

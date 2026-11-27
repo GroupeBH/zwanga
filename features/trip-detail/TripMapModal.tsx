@@ -1,17 +1,16 @@
-import {
-  USE_CUSTOM_MAP_MARKERS,
-  USE_ANDROID_MAP_MARKER_IMAGES,
-  TRIP_DETAIL_MAP_PROVIDER,
-  ANDROID_TRIP_DETAIL_MARKER_ANCHOR,
-  androidTripDetailMarkerImages,
-} from './tripDetailModel';
+import { TRIP_DETAIL_MAP_PROVIDER } from './tripDetailModel';
 import { styles } from '../screen-styles/app/trip/detail/index';
 import { Colors } from '@/constants/styles';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useRef } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { RideModal as Modal } from '@/features/navigation/RideModal';
-import MapView, { Callout, Marker, Polyline } from 'react-native-maps';
+import MapView, { Polyline } from 'react-native-maps';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
+import { useScreenIsActive } from '@/hooks/useAppIsActive';
+import { useNavigationMapLifecycle } from '@/hooks/navigation/useNavigationMapLifecycle';
+import { useStableMapRoute } from '@/hooks/maps/useStableMapRoute';
+import { useRouteOverviewCamera } from '@/hooks/maps/useRouteOverviewCamera';
 import type { RouteLocationLabels } from '@/utils/routeLocationLabels';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
 import type { EdgeInsets } from 'react-native-safe-area-context';
@@ -20,145 +19,62 @@ interface TripMapModalProps {
   mapModalVisible: true;
   setMapModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
   insets: EdgeInsets;
-  mapRegion: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number; };
-  routeMapCoordinates: { latitude: number; longitude: number; }[];
+  mapRegion: { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+  routeMapCoordinates: MapCoordinate[];
   hasDetailedRouteMapCoordinates: boolean;
   departureCoordinate: MapCoordinate;
   routeLabels: RouteLocationLabels;
   arrivalCoordinate: MapCoordinate;
-  passengerDestinationMarkers: { id: string; coordinate: { latitude: number; longitude: number; }; title: string; description: string; }[];
+  passengerDestinationMarkers: { id: string; coordinate: MapCoordinate; title: string; description: string }[];
 }
+const PADDING = { top: 70, bottom: 70, left: 36, right: 36 };
 
-export function TripMapModal({
-  mapModalVisible,
-  setMapModalVisible,
-  insets,
-  mapRegion,
-  routeMapCoordinates,
-  hasDetailedRouteMapCoordinates,
-  departureCoordinate,
-  routeLabels,
-  arrivalCoordinate,
-  passengerDestinationMarkers,
-}: TripMapModalProps) {
-  return (
-    <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
-      <View style={styles.mapModalOverlay}>
-        <View
-          style={[
-            styles.mapModalContent,
-            {
-              marginTop: Math.max(insets.top, 20),
-              marginBottom: Math.max(insets.bottom, 20),
-            },
-          ]}
-        >
-          <MapView
-            provider={TRIP_DETAIL_MAP_PROVIDER}
-            style={styles.fullscreenMap}
-            mapType="standard"
-            initialRegion={mapRegion}
-          >
-            {routeMapCoordinates.length >= 2 && (
-              <Polyline
-                coordinates={routeMapCoordinates}
-                strokeColor={Colors.primary}
-                strokeWidth={5}
-                lineDashPattern={hasDetailedRouteMapCoordinates ? undefined : [1, 1]}
-              />
-            )}
-
-            <Marker
-              coordinate={departureCoordinate}
-              anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-              image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.departure : undefined}
-              pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.success}
-              title={`Départ · ${routeLabels.departure.title}`}
-              description={routeLabels.departure.address}
-              tracksViewChanges={false}
-            >
-              {USE_CUSTOM_MAP_MARKERS ? (
-                <>
-              <View style={styles.markerStartCircle}>
-                <Ionicons name="location" size={20} color={Colors.white} />
-              </View>
-              <Callout>
-                <View>
-                  <Text style={{ fontWeight: 'bold' }}>Départ</Text>
-                  <Text>{routeLabels.departure.title}</Text>
-                  <Text>{routeLabels.departure.address}</Text>
-                </View>
-              </Callout>
-                </>
-              ) : null}
-            </Marker>
-
-            <Marker
-              coordinate={arrivalCoordinate}
-              anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-              image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.arrival : undefined}
-              pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.primary}
-              title={`Arrivée · ${routeLabels.arrival.title}`}
-              description={routeLabels.arrival.address}
-              tracksViewChanges={false}
-            >
-              {USE_CUSTOM_MAP_MARKERS ? (
-                <>
-              <View style={styles.markerEndCircle}>
-                <Ionicons name="navigate" size={20} color={Colors.white} />
-              </View>
-              <Callout>
-                <View>
-                  <Text style={{ fontWeight: 'bold' }}>Arrivée</Text>
-                  <Text>{routeLabels.arrival.title}</Text>
-                  <Text>{routeLabels.arrival.address}</Text>
-                </View>
-              </Callout>
-                </>
-              ) : null}
-            </Marker>
-
-            {/* Destinations des passagers */}
-            {passengerDestinationMarkers.map((marker) => (
-              <Marker
-                key={`passenger-dest-fullscreen-${marker.id}`}
-                coordinate={marker.coordinate}
-                anchor={USE_ANDROID_MAP_MARKER_IMAGES ? ANDROID_TRIP_DETAIL_MARKER_ANCHOR : undefined}
-                image={USE_ANDROID_MAP_MARKER_IMAGES ? androidTripDetailMarkerImages.passenger : undefined}
-                pinColor={USE_ANDROID_MAP_MARKER_IMAGES ? undefined : Colors.secondary}
-                title={marker.title}
-                description={marker.description}
-                tracksViewChanges={false}
-              >
-                {USE_CUSTOM_MAP_MARKERS ? (
-                  <>
-                    <View style={styles.markerPassengerDestCircle}>
-                      <Ionicons name="person" size={16} color={Colors.white} />
-                    </View>
-                    <Callout>
-                      <View>
-                        <Text style={{ fontWeight: 'bold' }}>{marker.title}</Text>
-                        <Text>{marker.description}</Text>
-                      </View>
-                    </Callout>
-                  </>
-                ) : null}
-              </Marker>
-            ))}
-          </MapView>
-
-          <TouchableOpacity
-            style={styles.closeMapButton}
-            onPress={() => setMapModalVisible(false)}
-            activeOpacity={0.82}
-            accessibilityRole="button"
-            accessibilityLabel="Fermer la carte"
-            hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-          >
-            <Ionicons name="close" size={24} color={Colors.white} />
-          </TouchableOpacity>
-        </View>
+export function TripMapModal({ mapModalVisible, setMapModalVisible, insets, mapRegion, routeMapCoordinates,
+  hasDetailedRouteMapCoordinates, departureCoordinate, routeLabels, arrivalCoordinate, passengerDestinationMarkers }: TripMapModalProps) {
+  const mapRef = useRef<MapView>(null);
+  const active = useScreenIsActive();
+  const { width, height } = useWindowDimensions();
+  const lifecycle = useNavigationMapLifecycle({ screenKey: 'trip-route-modal', enabled: active && mapModalVisible, mapRef });
+  const fallback = useMemo(() => [departureCoordinate, arrivalCoordinate], [departureCoordinate, arrivalCoordinate]);
+  const coordinates = useStableMapRoute(routeMapCoordinates.length >= 2 ? routeMapCoordinates : fallback, hasDetailedRouteMapCoordinates);
+  const routeKey = `${departureCoordinate.latitude}:${departureCoordinate.longitude}:${arrivalCoordinate.latitude}:${arrivalCoordinate.longitude}`;
+  const camera = useRouteOverviewCamera({ routeKey, coordinates, isReady: lifecycle.isMapReady,
+    edgePadding: PADDING, mapLayoutRef: lifecycle.mapLayoutRef, runMapCommand: lifecycle.runMapCommand,
+    layoutKey: `${width}:${height}:${insets.top}:${insets.bottom}` });
+  return <Modal visible={mapModalVisible} animationType="fade" transparent onRequestClose={() => setMapModalVisible(false)}>
+    <View style={styles.mapModalOverlay}>
+      <View style={[styles.mapModalContent, { marginTop: Math.max(insets.top, 20), marginBottom: Math.max(insets.bottom, 20) }]}>
+        {lifecycle.shouldRenderMap && <MapView ref={mapRef} provider={TRIP_DETAIL_MAP_PROVIDER} style={styles.fullscreenMap}
+          mapType="standard" initialRegion={mapRegion} onMapReady={lifecycle.onMapReady} onLayout={lifecycle.onMapLayout}
+          onPanDrag={camera.onPanDrag} onTouchStart={camera.onPanDrag} onRegionChangeComplete={camera.onRegionChangeComplete}
+          moveOnMarkerPress={false} toolbarEnabled={false} showsPointsOfInterest={false}>
+          {hasDetailedRouteMapCoordinates && coordinates.length >= 2 && <Polyline coordinates={coordinates} strokeColor={Colors.primary} strokeWidth={4}
+            lineDashPattern={hasDetailedRouteMapCoordinates ? undefined : [4, 4]} />}
+          <RoutePointMarker kind="departure" coordinate={departureCoordinate} title={`Départ · ${routeLabels.departure.title}`}
+            description={routeLabels.departure.address} />
+          <RoutePointMarker kind="arrival" coordinate={arrivalCoordinate} title={`Arrivée · ${routeLabels.arrival.title}`}
+            description={routeLabels.arrival.address} />
+          {passengerDestinationMarkers.map(marker => <RoutePointMarker key={`passenger-dest-fullscreen-${marker.id}`}
+            kind="passenger" coordinate={marker.coordinate} title={marker.title} description={marker.description} />)}
+        </MapView>}
+        {!lifecycle.isMapReady && <View pointerEvents="none" style={local.loading}><ActivityIndicator color={Colors.primary} /></View>}
+        {!hasDetailedRouteMapCoordinates && <View style={local.notice} pointerEvents="none"><Text>Tracé routier indisponible</Text></View>}
+        <TouchableOpacity style={styles.closeMapButton} onPress={() => setMapModalVisible(false)} activeOpacity={0.82}
+          accessibilityRole="button" accessibilityLabel="Fermer la carte" hitSlop={12}>
+          <Ionicons name="close" size={24} color={Colors.white} />
+        </TouchableOpacity>
+        <TouchableOpacity style={local.recenter} onPress={camera.recenter} disabled={!lifecycle.isMapReady}
+          accessibilityState={{ disabled: !lifecycle.isMapReady }} activeOpacity={0.82} accessibilityRole="button" accessibilityLabel="Recentrer l’itinéraire">
+          <Ionicons name="locate-outline" size={23} color="#1E294A" />
+        </TouchableOpacity>
       </View>
-    </Modal>
-  );
+    </View>
+  </Modal>;
 }
+const local = StyleSheet.create({
+  notice: { position: 'absolute', bottom: 76, left: 16, right: 16, borderRadius: 16,
+    backgroundColor: '#FFFFFF', padding: 12, alignItems: 'center' },
+  loading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  recenter: { position: 'absolute', bottom: 16, right: 16, width: 48, height: 48, borderRadius: 24,
+    backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+});

@@ -23,7 +23,7 @@ function fixture(kind) {
     '@/store/api/requestDriverApi': { useChangeRequestDriverMutation: () => [mutation, { isLoading: false }],
       useTargetRequestMapDriverMutation: () => [mutation, { isLoading: false }] },
     '@/store/api/tripRequestApi': { tripRequestApi: api },
-    '@/hooks/useDisplayReads': { displayReadOptions: enabled => ({ skip: !enabled }) },
+    '@/hooks/useDisplayReads': { displayReadOptions: enabled => ({ skip: !enabled }), useDisplayReadsEnabled: enabled => Boolean(enabled) },
     '@/services/tokenSession': { getTokenSessionVersion: () => version },
     '@/utils/errorHelpers': { getApiErrorMessage: (_error, fallback) => fallback },
   })(`features/request-detail/${kind}.tsx`);

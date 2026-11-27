@@ -8,7 +8,6 @@ import { useDialog } from '@/components/ui/DialogProvider';
 import { displayNotification } from '@/services/pushNotifications';
 import { stopPassengerBackgroundLocationTracking } from '@/services/passengerBackgroundLocationTask';
 import type { DisplayRefetch } from '@/hooks/useDisplayReads';
-import { useAppSelector } from '@/store/hooks';
 import { NavigationSpeech as Speech } from '@/utils/navigationSpeech';
 import { passengerPickupMessage, pickupVehicleReminder } from '@/features/navigation/pickupAwareness';
 import * as Location from 'expo-location';
@@ -62,12 +61,6 @@ export function usePassengerNavigationNotices({
   hasPresentedBoardedNoticeRef,
   hasPresentedDestinationApproachNoticeRef,
 }: Params) {
-  const manualPickup = useAppSelector(state => Boolean(booking?.passengerId && state.auth.user?.id === booking.passengerId &&
-    (['manual_dual_confirmation', 'manual_passenger_confirmation'].includes(booking.pickupDetectionMethod ?? '') || (state.rideRecovery.userId === booking.passengerId &&
-      state.rideRecovery.entries.some(entry => entry.bookingId === bookingId && entry.tripId === booking.tripId && entry.stage === 'pickup' &&
-        entry.decision === 'confirm' && !['blocked', 'disputed'].includes(entry.state))))));
-  const manualPickupRef = useRef(manualPickup);
-  manualPickupRef.current = manualPickup;
   const pickupContext = useRef({ bookingId, isScreenActive, booking });
   pickupContext.current = { bookingId, isScreenActive, booking };
   const latestPickupEvent = useRef<BookingAutoProgressEvent | null>(null);
@@ -78,14 +71,8 @@ export function usePassengerNavigationNotices({
 
     hasPresentedArrivalModalRef.current = true;
     void refetchBooking();
-    void Speech.stop().finally(() => {
-      if (!isMountedRef.current) return;
-      Speech.speak(
-        "Vous êtes arrivé à votre destination. L'arrivée se confirme automatiquement.",
-        { language: 'fr-FR', rate: 0.95 },
-      );
-    });
-  }, [refetchBooking]);
+    // Proximity is not confirmation. The global coordinator presents the server receipt.
+  }, [hasPresentedArrivalModalRef, isMountedRef, refetchBooking]);
 
   const presentNoShowNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedNoShowNoticeRef.current) return;
@@ -107,7 +94,7 @@ export function usePassengerNavigationNotices({
         },
       ],
     });
-  }, [showDialog]);
+  }, [hasPresentedNoShowNoticeRef, isMountedRef, setPickupNotice, setPickupNoticeCountdown, showDialog]);
 
   const presentBoardingUncertainNotice = useCallback(() => {
     if (!isMountedRef.current || hasPresentedBoardingUncertainNoticeRef.current) return;
@@ -133,7 +120,8 @@ export function usePassengerNavigationNotices({
         },
       ],
     });
-  }, [bookingId, navigateBackSafely, showDialog]);
+  }, [bookingId, hasPresentedBoardingUncertainNoticeRef, isMountedRef, navigateBackSafely,
+    passengerLocationSubscriptionRef, setPickupNotice, setPickupNoticeCountdown, showDialog]);
 
   const presentPickupNotice = useCallback((event: BookingAutoProgressEvent) => {
     const context = pickupContext.current;
@@ -188,23 +176,9 @@ export function usePassengerNavigationNotices({
     setPickupNotice(null);
     setPickupNoticeCountdown(null);
 
-    // A direct passenger action already has inline feedback; do not add another modal.
-    if (manualPickupRef.current) return;
-    showNotice({
-      variant: 'success',
-      icon: 'checkmark-circle',
-      title: 'Prise en charge confirm\u00e9e',
-      message: 'Votre prise en charge est confirm\u00e9e. Vous \u00eates maintenant en route vers votre destination.',
-    });
-
-    void Speech.stop().finally(() => {
-      if (!isMountedRef.current) return;
-      Speech.speak('Votre prise en charge est confirm\u00e9e.', {
-        language: 'fr-FR',
-        rate: 0.95,
-      });
-    });
-  }, [showNotice]);
+    // Read before notifying; one global passenger modal handles every screen.
+    void refetchBooking();
+  }, [hasPresentedBoardedNoticeRef, isMountedRef, refetchBooking, setPickupNotice, setPickupNoticeCountdown]);
 
   const presentDestinationApproachNotice = useCallback((event: BookingAutoProgressEvent) => {
     if (
@@ -241,7 +215,7 @@ export function usePassengerNavigationNotices({
         rate: 0.95,
       });
     });
-  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus, showNotice]);
+  }, [booking?.paymentAmount, booking?.paymentMode, booking?.paymentStatus, hasPresentedDestinationApproachNoticeRef, isMountedRef, showNotice]);
 
   return {
     presentBoardedNotice,

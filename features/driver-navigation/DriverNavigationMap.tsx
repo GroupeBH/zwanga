@@ -1,8 +1,8 @@
 import type { NavigationCoordinate } from '@/utils/navigation/routeProgress';
 import { useDriverNavigationFoundation } from '../../hooks/driver-navigation/useDriverNavigationFoundation';
 import { useDriverNavigationPresentation } from '../../hooks/driver-navigation/useDriverNavigationPresentation';
-import { androidNavigationMarkerImages } from './navigationPresentation';
-import { USE_ANDROID_NAVIGATION_MARKER_IMAGES, ANDROID_PIN_MARKER_ANCHOR } from './navigationModel';
+import { USE_ANDROID_NAVIGATION_MARKER_IMAGES } from './navigationModel';
+import { RoutePointMarker } from '@/components/maps/RoutePointMarker';
 import { styles } from '../screen-styles/app/trip/navigate/detail/index';
 import {
   getVehicleTrackingMarkerImage,
@@ -12,9 +12,7 @@ import {
   VehicleTrackingMarker,
 } from '@/components/TrackingMapMarkers';
 import { Colors } from '@/constants/styles';
-import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 
 interface DriverNavigationMapProps {
@@ -156,105 +154,35 @@ export function DriverNavigationMap({
       })}
       {/* Départ publié du trajet */}
       {foundation.data.tripDepartureCoordinate && (
-        <Marker
+        <RoutePointMarker kind="departure"
           coordinate={foundation.data.tripDepartureCoordinate}
-          anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
-          image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.departure : undefined}
-          pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.primary}
           title="Départ"
           description={presentation.tripDepartureLabel}
-          tracksViewChanges={false}
           zIndex={8}
-        >
-          {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
-            <View
-              collapsable={false}
-              style={[styles.waypointMarkerContainer, styles.departureMarker]}
-            >
-              <Ionicons name="location" size={20} color={Colors.white} />
-            </View>
-          )}
-        </Marker>
+        />
       )}
 
       {/* Prochain waypoint uniquement (1 seul pour éviter les crashs) */}
       {presentation.currentNavigationWaypoint &&
        presentation.currentNavigationWaypointCoordinate &&
        !presentation.currentNavigationWaypoint.completed && (
-        <Marker
+        <RoutePointMarker
+          kind={presentation.currentNavigationWaypoint.type === 'pickup' ? 'departure' : 'arrival'} highlighted
           coordinate={presentation.currentNavigationWaypointCoordinate}
-          anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 0.5 }}
-          image={
-            USE_ANDROID_NAVIGATION_MARKER_IMAGES
-              ? androidNavigationMarkerImages[
-                  presentation.currentNavigationWaypoint.type === 'pickup' ? 'pickup' : 'dropoff'
-                ]
-              : undefined
-          }
-          pinColor={
-            USE_ANDROID_NAVIGATION_MARKER_IMAGES
-              ? undefined
-              : presentation.currentNavigationWaypoint.type === 'pickup'
-                ? Colors.secondary
-                : Colors.success
-          }
           title={`${presentation.currentNavigationWaypoint.type === 'pickup' ? 'Lieu de prise en charge' : "Point d'arrivée"} ${presentation.currentNavigationWaypoint.passenger.name}`}
           description={presentation.currentNavigationWaypoint.address}
-          tracksViewChanges={false}
           zIndex={26}
-        >
-          {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
-            <View
-              collapsable={false}
-              style={[
-                styles.waypointMarkerContainer,
-                presentation.currentNavigationWaypoint.type === 'pickup'
-                  ? styles.pickupMarker
-                  : styles.dropoffMarker,
-              ]}
-            >
-              <Ionicons
-                name={presentation.currentNavigationWaypoint.type === 'pickup' ? 'person-add' : 'flag'}
-                size={20}
-                color={Colors.white}
-              />
-            </View>
-          )}
-        </Marker>
+        />
       )}
 
       {/* Destination finale - Marqueur arrivée */}
       {presentation.shouldShowTripArrivalMarker && foundation.data.tripArrivalCoordinate && (
-        <Marker
-          coordinate={{
-            latitude: foundation.data.tripArrivalCoordinate.latitude,
-            longitude: foundation.data.tripArrivalCoordinate.longitude,
-          }}
-          anchor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? ANDROID_PIN_MARKER_ANCHOR : { x: 0.5, y: 1 }}
-          image={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? androidNavigationMarkerImages.destination : undefined}
-          pinColor={USE_ANDROID_NAVIGATION_MARKER_IMAGES ? undefined : Colors.success}
+        <RoutePointMarker kind="arrival"
+          coordinate={foundation.data.tripArrivalCoordinate}
           title="Arrivée"
           description={presentation.tripArrivalLabel}
-          tracksViewChanges={!USE_ANDROID_NAVIGATION_MARKER_IMAGES && foundation.mapState.destinationTracksViewChanges}
           zIndex={18}
-        >
-          {!USE_ANDROID_NAVIGATION_MARKER_IMAGES && (
-            <View
-              collapsable={false}
-              style={styles.destinationMarkerContainer}
-              onLayout={() => {
-                if (foundation.mapState.isMountedRef.current && foundation.mapState.destinationTracksViewChanges) {
-                  foundation.mapState.setDestinationTracksViewChanges(false);
-                }
-              }}
-            >
-              <View style={styles.destinationMarkerBody}>
-                <Ionicons name="flag" size={22} color={Colors.white} />
-              </View>
-              <View style={styles.destinationMarkerTip} />
-            </View>
-          )}
-        </Marker>
+        />
       )}
     </MapView>
   );

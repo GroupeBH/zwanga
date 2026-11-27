@@ -7,7 +7,7 @@ test('communes, city-only labels and map-only points require a reference, regard
   for (const label of ['Gombe', ' LEMBA ', 'Limete, Kinshasa, RDC', 'Maluku', 'Mont-Ngafula',
     'N’djili', 'Ngiri-ngiri', 'Kasa-Vubu', 'Selembao', 'Kinshasa, République démocratique du Congo',
     'Commune de Kadutu', 'Quartier Matonge', 'Point sélectionné', 'Ma position', 'Point de départ (voir la carte)',
-    'J847+GW Kinshasa', 'Unnamed road, Kinshasa']) assert.equal(required(label), true, label);
+    'J847+GW Kinshasa', 'Unnamed road, Kinshasa', '-4.31, 15.31', ' -4.31000; +15.31000 ']) assert.equal(required(label), true, label);
   assert.equal(missing('Gombe', ' \n '), true);
   assert.equal(missing('Gombe', 'Devant la pharmacie'), false);
 });

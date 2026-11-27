@@ -68,6 +68,20 @@ export const styles = StyleSheet.create({
   securityReminderCard: {
     borderColor: Colors.secondary + '35',
     backgroundColor: Colors.secondary + '08',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    padding: Spacing.md,
+  },
+  securityReminderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.secondary + '40',
   },
   securityReminderHeader: {
     flexDirection: 'row',
@@ -81,10 +95,11 @@ export const styles = StyleSheet.create({
     color: Colors.gray[900],
   },
   securityReminderText: {
+    flex: 1,
+    minWidth: 0,
     fontSize: FontSizes.sm,
     lineHeight: 20,
-    color: Colors.gray[700],
-    marginBottom: Spacing.sm,
+    color: Colors.gray[800],
   },
   securityReminderVehicleBox: {
     borderWidth: 1,

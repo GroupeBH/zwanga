@@ -4,21 +4,20 @@ import { StyleSheet } from "react-native";
 export const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing.md,
+    paddingVertical: Spacing.sm,
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -27,7 +26,7 @@ export const styles = StyleSheet.create({
   },
   headerCenter: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   headerTitle: {
@@ -36,7 +35,7 @@ export const styles = StyleSheet.create({
     color: Colors.gray[900],
   },
   headerSubtitle: {
-    color: Colors.gray[500],
+    color: Colors.gray[600],
     fontSize: FontSizes.sm,
     marginTop: 2,
   },
@@ -45,8 +44,8 @@ export const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   markAllButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -54,18 +53,18 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   deleteAllButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
-    borderColor: Colors.danger + '40',
-    backgroundColor: Colors.danger + '10',
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
   refreshButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
     borderColor: Colors.gray[200],
@@ -76,7 +75,6 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: Spacing.xl,
     paddingBottom: Spacing.xxl,
   },
   listContentEmpty: {
@@ -97,16 +95,15 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.white,
-    borderRadius: BorderRadius.xl,
-    borderWidth: 1,
+    borderBottomWidth: 1,
     borderColor: Colors.gray[100],
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
+    paddingVertical: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
   },
   notificationCardUnread: {
-    borderWidth: 1,
-    borderColor: Colors.primary + '40',
+    backgroundColor: '#FFF9F5',
   },
+  notificationOpen: { flex: 1, flexDirection: 'row', alignItems: 'center', minHeight: 44 },
   notificationIcon: {
     width: 48,
     height: 48,
@@ -125,13 +122,15 @@ export const styles = StyleSheet.create({
     marginBottom: 2,
   },
   notificationTitle: {
+    fontSize: FontSizes.base,
     fontWeight: FontWeights.semibold,
     color: Colors.gray[900],
     flex: 1,
     marginRight: Spacing.sm,
   },
   notificationTime: {
-    color: Colors.gray[500],
+    marginTop: Spacing.xs,
+    color: Colors.gray[600],
     fontSize: FontSizes.xs,
   },
   notificationMessage: {
@@ -146,13 +145,12 @@ export const styles = StyleSheet.create({
     marginLeft: Spacing.sm,
   },
   inlineDeleteButton: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: BorderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: Spacing.sm,
-    backgroundColor: Colors.danger + '10',
+    marginLeft: 2,
   },
   loaderContainer: {
     alignItems: 'center',
@@ -219,7 +217,6 @@ export const styles = StyleSheet.create({
   modalMessage: {
     color: Colors.gray[700],
     marginBottom: Spacing.lg,
-    lineHeight: 20,
   },
   modalActions: {
     flexDirection: 'row',

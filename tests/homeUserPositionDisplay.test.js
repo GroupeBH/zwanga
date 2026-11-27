@@ -36,7 +36,7 @@ test('without valid GPS there is no made-up user marker at the default map cente
   for (const coordinate of [null, { latitude: NaN, longitude: 15.3 }, { latitude: 0, longitude: 0 }]) {
     const elements = nodes(HomeMap.type({ ...props, liveUserCoordinate: coordinate }));
     assert.equal(elements.some(node => node.type === 'Marker'), false);
-    assert.ok(elements.some(node => node.type === 'Text' && node.props.children === 'Position en attente'));
+    assert.ok(elements.some(node => node.type === 'Text' && node.props.children === 'Votre position en attente'));
   }
 });
 

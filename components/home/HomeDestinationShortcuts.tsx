@@ -51,15 +51,15 @@ export const HomeDestinationShortcuts = React.memo(function HomeDestinationShort
     <View style={styles.shortcuts}>
       <TouchableOpacity style={styles.shortcut} onPress={() => openFavorite('home')} accessibilityRole="button"
         accessibilityLabel="Maison" accessibilityHint="Choisir votre domicile comme destination sur la carte, ou enregistrer cette adresse.">
-        <Text style={styles.shortcutText}>Maison</Text>
+        <Ionicons name="home-outline" size={16} color={HOME_DASHBOARD_COLORS.ink} accessible={false} /><Text style={styles.shortcutText}>Maison</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.shortcut} onPress={() => openFavorite('work')} accessibilityRole="button"
         accessibilityLabel="Travail" accessibilityHint="Choisir votre travail comme destination sur la carte, ou enregistrer cette adresse.">
-        <Text style={styles.shortcutText}>Travail</Text>
+        <Ionicons name="briefcase-outline" size={16} color={HOME_DASHBOARD_COLORS.ink} accessible={false} /><Text style={styles.shortcutText}>Travail</Text>
       </TouchableOpacity>
       <TouchableOpacity style={[styles.shortcut, recentOpen && styles.shortcutSelected]} onPress={() => setRecentOpen(value => !value)}
         accessibilityRole="button" accessibilityState={{ expanded: recentOpen }} accessibilityLabel="Destinations récentes">
-        <Text style={styles.shortcutText}>Récents</Text>
+        <Ionicons name="time-outline" size={16} color={HOME_DASHBOARD_COLORS.ink} accessible={false} /><Text style={styles.shortcutText}>Récents</Text>
       </TouchableOpacity>
     </View>
     {recentOpen && <View style={styles.recentList}>

@@ -61,15 +61,15 @@ test('free fare text keeps at least 4.5:1 contrast on its pale green background'
   assert.ok((light + 0.05) / (dark + 0.05) >= 4.5);
 });
 
-test('map header keeps only initial, notifications and truthful active-trip feedback', () => {
+test('map header adds truthful discovery without losing profile, notifications and active-trip feedback', () => {
   const calls = [];
-  const props = { insets: { top: 20 }, profileInitial: 'A', unreadNotifications: 12, router: { push: path => calls.push(path) } };
+  const props = { insets: { top: 20 }, profileInitial: 'A', unreadNotifications: 12, onDiscover: () => calls.push('discover'), router: { push: path => calls.push(path) } };
   const tree = HomeHeader.type(props);
-  assert.equal(text(tree), '9+A');
+  assert.equal(text(tree), 'Autour de vousExplorer les départs9+A');
   const buttons = nodes(tree).filter(node => node.type === 'Button');
-  assert.equal(buttons.length, 2); buttons.forEach(button => button.props.onPress());
-  assert.deepEqual(calls, ['/notifications', '/profile']);
-  assert.equal(buttons[1].props.accessibilityLabel, 'Ouvrir le profil', 'profile at the right, notifications still available');
+  assert.equal(buttons.length, 3); buttons.forEach(button => button.props.onPress());
+  assert.deepEqual(calls, ['discover', '/notifications', '/profile']);
+  assert.equal(buttons[2].props.accessibilityLabel, 'Ouvrir le profil', 'profile at the right, notifications still available');
   assert.match(text(HomeHeader.type({ ...props, ongoingDriverTrip: {} })), /Trajet en cours/);
   assert.match(text(HomeHeader.type({ ...props, ongoingBookedTrip: {} })), /Trajet en cours/);
   assert.doesNotMatch(text(HomeHeader.type({ ...props, trackedTripInfo: { role: 'driver' } })), /en cours/);
@@ -139,11 +139,11 @@ test('passenger destination opens the request form directly; proposing stays rea
     button.props.onPress();
   }
   assert.deepEqual(calls, [{ pathname: '/request-create', params: { entry: 'home' } }, '/publish']);
-  assert.match(text(tree), /Un conducteur vient vous chercher/);
+  assert.match(text(tree), /ConducteurPassager/);
   assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Où allez-vous ?').props.accessibilityHint,
     'Ouvrir le formulaire de commande de trajet.');
   assert.doesNotMatch(text(tree), /Trajets publiés ou véhicule à commander/);
-  assert.match(text(tree), /Vous avez un véhicule \? Proposer un trajet/);
+  assert.equal(nodes(tree).find(node => node.props.accessibilityLabel === 'Proposer un trajet').props.accessibilityState.selected, false);
   assert.equal(nodes(tree).some(node => node.type === 'Button' && text(node) === 'Commander'), false);
   assert.doesNotMatch(text(tree), /Bonjour/);
   assert.ok(nodes(tree).some(node => node.type === 'HomeDestinationShortcuts'));
@@ -188,17 +188,16 @@ test('option A uses midnight blue and burnt orange with readable white labels; s
       .map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
     return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
   };
-  for (const [label, color, foreground] of [['Publier un trajet', c.blue, '#FFFFFF'], ['Commander un trajet', c.orange, '#FFFFFF']]) {
+  for (const [label, color, foreground] of [['Publier un trajet', c.orange, '#FFFFFF']]) {
     const action = button(label);
     assert.equal(flatten(action.props.style).backgroundColor, color);
     assert.equal(flatten(nodes(action).find(node => node.type === 'Text').props.style).color, foreground);
     const levels = [luminance(foreground), luminance(color)].sort((a, b) => b - a);
     assert.ok((levels[0] + 0.05) / (levels[1] + 0.05) >= 4.5, `${label}: normal-size text contrast`);
   }
-  const passengerAction = button('Commander un trajet');
+  const passengerAction = driverElements.find(node => node.props.accessibilityLabel === 'Commander un trajet');
   for (const node of nodes(passengerAction)) {
-    if (node.type === 'Text') assert.equal(flatten(node.props.style).color, '#FFFFFF');
-    if (node.type === 'Icon') assert.equal(node.props.color, '#FFFFFF');
+    if (node.type === 'Text') assert.equal(flatten(node.props.style).color, c.muted);
   }
   assert.equal(flatten(button('Où allez-vous ?').props.style).backgroundColor, '#FFFFFF');
 });
@@ -241,7 +240,7 @@ test('no clients never falls back to public trip cards on driver Home', () => {
     assert.equal(nodes(tree).some(node => node.type === HomeSuggestionCard), false);
     assert.equal(nodes(tree).some(node => node.props.accessibilityRole === 'tab'), false);
     assert.ok(nodes(tree).some(node => node.props.accessibilityLabel === 'Voir tous les clients'));
-    if (!state.sheetLoading && !state.sheetError) assert.match(text(tree), /Aucun nouveau client/);
+    if (!state.sheetLoading && !state.sheetError) assert.match(text(tree), /Aucune commande à proximité/);
   }
 });
 
@@ -357,7 +356,7 @@ test('driver orders directly through the request form without changing role; pub
     const publish = elements.find(node => node.type === 'Button' && text(node) === 'Publier un trajet');
     assert.equal(flatten(publish.props.style).flex, undefined, 'publish spans the full width');
     assert.equal(order.props.accessibilityRole, 'button');
-    assert.match(text(order), /^Commander un trajet/);
+    assert.equal(text(order), 'Passager');
     assert.doesNotMatch(text(order), /Voyager comme passager|chercher un trajet/);
     assert.equal(elements.filter(node => node.type === 'Button' && ['Publier un trajet', 'Commander'].includes(text(node))).length, 1);
     for (const button of [order, publish]) {
@@ -380,7 +379,7 @@ test('empty, loading and failed feeds retain inline discovery controls ahead of 
       const children = scroll.props.children.flat().filter(React.isValidElement);
       const controls = children.find(node => node.props.testID === 'home-discovery-actions');
       const stateNode = children.find(node => node.type === 'HomeSheetLoadingState'
-        || /Aucun nouveau client|Aucun trajet disponible|Chargement impossible/.test(text(node)));
+        || /Aucune commande à proximité|Aucun trajet disponible|Chargement impossible/.test(text(node)));
       assert.ok(controls); assert.ok(stateNode);
       assert.ok(children.indexOf(controls) < children.indexOf(stateNode));
     }
@@ -434,18 +433,18 @@ test('suggestion price distinguishes free from unknown and its action opens deta
   assert.equal(nodes(tree).some(node => node.type === 'Image'), false);
   const { HOME_DASHBOARD_COLORS: c } = load('features/home/homeDashboardTheme.ts');
   const reserveAction = nodes(tree).find(node => node.type === 'View' && text(node) === 'Réserver');
-  assert.equal(flatten(reserveAction.props.style).backgroundColor, c.orange);
+  assert.equal(flatten(reserveAction.props.style).backgroundColor, c.blue);
   assert.equal(flatten(nodes(reserveAction).find(node => node.type === 'Text').props.style).color, '#FFFFFF');
   const freeBadge = nodes(tree).find(node => node.type === 'View' && text(node) === 'Gratuit');
   assert.equal(flatten(freeBadge.props.style).backgroundColor, c.paleGreen);
 });
 
-test('driver publish action uses blue without changing its destination', () => {
+test('driver publish action uses orange without changing its destination', () => {
   const { HOME_DASHBOARD_COLORS: c } = load('features/home/homeDashboardTheme.ts');
   const calls = [];
   const tree = HomeTripsSheet.type({ ...base, isDriver: true, router: { push: path => calls.push(path) } });
   const button = nodes(tree).find(node => node.type === 'Button' && text(node) === 'Publier un trajet');
-  assert.equal(flatten(button.props.style).backgroundColor, c.blue);
+  assert.equal(flatten(button.props.style).backgroundColor, c.orange);
   assert.equal(flatten(nodes(button).find(node => node.type === 'Text').props.style).color, '#FFFFFF');
   button.props.onPress(); assert.deepEqual(calls, ['/publish']);
 });

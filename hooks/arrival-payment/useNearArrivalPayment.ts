@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Booking } from '@/types';
 import type { StoredPaymentState } from '@/features/arrival-payment/paymentTypes';
 import { hasNearbyStoredPosition, isNearPaymentDestination, isOnboardDigitalBooking } from '@/features/arrival-payment/nearArrivalPolicy';
-import { useGetBookingByIdQuery } from '@/store/api/bookingApi';
+import { useGetBookingByIdQuery, useGetBookingPaymentRequestQuery } from '@/store/api/bookingApi';
+import { hasUnseenPaymentRequest } from '@/features/arrival-payment/paymentRequestPolicy';
 import { useGetTripByIdQuery } from '@/store/api/tripApi';
 import { trackingSocket } from '@/services/trackingSocket';
 import { useDriverLocationFallback } from '@/hooks/passenger-navigation/useDriverLocationFallback';
@@ -16,7 +17,7 @@ export function useNearArrivalPayment(bookings: Booking[], passengerId: string |
     booking.passengerId === passengerId && booking.status === 'accepted' &&
     ['electronic', 'points'].includes(booking.paymentMode ?? '') &&
     !booking.droppedOff && !booking.droppedOffConfirmedByPassenger &&
-    !storedState[booking.id]?.acknowledgedAt && !storedState[booking.id]?.preArrivalDismissedAt &&
+    !storedState[booking.id]?.acknowledgedAt &&
     (booking.paymentStatus !== 'succeeded' || nearKey === `${passengerId}:${booking.id}`) &&
     !['completed', 'cancelled'].includes(booking.trip?.status ?? '') &&
     (booking.trip?.status === 'ongoing' || booking.pickedUp ||
@@ -25,6 +26,9 @@ export function useNearArrivalPayment(bookings: Booking[], passengerId: string |
     Number(Boolean(b.pickedUp)) - Number(Boolean(a.pickedUp)))[0] ?? null, [bookings, passengerId, storedState, nearKey]);
 
   const { currentData: liveBooking, refetch } = useGetBookingByIdQuery(candidate?.id ?? '', { skip: !enabled || !candidate });
+  const { currentData: paymentRequest } = useGetBookingPaymentRequestQuery(candidate?.id ?? '', {
+    skip: !enabled || !candidate || !(candidate.pickedUp || candidate.pickedUpAt), refetchOnFocus: true,
+  });
   useSyncArrivedPaymentBooking(liveBooking, enabled);
   const { currentData: trip } = useGetTripByIdQuery(candidate?.tripId ?? '', { skip: !enabled || !candidate });
   const booking = useMemo(() => candidate ? {
@@ -72,7 +76,8 @@ export function useNearArrivalPayment(bookings: Booking[], passengerId: string |
 
   if (!enabled || !booking || !passengerId || !isOnboardDigitalBooking(booking, passengerId)) return null;
   const stored = storedState[booking.id];
-  if (stored?.acknowledgedAt || stored?.preArrivalDismissedAt || normalizeAmount(booking.paymentAmount) === 0) return null;
+  const requested = paymentRequest?.bookingId === booking.id && hasUnseenPaymentRequest(paymentRequest.requestedAt, stored?.preArrivalDismissedAt);
+  if (stored?.acknowledgedAt || (stored?.preArrivalDismissedAt && !requested) || normalizeAmount(booking.paymentAmount) === 0) return null;
   // Keep an opened/payment-in-progress sheet stable despite GPS jitter or an app restart.
-  return nearKey === `${passengerId}:${booking.id}` || stored?.requiredActionAt ? booking : null;
+  return requested || nearKey === `${passengerId}:${booking.id}` || stored?.requiredActionAt ? booking : null;
 }

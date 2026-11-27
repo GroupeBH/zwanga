@@ -30,7 +30,8 @@ export function useAssignedTripNavigation({
   const passengerTripId = getAssignedPassengerTripId(requestId, tripRequest, userId, requestError);
   const passengerNavigation = passengerTripId && canUseCachedRequestLink(bookingError)
     ? assignedPassengerNavigation(tripRequest, assignedTrip, bookings, userId) : null;
-  const destination = passengerNavigation ?? (!isResolvingBooking && hasAssignedTripStarted(passengerTripId, assignedTrip) ? `/trip/${passengerTripId}` as const : null);
+  const destination = canUseCachedRequestLink(bookingError) ? passengerNavigation ??
+    (!isResolvingBooking && hasAssignedTripStarted(passengerTripId, assignedTrip) ? `/trip/${passengerTripId}` as const : null) : null;
   const shouldOpenTrip = isScreenActive && canUseCachedRequestLink(tripError) && !!destination;
   const navigationKey = shouldOpenTrip ? `${userId}:${requestId}:${destination}` : null;
   const lastNavigationKey = useRef<string | null>(null);

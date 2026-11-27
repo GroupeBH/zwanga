@@ -130,6 +130,7 @@ export const mapServerTripToClient = (trip: ServerTrip): Trip => {
     totalSeats: Math.max(totalSeats, trip.availableSeats),
     status: mapTripStatus(trip.status),
     passengers: mapPassengers(trip.bookings),
+    isPrivate: trip.isPrivate === true,
     currentLocation: trip.currentLocation ?? null,
     lastLocationUpdateAt: trip.lastLocationUpdateAt ?? null,
     startedAt: trip.startedAt ?? null,

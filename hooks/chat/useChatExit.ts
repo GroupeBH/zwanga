@@ -34,7 +34,7 @@ export function useChatExit(conversationId: string, active: boolean, router: Rou
       frame = setTimeout(() => {
         if (!session.mounted || !session.active) return;
         if (router.canGoBack()) router.back();
-        else router.replace('/(tabs)/messages');
+        else router.replace('/notifications?section=messages');
       }, 40);
     };
     const subscription = Keyboard.addListener('keyboardDidHide', finish);

@@ -147,6 +147,10 @@ export function ActiveRideResumeCoordinator({ children, enabled = true }: { chil
     homeRole: { ready: homeRoleReady, failed: !profile.isFetching && (profile.isError || profile.isSuccess), retry: retryProfile } });
   const requestResume = useRequestEntryResume({ userId: authenticated ? userId : undefined, active, online, path, since,
     resumePreviousRequests: false,
+    // An author waiting for a driver remains a passenger in this order,
+    // regardless of the account role. Assigned courses also resume on driver return.
+    resumeOwnRequests: true,
+    resumeAcceptedRequests: true,
     ready: entryNavigationReady, overlayBusy, ridePending: resume.pending,
     hasOngoingRide: Boolean((typeof presentation.proposal === 'string' && isRideNavigationPath(presentation.proposal)) ||
       (resume.pending && userId && findRideToResume(userId, trips.data, bookings.data))),

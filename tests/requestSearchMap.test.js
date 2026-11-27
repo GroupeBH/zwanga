@@ -87,6 +87,8 @@ test('navigation needs the owner’s confirmed live booking, not just a driver o
   const assigned = { ...request, status: 'driver_selected', tripId: 'trip' };
   const trip = { id: 'trip', driverId: 'driver', status: 'upcoming' };
   const booking = { id: 'booking', tripId: 'trip', passengerId: 'owner', status: 'accepted' };
+  assert.equal(assignedPassengerNavigation(assigned, trip, [booking], 'owner'), null, 'confirmation keeps the order detail before departure');
+  trip.status = 'ongoing';
   assert.equal(assignedPassengerNavigation(assigned, trip, [booking], 'owner'), '/booking/navigate/booking');
   assert.equal(assignedPassengerNavigation(request, trip, [booking], 'owner'), null);
   for (const patch of [{ passengerId: 'other' }, { tripId: 'other' }, { status: 'pending' }, { status: 'cancelled' },

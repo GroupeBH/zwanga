@@ -21,12 +21,12 @@ export const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     // paddingBottom is set dynamically via useSafeAreaInsets
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
-    elevation: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#EEEDEB',
+    elevation: 0,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0,
     shadowRadius: 18,
   },
   actionsContainer: {
@@ -34,7 +34,9 @@ export const styles = StyleSheet.create({
   },
   actionButton: {
     backgroundColor: Colors.primary,
-    height: 56,
+    minHeight: 56,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     borderRadius: BorderRadius.lg,
     flexDirection: 'row',
     alignItems: 'center',
@@ -47,14 +49,23 @@ export const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   actionButtonText: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: Colors.white,
     fontSize: 16,
     fontWeight: FontWeights.bold,
   },
+  // Texte blanc sur gray[300] était illisible (≈ 1,3:1) : fond clair + texte foncé.
   actionButtonDisabled: {
-    backgroundColor: Colors.gray[300],
+    backgroundColor: Colors.gray[100],
+    borderWidth: 1,
+    borderColor: Colors.gray[200],
     elevation: 0,
     shadowOpacity: 0,
+  },
+  actionButtonTextDisabled: {
+    color: Colors.gray[700],
+    fontSize: 15,
   },
   bookingCard: {
     backgroundColor: Colors.white,
@@ -193,19 +204,20 @@ export const styles = StyleSheet.create({
   bookingActionNavigationText: {
     color: Colors.white,
   },
+  // Même rendu neutre que le bouton « Contacter » du résumé (icône et texte étaient de deux couleurs).
   bookingActionCall: {
-    borderColor: Colors.success + '30',
-    backgroundColor: Colors.success + '08',
+    borderColor: Colors.gray[200],
+    backgroundColor: Colors.white,
   },
   bookingActionCallText: {
-    color: Colors.success,
+    color: Colors.gray[800],
   },
   bookingActionDanger: {
     borderColor: Colors.danger + '30',
     backgroundColor: Colors.danger + '08',
   },
   bookingActionDangerText: {
-    color: Colors.danger,
+    color: Colors.dangerDark,
   },
   confirmationBanner: {
     flexDirection: 'row',

@@ -11,6 +11,7 @@ const { TripSummary } = load('features/trip-detail/TripSummary.tsx');
 const { getRouteLocationLabels } = load('utils/routeLocationLabels.ts');
 const trip = Object.freeze({ id: 'trip', driverId: 'driver', driverName: 'Marie Conductrice',
   driverAvatar: 'https://example.test/avatar.jpg', price: 4000, status: 'upcoming', requiresPassengerKyc: true,
+  departureTime: '2026-09-18T18:30:00', arrivalTime: '2026-09-18T18:59:00',
   departure: { name: 'Université Pédagogique Nationale (UPN)', address: 'Route de Matadi, Kinshasa', reference: 'Portail principal' },
   arrival: { name: 'Kintambo Magasin', address: 'Kintambo, Kinshasa' },
 });
@@ -42,16 +43,16 @@ function render(extra = {}) {
     buttons: nodes.filter(node => node.type === 'Button') };
 }
 
-test('trip detail shows each place once, with both full timestamps, address context and pickup reference', () => {
+test('trip detail separates the date and clocks, preserving address context and pickup reference', () => {
   const { texts, nodes } = render();
   assert.equal(texts.filter(value => value === trip.departure.name).length, 1);
   assert.equal(texts.filter(value => value === trip.arrival.name).length, 1);
   assert.equal(texts.some(value => value.includes(' vers ')), false);
-  for (const value of ['18/09/2026 18:30', '18/09/2026 18:59', 'Route de Matadi, Kinshasa',
-    'Référence : Portail principal', '2 places', '9.5 km', '4000 FC / place', 'Identité vérifiée requise pour réserver']) {
+  for (const value of ['vendredi 18 septembre', '18:30', '18:59', 'Route de Matadi, Kinshasa',
+    'Réf. : Portail principal', '2 places', '9.5 km', '4000 FC / place', 'Identité vérifiée requise pour réserver']) {
     assert.ok(texts.includes(value), value);
   }
-  assert.ok(nodes.some(node => node.props.accessibilityLabel?.includes('Arrivée estimée : 18/09/2026 18:59')));
+  assert.ok(nodes.some(node => node.props.accessibilityLabel?.includes('Arrivée estimée') && node.props.accessibilityLabel?.includes('18:59')));
   assert.equal(nodes.some(node => node.props.entering || node.props.onLayout), false);
 });
 
@@ -60,7 +61,7 @@ test('driver photo, profile, vehicle details and contact keep their actions and 
   assert.equal(result.nodes.find(node => node.type === 'Image').props.source.uri, trip.driverAvatar);
   result.buttons.forEach(button => button.props.onPress());
   assert.deepEqual(result.calls, [{ pathname: '/driver/[id]', params: { id: 'driver', sourceTripId: 'trip' } },
-    ['vehicle', true], 'message', ['contact', true]]);
+    'message', ['contact', true], ['vehicle', true]]);
 });
 
 test('the owner sees route, price and vehicle but cannot contact or message themselves', () => {
@@ -85,8 +86,7 @@ test('busy messaging is disabled but contact stays accessible without a phone; f
 
 test('ongoing details retain progress and ETA, with wrapping text and usable touch targets', () => {
   const result = render({ trip: { ...trip, status: 'ongoing' } });
-  assert.ok(result.texts.includes('Progression'));
-  assert.ok(result.texts.includes('20%'));
+  assert.ok(result.texts.includes('Progression · 20%'));
   assert.ok(result.texts.includes('Arrivée estimée : 18/09/2026 18:59'));
   const styles = load('features/screen-styles/app/trip/detail/index.ts').styles;
   assert.equal(styles.tripQuickFacts.flexWrap, 'wrap');

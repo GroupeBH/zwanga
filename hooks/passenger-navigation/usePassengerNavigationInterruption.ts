@@ -10,6 +10,7 @@ import { getApiErrorMessage } from '@/utils/errorHelpers';
 import { isPendingTripInterruption } from '@/utils/tripInterruption';
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PassengerInterruptionFarePreview } from '@/features/passenger-navigation/PassengerInterruptionFarePreview';
+import { passengerRideStage } from '@/features/passenger-navigation/passengerRideProgress';
 
 interface Params {
   isScreenActive: boolean;
@@ -81,8 +82,7 @@ export function usePassengerNavigationInterruption({
     booking?.id &&
       booking.status === 'accepted' &&
       trip?.status === 'ongoing' &&
-      booking.pickedUp &&
-      booking.pickedUpConfirmedByPassenger &&
+      passengerRideStage(booking) === 'pickup' &&
       !booking.droppedOff &&
       !booking.droppedOffConfirmedByPassenger &&
       !pendingPassengerInterruptionRequest,

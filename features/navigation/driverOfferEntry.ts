@@ -12,7 +12,7 @@ export function latestDriverOffer(offers: readonly DriverOfferWithTripRequest[],
 }
 
 export function isResumableOfferRequest(request: TripRequest, offer: DriverOfferWithTripRequest, userId: string) {
-  const accepted = request.status === 'driver_selected' && request.selectedDriverId === userId && !request.tripId;
+  const accepted = request.status === 'driver_selected' && request.selectedDriverId === userId;
   return request.id === offer.tripRequestId && request.passengerId !== userId &&
     (isRequestUnassigned(request) || accepted) && isTripRequestWithinAcceptanceWindow(request) &&
     request.offers?.some(item => item.id === offer.id && item.driverId === userId &&

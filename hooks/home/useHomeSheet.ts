@@ -36,7 +36,7 @@ type Props =
     'tripsLoading'
     | 'tripsError'
     | 'refetchTrips'
-  > & { hasMapPriorities?: boolean };
+  > & { hasMapPriorities?: boolean; hasRequestPickup?: boolean };
 export function useHomeSheet({
   isDriver,
   isScreenActive = true,
@@ -56,6 +56,7 @@ export function useHomeSheet({
   refetchTrips,
   router,
   hasMapPriorities = false,
+  hasRequestPickup = false,
 }: Props) {
   const { fontScale } = useWindowDimensions();
   const [tripsSheetOpen, setTripsSheetOpen] = useState(true);
@@ -86,16 +87,17 @@ export function useHomeSheet({
   const availableHeight = viewportHeight - sheetBottomOffset;
   // Priorities are overlays, not layout content: adding/removing one must never
   // resize the native map or push the discovery panel down.
-  const openSheetHeight = Math.min(availableHeight * 0.63, 680);
+  const openSheetHeight = Math.min(availableHeight * (fontScale > 1.3 ? 0.66 : isDriver ? 0.54 : 0.58), 680);
 
   const retractedSheetHeight = 78;
 
-  const effectiveTripsSheetOpen = tripsSheetOpen && !isHomeSheetLockedRetracted;
+  const effectiveTripsSheetOpen = tripsSheetOpen && !isHomeSheetLockedRetracted && !hasRequestPickup;
 
   // An ongoing ride gets a compact summary with a real navigation action, not
   // the disabled collapsed discovery handle. Leave at least 45% to the map.
   const ongoingSheetHeight = Math.min(288, availableHeight * 0.55);
-  const sheetHeight = isHomeSheetLockedRetracted ? ongoingSheetHeight
+  const pickupSheetHeight = Math.min(fontScale > 1.3 ? 420 : 350, availableHeight * (fontScale > 1.3 ? 0.66 : 0.58));
+  const sheetHeight = hasRequestPickup ? pickupSheetHeight : isHomeSheetLockedRetracted ? ongoingSheetHeight
     : effectiveTripsSheetOpen ? openSheetHeight : retractedSheetHeight;
 
   const [sheetMeasurement, setSheetMeasurement] = useState<{ height: number; width: number; open: boolean; expectedHeight: number } | null>(null);

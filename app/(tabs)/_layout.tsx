@@ -1,9 +1,8 @@
 import { OngoingTripBanner } from '@/components/OngoingTripBanner';
 import { getTabBarMetrics } from '@/constants/navigation';
 import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from '@/constants/styles';
-import { selectUsesEarningsTab, selectUsesTripSearchTab } from '@/features/navigation/accountTabPolicy';
+import { selectUsesEarningsTab } from '@/features/navigation/accountTabPolicy';
 import { useAppSelector } from '@/store/hooks';
-import { selectUnreadMessagesCount } from '@/store/selectors';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
@@ -14,9 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 type TabIconName = keyof typeof Ionicons.glyphMap;
 
 export default function TabLayout() {
-  const unreadMessagesCount = useAppSelector(selectUnreadMessagesCount);
   const usesEarnings = useAppSelector(selectUsesEarningsTab);
-  const usesTripSearch = useAppSelector(selectUsesTripSearchTab);
   const insets = useSafeAreaInsets();
   const { fontScale } = useWindowDimensions();
   const tabBarMetrics = getTabBarMetrics(insets.bottom, fontScale);
@@ -95,13 +92,13 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="discover"
+          name="explore"
           options={{
-            title: 'Services',
+            title: 'Recherche',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'briefcase',
-                inactiveIcon: 'briefcase-outline',
+                activeIcon: 'search',
+                inactiveIcon: 'search-outline',
                 color,
                 focused,
                 size,
@@ -112,7 +109,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="trips"
           options={{
-            title: usesTripSearch ? 'Trajets' : 'Mes trajets',
+            title: 'Mes trajets',
             href: usesEarnings ? null : '/(tabs)/trips',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
@@ -142,18 +139,16 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="messages"
+          name="discover"
           options={{
-            title: 'Messages',
-            freezeOnBlur: false,
+            title: 'Services',
             tabBarIcon: ({ color, focused, size }) => (
               renderTabIcon({
-                activeIcon: 'chatbubbles',
-                inactiveIcon: 'chatbubbles-outline',
+                activeIcon: 'briefcase',
+                inactiveIcon: 'briefcase-outline',
                 color,
                 focused,
                 size,
-                badgeCount: unreadMessagesCount,
               })
             ),
           }}
@@ -173,6 +168,7 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen name="messages" options={{ href: null }} />
       </Tabs>
       <OngoingTripBanner />
     </>

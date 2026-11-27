@@ -4,12 +4,16 @@ import { Colors } from '@/constants/styles';
 import { ACTION_COLORS } from '@/constants/actionColors';
 import { formatMoney, type DriverPaymentNotice } from './paymentNoticeModel';
 import { useCashReceiptConfirmation } from './useCashReceiptConfirmation';
+import { useCashExceptionDisclosure } from './useCashExceptionDisclosure';
+import { CashExceptionDisclosure } from './CashExceptionDisclosure';
 
 export function CashPaymentRequestNotice({ notice, active, onConfirmed, onClose, onBusyChange }: {
   notice: DriverPaymentNotice; active: boolean; onConfirmed: () => void; onClose: () => void;
   onBusyChange?: (busy: boolean) => void;
 }) {
-  const receipt = useCashReceiptConfirmation(notice.bookingId, notice.amount, notice.currency, active);
+  const disclosure = useCashExceptionDisclosure(notice.bookingId, active);
+  const receipt = useCashReceiptConfirmation(notice.bookingId, notice.amount, notice.currency,
+    active, disclosure.exception?.occurrence, disclosure.refresh, disclosure.canConfirm);
   useEffect(() => { onBusyChange?.(receipt.busy); return () => onBusyChange?.(false); }, [onBusyChange, receipt.busy]);
   return <View style={styles.sheet}>
     <ScrollView bounces={false} contentContainerStyle={styles.content}>
@@ -17,10 +21,11 @@ export function CashPaymentRequestNotice({ notice, active, onConfirmed, onClose,
       <Text style={styles.amount}>{formatMoney(notice.amount, notice.currency)}</Text>
       <Text style={styles.message}>{notice.passengerName === 'un passager' ? 'Le passager' : notice.passengerName} indique avoir payé en cash.</Text>
       <Text style={styles.hint}>Confirmez seulement quand l’argent est entre vos mains.</Text>
-      <Text style={styles.hint}>Commission Zwanga : 5 %, y compris sur les six premiers trajets cash. Ensuite, réserve en jetons obligatoire.</Text>
+      <Text style={styles.hint}>{disclosure.exception ? 'Commission Zwanga : 5 %.' : 'Commission Zwanga : 5 %, y compris sur les six premiers trajets cash. Ensuite, réserve en jetons obligatoire.'}</Text>
+      <CashExceptionDisclosure disclosure={disclosure} busy={receipt.busy} />
       {!!receipt.error && <Text style={styles.error} accessibilityRole="alert">{receipt.error}</Text>}
-      <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: receipt.busy || !active, busy: receipt.busy }}
-        disabled={receipt.busy || !active} style={[styles.primary, receipt.busy && styles.disabled]}
+      <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: receipt.busy || !active || !disclosure.canConfirm, busy: receipt.busy }}
+        disabled={receipt.busy || !active || !disclosure.canConfirm} style={[styles.primary, (receipt.busy || !disclosure.canConfirm) && styles.disabled]}
         onPress={async () => { if (await receipt.submit()) onConfirmed(); }}>
         {receipt.busy ? <ActivityIndicator color={Colors.white} /> : <Text style={styles.primaryText}>J’ai reçu le cash</Text>}
       </TouchableOpacity>

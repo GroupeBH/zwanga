@@ -24,9 +24,8 @@ export function boundedRoutePoints(value: unknown, limit = MAX_PREVIEW_ROUTE_POI
 }
 
 /** Google polyline precision 5. Strict integer/continuation checks avoid partial routes. */
-export function decodeSafePolyline(
+export function decodeFullPolyline(
   encoded: unknown,
-  limit = MAX_PREVIEW_ROUTE_POINTS,
   normalizePoint: (point: RoutePoint) => RoutePoint | null = point => point,
 ): RoutePoint[] {
   if (typeof encoded !== 'string' || encoded.length > MAX_ENCODED_ROUTE_LENGTH) return [];
@@ -56,7 +55,16 @@ export function decodeSafePolyline(
     if (!isValidRoutePoint(normalized)) return [];
     points.push(normalized);
   }
-  return boundedRoutePoints(points, limit);
+  return points.length >= 2 ? points : [];
+}
+
+/** Overview-only budget; never use this sampling for a booking corridor. */
+export function decodeSafePolyline(
+  encoded: unknown,
+  limit = MAX_PREVIEW_ROUTE_POINTS,
+  normalizePoint: (point: RoutePoint) => RoutePoint | null = point => point,
+): RoutePoint[] {
+  return boundedRoutePoints(decodeFullPolyline(encoded, normalizePoint), limit);
 }
 
 /** No argument spreading: even a large caller-owned array cannot overflow the stack. */

@@ -79,3 +79,40 @@ test('summary API encodes the id and does not retain unused private coordinates'
   assert.equal(endpoint.keepUnusedDataFor, 0);
   assert.deepEqual(endpoint.providesTags(null, null, 'request'), [{ type: 'TripRequest', id: 'request' }]);
 });
+
+test('contact pickup preview preserves address, reference, estimate and map without repeating identity', async t => {
+  const { hookHarness } = require('./helpers/hookHarness.cjs');
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now });
+  const hooks = hookHarness(); t.after(() => hooks.unmount());
+  const urls = [];
+  const read = { currentData: { ...data, pickup: {
+    location: 'Avenue de test', reference: 'Entrée côté pharmacie', coordinates: { latitude: -4.3, longitude: 15.3 },
+  } }, fulfilledTimeStamp: now };
+  const { RequestPickupSummaryCard } = loader({ react: hooks.react,
+    'react-native': { View: 'View', Text: 'Text', Pressable: 'Button', Linking: { openURL: async url => { urls.push(url); } } },
+    './requestSummaryStyles': { requestSummaryStyles: {} },
+    '@/store/hooks': { useAppSelector: select => select({ auth: { user: { id: 'driver' } } }) },
+    '@/hooks/useDisplayReads': { useDisplayReadsEnabled: active => active, displayReadOptions: () => ({}) },
+    '@/store/api/requestPickupApi': { useGetRequestPickupSummaryQuery: () => read },
+  })('features/request-detail/RequestPickupSummaryCard.tsx');
+  const text = tree => typeof tree === 'string' ? tree : Array.isArray(tree) ? tree.map(text).join(' ') : text(tree?.props?.children ?? '');
+  const nodes = tree => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props?.children)];
+  const render = () => hooks.render(() => RequestPickupSummaryCard({ requestId: 'request', active: true, contactPreview: true }));
+  const tree = render(), copy = text(tree);
+  assert.match(copy, /DÉPART.*Carte.*Avenue de test.*Réf. :.*Entrée côté pharmacie.*Approche · 2,4 km · environ 6 min/);
+  assert.doesNotMatch(copy, /Passager|VOTRE PASSAGER|hors arrêts|confirmation de départ/);
+  assert.deepEqual(urls, []);
+  const button = nodes(tree).find(node => node.type === 'Button');
+  assert.match(button.props.accessibilityLabel, /Avenue de test.*Entrée côté pharmacie/);
+  button.props.onPress(); await Promise.resolve();
+  assert.deepEqual(urls, [pickupMapUrl(read.currentData.pickup.coordinates)]);
+  read.currentData.status = 'waiting_location';
+  assert.match(text(render()), /Position du conducteur en attente/);
+  assert.doesNotMatch(text(render()), /environ 6 min/);
+  read.currentData.pickup.coordinates = null;
+  assert.equal(nodes(render()).some(node => node.type === 'Button'), false);
+  read.isError = true; assert.doesNotMatch(text(render()), /Avenue de test/);
+  assert.match(text(render()), /Prise en charge indisponible/);
+  read.isError = false; t.mock.timers.tick(30001);
+  assert.doesNotMatch(text(render()), /Avenue de test/);
+});

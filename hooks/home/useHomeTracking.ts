@@ -151,6 +151,8 @@ export function useHomeTracking({
             HOME_AUTO_PROGRESS_PRIORITY[second.type],
         )
         .forEach((event) => {
+          // Confirmed passenger stages are presented once globally after REST reconciliation.
+          if (!isHomeDriverTracking && ['pickup_confirmed', 'dropoff_confirmed'].includes(event.type)) return;
           const key = `${homeTrackingTripId}:${event.type}:${event.bookingId ?? event.tripId}`;
           if (presentedHomeAutoProgressKeysRef.current.has(key)) {
             return;

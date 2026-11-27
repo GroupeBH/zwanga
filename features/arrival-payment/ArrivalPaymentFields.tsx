@@ -16,6 +16,7 @@ import { ArrivalPaymentReceipt } from './ArrivalPaymentReceipt';
 import type { Booking, TripPaymentMode } from '@/types';
 import { getInterruptionDistanceLabel } from './interruptionSettlement';
 import { useBookingPaymentOptionsQuery } from '@/store/api/driverFinanceApi';
+import { canChooseCash } from './cashFallback';
 
 interface ArrivalPaymentFieldsProps {
   cashComplementAvailable?: boolean;
@@ -72,10 +73,10 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
   const locked = isBusy || hasPendingProviderPayment;
   const modeSelectionLocked = locked || optionsError || !paymentOptions;
   const beforeArrival = receipt?.beforeArrival ?? isBeforeArrival;
-  const offerCashFallback = hasPaymentFailure && !locked && !beforeArrival && !complete &&
-    selectedMode !== 'cash' && !optionsError &&
-    Boolean(paymentOptions?.acceptedPaymentModes.includes('cash') && paymentOptions.availablePaymentModes.includes('cash'));
-  const paymentChoices = offerCashFallback
+  const cashBackupAvailable = !beforeArrival && !complete && paymentAmount !== null && paymentAmount > 0 && !optionsError &&
+    canChooseCash(paymentOptions);
+  const offerCashFallback = cashBackupAvailable && !locked && selectedMode !== 'cash';
+  const paymentChoices = cashBackupAvailable
     ? [...PAYMENT_OPTIONS.filter(option => option.id === 'cash'), ...PAYMENT_OPTIONS.filter(option => option.id !== 'cash')]
     : PAYMENT_OPTIONS;
   const cash = receipt?.cashInstructions || (!complete && selectedMode === 'cash');
@@ -127,6 +128,9 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
         if (selectedMode === null || hasPaymentFailure) scrollRef.current?.scrollTo({ y: modePickerY.current, animated: false });
       }}>
         <Text style={styles.sectionTitle}>Moyen de paiement</Text>
+        {paymentOptions?.cashException && !optionsError && <Text style={styles.amountHint} accessibilityLiveRegion="polite">
+          {paymentOptions.cashException.message}
+        </Text>}
         {(!paymentOptions || optionsError) && <Text style={styles.amountHint}>{optionsError
           ? 'Impossible de vérifier les moyens de paiement. Réessayez ici.' : 'Vérification des modes de paiement…'}</Text>}
         {optionsError && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualiser les moyens de paiement"
@@ -144,7 +148,8 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
         <View style={styles.options}>
           {paymentChoices.filter(option => (!beforeArrival || option.id !== 'cash') &&
             (option.id !== 'electronic' || ELECTRONIC_PAYMENTS_ENABLED) &&
-            (!paymentOptions || paymentOptions.acceptedPaymentModes.includes(option.id) || arrivalBooking?.paymentMode === option.id)).map(option => {
+            (!paymentOptions || paymentOptions.acceptedPaymentModes.includes(option.id) || arrivalBooking?.paymentMode === option.id ||
+              (option.id === 'cash' && canChooseCash(paymentOptions)))).map(option => {
             const selected = selectedMode === option.id;
             const disabled = modeSelectionLocked || !paymentOptions?.availablePaymentModes.includes(option.id);
             const cashFallback = option.id === 'cash' && offerCashFallback;
@@ -157,7 +162,7 @@ export function ArrivalPaymentFields(props: ArrivalPaymentFieldsProps) {
               <View style={styles.optionCopy}>
                 <Text style={[styles.optionTitle, selected && styles.optionTitleSelected]}>{title}</Text>
                 {cashFallback && <Text style={styles.optionDescription}>
-                  {amount === null ? 'Montant à vérifier' : formatMoney(amount, currency)} à remettre au conducteur. Validez ensuite en bas.
+                  En secours · {amount === null ? 'Montant à vérifier' : formatMoney(amount, currency)} à remettre au conducteur.
                 </Text>}
                 {option.id === 'points' && arePointsRecommended &&
                   <Text style={styles.optionDescription}>{pointsCoveragePercentage} % couvert par vos jetons</Text>}

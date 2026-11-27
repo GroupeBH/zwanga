@@ -209,10 +209,10 @@ test('dashboard proportions keep map space without changing locked or safe-area 
     const draw = () => hooks.render(() => useHomeSheet(props));
     const expanded = draw();
     assert.equal(expanded.effectiveTripsSheetOpen, true);
-    assert.equal(expanded.sheetHeight, (844 - 96) * 0.63);
+    assert.equal(expanded.sheetHeight, (844 - 96) * (isDriver ? 0.54 : 0.58));
     assert.equal(expanded.sheetBottomOffset, 96);
     props.width = 320; props.height = 568;
-    assert.equal(draw().sheetHeight, (568 - 96) * 0.63);
+    assert.equal(draw().sheetHeight, (568 - 96) * (isDriver ? 0.54 : 0.58));
     props.isHomeSheetLockedRetracted = true;
     assert.equal(draw().sheetHeight, Math.min(288, (568 - 96) * 0.55));
     hooks.unmount();

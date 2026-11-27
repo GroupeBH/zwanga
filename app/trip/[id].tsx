@@ -29,11 +29,13 @@ import { DriverTripHeaderActions } from '@/features/trip-detail/DriverTripHeader
 import { ManageTripContactModal } from '@/features/manage-trip/ManageTripContactModal';
 import { NextRequestAfterTrip } from '@/components/trip/NextRequestAfterTrip';
 import { DriverReservationModal } from '@/features/trip-detail/DriverReservationModal';
+import { TripReservationBadge } from '@/features/trip-detail/TripReservationBadge';
 
 export default function TripDetailsScreen() {
   const model = useTripDetailController();
 
   // Early return AFTER all hooks to avoid hook order violation
+  if (model.data.isReturningToRequest) return <TripUnavailableState feedback={null} loading fetching={false} onRetry={() => {}} onHome={model.data.goHome} />;
   if (!model.data.trip) return <TripUnavailableState feedback={model.data.tripFeedback}
     loading={model.data.tripLoading} fetching={model.data.tripFetching}
     onRetry={() => { if (model.data.tripId && model.data.isScreenActive && !model.data.tripFetching) void model.data.refetchTrip(); }}
@@ -51,6 +53,10 @@ function OwnerTripDetails({ model }: DetailProps) {
 }
 
 function TripDetailsView({ model, workspace }: DetailProps) {
+  // Le footer passager est en position absolue et sa hauteur varie (réservation, paiement,
+  // changement de conducteur) : les 112 px fixes masquaient le bas du contenu.
+  const [footerHeight, setFooterHeight] = React.useState(0);
+  const scrollBottomInset = workspace ? 8 : Math.max(112, footerHeight + 16);
   return (
     <RideOverlayScope scopeKey={`trip-detail:${model.data.tripId}`} active={model.data.isScreenActive}>
     <SafeAreaView style={styles.container}>
@@ -75,11 +81,12 @@ function TripDetailsView({ model, workspace }: DetailProps) {
           >
             <Ionicons name="arrow-back" size={24} color={Colors.gray[900]} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, model.data.isTripDriver && styles.ownerHeaderTitle,
+          {model.activity.activeBooking?.status === 'accepted' && !workspace ? <TripReservationBadge trip={model.data.trip} expired={model.data.tripExpired} />
+            : (!model.hasRenderableTripMap || workspace) ? <Text style={[styles.headerTitle, model.data.isTripDriver && styles.ownerHeaderTitle,
             workspace && { flex: 1, minWidth: 0, fontSize: 18 },
             model.hasRenderableTripMap && !model.data.isTripDriver && styles.headerTitleFloating]}>
             {model.data.isTripDriver ? 'Votre trajet' : 'Détails du trajet'}
-          </Text>
+          </Text> : <View style={{ flex: 1 }} />}
           <View style={[styles.headerActions, workspace && { gap: 2 }]}>
             {workspace && <DriverTripHeaderActions workspace={workspace} />}
             <TouchableOpacity
@@ -106,7 +113,7 @@ function TripDetailsView({ model, workspace }: DetailProps) {
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollViewContent, workspace && { paddingBottom: 8 }]}
+        contentContainerStyle={[styles.scrollViewContent, { paddingBottom: scrollBottomInset }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={model.bookingState.refreshing} onRefresh={model.activity.onRefresh} tintColor={Colors.primary} />
@@ -174,6 +181,7 @@ function TripDetailsView({ model, workspace }: DetailProps) {
         bookingState={model.bookingState}
         bookingSubmission={model.bookingSubmission}
         bookingLocation={model.bookingLocation}
+        onHeightChange={setFooterHeight}
       />}
       {workspace && <>
         <DriverReservationModal workspace={workspace} blocked={Boolean(workspace.state.contactBookingId) ||
@@ -205,6 +213,7 @@ function TripDetailsView({ model, workspace }: DetailProps) {
 
 
       <TripBookingModal
+        bookingReferences={model.bookingReferences}
         bookingModalVisible={model.bookingState.bookingModalVisible}
         insets={model.data.insets}
         bookingStep={model.bookingState.bookingStep}
@@ -223,6 +232,7 @@ function TripDetailsView({ model, workspace }: DetailProps) {
         setBookingPaymentMode={model.bookingState.setBookingPaymentMode}
         openBookingLocationPicker={model.wizard.openBookingLocationPicker}
         passengerOriginDisplay={model.bookingLocation.passengerOriginDisplay}
+        bookingLocationLabels={model.bookingLocation.bookingLocationLabels}
         passengerOriginManualAddress={model.bookingState.passengerOriginManualAddress}
         setPassengerOriginManualAddress={model.bookingState.setPassengerOriginManualAddress}
         setShouldAutofillPassengerOrigin={model.bookingState.setShouldAutofillPassengerOrigin}
@@ -245,7 +255,10 @@ function TripDetailsView({ model, workspace }: DetailProps) {
         visible={model.bookingState.showOriginPicker}
         title="Mon point de récupération"
         initialLocation={model.bookingState.passengerOrigin}
-        routeCoordinates={model.bookingState.routeCoordinates || undefined}
+        contextLabel="Choisissez un point sur le tracé routier."
+        routeCoordinates={model.route.routeStatus === 'ready' ? model.bookingState.routeCoordinates || undefined : undefined}
+        routeStatus={model.data.trip?.tripRequestId ? undefined : model.route.routeStatus}
+        onRetryRoute={model.route.retryRoute}
         restrictToRoute={true}
         onClose={model.wizard.restoreBookingModalAfterLocationPicker}
         onSelect={(location) => {
@@ -262,7 +275,9 @@ function TripDetailsView({ model, workspace }: DetailProps) {
         visible={model.bookingState.showDestinationPicker}
         title="Ma destination sur le trajet"
         initialLocation={model.bookingState.passengerDestination}
-        routeCoordinates={model.bookingState.routeCoordinates || undefined}
+        routeCoordinates={model.route.routeStatus === 'ready' ? model.bookingState.routeCoordinates || undefined : undefined}
+        routeStatus={model.data.trip?.tripRequestId ? undefined : model.route.routeStatus}
+        onRetryRoute={model.route.retryRoute}
         restrictToRoute={true}
         onClose={model.wizard.restoreBookingModalAfterLocationPicker}
         onSelect={(location) => {

@@ -6,15 +6,21 @@ import { HomeLocationButton } from '@/components/home/HomeLocationButton';
 import { HomeMap } from '@/components/home/HomeMap';
 import { HomeTripsSheet } from '@/components/home/HomeTripsSheet';
 import { HomeOngoingTripSheet } from '@/components/home/HomeOngoingTripSheet';
+import { HomeRequestPickupSheet } from '@/components/home/HomeRequestPickupSheet';
+import { HomeAcceptedDriverCourseSheet } from '@/components/home/HomeAcceptedDriverCourseSheet';
 import { HomeActivityCards } from '@/components/home/HomeActivityCards';
 import { HomeRequestModal } from '@/components/home/HomeRequestModal';
+import { AppUpdatePrompt } from '@/components/AppUpdatePrompt';
 import { styles } from '@/features/home/HomeScreen.styles';
 import { useHomeController } from '@/hooks/home/useHomeController';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMainScreenReady } from '@/hooks/useMainScreenReady';
 import { useWindowDimensions } from 'react-native';
+import { useAppSelector } from '@/store/hooks';
+import { selectUnreadMessagesCount } from '@/store/selectors';
 export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeContext> }) {
   const home = useHomeController(context);
+  const unreadMessages = useAppSelector(selectUnreadMessagesCount);
   const { fontScale } = useWindowDimensions();
   const largeText = fontScale > 1.3;
   const reportPrepared = useReportHomePrepared();
@@ -43,6 +49,8 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       showUserLocationCallout={home.showUserLocationCallout}
       markers={home.homeMapMarkers}
       markerSummary={home.homeMapMarkerSummary}
+      pickupModel={home.pickupModel}
+      acceptedDriverCourse={home.acceptedDriverCourse}
       onMarkerPress={home.openHomeMapMarker}
       onReady={reportMapReady}
     />
@@ -60,10 +68,14 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       ongoingDriverTrip={home.ongoingDriverTrip}
       ongoingBookedTrip={home.ongoingBookedTrip}
       unreadNotifications={home.unreadNotifications}
+      unreadMessages={unreadMessages}
       ongoingBookingId={home.ongoingBookingId}
-      showOngoingShortcut={!home.activeHomeTrip}
+      showOngoingShortcut={!home.activeHomeTrip && !home.homeRequestPickup && !home.acceptedDriverCourse}
+      hasRequestPickup={Boolean(home.homeRequestPickup || home.acceptedDriverCourse)}
       isDriver={home.isDriver}
       isScreenActive={home.isScreenActive}
+      discoveryLabel={home.sheetOffline || home.sheetError || home.sheetLoading || !home.latestTrips ? 'Explorer les départs' : `${home.latestTrips.length} départ${home.latestTrips.length > 1 ? 's' : ''} à découvrir`}
+      onDiscover={home.openSheetIndex}
     />
     {home.shouldRenderHomeMap && home.hasMapPriorities && !largeText && <HomeActivityCards
         key={`activity:${home.currentUser?.id}`}
@@ -83,7 +95,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
         featuredPassengerTrip={home.featuredPassengerTrip}
         openTripDetail={home.openTripDetail}
       />}
-    {home.activeHomeTrip ? <HomeOngoingTripSheet
+    {home.homeRequestPickup ? <HomeRequestPickupSheet {...home} /> : home.activeHomeTrip ? <HomeOngoingTripSheet
       isScreenActive={home.isScreenActive}
       activeHomeTrip={home.activeHomeTrip}
       ongoingDriverTrip={home.ongoingDriverTrip}
@@ -94,7 +106,7 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
       sheetBottomOffset={home.sheetBottomOffset}
       sheetHeight={home.sheetHeight}
       onSheetLayout={home.onSheetLayout}
-    /> : <HomeTripsSheet
+    /> : home.acceptedDriverCourse ? <HomeAcceptedDriverCourseSheet {...home} acceptedDriverCourse={home.acceptedDriverCourse} /> : <HomeTripsSheet
       priorityContent={largeText && home.hasMapPriorities ? <HomeActivityCards
         key={`activity:${home.currentUser?.id}`} dismissPriority={home.dismissPriority} prioritiesEnabled={home.isScreenActive}
         featuredDriverReservation={home.featuredDriverReservation} featuredDriverReservationStatus={home.featuredDriverReservationStatus}
@@ -135,6 +147,11 @@ export function HomeDashboard({ context }: { context: ReturnType<typeof useHomeC
     <HomeRequestModal key={`request:${home.currentUser?.id}`} userId={home.currentUser?.id}
       request={home.highlightedDriverRequest} router={home.router} dismissPriority={home.dismissPriority}
       onOpenRequestDetail={home.openTripRequestDetail}
-      enabled={home.isScreenActive && home.isDriver && !home.activeHomeTrip && !home.availableTripRequestsError} />
+      enabled={home.isScreenActive && home.isDriver && !home.activeHomeTrip && !home.homeRequestPickup && !home.acceptedDriverCourse && !home.availableTripRequestsError} />
+    <AppUpdatePrompt enabled={Boolean(context.isHomeRoleReady && home.isScreenActive && home.homeDataPrepared
+      && home.passengerAnnouncementReady && home.driverAnnouncementReady && home.driverRequestsAnnouncementReady
+      && !home.activeHomeTrip && !home.homeRequestPickup && !home.acceptedDriverCourse && !home.activeTripRequest
+      && !home.ongoingDriverTrip && !home.ongoingPassengerBooking && !home.activePassengerBooking
+      && !home.featuredDriverReservation && !home.highlightedDriverRequest)} />
   </SafeAreaView>;
 }

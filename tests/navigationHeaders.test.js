@@ -12,6 +12,10 @@ const native = { View: 'View', Text: 'Text', ScrollView: 'ScrollView', Touchable
 const insets = { top: 47, bottom: 34, left: 0, right: 0 };
 const assistance = { enabled: true, panel: null, isOpen: false, openContacts() {}, openContact() {}, openSos() {} };
 const defaults = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  '@/features/ride-payment/RidePaymentNotice': { RidePaymentNotice: 'PaymentNotice' },
+  './PassengerCoPassengersAccess': { PassengerCoPassengersAccess: 'CoPassengersAccess' },
+  './DriverNearArrivalPaymentNotice': { DriverNearArrivalPaymentNotice: 'NearArrivalPayment' },
+  '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
   '@/components/location/LocationAccessBanner': { LocationAccessBanner: 'LocationAccess' },
   '@/features/request-detail/WithdrawRequestDriverButton': { TripDriverWithdrawal: 'DriverWithdrawal' },
   '@/components/trip/TripShareAction': { TripShareAction: 'ShareAction' },
@@ -269,6 +273,7 @@ test('driver can still access receipts through Options after hiding the banner, 
 
 test('driver navigation wires contacts to this trip and defers automatic notice modals during assistance', () => {
   const model = driverModel(); const received = [];
+  const completionInputs = [], paidCompletion = { available: false, reopen() {} };
   const mocked = { ...defaults,
     '@/features/navigation/NavigationLoading': { NavigationLoading: 'NavigationLoading' },
     '@/components/trip/DriverTripAccessGuard': { DriverTripAccessGuard: 'DriverAccessGuard' },
@@ -279,6 +284,7 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
     '@/features/driver-navigation/DriverNavigationTopPanel': { DriverNavigationTopPanel: 'TopPanel' },
     '@/features/driver-navigation/DriverNavigationGuidance': { DriverNavigationGuidance: 'Guidance' },
     '@/features/driver-navigation/DriverPaidRequestCompletionPrompt': { DriverPaidRequestCompletionPrompt: 'PaidRequestCompletion' },
+    '@/hooks/driver-navigation/useDriverPaidTripCompletion': { useDriverPaidTripCompletion: input => { completionInputs.push(input); return paidCompletion; } },
     '@/features/navigation/NavigationAssistanceModals': { NavigationAssistanceModals: 'AssistanceModals' },
     '../../../features/screen-styles/app/trip/navigate/detail/index': { styles: {} },
     '../../../features/driver-navigation/navigationModel': { KINSHASA_FALLBACK_MAP_COORDINATE: { latitude: -4.3, longitude: 15.2 } },
@@ -303,6 +309,11 @@ test('driver navigation wires contacts to this trip and defers automatic notice 
   assert.equal(received[0].role, 'driver'); assert.equal(received[0].bookings, model.session.foundation.data.bookings);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.forceRecalculateRoute, model.forceRecalculateRoute);
   assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.canToggleRouteSections, true);
+  assert.equal(completionInputs[0].model, model); assert.equal(completionInputs[0].blocked, true);
+  assert.equal(all(tree).find(node => node.type === 'PaidRequestCompletion').props.prompt, paidCompletion);
+  assert.equal(all(tree).find(node => node.type === 'DriverNavigationControls').props.onCompleteTrip, undefined);
+  paidCompletion.available = true;
+  assert.equal(all(guarded.props.children.type()).find(node => node.type === 'DriverNavigationControls').props.onCompleteTrip, paidCompletion.reopen);
   assert.equal(all(tree).find(node => node.type === 'Guidance').props.getManeuverIcon, model.routeFormatting.getManeuverIcon);
   for (const type of ['NavigationPassengersModal', 'NavigationPickupBypassModal', 'NavigationWaypointModal', 'NavigationPickupNoticeModal', 'NavigationTripEndModal']) {
     assert.equal(all(tree).find(node => node.type === type).props.securityModalVisible, true);
@@ -354,6 +365,10 @@ test('passenger header clearly identifies a completed or paused ride without hid
   const { PassengerNavigationHeader } = loader(defaults)('features/passenger-navigation/PassengerNavigationHeader.tsx');
   const model = { data: { insets, trip: { status: 'completed' }, booking: {} }, presentation: { tripStatus: 'not_started' }, state: {}, tripActions: {} };
   assert.match(words(PassengerNavigationHeader({ model, assistance })), /Trajet terminé/);
+  model.data.trip = { status: 'ongoing' }; model.data.booking = { status: 'completed', droppedOff: true, paymentStatus: 'pending' };
+  assert.match(words(PassengerNavigationHeader({ model, assistance })), /Arrivée confirmée/);
+  assert.doesNotMatch(words(PassengerNavigationHeader({ model, assistance })), /Trajet terminé/);
+  model.data.booking = {};
   model.data.trip = { status: 'upcoming', startedAt: '2000-01-01' };
   assert.match(words(PassengerNavigationHeader({ model, assistance })), /Trajet en pause/);
 });

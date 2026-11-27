@@ -9,6 +9,7 @@ const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : React.isValidE
 const words = tree => typeof tree === 'string' || typeof tree === 'number' ? String(tree) : Array.isArray(tree)
   ? tree.map(words).join(' ') : words(tree?.props?.children ?? '');
 const baseMocks = { 'react-native': native, '@expo/vector-icons': { Ionicons: 'Icon' },
+  './BookingPaymentChoices': { BookingPaymentChoices: 'PaymentChoices' },
   '@/components/forms/FormLayout': { FormModal: 'Modal' }, '@/hooks/useAppIsActive': { useScreenIsActive: () => true },
   '@/components/PassengerSeatNotice': { PassengerSeatNotice: 'SeatNotice' } };
 
@@ -18,10 +19,11 @@ test('reservation can be confirmed from the first panel; duplicate taps and clos
   const wait = new Promise(resolve => { done = resolve; });
   const Modal = loader({ ...baseMocks, react: { ...React, ...h.react }, './TripBookingSteps': { TripBookingSteps: 'Form' } })
     ('features/trip-detail/TripBookingModal.tsx').TripBookingModal;
-  const props = { bookingStep: 1, bookingModalVisible: true, insets: { bottom: 0 }, bookingProposedPrice: '',
+  const props = { bookingStep: 1, bookingModalVisible: true, insets: { bottom: 0 }, bookingProposedPrice: '', estimatedTotal: 3000, bookingSeats: '1',
     handleConfirmBooking: async () => { submissions++; await wait; }, closeBookingModal: () => { closed++; } };
   const render = () => h.render(() => Modal(props));
   let tree = render();
+  assert.match(words(tree).replace(/\s/g, ''), /3000FC/);
   assert.doesNotMatch(words(tree), /Suivant|Prévisualisation|Retour/);
   const button = nodes(tree).find(n => n.type === 'Button' && words(n) === 'Confirmer la réservation');
   assert.ok(button); button.props.onPress(); button.props.onPress();
@@ -33,7 +35,7 @@ test('reservation can be confirmed from the first panel; duplicate taps and clos
   props.bookingProposedPrice = '2000'; assert.match(words(render()), /Envoyer mon prix/);
 });
 
-test('single booking form shows the route, seats, total and selected payment; custom points and price proposal remain editable', () => {
+test('single booking form keeps custom points and price editable; payment is no longer hidden in a disclosure', () => {
   const changes = [], query = { currentData: { availablePaymentModes: ['cash'] } };
   const Form = loader({ ...baseMocks, react: React,
     './tripDetailModel': { getTripPaymentModeLabel: mode => mode === 'cash' ? 'Espèces' : 'Jetons',
@@ -49,15 +51,29 @@ test('single booking form shows the route, seats, total and selected payment; cu
     setPassengerOrigin: x => changes.push(['origin', x]), setBookingProposedPrice() {},
     openBookingLocationPicker: x => changes.push(['picker', x]) };
   let tree = Form(props); assert.match(words(tree), /Gombe/); assert.match(words(tree), /Lemba/);
-  assert.match(words(tree).replace(/\s/g, ''), /3000FC/);
+  assert.doesNotMatch(words(tree), /Total/); // Total now sits beside confirmation, outside the scrolling fields.
   assert.equal(nodes(tree).find(n => n.type === 'PriceProposal').props.listedPrice, 3000);
   const payment = nodes(tree).find(n => n.type === 'Disclosure' && n.props.title === 'Paiement');
-  assert.match(payment.props.summary, /Espèces/); assert.equal(payment.props.forceOpen, false);
+  assert.equal(payment, undefined);
   const map = nodes(tree).find(n => n.props.accessibilityLabel === 'Modifier le point de départ'); map.props.onPress();
   const input = nodes(tree).find(n => n.props.accessibilityLabel === 'Adresse de départ'); input.props.onChangeText('Gare');
   assert.deepEqual(changes, [['picker', 'origin'], ['text', 'Gare'], ['autofill', false], ['origin', null]]);
-  query.currentData.availablePaymentModes = ['points']; tree = Form(props);
-  assert.equal(nodes(tree).find(n => n.type === 'Disclosure' && n.props.title === 'Paiement').props.forceOpen, true);
+});
+
+test('a short booking viewport keeps the total and explanation inside scrolling content, not above a zero-height form', t => {
+  const h = hookHarness(); t.after(() => h.unmount());
+  const Modal = loader({ ...baseMocks, react: { ...React, ...h.react }, './TripBookingSteps': { TripBookingSteps: 'Form' } })
+    ('features/trip-detail/TripBookingModal.tsx').TripBookingModal;
+  const tree = h.render(() => Modal({ bookingModalVisible: true, viewportHeight: 568, insets: { bottom: 0 },
+    bookingSeats: '1', estimatedTotal: 3000, handleConfirmBooking: async () => {}, closeBookingModal() {} }));
+  const form = nodes(tree).find(node => node.type === 'Form');
+  const payment = nodes(form.props.header).find(node => node.type === 'PaymentChoices');
+  assert.equal(payment.props.visible, true);
+  assert.equal(nodes(tree).some(node => node.type === 'PaymentChoices'), false, 'one chooser only, at the start of the scroll area');
+  assert.match(words(form.props.footer).replace(/\s/g, ''), /3000FC/);
+  assert.match(words(form.props.footer), /Aucun paiement maintenant/);
+  assert.doesNotMatch(words(tree), /Aucun paiement maintenant/);
+  assert.ok(nodes(tree).some(node => node.type === 'Button' && words(node) === 'Confirmer la réservation'));
 });
 
 test('disclosures keep a readable summary, reveal controls on tap and never hide validation errors', t => {

@@ -12,18 +12,18 @@ export function ProfileDriverAvailabilityEntry() {
   const active = useScreenIsActive();
   const { data } = useDriverDispatchStatusQuery(undefined, { skip: !active, refetchOnMountOrArgChange: true });
   if (!data?.enabled) return null;
-  return <TouchableOpacity accessibilityRole="button" accessibilityLabel="Alertes conducteur"
-    accessibilityHint="Comprendre les notifications automatiques de réservations et de commandes proches."
+  return <TouchableOpacity accessibilityRole="button" accessibilityLabel="Localisation et alertes"
+    accessibilityHint="Régler le partage de position et les notifications de commandes proches."
     onPress={() => router.push('/driver-availability')}
     style={[menuStyles.menuItem, menuStyles.menuItemBorder]}>
     <View style={menuStyles.menuIcon}>
       <Ionicons name="location-outline" size={20} color={Colors.gray[600]} />
     </View>
     <View style={styles.copy}>
-      <Text style={[menuStyles.menuText, styles.title]}>Alertes conducteur</Text>
+      <Text style={[menuStyles.menuText, styles.title]}>Localisation et alertes</Text>
       <Text style={styles.description}>{data.needsLocationRefresh
         ? 'Actualisez votre position pour recevoir les commandes proches.'
-        : 'Réservations et commandes proches, automatiquement'}</Text>
+        : 'Partage de position et réglages des notifications'}</Text>
     </View>
     <Ionicons name="chevron-forward" size={20} color={Colors.gray[400]} />
   </TouchableOpacity>;

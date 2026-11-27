@@ -1,7 +1,7 @@
 import { requestVehicleLabel } from '@/features/trip-request/vehicleSelection';
 import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import type { useRequestDetailController } from '@/hooks/request-detail/useRequestDetailController';
 import type { buildRequestDetailPresentation } from './requestPresentation';
 import { useRouteLocationLabels } from '@/hooks/useRouteLocationLabels';
@@ -14,18 +14,11 @@ import { PassengerPriceOffers } from './PassengerPriceOffers';
 import { ChangeRequestDriverButton } from './ChangeRequestDriverButton';
 import { useRequestResponseWindow } from '@/hooks/request-detail/useRequestResponseWindow';
 import { RequestPickupSummaryCard } from './RequestPickupSummaryCard';
+import { formatRequestDay, formatRequestTime } from './requestDateLabels';
+export { formatRequestDay, formatRequestTime } from './requestDateLabels';
 
 type Model = ReturnType<typeof useRequestDetailController>;
 type Presentation = ReturnType<typeof buildRequestDetailPresentation>;
-export function formatRequestTime(value: string | number) {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
-}
-export function formatRequestDay(value: string) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return 'Date à confirmer';
-  return date.toDateString() === new Date().toDateString() ? 'Aujourd’hui' : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-}
 
 export function RequestPassengerTicket({ model, presentation }: { model: Model; presentation: Presentation }) {
   const request = model.tripRequest!;
@@ -38,7 +31,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
   const steps = ['Commande envoyée', presentation.pendingOffersCount ? 'Réponse reçue' : request.targetDriverId ? 'Réponse du conducteur choisi' : 'Recherche d’un conducteur', 'Conducteur confirmé', 'Départ'];
   return <>
     {confirmed && <RequestPickupSummaryCard requestId={request.id} active={model.isScreenActive} />}
-    <PassengerPriceOffers key={request.id} request={request} enabled={model.isScreenActive && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
+    <PassengerPriceOffers key={`offers:${request.id}`} request={request} enabled={model.isScreenActive && !model.isCancelling && !model.isUpdating} refresh={model.refetch} />
     {request.responseWindow?.phase === 'passenger' && !!response.label && <Text style={local.hint}>{response.label}</Text>}
     <View style={s.card}>
       <View style={s.row}>
@@ -68,7 +61,7 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
           <Text style={s.amount}>{presentation.ownerDisplayedBudget != null ? formatCdfPrice(presentation.ownerDisplayedBudget) : 'À convenir'}</Text></View>}
         departureName={labels.departure.address} arrivalName={labels.arrival.address} />
     </View>
-    <RequestTargetDriver key={request.id} request={request} disabled={model.isCancelling || model.isUpdating} />
+    <RequestTargetDriver key={`target:${request.id}`} request={request} disabled={model.isCancelling || model.isUpdating} />
     <View style={s.card}>
       {closed ? <><Text style={s.name}>{presentation.ownerHero.title}</Text><Text style={s.muted}>{presentation.ownerHero.subtitle}</Text></>
         : steps.map((label, index) => <View key={label} style={local.step}>
@@ -94,10 +87,16 @@ export function RequestPassengerTicket({ model, presentation }: { model: Model; 
 
 export function RequestPassengerActions({ model }: { model: Model }) {
   const [changingDriver, setChangingDriver] = useState(false);
+  const { height } = useWindowDimensions();
   // A background read must not keep the essential actions disabled on a slow connection.
   // Edit/cancel mutations retain the existing server-side state/snapshot checks.
   const busy = model.isCancelling || model.isUpdating || changingDriver;
-  return <View style={s.footer}><View style={s.actionRow}>
+  return <ScrollView style={{ flexGrow: 0, maxHeight: height * 0.5 }} contentContainerStyle={s.footer}>
+    <ChangeRequestDriverButton key={`change:${model.tripRequest?.id}`}
+      request={!model.tripRequest?.tripId || model.passengerBooking ? model.tripRequest : undefined}
+      booking={model.passengerBooking} trip={model.assignedTrip} onPendingChange={setChangingDriver}
+      disabled={!model.isScreenActive || model.isCancelling || model.isUpdating} />
+    <View style={s.actionRow}>
     {model.canCancel && <Pressable accessibilityRole="button" accessibilityLabel="Annuler la commande" disabled={busy}
       style={[s.cancel, busy && s.disabled]} onPress={model.handleCancelRequest}>
       {model.isCancelling ? <ActivityIndicator color="#BF1B20" /> : <Text style={s.cancelText}>Annuler</Text>}
@@ -107,10 +106,7 @@ export function RequestPassengerActions({ model }: { model: Model }) {
     </Pressable> : model.canEdit && <Pressable accessibilityRole="button" disabled={busy} style={[s.primary, busy && s.disabled]} onPress={model.handleOpenEditForm}>
       <Text style={s.primaryText}>{model.tripRequest?.status === 'expired' ? 'Reprogrammer la commande' : 'Modifier la commande'}</Text>
     </Pressable>}
-  </View><ChangeRequestDriverButton key={`change:${model.tripRequest?.id}`}
-    request={!model.tripRequest?.tripId || model.passengerBooking ? model.tripRequest : undefined}
-    booking={model.passengerBooking} onPendingChange={setChangingDriver}
-    disabled={!model.isScreenActive || model.isCancelling || model.isUpdating} /></View>;
+  </View></ScrollView>;
 }
 const local = StyleSheet.create({
   perforation: { marginHorizontal: -20, marginVertical: 8 }, perforationLine: { marginHorizontal: 20, marginVertical: 0 },

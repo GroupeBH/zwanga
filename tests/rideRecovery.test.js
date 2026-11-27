@@ -6,6 +6,33 @@ const { rideRetry, rideEntryMessage, isNearRideStop } = loader()('features/ride-
 
 const input = { bookingId: 'booking', tripId: 'trip', stage: 'pickup', decision: 'confirm' };
 const snapshot = status => ({ bookingId: 'booking', tripId: 'trip', actor: 'passenger', pickup: { status }, dropoff: { status: 'none' } });
+
+test('a passenger old-client request confirmation rejected by the server never retries forever', async () => {
+  const h = harness({ send: async () => { throw { status: 403, data: { code: 'RIDE_DRIVER_CONFIRMATION_REQUIRED' } }; } });
+  const box = h.create(); await box.enqueue(input); await box.flush();
+  const entry = h.published.at(-1).entries[0];
+  assert.equal(entry.state, 'blocked'); assert.match(entry.message, /Seul le conducteur/);
+  h.advance(120_000); await box.flush();
+  assert.equal(h.published.at(-1).entries[0].attempts, 1);
+});
+
+test('a new explicit arrival proposal replaces a blocked old-client tap but never an in-flight receipt', async () => {
+  const h = harness({ send: async () => { throw { status: 403, data: { code: 'RIDE_DRIVER_CONFIRMATION_REQUIRED' } }; } });
+  const box = h.create(); const original = await box.enqueue({ ...input, stage: 'dropoff' }); await box.flush();
+  const consent = await box.enqueue({ ...input, stage: 'dropoff', arrivalPromptId: 'prompt' });
+  assert.notEqual(original.eventId, consent.eventId); assert.equal(consent.arrivalPromptId, 'prompt');
+  const replay = await box.enqueue({ ...input, stage: 'dropoff', arrivalPromptId: 'other-prompt' });
+  assert.equal(replay.eventId, consent.eventId); assert.equal(replay.arrivalPromptId, 'prompt');
+});
+
+test('a historical passenger receipt stops waiting for a second vote after the request-origin policy changes', async () => {
+  const h = harness({ read: async () => ({ ...snapshot('none'), confirmationMode: 'driver_only' }) });
+  const box = h.create(); await box.enqueue(input); await box.flush();
+  assert.equal(h.published.at(-1).entries[0].state, 'received');
+  h.advance(60000); await box.flush();
+  assert.equal(h.published.at(-1).entries[0].state, 'blocked');
+  assert.equal(h.sent.length, 1);
+});
 function harness(overrides = {}) {
   const disk = new Map();
   const published = [];

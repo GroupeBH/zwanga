@@ -17,10 +17,10 @@ export function NavigationContactModal(props: Props) {
 }
 
 export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = true, active, title, hint, closeLabel,
-  loading = false, loadError, onRetry, summary }: Props & {
+  loading = false, loadError, onRetry, summary, compact = false }: Props & {
   active: boolean; title?: string; hint?: string; closeLabel?: string;
   loading?: boolean; loadError?: string; onRetry?: () => void;
-  summary?: React.ReactNode;
+  summary?: React.ReactNode; compact?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +46,12 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
       if (mounted.current) setBusy(null);
     }
   };
+  const singleCompact = compact && contacts.length === 1;
   return <FormModal inApp visible={active} transparent animationType="slide" statusBarTranslucent presentationStyle="overFullScreen" onRequestClose={close}>
     <View style={styles.overlay}>
       <TouchableOpacity style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Fermer les contacts" accessibilityRole="button" />
       <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
-        <View style={styles.header}>
+        <View style={[styles.header, compact && styles.compactHeader]}>
           <View style={styles.copy}>
             <Text style={styles.title}>{title ?? (role === 'driver' ? 'Contacter un passager' : 'Contacter le conducteur')}</Text>
             <Text style={styles.hint}>{hint ?? (role === 'driver' ? 'Choisissez la personne à joindre. Utilisez ces actions uniquement à l’arrêt.' : 'Choisissez comment joindre votre conducteur.')}</Text>
@@ -59,8 +60,8 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
             <Ionicons name="close" size={24} color={Colors.gray[700]} />
           </TouchableOpacity>
         </View>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {summary}
+        <ScrollView contentContainerStyle={[styles.content, compact && styles.compactContent]} showsVerticalScrollIndicator={false}>
+          {!singleCompact && summary}
           {loading && <ActivityIndicator color={Colors.primary} accessibilityLabel="Chargement du contact" />}
           {loadError && <>
             <Text style={styles.error} accessibilityRole="alert">{loadError}</Text>
@@ -69,9 +70,9 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
             </TouchableOpacity>
           </>}
           {!loading && !loadError && contacts.length === 0 && <Text style={styles.hint}>Aucun contact disponible pour ce trajet.</Text>}
-          {contacts.map(person => <View key={person.id} style={styles.person}>
+          {contacts.map(person => <View key={person.id} style={[styles.person, singleCompact && styles.compactPerson]}>
             <Text style={styles.name}>{person.name}</Text>
-            <Text style={styles.hint}>{person.detail}</Text>
+            {singleCompact ? summary : <Text style={styles.hint}>{person.detail}</Text>}
             <TouchableOpacity onPress={() => void contact(person, 'message')}
               disabled={busy !== null || !messaging.canMessage || person.id === messaging.userId}
               accessibilityRole="button" accessibilityLabel={`Envoyer un message dans Zwanga à ${person.name}`}
@@ -81,8 +82,8 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
               {busy === `${person.id}:message` ? <ActivityIndicator color={Colors.white} /> :
                 <Ionicons name="chatbubble-ellipses-outline" size={22} color={Colors.white} />}
               <View style={styles.copy}>
-                <Text style={styles.messageLabel}>{busy === `${person.id}:message` ? 'Ouverture…' : 'Message dans Zwanga'}</Text>
-                <Text style={styles.messageHint}>Échangez sans quitter l’application</Text>
+                <Text style={styles.messageLabel}>{busy === `${person.id}:message` ? 'Ouverture…' : compact ? 'Message' : 'Message dans Zwanga'}</Text>
+                {!compact && <Text style={styles.messageHint}>Échangez sans quitter l’application</Text>}
               </View>
               <Ionicons name="chevron-forward" size={18} color={Colors.white} />
             </TouchableOpacity>
@@ -99,8 +100,8 @@ export function ContactModalContent({ contacts, role, onClose, allowPhoneCall = 
             </View>
           </View>)}
           {error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
-          <Text style={styles.hint}>{allowPhoneCall ? 'L’appel utilise le réseau téléphonique. ' : ''}La messagerie Zwanga et WhatsApp nécessitent Internet.</Text>
-          {closeLabel && <TouchableOpacity onPress={close} style={styles.action} accessibilityRole="button">
+          {!compact && <Text style={styles.hint}>{allowPhoneCall ? 'L’appel utilise le réseau téléphonique. ' : ''}La messagerie Zwanga et WhatsApp nécessitent Internet.</Text>}
+          {closeLabel && <TouchableOpacity onPress={close} style={compact ? styles.defer : styles.action} accessibilityRole="button">
             <Text style={styles.actionLabel}>{closeLabel}</Text>
           </TouchableOpacity>}
         </ScrollView>
@@ -117,6 +118,10 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, lineHeight: 19, color: Colors.gray[600], marginTop: 5 },
   close: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: Colors.gray[100] },
   content: { padding: 20, paddingBottom: 28, gap: 16 },
+  compactHeader: { paddingVertical: 16 },
+  compactContent: { paddingTop: 16, paddingBottom: 12, gap: 8 },
+  compactPerson: { paddingBottom: 0, borderBottomWidth: 0 },
+  defer: { minHeight: 44, padding: 10, alignItems: 'center', justifyContent: 'center' },
   person: { paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] },
   name: { fontSize: 17, fontWeight: '700', color: Colors.gray[900] },
   message: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 14, padding: 14, minHeight: 56, borderRadius: 14, backgroundColor: Colors.primaryDark },

@@ -8,11 +8,12 @@ import { getPickerCoordinate, pickerDisplayRoute, samePickerPoint, type PickerCo
 
 type Props = {
   enabled: boolean; target: PickerCoordinate; route: PickerCoordinate[]; restrictToRoute: boolean;
+  preserveRouteGeometry?: boolean;
   onPanStart: () => void; onSettle: (point: PickerCoordinate) => void; onPress: (point: PickerCoordinate) => void;
 };
 
 /** The native map does not rerender for search text, address lookup or footer state. */
-export const LocationPickerMap = memo(function LocationPickerMap({ enabled, target, route, restrictToRoute, onPanStart, onSettle, onPress }: Props) {
+export const LocationPickerMap = memo(function LocationPickerMap({ enabled, target, route, restrictToRoute, preserveRouteGeometry = false, onPanStart, onSettle, onPress }: Props) {
   const mapRef = useRef<MapView>(null);
   const [attempt, setAttempt] = useState(0);
   const attemptRef = useRef(attempt);
@@ -42,7 +43,7 @@ export const LocationPickerMap = memo(function LocationPickerMap({ enabled, targ
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lift = useSharedValue(0);
   const pinStyle = useAnimatedStyle(() => ({ transform: [{ translateY: lift.value }] }));
-  const displayedRoute = useMemo(() => pickerDisplayRoute(route), [route]);
+  const displayedRoute = useMemo(() => pickerDisplayRoute(route, 400, preserveRouteGeometry), [route, preserveRouteGeometry]);
 
   useEffect(() => {
     active.current = enabled;

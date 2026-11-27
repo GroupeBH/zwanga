@@ -11,7 +11,7 @@ export function isRideResumeEntryTransition(path: string) {
 export function canResumeRideFromPath(path: string) {
   if (path === '/request/index') return false;
   return ['/', '/(tabs)', '/trips', '/messages', '/profile', '/discover', '/bookings', '/requests', '/my-requests',
-    '/search', '/notifications', '/settings', '/favorite-locations'].includes(path);
+    '/search', '/explore', '/notifications', '/settings', '/favorite-locations'].includes(path);
 }
 export const isRideNavigationPath = (path: string) => /^\/(trip|booking)\/navigate\/[^/]+$/.test(path);
 

@@ -31,10 +31,10 @@ for (const isDriver of [true, false]) test(`Home offline is not an empty result;
   const render = () => HomeTripsSheet.type({ ...props, ...hooks.render(() => useHomeSheet(props)) });
   const offline = render();
   assert.match(text(offline), /Connectez-vous à Internet/);
-  assert.doesNotMatch(text(offline), /Aucun nouveau client|Aucun trajet disponible|Réessayer/);
+  assert.doesNotMatch(text(offline), /Aucune commande à proximité|Aucun trajet disponible|Réessayer/);
   if (isDriver) assert.ok(nodes(offline).some(n => n.props.accessibilityLabel === 'Voir les clients, nombre indisponible'));
   online = true;
-  assert.match(text(render()), isDriver ? /Aucun nouveau client/ : /Aucun trajet disponible/);
+  assert.match(text(render()), isDriver ? /Aucune commande à proximité/ : /Aucun trajet disponible/);
   hooks.unmount();
 });
 
@@ -43,7 +43,7 @@ test('offline Home keeps cached suggestions without an obstructing message', () 
   const tree = HomeTripsSheet.type({ effectiveTripsSheetOpen: true, sheetOffline: true, isDriver: true,
     availableDriverRequests: [{ id: 'known', updatedAt: '2026-11-01' }], latestTrips: [], bookedTripIds: new Set(),
     hiddenHomePriorities: {}, recentDestinations: [], router: { push() {} } });
-  assert.doesNotMatch(text(tree), /Connectez-vous|Aucun nouveau client/);
+  assert.doesNotMatch(text(tree), /Connectez-vous|Aucune commande à proximité/);
   assert.ok(nodes(tree).some(n => n.props.item?.id === 'known'));
 });
 

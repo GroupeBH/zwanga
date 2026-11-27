@@ -13,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTripEditReferences } from './useTripEditReferences';
+import { useAppSelector } from '@/store/hooks';
+import { selectIsDriverAccount } from '@/features/navigation/accountTabPolicy';
 
 
 
@@ -20,15 +22,17 @@ export function useTripsScreenState() {
   const editReferences = useTripEditReferences();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [mainTab, setMainTab] = useState<MainTab>('published');
+  const isDriver = useAppSelector(selectIsDriverAccount);
+  const [selectedTab, setMainTab] = useState<MainTab>('published');
+  const mainTab = isDriver ? selectedTab : 'bookings';
   const [subTab, setSubTab] = useState<SubTab>('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const feeds = useTripsFeeds(mainTab, subTab, searchQuery);
   const { myTrips, myBookings, tripsLoading, tripsFetching, tripsError, refetchTrips,
     bookingsLoading, bookingsFetching, bookingsError, refetchBookings } = feeds;
-  const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery();
-  const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery();
+  const { data: recurringTemplates = [] } = useGetMyRecurringTripsQuery(undefined, { skip: !isDriver });
+  const { data: userVehicles = [], isLoading: vehiclesLoading } = useGetVehiclesQuery(undefined, { skip: !isDriver });
   const activeUserVehicles = useMemo(
     () => userVehicles.filter((vehicle) => vehicle.isActive !== false),
     [userVehicles],

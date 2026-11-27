@@ -33,6 +33,9 @@ test('pending booking takes priority over scrolling details without removing con
     react: { ...React, ...hooks.react },
     './DriverNavigationPassengersBar': { DriverNavigationPassengersBar: 'Passengers' },
     './DriverDropoffReceipts': { DriverDropoffReceipts: 'Receipts' },
+    './DriverNearArrivalPaymentNotice': { DriverNearArrivalPaymentNotice: 'PaymentReminder' },
+    '@/features/driver-payments/ConfirmCashReceipt': { ConfirmCashReceipt: 'CashReceipt' },
+    '@/features/ride-payment/RidePaymentNotice': { RidePaymentNotice: 'PaymentNotice' },
     '@/features/ride-recovery/RideRecoveryControl': { RideRecoveryControl: 'Recovery' },
     '@/features/navigation/NavigationAssistanceButtons': { NavigationAssistanceButtons: 'Assistance' },
   })('features/driver-navigation/DriverNavigationTopPanel.tsx');

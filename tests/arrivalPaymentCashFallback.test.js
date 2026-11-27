@@ -47,6 +47,25 @@ test('failed Mobile Money highlights cash with the whole fare; selecting it only
   assert.equal(env.refreshes, 0, 'no additional polling or payment when rendering or selecting cash');
 });
 
+test('cash backup is offered before any failure, even if only tokens or Mobile Money were advertised', t => {
+  for (const mode of ['electronic', 'points']) {
+    const env = form(t);
+    Object.assign(env.props, { selectedMode: mode, hasPaymentFailure: false });
+    env.props.arrivalBooking.paymentMode = mode;
+    env.query.currentData = { acceptedPaymentModes: [mode], availablePaymentModes: [mode, 'cash'], cashFallbackAvailable: true };
+    const cash = env.render().find(node => node.props.accessibilityLabel === 'Payer en cash');
+    assert.ok(cash); assert.equal(cash.props.disabled, false);
+    assert.deepEqual(env.choices, []);
+    cash.props.onPress(); assert.deepEqual(env.choices, ['cash']);
+    env.props.selectedMode = 'cash';
+    const selected = env.render().find(node => node.props.accessibilityLabel === 'Cash');
+    assert.ok(selected); assert.equal(selected.props.accessibilityState.checked, true);
+    assert.equal(env.render().filter(node => node.props.accessibilityRole === 'radio')[0].props.accessibilityLabel, 'Cash',
+      'selecting cash keeps the option in the same position');
+    assert.equal(env.refreshes, 0);
+  }
+});
+
 test('an unsuccessful token complement offers both full cash and mixed cash without debiting tokens', t => {
   const env = form(t);
   Object.assign(env.props, { selectedMode: 'points', moneyComplement: 3920,
@@ -65,12 +84,14 @@ test('cash suggestion respects arrival, server eligibility, paid state and pendi
   for (const patch of [
     { isBeforeArrival: true }, { isBusy: true }, { hasPendingProviderPayment: true },
     { paymentAlreadySucceeded: true }, { completionSummary: { mode: 'cash', amount: 4500, currency: 'CDF' } },
-    { hasPaymentFailure: false }, { selectedMode: 'cash' },
+    { paymentAmount: 0 }, { paymentAmount: null }, { selectedMode: 'cash' },
   ]) {
     const env = form(t); Object.assign(env.props, patch);
     assert.equal(env.render().some(node => node.props.accessibilityLabel === 'Payer en cash'), false);
   }
   for (const available of [undefined, { acceptedPaymentModes: ['electronic'], availablePaymentModes: ['electronic'] },
+    { acceptedPaymentModes: ['electronic'], availablePaymentModes: ['electronic', 'cash'], cashFallbackAvailable: false },
+    { acceptedPaymentModes: ['points'], availablePaymentModes: ['points'], cashFallbackAvailable: true },
     { acceptedPaymentModes: ['electronic', 'cash'], availablePaymentModes: ['electronic'], cashUnavailableReason: 'Cash indisponibles pour ce trajet.' }]) {
     const env = form(t); env.query.currentData = available;
     const nodes = env.render();

@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useMemo } from 'react';
 import type { Trip, Booking } from '@/types';
 import type { MapCoordinate } from '@/utils/tripCoordinates';
+import { passengerNavigationStatus } from '@/features/passenger-navigation/passengerRideProgress';
 
 interface Params {
   routeAnalysis: ReturnType<typeof createPassengerRouteAnalysis>;
@@ -47,16 +48,7 @@ export function usePassengerNavigationPresentation({
   activeRouteSegment,
   setActiveRouteSegment,
 }: Params) {
-  const tripStatus = useMemo(() => {
-    if (!booking || !trip) return 'loading';
-    if (trip.status === 'completed' || booking.status === 'completed') return 'completed';
-    if (trip.status !== 'ongoing') return 'not_started';
-    if (booking.droppedOff) return 'completed';
-    if (booking.droppedOffConfirmedByPassenger) return 'awaiting_dropoff_confirmation';
-    if (booking.pickedUp && !booking.pickedUpConfirmedByPassenger) return 'pickup_confirmation_needed';
-    if (booking.pickedUp) return 'in_transit';
-    return 'waiting_pickup';
-  }, [booking, trip]);
+  const tripStatus = passengerNavigationStatus(booking, trip);
   const canCancelPassengerTrip = Boolean(
     booking?.id &&
       booking.status === 'accepted' &&

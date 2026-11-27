@@ -33,7 +33,7 @@ test('welcome bonus confirmation opens the wallet for flat and nested push paylo
 });
 
 test('cash commission and trial alerts open the wallet even when a booking identifier is present', () => {
-  for (const type of ['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started']) {
+  for (const type of ['wallet_cash_commission', 'wallet_cash_commission_refund', 'cash_commission_debt', 'cash_commission_low_balance', 'driver_pro_trial_started', 'cash_exception_warning']) {
     assert.equal(getNotificationHref({ type, bookingId: 'booking', tripId: 'trip' }), '/wallet');
   }
 });
@@ -41,6 +41,8 @@ test('cash commission and trial alerts open the wallet even when a booking ident
 test('manual confirmation notices open the recipient navigation, not the original request', () => {
   assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'passenger', bookingId: 'booking', tripId: 'trip', requestId: 'request' }), '/booking/navigate/booking');
   assert.equal(getNotificationHref({ type: 'ride_confirmation_required', role: 'driver', bookingId: 'booking', tripId: 'trip' }), '/trip/navigate/trip');
+  assert.equal(getNotificationHref({ type: 'arrival_confirmation_requested', role: 'passenger', bookingId: 'booking', tripId: 'trip' }), '/booking/navigate/booking');
+  assert.equal(getNotificationHref({ type: 'arrival_confirmation_requested', role: 'driver', bookingId: 'booking', tripId: 'trip' }), '/trip/navigate/trip');
 });
 
 test('ongoing passenger notices open their reservation navigation with legacy fallbacks', () => {
@@ -180,7 +182,7 @@ function inbox(data) {
       useDisableNotificationsMutation: () => [disable],
       useMarkAllNotificationsAsReadMutation: () => [() => ({ unwrap: async () => {} })],
     },
-  })('app/notifications.tsx').default;
+  })('features/notifications/NotificationActivity.tsx').default;
   const render = () => hooks.render(Screen);
   const press = () => {
     const list = elements(render()).find(node => node.type === 'FlatList');

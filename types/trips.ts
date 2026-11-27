@@ -75,6 +75,7 @@ export interface Trip {
   vehicle?: Vehicle; // Informations complètes du véhicule
   driverSafetyEmergencyContactIds?: string[];
   tripRequestId?: string | null;
+  isPrivate?: boolean;
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
   isFeatured?: boolean;

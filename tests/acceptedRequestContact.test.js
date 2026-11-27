@@ -112,10 +112,11 @@ function coordinator(t, overrides = {}) {
 
 test('confirmed acceptance opens existing contact choices with an explicit Plus tard, not an automatic message', t => {
   const app = coordinator(t); const view = app.render();
-  assert.equal(view.type, 'Contacts'); assert.equal(view.props.title, 'Contactez votre passager');
+  assert.equal(view.type, 'Contacts'); assert.equal(view.props.title, 'Joindre le passager');
+  assert.equal(view.props.compact, true); assert.equal(view.props.hint, 'À l’arrêt uniquement.');
   assert.equal(view.props.closeLabel, 'Plus tard'); assert.equal(view.props.contacts[0].id, 'passenger');
   assert.equal(view.props.summary.type, 'PickupSummary');
-  assert.deepEqual(view.props.summary.props, { requestId: 'request', active: true });
+  assert.deepEqual(view.props.summary.props, { requestId: 'request', active: true, contactPreview: true });
   assert.deepEqual(app.calls, []); assert.equal(app.queries[1][2].skip, true, 'dispatch can be accepted before a trip is created');
   view.props.onClose(); assert.equal(app.calls[0].type, 'rideEntry/dismissAcceptedRequestContact');
 });

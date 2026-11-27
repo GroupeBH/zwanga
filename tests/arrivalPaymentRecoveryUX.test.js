@@ -65,6 +65,27 @@ test('cash is never offered on missing, failed or disallowing server options', (
   }
 });
 
+test('arrival-only cash permission is honored in recovery but never bypasses an unresolved direct payment', () => {
+  let cash = 0;
+  const { ArrivalPaymentRecovery } = loader({
+    'react-native': { View: 'View', Text: 'Text', ScrollView: 'Scroll', TouchableOpacity: 'Button', ActivityIndicator: 'Spinner', StyleSheet: { create: x => x } },
+    '@expo/vector-icons': { Ionicons: 'Icon' }, 'expo-linking': { createURL: () => 'zwanga://payment' },
+    '@/store/api/driverFinanceApi': { useBookingPaymentOptionsQuery: () => ({ currentData: {
+      acceptedPaymentModes: ['points', 'electronic'], availablePaymentModes: ['points', 'electronic', 'cash'], cashFallbackAvailable: true,
+    } }) },
+  })('features/arrival-payment/ArrivalPaymentRecovery.tsx');
+  const props = { bookingId: 'b', pending: false, amount: 4500, currency: 'CDF', onCash: async () => { cash++; } };
+  const buttons = () => flatten(ArrivalPaymentRecovery(props)).filter(node => node.type === 'Button');
+  const fallback = buttons().find(node => /Payer .* en cash/.test(text(node)));
+  assert.ok(fallback); fallback.props.onPress(); assert.equal(cash, 1);
+  props.pending = true;
+  assert.equal(buttons().some(node => /en cash|Choisir le cash/.test(text(node))), false);
+  props.pendingCashAllowed = true; // Only the dedicated, fenced wallet top-up recovery sets this.
+  assert.ok(buttons().some(node => /Choisir le cash/.test(text(node))));
+  props.beforeArrival = true;
+  assert.equal(buttons().some(node => /en cash|Choisir le cash/.test(text(node))), false);
+});
+
 function recovery(t) {
   const h = hookHarness(), calls = { recover: 0, ack: 0, settled: 0, failed: [], patches: [] };
   let response = { payment: { status: 'pending' } }, live = true;

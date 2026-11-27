@@ -12,6 +12,10 @@ export interface DriverFinanceSummary {
 }
 export interface TripPaymentOptions {
   mixedCashSupported?: boolean;
+  /** Server-authorized full cash settlement after arrival, even if not advertised. */
+  cashFallbackAvailable?: boolean;
+  cashException?: { requiresDriverAcknowledgment: true; message: string;
+    occurrence?: number; penaltyAmount?: number; alreadyCountedForTrip?: boolean; suspensionAfterRide?: boolean };
   acceptedPaymentModes: TripPaymentMode[]; availablePaymentModes: TripPaymentMode[];
   cashUnavailableReason: string | null; commissionRate: number;
 }

@@ -5,7 +5,7 @@ const { loader } = require('./helpers/loadTypeScript.cjs');
 const { hookHarness } = require('./helpers/hookHarness.cjs');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const id = '11111111-1111-4111-8111-111111111111';
-const link = `https://api.example.test/api/v1/public/drivers/${id}/card`;
+const link = `https://web.example.test/conducteurs/${id}`;
 const nodes = tree => Array.isArray(tree) ? tree.flatMap(nodes) : React.isValidElement(tree) ? [tree, ...nodes(tree.props.children)] : [];
 const text = tree => Array.isArray(tree) ? tree.map(text).join('') : React.isValidElement(tree) ? text(tree.props.children) : typeof tree === 'string' ? tree : '';
 
@@ -19,7 +19,7 @@ function fixture(os = 'android') {
     StyleSheet: { create: value => value }, Platform: { OS: os }, useWindowDimensions: () => ({ width: 320, height: 568 }),
     Linking: { openURL: async url => { actions.push(['preview', url]); } }, Share: { share: async data => { actions.push(['link', data.message]); } } };
   const load = loader({ react: { ...React, ...hooks.react }, 'react-native': native,
-    'react-native-qrcode-svg': 'QR', '@/config/env': { API_BASE_URL: 'https://api.example.test/api/v1' },
+    'react-native-qrcode-svg': 'QR', '@/config/env': { PUBLIC_WEB_URL: 'https://web.example.test' },
     '@/store/api/publicDriverApi': { useGetPublicDriverCardQuery: (arg, options) => { state.options = options; state.id = arg; return query; } },
     '@/services/tokenSession': { getTokenSessionVersion: () => state.version },
     'expo-clipboard': { setStringAsync: async value => { actions.push(['copy', value]); } },

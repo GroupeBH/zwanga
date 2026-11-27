@@ -9,30 +9,33 @@ import type { useHomeDriverActivity } from '@/hooks/home/useHomeDriverActivity';
 import type { useHomeSheet } from '@/hooks/home/useHomeSheet';
 import type { useHomeTripSelection } from '@/hooks/home/useHomeTripSelection';
 import { HomeDriverStatus } from './HomeDriverStatus';
+import { inboxAttentionCount } from '@/features/notifications/inboxSections';
 
 type Props =
   Pick<ReturnType<typeof useHomeContext>, 'insets' | 'router'>
   & Pick<ReturnType<typeof useHomeSheet>, 'profileInitial' | 'unreadNotifications'>
   & Pick<ReturnType<typeof useHomeDriverActivity>, 'ongoingDriverTrip'>
   & Pick<ReturnType<typeof useHomeTripSelection>, 'ongoingBookedTrip'>
-  & { ongoingBookingId?: string | null; isDriver?: boolean; isScreenActive?: boolean; showOngoingShortcut?: boolean };
+  & { unreadMessages?: number; ongoingBookingId?: string | null; isDriver?: boolean; isScreenActive?: boolean; showOngoingShortcut?: boolean; discoveryLabel?: string; onDiscover?: () => void; hasRequestPickup?: boolean };
 
 export const HomeHeader = React.memo(function HomeHeader({
   insets, router, profileInitial, ongoingDriverTrip, ongoingBookedTrip, unreadNotifications,
   ongoingBookingId, isDriver = false, isScreenActive = true, showOngoingShortcut = true,
+  discoveryLabel, onDiscover, unreadMessages = 0, hasRequestPickup = false,
 }: Props) {
   const { fontScale } = useWindowDimensions();
   const ongoing = Boolean(ongoingDriverTrip || ongoingBookedTrip);
+  const inboxCount = inboxAttentionCount(unreadNotifications, unreadMessages);
   // Same destinations as the global ongoing-trip banner.
   const ongoingRoute = ongoingDriverTrip?.id ? `/trip/navigate/${ongoingDriverTrip.id}` as const
     : ongoingBookedTrip && ongoingBookingId ? `/booking/navigate/${ongoingBookingId}` as const : null;
   const notifications = (
     <TouchableOpacity activeOpacity={0.8} style={styles.notificationButton} accessibilityRole="button"
-      accessibilityLabel={`Notifications${unreadNotifications ? ', ' + unreadNotifications + ' non lues' : ''}`}
+      accessibilityLabel={`Notifications et messages, ${unreadNotifications} notifications non lues, ${unreadMessages} messages non lus`}
       onPress={() => router.push('/notifications')}>
       <Ionicons name="notifications-outline" size={24} color={HOME_DASHBOARD_COLORS.ink} />
-      {unreadNotifications > 0 && <View style={styles.notificationBadge}>
-        <Text maxFontSizeMultiplier={1} style={styles.notificationBadgeText}>{unreadNotifications > 9 ? '9+' : unreadNotifications}</Text>
+      {inboxCount > 0 && <View style={styles.notificationBadge}>
+        <Text maxFontSizeMultiplier={1} style={styles.notificationBadgeText}>{inboxCount > 9 ? '9+' : inboxCount}</Text>
       </View>}
     </TouchableOpacity>
   );
@@ -44,7 +47,7 @@ export const HomeHeader = React.memo(function HomeHeader({
   );
   return (
     <View style={[styles.topOverlay, { top: insets.top + Spacing.lg }]} pointerEvents="box-none">
-      {isDriver && !ongoing ? (
+      {isDriver && !ongoing && !hasRequestPickup ? (
         <View style={[styles.mapHeader, fontScale > 1.3 && styles.largeMapHeader]} pointerEvents="box-none">
           <View style={[styles.driverStatusSlot, fontScale > 1.3 && styles.largeDriverStatusSlot]} pointerEvents="box-none">
             <HomeDriverStatus active={isScreenActive} onPress={() => router.push('/driver-availability')} />
@@ -52,7 +55,13 @@ export const HomeHeader = React.memo(function HomeHeader({
           <View style={styles.headerActions} pointerEvents="box-none">{notifications}{profile}</View>
         </View>
       ) : (
-        <View style={styles.mapHeader} pointerEvents="box-none">{notifications}{profile}</View>
+        <View style={[styles.mapHeader, fontScale > 1.3 && styles.largeMapHeader]} pointerEvents="box-none">
+          {!ongoing && !hasRequestPickup && <TouchableOpacity style={styles.passengerPosition} accessibilityRole="button" accessibilityLabel="Voir les départs près de vous" onPress={onDiscover}>
+            <View style={[styles.driverStatusDot, styles.driverStatusWarn]} />
+            <View style={styles.driverStatusCopy}><Text style={styles.driverStatusDetail}>Autour de vous</Text><Text style={styles.driverStatusTitle}>{discoveryLabel || 'Explorer les départs'}</Text></View>
+          </TouchableOpacity>}
+          <View style={styles.headerActions}>{notifications}{profile}</View>
+        </View>
       )}
       {ongoing && showOngoingShortcut ? (ongoingRoute ? (
         <TouchableOpacity activeOpacity={0.8} accessibilityRole="button" style={styles.activeTripPill}

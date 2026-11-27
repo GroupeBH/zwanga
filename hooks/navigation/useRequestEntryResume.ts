@@ -5,11 +5,12 @@ import { isResumableOfferRequest, latestDriverOffer } from '@/features/navigatio
 import type { AccountActivity } from '@/store/api/accountActivityApi';
 import type { RideAlert } from '@/features/notifications/rideAlert';
 import { isRideResumeEntryTransition } from '@/features/navigation/activeRideResume';
-import { canResumeRequestFromPath, isOwnWaitingRequest, selectRequestAlert, selectWaitingRequest } from '@/features/navigation/priorityRequestEntry';
+import { canResumeRequestFromPath, selectRequestAlert, selectWaitingRequest } from '@/features/navigation/priorityRequestEntry';
 import { isRequestUnassigned, isTripRequestWithinAcceptanceWindow } from '@/features/trip-request/requestExpiration';
 import { getTokenSessionVersion } from '@/services/tokenSession';
 import { ownsTrip } from '@/features/activity/tripParticipation';
 import { acceptedRequestEntryKey, canResumeAcceptedRequest, isAcceptedRequestTrip, selectAcceptedRequestTrip } from '@/features/navigation/acceptedRequestEntry';
+import { isLiveRequestTrip, verifyOwnRequestEntry } from '@/features/navigation/ownRequestEntry';
 import type { ReconciledActivity } from '@/services/activityReadiness';
 import { isEntryActivityListReady } from '@/features/navigation/entryActivityReadiness';
 import { isEntryReadFresh } from '@/features/navigation/entryFreshness';
@@ -19,8 +20,12 @@ import { canAutoOpenBookingFromPath, isPendingBookingEntryListed, selectBookingE
 interface Options {
   userId?: string; active: boolean; online: boolean; ready: boolean; path: string; overlayBusy: boolean;
   since?: number;
-  /** Passive history stays on Home; only incoming orders/bookings interrupt entry. */
+  /** Controls driver course/offer history; also the default for own-order entry. */
   resumePreviousRequests?: boolean;
+  /** Resume the author's waiting order independently of their driver history. */
+  resumeOwnRequests?: boolean;
+  /** Restore assigned courses and accepted prices, not unanswered price proposals. */
+  resumeAcceptedRequests?: boolean;
   ridePending: boolean; hasOngoingRide: boolean; driver: boolean; profileReady: boolean;
   requests: { data?: TripRequest[]; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number };
   trips: { data?: Trip[]; isSuccess: boolean; isFetching?: boolean; fulfilledTimeStamp?: number };
@@ -112,15 +117,18 @@ export function useRequestEntryResume(options: Options) {
     // Once this entry has settled, later normal activity must not hijack Home.
     if (!booking && !alert && !dispatchId && !entry.checked && driverTrips === undefined) return;
     const resumePrevious = options.resumePreviousRequests !== false;
-    const accepted = resumePrevious && !booking && !alert && !dispatchId && options.driver && !entry.checked
+    const resumeOwn = options.resumeOwnRequests ?? resumePrevious;
+    const resumeAccepted = options.resumeAcceptedRequests ?? resumePrevious;
+    const accepted = resumeAccepted && !booking && !alert && !dispatchId && options.driver &&
+      (!entry.checked || options.resumeAcceptedRequests === true)
       ? selectAcceptedRequestTrip(driverTrips ?? [], userId, entry.rejected) : undefined;
     const requestsReady = isEntryActivityListReady('requests', options.requests, {
       userId, since: entry.since, summary, summaryTime: options.activity.fulfilledTimeStamp, reconciled: options.reconciled,
     });
-    if (resumePrevious && !booking && !accepted && !alert && !dispatchId && !requestsReady) return;
-    const request = resumePrevious && !booking && !accepted && !alert && !dispatchId && summary?.requests?.count !== 0
+    if (resumeOwn && !booking && !accepted && !alert && !dispatchId && !requestsReady) return;
+    const request = resumeOwn && !booking && !accepted && !alert && !dispatchId && summary?.requests?.count !== 0
       ? selectWaitingRequest(options.requests.data ?? [], userId, entry.rejected) : undefined;
-    const offerFallback = resumePrevious && !booking && !accepted && !alert && !dispatchId && !request &&
+    const offerFallback = (resumePrevious || resumeAccepted) && !booking && !accepted && !alert && !dispatchId && !request &&
       options.driver && !entry.checked && options.readOffers && !entry.rejected.has('driver-offers');
     if (!booking && !accepted && !alert && !dispatchId && !request && !offerFallback) {
       // A native alert can finish restoring after the account summary. Keep listening
@@ -183,7 +191,7 @@ export function useRequestEntryResume(options: Options) {
           if (!liveTrips) { entry.attempt = ''; return; }
           const listed = liveTrips.find(item => item.id === trip.id);
           if (listed && isAcceptedRequestTrip(listed, userId) && listed.tripRequestId === trip.tripRequestId &&
-            canResumeAcceptedRequest(detail, trip, userId, liveTrips)) destination = `/request-details/${detail.id}`;
+            canResumeAcceptedRequest(detail, trip, userId)) destination = `/request-details/${detail.id}`;
         }
       } else if (dispatchId) {
         const offer = await options.readDispatch(dispatchId, controller.signal);
@@ -192,16 +200,21 @@ export function useRequestEntryResume(options: Options) {
       } else if (offerFallback) {
         const offers = await options.readOffers!(controller.signal);
         if (!current()) { releaseAttempt(); return; }
-        const offer = latestDriverOffer(offers, userId);
+        const offer = latestDriverOffer(resumePrevious ? offers : offers.filter(item => item.status === 'accepted'), userId);
         if (offer) {
           const detail = await options.readRequest(offer.tripRequestId, controller.signal);
-          if (isResumableOfferRequest(detail, offer, userId)) destination = `/request-details/${detail.id}`;
+          if (!current()) { releaseAttempt(); return; }
+          if (isResumableOfferRequest(detail, offer, userId) && (!detail.tripId ||
+            isLiveRequestTrip(detail, await options.readTrip(detail.tripId, controller.signal)))) destination = `/request-details/${detail.id}`;
         }
       } else {
         const detail = await options.readRequest(alert?.id ?? request!.id, controller.signal);
         if (detail.id === (alert?.id ?? request!.id) && (alert
           ? detail.passengerId !== userId && !detail.immediateDispatch && isRequestUnassigned(detail) && isTripRequestWithinAcceptanceWindow(detail)
-          : isOwnWaitingRequest(detail, userId))) destination = `/request-details/${detail.id}`;
+          : await verifyOwnRequestEntry(detail, userId, id => {
+            if (!current()) throw new Error('STALE_REQUEST_ENTRY');
+            entry.stage = 'trip-detail'; return options.readTrip(id, controller.signal);
+          }))) destination = `/request-details/${detail.id}`;
       }
       if (!current()) { releaseAttempt(); return; }
       // Recheck at the handoff, not on settled Home. Validate all reservation

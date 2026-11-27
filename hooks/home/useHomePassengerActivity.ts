@@ -211,6 +211,8 @@ export function useHomePassengerActivity({ isFocused, currentUser, isDriver, tra
     passengerAnnouncementReady: bookingsReady && requestsReady,
     driverRequestsAnnouncementReady: !isDriver || (availableReady && !availableFetching),
     recentDestinations,
+    myTripRequests,
+    myBookings,
     activeBookings,
     completedBookingTripIds,
     bookedTripIds,

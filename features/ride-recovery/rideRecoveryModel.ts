@@ -5,6 +5,9 @@ export interface RideSnapshot {
   bookingId: string;
   tripId: string;
   actor: 'driver' | 'passenger';
+  /** Absent on older servers. Request-origin trips reserve manual confirmation to the driver. */
+  confirmationMode?: 'driver_only' | 'shared';
+  arrivalAssistance?: { id: string; expiresAt: string; canAccept: boolean };
   pickup: { status: RideStageStatus; driver?: RideDecision; passenger?: RideDecision };
   dropoff: { status: RideStageStatus; driver?: RideDecision; passenger?: RideDecision };
 }
@@ -16,6 +19,7 @@ export interface RideDeclaration {
   stage: RideStage;
   decision: RideDecision;
   occurredAt: string;
+  arrivalPromptId?: string;
   latitude?: number;
   longitude?: number;
   accuracy?: number;
@@ -35,6 +39,8 @@ export function rideRetry(error: unknown, attempts: number, now: number) {
   if (status === 401) return { state: 'queued' as const, nextAttemptAt: now + 60_000, message: 'Reconnectez-vous à votre compte pour transmettre votre confirmation.' };
   if (data?.code === 'RIDE_ACCOUNT_CHANGED') return { state: 'queued' as const, nextAttemptAt: now + 60_000, message: 'Reconnectez-vous au compte utilisé pour cette confirmation.' };
   const preciseMessages: Record<string, string> = {
+    RIDE_DRIVER_CONFIRMATION_REQUIRED: 'Seul le conducteur peut confirmer cette étape pour votre demande de trajet. La détection automatique reste active.',
+    RIDE_ARRIVAL_PROMPT_UNAVAILABLE: 'Cette proposition de dépose n’est plus disponible. Actualisez le trajet ; le conducteur peut confirmer la dépose réelle.',
     RIDE_DECLARATION_REQUIRED: 'Actualisez le trajet et utilisez son bouton de confirmation. Chacun doit valider de son côté.',
     RIDE_EVENT_TIME: 'La date de cette confirmation ne peut pas être validée. Vérifiez l’heure du téléphone puis contactez l’assistance.',
     RIDE_STATE_CHANGED: 'Le trajet a changé depuis votre action. Actualisez son détail ou contactez l’assistance.',

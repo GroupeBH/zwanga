@@ -59,7 +59,7 @@ test('Android system back and direct-link conversations use the same guarded exi
   assert.equal([...app.backListeners][0](), true);
   app.render();
   t.mock.timers.tick(0); t.mock.timers.tick(40);
-  assert.deepEqual(app.routes, ['/(tabs)/messages']);
+  assert.deepEqual(app.routes, ['/notifications?section=messages']);
   app.hooks.unmount();
 });
 

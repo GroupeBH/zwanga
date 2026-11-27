@@ -105,6 +105,7 @@ export type ServerTrip = {
   completedAt?: string | null;
   driverSafetyEmergencyContactIds?: string[];
   tripRequestId?: string | null;
+  isPrivate?: boolean;
   recurringTemplateId?: string | null;
   recurringOccurrenceDate?: string | null;
   isFeatured?: boolean;

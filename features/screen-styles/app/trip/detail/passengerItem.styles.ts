@@ -2,12 +2,15 @@ import { BorderRadius, Colors, FontSizes, FontWeights, Spacing } from "@/constan
 import { StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
+  // Les lignes étaient gray[50] dans une carte gray[50] : elles ne se distinguaient pas.
   passengerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.gray[50],
+    backgroundColor: Colors.white,
     padding: Spacing.md,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.gray[100],
   },
   passengerAvatar: {
     width: 44,

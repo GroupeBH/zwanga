@@ -11,7 +11,7 @@ const { loader } = require('../tests/helpers/loadTypeScript.cjs');
 const { chromium } = require('./preview-arrival-payment.cjs');
 const h = React.createElement, noop = () => {};
 
-function renderFixture({ width, scale = 1, prompt = false, busy = false, multi = false, report = false, error = false, passenger = false, empty = false }) {
+function renderFixture({ width, scale = 1, prompt = false, busy = false, multi = false, report = false, error = false, passenger = false, empty = false, published = false }) {
   const native = { ...web, Platform: { OS: 'android', select: o => o.android ?? o.default },
     StyleSheet: { ...web.StyleSheet, create: values => web.StyleSheet.create(Object.fromEntries(Object.entries(values).map(([key, value]) => [key, {
       ...value, ...(value.fontSize ? { fontSize: value.fontSize * scale } : {}), ...(value.lineHeight ? { lineHeight: value.lineHeight * scale } : {}),
@@ -34,14 +34,13 @@ function renderFixture({ width, scale = 1, prompt = false, busy = false, multi =
     '../../hooks/rating/useRatingData': { useRatingData: () => data },
     '../../hooks/rating/useRatingActions': { useRatingActions: () => ({ getRatingText: () => 'Très bien', toggleTag: noop, handleSubmitRating: noop }) },
     '../../hooks/rating/useRatingReport': { useRatingReport: () => ({ handleSubmitReport: noop }) },
-    '@/hooks/driver-navigation/usePaidRequestCompletion': { usePaidRequestCompletion: () => ({ visible: true, busy,
-      error: error ? 'La connexion est indisponible. Réessayez pour confirmer la fin du trajet.' : undefined, confirm: noop, dismiss: noop }) },
   });
   const Component = prompt ? load('features/driver-navigation/DriverPaidRequestCompletionPrompt.tsx').DriverPaidRequestCompletionPrompt
     : load('app/rate/[id].tsx').default;
-  const markup = renderToStaticMarkup(h(Component, prompt ? { model: { session: { foundation: {
-    data: { insets: { top: 24, bottom: 24 } }, refs: {}, mapState: {},
-  }, completion: {} } }, blocked: false } : {}));
+  const markup = renderToStaticMarkup(h(Component, prompt ? { insets: { top: 24, bottom: 24, left: 0, right: 0 },
+    prompt: { visible: true, busy, autoComplete: !published, available: !busy, reopen: noop,
+      error: error ? 'La connexion est indisponible. Réessayez pour confirmer la fin du trajet.' : undefined, confirm: noop, dismiss: noop },
+  } : {}));
   return `<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <style>${web.StyleSheet.getSheet().textContent}html,body{height:100%;margin:0;background:#e8eef0}
   #root{display:flex;flex-direction:column;width:${width}px;height:calc(100% - 48px);padding-top:24px}</style>
@@ -75,6 +74,8 @@ async function preview() {
     { name: 'completion-busy', prompt: true, busy: true, width: 390, height: 844 },
     { name: 'completion-large-text', prompt: true, error: true, width: 320, height: 568, scale: 1.5 },
     { name: 'completion-landscape', prompt: true, width: 844, height: 390 },
+    { name: 'published-completion', prompt: true, published: true, width: 390, height: 844 },
+    { name: 'published-completion-large-text', prompt: true, published: true, width: 320, height: 568, scale: 2 },
     { name: 'rating', width: 390, height: 844 },
     { name: 'rating-initial', width: 390, height: 844, empty: true },
     { name: 'rating-driver', width: 390, height: 844, passenger: true },

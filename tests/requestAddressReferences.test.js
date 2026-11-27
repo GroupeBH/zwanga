@@ -12,6 +12,7 @@ const load = loader({
   '@expo/vector-icons': { Ionicons: 'Icon' },
   '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeIn: {} },
   'react-native-maps': { __esModule: true, default: 'Map', Marker: 'Marker', Polyline: 'Line', PROVIDER_GOOGLE: 'google' },
+  '@/components/maps/RoutePointMarker': { RoutePointMarker: 'Marker' },
   '@/assets/images/map-markers/trip-detail-marker-departure.png': 1,
   '@/assets/images/map-markers/trip-detail-marker-arrival.png': 2,
 });

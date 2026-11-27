@@ -10,7 +10,7 @@ import { Colors } from '@/constants/styles';
 
 /** Optional store prompt: uses the existing JS overlay, never stacks UIKit modals. */
 export function AppUpdatePrompt({ enabled = true }: { enabled?: boolean }) {
-  const { release, active } = useAppUpdate();
+  const { release, active } = useAppUpdate(enabled);
   const [hiddenKey, setHiddenKey] = useState<string | null>(null);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);

@@ -34,6 +34,7 @@ export function useRouteStopLabel(location: RouteLocationSource | null | undefin
     const title = loading ? 'Recherche de l’adresse…' : 'Nom du lieu indisponible';
     return {
       ...stored,
+      isResolving: loading,
       title,
       address: title,
       context: loading ? '' : args === skipToken ? 'Aucune adresse renseignée.' : 'La position du lieu est conservée.',

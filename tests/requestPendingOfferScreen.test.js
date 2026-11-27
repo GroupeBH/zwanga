@@ -21,6 +21,7 @@ test('request screen keeps withdrawal outside sharing and acceptance gates', () 
     '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '@/features/request-detail/SharedTripPanel': { SharedTripPanel: 'Shared' },
     '@/features/request-detail/RequestSearchScreen': { RequestSearchScreen: 'Search' },
+    '@/features/request-detail/RequestConfirmedScreen': { RequestConfirmedScreen: 'ConfirmedScreen' },
     '@/store/api/sharedTripApi': { useSharedTripContextQuery: () => ({ currentData: { hasOngoingTrip: state.sharing } }) },
     '@/hooks/useDisplayReads': { useDisplayReadsEnabled: () => true, displayReadOptions: () => ({}) },
     '@/services/rideAlertSession': { acknowledgeRideAlerts() {} },

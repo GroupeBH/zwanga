@@ -5,14 +5,16 @@ const jsQR = require('jsqr');
 const { loader } = require('./helpers/loadTypeScript.cjs');
 const { driverQrLink, normalizeDriverQrLink } = loader()('features/driver-qr/driverQrModel.ts');
 const id = '11111111-1111-4111-8111-111111111111';
-const base = 'https://api.example.test/api/v1';
-const link = `${base}/public/drivers/${id}/card`;
+const base = 'https://web.example.test';
+const link = `${base}/conducteurs/${id}`;
 
 test('a driver has one stable public QR across refreshes, without account or credit data', () => {
   assert.equal(driverQrLink(base, id), link);
   assert.equal(driverQrLink(base + '/', id.toUpperCase()), link);
   assert.notEqual(driverQrLink(base, '22222222-2222-4222-8222-222222222222'), link);
   assert.equal(normalizeDriverQrLink(link), link);
+  const legacy = `https://api.example.test/api/v1/public/drivers/${id}/card`;
+  assert.equal(normalizeDriverQrLink(legacy), legacy);
   for (const invalid of ['not-an-id', '../wallet', '11111111-1111-1111-1111-111111111111', ''])
     assert.equal(driverQrLink(base, invalid), null);
 });
@@ -21,7 +23,7 @@ test('sharing rejects secrets, unsafe schemes and local URLs; development previe
   for (const invalid of ['javascript:alert(1)', 'http://api.example.test/api/v1', 'https://u:p@example.test/api/v1',
     base + '?token=secret', base + '#secret', 'http://10.0.2.2:5200/api/v1'])
     assert.equal(driverQrLink(invalid, id), null);
-  for (const invalid of [link + '?token=secret', link + '#extra', link.replace('/card', '/private'),
+  for (const invalid of [link + '?token=secret', link + '#extra', link.replace('/conducteurs/', '/private/'),
     'https://example.test/referral/abc', 'https://user:secret@api.example.test/api/v1/public/drivers/' + id + '/card'])
     assert.equal(normalizeDriverQrLink(invalid), null);
   assert.ok(driverQrLink('http://10.0.2.2:5200/api/v1', id, true));

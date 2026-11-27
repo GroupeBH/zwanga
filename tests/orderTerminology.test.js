@@ -26,8 +26,8 @@ test('inbox rendering translates old text without mutating the notification open
   const notification = { id: 'test', title: 'Demande acceptée', body: 'Consultez votre demande.',
     isRead: false, createdAt: new Date().toISOString(), data: { type: 'trip_request_accepted', tripRequestId: 'order' } };
   const snapshot = JSON.stringify(notification);
-  let pressed;
-  const tree = NotificationListItem({ notification, onDelete() {}, onPress: item => { pressed = item; } });
+  let pressed, deleted;
+  const tree = NotificationListItem({ notification, onDelete: id => { deleted = id; }, onPress: item => { pressed = item; } });
   const strings = [];
   const visit = value => {
     if (typeof value === 'string') strings.push(value);
@@ -37,10 +37,14 @@ test('inbox rendering translates old text without mutating the notification open
   visit(tree);
   assert.ok(strings.includes('Commande acceptée'));
   assert.ok(strings.includes('Consultez votre commande.'));
-  tree.props.onPress();
+  tree.props.children[0].props.onPress();
   assert.equal(pressed, notification);
+  assert.equal(deleted, undefined);
+  pressed = null;
+  tree.props.children[1].props.onPress({ stopPropagation() {} });
+  assert.equal(deleted, notification.id); assert.equal(pressed, null);
   assert.equal(JSON.stringify(notification), snapshot);
-  const detail = fs.readFileSync('app/notifications.tsx', 'utf8');
+  const detail = fs.readFileSync('features/notifications/NotificationActivity.tsx', 'utf8');
   assert.match(detail, /orderNotificationText\(selectedNotification\?\.title/);
   assert.match(detail, /orderNotificationText\(selectedNotification\?\.body/);
 });

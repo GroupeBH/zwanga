@@ -25,7 +25,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFE9DE',
     ...CommonStyles.shadowSm,
   },
   userAvatarText: {
@@ -77,6 +77,7 @@ export const styles = StyleSheet.create({
   driverStatusWarn: { backgroundColor: HOME_DASHBOARD_COLORS.orange },
   driverStatusOff: { backgroundColor: HOME_DASHBOARD_COLORS.muted },
   driverStatusCopy: { flexShrink: 1, minWidth: 0 },
+  passengerPosition: { flex: 1, minHeight: 48, marginRight: 8, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 28, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', gap: 8, ...CommonStyles.shadowSm },
   driverStatusTitle: { color: HOME_DASHBOARD_COLORS.ink, fontSize: 13, lineHeight: 17, fontWeight: FontWeights.bold },
   driverStatusTitleOk: { color: HOME_DASHBOARD_COLORS.greenInk },
   driverStatusDetail: { color: HOME_DASHBOARD_COLORS.muted, fontSize: 11, lineHeight: 15 },

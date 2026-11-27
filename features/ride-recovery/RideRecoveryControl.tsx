@@ -29,6 +29,7 @@ const ACTION_ORANGE = '#D1430F';
 export interface RecoveryFix { latitude: number; longitude: number; recordedAt: number; accuracy?: number }
 interface Props {
   tripId: string;
+  tripRequestId?: string | null;
   booking?: Booking;
   bookings?: Booking[];
   actor: 'driver' | 'passenger';
@@ -48,7 +49,7 @@ interface Props {
   destination?: { latitude: number; longitude: number } | null;
 }
 
-export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, booking, bookings = EMPTY_BOOKINGS, actor, compact, condensed, driverNavigation, mapCompact, hideWhenCruising, secondaryActions, driverOverviewOnly, preferredBookingId, preferredStage, fix, destination }: Props) {
+export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, tripRequestId, booking, bookings = EMPTY_BOOKINGS, actor, compact, condensed, driverNavigation, mapCompact, hideWhenCruising, secondaryActions, driverOverviewOnly, preferredBookingId, preferredStage, fix, destination }: Props) {
   const active = useScreenIsActive();
   const feedback = useRideActionFeedback();
   const online = useAppSelector(state => state.zwangaApi.config.online);
@@ -64,6 +65,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const savingRef = useRef(false);
   const savedStageRef = useRef<string | null>(null);
   const mounted = useRef(true);
+  const shownArrivalPrompt = useRef<string | null>(null);
   const lifecycle = useMemo(() => ({ active, actor, tripId, userId }), [active, actor, tripId, userId]);
   const latestLifecycle = useRef(lifecycle);
   latestLifecycle.current = lifecycle;
@@ -77,8 +79,16 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
     { skip: !active || !tripId || !online || (actor === 'passenger' && relevant.length === 0), pollingInterval: active ? 30_000 : 0, skipPollingIfUnfocused: true, refetchOnFocus: true, refetchOnReconnect: true },
   );
   const bookingRows = useMemo(() => relevant.map(item => ({
-    item, stages: rideBookingStages(item, snapshots.find(value => value.bookingId === item.id), entries, actor),
-  })), [actor, entries, relevant, snapshots]);
+    item, stages: rideBookingStages(item, snapshots.find(value => value.bookingId === item.id), entries, actor, tripRequestId, online),
+  })), [actor, entries, relevant, snapshots, tripRequestId, online]);
+  const driverOnly = bookingRows.some(row => row.stages.some(stage => stage.driverOnly));
+  const arrivalPrompt = bookingRows.flatMap(row => row.stages).find(stage => stage.arrivalPromptId && !stage.unavailable);
+  useEffect(() => {
+    if (active && actor === 'passenger' && arrivalPrompt?.arrivalPromptId && shownArrivalPrompt.current !== arrivalPrompt.arrivalPromptId) {
+      shownArrivalPrompt.current = arrivalPrompt.arrivalPromptId;
+      setVisible(true); // Proposal only: never enqueue consent automatically.
+    }
+  }, [active, actor, arrivalPrompt?.arrivalPromptId]);
   const rowsRef = useRef(bookingRows);
   rowsRef.current = bookingRows;
   const selected = choice ? relevant.find(item => item.id === choice.bookingId) : relevant.find(item => item.id === selectedId) ?? relevant[0];
@@ -116,7 +126,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       passengerName: row?.item.passengerName, numberOfSeats: row?.item.numberOfSeats };
     try {
       const freshFix = fix && Date.now() - fix.recordedAt <= 30_000 && Date.now() >= fix.recordedAt && (fix.accuracy ?? 0) <= 100 ? fix : null;
-      const receipt = await rideOutbox.enqueue({ ...requested, tripId, ...(freshFix ? {
+      const receipt = await rideOutbox.enqueue({ ...requested, tripId, ...(stage.arrivalPromptId ? { arrivalPromptId: stage.arrivalPromptId } : {}), ...(freshFix ? {
         latitude: freshFix.latitude, longitude: freshFix.longitude, accuracy: freshFix.accuracy,
       } : {}) });
       if (mounted.current && latestLifecycle.current === lifecycle) {
@@ -148,7 +158,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
   const saved = Boolean(directKey && savedStageKey === directKey);
   const pendingStage = directRow?.stages.find(stage => stage.status !== 'confirmed' && stage.entry?.state !== 'confirmed' &&
     (stage.entry || stage.own === 'confirm'));
-  const inlineStage = overview ? undefined : pendingStage ?? directStage;
+  const inlineStage = overview ? undefined : pendingStage ?? directStage ?? directRow?.stages.find(stage => stage.readOnly && stage.status !== 'confirmed');
   const entryLabel = overview ? 'Mes passagers' : !directStage && actor === 'driver'
     ? bookingRows.length > 1 ? 'Mes passagers' : driverNavigation ? 'Voir la réponse du passager' : 'Voir les confirmations'
     : trigger.label;
@@ -169,7 +179,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
         ? `${saving || saved ? actionLabel : `${directStage.question} ${actionLabel}`}${actor === 'driver' ? ` : ${directRow?.item.passengerName || 'Passager'}` : ''}`
         : actor === 'driver' ? entryLabel : trigger.accessibilityLabel}
       accessibilityState={{ disabled: !active || saving || saved, busy: saving || pendingStage?.entry?.state === 'sending' }}
-      accessibilityHint={directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}. L’autre personne confirme de son côté.` : 'Consulte les confirmations du trajet.'}>
+      accessibilityHint={directStage?.arrivalPromptId ? 'Confirme votre dépose réelle, termine votre course et ouvre le paiement après validation du serveur.' : directStage ? `Enregistre votre validation pour toutes les places de cette réservation${actor === 'driver' ? `, ${directRow?.item.passengerName || 'Passager'}` : ''}.${directStage.driverOnly ? ' Votre confirmation suffit ; la détection automatique reste active.' : ' L’autre personne confirme de son côté.'}` : 'Consulte les confirmations du trajet.'}>
       {saving ? <ActivityIndicator color={directStage ? Colors.white : Colors.primaryDark} /> : !overview && <Ionicons name={directStage ? directStage.stage === 'pickup' ? 'car-outline' : 'flag-outline' : trigger.icon} size={20} color={directStage ? Colors.white : Colors.primaryDark} />}
       <Text style={[styles.triggerLabel, Boolean(directStage) && styles.primaryLabel]}>{actionLabel}</Text>
       {!overview && !compact && !directStage && <Ionicons name="chevron-forward" size={18} color={Colors.gray[600]} />}
@@ -178,7 +188,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
     {!cruising && <>
     {directStage && !smallMap && <Text testID="ride-action-question" style={[styles.actionQuestion, compact && styles.compactQuestion]}>{directStage.question}</Text>}
     {!overview && triggerButton}
-    {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{pendingStage || inlineStage.status === 'awaiting_other'
+    {inlineStage ? <Text style={styles.hint} accessibilityLiveRegion="polite">{inlineStage.arrivalPromptId || inlineStage.readOnly || pendingStage || inlineStage.status === 'awaiting_other'
       ? rideStageMessage(inlineStage, actor)
       : saved ? 'Enregistré sur ce téléphone. Envoi dès que la connexion le permet.'
       : smallMap ? 'À confirmer uniquement à l’arrêt.'
@@ -189,7 +199,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
       : condensed && actor === 'passenger' ? directStage?.stage === 'dropoff'
         ? 'À destination, confirmez pour passer au paiement.'
         : 'Appuyez une fois dans le véhicule.'
-      : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). Le passager confirme de son côté.`
+      : actor === 'driver' ? `Pour ${directRow?.item.passengerName || 'ce passager'} · ${directRow?.item.numberOfSeats} place(s). ${driverOnly ? 'Votre confirmation suffit ; la détection automatique reste active.' : 'Le passager confirme de son côté.'}`
       : directStage?.stage === 'dropoff' ? 'Appuyez une fois à destination. Le conducteur confirme aussi votre arrivée à destination ; la détection automatique reste active.'
       : 'Appuyez une fois dans le véhicule. Le conducteur confirme aussi de son côté ; la détection automatique reste active.'}</Text>
       : !compact && !overview && highlighted && <Text style={styles.hint}>{!online ? 'Connexion indisponible : vos confirmations peuvent être enregistrées sur ce téléphone.' : hasPending ? 'Une confirmation du trajet est en attente.' : 'La validation tarde ? Vérifiez les confirmations du trajet.'}</Text>}
@@ -220,7 +230,7 @@ export const RideRecoveryControl = memo(function RideRecoveryControl({ tripId, b
             initialNumToRender={6} maxToRenderPerBatch={6} windowSize={3} removeClippedSubviews={false}
             contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
             ListHeaderComponent={<>
-            <Text style={styles.explanation}>Chaque personne confirme de son côté. Un appui suffit pour toutes les places de la réservation.</Text>
+            <Text style={styles.explanation}>{arrivalPrompt ? 'Votre accord suffit pour valider cette dépose près de la destination. Ne confirmez pas si vous êtes encore en route.' : driverOnly ? 'Le conducteur confirme l’embarquement et l’arrivée. La détection automatique reste active.' : 'Chaque personne confirme de son côté. Un appui suffit pour toutes les places de la réservation.'}</Text>
             {isError && <Text style={styles.notice}>Le serveur n’est pas joignable pour le moment. Les informations ci-dessous peuvent ne pas être à jour.</Text>}
             {relevant.length === 0 && <Text style={styles.explanation}>Aucune réservation à confirmer pour ce trajet.</Text>}
             </>}

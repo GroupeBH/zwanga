@@ -40,9 +40,15 @@ function environment(extra = {}) {
     'react-native': {
       StyleSheet: { create: x => x, hairlineWidth: 1 }, View: 'View', Text: 'Text',
       Image: 'Image', TouchableOpacity: 'Button', Pressable: 'Button', ActivityIndicator: 'Spinner', Modal: 'Modal',
+      KeyboardAvoidingView: 'KeyboardView', ScrollView: 'Scroll', TextInput: 'Input', Platform: { OS: 'android' },
+      useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
     },
     '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-maps': { __esModule: true, default: 'Map', Marker: 'Marker', Callout: 'Callout', Polyline: 'Polyline' },
+    '@/components/maps/RoutePointMarker': { RoutePointMarker: 'Marker' },
+    '@/hooks/navigation/useNavigationMapLifecycle': { useNavigationMapLifecycle: () => ({
+      shouldRenderMap: true, isMapReady: false, mapLayoutRef: { current: null }, runMapCommand: () => false,
+    }) },
     '@/utils/reanimated': { __esModule: true, default: { View: 'AnimatedView' }, FadeInDown: animation, LinearTransition: animation },
     '@/utils/dateHelpers': { formatDateTime: value => value, formatDateWithRelativeLabel: value => value },
     '../screen-styles/app/trip/detail/index': { styles: {} },
@@ -52,6 +58,9 @@ function environment(extra = {}) {
     './CollapsibleRouteMap': { CollapsibleRouteMap: 'RouteMap' },
     './RequestPassengerContact': { RequestPassengerContact: 'RequestContact' },
     '@/components/trip/RouteLocationDetails': { RouteLocationDetails: 'RouteDetails' },
+    '@/features/ride-design/RideRouteTimeline': { RideRouteTimeline: 'RouteTimeline' },
+    '@/components/forms/FormLayout': { FormModal: 'FormModal' },
+    './BookingPaymentChoices': { BookingPaymentChoices: 'PaymentChoices' },
     ...extra,
   });
   return { hooks, load };
@@ -163,11 +172,12 @@ test('light route blocks retain their dark titles and full available width', () 
   assert.equal(flattenStyle(tree.props.style).paddingRight, 0);
 });
 
-test('trip summary renders the shared readable route block', () => {
+test('driver trip summary renders the shared readable route block through its owner view', () => {
   const env = environment();
   const { TripSummary } = env.load('features/trip-detail/TripSummary.tsx');
-  const tree = TripSummary({ trip, routeLabels: labels, config: {}, tripDepartureName: labels.departure.title,
+  const summary = TripSummary({ trip, routeLabels: labels, config: {}, isTripDriver: true, tripDepartureName: labels.departure.title,
     tripArrivalName: labels.arrival.title, driverReviewAverage: 4 });
+  const tree = summary.type(summary.props);
   const block = nodes(tree).find(node => node.type === 'RouteDetails');
   assert.strictEqual(block.props.labels, labels);
 });
@@ -182,8 +192,9 @@ test('the single route block updates after recovering an address without restori
   const render = () => {
     const routeLabels = env.hooks.render(() => useRouteLocationLabels(saved));
     const summary = TripSummary({ trip: saved, routeLabels, config: {}, driverReviewAverage: 4 });
-    const routeBlock = nodes(summary).find(node => node.type === 'RouteDetails');
-    return { routeLabels: routeBlock.props.labels, texts: nodes(summary).filter(node => node.type === 'Text').map(node => node.props.children) };
+    const passengerView = summary.type(summary.props);
+    const routeBlock = nodes(passengerView).find(node => node.type === 'RouteTimeline');
+    return { routeLabels: routeBlock.props.labels, texts: nodes(passengerView).filter(node => node.type === 'Text').map(node => node.props.children) };
   };
   let view = render();
   assert.equal(view.routeLabels.departure.title, 'Botango');
@@ -235,17 +246,17 @@ test('only an open request exposes pre-acceptance discussion; acceptance overlay
   env.hooks.unmount();
 });
 
-test('map preview/fullscreen use readable marker text without changing coordinates or marker tracking', () => {
+test('map preview/fullscreen preserve readable addresses and coordinates on shared compact markers', () => {
   const env = environment();
   const departureCoordinate = { latitude: departure.lat, longitude: departure.lng };
   const arrivalCoordinate = { latitude: arrival.lat, longitude: arrival.lng };
   const mapPresentation = { routeMapCoordinates: [], passengerDestinationMarkers: [] };
   const Preview = env.load('features/trip-detail/TripDetailMapPreview.tsx').TripDetailMapPreview;
   const Fullscreen = env.load('features/trip-detail/TripMapModal.tsx').TripMapModal;
-  const trees = [Preview({ model: { presentation: { routeLabels: labels }, data: { viewportHeight: 700 }, bookingState: {},
+  const trees = [Preview({ model: { presentation: { routeLabels: labels }, data: { viewportHeight: 700 }, bookingState: {}, access: {},
     route: { departureCoordinate, arrivalCoordinate }, mapPresentation } }),
-  Fullscreen({ routeLabels: labels, mapModalVisible: true, insets: { top: 0, bottom: 0 },
-    departureCoordinate, arrivalCoordinate, ...mapPresentation })];
+  env.hooks.render(() => Fullscreen({ routeLabels: labels, mapModalVisible: true, insets: { top: 0, bottom: 0 },
+    departureCoordinate, arrivalCoordinate, ...mapPresentation }))];
   for (const tree of trees) {
     const markers = nodes(tree).filter(node => node.type === 'Marker');
     assert.equal(markers.length, 2);
@@ -253,9 +264,10 @@ test('map preview/fullscreen use readable marker text without changing coordinat
     assert.equal(markers[1].props.description, '3b Av Matadi, Q/Mazamba Domicile, Kinshasa');
     assert.strictEqual(markers[0].props.coordinate, departureCoordinate);
     assert.strictEqual(markers[1].props.coordinate, arrivalCoordinate);
-    assert.equal(markers[0].props.tracksViewChanges, false);
-    assert.equal(markers[1].props.tracksViewChanges, false);
+    assert.equal(markers[0].props.kind, 'departure');
+    assert.equal(markers[1].props.kind, 'arrival');
   }
+  env.hooks.unmount();
 });
 
 test('booking recap cleans display strings without changing passenger inputs or total price', () => {
@@ -271,7 +283,10 @@ test('booking recap cleans display strings without changing passenger inputs or 
   const all = nodes(TripBookingSteps(props));
   assert.ok(all.some(node => node.type === 'Text' && node.props.children === labels.departure.address));
   assert.ok(all.some(node => node.type === 'Text' && node.props.children === labels.arrival.address));
-  assert.ok(all.some(node => node.type === 'Text' && typeof node.props.children === 'string' && node.props.children.replace(/\s/g, '') === '3000FC'));
+  // The total belongs to the modal, not the extracted route/seat fields anymore.
+  const { TripBookingModal } = env.load('features/trip-detail/TripBookingModal.tsx');
+  const modal = env.hooks.render(() => TripBookingModal({ ...props, viewportHeight: 844, bookingModalVisible: true, insets: { bottom: 16 } }));
+  assert.ok(nodes(modal).some(node => node.type === 'Text' && typeof node.props.children === 'string' && node.props.children.replace(/\s/g, '') === '3000FC'));
   assert.equal(JSON.stringify(props), before);
 });
 

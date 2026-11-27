@@ -13,7 +13,7 @@ function controllerFixture() {
   const dispatch = () => {};
   const showDialog = () => {};
   const hookNames = ['useHomeDriverActivity', 'useHomeTripFeed', 'useHomePassengerActivity', 'useHomeTripSelection',
-    'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals', 'useHomeMapMarkers', 'useHomeSupportingData'];
+    'useHomeRequestHighlight', 'useHomeTracking', 'useHomePassengerMarkers', 'useHomeMap', 'useHomeUserLocation', 'useHomeSheet', 'useHomePriorityDismissals', 'useHomeMapMarkers', 'useHomeSupportingData', 'useHomeRequestPickup', 'useHomeAcceptedDriverCourse'];
   const mocks = Object.fromEntries(hookNames.map(name => [`./${name}`, {
     [name]: props => {
       received[name] = props;
@@ -128,12 +128,14 @@ function nodes(element) {
 test('Home readiness requires its real layout, core data and native map initialization', () => {
   const hooks = hookHarness(); let reports = 0;
   const home = { shouldRenderHomeMap: true, homeDataPrepared: false, isScreenActive: false, onHomeLayout() {} };
-  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestModal'];
+  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestPickupSheet', 'HomeAcceptedDriverCourseSheet', 'HomeRequestModal'];
   const { HomeDashboard } = loader({
     react: hooks.react,
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/features/navigation/homePreparationContext': { useReportHomePrepared: () => report },
     '@/hooks/home/useHomeController': { useHomeController: () => home },
+    '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
+    '@/store/hooks': { useAppSelector: () => 3 },
     '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '@/features/home/HomeScreen.styles': { styles: {} },
     'react-native': { View: 'View' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
@@ -154,13 +156,14 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
   const hooks = hookHarness();
   const home = { showInitialHomeLoader: true, shouldRenderHomeMap: true, sheetLoading: true, sheetError: false, isDriver: true, width: 390,
     hasMapPriorities: true, mapPriorityLayout: { top: 100, bottom: 400 }, highlightedDriverRequest: { id: 'nearby' } };
-  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestModal'];
+  const parts = ['HomeHeader', 'HomeLocationButton', 'HomeMap', 'HomeTripsLoadingScreen', 'HomeTripsSheet', 'HomeActivityCards', 'HomeOngoingTripSheet', 'HomeRequestPickupSheet', 'HomeAcceptedDriverCourseSheet', 'HomeRequestModal'];
   const load = loader({
     react: hooks.react,
     '@/features/navigation/homePreparationContext': { useReportHomePrepared: () => null },
     ...Object.fromEntries(parts.map(name => [`@/components/home/${name}`, { [name]: name }])),
     '@/components/AppUpdatePrompt': { AppUpdatePrompt: 'UpdatePrompt' },
     '@/hooks/home/useHomeController': { useHomeController: () => home },
+    '@/store/hooks': { useAppSelector: () => 3 },
     '@/hooks/useMainScreenReady': { useMainScreenReady: () => () => {} },
     '@/features/home/HomeScreen.styles': { styles: {} },
     'react-native': { View: 'View' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeArea' },
@@ -179,6 +182,7 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
     assert.equal(rendered.some(node => node.type === 'HomeTripsLoadingScreen'), false);
     assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.sheetLoading, home.sheetLoading);
     assert.equal(rendered.find(node => node.type === 'HomeTripsSheet').props.isDriver, home.isDriver);
+    assert.equal(rendered.find(node => node.type === 'HomeHeader').props.unreadMessages, 3);
     const sheet = rendered.find(node => node.type === 'HomeTripsSheet');
     const priority = rendered.find(node => node.type === 'HomeActivityCards');
     assert.equal(sheet.props.priorityContent, undefined);
@@ -221,6 +225,7 @@ test('slow, empty, failed and refreshing trip queries keep the same map position
   assert.equal(render().props.children[0].type, 'HomeMap');
   assert.equal(restored.some(node => node.type === 'HomeOngoingTripSheet'), false);
   assert.equal(restored.some(node => node.type === 'HomeTripsSheet'), true);
-  assert.equal(restored.some(node => node.type === 'UpdatePrompt'), false, 'no optional store modal on Home');
+  assert.equal(restored.find(node => node.type === 'UpdatePrompt').props.enabled, false,
+    'the optional update prompt remains deferred until role and activity are verified');
   hooks.unmount();
 });

@@ -50,11 +50,20 @@ test('native preview geometry is bounded, preserving endpoints', () => {
   assert.equal(presentation(Array(10001).fill(departure)).hasDetailedRouteMapCoordinates, false);
 });
 
-test('owner map gains space while passenger heights and small-screen bounds are preserved', () => {
+test('server detailed booking geometry stays complete, including genuine two-point road segments', () => {
+  const points = Array.from({ length: 900 }, (_, i) => ({ latitude: -4.3 - i / 100000, longitude: 15.3 + i / 100000 }));
+  const result = presentation(points, { routeInfo: { geometry: 'detailed' } });
+  assert.equal(result.routeMapCoordinates, points, 'do not sample away road bends');
+  assert.equal(result.hasDetailedRouteMapCoordinates, true);
+  assert.equal(presentation([departure, arrival], { routeInfo: { geometry: 'detailed' } }).hasDetailedRouteMapCoordinates, true);
+  assert.equal(presentation(Array(10001).fill(departure), { routeInfo: { geometry: 'detailed' } }).hasDetailedRouteMapCoordinates, false);
+});
+
+test('passenger hero follows the map-led design; owner workspace keeps its existing bounded height', () => {
   const { tripDetailMapHeight } = loader()('features/trip-detail/tripDetailLayout.ts');
   for (const height of [568, 700, 844, 1200]) {
-    assert.equal(tripDetailMapHeight(height, false), Math.min(214, Math.max(172, height * 0.27)));
-    assert.ok(tripDetailMapHeight(height, true) > tripDetailMapHeight(height, false));
+    assert.equal(tripDetailMapHeight(height, false), Math.min(360, Math.max(230, height * 0.40)));
+    assert.equal(tripDetailMapHeight(height, true), Math.min(270, Math.max(200, height * 0.28)));
     assert.ok(tripDetailMapHeight(height, true) <= 320);
   }
   assert.ok(Number.isFinite(tripDetailMapHeight(NaN, true)));
@@ -75,9 +84,9 @@ test('changing trip clears the previous trace, ignores stale response and expose
   pending[0].resolve({ coordinates: [departure, arrival], duration: 60 }); await settle();
   assert.deepEqual(state, { coordinates: null, info: null, arrival: null, loading: true });
   pending[1].reject(Error('offline')); await settle();
-  assert.deepEqual(state, { coordinates: [departure, arrival], info: null, arrival: null, loading: false });
+  assert.deepEqual(state, { coordinates: null, info: null, arrival: null, loading: false });
   props.trip = { ...props.trip, id: 'third' }; hooks.render(() => hook(props));
-  const info = { coordinates: [departure, { latitude: -4.4, longitude: 15.5 }, arrival], duration: 600, distance: 3000 };
+  const info = { coordinates: [departure, { latitude: -4.4, longitude: 15.5 }, arrival], duration: 600, distance: 3000, geometry: 'detailed' };
   pending[2].resolve(info); await settle();
   assert.deepEqual(state.coordinates, info.coordinates); assert.equal(state.info, info);
   assert.equal(state.arrival.toISOString(), '2030-01-01T12:10:00.000Z'); assert.equal(state.loading, false);

@@ -1,7 +1,7 @@
 import { isValidMapCoordinate } from '../../features/trip-detail/tripDetailModel';
 import { getRouteInfo, type RouteInfo } from '@/utils/routeApi';
 import { normalizeTripMapCoordinate } from '@/utils/tripCoordinates';
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Trip } from '@/types';
 
 interface Params {
@@ -23,6 +23,14 @@ export function useTripDetailRouteCoordinates({
 }: Params) {
   const tripId = trip?.id;
   const departureTime = trip?.departureTime;
+  const [attempt, setAttempt] = useState(0);
+  const [read, setRead] = useState<{ key: string; status: 'loading' | 'ready' | 'unavailable' } | null>(null);
+  const retryAt = useRef(0);
+  const retryRoute = useCallback(() => {
+    if (Date.now() - retryAt.current < 3000) return;
+    retryAt.current = Date.now();
+    setAttempt(value => value + 1);
+  }, []);
   const departureCoordinate = useMemo(
     () => {
       const coordinate = normalizeTripMapCoordinate(trip?.departure?.lat, trip?.departure?.lng);
@@ -82,14 +90,17 @@ export function useTripDetailRouteCoordinates({
   ]);
 
   const hasValidRouteEndpoints = useMemo(
-    () => Boolean(trip && isValidMapCoordinate(departureCoordinate) && isValidMapCoordinate(arrivalCoordinate)),
+    () => Boolean(trip && trip.departure?.hasCoordinates !== false && trip.arrival?.hasCoordinates !== false &&
+      isValidMapCoordinate(departureCoordinate) && isValidMapCoordinate(arrivalCoordinate)),
     [arrivalCoordinate, departureCoordinate, trip],
   );
+  const key = `${tripId}:${departureCoordinate.latitude}:${departureCoordinate.longitude}:${arrivalCoordinate.latitude}:${arrivalCoordinate.longitude}:${attempt}`;
 
   // Load route coordinates and info when trip changes
   useEffect(() => {
     if (!isScreenActive) return;
     if (!tripId || !hasValidRouteEndpoints) {
+      setRead({ key, status: 'unavailable' });
       setRouteCoordinates(null);
       setRouteInfo(null);
       setCalculatedArrivalTime(null);
@@ -97,15 +108,22 @@ export function useTripDetailRouteCoordinates({
       return;
     }
     setIsLoadingRoute(true);
+    setRead({ key, status: 'loading' });
     setRouteCoordinates(null);
     setRouteInfo(null);
     setCalculatedArrivalTime(null);
     let cancelled = false;
-    getRouteInfo(departureCoordinate, arrivalCoordinate)
+    getRouteInfo(departureCoordinate, arrivalCoordinate, { requireDetailedRoute: true })
       .then((info) => {
         if (cancelled) return;
+        if (info.geometry !== 'detailed' || info.coordinates.length < 2) {
+          setRead({ key, status: 'unavailable' });
+          setIsLoadingRoute(false);
+          return;
+        }
         setRouteCoordinates(info.coordinates);
         setRouteInfo(info);
+        setRead({ key, status: 'ready' });
 
         // Calculate arrival time based on departure time + route duration
         if (info.duration > 0 && departureTime) {
@@ -120,19 +138,22 @@ export function useTripDetailRouteCoordinates({
       })
       .catch(() => {
         if (cancelled) return;
-        // Fallback to straight line if route API fails
-        setRouteCoordinates([departureCoordinate, arrivalCoordinate]);
+        // No straight-line substitute: booking stops must follow the server's road route.
+        setRouteCoordinates(null);
+        setRead({ key, status: 'unavailable' });
         setRouteInfo(null);
         setCalculatedArrivalTime(null);
         setIsLoadingRoute(false);
       });
     return () => { cancelled = true; };
-  }, [isScreenActive, departureCoordinate, arrivalCoordinate, hasValidRouteEndpoints, tripId, departureTime,
+  }, [isScreenActive, departureCoordinate, arrivalCoordinate, hasValidRouteEndpoints, tripId, departureTime, key,
     setRouteCoordinates, setRouteInfo, setCalculatedArrivalTime, setIsLoadingRoute]);
 
   return {
     departureCoordinate,
     arrivalCoordinate,
     hasValidRouteEndpoints,
+    routeStatus: read?.key === key ? read.status : 'loading' as const,
+    retryRoute,
   };
 }

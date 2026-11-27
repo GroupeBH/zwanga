@@ -6,6 +6,7 @@ import { useTripDetailBookingState } from './useTripDetailBookingState';
 import { useTripDetailAccess } from './useTripDetailAccess';
 import { useTripBookingPricing } from './useTripBookingPricing';
 import { useTripBookingLocationForm } from './useTripBookingLocationForm';
+import { useTripBookingReferences } from './useTripBookingReferences';
 import { useTripBookingWizard } from './useTripBookingWizard';
 import { useTripDetailPresentation } from './useTripDetailPresentation';
 import { useTripDetailMapPresentation } from './useTripDetailMapPresentation';
@@ -107,7 +108,14 @@ export function useTripDetailController() {
     user: data.user,
     bookingForTrip: activity.bookingForTrip,
   });
+  const bookingReferences = useTripBookingReferences({ trip: data.trip,
+    passengerOrigin: bookingState.passengerOrigin,
+    passengerOriginManualAddress: bookingState.passengerOriginManualAddress,
+    passengerDestination: bookingState.passengerDestination,
+    passengerDestinationManualAddress: bookingState.passengerDestinationManualAddress });
   const bookingLocation = useTripBookingLocationForm({
+    resetBookingReferences: bookingReferences.reset,
+    bookingModalVisible: bookingState.bookingModalVisible,
     lastKnownLocation: data.lastKnownLocation,
     trip: data.trip,
     passengerOrigin: bookingState.passengerOrigin,
@@ -200,6 +208,8 @@ export function useTripDetailController() {
   });
 
   const bookingSubmission = useTripBookingSubmission({
+    passengerOriginReference: bookingReferences.origin.value,
+    passengerDestinationReference: bookingReferences.destination.value,
     bookingProposedPrice: bookingState.bookingProposedPrice,
     setBookingProposedPrice: bookingState.setBookingProposedPrice,
     isBooking: bookingState.isBooking,
@@ -300,6 +310,7 @@ export function useTripDetailController() {
     payment,
     bookingSubmission,
     bookingLocation,
+    bookingReferences,
     wizard,
   };
 }
